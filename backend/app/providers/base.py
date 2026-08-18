@@ -1,0 +1,41 @@
+from __future__ import annotations
+
+from abc import ABC, abstractmethod
+
+from ..models import FetchedComic, RemotePage
+
+
+class ComicProvider(ABC):
+    """The extension point for other comic sites.
+
+    To add a site (e.g. nhentai, e-hentai, hitomi), subclass this and register
+    the instance in ``registry.py``. The HTTP API and the local cache are
+    completely provider-neutral.
+    """
+
+    key: str = ""
+    label: str = ""
+    short_label: str = ""
+    id_pattern: str = ""
+    example: str = ""
+
+    @abstractmethod
+    def normalize_id(self, raw: str) -> str:
+        """Turn user input into the canonical provider id."""
+
+    @abstractmethod
+    def fetch(self, raw_id: str) -> FetchedComic:
+        """Fetch metadata + page URLs. Must not download page bytes here."""
+
+    @abstractmethod
+    def download_page(self, comic: FetchedComic, page: RemotePage) -> bytes:
+        """Download one page. The storage layer decides when this is called."""
+
+    def describe(self) -> dict:
+        return {
+            "key": self.key,
+            "label": self.label,
+            "short_label": self.short_label or self.label,
+            "id_pattern": self.id_pattern,
+            "example": self.example,
+        }

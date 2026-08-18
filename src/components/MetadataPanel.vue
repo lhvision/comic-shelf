@@ -1,0 +1,186 @@
+<script setup lang="ts">
+import type { ComicMeta } from '@/types'
+
+const props = defineProps<{
+  meta: ComicMeta
+}>()
+
+const fieldRows = [
+  { label: '禁漫车', value: props.meta.display_id, mono: true },
+  { label: '作品', value: props.meta.works.join(' / ') || '—' },
+  { label: '登场人物', value: props.meta.actors.join(' / ') || '—' },
+  { label: '作者', value: props.meta.authors.join(' / ') || '佚名' },
+  { label: '上传者', value: props.meta.uploader || '未返回' },
+  { label: '页数', value: props.meta.page_count ? `${props.meta.page_count} P` : '—' },
+  { label: '上架日期', value: props.meta.published_at || '—', mono: true },
+  { label: '更新日期', value: props.meta.updated_at || '—', mono: true },
+  {
+    label: '观看 / 喜欢',
+    value: `${props.meta.views || '—'} 次观看 · ${props.meta.likes || '—'} 点击喜欢`,
+  },
+]
+</script>
+
+<template>
+  <section class="metadata-panel" aria-labelledby="meta-title">
+    <div class="meta-head">
+      <div>
+        <p class="eyebrow">Catalog card</p>
+        <h2 id="meta-title">{{ meta.title }}</h2>
+      </div>
+      <span class="meta-id">{{ meta.display_id }}</span>
+    </div>
+
+    <dl class="meta-grid">
+      <div v-for="row in fieldRows" :key="row.label" class="meta-row">
+        <dt>{{ row.label }}</dt>
+        <dd :data-mono="row.mono">{{ row.value }}</dd>
+      </div>
+    </dl>
+
+    <div class="meta-block">
+      <h3>分类标签</h3>
+      <div class="cluster">
+        <span v-for="tag in meta.tags" :key="tag" class="chip">{{ tag }}</span>
+        <span v-if="meta.tags.length === 0" class="muted">无标签</span>
+      </div>
+    </div>
+
+    <div class="meta-block">
+      <h3>叙述</h3>
+      <p class="description">
+        {{ meta.description || '原页面没有填写叙述。' }}
+      </p>
+    </div>
+
+    <p v-if="meta.source_url" class="source-link">
+      来源：
+      <a :href="meta.source_url" target="_blank" rel="noreferrer noopener">
+        {{ meta.source_url }}
+      </a>
+    </p>
+  </section>
+</template>
+
+<style scoped>
+.metadata-panel {
+  display: grid;
+  gap: var(--space-5);
+}
+
+.meta-head {
+  display: flex;
+  gap: var(--space-4);
+  justify-content: space-between;
+  align-items: start;
+}
+
+.meta-head h2 {
+  margin-top: var(--space-2);
+  font-size: var(--text-xl);
+}
+
+.meta-id {
+  padding: 0.25rem 0.55rem;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-1);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--accent-strong);
+  white-space: nowrap;
+}
+
+.meta-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  border-block: 1px solid var(--line);
+}
+
+.meta-row {
+  display: grid;
+  grid-template-columns: minmax(4.8rem, 0.45fr) 1fr;
+  gap: var(--space-3);
+  padding: var(--space-3) 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.meta-row:nth-child(odd) {
+  padding-right: var(--space-4);
+}
+
+.meta-row:nth-child(even) {
+  padding-left: var(--space-4);
+  border-left: 1px solid var(--line);
+}
+
+.meta-row:last-child {
+  border-bottom: 0;
+}
+
+.meta-row dt {
+  color: var(--ink-2);
+  font-size: var(--text-xs);
+  font-weight: 600;
+  letter-spacing: 0.06em;
+}
+
+.meta-row dd {
+  min-width: 0;
+  font-size: var(--text-sm);
+  overflow-wrap: anywhere;
+}
+
+.meta-row dd[data-mono='true'] {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+}
+
+.meta-block h3 {
+  font-family: var(--font-body);
+  font-size: var(--text-xs);
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: var(--ink-2);
+  margin-bottom: var(--space-2);
+}
+
+.description {
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-2);
+  background: color-mix(in oklab, var(--paper-1) 50%, transparent);
+  color: var(--ink-1);
+  font-size: var(--text-sm);
+  white-space: pre-line;
+}
+
+.muted {
+  color: var(--ink-2);
+  font-size: var(--text-sm);
+}
+
+.source-link {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--ink-2);
+  overflow-wrap: anywhere;
+}
+
+.source-link a {
+  color: var(--accent-strong);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+@media (max-width: 640px) {
+  .meta-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .meta-row:nth-child(odd),
+  .meta-row:nth-child(even) {
+    padding-inline: 0;
+    border-left: 0;
+  }
+}
+</style>

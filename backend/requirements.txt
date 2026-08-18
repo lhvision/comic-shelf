@@ -1,0 +1,5 @@
+jmcomic==2.7.4
+fastapi>=0.141
+uvicorn>=0.52
+curl-cffi>=0.16
+pillow>=12

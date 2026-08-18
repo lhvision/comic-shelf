@@ -1,0 +1,24 @@
+services:
+  backend:
+    build:
+      context: ./backend
+    container_name: paper-room-backend
+    restart: unless-stopped
+    environment:
+      COMIC_SHELF_DATA: /app/backend/data
+      COMIC_SHELF_PAGE_THUMB_WIDTH: '360'
+    volumes:
+      - ./backend/data:/app/backend/data
+    ports:
+      - '127.0.0.1:8000:8000' # optional: direct API access on the host
+
+  frontend:
+    build:
+      context: .
+      dockerfile: docker/frontend.Dockerfile
+    container_name: paper-room-web
+    restart: unless-stopped
+    depends_on:
+      - backend
+    ports:
+      - '8080:80'

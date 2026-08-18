@@ -1,0 +1,25 @@
+# Midscene YAML 用例：阅读器回归
+# 跑：pnpm test:yaml
+web:
+  url: http://127.0.0.1:5173/comic/jm/1242163/read/1
+
+tasks:
+  - name: 阅读器加载且 PC/平板每屏页数支持 1 页、2 页、4 页
+    flow:
+      - aiWaitFor: 页面已打开阅读器，顶部工具栏可见，第一页漫画图片已经加载出来
+      - aiTap: 设置按钮
+      - aiAssert: 设置面板中“每屏页数”只有 1 页、2 页、4 页 三个选项，没有其他选项
+      - aiTap: 关闭按钮
+
+  - name: 竖向连续模式可以持续向下滚动且页间间隔紧凑
+    flow:
+      - aiScroll: null
+        direction: down
+        scrollType: once
+        distance: 900
+      - aiAssert: 页面已经向下滚动，第一页和第二页之间没有整屏空白，页间间隔紧凑
+      - aiScroll: null
+        direction: down
+        scrollType: once
+        distance: 900
+      - aiAssert: 页面继续向下滚动，没有被卡住

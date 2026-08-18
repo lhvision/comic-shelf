@@ -1,0 +1,63 @@
+# 设计过程记录（frontend-design → critique → polish → adapt）
+
+## 1. frontend-design 脑前区思考
+
+- **给谁用**：自己 / 少数同好，晚上或周末在桌面、平板、手机上翻自己的收藏。
+- **需要被记住什么**：不是“又一个动漫站”，而是“私人阅览室 + 图书馆卡片目录”：
+  暖纸色、墨色、朱砂色，像纸质卡片与旧书脊。
+- **明确禁止**：紫色渐变、玻璃拟态堆叠、霓虹光效、emoji 当图标、
+  无节制的圆角胶囊。
+- **风格关键词**：Quiet archive / Reading room / Card catalog / Vermilion ink。
+
+## 2. critique（对初版代码的评审）
+
+| 问题               | 结论                                                 |
+| ------------------ | ---------------------------------------------------- |
+| 紫色渐变诱惑       | 已禁止，强调色固定为朱砂 `oklch(0.59 0.17 38)`       |
+| 圆角过大、层次不清 | 限制为 4 档 radius，卡片/面板分层                    |
+| 间距靠感觉         | 建立 4pt spacing tokens，页面统一 `--space-*`        |
+| 字体层级不稳       | 标题用衬线 display，正文 sans，元数据 mono，职责明确 |
+| 按钮对比度         | 主按钮白字配 `#c74c35`，对比度约 4.42:1；正文 14.7:1 |
+| 封面加载时跳版     | 固定 `aspect-ratio: 3 / 4.15`，骨架屏兜底            |
+| 阅读器进度条兼容性 | CSS scroll-timeline + JS fallback 双轨               |
+| 远端压力           | 本地 album.json 命中时完全不发网络请求               |
+
+## 3. polish（对齐设计系统）
+
+- 所有颜色收敛到 `--paper-* / --ink-* / --accent / --line`；
+- 所有边距收敛到 4pt 倍数；
+- 动效时长只有 `--duration-1/2/3` 三档，缓动只有 `--ease-out / --ease-spring`；
+- 封面轮播与阅读器都基于原生 CSS scroll-snap，不引入第三方轮播库。
+
+## 4. adapt（适配）
+
+- 桌面：1200px 容器，双栏 hero / 详情；
+- 平板（<=960px）：hero 与详情改单栏；
+- 手机（<=640px）：头部隐藏次要信息，卡片单列，操作按钮换行；
+- 阅读器：`100dvh`、`env(safe-area-inset-*)`、图片可切“适应宽度 / 适应高度”。
+
+## 5. live-cache（后台缓存实时进度，critique → polish → adapt）
+
+- **需求**：收录/缓存全部已改造成后台任务，书架卡片要实时显示「缓存中 N%」，任务结束回落到准确的「本地 N%」。
+- **critique（挑刺）**：
+  1. 任务完成后卡片回落到**过期**的静态计数（显示错数字）→ store 在任务集合变化时重新拉取书库快照；
+  2. 进度条的「斜纹扫描」用了 `::after` 但 fill 没设 `position:relative` → 扫动覆盖整条轨道而非已缓存段 → 修正；
+  3. `aria-valuetext` 漏写冒号，输出字面量 `label` → 修正为 `:aria-valuetext`；
+  4. 运行态文字用 `--ink-2` 识别度偏低 → 运行态改 `--accent-strong`，完成态 `--success`。
+- **polish（对齐系统）**：新增 `CacheProgress.vue`，全部走 `--paper*/--ink*/--accent/--success/--space-*/--duration-*`；动效只有脉冲 + 一次斜纹，`prefers-reduced-motion` 全关。
+- **adapt（适配）**：卡片底行 `>380px` 横向「观看次数 + 进度」，窄屏自动纵排，避免拥挤；全局「后台正在缓存 N 本」提示用胶囊 + 呼吸点，随 `activeCachingCount` 显隐。
+
+## 6. download-concurrency + canvas live-cache（Impeccable：critique → polish → adapt）
+
+- **下载并发设置**：入口放在 ImportPanel「缓存全部」checkbox 正下方（缓存入口所在卡片，符合用户直觉）。
+  - 前端：`src/stores/settings.ts`（localStorage `comic-shelf:download-concurrency:v1` + API 同步），UI 用 −/+ 步进器（走 `--paper*/--ink*/--accent-soft`），范围 1–16。
+  - 后端：`gate.py` 可运行时调整的并发闸门（`threading.Condition`），`COMIC_SHELF_MAX_CONCURRENT_DOWNLOADS` 显式设置则锁定；否则持久化 `data/settings.json`；未锁定时 env 只是默认值。
+  - critique：环境变量锁定态要在 UI 明示（只读值 + 提示文案），步进器 min/max 要禁用，避免与后端不一致。
+- **Canvas 卡片实时进度**：`HtmlCanvasSurface` 新增 `redrawKey`，缓存进度变化时触发重绘；`HtmlCanvasCard` 与 `ComicCard` 共用 `CacheProgress`，UI 完全一致。
+  - critique：重构前 canvas 只画一次、进度是静态快照；现在 `redrawKey` 变化才重绘（80ms 防抖），避免无谓重绘。
+
+## 7. Tooltip（CSS Anchor Positioning）+ 导入设置卡片瘦身
+
+- 新增 `src/components/Tooltip.vue`：CSS Anchor Positioning 实现（`anchor-name` / `position-anchor` / `position-area` + `position-try-fallback: flip-block`），hover / focus 显示，走 tokens；方位支持 top/right/bottom/left（默认 top），不支持时 `@supports not (anchor-name:…)` 降级绝对定位。
+- ImportPanel：删掉面板外那行臃长的 `cache-all-option`，「缓存全部」勾选并入 `download-settings`；括号说明与「下载并发」提示一并收进 Tooltip（卡片变矮、不再被拉宽）。
+  - 长文案全部隐藏为 ℹ 图标（SVG，非 emoji），hover/聚焦才出 Tooltip。

@@ -1,0 +1,31 @@
+from __future__ import annotations
+
+import os
+from pathlib import Path
+
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+BACKEND_DIR = PROJECT_ROOT / "backend"
+DATA_DIR = Path(os.getenv("COMIC_SHELF_DATA", BACKEND_DIR / "data")).resolve()
+LIBRARY_DIR = DATA_DIR / "library"
+TMP_DIR = DATA_DIR / "tmp"
+
+LIBRARY_DIR.mkdir(parents=True, exist_ok=True)
+TMP_DIR.mkdir(parents=True, exist_ok=True)
+
+COVER_WIDTH = int(os.getenv("COMIC_SHELF_COVER_WIDTH", "840"))
+COVER_QUALITY = int(os.getenv("COMIC_SHELF_COVER_QUALITY", "82"))
+COVER_COUNT = int(os.getenv("COMIC_SHELF_COVER_COUNT", "4"))
+
+PAGE_THUMB_WIDTH = int(os.getenv("COMIC_SHELF_PAGE_THUMB_WIDTH", "360"))
+PAGE_THUMB_QUALITY = int(os.getenv("COMIC_SHELF_PAGE_THUMB_QUALITY", "78"))
+
+INDEX_FILE = DATA_DIR / "index.json"
+
+# Be polite: cap eager prefetch when the user asks for "all" pages.
+MAX_PREFETCH = int(os.getenv("COMIC_SHELF_MAX_PREFETCH", "600"))
+
+# Keep page downloads to a small, steady concurrency. The JM CDN throttles or
+# queues bursts of parallel image requests (the detail page wants thumbnails
+# for many pages at once); firing them all simultaneously makes every request
+# hit a timeout. 3 in-flight downloads is polite to the CDN and still fast.
+MAX_CONCURRENT_DOWNLOADS = int(os.getenv("COMIC_SHELF_MAX_CONCURRENT_DOWNLOADS", "3"))
