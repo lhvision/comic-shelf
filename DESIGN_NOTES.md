@@ -121,3 +121,24 @@
   **原位修复 album.json，不重新下载**（与 v1→v2 迁移同一哲学）。
 - **验证**：修复后 `518074` = 152 话、7227 页、`is_multi=True`，API 详情返回 `chapters`，
   前端自动切到「章节目录 + 子路由」；其余单话缓存仍为单章，零回归。
+
+## 12. 危险操作“移除本地”重设计（Impeccable：critique → polish → adapt）
+
+- **critique**：移除本来是高风险动作，却一直摆在操作栏里一颗明显的大按钮；本地缓存删了要重新
+  下载，误删代价高。→ 把入口**收进「更多 ⋯」菜单**，危险动作弱化；点开后用**弹窗做二次确认**，
+  且必须勾选「我已了解」才能点「确认移除」。
+- **新增 `src/components/Modal.vue`**（通用可复用）：Teleport 到 body、遮罩点击/Esc/× 关闭、
+  `role=dialog` + `aria-modal` + 自动标题 id、焦点自动落入面板并 Tab 焦点圈闭、打开时锁 body 滚动、
+  窄屏底部抽屉式圆角。全部走 `--reader-scrim-*`/`--paper-*`/`--shadow-3`/`--duration-*` token。
+- **polish**：danger 按钮只用朱砂 tokens（`--accent-strong` / `--accent-soft`）；勾选确认区用
+  `--paper-1` 底 + `accent-color` 勾选框；取消/确认主次分明。
+- **adapt**：菜单窄屏不右漂（`margin-left:0`）；弹窗 ≤480px 变成底部 `92dvh` 抽屉，触控友好。
+
+## 13. 踩坑记录：composable 返回的 Ref 在模板里不会自动 unwrap
+
+- `ChapterSwitcher "props.chapters.findIndex is not a function"` + 子路由图片不显示，根因是
+  `ChapterView` 直接 `:chapters="nav.chapters"`、`:pages="nav.visiblePages"`——`nav` 是普通对象，
+  **嵌套属性里的 Ref 不参与模板自动解包**，子组件收到的是 Ref 对象。
+- 修复：composable 一律**解构到 setup 顶层**再喂模板/子组件（`ChapterView` 已改；
+  `ChapterSwitcher` 另加 `Array.isArray` 防御，防未来再传错）。
+- 这是给后续维护者的硬约束：**使用自定义 composable 时，返回值里的 Ref 要 top-level 解构使用。**

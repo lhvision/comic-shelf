@@ -65,14 +65,14 @@ function chapterState(id: string): 'past' | 'active' | 'upcoming' {
 
 <template>
   <div
-    v-if="chapters.length > 1"
+    v-if="chapterList.length > 1"
     ref="listEl"
     class="chapter-switcher"
     role="group"
     aria-label="章节"
   >
     <button
-      v-for="chapter in chapters"
+      v-for="chapter in chapterList"
       :key="chapter.id"
       :ref="(el) => (buttonEls[chapter.id] = el)"
       type="button"

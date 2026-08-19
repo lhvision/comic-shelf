@@ -70,6 +70,11 @@
   传 `chapterCache` 给 `ChapterIndex→ChapterCard` 显示「本地 N%」。
 - **章节封面（T17）**：`ChapterCard` 封面走 `GET /chapters/{id}/cover` 服务端端点
   （池化在 `covers/chapters/`），不再是每话第一页的 thumbnail 端点。
+- **危险操作**：移除本地不再占操作栏大按钮，收进「更多 ⋯」菜单 + `Modal` 强二次确认
+  （需勾选「我已了解」），见 `DESIGN_NOTES §12`。
+- **⚠️ composable 解构约束**：`useChapterNavigation` 这类带回传 Ref 的 composable，
+  在 `ChapterView` 里必须**解构到 setup 顶层**再传给子组件/模板；直接 `nav.xxx` 不会自动
+  unwrap，会触发 `ChapterSwitcher.findIndex is not a function` 且图片不显示（`DESIGN_NOTES §13`）。
 
 ## 7. 阅读器当前行为
 

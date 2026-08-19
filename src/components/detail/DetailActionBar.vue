@@ -1,17 +1,16 @@
 <script setup lang="ts">
-import { ref } from 'vue'
-import { onClickOutside, useEventListener } from '@vueuse/core'
+import { computed, ref } from 'vue'
+import { onClickOutside } from '@vueuse/core'
+import Modal from '@/components/Modal.vue'
 
 /**
- * 详情页操作栏 —— 阅读/缓存/刷新/移除 的动作集合 + 缓存进度条。
+ * 详情页操作栏 —— 阅读/缓存/刷新 + 「更多」菜单（含危险移除）+ 缓存进度条。
  * 纯展示组件：需要父级配合的值由 props 传入，动作以 emit 上抛。
  *
- * 主次层级（票据 02）：只有「继续阅读」是主按钮；其余动作统一为次级
- * btn-ghost；「移除本地」是危险动作，用朱砂危险态 + 分隔间距明显隔离。
- *
- * 危险确认（票据 01）：点「移除本地」不弹浏览器原生 confirm，而是就地展开
- * 一块纸面/朱砂风格的内联确认条（显示作品名 + 不可撤销后果），
- * 确认才 emit('removeComic')；Esc、点击外部、取消均可关闭。
+ * 主次层级（票据 02）：只有「继续阅读」是主按钮；读页/缓存/刷新统一次级 btn-ghost。
+ * 危险操作（Impeccable 重设计）：
+ * - 「移除本地」不再摆在操作栏里，而是收进「更多 ⋯」菜单（本地缓存删了可惜，应弱化入口）；
+ * - 点到后弹 Modal 做「二次确认」，且必须勾选「我已了解」才能点确认，防止误删。
  */
 const props = defineProps<{
   /** 作品标题（用于危险确认文案） */
@@ -33,24 +32,33 @@ const emit = defineEmits<{
   removeComic: []
 }>()
 
-/** 是否为内联危险确认展开态 */
-const confirmOpen = ref(false)
+/** 「更多」弹出菜单开合 */
+const moreOpen = ref(false)
+const moreRoot = ref<HTMLElement | null>(null)
+/** 移除确认弹窗开合 */
+const removeOpen = ref(false)
+/** 二次确认勾选 */
+const ackRemove = ref(false)
 
-const confirmRoot = ref<HTMLElement | null>(null)
-onClickOutside(confirmRoot, () => {
-  confirmOpen.value = false
+onClickOutside(moreRoot, () => {
+  moreOpen.value = false
 })
 
-useEventListener(window, 'keydown', (event) => {
-  if (event.key === 'Escape' && confirmOpen.value) confirmOpen.value = false
-})
+const removeBody = computed(
+  () =>
+    `《${props.title}》的本地页面与封面会被永久删除（共 ${props.cachedPages}/${props.pageCount} 页）。` +
+    ' 删除后再次浏览需要重新访问远端并重新缓存，此操作不可撤销。',
+)
 
 function requestRemove() {
-  confirmOpen.value = true
+  moreOpen.value = false
+  ackRemove.value = false
+  removeOpen.value = true
 }
 
 function confirmRemove() {
-  confirmOpen.value = false
+  removeOpen.value = false
+  ackRemove.value = false
   emit('removeComic')
 }
 </script>
@@ -81,21 +89,44 @@ function confirmRemove() {
       </button>
       <button class="btn btn-ghost" type="button" @click="emit('refreshMetadata')">刷新资料</button>
 
-      <button class="btn danger" type="button" @click="requestRemove">移除本地</button>
+      <div ref="moreRoot" class="more-menu">
+        <button
+          class="btn btn-ghost more-trigger"
+          type="button"
+          :aria-expanded="moreOpen"
+          :aria-haspopup="true"
+          @click="moreOpen = !moreOpen"
+        >
+          ⋯ 更多
+        </button>
+        <div v-if="moreOpen" class="more-pop" role="menu">
+          <button
+            class="more-item danger-item"
+            type="button"
+            role="menuitem"
+            @click="requestRemove"
+          >
+            移除本地缓存…
+          </button>
+        </div>
+      </div>
     </div>
 
-    <div v-if="confirmOpen" ref="confirmRoot" class="danger-confirm surface" role="alertdialog">
-      <div class="danger-confirm-copy">
-        <p class="danger-confirm-title">移除《{{ title }}》的本地缓存？</p>
-        <p class="danger-confirm-note">
-          将删除这本书的全部本地页面与封面，此操作不可撤销；远端原页不受影响。
-        </p>
-      </div>
-      <div class="danger-confirm-actions">
-        <button class="btn btn-ghost" type="button" @click="confirmOpen = false">取消</button>
-        <button class="btn danger" type="button" @click="confirmRemove">确认移除</button>
-      </div>
-    </div>
+    <Modal :open="removeOpen" :title="`移除《${title}》？`" @cancel="removeOpen = false">
+      <p class="remove-copy">{{ removeBody }}</p>
+
+      <label class="remove-ack">
+        <input v-model="ackRemove" type="checkbox" />
+        <span>我已了解：本地缓存会被永久删除，且无法撤销。</span>
+      </label>
+
+      <template #footer>
+        <button class="btn btn-ghost" type="button" @click="removeOpen = false">取消</button>
+        <button class="btn danger" type="button" :disabled="!ackRemove" @click="confirmRemove">
+          确认移除 {{ ackRemove ? '' : '（需勾选确认）' }}
+        </button>
+      </template>
+    </Modal>
 
     <div class="cache-summary" aria-hidden="true">
       <span :style="{ transform: `scaleX(${cachePercent / 100})` }" />
@@ -112,63 +143,97 @@ function confirmRemove() {
 }
 
 .action-bar {
+  position: relative;
   display: flex;
   flex-wrap: wrap;
   gap: var(--space-3);
   padding: var(--space-4);
 }
 
-/* 主操作唯一高权重：加一点尺寸与层级，与其余次级按钮区分 */
+/* 主操作唯一高权重 */
 .btn-read {
   letter-spacing: 0.04em;
   box-shadow: var(--shadow-1);
 }
 
-/* 危险操作：朱砂态 + 分隔间距，与其他操作清晰隔离 */
-.danger {
-  color: var(--accent-strong);
-  border: 1px solid color-mix(in oklab, var(--accent) 35%, transparent);
+.more-menu {
+  position: relative;
+  margin-left: auto;
 }
 
-.danger:hover {
+.more-pop {
+  position: absolute;
+  right: 0;
+  top: calc(100% + var(--space-2));
+  z-index: 30;
+  min-width: 12.5rem;
+  padding: var(--space-2);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-2);
+  background: var(--paper-0);
+  box-shadow: var(--shadow-2);
+  display: grid;
+  gap: var(--space-1);
+}
+
+.more-item {
+  width: 100%;
+  text-align: left;
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-1);
+  font-size: var(--text-sm);
+  color: var(--ink-1);
+  background: transparent;
+  border: 0;
+}
+
+.more-item:hover {
+  background: var(--paper-1);
+}
+
+.danger-item {
+  color: var(--accent-strong);
+}
+
+.danger-item:hover {
   background: var(--accent-soft);
 }
 
-@media (min-width: 681px) {
-  .action-bar .danger {
-    margin-left: auto;
-  }
+/* 危险按钮：朱砂态（在弹窗 / 菜单内才出现） */
+.danger {
+  color: var(--accent-strong);
+  border: 1px solid color-mix(in oklab, var(--accent) 40%, transparent);
 }
 
-.danger-confirm {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-4);
-  margin-top: var(--space-3);
-  padding: var(--space-4);
-  border-color: color-mix(in oklab, var(--accent) 35%, transparent);
-  background: color-mix(in oklab, var(--accent) 6%, var(--paper-0));
+.danger:hover:not(:disabled) {
+  background: var(--accent-soft);
 }
 
-.danger-confirm-title {
-  font-family: var(--font-display);
-  font-size: var(--text-sm);
-  font-weight: 600;
-  color: var(--ink-0);
+.danger:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
-.danger-confirm-note {
-  margin-top: var(--space-1);
+.remove-copy {
   color: var(--ink-1);
-  font-size: var(--text-xs);
-  line-height: 1.6;
 }
 
-.danger-confirm-actions {
+.remove-ack {
   display: flex;
   gap: var(--space-2);
+  align-items: flex-start;
+  margin-top: var(--space-4);
+  padding: var(--space-3);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-2);
+  background: color-mix(in oklab, var(--paper-1) 55%, transparent);
+  font-size: var(--text-sm);
+  line-height: 1.55;
+}
+
+.remove-ack input {
+  margin-top: 0.25rem;
+  accent-color: var(--accent);
 }
 
 .cache-summary {
@@ -194,5 +259,11 @@ function confirmRemove() {
   font-size: var(--text-xs);
   color: var(--ink-2);
   text-align: right;
+}
+
+@media (max-width: 681px) {
+  .more-menu {
+    margin-left: 0;
+  }
 }
 </style>
