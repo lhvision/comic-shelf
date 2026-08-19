@@ -133,6 +133,18 @@ async function cacheAll() {
   }
 }
 
+async function removeComic() {
+  // 危险确认已内联到 DetailActionBar（票据 01），这里只做真正的删除。
+  if (!detail.value) return
+  try {
+    await store.remove(source.value, sourceId.value)
+    toast('已从纸间移除')
+    router.replace('/')
+  } catch (e) {
+    toast(e instanceof Error ? e.message : String(e), 'error')
+  }
+}
+
 async function refreshMetadata() {
   try {
     await store.importComic({
@@ -143,19 +155,6 @@ async function refreshMetadata() {
     })
     toast('资料已从远端刷新，页面文件继续保留')
     await load()
-  } catch (e) {
-    toast(e instanceof Error ? e.message : String(e), 'error')
-  }
-}
-
-async function removeComic() {
-  if (!detail.value) return
-  const ok = window.confirm(`删除《${detail.value.meta.title}》的本地缓存？`)
-  if (!ok) return
-  try {
-    await store.remove(source.value, sourceId.value)
-    toast('已从纸间移除')
-    router.replace('/')
   } catch (e) {
     toast(e instanceof Error ? e.message : String(e), 'error')
   }
@@ -191,6 +190,7 @@ function startReading(page = progressEl.value || 1) {
       </div>
 
       <DetailActionBar
+        :title="detail.meta.title"
         :last-read="progressEl"
         :cache-percent="cachePercent"
         :caching="caching"

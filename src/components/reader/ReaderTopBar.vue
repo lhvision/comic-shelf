@@ -2,7 +2,10 @@
 /**
  * 阅读器顶栏 —— 返回按钮 + 书名 + 设置/全屏工具。
  * 纯展示组件：所有动作通过 emit 交给 ReaderView 处理，自身不感知路由。
+ * 按钮复用 ReaderButton（票据 05：与设置面板共用同一套控件样式）。
  */
+import ReaderButton from '@/components/reader/ReaderButton.vue'
+
 defineProps<{
   title: string
   displayId: string
@@ -19,14 +22,14 @@ defineEmits<{
 <template>
   <div class="reader-chrome" :data-hidden="hidden" :inert="hidden">
     <div class="reader-topbar">
-      <button class="reader-btn" type="button" @click="$emit('back')">← 返回</button>
+      <ReaderButton @click="$emit('back')">← 返回</ReaderButton>
       <div class="reader-title">
         <strong>{{ title }}</strong>
         <span>{{ displayId }}</span>
       </div>
       <div class="reader-tools">
-        <button class="reader-btn" type="button" @click="$emit('openSettings')">设置</button>
-        <button class="reader-btn" type="button" @click="$emit('toggleFullscreen')">全屏</button>
+        <ReaderButton @click="$emit('openSettings')">设置</ReaderButton>
+        <ReaderButton @click="$emit('toggleFullscreen')">全屏</ReaderButton>
       </div>
     </div>
   </div>
@@ -88,21 +91,6 @@ defineEmits<{
   gap: var(--space-2);
 }
 
-.reader-btn {
-  min-height: var(--control-md);
-  padding: var(--space-2) var(--space-3);
-  border: 1px solid var(--reader-line-strong);
-  border-radius: var(--radius-2);
-  background: var(--reader-scrim-soft);
-  color: var(--reader-ink);
-  font-size: var(--text-xs);
-  transition: background-color var(--duration-1) var(--ease-out);
-}
-
-.reader-btn:hover {
-  background: var(--reader-surface-hover);
-}
-
 @media (max-width: 680px) {
   .reader-topbar {
     grid-template-columns: auto minmax(0, 1fr) auto;
@@ -112,10 +100,6 @@ defineEmits<{
 
   .reader-tools {
     gap: var(--space-1);
-  }
-
-  .reader-btn {
-    padding: var(--space-1) var(--space-2);
   }
 }
 </style>

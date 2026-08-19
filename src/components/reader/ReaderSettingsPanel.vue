@@ -1,7 +1,8 @@
 <script setup lang="ts">
 /**
  * 阅读器设置面板 —— 模式 / 每屏页数 / 自动切换 / 方向 / 图片适配。
- * 状态直接来自全局 `useReaderSettings`（createGlobalState 单例），
+ * 状态直接来自全局 `useReaderSettings`；
+ * 关闭按钮复用 ReaderButton（票据 05：与顶栏共用一套控件样式）（createGlobalState 单例），
  * 所以面板与 ReaderView 天然共享同一份设置，无需 props 层层传递。
  */
 import {
@@ -10,6 +11,7 @@ import {
   MODE_OPTIONS,
   useReaderSettings,
 } from '@/composables/useReaderSettings'
+import ReaderButton from '@/components/reader/ReaderButton.vue'
 
 const emit = defineEmits<{ close: [] }>()
 
@@ -24,7 +26,7 @@ const { settings, pagesPerViewOptions, reset } = useReaderSettings()
           <p class="eyebrow">Reader settings</p>
           <h2>阅读设置</h2>
         </div>
-        <button class="reader-btn" type="button" @click="emit('close')">关闭 ✕</button>
+        <ReaderButton @click="emit('close')">关闭 ✕</ReaderButton>
       </header>
 
       <div class="setting-group">
@@ -172,21 +174,6 @@ const { settings, pagesPerViewOptions, reset } = useReaderSettings()
 
 .settings-head h2 {
   font-size: var(--text-xl);
-}
-
-.reader-btn {
-  min-height: var(--control-md);
-  padding: var(--space-2) var(--space-3);
-  border: 1px solid var(--reader-line-strong);
-  border-radius: var(--radius-2);
-  background: var(--reader-scrim-soft);
-  color: var(--reader-ink);
-  font-size: var(--text-xs);
-  transition: background-color var(--duration-1) var(--ease-out);
-}
-
-.reader-btn:hover {
-  background: var(--reader-surface-hover);
 }
 
 .setting-group {
@@ -373,10 +360,6 @@ const { settings, pagesPerViewOptions, reset } = useReaderSettings()
 
   .setting-row {
     flex-wrap: wrap;
-  }
-
-  .reader-btn {
-    padding: var(--space-1) var(--space-2);
   }
 }
 </style>

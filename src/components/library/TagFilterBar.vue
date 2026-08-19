@@ -1,7 +1,13 @@
 <script setup lang="ts">
+import { computed, ref } from 'vue'
+
 /**
  * 书架标签筛选条 —— 「只看喜欢」+ 标签 chips + 当前筛选提示。
  * 选中状态 (activeTag / favoritesOnly) 由父级持有，本组件只回发事件。
+ *
+ * 漏斗式禁止（票据 03）：默认只渲染高频的前 8 个标签，其余收进
+ * 「更多标签」展开按钮之下（再点收起），避免 ~20 个 chip 的墙造成
+ * 决策点超载，也避免移动端出现无休止换行。
  */
 const props = defineProps<{
   favoritesOnly: boolean
@@ -17,6 +23,15 @@ const emit = defineEmits<{
   selectTag: [tag: string]
   clearTag: []
 }>()
+
+/** 默认展示的高频标签数（连「全部」一起 ≤9 个 chip） */
+const VISIBLE_TAGS = 8
+
+const expanded = ref(false)
+const moreCount = computed(() => Math.max(0, props.tagCounts.length - VISIBLE_TAGS))
+const shownTags = computed(() =>
+  expanded.value ? props.tagCounts : props.tagCounts.slice(0, VISIBLE_TAGS),
+)
 
 function selectTag(tag: string) {
   emit('selectTag', tag === props.activeTag ? '' : tag)
@@ -50,7 +65,7 @@ function clearFilter() {
         全部
       </button>
       <button
-        v-for="[tag, count] in tagCounts"
+        v-for="[tag, count] in shownTags"
         :key="tag"
         class="chip chip-button"
         type="button"
@@ -58,6 +73,16 @@ function clearFilter() {
         @click="selectTag(tag)"
       >
         {{ tag }} <small>{{ count }}</small>
+      </button>
+
+      <button
+        v-if="moreCount > 0"
+        class="chip chip-button more-tags"
+        type="button"
+        :aria-expanded="expanded"
+        @click="expanded = !expanded"
+      >
+        {{ expanded ? '收起标签' : `更多标签 · ${moreCount}` }}
       </button>
     </div>
 
