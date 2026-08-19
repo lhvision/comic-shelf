@@ -161,7 +161,7 @@ class JMProvider(ComicProvider):
         # album's episode_list is [(album_id, "1", name)], so fetching each
         # episode by its own photo id stays backward compatible.
         episodes = [
-            (ep[0], ep[2] if len(ep) > 2 else "")
+            (ep[0], (ep[2] if len(ep) > 2 else "").strip())
             for ep in (detail.episode_list or [])
         ]
         if not episodes:
@@ -257,6 +257,7 @@ class JMProvider(ComicProvider):
                 }
                 for page in remote_pages
             ],
+            chapters=chapters,
             imported_at=now,
             last_checked_at=now,
             raw={
