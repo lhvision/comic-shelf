@@ -38,7 +38,7 @@ release. Add a tool name to select part of the graph. For example, run
 | --------------------------------- | ----------------------------------------------------------------- |
 | `docs/agents/ui.md`               | 设计到新的 ui 改动可以看这个，主要是 Impeccable skill 结合 234 步 |
 | `docs/agents/architecture.md`     | 改后端、Provider、存储、API 或需要架构/文件地图时                 |
-| `docs/agents/frontend.md`         | 改书架、详情页、阅读器、页面索引、多来源导航时                    |
+| `docs/agents/frontend.md`         | 改书架、详情页、阅读器、页面索引、多来源导航、多章节时            |
 | `docs/agents/html-canvas.md`      | 改 HTML-in-Canvas 实验相关代码时                                  |
 | `docs/agents/tooling-workflow.md` | 处理 Vite+ / Docker / 部署 / 排错时                               |
 | `DESIGN_NOTES.md`                 | 任何 UI/视觉改动前                                                |
@@ -53,6 +53,9 @@ release. Add a tool name to select part of the graph. For example, run
 4. **视觉**：不用 SCSS；颜色/间距/动效走 `src/styles/tokens.css`；禁止紫色渐变、玻璃拟态堆叠、第三方轮播。
 5. **性能**：详情页 tile 用 thumbnail，默认 48 个增量渲染，使用 `content-visibility: auto`；原图不得用于缩略图。
 6. **阅读器定位**：`loading=false → await nextTick() → scrollTo`；`data-mode` 必须同时加在 `.reader-view` 和 `.reader-scroll`。
+7. **多章节保持全局页码**：多章节作品页面按「全局页码拍平」；详情页只在页面索引上按章节切片，
+   不要为章节拆新的 page/thumbnail/cover 端点。单章节不写 `chapters`、页面 `chapter` 置空，
+   继续用扁平 `pages/`，旧缓存零迁移。
 
 ## 关键路径速查
 
@@ -62,7 +65,9 @@ release. Add a tool name to select part of the graph. For example, run
 - 数据目录：`backend/data/library/<source>/<source_id>/`
 - 前端入口：`src/main.ts`、`src/App.vue`、`src/router/index.ts`
 - 页面：`src/views/LibraryView.vue`、`ComicDetailView.vue`、`ReaderView.vue`
+- 详情子组件：`src/components/detail/`（`DetailActionBar` / `ChapterSwitcher` / `PageIndexGrid` / `PageTile`）
 - 设计 token：`src/styles/tokens.css`
+- Composable：`src/composables/`（`useLastRead` / `useReaderSettings` / `useChapterNavigation` 等）
 - Pinia：`src/stores/library.ts`、`src/stores/experiments.ts`
 
 ## 常用命令
@@ -81,6 +86,7 @@ vp build                                 # 生产构建
 
 - 不能删除后端的 `backend/data/` 数据，一定要记住
 - 先根据任务读取“规则文件索引”中的对应文件，再开始改代码；不要只依赖本索引的摘要。
+- 新增功能时先分析职责边界再动手：拆成职责单一的小组件，不要把逻辑堆进单个页面视图；优先用 VueUse（见 `vueuse-functions` skill）实现，别手写浏览器样板；组件按可复用性设计，公共件沉淀到 `src/components/` 根目录，通用化优先于贴死当前需求。
 - 任何 UI 改动先读 `DESIGN_NOTES.md`；阅读器问题先读 `docs/agents/frontend.md`。
 - 完成后至少运行 `vp check`。
 - 测试只跑与本次改动相关的测试文件，例如 `vp test src/__tests__/App.spec.ts`，不要全量 `vp test`；如果本次没有新增或修改测试文件，就不要再跑测试。

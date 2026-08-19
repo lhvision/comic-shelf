@@ -23,6 +23,8 @@ const props = defineProps<{
   pageStep: number
   /** 计数文案，如「已显示 48 / 120 页」 */
   showingRange: string
+  /** 当前章节文案（如「第 2 話 · 标题」）；单章节作品为空字符串。 */
+  chapterLabel?: string
 }>()
 
 const emit = defineEmits<{ loadMore: [] }>()
@@ -48,7 +50,7 @@ useIntersectionObserver(
       <p>点击任意页面直接进入阅读</p>
     </div>
 
-    <p class="page-count-note">{{ showingRange }}</p>
+    <p class="page-count-note">{{ chapterLabel ? `${chapterLabel} · ` : '' }}{{ showingRange }}</p>
 
     <div class="page-grid">
       <PageTile

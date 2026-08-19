@@ -12,6 +12,11 @@ const fieldRows = [
   { label: '作者', value: props.meta.authors.join(' / ') || '佚名' },
   { label: '上传者', value: props.meta.uploader || '未返回' },
   { label: '页数', value: props.meta.page_count ? `${props.meta.page_count} P` : '—' },
+  {
+    label: '章节',
+    value: (props.meta.chapters?.length ?? 0) > 1 ? `共 ${props.meta.chapters!.length} 话` : '单话',
+    mono: true,
+  },
   { label: '上架日期', value: props.meta.published_at || '—', mono: true },
   { label: '更新日期', value: props.meta.updated_at || '—', mono: true },
   {

@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Callable, Iterable
 
 from .config import COVER_QUALITY, COVER_WIDTH, LIBRARY_DIR, MAX_PREFETCH, PAGE_THUMB_QUALITY, PAGE_THUMB_WIDTH, TMP_DIR
-from .models import ComicDetail, ComicMeta, FetchedComic, ImportResult, LibrarySummary, RemotePage
+from .models import ComicDetail, ComicMeta, FetchedComic, ImportResult, LibrarySummary, PageRecord, RemotePage
 
 _SAFE = re.compile(r"[^a-zA-Z0-9._-]+")
 
@@ -78,7 +78,21 @@ class ComicStore:
         page = next((p for p in meta.pages if p.index == index), None)
         if page is None:
             raise KeyError(f"页 {index} 不存在（共 {meta.page_count} 页）")
-        return self.pages_dir(meta.source, meta.source_id) / page.file
+        return self._chapter_page_path(meta, page)
+
+    def _chapter_page_path(self, meta: ComicMeta, page: PageRecord) -> Path:
+        """Route a page to ``pages/<chapter>/<file>`` for multi-chapter albums,
+        or the legacy flat ``pages/<file>`` layout for single-chapter albums."""
+        base = self.pages_dir(meta.source, meta.source_id)
+        if page.chapter:
+            return base / self._safe(page.chapter) / page.file
+        return base / page.file
+
+    def _chapter_thumb_path(self, meta: ComicMeta, page: PageRecord) -> Path:
+        base = self.thumbs_dir(meta.source, meta.source_id)
+        if page.chapter:
+            return base / self._safe(page.chapter) / f"{page.index:05d}.jpg"
+        return base / f"{page.index:05d}.jpg"
 
     def cover_path(self, meta: ComicMeta, index: int) -> Path:
         return self.covers_dir(meta.source, meta.source_id) / f"{index:03d}.jpg"
@@ -87,7 +101,10 @@ class ComicStore:
         return self.comic_dir(source, source_id) / "thumbs"
 
     def page_thumb_path(self, meta: ComicMeta, index: int) -> Path:
-        return self.thumbs_dir(meta.source, meta.source_id) / f"{index:05d}.jpg"
+        page = next((p for p in meta.pages if p.index == index), None)
+        if page is None:
+            raise KeyError(f"页 {index} 不存在（共 {meta.page_count} 页）")
+        return self._chapter_thumb_path(meta, page)
 
     def _lock_for(self, source: str, source_id: str) -> threading.RLock:
         # RLock on purpose: ensure_cover()/ensure_page_thumb() hold the page
@@ -132,7 +149,7 @@ class ComicStore:
                 page.cached = (
                     old_by_index.get(page.index).cached
                     if page.index in old_by_index
-                    else (self.pages_dir(meta.source, meta.source_id) / page.file).exists()
+                    else self._chapter_page_path(meta, page).exists()
                 )
 
         _write_json_atomic(self.album_path(meta.source, meta.source_id), meta.model_dump())
@@ -156,10 +173,9 @@ class ComicStore:
 
         # The filesystem is the source of truth for page cache state. This also
         # repairs flags after external tools wrote files directly.
-        pages_dir = self.pages_dir(source, source_id)
         changed = False
         for page in meta.pages:
-            actual = (pages_dir / page.file).exists()
+            actual = self._chapter_page_path(meta, page).exists()
             if page.cached != actual:
                 page.cached = actual
                 changed = True
@@ -242,7 +258,10 @@ class ComicStore:
 
         pages_dir = self.pages_dir(meta.source, meta.source_id)
         for page in pages:
-            target = pages_dir / page.file
+            if page.chapter:
+                target = pages_dir / self._safe(page.chapter) / page.file
+            else:
+                target = pages_dir / page.file
             if not target.exists() or page.index in decoded:
                 continue
             if not page.scramble_id:
@@ -332,8 +351,9 @@ class ComicStore:
         pages_dir = self.pages_dir(meta.source, meta.source_id)
         if not pages_dir.exists():
             return 0
-        wanted = {p.file for p in meta.pages}
-        return sum(1 for name in os.listdir(pages_dir) if name in wanted)
+        # Files live either flat (legacy single-chapter) or under a chapter
+        # subdirectory; count each page by its actual on-disk path.
+        return sum(1 for page in meta.pages if self._chapter_page_path(meta, page).exists())
 
     def ensure_cover(self, meta: ComicMeta, fetched: FetchedComic, index: int) -> Path:
         target = self.cover_path(meta, index)

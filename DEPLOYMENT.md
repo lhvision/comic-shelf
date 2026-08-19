@@ -58,10 +58,12 @@ backend/data/
 ├── jm_html_domain.json
 └── library/
     ├── jm/523607/
+    │   └── pages/<chapter>/…   # 多章节作品页面在章节子目录
     └── ...
 ```
 
-备份 / 迁移只需复制整个 `backend/data/`。
+备份 / 迁移只需复制整个 `backend/data/`。多章节与单章节共享同一份
+`album.json` / `remote.json`，结构向前兼容，无需额外迁移。
 
 ## 环境变量
 

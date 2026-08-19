@@ -3,6 +3,18 @@ export interface PageRecord {
   file: string
   ext: string
   cached: boolean
+  /** Chapter id this page belongs to; empty for single-chapter albums. */
+  chapter?: string
+}
+
+export interface Chapter {
+  id: string
+  /** 1-based chapter ordinal within the album */
+  index: number
+  title: string
+  page_count: number
+  /** 1-based global page index at which this chapter begins */
+  start: number
 }
 
 export interface ComicMeta {
@@ -29,6 +41,8 @@ export interface ComicMeta {
   imported_at: string
   last_checked_at: string
   raw: Record<string, unknown>
+  /** Chapter/section list for multi-chapter albums; empty for single-chapter. */
+  chapters?: Chapter[]
 }
 
 export interface LibrarySummary {

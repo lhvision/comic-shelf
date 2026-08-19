@@ -60,6 +60,19 @@ const documentVisibility = useDocumentVisibility()
 
 const total = computed(() => detail.value?.meta.page_count ?? 0)
 
+/* ---------------- 多章节提示 ----------------
+ * 阅读器沿用全局页码；多章节作品按当前全局页定位所在章节，顶栏显示章节名。 */
+const currentChapter = computed(() => {
+  const chs = detail.value?.meta.chapters ?? []
+  if (chs.length <= 1) return null
+  const page = currentPage.value
+  return chs.find((c) => page >= c.start && page < c.start + c.page_count) ?? null
+})
+const chapterLabel = computed(() => {
+  const c = currentChapter.value
+  return c ? `第 ${c.index} 話 · ${c.title}` : ''
+})
+
 const pageGroups = computed<number[][]>(() => {
   const groups: number[][] = []
   for (let index = 0; index < total.value; index += settings.pagesPerView) {
@@ -453,6 +466,7 @@ function backToDetail() {
     <ReaderTopBar
       :title="detail?.meta.title ?? '载入中…'"
       :display-id="detail?.meta.display_id ?? ''"
+      :chapter="chapterLabel"
       :hidden="!chromeVisible"
       @back="backToDetail"
       @open-settings="settingsOpen = true"

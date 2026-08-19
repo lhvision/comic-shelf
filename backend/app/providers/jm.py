@@ -14,7 +14,7 @@ from curl_cffi import requests as curl_requests
 
 from ..config import COVER_COUNT, DATA_DIR
 from ..gate import download_gate
-from ..models import ComicMeta, FetchedComic, RemotePage
+from ..models import Chapter, ComicMeta, FetchedComic, RemotePage
 from .base import ComicProvider
 
 _JM_REDIRECT_URL = "https://jm365.work/3YeBdF"
@@ -157,37 +157,76 @@ class JMProvider(ComicProvider):
         detail = JmcomicText.analyse_jm_album_html(album_resp.text)
         uploader = self._parse_uploader(album_resp.text)
 
-        photo_resp = client.get(f"/photo/{jm_id}")
-        photo = JmcomicText.analyse_jm_photo_html(photo_resp.text)
-        photo.from_album = detail
-        photo.data_original_query_params = photo.get_data_original_query_params(
-            photo.data_original_0
-        )
+        # Each album carries one or more chapters (episodes). A single-chapter
+        # album's episode_list is [(album_id, "1", name)], so fetching each
+        # episode by its own photo id stays backward compatible.
+        episodes = [
+            (ep[0], ep[2] if len(ep) > 2 else "")
+            for ep in (detail.episode_list or [])
+        ]
+        if not episodes:
+            episodes = [(jm_id, "")]
 
-        pages: list[RemotePage] = []
-        for index in range(len(photo.page_arr)):
-            image = photo.create_image_detail(index)
-            filename = f"{index + 1:05d}{image.img_file_suffix}"
-            pages.append(
-                RemotePage(
-                    index=index + 1,
-                    url=image.download_url,
-                    file=filename,
-                    ext=image.img_file_suffix,
-                    scramble_id=str(photo.scramble_id or ""),
-                    headers={
-                        "Referer": f"https://{urlparse(str(photo_resp.url)).hostname or ''}/photo/{jm_id}",
-                        "User-Agent": (
-                            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                            "AppleWebKit/537.36 (KHTML, like Gecko) "
-                            "Chrome/124.0 Safari/537.36"
-                        ),
-                    },
-                )
+        multi = len(episodes) > 1
+
+        # Flatten every chapter's pages with global 1-based indexes, so the
+        # whole multi-chapter album remains addressable as one list — reader
+        # page numbers, covers and "继续阅读" all stay global. Multi-chapter
+        # pages carry their chapter id so storage can route them into
+        # per-chapter subdirectories.
+        remote_pages: list[RemotePage] = []
+        chapters: list[Chapter] = []
+        first_photo = None
+
+        for ordinal, (pid, ptitle) in enumerate(episodes, start=1):
+            photo_resp = client.get(f"/photo/{pid}")
+            photo = JmcomicText.analyse_jm_photo_html(photo_resp.text)
+            photo.from_album = detail
+            photo.data_original_query_params = photo.get_data_original_query_params(
+                photo.data_original_0
             )
+            if first_photo is None:
+                first_photo = photo
+
+            start = len(remote_pages) + 1
+            for index in range(len(photo.page_arr)):
+                image = photo.create_image_detail(index)
+                filename = f"{index + 1:05d}{image.img_file_suffix}"
+                remote_pages.append(
+                    RemotePage(
+                        index=len(remote_pages) + 1,
+                        url=image.download_url,
+                        file=filename,
+                        ext=image.img_file_suffix,
+                        scramble_id=str(photo.scramble_id or ""),
+                        chapter=pid if multi else "",
+                        headers={
+                            "Referer": (
+                                f"https://{urlparse(str(photo_resp.url)).hostname or ''}"
+                                f"/photo/{pid}"
+                            ),
+                            "User-Agent": (
+                                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                                "AppleWebKit/537.36 (KHTML, like Gecko) "
+                                "Chrome/124.0 Safari/537.36"
+                            ),
+                        },
+                    )
+                )
+
+            if multi:
+                chapters.append(
+                    Chapter(
+                        id=pid,
+                        index=ordinal,
+                        title=ptitle or str(photo.name or f"第 {ordinal} 話"),
+                        page_count=len(photo.page_arr),
+                        start=start,
+                    )
+                )
 
         now = datetime.now(timezone.utc).isoformat()
-        page_count = len(pages) or int(detail.page_count or 0)
+        page_count = len(remote_pages) or int(detail.page_count or 0)
 
         meta = ComicMeta(
             source=self.key,
@@ -214,8 +253,9 @@ class JMProvider(ComicProvider):
                     "file": page.file,
                     "ext": page.ext,
                     "cached": False,
+                    "chapter": page.chapter,
                 }
-                for page in pages
+                for page in remote_pages
             ],
             imported_at=now,
             last_checked_at=now,
@@ -226,11 +266,12 @@ class JMProvider(ComicProvider):
                     if not k.startswith("_")
                 },
                 "uploader": uploader,
-                "image_domain": photo.data_original_domain,
+                "image_domain": first_photo.data_original_domain if first_photo else "",
+                "chapters": [c.model_dump() for c in chapters],
             },
         )
 
-        return FetchedComic(meta=meta, remote_pages=pages)
+        return FetchedComic(meta=meta, remote_pages=remote_pages)
 
     # One session per thread + connection pooling. Creating a brand new session
     # per page was the biggest cost: each one did a fresh TLS handshake, and any

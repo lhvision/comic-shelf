@@ -6,12 +6,35 @@ from pydantic import BaseModel, Field
 
 
 class PageRecord(BaseModel):
-    """A cached page descriptor (no remote URL leaked to the UI)."""
+    """A cached page descriptor (no remote URL leaked to the UI).
+
+    ``chapter`` identifies the chapter this page belongs to. For legacy
+    single-chapter albums (and new single-chapter imports) it is empty, so
+    the on-disk layout stays the flat ``pages/<file>`` we've always used.
+    Multi-chapter albums set it to the chapter id, and storage routes the page
+    into ``pages/<chapter>/<file>`` (and ``thumbs/<chapter>/``).
+    """
 
     index: int
     file: str
     ext: str
     cached: bool = False
+    chapter: str = ""
+
+
+class Chapter(BaseModel):
+    """One chapter/section inside a multi-chapter album.
+
+    ``start`` is the 1-based *global* page index at which this chapter begins,
+    so the whole album can still be addressed as one flat ``pages`` list
+    (uniform reader page numbers, covers from the first chapter, etc.).
+    """
+
+    id: str = Field(description="Chapter/section id, e.g. JM photo id")
+    index: int = Field(description="1-based chapter ordinal within the album")
+    title: str = Field(default="", description="Chapter title, e.g. 第 1 話")
+    page_count: int = Field(default=0, description="Pages inside this chapter")
+    start: int = Field(ge=1, description="1-based global page index of the first page")
 
 
 class ComicMeta(BaseModel):
@@ -44,6 +67,14 @@ class ComicMeta(BaseModel):
     imported_at: str = ""
     last_checked_at: str = ""
     raw: dict[str, Any] = Field(default_factory=dict)
+    chapters: list[Chapter] = Field(
+        default_factory=list,
+        description="Chapter/section list for multi-chapter albums; empty for single-chapter",
+    )
+
+    @property
+    def is_multi_chapter(self) -> bool:
+        return len(self.chapters) > 1
 
     def cover_paths(self) -> list[str]:
         return [
@@ -62,6 +93,8 @@ class RemotePage(BaseModel):
     headers: dict[str, str] = Field(default_factory=dict)
     scramble_id: str = ""
     """JM-specific scramble key. Other providers can leave it empty."""
+    chapter: str = ""
+    """Chapter id this page belongs to (multi-chapter albums); empty otherwise."""
 
 
 class FetchedComic(BaseModel):

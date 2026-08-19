@@ -61,3 +61,23 @@
 - 新增 `src/components/Tooltip.vue`：CSS Anchor Positioning 实现（`anchor-name` / `position-anchor` / `position-area` + `position-try-fallback: flip-block`），hover / focus 显示，走 tokens；方位支持 top/right/bottom/left（默认 top），不支持时 `@supports not (anchor-name:…)` 降级绝对定位。
 - ImportPanel：删掉面板外那行臃长的 `cache-all-option`，「缓存全部」勾选并入 `download-settings`；括号说明与「下载并发」提示一并收进 Tooltip（卡片变矮、不再被拉宽）。
   - 长文案全部隐藏为 ℹ 图标（SVG，非 emoji），hover/聚焦才出 Tooltip。
+
+## 8. 多章节支持（grill-with-docs 确认 → critique → polish → adapt）
+
+- **需求**：禁漫“一本”可能是多话合集（`album.episode_list` 多个 photo），详见
+  `docs/specs/0002-multi-chapter.md`。旧实现只拉 `/photo/{album_id}`，多话合集取不到。
+- **grill-with-docs（先查证再动手）**：通读 `docs/agents/*`、`CONTEXT.md`、既有 spec，
+  确认现状只有“单章 + 扁平 pages/”，决定采用**全局页码拍平 + 章节 id 切片**的增量方案，
+  保证单章节零回归、旧缓存零迁移。
+- **grill-with-docs（组件拆分复核）**：多章节初版把章节切片/增量渲染逻辑堆在
+  `ComicDetailView` 里，违反 spec 0001「视图只编排、逻辑收敛 composable」→ 抽出
+  `src/composables/useChapterNavigation.ts`，视图瘦身、单一职责恢复。
+- **critique（挑刺）**：
+  1. 章节 chip 用了 `role=tablist` 却没有 tabpanel，且键盘无法左右移动 → 改 `role=group + aria-pressed`，
+     加左右方向键（VueUse `useEventListener`）；
+  2. 多章节下“已显示 X / Y 页”丢章节上下文 → 计数行前缀当前章节文案；
+  3. `chapter-count` 角标 `--ink-2` 对比弱 → 升 `--ink-1`，选中态叠朱砂浅底。
+- **polish（对齐系统）**：新增章节条全部复用既有 token（`--space-*`/`--text-caption`/`--control-md`/
+  `--accent-soft`/mono 页数），无新增 token、无紫色渐变/第三方轮播。
+- **adapt（适配）**：桌面横向铺开；<=640px 变成可横向滚动胶囊条，选中 chip 用 `useScroll`
+  平滑居中；阅读器顶栏章节标注窄屏 `text-overflow: ellipsis`；chip 触控整块 44px。

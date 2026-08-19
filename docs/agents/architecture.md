@@ -42,11 +42,18 @@ FastAPI (backend/app/main.py)
          │
          ▼
 backend/data/library/<source>/<source_id>/
-   ├── album.json           # 通用元数据 + favorite + pages[].cached
+   ├── album.json           # 通用元数据 + favorite + pages[].cached + chapters[]
    ├── remote.json          # 图片 URL + scramble_id + decode_version
-   ├── pages/00001.webp     # 已解密成品页
-   └── covers/001.jpg       # 由首页前 N 页生成的封面
+   ├── pages/00001.webp     # 单章节（扁平）已解密成品页
+   ├── pages/<chapter>/00001.webp   # 多章节：页面按章节 id 分目录
+   ├── covers/001.jpg       # 由首页前 N 页（第一章）生成的封面
+   └── thumbs/…            # 360px 缩略图；多章节同样按章节分目录
 ```
+
+> 多章节模型：`ComicMeta.pages` 始终是**全书拍平的全局页码表**，每页带
+> `chapter` 字段（空串 = 单章节扁平布局）；`ComicMeta.chapters[]` 记录各章节
+> id / 序数 / 标题 / 页数 / 起始全局页（`start`）。这样阅读器页码、继续阅读、
+> 封面、API 路径都不用为章节拆分端点。
 
 ### Provider 扩展点
 
@@ -93,27 +100,39 @@ JmImageTool.decode_and_save(num, source_image, save_path)
   然后删除旧封面，让封面从成品图重建。
 - 不要随便把 `CURRENT_DECODE_VERSION` 改成 2 以上；只有图片管线变更时才加迁移逻辑。
 
+### 4.4 多章节不变量
+
+- **全局页码拍平**：`ComicMeta.pages` 按全书拍平（1..`page_count`），每页带 `chapter`。
+  阅读器页码、继续阅读、封面、API 路径都建立在全局页号上，**不要**为章节拆分新的
+  page/thumbnail/cover 端点。
+- **单章节零迁移**：`PageRecord.chapter` 与 `ComicMeta.chapters` 带默认值；旧 `album.json`
+  没有这些字段时按空串/空表处理，存储仍走扁平 `pages/`。多章节才写子目录
+  `pages/<chapter>/<file>`。
+- **Provider 边界**：章节概念只存在于 provider 的 `fetch()`（读 `album.episode_list`）；
+  storage / API 只认 `Chapter{id,index,title,page_count,start}`，不感知禁漫具体字段。
+- **封面归属**：封面永远取全局前 `cover_count` 页（即第一章），不按章节生成。
+
 ## 5. 后端文件地图
 
-| 文件                                | 职责                                                     |
-| ----------------------------------- | -------------------------------------------------------- |
-| `backend/app/main.py`               | FastAPI 路由                                             |
-| `backend/app/models.py`             | 通用模型：`ComicMeta` / `RemotePage` / `FetchedComic`    |
-| `backend/app/storage.py`            | 原子 JSON 写入、页面缓存、封面生成、v1→v2 迁移、书库扫描 |
-| `backend/app/providers/base.py`     | Provider 接口                                            |
-| `backend/app/providers/jm.py`       | JM HTML 元数据、上传者解析、图片下载 + 解密              |
-| `backend/app/providers/registry.py` | `{"jm": JMProvider()}`                                   |
-| `backend/app/config.py`             | 数据目录、封面尺寸、预缓存上限                           |
+| 文件                                | 职责                                                                                                   |
+| ----------------------------------- | ------------------------------------------------------------------------------------------------------ |
+| `backend/app/main.py`               | FastAPI 路由                                                                                           |
+| `backend/app/models.py`             | 通用模型：`ComicMeta`（含 `Chapter`/`chapters`）/ `PageRecord.chapter` / `RemotePage` / `FetchedComic` |
+| `backend/app/storage.py`            | 原子 JSON 写入、页面缓存（章节分目录路由）、封面生成、v1→v2 迁移、书库扫描                             |
+| `backend/app/providers/base.py`     | Provider 接口                                                                                          |
+| `backend/app/providers/jm.py`       | JM HTML 元数据、上传者解析、**多章节 episode 逐话拉取**、图片下载 + 解密                               |
+| `backend/app/providers/registry.py` | `{"jm": JMProvider()}`                                                                                 |
+| `backend/app/config.py`             | 数据目录、封面尺寸、预缓存上限                                                                         |
 
 ### API 摘要
 
 - `GET /api/library`
 - `POST /api/library/import` `{id, source, prefetch_covers, prefetch_all, refresh}`
-- `GET /api/library/{source}/{id}`
+- `GET /api/library/{source}/{id}`（详情含 `chapters`）
 - `PATCH /api/library/{source}/{id}/favorite` `{favorite: bool}`
-- `GET /api/library/{source}/{id}/pages/{n}/file`
-- `GET /api/library/{source}/{id}/pages/{n}/thumbnail`
-- `GET /api/library/{source}/{id}/covers/{n}/file`
+- `GET /api/library/{source}/{id}/pages/{n}/file`（`n` 为全局页号，多章节自动路由）
+- `GET /api/library/{source}/{id}/pages/{n}/thumbnail`（同上）
+- `GET /api/library/{source}/{id}/covers/{n}/file`（封面取第一章前 N 页）
 - `GET /api/providers`
 - `POST /api/library/{source}/{id}/cache`
 - `DELETE /api/library/{source}/{id}`

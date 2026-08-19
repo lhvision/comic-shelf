@@ -17,6 +17,8 @@ const props = defineProps<{
   /** 作品标题（用于危险确认文案） */
   title: string
   lastRead: number
+  /** 「继续阅读」按钮文案；多章节时父级会带章节定位，缺省保持旧「第 N 页」文案。 */
+  lastReadLabel?: string
   cachePercent: number
   caching: boolean
   cacheComplete: boolean
@@ -57,7 +59,7 @@ function confirmRemove() {
   <div class="detail-actions">
     <div class="action-bar surface">
       <button class="btn btn-primary btn-read" type="button" @click="emit('startReading')">
-        {{ lastRead ? `继续阅读 · 第 ${lastRead} 页` : '开始阅读' }}
+        {{ lastReadLabel || (lastRead ? `继续阅读 · 第 ${lastRead} 页` : '开始阅读') }}
       </button>
 
       <button class="btn btn-ghost" type="button" @click="emit('startReading', 1)">

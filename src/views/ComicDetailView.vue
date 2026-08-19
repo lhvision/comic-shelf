@@ -1,21 +1,24 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useIntervalFn } from '@vueuse/core'
 import { api } from '@/api/client'
 import { useLastRead } from '@/composables/useLastRead'
+import { useChapterNavigation } from '@/composables/useChapterNavigation'
 import { useLibraryStore } from '@/stores/library'
 import { useToast } from '@/composables/useToast'
 import CoverCarousel from '@/components/CoverCarousel.vue'
 import DetailActionBar from '@/components/detail/DetailActionBar.vue'
+import ChapterSwitcher from '@/components/detail/ChapterSwitcher.vue'
 import MetadataPanel from '@/components/MetadataPanel.vue'
 import PageIndexGrid from '@/components/detail/PageIndexGrid.vue'
 import type { ComicDetail } from '@/types'
 
 /**
- * 本子详情页 —— 编排封面轮播 / 元数据 / 操作栏 / 页面索引。
- * 操作栏与页索引已在 components/detail/ 下沉，本文件只保留：
- * 数据加载、缓存轮询（useIntervalFn）、阅读记录（useLastRead）等业务编排。
+ * 本子详情页 —— 编排封面轮播 / 元数据 / 操作栏 / 章节切换 / 页面索引。
+ * 操作栏、章节切换与页索引已在 components/detail/ 下沉；多章节切片、增量渲染、
+ * 「继续阅读 · 第 X 話」等业务逻辑收敛到 useChapterNavigation composable，
+ * 本文件只保留：数据加载、缓存轮询（useIntervalFn）、路由跳转等页面级编排。
  */
 
 const route = useRoute()
@@ -28,51 +31,44 @@ const sourceId = computed(() => String(route.params.sourceId))
 const detail = ref<ComicDetail | null>(null)
 const loading = ref(true)
 const caching = ref(false)
-const PAGE_STEP = 48
-const visiblePageCount = ref(PAGE_STEP)
+/** 页面索引段容器：切换章节后滚回这里，让用户看到新章节的起点。 */
+const pageSectionEl = ref<HTMLElement | null>(null)
 
 const lastRead = useLastRead(source, sourceId)
-const progressEl = computed(() =>
-  lastRead.value >= 1 && lastRead.value <= (detail.value?.meta.page_count ?? 0)
-    ? lastRead.value
-    : 0,
-)
+const {
+  chapters,
+  activeChapterId,
+  activeChapterLabel,
+  progressEl,
+  visiblePages,
+  remainingPages,
+  showingRange,
+  lastReadLabel,
+  pageStep,
+  switchTo,
+  setInitialChapter,
+  loadMore,
+} = useChapterNavigation(detail, lastRead)
 
 const cachePercent = computed(() => {
   if (!detail.value || detail.value.meta.page_count === 0) return 0
   return Math.round((detail.value.cached_pages / detail.value.meta.page_count) * 100)
 })
 
-const visiblePages = computed(() => {
-  if (!detail.value) return []
-  return detail.value.meta.pages.slice(0, visiblePageCount.value)
-})
-
-const remainingPages = computed(() => {
-  if (!detail.value) return 0
-  return Math.max(0, detail.value.meta.page_count - visiblePageCount.value)
-})
-
-const showingRange = computed(() => {
-  if (!detail.value) return ''
-  const end = Math.min(visiblePageCount.value, detail.value.meta.page_count)
-  return `已显示 ${end} / ${detail.value.meta.page_count} 页`
-})
-
 onMounted(load)
 
-function loadMore() {
-  if (!detail.value) return
-  visiblePageCount.value = Math.min(
-    detail.value.meta.page_count,
-    visiblePageCount.value + PAGE_STEP,
-  )
-}
+// 切换章节：把页面索引段滚回顶部（增量渲染已由 composable 重置）。
+watch(activeChapterId, async () => {
+  await nextTick()
+  pageSectionEl.value?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+})
 
 async function load() {
   loading.value = true
   try {
     detail.value = await api.detail(source.value, sourceId.value)
+    // 默认落在上次读到的章节，方便从上次中断处继续。
+    setInitialChapter(progressEl.value)
     // If a background import/prefetch is running (import/cache-all now return
     // immediately), pick up live progress without the user having to click.
     const job = await api.cacheJob(source.value, sourceId.value)
@@ -192,6 +188,7 @@ function startReading(page = progressEl.value || 1) {
       <DetailActionBar
         :title="detail.meta.title"
         :last-read="progressEl"
+        :last-read-label="lastReadLabel"
         :cache-percent="cachePercent"
         :caching="caching"
         :cache-complete="detail.cache_complete"
@@ -203,15 +200,24 @@ function startReading(page = progressEl.value || 1) {
         @remove-comic="removeComic"
       />
 
-      <PageIndexGrid
-        :source="source"
-        :source-id="sourceId"
-        :pages="visiblePages"
-        :remaining-pages="remainingPages"
-        :page-step="PAGE_STEP"
-        :showing-range="showingRange"
-        @load-more="loadMore"
+      <ChapterSwitcher
+        :chapters="chapters"
+        :active-id="activeChapterId"
+        @change="switchTo($event)"
       />
+
+      <div ref="pageSectionEl">
+        <PageIndexGrid
+          :source="source"
+          :source-id="sourceId"
+          :chapter-label="activeChapterLabel"
+          :pages="visiblePages"
+          :remaining-pages="remainingPages"
+          :page-step="pageStep"
+          :showing-range="showingRange"
+          @load-more="loadMore"
+        />
+      </div>
     </template>
   </div>
 </template>

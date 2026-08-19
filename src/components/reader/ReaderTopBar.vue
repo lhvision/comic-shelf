@@ -9,6 +9,8 @@ import ReaderButton from '@/components/reader/ReaderButton.vue'
 defineProps<{
   title: string
   displayId: string
+  /** 当前章节文案（如「第 2 話 · 标题」）；单章节作品为空字符串。 */
+  chapter?: string
   hidden: boolean
 }>()
 
@@ -26,6 +28,7 @@ defineEmits<{
       <div class="reader-title">
         <strong>{{ title }}</strong>
         <span>{{ displayId }}</span>
+        <span v-if="chapter" class="reader-chapter">{{ chapter }}</span>
       </div>
       <div class="reader-tools">
         <ReaderButton @click="$emit('openSettings')">设置</ReaderButton>
@@ -84,6 +87,13 @@ defineEmits<{
   font-family: var(--font-mono);
   font-size: var(--text-xs);
   color: var(--reader-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.reader-title .reader-chapter::before {
+  content: ' · ';
 }
 
 .reader-tools {

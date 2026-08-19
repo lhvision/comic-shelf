@@ -22,6 +22,12 @@
   - 失败重试；
   - 页面索引性能：默认只渲染 48 张缩略图，滚动后增量加载；页面原图不用于索引网格。
   - 喜欢标记：书架卡片可点心形标记喜欢，支持“只看喜欢”快速筛选。
+- 多章节支持（本部作品可以是多话合集/系列）：
+  - 详情页出现“第 N 話 · 标题 · XX 页”的章节条，可切换查看各话的页面索引；
+  - 所有页面仍按「全局页码」拍平：阅读器页面、继续阅读、封面、缓存进度沿用旧心智，
+    点任意页即可从正确的章节/页码开始读；
+  - 阅读器顶栏实时显示“第 X 話 · 标题”，跨章连续翻页不迷路；
+  - 单章节（含旧缓存）体验完全不变——没有章节条、没有章节行。
 - 实验功能：书架卡片可切换为 HTML-in-Canvas 渲染（需要 Canary 149+ 并开启
   `canvas-draw-element`），把封面、标题、标签、缓存进度等多个 DOM 节点绘制进一个 canvas。
   - 阅读设置持久化在浏览器 localStorage。
@@ -99,12 +105,18 @@ $COMIC_SHELF_DATA/
 └── library/
     └── <source>/                         # provider key：jm / picacg ...
         └── <source_id>/                  # 例如 523607
-            ├── album.json                # ComicMeta：元数据 + favorite + pages[].cached
+            ├── album.json                # ComicMeta：元数据 + favorite + pages[].cached + chapters[]
             ├── remote.json               # 页面 URL + scramble_id + decode_version
-            ├── pages/00001.webp          # 已解密、拼好的成品页
-            ├── covers/001.jpg            # 首页生成的封面
-            └── thumbs/00001.jpg          # 详情页索引用的 360px 缩略图
+            ├── pages/00001.webp          # 单章节：已解密、拼好的成品页（扁平）
+            ├── pages/<chapter>/00001.webp# 多章节：页面按章节 id 落到子目录
+            ├── covers/001.jpg            # 首页（第一章）生成的封面
+            └── thumbs/00001.jpg          # 单章节：详情页索引用的 360px 缩略图
+            └── thumbs/<chapter>/00001.jpg# 多章节：缩略图同样按章节分目录
 ```
+
+> 多章节说明：`album.json` 的 `pages` 仍是**全书拍平的全局页码表**，只是每页多了
+> `chapter` 字段；`chapters[]` 记录每个章节的 id / 序数 / 标题 / 页数 / 起始全局页。
+> 旧单章节缓存没有 `chapter` 与 `chapters`，读取时按默认值处理，零迁移。
 
 前端存储键：
 
@@ -120,18 +132,18 @@ $COMIC_SHELF_DATA/
 
 ## API 一览
 
-| Method | Path                                             | 说明                                                               |
-| ------ | ------------------------------------------------ | ------------------------------------------------------------------ |
-| GET    | `/api/library`                                   | 书架列表（支持 `q` 过滤）                                          |
-| POST   | `/api/library/import`                            | 收录，body: `{id, source, prefetch_covers, prefetch_all, refresh}` |
-| GET    | `/api/library/{source}/{id}`                     | 详情 + 缓存状态                                                    |
-| GET    | `/api/library/{source}/{id}/pages/{n}/file`      | 页面原图，未缓存时自动下载                                         |
-| GET    | `/api/library/{source}/{id}/pages/{n}/thumbnail` | 页面 360px 缩略图，页面索引使用                                    |
-| GET    | `/api/library/{source}/{id}/covers/{n}/file`     | 第 n 张封面缩略图                                                  |
-| POST   | `/api/library/{source}/{id}/cache`               | 缓存全部页面                                                       |
-| PATCH  | `/api/library/{source}/{id}/favorite`            | 标记 / 取消喜欢                                                    |
-| DELETE | `/api/library/{source}/{id}`                     | 删除本地缓存                                                       |
-| GET    | `/api/providers`                                 | 已注册站点 provider                                                |
+| Method | Path                                             | 说明                                                                   |
+| ------ | ------------------------------------------------ | ---------------------------------------------------------------------- |
+| GET    | `/api/library`                                   | 书架列表（支持 `q` 过滤）                                              |
+| POST   | `/api/library/import`                            | 收录，body: `{id, source, prefetch_covers, prefetch_all, refresh}`     |
+| GET    | `/api/library/{source}/{id}`                     | 详情 + 缓存状态（含 `chapters`）                                       |
+| GET    | `/api/library/{source}/{id}/pages/{n}/file`      | 页面原图（`n` 为全局页号，多章节自动路由到所在章节），未缓存时自动下载 |
+| GET    | `/api/library/{source}/{id}/pages/{n}/thumbnail` | 页面 360px 缩略图（同上，全局页号），页面索引使用                      |
+| GET    | `/api/library/{source}/{id}/covers/{n}/file`     | 第 n 张封面缩略图                                                      |
+| POST   | `/api/library/{source}/{id}/cache`               | 缓存全部页面                                                           |
+| PATCH  | `/api/library/{source}/{id}/favorite`            | 标记 / 取消喜欢                                                        |
+| DELETE | `/api/library/{source}/{id}`                     | 删除本地缓存                                                           |
+| GET    | `/api/providers`                                 | 已注册站点 provider                                                    |
 
 ## 扩展其他漫画站
 
