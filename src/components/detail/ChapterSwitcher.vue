@@ -25,7 +25,10 @@ const buttonEls = ref<Record<string, HTMLElement | null>>({})
 
 const { scrollTo } = useScroll(listEl, { behavior: 'smooth' })
 
-const activeIndex = computed(() => props.chapters.findIndex((c) => c.id === props.activeId))
+// 防御：父级必须解构 unwrap 后传入；万一传了 Ref 或 undefined，这里兜底为空数组。
+const chapterList = computed(() => (Array.isArray(props.chapters) ? props.chapters : []))
+
+const activeIndex = computed(() => chapterList.value.findIndex((c) => c.id === props.activeId))
 
 watch(activeIndex, async (idx) => {
   if (idx < 0) return
@@ -43,8 +46,8 @@ useEventListener(listEl, 'keydown', (event: KeyboardEvent) => {
   if (idx < 0) return
   event.preventDefault()
   const delta = event.key === 'ArrowRight' ? 1 : -1
-  const next = Math.min(Math.max(idx + delta, 0), props.chapters.length - 1)
-  const target = props.chapters[next]
+  const next = Math.min(Math.max(idx + delta, 0), chapterList.value.length - 1)
+  const target = chapterList.value[next]
   if (!target || target.id === props.activeId) return
   emit('change', target.id)
   void nextTick(() => buttonEls.value[target.id]?.focus())
@@ -56,7 +59,7 @@ function chapterLabel(chapter: Chapter) {
 
 /** T09 语义增强：已翻过 / 当前 / 未翻到，用于 chip 的微弱视觉区分。 */
 function chapterState(id: string): 'past' | 'active' | 'upcoming' {
-  const idx = props.chapters.findIndex((c) => c.id === id)
+  const idx = chapterList.value.findIndex((c) => c.id === id)
   if (idx < 0 || activeIndex.value < 0) return 'upcoming'
   if (idx === activeIndex.value) return 'active'
   return idx < activeIndex.value ? 'past' : 'upcoming'
