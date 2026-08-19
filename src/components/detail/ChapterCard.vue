@@ -1,25 +1,31 @@
 <script setup lang="ts">
-import { ref, watch } from 'vue'
-import { pageThumbUrl } from '@/api/client'
+import { computed, ref, watch } from 'vue'
+import { chapterCoverUrl } from '@/api/client'
 import type { Chapter } from '@/types'
 
 /**
- * 章节目录里的单张章节卡片 —— 封面（该话第一页缩略图）+ 章节信息。
- * - 有图片就用第一页缩略图当封面；加载失败/无页面时回落到空白占位，仍显示章节信息。
+ * 章节目录里的单张章节卡片 —— 封面（该话第一页）+ 章节信息 + 缓存进度。
+ * - 封面走 T17「章节封面端点」（池化在 covers/chapters/）；加载失败/无页面时回落书脊占位。
  * - 点击进入该话的「章节子路由」（/comic/:source/:id/chapter/:chapterId）。
+ * - 多章节本地缓存状态（T10）：父级传入 cachedPages，卡片显示「本地 N%」。
  * 纯展示组件，只依赖 props + 路由链接。
  */
-const props = defineProps<{
-  source: string
-  sourceId: string
-  chapter: Chapter
-}>()
+const props = withDefaults(
+  defineProps<{
+    source: string
+    sourceId: string
+    chapter: Chapter
+    /** 该话已本地缓存的页数（T10 章节级缓存进度） */
+    cachedPages?: number
+  }>(),
+  { cachedPages: 0 },
+)
 
 const coverFailed = ref(false)
-const coverUrl = pageThumbUrl(props.source, props.sourceId, props.chapter.start)
+const coverUrl = chapterCoverUrl(props.source, props.sourceId, props.chapter.id)
 
 watch(
-  () => props.chapter.start,
+  () => props.chapter.id,
   () => {
     coverFailed.value = false
   },
@@ -28,6 +34,12 @@ watch(
 function onCoverError() {
   coverFailed.value = true
 }
+
+/** T10：本地缓存百分比文案；未缓存完单页或不传时隐藏。 */
+const cachePercent = computed(() => {
+  if (props.chapter.page_count <= 0) return null
+  return Math.round((props.cachedPages / props.chapter.page_count) * 100)
+})
 </script>
 
 <template>
@@ -45,7 +57,12 @@ function onCoverError() {
     <div class="chapter-info">
       <p class="eyebrow">第 {{ chapter.index }} 話</p>
       <h3 class="chapter-title">{{ chapter.title || `第 ${chapter.index} 話` }}</h3>
-      <p class="chapter-meta">{{ chapter.page_count }} 页</p>
+      <p class="chapter-meta">
+        {{ chapter.page_count }} 页
+        <span v-if="cachePercent !== null && cachePercent > 0" class="chapter-cache"
+          >· 本地 {{ cachePercent }}%</span
+        >
+      </p>
     </div>
   </RouterLink>
 </template>
@@ -122,6 +139,10 @@ function onCoverError() {
   font-family: var(--font-mono);
   font-size: var(--text-caption);
   color: var(--ink-2);
+}
+
+.chapter-cache {
+  color: var(--success);
 }
 
 @media (max-width: 480px) {

@@ -55,6 +55,16 @@ const cachePercent = computed(() => {
   return Math.round((detail.value.cached_pages / detail.value.meta.page_count) * 100)
 })
 
+/** T10：每话已本地缓存的页数（chapterId -> cachedPages），喂给章节目录卡片。 */
+const chapterCache = computed(() => {
+  const cache: Record<string, number> = {}
+  for (const page of detail.value?.meta.pages ?? []) {
+    if (!page.chapter) continue
+    cache[page.chapter] = (cache[page.chapter] ?? 0) + (page.cached ? 1 : 0)
+  }
+  return cache
+})
+
 onMounted(load)
 
 async function load() {
@@ -192,7 +202,13 @@ function startReading(page = progressEl.value || 1) {
         @remove-comic="removeComic"
       />
 
-      <ChapterIndex v-if="isMulti" :source="source" :source-id="sourceId" :chapters="chapters" />
+      <ChapterIndex
+        v-if="isMulti"
+        :source="source"
+        :source-id="sourceId"
+        :chapters="chapters"
+        :chapter-cache="chapterCache"
+      />
 
       <PageIndexGrid
         v-else

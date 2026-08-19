@@ -73,6 +73,23 @@ const chapterLabel = computed(() => {
   return c ? `第 ${c.index} 話 · ${c.title}` : ''
 })
 
+/* T08：跨话快捷翻页 —— 定位当前章节在全书里的前后话 */
+const chapters = computed(() => detail.value?.meta.chapters ?? [])
+const currentChapterIndex = computed(() =>
+  currentChapter.value ? chapters.value.findIndex((c) => c.id === currentChapter.value.id) : -1,
+)
+const nextChapter = computed(() =>
+  currentChapterIndex.value >= 0 ? (chapters.value[currentChapterIndex.value + 1] ?? null) : null,
+)
+const prevChapter = computed(() =>
+  currentChapterIndex.value > 0 ? (chapters.value[currentChapterIndex.value - 1] ?? null) : null,
+)
+/** 是否已读到当前话的最后一页（多话作品才为 true） */
+const atChapterEnd = computed(() => {
+  const c = currentChapter.value
+  return c !== null && currentPage.value >= c.start + c.page_count - 1
+})
+
 const pageGroups = computed<number[][]>(() => {
   const groups: number[][] = []
   for (let index = 0; index < total.value; index += settings.pagesPerView) {
@@ -370,6 +387,14 @@ function onKeydown(event: KeyboardEvent) {
       event.preventDefault()
       goToPage(total.value)
       break
+    case 'n':
+    case 'N':
+      goNextChapter()
+      break
+    case 'p':
+    case 'P':
+      goPrevChapter()
+      break
     case 'f':
     case 'F':
       toggleFullscreen()
@@ -456,6 +481,16 @@ function nextGroup() {
   goToGroup(currentGroupIndex.value + 1)
 }
 
+function goNextChapter() {
+  const c = nextChapter.value
+  if (c) goToPage(c.start, 'smooth')
+}
+
+function goPrevChapter() {
+  const c = prevChapter.value
+  if (c) goToPage(c.start + c.page_count - 1, 'smooth')
+}
+
 function backToDetail() {
   router.push(`/comic/${source.value}/${sourceId.value}`)
 }
@@ -524,6 +559,16 @@ function backToDetail() {
     </main>
 
     <ReaderProgress :progress="progressValue" :invert="rtlHorizontal" />
+
+    <button
+      v-if="!loading && nextChapter && atChapterEnd"
+      class="reader-chapter-next"
+      type="button"
+      @click="goNextChapter"
+    >
+      <span>本话完</span>
+      <span class="reader-chapter-next-title">下一话：{{ nextChapter.title }} →</span>
+    </button>
 
     <ReaderHud
       v-if="!loading"
@@ -854,5 +899,40 @@ function backToDetail() {
   .reader-chrome-toggle {
     top: var(--space-1);
   }
+}
+
+/* T08：跨话翻页横幅 —— 读到某话末页时浮在底部中部 */
+.reader-chapter-next {
+  position: absolute;
+  left: 50%;
+  bottom: max(calc(var(--space-6) * 1), env(safe-area-inset-bottom));
+  translate: -50% 0;
+  z-index: 7;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-3);
+  min-height: var(--control-md);
+  padding: var(--space-2) var(--space-4);
+  border: 1px solid var(--accent);
+  border-radius: 999px;
+  background: var(--reader-scrim-strong);
+  color: var(--reader-ink);
+  transition:
+    background var(--duration-2) var(--ease-out),
+    color var(--duration-2) var(--ease-out);
+}
+
+.reader-chapter-next:hover {
+  background: var(--accent);
+  color: var(--paper-0);
+}
+
+.reader-chapter-next-title {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 60vw;
 }
 </style>

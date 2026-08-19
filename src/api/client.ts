@@ -80,3 +80,7 @@ export const pageThumbUrl = (source: string, sourceId: string, index: number) =>
 
 export const coverFileUrl = (source: string, sourceId: string, index: number) =>
   `${BASE}/library/${source}/${sourceId}/covers/${index}/file`
+
+// T17：章节目录封面端点（后端按章节 id 定位，从该话第一页生成并池化缓存）
+export const chapterCoverUrl = (source: string, sourceId: string, chapterId: string) =>
+  `${BASE}/library/${source}/${sourceId}/chapters/${chapterId}/cover`

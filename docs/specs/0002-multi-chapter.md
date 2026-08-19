@@ -83,18 +83,26 @@
   （符合 AGENTS“不为新增功能而拆测”的约定）。
 - 结构回归：`noUncheckedIndexedAccess` 下新增的 `chs[0]`/`chs[1]` 均带空值兜底。
 
-## Out of Scope
+## P2/P3 落地情况（本轮一次做完，见 tickets 0002）
 
-- 阅读器内“下一话 / 跳到下一话结尾”的专项快捷翻页（列入 P2/P3 ticket，不做于此）。
+- **T08** 阅读器跨话：章末「本话完 · 下一话」横幅 + `N/P` 键盘直达；
+- **T09** 章节条语义：`data-state`（past/active/upcoming）+「当前」徽标 + 标题省略号/title；
+- **T10** 章节级缓存：详情页按 `meta.pages[].cached` 汇总，目录卡片显示「本地 N%」；
+- **T11** 多章节搜索：`LibrarySummary.chapter_titles` 纳入 `/api/library?q=`；
+- **T12** 刷新增量：章节 id 集合未变则复用旧 remote_pages，跳过逐话 photo HTML；
+- **T17** 章节封面端点：`GET /chapters/{id}/cover` 池化于 `covers/chapters/`，目录卡片改走此端点。
+
+## Out of Scope（仍保留）
+
 - 把多章节拆成书目（每章节独立条目）的“子书架”化——当前保持“一本 = 一个条目”。
-- 批量缓存/批量移除的章节级粒度（沿用现有的全书粒度）。
-- 章节目录封面的“池化/服务端章节封面端点”（当前用每话第一页缩略图 + lazy + 失败占位，见 ticket）。
+- 批量缓存/批量移除的章节级粒度（沿用全书粒度；可选 T19 缓存本章在 tickets 内）。
 - 对新导入的多章节自动预热各章节封面。
+- 章节目录卡片的前台虚拟化/无限滚动（可作 T18 可选增强）。
 
 ## Further Notes
 
-- 评审基线：两轮评审均落在 `.impeccable/critique/`——初版多章节增量 **35/40**
-  （章节组键盘 + 计数无上下文已修）；「章节目录 + 子路由」重设计 **37/40**（P1 封面懒加载对策见 ticket）。
+- 评审基线：三轮评审均落在 `.impeccable/critique/`——初版多章节增量 **35/40**；
+  「章节目录 + 子路由」重设计 **37/40**；P2/P3 六张票补完并附单元/临时实例验证。
 - **grill-with-docs（组件拆分复核）**：章节导航逻辑收敛到 `useChapterNavigation`
   composable，视图只编排；文件地图同步到 `docs/agents/frontend.md §6` 与 tickets。
 - **grill-with-docs（章节摆放复盘）**：用户要求“有章节按章节摆放，无章节直接每页”，

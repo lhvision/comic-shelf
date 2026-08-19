@@ -11,6 +11,8 @@ defineProps<{
   source: string
   sourceId: string
   chapters: Chapter[]
+  /** T10：每话已本地缓存的页数（chapterId -> cachedPages） */
+  chapterCache?: Record<string, number>
 }>()
 </script>
 
@@ -31,6 +33,7 @@ defineProps<{
         :source="source"
         :source-id="sourceId"
         :chapter="chapter"
+        :cached-pages="chapterCache?.[chapter.id] ?? 0"
       />
     </div>
   </section>

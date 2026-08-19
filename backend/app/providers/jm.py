@@ -147,7 +147,12 @@ class JMProvider(ComicProvider):
                     return value
         return None
 
-    def fetch(self, raw_id: str) -> FetchedComic:
+    def fetch(
+        self,
+        raw_id: str,
+        *,
+        existing: FetchedComic | None = None,
+    ) -> FetchedComic:
         from jmcomic import JmcomicText
 
         jm_id = self.normalize_id(raw_id)
@@ -169,64 +174,93 @@ class JMProvider(ComicProvider):
 
         multi = len(episodes) > 1
 
-        # Flatten every chapter's pages with global 1-based indexes, so the
-        # whole multi-chapter album remains addressable as one list — reader
-        # page numbers, covers and "继续阅读" all stay global. Multi-chapter
-        # pages carry their chapter id so storage can route them into
-        # per-chapter subdirectories.
-        remote_pages: list[RemotePage] = []
-        chapters: list[Chapter] = []
-        first_photo = None
-
-        for ordinal, (pid, ptitle) in enumerate(episodes, start=1):
-            photo_resp = client.get(f"/photo/{pid}")
-            photo = JmcomicText.analyse_jm_photo_html(photo_resp.text)
-            photo.from_album = detail
-            photo.data_original_query_params = photo.get_data_original_query_params(
-                photo.data_original_0
-            )
-            if first_photo is None:
-                first_photo = photo
-
-            start = len(remote_pages) + 1
-            for index in range(len(photo.page_arr)):
-                image = photo.create_image_detail(index)
-                filename = f"{index + 1:05d}{image.img_file_suffix}"
-                remote_pages.append(
-                    RemotePage(
-                        index=len(remote_pages) + 1,
-                        url=image.download_url,
-                        file=filename,
-                        ext=image.img_file_suffix,
-                        scramble_id=str(photo.scramble_id or ""),
-                        chapter=pid if multi else "",
-                        headers={
-                            "Referer": (
-                                f"https://{urlparse(str(photo_resp.url)).hostname or ''}"
-                                f"/photo/{pid}"
-                            ),
-                            "User-Agent": (
-                                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                                "AppleWebKit/537.36 (KHTML, like Gecko) "
-                                "Chrome/124.0 Safari/537.36"
-                            ),
-                        },
-                    )
-                )
-
+        # ---- T12 增量刷新：章节集合没变就整书复用旧 remote_pages，避免重复
+        # 拉每一话的 photo HTML（只更新元数据）。章节增删/顺序变了就整书重拉，保证安全。
+        reuse: FetchedComic | None = None
+        if existing is not None:
             if multi:
-                chapters.append(
-                    Chapter(
-                        id=pid,
-                        index=ordinal,
-                        title=ptitle or str(photo.name or f"第 {ordinal} 話"),
-                        page_count=len(photo.page_arr),
-                        start=start,
-                    )
-                )
+                old_ids = [c.id for c in existing.meta.chapters]
+                new_ids = [ep[0] for ep in episodes]
+                if old_ids == new_ids:
+                    reuse = existing
+            elif (
+                not existing.meta.chapters
+                and existing.meta.page_count == int(detail.page_count or 0)
+            ):
+                reuse = existing
 
         now = datetime.now(timezone.utc).isoformat()
-        page_count = len(remote_pages) or int(detail.page_count or 0)
+
+        if reuse is not None:
+            remote_pages = [
+                RemotePage.model_validate(p.model_dump()) for p in reuse.remote_pages
+            ]
+            for i, page in enumerate(remote_pages, start=1):
+                page.index = i
+            chapters = [
+                Chapter.model_validate(c.model_dump()) for c in reuse.meta.chapters
+            ]
+            page_count = len(remote_pages) or int(detail.page_count or 0)
+            image_domain = str((reuse.meta.raw or {}).get("image_domain", "") or "")
+        else:
+            # Flatten every chapter's pages with global 1-based indexes, so the
+            # whole multi-chapter album remains addressable as one list — reader
+            # page numbers, covers and "继续阅读" all stay global. Multi-chapter
+            # pages carry their chapter id so storage can route them into
+            # per-chapter subdirectories.
+            remote_pages: list[RemotePage] = []
+            chapters: list[Chapter] = []
+            first_photo = None
+
+            for ordinal, (pid, ptitle) in enumerate(episodes, start=1):
+                photo_resp = client.get(f"/photo/{pid}")
+                photo = JmcomicText.analyse_jm_photo_html(photo_resp.text)
+                photo.from_album = detail
+                photo.data_original_query_params = photo.get_data_original_query_params(
+                    photo.data_original_0
+                )
+                if first_photo is None:
+                    first_photo = photo
+
+                start = len(remote_pages) + 1
+                for index in range(len(photo.page_arr)):
+                    image = photo.create_image_detail(index)
+                    filename = f"{index + 1:05d}{image.img_file_suffix}"
+                    remote_pages.append(
+                        RemotePage(
+                            index=len(remote_pages) + 1,
+                            url=image.download_url,
+                            file=filename,
+                            ext=image.img_file_suffix,
+                            scramble_id=str(photo.scramble_id or ""),
+                            chapter=pid if multi else "",
+                            headers={
+                                "Referer": (
+                                    f"https://{urlparse(str(photo_resp.url)).hostname or ''}"
+                                    f"/photo/{pid}"
+                                ),
+                                "User-Agent": (
+                                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                                    "AppleWebKit/537.36 (KHTML, like Gecko) "
+                                    "Chrome/124.0 Safari/537.36"
+                                ),
+                            },
+                        )
+                    )
+
+                if multi:
+                    chapters.append(
+                        Chapter(
+                            id=pid,
+                            index=ordinal,
+                            title=ptitle or str(photo.name or f"第 {ordinal} 話"),
+                            page_count=len(photo.page_arr),
+                            start=start,
+                        )
+                    )
+
+            page_count = len(remote_pages) or int(detail.page_count or 0)
+            image_domain = first_photo.data_original_domain if first_photo else ""
 
         meta = ComicMeta(
             source=self.key,
@@ -267,7 +301,7 @@ class JMProvider(ComicProvider):
                     if not k.startswith("_")
                 },
                 "uploader": uploader,
-                "image_domain": first_photo.data_original_domain if first_photo else "",
+                "image_domain": image_domain,
                 "chapters": [c.model_dump() for c in chapters],
             },
         )

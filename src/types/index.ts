@@ -65,6 +65,8 @@ export interface LibrarySummary {
   cover_paths: string[]
   cached_pages: number
   cover_count: number
+  /** T11：章节标题，书架搜索可命中「第 5 话」等 */
+  chapter_titles?: string[]
 }
 
 export interface ComicDetail {

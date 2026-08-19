@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Callable, Iterable
 
 from .config import COVER_QUALITY, COVER_WIDTH, LIBRARY_DIR, MAX_PREFETCH, PAGE_THUMB_QUALITY, PAGE_THUMB_WIDTH, TMP_DIR
-from .models import ComicDetail, ComicMeta, FetchedComic, ImportResult, LibrarySummary, PageRecord, RemotePage
+from .models import Chapter, ComicDetail, ComicMeta, FetchedComic, ImportResult, LibrarySummary, PageRecord, RemotePage
 
 _SAFE = re.compile(r"[^a-zA-Z0-9._-]+")
 
@@ -355,6 +355,24 @@ class ComicStore:
         # subdirectory; count each page by its actual on-disk path.
         return sum(1 for page in meta.pages if self._chapter_page_path(meta, page).exists())
 
+    @staticmethod
+    def _save_cover(page_path: Path, target: Path) -> None:
+        """Resize one finished page into a JPEG cover/thumbnail file."""
+        from PIL import Image, ImageOps
+
+        with Image.open(page_path) as img:
+            img = ImageOps.exif_transpose(img)
+            if getattr(img, "is_animated", False):
+                img.seek(0)
+            if img.mode not in {"RGB", "L"}:
+                img = img.convert("RGB")
+            ratio = COVER_WIDTH / max(img.width, 1)
+            if ratio < 1:
+                size = (COVER_WIDTH, max(1, round(img.height * ratio)))
+                img = img.resize(size, Image.Resampling.LANCZOS)
+            target.parent.mkdir(parents=True, exist_ok=True)
+            img.save(target, format="JPEG", quality=COVER_QUALITY, optimize=True, progressive=True)
+
     def ensure_cover(self, meta: ComicMeta, fetched: FetchedComic, index: int) -> Path:
         target = self.cover_path(meta, index)
         if target.exists() and target.stat().st_size > 0:
@@ -365,21 +383,31 @@ class ComicStore:
                 return target
 
             page_path = self.ensure_page(fetched, index)
-            from PIL import Image, ImageOps
+            self._save_cover(page_path, target)
+            return target
 
-            with Image.open(page_path) as img:
-                img = ImageOps.exif_transpose(img)
-                if getattr(img, "is_animated", False):
-                    img.seek(0)
-                if img.mode not in {"RGB", "L"}:
-                    img = img.convert("RGB")
-                ratio = COVER_WIDTH / max(img.width, 1)
-                if ratio < 1:
-                    size = (COVER_WIDTH, max(1, round(img.height * ratio)))
-                    img = img.resize(size, Image.Resampling.LANCZOS)
-                target.parent.mkdir(parents=True, exist_ok=True)
-                img.save(target, format="JPEG", quality=COVER_QUALITY, optimize=True, progressive=True)
+    def chapter_covers_dir(self, source: str, source_id: str) -> Path:
+        return self.covers_dir(source, source_id) / "chapters"
 
+    def chapter_cover_path(self, meta: ComicMeta, chapter: Chapter) -> Path:
+        return self.chapter_covers_dir(meta.source, meta.source_id) / f"{self._safe(chapter.id)}.jpg"
+
+    def ensure_chapter_cover(self, meta: ComicMeta, fetched: FetchedComic, chapter: Chapter) -> Path:
+        """JPEG cover for a chapter = its first page, pooled under covers/chapters/.
+
+        T17（章节目录封面池化）：目录不再走每话第一页的 thumbnail（那也要下载整页 +
+        生成 360px 缩略图），改用章节封面端点一次生成并缓存，失败由前端回落书脊占位。
+        """
+        target = self.chapter_cover_path(meta, chapter)
+        if target.exists() and target.stat().st_size > 0:
+            return target
+
+        with self._lock_for_page(meta.source, meta.source_id, chapter.start):
+            if target.exists() and target.stat().st_size > 0:
+                return target
+
+            page_path = self.ensure_page(fetched, chapter.start)
+            self._save_cover(page_path, target)
             return target
 
     def ensure_page_thumb(self, meta: ComicMeta, fetched: FetchedComic, index: int) -> Path:
@@ -501,6 +529,7 @@ class ComicStore:
             cover_paths=meta.cover_paths(),
             cached_pages=self.cached_page_count(meta),
             cover_count=meta.cover_count,
+            chapter_titles=[c.title for c in meta.chapters],
         )
 
     def detail(self, meta: ComicMeta) -> ComicDetail:

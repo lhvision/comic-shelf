@@ -126,13 +126,15 @@ JmImageTool.decode_and_save(num, source_image, save_path)
 
 ### API 摘要
 
-- `GET /api/library`
+- `GET /api/library`（`q` 也能命中章节标题，T11）
 - `POST /api/library/import` `{id, source, prefetch_covers, prefetch_all, refresh}`
+  （`refresh=true` 走增量，章节未变则复用旧 remote，T12）
 - `GET /api/library/{source}/{id}`（详情含 `chapters`）
 - `PATCH /api/library/{source}/{id}/favorite` `{favorite: bool}`
 - `GET /api/library/{source}/{id}/pages/{n}/file`（`n` 为全局页号，多章节自动路由）
 - `GET /api/library/{source}/{id}/pages/{n}/thumbnail`（同上）
 - `GET /api/library/{source}/{id}/covers/{n}/file`（封面取第一章前 N 页）
+- `GET /api/library/{source}/{id}/chapters/{chapterId}/cover`（章节封面端点，T17）
 - `GET /api/providers`
 - `POST /api/library/{source}/{id}/cache`
 - `DELETE /api/library/{source}/{id}`

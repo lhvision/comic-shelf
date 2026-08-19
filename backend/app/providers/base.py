@@ -24,8 +24,17 @@ class ComicProvider(ABC):
         """Turn user input into the canonical provider id."""
 
     @abstractmethod
-    def fetch(self, raw_id: str) -> FetchedComic:
-        """Fetch metadata + page URLs. Must not download page bytes here."""
+    def fetch(
+        self,
+        raw_id: str,
+        *,
+        existing: "FetchedComic | None" = None,
+    ) -> FetchedComic:
+        """Fetch metadata + page URLs. Must not download page bytes here.
+
+        ``existing`` is the local bundle on a ``refresh=true``; providers may use
+        it to skip re-fetching unchanged chapters (T12 incremental refresh).
+        """
 
     @abstractmethod
     def download_page(self, comic: FetchedComic, page: RemotePage) -> bytes:

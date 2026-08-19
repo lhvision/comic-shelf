@@ -97,3 +97,17 @@
   `--paper-1→paper-2` 斜向渐变 + 朱砂书脊色带，延续“书脊”隐喻。
 - **adapt（适配）**：桌面目录网格多列、≤640px 单列；chips 可横向滚动居中；
   pager 窄屏占满一行、触控 ≥44px；小屏封面列收窄保证标题可读。
+
+## 10. 多章节 P2/P3 一次补齐（T08/T09/T10/T11/T12/T17）
+
+- **跨话阅读（T08）**：阅读器读到某话末页浮现「本话完 · 下一话 →」横幅，`N/P` 键盘跨话；
+  只做全局页码跳转，不重置任何阅读设置。
+- **章节条语义（T09）**：`ChapterSwitcher` 加 `data-state`（past/active/upcoming），
+  当前话「当前」徽标 + 已翻过淡化 + 长标题省略号（原生 `title` 兜底全文）。
+- **章节级缓存（T10）**：详情页用 `meta.pages[].cached` 直接算每话本地 %，目录卡片显示。
+- **多章节搜索（T11）**：书库摘要带 `chapter_titles`，`/api/library?q=` 命中章节标题。
+- **刷新增量（T12）**：`refresh=true` 传旧 bundle，章节集合未变则跳过逐话 photo HTML。
+- **章节封面池化（T17）**：新增 `GET /chapters/{id}/cover` 服务端封面，池化于
+  `covers/chapters/`，`ChapterCard` 改走它；`_save_cover` 复用 ensure_cover 生成逻辑。
+- **评审**：全部沿用既有 token / `--reader-*`；`vp check`/`vp test`/`vp build` 全绿，
+  并用临时 FastAPI 实例验证了 T11 搜索命中、T17 端点路由（404/502 行为正确）与 T12 复用不拉 photo。

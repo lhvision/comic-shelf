@@ -101,6 +101,8 @@ def library(
         if needle in item.title.casefold()
         or needle in item.display_id.casefold()
         or any(needle in value.casefold() for value in [*item.authors, *item.works, *item.actors, *item.tags])
+        # T11：让「第 5 话」等章节标题也能命中书架搜索
+        or any(needle in title.casefold() for title in item.chapter_titles)
     ]
 
 
@@ -117,7 +119,9 @@ def import_comic(req: ImportRequest) -> ImportResult:
     # Metadata + URL discovery happen on the request thread: fast and necessary
     # for a useful response. Page/cover downloads are the slow part, so they're
     # pushed to a background daemon thread and the UI polls cache_progress.
-    fetched = provider.fetch(source_id)
+    # T12：refresh 时把旧 bundle 传给 provider，章节没变就不重复拉每一话的 photo HTML。
+    existing = store.load_fetched(req.source, source_id) if req.refresh else None
+    fetched = provider.fetch(source_id, existing=existing)
     fetched.meta.cover_count = max(1, min(req.prefetch_covers or fetched.meta.cover_count, fetched.meta.page_count))
     meta = store.save_fetched(fetched, refresh=req.refresh)
     fetched.meta = meta
@@ -282,6 +286,31 @@ def cover_file(source: str, source_id: str, index: int) -> FileResponse:
         raise
     except Exception as exc:
         raise HTTPException(status_code=502, detail=f"封面生成失败：{exc}") from exc
+    return FileResponse(
+        path,
+        media_type="image/jpeg",
+        headers={"Cache-Control": "no-cache"},
+    )
+
+
+@app.get("/api/library/{source}/{source_id}/chapters/{chapter_id}/cover")
+def chapter_cover(source: str, source_id: str, chapter_id: str) -> FileResponse:
+    """T17：章节目录封面（该话第一页），池化在 covers/chapters/ 下，失败前端回落占位。"""
+    meta = _require_meta(source, source_id)
+    chapter = next((c for c in meta.chapters if c.id == chapter_id), None)
+    if chapter is None:
+        raise HTTPException(status_code=404, detail="没有这个章节")
+
+    fetched = store.load_fetched(source, source_id)
+    if fetched is None:
+        raise HTTPException(status_code=404, detail="本子缓存不完整，请先刷新导入")
+
+    try:
+        path = store.ensure_chapter_cover(meta, fetched, chapter)
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"章节封面生成失败：{exc}") from exc
     return FileResponse(
         path,
         media_type="image/jpeg",

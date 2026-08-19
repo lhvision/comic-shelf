@@ -59,6 +59,18 @@
   顶栏显示“第 X 話 · 标题”（`ReaderTopBar.chapter`）。
 - **metadata**：`MetadataPanel` 多章节显示“共 N 话”，单章节显示“单话”。
 
+## 6.8 多章节的跨话阅读与信息（T08/T09/T10）
+
+- **跨话翻页（T08）**：`ReaderView` 读到某话末页时，底部浮现「本话完 · 下一话 →」横幅
+  （`reader-chapter-next`，`--reader-*` token）；键盘 `N/n` 下一话、`P/p` 上一话。
+  仍走 `goToPage(chapter.start)` 全局页码，跨话不重置任何设置。
+- **章节条语义（T09）**：`ChapterSwitcher` chip 按 `data-state`（past/active/upcoming）区分，
+  当前话显示「当前」徽标、已翻过的淡化；长标题 `text-overflow: ellipsis` + `title` 完整文案。
+- **章节级缓存（T10）**：`ComicDetailView` 按 `meta.pages[].cached` 汇总每话本地页数，
+  传 `chapterCache` 给 `ChapterIndex→ChapterCard` 显示「本地 N%」。
+- **章节封面（T17）**：`ChapterCard` 封面走 `GET /chapters/{id}/cover` 服务端端点
+  （池化在 `covers/chapters/`），不再是每话第一页的 thumbnail 端点。
+
 ## 7. 阅读器当前行为
 
 设置保存在 `localStorage['comic-shelf:reader-settings:v1']`。

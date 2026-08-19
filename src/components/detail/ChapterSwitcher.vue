@@ -53,6 +53,14 @@ useEventListener(listEl, 'keydown', (event: KeyboardEvent) => {
 function chapterLabel(chapter: Chapter) {
   return chapter.title ? `第 ${chapter.index} 話 · ${chapter.title}` : `第 ${chapter.index} 話`
 }
+
+/** T09 语义增强：已翻过 / 当前 / 未翻到，用于 chip 的微弱视觉区分。 */
+function chapterState(id: string): 'past' | 'active' | 'upcoming' {
+  const idx = props.chapters.findIndex((c) => c.id === id)
+  if (idx < 0 || activeIndex.value < 0) return 'upcoming'
+  if (idx === activeIndex.value) return 'active'
+  return idx < activeIndex.value ? 'past' : 'upcoming'
+}
 </script>
 
 <template>
@@ -70,10 +78,13 @@ function chapterLabel(chapter: Chapter) {
       type="button"
       :aria-pressed="activeId === chapter.id"
       :data-active="activeId === chapter.id"
+      :data-state="chapterState(chapter.id)"
+      :title="chapterLabel(chapter)"
       @click="emit('change', chapter.id)"
     >
       <span class="chapter-ordinal">{{ chapter.index }}</span>
       <span class="chapter-title">{{ chapterLabel(chapter) }}</span>
+      <span v-if="activeId === chapter.id" class="chapter-current" aria-hidden="true">当前</span>
       <span class="chapter-count">{{ chapter.page_count }} P</span>
     </button>
   </div>
@@ -140,6 +151,27 @@ function chapterLabel(chapter: Chapter) {
 
 .chapter-title {
   white-space: nowrap;
+  max-width: 13rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.chapter-current {
+  padding: var(--space-0-5) var(--space-2);
+  border-radius: var(--radius-1);
+  background: var(--accent);
+  color: var(--paper-0);
+  font-size: var(--text-caption);
+}
+
+.chapter-switcher button[data-state='past'] {
+  opacity: 0.62;
+}
+
+@media (max-width: 640px) {
+  .chapter-title {
+    max-width: 8rem;
+  }
 }
 
 .chapter-count {
