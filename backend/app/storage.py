@@ -179,6 +179,32 @@ class ComicStore:
             if page.cached != actual:
                 page.cached = actual
                 changed = True
+
+        # Back-fill chapters for old buggy multi-chapter caches (imported during
+        # the window where pages got `chapter` but the Chapter list wasn't
+        # persisted to ComicMeta.chapters). raw.chapters already has the exact
+        # ids/page_count/start, so this is a pure local repair — no re-download.
+        if (
+            not meta.chapters
+            and meta.pages
+            and any(page.chapter for page in meta.pages)
+        ):
+            raw_chapters = (meta.raw or {}).get("chapters") or []
+            if raw_chapters:
+                rebuilt: list[Chapter] = []
+                for ordinal, item in enumerate(raw_chapters, start=1):
+                    try:
+                        chapter = Chapter.model_validate(item)
+                    except Exception:
+                        continue
+                    # 旧数据把整段空白/换行塞进了标题，压平后空标题由前端回落「第 N 話」。
+                    chapter.title = " ".join(str(chapter.title).split())
+                    chapter.index = ordinal
+                    rebuilt.append(chapter)
+                if rebuilt:
+                    meta.chapters = rebuilt
+                    changed = True
+
         if changed:
             _write_json_atomic(path, meta.model_dump())
         return meta

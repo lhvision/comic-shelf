@@ -111,3 +111,13 @@
   `covers/chapters/`，`ChapterCard` 改走它；`_save_cover` 复用 ensure_cover 生成逻辑。
 - **评审**：全部沿用既有 token / `--reader-*`；`vp check`/`vp test`/`vp build` 全绿，
   并用临时 FastAPI 实例验证了 T11 搜索命中、T17 端点路由（404/502 行为正确）与 T12 复用不拉 photo。
+
+## 11. 旧多章节缓存自动回填（518074 单章模式的根因修复）
+
+- **根因**：`518074` 是在“页面已按章拆、但 `ComicMeta.chapters` 还没注入”的 bug 窗口导入的，
+  于是 `pages[].chapter` 有值、`meta.chapters=[]`，前端按 `chapters` 判定 → 显示成单章。
+- **修复**：`ComicStore.load_meta` 加本地回填——若 `chapters` 为空但 `pages` 存在非空
+  `chapter` 且 `raw.chapters` 有数据，就用 `raw.chapters` 重建章节表（压平标题空白）并
+  **原位修复 album.json，不重新下载**（与 v1→v2 迁移同一哲学）。
+- **验证**：修复后 `518074` = 152 话、7227 页、`is_multi=True`，API 详情返回 `chapters`，
+  前端自动切到「章节目录 + 子路由」；其余单话缓存仍为单章，零回归。

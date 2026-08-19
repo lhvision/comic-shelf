@@ -108,6 +108,9 @@ JmImageTool.decode_and_save(num, source_image, save_path)
 - **单章节零迁移**：`PageRecord.chapter` 与 `ComicMeta.chapters` 带默认值；旧 `album.json`
   没有这些字段时按空串/空表处理，存储仍走扁平 `pages/`。多章节才写子目录
   `pages/<chapter>/<file>`。
+- **旧多章缓存本地回填（不重新下载）**：曾在某个窗口导入的多章缓存，页面带 `chapter`
+  但没有 `ComicMeta.chapters`（只落在 `raw.chapters`）。读取时用 `raw.chapters` 本地重建
+  `chapters`（压平标题空白）并原位修复 `album.json`，和 v1→v2 迁移同一哲学——不碰远端。
 - **Provider 边界**：章节概念只存在于 provider 的 `fetch()`（读 `album.episode_list`）；
   storage / API 只认 `Chapter{id,index,title,page_count,start}`，不感知禁漫具体字段。
 - **封面归属**：封面永远取全局前 `cover_count` 页（即第一章），不按章节生成。
