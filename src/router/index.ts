@@ -22,6 +22,12 @@ const router = createRouter({
       meta: { title: '阅读' },
     },
     {
+      path: '/comic/:source/:sourceId/chapter/:chapterId',
+      name: 'comic-chapter',
+      component: () => import('@/views/ChapterView.vue'),
+      meta: { title: '章节' },
+    },
+    {
       path: '/:pathMatch(.*)*',
       redirect: '/',
     },

@@ -2,21 +2,24 @@
 
 ## 6. 前端文件地图
 
-| 文件                                        | 职责                                                                          |
-| ------------------------------------------- | ----------------------------------------------------------------------------- |
-| `src/views/LibraryView.vue`                 | 书架、导入、搜索、标签过滤                                                    |
-| `src/views/ComicDetailView.vue`             | 封面轮播、元数据、章节切换、页面索引（按章节切片）、缓存操作                  |
-| `src/views/ReaderView.vue`                  | 阅读器：模式、grid 分页、进度、设置面板、横向滚轮映射、章节标注               |
-| `src/components/detail/ChapterSwitcher.vue` | 多章节切换条：横向 chips（序数 + 标题 + 页数），左右方向键 + `useScroll` 居中 |
-| `src/composables/useChapterNavigation.ts`   | 详情页章节导航编排：章节切片、增量渲染、默认章节、「继续阅读 · 第 X 話」文案  |
-| `src/components/FavoriteButton.vue`         | 喜欢标记按钮（书架卡片 / 实验卡片 overlay）                                   |
-| `src/components/ComicPageImage.vue`         | 每页图片 loading / error / retry 兜底                                         |
-| `src/components/CoverCarousel.vue`          | scroll-snap + view-timeline 封面流                                            |
-| `src/components/HtmlCanvasSurface.vue`      | 实验性 DOM→canvas 绘制原语，default slot 是完整 DOM 子树                      |
-| `src/components/HtmlCanvasCard.vue`         | 实验性书架卡片：整卡 DOM（封面+标题+标签+进度）合成 canvas                    |
-| `src/styles/tokens.css`                     | 设计 token 与原生 `@function` 演示                                            |
-| `src/stores/library.ts`                     | 书库 Pinia store                                                              |
-| `src/stores/experiments.ts`                 | 实验开关：HTML-in-Canvas 卡片                                                 |
+| 文件                                        | 职责                                                                       |
+| ------------------------------------------- | -------------------------------------------------------------------------- |
+| `src/views/LibraryView.vue`                 | 书架、导入、搜索、标签过滤                                                 |
+| `src/views/ComicDetailView.vue`             | 封面轮播、元数据、操作栏、章节目录（多话）/ 页面索引（单话）、缓存操作     |
+| `src/views/ChapterView.vue`                 | 章节子路由：某话的章节头（标题/页数/上一话/下一话）+ 该话 PageIndexGrid    |
+| `src/views/ReaderView.vue`                  | 阅读器：模式、grid 分页、进度、设置面板、横向滚轮映射、章节标注            |
+| `src/components/detail/ChapterIndex.vue`    | 章节目录整段：head + 卡片网格（多话作品详情页主视图，代替几千页平铺）      |
+| `src/components/detail/ChapterCard.vue`     | 目录单卡：该话第一页封面缩略图（失败回落书脊占位）+ 序数/标题/页数         |
+| `src/components/detail/ChapterSwitcher.vue` | 章节切换条（现用于 ChapterView 内跳话）：横向 chips + 方向键 + `useScroll` |
+| `src/composables/useChapterNavigation.ts`   | 章节导航编排：锁定章节、章节切片、48 增量渲染、「继续阅读 · 第 X 話」文案  |
+| `src/components/FavoriteButton.vue`         | 喜欢标记按钮（书架卡片 / 实验卡片 overlay）                                |
+| `src/components/ComicPageImage.vue`         | 每页图片 loading / error / retry 兜底                                      |
+| `src/components/CoverCarousel.vue`          | scroll-snap + view-timeline 封面流                                         |
+| `src/components/HtmlCanvasSurface.vue`      | 实验性 DOM→canvas 绘制原语，default slot 是完整 DOM 子树                   |
+| `src/components/HtmlCanvasCard.vue`         | 实验性书架卡片：整卡 DOM（封面+标题+标签+进度）合成 canvas                 |
+| `src/styles/tokens.css`                     | 设计 token 与原生 `@function` 演示                                         |
+| `src/stores/library.ts`                     | 书库 Pinia store                                                           |
+| `src/stores/experiments.ts`                 | 实验开关：HTML-in-Canvas 卡片                                              |
 
 ## 6.5 页面索引性能策略
 
@@ -36,17 +39,20 @@
   前端会自动出现 `02 哔咔`，数据目录会自动使用 `library/picacg/...`。
 - 来源过滤通过路由 query 实现：`/?source=jm`、`/?source=picacg`。
 
-## 6.7 多章节行为
+## 6.7 多章节行为（章节目录 + 章节子路由）
 
 - **模型**：`ComicDetail.meta.chapters[]`（`{id,index,title,page_count,start}`）描述多章节；
   `meta.pages` 永远是**全书拍平的全局页码表**，单章节 `chapters` 为空。
-- **详情页**：`ComicDetailView` 按当前章节 `start/count` 对 `meta.pages` 切片渲染页面索引；
-  切换章节只改这块聚合视图，不碰任何持久化状态。
-  - 默认章节跟随 `useLastRead` 的全局页号（`chapterForPage`）；
-  - 切换后重置 48 页增量渲染并 `scrollIntoView` 回到页面索引顶部。
-- **章节条**：`ChapterSwitcher.vue` 只在 `chapters.length > 1` 时渲染；
-  `role=group + aria-pressed`，左右方向键移动（VueUse `useEventListener`），
-  选中 chip 用 `useScroll` 平滑居中。
+- **详情页（多话）只摆章节目录**：`ComicDetailView` 当 `chapters.length > 1` 时渲染
+  `ChapterIndex`（目录卡片：该话第一页封面 + 序数/标题/页数），**不铺开几千页**；
+  点某话进入章节子路由。
+- **章节子路由**：`/comic/:source/:id/chapter/:chapterId` → `ChapterView.vue`，
+  只渲染这一话的 `PageIndexGrid`（复用 48 页增量 + 章节前缀计数），头部带
+  上一话/下一话 pager + `ChapterSwitcher` 跳话；目标话不存在/单章节时自动回详情页。
+- **单话详情页零变化**：`chapters` 为空时 `ComicDetailView` 直接渲染全部
+  `PageIndexGrid`（每页平铺），与旧版一致。
+- **锁定章节**：`useChapterNavigation.setChapterById(id)` 从子路由进入时锁到某话；
+  详情页单话场景 `activeChapter == null`，切片即全书。
 - **页索引 tile 链接全局页号**：`PageTile` 的 `RouterLink` 仍是
   `/read/{全局页}`，因此点任意话的任意页都能进正确的阅读位置。
 - **阅读器**：`ReaderView` 用 `currentPage`（全局页）在 `chapters` 里找所属章节，

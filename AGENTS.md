@@ -80,6 +80,7 @@ vp dev                                   # 只起 Web
 vp check                                 # fmt + lint + type-check
 vp test                                  # Vitest
 vp build                                 # 生产构建
+pnpm exec playwright test e2e/<file>.spec.ts -g "用例名"   # 只跑某一条 AI e2e（不要全量 test:e2e）
 ```
 
 ## Agent 执行约定
@@ -90,3 +91,5 @@ vp build                                 # 生产构建
 - 任何 UI 改动先读 `DESIGN_NOTES.md`；阅读器问题先读 `docs/agents/frontend.md`。
 - 完成后至少运行 `vp check`。
 - 测试只跑与本次改动相关的测试文件，例如 `vp test src/__tests__/App.spec.ts`，不要全量 `vp test`；如果本次没有新增或修改测试文件，就不要再跑测试。
+- AI e2e（`e2e/` 下的 Playwright × Midscene 用例）对每一处功能改动都要补对应的回归用例：同一模块/页面的用例放同一个 spec 文件（如 `user-admin.spec.ts`），按功能或页面合理拆分，避免把互不相关的用例越堆越大。
+- 跑 AI e2e 时**只跑本次新增或改动的那一条（或同类）用例**，用 `pnpm exec playwright test e2e/<file>.spec.ts -g "用例名"` 精确执行，**禁止全量 `pnpm test:e2e`**——AI 用例又慢又费 token，每轮只需验证本次相关的，跑通即可收工。

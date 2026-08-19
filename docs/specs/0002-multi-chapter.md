@@ -57,15 +57,16 @@
 - **API**
   - 继续用**全局页码**：`GET /pages/{index}/file|thumbnail` 等旧端点无需改签名；
     多章只是页面文件落在分章子目录，前端地址不变。
-- **前端**
-  - 章节切片/增量渲染/「继续阅读 · 第 X 話」等业务编排收敛到
-    `useChapterNavigation(detail, lastRead)` composable（视图保持“只编排”职责，
-    与 `useReaderSettings`/`useLastRead` 同一模式；grill-with-docs 校验后抽出）。
-  - `ComicDetailView` 只接线：把 composable 暴露的 `chapters`/`visiblePages`/
-    `remainingPages`/`showingRange`/`lastReadLabel`/`switchTo` 等喂给子组件；
-    切换章节后滚回页面索引段顶部。
-  - 新增 `ChapterSwitcher`：多章节才渲染；`role=group` + `aria-pressed` 切换按钮，
-    左右方向键移动（VueUse `useEventListener`），用 `useScroll` 平滑居中当前 chip。
+- **前端（章节摆放 = 章节目录 + 章节子路由）**
+  - `useChapterNavigation(detail, lastRead)` composable 收纳章节导航编排：锁定章节
+    （`setChapterById`）、章节切片、48 页增量渲染、「继续阅读 · 第 X 話」文案。
+  - `ComicDetailView`：多话（`chapters.length>1`）时详情页只渲染 `ChapterIndex`
+    （目录卡片 = 该话第一页封面缩略图 + 序数/标题/页数），**不铺开几千页**；
+    单话直接渲染整本 `PageIndexGrid`（旧样，零变化）。
+  - `ChapterView`（新子路由 `/comic/:source/:id/chapter/:chapterId`）：只渲染该话
+    `PageIndexGrid`（复用 48 增量 + 章节前缀），头部带上一话/下一话 pager +
+    `ChapterSwitcher` 跳话；目标话不存在/单话自动回详情页。
+  - `ChapterCard` 封面失败回落“书脊占位”，仍然显示章节信息；`loading=lazy` 懒加载。
   - `PageIndexGrid` 计数行前缀当前章节文案，解决长书“丢位置”的问题。
   - `MetadataPanel` 多章节时显示“共 N 话”；单章节显示“单话”。
   - `ReaderView` 顶栏按全局页定位章节并显示“第 X 話 · 标题”。
@@ -87,14 +88,16 @@
 - 阅读器内“下一话 / 跳到下一话结尾”的专项快捷翻页（列入 P2/P3 ticket，不做于此）。
 - 把多章节拆成书目（每章节独立条目）的“子书架”化——当前保持“一本 = 一个条目”。
 - 批量缓存/批量移除的章节级粒度（沿用现有的全书粒度）。
-- 对新导入的多章节自动预热各章节封面（封面仍取第一章，见 ticket）。
+- 章节目录封面的“池化/服务端章节封面端点”（当前用每话第一页缩略图 + lazy + 失败占位，见 ticket）。
+- 对新导入的多章节自动预热各章节封面。
 
 ## Further Notes
 
-- 评审基线：新增多章节增量 critique **35/40**（Good），P1（章节组键盘 + 计数无上下文/
-  角标对比）已在 polish/adapt 一并修掉；报告落在 `.impeccable/critique/`。
-- **grill-with-docs（组件拆分复核）**：初版把章节切片逻辑堆在 `ComicDetailView` 里，
-  违反 spec 0001「视图只编排、逻辑收敛 composable」的约定 → 抽出
-  `useChapterNavigation` composable，视图瘦身、单一职责恢复；文件地图同步到
-  `docs/agents/frontend.md §6` 与下面 tickets。
+- 评审基线：两轮评审均落在 `.impeccable/critique/`——初版多章节增量 **35/40**
+  （章节组键盘 + 计数无上下文已修）；「章节目录 + 子路由」重设计 **37/40**（P1 封面懒加载对策见 ticket）。
+- **grill-with-docs（组件拆分复核）**：章节导航逻辑收敛到 `useChapterNavigation`
+  composable，视图只编排；文件地图同步到 `docs/agents/frontend.md §6` 与 tickets。
+- **grill-with-docs（章节摆放复盘）**：用户要求“有章节按章节摆放，无章节直接每页”，
+  原“章节 chips + 详情页内切片”仍是单页体验 → 重构为**目录 + 子路由**两级导航，
+  多话详情页不再铺开几千页。
 - 设计令牌完全复用，无新增 token；`--space-0-5`/`--text-caption`/`--control-md` 直接沿用。

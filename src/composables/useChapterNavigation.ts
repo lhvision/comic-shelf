@@ -99,6 +99,14 @@ export function useChapterNavigation(detail: Ref<ComicDetail | null>, lastRead: 
     activeChapterId.value = id
   }
 
+  /** 直接锁到某个章节（子路由进入时用），不受上次阅读位置影响。 */
+  function setChapterById(id: string) {
+    if (chapters.value.some((c) => c.id === id)) {
+      activeChapterId.value = id
+      visiblePageCount.value = CHAPTER_PAGE_STEP
+    }
+  }
+
   /** 详情刚刚加载完成时，让章节默认跟随上次读到的位置。 */
   function setInitialChapter(page: number) {
     activeChapterId.value = chapterForPage(page)
@@ -123,6 +131,7 @@ export function useChapterNavigation(detail: Ref<ComicDetail | null>, lastRead: 
     lastReadLabel,
     pageStep: CHAPTER_PAGE_STEP,
     switchTo,
+    setChapterById,
     setInitialChapter,
     loadMore,
   }

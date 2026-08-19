@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, onMounted, ref, watch } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useIntervalFn } from '@vueuse/core'
 import { api } from '@/api/client'
@@ -9,16 +9,20 @@ import { useLibraryStore } from '@/stores/library'
 import { useToast } from '@/composables/useToast'
 import CoverCarousel from '@/components/CoverCarousel.vue'
 import DetailActionBar from '@/components/detail/DetailActionBar.vue'
-import ChapterSwitcher from '@/components/detail/ChapterSwitcher.vue'
+import ChapterIndex from '@/components/detail/ChapterIndex.vue'
 import MetadataPanel from '@/components/MetadataPanel.vue'
 import PageIndexGrid from '@/components/detail/PageIndexGrid.vue'
 import type { ComicDetail } from '@/types'
 
 /**
- * 本子详情页 —— 编排封面轮播 / 元数据 / 操作栏 / 章节切换 / 页面索引。
- * 操作栏、章节切换与页索引已在 components/detail/ 下沉；多章节切片、增量渲染、
- * 「继续阅读 · 第 X 話」等业务逻辑收敛到 useChapterNavigation composable，
- * 本文件只保留：数据加载、缓存轮询（useIntervalFn）、路由跳转等页面级编排。
+ * 本子详情页 —— 编排封面轮播 / 元数据 / 操作栏 / 章节目录 / 页面索引。
+ *
+ * 章节摆放策略（对应 docs/agents/ui.md 的 Impeccable 设计）：
+ * - 单章节（无 chapters / length<=1）：直接渲染整本 PageIndexGrid（每页平铺），体验不变；
+ * - 多章节：详情页不再铺开几千页，只渲染「章节目录」（ChapterIndex，封面 + 章节信息），
+ *   点某话进入章节子路由（/comic/:source/:id/chapter/:chapterId）看那话的页面索引。
+ * 章节导航/增量渲染/继续阅读文案等业务逻辑收敛到 useChapterNavigation，本文件只保留
+ * 数据加载、缓存轮询（useIntervalFn）、路由跳转等页面级编排。
  */
 
 const route = useRoute()
@@ -31,24 +35,20 @@ const sourceId = computed(() => String(route.params.sourceId))
 const detail = ref<ComicDetail | null>(null)
 const loading = ref(true)
 const caching = ref(false)
-/** 页面索引段容器：切换章节后滚回这里，让用户看到新章节的起点。 */
-const pageSectionEl = ref<HTMLElement | null>(null)
 
 const lastRead = useLastRead(source, sourceId)
 const {
   chapters,
-  activeChapterId,
-  activeChapterLabel,
   progressEl,
   visiblePages,
   remainingPages,
   showingRange,
   lastReadLabel,
   pageStep,
-  switchTo,
-  setInitialChapter,
   loadMore,
 } = useChapterNavigation(detail, lastRead)
+
+const isMulti = computed(() => (chapters.value?.length ?? 0) > 1)
 
 const cachePercent = computed(() => {
   if (!detail.value || detail.value.meta.page_count === 0) return 0
@@ -57,18 +57,10 @@ const cachePercent = computed(() => {
 
 onMounted(load)
 
-// 切换章节：把页面索引段滚回顶部（增量渲染已由 composable 重置）。
-watch(activeChapterId, async () => {
-  await nextTick()
-  pageSectionEl.value?.scrollIntoView({ behavior: 'smooth', block: 'start' })
-})
-
 async function load() {
   loading.value = true
   try {
     detail.value = await api.detail(source.value, sourceId.value)
-    // 默认落在上次读到的章节，方便从上次中断处继续。
-    setInitialChapter(progressEl.value)
     // If a background import/prefetch is running (import/cache-all now return
     // immediately), pick up live progress without the user having to click.
     const job = await api.cacheJob(source.value, sourceId.value)
@@ -200,24 +192,18 @@ function startReading(page = progressEl.value || 1) {
         @remove-comic="removeComic"
       />
 
-      <ChapterSwitcher
-        :chapters="chapters"
-        :active-id="activeChapterId"
-        @change="switchTo($event)"
-      />
+      <ChapterIndex v-if="isMulti" :source="source" :source-id="sourceId" :chapters="chapters" />
 
-      <div ref="pageSectionEl">
-        <PageIndexGrid
-          :source="source"
-          :source-id="sourceId"
-          :chapter-label="activeChapterLabel"
-          :pages="visiblePages"
-          :remaining-pages="remainingPages"
-          :page-step="pageStep"
-          :showing-range="showingRange"
-          @load-more="loadMore"
-        />
-      </div>
+      <PageIndexGrid
+        v-else
+        :source="source"
+        :source-id="sourceId"
+        :pages="visiblePages"
+        :remaining-pages="remainingPages"
+        :page-step="pageStep"
+        :showing-range="showingRange"
+        @load-more="loadMore"
+      />
     </template>
   </div>
 </template>
