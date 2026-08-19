@@ -130,18 +130,27 @@ function goNext() {
           <button class="btn btn-ghost" type="button" :disabled="!prevChapter" @click="goPrev">
             ← 上一话
           </button>
+
+          <ChapterSwitcher
+            class="pager-tabs"
+            :chapters="chapters"
+            :active-id="activeChapter.id"
+            in-pager
+            @change="goToChapter"
+          />
+
           <button class="btn btn-ghost" type="button" :disabled="!nextChapter" @click="goNext">
             下一话 →
           </button>
         </div>
       </section>
 
-      <ChapterSwitcher :chapters="chapters" :active-id="activeChapter.id" @change="goToChapter" />
-
       <PageIndexGrid
         :source="source"
         :source-id="sourceId"
         :chapter-label="activeChapterLabel"
+        :chapter-start="activeChapter.start"
+        :chapter-id="activeChapter.id"
         :pages="visiblePages"
         :remaining-pages="remainingPages"
         :page-step="pageStep"
@@ -197,16 +206,30 @@ function goNext() {
 
 .chapter-pager {
   display: flex;
+  align-items: center;
   gap: var(--space-3);
-  flex-wrap: wrap;
   border-top: 1px solid var(--line);
   margin-top: var(--space-2);
-  padding-top: var(--space-4);
+  padding-top: var(--space-3);
+  min-width: 0;
 }
 
-@media (max-width: 640px) {
-  .chapter-pager .btn {
-    flex: 1 1 8rem;
+.pager-tabs {
+  display: flex;
+}
+
+@media (max-width: 720px) {
+  .chapter-pager {
+    flex-wrap: wrap;
+  }
+
+  .chapter-pager > .btn {
+    flex: 1 1 6rem;
+  }
+
+  .pager-tabs {
+    flex: 1 1 100%;
+    order: 3;
   }
 }
 </style>

@@ -401,7 +401,7 @@ function onKeydown(event: KeyboardEvent) {
       break
     case 'Escape':
       event.preventDefault()
-      router.push(`/comic/${source.value}/${sourceId.value}`)
+      backToDetail()
       break
   }
 }
@@ -491,8 +491,17 @@ function goPrevChapter() {
   if (c) goToPage(c.start + c.page_count - 1, 'smooth')
 }
 
+/** 返回目标：从章节子路由进入阅读器时（?chapter=），返回回到该章节；否则回详情页。 */
+const backTarget = computed(() => {
+  const chapter = route.query.chapter
+  if (chapter && typeof chapter === 'string') {
+    return `/comic/${source.value}/${sourceId.value}/chapter/${encodeURIComponent(chapter)}`
+  }
+  return `/comic/${source.value}/${sourceId.value}`
+})
+
 function backToDetail() {
-  router.push(`/comic/${source.value}/${sourceId.value}`)
+  router.push(backTarget.value)
 }
 </script>
 

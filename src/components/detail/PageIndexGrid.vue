@@ -25,7 +25,15 @@ const props = defineProps<{
   showingRange: string
   /** 当前章节文案（如「第 2 話 · 标题」）；单章节作品为空字符串。 */
   chapterLabel?: string
+  /** 章节起始全局页码（1-based）：传了则 tile 显示本章本地页码 */
+  chapterStart?: number
+  /** 来源章节 id：阅读器返回时回到该章节子路由 */
+  chapterId?: string
 }>()
+
+function localLabel(page: PageRecord) {
+  return props.chapterStart ? page.index - props.chapterStart + 1 : page.index
+}
 
 const emit = defineEmits<{ loadMore: [] }>()
 
@@ -60,6 +68,8 @@ useIntersectionObserver(
         :source-id="sourceId"
         :index="page.index"
         :cached="page.cached"
+        :label="localLabel(page)"
+        :chapter-id="chapterId ?? ''"
       />
     </div>
 

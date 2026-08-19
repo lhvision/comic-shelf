@@ -13,10 +13,15 @@ import type { Chapter } from '@/types'
  * - 键盘操作：左/右方向键在章节按钮间移动（复用既有的 `useEventListener`，
  *   不手写 addEventListener/disconnect）。
  */
-const props = defineProps<{
-  chapters: Chapter[]
-  activeId: string | null
-}>()
+const props = withDefaults(
+  defineProps<{
+    chapters: Chapter[]
+    activeId: string | null
+    /** 用在上/下一话之间的 pager 模式时去掉全宽通排样式，紧凑嵌入 */
+    inPager?: boolean
+  }>(),
+  { inPager: false },
+)
 
 const emit = defineEmits<{ change: [id: string] }>()
 
@@ -71,6 +76,7 @@ function chapterState(id: string): 'past' | 'active' | 'upcoming' {
     v-if="chapterList.length > 1"
     ref="listEl"
     class="chapter-switcher"
+    :data-pager="inPager"
     role="group"
     aria-label="章节"
   >
@@ -101,8 +107,37 @@ function chapterState(id: string): 'past' | 'active' | 'upcoming' {
   padding: var(--space-1) var(--space-1) var(--space-2);
   margin: var(--space-5) calc(-1 * var(--page-pad)) 0;
   padding-inline: var(--page-pad);
-  scrollbar-width: thin;
   border-bottom: 1px solid var(--line);
+  /* 滚动条对齐 UI：细轨道 + 朱砂细滑块，跟随主题 */
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in oklab, var(--accent) 45%, transparent) transparent;
+}
+
+.chapter-switcher::-webkit-scrollbar {
+  height: 6px;
+}
+
+.chapter-switcher::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.chapter-switcher::-webkit-scrollbar-thumb {
+  background: color-mix(in oklab, var(--accent) 45%, transparent);
+  border-radius: 999px;
+}
+
+.chapter-switcher::-webkit-scrollbar-thumb:hover {
+  background: var(--accent);
+}
+
+/* pager 模式：嵌在上一话/下一话之间 */
+.chapter-switcher[data-pager='true'] {
+  flex: 1 1 auto;
+  min-width: 0;
+  margin: 0;
+  padding: var(--space-1);
+  border-bottom: 0;
+  align-self: center;
 }
 
 .chapter-switcher button {

@@ -4,34 +4,51 @@ import { pageThumbUrl } from '@/api/client'
 /**
  * 详情页页索引的单个 tile —— 缩略图 + 页码角标 + 缓存状态。
  * 使用 thumbnail（360px JPEG）而非原图，符合工程的性能约束。
+ *
+ * - `index` 是**全局页码**：缩略图 URL 与阅读器链接都走它；
+ * - `label` 可选：子路由/章节视图传入本章本地页码，让 7000 页的长合集
+ *   也显示「第 1–N 章内页」，而不是 2060 之类的全局大数字；
+ * - `chapterId` 可选：从章节子路由进入阅读器时带上，返回键回子路由而不是父目录。
  */
-defineProps<{
-  source: string
-  sourceId: string
-  index: number
-  cached: boolean
-}>()
+const props = withDefaults(
+  defineProps<{
+    source: string
+    sourceId: string
+    index: number
+    cached: boolean
+    /** 展示用的页码（默认用全局 index） */
+    label?: number
+    /** 来源章节 id：阅读器返回时回到该章节子路由 */
+    chapterId?: string
+  }>(),
+  { label: undefined, chapterId: '' },
+)
 
 function pageLabel(index: number) {
   return String(index).padStart(3, '0')
 }
+
+function displayNumber() {
+  return props.label ?? props.index
+}
+
+function readerLink() {
+  const base = `/comic/${props.source}/${props.sourceId}/read/${props.index}`
+  return props.chapterId ? `${base}?chapter=${encodeURIComponent(props.chapterId)}` : base
+}
 </script>
 
 <template>
-  <RouterLink
-    :to="`/comic/${source}/${sourceId}/read/${index}`"
-    class="page-tile"
-    :data-cached="cached"
-  >
+  <RouterLink :to="readerLink()" class="page-tile" :data-cached="cached">
     <div class="page-image">
       <img
         :src="pageThumbUrl(source, sourceId, index)"
-        :alt="`第 ${index} 页`"
+        :alt="`第 ${displayNumber()} 页`"
         loading="lazy"
         decoding="async"
       />
     </div>
-    <span class="page-index">{{ pageLabel(index) }}</span>
+    <span class="page-index">{{ pageLabel(displayNumber()) }}</span>
     <span class="page-state">{{ cached ? '本地' : '待缓存' }}</span>
   </RouterLink>
 </template>
