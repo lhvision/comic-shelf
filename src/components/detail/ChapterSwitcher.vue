@@ -28,7 +28,8 @@ const emit = defineEmits<{ change: [id: string] }>()
 const listEl = ref<HTMLElement | null>(null)
 const buttonEls = ref<Record<string, HTMLElement | null>>({})
 
-const { scrollTo } = useScroll(listEl, { behavior: 'smooth' })
+// @vueuse/core 14.x：useScroll 不再暴露 scrollTo，改为给响应式 `x`（横向容器）赋值。
+const { x } = useScroll(listEl, { behavior: 'smooth' })
 
 // 防御：父级必须解构 unwrap 后传入；万一传了 Ref 或 undefined，这里兜底为空数组。
 const chapterList = computed(() => (Array.isArray(props.chapters) ? props.chapters : []))
@@ -42,7 +43,7 @@ watch(activeIndex, async (idx) => {
   const container = listEl.value
   if (!el || !container || container.scrollWidth <= container.clientWidth) return
   const left = Math.max(0, el.offsetLeft - (container.clientWidth - el.offsetWidth) / 2)
-  scrollTo({ left })
+  x.value = left
 })
 
 useEventListener(listEl, 'keydown', (event: KeyboardEvent) => {
@@ -92,13 +93,10 @@ function chapterState(id: string): 'past' | 'active' | 'upcoming' {
     role="group"
     aria-label="章节"
   >
-    <span class="chapter-progress" role="status">
-      第 {{ activeIndex + 1 }} 話 / 共 {{ chapterList.length }} 話
-    </span>
     <button
       v-for="chapter in chapterList"
       :key="chapter.id"
-      :ref="(el) => (buttonEls[chapter.id] = el)"
+      :ref="(el) => (buttonEls[chapter.id] = el as HTMLElement | null)"
       type="button"
       :aria-pressed="activeId === chapter.id"
       :data-active="activeId === chapter.id"
@@ -196,22 +194,6 @@ function chapterState(id: string): 'past' | 'active' | 'upcoming' {
   font-family: var(--font-mono);
   font-size: var(--text-caption);
   color: var(--ink-2);
-}
-
-.chapter-progress {
-  position: sticky;
-  left: 0;
-  z-index: 2;
-  flex: 0 0 auto;
-  align-self: center;
-  padding: var(--space-1) var(--space-3);
-  border-radius: 999px;
-  background: var(--paper-1);
-  border: 1px solid var(--line-strong);
-  color: var(--ink-1);
-  font-family: var(--font-mono);
-  font-size: var(--text-caption);
-  white-space: nowrap;
 }
 
 .chapter-switcher button[data-active='true'] .chapter-ordinal {

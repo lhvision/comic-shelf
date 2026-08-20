@@ -19,7 +19,7 @@ import ReaderHud from '@/components/reader/ReaderHud.vue'
 import ReaderProgress from '@/components/reader/ReaderProgress.vue'
 import ReaderSettingsPanel from '@/components/reader/ReaderSettingsPanel.vue'
 import ReaderTopBar from '@/components/reader/ReaderTopBar.vue'
-import type { ComicDetail } from '@/types'
+import type { Chapter, ComicDetail } from '@/types'
 
 /**
  * 阅读器视图 —— 只负责"阅读会话"的编排：
@@ -58,7 +58,44 @@ const autoTurnPaused = ref(false)
 const reducedMotion = usePreferredReducedMotion()
 const documentVisibility = useDocumentVisibility()
 
-const total = computed(() => detail.value?.meta.page_count ?? 0)
+const total = computed(() => scopedPages.value.length)
+
+/* ---------------- 章节作用域 ----------------
+ * 「以章节维度渲染」的核心：从章节子路由（?chapter=id）进入阅读器时，
+ * 阅读器只渲染当前话的页面范围（比如 37 页），不把 7227 页一次性铺进 DOM。
+ * 从父详情（无 ?chapter=）进入时保持整本跨话阅读不变。
+ * 阅读器仍沿用全局页码 URL 与 /pages/{index}/file 端点（AGENTS 硬规则 #7）。 */
+const scopeId = ref<string | null>(null)
+
+watch(
+  () => route.query.chapter,
+  (q) => {
+    scopeId.value = typeof q === 'string' && q ? q : null
+  },
+  { immediate: true },
+)
+
+const scopedChapter = computed(() => {
+  if (!scopeId.value) return null
+  const chs = detail.value?.meta.chapters ?? []
+  return chs.find((c) => c.id === scopeId.value) ?? null
+})
+
+/** 当前作用域内的全局页码列表：整本 1..total；分章话为 [start, start+page_count)。 */
+const scopedPages = computed<number[]>(() => {
+  if (!detail.value) return []
+  const c = scopedChapter.value
+  if (!c) return Array.from({ length: detail.value.meta.page_count }, (_, i) => i + 1)
+  const pages: number[] = []
+  for (let p = c.start; p < c.start + c.page_count; p += 1) pages.push(p)
+  return pages
+})
+
+function clampToScope(page: number): number {
+  const pages = scopedPages.value
+  if (pages.length === 0) return 1
+  return Math.min(Math.max(page, pages[0]!), pages[pages.length - 1]!)
+}
 
 /* ---------------- 多章节提示 ----------------
  * 阅读器沿用全局页码；多章节作品按当前全局页定位所在章节，顶栏显示章节名。 */
@@ -75,9 +112,10 @@ const chapterLabel = computed(() => {
 
 /* T08：跨话快捷翻页 —— 定位当前章节在全书里的前后话 */
 const chapters = computed(() => detail.value?.meta.chapters ?? [])
-const currentChapterIndex = computed(() =>
-  currentChapter.value ? chapters.value.findIndex((c) => c.id === currentChapter.value.id) : -1,
-)
+const currentChapterIndex = computed(() => {
+  const cc = currentChapter.value
+  return cc ? chapters.value.findIndex((c) => c.id === cc.id) : -1
+})
 const nextChapter = computed(() =>
   currentChapterIndex.value >= 0 ? (chapters.value[currentChapterIndex.value + 1] ?? null) : null,
 )
@@ -89,19 +127,23 @@ const atChapterEnd = computed(() => {
   const c = currentChapter.value
   return c !== null && currentPage.value >= c.start + c.page_count - 1
 })
+/** 是否正停在当前话的第一页（多话作品且存在上一话时才显示「上一话」悬浮钮） */
+const atChapterStart = computed(() => {
+  const c = currentChapter.value
+  return c !== null && currentPage.value <= c.start
+})
+
+/** 分章作用域下，只有真正读完最后一话才显示「本子翻完了」结尾卡 */
+const showEndCard = computed(() => {
+  if (scopedChapter.value === null) return true
+  return !nextChapter.value
+})
 
 const pageGroups = computed<number[][]>(() => {
   const groups: number[][] = []
-  for (let index = 0; index < total.value; index += settings.pagesPerView) {
-    const pages: number[] = []
-    for (
-      let page = index + 1;
-      page <= Math.min(total.value, index + settings.pagesPerView);
-      page += 1
-    ) {
-      pages.push(page)
-    }
-    groups.push(pages)
+  const pages = scopedPages.value
+  for (let index = 0; index < pages.length; index += settings.pagesPerView) {
+    groups.push(pages.slice(index, index + settings.pagesPerView))
   }
   return groups
 })
@@ -124,11 +166,17 @@ const nextSymbol = computed(() => {
   return settings.direction === 'rtl' ? '←' : '→'
 })
 
+/** 分章作用域下把全局页码换算成章内本地页码（如第 2 话的第 9 页 → 1） */
+function toLocalPage(page: number): number {
+  const c = scopedChapter.value
+  return c ? page - c.start + 1 : page
+}
+
 const currentGroupLabel = computed(() => {
   const group = pageGroups.value[currentGroupIndex.value]
   if (!group || group.length === 0) return '—'
-  if (group.length === 1) return String(group[0])
-  return `${group[0]}–${group[group.length - 1]}`
+  if (group.length === 1) return String(toLocalPage(group[0]!))
+  return `${toLocalPage(group[0]!)}–${toLocalPage(group[group.length - 1]!)}`
 })
 
 const lastGroupIndex = computed(() => Math.max(0, pageGroups.value.length - 1))
@@ -253,11 +301,15 @@ function toggleChrome() {
 
 /* ---------------- 分屏定位 ---------------- */
 function groupIndexForPage(page: number): number {
-  return Math.max(0, Math.floor((page - 1) / settings.pagesPerView))
+  const groups = pageGroups.value
+  for (let index = 0; index < groups.length; index += 1) {
+    if (groups[index]!.includes(page)) return index
+  }
+  return 0
 }
 
 function groupFirstPage(groupIndex: number): number {
-  return groupIndex * settings.pagesPerView + 1
+  return pageGroups.value[groupIndex]?.[0] ?? 1
 }
 
 function scrollToGroup(groupIndex: number, behavior: ScrollBehavior = 'smooth') {
@@ -283,7 +335,7 @@ function goToGroup(groupIndex: number, behavior: ScrollBehavior = 'smooth') {
 }
 
 function goToPage(page: number, behavior: ScrollBehavior = 'smooth') {
-  const clampedPage = Math.min(Math.max(page, 1), total.value || 1)
+  const clampedPage = clampToScope(page)
   const groupIndex = groupIndexForPage(clampedPage)
   currentPage.value = clampedPage
   currentGroupIndex.value = groupIndex
@@ -415,7 +467,7 @@ onMounted(async () => {
   try {
     detail.value = await api.detail(source.value, sourceId.value)
     const initial = Number(route.params.page ?? 1)
-    currentPage.value = Math.min(Math.max(initial, 1), total.value || 1)
+    currentPage.value = clampToScope(initial)
     currentGroupIndex.value = groupIndexForPage(currentPage.value)
     loading.value = false
 
@@ -444,7 +496,9 @@ watch(
   () => route.params.page,
   (value) => {
     const page = Number(value ?? 1)
-    if (!Number.isFinite(page) || page < 1 || page > total.value) return
+    const pages = scopedPages.value
+    if (!Number.isFinite(page) || pages.length === 0) return
+    if (page < pages[0]! || page > pages[pages.length - 1]!) return
     if (page === currentPage.value) return
     goToPage(page, 'smooth')
   },
@@ -481,15 +535,48 @@ function nextGroup() {
   goToGroup(currentGroupIndex.value + 1)
 }
 
+/** 章节按钮兜底文案：标题为空时回落「第 N 話」。 */
+function chapterShortLabel(c: Chapter) {
+  return c.title ? c.title : `第 ${c.index} 話`
+}
+
+/** 切换章节作用域：只在分章模式（已有 ?chapter=）下跟随跨话跳到下一/上一话。
+ * 同时把 URL 的 page 参数对齐到目标页，避免地址栏页码与实际页不一致。 */
+function setScope(id: string, page: number) {
+  scopeId.value = id
+  const target = `/comic/${source.value}/${sourceId.value}/read/${page}?chapter=${encodeURIComponent(id)}`
+  void router.replace(target)
+}
+
 function goNextChapter() {
   const c = nextChapter.value
-  if (c) goToPage(c.start, 'smooth')
+  if (!c) return
+  setScope(c.id, c.start)
+  goToPage(c.start, 'smooth')
 }
 
 function goPrevChapter() {
   const c = prevChapter.value
-  if (c) goToPage(c.start + c.page_count - 1, 'smooth')
+  if (!c) return
+  setScope(c.id, c.start + c.page_count - 1)
+  goToPage(c.start + c.page_count - 1, 'smooth')
 }
+
+/* 分章作用域变化后重定位：从浏览器前进/后退或跨话跳转切章时，
+   currentPage 可能落在新作用域之外，需重新 clamp 并滚回正确位置。 */
+watch(
+  () => scopeId.value,
+  async () => {
+    if (!detail.value) return
+    const clamped = clampToScope(currentPage.value)
+    if (clamped !== currentPage.value) currentPage.value = clamped
+    currentGroupIndex.value = groupIndexForPage(currentPage.value)
+    await nextTick()
+    scrollToGroup(currentGroupIndex.value, 'instant')
+    showChromeTemporarily()
+    resetAutoTurnCountdown()
+  },
+)
 
 /** 返回目标：从章节子路由进入阅读器时（?chapter=），返回回到该章节；否则回详情页。 */
 const backTarget = computed(() => {
@@ -531,7 +618,12 @@ function backToDetail() {
       @wheel="onWheel"
       @mousemove="showChromeTemporarily"
     >
-      <ReaderEndCard v-if="rtlHorizontal" snap class="reader-end-rtl" @back="backToDetail" />
+      <ReaderEndCard
+        v-if="rtlHorizontal && showEndCard"
+        snap
+        class="reader-end-rtl"
+        @back="backToDetail"
+      />
 
       <section
         v-for="group in orderedGroups"
@@ -549,19 +641,19 @@ function backToDetail() {
           <div class="page-frame" :data-fit="settings.fit">
             <ComicPageImage
               :src="pageFileUrl(source, sourceId, page)"
-              :alt="`第 ${page} 页`"
-              :eager="page <= settings.pagesPerView * 3"
+              :alt="`第 ${toLocalPage(page)} 页`"
+              :eager="toLocalPage(page) <= settings.pagesPerView * 3"
               :loading-variant="loadingVariant"
             />
           </div>
           <footer class="page-footer">
-            <span>{{ String(page).padStart(3, '0') }}</span>
+            <span>{{ String(toLocalPage(page)).padStart(3, '0') }}</span>
           </footer>
         </article>
       </section>
 
       <ReaderEndCard
-        v-if="!rtlHorizontal"
+        v-if="!rtlHorizontal && showEndCard"
         :snap="settings.mode === 'horizontal'"
         @back="backToDetail"
       />
@@ -570,13 +662,23 @@ function backToDetail() {
     <ReaderProgress :progress="progressValue" :invert="rtlHorizontal" />
 
     <button
+      v-if="!loading && prevChapter && atChapterStart"
+      class="reader-chapter-prev"
+      type="button"
+      @click="goPrevChapter"
+    >
+      <span class="reader-chapter-prev-title">← 上一话：{{ chapterShortLabel(prevChapter) }}</span>
+      <span>本话首</span>
+    </button>
+
+    <button
       v-if="!loading && nextChapter && atChapterEnd"
       class="reader-chapter-next"
       type="button"
       @click="goNextChapter"
     >
       <span>本话完</span>
-      <span class="reader-chapter-next-title">下一话：{{ nextChapter.title }} →</span>
+      <span class="reader-chapter-next-title">下一话：{{ chapterShortLabel(nextChapter) }} →</span>
     </button>
 
     <ReaderHud
@@ -910,8 +1012,9 @@ function backToDetail() {
   }
 }
 
-/* T08：跨话翻页横幅 —— 读到某话末页时浮在底部中部 */
-.reader-chapter-next {
+/* T08：跨话翻页横幅 —— 呆在话首的「← 上一话」、话末的「本话完 · 下一话 →」 */
+.reader-chapter-next,
+.reader-chapter-prev {
   position: absolute;
   left: 50%;
   bottom: max(calc(var(--space-6) * 1), env(safe-area-inset-bottom));
@@ -931,12 +1034,14 @@ function backToDetail() {
     color var(--duration-2) var(--ease-out);
 }
 
-.reader-chapter-next:hover {
+.reader-chapter-next:hover,
+.reader-chapter-prev:hover {
   background: var(--accent);
   color: var(--paper-0);
 }
 
-.reader-chapter-next-title {
+.reader-chapter-next-title,
+.reader-chapter-prev-title {
   font-family: var(--font-mono);
   font-size: var(--text-xs);
   white-space: nowrap;

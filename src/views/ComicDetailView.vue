@@ -162,8 +162,21 @@ function goBack() {
   router.replace({ name: 'library' })
 }
 
+/** 定位某个全局页码所属的话（多章节作品；单章节返回 null）。 */
+function chapterIdForPage(page: number): string | null {
+  const chs = chapters.value
+  if (chs.length <= 1) return null
+  return chs.find((c) => page >= c.start && page < c.start + c.page_count)?.id ?? chs[0]?.id ?? null
+}
+
 function startReading(page = progressEl.value || 1) {
-  router.push(`/comic/${source.value}/${sourceId.value}/read/${page}`)
+  // 多章节作品从父详情的任何「直接进入」都走章节维度：带 ?chapter= 让阅读器
+  // 只渲染当前话（比如 37 页），绝不一次把 7227 页铺进阅读器。
+  const chapterId = chapterIdForPage(page)
+  const path = chapterId
+    ? `/comic/${source.value}/${sourceId.value}/read/${page}?chapter=${encodeURIComponent(chapterId)}`
+    : `/comic/${source.value}/${sourceId.value}/read/${page}`
+  router.push(path)
 }
 </script>
 

@@ -154,3 +154,27 @@
 - **adapt**：桌面 `[上一话][中间选择条][下一话]` 一行；≤720px 按钮换行上一行、中间条整行下一行；
   chip/按钮触控高恒 `--control-md`（≥44px），滚动条 6px 细条 + hover 强调。
 - 报告落 `.impeccable/critique/2026-08-20T16-24-51Z__src-chapter-forward-back-pager.md`。
+
+## 15. 阅读器「分章作用域」+ 去掉子详情页 tabs 前的「共多少章节」chip
+
+- **回访确认**：多章节 7227 页的合集，从章节子路由或父详情「开始阅读」点进阅读器时，旧实现
+  `ReaderView` 仍按整本 7227 页铺 DOM（`content-visibility` 只省绘制、DOM 节点仍在），
+  UI 上表现为「点进去还是全量的、没有分章节」。
+- **修复——`ReaderView` 章节作用域**：读取 `route.query.chapter`，若有则把 `scopedPages`
+  收敛到 `[chapter.start, chapter.start + page_count)`，`pageGroups/groupIndex/goToPage/页码/页脚`
+  全部随作用域换算（章内本地页码）；跨话 `N/P`、底部「本话完 · 下一话 →」仍可跳，跳时
+  `setScope(id)` 同步切 `?chapter=` 并重定位。无 `?chapter=`（单章作品/整本直达）保持整本跨话阅读。
+- **父详情直入也分章节**：`ComicDetailView.startReading` 对多章节带 `?chapter=`（按全局页定位所属
+  话），让「开始阅读/继续阅读/从第 1 页开始」同样进章节维度，绝不一次铺 7227 页。
+- **去掉冗余 chip**：子详情页 ChapterSwitcher tabs 最前头那枚「第 X 話 / 共 N 話」计数 chip
+  与头部 meta（`X / N 话`）重复且占位，删除（组件不再渲染，pager 更干净）。
+- **阅读器加「上一话」悬浮钮**：分章作用域下，停在当前话第一页且存在上一话时，在底部浮现
+  `← 上一话`（文案空标题回落「第 N 話」，与`本话完 · 下一话 →`同一套材质）；跨话后 URL 的
+  page 参数同步对齐到目标页（`read/8?chapter=518074`），避免地址栏页码与实际页不一致。
+- **顺手修掉既有类型债**：`ReaderView` `currentChapter.value` 可能为 null（改用局部变量收窄）；
+  `ChapterSwitcher` 适配 @vueuse 14.x——`useScroll` 不再返回 `scrollTo`，改给响应式 `x` 赋值；
+  `:ref` 回调补 `HTMLElement` 断言。`vue-tsc --build --force` 全绿（0 error）。
+- **验证**：152 话 / 7227 页书 `jm/518074`——父详情只出 152 张章节卡片；第 2 话子路由 37 tiles +
+  上一话/中间 tabs/下一话中间页；从父详情进入阅读器 8 页（第 1 话）、从章节进入 37 页（第 2 话）；
+  第 2 话首页显示「← 上一话：第 1 話」、末页显示「本话完 · 下一话：2 →」，跨话 URL 页码对齐；
+  单章书 `jm/1242163` 父详情整本网格 + 阅读器 39 页，零回归。`vp check` / `vp test` / `vue-tsc` 全绿。
