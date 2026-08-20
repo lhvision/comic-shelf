@@ -123,7 +123,8 @@ function goNext() {
 
         <h1>{{ activeChapter.title || `第 ${activeChapter.index} 話` }}</h1>
         <p class="chapter-head-meta">
-          {{ activeChapter.page_count }} 页 · {{ chapterRange }} · 本子「{{ detail.meta.title }}」
+          {{ activeChapter.index }} / {{ chapters.length }} 话 · {{ activeChapter.page_count }} 页 ·
+          {{ chapterRange }} · 本子「{{ detail.meta.title }}」
         </p>
 
         <div class="chapter-pager">

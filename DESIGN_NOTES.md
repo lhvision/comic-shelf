@@ -142,3 +142,15 @@
 - 修复：composable 一律**解构到 setup 顶层**再喂模板/子组件（`ChapterView` 已改；
   `ChapterSwitcher` 另加 `Array.isArray` 防御，防未来再传错）。
 - 这是给后续维护者的硬约束：**使用自定义 composable 时，返回值里的 Ref 要 top-level 解构使用。**
+
+## 14. 多章节「上一话/下一话 + 中间话选择」中间页（Impeccable：critique → polish → adapt）
+
+- **grill 确认**：多章节所有入口最终收敛到**章节维度渲染**——父详情页只出章节目录（不塞 7000 页），
+  点话进 `ChapterView` 只渲染该话页索引；中间页（上一话/中间话/下一话）只在多话时渲染。
+- **critique（38/40）**：P1 = 152 话时“我在第几话/共几话”的定位锚点不足 → 条首加非交互计数
+  chip「第 X 話 / 共 N 話」（`role=status`）+ 头部 meta 补「X / N 话」；`Home/End` 直达首/末话。
+- **polish（对齐 token）**：序数圆直径收敛为 `calc(var(--control-md) - var(--space-4))`（不再裸写
+  1.75rem）；计数 chip、滚动条、圆角、间距、动效全部走 `--space-*/--radius-*/--duration-*`/朱砂系。
+- **adapt**：桌面 `[上一话][中间选择条][下一话]` 一行；≤720px 按钮换行上一行、中间条整行下一行；
+  chip/按钮触控高恒 `--control-md`（≥44px），滚动条 6px 细条 + hover 强调。
+- 报告落 `.impeccable/critique/2026-08-20T16-24-51Z__src-chapter-forward-back-pager.md`。

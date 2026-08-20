@@ -46,16 +46,28 @@ watch(activeIndex, async (idx) => {
 })
 
 useEventListener(listEl, 'keydown', (event: KeyboardEvent) => {
-  if (event.key !== 'ArrowRight' && event.key !== 'ArrowLeft') return
   const idx = activeIndex.value
-  if (idx < 0) return
-  event.preventDefault()
-  const delta = event.key === 'ArrowRight' ? 1 : -1
-  const next = Math.min(Math.max(idx + delta, 0), chapterList.value.length - 1)
-  const target = chapterList.value[next]
-  if (!target || target.id === props.activeId) return
-  emit('change', target.id)
-  void nextTick(() => buttonEls.value[target.id]?.focus())
+  let nextId: string | null = null
+
+  if (event.key === 'Home') {
+    event.preventDefault()
+    nextId = chapterList.value[0]?.id ?? null
+  } else if (event.key === 'End') {
+    event.preventDefault()
+    nextId = chapterList.value[chapterList.value.length - 1]?.id ?? null
+  } else if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') {
+    if (idx < 0) return
+    event.preventDefault()
+    const delta = event.key === 'ArrowRight' ? 1 : -1
+    nextId =
+      chapterList.value[Math.min(Math.max(idx + delta, 0), chapterList.value.length - 1)]?.id ??
+      null
+  }
+
+  if (nextId && nextId !== props.activeId) {
+    emit('change', nextId)
+    void nextTick(() => buttonEls.value[nextId]?.focus())
+  }
 })
 
 function chapterLabel(chapter: Chapter) {
@@ -80,6 +92,9 @@ function chapterState(id: string): 'past' | 'active' | 'upcoming' {
     role="group"
     aria-label="章节"
   >
+    <span class="chapter-progress" role="status">
+      第 {{ activeIndex + 1 }} 話 / 共 {{ chapterList.length }} 話
+    </span>
     <button
       v-for="chapter in chapterList"
       :key="chapter.id"
@@ -102,6 +117,7 @@ function chapterState(id: string): 'past' | 'active' | 'upcoming' {
 <style scoped>
 .chapter-switcher {
   display: flex;
+  align-items: center;
   gap: var(--space-3);
   overflow-x: auto;
   padding: var(--space-1) var(--space-1) var(--space-2);
@@ -173,13 +189,29 @@ function chapterState(id: string): 'past' | 'active' | 'upcoming' {
 .chapter-ordinal {
   display: grid;
   place-items: center;
-  width: 1.75rem;
-  height: 1.75rem;
+  width: calc(var(--control-md) - var(--space-4));
+  height: calc(var(--control-md) - var(--space-4));
   border-radius: 50%;
   background: var(--paper-2);
   font-family: var(--font-mono);
   font-size: var(--text-caption);
   color: var(--ink-2);
+}
+
+.chapter-progress {
+  position: sticky;
+  left: 0;
+  z-index: 2;
+  flex: 0 0 auto;
+  align-self: center;
+  padding: var(--space-1) var(--space-3);
+  border-radius: 999px;
+  background: var(--paper-1);
+  border: 1px solid var(--line-strong);
+  color: var(--ink-1);
+  font-family: var(--font-mono);
+  font-size: var(--text-caption);
+  white-space: nowrap;
 }
 
 .chapter-switcher button[data-active='true'] .chapter-ordinal {
