@@ -1,14 +1,14 @@
-import { PlaywrightAiFixture, type PlayWrightAiFixtureType } from '@midscene/web/playwright'
-import { test as base } from '@playwright/test'
+import {
+  createAiFixture,
+  expect,
+  type PlayWrightAiFixtureType,
+  type ExtendedAiFixtureType,
+} from '@lhvison/ai-e2e-base'
 
-// 把 Midscene 的 AI 能力挂到 Playwright 的 test 上。
-// 这样每个测试里就能直接解构出 ai / aiAssert / aiInput / aiTap / agentForPage 等方法。
-// cache 打开后，AI 的规划与元素定位会被缓存，重复跑接近原生速度；
-// 但 aiAssert / aiQuery 的判断结果永远不缓存，每次都真判。
-export const test = base.extend<PlayWrightAiFixtureType>(
-  PlaywrightAiFixture({
-    cache: { id: 'user-admin' },
-  }),
-)
+// 创建支持 CDP 零内核直连、长效登录态持久化、深层路由直达与 Midscene AI 视觉能力的测试 Fixture
+export const test = createAiFixture({
+  cacheId: 'default-suite',
+})
 
-export { expect } from '@playwright/test'
+export { expect }
+export type { PlayWrightAiFixtureType, ExtendedAiFixtureType }

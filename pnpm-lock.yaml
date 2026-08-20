@@ -242,15 +242,9 @@ importers:
         specifier: ^5.2.0
         version: 5.2.0(@rspack/core@2.1.10(@swc/helpers@0.5.23))(@voidzero-dev/vite-plus-core@0.2.9(@types/node@24.13.3)(jiti@2.7.0)(typescript@6.0.3)(yaml@2.9.0))(pinia@4.0.3(@vue/devtools-api@8.2.1)(typescript@6.0.3)(vue@3.6.0-rc.4(typescript@6.0.3)))(rolldown@1.2.4)(vue@3.6.0-rc.4(typescript@6.0.3))
     devDependencies:
-      '@axe-core/playwright':
-        specifier: ^4.13.0
-        version: 4.13.0(playwright-core@1.62.1)
-      '@midscene/cli':
-        specifier: ^1.10.12
-        version: 1.10.12(@computer-use/nut-js@4.2.0(debug@4.4.3(supports-color@8.1.1)))(@playwright/test@1.62.1)(@types/node@24.13.3)(debug@4.4.3(supports-color@8.1.1))(jsdom@29.1.1)(playwright@1.62.1)(supports-color@8.1.1)(typescript@6.0.3)(ws@8.21.3)
-      '@midscene/web':
-        specifier: ^1.10.12
-        version: 1.10.12(@playwright/test@1.62.1)(debug@4.4.3(supports-color@8.1.1))(playwright@1.62.1)(puppeteer@24.6.0(supports-color@8.1.1)(typescript@6.0.3))(supports-color@8.1.1)
+      '@lhvison/ai-e2e-base':
+        specifier: file:/home/miku/dsh/ai-e2e-base
+        version: file:../ai-e2e-base(@computer-use/nut-js@4.2.0(debug@4.4.3(supports-color@8.1.1)))(@types/node@24.13.3)(debug@4.4.3(supports-color@8.1.1))(jsdom@29.1.1)(playwright@1.62.1)(puppeteer@24.6.0(supports-color@8.1.1)(typescript@6.0.3))(supports-color@8.1.1)(typescript@6.0.3)(ws@8.21.3)
       '@playwright/test':
         specifier: ^1.62.1
         version: 1.62.1
@@ -342,11 +336,6 @@ packages:
 
   '@asamuzakjp/nwsapi@2.3.9':
     resolution: {integrity: sha512-n8GuYSrI9bF7FFZ/SjhwevlHc8xaVlb/7HmHelnc/PZXBD2ZR49NnN9sMMuDdEGPeeRQ5d0hqlSlEpgCX3Wl0Q==}
-
-  '@axe-core/playwright@4.13.0':
-    resolution: {integrity: sha512-6YLx+kxXu5GJceG4ozFg+33a2EMTdjYwWGloJ3sb9Kta5pp+ZNS53uxGVog5JetIY8s++P5UrtX+cri+u0VAVg==}
-    peerDependencies:
-      playwright-core: '>= 1.0.0'
 
   '@babel/code-frame@7.29.7':
     resolution: {integrity: sha512-Aup7aUOfpbAUg2ROOJN6Iw5f9DMBlzu0mIkm/malLQFN/YQgO48wCj0Kxa3sEHJvPVFg7siR+qRInwXd2qhQKw==}
@@ -1315,6 +1304,10 @@ packages:
 
   '@jridgewell/trace-mapping@0.3.31':
     resolution: {integrity: sha512-zzNR+SdQSDJzc8joaeP8QQoCQr8NuYx2dIIytl1QeBEZHJ9uW6hebsrYgbz8hJwUQao3TWCMtmfV8Nu1twOLAw==}
+
+  '@lhvison/ai-e2e-base@file:../ai-e2e-base':
+    resolution: {directory: ../ai-e2e-base, type: directory}
+    hasBin: true
 
   '@midscene/android@1.10.12':
     resolution: {integrity: sha512-k4BBkrVAQx9w43u0HFqWBKSpztZxYiqayZ+uIvd/lG4MABZI2bwmesbk8kFvH8/nWxn39uAkzEHIiFDnFBqzMg==}
@@ -2658,10 +2651,6 @@ packages:
 
   asynckit@0.4.0:
     resolution: {integrity: sha512-Oei9OH4tRh0YqU3GxhX79dM/mwVgvbZJaSNaRk+bshkj0S5cfHcgYakreBjrHwatXKbz+IoIdYLxrKim2MjW0Q==}
-
-  axe-core@4.13.0:
-    resolution: {integrity: sha512-UzGt8zg7Ny8djbYMhxl2zuEevVa7r2gJjYY5Lwr1xM7+XU2nd6CkIWFTVcCIbAP63vSz71NaVyyuSk9lHKcy0A==}
-    engines: {node: '>=4'}
 
   axios@1.7.9:
     resolution: {integrity: sha512-LhLcE7Hbiryz8oMDdDptSrWowmB4Bl6RCt6sIJKpRB4XtVf0iEgewX3au/pJqm+Py1kCASkb/FFKjxQaLtxJvw==}
@@ -5630,11 +5619,6 @@ snapshots:
 
   '@asamuzakjp/nwsapi@2.3.9': {}
 
-  '@axe-core/playwright@4.13.0(playwright-core@1.62.1)':
-    dependencies:
-      axe-core: 4.13.0
-      playwright-core: 1.62.1
-
   '@babel/code-frame@7.29.7':
     dependencies:
       '@babel/helper-validator-identifier': 7.29.7
@@ -6604,6 +6588,31 @@ snapshots:
     dependencies:
       '@jridgewell/resolve-uri': 3.1.2
       '@jridgewell/sourcemap-codec': 1.4.14
+
+  '@lhvison/ai-e2e-base@file:../ai-e2e-base(@computer-use/nut-js@4.2.0(debug@4.4.3(supports-color@8.1.1)))(@types/node@24.13.3)(debug@4.4.3(supports-color@8.1.1))(jsdom@29.1.1)(playwright@1.62.1)(puppeteer@24.6.0(supports-color@8.1.1)(typescript@6.0.3))(supports-color@8.1.1)(typescript@6.0.3)(ws@8.21.3)':
+    dependencies:
+      '@midscene/cli': 1.10.12(@computer-use/nut-js@4.2.0(debug@4.4.3(supports-color@8.1.1)))(@playwright/test@1.62.1)(@types/node@24.13.3)(debug@4.4.3(supports-color@8.1.1))(jsdom@29.1.1)(playwright@1.62.1)(supports-color@8.1.1)(typescript@6.0.3)(ws@8.21.3)
+      '@midscene/web': 1.10.12(@playwright/test@1.62.1)(debug@4.4.3(supports-color@8.1.1))(playwright@1.62.1)(puppeteer@24.6.0(supports-color@8.1.1)(typescript@6.0.3))(supports-color@8.1.1)
+      '@playwright/test': 1.62.1
+      dotenv: 16.4.7
+    transitivePeerDependencies:
+      - '@computer-use/nut-js'
+      - '@module-federation/runtime-tools'
+      - '@types/node'
+      - bare-abort-controller
+      - bare-buffer
+      - bufferutil
+      - core-js
+      - debug
+      - happy-dom
+      - jsdom
+      - playwright
+      - puppeteer
+      - react-native-b4a
+      - supports-color
+      - typescript
+      - utf-8-validate
+      - ws
 
   '@midscene/android@1.10.12(debug@4.4.3(supports-color@8.1.1))(supports-color@8.1.1)(ws@8.21.3)':
     dependencies:
@@ -7880,8 +7889,6 @@ snapshots:
       source-map-support: 0.5.21
 
   asynckit@0.4.0: {}
-
-  axe-core@4.13.0: {}
 
   axios@1.7.9(debug@4.4.3(supports-color@8.1.1)):
     dependencies:

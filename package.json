@@ -17,8 +17,11 @@
     "lint:eslint": "vp lint . --fix",
     "format": "vp fmt src/",
     "prepare": "vp config",
-    "test:e2e": "playwright test",
-    "test:yaml": "midscene ./e2e/yaml/panel-not-covered.yaml"
+    "ai-e2e:test": "playwright test",
+    "ai-e2e:doctor": "ai-e2e doctor",
+    "ai-e2e:chrome": "ai-e2e chrome",
+    "ai-e2e:platform": "ai-e2e platform",
+    "ai-e2e:yaml": "ai-e2e yaml"
   },
   "dependencies": {
     "@vueuse/core": "^14.4.0",
@@ -27,9 +30,7 @@
     "vue-router": "^5.2.0"
   },
   "devDependencies": {
-    "@axe-core/playwright": "^4.13.0",
-    "@midscene/cli": "^1.10.12",
-    "@midscene/web": "^1.10.12",
+    "@lhvison/ai-e2e-base": "file:/home/miku/dsh/ai-e2e-base",
     "@playwright/test": "^1.62.1",
     "@tsconfig/node24": "^24.0.4",
     "@types/jsdom": "^28.0.3",
