@@ -242,7 +242,7 @@ importers:
         specifier: ^5.2.0
         version: 5.2.0(@rspack/core@2.1.10(@swc/helpers@0.5.23))(@voidzero-dev/vite-plus-core@0.2.9(@types/node@24.13.3)(jiti@2.7.0)(typescript@6.0.3)(yaml@2.9.0))(pinia@4.0.3(@vue/devtools-api@8.2.1)(typescript@6.0.3)(vue@3.6.0-rc.4(typescript@6.0.3)))(rolldown@1.2.4)(vue@3.6.0-rc.4(typescript@6.0.3))
     devDependencies:
-      '@lhvison/ai-e2e-base':
+      '@lhvision/ai-e2e-base':
         specifier: file:/home/miku/dsh/ai-e2e-base
         version: file:../ai-e2e-base(@computer-use/nut-js@4.2.0(debug@4.4.3(supports-color@8.1.1)))(@types/node@24.13.3)(debug@4.4.3(supports-color@8.1.1))(jsdom@29.1.1)(playwright@1.62.1)(puppeteer@24.6.0(supports-color@8.1.1)(typescript@6.0.3))(supports-color@8.1.1)(typescript@6.0.3)(ws@8.21.3)
       '@playwright/test':
@@ -257,6 +257,9 @@ importers:
       '@types/node':
         specifier: ^24.13.3
         version: 24.13.3
+      '@vitejs/plugin-basic-ssl':
+        specifier: ^2.3.0
+        version: 2.3.0(@voidzero-dev/vite-plus-core@0.2.9(@types/node@24.13.3)(jiti@2.7.0)(typescript@6.0.3)(yaml@2.9.0))
       '@vitejs/plugin-vue':
         specifier: ^6.0.8
         version: 6.0.8(@voidzero-dev/vite-plus-core@0.2.9(@types/node@24.13.3)(jiti@2.7.0)(typescript@6.0.3)(yaml@2.9.0))(vue@3.6.0-rc.4(typescript@6.0.3))
@@ -1305,7 +1308,7 @@ packages:
   '@jridgewell/trace-mapping@0.3.31':
     resolution: {integrity: sha512-zzNR+SdQSDJzc8joaeP8QQoCQr8NuYx2dIIytl1QeBEZHJ9uW6hebsrYgbz8hJwUQao3TWCMtmfV8Nu1twOLAw==}
 
-  '@lhvison/ai-e2e-base@file:../ai-e2e-base':
+  '@lhvision/ai-e2e-base@file:../ai-e2e-base':
     resolution: {directory: ../ai-e2e-base, type: directory}
     hasBin: true
 
@@ -2074,6 +2077,12 @@ packages:
 
   '@ui-tars/shared@1.2.3':
     resolution: {integrity: sha512-6FgmBq21M8zB1OemH24+YbMX/H8l/2e2FlBcrVmvc2UqRPBy69UCzZ4dQCe8JIwA4FstHDCmv6a6CrZ/NeNa3g==}
+
+  '@vitejs/plugin-basic-ssl@2.3.0':
+    resolution: {integrity: sha512-bdyo8rB3NnQbikdMpHaML9Z1OZPBu6fFOBo+OtxsBlvMJtysWskmBcnbIDhUqgC8tcxNv/a+BcV5U+2nQMm1OQ==}
+    engines: {node: ^18.0.0 || ^20.0.0 || >=22.0.0}
+    peerDependencies:
+      vite: ^6.0.0 || ^7.0.0 || ^8.0.0
 
   '@vitejs/plugin-vue-jsx@5.1.6':
     resolution: {integrity: sha512-YXvi4as2clxt6DFw5+a0tTA97ntiQXm/raR8ofNj3aNwwdlVGTiG2gp7EvfZW17P50acL/9bP0ccF4XnqNmlgA==}
@@ -6589,7 +6598,7 @@ snapshots:
       '@jridgewell/resolve-uri': 3.1.2
       '@jridgewell/sourcemap-codec': 1.4.14
 
-  '@lhvison/ai-e2e-base@file:../ai-e2e-base(@computer-use/nut-js@4.2.0(debug@4.4.3(supports-color@8.1.1)))(@types/node@24.13.3)(debug@4.4.3(supports-color@8.1.1))(jsdom@29.1.1)(playwright@1.62.1)(puppeteer@24.6.0(supports-color@8.1.1)(typescript@6.0.3))(supports-color@8.1.1)(typescript@6.0.3)(ws@8.21.3)':
+  '@lhvision/ai-e2e-base@file:../ai-e2e-base(@computer-use/nut-js@4.2.0(debug@4.4.3(supports-color@8.1.1)))(@types/node@24.13.3)(debug@4.4.3(supports-color@8.1.1))(jsdom@29.1.1)(playwright@1.62.1)(puppeteer@24.6.0(supports-color@8.1.1)(typescript@6.0.3))(supports-color@8.1.1)(typescript@6.0.3)(ws@8.21.3)':
     dependencies:
       '@midscene/cli': 1.10.12(@computer-use/nut-js@4.2.0(debug@4.4.3(supports-color@8.1.1)))(@playwright/test@1.62.1)(@types/node@24.13.3)(debug@4.4.3(supports-color@8.1.1))(jsdom@29.1.1)(playwright@1.62.1)(supports-color@8.1.1)(typescript@6.0.3)(ws@8.21.3)
       '@midscene/web': 1.10.12(@playwright/test@1.62.1)(debug@4.4.3(supports-color@8.1.1))(playwright@1.62.1)(puppeteer@24.6.0(supports-color@8.1.1)(typescript@6.0.3))(supports-color@8.1.1)
@@ -7297,6 +7306,10 @@ snapshots:
       lodash.isnumber: 3.0.3
 
   '@ui-tars/shared@1.2.3': {}
+
+  '@vitejs/plugin-basic-ssl@2.3.0(@voidzero-dev/vite-plus-core@0.2.9(@types/node@24.13.3)(jiti@2.7.0)(typescript@6.0.3)(yaml@2.9.0))':
+    dependencies:
+      vite: '@voidzero-dev/vite-plus-core@0.2.9(@types/node@24.13.3)(jiti@2.7.0)(typescript@6.0.3)(yaml@2.9.0)'
 
   '@vitejs/plugin-vue-jsx@5.1.6(@voidzero-dev/vite-plus-core@0.2.9(@types/node@24.13.3)(jiti@2.7.0)(typescript@6.0.3)(yaml@2.9.0))(supports-color@8.1.1)(vue@3.6.0-rc.4(typescript@6.0.3))':
     dependencies:

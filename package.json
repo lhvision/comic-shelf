@@ -30,11 +30,12 @@
     "vue-router": "^5.2.0"
   },
   "devDependencies": {
-    "@lhvison/ai-e2e-base": "file:/home/miku/dsh/ai-e2e-base",
+    "@lhvision/ai-e2e-base": "file:/home/miku/dsh/ai-e2e-base",
     "@playwright/test": "^1.62.1",
     "@tsconfig/node24": "^24.0.4",
     "@types/jsdom": "^28.0.3",
     "@types/node": "^24.13.3",
+    "@vitejs/plugin-basic-ssl": "^2.3.0",
     "@vitejs/plugin-vue": "^6.0.8",
     "@vitejs/plugin-vue-jsx": "^5.1.6",
     "@vue/test-utils": "^2.4.11",

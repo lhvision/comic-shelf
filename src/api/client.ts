@@ -1,3 +1,4 @@
+import { useMemoize } from '@vueuse/core'
 import type {
   CacheJob,
   CacheProgress,
@@ -34,31 +35,45 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   return (await response.json()) as T
 }
 
+const memoizedDetail = useMemoize(
+  (source: string, sourceId: string) => request<ComicDetail>(`/library/${source}/${sourceId}`),
+  { getKey: (source, sourceId) => `${source}/${sourceId}` },
+)
+
+const memoizedProviders = useMemoize(() => request<ProviderInfo[]>('/providers'))
+
 export const api = {
   health: () => request<{ ok: boolean }>('/health'),
-  providers: () => request<ProviderInfo[]>('/providers'),
+  providers: memoizedProviders,
   library: () => request<LibrarySummary[]>('/library'),
-  detail: (source: string, sourceId: string) =>
-    request<ComicDetail>(`/library/${source}/${sourceId}`),
-  importComic: (payload: ImportRequest) =>
-    request<ImportResult>('/library/import', {
+  detail: memoizedDetail,
+  importComic: async (payload: ImportRequest) => {
+    memoizedDetail.clear()
+    return request<ImportResult>('/library/import', {
       method: 'POST',
       body: JSON.stringify(payload),
-    }),
-  deleteComic: (source: string, sourceId: string) =>
-    request<{ ok: boolean }>(`/library/${source}/${sourceId}`, {
+    })
+  },
+  deleteComic: async (source: string, sourceId: string) => {
+    memoizedDetail.delete(source, sourceId)
+    return request<{ ok: boolean }>(`/library/${source}/${sourceId}`, {
       method: 'DELETE',
-    }),
-  setFavorite: (source: string, sourceId: string, favorite: boolean) =>
-    request<{ ok: boolean; favorite: boolean }>(`/library/${source}/${sourceId}/favorite`, {
+    })
+  },
+  setFavorite: async (source: string, sourceId: string, favorite: boolean) => {
+    memoizedDetail.delete(source, sourceId)
+    return request<{ ok: boolean; favorite: boolean }>(`/library/${source}/${sourceId}/favorite`, {
       method: 'PATCH',
       body: JSON.stringify({ favorite }),
-    }),
-  cacheAll: (source: string, sourceId: string) =>
-    request<CacheProgress>(`/library/${source}/${sourceId}/cache`, {
+    })
+  },
+  cacheAll: async (source: string, sourceId: string) => {
+    memoizedDetail.delete(source, sourceId)
+    return request<CacheProgress>(`/library/${source}/${sourceId}/cache`, {
       method: 'POST',
       body: '{}',
-    }),
+    })
+  },
   cacheProgress: (source: string, sourceId: string) =>
     request<CacheProgress>(`/library/${source}/${sourceId}/cache`),
   cacheJob: (source: string, sourceId: string) =>

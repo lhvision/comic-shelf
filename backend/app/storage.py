@@ -49,8 +49,11 @@ class ComicStore:
 
     def __init__(self, root: Path = LIBRARY_DIR) -> None:
         self.root = root
-        self._page_locks: dict[tuple[str, str], threading.Lock] = {}
+        self._page_locks: dict[tuple[str, str, int] | tuple[str, str], threading.RLock] = {}
         self._locks_guard = threading.Lock()
+        self._meta_cache: dict[tuple[str, str], tuple[float, ComicMeta]] = {}
+        self._fetched_cache: dict[tuple[str, str], tuple[float, float, FetchedComic]] = {}
+        self._cache_guard = threading.Lock()
 
     # ------------------------------------------------------------------
     # paths
@@ -107,26 +110,17 @@ class ComicStore:
         return self._chapter_thumb_path(meta, page)
 
     def _lock_for(self, source: str, source_id: str) -> threading.RLock:
-        # RLock on purpose: ensure_cover()/ensure_page_thumb() hold the page
-        # lock while calling ensure_page(), which may need to download the page
-        # and therefore acquire the very same lock again. A plain Lock deadlocks
-        # that lazy-access path (details page thumbnails of an un-cached book),
-        # freezing the web threadpool.
         with self._locks_guard:
             return self._page_locks.setdefault((source, source_id), threading.RLock())
 
     def _lock_for_page(self, source: str, source_id: str, index: int) -> threading.RLock:
-        """Per-page re-entrant lock (not per-comic).
-
-        The detail page fires many concurrent thumbnail/page requests for the
-        same comic. A single per-comic lock made every request queue behind the
-        one currently downloading, quickly exhausting the web threadpool and
-        making the whole server appear frozen. A per-page lock lets different
-        pages download in parallel while still guarding each file against
-        duplicate concurrent writes.
-        """
         with self._locks_guard:
             return self._page_locks.setdefault((source, source_id, index), threading.RLock())
+
+    def _invalidate_cache(self, source: str, source_id: str) -> None:
+        with self._cache_guard:
+            self._meta_cache.pop((source, source_id), None)
+            self._fetched_cache.pop((source, source_id), None)
 
     # ------------------------------------------------------------------
     # persistence
@@ -134,16 +128,12 @@ class ComicStore:
     def save_fetched(self, fetched: FetchedComic, refresh: bool = False) -> ComicMeta:
         meta = fetched.meta
 
-        # Loading the old fetched bundle first also migrates v1 raw/scrambled
-        # page files to v2 decoded files. This must happen before remote.json
-        # is overwritten, otherwise the migration marker is lost.
         existing_bundle = self.load_fetched(meta.source, meta.source_id)
         existing = existing_bundle.meta if existing_bundle is not None else None
 
         if refresh and existing is not None:
             meta.imported_at = existing.imported_at or meta.imported_at
             meta.favorite = existing.favorite
-            # Re-apply cache status; the pages are still on disk.
             old_by_index = {p.index: p for p in existing.pages}
             for page in meta.pages:
                 page.cached = (
@@ -160,30 +150,44 @@ class ComicStore:
                 "remote_pages": [p.model_dump() for p in fetched.remote_pages],
             },
         )
+        self._invalidate_cache(meta.source, meta.source_id)
         return meta
 
-    def load_meta(self, source: str, source_id: str) -> ComicMeta | None:
+    def load_meta(self, source: str, source_id: str, verify_cache: bool = False) -> ComicMeta | None:
         path = self.album_path(source, source_id)
         if not path.exists():
             return None
+
+        try:
+            mtime = path.stat().st_mtime
+        except Exception:
+            return None
+
+        if not verify_cache:
+            with self._cache_guard:
+                cached = self._meta_cache.get((source, source_id))
+                if cached is not None and cached[0] == mtime:
+                    return cached[1]
+
         try:
             meta = ComicMeta.model_validate(json.loads(path.read_text(encoding="utf-8")))
         except Exception:
             return None
 
-        # The filesystem is the source of truth for page cache state. This also
-        # repairs flags after external tools wrote files directly.
-        changed = False
-        for page in meta.pages:
-            actual = self._chapter_page_path(meta, page).exists()
-            if page.cached != actual:
-                page.cached = actual
-                changed = True
+        if verify_cache:
+            changed = False
+            for page in meta.pages:
+                actual = self._chapter_page_path(meta, page).exists()
+                if page.cached != actual:
+                    page.cached = actual
+                    changed = True
+            if changed:
+                _write_json_atomic(path, meta.model_dump())
+                try:
+                    mtime = path.stat().st_mtime
+                except Exception:
+                    pass
 
-        # Back-fill chapters for old buggy multi-chapter caches (imported during
-        # the window where pages got `chapter` but the Chapter list wasn't
-        # persisted to ComicMeta.chapters). raw.chapters already has the exact
-        # ids/page_count/start, so this is a pure local repair — no re-download.
         if (
             not meta.chapters
             and meta.pages
@@ -197,25 +201,41 @@ class ComicStore:
                         chapter = Chapter.model_validate(item)
                     except Exception:
                         continue
-                    # 旧数据把整段空白/换行塞进了标题，压平后空标题由前端回落「第 N 話」。
                     chapter.title = " ".join(str(chapter.title).split())
                     chapter.index = ordinal
                     rebuilt.append(chapter)
                 if rebuilt:
                     meta.chapters = rebuilt
-                    changed = True
+                    _write_json_atomic(path, meta.model_dump())
+                    try:
+                        mtime = path.stat().st_mtime
+                    except Exception:
+                        pass
 
-        if changed:
-            _write_json_atomic(path, meta.model_dump())
+        with self._cache_guard:
+            self._meta_cache[(source, source_id)] = (mtime, meta)
         return meta
 
-    def load_fetched(self, source: str, source_id: str) -> FetchedComic | None:
-        meta = self.load_meta(source, source_id)
+    def load_fetched(self, source: str, source_id: str, verify_cache: bool = False) -> FetchedComic | None:
+        meta = self.load_meta(source, source_id, verify_cache=verify_cache)
         if meta is None:
             return None
 
-        pages: list[RemotePage] = []
         remote_path = self.remote_path(source, source_id)
+        album_path = self.album_path(source, source_id)
+        try:
+            album_mtime = album_path.stat().st_mtime
+            remote_mtime = remote_path.stat().st_mtime if remote_path.exists() else 0.0
+        except Exception:
+            album_mtime, remote_mtime = 0.0, 0.0
+
+        if not verify_cache:
+            with self._cache_guard:
+                cached = self._fetched_cache.get((source, source_id))
+                if cached is not None and cached[0] == album_mtime and cached[1] == remote_mtime:
+                    return cached[2]
+
+        pages: list[RemotePage] = []
         data: dict = {}
         if remote_path.exists():
             try:
@@ -225,7 +245,6 @@ class ComicStore:
                 data = {}
                 pages = []
 
-        # Back-fill the scramble id for caches written by the old v1 provider.
         if pages and any(not page.scramble_id for page in pages):
             scramble_id = str(
                 (meta.raw or {}).get("album", {}).get("scramble_id") or ""
@@ -236,15 +255,24 @@ class ComicStore:
             data["remote_pages"] = [page.model_dump() for page in pages]
             if remote_path.exists():
                 _write_json_atomic(remote_path, data)
+                try:
+                    remote_mtime = remote_path.stat().st_mtime
+                except Exception:
+                    pass
 
         version = int(data.get("decode_version", 1) or 1)
         if version < CURRENT_DECODE_VERSION:
-            # Hold the per-comic lock for the whole migration so concurrent
-            # API calls can't decode the same already-decoded file twice.
             with self._lock_for(source, source_id):
                 self._migrate_decode_v2(meta, pages, remote_path, data)
+                try:
+                    remote_mtime = remote_path.stat().st_mtime
+                except Exception:
+                    pass
 
-        return FetchedComic(meta=meta, remote_pages=pages)
+        fetched = FetchedComic(meta=meta, remote_pages=pages)
+        with self._cache_guard:
+            self._fetched_cache[(source, source_id)] = (album_mtime, remote_mtime, fetched)
+        return fetched
 
     # ------------------------------------------------------------------
     # legacy cache migration: raw scrambled JM images -> decoded images
@@ -328,13 +356,21 @@ class ComicStore:
         data["decode_version"] = CURRENT_DECODE_VERSION
         data.pop("decode_state", None)
         _write_json_atomic(remote_path, data)
+        self._invalidate_cache(meta.source, meta.source_id)
 
     def update_page_cached(self, meta: ComicMeta, index: int, cached: bool) -> None:
         for page in meta.pages:
             if page.index == index:
                 page.cached = cached
                 break
-        _write_json_atomic(self.album_path(meta.source, meta.source_id), meta.model_dump())
+        album_path = self.album_path(meta.source, meta.source_id)
+        _write_json_atomic(album_path, meta.model_dump())
+        try:
+            mtime = album_path.stat().st_mtime
+        except Exception:
+            mtime = 0.0
+        with self._cache_guard:
+            self._meta_cache[(meta.source, meta.source_id)] = (mtime, meta)
 
     # ------------------------------------------------------------------
     # pages and covers
@@ -374,12 +410,7 @@ class ComicStore:
             return target
 
     def cached_page_count(self, meta: ComicMeta) -> int:
-        pages_dir = self.pages_dir(meta.source, meta.source_id)
-        if not pages_dir.exists():
-            return 0
-        # Files live either flat (legacy single-chapter) or under a chapter
-        # subdirectory; count each page by its actual on-disk path.
-        return sum(1 for page in meta.pages if self._chapter_page_path(meta, page).exists())
+        return sum(1 for page in meta.pages if page.cached)
 
     @staticmethod
     def _save_cover(page_path: Path, target: Path) -> None:
@@ -569,6 +600,7 @@ class ComicStore:
 
     def delete(self, source: str, source_id: str) -> bool:
         target = self.comic_dir(source, source_id)
+        self._invalidate_cache(source, source_id)
         if target.exists():
             shutil.rmtree(target)
             return True

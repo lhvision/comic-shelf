@@ -7,9 +7,8 @@
 - `package.json` 的 `devEngines` 固定 pnpm 11.22.0；开发机用 `vp` 管理 Node/pnpm。
 - 本地 `node_modules/.bin` 有 `vp`，`pnpm run dev/build` 与 `vp dev/build` 等价。
 - 日常命令：`vp install / dev / check / test / build / preview`。
-- 已提供容器化文件：`docker-compose.yml`、`docker/frontend.Dockerfile`、
-  `docker/nginx.conf`、`backend/Dockerfile`，说明见 `DEPLOYMENT.md`。
-- 不建议迁 Nuxt：私人本地工具无 SEO/SSR 需求，SPA + FastAPI 更简单；
+- 已提供统一单容器部署：`Dockerfile`、`docker-compose.yml`，说明见 `DEPLOYMENT.md`。
+- 不建议迁 Nuxt：私人本地工具无 SEO/SSR 需求，SPA + FastAPI 单容器更简单；
   Python 后端必须保留（jmcomic 是 Python 库）。
 
 ## 9. 常用命令

@@ -209,18 +209,18 @@ def cache_job(source: str, source_id: str) -> JobInfo:
 
 @app.get("/api/library/{source}/{source_id}/pages/{index}", response_model=PageResponse)
 def page_info(source: str, source_id: str, index: int) -> PageResponse:
-    _require_known_source(source)
-    fetched = store.load_fetched(source, source_id)
-    if fetched is None:
-        raise HTTPException(status_code=404, detail="本子还没有导入本地书库")
-    meta = fetched.meta
+    meta = _require_meta(source, source_id)
     if index < 1 or index > meta.page_count:
         raise HTTPException(status_code=404, detail=f"页 {index} 不存在")
+    page = next((p for p in meta.pages if p.index == index), None)
     return PageResponse(
         index=index,
         url=f"/api/library/{source}/{source_id}/pages/{index}/file",
-        cached=_page_exists(store, meta, index),
+        cached=page.cached if page is not None else False,
     )
+
+
+CACHE_CONTROL_IMMUTABLE = {"Cache-Control": "public, max-age=2592000, immutable"}
 
 
 @app.get("/api/library/{source}/{source_id}/pages/{index}/file")
@@ -228,6 +228,14 @@ def page_file(source: str, source_id: str, index: int) -> FileResponse:
     meta = _require_meta(source, source_id)
     if index < 1 or index > meta.page_count:
         raise HTTPException(status_code=404, detail=f"页 {index} 不存在")
+
+    page_path = store.page_path(meta, index)
+    if page_path.exists() and page_path.stat().st_size > 0:
+        return FileResponse(
+            page_path,
+            media_type=_guess_media_type(page_path.suffix),
+            headers=CACHE_CONTROL_IMMUTABLE,
+        )
 
     fetched = store.load_fetched(source, source_id)
     if fetched is None:
@@ -242,7 +250,7 @@ def page_file(source: str, source_id: str, index: int) -> FileResponse:
     return FileResponse(
         path,
         media_type=_guess_media_type(path.suffix),
-        headers={"Cache-Control": "no-cache"},
+        headers=CACHE_CONTROL_IMMUTABLE,
     )
 
 
@@ -250,12 +258,21 @@ def page_file(source: str, source_id: str, index: int) -> FileResponse:
 def page_thumbnail(source: str, source_id: str, index: int) -> FileResponse:
     """Lightweight JPEG for the detail-page page-index grid."""
     _require_known_source(source)
+    meta = _require_meta(source, source_id)
+    if index < 1 or index > meta.page_count:
+        raise HTTPException(status_code=404, detail=f"页 {index} 不存在")
+
+    thumb_path = store.page_thumb_path(meta, index)
+    if thumb_path.exists() and thumb_path.stat().st_size > 0:
+        return FileResponse(
+            thumb_path,
+            media_type="image/jpeg",
+            headers=CACHE_CONTROL_IMMUTABLE,
+        )
+
     fetched = store.load_fetched(source, source_id)
     if fetched is None:
         raise HTTPException(status_code=404, detail="本子还没有导入本地书库")
-    meta = fetched.meta
-    if index < 1 or index > meta.page_count:
-        raise HTTPException(status_code=404, detail=f"页 {index} 不存在")
 
     try:
         path = store.ensure_page_thumb(meta, fetched, index)
@@ -266,7 +283,7 @@ def page_thumbnail(source: str, source_id: str, index: int) -> FileResponse:
     return FileResponse(
         path,
         media_type="image/jpeg",
-        headers={"Cache-Control": "no-cache"},
+        headers=CACHE_CONTROL_IMMUTABLE,
     )
 
 
@@ -275,6 +292,14 @@ def cover_file(source: str, source_id: str, index: int) -> FileResponse:
     meta = _require_meta(source, source_id)
     if index < 1 or index > meta.cover_count or index > meta.page_count:
         raise HTTPException(status_code=404, detail=f"封面 {index} 不存在")
+
+    cover_path = store.cover_path(meta, index)
+    if cover_path.exists() and cover_path.stat().st_size > 0:
+        return FileResponse(
+            cover_path,
+            media_type="image/jpeg",
+            headers=CACHE_CONTROL_IMMUTABLE,
+        )
 
     fetched = store.load_fetched(source, source_id)
     if fetched is None:
@@ -289,7 +314,7 @@ def cover_file(source: str, source_id: str, index: int) -> FileResponse:
     return FileResponse(
         path,
         media_type="image/jpeg",
-        headers={"Cache-Control": "no-cache"},
+        headers=CACHE_CONTROL_IMMUTABLE,
     )
 
 
@@ -300,6 +325,14 @@ def chapter_cover(source: str, source_id: str, chapter_id: str) -> FileResponse:
     chapter = next((c for c in meta.chapters if c.id == chapter_id), None)
     if chapter is None:
         raise HTTPException(status_code=404, detail="没有这个章节")
+
+    chap_cover_path = store.chapter_cover_path(meta, chapter)
+    if chap_cover_path.exists() and chap_cover_path.stat().st_size > 0:
+        return FileResponse(
+            chap_cover_path,
+            media_type="image/jpeg",
+            headers=CACHE_CONTROL_IMMUTABLE,
+        )
 
     fetched = store.load_fetched(source, source_id)
     if fetched is None:
@@ -314,7 +347,7 @@ def chapter_cover(source: str, source_id: str, chapter_id: str) -> FileResponse:
     return FileResponse(
         path,
         media_type="image/jpeg",
-        headers={"Cache-Control": "no-cache"},
+        headers=CACHE_CONTROL_IMMUTABLE,
     )
 
 
@@ -358,11 +391,6 @@ def _require_meta(source: str, source_id: str):
     return meta
 
 
-def _page_exists(store: ComicStore, meta, index: int) -> bool:
-    page = next((p for p in meta.pages if p.index == index), None)
-    return page is not None and (store.pages_dir(meta.source, meta.source_id) / page.file).exists()
-
-
 def _guess_media_type(suffix: str) -> str:
     return {
         ".webp": "image/webp",
@@ -372,3 +400,27 @@ def _guess_media_type(suffix: str) -> str:
         ".gif": "image/gif",
         ".avif": "image/avif",
     }.get(suffix.lower(), "application/octet-stream")
+
+
+# ----------------------------------------------------------------------
+# SPA Static file mounting (All-in-one / NAS single-container deployment)
+# ----------------------------------------------------------------------
+import os
+from pathlib import Path
+
+_DIST_DIR = Path(
+    os.getenv(
+        "COMIC_SHELF_STATIC_DIR",
+        str(Path(__file__).resolve().parents[2] / "dist"),
+    )
+)
+
+if _DIST_DIR.exists() and (_DIST_DIR / "index.html").exists():
+    from fastapi.staticfiles import StaticFiles
+
+    app.mount(
+        "/",
+        StaticFiles(directory=str(_DIST_DIR), html=True),
+        name="spa",
+    )
+

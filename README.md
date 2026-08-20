@@ -186,31 +186,31 @@ JM 的 HTML 页面包含你列的全部字段；本项目首次导入会抓取 `
 “上传者”是从 HTML 的 `上传者：` 字段解析的，API 端没有该字段。
 观看 / 喜欢保存为站内展示值（如 `221K`、`13K`）。
 
-## Docker 部署
+## Docker & TrueNAS 部署（All-in-One 单容器，免 Nginx）
 
-已提供：
+纸间支持 **All-in-One 单容器部署**：FastAPI 后端内置托管 Vue 3 SPA 前端与静态资源，单个容器、单个端口（8000）、无需配置 Nginx，非常适合 **TrueNAS Scale / Unraid / 群晖 / 树莓派 / 标准 Docker** 环境。
 
-```text
-docker-compose.yml
-docker/frontend.Dockerfile
-docker/nginx.conf
-backend/Dockerfile
-DEPLOYMENT.md
-```
+### 方式 1：Docker Compose 一键启动
 
 ```bash
 docker compose up -d --build
-# 打开 http://127.0.0.1:8080
+# 浏览器打开 http://127.0.0.1:8000
 ```
 
-漫画数据挂载在 `./backend/data`，容器重建不会丢失。
+### 方式 2：TrueNAS / Docker CLI 单容器运行
 
-镜像体积优化点：
+```bash
+docker build -t paper-room .
 
-- 前端构建层使用 `node:24-alpine`，但**不会进入最终镜像**；
-- 最终前端镜像使用 `nginx:1.27-alpine-slim`，只包含 nginx + dist；
-- 后端使用 `python:3.12-slim`，pip 全部 `--no-cache-dir`；
-- `.dockerignore` 排除了 `node_modules / dist / backend/data`。
+docker run -d \
+  --name paper-room \
+  -p 8000:8000 \
+  -v ./backend/data:/app/data \
+  --restart unless-stopped \
+  paper-room
+```
+
+漫画数据与元数据持久化挂载在宿主机 `./backend/data`（或 NAS 存储池），容器升级重建数据不丢失。
 
 ## 版权提示
 

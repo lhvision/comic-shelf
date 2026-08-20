@@ -127,8 +127,6 @@ JmImageTool.decode_and_save(num, source_image, save_path)
 | `backend/app/providers/registry.py` | `{"jm": JMProvider()}`                                                                                 |
 | `backend/app/config.py`             | 数据目录、封面尺寸、预缓存上限                                                                         |
 
-### API 摘要
-
 - `GET /api/library`（`q` 也能命中章节标题，T11）
 - `POST /api/library/import` `{id, source, prefetch_covers, prefetch_all, refresh}`
   （`refresh=true` 走增量，章节未变则复用旧 remote，T12）
@@ -142,4 +140,4 @@ JmImageTool.decode_and_save(num, source_image, save_path)
 - `POST /api/library/{source}/{id}/cache`
 - `DELETE /api/library/{source}/{id}`
 
-页面 / 封面响应带 `Cache-Control: no-cache`，防止浏览器缓存旧图或乱图。
+页面 / 封面响应带 `Cache-Control: public, max-age=2592000, immutable`（30 天浏览器长效强缓存），配合 `_meta_cache` 内存二级缓存与 Fast-Path 直通，实现多章节和二次浏览秒开。

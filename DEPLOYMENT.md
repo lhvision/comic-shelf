@@ -1,53 +1,55 @@
-# 纸间部署规划（Docker）
+# 纸间部署规划（Docker & TrueNAS / NAS）
 
-当前项目：Vite+（Vite 8 / vite-plus 0.2.9）+ Vue 3 SPA + FastAPI + jmcomic。
-项目已完成 `vp migrate`，Docker 前端镜像也按 pnpm 11 + vite-plus 本地 bin 构建。
-这个组合可以直接容器化，不需要迁移 Nuxt。
+当前项目：Vite+（Vite 8 / vite-plus）+ Vue 3 SPA + FastAPI + jmcomic。
 
-## 推荐部署形态
+支持 **All-in-One 单容器一键部署**（无需 Nginx，前后端由 FastAPI 统一在单个端口托管），非常适合 **TrueNAS Scale / Unraid / 群晖 NAS / 标准 Docker** 环境。
+
+## 1. 推荐部署形态（All-in-One 单容器，免 Nginx）
 
 ```text
 Browser
-  │ :8080
+  │ :8000
   ▼
-nginx (frontend container)
-  ├── /            → Vue dist 静态文件
-  └── /api/*       → FastAPI backend:8000
-                       │
-                       ▼
-                  ./backend/data volume（本地漫画缓存）
+Paper Room (Single Container)
+  ├── /            → Vue 3 SPA 静态页面 (dist)
+  ├── /api/*       → FastAPI 后端接口
+  └── /app/data    → 持久化数据目录（本地漫画缓存、元数据）
 ```
 
-- 前端：nginx 提供静态文件 + `/api` 反向代理。
-  构建阶段用 `node:24-alpine + libstdc++`，最终镜像用 `nginx:1.27-alpine-slim`；
-  构建层不会进入最终镜像，最终只包含 nginx + dist。
-- 后端：FastAPI 进程，数据目录挂载到宿主机 `backend/data`，删除容器不丢漫画。
-  后端使用 `python:3.12-slim` 而不是 alpine，因为 jmcomic 依赖的
-  curl-cffi / Pillow / pycryptodome 在 glibc 下更可靠。
-- 为什么不用 Nuxt：这是私人本地工具，没有 SEO/首屏 SSR 需求；SPA + API 更简单，
-  出问题也更好排查。后端必须保留 Python/FastAPI，因为 jmcomic 是 Python 库。
+- **单容器、单端口**：单个 Docker 容器直接运行 FastAPI + 静态前端，省去配置 Nginx 反向代理和双容器网络的复杂性。
+- **TrueNAS / NAS 友好**：只需映射一个端口（8000）和一个持久化卷（`/app/data`）。
+- **极速响应**：多级内存元数据缓存 + 本地已缓存文件零锁直通 + HTTP Immutable 缓存头。
 
-## 启动
+## 2. 启动方式
+
+### 方式 A：Docker Compose 一键启动
 
 ```bash
-cd /home/miku/dsh/comic-shelf
-
-# 构建并启动
 docker compose up -d --build
-
-# 查看状态
-docker compose ps
-
-# 日志
-docker compose logs -f backend
-docker compose logs -f frontend
+# 浏览器打开 http://127.0.0.1:8000
 ```
 
-打开：
+### 方式 B：TrueNAS Scale / Docker CLI 单容器运行
 
-```text
-http://127.0.0.1:8080
+```bash
+# 构建镜像
+docker build -t paper-room .
+
+# 运行容器
+docker run -d \
+  --name paper-room \
+  -p 8000:8000 \
+  -v /mnt/tank/comics:/app/data \
+  --restart unless-stopped \
+  paper-room
 ```
+
+## 镜像体积与构建控制
+
+纸间采用 **多阶段构建（Multi-stage Build）** 控制镜像体积：
+
+- **Node 编译阶段（丢弃）**：使用超轻量 `node:22-alpine` 仅用于执行前端打包（`pnpm build`），**Node.js、pnpm 及庞大的 `node_modules` 均不会打包进最终镜像**。
+- **最终运行镜像**：仅基于 `python:3.12-slim` + pip 无缓存依赖 + 约 2MB 的静态页面成品（`dist`），镜像小巧干净，NAS 拉取与部署极为轻快。
 
 ## 持久化
 
