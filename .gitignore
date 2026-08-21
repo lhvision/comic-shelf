@@ -66,3 +66,6 @@ platform/data/
 
 # runtime persisted settings
 backend/data/settings.json
+
+# AI E2E
+runs.json

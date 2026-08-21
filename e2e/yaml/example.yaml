@@ -1,0 +1,11 @@
+# Midscene YAML 自动化脚本示例
+# 运行命令: ai-e2e yaml <yaml文件路径>
+target:
+  url: https://www.bing.com
+
+tasks:
+  - name: 搜索并验证
+    flow:
+      - ai: 在搜索框中输入 "Midscene.js" 并回车
+      - sleep: 2000
+      - aiAssert: 页面上展示了关于 Midscene 的搜索结果列表

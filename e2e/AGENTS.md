@@ -4,7 +4,7 @@
 
 ## 🤖 核心闭环与执行约定
 
-1. **交付带 UI 新功能必须补测**：新增或修改核心交互时，必须在 `e2e/` 补齐对应 Midscene 用例，保证测试 100% 全部通过；
+1. **交付带 UI 新功能必须补测**：新增或修改核心交互时，必须在 `e2e/tests/` 补齐对应 Midscene 用例，保证测试 100% 全部通过；
 2. **严禁全量跑测（Focused Execution Only）**：仅执行本次改动的单条用例（使用 `-g "用例名"` 精确匹配）；
 3. **路由秒级直达（Deep-Link First）**：开发深层路由（如 `/detail/123`）时，使用 `gotoRoute('/detail/123')` 直接直达，严禁从首页漫游点击；
 4. **视觉断言优先**：优先使用 `aiAssert` 自然语言断言关键视觉呈现与业务状态，避免维护脆弱的 CSS 选择器；
@@ -25,8 +25,8 @@ test('功能验证与路由直达', async ({ gotoRoute, aiAssert, aiTap, aiInput
 
 ## ⚡ 常用命令速查
 
-- **跑单条用例**：`pnpm exec playwright test e2e/example.spec.ts -g "用例名"`
-- **跑 Midscene YAML 脚本**：`pnpm ai-e2e:yaml e2e/yaml/test.yaml`
+- **跑单条用例**：`pnpm exec playwright test e2e/tests/example.spec.ts -g "用例名"`
+- **跑 Midscene YAML 脚本**：`pnpm ai-e2e:yaml e2e/yaml/example.yaml`
 - **启动 Chrome 调试实例（扫码登录一次）**：`pnpm ai-e2e:chrome`
 - **启动 Web 回归看板**：`pnpm ai-e2e:platform`
 - **环境健康自检**：`pnpm ai-e2e:doctor`
