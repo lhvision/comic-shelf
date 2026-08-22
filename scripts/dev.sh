@@ -33,7 +33,7 @@ if [ -x "$IMSEARCH_BIN" ]; then
     "$IMSEARCH_BIN" -c "$IMSEARCH_DATA" train -c 2048 -i 400 >/dev/null 2>&1 || true
     "$IMSEARCH_BIN" -c "$IMSEARCH_DATA" build >/dev/null 2>&1 || true
   fi
-  "$IMSEARCH_BIN" -c "$IMSEARCH_DATA" server --addr 127.0.0.1:8765 &
+  "$IMSEARCH_BIN" -c "$IMSEARCH_DATA" server --addr 127.0.0.1:8765 --nprobe 32 --count 20 &
   IMSEARCH_PID=$!
   echo "Imsearch Sidecar: http://127.0.0.1:8765 (data: $IMSEARCH_DATA)"
 fi

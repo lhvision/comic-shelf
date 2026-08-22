@@ -14,9 +14,10 @@ from .models import ImageSearchItem
 logger = logging.getLogger("paper_room.imsearch")
 
 # Match library/<source>/<source_id>/covers/<num>.<ext>
+# or library/<source>/<source_id>/covers/chapters/<chapter_id>.<ext>
 # or library/<source>/<source_id>/(pages|thumbs)/.../<num>.<ext>
 _COVER_PATTERN = re.compile(
-    r"library[/\\](?P<source>[^/\\]+)[/\\](?P<source_id>[^/\\]+)[/\\]covers[/\\](?P<num>\d+)\.[a-zA-Z0-9]+$"
+    r"library[/\\](?P<source>[^/\\]+)[/\\](?P<source_id>[^/\\]+)[/\\]covers[/\\](?:chapters[/\\])?(?P<num>\d+)\.[a-zA-Z0-9]+$"
 )
 _PAGE_PATTERN = re.compile(
     r"library[/\\](?P<source>[^/\\]+)[/\\](?P<source_id>[^/\\]+)[/\\](?:pages|thumbs)[/\\](?:[^/\\]+[/\\])*(?P<num>\d+)\.[a-zA-Z0-9]+$"
@@ -85,8 +86,8 @@ def search_imsearch(
                 raw_score, path_str = float(item[0]), str(item[1])
                 # Normalize 0..100 percentage score to 0..1 range
                 score = raw_score / 100.0 if raw_score > 1.0 else raw_score
-                # Ignore weak background noise below 50%
-                if score < 0.50:
+                # Discard low-confidence noise
+                if score < 0.20:
                     continue
                 parsed = parse_imsearch_path(path_str)
                 if parsed:
@@ -110,7 +111,7 @@ def search_imsearch(
         # Margin filter: discard candidates far weaker than the best match
         if results:
             top_score = results[0].score
-            min_threshold = max(0.50, top_score * 0.65)
+            min_threshold = max(0.20, top_score * 0.70)
             results = [r for r in results if r.score >= min_threshold]
 
         return results
