@@ -90,8 +90,18 @@ const { pause: pauseProgressPolling, resume: resumeProgressPolling } = useInterv
     try {
       const progress = await api.cacheProgress(source.value, sourceId.value)
       if (detail.value) {
+        const prevCached = detail.value.cached_pages
         detail.value.cached_pages = progress.cached
         detail.value.cache_complete = progress.complete
+
+        // 缓存进度发生变动或全部完成时，同步最新的页面列表与每页 cached 状态
+        if (progress.cached !== prevCached || progress.complete) {
+          const latest = await api.detail(source.value, sourceId.value)
+          detail.value = latest
+        }
+      }
+      if (progress.complete) {
+        pauseProgressPolling()
       }
     } catch {
       /* the long-running request owns the error path */

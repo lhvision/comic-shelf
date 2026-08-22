@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import { useIntervalFn } from '@vueuse/core'
 import { api } from '@/api/client'
 import { useLastRead } from '@/composables/useLastRead'
 import { useChapterNavigation } from '@/composables/useChapterNavigation'
@@ -75,12 +76,46 @@ async function load() {
       router.replace(`/comic/${source.value}/${sourceId.value}`)
       return
     }
+    const job = await api.cacheJob(source.value, sourceId.value)
+    if (job.running) startProgressPolling()
   } catch (e) {
     toast(e instanceof Error ? e.message : String(e), 'error')
     router.replace(`/comic/${source.value}/${sourceId.value}`)
   } finally {
     loading.value = false
   }
+}
+
+/* 缓存进度轮询：若后台在预缓存/全量缓存，实时同步当前章节每页 cached 状态 */
+const { pause: pauseProgressPolling, resume: resumeProgressPolling } = useIntervalFn(
+  async () => {
+    try {
+      const progress = await api.cacheProgress(source.value, sourceId.value)
+      if (detail.value) {
+        const prevCached = detail.value.cached_pages
+        detail.value.cached_pages = progress.cached
+        detail.value.cache_complete = progress.complete
+
+        if (progress.cached !== prevCached || progress.complete) {
+          const latest = await api.detail(source.value, sourceId.value)
+          detail.value = latest
+          setChapterById(chapterId.value)
+        }
+      }
+      if (progress.complete) {
+        pauseProgressPolling()
+      }
+    } catch {
+      /* transient */
+    }
+  },
+  1200,
+  { immediate: false },
+)
+
+function startProgressPolling() {
+  pauseProgressPolling()
+  resumeProgressPolling()
 }
 
 function goToAlbum() {
