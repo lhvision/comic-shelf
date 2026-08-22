@@ -89,8 +89,9 @@ pnpm ai-e2e:test e2e/tests/<file>.spec.ts -g "用例名"   # 只跑单条用例
 
 ## Agent 执行约定
 
-### 1. 业务与架构底线
+### 1. 业务与架构底线（开发阶段专注编码）
 
+- **专注编码，严禁频繁跑测**：在编写组件、函数与状态逻辑期间，**严禁边改代码边频繁触发慢速 E2E 测试**，防止流程打断、Token 浪费与网络等待。
 - **禁止删数据**：绝对不能删除后端的 `backend/data/` 数据。
 - **改前必读索引**：先根据任务读取“规则文件索引”中的对应文件，再开始改代码；不要只依赖本索引的摘要。
 - **视图轻量化（View Thinness）**：`src/views/*.vue` 仅负责页面布局编排、子组件插槽与路由直达，单文件脚本原则上不超过 150 行。
@@ -98,16 +99,18 @@ pnpm ai-e2e:test e2e/tests/<file>.spec.ts -g "用例名"   # 只跑单条用例
 - **Composable 顶层解构铁律（DESIGN_NOTES §13）**：凡由 Composable 返回的 Ref/Computed，必须在 `<script setup>` 顶层解构后再绑定模板或传给子组件，严禁传包装对象导致模板解包失效。
 - **组件职责与目录边界**：通用基础组件沉淀至 `src/components/` 根目录；业务域专属组件沉淀至对应子目录（如 `detail/`、`library/`、`reader/`）。
 - **视觉准则**：新 UI 组件/重构必读 `docs/agents/ui.md` 并调用 `impeccable` skill；日常与微调遵从 `DESIGN_NOTES.md` 与设计 tokens；阅读器问题先读 `docs/agents/frontend.md`。
-- **静态检查**：完成后至少运行 `vp check`。
-- **单元测试**：测试只跑与本次改动相关的测试文件（如 `vp test src/__tests__/App.spec.ts`），不要全量 `vp test`。
 
-### 2. E2E 测试准则与 AI 协作规范
+### 2. 最终交付验收门禁（Definition of Done）
 
 > 🎯 核心原则：**小步快跑用原生 Playwright，阶段交付/复杂视觉才用 Midscene AI**。避免每次微调代码都跑慢速 AI 断言，防止过度消耗 Token 与卡顿。
 
-- **日常小功能快跑（推荐，零 Token 消耗）**：小功能与常规交互优先使用原生 Playwright API（`expect(locator)...`、`page.click...`），毫秒级完成，不消耗大模型 API 额度。
-- **Midscene AI 视觉验证（仅在必要时使用）**：仅在复杂 UI 排版、Canvas 图表/图片内容断言，或**阶段性交付（Goal 完成节点）**时使用 `aiAssert` / `aiQuery` 进行集中验收。
-- **精准跑测**：单次调试务必使用 `-g "用例名"` 精确执行单条用例，严禁频繁全量跑测。
-- **路由秒级直达（Deep-Link First）**：深层页面直接使用 `gotoRoute('/comic/123')` 直达，无需从首页漫游。
-- **长效登录态复用**：保持 `BROWSER_MODE=auto` 直连 Chrome 9222 端口或复用 Profile，避免重复模拟登录。
-- **视觉自愈**：阶段性回归若有失败，查阅 `midscene_run/report/` 视觉报告定位修复。
+- **静态检查**：代码编写完成后，必须运行 `vp check` 确保 0 lint error / 0 type error。
+- **单元测试**：如有单测，仅跑与本次改动相关的测试文件（如 `vp test src/__tests__/App.spec.ts`）。
+- **🌟 UI / 交互 E2E 终态验证（必做门禁）**：
+  - **执行时机**：**仅在功能代码全部编写完成后的最后一步执行**，作为交付验收门禁；
+  - **必跑单条用例**：凡涉及页面结构、交互按钮、数据渲染或深层路由，必须运行单条对应 E2E 用例确保通过：
+    `pnpm ai-e2e:test e2e/tests/<file>.spec.ts -g "用例名"`
+  - **补齐用例规范**：若该功能尚无用例，必须在 `e2e/tests/` 补齐对应 spec（日常断言优先原生 Playwright，关键视觉使用 `aiAssert`）；
+  - **路由秒级直达**：用例使用 `gotoRoute('/comic/123')` 直接跳转，禁止从首页慢速点击；
+  - **长效登录态复用**：保持 `BROWSER_MODE=auto` 直连 Chrome 9222 端口或复用 Profile，避免重复模拟登录；
+  - **视觉自愈**：阶段性回归若有失败，查阅 `midscene_run/report/` 视觉报告定位修复，直至单条测试全绿。
