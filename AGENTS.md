@@ -90,7 +90,8 @@ pnpm ai-e2e:doctor                       # AI E2E 环境诊断
 pnpm ai-e2e:platform                     # 启动 Web 回归测试看板
 pnpm ai-e2e:chrome                       # 启动 Chrome 调试实例（扫码登录一次持久化）
 pnpm ai-e2e:yaml e2e/yaml/<file>.yaml    # 执行 Midscene YAML 脚本
-pnpm ai-e2e:test e2e/tests/<file>.spec.ts -g "用例名"   # 只跑单条用例
+pnpm ai-e2e:test e2e/tests/<file>.spec.ts -g "用例名"   # 默认无头静默跑单条用例
+pnpm ai-e2e:test e2e/tests/<file>.spec.ts -g "用例名" --headed # 临时以有头窗口运行排查
 ```
 
 ## Agent 执行约定
@@ -114,9 +115,9 @@ pnpm ai-e2e:test e2e/tests/<file>.spec.ts -g "用例名"   # 只跑单条用例
 - **单元测试**：如有单测，仅跑与本次改动相关的测试文件（如 `vp test src/__tests__/App.spec.ts`）。
 - **🌟 UI / 交互 E2E 终态验证（必做门禁）**：
   - **执行时机**：**仅在功能代码全部编写完成后的最后一步执行**，作为交付验收门禁；
-  - **必跑单条用例**：凡涉及页面结构、交互按钮、数据渲染或深层路由，必须运行单条对应 E2E 用例确保通过：
+  - **必跑单条用例（静默无头）**：凡涉及页面结构、交互按钮、数据渲染或深层路由，必须运行单条对应 E2E 用例（默认后台无头静默运行，不抢占窗口焦点）：
     `pnpm ai-e2e:test e2e/tests/<file>.spec.ts -g "用例名"`
   - **补齐用例规范**：若该功能尚无用例，必须在 `e2e/tests/` 补齐对应 spec（日常断言优先原生 Playwright，关键视觉使用 `aiAssert`）；
   - **路由秒级直达**：用例使用 `gotoRoute('/comic/123')` 直接跳转，禁止从首页慢速点击；
-  - **长效登录态复用**：保持 `BROWSER_MODE=auto` 直连 Chrome 9222 端口或复用 Profile，避免重复模拟登录；
+  - **长效登录态复用**：保持 `BROWSER_MODE=auto` 直连 Chrome 9222 端口或复用 Profile，避免重复模拟登录；首次人工扫码通过 `pnpm ai-e2e:chrome` 初始化；
   - **视觉自愈**：阶段性回归若有失败，查阅 `midscene_run/report/` 视觉报告定位修复，直至单条测试全绿。
