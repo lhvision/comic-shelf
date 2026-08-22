@@ -1,16 +1,22 @@
-from __future__ import annotations
+import secrets
 
-from typing import Any
-
-from fastapi import FastAPI, File, HTTPException, Query, UploadFile
+from fastapi import FastAPI, File, HTTPException, Query, Request, Response, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 
-from .config import DATA_DIR, ENABLE_DOCS, LIBRARY_DIR
+from .auth import (
+    check_hotlink_protection,
+    clear_auth_cookie,
+    is_auth_required,
+    is_authenticated,
+    set_auth_cookie,
+)
+from .config import AUTH_SECRET, DATA_DIR, ENABLE_DOCS, LIBRARY_DIR
 from .jobs import get_job, list_running, start_job
 from .gate import _env_explicit, get_download_concurrency, set_download_concurrency
 from .imsearch import check_imsearch_status, search_imsearch
 from .models import (
+    AuthStatusResponse,
     CacheProgress,
     ComicDetail,
     ConcurrencyInfo,
@@ -25,6 +31,8 @@ from .models import (
     ImportResult,
     JobInfo,
     LibrarySummary,
+    LoginRequest,
+    LoginResponse,
     PageResponse,
     ProviderInfo,
 )
@@ -48,7 +56,64 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+
+@app.middleware("http")
+async def auth_and_security_middleware(request: Request, call_next):
+    path = request.url.path
+
+    # Allow public endpoints and non-API static files
+    if (
+        not path.startswith("/api/")
+        or path in {"/api/health", "/api/auth/status", "/api/auth/login", "/api/auth/logout"}
+        or path.startswith("/docs")
+        or path.startswith("/redoc")
+        or path.startswith("/openapi.json")
+    ):
+        return await call_next(request)
+
+    # Check hotlink protection for image endpoints
+    if "/pages/" in path or "/covers/" in path or "/chapters/" in path:
+        try:
+            check_hotlink_protection(request)
+        except HTTPException as exc:
+            return JSONResponse(status_code=exc.status_code, content={"detail": exc.detail})
+
+    # Check authentication
+    if not is_authenticated(request):
+        return JSONResponse(
+            status_code=401,
+            content={"detail": "未授权访问，需要提供有效的访问密钥"},
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    return await call_next(request)
+
+
 store = ComicStore()
+
+
+@app.get("/api/auth/status", response_model=AuthStatusResponse)
+def auth_status(request: Request) -> AuthStatusResponse:
+    return AuthStatusResponse(
+        auth_required=is_auth_required(),
+        authenticated=is_authenticated(request),
+    )
+
+
+@app.post("/api/auth/login", response_model=LoginResponse)
+def auth_login(req: LoginRequest, response: Response) -> LoginResponse:
+    if not AUTH_SECRET:
+        return LoginResponse(ok=True, token="")
+    if not secrets.compare_digest(req.secret, AUTH_SECRET):
+        raise HTTPException(status_code=401, detail="访问口令错误，请重试")
+    set_auth_cookie(response, AUTH_SECRET)
+    return LoginResponse(ok=True, token=AUTH_SECRET)
+
+
+@app.post("/api/auth/logout")
+def auth_logout(response: Response) -> dict[str, bool]:
+    clear_auth_cookie(response)
+    return {"ok": True}
 
 
 @app.get("/api/health")
@@ -58,6 +123,7 @@ def health() -> dict[str, Any]:
         "data_dir": str(DATA_DIR),
         "library": str(LIBRARY_DIR),
         "providers": [p["key"] for p in provider_list()],
+        "auth_required": is_auth_required(),
     }
 
 

@@ -32,6 +32,12 @@ release. Add a tool name to select part of the graph. For example, run
 > 品牌：纸间 Paper Room。定位：本地优先的个人漫画收藏夹，不是泛化爬虫，也不是公开站点。
 > 本文件只放每次必读的硬规则和路径索引；详细规则已拆分到 `docs/agents/`，按任务按需读取。
 
+## 🎯 任务交付验收清单（Review Checklist）
+
+- [ ] 运行 `vp check` 确保格式、Lint 与类型检查 100% 通过（0 error）。
+- [ ] 涉及 UI/交互改动，在**最终交付阶段**执行对应单条 E2E 验证（`pnpm ai-e2e:test e2e/tests/<file>.spec.ts -g "用例名"`），无用例需在 `e2e/tests/` 补齐。
+- [ ] 单元测试只跑与本次改动相关的测试文件（如 `vp test src/__tests__/App.spec.ts`），不全量跑测。
+
 ## 规则文件索引
 
 | 文件                              | 何时读取                                                                         |
@@ -74,8 +80,8 @@ release. Add a tool name to select part of the graph. For example, run
 
 ```bash
 cd /home/miku/dsh/comic-shelf
-./scripts/dev.sh                         # 同时起 API + Web
-../.venv/bin/python backend/server.py    # 只起 API
+./scripts/dev.sh                         # 同时起 API + Web（带热重载）
+pnpm api                                 # 只起 API（自动探测 Python 并热重载）
 vp dev                                   # 只起 Web
 vp check                                 # fmt + lint + type-check
 vp test                                  # Vitest

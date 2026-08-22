@@ -1,7 +1,7 @@
 import { computed, ref } from 'vue'
 import { useIntervalFn } from '@vueuse/core'
 import { defineStore } from 'pinia'
-import { api } from '@/api/client'
+import { api, onAuthSuccess } from '@/api/client'
 import type { ImportRequest, LibrarySummary } from '@/types'
 
 export interface LiveCacheState {
@@ -27,15 +27,25 @@ export const useLibraryStore = defineStore('library', () => {
 
   async function loadItems() {
     loading.value = true
-    error.value = ''
     try {
       items.value = await api.library()
+      error.value = ''
     } catch (e) {
-      error.value = e instanceof Error ? e.message : String(e)
+      const msg = e instanceof Error ? e.message : String(e)
+      // When unauthenticated, the auth modal guides the user; don't trigger loud error toast
+      if (!msg.includes('401') && !msg.includes('未授权')) {
+        error.value = msg
+      }
     } finally {
       loading.value = false
     }
   }
+
+  // Reload data automatically as soon as auth succeeds
+  onAuthSuccess(() => {
+    error.value = ''
+    void load()
+  })
 
   async function refreshLiveCache() {
     const previousKeys = new Set(Object.keys(liveCache.value))

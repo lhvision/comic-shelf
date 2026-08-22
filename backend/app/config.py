@@ -33,3 +33,9 @@ MAX_CONCURRENT_DOWNLOADS = int(os.getenv("COMIC_SHELF_MAX_CONCURRENT_DOWNLOADS",
 IMSEARCH_URL = os.getenv("COMIC_SHELF_IMSEARCH_URL", "http://localhost:8765").rstrip("/")
 
 ENABLE_DOCS = os.getenv("COMIC_SHELF_ENABLE_DOCS", "false").lower() in ("1", "true", "yes")
+
+# Access key for deployment protection (blank = open access, non-blank = protected)
+AUTH_SECRET = os.getenv("COMIC_SHELF_SECRET", os.getenv("COMIC_SHELF_AUTH_TOKEN", "")).strip()
+
+# Anti-hotlinking / storage bucket abuse protection
+ENABLE_HOTLINK_PROTECTION = os.getenv("COMIC_SHELF_ENABLE_HOTLINK_PROTECTION", "true").lower() in ("1", "true", "yes")

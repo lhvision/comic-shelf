@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { api } from '@/api/client'
+import { api, onAuthSuccess } from '@/api/client'
+import { useAuth } from '@/composables/useAuth'
 import type { ProviderInfo } from '@/types'
 
 interface NavItem {
@@ -14,6 +15,7 @@ interface NavItem {
 const route = useRoute()
 const router = useRouter()
 const providers = ref<ProviderInfo[]>([])
+const { authRequired, authenticated, logout, openModal } = useAuth()
 
 const navItems = computed<NavItem[]>(() => [
   { to: '/', label: '全部' },
@@ -34,7 +36,7 @@ function goLibrary() {
   router.push('/')
 }
 
-onMounted(async () => {
+async function fetchProviders() {
   try {
     providers.value = await api.providers()
   } catch {
@@ -50,7 +52,10 @@ onMounted(async () => {
       },
     ]
   }
-})
+}
+
+onMounted(fetchProviders)
+onAuthSuccess(fetchProviders)
 </script>
 
 <template>
@@ -75,7 +80,38 @@ onMounted(async () => {
       </RouterLink>
     </nav>
 
-    <p class="header-note">本地优先 · 缓存后不再访问远端</p>
+    <div class="header-right">
+      <p class="header-note">本地优先 · 缓存后不再访问远端</p>
+      <button
+        v-if="authRequired"
+        type="button"
+        class="auth-badge-btn"
+        :class="{ locked: !authenticated }"
+        :title="authenticated ? '口令已验证（点击退出锁定）' : '点击输入通行口令'"
+        @click="authenticated ? logout() : openModal()"
+      >
+        <svg
+          viewBox="0 0 24 24"
+          width="13"
+          height="13"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+        >
+          <template v-if="authenticated">
+            <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+            <path d="M7 11V7a5 5 0 0 1 9.9-1" />
+          </template>
+          <template v-else>
+            <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+            <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+          </template>
+        </svg>
+        <span>{{ authenticated ? '已通行' : '未解锁' }}</span>
+      </button>
+    </div>
   </header>
 </template>
 
@@ -179,15 +215,48 @@ onMounted(async () => {
   color: var(--ink-2);
 }
 
+.header-right {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  justify-content: flex-end;
+}
+
 .header-note {
   font-family: var(--font-mono);
   font-size: var(--text-xs);
   color: var(--ink-2);
 }
 
+.auth-badge-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: var(--space-1) var(--space-2);
+  background: var(--paper-1);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-1);
+  font-family: var(--font-mono);
+  font-size: var(--text-caption);
+  color: var(--success);
+  cursor: pointer;
+  transition: all var(--duration-1) var(--ease-out);
+}
+
+.auth-badge-btn:hover {
+  background: var(--paper-2);
+  border-color: var(--line-strong);
+}
+
+.auth-badge-btn.locked {
+  color: var(--accent);
+  border-color: var(--accent-soft);
+  background: var(--accent-soft);
+}
+
 @media (max-width: 640px) {
   .site-header {
-    grid-template-columns: auto 1fr;
+    grid-template-columns: auto 1fr auto;
   }
 
   .header-note {

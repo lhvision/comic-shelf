@@ -68,7 +68,7 @@ const liveRunning = computed(() => Boolean(props.cache?.running))
       </div>
 
       <div class="card-body">
-        <h2 class="card-title line-clamp-2">{{ comic.title }}</h2>
+        <h2 class="card-title line-clamp-2" :title="comic.title">{{ comic.title }}</h2>
         <p class="card-meta">{{ comic.authors.join(' / ') || '佚名' }} · {{ comic.page_count }}P</p>
         <div v-if="primaryTags.length" class="cluster card-tags">
           <span v-for="tag in primaryTags" :key="tag" class="chip">{{ tag }}</span>

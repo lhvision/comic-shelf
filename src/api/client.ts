@@ -1,5 +1,6 @@
 import { useMemoize } from '@vueuse/core'
 import type {
+  AuthStatus,
   CacheJob,
   CacheProgress,
   ComicDetail,
@@ -11,17 +12,75 @@ import type {
 } from '@/types'
 
 const BASE = '/api'
+const TOKEN_STORAGE_KEY = 'comic-shelf:auth-token'
+
+export function getStoredToken(): string {
+  try {
+    return localStorage.getItem(TOKEN_STORAGE_KEY) || ''
+  } catch {
+    return ''
+  }
+}
+
+export function setStoredToken(token: string): void {
+  try {
+    if (token) {
+      localStorage.setItem(TOKEN_STORAGE_KEY, token)
+    } else {
+      localStorage.removeItem(TOKEN_STORAGE_KEY)
+    }
+  } catch {
+    // ignore
+  }
+}
+
+type UnauthorizedHandler = () => void
+const unauthorizedHandlers = new Set<UnauthorizedHandler>()
+
+export function onUnauthorized(handler: UnauthorizedHandler): () => void {
+  unauthorizedHandlers.add(handler)
+  return () => unauthorizedHandlers.delete(handler)
+}
+
+export function notifyUnauthorized(): void {
+  for (const handler of unauthorizedHandlers) {
+    try {
+      handler()
+    } catch {
+      // ignore
+    }
+  }
+}
+
+type AuthSuccessHandler = () => void
+const authSuccessHandlers = new Set<AuthSuccessHandler>()
+
+export function onAuthSuccess(handler: AuthSuccessHandler): () => void {
+  authSuccessHandlers.add(handler)
+  return () => authSuccessHandlers.delete(handler)
+}
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const headers = new Headers(init?.headers)
-  headers.set('Content-Type', 'application/json')
+  if (!headers.has('Content-Type') && !(init?.body instanceof FormData)) {
+    headers.set('Content-Type', 'application/json')
+  }
+
+  const token = getStoredToken()
+  if (token && !headers.has('Authorization')) {
+    headers.set('Authorization', `Bearer ${token}`)
+  }
 
   const response = await fetch(`${BASE}${path}`, {
     ...init,
     headers,
+    credentials: 'same-origin',
   })
 
   if (!response.ok) {
+    if (response.status === 401) {
+      notifyUnauthorized()
+    }
     let detail = `请求失败（${response.status}）`
     try {
       const body = (await response.json()) as { detail?: string; message?: string }
@@ -42,8 +101,34 @@ const memoizedDetail = useMemoize(
 
 const memoizedProviders = useMemoize(() => request<ProviderInfo[]>('/providers'))
 
+export function clearApiCaches(): void {
+  memoizedDetail.clear()
+  memoizedProviders.clear()
+}
+
+export function notifyAuthSuccess(): void {
+  clearApiCaches()
+  for (const handler of authSuccessHandlers) {
+    try {
+      handler()
+    } catch {
+      // ignore
+    }
+  }
+}
+
 export const api = {
-  health: () => request<{ ok: boolean }>('/health'),
+  health: () => request<{ ok: boolean; auth_required?: boolean }>('/health'),
+  authStatus: () => request<AuthStatus>('/auth/status'),
+  login: (secret: string) =>
+    request<{ ok: boolean; token: string }>('/auth/login', {
+      method: 'POST',
+      body: JSON.stringify({ secret }),
+    }),
+  logout: () =>
+    request<{ ok: boolean }>('/auth/logout', {
+      method: 'POST',
+    }),
   providers: memoizedProviders,
   library: () => request<LibrarySummary[]>('/library'),
   detail: memoizedDetail,

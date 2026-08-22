@@ -8,11 +8,13 @@
 | `src/views/ComicDetailView.vue`             | 详情视图编排：封面流 / 元数据 / 操作栏 / 章节目录 / 页面索引             |
 | `src/views/ChapterView.vue`                 | 章节子路由：某话章节头 + 该话 PageIndexGrid                              |
 | `src/views/ReaderView.vue`                  | 阅读器视图编排：模式切换、DOM 分屏挂载、HUD / 顶栏 / 设置面板接线        |
+| `src/composables/useAuth.ts`                | 访问鉴权与门禁状态机：Cookie/Token 会话、状态探测、401 拦截联动          |
 | `src/composables/useLibraryFilter.ts`       | 书架检索与筛选：模糊搜索、标签频率统计、多模式排序与喜欢过滤             |
 | `src/composables/useReaderPaging.ts`        | 阅读器分页与作用域：分组切片、全局/本地页码映射、跨话首尾探测与边界计算  |
 | `src/composables/useAutoTurn.ts`            | 阅读器自动翻页：倒计时状态机、节拍器、页面可见性联动与暂停/继续          |
 | `src/composables/useReaderChrome.ts`        | 阅读器顶栏/HUD 延时隐藏与交互唤醒控制                                    |
 | `src/composables/useChapterNavigation.ts`   | 详情/子路由章节导航：锁定章节、章节切片、48 增量渲染、「继续阅读」文案   |
+| `src/components/AuthModal.vue`              | 访问口令门禁弹窗：输入密钥、品牌 Logo、双语眉标与错误反馈                |
 | `src/components/detail/ChapterIndex.vue`    | 章节目录整段：head + 卡片网格（多话作品详情页主视图，代替几千页平铺）    |
 | `src/components/detail/ChapterCard.vue`     | 目录单卡：该话第一页封面缩略图（失败回落书脊占位）+ 序数/标题/页数       |
 | `src/components/detail/ChapterSwitcher.vue` | 章节切换条（用于 ChapterView 内跳话）：横向 chips + 方向键 + `useScroll` |

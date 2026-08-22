@@ -227,3 +227,17 @@ class ImageSearchResponse(BaseModel):
 class ImageSearchStatusResponse(BaseModel):
     available: bool
     url: str
+
+
+class AuthStatusResponse(BaseModel):
+    auth_required: bool
+    authenticated: bool
+
+
+class LoginRequest(BaseModel):
+    secret: str
+
+
+class LoginResponse(BaseModel):
+    ok: bool
+    token: str

@@ -140,3 +140,8 @@ export interface ImageSearchStatus {
   available: boolean
   url?: string
 }
+
+export interface AuthStatus {
+  auth_required: boolean
+  authenticated: boolean
+}

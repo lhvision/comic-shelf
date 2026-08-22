@@ -2,14 +2,18 @@
 import { onMounted } from 'vue'
 import { useRoute } from 'vue-router'
 import AppHeader from '@/components/AppHeader.vue'
+import AuthModal from '@/components/AuthModal.vue'
 import ToastStack from '@/components/ToastStack.vue'
+import { useAuth } from '@/composables/useAuth'
 import { useHtmlCanvas } from '@/composables/useHtmlCanvas'
 
 const route = useRoute()
 const { supported, publishStatus } = useHtmlCanvas()
+const { checkStatus } = useAuth()
 
-onMounted(() => {
+onMounted(async () => {
   publishStatus(false, supported.value ? 'app:idle' : 'app:unsupported')
+  await checkStatus()
 })
 </script>
 
@@ -20,6 +24,7 @@ onMounted(() => {
       <RouterView />
     </main>
     <ToastStack />
+    <AuthModal />
   </div>
 </template>
 

@@ -4,9 +4,17 @@ cd "$(dirname "$0")/.."
 
 export PATH="$HOME/.cargo/bin:$PATH"
 
-PYTHON="../.venv/bin/python"
-if [ ! -x "$PYTHON" ]; then
-  PYTHON="python3"
+# Auto-detect Python interpreter in order: project .venv -> parent .venv -> backend .venv -> PATH python3/python
+PYTHON=""
+for cand in ".venv/bin/python" "../.venv/bin/python" "backend/.venv/bin/python"; do
+  if [ -x "$cand" ]; then
+    PYTHON="$cand"
+    break
+  fi
+done
+
+if [ -z "$PYTHON" ]; then
+  PYTHON="$(command -v python3 || command -v python || echo "python3")"
 fi
 
 cleanup() {
@@ -17,8 +25,8 @@ cleanup() {
 }
 trap cleanup INT TERM
 
-# 1. Start Python Backend
-"$PYTHON" backend/server.py &
+# 1. Start Python Backend (with auto-reload enabled in dev mode)
+"$PYTHON" backend/server.py --reload &
 API_PID=$!
 
 # 2. Check and start local imsearch binary if present (optional)

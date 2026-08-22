@@ -48,6 +48,10 @@
   - 书架卡片呈现匹配置信度高亮（如 `第 12 页 · 94%`），并支持一键直达阅读器该页；
   - 支持多模态复合检索（图搜结果与文字关键词、标签 AND 组合筛选）；
   - 优雅降级：未启动识图服务容器时前端自动呈现提示引导，常规文本与标签检索 100% 正常运行。
+- 访问安全与防盗链（Security & Hotlink Protection）：
+  - 渐进式访问密钥（`COMIC_SHELF_SECRET`）：留空即内网免密；设置后全站启用访问门禁与 API/图片保护；
+  - 现代浏览器级图片防盗链拦截：结合 `Sec-Fetch-Site: cross-site` 与 `Referer` 白名单校验，彻底杜绝外站把纸间当图床/存储桶直连读取解密成品图；
+  - 双轨凭证支持：`SameSite=Lax` Cookie 与 `Authorization: Bearer` 自动联动，原生 `<img>` 标签零改造安全加载。
 - 架构上把站点差异隔离在 `backend/app/providers/`，UI 与存储层只认通用模型
 
 ## 运行
@@ -59,15 +63,15 @@
 # 0) 安装 vp CLI（本仓库已迁移；换机器时先安装）
 curl -fsSL https://vite.plus | bash
 
-# 1) Python 后端依赖
-python3 -m venv ../.venv
-../.venv/bin/pip install -r backend/requirements.txt
+# 1) Python 后端依赖（支持一键初始化 .venv）
+pnpm setup:py
+# 或手动：python3 -m venv .venv && .venv/bin/pip install -r backend/requirements.txt
 
 # 2) 前端依赖（vp 会使用 package.json 声明的 pnpm 11.22.0）
 vp install
 
-# 3) 启动后端（端口 8000）
-../.venv/bin/python backend/server.py
+# 3) 启动后端（端口 8000，智能探测虚拟环境并支持热重载）
+pnpm api
 
 # 4) 另开终端启动前端（端口 5173，已代理 /api 到 8000）
 vp dev
@@ -82,7 +86,7 @@ vp build   # 生产构建
 vp preview # 预览 dist
 ```
 
-或一键启动前后端全套环境：
+或一键启动前后端全套开发环境（自动热重载）：
 
 ```bash
 pnpm dev:all   # 或 ./scripts/dev.sh

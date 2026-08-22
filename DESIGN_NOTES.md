@@ -215,3 +215,17 @@
      - 底部搭配 mono 字体「正在装订书页…」与朱砂色脉冲呼吸指示点。
   4. **组件封装与复用**：沉淀 `src/components/reader/ReaderLoadingState.vue`，无缝复用于阅读器首屏整本加载与单页渐进式加载（`compact` 模式）；支持 `prefers-reduced-motion` 优雅降级。
 - **验证**：`vp check`（64 文件 0 error）、`vp test`（5 套测试 10 用例通过）。
+
+## 19. 阅览室门禁与通行口令设计（Auth Modal & Security Indicators）
+
+- **设计诉求**：公网部署与内网穿透时需要访问门禁与防盗链，但绝不应给用户带来复杂的“传统登录注册系统”的认知负担，需延续「私人阅览室 / 卡片目录」典藏质感。
+- **Impeccable 决策**：
+  1. **视觉一致性**：`AuthModal.vue` 废弃单字红章，改用官方 `brand-icon.webp` 圆角徽标徽章，搭配双语眉标 `纸间 · PAPER ROOM` 与衬线主标题 `阅览室通行口令`；
+  2. **交互体验（Zero-Friction Unlock）**：
+     - 自动聚焦密码框，支持 Enter 提交、密码显隐切换；
+     - 401 拦截静默接管，不触发刺眼的全局红色报错 Toast；
+     - 解锁成功后通过 `onAuthSuccess` 全自动重新拉取书架与来源导航，无需用户手动刷新；
+  3. **顶栏安全状态指示**：
+     - `AppHeader.vue` 右侧仅在开启 `COMIC_SHELF_SECRET` 时呈现极简状态徽章（`🔒 已通行` / `🔒 未解锁`），支持点击一键重新锁定；
+     - 未配置密码时保持极简留白，不增加任何多余视觉干扰。
+- **验证**：`vp check`（67 文件 0 error）、`vp test` 单测全绿。

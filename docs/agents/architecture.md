@@ -119,24 +119,28 @@ JmImageTool.decode_and_save(num, source_image, save_path)
 
 | 文件                                | 职责                                                                                                   |
 | ----------------------------------- | ------------------------------------------------------------------------------------------------------ |
-| `backend/app/main.py`               | FastAPI 路由                                                                                           |
+| `backend/app/main.py`               | FastAPI 路由与安全中间件                                                                               |
+| `backend/app/auth.py`               | 鉴权校验、Cookie 会话管理、Sec-Fetch-Site 与 Referer 防盗链校验                                        |
 | `backend/app/models.py`             | 通用模型：`ComicMeta`（含 `Chapter`/`chapters`）/ `PageRecord.chapter` / `RemotePage` / `FetchedComic` |
 | `backend/app/storage.py`            | 原子 JSON 写入、页面缓存（章节分目录路由）、封面生成、v1→v2 迁移、书库扫描                             |
 | `backend/app/providers/base.py`     | Provider 接口                                                                                          |
 | `backend/app/providers/jm.py`       | JM HTML 元数据、上传者解析、**多章节 episode 逐话拉取**、图片下载 + 解密                               |
 | `backend/app/providers/registry.py` | `{"jm": JMProvider()}`                                                                                 |
 | `backend/app/imsearch.py`           | 局部特征识图客户端（ORB 特征匹配、健康探测、路径解析）                                                 |
-| `backend/app/config.py`             | 数据目录、封面尺寸、预缓存上限、识图服务地址                                                           |
+| `backend/app/config.py`             | 数据目录、访问密钥、防盗链开关、封面尺寸、识图服务地址                                                 |
 
+- `GET /api/auth/status`（查询是否开启鉴权及当前登录态）
+- `POST /api/auth/login`（验证口令并写入 Cookie）
+- `POST /api/auth/logout`（清除登录凭据）
 - `GET /api/library`（`q` 也能命中章节标题，T11）
 - `POST /api/library/import` `{id, source, prefetch_covers, prefetch_all, refresh}`
   （`refresh=true` 走增量，章节未变则复用旧 remote，T12）
 - `GET /api/library/{source}/{id}`（详情含 `chapters`）
 - `PATCH /api/library/{source}/{id}/favorite` `{favorite: bool}`
-- `GET /api/library/{source}/{id}/pages/{n}/file`（`n` 为全局页号，多章节自动路由）
+- `GET /api/library/{source}/{id}/pages/{n}/file`（`n` 为全局页号，带防盗链校验）
 - `GET /api/library/{source}/{id}/pages/{n}/thumbnail`（同上）
-- `GET /api/library/{source}/{id}/covers/{n}/file`（封面取第一章前 N 页）
-- `GET /api/library/{source}/{id}/chapters/{chapterId}/cover`（章节封面端点，T17）
+- `GET /api/library/{source}/{id}/covers/{n}/file`（封面取第一章前 N 页，带防盗链校验）
+- `GET /api/library/{source}/{id}/chapters/{chapterId}/cover`（章节封面端点，T17，带防盗链校验）
 - `GET /api/search/image/status`（以图搜图 Sidecar 服务健康探测）
 - `POST /api/search/image`（以图搜图，上传截图/裁切图匹配所属本子与对应页码）
 - `GET /api/providers`
