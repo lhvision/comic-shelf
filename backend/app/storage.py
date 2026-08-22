@@ -125,6 +125,31 @@ class ComicStore:
     # ------------------------------------------------------------------
     # persistence
     # ------------------------------------------------------------------
+    def _migrate_flat_to_chapter(self, meta: ComicMeta, first_chapter_id: str) -> None:
+        """Migrate flat pages/ and thumbs/ files to pages/<first_chapter_id>/
+        when a previously single-chapter comic is updated to multi-chapter."""
+        safe_chap = self._safe(first_chapter_id)
+
+        pages_dir = self.pages_dir(meta.source, meta.source_id)
+        if pages_dir.exists():
+            target_dir = pages_dir / safe_chap
+            target_dir.mkdir(parents=True, exist_ok=True)
+            for item in list(pages_dir.iterdir()):
+                if item.is_file():
+                    dest = target_dir / item.name
+                    if not dest.exists():
+                        item.rename(dest)
+
+        thumbs_dir = self.thumbs_dir(meta.source, meta.source_id)
+        if thumbs_dir.exists():
+            target_thumb_dir = thumbs_dir / safe_chap
+            target_thumb_dir.mkdir(parents=True, exist_ok=True)
+            for item in list(thumbs_dir.iterdir()):
+                if item.is_file():
+                    dest = target_thumb_dir / item.name
+                    if not dest.exists():
+                        item.rename(dest)
+
     def save_fetched(self, fetched: FetchedComic, refresh: bool = False) -> ComicMeta:
         meta = fetched.meta
 
@@ -134,13 +159,17 @@ class ComicStore:
         if refresh and existing is not None:
             meta.imported_at = existing.imported_at or meta.imported_at
             meta.favorite = existing.favorite
-            old_by_index = {p.index: p for p in existing.pages}
+
+            # 单章节升级多章节时，自动将平铺旧文件迁移至首话子目录
+            if not existing.chapters and meta.chapters:
+                self._migrate_flat_to_chapter(meta, meta.chapters[0].id)
+
             for page in meta.pages:
-                page.cached = (
-                    old_by_index.get(page.index).cached
-                    if page.index in old_by_index
-                    else self._chapter_page_path(meta, page).exists()
-                )
+                target = self._chapter_page_path(meta, page)
+                try:
+                    page.cached = target.exists() and target.stat().st_size > 0
+                except Exception:
+                    page.cached = False
 
         _write_json_atomic(self.album_path(meta.source, meta.source_id), meta.model_dump())
         _write_json_atomic(

@@ -174,45 +174,56 @@ class JMProvider(ComicProvider):
 
         multi = len(episodes) > 1
 
-        # ---- T12 增量刷新：章节集合没变就整书复用旧 remote_pages，避免重复
-        # 拉每一话的 photo HTML（只更新元数据）。章节增删/顺序变了就整书重拉，保证安全。
-        reuse: FetchedComic | None = None
-        if existing is not None:
-            if multi:
-                old_ids = [c.id for c in existing.meta.chapters]
-                new_ids = [ep[0] for ep in episodes]
-                if old_ids == new_ids:
-                    reuse = existing
-            elif (
-                not existing.meta.chapters
-                and existing.meta.page_count == int(detail.page_count or 0)
-            ):
-                reuse = existing
+        # ---- 增量刷新与章节复用：
+        # 1. 若章节集合与总页数完全一致，直接复用旧 remote_pages（0 次 photo 网络请求）
+        # 2. 若连载漫画新增章节，复用已有章节的 remote_pages，仅对新章节拉取 photo HTML
+        # 3. 若检测到章节内部页数修改（总页数不符），兜底全量拉取保证数据准确
+        existing_chapter_map = {
+            c.id: c for c in (existing.meta.chapters if existing else [])
+        }
+        existing_pages_by_chap: dict[str, list[RemotePage]] = {}
+        if existing:
+            for p in existing.remote_pages:
+                if p.chapter:
+                    existing_pages_by_chap.setdefault(p.chapter, []).append(p)
+                elif not existing.meta.chapters and len(episodes) > 1:
+                    # 单章节升级多章节时，将原有页面归入第一话
+                    first_pid = episodes[0][0]
+                    existing_pages_by_chap.setdefault(first_pid, []).append(p)
+
+        all_ids_match = (
+            existing is not None
+            and multi
+            and [c.id for c in existing.meta.chapters] == [ep[0] for ep in episodes]
+            and existing.meta.page_count == int(detail.page_count or 0)
+        )
+        single_match = (
+            existing is not None
+            and not multi
+            and not existing.meta.chapters
+            and existing.meta.page_count == int(detail.page_count or 0)
+        )
+
+        remote_pages: list[RemotePage] = []
+        chapters: list[Chapter] = []
+        first_photo = None
 
         now = datetime.now(timezone.utc).isoformat()
 
-        if reuse is not None:
+        if all_ids_match or single_match:
             remote_pages = [
-                RemotePage.model_validate(p.model_dump()) for p in reuse.remote_pages
+                RemotePage.model_validate(p.model_dump()) for p in existing.remote_pages
             ]
             for i, page in enumerate(remote_pages, start=1):
                 page.index = i
             chapters = [
-                Chapter.model_validate(c.model_dump()) for c in reuse.meta.chapters
+                Chapter.model_validate(c.model_dump()) for c in existing.meta.chapters
             ]
             page_count = len(remote_pages) or int(detail.page_count or 0)
-            image_domain = str((reuse.meta.raw or {}).get("image_domain", "") or "")
+            image_domain = str((existing.meta.raw or {}).get("image_domain", "") or "")
         else:
-            # Flatten every chapter's pages with global 1-based indexes, so the
-            # whole multi-chapter album remains addressable as one list — reader
-            # page numbers, covers and "继续阅读" all stay global. Multi-chapter
-            # pages carry their chapter id so storage can route them into
-            # per-chapter subdirectories.
-            remote_pages: list[RemotePage] = []
-            chapters: list[Chapter] = []
-            first_photo = None
-
-            for ordinal, (pid, ptitle) in enumerate(episodes, start=1):
+            def _fetch_episode(pid: str, ptitle: str, ordinal: int):
+                nonlocal first_photo
                 photo_resp = client.get(f"/photo/{pid}")
                 photo = JmcomicText.analyse_jm_photo_html(photo_resp.text)
                 photo.from_album = detail
@@ -222,13 +233,13 @@ class JMProvider(ComicProvider):
                 if first_photo is None:
                     first_photo = photo
 
-                start = len(remote_pages) + 1
+                ep_pages: list[RemotePage] = []
                 for index in range(len(photo.page_arr)):
                     image = photo.create_image_detail(index)
                     filename = f"{index + 1:05d}{image.img_file_suffix}"
-                    remote_pages.append(
+                    ep_pages.append(
                         RemotePage(
-                            index=len(remote_pages) + 1,
+                            index=0,
                             url=image.download_url,
                             file=filename,
                             ext=image.img_file_suffix,
@@ -247,20 +258,87 @@ class JMProvider(ComicProvider):
                             },
                         )
                     )
+                chap_title = ptitle or str(photo.name or f"第 {ordinal} 話")
+                return ep_pages, chap_title
 
-                if multi:
-                    chapters.append(
-                        Chapter(
-                            id=pid,
-                            index=ordinal,
-                            title=ptitle or str(photo.name or f"第 {ordinal} 話"),
-                            page_count=len(photo.page_arr),
-                            start=start,
+            for ordinal, (pid, ptitle) in enumerate(episodes, start=1):
+                cached_pages = existing_pages_by_chap.get(pid)
+                cached_chap = existing_chapter_map.get(pid)
+
+                if cached_pages and (
+                    cached_chap is not None
+                    or (existing and not existing.meta.chapters and ordinal == 1)
+                ):
+                    start = len(remote_pages) + 1
+                    for p in cached_pages:
+                        page_copy = RemotePage.model_validate(p.model_dump())
+                        page_copy.index = len(remote_pages) + 1
+                        page_copy.chapter = pid if multi else ""
+                        remote_pages.append(page_copy)
+
+                    if multi:
+                        chap_title = ptitle or (
+                            cached_chap.title if cached_chap else f"第 {ordinal} 話"
                         )
-                    )
+                        chapters.append(
+                            Chapter(
+                                id=pid,
+                                index=ordinal,
+                                title=chap_title,
+                                page_count=len(cached_pages),
+                                start=start,
+                            )
+                        )
+                else:
+                    ep_pages, chap_title = _fetch_episode(pid, ptitle, ordinal)
+                    start = len(remote_pages) + 1
+                    for p in ep_pages:
+                        p.index = len(remote_pages) + 1
+                        remote_pages.append(p)
+
+                    if multi:
+                        chapters.append(
+                            Chapter(
+                                id=pid,
+                                index=ordinal,
+                                title=chap_title,
+                                page_count=len(ep_pages),
+                                start=start,
+                            )
+                        )
+
+            # 兜底校验：如果按章节复用后的总页数与 album HTML 解析出的总页数不符
+            # （说明作者在既有章节里增删了页码），回退为全量重新拉取以确保页码准确
+            expected_total = int(detail.page_count or 0)
+            if expected_total > 0 and len(remote_pages) != expected_total and existing is not None:
+                remote_pages = []
+                chapters = []
+                first_photo = None
+                for ordinal, (pid, ptitle) in enumerate(episodes, start=1):
+                    ep_pages, chap_title = _fetch_episode(pid, ptitle, ordinal)
+                    start = len(remote_pages) + 1
+                    for p in ep_pages:
+                        p.index = len(remote_pages) + 1
+                        remote_pages.append(p)
+                    if multi:
+                        chapters.append(
+                            Chapter(
+                                id=pid,
+                                index=ordinal,
+                                title=chap_title,
+                                page_count=len(ep_pages),
+                                start=start,
+                            )
+                        )
 
             page_count = len(remote_pages) or int(detail.page_count or 0)
-            image_domain = first_photo.data_original_domain if first_photo else ""
+            image_domain = (
+                first_photo.data_original_domain
+                if first_photo
+                else str((existing.meta.raw or {}).get("image_domain", "") or "")
+                if existing
+                else ""
+            )
 
         meta = ComicMeta(
             source=self.key,

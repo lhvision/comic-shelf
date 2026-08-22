@@ -146,14 +146,28 @@ async function removeComic() {
 
 async function refreshMetadata() {
   try {
-    await store.importComic({
+    const prevPageCount = detail.value?.meta.page_count ?? 0
+    const prevChapterCount = chapters.value?.length ?? 0
+    const result = await store.importComic({
       id: sourceId.value,
       source: source.value,
       prefetch_covers: 4,
       refresh: true,
     })
-    toast('资料已从远端刷新，页面文件继续保留')
     await load()
+    const nextPageCount = result.meta.page_count ?? 0
+    const nextChapterCount = result.meta.chapters?.length ?? 0
+    if (nextPageCount > prevPageCount || nextChapterCount > prevChapterCount) {
+      const newChaps = nextChapterCount - prevChapterCount
+      const newPages = nextPageCount - prevPageCount
+      if (newChaps > 0) {
+        toast(`已增量更新：新增 ${newChaps} 话（共 ${newPages} 页），旧缓存已保留`)
+      } else {
+        toast(`已增量更新：新增 ${newPages} 页，旧缓存已保留`)
+      }
+    } else {
+      toast('资料已刷新，当前已是最新版本')
+    }
   } catch (e) {
     toast(e instanceof Error ? e.message : String(e), 'error')
   }
