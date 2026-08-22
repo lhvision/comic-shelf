@@ -40,8 +40,17 @@ const liveRunning = computed(() => Boolean(props.cache?.running))
           v-for="(cover, index) in deckCovers"
           :key="cover"
           class="deck-leaf"
-          :style="{ '--deck-index': index, backgroundImage: `url(${cover})` }"
-        />
+          :data-deck-index="index"
+        >
+          <img
+            class="deck-leaf-img"
+            :src="cover"
+            alt=""
+            loading="lazy"
+            decoding="async"
+            aria-hidden="true"
+          />
+        </div>
         <div class="cover-front">
           <img
             v-if="comic.cover_paths[0]"
@@ -122,15 +131,44 @@ const liveRunning = computed(() => Boolean(props.cache?.running))
   inset: 7% 16% 0;
   border-radius: var(--radius-2);
   background-color: var(--paper-2);
-  background-size: cover;
-  background-position: center top;
+  overflow: hidden;
   border: 1px solid color-mix(in oklab, var(--ink-0) 12%, transparent);
   transform-origin: center bottom;
-  transform: translateX(calc((var(--deck-index, 0) - 1) * 13%))
-    rotate(calc((var(--deck-index, 0) - 1) * -5deg)) translateY(calc(var(--deck-index, 0) * 3%));
   opacity: 0.48;
   filter: saturate(0.6) brightness(0.92);
   transition: transform var(--duration-3) var(--ease-out);
+}
+
+.deck-leaf-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center top;
+  display: block;
+}
+
+.deck-leaf[data-deck-index='0'] {
+  transform: translateX(-13%) rotate(5deg);
+}
+
+.deck-leaf[data-deck-index='1'] {
+  transform: translateX(0) rotate(0deg) translateY(3%);
+}
+
+.deck-leaf[data-deck-index='2'] {
+  transform: translateX(13%) rotate(-5deg) translateY(6%);
+}
+
+.card-link:hover .deck-leaf[data-deck-index='0'] {
+  transform: translateX(-16%) rotate(7deg);
+}
+
+.card-link:hover .deck-leaf[data-deck-index='1'] {
+  transform: translateX(0) rotate(0deg) translateY(4%);
+}
+
+.card-link:hover .deck-leaf[data-deck-index='2'] {
+  transform: translateX(16%) rotate(-7deg) translateY(8%);
 }
 
 .cover-front {
@@ -146,12 +184,6 @@ const liveRunning = computed(() => Boolean(props.cache?.running))
 
 .card-link:hover .cover-front {
   transform: rotateX(-3deg) rotateY(4deg) translateY(-0.35rem);
-}
-
-.card-link:hover .deck-leaf {
-  transform: translateX(calc((var(--deck-index, 0) - 1) * 16%))
-    rotate(calc((var(--deck-index, 0) - 1) * -7deg)) translateY(calc(var(--deck-index, 0) * 4%));
-  opacity: 0.7;
 }
 
 .cover-image,

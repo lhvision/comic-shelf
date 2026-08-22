@@ -9,6 +9,7 @@ import { useReaderSettings } from '@/composables/useReaderSettings'
 import { useReaderPaging } from '@/composables/useReaderPaging'
 import { useReaderChrome } from '@/composables/useReaderChrome'
 import { useAutoTurn } from '@/composables/useAutoTurn'
+import { useIllustrationPool } from '@/composables/useIllustrationPool'
 import ComicPageImage from '@/components/ComicPageImage.vue'
 import ReaderEndCard from '@/components/reader/ReaderEndCard.vue'
 import ReaderHud from '@/components/reader/ReaderHud.vue'
@@ -40,7 +41,8 @@ const currentGroupIndex = ref(0)
 const settingsOpen = ref(false)
 const loading = ref(true)
 const progressValue = ref(0)
-const loadingVariant = ref<1 | 2 | 3 | 4>((Math.floor(Math.random() * 4) + 1) as 1 | 2 | 3 | 4)
+const { getRandomIllustration } = useIllustrationPool()
+const loadingVariant = ref(getRandomIllustration())
 const reducedMotion = usePreferredReducedMotion()
 
 /* ---------------- 章节作用域 ---------------- */
@@ -403,7 +405,7 @@ function backToDetail() {
     />
 
     <div v-if="loading" class="reader-loading">
-      <ReaderLoadingState :variant="loadingVariant" text="正在整理书页…" />
+      <ReaderLoadingState :variant="loadingVariant" text="正在整理书页…" full-frame />
     </div>
 
     <main
@@ -412,7 +414,6 @@ function backToDetail() {
       class="reader-scroll"
       :data-mode="settings.mode"
       :data-pages="settings.pagesPerView"
-      :style="{ '--pages-per-view': settings.pagesPerView }"
       tabindex="0"
       @scroll.passive="onScroll"
       @wheel="onWheel"
@@ -529,6 +530,7 @@ function backToDetail() {
 }
 
 .reader-scroll {
+  --pages-per-view: v-bind('settings.pagesPerView');
   position: relative;
   height: 100dvh;
   overflow-y: auto;

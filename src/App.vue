@@ -4,6 +4,7 @@ import { useRoute } from 'vue-router'
 import AppHeader from '@/components/AppHeader.vue'
 import AuthModal from '@/components/AuthModal.vue'
 import ToastStack from '@/components/ToastStack.vue'
+import AmbientWatermark from '@/components/AmbientWatermark.vue'
 import { useAuth } from '@/composables/useAuth'
 import { useHtmlCanvas } from '@/composables/useHtmlCanvas'
 
@@ -19,6 +20,7 @@ onMounted(async () => {
 
 <template>
   <div class="app-frame" :data-reader="route.name === 'reader'">
+    <AmbientWatermark variant="page" />
     <AppHeader v-if="route.name !== 'reader'" />
     <main class="app-main">
       <RouterView />

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { nextTick, ref, useId, watch } from 'vue'
 import { useEventListener } from '@vueuse/core'
+import AmbientWatermark from '@/components/AmbientWatermark.vue'
 
 /**
  * 通用对话框（Impeccable：danger/polish/adapt 版）。
@@ -75,6 +76,8 @@ useEventListener(window, 'keydown', (event: KeyboardEvent) => {
         aria-modal="true"
         :aria-labelledby="titleId"
       >
+        <AmbientWatermark variant="modal" />
+
         <header class="modal-head">
           <h2 :id="titleId">{{ title }}</h2>
           <button
@@ -118,7 +121,8 @@ useEventListener(window, 'keydown', (event: KeyboardEvent) => {
 
 .modal-panel {
   position: relative;
-  width: min(100%, 26rem);
+  isolation: isolate;
+  width: min(100%, 30rem);
   max-height: min(90dvh, 42rem);
   overflow: auto;
   display: grid;
@@ -127,6 +131,13 @@ useEventListener(window, 'keydown', (event: KeyboardEvent) => {
   border-radius: var(--radius-3);
   box-shadow: var(--shadow-3);
   animation: modal-pop var(--duration-2) var(--ease-spring);
+}
+
+.modal-head,
+.modal-body,
+.modal-foot {
+  position: relative;
+  z-index: 1;
 }
 
 .modal-head {

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { nextTick, ref, watch } from 'vue'
 import { useAuth } from '@/composables/useAuth'
+import AmbientWatermark from '@/components/AmbientWatermark.vue'
 
 const { authRequired, authenticated, modalVisible, submitting, errorMessage, login, closeModal } =
   useAuth()
@@ -49,6 +50,7 @@ function togglePasswordVisibility() {
       aria-labelledby="auth-modal-title"
     >
       <div class="auth-card">
+        <AmbientWatermark variant="modal" />
         <header class="auth-header">
           <div class="auth-brand-badge">
             <img class="brand-logo" src="/brand-icon.webp" alt="" aria-hidden="true" />
@@ -170,6 +172,9 @@ function togglePasswordVisibility() {
 }
 
 .auth-card {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
   width: min(100%, 420px);
   background: var(--paper-0);
   border: 1px solid var(--line-strong);
@@ -180,6 +185,13 @@ function togglePasswordVisibility() {
   flex-direction: column;
   gap: var(--space-5);
   animation: scaleUp var(--duration-2) var(--ease-spring);
+}
+
+.auth-header,
+.auth-form,
+.auth-footer {
+  position: relative;
+  z-index: 1;
 }
 
 .auth-header {

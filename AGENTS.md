@@ -34,7 +34,7 @@ release. Add a tool name to select part of the graph. For example, run
 ## 🎯 任务交付验收门禁（Definition of Done）
 
 - [ ] **静态检查**：代码编写完成后运行 `vp check` 确保 0 lint error / 0 type error。
-- [ ] **单测验证**：改动涉及逻辑时，运行相关单测（如 `vp test src/__tests__/App.spec.ts`）。
+- [ ] **精准单测验证（严禁无差别全量）**：改动涉及逻辑时，**只运行改动对应的单测文件**（如 `vp test src/__tests__/ReaderLoadingState.spec.ts`），严禁日常开发无差别全量执行 `vp test`（防止用例增多后全量卡死/阻塞）。
 - [ ] **E2E 终验**：涉及 UI/交互改动，按下方 **E2E 测试准则** 在最终交付阶段执行单条用例验证。
 
 ## 📚 规则文件索引（按需读取）
@@ -57,6 +57,7 @@ release. Add a tool name to select part of the graph. For example, run
 4. **视图轻量化（View Thinness）**：`views/*.vue` 只负责布局编排（脚本 ≤150 行）；状态与计算必须下沉到 `src/composables/`。
 5. **Composable 顶层解构**：Composable 返回的 Ref 必须在 `<script setup>` 顶层解构后绑定，禁止传包装对象导致模板解包失效（DESIGN_NOTES §13）。
 6. **视觉与样式约束**：不用 SCSS；颜色/间距/动效走 `src/styles/tokens.css`；禁止紫色渐变、玻璃拟态堆叠、第三方轮播。
+7. **精准单测红线**：严禁在日常开发中无差别全量执行 `vp test`；必须只定位改动相关的单测文件（`vp test src/__tests__/<Target>.spec.ts`），防止全量阻塞卡死。
 
 ## 🧪 E2E 测试准则与 AI 协作规范
 
@@ -85,6 +86,6 @@ pnpm dev:all                             # 同时启动 API + Web（热重载）
 pnpm api                                 # 只起 API（自动探测 Python 虚拟环境）
 vp dev                                   # 只起 Web（Vite+ dev server）
 vp check                                 # fmt + lint + type-check
-vp test                                  # 运行 Vitest
+vp test src/__tests__/<Target>.spec.ts   # 运行目标文件单测（严禁日常全量）
 vp build                                 # 生产构建
 ```

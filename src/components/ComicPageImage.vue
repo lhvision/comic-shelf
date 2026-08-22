@@ -7,9 +7,9 @@ const props = withDefaults(
     src: string
     alt: string
     eager?: boolean
-    loadingVariant?: 1 | 2 | 3 | 4
+    loadingVariant?: number | string
   }>(),
-  { eager: false, loadingVariant: 1 },
+  { eager: false, loadingVariant: undefined },
 )
 
 const imageEl = ref<HTMLImageElement | null>(null)
@@ -80,7 +80,7 @@ watch(
       v-if="loading"
       class="page-loading-wrapper"
       :variant="loadingVariant"
-      compact
+      full-frame
     />
 
     <div v-else-if="failed" class="page-error" role="alert">
@@ -103,7 +103,9 @@ watch(
 }
 
 .comic-page-image[data-state='loading'] {
-  min-height: clamp(14rem, 44vh, 26rem);
+  width: 100%;
+  height: 100%;
+  min-height: clamp(18rem, 60vh, 52rem);
 }
 
 .comic-page-img {

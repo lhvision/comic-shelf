@@ -222,8 +222,17 @@ watch(searchError, (value) => {
 
 <style scoped>
 .library-view {
+  position: relative;
+  isolation: isolate;
+  overflow-x: clip;
   padding-bottom: var(--space-10);
   min-height: 100vh;
+}
+
+.shelf,
+.site-foot {
+  position: relative;
+  z-index: 1;
 }
 
 .shelf {

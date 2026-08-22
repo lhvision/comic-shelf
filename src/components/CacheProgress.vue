@@ -29,6 +29,7 @@ const label = computed(() => {
 })
 
 const valueNow = computed(() => percent.value)
+const fillWidth = computed(() => `${percent.value}%`)
 </script>
 
 <template>
@@ -58,7 +59,7 @@ const valueNow = computed(() => percent.value)
       :aria-valuenow="valueNow"
       :aria-valuetext="label"
     >
-      <span class="cache-progress__fill" :style="{ width: `${percent}%` }" />
+      <span class="cache-progress__fill" />
     </div>
   </div>
 </template>
@@ -116,6 +117,7 @@ const valueNow = computed(() => percent.value)
   display: block;
   height: 100%;
   min-width: 0;
+  width: v-bind(fillWidth);
   border-radius: inherit;
   background: var(--accent);
   transition: width var(--duration-3) var(--ease-out);

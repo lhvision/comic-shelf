@@ -20,7 +20,7 @@ pnpm dev:all                             # 同时起 API + Web（./scripts/dev.s
 pnpm api                                 # 只起 API（自动探测 Python 并热重载）
 vp dev                                   # 只起 Web（Vite+ dev server）
 vp check                                 # fmt + lint + type-check
-vp test                                  # Vitest
+vp test src/__tests__/<Target>.spec.ts   # 运行目标文件单测（严禁日常全量）
 vp build                                 # 生产构建
 pnpm ai-e2e:test e2e/tests/<file>.spec.ts -g "用例名" # 单条 E2E 用例
 ```

@@ -1,26 +1,30 @@
 <script setup lang="ts">
 import { computed } from 'vue'
+import { useIllustrationPool } from '@/composables/useIllustrationPool'
 
 const props = withDefaults(
   defineProps<{
-    variant?: 1 | 2 | 3 | 4
+    variant?: number | string
     text?: string
     compact?: boolean
+    fullFrame?: boolean
   }>(),
   {
-    variant: 1,
+    variant: undefined,
     text: '正在装订书页…',
     compact: false,
+    fullFrame: false,
   },
 )
 
-const illustrationSrc = computed(() => `/loading-${props.variant}.webp`)
+const { getIllustration } = useIllustrationPool()
+const illustrationSrc = computed(() => getIllustration(props.variant))
 </script>
 
 <template>
   <div
     class="reader-loading-state"
-    :class="{ 'is-compact': compact }"
+    :class="{ 'is-compact': compact, 'is-full-frame': fullFrame }"
     role="status"
     aria-live="polite"
   >
@@ -59,19 +63,33 @@ const illustrationSrc = computed(() => `/loading-${props.variant}.webp`)
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: var(--space-2-5);
-  padding: var(--space-3) var(--space-3) var(--space-2-5);
+  gap: var(--space-3);
+  padding: var(--space-3-5, var(--space-4)) var(--space-3-5, var(--space-4)) var(--space-3);
   border-radius: var(--radius-2);
   background: color-mix(in oklab, var(--paper-0, #f8f6f0) 8%, transparent);
   border: 1px solid color-mix(in oklab, var(--line, #e2ded5) 16%, transparent);
-  box-shadow: 0 12px 32px -6px rgb(0 0 0 / 48%);
+  box-shadow: 0 16px 36px -6px rgb(0 0 0 / 52%);
   backdrop-filter: blur(14px);
-  max-width: min(84vw, 18.5rem);
+  max-width: min(88vw, 24rem);
   width: 100%;
   animation: loading-breathe 2.8s var(--ease-out) infinite;
 }
 
-.reader-loading-state.is-compact .loading-card {
+/* 全幅漫画大尺寸模式：与漫画视口等比呼应，展现大尺寸看板插画 */
+.reader-loading-state.is-full-frame .loading-card {
+  max-width: min(92%, 34rem);
+  padding: var(--space-4) var(--space-4) var(--space-3-5, var(--space-4));
+  gap: var(--space-3-5, var(--space-4));
+  border-radius: var(--radius-3);
+}
+
+.reader-loading-state.is-full-frame .illustration-frame {
+  aspect-ratio: 16 / 10;
+  max-height: clamp(14rem, 42vh, 28rem);
+}
+
+/* 紧凑微型模式 */
+.reader-loading-state.is-compact:not(.is-full-frame) .loading-card {
   max-width: min(76vw, 14.5rem);
   padding: var(--space-2) var(--space-2) var(--space-1-5);
   gap: var(--space-1-5);
@@ -93,7 +111,7 @@ const illustrationSrc = computed(() => `/loading-${props.variant}.webp`)
   object-fit: cover;
   display: block;
   /* 降低饱和度与对比度，温和不抢戏 */
-  filter: saturate(0.68) contrast(0.92) brightness(0.88);
+  filter: saturate(0.72) contrast(0.92) brightness(0.9);
   transition: filter var(--duration-2) var(--ease-out);
 }
 
@@ -114,7 +132,7 @@ const illustrationSrc = computed(() => `/loading-${props.variant}.webp`)
 .loading-meta {
   display: inline-flex;
   align-items: center;
-  gap: var(--space-1-5);
+  gap: var(--space-2);
   font-family: var(--font-mono);
   font-size: var(--text-xs);
   color: var(--reader-muted, #938d80);
@@ -122,8 +140,8 @@ const illustrationSrc = computed(() => `/loading-${props.variant}.webp`)
 }
 
 .pulse-indicator {
-  width: 0.42rem;
-  height: 0.42rem;
+  width: 0.45rem;
+  height: 0.45rem;
   border-radius: 999px;
   background: var(--accent);
   box-shadow: 0 0 0 0 color-mix(in oklab, var(--accent) 40%, transparent);
@@ -154,8 +172,8 @@ const illustrationSrc = computed(() => `/loading-${props.variant}.webp`)
 @keyframes loading-breathe {
   0%,
   100% {
-    transform: scale(0.985);
-    opacity: 0.88;
+    transform: scale(0.988);
+    opacity: 0.9;
   }
   50% {
     transform: scale(1);
@@ -168,6 +186,13 @@ const illustrationSrc = computed(() => `/loading-${props.variant}.webp`)
   .shimmer-overlay,
   .pulse-indicator {
     animation: none;
+  }
+}
+
+@media (max-width: 640px) {
+  .reader-loading-state.is-full-frame .loading-card {
+    max-width: 90vw;
+    padding: var(--space-3);
   }
 }
 </style>

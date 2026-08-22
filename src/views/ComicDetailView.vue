@@ -239,7 +239,19 @@ function startReading(page = progressEl.value || 1) {
 
 <style scoped>
 .detail-view {
+  position: relative;
+  isolation: isolate;
+  overflow-x: clip;
   padding-block: var(--space-6) var(--space-10);
+}
+
+.detail-hero,
+.detail-loading,
+:deep(.detail-actions),
+:deep(.chapter-index),
+:deep(.page-index-grid) {
+  position: relative;
+  z-index: 1;
 }
 
 .detail-back {

@@ -61,6 +61,8 @@ function confirmRemove() {
   ackRemove.value = false
   emit('removeComic')
 }
+
+const cacheScale = computed(() => `scaleX(${props.cachePercent / 100})`)
 </script>
 
 <template>
@@ -129,7 +131,7 @@ function confirmRemove() {
     </Modal>
 
     <div class="cache-summary" aria-hidden="true">
-      <span :style="{ transform: `scaleX(${cachePercent / 100})` }" />
+      <span />
     </div>
     <p class="cache-summary-text">
       本地缓存 {{ cachedPages }} / {{ pageCount }} 页（{{ cachePercent }}%）
@@ -250,6 +252,7 @@ function confirmRemove() {
   height: 100%;
   background: var(--accent);
   transform-origin: 0 50%;
+  transform: v-bind(cacheScale);
   transition: transform var(--duration-3) var(--ease-out);
 }
 

@@ -229,3 +229,21 @@
      - `AppHeader.vue` 右侧仅在开启 `COMIC_SHELF_SECRET` 时呈现极简状态徽章（`🔒 已通行` / `🔒 未解锁`），支持点击一键重新锁定；
      - 未配置密码时保持极简留白，不增加任何多余视觉干扰。
 - **验证**：`vp check`（67 文件 0 error）、`vp test` 单测全绿。
+
+## 20. 环境暗印水印、全幅漫画加载与动态插画资产池（grill-with-docs 确认 → Impeccable: shape → critique → polish → adapt）
+
+- **需求背景**：用户喜爱 loading 看板角色插画，期望将其作为弹窗与各界面背景图（要求极浅、绝不影响看图与文字），同时指出阅读器单页 loading 尺寸太小，并要求后续新增 loading 角色插画能够自动感知和自适应。
+- **Impeccable 设计决策**：
+  1. **插画资产池零配置自适应（Dynamic Illustration Pool）**：
+     - 新增 `src/composables/useIllustrationPool.ts`，利用 Vite `import.meta.glob('/public/loading-*.{webp,png,jpg,jpeg}')` 动态扫描并管理插画；
+     - 提供 `getRandomIllustration()` 与 `getIllustration(variant)`，后续只需放入 `loading-5.webp` 等新图即可全站自动扩容轮换，彻底废除写死的 `1 | 2 | 3 | 4` 联合类型。
+  2. **典藏环境暗印水印（Ambient Watermark）**：
+     - 新增 `src/components/AmbientWatermark.vue`，作为纯背景层（`pointer-events: none`、`z-index: 0`、`isolation: isolate`）；
+     - 极低不透明度与纸张墨色融合：亮色模式 `opacity: 0.042` + `mix-blend-mode: multiply` + 灰度降噪；暗色模式 `opacity: 0.06` + `mix-blend-mode: screen`；
+     - 采用径向羽化遮罩（`-webkit-mask-image: radial-gradient(...)`），文字与卡片浮于上层，仅留白处隐约呈现角色剪影水印；
+     - 范围精确定位：在书架（`LibraryView`）、详情页（`ComicDetailView`）、章节页（`ChapterView`）及弹窗（`Modal` / `AuthModal`）启用；阅读器（`ReaderView`）正文严格避让，保护纯黑暗室读图纯净度。
+  3. **等比全幅漫画加载占位（Full-frame Comic Loading）**：
+     - 重构 `ReaderLoadingState.vue` 支持 `fullFrame` 模式，并升级 `ComicPageImage.vue` 与 `ReaderView.vue`；
+     - 尺寸撑满视口/槽位（`min-height: clamp(18rem, 60vh, 52rem)`），消除图片就绪时的突兀跳版（Layout Shift）；
+     - 大画幅呈现看板插画、典藏装订纸纹微光与呼吸脉冲，让加载进行态饱满沉浸。
+- **验证**：`vp check`（71 文件 0 error）、`vp test`（8 套测试 22 用例全绿）、`vp build` 生产构建通过。

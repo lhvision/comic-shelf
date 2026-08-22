@@ -3,13 +3,23 @@ import { mount } from '@vue/test-utils'
 import ReaderLoadingState from '@/components/reader/ReaderLoadingState.vue'
 
 describe('ReaderLoadingState.vue', () => {
-  it('renders default variant 1 and default text', () => {
+  it('renders default random variant and default text', () => {
     const wrapper = mount(ReaderLoadingState)
     const img = wrapper.find('img')
     expect(img.exists()).toBe(true)
-    expect(img.attributes('src')).toBe('/loading-1.webp')
+    expect(img.attributes('src')).toMatch(/^\/loading-\d+\.webp$/)
     expect(wrapper.text()).toContain('正在装订书页…')
     expect(wrapper.attributes('role')).toBe('status')
+  })
+
+  it('renders explicit variant 1', () => {
+    const wrapper = mount(ReaderLoadingState, {
+      props: {
+        variant: 1,
+      },
+    })
+    const img = wrapper.find('img')
+    expect(img.attributes('src')).toBe('/loading-1.webp')
   })
 
   it('renders variant 3 with custom text', () => {
@@ -31,5 +41,14 @@ describe('ReaderLoadingState.vue', () => {
       },
     })
     expect(wrapper.classes()).toContain('is-compact')
+  })
+
+  it('applies is-full-frame class when fullFrame is true', () => {
+    const wrapper = mount(ReaderLoadingState, {
+      props: {
+        fullFrame: true,
+      },
+    })
+    expect(wrapper.classes()).toContain('is-full-frame')
   })
 })

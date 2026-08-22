@@ -1,6 +1,5 @@
 <script setup lang="ts">
-import { computed } from 'vue'
-import { useId } from 'vue'
+import { computed, useId } from 'vue'
 
 /**
  * 基于 CSS Anchor Positioning 的轻量 Tooltip。
@@ -23,7 +22,7 @@ const props = withDefaults(
 )
 
 const uid = useId().replace(/[^a-zA-Z0-9_-]+/g, '')
-const anchorName = `--tip-${uid}`
+const anchorName = computed(() => `--tip-${uid}`)
 const tipId = `tip-${uid}`
 
 const areaMap: Record<string, string> = {
@@ -42,26 +41,16 @@ const areaMap: Record<string, string> = {
 }
 
 const positionArea = computed(() => areaMap[`${props.side} ${props.align}`] ?? 'top center')
-const anchorStyle = computed(() => ({ 'anchor-name': anchorName }))
-const tipStyle = computed(() => ({
-  'position-anchor': anchorName,
-  'position-area': positionArea.value,
-  '--tip-width': props.width,
-}))
+const tipWidth = computed(() => props.width)
 </script>
 
 <template>
   <span class="tooltip">
-    <span
-      class="tooltip__trigger"
-      :style="anchorStyle"
-      :aria-describedby="tipId"
-      :data-tip-id="tipId"
-    >
+    <span class="tooltip__trigger" :aria-describedby="tipId" :data-tip-id="tipId">
       <slot />
     </span>
 
-    <span :id="tipId" role="tooltip" class="tooltip__tip" :style="tipStyle" :data-side="side">
+    <span :id="tipId" role="tooltip" class="tooltip__tip" :data-side="side">
       {{ tip }}
     </span>
   </span>
@@ -77,12 +66,15 @@ const tipStyle = computed(() => ({
   display: inline-flex;
   align-items: center;
   cursor: help;
+  anchor-name: v-bind(anchorName);
 }
 
 .tooltip__tip {
   position: fixed;
-  width: var(--tip-width);
-  max-width: min(calc(100vw - 2rem), var(--tip-width));
+  position-anchor: v-bind(anchorName);
+  position-area: v-bind(positionArea);
+  width: v-bind(tipWidth);
+  max-width: min(calc(100vw - 2rem), v-bind(tipWidth));
   padding: var(--space-2) var(--space-3);
   border: 1px solid var(--line-strong);
   border-radius: var(--radius-2);

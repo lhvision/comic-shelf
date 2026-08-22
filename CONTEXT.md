@@ -46,5 +46,8 @@
 - **书库数据（Library data）**：后端 `backend/data/library/` 下的本地持久化，不得删除。
 - **设计令牌（Design tokens）**：`src/styles/tokens.css` 中的颜色/间距/字号/圆角/动效体系，UI 改动必须收敛到 token，禁止硬编码漂移。
 - **实验开关（Experiment）**：`HTML-in-Canvas 卡片`——把书架卡片整块 DOM 绘制进 canvas 的实验性渲染路径，由实验 store 控制开关。
+- **插画资产池（Illustration Pool）**：全站看板角色与加载插画的统一发现与随机轮换池（`/loading-*.webp`），支持零配置自动感知新资产。
+- **环境暗印水印（Ambient Watermark）**：页面与弹窗底层的极浅角色暗纹，以纸质水印质感呈现，亮色与暗色模式下均保持极低对比度，绝不干扰前景内容与文字可读性。
+- **全幅加载占位（Full-frame Page Loading）**：阅读器单页加载时与漫画页面等比撑满的骨架占位，大画幅展示装订插画并彻底消除排版跳动。
 - **访问密钥（Auth Secret）**：环境变量 `COMIC_SHELF_SECRET` / `COMIC_SHELF_AUTH_TOKEN`。配置后全站开启轻量门禁防护，未授权禁止访问 API 与漫画图片；未配置时保持零门槛内网模式。
 - **防盗链（Hotlink Protection）**：基于现代浏览器 `Sec-Fetch-Site: cross-site` 识别及 Referer 校验机制，严禁外部第三方网站跨站直连纸间作为存储桶或图片代理。

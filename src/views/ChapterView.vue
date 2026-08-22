@@ -164,7 +164,17 @@ function goNext() {
 
 <style scoped>
 .chapter-view {
+  position: relative;
+  isolation: isolate;
+  overflow-x: clip;
   padding-block: var(--space-6) var(--space-10);
+}
+
+.chapter-head,
+.chapter-loading,
+:deep(.page-index-grid) {
+  position: relative;
+  z-index: 1;
 }
 
 .chapter-loading {
