@@ -84,7 +84,7 @@ pnpm ai-e2e:doctor                       # AI E2E 环境诊断
 pnpm ai-e2e:platform                     # 启动 Web 回归测试看板
 pnpm ai-e2e:chrome                       # 启动 Chrome 调试实例（扫码登录一次持久化）
 pnpm ai-e2e:yaml e2e/yaml/<file>.yaml    # 执行 Midscene YAML 脚本
-pnpm exec playwright test e2e/<file>.spec.ts -g "用例名"   # 只跑单条 AI E2E 用例
+pnpm exec playwright test e2e/tests/<file>.spec.ts -g "用例名"   # 只跑单条用例
 ```
 
 ## Agent 执行约定
@@ -98,11 +98,13 @@ pnpm exec playwright test e2e/<file>.spec.ts -g "用例名"   # 只跑单条 AI 
 - **静态检查**：完成后至少运行 `vp check`。
 - **单元测试**：测试只跑与本次改动相关的测试文件（如 `vp test src/__tests__/App.spec.ts`），不要全量 `vp test`。
 
-### 2. AI E2E 自动化测试与自我修复约定
+### 2. E2E 测试准则与 AI 协作规范
 
-- **交付带 UI 新功能必须补测**：新增或修改核心交互时，必须在 `e2e/` 补齐对应 Midscene 用例，同一模块/页面的用例放同一个 spec 文件（如 `user-admin.spec.ts`），保证测试 100% 全部通过。
-- **路由秒级直达（Deep-Link First）**：测试深层路由（如 `/comic/123` 或阅读器）时，必须使用 `gotoRoute('/path')` 直接直达，严禁从首页漫游点击。
-- **视觉断言优先**：关键状态与交互优先使用 `aiAssert` 视觉断言，避免维护脆弱的 CSS 选择器。
-- **严禁全量跑测（Focused Execution Only）**：跑 AI e2e 时**只跑本次新增或改动的那一条用例**（使用 `-g "用例名"` 精确执行），**禁止全量跑测**（省时且节省 Token）。
-- **失败自愈闭环**：UI 回归测试若有失败，报告在 `midscene_run/report/` 下，逐个定位修复，修完重新跑 E2E 测试，直到全绿为止。
-- **长效登录态复用**：保持 `BROWSER_MODE=auto` 直连 Chrome 9222 端口，人工扫码一次后长期复用，免去冗长的模拟登录脚本。
+> 🎯 核心原则：**小步快跑用原生 Playwright，阶段交付/复杂视觉才用 Midscene AI**。避免每次微调代码都跑慢速 AI 断言，防止过度消耗 Token 与卡顿。
+
+- **日常小功能快跑（推荐，零 Token 消耗）**：小功能与常规交互优先使用原生 Playwright API（`expect(locator)...`、`page.click...`），毫秒级完成，不消耗大模型 API 额度。
+- **Midscene AI 视觉验证（仅在必要时使用）**：仅在复杂 UI 排版、Canvas 图表/图片内容断言，或**阶段性交付（Goal 完成节点）**时使用 `aiAssert` / `aiQuery` 进行集中验收。
+- **精准跑测**：单次调试务必使用 `-g "用例名"` 精确执行单条用例，严禁频繁全量跑测。
+- **路由秒级直达（Deep-Link First）**：深层页面直接使用 `gotoRoute('/comic/123')` 直达，无需从首页漫游。
+- **长效登录态复用**：保持 `BROWSER_MODE=auto` 直连 Chrome 9222 端口或复用 Profile，避免重复模拟登录。
+- **视觉自愈**：阶段性回归若有失败，查阅 `midscene_run/report/` 视觉报告定位修复。
