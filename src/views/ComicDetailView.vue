@@ -7,6 +7,7 @@ import { useLastRead } from '@/composables/useLastRead'
 import { useChapterNavigation } from '@/composables/useChapterNavigation'
 import { useLibraryStore } from '@/stores/library'
 import { useToast } from '@/composables/useToast'
+import { useCoverTransition } from '@/composables/useCoverTransition'
 import CoverCarousel from '@/components/CoverCarousel.vue'
 import DetailActionBar from '@/components/detail/DetailActionBar.vue'
 import ChapterIndex from '@/components/detail/ChapterIndex.vue'
@@ -158,7 +159,10 @@ async function refreshMetadata() {
   }
 }
 
+const { setActiveCover } = useCoverTransition()
+
 function goBack() {
+  setActiveCover(source.value, sourceId.value)
   router.replace({ name: 'library' })
 }
 

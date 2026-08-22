@@ -67,38 +67,40 @@ useEventListener(window, 'keydown', (event: KeyboardEvent) => {
 
 <template>
   <Teleport to="body">
-    <div v-if="open" class="modal-root">
-      <div class="modal-scrim" @click="emit('cancel')" />
-      <div
-        ref="panel"
-        class="modal-panel surface"
-        role="dialog"
-        aria-modal="true"
-        :aria-labelledby="titleId"
-      >
-        <AmbientWatermark variant="modal" />
+    <Transition name="modal">
+      <div v-if="open" class="modal-root">
+        <div class="modal-scrim" @click="emit('cancel')" />
+        <div
+          ref="panel"
+          class="modal-panel surface"
+          role="dialog"
+          aria-modal="true"
+          :aria-labelledby="titleId"
+        >
+          <AmbientWatermark variant="modal" />
 
-        <header class="modal-head">
-          <h2 :id="titleId">{{ title }}</h2>
-          <button
-            class="modal-close icon-btn"
-            type="button"
-            aria-label="关闭"
-            @click="emit('cancel')"
-          >
-            ×
-          </button>
-        </header>
+          <header class="modal-head">
+            <h2 :id="titleId">{{ title }}</h2>
+            <button
+              class="modal-close icon-btn"
+              type="button"
+              aria-label="关闭"
+              @click="emit('cancel')"
+            >
+              ×
+            </button>
+          </header>
 
-        <div class="modal-body">
-          <slot />
+          <div class="modal-body">
+            <slot />
+          </div>
+
+          <footer v-if="$slots.footer" class="modal-foot">
+            <slot name="footer" />
+          </footer>
         </div>
-
-        <footer v-if="$slots.footer" class="modal-foot">
-          <slot name="footer" />
-        </footer>
       </div>
-    </div>
+    </Transition>
   </Teleport>
 </template>
 
@@ -116,7 +118,6 @@ useEventListener(window, 'keydown', (event: KeyboardEvent) => {
   position: absolute;
   inset: 0;
   background: var(--reader-scrim-strong);
-  animation: modal-fade var(--duration-2) var(--ease-out);
 }
 
 .modal-panel {
@@ -130,7 +131,32 @@ useEventListener(window, 'keydown', (event: KeyboardEvent) => {
   padding: var(--space-5);
   border-radius: var(--radius-3);
   box-shadow: var(--shadow-3);
+}
+
+/* 进退场分层动效：遮罩淡入淡出，面板弹入微降 */
+.modal-enter-active {
+  transition: opacity var(--duration-2) var(--ease-out);
+}
+
+.modal-leave-active {
+  transition: opacity var(--duration-1) var(--ease-out);
+}
+
+.modal-enter-from,
+.modal-leave-to {
+  opacity: 0;
+}
+
+.modal-enter-active .modal-panel {
   animation: modal-pop var(--duration-2) var(--ease-spring);
+}
+
+.modal-leave-active .modal-panel {
+  transition:
+    transform var(--duration-1) var(--ease-out),
+    opacity var(--duration-1) var(--ease-out);
+  transform: scale(0.985) translateY(0.35rem);
+  opacity: 0;
 }
 
 .modal-head,
@@ -172,12 +198,6 @@ useEventListener(window, 'keydown', (event: KeyboardEvent) => {
   border-top: 1px solid var(--line);
 }
 
-@keyframes modal-fade {
-  from {
-    opacity: 0;
-  }
-}
-
 @keyframes modal-pop {
   from {
     opacity: 0;
@@ -187,9 +207,11 @@ useEventListener(window, 'keydown', (event: KeyboardEvent) => {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .modal-scrim,
+  .modal-enter-active,
+  .modal-leave-active,
   .modal-panel {
     animation: none;
+    transition: none;
   }
 }
 

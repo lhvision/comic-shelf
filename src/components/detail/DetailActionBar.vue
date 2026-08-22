@@ -56,6 +56,10 @@ function requestRemove() {
   removeOpen.value = true
 }
 
+function cancelRemove() {
+  removeOpen.value = false
+}
+
 function confirmRemove() {
   removeOpen.value = false
   ackRemove.value = false
@@ -114,7 +118,7 @@ const cacheScale = computed(() => `scaleX(${props.cachePercent / 100})`)
       </div>
     </div>
 
-    <Modal :open="removeOpen" :title="`移除《${title}》？`" @cancel="removeOpen = false">
+    <Modal :open="removeOpen" :title="`移除《${title}》？`" @cancel="cancelRemove">
       <p class="remove-copy">{{ removeBody }}</p>
 
       <label class="remove-ack">
@@ -123,7 +127,7 @@ const cacheScale = computed(() => `scaleX(${props.cachePercent / 100})`)
       </label>
 
       <template #footer>
-        <button class="btn btn-ghost" type="button" @click="removeOpen = false">取消</button>
+        <button class="btn btn-ghost" type="button" @click="cancelRemove">取消</button>
         <button class="btn danger" type="button" :disabled="!ackRemove" @click="confirmRemove">
           确认移除 {{ ackRemove ? '' : '（需勾选确认）' }}
         </button>

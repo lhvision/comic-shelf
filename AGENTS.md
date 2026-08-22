@@ -58,6 +58,7 @@ release. Add a tool name to select part of the graph. For example, run
 5. **Composable 顶层解构**：Composable 返回的 Ref 必须在 `<script setup>` 顶层解构后绑定，禁止传包装对象导致模板解包失效（DESIGN_NOTES §13）。
 6. **视觉与样式约束**：不用 SCSS；颜色/间距/动效走 `src/styles/tokens.css`；禁止紫色渐变、玻璃拟态堆叠、第三方轮播。
 7. **精准单测红线**：严禁在日常开发中无差别全量执行 `vp test`；必须只定位改动相关的单测文件（`vp test src/__tests__/<Target>.spec.ts`），防止全量阻塞卡死。
+8. **View Transitions 边界与安全**：全屏路由过渡仅在跨页面跳转（书架 ⇄ 详情 ⇄ 章节 ⇄ 阅读器）触发，**严禁在阅读器内部翻页/切话触发**（防 AbortError 抢占崩溃）；所有 `startViewTransition` 必须对 `ready`/`finished`/`updateCallbackDone` 绑定 catch；弹窗与微交互走 Vue 原生 `<Transition>`，禁止对弹窗根容器滥用快照导致遮罩畸变与文字亚像素模糊。
 
 ## 🧪 E2E 测试准则与 AI 协作规范
 

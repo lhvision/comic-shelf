@@ -4,6 +4,7 @@ import { useRouter } from 'vue-router'
 import { useLibraryStore } from '@/stores/library'
 import { useAppSettings } from '@/stores/settings'
 import { useToast } from '@/composables/useToast'
+import { useViewTransition } from '@/composables/useViewTransition'
 import Tooltip from '@/components/Tooltip.vue'
 
 const emit = defineEmits<{
@@ -14,6 +15,10 @@ const store = useLibraryStore()
 const settings = useAppSettings()
 const router = useRouter()
 const { toast } = useToast()
+const { withViewTransition } = useViewTransition()
+
+const submitBtnRef = ref<HTMLButtonElement | null>(null)
+const stepperRef = ref<HTMLElement | null>(null)
 
 onMounted(() => {
   void settings.load()
@@ -30,12 +35,16 @@ async function submit() {
   if (!canSubmit.value) return
   warnings.value = []
   try {
-    const result = await store.importComic({
-      id: id.value.trim(),
-      source: 'jm',
-      prefetch_covers: 4,
-      prefetch_all: prefetchAll.value,
-    })
+    const result = await withViewTransition(
+      () =>
+        store.importComic({
+          id: id.value.trim(),
+          source: 'jm',
+          prefetch_covers: 4,
+          prefetch_all: prefetchAll.value,
+        }),
+      { element: submitBtnRef.value },
+    )
     lastId.value = result.meta.display_id
     warnings.value = result.warnings
     toast(store.importMessage, warnings.value.length ? 'error' : 'info')
@@ -50,6 +59,14 @@ async function submit() {
   } catch {
     toast(store.error, 'error')
   }
+}
+
+function decConcurrency() {
+  void withViewTransition(() => settings.dec(), { element: stepperRef.value })
+}
+
+function incConcurrency() {
+  void withViewTransition(() => settings.inc(), { element: stepperRef.value })
 }
 </script>
 
@@ -75,7 +92,12 @@ async function submit() {
           aria-label="禁漫车号"
         />
       </label>
-      <button class="btn btn-primary" type="submit" :disabled="!canSubmit || store.importing">
+      <button
+        ref="submitBtnRef"
+        class="btn btn-primary"
+        type="submit"
+        :disabled="!canSubmit || store.importing"
+      >
         {{ store.importing ? '收录中…' : '收录到纸间' }}
       </button>
     </form>
@@ -129,13 +151,19 @@ async function submit() {
           </button>
         </Tooltip>
 
-        <div v-if="!settings.envControlled" class="stepper" role="group" aria-label="同时下载页数">
+        <div
+          v-if="!settings.envControlled"
+          ref="stepperRef"
+          class="stepper"
+          role="group"
+          aria-label="同时下载页数"
+        >
           <button
             class="stepper__btn"
             type="button"
             :disabled="settings.concurrency <= settings.min || settings.loading"
             aria-label="减少下载并发"
-            @click="settings.dec()"
+            @click="decConcurrency"
           >
             −
           </button>
@@ -145,7 +173,7 @@ async function submit() {
             type="button"
             :disabled="settings.concurrency >= settings.max || settings.loading"
             aria-label="增加下载并发"
-            @click="settings.inc()"
+            @click="incConcurrency"
           >
             ＋
           </button>

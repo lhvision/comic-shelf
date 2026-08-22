@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import { api } from '@/api/client'
+import { useViewTransition } from '@/composables/useViewTransition'
 
 const props = defineProps<{
   source: string
@@ -12,7 +13,9 @@ const emit = defineEmits<{
   toggled: [favorite: boolean]
 }>()
 
+const btnRef = ref<HTMLButtonElement | null>(null)
 const busy = ref(false)
+const { withViewTransition } = useViewTransition()
 
 async function toggle() {
   if (busy.value) return
@@ -20,7 +23,12 @@ async function toggle() {
   const next = !props.favorite
   try {
     await api.setFavorite(props.source, props.sourceId, next)
-    emit('toggled', next)
+    await withViewTransition(
+      () => {
+        emit('toggled', next)
+      },
+      { element: btnRef.value },
+    )
   } finally {
     busy.value = false
   }
@@ -29,6 +37,7 @@ async function toggle() {
 
 <template>
   <button
+    ref="btnRef"
     class="favorite-button"
     type="button"
     :aria-pressed="favorite"

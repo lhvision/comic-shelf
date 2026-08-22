@@ -3,6 +3,7 @@ import { computed } from 'vue'
 import type { LibrarySummary } from '@/types'
 import FavoriteButton from '@/components/FavoriteButton.vue'
 import CacheProgress from '@/components/CacheProgress.vue'
+import { useCoverTransition } from '@/composables/useCoverTransition'
 
 const props = defineProps<{
   comic: LibrarySummary
@@ -16,6 +17,8 @@ const emit = defineEmits<{
   favoriteToggled: [source: string, sourceId: string, favorite: boolean]
 }>()
 
+const { isCoverActive, setActiveCover } = useCoverTransition()
+
 const route = computed(() => `/comic/${props.comic.source}/${props.comic.source_id}`)
 
 const deckCovers = computed(() => props.comic.cover_paths.slice(1, 4))
@@ -24,11 +27,19 @@ const primaryTags = computed(() => props.comic.tags.slice(0, 3))
 const liveCached = computed(() => props.cache?.cached ?? props.comic.cached_pages)
 const liveTotal = computed(() => props.cache?.total || props.comic.page_count)
 const liveRunning = computed(() => Boolean(props.cache?.running))
+const isTargetCover = computed(() => isCoverActive(props.comic.source, props.comic.source_id))
+const cardTransitionName = computed(
+  () => `card-${props.comic.source}-${props.comic.source_id.replace(/[^a-zA-Z0-9_-]/g, '_')}`,
+)
 </script>
 
 <template>
-  <article class="comic-card">
-    <RouterLink :to="route" class="card-link">
+  <article class="comic-card" :style="{ viewTransitionName: cardTransitionName }">
+    <RouterLink
+      :to="route"
+      class="card-link"
+      @click="setActiveCover(comic.source, comic.source_id)"
+    >
       <div class="cover-deck">
         <FavoriteButton
           :source="comic.source"
@@ -51,7 +62,10 @@ const liveRunning = computed(() => Boolean(props.cache?.running))
             aria-hidden="true"
           />
         </div>
-        <div class="cover-front">
+        <div
+          class="cover-front"
+          :style="isTargetCover ? { viewTransitionName: 'comic-cover-active' } : undefined"
+        >
           <img
             v-if="comic.cover_paths[0]"
             class="cover-image"

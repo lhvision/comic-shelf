@@ -25,11 +25,15 @@ const liveRunning = computed(() => Boolean(props.cache?.running))
 
 // Force the canvas surface to re-paint whenever live progress changes.
 const redrawKey = computed(() => `${liveRunning.value}-${liveCached.value}/${liveTotal.value}`)
+const cardTransitionName = computed(
+  () => `card-${props.comic.source}-${props.comic.source_id.replace(/[^a-zA-Z0-9_-]/g, '_')}`,
+)
 </script>
 
 <template>
   <HtmlCanvasSurface
     class="canvas-card"
+    :style="{ viewTransitionName: cardTransitionName }"
     :enabled="enabled"
     :surface="`library-card:${comic.display_id}`"
     :redraw-key="redrawKey"

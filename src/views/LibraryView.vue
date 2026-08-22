@@ -12,6 +12,7 @@ import { useExperimentsStore } from '@/stores/experiments'
 import { useLibraryFilter } from '@/composables/useLibraryFilter'
 import { useImageSearch } from '@/composables/useImageSearch'
 import { useToast } from '@/composables/useToast'
+import { useViewTransition } from '@/composables/useViewTransition'
 
 /**
  * 书架首页 —— 纯编排视图。
@@ -22,6 +23,7 @@ const experiments = useExperimentsStore()
 const route = useRoute()
 const router = useRouter()
 const { toast } = useToast()
+const { withViewTransition } = useViewTransition()
 const fileInput = ref<HTMLInputElement | null>(null)
 
 const activeSource = computed(() =>
@@ -66,7 +68,37 @@ onUnmounted(() => {
 })
 
 function onFavoriteToggled(source: string, sourceId: string, favorite: boolean) {
-  store.setFavoriteLocal(source, sourceId, favorite)
+  if (favoritesOnly.value) {
+    void withViewTransition(() => {
+      store.setFavoriteLocal(source, sourceId, favorite)
+    })
+  } else {
+    store.setFavoriteLocal(source, sourceId, favorite)
+  }
+}
+
+function selectTag(tag: string) {
+  void withViewTransition(() => {
+    activeTag.value = tag
+  })
+}
+
+function toggleFavorites() {
+  void withViewTransition(() => {
+    favoritesOnly.value = !favoritesOnly.value
+  })
+}
+
+function onSortChange(value: string) {
+  void withViewTransition(() => {
+    setSort(value)
+  })
+}
+
+function onClearImage() {
+  void withViewTransition(() => {
+    clearImage()
+  })
 }
 
 function openComic(source: string, sourceId: string) {
@@ -120,7 +152,7 @@ watch(searchError, (value) => {
               v-if="searchImagePreviewUrl"
               :preview-url="searchImagePreviewUrl"
               :is-searching="isSearching"
-              @clear="clearImage"
+              @clear="onClearImage"
               class="search-lens-pill"
             />
             <input v-model="search" type="search" placeholder="标题 / 车号 / 作者 / 标签" />
@@ -168,7 +200,7 @@ watch(searchError, (value) => {
               { value: 'pages', label: '页数' },
               { value: 'cached', label: '本地完整度' },
             ]"
-            @update:model-value="setSort"
+            @update:model-value="onSortChange"
           />
         </div>
       </div>
@@ -194,8 +226,8 @@ watch(searchError, (value) => {
         :active-tag="activeTag"
         :tag-counts="tagCounts"
         :filtered-count="filtered.length"
-        @toggle-favorites="favoritesOnly = !favoritesOnly"
-        @select-tag="activeTag = $event"
+        @toggle-favorites="toggleFavorites"
+        @select-tag="selectTag"
       />
 
       <p v-if="store.activeCachingCount" class="cache-active-note" role="status">

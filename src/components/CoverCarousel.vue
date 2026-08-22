@@ -48,7 +48,10 @@ function scrollByCard(direction: number) {
       :aria-label="`${title} 封面预览`"
     >
       <figure v-for="(cover, index) in covers" :key="cover" class="cover-slide">
-        <div class="cover-slide-inner">
+        <div
+          class="cover-slide-inner"
+          :style="index === 0 ? { viewTransitionName: 'comic-cover-active' } : undefined"
+        >
           <img
             class="cover-image"
             :src="cover"

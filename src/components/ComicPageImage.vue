@@ -12,6 +12,7 @@ const props = withDefaults(
   { eager: false, loadingVariant: undefined },
 )
 
+const rootEl = ref<HTMLElement | null>(null)
 const imageEl = ref<HTMLImageElement | null>(null)
 const loading = ref(true)
 const failed = ref(false)
@@ -64,7 +65,11 @@ watch(
 </script>
 
 <template>
-  <div class="comic-page-image" :data-state="loading ? 'loading' : failed ? 'error' : 'ready'">
+  <div
+    ref="rootEl"
+    class="comic-page-image"
+    :data-state="loading ? 'loading' : failed ? 'error' : 'ready'"
+  >
     <img
       ref="imageEl"
       class="comic-page-img"

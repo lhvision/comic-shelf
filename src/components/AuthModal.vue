@@ -41,120 +41,126 @@ function togglePasswordVisibility() {
 
 <template>
   <Teleport to="body">
-    <div
-      v-if="modalVisible"
-      class="auth-backdrop"
-      @click.self="handleBackdropClick"
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="auth-modal-title"
-    >
-      <div class="auth-card">
-        <AmbientWatermark variant="modal" />
-        <header class="auth-header">
-          <div class="auth-brand-badge">
-            <img class="brand-logo" src="/brand-icon.webp" alt="" aria-hidden="true" />
-          </div>
-          <div class="auth-title-group">
-            <div class="brand-eyebrow">
-              <strong>纸间</strong>
-              <span>Paper Room</span>
+    <Transition name="auth-modal">
+      <div
+        v-if="modalVisible"
+        class="auth-backdrop"
+        @click.self="handleBackdropClick"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="auth-modal-title"
+      >
+        <div class="auth-card">
+          <AmbientWatermark variant="modal" />
+          <header class="auth-header">
+            <div class="auth-brand-badge">
+              <img class="brand-logo" src="/brand-icon.webp" alt="" aria-hidden="true" />
             </div>
-            <h2 id="auth-modal-title" class="auth-title">阅览室通行口令</h2>
-            <p class="auth-subtitle">私人收藏受口令保护，请输入访问密钥以进入</p>
-          </div>
-        </header>
+            <div class="auth-title-group">
+              <div class="brand-eyebrow">
+                <strong>纸间</strong>
+                <span>Paper Room</span>
+              </div>
+              <h2 id="auth-modal-title" class="auth-title">阅览室通行口令</h2>
+              <p class="auth-subtitle">私人收藏受口令保护，请输入访问密钥以进入</p>
+            </div>
+          </header>
 
-        <form class="auth-form" @submit.prevent="handleSubmit">
-          <div class="input-wrap" :class="{ error: !!errorMessage }">
-            <span class="input-icon" aria-hidden="true">
-              <svg
-                viewBox="0 0 24 24"
-                width="16"
-                height="16"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="2"
-                stroke-linecap="round"
-                stroke-linejoin="round"
+          <form class="auth-form" @submit.prevent="handleSubmit">
+            <div class="input-wrap" :class="{ error: !!errorMessage }">
+              <span class="input-icon" aria-hidden="true">
+                <svg
+                  viewBox="0 0 24 24"
+                  width="16"
+                  height="16"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                >
+                  <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+                  <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+                </svg>
+              </span>
+              <input
+                ref="inputRef"
+                v-model="inputSecret"
+                :type="showPassword ? 'text' : 'password'"
+                class="secret-input"
+                placeholder="输入访问密钥 (COMIC_SHELF_SECRET)"
+                autocomplete="current-password"
+                :disabled="submitting"
+              />
+              <button
+                type="button"
+                class="btn-toggle-eye"
+                :aria-label="showPassword ? '隐藏口令' : '显示口令'"
+                @click="togglePasswordVisibility"
               >
-                <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
-                <path d="M7 11V7a5 5 0 0 1 10 0v4" />
-              </svg>
-            </span>
-            <input
-              ref="inputRef"
-              v-model="inputSecret"
-              :type="showPassword ? 'text' : 'password'"
-              class="secret-input"
-              placeholder="输入访问密钥 (COMIC_SHELF_SECRET)"
-              autocomplete="current-password"
-              :disabled="submitting"
-            />
-            <button
-              type="button"
-              class="btn-toggle-eye"
-              :aria-label="showPassword ? '隐藏口令' : '显示口令'"
-              @click="togglePasswordVisibility"
-            >
-              <svg
-                v-if="!showPassword"
-                viewBox="0 0 24 24"
-                width="18"
-                height="18"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="2"
-                stroke-linecap="round"
-                stroke-linejoin="round"
+                <svg
+                  v-if="!showPassword"
+                  viewBox="0 0 24 24"
+                  width="18"
+                  height="18"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                >
+                  <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+                  <circle cx="12" cy="12" r="3" />
+                </svg>
+                <svg
+                  v-else
+                  viewBox="0 0 24 24"
+                  width="18"
+                  height="18"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                >
+                  <path
+                    d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"
+                  />
+                  <line x1="1" y1="1" x2="23" y2="23" />
+                </svg>
+              </button>
+            </div>
+
+            <p v-if="errorMessage" class="error-text" role="alert">
+              {{ errorMessage }}
+            </p>
+
+            <div class="auth-actions">
+              <button
+                v-if="authenticated || !authRequired"
+                type="button"
+                class="btn-secondary"
+                @click="closeModal"
               >
-                <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
-                <circle cx="12" cy="12" r="3" />
-              </svg>
-              <svg
-                v-else
-                viewBox="0 0 24 24"
-                width="18"
-                height="18"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="2"
-                stroke-linecap="round"
-                stroke-linejoin="round"
+                取消
+              </button>
+              <button
+                type="submit"
+                class="btn-primary"
+                :disabled="submitting || !inputSecret.trim()"
               >
-                <path
-                  d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"
-                />
-                <line x1="1" y1="1" x2="23" y2="23" />
-              </svg>
-            </button>
-          </div>
+                <span v-if="submitting">验证中…</span>
+                <span v-else>解锁进入</span>
+              </button>
+            </div>
+          </form>
 
-          <p v-if="errorMessage" class="error-text" role="alert">
-            {{ errorMessage }}
-          </p>
-
-          <div class="auth-actions">
-            <button
-              v-if="authenticated || !authRequired"
-              type="button"
-              class="btn-secondary"
-              @click="closeModal"
-            >
-              取消
-            </button>
-            <button type="submit" class="btn-primary" :disabled="submitting || !inputSecret.trim()">
-              <span v-if="submitting">验证中…</span>
-              <span v-else>解锁进入</span>
-            </button>
-          </div>
-        </form>
-
-        <footer class="auth-footer">
-          <span>防盗链与私有数据安全保护已就绪</span>
-        </footer>
+          <footer class="auth-footer">
+            <span>防盗链与私有数据安全保护已就绪</span>
+          </footer>
+        </div>
       </div>
-    </div>
+    </Transition>
   </Teleport>
 </template>
 
@@ -168,7 +174,6 @@ function togglePasswordVisibility() {
   padding: var(--space-4);
   background: color-mix(in oklab, var(--ink-0) 45%, transparent);
   backdrop-filter: blur(16px);
-  animation: fadeIn var(--duration-2) var(--ease-out);
 }
 
 .auth-card {
@@ -184,7 +189,32 @@ function togglePasswordVisibility() {
   display: flex;
   flex-direction: column;
   gap: var(--space-5);
+}
+
+/* 进退场分层动效：遮罩淡入淡出，面板弹入微降 */
+.auth-modal-enter-active {
+  transition: opacity var(--duration-2) var(--ease-out);
+}
+
+.auth-modal-leave-active {
+  transition: opacity var(--duration-1) var(--ease-out);
+}
+
+.auth-modal-enter-from,
+.auth-modal-leave-to {
+  opacity: 0;
+}
+
+.auth-modal-enter-active .auth-card {
   animation: scaleUp var(--duration-2) var(--ease-spring);
+}
+
+.auth-modal-leave-active .auth-card {
+  transition:
+    transform var(--duration-1) var(--ease-out),
+    opacity var(--duration-1) var(--ease-out);
+  transform: scale(0.97) translateY(0.35rem);
+  opacity: 0;
 }
 
 .auth-header,
@@ -405,15 +435,6 @@ function togglePasswordVisibility() {
   text-align: center;
 }
 
-@keyframes fadeIn {
-  from {
-    opacity: 0;
-  }
-  to {
-    opacity: 1;
-  }
-}
-
 @keyframes scaleUp {
   from {
     transform: scale(0.96);
@@ -422,6 +443,15 @@ function togglePasswordVisibility() {
   to {
     transform: scale(1);
     opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .auth-modal-enter-active,
+  .auth-modal-leave-active,
+  .auth-card {
+    animation: none;
+    transition: none;
   }
 }
 </style>

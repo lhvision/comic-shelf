@@ -396,3 +396,115 @@
     translate: 100% 0;
   }
 }
+
+/* ============================================================
+   View Transitions API — 纸间实体书卷与暗室过渡
+   ============================================================ */
+::view-transition-group(*) {
+  animation-duration: var(--duration-2);
+  animation-timing-function: var(--ease-out);
+}
+
+::view-transition-group(comic-cover-active) {
+  animation-duration: var(--duration-2);
+  animation-timing-function: var(--ease-out);
+  z-index: 20;
+}
+
+::view-transition-old(comic-cover-active),
+::view-transition-new(comic-cover-active) {
+  animation-duration: var(--duration-2);
+  animation-timing-function: var(--ease-out);
+  object-fit: cover;
+  border-radius: var(--radius-2);
+  overflow: hidden;
+}
+
+/* 场景化方向过渡：前进（往更深层页面推入） */
+html:active-view-transition-type(forward) {
+  &::view-transition-old(root) {
+    animation: vt-slide-out-left var(--duration-2) var(--ease-out) both;
+  }
+  &::view-transition-new(root) {
+    animation: vt-slide-in-right var(--duration-2) var(--ease-out) both;
+  }
+}
+
+/* 场景化方向过渡：后退（往上一层页面返回） */
+html:active-view-transition-type(backward) {
+  &::view-transition-old(root) {
+    animation: vt-slide-out-right var(--duration-2) var(--ease-out) both;
+  }
+  &::view-transition-new(root) {
+    animation: vt-slide-in-left var(--duration-2) var(--ease-out) both;
+  }
+}
+
+/* 默认基础交叉淡入淡出（同层级或无特定 type 时的平滑渐显） */
+::view-transition-old(root) {
+  animation: vt-fade-out var(--duration-1) var(--ease-out) both;
+}
+::view-transition-new(root) {
+  animation: vt-fade-in var(--duration-2) var(--ease-out) both;
+}
+
+@keyframes vt-slide-out-left {
+  to {
+    translate: -12% 0;
+    opacity: 0.85;
+    filter: brightness(0.92);
+  }
+}
+
+@keyframes vt-slide-in-right {
+  from {
+    translate: 100% 0;
+    opacity: 0.9;
+  }
+  to {
+    translate: 0 0;
+    opacity: 1;
+  }
+}
+
+@keyframes vt-slide-out-right {
+  to {
+    translate: 100% 0;
+    opacity: 0.9;
+  }
+}
+
+@keyframes vt-slide-in-left {
+  from {
+    translate: -12% 0;
+    opacity: 0.85;
+  }
+  to {
+    translate: 0 0;
+    opacity: 1;
+  }
+}
+
+@keyframes vt-fade-out {
+  to {
+    opacity: 0;
+  }
+}
+
+@keyframes vt-fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+/* 无障碍：减弱动效时直接关闭所有 View Transition 动画 */
+@media (prefers-reduced-motion: reduce) {
+  ::view-transition-group(*),
+  ::view-transition-old(*),
+  ::view-transition-new(*) {
+    animation: none !important;
+  }
+}

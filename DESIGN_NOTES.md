@@ -247,3 +247,36 @@
      - 尺寸撑满视口/槽位（`min-height: clamp(18rem, 60vh, 52rem)`），消除图片就绪时的突兀跳版（Layout Shift）；
      - 大画幅呈现看板插画、典藏装订纸纹微光与呼吸脉冲，让加载进行态饱满沉浸。
 - **验证**：`vp check`（71 文件 0 error）、`vp test`（8 套测试 22 用例全绿）、`vp build` 生产构建通过。
+
+## 21. 全局 View Transitions API 系统化改造（grill-with-docs 确认 → Impeccable: shape → critique → polish → adapt）
+
+- **需求背景**：参考张鑫旭文章与 W3C / MDN 最新规范，引入 View Transitions API 与 Element-scoped View Transitions，对全站页面跳转、封面形变、弹窗显隐、图片加载就绪及核心按钮状态演进进行系统化物理质感升级。
+- **Impeccable 设计决策**：
+  1. **场景化路由层级过渡（Directional SPA Transitions）**：
+     - `src/router/index.ts` 接入 `beforeResolve` 与 `document.startViewTransition({ update, types })`；
+     - 依据路由等级（书架 1 < 详情 2 < 章节 3 < 阅读器 4）自动计算 `forward`（前进推入）与 `backward`（后退带回）方向；
+     - 结合 CSS `:active-view-transition-type(forward/backward)` 实现微视差位移（`-12%` 至 `+100%`），严控动效节奏（`--duration-2` 260ms + `--ease-out`），杜绝全幅跳跃。
+  2. **书架到详情「共享封面形变」（Shared Cover Morph）**：
+     - 新增 `src/composables/useCoverTransition.ts` 动态管理激活卡片；
+     - 点击卡片时赋予封面 `view-transition-name: comic-cover-active`，与详情页 Hero 封面无缝对齐，实现如实体书取阅般的平滑尺寸与位置连续插值（神奇移动）；
+     - `router.afterEach` 自动延时清理过渡名称，确保书架无重名冲突与内存泄露。
+  3. **局域视图过渡门面（Element-Scoped View Transitions）**：
+     - 新增 `src/composables/useViewTransition.ts`，优先尝试现代 `element.startViewTransition()`，降级全局 `document.startViewTransition()` 与同步执行；
+     - `ComicPageImage.vue`：图片 `@load` 时驱动画卷装订插画平滑交叉溶解为高保真漫画页，消除突兀跳版；
+     - `FavoriteButton.vue`：红心点赞在局部子树内平滑形变与变色；
+     - `ImportPanel.vue`：收录按钮与并发步进器文字平滑流转；
+     - `Modal.vue` / `AuthModal.vue`：采用 Vue 原生 `<Transition>` 实现分层进退场动效（遮罩暗室沉降 + 面板弹簧微弹/退场微降），避免 View Transition 快照带来的亚像素位图模糊与遮罩空间畸变，保持 100% 高保真矢量排版。
+  4. **书架网格重排与筛选过渡（Shelf Grid Rearrange & Filtering）**：
+     - 为书架每张卡片分配唯一识别 `view-transition-name: card-<source>-<source_id>`；
+     - 标签筛选（`selectTag`）、只看喜欢（`toggleFavorites`）、排序切换（`onSortChange`）及以图搜图清除均由 `withViewTransition` 驱动；
+     - 触发变更时，留存卡片平滑滑行重排至新槽位，被剔除卡片柔和淡出，新匹配卡片淡入，完全还原张鑫旭文章经典的“列表倒序与元素增删神奇移动”。
+  5. **错误防御与生命周期兜底（Error Handling & Pitfall Learnings）**：
+     - **严禁在 SPA 声明 `@view-transition { navigation: auto; }`**：该 CSS 规则为 W3C MPA 多页跳转专属；在 Vue Router 单页应用中声明会导致 Chrome PerformanceObserver 在路由切换时误采集空指标，抛出 `Cannot read properties of undefined (reading 'startTime')`。SPA 必须且仅能通过 JS 编程式调用 `document.startViewTransition()`；
+     - **阅读器切页隔离**：阅读器内同路由翻页/切话（`to.name === 'reader' && from.name === 'reader'`）严禁触发全屏 View Transition，杜绝快速翻页时与虚拟滚动并发冲突产生的 `AbortError`；
+     - **Promise 全流程绑定 catch**：所有 `startViewTransition` 的 `ready` / `finished` / `updateCallbackDone` 统一绑定 `.catch(() => {})`，防止动画被抢占时向控制台溢出未捕获异常；
+     - **单页图片性能收敛**：单页漫画加载使用原生 CSS `opacity` GPU 硬件加速，不使用 `startViewTransition` 避免 50+ 页并发阻塞；
+     - **弹窗动效分工**：弹窗通过 Vue `<Transition>` 驱动进退场，彻底避免 View Transition 位图快照在全屏遮罩上产生的空间拉伸畸变与字体亚像素模糊。
+  6. **无障碍与优雅降级（Accessibility & Resilience）**：
+     - 严格支持 `@media (prefers-reduced-motion: reduce)`，系统偏好开启时关闭全部视图动画并直接同步更新；
+     - 绝不在模板内产生多重 transition 命名冲突，所有动效统一收敛至 `tokens.css`。
+- **验证**：`vp check` 0 warning / 0 lint / 0 type error，单测全部通过。
