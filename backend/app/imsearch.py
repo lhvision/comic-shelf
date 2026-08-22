@@ -13,6 +13,9 @@ from .models import ImageSearchItem
 
 logger = logging.getLogger("paper_room.imsearch")
 
+# Bypass local system/environment HTTP proxies (e.g. Clash, v2ray) for direct Sidecar communication
+_opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+
 # Match library/<source>/<source_id>/covers/<num>.<ext>
 # or library/<source>/<source_id>/covers/chapters/<chapter_id>.<ext>
 # or library/<source>/<source_id>/(pages|thumbs)/.../<num>.<ext>
@@ -28,7 +31,7 @@ def parse_imsearch_path(raw_path: str) -> tuple[str, str, int, bool] | None:
     """Extract (source, source_id, page_index, is_cover) from an image file path."""
     match = _COVER_PATTERN.search(raw_path)
     if match:
-        return match.group("source"), match.group("source_id"), int(match.group("num")), True
+        return match.group("source"), match.group("source_id"), 1, True
     match = _PAGE_PATTERN.search(raw_path)
     if match:
         return match.group("source"), match.group("source_id"), int(match.group("num")), False
@@ -39,7 +42,7 @@ def check_imsearch_status(base_url: str = IMSEARCH_URL) -> dict[str, Any]:
     """Check whether the external imsearch sidecar is reachable."""
     try:
         req = urllib.request.Request(f"{base_url}/metrics", method="GET")
-        with urllib.request.urlopen(req, timeout=1.5) as resp:
+        with _opener.open(req, timeout=1.5) as resp:
             return {"available": resp.status == 200, "url": base_url}
     except Exception as e:
         logger.debug("Imsearch sidecar not available: %s", e)
@@ -70,7 +73,7 @@ def search_imsearch(
             method="POST",
         )
 
-        with urllib.request.urlopen(req, timeout=10.0) as resp:
+        with _opener.open(req, timeout=10.0) as resp:
             if resp.status != 200:
                 logger.warning("imsearch returned status %s", resp.status)
                 return []
@@ -86,8 +89,8 @@ def search_imsearch(
                 raw_score, path_str = float(item[0]), str(item[1])
                 # Normalize 0..100 percentage score to 0..1 range
                 score = raw_score / 100.0 if raw_score > 1.0 else raw_score
-                # Discard low-confidence noise
-                if score < 0.20:
+                # Discard low-confidence noise (<35%)
+                if score < 0.35:
                     continue
                 parsed = parse_imsearch_path(path_str)
                 if parsed:
@@ -108,10 +111,10 @@ def search_imsearch(
         # Sort descending by match score
         results.sort(key=lambda r: r.score, reverse=True)
 
-        # Margin filter: discard candidates far weaker than the best match
+        # Lowe's ratio & margin filter: discard candidates far weaker than the best match
         if results:
             top_score = results[0].score
-            min_threshold = max(0.20, top_score * 0.70)
+            min_threshold = max(0.40, top_score * 0.80)
             results = [r for r in results if r.score >= min_threshold]
 
         return results

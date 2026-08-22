@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# 纸间 · 以图搜图本地特征库训练与增量索引脚本
-# 该脚本会自动扫描 backend/data/library 下的全部漫画图片，提取 ORB 特征点并训练/构建索引
+# 纸间 · 以图搜图本地特征库训练与全量/增量索引脚本
+# 该脚本会自动扫描 backend/data/library 下的全部漫画图片，提取 ORB 特征点并训练/构建倒排索引
 # 所有数据均存储在 backend/data/imsearch 下，随 data 目录一同持久化与迁移
 set -euo pipefail
 cd "$(dirname "$0")/.."
@@ -13,6 +13,11 @@ if [ ! -x "$IMSEARCH_BIN" ]; then
   echo "如需使用以图搜图功能，请先安装或使用 Docker 镜像:"
   echo "  cargo install --git https://github.com/lolishinshi/imsearch --locked"
   exit 1
+fi
+
+PYTHON="../.venv/bin/python"
+if [ ! -x "$PYTHON" ]; then
+  PYTHON="python3"
 fi
 
 DATA_DIR="backend/data"
@@ -29,10 +34,13 @@ fi
 echo "=== 1/3 扫描漫画图片并提取特征点 ==="
 "$IMSEARCH_BIN" -c "$IMSEARCH_DATA" add "$LIBRARY_DATA"
 
-echo "=== 2/3 训练聚类量化器 (centers=2048) ==="
-"$IMSEARCH_BIN" -c "$IMSEARCH_DATA" train -c 2048 -i 400
+echo "=== 2/3 训练聚类量化器 ==="
+"$IMSEARCH_BIN" -c "$IMSEARCH_DATA" train -c 512 -i 800 -m 30
 
-echo "=== 3/3 构建/更新倒排索引 ==="
+echo "=== 3/3 重置并构建全量倒排索引 ==="
+# 重新训练量化器后重置 indexed 标记，确保全量特征点与最新量化聚类中心对齐
+"$PYTHON" -c "import sqlite3; c=sqlite3.connect('$IMSEARCH_DATA/imsearch.db'); c.execute('UPDATE vector_stats SET indexed = 0'); c.commit(); c.close()" 2>/dev/null || true
+rm -f "$IMSEARCH_DATA/invlists.bin"
 "$IMSEARCH_BIN" -c "$IMSEARCH_DATA" build
 
 echo "🎉 识图特征库训练与索引构建完成！数据已保存在 $IMSEARCH_DATA"

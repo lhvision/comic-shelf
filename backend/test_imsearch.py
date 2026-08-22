@@ -26,7 +26,7 @@ def test_parse_imsearch_path():
 
 
 def test_check_imsearch_status():
-    with patch("urllib.request.urlopen") as mock_open:
+    with patch("backend.app.imsearch._opener.open") as mock_open:
         mock_resp = MagicMock()
         mock_resp.status = 200
         mock_open.return_value.__enter__.return_value = mock_resp
@@ -40,7 +40,7 @@ def test_check_imsearch_status():
 
 
 def test_search_imsearch():
-    with patch("urllib.request.urlopen") as mock_open:
+    with patch("backend.app.imsearch._opener.open") as mock_open:
         mock_resp = MagicMock()
         mock_resp.status = 200
         mock_resp.read.return_value = json.dumps(
