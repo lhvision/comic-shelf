@@ -144,7 +144,7 @@ watch(
     <canvas v-if="attemptCanvas" ref="canvasEl" class="surface-canvas" aria-hidden="true" />
 
     <div v-if="attemptCanvas && !canvasReady && !drawFailed" class="surface-loading" role="status">
-      <img src="/page-loading-1.gif" alt="" aria-hidden="true" />
+      <img src="/loading-1.webp" alt="" aria-hidden="true" />
     </div>
 
     <div v-if="hasOverlay" class="surface-overlay">
@@ -201,6 +201,11 @@ watch(
 .surface-loading img {
   width: clamp(2.5rem, 42%, 4.5rem);
   height: auto;
+  aspect-ratio: 16 / 9;
+  object-fit: cover;
+  border-radius: var(--radius-1);
+  filter: saturate(0.68) contrast(0.92) brightness(0.88);
+  border: 1px solid color-mix(in oklab, var(--paper-0, #fff) 12%, transparent);
 }
 
 .surface-badge {

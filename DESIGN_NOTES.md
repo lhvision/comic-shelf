@@ -202,3 +202,16 @@
   - 严格遵守 `DESIGN_NOTES §13` 顶层解构约束；
   - 规则已同步固化至 [`AGENTS.md`](file:///home/miku/dsh/comic-shelf/AGENTS.md) 与 [`docs/agents/frontend.md`](file:///home/miku/dsh/comic-shelf/docs/agents/frontend.md)。
 - **验证**：`vp check`（58 文件 0 error）、`vp test` 单元测试全部通过。
+
+## 18. 阅读器 Loading 界面重构（WebP 插画 + 纸间呼吸微光质感）
+
+- **需求**：废弃旧的 `page-loading-1/2.gif`，使用新引入的 4 张 WebP 插画（`/loading-1.webp` ~ `/loading-4.webp`）；降低图片强烈色彩感、但要保留明确的加载进行态与每次进入随机选图规则。
+- **Impeccable 设计决策**：
+  1. **插画资产现代化**：将原 JPG 转换为高质量轻量 WebP（平均体积 ~430KB），废弃体积臃肿且帧率受限的旧 GIF 动图。
+  2. **色彩温和降噪（Quiet Palette）**：插画应用 `filter: saturate(0.68) contrast(0.92) brightness(0.88)`，避免高饱和二次元原图在黑暗阅读器环境下刺眼或抢夺视觉焦点。
+  3. **实体装订加载感（Active Craft）**：
+     - 插画上方覆盖轻柔斜向光斑掠过动效（`shimmer-sweep` 2.4s 无限循环）；
+     - 整体卡片包裹磨砂纸色框与柔和投影，辅以极轻微的物理呼吸微动（`loading-breathe`）；
+     - 底部搭配 mono 字体「正在装订书页…」与朱砂色脉冲呼吸指示点。
+  4. **组件封装与复用**：沉淀 `src/components/reader/ReaderLoadingState.vue`，无缝复用于阅读器首屏整本加载与单页渐进式加载（`compact` 模式）；支持 `prefers-reduced-motion` 优雅降级。
+- **验证**：`vp check`（64 文件 0 error）、`vp test`（5 套测试 10 用例通过）。

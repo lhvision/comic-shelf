@@ -1,18 +1,15 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
+import ReaderLoadingState from '@/components/reader/ReaderLoadingState.vue'
 
 const props = withDefaults(
   defineProps<{
     src: string
     alt: string
     eager?: boolean
-    loadingVariant?: 1 | 2
+    loadingVariant?: 1 | 2 | 3 | 4
   }>(),
   { eager: false, loadingVariant: 1 },
-)
-
-const loadingSrc = computed(() =>
-  props.loadingVariant === 2 ? '/page-loading-2.gif' : '/page-loading-1.gif',
 )
 
 const imageEl = ref<HTMLImageElement | null>(null)
@@ -79,9 +76,12 @@ watch(
       @error="onError"
     />
 
-    <div v-if="loading" class="page-loading" role="status" aria-live="polite">
-      <img class="page-loading-icon" :src="loadingSrc" alt="加载中" aria-hidden="true" />
-    </div>
+    <ReaderLoadingState
+      v-if="loading"
+      class="page-loading-wrapper"
+      :variant="loadingVariant"
+      compact
+    />
 
     <div v-else-if="failed" class="page-error" role="alert">
       <span>图片加载失败</span>
@@ -118,22 +118,10 @@ watch(
   opacity: 1;
 }
 
-.page-loading {
+.page-loading-wrapper {
   position: absolute;
   inset: 0;
   z-index: 3;
-  display: grid;
-  place-items: center;
-  pointer-events: none;
-  filter: drop-shadow(0 4px 12px rgb(0 0 0 / 45%));
-}
-
-.page-loading-icon {
-  width: clamp(5rem, 22vw, 12rem);
-  max-width: 82%;
-  height: auto;
-  max-height: 60%;
-  object-fit: contain;
 }
 
 .page-error {
@@ -155,17 +143,11 @@ watch(
   border-radius: var(--radius-1);
   background: rgb(255 255 255 / 8%);
   color: inherit;
+  cursor: pointer;
+  transition: background var(--duration-1) var(--ease-out);
 }
 
-@keyframes loading-breathe {
-  0%,
-  100% {
-    opacity: 0.55;
-    transform: scale(0.94);
-  }
-  50% {
-    opacity: 1;
-    transform: scale(1);
-  }
+.page-error button:hover {
+  background: rgb(255 255 255 / 15%);
 }
 </style>

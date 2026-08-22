@@ -13,6 +13,7 @@ import ComicPageImage from '@/components/ComicPageImage.vue'
 import ReaderEndCard from '@/components/reader/ReaderEndCard.vue'
 import ReaderHud from '@/components/reader/ReaderHud.vue'
 import ReaderProgress from '@/components/reader/ReaderProgress.vue'
+import ReaderLoadingState from '@/components/reader/ReaderLoadingState.vue'
 import ReaderSettingsPanel from '@/components/reader/ReaderSettingsPanel.vue'
 import ReaderTopBar from '@/components/reader/ReaderTopBar.vue'
 import type { Chapter, ComicDetail } from '@/types'
@@ -39,7 +40,7 @@ const currentGroupIndex = ref(0)
 const settingsOpen = ref(false)
 const loading = ref(true)
 const progressValue = ref(0)
-const loadingVariant = ref<1 | 2>(Math.random() < 0.5 ? 1 : 2)
+const loadingVariant = ref<1 | 2 | 3 | 4>((Math.floor(Math.random() * 4) + 1) as 1 | 2 | 3 | 4)
 const reducedMotion = usePreferredReducedMotion()
 
 /* ---------------- 章节作用域 ---------------- */
@@ -401,7 +402,9 @@ function backToDetail() {
       @toggle-fullscreen="toggleFullscreen"
     />
 
-    <div v-if="loading" class="reader-loading">正在整理书页…</div>
+    <div v-if="loading" class="reader-loading">
+      <ReaderLoadingState :variant="loadingVariant" text="正在整理书页…" />
+    </div>
 
     <main
       v-else
@@ -734,9 +737,8 @@ function backToDetail() {
   display: grid;
   place-items: center;
   height: 100dvh;
-  font-family: var(--font-mono);
-  color: var(--reader-muted);
-  letter-spacing: 0.12em;
+  background: var(--reader-bg, #0d0c0a);
+  padding: var(--space-4);
 }
 
 /* ---------------- 进度条（scroll-timeline 增强） ----------------
