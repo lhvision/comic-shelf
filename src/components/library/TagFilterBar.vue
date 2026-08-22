@@ -43,72 +43,131 @@ function clearFilter() {
 </script>
 
 <template>
-  <div>
-    <div class="tag-filter cluster" aria-label="筛选书库">
+  <div class="filter-toolbar">
+    <div class="filter-cluster cluster" aria-label="书库筛选与标签">
       <button
         class="chip chip-button favorite-filter"
         type="button"
         :aria-pressed="favoritesOnly"
         @click="emit('toggleFavorites')"
       >
-        ♥ 只看喜欢
-      </button>
-    </div>
-
-    <div v-if="tagCounts.length" class="tag-filter cluster" aria-label="按标签过滤">
-      <button
-        class="chip chip-button"
-        type="button"
-        :aria-pressed="activeTag === ''"
-        @click="clearFilter"
-      >
-        全部
-      </button>
-      <button
-        v-for="[tag, count] in shownTags"
-        :key="tag"
-        class="chip chip-button"
-        type="button"
-        :aria-pressed="activeTag === tag"
-        @click="selectTag(tag)"
-      >
-        {{ tag }} <small>{{ count }}</small>
+        <svg class="heart-icon" viewBox="0 0 24 24" aria-hidden="true">
+          <path
+            d="M12 20.7 4.9 13.5a4.75 4.75 0 0 1 0-6.6 4.6 4.6 0 0 1 6.5 0l.6.6.6-.6a4.6 4.6 0 0 1 6.5 0 4.75 4.75 0 0 1 0 6.6L12 20.7Z"
+          />
+        </svg>
+        <span>只看喜欢</span>
       </button>
 
-      <button
-        v-if="moreCount > 0"
-        class="chip chip-button more-tags"
-        type="button"
-        :aria-expanded="expanded"
-        @click="expanded = !expanded"
-      >
-        {{ expanded ? '收起标签' : `更多标签 · ${moreCount}` }}
-      </button>
+      <span v-if="tagCounts.length" class="filter-divider" aria-hidden="true" />
+
+      <template v-if="tagCounts.length">
+        <button
+          class="chip chip-button"
+          type="button"
+          :aria-pressed="activeTag === ''"
+          @click="clearFilter"
+        >
+          全部
+        </button>
+        <button
+          v-for="[tag, count] in shownTags"
+          :key="tag"
+          class="chip chip-button"
+          type="button"
+          :aria-pressed="activeTag === tag"
+          @click="selectTag(tag)"
+        >
+          {{ tag }} <small class="tag-count">{{ count }}</small>
+        </button>
+
+        <button
+          v-if="moreCount > 0"
+          class="chip chip-button more-tags"
+          type="button"
+          :aria-expanded="expanded"
+          @click="expanded = !expanded"
+        >
+          {{ expanded ? '收起标签' : `更多 · ${moreCount}` }}
+        </button>
+      </template>
     </div>
 
     <p v-if="activeTag" class="filter-note">
       正在查看标签「{{ activeTag }}」的 {{ filteredCount }} 本
-      <button type="button" @click="clearFilter">清除</button>
+      <button class="clear-btn" type="button" @click="clearFilter">清除筛选</button>
     </p>
   </div>
 </template>
 
 <style scoped>
-.tag-filter {
-  padding: var(--space-4) 0;
+.filter-toolbar {
+  padding: var(--space-4) 0 var(--space-2);
+}
+
+.filter-cluster {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.favorite-filter {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+.favorite-filter .heart-icon {
+  width: 0.85rem;
+  height: 0.85rem;
+  fill: transparent;
+  stroke: currentColor;
+  stroke-width: 2;
+  transition: fill var(--duration-1) var(--ease-out);
+}
+
+.favorite-filter[aria-pressed='true'] .heart-icon {
+  fill: currentColor;
+}
+
+.filter-divider {
+  width: 1px;
+  height: 1.25rem;
+  background: var(--line-strong);
+  margin-inline: var(--space-1);
+}
+
+.tag-count {
+  font-family: var(--font-mono);
+  font-size: var(--text-caption);
+  opacity: 0.75;
+}
+
+.more-tags {
+  font-family: var(--font-mono);
 }
 
 .filter-note {
-  padding: var(--space-2) 0;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-top: var(--space-3);
+  padding: var(--space-1) var(--space-3);
+  border-radius: var(--radius-1);
+  background: color-mix(in oklab, var(--paper-1) 60%, transparent);
   color: var(--ink-1);
-  font-size: var(--text-sm);
+  font-size: var(--text-xs);
+  font-family: var(--font-mono);
 }
 
-.filter-note button {
-  margin-left: var(--space-3);
+.clear-btn {
   background: transparent;
-  color: var(--accent);
+  color: var(--accent-strong);
   text-decoration: underline;
   text-underline-offset: 3px;
+  cursor: pointer;
+  padding: 0;
+  font: inherit;
 }
 </style>

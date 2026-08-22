@@ -149,25 +149,41 @@ const liveRunning = computed(() => Boolean(props.cache?.running))
   object-fit: cover;
 }
 
+.cover-placeholder {
+  display: grid;
+  place-items: center;
+  background:
+    linear-gradient(135deg, var(--paper-1), var(--paper-2)),
+    color-mix(in oklab, var(--paper-2) 70%, transparent);
+  color: var(--ink-0);
+  font-family: var(--font-mono);
+  position: relative;
+}
+
+.cover-placeholder::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 0;
+  bottom: 0;
+  width: 3px;
+  translate: -50% 0;
+  background: color-mix(in oklab, var(--accent) 35%, transparent);
+}
+
 .id-stamp {
   position: absolute;
   right: var(--space-2);
   bottom: var(--space-2);
   padding: var(--space-0-5) var(--space-2);
-  background: color-mix(in oklab, var(--ink-0) 78%, transparent);
+  background: color-mix(in oklab, var(--ink-0) 82%, transparent);
   color: var(--paper-0);
+  border: 1px solid color-mix(in oklab, var(--paper-0) 22%, transparent);
   border-radius: var(--radius-1);
   font-family: var(--font-mono);
   font-size: var(--text-caption);
   letter-spacing: 0.08em;
-}
-
-.cover-placeholder {
-  display: grid;
-  place-items: center;
-  background: var(--ink-0);
-  color: var(--paper-0);
-  font-family: var(--font-mono);
+  backdrop-filter: blur(4px);
 }
 
 .card-body {
@@ -200,7 +216,7 @@ const liveRunning = computed(() => Boolean(props.cache?.running))
   color: var(--ink-2);
 }
 
-@media (max-width: 380px) {
+@container (max-width: 380px) {
   .card-foot {
     align-items: flex-start;
     flex-direction: column;

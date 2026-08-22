@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, onMounted, toRef, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import ImportPanel from '@/components/ImportPanel.vue'
 import LibraryHero from '@/components/library/LibraryHero.vue'
@@ -8,104 +8,42 @@ import ComicGrid from '@/components/library/ComicGrid.vue'
 import ThemeSelect from '@/components/ThemeSelect.vue'
 import { useLibraryStore } from '@/stores/library'
 import { useExperimentsStore } from '@/stores/experiments'
+import { useLibraryFilter } from '@/composables/useLibraryFilter'
 import { useToast } from '@/composables/useToast'
 
 /**
- * 书架首页 —— 只负责"数据源 + 筛选状态"的编排。
- * hero / 标签筛选条 / 卡片网格已下沉到 components/library/，
- * 本文件保留：来源过滤、搜索/标签/收藏/排序等筛选状态与派生计算。
+ * 书架首页 —— 纯编排视图。
+ * 检索/排序/过滤下沉至 useLibraryFilter，子区段下沉至 components/library/。
  */
-
 const store = useLibraryStore()
 const experiments = useExperimentsStore()
 const route = useRoute()
 const router = useRouter()
 const { toast } = useToast()
 
-const search = ref('')
-const activeTag = ref('')
-const favoritesOnly = ref(false)
-const sortBy = ref<'recent' | 'title' | 'pages' | 'cached'>('recent')
-
-onMounted(() => {
-  void store.load()
-  // 页面加载后若仍有后台缓存任务在跑，立即恢复实时进度轮询。
-  store.startPollingIfActive()
-})
-
 const activeSource = computed(() =>
   typeof route.query.source === 'string' ? route.query.source : '',
 )
 
-const sourceItems = computed(() =>
-  activeSource.value
-    ? store.items.filter((item) => item.source === activeSource.value)
-    : store.items,
-)
+// 遵守 DESIGN_NOTES §13 约束：Composable 返回值在 setup 顶层解构
+const {
+  search,
+  activeTag,
+  favoritesOnly,
+  sortBy,
+  sourceItems,
+  totalPages,
+  totalCachedPages,
+  tagCounts,
+  filtered,
+  setSort,
+} = useLibraryFilter(toRef(store, 'items'), activeSource)
 
-const totalPages = computed(() => sourceItems.value.reduce((sum, item) => sum + item.page_count, 0))
-
-const totalCachedPages = computed(() =>
-  sourceItems.value.reduce((sum, item) => sum + item.cached_pages, 0),
-)
-
-const tagCounts = computed(() => {
-  const counts = new Map<string, number>()
-  for (const item of sourceItems.value) {
-    for (const tag of item.tags) {
-      counts.set(tag, (counts.get(tag) ?? 0) + 1)
-    }
-  }
-  return [...counts.entries()].sort((a, b) => b[1] - a[1]).slice(0, 18)
+onMounted(() => {
+  void store.load()
+  store.startPollingIfActive()
 })
 
-const filtered = computed(() => {
-  const needle = search.value.trim().toLocaleLowerCase()
-  let items = sourceItems.value.filter((item) => {
-    const matchSearch =
-      needle.length === 0 ||
-      item.title.toLocaleLowerCase().includes(needle) ||
-      item.display_id.toLocaleLowerCase().includes(needle) ||
-      item.authors.some((value) => value.toLocaleLowerCase().includes(needle)) ||
-      item.works.some((value) => value.toLocaleLowerCase().includes(needle)) ||
-      item.actors.some((value) => value.toLocaleLowerCase().includes(needle)) ||
-      item.tags.some((value) => value.toLocaleLowerCase().includes(needle))
-
-    const matchTag = activeTag.value === '' || item.tags.includes(activeTag.value)
-    const matchFavorite = !favoritesOnly.value || item.favorite
-    return matchSearch && matchTag && matchFavorite
-  })
-
-  items = [...items]
-  switch (sortBy.value) {
-    case 'title':
-      items.sort((a, b) => a.title.localeCompare(b.title, 'zh-CN'))
-      break
-    case 'pages':
-      items.sort((a, b) => b.page_count - a.page_count)
-      break
-    case 'cached':
-      items.sort(
-        (a, b) =>
-          b.cached_pages / Math.max(b.page_count, 1) - a.cached_pages / Math.max(a.page_count, 1),
-      )
-      break
-    default:
-      items.sort(
-        (a, b) => new Date(b.imported_at || 0).getTime() - new Date(a.imported_at || 0).getTime(),
-      )
-  }
-  return items
-})
-
-function setSort(value: string) {
-  sortBy.value = value as typeof sortBy.value
-}
-
-/**
- * 喜欢按钮已经在 board card 里完成了 api.setFavorite（乐观），
- * 这里只本地更新 store 里的那一项，不整表刷新，避免列表全部重绘闪屏。
- */
 function onFavoriteToggled(source: string, sourceId: string, favorite: boolean) {
   store.setFavoriteLocal(source, sourceId, favorite)
 }

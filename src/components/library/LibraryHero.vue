@@ -65,8 +65,11 @@ withDefaults(
 
 .hero-stats {
   display: flex;
+  flex-wrap: wrap;
   gap: var(--space-6);
   margin-top: var(--space-6);
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--line);
 }
 
 .hero-stats div {
@@ -76,7 +79,8 @@ withDefaults(
 
 .hero-stats strong {
   font-family: var(--font-display);
-  font-size: var(--text-xl);
+  font-size: var(--text-lg);
+  line-height: 1.1;
   color: var(--accent-strong);
 }
 

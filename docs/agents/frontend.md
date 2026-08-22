@@ -2,24 +2,28 @@
 
 ## 6. 前端文件地图
 
-| 文件                                        | 职责                                                                       |
-| ------------------------------------------- | -------------------------------------------------------------------------- |
-| `src/views/LibraryView.vue`                 | 书架、导入、搜索、标签过滤                                                 |
-| `src/views/ComicDetailView.vue`             | 封面轮播、元数据、操作栏、章节目录（多话）/ 页面索引（单话）、缓存操作     |
-| `src/views/ChapterView.vue`                 | 章节子路由：某话的章节头（标题/页数/上一话/下一话）+ 该话 PageIndexGrid    |
-| `src/views/ReaderView.vue`                  | 阅读器：模式、grid 分页、进度、设置面板、横向滚轮映射、章节标注            |
-| `src/components/detail/ChapterIndex.vue`    | 章节目录整段：head + 卡片网格（多话作品详情页主视图，代替几千页平铺）      |
-| `src/components/detail/ChapterCard.vue`     | 目录单卡：该话第一页封面缩略图（失败回落书脊占位）+ 序数/标题/页数         |
-| `src/components/detail/ChapterSwitcher.vue` | 章节切换条（现用于 ChapterView 内跳话）：横向 chips + 方向键 + `useScroll` |
-| `src/composables/useChapterNavigation.ts`   | 章节导航编排：锁定章节、章节切片、48 增量渲染、「继续阅读 · 第 X 話」文案  |
-| `src/components/FavoriteButton.vue`         | 喜欢标记按钮（书架卡片 / 实验卡片 overlay）                                |
-| `src/components/ComicPageImage.vue`         | 每页图片 loading / error / retry 兜底                                      |
-| `src/components/CoverCarousel.vue`          | scroll-snap + view-timeline 封面流                                         |
-| `src/components/HtmlCanvasSurface.vue`      | 实验性 DOM→canvas 绘制原语，default slot 是完整 DOM 子树                   |
-| `src/components/HtmlCanvasCard.vue`         | 实验性书架卡片：整卡 DOM（封面+标题+标签+进度）合成 canvas                 |
-| `src/styles/tokens.css`                     | 设计 token 与原生 `@function` 演示                                         |
-| `src/stores/library.ts`                     | 书库 Pinia store                                                           |
-| `src/stores/experiments.ts`                 | 实验开关：HTML-in-Canvas 卡片                                              |
+| 文件                                        | 职责                                                                     |
+| ------------------------------------------- | ------------------------------------------------------------------------ |
+| `src/views/LibraryView.vue`                 | 书架视图编排：Hero / 导入 / 筛选工具栏 / 卡片网格                        |
+| `src/views/ComicDetailView.vue`             | 详情视图编排：封面流 / 元数据 / 操作栏 / 章节目录 / 页面索引             |
+| `src/views/ChapterView.vue`                 | 章节子路由：某话章节头 + 该话 PageIndexGrid                              |
+| `src/views/ReaderView.vue`                  | 阅读器视图编排：模式切换、DOM 分屏挂载、HUD / 顶栏 / 设置面板接线        |
+| `src/composables/useLibraryFilter.ts`       | 书架检索与筛选：模糊搜索、标签频率统计、多模式排序与喜欢过滤             |
+| `src/composables/useReaderPaging.ts`        | 阅读器分页与作用域：分组切片、全局/本地页码映射、跨话首尾探测与边界计算  |
+| `src/composables/useAutoTurn.ts`            | 阅读器自动翻页：倒计时状态机、节拍器、页面可见性联动与暂停/继续          |
+| `src/composables/useReaderChrome.ts`        | 阅读器顶栏/HUD 延时隐藏与交互唤醒控制                                    |
+| `src/composables/useChapterNavigation.ts`   | 详情/子路由章节导航：锁定章节、章节切片、48 增量渲染、「继续阅读」文案   |
+| `src/components/detail/ChapterIndex.vue`    | 章节目录整段：head + 卡片网格（多话作品详情页主视图，代替几千页平铺）    |
+| `src/components/detail/ChapterCard.vue`     | 目录单卡：该话第一页封面缩略图（失败回落书脊占位）+ 序数/标题/页数       |
+| `src/components/detail/ChapterSwitcher.vue` | 章节切换条（用于 ChapterView 内跳话）：横向 chips + 方向键 + `useScroll` |
+| `src/components/FavoriteButton.vue`         | 喜欢标记按钮（书架卡片 / 实验卡片 overlay）                              |
+| `src/components/ComicPageImage.vue`         | 每页图片 loading / error / retry 兜底                                    |
+| `src/components/CoverCarousel.vue`          | scroll-snap + view-timeline 封面流                                       |
+| `src/components/HtmlCanvasSurface.vue`      | 实验性 DOM→canvas 绘制原语，default slot 是完整 DOM 子树                 |
+| `src/components/HtmlCanvasCard.vue`         | 实验性书架卡片：整卡 DOM（封面+标题+标签+进度）合成 canvas               |
+| `src/styles/tokens.css`                     | 设计 token 与原生 `@function` 演示                                       |
+| `src/stores/library.ts`                     | 书库 Pinia store                                                         |
+| `src/stores/experiments.ts`                 | 实验开关：HTML-in-Canvas 卡片                                            |
 
 ## 6.5 页面索引性能策略
 

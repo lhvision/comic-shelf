@@ -1,18 +1,14 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import {
-  useDocumentVisibility,
-  useEventListener,
-  useFullscreen,
-  useIntervalFn,
-  usePreferredReducedMotion,
-  useTimeoutFn,
-} from '@vueuse/core'
+import { useEventListener, useFullscreen, usePreferredReducedMotion } from '@vueuse/core'
 import { api, pageFileUrl } from '@/api/client'
 import { useToast } from '@/composables/useToast'
 import { useLastRead } from '@/composables/useLastRead'
 import { useReaderSettings } from '@/composables/useReaderSettings'
+import { useReaderPaging } from '@/composables/useReaderPaging'
+import { useReaderChrome } from '@/composables/useReaderChrome'
+import { useAutoTurn } from '@/composables/useAutoTurn'
 import ComicPageImage from '@/components/ComicPageImage.vue'
 import ReaderEndCard from '@/components/reader/ReaderEndCard.vue'
 import ReaderHud from '@/components/reader/ReaderHud.vue'
@@ -22,10 +18,9 @@ import ReaderTopBar from '@/components/reader/ReaderTopBar.vue'
 import type { Chapter, ComicDetail } from '@/types'
 
 /**
- * 阅读器视图 —— 只负责"阅读会话"的编排：
- * 数据加载、分屏定位、滚动/键盘/自动切换等交互逻辑都留在这里；
- * 顶栏、设置面板、HUD、进度条、结尾卡全部下沉到 components/reader/ 下的
- * 纯展示组件，本文件只做 props/emit 的接线。
+ * 阅读器视图 —— 编排视图。
+ * 分页切片下沉至 useReaderPaging，顶栏隐显下沉至 useReaderChrome，
+ * 自动切换状态机下沉至 useAutoTurn，各功能面板作为独立纯展示子组件挂载。
  */
 
 const route = useRoute()
@@ -41,30 +36,13 @@ const detail = ref<ComicDetail | null>(null)
 const scrollEl = ref<HTMLElement | null>(null)
 const currentPage = ref(1)
 const currentGroupIndex = ref(0)
-const chromeVisible = ref(true)
 const settingsOpen = ref(false)
 const loading = ref(true)
-
-// 进度条：数值由 onScroll 计算，交给 ReaderProgress 组件渲染
 const progressValue = ref(0)
-
-// Per book-entry loading variant: picked once when entering this reader and
-// kept identical for every page in this book until the reader is reopened.
 const loadingVariant = ref<1 | 2>(Math.random() < 0.5 ? 1 : 2)
-
-/* ---------------- 自动切换 ---------------- */
-const autoTurnRemaining = ref(settings.autoTurnInterval)
-const autoTurnPaused = ref(false)
 const reducedMotion = usePreferredReducedMotion()
-const documentVisibility = useDocumentVisibility()
 
-const total = computed(() => scopedPages.value.length)
-
-/* ---------------- 章节作用域 ----------------
- * 「以章节维度渲染」的核心：从章节子路由（?chapter=id）进入阅读器时，
- * 阅读器只渲染当前话的页面范围（比如 37 页），不把 7227 页一次性铺进 DOM。
- * 从父详情（无 ?chapter=）进入时保持整本跨话阅读不变。
- * 阅读器仍沿用全局页码 URL 与 /pages/{index}/file 端点（AGENTS 硬规则 #7）。 */
+/* ---------------- 章节作用域 ---------------- */
 const scopeId = ref<string | null>(null)
 
 watch(
@@ -75,169 +53,60 @@ watch(
   { immediate: true },
 )
 
-const scopedChapter = computed(() => {
-  if (!scopeId.value) return null
-  const chs = detail.value?.meta.chapters ?? []
-  return chs.find((c) => c.id === scopeId.value) ?? null
+// 遵守 DESIGN_NOTES §13 约束：Composable 返回值在 setup 顶层解构
+const {
+  scopedChapter,
+  scopedPages,
+  total,
+  clampToScope,
+  currentChapter,
+  chapterLabel,
+  chapters,
+  currentChapterIndex,
+  nextChapter,
+  prevChapter,
+  atChapterEnd,
+  atChapterStart,
+  showEndCard,
+  pageGroups,
+  orderedGroups,
+  isVertical,
+  rtlHorizontal,
+  prevSymbol,
+  nextSymbol,
+  toLocalPage,
+  currentGroupLabel,
+  lastGroupIndex,
+  atLastGroup,
+  groupIndexForPage,
+  groupFirstPage,
+} = useReaderPaging({
+  detail,
+  scopeId,
+  settings,
+  currentPage,
+  currentGroupIndex,
 })
 
-/** 当前作用域内的全局页码列表：整本 1..total；分章话为 [start, start+page_count)。 */
-const scopedPages = computed<number[]>(() => {
-  if (!detail.value) return []
-  const c = scopedChapter.value
-  if (!c) return Array.from({ length: detail.value.meta.page_count }, (_, i) => i + 1)
-  const pages: number[] = []
-  for (let p = c.start; p < c.start + c.page_count; p += 1) pages.push(p)
-  return pages
+const { chromeVisible, showChromeTemporarily, scheduleChromeHide, toggleChrome } = useReaderChrome({
+  settingsOpen,
 })
 
-function clampToScope(page: number): number {
-  const pages = scopedPages.value
-  if (pages.length === 0) return 1
-  return Math.min(Math.max(page, pages[0]!), pages[pages.length - 1]!)
-}
-
-/* ---------------- 多章节提示 ----------------
- * 阅读器沿用全局页码；多章节作品按当前全局页定位所在章节，顶栏显示章节名。 */
-const currentChapter = computed(() => {
-  const chs = detail.value?.meta.chapters ?? []
-  if (chs.length <= 1) return null
-  const page = currentPage.value
-  return chs.find((c) => page >= c.start && page < c.start + c.page_count) ?? null
+const {
+  autoTurnRemaining,
+  autoTurnPaused,
+  startAutoTurnCountdown,
+  stopAutoTurnCountdown,
+  resetAutoTurnCountdown,
+  toggleAutoTurnPause,
+} = useAutoTurn({
+  settings,
+  currentGroupIndex,
+  lastGroupIndex,
+  settingsOpen,
+  onAdvance: advanceAutoTurn,
+  onScheduleChromeHide: scheduleChromeHide,
 })
-const chapterLabel = computed(() => {
-  const c = currentChapter.value
-  return c ? `第 ${c.index} 話 · ${c.title}` : ''
-})
-
-/* T08：跨话快捷翻页 —— 定位当前章节在全书里的前后话 */
-const chapters = computed(() => detail.value?.meta.chapters ?? [])
-const currentChapterIndex = computed(() => {
-  const cc = currentChapter.value
-  return cc ? chapters.value.findIndex((c) => c.id === cc.id) : -1
-})
-const nextChapter = computed(() =>
-  currentChapterIndex.value >= 0 ? (chapters.value[currentChapterIndex.value + 1] ?? null) : null,
-)
-const prevChapter = computed(() =>
-  currentChapterIndex.value > 0 ? (chapters.value[currentChapterIndex.value - 1] ?? null) : null,
-)
-/** 是否已读到当前话的最后一页（多话作品才为 true） */
-const atChapterEnd = computed(() => {
-  const c = currentChapter.value
-  return c !== null && currentPage.value >= c.start + c.page_count - 1
-})
-/** 是否正停在当前话的第一页（多话作品且存在上一话时才显示「上一话」悬浮钮） */
-const atChapterStart = computed(() => {
-  const c = currentChapter.value
-  return c !== null && currentPage.value <= c.start
-})
-
-/** 分章作用域下，只有真正读完最后一话才显示「本子翻完了」结尾卡 */
-const showEndCard = computed(() => {
-  if (scopedChapter.value === null) return true
-  return !nextChapter.value
-})
-
-const pageGroups = computed<number[][]>(() => {
-  const groups: number[][] = []
-  const pages = scopedPages.value
-  for (let index = 0; index < pages.length; index += settings.pagesPerView) {
-    groups.push(pages.slice(index, index + settings.pagesPerView))
-  }
-  return groups
-})
-
-const orderedGroups = computed(() => {
-  const withIndex = pageGroups.value.map((pages, index) => ({ pages, index }))
-  return settings.direction === 'rtl' && settings.mode === 'horizontal'
-    ? [...withIndex].reverse()
-    : withIndex
-})
-
-const isVertical = computed(() => settings.mode !== 'horizontal')
-const rtlHorizontal = computed(() => settings.mode === 'horizontal' && settings.direction === 'rtl')
-const prevSymbol = computed(() => {
-  if (settings.mode !== 'horizontal') return '↑'
-  return settings.direction === 'rtl' ? '→' : '←'
-})
-const nextSymbol = computed(() => {
-  if (settings.mode !== 'horizontal') return '↓'
-  return settings.direction === 'rtl' ? '←' : '→'
-})
-
-/** 分章作用域下把全局页码换算成章内本地页码（如第 2 话的第 9 页 → 1） */
-function toLocalPage(page: number): number {
-  const c = scopedChapter.value
-  return c ? page - c.start + 1 : page
-}
-
-const currentGroupLabel = computed(() => {
-  const group = pageGroups.value[currentGroupIndex.value]
-  if (!group || group.length === 0) return '—'
-  if (group.length === 1) return String(toLocalPage(group[0]!))
-  return `${toLocalPage(group[0]!)}–${toLocalPage(group[group.length - 1]!)}`
-})
-
-const lastGroupIndex = computed(() => Math.max(0, pageGroups.value.length - 1))
-const atLastGroup = computed(() => currentGroupIndex.value >= lastGroupIndex.value)
-
-/** 自动切换是否可以走动（设置开启、未暂停、未开设置面板、页面可见、未到末屏） */
-function canAutoTurnRun() {
-  return (
-    settings.autoTurn &&
-    !autoTurnPaused.value &&
-    !settingsOpen.value &&
-    documentVisibility.value === 'visible' &&
-    !atLastGroup.value
-  )
-}
-
-const { pause: pauseAutoTurnTick, resume: resumeAutoTurnTick } = useIntervalFn(
-  () => {
-    autoTurnRemaining.value -= 1
-    if (autoTurnRemaining.value > 0) return
-
-    if (!canAutoTurnRun()) {
-      stopAutoTurnCountdown()
-      return
-    }
-    advanceAutoTurn()
-    startAutoTurnCountdown()
-  },
-  1000,
-  { immediate: false },
-)
-
-function startAutoTurnCountdown() {
-  pauseAutoTurnTick()
-  if (!canAutoTurnRun()) {
-    autoTurnRemaining.value = settings.autoTurnInterval
-    return
-  }
-  autoTurnRemaining.value = settings.autoTurnInterval
-  resumeAutoTurnTick()
-}
-
-function stopAutoTurnCountdown() {
-  pauseAutoTurnTick()
-  autoTurnRemaining.value = settings.autoTurnInterval
-}
-
-function resetAutoTurnCountdown() {
-  if (!settings.autoTurn || autoTurnPaused.value) return
-  startAutoTurnCountdown()
-}
-
-function toggleAutoTurnPause() {
-  if (!settings.autoTurn || settingsOpen.value || atLastGroup.value) return
-  autoTurnPaused.value = !autoTurnPaused.value
-  if (autoTurnPaused.value) {
-    pauseAutoTurnTick()
-  } else {
-    resetAutoTurnCountdown()
-  }
-}
 
 function advanceAutoTurn() {
   const nextIndex = Math.min(currentGroupIndex.value + 1, lastGroupIndex.value)
@@ -247,71 +116,7 @@ function advanceAutoTurn() {
   scrollToGroup(nextIndex, behavior)
 }
 
-watch(
-  () => settings.autoTurn,
-  (enabled) => {
-    autoTurnPaused.value = false
-    if (enabled) resetAutoTurnCountdown()
-    else stopAutoTurnCountdown()
-  },
-)
-
-watch(
-  () => settings.autoTurnInterval,
-  () => resetAutoTurnCountdown(),
-)
-
-watch(settingsOpen, (open) => {
-  if (open) pauseAutoTurnTick()
-  else {
-    scheduleChromeHide()
-    resetAutoTurnCountdown()
-  }
-})
-
-watch(documentVisibility, (state) => {
-  if (state === 'hidden') pauseAutoTurnTick()
-  else resetAutoTurnCountdown()
-})
-
-/* ---------------- 顶栏自动隐藏 ---------------- */
-const { start: startChromeHide, stop: stopChromeHide } = useTimeoutFn(
-  () => {
-    if (!settingsOpen.value) chromeVisible.value = false
-  },
-  2600,
-  { immediate: false },
-)
-
-function showChromeTemporarily() {
-  chromeVisible.value = true
-  stopChromeHide()
-  startChromeHide()
-}
-
-function scheduleChromeHide() {
-  stopChromeHide()
-  startChromeHide()
-}
-
-function toggleChrome() {
-  chromeVisible.value = !chromeVisible.value
-  if (chromeVisible.value) startChromeHide()
-}
-
 /* ---------------- 分屏定位 ---------------- */
-function groupIndexForPage(page: number): number {
-  const groups = pageGroups.value
-  for (let index = 0; index < groups.length; index += 1) {
-    if (groups[index]!.includes(page)) return index
-  }
-  return 0
-}
-
-function groupFirstPage(groupIndex: number): number {
-  return pageGroups.value[groupIndex]?.[0] ?? 1
-}
-
 function scrollToGroup(groupIndex: number, behavior: ScrollBehavior = 'smooth') {
   const el = scrollEl.value
   if (!el) return
@@ -382,7 +187,6 @@ function onWheel(event: WheelEvent) {
   const el = scrollEl.value
   if (!el) return
 
-  // Trackpads already provide deltaX; let the native horizontal scroll handle it.
   if (Math.abs(event.deltaY) <= Math.abs(event.deltaX)) return
 
   event.preventDefault()
@@ -459,10 +263,9 @@ function onKeydown(event: KeyboardEvent) {
 }
 
 const { toggle: toggleFullscreen } = useFullscreen(document.documentElement)
-
 useEventListener(window, 'keydown', onKeydown)
 
-/* ---------------- 数据加载 ---------------- */
+/* ---------------- 数据加载与监听 ---------------- */
 onMounted(async () => {
   try {
     detail.value = await api.detail(source.value, sourceId.value)
@@ -535,13 +338,10 @@ function nextGroup() {
   goToGroup(currentGroupIndex.value + 1)
 }
 
-/** 章节按钮兜底文案：标题为空时回落「第 N 話」。 */
 function chapterShortLabel(c: Chapter) {
   return c.title ? c.title : `第 ${c.index} 話`
 }
 
-/** 切换章节作用域：只在分章模式（已有 ?chapter=）下跟随跨话跳到下一/上一话。
- * 同时把 URL 的 page 参数对齐到目标页，避免地址栏页码与实际页不一致。 */
 function setScope(id: string, page: number) {
   scopeId.value = id
   const target = `/comic/${source.value}/${sourceId.value}/read/${page}?chapter=${encodeURIComponent(id)}`
@@ -562,8 +362,6 @@ function goPrevChapter() {
   goToPage(c.start + c.page_count - 1, 'smooth')
 }
 
-/* 分章作用域变化后重定位：从浏览器前进/后退或跨话跳转切章时，
-   currentPage 可能落在新作用域之外，需重新 clamp 并滚回正确位置。 */
 watch(
   () => scopeId.value,
   async () => {
@@ -578,7 +376,6 @@ watch(
   },
 )
 
-/** 返回目标：从章节子路由进入阅读器时（?chapter=），返回回到该章节；否则回详情页。 */
 const backTarget = computed(() => {
   const chapter = route.query.chapter
   if (chapter && typeof chapter === 'string') {

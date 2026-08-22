@@ -93,7 +93,10 @@ pnpm ai-e2e:test e2e/tests/<file>.spec.ts -g "用例名"   # 只跑单条用例
 
 - **禁止删数据**：绝对不能删除后端的 `backend/data/` 数据。
 - **改前必读索引**：先根据任务读取“规则文件索引”中的对应文件，再开始改代码；不要只依赖本索引的摘要。
-- **组件职责边界**：新增功能拆成职责单一的小组件，优先使用 VueUse 实现；公共组件沉淀至 `src/components/` 根目录。
+- **视图轻量化（View Thinness）**：`src/views/*.vue` 仅负责页面布局编排、子组件插槽与路由直达，单文件脚本原则上不超过 150 行。
+- **状态与副作用下沉（Composable First）**：状态机、定时器、复杂计算与筛选算法必须收敛到 `src/composables/use*.ts`，优先复用 VueUse。
+- **Composable 顶层解构铁律（DESIGN_NOTES §13）**：凡由 Composable 返回的 Ref/Computed，必须在 `<script setup>` 顶层解构后再绑定模板或传给子组件，严禁传包装对象导致模板解包失效。
+- **组件职责与目录边界**：通用基础组件沉淀至 `src/components/` 根目录；业务域专属组件沉淀至对应子目录（如 `detail/`、`library/`、`reader/`）。
 - **视觉准则**：新 UI 组件/重构必读 `docs/agents/ui.md` 并调用 `impeccable` skill；日常与微调遵从 `DESIGN_NOTES.md` 与设计 tokens；阅读器问题先读 `docs/agents/frontend.md`。
 - **静态检查**：完成后至少运行 `vp check`。
 - **单元测试**：测试只跑与本次改动相关的测试文件（如 `vp test src/__tests__/App.spec.ts`），不要全量 `vp test`。

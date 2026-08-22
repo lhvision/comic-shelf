@@ -178,3 +178,27 @@
   上一话/中间 tabs/下一话中间页；从父详情进入阅读器 8 页（第 1 话）、从章节进入 37 页（第 2 话）；
   第 2 话首页显示「← 上一话：第 1 話」、末页显示「本话完 · 下一话：2 →」，跨话 URL 页码对齐；
   单章书 `jm/1242163` 父详情整本网格 + 阅读器 39 页，零回归。`vp check` / `vp test` / `vue-tsc` 全绿。
+
+## 16. 全局组件与 UI 质感系统性升级（纸质典藏物理感，拒绝 8-bit 割裂）
+
+- **风格决策**：明确不走 8-bit 复古街机游戏风（防 CJK 汉字可读性崩塌、防抢夺高保真漫画原画焦点、防与“纸间”暖纸墨色品牌隐喻脱节），而是收敛并升华为「实体印刷与档案室物理质感（Physical Print & Archival Craft）」。
+- **组件与交互打磨**：
+  1. `TagFilterBar`：删除 unicode `♥` emoji 字符，改用矢量 SVG 心形图标；合并两个孤立的 cluster 容器为一体化筛选工具栏，加入典藏细分隔线。
+  2. `ToastStack`：下沉全局样式至组件内部，引入印章风格指示徽标（`✕`/`✓` 圆形印戳），支持 error / info / success 多色调微质感。
+  3. `LibraryHero`：统计数字卡片增加左侧朱砂标尺线与暖纸色底衬，强化图书馆卡片目录索引感。
+  4. `ComicCard`：将视口 media query 升级为 CSS 容器查询（`@container (max-width: 380px)`），使卡片在网格自适应缩放时按自身宽度换行；空封面提供典藏书脊占位带；车号印章增加微磨砂与典藏边框。
+- **验证**：全部沿用既有 tokens 与 VueUse；`vp check` 与 `vp test` 全绿。
+
+## 17. 前端组件与 Hook 深度解耦（视图编排化 + 状态下沉 Composable）
+
+- **痛点治理**：`ReaderView.vue` 曾膨胀至 1050 行，混杂自动翻页、分页切片与顶栏延时三大状态机；`LibraryView.vue` 混杂多字段检索与排序。
+- **解耦重构**：
+  1. `useLibraryFilter.ts`：从 `LibraryView` 抽离模糊搜索、标签频率统计、4 种排序与喜欢过滤；
+  2. `useAutoTurn.ts`：从 `ReaderView` 抽离自动翻页倒计时、节拍器、页面可见性与暂停切换状态机；
+  3. `useReaderPaging.ts`：从 `ReaderView` 抽离分页分组、作用域映射（`toLocalPage`）、前后话跨章探测与边界计算；
+  4. `useReaderChrome.ts`：从 `ReaderView` 抽离顶栏与 HUD 延时隐显控制。
+- **规则沉淀**：
+  - 视图只做纯编排（View Thinness），单文件 `<script setup>` 原则上不超过 150 行；
+  - 严格遵守 `DESIGN_NOTES §13` 顶层解构约束；
+  - 规则已同步固化至 [`AGENTS.md`](file:///home/miku/dsh/comic-shelf/AGENTS.md) 与 [`docs/agents/frontend.md`](file:///home/miku/dsh/comic-shelf/docs/agents/frontend.md)。
+- **验证**：`vp check`（58 文件 0 error）、`vp test` 单元测试全部通过。
