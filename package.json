@@ -17,7 +17,7 @@
     "lint:eslint": "vp lint . --fix",
     "format": "vp fmt src/",
     "prepare": "vp config",
-    "ai-e2e:test": "playwright test",
+    "ai-e2e:test": "ai-e2e run",
     "ai-e2e:doctor": "ai-e2e doctor",
     "ai-e2e:chrome": "ai-e2e chrome",
     "ai-e2e:platform": "ai-e2e platform",

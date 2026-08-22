@@ -34,16 +34,16 @@ release. Add a tool name to select part of the graph. For example, run
 
 ## 规则文件索引
 
-| 文件                              | 何时读取                                                          |
-| --------------------------------- | ----------------------------------------------------------------- |
-| `docs/agents/ui.md`               | 设计到新的 ui 改动可以看这个，主要是 Impeccable skill 结合 234 步 |
-| `docs/agents/architecture.md`     | 改后端、Provider、存储、API 或需要架构/文件地图时                 |
-| `docs/agents/frontend.md`         | 改书架、详情页、阅读器、页面索引、多来源导航、多章节时            |
-| `docs/agents/html-canvas.md`      | 改 HTML-in-Canvas 实验相关代码时                                  |
-| `docs/agents/tooling-workflow.md` | 处理 Vite+ / Docker / 部署 / 排错时                               |
-| `DESIGN_NOTES.md`                 | 任何 UI/视觉改动前                                                |
-| `DEPLOYMENT.md`                   | 容器化、端口、环境变量、持久化相关                                |
-| `README.md`                       | 运行方式、数据布局、已实现功能总览                                |
+| 文件                              | 何时读取                                                                         |
+| --------------------------------- | -------------------------------------------------------------------------------- |
+| `docs/agents/ui.md`               | 涉及新 UI 组件、页面重构或视觉方案设计时必读（调度 Impeccable skill 的执行协议） |
+| `docs/agents/architecture.md`     | 改后端、Provider、存储、API 或需要架构/文件地图时                                |
+| `docs/agents/frontend.md`         | 改书架、详情页、阅读器、页面索引、多来源导航、多章节时                           |
+| `docs/agents/html-canvas.md`      | 改 HTML-in-Canvas 实验相关代码时                                                 |
+| `docs/agents/tooling-workflow.md` | 处理 Vite+ / Docker / 部署 / 排错时                                              |
+| `DESIGN_NOTES.md`                 | 任何 UI/视觉改动前必读（项目长期设计系统与决策现状地图）                         |
+| `DEPLOYMENT.md`                   | 容器化、端口、环境变量、持久化相关                                               |
+| `README.md`                       | 运行方式、数据布局、已实现功能总览                                               |
 
 ## 任何改动前必须遵守
 
@@ -84,7 +84,7 @@ pnpm ai-e2e:doctor                       # AI E2E 环境诊断
 pnpm ai-e2e:platform                     # 启动 Web 回归测试看板
 pnpm ai-e2e:chrome                       # 启动 Chrome 调试实例（扫码登录一次持久化）
 pnpm ai-e2e:yaml e2e/yaml/<file>.yaml    # 执行 Midscene YAML 脚本
-pnpm exec playwright test e2e/tests/<file>.spec.ts -g "用例名"   # 只跑单条用例
+pnpm ai-e2e:test e2e/tests/<file>.spec.ts -g "用例名"   # 只跑单条用例
 ```
 
 ## Agent 执行约定
@@ -94,7 +94,7 @@ pnpm exec playwright test e2e/tests/<file>.spec.ts -g "用例名"   # 只跑单�
 - **禁止删数据**：绝对不能删除后端的 `backend/data/` 数据。
 - **改前必读索引**：先根据任务读取“规则文件索引”中的对应文件，再开始改代码；不要只依赖本索引的摘要。
 - **组件职责边界**：新增功能拆成职责单一的小组件，优先使用 VueUse 实现；公共组件沉淀至 `src/components/` 根目录。
-- **视觉准则**：任何 UI 改动先读 `DESIGN_NOTES.md`；阅读器问题先读 `docs/agents/frontend.md`。
+- **视觉准则**：新 UI 组件/重构必读 `docs/agents/ui.md` 并调用 `impeccable` skill；日常与微调遵从 `DESIGN_NOTES.md` 与设计 tokens；阅读器问题先读 `docs/agents/frontend.md`。
 - **静态检查**：完成后至少运行 `vp check`。
 - **单元测试**：测试只跑与本次改动相关的测试文件（如 `vp test src/__tests__/App.spec.ts`），不要全量 `vp test`。
 
