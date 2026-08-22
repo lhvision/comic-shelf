@@ -1,9 +1,17 @@
-import { ref, watch, type ComputedRef, type Ref } from 'vue'
+import {
+  computed,
+  ref,
+  toValue,
+  watch,
+  type ComputedRef,
+  type MaybeRefOrGetter,
+  type Ref,
+} from 'vue'
 import { useDocumentVisibility, useIntervalFn } from '@vueuse/core'
 import type { ReaderSettings } from '@/composables/useReaderSettings'
 
 export interface UseAutoTurnOptions {
-  settings: Ref<ReaderSettings>
+  settings: MaybeRefOrGetter<ReaderSettings> | ReaderSettings
   currentGroupIndex: Ref<number>
   lastGroupIndex: ComputedRef<number>
   settingsOpen: Ref<boolean>
@@ -18,13 +26,14 @@ export interface UseAutoTurnOptions {
 export function useAutoTurn(options: UseAutoTurnOptions) {
   const { settings, lastGroupIndex, settingsOpen, onAdvance, onScheduleChromeHide } = options
 
-  const autoTurnRemaining = ref(settings.value.autoTurnInterval)
+  const currentSettings = computed(() => toValue(settings))
+  const autoTurnRemaining = ref(currentSettings.value.autoTurnInterval)
   const autoTurnPaused = ref(false)
   const documentVisibility = useDocumentVisibility()
 
   function canAutoTurnRun() {
     return (
-      settings.value.autoTurn &&
+      currentSettings.value.autoTurn &&
       !autoTurnPaused.value &&
       !settingsOpen.value &&
       documentVisibility.value === 'visible' &&
@@ -51,26 +60,26 @@ export function useAutoTurn(options: UseAutoTurnOptions) {
   function startAutoTurnCountdown() {
     pauseAutoTurnTick()
     if (!canAutoTurnRun()) {
-      autoTurnRemaining.value = settings.value.autoTurnInterval
+      autoTurnRemaining.value = currentSettings.value.autoTurnInterval
       return
     }
-    autoTurnRemaining.value = settings.value.autoTurnInterval
+    autoTurnRemaining.value = currentSettings.value.autoTurnInterval
     resumeAutoTurnTick()
   }
 
   function stopAutoTurnCountdown() {
     pauseAutoTurnTick()
-    autoTurnRemaining.value = settings.value.autoTurnInterval
+    autoTurnRemaining.value = currentSettings.value.autoTurnInterval
   }
 
   function resetAutoTurnCountdown() {
-    if (!settings.value.autoTurn || autoTurnPaused.value) return
+    if (!currentSettings.value.autoTurn || autoTurnPaused.value) return
     startAutoTurnCountdown()
   }
 
   function toggleAutoTurnPause() {
     if (
-      !settings.value.autoTurn ||
+      !currentSettings.value.autoTurn ||
       settingsOpen.value ||
       options.currentGroupIndex.value >= lastGroupIndex.value
     ) {
@@ -85,7 +94,7 @@ export function useAutoTurn(options: UseAutoTurnOptions) {
   }
 
   watch(
-    () => settings.value.autoTurn,
+    () => currentSettings.value.autoTurn,
     (enabled) => {
       autoTurnPaused.value = false
       if (enabled) resetAutoTurnCountdown()
@@ -94,7 +103,7 @@ export function useAutoTurn(options: UseAutoTurnOptions) {
   )
 
   watch(
-    () => settings.value.autoTurnInterval,
+    () => currentSettings.value.autoTurnInterval,
     () => resetAutoTurnCountdown(),
   )
 

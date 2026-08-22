@@ -1,11 +1,11 @@
-import { computed, type Ref } from 'vue'
+import { computed, toValue, type MaybeRefOrGetter, type Ref } from 'vue'
 import type { ComicDetail, Chapter } from '@/types'
 import type { ReaderSettings } from '@/composables/useReaderSettings'
 
 export interface UseReaderPagingOptions {
   detail: Ref<ComicDetail | null>
   scopeId: Ref<string | null>
-  settings: Ref<ReaderSettings>
+  settings: MaybeRefOrGetter<ReaderSettings> | ReaderSettings
   currentPage: Ref<number>
   currentGroupIndex: Ref<number>
 }
@@ -16,6 +16,8 @@ export interface UseReaderPagingOptions {
  */
 export function useReaderPaging(options: UseReaderPagingOptions) {
   const { detail, scopeId, settings, currentPage, currentGroupIndex } = options
+
+  const currentSettings = computed(() => toValue(settings))
 
   const scopedChapter = computed<Chapter | null>(() => {
     if (!scopeId.value) return null
@@ -87,32 +89,33 @@ export function useReaderPaging(options: UseReaderPagingOptions) {
   const pageGroups = computed<number[][]>(() => {
     const groups: number[][] = []
     const pages = scopedPages.value
-    for (let index = 0; index < pages.length; index += settings.value.pagesPerView) {
-      groups.push(pages.slice(index, index + settings.value.pagesPerView))
+    const ppv = currentSettings.value.pagesPerView
+    for (let index = 0; index < pages.length; index += ppv) {
+      groups.push(pages.slice(index, index + ppv))
     }
     return groups
   })
 
   const orderedGroups = computed(() => {
     const withIndex = pageGroups.value.map((pages, index) => ({ pages, index }))
-    return settings.value.direction === 'rtl' && settings.value.mode === 'horizontal'
+    return currentSettings.value.direction === 'rtl' && currentSettings.value.mode === 'horizontal'
       ? [...withIndex].reverse()
       : withIndex
   })
 
-  const isVertical = computed(() => settings.value.mode !== 'horizontal')
+  const isVertical = computed(() => currentSettings.value.mode !== 'horizontal')
   const rtlHorizontal = computed(
-    () => settings.value.mode === 'horizontal' && settings.value.direction === 'rtl',
+    () => currentSettings.value.mode === 'horizontal' && currentSettings.value.direction === 'rtl',
   )
 
   const prevSymbol = computed(() => {
-    if (settings.value.mode !== 'horizontal') return '↑'
-    return settings.value.direction === 'rtl' ? '→' : '←'
+    if (currentSettings.value.mode !== 'horizontal') return '↑'
+    return currentSettings.value.direction === 'rtl' ? '→' : '←'
   })
 
   const nextSymbol = computed(() => {
-    if (settings.value.mode !== 'horizontal') return '↓'
-    return settings.value.direction === 'rtl' ? '←' : '→'
+    if (currentSettings.value.mode !== 'horizontal') return '↓'
+    return currentSettings.value.direction === 'rtl' ? '←' : '→'
   })
 
   function toLocalPage(page: number): number {

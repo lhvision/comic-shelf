@@ -56,7 +56,7 @@ onMounted(async () => {
 <template>
   <header class="site-header">
     <button class="brand" type="button" @click="goLibrary" aria-label="回到全部收藏">
-      <img class="brand-mark" src="/brand-icon.png" alt="" aria-hidden="true" />
+      <img class="brand-mark" src="/brand-icon.webp" alt="" aria-hidden="true" />
       <span>
         <strong>纸间</strong>
         <small>Paper Room</small>

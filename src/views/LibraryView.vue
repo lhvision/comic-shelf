@@ -75,8 +75,9 @@ function openComic(source: string, sourceId: string) {
 
 function onFileSelected(event: Event) {
   const target = event.target as HTMLInputElement
-  if (target.files && target.files.length > 0) {
-    void searchWithFile(target.files[0])
+  const file = target.files?.[0]
+  if (file) {
+    void searchWithFile(file)
     target.value = '' // Reset
   }
 }
