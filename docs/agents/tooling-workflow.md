@@ -7,6 +7,7 @@
 - `package.json` 的 `devEngines` 固定 pnpm 11.22.0；开发机用 `vp` 管理 Node/pnpm。
 - 本地 `node_modules/.bin` 有 `vp`，`pnpm run dev/build` 与 `vp dev/build` 等价。
 - 日常命令：`vp install / dev / check / test / build / preview`。
+- 后端环境：提供 `pnpm setup:py` 一键初始化 `.venv`；`pnpm api` 自动探测 Python 虚拟环境并热重载。
 - 已提供统一单容器部署：`Dockerfile`、`docker-compose.yml`，说明见 `DEPLOYMENT.md`。
 - 不建议迁 Nuxt：私人本地工具无 SEO/SSR 需求，SPA + FastAPI 单容器更简单；
   Python 后端必须保留（jmcomic 是 Python 库）。
@@ -15,12 +16,13 @@
 
 ```bash
 cd /home/miku/dsh/comic-shelf
-./scripts/dev.sh                         # 同时起 API + Web
-../.venv/bin/python backend/server.py    # 只起 API
+pnpm dev:all                             # 同时起 API + Web（./scripts/dev.sh，带热重载）
+pnpm api                                 # 只起 API（自动探测 Python 并热重载）
 vp dev                                   # 只起 Web（Vite+ dev server）
 vp check                                 # fmt + lint + type-check
 vp test                                  # Vitest
 vp build                                 # 生产构建
+pnpm ai-e2e:test e2e/tests/<file>.spec.ts -g "用例名" # 单条 E2E 用例
 ```
 
 ## 10. 修 bug 时的建议顺序

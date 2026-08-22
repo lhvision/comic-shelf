@@ -6,7 +6,7 @@
 ## 1. 项目现状
 
 - 位置：`/home/miku/dsh/comic-shelf`
-- 已实现：书架、导入禁漫车、详情页、封面流、阅读器（三种模式 + grid 分页）、本地缓存。
+- 已实现：书架、导入禁漫车、多章节目录与子路由、详情页、封面流、阅读器（三种模式 + 分屏 + 自动翻页）、以图搜图（ORB 特征）、访问门禁与防盗链、本地持久化缓存。
 - 代码迁移时未复制 `backend/data/`；首次收录后会自动生成本地缓存。
 - 服务启动后：
   - API: http://127.0.0.1:8000 （FastAPI docs 在 `/docs`）
@@ -16,11 +16,12 @@
 
 | 层       | 技术                                                                       |
 | -------- | -------------------------------------------------------------------------- |
-| 前端     | Vite 8 + Vue 3 + TypeScript + Vue Router + Pinia                           |
+| 前端     | Vite 8 + Vue 3 + TypeScript + Vue Router + Pinia + VueUse                  |
 | 样式     | 原生 CSS：`@layer`、Nesting、`color-mix()`、`oklch()`、`calc()`、`clamp()` |
-| 后端     | Python 3.14 + FastAPI + uvicorn                                            |
+| 后端     | Python 3.12+ / 3.14 + FastAPI + uvicorn                                    |
 | 禁漫源   | `jmcomic==2.7.4`（metadata 用 HTML client，图片算法用 `JmImageTool`）      |
 | 图片处理 | Pillow（封面缩略图、解密）                                                 |
+| 识图引擎 | `imsearch`（Docker Sidecar / 本地独立进程，ORB 特征 + 倒排索引）           |
 
 约定：**不用 SCSS**。新增视觉请走 `src/styles/tokens.css` 的设计 token。
 设计基线见 `DESIGN_NOTES.md`：私人阅览室 / 卡片目录，禁紫色渐变，禁玻璃拟态堆叠。
@@ -38,6 +39,9 @@ FastAPI (backend/app/main.py)
    │     jm.py              # 禁漫实现
    │     registry.py        # 注册表
    │
+   ├── gate.py              # 下载并发闸门控制
+   ├── jobs.py              # 后台批量缓存任务管理
+   ├── imsearch.py          # 局部特征搜图客户端（HTTP 隔离通信）
    └── storage.py           # 本地缓存与文件布局
          │
          ▼
@@ -121,26 +125,28 @@ JmImageTool.decode_and_save(num, source_image, save_path)
 | ----------------------------------- | ------------------------------------------------------------------------------------------------------ |
 | `backend/app/main.py`               | FastAPI 路由与安全中间件                                                                               |
 | `backend/app/auth.py`               | 鉴权校验、Cookie 会话管理、Sec-Fetch-Site 与 Referer 防盗链校验                                        |
+| `backend/app/gate.py`               | 运行时下载并发控制闸门（支持环境变量锁定与设置持久化）                                                 |
+| `backend/app/jobs.py`               | 后台异步缓存任务执行器与进度追踪                                                                       |
 | `backend/app/models.py`             | 通用模型：`ComicMeta`（含 `Chapter`/`chapters`）/ `PageRecord.chapter` / `RemotePage` / `FetchedComic` |
 | `backend/app/storage.py`            | 原子 JSON 写入、页面缓存（章节分目录路由）、封面生成、v1→v2 迁移、书库扫描                             |
 | `backend/app/providers/base.py`     | Provider 接口                                                                                          |
 | `backend/app/providers/jm.py`       | JM HTML 元数据、上传者解析、**多章节 episode 逐话拉取**、图片下载 + 解密                               |
-| `backend/app/providers/registry.py` | `{"jm": JMProvider()}`                                                                                 |
+| `backend/app/providers/registry.py` | `{"jm": JMProvider()}` 注册表                                                                          |
 | `backend/app/imsearch.py`           | 局部特征识图客户端（ORB 特征匹配、健康探测、路径解析）                                                 |
-| `backend/app/config.py`             | 数据目录、访问密钥、防盗链开关、封面尺寸、识图服务地址                                                 |
+| `backend/app/config.py`             | 数据目录、访问密钥、防盗链开关、封面尺寸、识图服务地址配置                                             |
 
 - `GET /api/auth/status`（查询是否开启鉴权及当前登录态）
 - `POST /api/auth/login`（验证口令并写入 Cookie）
 - `POST /api/auth/logout`（清除登录凭据）
-- `GET /api/library`（`q` 也能命中章节标题，T11）
-- `POST /api/library/import` `{id, source, prefetch_covers, prefetch_all, refresh}`
-  （`refresh=true` 走增量，章节未变则复用旧 remote，T12）
+- `GET /api/settings` / `PUT /api/settings`（获取与修改运行时配置，如并发数）
+- `GET /api/library`（`q` 也能命中章节标题）
+- `POST /api/library/import` `{id, source, prefetch_covers, prefetch_all, refresh}`（`refresh=true` 走增量，章节未变则复用旧 remote）
 - `GET /api/library/{source}/{id}`（详情含 `chapters`）
 - `PATCH /api/library/{source}/{id}/favorite` `{favorite: bool}`
 - `GET /api/library/{source}/{id}/pages/{n}/file`（`n` 为全局页号，带防盗链校验）
 - `GET /api/library/{source}/{id}/pages/{n}/thumbnail`（同上）
 - `GET /api/library/{source}/{id}/covers/{n}/file`（封面取第一章前 N 页，带防盗链校验）
-- `GET /api/library/{source}/{id}/chapters/{chapterId}/cover`（章节封面端点，T17，带防盗链校验）
+- `GET /api/library/{source}/{id}/chapters/{chapterId}/cover`（章节封面端点，带防盗链校验）
 - `GET /api/search/image/status`（以图搜图 Sidecar 服务健康探测）
 - `POST /api/search/image`（以图搜图，上传截图/裁切图匹配所属本子与对应页码）
 - `GET /api/providers`

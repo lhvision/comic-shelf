@@ -12,15 +12,17 @@ export default defineConfig({
   // Midscene 的报告器：跑完在 midscene_run/report/ 生成可回放的 HTML 报告
   reporter: [['list'], ['@midscene/web/playwright-reporter', { type: 'merged' }]],
   use: {
-    baseURL: 'http://localhost:5173',
+    baseURL: 'https://localhost:5173',
     viewport: { width: 1280, height: 900 },
     trace: 'off',
+    ignoreHTTPSErrors: true,
   },
   projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'] } }],
   webServer: {
     command: 'pnpm dev',
-    url: 'http://localhost:5173',
+    url: 'https://localhost:5173',
     reuseExistingServer: true,
     timeout: 30 * 1000,
+    ignoreHTTPSErrors: true,
   },
 })
