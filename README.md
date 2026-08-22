@@ -41,6 +41,13 @@
 - 禁漫图片解密：页面先按原图下载，再调用 jmcomic 官方的
   `JmImageTool.decode_and_save()` 进行分割 / 拼接，和
   `JmDownloader` 使用同一套算法
+- 以图搜图（Visual Search）：
+  - 搜索框集成 Chrome Lens 风格识图芯片（带预览缩略图、点击放大查看、一键清除 `×`）；
+  - 支持直接剪贴板粘贴截图（`Ctrl+V`）、相机图标文件上传、图片拖拽到书架；
+  - 局部特征匹配（ORB + Faiss/BIVF 聚类检索）：即使只有漫画的一小块分镜/表情包截图，也能毫秒级定位是哪一本作品及具体匹配页；
+  - 书架卡片呈现匹配置信度高亮（如 `第 12 页 · 94%`），并支持一键直达阅读器该页；
+  - 支持多模态复合检索（图搜结果与文字关键词、标签 AND 组合筛选）；
+  - 优雅降级：未启动识图服务容器时前端自动呈现提示引导，常规文本与标签检索 100% 正常运行。
 - 架构上把站点差异隔离在 `backend/app/providers/`，UI 与存储层只认通用模型
 
 ## 运行
@@ -75,10 +82,10 @@ vp build   # 生产构建
 vp preview # 预览 dist
 ```
 
-或使用开发脚本一键启动：
+或一键启动前后端全套环境：
 
 ```bash
-./scripts/dev.sh
+pnpm dev:all   # 或 ./scripts/dev.sh
 ```
 
 打开 <http://127.0.0.1:5173>。
@@ -190,12 +197,14 @@ JM 的 HTML 页面包含你列的全部字段；本项目首次导入会抓取 `
 
 纸间支持 **All-in-One 单容器部署**：FastAPI 后端内置托管 Vue 3 SPA 前端与静态资源，单个容器、单个端口（8000）、无需配置 Nginx，非常适合 **TrueNAS Scale / Unraid / 群晖 / 树莓派 / 标准 Docker** 环境。
 
-### 方式 1：Docker Compose 一键启动
+### 方式 1：Docker Compose 一键启动（含以图搜图 Sidecar）
 
 ```bash
 docker compose up -d --build
 # 浏览器打开 http://127.0.0.1:8000
 ```
+
+_(同时拉起纸间核心服务 `:8000` 与本地识图引擎 `:8765`)_
 
 ### 方式 2：TrueNAS / Docker CLI 单容器运行
 
@@ -211,6 +220,42 @@ docker run -d \
 ```
 
 漫画数据与元数据持久化挂载在宿主机 `./backend/data`（或 NAS 存储池），容器升级重建数据不丢失。
+
+## 以图搜图服务配置与索引管理（可选）
+
+纸间支持通过局部截图检索漫画作品（基于局部 ORB 特征点匹配）：
+
+- **Docker 运行（推荐）**：使用 `docker compose up -d` 即可自动启动官方 `aloxaf/imsearch:latest` 容器，开箱即用。
+- **本地源码编译运行（可选）**：
+  ```bash
+  # 1. 安装系统 C++ 依赖
+  sudo apt update && sudo apt install -y cmake clang libopencv-dev libopenblas-dev libssl-dev pkg-config
+  # 2. 编译安装 imsearch
+  cargo install --git https://github.com/lolishinshi/imsearch --locked
+  ```
+  安装后运行 `pnpm dev:all`，启动脚本会自动检测并拉起本地 `imsearch` 服务。
+- **数据持久化与迁移**：
+  - 识图索引与特征数据库统一保存在 **`backend/data/imsearch/`** 目录下；
+  - 备份、打包迁移只需复制整个 `backend/data/` 目录，所有漫画、元数据与搜图索引一同保留。
+- **主动重新训练 / 构建索引**：
+  当批量导入新漫画后，如需更新搜图特征库，可随时在终端运行：
+  ```bash
+  pnpm reindex:image
+  # 或直接运行
+  bash scripts/reindex.sh
+  ```
+  该命令会自动扫描全部已缓存页面与封面、进行 2048 聚类中心训练并生成倒排索引。
+- **未启动状态**：未启用识图服务时，纸间所有常规功能（文本/标签检索、阅读器、多章节等）**100% 正常工作**，前端搜索框会自动展示提示引导。
+
+## 开源协议与鸣谢（License & Acknowledgements）
+
+本项目基于 **MIT License** 开源。感谢以下优秀的开源项目与社区生态：
+
+- [JMComic-Crawler-Python](https://github.com/hect0x7/JMComic-Crawler-Python) (MIT License) — 提供了可靠的禁漫元数据解析与图片反混淆算法。
+- [imsearch](https://github.com/lolishinshi/imsearch) (GPL-3.0 License) by @aloxaf — 优秀的高性能局部特征点图片搜索引擎（本项目通过独立进程 HTTP API 网络隔离调用，保障项目 MIT 开源纯洁性）。
+- [FastAPI](https://fastapi.tiangolo.com/) (MIT License) & [Uvicorn](https://www.uvicorn.org/) (BSD-3-Clause) — 高性能 Python 异步后端。
+- [Vue.js](https://vuejs.org/) / [VueUse](https://vueuse.org/) / [Pinia](https://pinia.vuejs.org/) (MIT License) — 优雅轻盈的前端生态。
+- [Vite+](https://viteplus.dev/) — 现代化前端构建与开发工具链。
 
 ## 版权提示
 

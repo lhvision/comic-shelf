@@ -6,6 +6,8 @@
   "type": "module",
   "scripts": {
     "dev": "vp dev --host 0.0.0.0",
+    "dev:all": "bash scripts/dev.sh",
+    "reindex:image": "bash scripts/reindex.sh",
     "build": "run-p type-check \"build-only {@}\" --",
     "preview": "vp preview",
     "api": "../.venv/bin/python backend/server.py",

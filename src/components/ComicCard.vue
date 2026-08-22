@@ -3,10 +3,13 @@ import { computed } from 'vue'
 import type { LibrarySummary } from '@/types'
 import FavoriteButton from '@/components/FavoriteButton.vue'
 import CacheProgress from '@/components/CacheProgress.vue'
+
 const props = defineProps<{
   comic: LibrarySummary
   /** 实时缓存进度（后台任务运行时更新），优先于 comic.cached_pages */
   cache?: { running: boolean; cached: number; total: number }
+  /** 以图搜图匹配结果 */
+  searchMatch?: { bestMatchPage: number; bestScore: number }
 }>()
 
 const emit = defineEmits<{
@@ -52,6 +55,15 @@ const liveRunning = computed(() => Boolean(props.cache?.running))
             <span>{{ comic.display_id }}</span>
           </div>
           <span class="id-stamp">{{ comic.display_id }}</span>
+          <RouterLink
+            v-if="searchMatch"
+            :to="`/comic/${comic.source}/${comic.source_id}/read/${searchMatch.bestMatchPage}`"
+            class="match-stamp"
+            @click.stop
+            :title="`第 ${searchMatch.bestMatchPage} 页匹配度 ${Math.round(searchMatch.bestScore * 100)}%，点击直接阅读`"
+          >
+            P.{{ searchMatch.bestMatchPage }} · {{ Math.round(searchMatch.bestScore * 100) }}%
+          </RouterLink>
         </div>
       </div>
 
@@ -73,10 +85,12 @@ const liveRunning = computed(() => Boolean(props.cache?.running))
 <style scoped>
 .comic-card {
   container-type: inline-size;
+  height: 100%;
 }
 
 .card-link {
-  display: block;
+  display: flex;
+  flex-direction: column;
   height: 100%;
   border-radius: var(--radius-3);
   background: color-mix(in oklab, var(--paper-0) 74%, var(--paper-1));
@@ -97,8 +111,9 @@ const liveRunning = computed(() => Boolean(props.cache?.running))
 
 .cover-deck {
   position: relative;
+  width: 100%;
   aspect-ratio: 3 / 4.15;
-  padding: 9% 10% 0;
+  flex-shrink: 0;
   perspective: 60rem;
 }
 
@@ -119,8 +134,8 @@ const liveRunning = computed(() => Boolean(props.cache?.running))
 }
 
 .cover-front {
-  position: relative;
-  height: 100%;
+  position: absolute;
+  inset: 9% 10% 0;
   border-radius: var(--radius-2);
   overflow: hidden;
   border: 1px solid color-mix(in oklab, var(--ink-0) 14%, transparent);
@@ -143,6 +158,7 @@ const liveRunning = computed(() => Boolean(props.cache?.running))
 .cover-placeholder {
   width: 100%;
   height: 100%;
+  display: block;
 }
 
 .cover-image {
@@ -186,7 +202,37 @@ const liveRunning = computed(() => Boolean(props.cache?.running))
   backdrop-filter: blur(4px);
 }
 
+.match-stamp {
+  position: absolute;
+  left: var(--space-2);
+  top: var(--space-2);
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: var(--space-0-5) var(--space-2);
+  background: color-mix(in oklab, var(--accent) 92%, black 8%);
+  color: var(--paper-0);
+  border: 1px solid color-mix(in oklab, var(--paper-0) 30%, transparent);
+  border-radius: var(--radius-1);
+  font-family: var(--font-mono);
+  font-size: var(--text-caption);
+  letter-spacing: 0.04em;
+  font-weight: 600;
+  text-decoration: none;
+  box-shadow: var(--shadow-1);
+  backdrop-filter: blur(4px);
+  z-index: 2;
+  transition: opacity var(--duration-1) var(--ease-out);
+}
+
+.match-stamp:hover {
+  opacity: 0.88;
+}
+
 .card-body {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
   padding: var(--space-4);
 }
 
@@ -207,16 +253,17 @@ const liveRunning = computed(() => Boolean(props.cache?.running))
 
 .card-foot {
   display: flex;
-  align-items: flex-end;
+  align-items: center;
   justify-content: space-between;
   gap: var(--space-2);
-  margin-top: var(--space-4);
+  margin-top: auto;
+  padding-top: var(--space-4);
   font-family: var(--font-mono);
   font-size: var(--text-xs);
   color: var(--ink-2);
 }
 
-@container (max-width: 380px) {
+@container (max-width: 220px) {
   .card-foot {
     align-items: flex-start;
     flex-direction: column;

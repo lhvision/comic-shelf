@@ -17,6 +17,8 @@ defineProps<{
   hasAnyItems: boolean
   /** 后台缓存任务的实时进度，key 为 `source/source_id` */
   liveCache?: Record<string, LiveCacheState>
+  /** 以图搜图的匹配得分与页码，key 为 `source_sourceId` */
+  searchMatchMap?: Map<string, { bestMatchPage: number; bestScore: number }>
 }>()
 
 defineEmits<{ favoriteToggled: [source: string, sourceId: string, favorite: boolean] }>()
@@ -52,6 +54,7 @@ const keyOf = (source: string, sourceId: string) => liveCacheKey(source, sourceI
         :key="`dom-${item.source}/${item.source_id}`"
         :comic="item"
         :cache="liveCache?.[keyOf(item.source, item.source_id)]"
+        :search-match="searchMatchMap?.get(`${item.source}_${item.source_id}`)"
         @favorite-toggled="
           (source, sourceId, value) => $emit('favoriteToggled', source, sourceId, value)
         "

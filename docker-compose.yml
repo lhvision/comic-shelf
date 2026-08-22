@@ -10,7 +10,21 @@ services:
       COMIC_SHELF_HOST: 0.0.0.0
       COMIC_SHELF_PORT: 8000
       COMIC_SHELF_PAGE_THUMB_WIDTH: '360'
+      COMIC_SHELF_IMSEARCH_URL: http://imsearch:8765
     volumes:
       - ./backend/data:/app/data
     ports:
       - '8000:8000'
+    depends_on:
+      - imsearch
+
+  imsearch:
+    image: aloxaf/imsearch:latest
+    container_name: paper-room-imsearch
+    restart: unless-stopped
+    volumes:
+      - ./backend/data:/app/data
+      - ./backend/data/imsearch:/root/.config/imsearch
+    command: ['imsearch', 'server', '--addr', '0.0.0.0:8765']
+    ports:
+      - '8765:8765'

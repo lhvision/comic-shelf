@@ -102,7 +102,9 @@ const redrawKey = computed(() => `${liveRunning.value}-${liveCached.value}/${liv
 
 .cover {
   position: relative;
+  width: 100%;
   aspect-ratio: 3 / 4.15;
+  flex-shrink: 0;
   overflow: hidden;
   background: var(--paper-2);
 }
@@ -112,6 +114,7 @@ const redrawKey = computed(() => `${liveRunning.value}-${liveCached.value}/${liv
   width: 100%;
   height: 100%;
   object-fit: cover;
+  display: block;
 }
 
 .cover-empty {
@@ -169,16 +172,17 @@ const redrawKey = computed(() => `${liveRunning.value}-${liveCached.value}/${liv
 
 .foot {
   display: flex;
-  align-items: flex-end;
+  align-items: center;
   justify-content: space-between;
   gap: var(--space-2);
-  margin-top: var(--space-4);
+  margin-top: auto;
+  padding-top: var(--space-4);
   font-family: var(--font-mono);
   font-size: var(--text-xs);
   color: var(--ink-2);
 }
 
-@media (max-width: 380px) {
+@media (max-width: 220px) {
   .foot {
     align-items: flex-start;
     flex-direction: column;

@@ -210,3 +210,20 @@ class ProviderInfo(BaseModel):
     id_pattern: str
     example: str
     description: str
+
+
+class ImageSearchItem(BaseModel):
+    source: str
+    source_id: str
+    page_index: int
+    is_cover: bool
+    score: float
+
+
+class ImageSearchResponse(BaseModel):
+    results: list[ImageSearchItem]
+
+
+class ImageSearchStatusResponse(BaseModel):
+    available: bool
+    url: str

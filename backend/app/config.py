@@ -29,3 +29,7 @@ MAX_PREFETCH = int(os.getenv("COMIC_SHELF_MAX_PREFETCH", "600"))
 # for many pages at once); firing them all simultaneously makes every request
 # hit a timeout. 3 in-flight downloads is polite to the CDN and still fast.
 MAX_CONCURRENT_DOWNLOADS = int(os.getenv("COMIC_SHELF_MAX_CONCURRENT_DOWNLOADS", "3"))
+
+IMSEARCH_URL = os.getenv("COMIC_SHELF_IMSEARCH_URL", "http://localhost:8765").rstrip("/")
+
+ENABLE_DOCS = os.getenv("COMIC_SHELF_ENABLE_DOCS", "false").lower() in ("1", "true", "yes")

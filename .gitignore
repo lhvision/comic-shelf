@@ -51,6 +51,7 @@ __pycache__/
 *.pyc
 backend/data/library/
 backend/data/tmp/
+backend/data/imsearch/
 backend/data/jm_html_domain.json
 
 # Package-manager caches and local backups

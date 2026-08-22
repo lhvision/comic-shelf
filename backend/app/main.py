@@ -2,13 +2,14 @@ from __future__ import annotations
 
 from typing import Any
 
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, File, HTTPException, Query, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 
-from .config import DATA_DIR, LIBRARY_DIR
+from .config import DATA_DIR, ENABLE_DOCS, LIBRARY_DIR
 from .jobs import get_job, list_running, start_job
 from .gate import _env_explicit, get_download_concurrency, set_download_concurrency
+from .imsearch import check_imsearch_status, search_imsearch
 from .models import (
     CacheProgress,
     ComicDetail,
@@ -17,6 +18,9 @@ from .models import (
     DeleteResponse,
     FavoriteRequest,
     FavoriteResponse,
+    ImageSearchItem,
+    ImageSearchResponse,
+    ImageSearchStatusResponse,
     ImportRequest,
     ImportResult,
     JobInfo,
@@ -31,6 +35,9 @@ app = FastAPI(
     title="Paper Room API",
     description="Local-first comic archive API (纸间). Provider: JMComic, extensible to other sites.",
     version="0.1.0",
+    docs_url="/docs" if ENABLE_DOCS else None,
+    redoc_url="/redoc" if ENABLE_DOCS else None,
+    openapi_url="/openapi.json" if ENABLE_DOCS else None,
 )
 
 app.add_middleware(
@@ -104,6 +111,22 @@ def library(
         # T11：让「第 5 话」等章节标题也能命中书架搜索
         or any(needle in title.casefold() for title in item.chapter_titles)
     ]
+
+
+@app.get("/api/search/image/status", response_model=ImageSearchStatusResponse)
+def image_search_status() -> ImageSearchStatusResponse:
+    """Check availability of the imsearch sidecar container."""
+    status = check_imsearch_status()
+    return ImageSearchStatusResponse(**status)
+
+
+@app.post("/api/search/image", response_model=list[ImageSearchItem])
+async def image_search(file: UploadFile = File(...)) -> list[ImageSearchItem]:
+    """Perform visual search by uploading a screenshot or cropped image."""
+    content = await file.read()
+    if not content:
+        raise HTTPException(status_code=400, detail="上传图片不能为空")
+    return search_imsearch(content, filename=file.filename or "query.jpg")
 
 
 @app.post("/api/library/import", response_model=ImportResult)

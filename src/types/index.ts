@@ -127,3 +127,16 @@ export interface ProviderInfo {
   example: string
   description: string
 }
+
+export interface ImageSearchResultItem {
+  source: string
+  source_id: string
+  page_index: number
+  is_cover: boolean
+  score: number
+}
+
+export interface ImageSearchStatus {
+  available: boolean
+  url?: string
+}

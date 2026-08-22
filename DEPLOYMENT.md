@@ -22,12 +22,14 @@ Paper Room (Single Container)
 
 ## 2. 启动方式
 
-### 方式 A：Docker Compose 一键启动
+### 方式 A：Docker Compose 一键启动（含以图搜图 Sidecar）
 
 ```bash
 docker compose up -d --build
 # 浏览器打开 http://127.0.0.1:8000
 ```
+
+Compose 会同时拉起纸间服务（`:8000`）与基于 ORB 特征检索的本地识图容器 `imsearch`（`:8765`）。
 
 ### 方式 B：TrueNAS Scale / Docker CLI 单容器运行
 
@@ -58,6 +60,7 @@ docker run -d \
 ```text
 backend/data/
 ├── jm_html_domain.json
+├── imsearch/                   # 识图索引与特征库（若启用 imsearch）
 └── library/
     ├── jm/523607/
     │   └── pages/<chapter>/…   # 多章节作品页面在章节子目录
@@ -69,12 +72,14 @@ backend/data/
 
 ## 环境变量
 
-| 变量                           | 默认值         | 说明                 |
-| ------------------------------ | -------------- | -------------------- |
-| `COMIC_SHELF_DATA`             | `backend/data` | 数据目录             |
-| `COMIC_SHELF_PAGE_THUMB_WIDTH` | `360`          | 页面索引缩略图宽度   |
-| `COMIC_SHELF_COVER_WIDTH`      | `840`          | 封面宽度             |
-| `COMIC_SHELF_MAX_PREFETCH`     | `600`          | 单次全量缓存页数上限 |
+| 变量                           | 默认值                  | 说明                              |
+| ------------------------------ | ----------------------- | --------------------------------- |
+| `COMIC_SHELF_DATA`             | `backend/data`          | 数据目录                          |
+| `COMIC_SHELF_ENABLE_DOCS`      | `true`                  | 是否开放 /docs 和 /redoc API 文档 |
+| `COMIC_SHELF_IMSEARCH_URL`     | `http://localhost:8765` | 局部特征识图服务地址（可选）      |
+| `COMIC_SHELF_PAGE_THUMB_WIDTH` | `360`                   | 页面索引缩略图宽度                |
+| `COMIC_SHELF_COVER_WIDTH`      | `840`                   | 封面宽度                          |
+| `COMIC_SHELF_MAX_PREFETCH`     | `600`                   | 单次全量缓存页数上限              |
 
 ## 和 Vite+ / vp 的关系
 

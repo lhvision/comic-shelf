@@ -1,14 +1,16 @@
 <script setup lang="ts">
-import { computed, onMounted, toRef, watch } from 'vue'
+import { computed, onMounted, onUnmounted, toRef, watch, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import ImportPanel from '@/components/ImportPanel.vue'
 import LibraryHero from '@/components/library/LibraryHero.vue'
 import TagFilterBar from '@/components/library/TagFilterBar.vue'
 import ComicGrid from '@/components/library/ComicGrid.vue'
+import ImageSearchChip from '@/components/library/ImageSearchChip.vue'
 import ThemeSelect from '@/components/ThemeSelect.vue'
 import { useLibraryStore } from '@/stores/library'
 import { useExperimentsStore } from '@/stores/experiments'
 import { useLibraryFilter } from '@/composables/useLibraryFilter'
+import { useImageSearch } from '@/composables/useImageSearch'
 import { useToast } from '@/composables/useToast'
 
 /**
@@ -20,10 +22,23 @@ const experiments = useExperimentsStore()
 const route = useRoute()
 const router = useRouter()
 const { toast } = useToast()
+const fileInput = ref<HTMLInputElement | null>(null)
 
 const activeSource = computed(() =>
   typeof route.query.source === 'string' ? route.query.source : '',
 )
+
+const {
+  isAvailable,
+  isSearching,
+  error: searchError,
+  searchImagePreviewUrl,
+  searchResults,
+  searchWithFile,
+  clearImage,
+  handlePaste,
+  handleDrop,
+} = useImageSearch()
 
 // 遵守 DESIGN_NOTES §13 约束：Composable 返回值在 setup 顶层解构
 const {
@@ -35,13 +50,19 @@ const {
   totalPages,
   totalCachedPages,
   tagCounts,
+  imageSearchMatchMap,
   filtered,
   setSort,
-} = useLibraryFilter(toRef(store, 'items'), activeSource)
+} = useLibraryFilter(toRef(store, 'items'), activeSource, searchResults)
 
 onMounted(() => {
   void store.load()
   store.startPollingIfActive()
+  window.addEventListener('paste', handlePaste)
+})
+
+onUnmounted(() => {
+  window.removeEventListener('paste', handlePaste)
 })
 
 function onFavoriteToggled(source: string, sourceId: string, favorite: boolean) {
@@ -52,16 +73,28 @@ function openComic(source: string, sourceId: string) {
   router.push(`/comic/${source}/${sourceId}`)
 }
 
+function onFileSelected(event: Event) {
+  const target = event.target as HTMLInputElement
+  if (target.files && target.files.length > 0) {
+    void searchWithFile(target.files[0])
+    target.value = '' // Reset
+  }
+}
+
 watch(
   () => store.error,
   (value) => {
     if (value) toast(value, 'error')
   },
 )
+
+watch(searchError, (value) => {
+  if (value) toast(value, 'error')
+})
 </script>
 
 <template>
-  <div class="library-view">
+  <div class="library-view" @drop.prevent="handleDrop" @dragover.prevent>
     <LibraryHero
       :book-count="sourceItems.length"
       :cached-pages="totalCachedPages"
@@ -79,10 +112,49 @@ watch(
           <h2 id="shelf-title">{{ activeSource ? '来源收藏' : '全部收藏' }}</h2>
         </div>
 
-        <label class="search-field field">
-          <span aria-hidden="true">⌕</span>
-          <input v-model="search" type="search" placeholder="标题 / 车号 / 作者 / 标签" />
-        </label>
+        <div class="search-container">
+          <label class="search-field field">
+            <span aria-hidden="true">⌕</span>
+            <ImageSearchChip
+              v-if="searchImagePreviewUrl"
+              :preview-url="searchImagePreviewUrl"
+              :is-searching="isSearching"
+              @clear="clearImage"
+              class="search-lens-pill"
+            />
+            <input v-model="search" type="search" placeholder="标题 / 车号 / 作者 / 标签" />
+            <button
+              class="camera-btn icon-btn"
+              type="button"
+              :class="{ 'is-muted': !isAvailable }"
+              :title="!isAvailable ? '识图服务 (imsearch sidecar) 未启动' : '上传图片以图搜图'"
+              @click="isAvailable && fileInput?.click()"
+            >
+              <svg
+                viewBox="0 0 24 24"
+                width="16"
+                height="16"
+                stroke="currentColor"
+                stroke-width="2"
+                fill="none"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              >
+                <path
+                  d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"
+                ></path>
+                <circle cx="12" cy="13" r="4"></circle>
+              </svg>
+            </button>
+            <input
+              ref="fileInput"
+              type="file"
+              accept="image/*"
+              class="visually-hidden"
+              @change="onFileSelected"
+            />
+          </label>
+        </div>
 
         <div class="sort-field">
           <span>排序</span>
@@ -136,6 +208,7 @@ watch(
         :use-canvas="experiments.htmlCanvasCards"
         :has-any-items="store.items.length > 0"
         :live-cache="store.liveCache"
+        :search-match-map="imageSearchMatchMap"
         @favorite-toggled="onFavoriteToggled"
       />
     </section>
@@ -149,6 +222,7 @@ watch(
 <style scoped>
 .library-view {
   padding-bottom: var(--space-10);
+  min-height: 100vh;
 }
 
 .shelf {
@@ -168,8 +242,59 @@ watch(
   font-size: var(--text-2xl);
 }
 
+.search-container {
+  display: flex;
+  align-items: center;
+  width: 100%;
+}
+
 .search-field {
   min-height: 2.8rem;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  width: 100%;
+  padding-right: var(--space-2);
+}
+
+.search-field input[type='search'] {
+  flex: 1;
+  min-width: 0;
+}
+
+.search-lens-pill {
+  flex-shrink: 0;
+}
+
+.camera-btn {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  color: var(--ink-2);
+  transition: color var(--duration-2) var(--ease-out);
+}
+
+.camera-btn:not(.is-muted):hover {
+  color: var(--ink-0);
+}
+
+.camera-btn.is-muted {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  border: 0;
 }
 
 .sort-field {
@@ -264,7 +389,7 @@ watch(
     grid-template-columns: 1fr auto;
   }
 
-  .search-field {
+  .search-container {
     grid-column: 1 / -1;
     grid-row: 2;
   }

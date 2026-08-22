@@ -125,7 +125,8 @@ JmImageTool.decode_and_save(num, source_image, save_path)
 | `backend/app/providers/base.py`     | Provider 接口                                                                                          |
 | `backend/app/providers/jm.py`       | JM HTML 元数据、上传者解析、**多章节 episode 逐话拉取**、图片下载 + 解密                               |
 | `backend/app/providers/registry.py` | `{"jm": JMProvider()}`                                                                                 |
-| `backend/app/config.py`             | 数据目录、封面尺寸、预缓存上限                                                                         |
+| `backend/app/imsearch.py`           | 局部特征识图客户端（ORB 特征匹配、健康探测、路径解析）                                                 |
+| `backend/app/config.py`             | 数据目录、封面尺寸、预缓存上限、识图服务地址                                                           |
 
 - `GET /api/library`（`q` 也能命中章节标题，T11）
 - `POST /api/library/import` `{id, source, prefetch_covers, prefetch_all, refresh}`
@@ -136,6 +137,8 @@ JmImageTool.decode_and_save(num, source_image, save_path)
 - `GET /api/library/{source}/{id}/pages/{n}/thumbnail`（同上）
 - `GET /api/library/{source}/{id}/covers/{n}/file`（封面取第一章前 N 页）
 - `GET /api/library/{source}/{id}/chapters/{chapterId}/cover`（章节封面端点，T17）
+- `GET /api/search/image/status`（以图搜图 Sidecar 服务健康探测）
+- `POST /api/search/image`（以图搜图，上传截图/裁切图匹配所属本子与对应页码）
 - `GET /api/providers`
 - `POST /api/library/{source}/{id}/cache`
 - `DELETE /api/library/{source}/{id}`
