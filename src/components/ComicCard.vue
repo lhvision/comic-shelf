@@ -109,6 +109,8 @@ const cardTransitionName = computed(
 .comic-card {
   container-type: inline-size;
   height: 100%;
+  content-visibility: auto;
+  contain-intrinsic-size: auto 24rem;
 }
 
 .card-link {

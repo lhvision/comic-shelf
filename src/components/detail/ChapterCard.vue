@@ -78,6 +78,8 @@ const cachePercent = computed(() => {
   border-radius: var(--radius-2);
   background: var(--paper-0);
   box-shadow: var(--shadow-1);
+  content-visibility: auto;
+  contain-intrinsic-size: auto 6rem;
   transition:
     translate var(--duration-2) var(--ease-out),
     box-shadow var(--duration-2) var(--ease-out),

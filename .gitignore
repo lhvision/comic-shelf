@@ -70,3 +70,9 @@ backend/data/settings.json
 
 # AI E2E
 runs.json
+
+# Media raw assets & local frame dumps
+public/*.mp4
+public/*.mov
+public/tiya-frames/
+public/*-frames/

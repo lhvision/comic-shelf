@@ -7,7 +7,7 @@ describe('ReaderLoadingState.vue', () => {
     const wrapper = mount(ReaderLoadingState)
     const img = wrapper.find('img')
     expect(img.exists()).toBe(true)
-    expect(img.attributes('src')).toMatch(/^\/loading-\d+\.webp$/)
+    expect(img.attributes('src')).toMatch(/^\/loading-[^/]+\.webp$/)
     expect(wrapper.text()).toContain('正在装订书页…')
     expect(wrapper.attributes('role')).toBe('status')
   })

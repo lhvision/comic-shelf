@@ -19,7 +19,14 @@ const discovered = Object.keys(globMap)
 export const DEFAULT_ILLUSTRATIONS: readonly string[] =
   discovered.length > 0
     ? discovered
-    : ['/loading-1.webp', '/loading-2.webp', '/loading-3.webp', '/loading-4.webp']
+    : [
+        '/loading-1.webp',
+        '/loading-2.webp',
+        '/loading-3.webp',
+        '/loading-4.webp',
+        '/loading-5.webp',
+        '/loading-tiya.webp',
+      ]
 
 export function useIllustrationPool() {
   const illustrations = DEFAULT_ILLUSTRATIONS
@@ -34,6 +41,7 @@ export function useIllustrationPool() {
   function getIllustration(variantOrIndex?: number | string): string {
     if (typeof variantOrIndex === 'string') {
       if (variantOrIndex.startsWith('/')) return variantOrIndex
+      if (variantOrIndex === 'tiya') return '/loading-tiya.webp'
       return `/${variantOrIndex}`
     }
     if (typeof variantOrIndex === 'number' && Number.isFinite(variantOrIndex)) {
