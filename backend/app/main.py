@@ -234,10 +234,10 @@ def import_comic(req: ImportRequest) -> ImportResult:
 @app.get("/api/library/{source}/{source_id}", response_model=ComicDetail)
 def comic_detail(source: str, source_id: str) -> ComicDetail:
     _require_known_source(source)
-    fetched = store.load_fetched(source, source_id)
-    if fetched is None:
+    meta = store.load_meta(source, source_id)
+    if meta is None:
         raise HTTPException(status_code=404, detail="本子还没有导入本地书库")
-    return store.detail(fetched.meta)
+    return store.detail(meta)
 
 
 @app.delete("/api/library/{source}/{source_id}", response_model=DeleteResponse)
@@ -262,14 +262,14 @@ def set_favorite(source: str, source_id: str, req: FavoriteRequest) -> FavoriteR
 @app.get("/api/library/{source}/{source_id}/cache", response_model=CacheProgress)
 def cache_progress(source: str, source_id: str) -> CacheProgress:
     _require_known_source(source)
-    fetched = store.load_fetched(source, source_id)
-    if fetched is None:
+    meta = store.load_meta(source, source_id)
+    if meta is None:
         raise HTTPException(status_code=404, detail="本子还没有导入本地书库")
-    cached = store.cached_page_count(fetched.meta)
+    cached = store.cached_page_count(meta)
     return CacheProgress(
         cached=cached,
-        total=fetched.meta.page_count,
-        complete=cached >= fetched.meta.page_count,
+        total=meta.page_count,
+        complete=cached >= meta.page_count,
     )
 
 

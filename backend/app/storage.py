@@ -400,6 +400,7 @@ class ComicStore:
             mtime = 0.0
         with self._cache_guard:
             self._meta_cache[(meta.source, meta.source_id)] = (mtime, meta)
+            self._fetched_cache.pop((meta.source, meta.source_id), None)
 
     # ------------------------------------------------------------------
     # pages and covers

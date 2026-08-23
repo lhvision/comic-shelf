@@ -72,10 +72,13 @@ async function load() {
   loading.value = true
   try {
     detail.value = await api.detail(source.value, sourceId.value)
-    // If a background import/prefetch is running (import/cache-all now return
-    // immediately), pick up live progress without the user having to click.
-    const job = await api.cacheJob(source.value, sourceId.value)
-    if (job.running) startProgressPolling()
+    // 若尚未完全缓存或后台有任务在运行，启动前端就地状态轮询
+    if (!detail.value.cache_complete && detail.value.cached_pages < detail.value.meta.page_count) {
+      startProgressPolling()
+    } else {
+      const job = await api.cacheJob(source.value, sourceId.value)
+      if (job.running) startProgressPolling()
+    }
   } catch (e) {
     toast(e instanceof Error ? e.message : String(e), 'error')
     router.replace('/')
@@ -84,35 +87,41 @@ async function load() {
   }
 }
 
-/* 缓存进度轮询：缓存动作开始时 resume，结束/卸载时自动 pause */
+/* 缓存进度轮询：缓存进行时就地更新每页 cached 标记，绝不触碰已有图片与网络连接 */
 const { pause: pauseProgressPolling, resume: resumeProgressPolling } = useIntervalFn(
   async () => {
     try {
       const progress = await api.cacheProgress(source.value, sourceId.value)
       if (detail.value) {
-        const prevCached = detail.value.cached_pages
         detail.value.cached_pages = progress.cached
         detail.value.cache_complete = progress.complete
 
-        // 缓存进度发生变动或全部完成时，同步最新的页面列表与每页 cached 状态
-        if (progress.cached !== prevCached || progress.complete) {
-          const latest = await api.detail(source.value, sourceId.value)
-          detail.value = latest
+        // 前端就地标记已完成的页码，保证零 DOM 销毁、零图片重复加载、角标与进度秒级同步
+        if (detail.value.meta?.pages) {
+          for (const p of detail.value.meta.pages) {
+            if (progress.complete || p.index <= progress.cached) {
+              p.cached = true
+            }
+          }
         }
       }
       if (progress.complete) {
+        if (detail.value?.meta?.pages) {
+          for (const p of detail.value.meta.pages) {
+            p.cached = true
+          }
+        }
         pauseProgressPolling()
       }
     } catch {
       /* the long-running request owns the error path */
     }
   },
-  1200,
+  1000,
   { immediate: false },
 )
 
 function startProgressPolling() {
-  // restart from a clean slate each cache run
   pauseProgressPolling()
   resumeProgressPolling()
 }
@@ -122,11 +131,16 @@ async function cacheAll() {
   caching.value = true
   startProgressPolling()
   try {
-    // cacheAll returns immediately now; the heavy download runs in background
-    // and keeps updating via the polling above until complete.
     const progress = await api.cacheAll(source.value, sourceId.value)
     detail.value.cached_pages = progress.cached
     detail.value.cache_complete = progress.complete
+    if (detail.value.meta?.pages) {
+      for (const p of detail.value.meta.pages) {
+        if (progress.complete || p.index <= progress.cached) {
+          p.cached = true
+        }
+      }
+    }
     await store.load()
     toast(progress.complete ? '已全部缓存到本地' : '后台缓存进行中，进度会自动更新', 'info')
     if (progress.complete) {

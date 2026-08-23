@@ -76,8 +76,13 @@ async function load() {
       router.replace(`/comic/${source.value}/${sourceId.value}`)
       return
     }
-    const job = await api.cacheJob(source.value, sourceId.value)
-    if (job.running) startProgressPolling()
+    // 若尚未完全缓存或后台有任务在运行，启动前端就地状态轮询
+    if (!detail.value.cache_complete && detail.value.cached_pages < detail.value.meta.page_count) {
+      startProgressPolling()
+    } else {
+      const job = await api.cacheJob(source.value, sourceId.value)
+      if (job.running) startProgressPolling()
+    }
   } catch (e) {
     toast(e instanceof Error ? e.message : String(e), 'error')
     router.replace(`/comic/${source.value}/${sourceId.value}`)
@@ -86,30 +91,36 @@ async function load() {
   }
 }
 
-/* 缓存进度轮询：若后台在预缓存/全量缓存，实时同步当前章节每页 cached 状态 */
+/* 缓存进度轮询：若后台在预缓存/全量缓存，就地更新当前章节每页 cached 状态 */
 const { pause: pauseProgressPolling, resume: resumeProgressPolling } = useIntervalFn(
   async () => {
     try {
       const progress = await api.cacheProgress(source.value, sourceId.value)
       if (detail.value) {
-        const prevCached = detail.value.cached_pages
         detail.value.cached_pages = progress.cached
         detail.value.cache_complete = progress.complete
 
-        if (progress.cached !== prevCached || progress.complete) {
-          const latest = await api.detail(source.value, sourceId.value)
-          detail.value = latest
-          setChapterById(chapterId.value)
+        if (detail.value.meta?.pages) {
+          for (const p of detail.value.meta.pages) {
+            if (progress.complete || p.index <= progress.cached) {
+              p.cached = true
+            }
+          }
         }
       }
       if (progress.complete) {
+        if (detail.value?.meta?.pages) {
+          for (const p of detail.value.meta.pages) {
+            p.cached = true
+          }
+        }
         pauseProgressPolling()
       }
     } catch {
       /* transient */
     }
   },
-  1200,
+  1000,
   { immediate: false },
 )
 
