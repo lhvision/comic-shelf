@@ -52,6 +52,12 @@
   - 双口令门禁体系（`COMIC_SHELF_SECRET` 馆长口令 + `COMIC_SHELF_GUEST_SECRET` 访客口令）：留空即内网免密；设置后全站启用门禁保护，单输入框智能识别馆长与访客，未授权请求 100% 拦截（HTTP 401），彻底杜绝公网肉鸡与扫描滥用；
   - 现代浏览器级图片防盗链拦截：结合 `Sec-Fetch-Site: cross-site` 与 `Referer` 白名单校验，彻底杜绝外站把纸间当图床/存储桶直连读取解密成品图；
   - 双轨凭证支持：`SameSite=Lax` Cookie 与 `Authorization: Bearer` 自动联动，原生 `<img>` 标签零改造安全加载。
+- 本地自建图集与拆帧工坊（Local Workshop & Ingestion）：
+  - 支持收录本地图片合集与视频拆帧（如 `public/tiya-frames`）作为自建漫画，与禁漫漫画元数据、阅读器、以图搜图 100% 无缝兼容；
+  - 开辟大画幅自建工坊（`/create`）与书架快速通道，支持单话平铺与多章节编排；
+  - 网页多图上传采用 3 路受限并发上传队列（`useUploadQueue`），保护服务器 IO；支持服务端本地目录秒级直扫收录（0 网络开销）；
+  - 支持单话/多章节增量追加页面；
+  - 典藏资料与标签编排（`EditMetadataModal`）：支持标题、作者、叙述修改，自定义 4 张封面展示页码（`cover_indices`，支持任意全局页号并带热更新缓存击穿），全站标签增删（仅限馆长权限）与全书库热门快选推荐。
 
 - 架构上把站点差异隔离在 `backend/app/providers/`，UI 与存储层只认通用模型
 

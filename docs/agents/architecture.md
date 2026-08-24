@@ -141,11 +141,16 @@ JmImageTool.decode_and_save(num, source_image, save_path)
 - `GET /api/settings` / `PUT /api/settings`（获取与修改运行时配置，如并发数）
 - `GET /api/library`（`q` 也能命中章节标题）
 - `POST /api/library/import` `{id, source, prefetch_covers, prefetch_all, refresh}`（`refresh=true` 走增量，章节未变则复用旧 remote）
+- `POST /api/library/local/create`（自建工坊创建本地图集/多章节元数据骨架）
+- `POST /api/library/local/import-path`（扫描服务器本地目录如 `public/tiya-frames` 秒级收录）
+- `POST /api/library/local/{source_id}/upload-pages`（向本地图集分批上传图片）
+- `POST /api/library/local/{source_id}/append`（增量追加页面或新章节）
+- `PATCH /api/library/{source}/{id}/metadata`（更新标题/作者/标签/叙述/自定义封面页码 `cover_indices`）
 - `GET /api/library/{source}/{id}`（详情含 `chapters`）
 - `PATCH /api/library/{source}/{id}/favorite` `{favorite: bool}`
 - `GET /api/library/{source}/{id}/pages/{n}/file`（`n` 为全局页号，带防盗链校验）
 - `GET /api/library/{source}/{id}/pages/{n}/thumbnail`（同上）
-- `GET /api/library/{source}/{id}/covers/{n}/file`（封面取第一章前 N 页，带防盗链校验）
+- `GET /api/library/{source}/{id}/covers/{n}/file`（封面取 `cover_indices` 或前 N 页，带防盗链校验）
 - `GET /api/library/{source}/{id}/chapters/{chapterId}/cover`（章节封面端点，带防盗链校验）
 - `GET /api/search/image/status`（以图搜图 Sidecar 服务健康探测）
 - `POST /api/search/image`（以图搜图，上传截图/裁切图匹配所属本子与对应页码）

@@ -59,6 +59,7 @@ release. Add a tool name to select part of the graph. For example, run
 6. **视觉与样式约束**：不用 SCSS；颜色/间距/动效走 `src/styles/tokens.css`；禁止紫色渐变、玻璃拟态堆叠、第三方轮播。
 7. **精准单测红线**：严禁在日常开发中无差别全量执行 `vp test`；必须只定位改动相关的单测文件（`vp test src/__tests__/<Target>.spec.ts`），防止全量阻塞卡死。
 8. **View Transitions 边界与安全**：全屏路由过渡仅在跨页面跳转（书架 ⇄ 详情 ⇄ 章节 ⇄ 阅读器）触发，**严禁在阅读器内部翻页/切话触发**（防 AbortError 抢占崩溃）；所有 `startViewTransition` 必须对 `ready`/`finished`/`updateCallbackDone` 绑定 catch；弹窗与微交互走 Vue 原生 `<Transition>`，禁止对弹窗根容器滥用快照导致遮罩畸变与文字亚像素模糊。
+9. **VueUse 优先与零胶水代码（VueUse-First & Zero DOM Glue）**：新增组件、交互重构或状态逻辑开发时，必须读取 `vueuse-functions` skill，优先使用 VueUse 标准 composables（如 `useFileDialog`、`useDropZone`、`useScroll`、`useToggle`、`createGlobalState`、`useIntersectionObserver` 等）代替手写隐藏 input、原生事件监听及样板代码，杜绝重复造轮子。
 
 ## 🧪 E2E 测试准则与 AI 协作规范
 

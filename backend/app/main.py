@@ -35,8 +35,12 @@ from .models import (
     ImportResult,
     JobInfo,
     LibrarySummary,
+    LocalAppendRequest,
+    LocalComicCreateRequest,
+    LocalPathImportRequest,
     LoginRequest,
     LoginResponse,
+    MetadataUpdateRequest,
     PageResponse,
     ProviderInfo,
 )
@@ -281,6 +285,60 @@ def delete_comic(source: str, source_id: str) -> DeleteResponse:
     return DeleteResponse(ok=store.delete(source, source_id), source=source, source_id=source_id)
 
 
+@app.patch("/api/library/{source}/{source_id}/metadata", response_model=ComicDetail)
+def update_comic_metadata(source: str, source_id: str, req: MetadataUpdateRequest) -> ComicDetail:
+    _require_known_source(source)
+    updates = req.model_dump(exclude_unset=True)
+    meta = store.update_metadata(source, source_id, updates)
+    return store.detail(meta)
+
+
+@app.post("/api/library/local/create", response_model=ComicDetail)
+def create_local_comic(req: LocalComicCreateRequest) -> ComicDetail:
+    meta = store.create_local_comic(req)
+    return store.detail(meta)
+
+
+@app.post("/api/library/local/import-path", response_model=ComicDetail)
+def import_local_path(req: LocalPathImportRequest) -> ComicDetail:
+    meta = store.import_local_path(req)
+    return store.detail(meta)
+
+
+@app.post("/api/library/local/{source_id}/upload-pages", response_model=ComicDetail)
+async def upload_local_pages(
+    source_id: str,
+    chapter_id: str = Query(default="", description="目标章节 id"),
+    new_chapter_title: str = Query(default="", description="若创建新章节，传入新章节标题"),
+    files: list[UploadFile] = File(...),
+) -> ComicDetail:
+    file_tuples: list[tuple[str, bytes]] = []
+    for f in files:
+        content = await f.read()
+        if content:
+            file_tuples.append((f.filename or "page.webp", content))
+
+    meta = store.append_pages(
+        source_id=source_id,
+        files=file_tuples,
+        target_chapter=chapter_id,
+        new_chapter_title=new_chapter_title,
+    )
+    return store.detail(meta)
+
+
+@app.post("/api/library/local/{source_id}/append", response_model=ComicDetail)
+def append_local_comic(source_id: str, req: LocalAppendRequest) -> ComicDetail:
+    meta = store.append_pages(
+        source_id=source_id,
+        server_path=req.server_path,
+        target_chapter=req.target_chapter,
+        new_chapter_title=req.new_chapter_title,
+    )
+    return store.detail(meta)
+
+
+
 @app.patch("/api/library/{source}/{source_id}/favorite", response_model=FavoriteResponse)
 def set_favorite(source: str, source_id: str, req: FavoriteRequest) -> FavoriteResponse:
     _require_known_source(source)
@@ -412,9 +470,10 @@ def page_thumbnail(source: str, source_id: str, index: int) -> FileResponse:
 
 
 @app.get("/api/library/{source}/{source_id}/covers/{index}/file")
-def cover_file(source: str, source_id: str, index: int) -> FileResponse:
+def cover_file(source: str, source_id: str, index: int, v: str | None = None) -> FileResponse:
     meta = _require_meta(source, source_id)
-    if index < 1 or index > meta.cover_count or index > meta.page_count:
+    max_covers = len(meta.cover_indices) if meta.cover_indices else meta.cover_count
+    if index < 1 or index > max_covers or index > meta.page_count:
         raise HTTPException(status_code=404, detail=f"封面 {index} 不存在")
 
     cover_path = store.cover_path(meta, index)

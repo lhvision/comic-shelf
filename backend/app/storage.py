@@ -469,7 +469,13 @@ class ComicStore:
             if target.exists() and target.stat().st_size > 0:
                 return target
 
-            page_path = self.ensure_page(fetched, index)
+            if meta.cover_indices and 1 <= index <= len(meta.cover_indices):
+                page_index = meta.cover_indices[index - 1]
+            else:
+                page_index = index
+            page_index = max(1, min(page_index, meta.page_count or 1))
+
+            page_path = self.ensure_page(fetched, page_index)
             self._save_cover(page_path, target)
             return target
 
@@ -635,3 +641,354 @@ class ComicStore:
             shutil.rmtree(target)
             return True
         return False
+
+    # ------------------------------------------------------------------
+    # metadata & local comic operations
+    # ------------------------------------------------------------------
+    @staticmethod
+    def _natural_key(s: str) -> list[int | str]:
+        return [int(text) if text.isdigit() else text.lower() for text in re.split(r"(\d+)", s)]
+
+    def update_metadata(self, source: str, source_id: str, updates: dict[str, Any]) -> ComicMeta:
+        meta = self.load_meta(source, source_id)
+        if meta is None:
+            from fastapi import HTTPException
+
+            raise HTTPException(status_code=404, detail="漫画不存在")
+
+        import datetime
+
+        for field in ("title", "authors", "works", "actors", "tags", "description", "uploader"):
+            if field in updates and updates[field] is not None:
+                setattr(meta, field, updates[field])
+
+        meta.updated_at = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+        if "cover_indices" in updates and updates["cover_indices"] is not None:
+            raw_indices = updates["cover_indices"]
+            max_p = max(1, meta.page_count)
+            valid_indices: list[int] = []
+            for slot_i, item in enumerate(raw_indices, start=1):
+                default_slot = min(slot_i, max_p)
+                try:
+                    val = int(item)
+                    if val < 1:
+                        val = 1
+                    elif val > max_p:
+                        val = default_slot
+                    valid_indices.append(val)
+                except (ValueError, TypeError):
+                    valid_indices.append(default_slot)
+            meta.cover_indices = valid_indices[:4]
+            # Clean old covers so they get regenerated from the new indices
+            covers_dir = self.covers_dir(source, source_id)
+            if covers_dir.exists():
+                for f in list(covers_dir.iterdir()):
+                    if f.is_file() and f.suffix.lower() in {".jpg", ".jpeg"}:
+                        f.unlink(missing_ok=True)
+            # Regenerate covers
+            fetched = self.load_fetched(source, source_id)
+            if fetched is not None:
+                for idx in range(1, len(meta.cover_paths()) + 1):
+                    try:
+                        self.ensure_cover(meta, fetched, idx)
+                    except Exception:
+                        pass
+
+        _write_json_atomic(self.album_path(source, source_id), meta.model_dump())
+        self._invalidate_cache(source, source_id)
+        return meta
+
+    def create_local_comic(self, req: Any) -> ComicMeta:
+        from .providers.local import LocalProvider
+        import datetime
+
+        provider = LocalProvider()
+        source_id = provider.normalize_id(req.id) if req.id else f"loc_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}"
+
+        comic_dir = self.comic_dir("local", source_id)
+        comic_dir.mkdir(parents=True, exist_ok=True)
+        self.pages_dir("local", source_id).mkdir(parents=True, exist_ok=True)
+
+        chapters: list[Chapter] = []
+        if getattr(req, "chapters", None):
+            for idx, c in enumerate(req.chapters, start=1):
+                cid = provider.normalize_id(c.id) if getattr(c, "id", "") else f"c{idx}"
+                title = getattr(c, "title", "") or f"第 {idx} 话"
+                chapters.append(Chapter(id=cid, index=idx, title=title, page_count=0, start=1))
+
+        now_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        meta = ComicMeta(
+            source="local",
+            source_id=source_id,
+            display_id=f"LOC_{source_id}",
+            title=req.title,
+            authors=req.authors or ["自制"],
+            works=req.works or [],
+            actors=req.actors or [],
+            tags=req.tags or [],
+            description=req.description or "",
+            uploader=req.uploader or "自制",
+            page_count=0,
+            cover_count=4,
+            cover_indices=getattr(req, "cover_indices", []) or [],
+            published_at=now_str,
+            updated_at=now_str,
+            imported_at=now_str,
+            chapters=chapters,
+        )
+
+        _write_json_atomic(self.album_path("local", source_id), meta.model_dump())
+        _write_json_atomic(
+            self.remote_path("local", source_id),
+            {"decode_version": CURRENT_DECODE_VERSION, "remote_pages": []},
+        )
+        self._invalidate_cache("local", source_id)
+        return meta
+
+    def import_local_path(self, req: Any) -> ComicMeta:
+        from .providers.local import LocalProvider
+        import datetime
+
+        IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".webp", ".gif", ".avif", ".bmp"}
+        raw_path = Path(req.path).expanduser()
+        if not raw_path.is_absolute():
+            # Check relative to project root or cwd
+            proj_root = Path(__file__).resolve().parents[2]
+            cand1 = proj_root / raw_path
+            cand2 = Path.cwd() / raw_path
+            raw_path = cand1 if cand1.exists() else cand2
+
+        if not raw_path.exists() or not raw_path.is_dir():
+            from fastapi import HTTPException
+
+            raise HTTPException(status_code=400, detail=f"指定目录不存在或不是文件夹：{req.path}")
+
+        provider = LocalProvider()
+        source_id = provider.normalize_id(req.id) if req.id else provider.normalize_id(raw_path.name)
+        if not source_id:
+            source_id = f"loc_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}"
+
+        # Detect subdirectories with images
+        subdirs = [d for d in raw_path.iterdir() if d.is_dir() and not d.name.startswith(".")]
+        subdirs.sort(key=lambda d: self._natural_key(d.name))
+
+        multi_chap_dirs: list[tuple[str, str, list[Path]]] = []
+        for d in subdirs:
+            imgs = [f for f in d.iterdir() if f.is_file() and f.suffix.lower() in IMAGE_EXTS]
+            if imgs:
+                imgs.sort(key=lambda f: self._natural_key(f.name))
+                multi_chap_dirs.append((provider.normalize_id(d.name), d.name, imgs))
+
+        target_pages_dir = self.pages_dir("local", source_id)
+        target_pages_dir.mkdir(parents=True, exist_ok=True)
+
+        pages: list[PageRecord] = []
+        remote_pages: list[RemotePage] = []
+        chapters: list[Chapter] = []
+
+        global_idx = 1
+        if multi_chap_dirs:
+            # Multi-chapter layout
+            for chap_idx, (chap_id, chap_title, img_files) in enumerate(multi_chap_dirs, start=1):
+                chap_pages_dir = target_pages_dir / self._safe(chap_id)
+                chap_pages_dir.mkdir(parents=True, exist_ok=True)
+                start_page = global_idx
+                chap_page_count = len(img_files)
+
+                for local_i, img_file in enumerate(img_files, start=1):
+                    ext = img_file.suffix.lower()
+                    dest_name = f"{local_i:05d}{ext}"
+                    dest_path = chap_pages_dir / dest_name
+                    shutil.copy2(img_file, dest_path)
+
+                    pages.append(PageRecord(index=global_idx, file=dest_name, ext=ext, cached=True, chapter=chap_id))
+                    remote_pages.append(RemotePage(index=global_idx, url="", file=dest_name, ext=ext, chapter=chap_id))
+                    global_idx += 1
+
+                chapters.append(
+                    Chapter(
+                        id=chap_id,
+                        index=chap_idx,
+                        title=chap_title,
+                        page_count=chap_page_count,
+                        start=start_page,
+                    )
+                )
+        else:
+            # Single-chapter flat layout
+            img_files = [f for f in raw_path.iterdir() if f.is_file() and f.suffix.lower() in IMAGE_EXTS]
+            img_files.sort(key=lambda f: self._natural_key(f.name))
+            if not img_files:
+                from fastapi import HTTPException
+
+                raise HTTPException(status_code=400, detail=f"目录中未找到支持的图片文件（支持 {', '.join(IMAGE_EXTS)}）")
+
+            for local_i, img_file in enumerate(img_files, start=1):
+                ext = img_file.suffix.lower()
+                dest_name = f"{local_i:05d}{ext}"
+                dest_path = target_pages_dir / dest_name
+                shutil.copy2(img_file, dest_path)
+
+                pages.append(PageRecord(index=global_idx, file=dest_name, ext=ext, cached=True, chapter=""))
+                remote_pages.append(RemotePage(index=global_idx, url="", file=dest_name, ext=ext, chapter=""))
+                global_idx += 1
+
+        now_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        title = req.title.strip() if req.title and req.title.strip() else raw_path.name
+
+        meta = ComicMeta(
+            source="local",
+            source_id=source_id,
+            display_id=f"LOC_{source_id}",
+            title=title,
+            authors=req.authors or ["自制"],
+            works=req.works or [],
+            actors=req.actors or [],
+            tags=req.tags or [],
+            description=req.description or "",
+            uploader=req.uploader or "本地导入",
+            page_count=len(pages),
+            cover_count=4,
+            cover_indices=getattr(req, "cover_indices", []) or [],
+            published_at=now_str,
+            updated_at=now_str,
+            imported_at=now_str,
+            pages=pages,
+            chapters=chapters,
+        )
+
+        fetched = FetchedComic(meta=meta, remote_pages=remote_pages)
+        self.save_fetched(fetched, refresh=False)
+
+        # Generate covers and thumbs for initial pages
+        for i in range(1, min(meta.cover_count, meta.page_count) + 1):
+            try:
+                self.ensure_cover(meta, fetched, i)
+            except Exception:
+                pass
+
+        if meta.chapters:
+            for ch in meta.chapters:
+                try:
+                    self.ensure_chapter_cover(meta, fetched, ch)
+                except Exception:
+                    pass
+
+        return meta
+
+    def append_pages(
+        self,
+        source_id: str,
+        files: list[tuple[str, bytes]] | None = None,
+        server_path: str = "",
+        target_chapter: str = "",
+        new_chapter_title: str = "",
+    ) -> ComicMeta:
+        from .providers.local import LocalProvider
+        import datetime
+
+        fetched = self.load_fetched("local", source_id)
+        if fetched is None:
+            from fastapi import HTTPException
+
+            raise HTTPException(status_code=404, detail="本地漫画不存在")
+
+        meta = fetched.meta
+        provider = LocalProvider()
+        IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".webp", ".gif", ".avif", ".bmp"}
+
+        # Collect source image items: list of (ext, bytes or Path)
+        items: list[tuple[str, bytes | Path]] = []
+        if files:
+            for filename, content in files:
+                ext = Path(filename).suffix.lower() or ".webp"
+                if ext in IMAGE_EXTS:
+                    items.append((ext, content))
+        elif server_path:
+            raw_path = Path(server_path).expanduser()
+            if not raw_path.is_absolute():
+                proj_root = Path(__file__).resolve().parents[2]
+                cand1 = proj_root / raw_path
+                cand2 = Path.cwd() / raw_path
+                raw_path = cand1 if cand1.exists() else cand2
+            if not raw_path.exists() or not raw_path.is_dir():
+                from fastapi import HTTPException
+
+                raise HTTPException(status_code=400, detail=f"指定目录不存在：{server_path}")
+            img_files = [f for f in raw_path.iterdir() if f.is_file() and f.suffix.lower() in IMAGE_EXTS]
+            img_files.sort(key=lambda f: self._natural_key(f.name))
+            for f in img_files:
+                items.append((f.suffix.lower(), f))
+
+        if not items:
+            from fastapi import HTTPException
+
+            raise HTTPException(status_code=400, detail="未提供有效的图片文件")
+
+        target_pages_dir = self.pages_dir("local", source_id)
+        target_pages_dir.mkdir(parents=True, exist_ok=True)
+
+        is_new_chapter = bool(new_chapter_title)
+        if is_new_chapter:
+            # Adding a new chapter to the comic
+            new_chap_id = provider.normalize_id(f"ch_{len(meta.chapters) + 1}_{datetime.datetime.now().strftime('%M%S')}")
+            chap_dir = target_pages_dir / self._safe(new_chap_id)
+            chap_dir.mkdir(parents=True, exist_ok=True)
+
+            start_idx = meta.page_count + 1
+            for local_i, (ext, data_or_path) in enumerate(items, start=1):
+                dest_name = f"{local_i:05d}{ext}"
+                dest_path = chap_dir / dest_name
+                if isinstance(data_or_path, Path):
+                    shutil.copy2(data_or_path, dest_path)
+                else:
+                    dest_path.write_bytes(data_or_path)
+
+                cur_idx = meta.page_count + local_i
+                meta.pages.append(PageRecord(index=cur_idx, file=dest_name, ext=ext, cached=True, chapter=new_chap_id))
+                fetched.remote_pages.append(RemotePage(index=cur_idx, url="", file=dest_name, ext=ext, chapter=new_chap_id))
+
+            meta.page_count += len(items)
+            new_chap = Chapter(
+                id=new_chap_id,
+                index=len(meta.chapters) + 1,
+                title=new_chapter_title.strip() or f"第 {len(meta.chapters) + 1} 话",
+                page_count=len(items),
+                start=start_idx,
+            )
+            meta.chapters.append(new_chap)
+            self.ensure_chapter_cover(meta, fetched, new_chap)
+        else:
+            # Appending to existing single chapter or target chapter
+            chap_id = target_chapter or (meta.chapters[0].id if meta.chapters else "")
+            chap_dir = (target_pages_dir / self._safe(chap_id)) if chap_id else target_pages_dir
+            chap_dir.mkdir(parents=True, exist_ok=True)
+
+            existing_in_chap = [p for p in meta.pages if p.chapter == chap_id]
+            offset = len(existing_in_chap)
+
+            # If comic is multi-chapter and target is not the last chapter, we need global re-indexing
+            # For simplicity, append at the end of the specified chapter
+            for local_i, (ext, data_or_path) in enumerate(items, start=1):
+                dest_name = f"{offset + local_i:05d}{ext}"
+                dest_path = chap_dir / dest_name
+                if isinstance(data_or_path, Path):
+                    shutil.copy2(data_or_path, dest_path)
+                else:
+                    dest_path.write_bytes(data_or_path)
+
+                cur_idx = meta.page_count + local_i
+                meta.pages.append(PageRecord(index=cur_idx, file=dest_name, ext=ext, cached=True, chapter=chap_id))
+                fetched.remote_pages.append(RemotePage(index=cur_idx, url="", file=dest_name, ext=ext, chapter=chap_id))
+
+            meta.page_count += len(items)
+            if meta.chapters:
+                target_chap_obj = next((c for c in meta.chapters if c.id == chap_id), None)
+                if target_chap_obj:
+                    target_chap_obj.page_count += len(items)
+
+        meta.updated_at = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        self.save_fetched(fetched, refresh=True)
+        return meta
+

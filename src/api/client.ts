@@ -172,6 +172,58 @@ export const api = {
       method: 'PUT',
       body: JSON.stringify({ limit }),
     }),
+  updateMetadata: async (
+    source: string,
+    sourceId: string,
+    payload: import('@/types').MetadataUpdatePayload,
+  ) => {
+    memoizedDetail.delete(source, sourceId)
+    return request<ComicDetail>(`/library/${source}/${sourceId}/metadata`, {
+      method: 'PATCH',
+      body: JSON.stringify(payload),
+    })
+  },
+  createLocalComic: async (payload: import('@/types').LocalComicCreatePayload) => {
+    memoizedDetail.clear()
+    return request<ComicDetail>('/library/local/create', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    })
+  },
+  importLocalPath: async (payload: import('@/types').LocalPathImportPayload) => {
+    memoizedDetail.clear()
+    return request<ComicDetail>('/library/local/import-path', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    })
+  },
+  uploadLocalPages: async (
+    sourceId: string,
+    files: File[],
+    chapterId = '',
+    newChapterTitle = '',
+  ) => {
+    memoizedDetail.delete('local', sourceId)
+    const formData = new FormData()
+    for (const file of files) {
+      formData.append('files', file)
+    }
+    const params = new URLSearchParams()
+    if (chapterId) params.set('chapter_id', chapterId)
+    if (newChapterTitle) params.set('new_chapter_title', newChapterTitle)
+    const qs = params.toString() ? `?${params.toString()}` : ''
+    return request<ComicDetail>(`/library/local/${sourceId}/upload-pages${qs}`, {
+      method: 'POST',
+      body: formData,
+    })
+  },
+  appendLocalComic: async (sourceId: string, payload: import('@/types').LocalAppendPayload) => {
+    memoizedDetail.delete('local', sourceId)
+    return request<ComicDetail>(`/library/local/${sourceId}/append`, {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    })
+  },
 }
 
 export const pageFileUrl = (source: string, sourceId: string, index: number) =>

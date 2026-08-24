@@ -29,6 +29,10 @@ const prefetchAll = ref(false)
 const warnings = ref<string[]>([])
 const lastId = ref('')
 
+const activeTab = ref<'jm' | 'local'>('jm')
+const localPath = ref('')
+const localImporting = ref(false)
+
 const canSubmit = computed(() => /^(?:JM)?\d{6,8}$/i.test(id.value.trim()))
 
 async function submit() {
@@ -61,6 +65,29 @@ async function submit() {
   }
 }
 
+async function submitLocalPath() {
+  if (!localPath.value.trim()) return
+  localImporting.value = true
+  try {
+    const res = await api.importLocalPath({
+      path: localPath.value.trim(),
+    })
+    await store.load()
+    toast(`已收录本地图集《${res.meta.title}》（共 ${res.meta.page_count} 页）`, 'info')
+    emit('imported', res.meta.source, res.meta.source_id)
+    router.push(`/comic/${res.meta.source}/${res.meta.source_id}`)
+    localPath.value = ''
+  } catch (err) {
+    toast(err instanceof Error ? err.message : String(err), 'error')
+  } finally {
+    localImporting.value = false
+  }
+}
+
+function goToWorkshop() {
+  router.push('/create')
+}
+
 function decConcurrency() {
   void withViewTransition(() => settings.dec(), { element: stepperRef.value })
 }
@@ -73,34 +100,94 @@ function incConcurrency() {
 <template>
   <section class="import-panel" aria-labelledby="import-title">
     <div>
-      <p class="eyebrow" id="import-title">Import / 收录</p>
-      <h2>放进纸间</h2>
+      <div class="panel-tabs">
+        <button
+          class="panel-tab"
+          :class="{ 'is-active': activeTab === 'jm' }"
+          type="button"
+          @click="activeTab = 'jm'"
+        >
+          禁漫车号
+        </button>
+        <button
+          class="panel-tab"
+          :class="{ 'is-active': activeTab === 'local' }"
+          type="button"
+          @click="activeTab = 'local'"
+        >
+          本地自建 / 拆帧
+        </button>
+      </div>
+
+      <p class="eyebrow" id="import-title">
+        {{ activeTab === 'jm' ? 'Import / 收录' : 'Local Archive / 自建' }}
+      </p>
+      <h2>{{ activeTab === 'jm' ? '放进纸间' : '收录本地图集' }}</h2>
       <p class="hint">
-        输入禁漫车号。首次收录会读取元数据并缓存前 4 页做封面； 之后永远先读本地，不再打扰远端。
+        {{
+          activeTab === 'jm'
+            ? '输入禁漫车号。首次收录会读取元数据并缓存前 4 页做封面；之后永远先读本地，不再打扰远端。'
+            : '输入服务器目录（如 public/tiya-frames）一键扫描收录，或进入工坊上传多图与多章节。'
+        }}
       </p>
     </div>
 
-    <form class="import-form" @submit.prevent="submit">
-      <label class="field">
-        <span class="field-prefix">JM</span>
-        <input
-          v-model="id"
-          type="text"
-          inputmode="numeric"
-          autocomplete="off"
-          placeholder="523607"
-          aria-label="禁漫车号"
-        />
-      </label>
-      <button
-        ref="submitBtnRef"
-        class="btn btn-primary"
-        type="submit"
-        :disabled="!canSubmit || store.importing"
-      >
-        {{ store.importing ? '收录中…' : '收录到纸间' }}
-      </button>
-    </form>
+    <!-- JM Tab Form -->
+    <template v-if="activeTab === 'jm'">
+      <form class="import-form" @submit.prevent="submit">
+        <label class="field">
+          <span class="field-prefix">JM</span>
+          <input
+            v-model="id"
+            type="text"
+            inputmode="numeric"
+            autocomplete="off"
+            placeholder="523607"
+            aria-label="禁漫车号"
+          />
+        </label>
+        <button
+          ref="submitBtnRef"
+          class="btn btn-primary"
+          type="submit"
+          :disabled="!canSubmit || store.importing"
+        >
+          {{ store.importing ? '收录中…' : '收录到纸间' }}
+        </button>
+      </form>
+    </template>
+
+    <!-- Local Tab Form -->
+    <template v-else>
+      <div class="local-import-box">
+        <form class="import-form" @submit.prevent="submitLocalPath">
+          <label class="field">
+            <span class="field-prefix">PATH</span>
+            <input
+              v-model="localPath"
+              type="text"
+              autocomplete="off"
+              placeholder="public/tiya-frames"
+              aria-label="服务器本地目录路径"
+            />
+          </label>
+          <button
+            class="btn btn-primary"
+            type="submit"
+            :disabled="!localPath.trim() || localImporting"
+          >
+            {{ localImporting ? '扫描中…' : '一键收录' }}
+          </button>
+        </form>
+
+        <div class="workshop-card">
+          <span>需要上传多图或编排多章节？</span>
+          <button class="btn btn-ghost workshop-btn" type="button" @click="goToWorkshop">
+            进入自建图集工坊 →
+          </button>
+        </div>
+      </div>
+    </template>
 
     <div class="download-settings" :aria-busy="settings.loading">
       <div class="download-settings__row">
@@ -213,8 +300,68 @@ function incConcurrency() {
   font-size: var(--text-xl);
 }
 
+.panel-tabs {
+  display: inline-flex;
+  gap: var(--space-1);
+  margin-bottom: var(--space-3);
+  padding: 0.25rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-2);
+  background: var(--paper-1);
+}
+
+.panel-tab {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.35rem 0.85rem;
+  border: 0;
+  border-radius: var(--radius-1);
+  background: transparent;
+  font-size: var(--text-xs);
+  line-height: 1.2;
+  color: var(--ink-1);
+  cursor: pointer;
+  transition: all var(--duration-1) var(--ease-out);
+}
+
+.panel-tab:hover:not(.is-active) {
+  color: var(--ink-0);
+}
+
+.panel-tab.is-active {
+  background: var(--paper-0);
+  color: var(--accent-strong);
+  font-weight: 600;
+  box-shadow: var(--shadow-1);
+}
+
+.local-import-box {
+  display: grid;
+  gap: var(--space-3);
+  align-self: center;
+}
+
+.workshop-card {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border: 1px dashed var(--line);
+  border-radius: var(--radius-2);
+  background: color-mix(in oklab, var(--paper-1) 35%, transparent);
+  font-size: var(--text-xs);
+  color: var(--ink-1);
+}
+
+.workshop-btn {
+  font-size: var(--text-xs);
+  color: var(--accent-strong);
+}
+
 .hint {
-  margin-top: var(--space-3);
+  margin-top: var(--space-2);
   max-width: 34rem;
   color: var(--ink-1);
   font-size: var(--text-sm);

@@ -332,3 +332,31 @@
      - 黄金比例裁切 4 款 512×512 超清 WebP 头像收录于 `public/brand-icons/`；
      - `useBrandIcon` Composable 在每次页面初始化时随机抽选 1 款，并同步联动浏览器 Favicon（`<link rel="icon">`）、网页顶栏 Logo 与通行口令弹窗微印，兼具灵动趣味感（Delight）与视觉统一性。
 - **验证**：`vp check`（76 文件 0 error）、`vp test` 单测全绿、`detect.mjs` 0 反模式。
+
+## 24. 本地自建图集与全站元数据/标签管理系统（Local Comics, Tag Management & Upload Queue）
+
+- **需求背景**：用户期望收录本地图片集合与视频拆帧（如 `public/tiya-frames`）作为自建漫画，要求界面元数据与禁漫保持 100% 视觉一致；支持单话/多章节编排与增量追加；开放全站标签打标签与删除功能，并严格收敛至馆长权限；同时限制上传并发以保护服务器。
+- **Impeccable 设计决策**：
+  1. **自建工坊大画幅二级路由（`/create`）与书架快速通道**：
+     - `ImportPanel.vue`：引入 `〔 禁漫车号 〕` 与 `〔 本地自建 / 拆帧 〕` 标签页，支持直接填入服务端本地路径（如 `public/tiya-frames`）秒级扫描收录（0 网络传输）；
+     - `CreateComicView.vue`：开辟 1200px 典藏自建工坊，左栏编排多章节与拖拽上传，右栏编排卡片目录与元数据（车号 Slug、标题、原作、创作者、人物、标签与叙述），桌面双栏 / 移动端单栏自适应；
+     - **微交互与标签药丸（Tab Pills）排版**：统一 `ImportPanel.vue`、`CreateComicView.vue` 与 `AppendPagesModal.vue` 模式切换 Pill 的内边距（`0.35rem 0.85rem`）与容器下边距，彻底杜绝激活态文字紧贴边框与挤压排版的问题。
+  2. **典藏资料、封面展示页码与标签编排弹窗（`EditMetadataModal.vue`）**：
+     - 详情页开放「编辑资料」弹窗（馆长专享），提供实时修改标题、作者、叙述及标签管理；
+     - **封面自定义展示页码（`cover_indices`）**：开放 4 个封面槽位序号输入（默认 1..4），支持自由指定任意全局页码（如 `[1, 10, 25, 50]`）作为书架卡片与详情页轮播的展示封面；
+     - 标签管理区：支持当前标签 Chip 文本与删除按钮（SVG 细线 `×`）精确垂直居中对齐，热门快选采用独立换行弹性流（`popular-chips`）与清晰垂直行距（`row-gap: var(--space-2)`），输入框支持 `Enter` / `空格` / 逗号快捷新增，并自动推荐全书库热门标签。
+  3. **单话/多章节增量追加弹窗（`AppendPagesModal.vue`）**：
+     - 本地漫画详情页提供「增量追加…」入口，支持追加至指定已有话末尾或创建新章节，支持网页多图上传与服务器目录扫描双模式。
+  4. **并发受限上传队列（`useUploadQueue`）**：
+     - 客户端采用 3 路受限并发分批上传，细粒度响应式追踪整体与当前文件进度，支持主动取消，杜绝瞬间击穿服务器 IO 与连接池。
+  5. **严格的馆长权限收敛（Curator-Gated）**：
+     - 前端所有编辑/追加/自建入口仅在 `canWrite`（馆长态）可见；
+     - 后端 `auth_and_security_middleware` 与 API 端点全面校验馆长身份，访客直接 403 拦截。
+  6. **表单组件拆分与 VueUse 极致精简（Component Decoupling & VueUse Integration）**：
+     - 提取通用表单组件 `TagManager.vue`（支持 `v-model` 双向绑定、分词添加、SVG 居中删除、全库热门快选）与 `CoverIndicesPicker.vue`（4 槽位页码输入、实时越界与负数纠偏、默认槽位安全回退），`EditMetadataModal.vue` 与 `CreateComicView.vue` 各精简 ~150 行代码；
+     - 全面接入 VueUse `useFileDialog` 与 `useDropZone`，彻底剔除隐藏 DOM `<input type="file">` 与原生拖拽事件胶水代码，获得天然响应式的 `isOverDropZone` 拖拽视觉反馈。
+  7. **弹窗固定头尾与滚动锁闭安全闭环（Modal Fixed Layout & Scroll-Lock Invariant）**：
+     - **固定头尾与局部滚动**：`Modal.vue` 重构为 Flex 布局，标题栏（`modal-head`）与操作底栏（`modal-foot`）吸顶/吸底固定，超长表单与图片仅在 `modal-body` 区域平滑滚动；
+     - **VueUse `useScrollLock` 安全闭环**：使用 `useScrollLock(document.body)` 并在 `onUnmounted` 严格释放；`ComicDetailView` 在弹窗保存后使用静默刷新（`load(silent = true)`），杜绝因页面重新挂载骨架屏而导致弹窗销毁时残留 `overflow: hidden` 锁死页面滚动的问题；
+     - **封面即时热刷新缓存穿透（Cache Busting Tag）**：`cover_paths()` 自动附加基于 `updated_at` 的版本摘要参数（`?v=hash`），彻底解决浏览器 `Cache-Control: immutable` 导致封面修改后沿用旧缓存不刷新的问题。
+- **验证**：`vp check`（85 文件 0 error）、`vp test` 单测全绿（`TagManager.spec.ts`、`CoverIndicesPicker.spec.ts`、`useUploadQueue.spec.ts`）、`vp build` 生产构建成功；成功完成 `public/tiya-frames`（917 帧）秒级全量收录测试与自定义封面序号热更新测试。

@@ -36,6 +36,7 @@ export interface ComicMeta {
   comment_count: number
   favorite: boolean
   cover_count: number
+  cover_indices?: number[]
   source_url: string
   pages: PageRecord[]
   imported_at: string
@@ -153,4 +154,52 @@ export interface LoginResult {
   ok: boolean
   token: string
   role?: 'admin' | 'guest'
+}
+
+export interface MetadataUpdatePayload {
+  title?: string
+  authors?: string[]
+  works?: string[]
+  actors?: string[]
+  tags?: string[]
+  description?: string
+  uploader?: string
+  cover_indices?: number[]
+}
+
+export interface LocalChapterInput {
+  id: string
+  title: string
+}
+
+export interface LocalComicCreatePayload {
+  id?: string
+  title: string
+  authors?: string[]
+  works?: string[]
+  actors?: string[]
+  tags?: string[]
+  description?: string
+  uploader?: string
+  chapters?: LocalChapterInput[]
+  cover_indices?: number[]
+}
+
+export interface LocalPathImportPayload {
+  path: string
+  id?: string
+  title?: string
+  authors?: string[]
+  works?: string[]
+  actors?: string[]
+  tags?: string[]
+  description?: string
+  uploader?: string
+  cover_indices?: number[]
+}
+
+export interface LocalAppendPayload {
+  target_chapter?: string
+  new_chapter_title?: string
+  server_path?: string
 }

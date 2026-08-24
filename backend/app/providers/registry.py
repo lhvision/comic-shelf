@@ -2,9 +2,11 @@ from __future__ import annotations
 
 from .base import ComicProvider
 from .jm import JMProvider
+from .local import LocalProvider
 
 PROVIDERS: dict[str, ComicProvider] = {
     "jm": JMProvider(),
+    "local": LocalProvider(),
 }
 
 

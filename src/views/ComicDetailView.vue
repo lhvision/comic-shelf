@@ -15,6 +15,8 @@ import DetailActionBar from '@/components/detail/DetailActionBar.vue'
 import ChapterIndex from '@/components/detail/ChapterIndex.vue'
 import MetadataPanel from '@/components/MetadataPanel.vue'
 import PageIndexGrid from '@/components/detail/PageIndexGrid.vue'
+import EditMetadataModal from '@/components/detail/EditMetadataModal.vue'
+import AppendPagesModal from '@/components/detail/AppendPagesModal.vue'
 import type { ComicDetail } from '@/types'
 
 /**
@@ -40,6 +42,8 @@ const sourceId = computed(() => String(route.params.sourceId))
 const detail = ref<ComicDetail | null>(null)
 const loading = ref(true)
 const caching = ref(false)
+const editOpen = ref(false)
+const appendOpen = ref(false)
 
 const lastRead = useLastRead(source, sourceId)
 const {
@@ -72,8 +76,8 @@ const chapterCache = computed(() => {
 
 onMounted(load)
 
-async function load() {
-  loading.value = true
+async function load(silent = false) {
+  if (!silent) loading.value = true
   try {
     detail.value = await api.detail(source.value, sourceId.value)
     // 若尚未完全缓存或后台有任务在运行，启动前端就地状态轮询
@@ -87,7 +91,7 @@ async function load() {
     toast(e instanceof Error ? e.message : String(e), 'error')
     router.replace('/')
   } finally {
-    loading.value = false
+    if (!silent) loading.value = false
   }
 }
 
@@ -256,10 +260,13 @@ function startReading(page = progressEl.value || 1) {
         :cached-pages="detail.cached_pages"
         :page-count="detail.meta.page_count"
         :can-write="canWrite"
+        :source="source"
         @start-reading="startReading"
         @cache-all="cacheAll"
         @refresh-metadata="refreshMetadata"
         @remove-comic="removeComic"
+        @edit-metadata="editOpen = true"
+        @append-pages="appendOpen = true"
       />
 
       <ChapterIndex
@@ -279,6 +286,31 @@ function startReading(page = progressEl.value || 1) {
         :page-step="pageStep"
         :showing-range="showingRange"
         @load-more="loadMore"
+      />
+
+      <EditMetadataModal
+        :open="editOpen"
+        :meta="detail.meta"
+        @cancel="editOpen = false"
+        @saved="
+          () => {
+            editOpen = false
+            load(true)
+          }
+        "
+      />
+
+      <AppendPagesModal
+        v-if="source === 'local'"
+        :open="appendOpen"
+        :meta="detail.meta"
+        @cancel="appendOpen = false"
+        @appended="
+          () => {
+            appendOpen = false
+            load(true)
+          }
+        "
       />
     </template>
   </div>

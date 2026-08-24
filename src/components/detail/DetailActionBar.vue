@@ -25,8 +25,9 @@ const props = withDefaults(
     cachedPages: number
     pageCount: number
     canWrite?: boolean
+    source?: string
   }>(),
-  { canWrite: true },
+  { canWrite: true, source: 'jm' },
 )
 
 const emit = defineEmits<{
@@ -34,6 +35,8 @@ const emit = defineEmits<{
   cacheAll: []
   refreshMetadata: []
   removeComic: []
+  editMetadata: []
+  appendPages: []
 }>()
 
 /** 「更多」弹出菜单开合 */
@@ -83,8 +86,22 @@ const cacheScale = computed(() => `scaleX(${props.cachePercent / 100})`)
       <button class="btn btn-ghost" type="button" @click="emit('startReading', 1)">
         从第 1 页开始
       </button>
+
+      <button v-if="canWrite" class="btn btn-ghost" type="button" @click="emit('editMetadata')">
+        编辑资料
+      </button>
+
       <button
-        v-if="canWrite"
+        v-if="canWrite && source === 'local'"
+        class="btn btn-ghost"
+        type="button"
+        @click="emit('appendPages')"
+      >
+        增量追加…
+      </button>
+
+      <button
+        v-if="canWrite && source !== 'local'"
         class="btn btn-ghost"
         type="button"
         :disabled="caching || cacheComplete"
@@ -98,7 +115,13 @@ const cacheScale = computed(() => `scaleX(${props.cachePercent / 100})`)
               : `缓存全部（已缓存 ${cachedPages}/${pageCount}）`
         }}
       </button>
-      <button v-if="canWrite" class="btn btn-ghost" type="button" @click="emit('refreshMetadata')">
+
+      <button
+        v-if="canWrite && source !== 'local'"
+        class="btn btn-ghost"
+        type="button"
+        @click="emit('refreshMetadata')"
+      >
         刷新资料
       </button>
 

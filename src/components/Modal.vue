@@ -1,13 +1,13 @@
 <script setup lang="ts">
-import { nextTick, ref, useId, watch } from 'vue'
-import { useEventListener } from '@vueuse/core'
+import { nextTick, ref, useId, watch, onUnmounted } from 'vue'
+import { useEventListener, useScrollLock } from '@vueuse/core'
 import AmbientWatermark from '@/components/AmbientWatermark.vue'
 
 /**
- * 通用对话框（Impeccable：danger/polish/adapt 版）。
+ * 通用对话框（Impeccable：fixed-header/fixed-footer/scrollable-body 版）。
  * - Teleport 到 body，遮罩点击 / Esc / 右上角 × 都会 emit('cancel')；
- * - 打开时锁 body 滚动、焦点落到面板内第一个可交互元素，Tab 焦点圈闭；
- * - 关闭时恢复 body 滚动。标题（h2）自动生成唯一 id 作 aria-labelledby。
+ * - 使用 VueUse useScrollLock 锁定 body 滚动，销毁时自动还原；
+ * - 标题栏与底部操作栏固定在顶部与底部，超长内容区独立平滑滚动；
  * - 全部颜色/间距/圆角走 token，无第三方 UI 库。
  */
 const props = defineProps<{
@@ -18,24 +18,28 @@ const props = defineProps<{
 const emit = defineEmits<{ cancel: [] }>()
 
 const titleId = `modal-title-${useId().replace(/[^a-zA-Z0-9_-]/g, '')}`
-
 const panel = ref<HTMLElement | null>(null)
+
+const isLocked = useScrollLock(typeof document !== 'undefined' ? document.body : null)
 
 watch(
   () => props.open,
-  async (open, was) => {
+  async (open) => {
+    isLocked.value = open
     if (open) {
-      document.body.style.overflow = 'hidden'
       await nextTick()
       const first = panel.value?.querySelector<HTMLElement>(
         'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
       )
       first?.focus()
-    } else if (was && !open) {
-      document.body.style.overflow = ''
     }
   },
+  { immediate: true },
 )
+
+onUnmounted(() => {
+  isLocked.value = false
+})
 
 useEventListener(window, 'keydown', (event: KeyboardEvent) => {
   if (!props.open) return
@@ -123,14 +127,14 @@ useEventListener(window, 'keydown', (event: KeyboardEvent) => {
 .modal-panel {
   position: relative;
   isolation: isolate;
-  width: min(100%, 30rem);
-  max-height: min(90dvh, 42rem);
-  overflow: auto;
-  display: grid;
-  gap: var(--space-4);
-  padding: var(--space-5);
+  width: min(100%, 34rem);
+  max-height: min(90dvh, 46rem);
+  display: flex;
+  flex-direction: column;
   border-radius: var(--radius-3);
   box-shadow: var(--shadow-3);
+  overflow: hidden;
+  background: var(--paper-0);
 }
 
 /* 进退场分层动效：遮罩淡入淡出，面板弹入微降 */
@@ -167,11 +171,14 @@ useEventListener(window, 'keydown', (event: KeyboardEvent) => {
 }
 
 .modal-head {
+  flex: 0 0 auto;
   display: flex;
-  align-items: start;
+  align-items: center;
   justify-content: space-between;
   gap: var(--space-3);
-  padding-right: var(--space-2);
+  padding: var(--space-4) var(--space-5);
+  border-bottom: 1px solid var(--line);
+  background: var(--paper-0);
 }
 
 .modal-head h2 {
@@ -184,18 +191,25 @@ useEventListener(window, 'keydown', (event: KeyboardEvent) => {
 }
 
 .modal-body {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  padding: var(--space-5);
   font-size: var(--text-sm);
   line-height: 1.7;
   color: var(--ink-1);
+  -webkit-overflow-scrolling: touch;
 }
 
 .modal-foot {
+  flex: 0 0 auto;
   display: flex;
   flex-wrap: wrap;
+  align-items: center;
   justify-content: flex-end;
   gap: var(--space-3);
-  padding-top: var(--space-3);
+  padding: var(--space-4) var(--space-5);
   border-top: 1px solid var(--line);
+  background: var(--paper-0);
 }
 
 @keyframes modal-pop {
@@ -225,6 +239,10 @@ useEventListener(window, 'keydown', (event: KeyboardEvent) => {
     width: 100%;
     max-height: 92dvh;
     border-radius: var(--radius-3) var(--radius-3) 0 0;
+  }
+
+  .modal-foot {
+    padding-bottom: max(var(--space-5), env(safe-area-inset-bottom));
   }
 }
 </style>

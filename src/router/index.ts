@@ -18,6 +18,12 @@ const router = createRouter({
       meta: { title: '本子详情', rank: 2 },
     },
     {
+      path: '/create',
+      name: 'create-comic',
+      component: () => import('@/views/CreateComicView.vue'),
+      meta: { title: '自建图集工坊', rank: 2 },
+    },
+    {
       path: '/comic/:source/:sourceId/read/:page?',
       name: 'reader',
       component: () => import('@/views/ReaderView.vue'),
