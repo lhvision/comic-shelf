@@ -115,7 +115,7 @@ async function save() {
             v-model="works"
             class="field-input"
             type="text"
-            placeholder="如：东方Project（多个用 / 分隔）"
+            placeholder="如：公主连接（多个用 / 分隔）"
           />
         </div>
 
@@ -139,7 +139,7 @@ async function save() {
             v-model="actors"
             class="field-input"
             type="text"
-            placeholder="如：博丽灵梦 / 雾雨魔理沙"
+            placeholder="如：缇雅"
           />
         </div>
 
@@ -150,7 +150,7 @@ async function save() {
             v-model="uploader"
             class="field-input"
             type="text"
-            placeholder="如：馆长 / 佚名"
+            placeholder="如：lhvision"
           />
         </div>
       </div>

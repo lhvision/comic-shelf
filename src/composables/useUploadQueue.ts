@@ -4,7 +4,6 @@ import type { ComicDetail } from '@/types'
 
 export interface UploadQueueOptions {
   batchSize?: number
-  concurrency?: number
   onProgress?: (completed: number, total: number) => void
 }
 
@@ -31,59 +30,60 @@ export function useUploadQueue() {
   ): Promise<ComicDetail | null> {
     if (files.length === 0) return null
 
-    const batchSize = options.batchSize ?? 15
-    const concurrency = options.concurrency ?? 3
+    // Ensure files are naturally sorted before batching (e.g. 000.jpg -> 00a.jpg -> 001.jpg)
+    const sortedFiles = [...files].sort((a, b) =>
+      a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' }),
+    )
+
+    const batchSize = options.batchSize ?? 25
     isUploading.value = true
     aborted = false
     error.value = null
     completedCount.value = 0
-    totalCount.value = files.length
+    totalCount.value = sortedFiles.length
     progress.value = 0
 
-    // Split files into chunks
+    // Split files into sequential chunks
     const chunks: File[][] = []
-    for (let i = 0; i < files.length; i += batchSize) {
-      chunks.push(files.slice(i, i + batchSize))
+    for (let i = 0; i < sortedFiles.length; i += batchSize) {
+      chunks.push(sortedFiles.slice(i, i + batchSize))
     }
 
     let latestDetail: ComicDetail | null = null
-    let chunkIndex = 0
-
-    // Worker pool for concurrency
-    async function worker(): Promise<void> {
-      while (chunkIndex < chunks.length && !aborted) {
-        const currentIdx = chunkIndex++
-        const chunk = chunks[currentIdx]
-        if (!chunk || chunk.length === 0) break
-
-        currentFileName.value = chunk[0]?.name || ''
-        try {
-          // If first chunk and new chapter title specified, pass it; subsequent chunks append to that chapter
-          const targetChap =
-            currentIdx === 0
-              ? chapterId
-              : (latestDetail?.meta.chapters?.slice(-1)[0]?.id ?? chapterId)
-          const titleParam = currentIdx === 0 ? newChapterTitle : ''
-
-          const res = await api.uploadLocalPages(sourceId, chunk, targetChap, titleParam)
-          latestDetail = res
-          completedCount.value = Math.min(totalCount.value, completedCount.value + chunk.length)
-          progress.value = Math.round((completedCount.value / totalCount.value) * 100)
-          options.onProgress?.(completedCount.value, totalCount.value)
-        } catch (err) {
-          if (!aborted) {
-            error.value = err instanceof Error ? err.message : String(err)
-            throw err
-          }
-        }
-      }
-    }
 
     try {
-      const workers = Array.from({ length: Math.min(concurrency, chunks.length) }, () => worker())
-      await Promise.all(workers)
-      progress.value = 100
+      // Process chunks strictly sequentially to preserve 100% stable page ordering
+      for (let currentIdx = 0; currentIdx < chunks.length; currentIdx++) {
+        if (aborted) break
+        const chunk = chunks[currentIdx]
+        if (!chunk || chunk.length === 0) continue
+
+        currentFileName.value = chunk[0]?.name || ''
+
+        // If first chunk and new chapter title specified, pass it; subsequent chunks append to that chapter
+        const targetChap =
+          currentIdx === 0
+            ? chapterId
+            : (latestDetail?.meta.chapters?.slice(-1)[0]?.id ?? chapterId)
+        const titleParam = currentIdx === 0 ? newChapterTitle : ''
+
+        const res = await api.uploadLocalPages(sourceId, chunk, targetChap, titleParam)
+        latestDetail = res
+        completedCount.value = Math.min(totalCount.value, completedCount.value + chunk.length)
+        progress.value = Math.round((completedCount.value / totalCount.value) * 100)
+        options.onProgress?.(completedCount.value, totalCount.value)
+      }
+
+      if (!aborted) {
+        progress.value = 100
+      }
       return latestDetail
+    } catch (err) {
+      if (!aborted) {
+        error.value = err instanceof Error ? err.message : String(err)
+        throw err
+      }
+      return null
     } finally {
       isUploading.value = false
     }

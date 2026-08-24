@@ -30,15 +30,25 @@ const submitting = ref(false)
 
 const dropZoneRef = ref<HTMLElement | null>(null)
 
-function stageFiles(rawList: File[]) {
-  const list = rawList.filter((f) => /\.(jpe?g|png|webp|gif|avif|bmp)$/i.test(f.name))
-  selectedFiles.value = [...selectedFiles.value, ...list]
+function naturalSortFiles(files: File[]): File[] {
+  return [...files].sort((a, b) =>
+    a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' }),
+  )
 }
 
-const { open: openFileDialog } = useFileDialog({
+function stageFiles(rawList: File[]) {
+  const list = rawList.filter((f) => /\.(jpe?g|png|webp|gif|avif|bmp)$/i.test(f.name))
+  selectedFiles.value = naturalSortFiles([...selectedFiles.value, ...list])
+}
+
+const { open: openFileDialog, onChange: onFileDialogChange } = useFileDialog({
   multiple: true,
   accept: 'image/*',
   reset: true,
+})
+
+onFileDialogChange((files) => {
+  if (files) stageFiles(Array.from(files))
 })
 
 const { isOverDropZone } = useDropZone(dropZoneRef, {
@@ -182,9 +192,7 @@ async function submit() {
             ref="dropZoneRef"
             class="upload-zone__inner"
             :class="{ 'is-dragover': isOverDropZone }"
-            @click="
-              () => openFileDialog({ onChange: (files) => files && stageFiles(Array.from(files)) })
-            "
+            @click="() => openFileDialog()"
           >
             <svg
               viewBox="0 0 24 24"

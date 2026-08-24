@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from 'vite-plus/test'
 import { useUploadQueue } from '@/composables/useUploadQueue'
 import { api } from '@/api/client'
+import type { ComicDetail } from '@/types'
 
 describe('useUploadQueue', () => {
   it('initializes with default state', () => {
@@ -61,7 +62,6 @@ describe('useUploadQueue', () => {
     const progressUpdates: number[] = []
     const result = await queue.uploadFiles('test', mockFiles, '', '', {
       batchSize: 2,
-      concurrency: 1,
       onProgress: (completed) => {
         progressUpdates.push(completed)
       },
@@ -72,5 +72,22 @@ describe('useUploadQueue', () => {
     expect(queue.completedCount.value).toBe(5)
     expect(queue.totalCount.value).toBe(5)
     expect(progressUpdates.length).toBeGreaterThan(0)
+  })
+
+  it('naturally sorts files before sending (e.g. 000, 00a, 001, 002, 010)', async () => {
+    const queue = useUploadQueue()
+    const rawNames = ['002.jpg', '000.jpg', '00a.jpg', '010.jpg', '001.jpg']
+    const mockFiles = rawNames.map((name) => new File(['dummy'], name, { type: 'image/jpeg' }))
+
+    const uploadedBatches: string[][] = []
+    vi.spyOn(api, 'uploadLocalPages').mockImplementation(async (_id, chunk) => {
+      uploadedBatches.push(chunk.map((f) => f.name))
+      return {} as unknown as ComicDetail
+    })
+
+    await queue.uploadFiles('test', mockFiles, '', '', { batchSize: 10 })
+
+    expect(uploadedBatches.length).toBe(1)
+    expect(uploadedBatches[0]).toEqual(['000.jpg', '00a.jpg', '001.jpg', '002.jpg', '010.jpg'])
   })
 })

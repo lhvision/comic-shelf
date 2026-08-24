@@ -39,7 +39,7 @@ const title = ref('')
 const works = ref('')
 const authors = ref('自制')
 const actors = ref('')
-const uploader = ref('馆长')
+const uploader = ref('lhvision')
 const description = ref('')
 const tags = ref<string[]>([])
 const serverPath = ref('')
@@ -54,19 +54,32 @@ const singleFiles = ref<File[]>([])
 // DropZone & FileDialog via VueUse
 const dropAreaRef = ref<HTMLElement | null>(null)
 
+function naturalSortFiles(files: File[]): File[] {
+  return [...files].sort((a, b) =>
+    a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' }),
+  )
+}
+
 function stageFiles(rawList: File[]) {
   const list = rawList.filter((f) => /\.(jpe?g|png|webp|gif|avif|bmp)$/i.test(f.name))
   if (isMulti.value) {
-    chapters.value[activeChapterIdx.value]?.files.push(...list)
+    const ch = chapters.value[activeChapterIdx.value]
+    if (ch) {
+      ch.files = naturalSortFiles([...ch.files, ...list])
+    }
   } else {
-    singleFiles.value.push(...list)
+    singleFiles.value = naturalSortFiles([...singleFiles.value, ...list])
   }
 }
 
-const { open: openFileDialog } = useFileDialog({
+const { open: openFileDialog, onChange: onFileDialogChange } = useFileDialog({
   multiple: true,
   accept: 'image/*',
   reset: true,
+})
+
+onFileDialogChange((files) => {
+  if (files) stageFiles(Array.from(files))
 })
 
 const { isOverDropZone } = useDropZone(dropAreaRef, {
@@ -90,6 +103,15 @@ function removeChapter(idx: number) {
   chapters.value.splice(idx, 1)
   if (activeChapterIdx.value >= chapters.value.length) {
     activeChapterIdx.value = chapters.value.length - 1
+  }
+}
+
+function clearCurrentStaged() {
+  if (isMulti.value) {
+    const current = chapters.value[activeChapterIdx.value]
+    if (current) current.files = []
+  } else {
+    singleFiles.value = []
   }
 }
 
@@ -271,9 +293,7 @@ function goBack() {
             ref="dropAreaRef"
             class="drop-area"
             :class="{ 'is-dragover': isOverDropZone }"
-            @click="
-              () => openFileDialog({ onChange: (files) => files && stageFiles(Array.from(files)) })
-            "
+            @click="() => openFileDialog()"
           >
             <div class="drop-content">
               <svg
@@ -309,12 +329,7 @@ function goBack() {
               v-if="totalStagedFilesCount > 0"
               class="btn btn-ghost btn-sm"
               type="button"
-              @click="
-                () => {
-                  if (isMulti) chapters[activeChapterIdx].files = []
-                  else singleFiles = []
-                }
-              "
+              @click="clearCurrentStaged"
             >
               清空当前
             </button>

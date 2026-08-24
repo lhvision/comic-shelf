@@ -901,7 +901,8 @@ class ComicStore:
         # Collect source image items: list of (ext, bytes or Path)
         items: list[tuple[str, bytes | Path]] = []
         if files:
-            for filename, content in files:
+            sorted_files = sorted(files, key=lambda f: self._natural_key(f[0]))
+            for filename, content in sorted_files:
                 ext = Path(filename).suffix.lower() or ".webp"
                 if ext in IMAGE_EXTS:
                     items.append((ext, content))
