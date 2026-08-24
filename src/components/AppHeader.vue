@@ -3,6 +3,7 @@ import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { api, onAuthSuccess } from '@/api/client'
 import { useAuth } from '@/composables/useAuth'
+import { useBrandIcon } from '@/composables/useBrandIcon'
 import type { ProviderInfo } from '@/types'
 
 interface NavItem {
@@ -15,7 +16,8 @@ interface NavItem {
 const route = useRoute()
 const router = useRouter()
 const providers = ref<ProviderInfo[]>([])
-const { authRequired, authenticated, logout, openModal } = useAuth()
+const { authRequired, isGuest, canWrite, logout, openModal } = useAuth()
+const { brandIcon } = useBrandIcon()
 
 const navItems = computed<NavItem[]>(() => [
   { to: '/', label: '全部' },
@@ -61,7 +63,7 @@ onAuthSuccess(fetchProviders)
 <template>
   <header class="site-header">
     <button class="brand" type="button" @click="goLibrary" aria-label="回到全部收藏">
-      <img class="brand-mark" src="/brand-icon.webp" alt="" aria-hidden="true" />
+      <img class="brand-mark" :src="brandIcon" alt="" aria-hidden="true" />
       <span>
         <strong>纸间</strong>
         <small>Paper Room</small>
@@ -86,9 +88,19 @@ onAuthSuccess(fetchProviders)
         v-if="authRequired"
         type="button"
         class="auth-badge-btn"
-        :class="{ locked: !authenticated }"
-        :title="authenticated ? '口令已验证（点击退出锁定）' : '点击输入通行口令'"
-        @click="authenticated ? logout() : openModal()"
+        :class="{
+          curator: canWrite,
+          guest: isGuest,
+          locked: !canWrite && !isGuest,
+        }"
+        :title="
+          canWrite
+            ? '馆长管理中（点击退出管理回到访客）'
+            : isGuest
+              ? '访客阅览中（点击解锁馆长权限）'
+              : '点击输入通行口令'
+        "
+        @click="canWrite ? logout() : openModal()"
       >
         <svg
           viewBox="0 0 24 24"
@@ -100,16 +112,22 @@ onAuthSuccess(fetchProviders)
           stroke-linecap="round"
           stroke-linejoin="round"
         >
-          <template v-if="authenticated">
+          <template v-if="canWrite">
             <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
             <path d="M7 11V7a5 5 0 0 1 9.9-1" />
+          </template>
+          <template v-else-if="isGuest">
+            <path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z" />
+            <path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z" />
           </template>
           <template v-else>
             <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
             <path d="M7 11V7a5 5 0 0 1 10 0v4" />
           </template>
         </svg>
-        <span>{{ authenticated ? '已通行' : '未解锁' }}</span>
+        <span>
+          {{ canWrite ? '〔 馆长已入座 〕' : isGuest ? '〔 访客阅览 〕' : '未解锁' }}
+        </span>
       </button>
     </div>
   </header>
@@ -238,12 +256,34 @@ onAuthSuccess(fetchProviders)
   border-radius: var(--radius-1);
   font-family: var(--font-mono);
   font-size: var(--text-caption);
-  color: var(--success);
+  color: var(--ink-1);
   cursor: pointer;
   transition: all var(--duration-1) var(--ease-out);
 }
 
 .auth-badge-btn:hover {
+  background: var(--paper-2);
+  border-color: var(--line-strong);
+}
+
+.auth-badge-btn.curator {
+  color: var(--accent-strong);
+  border-color: color-mix(in oklab, var(--accent) 30%, var(--line));
+  background: var(--accent-soft);
+}
+
+.auth-badge-btn.curator:hover {
+  background: color-mix(in oklab, var(--accent) 22%, var(--paper-0));
+}
+
+.auth-badge-btn.guest {
+  color: var(--ink-2);
+  border-color: var(--line);
+  background: color-mix(in oklab, var(--paper-0) 60%, var(--paper-1));
+}
+
+.auth-badge-btn.guest:hover {
+  color: var(--ink-0);
   background: var(--paper-2);
   border-color: var(--line-strong);
 }

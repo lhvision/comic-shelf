@@ -49,9 +49,10 @@
   - 支持多模态复合检索（图搜结果与文字关键词、标签 AND 组合筛选）；
   - 优雅降级：未启动识图服务容器时前端自动呈现提示引导，常规文本与标签检索 100% 正常运行。
 - 访问安全与防盗链（Security & Hotlink Protection）：
-  - 渐进式访问密钥（`COMIC_SHELF_SECRET`）：留空即内网免密；设置后全站启用访问门禁与 API/图片保护；
+  - 双口令门禁体系（`COMIC_SHELF_SECRET` 馆长口令 + `COMIC_SHELF_GUEST_SECRET` 访客口令）：留空即内网免密；设置后全站启用门禁保护，单输入框智能识别馆长与访客，未授权请求 100% 拦截（HTTP 401），彻底杜绝公网肉鸡与扫描滥用；
   - 现代浏览器级图片防盗链拦截：结合 `Sec-Fetch-Site: cross-site` 与 `Referer` 白名单校验，彻底杜绝外站把纸间当图床/存储桶直连读取解密成品图；
   - 双轨凭证支持：`SameSite=Lax` Cookie 与 `Authorization: Bearer` 自动联动，原生 `<img>` 标签零改造安全加载。
+
 - 架构上把站点差异隔离在 `backend/app/providers/`，UI 与存储层只认通用模型
 
 ## 运行

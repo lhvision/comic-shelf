@@ -50,7 +50,12 @@
 - **插画资产池（Illustration Pool）**：全站看板角色与加载插画的统一发现与随机轮换池（`/loading-*.webp`），支持零配置自动感知新资产。
 - **环境暗印水印（Ambient Watermark）**：页面与弹窗底层的极浅角色暗纹，以纸质水印质感呈现，亮色与暗色模式下均保持极低对比度，绝不干扰前景内容与文字可读性。
 - **全幅加载占位（Full-frame Page Loading）**：阅读器单页加载时与漫画页面等比撑满的骨架占位，大画幅展示装订插画并彻底消除排版跳动。
-- **访问密钥（Auth Secret）**：环境变量 `COMIC_SHELF_SECRET` / `COMIC_SHELF_AUTH_TOKEN`。配置后全站开启轻量门禁防护，未授权禁止访问 API 与漫画图片；未配置时保持零门槛内网模式。
+- **馆长密钥（Auth Secret / Curator Secret）**：环境变量 `COMIC_SHELF_SECRET` / `COMIC_SHELF_AUTH_TOKEN`。配置后开启门禁防护与馆长全权；未配置时保持零门槛内网模式。
+- **访客密钥（Guest Secret）**：环境变量 `COMIC_SHELF_GUEST_SECRET`（可选）。配置后允许持有该口令的朋友以只读访客身份进入阅览室；若未配置访客密钥且配置了馆长密钥，则为私人独享锁死模式。
+- **双口令门禁（Dual-Secret Gate）**：单输入框智能识别。未授权者（未提供有效口令者）在门禁处被 100% 拦截（HTTP 401），零元数据与图片泄露，从根源杜绝公网肉鸡与扫描滥用。
+- **馆长（Curator / Admin）**：拥有纸间全部管理权限（收录、删除、标记喜欢、全量离线缓存、调整下载并发）的最高身份，由馆长密钥鉴权。
+- **访客（Guest / Reader）**：持有访客口令的阅览者身份。仅拥有浏览书架、检索筛选、阅读翻页（含未缓存页的单页按需懒下载）与以图搜图权限；界面完全隐藏所有数据写入与变更操作控件，已喜欢标记作为只读印章呈现。
+
 - **防盗链（Hotlink Protection）**：基于现代浏览器 `Sec-Fetch-Site: cross-site` 识别及 Referer 校验机制，严禁外部第三方网站跨站直连纸间作为存储桶或图片代理。
 - **视图过渡（View Transition）**：全站单页与局域状态变更时的平滑快照过渡机制，包括页面层级路由推进/后退（`forward` / `backward` Types）、封面到详情大画幅的「共享封面形变」、局域视图过渡（`Element.startViewTransition`）以及弹窗与按钮状态演进，无缝遵循纸间 `--duration-1/2/3` 与无障碍降级。
 - **共享封面形变（Shared Cover Morph）**：书架卡片封面（`comic-cover-active`）与本子详情 Hero 封面在路由跳转时的动态连续尺寸与位置插值（神奇移动）。

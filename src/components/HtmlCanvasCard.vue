@@ -4,6 +4,7 @@ import type { LibrarySummary } from '@/types'
 import HtmlCanvasSurface from '@/components/HtmlCanvasSurface.vue'
 import FavoriteButton from '@/components/FavoriteButton.vue'
 import CacheProgress from '@/components/CacheProgress.vue'
+import { useAuth } from '@/composables/useAuth'
 
 const props = defineProps<{
   comic: LibrarySummary
@@ -15,6 +16,8 @@ const props = defineProps<{
 const emit = defineEmits<{
   favoriteToggled: [source: string, sourceId: string, favorite: boolean]
 }>()
+
+const { canWrite } = useAuth()
 
 const route = computed(() => `/comic/${props.comic.source}/${props.comic.source_id}`)
 const primaryTags = computed(() => props.comic.tags.slice(0, 3))
@@ -71,6 +74,7 @@ const cardTransitionName = computed(
         :source="comic.source"
         :source-id="comic.source_id"
         :favorite="comic.favorite"
+        :interactive="canWrite"
         @toggled="(value) => emit('favoriteToggled', comic.source, comic.source_id, value)"
       />
     </template>

@@ -3,11 +3,15 @@ import { ref } from 'vue'
 import { api } from '@/api/client'
 import { useViewTransition } from '@/composables/useViewTransition'
 
-const props = defineProps<{
-  source: string
-  sourceId: string
-  favorite: boolean
-}>()
+const props = withDefaults(
+  defineProps<{
+    source: string
+    sourceId: string
+    favorite: boolean
+    interactive?: boolean
+  }>(),
+  { interactive: true },
+)
 
 const emit = defineEmits<{
   toggled: [favorite: boolean]
@@ -18,7 +22,7 @@ const busy = ref(false)
 const { withViewTransition } = useViewTransition()
 
 async function toggle() {
-  if (busy.value) return
+  if (!props.interactive || busy.value) return
   busy.value = true
   const next = !props.favorite
   try {
@@ -37,6 +41,7 @@ async function toggle() {
 
 <template>
   <button
+    v-if="interactive"
     ref="btnRef"
     class="favorite-button"
     type="button"
@@ -52,23 +57,35 @@ async function toggle() {
     </svg>
     <span class="visually-hidden">{{ favorite ? '已喜欢' : '喜欢' }}</span>
   </button>
+  <div v-else-if="favorite" class="favorite-badge" aria-label="已标记喜欢" role="img">
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path
+        d="M12 20.7 4.9 13.5a4.75 4.75 0 0 1 0-6.6 4.6 4.6 0 0 1 6.5 0l.6.6.6-.6a4.6 4.6 0 0 1 6.5 0 4.75 4.75 0 0 1 0 6.6L12 20.7Z"
+      />
+    </svg>
+    <span class="visually-hidden">已喜欢</span>
+  </div>
 </template>
 
 <style scoped>
-.favorite-button {
+.favorite-button,
+.favorite-badge {
   position: absolute;
   top: 0.55rem;
   left: 0.55rem;
   z-index: 6;
   display: grid;
   place-items: center;
+  border-radius: 50%;
+  color: #fff;
+  backdrop-filter: blur(8px);
+}
+
+.favorite-button {
   width: 2.25rem;
   height: 2.25rem;
   border: 1px solid rgb(255 255 255 / 22%);
-  border-radius: 50%;
   background: rgb(8 8 8 / 46%);
-  color: #fff;
-  backdrop-filter: blur(8px);
   box-shadow: 0 2px 8px rgb(0 0 0 / 35%);
   transition:
     transform var(--duration-1) var(--ease-out),
@@ -104,5 +121,24 @@ async function toggle() {
 .favorite-button:disabled {
   cursor: wait;
   opacity: 0.7;
+}
+
+.favorite-badge {
+  width: 1.85rem;
+  height: 1.85rem;
+  border: 1px solid rgb(255 255 255 / 20%);
+  background: color-mix(in oklab, var(--accent) 85%, rgb(0 0 0 / 40%));
+  box-shadow: 0 2px 6px rgb(0 0 0 / 30%);
+  pointer-events: none;
+}
+
+.favorite-badge svg {
+  width: 0.95rem;
+  height: 0.95rem;
+  fill: currentColor;
+  stroke: currentColor;
+  stroke-width: 1.5;
+  stroke-linejoin: round;
+  stroke-linecap: round;
 }
 </style>

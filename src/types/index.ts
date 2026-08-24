@@ -144,4 +144,13 @@ export interface ImageSearchStatus {
 export interface AuthStatus {
   auth_required: boolean
   authenticated: boolean
+  can_write: boolean
+  role: 'admin' | 'guest' | 'unauthorized'
+  has_guest_secret?: boolean
+}
+
+export interface LoginResult {
+  ok: boolean
+  token: string
+  role?: 'admin' | 'guest'
 }

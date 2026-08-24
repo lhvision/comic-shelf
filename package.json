@@ -1,5 +1,5 @@
 {
-  "name": "comic-shelf",
+  "name": "@lhvision/comic-shelf",
   "version": "0.0.0",
   "private": true,
   "author": "lhvision",
@@ -33,7 +33,7 @@
     "vue-router": "^5.2.0"
   },
   "devDependencies": {
-    "@lhvision/ai-e2e-base": "file:/home/miku/dsh/ai-e2e-base",
+    "@lhvision/ai-e2e-base": "^0.1.5",
     "@playwright/test": "^1.62.1",
     "@tsconfig/node24": "^24.0.4",
     "@types/jsdom": "^28.0.3",

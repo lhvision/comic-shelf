@@ -72,17 +72,18 @@ backend/data/
 
 ## 环境变量
 
-| 变量                                    | 默认值                  | 说明                                                            |
-| --------------------------------------- | ----------------------- | --------------------------------------------------------------- |
-| `COMIC_SHELF_DATA`                      | `backend/data`          | 数据目录                                                        |
-| `COMIC_SHELF_SECRET`                    | _(留空)_                | 部署访问口令（留空免密；设置后全站启用访问门禁与 API/图片保护） |
-| `COMIC_SHELF_ENABLE_HOTLINK_PROTECTION` | `true`                  | 是否启用基于 Sec-Fetch-Site 与 Referer 的图片防盗链拦截         |
-| `COMIC_SHELF_ENABLE_DOCS`               | `false`                 | 是否开放 /docs 和 /redoc API 文档                               |
-| `COMIC_SHELF_IMSEARCH_URL`              | `http://localhost:8765` | 局部特征识图服务地址（可选）                                    |
-| `COMIC_SHELF_PAGE_THUMB_WIDTH`          | `360`                   | 页面索引缩略图宽度                                              |
-| `COMIC_SHELF_COVER_WIDTH`               | `840`                   | 封面宽度                                                        |
-| `COMIC_SHELF_MAX_PREFETCH`              | `600`                   | 单次全量缓存页数上限                                            |
-| `COMIC_SHELF_MAX_CONCURRENT_DOWNLOADS`  | `3`                     | 下载并发数限制                                                  |
+| 变量                                    | 默认值                  | 说明                                                                               |
+| --------------------------------------- | ----------------------- | ---------------------------------------------------------------------------------- |
+| `COMIC_SHELF_DATA`                      | `backend/data`          | 数据目录                                                                           |
+| `COMIC_SHELF_SECRET`                    | _(留空)_                | 馆长访问口令（留空免密；设置后全站启用门禁保护，输入此口令获得全部读写管理权限）   |
+| `COMIC_SHELF_GUEST_SECRET`              | _(留空)_                | 访客阅览口令（可选；设置后允许朋友输入此口令只读看书，未提供有效口令者 100% 拦截） |
+| `COMIC_SHELF_ENABLE_HOTLINK_PROTECTION` | `true`                  | 是否启用基于 Sec-Fetch-Site 与 Referer 的图片防盗链拦截                            |
+| `COMIC_SHELF_ENABLE_DOCS`               | `false`                 | 是否开放 /docs 和 /redoc API 文档                                                  |
+| `COMIC_SHELF_IMSEARCH_URL`              | `http://localhost:8765` | 局部特征识图服务地址（可选）                                                       |
+| `COMIC_SHELF_PAGE_THUMB_WIDTH`          | `360`                   | 页面索引缩略图宽度                                                                 |
+| `COMIC_SHELF_COVER_WIDTH`               | `840`                   | 封面宽度                                                                           |
+| `COMIC_SHELF_MAX_PREFETCH`              | `600`                   | 单次全量缓存页数上限                                                               |
+| `COMIC_SHELF_MAX_CONCURRENT_DOWNLOADS`  | `3`                     | 下载并发数限制                                                                     |
 
 ## 和 Vite+ / vp 的关系
 

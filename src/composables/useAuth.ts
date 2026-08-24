@@ -1,4 +1,4 @@
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
 import {
   api,
   getStoredToken,
@@ -9,14 +9,21 @@ import {
 
 const authRequired = ref(false)
 const authenticated = ref(true)
+const role = ref<'admin' | 'guest' | 'unauthorized'>('admin')
 const modalVisible = ref(false)
 const checking = ref(false)
 const submitting = ref(false)
 const errorMessage = ref('')
 
+const canWrite = computed(
+  () => !authRequired.value || (authenticated.value && role.value === 'admin'),
+)
+const isGuest = computed(() => authenticated.value && role.value === 'guest')
+
 // Register 401 listener once at module level
 onUnauthorized(() => {
   authenticated.value = false
+  role.value = 'unauthorized'
   if (authRequired.value) {
     modalVisible.value = true
   }
@@ -29,13 +36,15 @@ export function useAuth() {
       const status = await api.authStatus()
       authRequired.value = status.auth_required
       authenticated.value = status.authenticated
+      role.value = status.role
       if (status.auth_required && !status.authenticated) {
-        // If we have a stored token, try logging in with it or opening modal
+        // If we have a stored token, try logging in with it
         const stored = getStoredToken()
         if (stored) {
           try {
-            await api.login(stored)
+            const res = await api.login(stored)
             authenticated.value = true
+            role.value = res.role || 'admin'
             modalVisible.value = false
             notifyAuthSuccess()
             return true
@@ -57,7 +66,7 @@ export function useAuth() {
 
   async function login(secret: string): Promise<boolean> {
     if (!secret.trim()) {
-      errorMessage.value = '请输入访问口令'
+      errorMessage.value = '请输入通行口令'
       return false
     }
     submitting.value = true
@@ -66,11 +75,12 @@ export function useAuth() {
       const res = await api.login(secret.trim())
       setStoredToken(res.token)
       authenticated.value = true
+      role.value = res.role || 'admin'
       modalVisible.value = false
       notifyAuthSuccess()
       return true
     } catch (err: unknown) {
-      errorMessage.value = err instanceof Error ? err.message : '访问口令错误'
+      errorMessage.value = err instanceof Error ? err.message : '通行口令错误'
       return false
     } finally {
       submitting.value = false
@@ -83,6 +93,7 @@ export function useAuth() {
     } finally {
       setStoredToken('')
       authenticated.value = false
+      role.value = 'unauthorized'
       if (authRequired.value) {
         modalVisible.value = true
       }
@@ -104,6 +115,9 @@ export function useAuth() {
   return {
     authRequired,
     authenticated,
+    role,
+    canWrite,
+    isGuest,
     modalVisible,
     checking,
     submitting,

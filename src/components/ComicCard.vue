@@ -4,6 +4,7 @@ import type { LibrarySummary } from '@/types'
 import FavoriteButton from '@/components/FavoriteButton.vue'
 import CacheProgress from '@/components/CacheProgress.vue'
 import { useCoverTransition } from '@/composables/useCoverTransition'
+import { useAuth } from '@/composables/useAuth'
 
 const props = defineProps<{
   comic: LibrarySummary
@@ -18,6 +19,7 @@ const emit = defineEmits<{
 }>()
 
 const { isCoverActive, setActiveCover } = useCoverTransition()
+const { canWrite } = useAuth()
 
 const route = computed(() => `/comic/${props.comic.source}/${props.comic.source_id}`)
 
@@ -45,8 +47,10 @@ const cardTransitionName = computed(
           :source="comic.source"
           :source-id="comic.source_id"
           :favorite="comic.favorite"
+          :interactive="canWrite"
           @toggled="(value) => emit('favoriteToggled', comic.source, comic.source_id, value)"
         />
+
         <div
           v-for="(cover, index) in deckCovers"
           :key="cover"

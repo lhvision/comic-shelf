@@ -29,17 +29,23 @@ def make_mock_request(
 def test_auth_logic():
     # 1. No secret configured -> open access
     auth_mod.AUTH_SECRET = ""
+    auth_mod.GUEST_SECRET = ""
     assert auth_mod.is_auth_required() is False
     req = make_mock_request("/api/library")
     assert auth_mod.is_authenticated(req) is True
+    assert auth_mod.is_curator(req) is True
+    assert auth_mod.can_read(req) is True
 
-    # 2. Secret configured
-    auth_mod.AUTH_SECRET = "my-secret-123"
+    # 2. Dual secret configured (Curator + Guest)
+    auth_mod.AUTH_SECRET = "admin-secret-123"
+    auth_mod.GUEST_SECRET = "guest-secret-456"
     assert auth_mod.is_auth_required() is True
 
-    # No credentials -> False
     req_empty = make_mock_request("/api/library")
     assert auth_mod.is_authenticated(req_empty) is False
+    assert auth_mod.is_curator(req_empty) is False
+    assert auth_mod.is_guest(req_empty) is False
+    assert auth_mod.can_read(req_empty) is False
 
     # Wrong Bearer token -> False
     req_wrong = make_mock_request(
@@ -47,34 +53,52 @@ def test_auth_logic():
         headers={"Authorization": "Bearer wrong-secret"},
     )
     assert auth_mod.is_authenticated(req_wrong) is False
+    assert auth_mod.can_read(req_wrong) is False
 
-    # Correct Bearer token -> True
-    req_bearer = make_mock_request(
+    # Guest Bearer token -> is_guest=True, is_curator=False, can_read=True
+    req_guest = make_mock_request(
         "/api/library",
-        headers={"Authorization": "Bearer my-secret-123"},
+        headers={"Authorization": "Bearer guest-secret-456"},
     )
-    assert auth_mod.is_authenticated(req_bearer) is True
+    assert auth_mod.is_authenticated(req_guest) is True
+    assert auth_mod.is_guest(req_guest) is True
+    assert auth_mod.is_curator(req_guest) is False
+    assert auth_mod.can_read(req_guest) is True
 
-    # Correct X-Auth-Token -> True
-    req_xtoken = make_mock_request(
+    # Curator Bearer token -> is_curator=True, is_guest=False, can_read=True
+    req_curator = make_mock_request(
         "/api/library",
-        headers={"X-Auth-Token": "my-secret-123"},
+        headers={"Authorization": "Bearer admin-secret-123"},
     )
-    assert auth_mod.is_authenticated(req_xtoken) is True
+    assert auth_mod.is_authenticated(req_curator) is True
+    assert auth_mod.is_curator(req_curator) is True
+    assert auth_mod.can_read(req_curator) is True
 
-    # Correct Cookie -> True
-    req_cookie = make_mock_request(
-        "/api/library",
-        cookies={"comic_shelf_token": "my-secret-123"},
-    )
-    assert auth_mod.is_authenticated(req_cookie) is True
+    # require_admin on guest raises 403 Forbidden
+    try:
+        auth_mod.require_admin(req_guest)
+        assert False, "Should have raised 403 Forbidden"
+    except HTTPException as exc:
+        assert exc.status_code == 403
+        assert "访客模式" in exc.detail
 
-    # Correct Query param -> True
-    req_query = make_mock_request(
-        "/api/library",
-        query_params={"token": "my-secret-123"},
-    )
-    assert auth_mod.is_authenticated(req_query) is True
+    # require_admin on unauthenticated raises 401 Unauthorized
+    try:
+        auth_mod.require_admin(req_empty)
+        assert False, "Should have raised 401 Unauthorized"
+    except HTTPException as exc:
+        assert exc.status_code == 401
+
+    # require_admin on curator passes
+    auth_mod.require_admin(req_curator)
+
+    # 3. Solo Curator mode (No guest secret configured)
+    auth_mod.AUTH_SECRET = "admin-secret-123"
+    auth_mod.GUEST_SECRET = ""
+    assert auth_mod.can_read(req_guest) is False
+    assert auth_mod.can_read(req_curator) is True
+
+
 
 
 def test_hotlink_protection():

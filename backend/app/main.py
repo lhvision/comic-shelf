@@ -5,13 +5,17 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 
 from .auth import (
+    can_read,
     check_hotlink_protection,
     clear_auth_cookie,
+    is_admin,
     is_auth_required,
     is_authenticated,
+    is_curator,
+    is_guest,
     set_auth_cookie,
 )
-from .config import AUTH_SECRET, DATA_DIR, ENABLE_DOCS, LIBRARY_DIR
+from .config import AUTH_SECRET, DATA_DIR, ENABLE_DOCS, GUEST_SECRET, LIBRARY_DIR
 from .jobs import get_job, list_running, start_job
 from .gate import _env_explicit, get_download_concurrency, set_download_concurrency
 from .imsearch import check_imsearch_status, search_imsearch
@@ -78,13 +82,28 @@ async def auth_and_security_middleware(request: Request, call_next):
         except HTTPException as exc:
             return JSONResponse(status_code=exc.status_code, content={"detail": exc.detail})
 
-    # Check authentication
-    if not is_authenticated(request):
-        return JSONResponse(
-            status_code=401,
-            content={"detail": "未授权访问，需要提供有效的访问密钥"},
-            headers={"WWW-Authenticate": "Bearer"},
-        )
+    # Write / Mutating operations require curator privileges
+    is_write = request.method in ("POST", "PUT", "PATCH", "DELETE") and path != "/api/search/image"
+    if is_write:
+        if not is_admin(request):
+            if is_guest(request):
+                return JSONResponse(
+                    status_code=403,
+                    content={"detail": "访客模式下禁止执行修改操作，请先解锁馆长权限"},
+                )
+            return JSONResponse(
+                status_code=401,
+                content={"detail": "未授权访问，需要提供有效的通行口令"},
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+    else:
+        # Read operations: require valid curator or guest token
+        if not can_read(request):
+            return JSONResponse(
+                status_code=401,
+                content={"detail": "未授权访问，需要提供有效的通行口令"},
+                headers={"WWW-Authenticate": "Bearer"},
+            )
 
     return await call_next(request)
 
@@ -94,20 +113,36 @@ store = ComicStore()
 
 @app.get("/api/auth/status", response_model=AuthStatusResponse)
 def auth_status(request: Request) -> AuthStatusResponse:
+    auth_req = is_auth_required()
+    curator = is_curator(request)
+    guest = is_guest(request)
+    authed = curator or guest
+    role = "admin" if curator else ("guest" if guest else "unauthorized")
     return AuthStatusResponse(
-        auth_required=is_auth_required(),
-        authenticated=is_authenticated(request),
+        auth_required=auth_req,
+        authenticated=authed,
+        can_write=curator,
+        role=role,
+        has_guest_secret=bool(GUEST_SECRET),
     )
 
 
 @app.post("/api/auth/login", response_model=LoginResponse)
 def auth_login(req: LoginRequest, response: Response) -> LoginResponse:
-    if not AUTH_SECRET:
-        return LoginResponse(ok=True, token="")
-    if not secrets.compare_digest(req.secret, AUTH_SECRET):
-        raise HTTPException(status_code=401, detail="访问口令错误，请重试")
-    set_auth_cookie(response, AUTH_SECRET)
-    return LoginResponse(ok=True, token=AUTH_SECRET)
+    if not is_auth_required():
+        return LoginResponse(ok=True, token="", role="admin")
+
+    secret = req.secret.strip()
+    if AUTH_SECRET and secrets.compare_digest(secret, AUTH_SECRET):
+        set_auth_cookie(response, AUTH_SECRET)
+        return LoginResponse(ok=True, token=AUTH_SECRET, role="admin")
+
+    if GUEST_SECRET and secrets.compare_digest(secret, GUEST_SECRET):
+        set_auth_cookie(response, GUEST_SECRET)
+        return LoginResponse(ok=True, token=GUEST_SECRET, role="guest")
+
+    raise HTTPException(status_code=401, detail="通行口令错误，请重试")
+
 
 
 @app.post("/api/auth/logout")

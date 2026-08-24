@@ -5,7 +5,28 @@ from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 BACKEND_DIR = PROJECT_ROOT / "backend"
+
+
+def _load_dotenv() -> None:
+    for env_file in (PROJECT_ROOT / ".env", BACKEND_DIR / ".env"):
+        if env_file.is_file():
+            try:
+                for line in env_file.read_text(encoding="utf-8").splitlines():
+                    line = line.strip()
+                    if not line or line.startswith("#") or "=" not in line:
+                        continue
+                    k, v = line.split("=", 1)
+                    k, v = k.strip(), v.strip().strip("'\"")
+                    if k and k not in os.environ:
+                        os.environ[k] = v
+            except Exception:
+                pass
+
+
+_load_dotenv()
+
 DATA_DIR = Path(os.getenv("COMIC_SHELF_DATA", BACKEND_DIR / "data")).resolve()
+
 LIBRARY_DIR = DATA_DIR / "library"
 TMP_DIR = DATA_DIR / "tmp"
 
@@ -34,8 +55,13 @@ IMSEARCH_URL = os.getenv("COMIC_SHELF_IMSEARCH_URL", "http://localhost:8765").rs
 
 ENABLE_DOCS = os.getenv("COMIC_SHELF_ENABLE_DOCS", "false").lower() in ("1", "true", "yes")
 
-# Access key for deployment protection (blank = open access, non-blank = protected)
+# Curator key for full access (blank = open access, non-blank = protected)
 AUTH_SECRET = os.getenv("COMIC_SHELF_SECRET", os.getenv("COMIC_SHELF_AUTH_TOKEN", "")).strip()
+
+# Guest key for read-only viewing (optional; blank = no guest access allowed when AUTH_SECRET is set)
+GUEST_SECRET = os.getenv("COMIC_SHELF_GUEST_SECRET", "").strip()
 
 # Anti-hotlinking / storage bucket abuse protection
 ENABLE_HOTLINK_PROTECTION = os.getenv("COMIC_SHELF_ENABLE_HOTLINK_PROTECTION", "true").lower() in ("1", "true", "yes")
+
+

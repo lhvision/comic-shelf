@@ -316,3 +316,19 @@
      - 采用 **「全幅磨砂装订卡片 + 30s Live2D 缇雅动画（`loading-tiya.webp`）」+「`opacity` 交叉淡入」**，视觉清爽、仪式感强且 0 额外 DOM / 显存开销。
   3. **离屏视口虚拟化全覆盖**：
      - `ComicCard.vue`（书架卡片）、`ChapterCard.vue`（章节卡片）、`PageTile.vue`（页面索引瓦片）及 `.reader-spread`（阅读器双联页）全量配置 `content-visibility: auto`，万级列表与超长条漫离屏自动跳过 Layout & Paint。
+
+## 23. 双口令安全门禁与动态看板头像轮换体系（Dual-Secret Gate & Randomized Brand Avatars）
+
+- **需求背景**：NAS 与公网部署环境下，需要防范恶意扫描器探测与图片代理肉鸡风险，同时支持小圈子好友分享（纯只读）与馆长全权管理的权限分层；同时用户喜爱高精看板立绘，期望在保留黄金比例裁切的同时支持每次刷新随机轮换看板头像。
+- **核心设计与工程决策**：
+  1. **双口令安全门禁体系（Dual-Secret Gate）**：
+     - `COMIC_SHELF_SECRET`（馆长全权口令）与 `COMIC_SHELF_GUEST_SECRET`（访客阅览口令，可选）；
+     - 单输入框智能分流，根据口令内容自动鉴权为「馆长」或「访客」，未提供有效口令者最外层中间件 100% 拦截（HTTP 401），零元数据与图片字节泄露；
+     - 访客模式下彻底裁切写操作 UI（收录栏、删除菜单、全量缓存、并发配置），已收藏本子以只读红心印章展示。
+  2. **访客就地无感升级为馆长（In-place Elevation）**：
+     - `AppHeader.vue` 呈现 `〔 馆长已入座 〕`（朱砂浅底）与 `〔 访客阅览 〕`（墨印浅底）双态微印；
+     - 访客点击右上角徽标即可原地弹窗输入馆长密钥升级管理权限，无需登出重进。
+  3. **动态看板头像轮换（`useBrandIcon`）**：
+     - 黄金比例裁切 4 款 512×512 超清 WebP 头像收录于 `public/brand-icons/`；
+     - `useBrandIcon` Composable 在每次页面初始化时随机抽选 1 款，并同步联动浏览器 Favicon（`<link rel="icon">`）、网页顶栏 Logo 与通行口令弹窗微印，兼具灵动趣味感（Delight）与视觉统一性。
+- **验证**：`vp check`（76 文件 0 error）、`vp test` 单测全绿、`detect.mjs` 0 反模式。

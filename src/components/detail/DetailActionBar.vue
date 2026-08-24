@@ -12,18 +12,22 @@ import Modal from '@/components/Modal.vue'
  * - 「移除本地」不再摆在操作栏里，而是收进「更多 ⋯」菜单（本地缓存删了可惜，应弱化入口）；
  * - 点到后弹 Modal 做「二次确认」，且必须勾选「我已了解」才能点确认，防止误删。
  */
-const props = defineProps<{
-  /** 作品标题（用于危险确认文案） */
-  title: string
-  lastRead: number
-  /** 「继续阅读」按钮文案；多章节时父级会带章节定位，缺省保持旧「第 N 页」文案。 */
-  lastReadLabel?: string
-  cachePercent: number
-  caching: boolean
-  cacheComplete: boolean
-  cachedPages: number
-  pageCount: number
-}>()
+const props = withDefaults(
+  defineProps<{
+    /** 作品标题（用于危险确认文案） */
+    title: string
+    lastRead: number
+    /** 「继续阅读」按钮文案；多章节时父级会带章节定位，缺省保持旧「第 N 页」文案。 */
+    lastReadLabel?: string
+    cachePercent: number
+    caching: boolean
+    cacheComplete: boolean
+    cachedPages: number
+    pageCount: number
+    canWrite?: boolean
+  }>(),
+  { canWrite: true },
+)
 
 const emit = defineEmits<{
   startReading: [page?: number]
@@ -80,6 +84,7 @@ const cacheScale = computed(() => `scaleX(${props.cachePercent / 100})`)
         从第 1 页开始
       </button>
       <button
+        v-if="canWrite"
         class="btn btn-ghost"
         type="button"
         :disabled="caching || cacheComplete"
@@ -93,9 +98,11 @@ const cacheScale = computed(() => `scaleX(${props.cachePercent / 100})`)
               : `缓存全部（已缓存 ${cachedPages}/${pageCount}）`
         }}
       </button>
-      <button class="btn btn-ghost" type="button" @click="emit('refreshMetadata')">刷新资料</button>
+      <button v-if="canWrite" class="btn btn-ghost" type="button" @click="emit('refreshMetadata')">
+        刷新资料
+      </button>
 
-      <div ref="moreRoot" class="more-menu">
+      <div v-if="canWrite" ref="moreRoot" class="more-menu">
         <button
           class="btn btn-ghost more-trigger"
           type="button"

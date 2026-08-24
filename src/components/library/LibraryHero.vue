@@ -14,7 +14,7 @@ withDefaults(
 </script>
 
 <template>
-  <section class="hero container">
+  <section class="hero container" :class="{ 'hero--single': !$slots.import }">
     <div class="hero-copy">
       <p class="eyebrow">Read · Keep · Revisit</p>
       <h1>读过的，<br />都收进纸间。</h1>
@@ -50,6 +50,12 @@ withDefaults(
   gap: var(--space-8);
   align-items: center;
   padding-block: var(--space-10) var(--space-8);
+}
+
+.hero.hero--single {
+  grid-template-columns: 1fr;
+  max-width: 48rem;
+  padding-block: var(--space-8) var(--space-6);
 }
 
 .hero h1 {

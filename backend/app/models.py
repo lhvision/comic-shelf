@@ -232,6 +232,9 @@ class ImageSearchStatusResponse(BaseModel):
 class AuthStatusResponse(BaseModel):
     auth_required: bool
     authenticated: bool
+    can_write: bool = True
+    role: str = "admin"  # "admin" | "guest" | "unauthorized"
+    has_guest_secret: bool = False
 
 
 class LoginRequest(BaseModel):
@@ -241,3 +244,5 @@ class LoginRequest(BaseModel):
 class LoginResponse(BaseModel):
     ok: bool
     token: str
+    role: str = "admin"  # "admin" | "guest"
+

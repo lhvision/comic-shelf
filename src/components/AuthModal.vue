@@ -1,12 +1,23 @@
 <script setup lang="ts">
 import { nextTick, ref, watch } from 'vue'
 import { useAuth } from '@/composables/useAuth'
+import { useBrandIcon } from '@/composables/useBrandIcon'
 import AmbientWatermark from '@/components/AmbientWatermark.vue'
 
-const { authRequired, authenticated, modalVisible, submitting, errorMessage, login, closeModal } =
-  useAuth()
+const {
+  authRequired,
+  authenticated,
+  isGuest,
+  modalVisible,
+  submitting,
+  errorMessage,
+  login,
+  closeModal,
+} = useAuth()
+const { brandIcon } = useBrandIcon()
 
 const inputSecret = ref('')
+
 const showPassword = ref(false)
 const inputRef = ref<HTMLInputElement | null>(null)
 
@@ -28,7 +39,6 @@ async function handleSubmit() {
 }
 
 function handleBackdropClick() {
-  // Only allow closing backdrop if we are already authenticated or auth is not required
   if (authenticated.value || !authRequired.value) {
     closeModal()
   }
@@ -54,15 +64,23 @@ function togglePasswordVisibility() {
           <AmbientWatermark variant="modal" />
           <header class="auth-header">
             <div class="auth-brand-badge">
-              <img class="brand-logo" src="/brand-icon.webp" alt="" aria-hidden="true" />
+              <img class="brand-logo" :src="brandIcon" alt="" aria-hidden="true" />
             </div>
             <div class="auth-title-group">
               <div class="brand-eyebrow">
                 <strong>纸间</strong>
                 <span>Paper Room</span>
               </div>
-              <h2 id="auth-modal-title" class="auth-title">阅览室通行口令</h2>
-              <p class="auth-subtitle">私人收藏受口令保护，请输入访问密钥以进入</p>
+              <h2 id="auth-modal-title" class="auth-title">
+                {{ authenticated && isGuest ? '解锁馆长权限' : '阅览室通行口令' }}
+              </h2>
+              <p class="auth-subtitle">
+                {{
+                  authenticated && isGuest
+                    ? '当前为访客阅览模式，输入馆长密钥以解锁全部管理权限'
+                    : '私人收藏受口令保护，请输入通行口令以进入'
+                }}
+              </p>
             </div>
           </header>
 
@@ -88,7 +106,11 @@ function togglePasswordVisibility() {
                 v-model="inputSecret"
                 :type="showPassword ? 'text' : 'password'"
                 class="secret-input"
-                placeholder="输入访问密钥 (COMIC_SHELF_SECRET)"
+                :placeholder="
+                  authenticated && isGuest
+                    ? '输入馆长密钥 (COMIC_SHELF_SECRET)'
+                    : '输入通行口令 (馆长或访客)'
+                "
                 autocomplete="current-password"
                 :disabled="submitting"
               />
@@ -150,7 +172,7 @@ function togglePasswordVisibility() {
                 :disabled="submitting || !inputSecret.trim()"
               >
                 <span v-if="submitting">验证中…</span>
-                <span v-else>解锁进入</span>
+                <span v-else>{{ authenticated && isGuest ? '解锁馆长权限' : '解锁进入' }}</span>
               </button>
             </div>
           </form>
@@ -206,7 +228,7 @@ function togglePasswordVisibility() {
 }
 
 .auth-modal-enter-active .auth-card {
-  animation: scaleUp var(--duration-2) var(--ease-spring);
+  animation: scaleUp var(--duration-2) var(--ease-out);
 }
 
 .auth-modal-leave-active .auth-card {

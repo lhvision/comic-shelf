@@ -13,6 +13,7 @@ import { useLibraryFilter } from '@/composables/useLibraryFilter'
 import { useImageSearch } from '@/composables/useImageSearch'
 import { useToast } from '@/composables/useToast'
 import { useViewTransition } from '@/composables/useViewTransition'
+import { useAuth } from '@/composables/useAuth'
 
 /**
  * 书架首页 —— 纯编排视图。
@@ -24,6 +25,7 @@ const route = useRoute()
 const router = useRouter()
 const { toast } = useToast()
 const { withViewTransition } = useViewTransition()
+const { canWrite } = useAuth()
 const fileInput = ref<HTMLInputElement | null>(null)
 
 const activeSource = computed(() =>
@@ -133,7 +135,7 @@ watch(searchError, (value) => {
       :cached-pages="totalCachedPages"
       :total-pages="totalPages"
     >
-      <template #import>
+      <template #import v-if="canWrite">
         <ImportPanel class="hero-import" @imported="openComic" />
       </template>
     </LibraryHero>

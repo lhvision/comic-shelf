@@ -8,7 +8,9 @@ import { useChapterNavigation } from '@/composables/useChapterNavigation'
 import { useLibraryStore } from '@/stores/library'
 import { useToast } from '@/composables/useToast'
 import { useCoverTransition } from '@/composables/useCoverTransition'
+import { useAuth } from '@/composables/useAuth'
 import CoverCarousel from '@/components/CoverCarousel.vue'
+
 import DetailActionBar from '@/components/detail/DetailActionBar.vue'
 import ChapterIndex from '@/components/detail/ChapterIndex.vue'
 import MetadataPanel from '@/components/MetadataPanel.vue'
@@ -30,8 +32,10 @@ const route = useRoute()
 const router = useRouter()
 const store = useLibraryStore()
 const { toast } = useToast()
+const { canWrite } = useAuth()
 
 const source = computed(() => String(route.params.source))
+
 const sourceId = computed(() => String(route.params.sourceId))
 const detail = ref<ComicDetail | null>(null)
 const loading = ref(true)
@@ -251,6 +255,7 @@ function startReading(page = progressEl.value || 1) {
         :cache-complete="detail.cache_complete"
         :cached-pages="detail.cached_pages"
         :page-count="detail.meta.page_count"
+        :can-write="canWrite"
         @start-reading="startReading"
         @cache-all="cacheAll"
         @refresh-metadata="refreshMetadata"

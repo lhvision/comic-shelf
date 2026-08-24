@@ -7,12 +7,15 @@ import ToastStack from '@/components/ToastStack.vue'
 import AmbientWatermark from '@/components/AmbientWatermark.vue'
 import { useAuth } from '@/composables/useAuth'
 import { useHtmlCanvas } from '@/composables/useHtmlCanvas'
+import { useBrandIcon } from '@/composables/useBrandIcon'
 
 const route = useRoute()
 const { supported, publishStatus } = useHtmlCanvas()
 const { checkStatus } = useAuth()
+const { syncFavicon } = useBrandIcon()
 
 onMounted(async () => {
+  syncFavicon()
   publishStatus(false, supported.value ? 'app:idle' : 'app:unsupported')
   await checkStatus()
 })

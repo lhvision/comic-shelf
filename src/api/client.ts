@@ -8,6 +8,7 @@ import type {
   ImportRequest,
   ImportResult,
   LibrarySummary,
+  LoginResult,
   ProviderInfo,
 } from '@/types'
 
@@ -121,10 +122,11 @@ export const api = {
   health: () => request<{ ok: boolean; auth_required?: boolean }>('/health'),
   authStatus: () => request<AuthStatus>('/auth/status'),
   login: (secret: string) =>
-    request<{ ok: boolean; token: string }>('/auth/login', {
+    request<LoginResult>('/auth/login', {
       method: 'POST',
       body: JSON.stringify({ secret }),
     }),
+
   logout: () =>
     request<{ ok: boolean }>('/auth/logout', {
       method: 'POST',
