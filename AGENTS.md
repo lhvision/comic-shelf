@@ -35,7 +35,9 @@ release. Add a tool name to select part of the graph. For example, run
 
 - [ ] **静态检查**：代码编写完成后运行 `vp check` 确保 0 lint error / 0 type error。
 - [ ] **精准单测验证（严禁无差别全量）**：改动涉及逻辑时，**只运行改动对应的单测文件**（如 `vp test src/__tests__/ReaderLoadingState.spec.ts`），严禁日常开发无差别全量执行 `vp test`（防止用例增多后全量卡死/阻塞）。
-- [ ] **E2E 终验**：涉及 UI/交互改动，按下方 **E2E 测试准则** 在最终交付阶段执行单条用例验证。
+- [ ] **E2E 准入与豁免（严禁无意义自跑 E2E）**：
+  - **豁免场景（严禁自跑 E2E）**：纯样式/CSS 微调、TS 类型修复、单组件单元逻辑修复、纯后端逻辑单测及文档改动，**绝不自主触发 E2E 测试**；
+  - **准入场景（单条终验）**：仅在新增页面路由、核心跨页面流程重构、新增全流程用户交互，或用户显式要求跑 E2E 时，才在最终阶段运行单条特定测试（`pnpm ai-e2e:test ... -g "..."`）。
 
 ## 📚 规则文件索引（按需读取）
 
@@ -60,6 +62,7 @@ release. Add a tool name to select part of the graph. For example, run
 7. **精准单测红线**：严禁在日常开发中无差别全量执行 `vp test`；必须只定位改动相关的单测文件（`vp test src/__tests__/<Target>.spec.ts`），防止全量阻塞卡死。
 8. **View Transitions 边界与安全**：全屏路由过渡仅在跨页面跳转（书架 ⇄ 详情 ⇄ 章节 ⇄ 阅读器）触发，**严禁在阅读器内部翻页/切话触发**（防 AbortError 抢占崩溃）；所有 `startViewTransition` 必须对 `ready`/`finished`/`updateCallbackDone` 绑定 catch；弹窗与微交互走 Vue 原生 `<Transition>`，禁止对弹窗根容器滥用快照导致遮罩畸变与文字亚像素模糊。
 9. **VueUse 优先与零胶水代码（VueUse-First & Zero DOM Glue）**：新增组件、交互重构或状态逻辑开发时，必须读取 `vueuse-functions` skill，优先使用 VueUse 标准 composables（如 `useFileDialog`、`useDropZone`、`useScroll`、`useToggle`、`createGlobalState`、`useIntersectionObserver` 等）代替手写隐藏 input、原生事件监听及样板代码，杜绝重复造轮子。
+10. **E2E 严禁泛滥触发红线**：不涉及跨页面核心交互流程的纯样式微调、TS 类型修补、单元函数改动，绝对禁止自行启动 E2E 浏览器测试；以精准单测（`vp test <Target>.spec.ts`）与静态类型检查（`vp check`）为准。
 
 ## 🧪 E2E 测试准则与 AI 协作规范
 

@@ -61,6 +61,10 @@ class ComicMeta(BaseModel):
     likes: str = ""
     comment_count: int = 0
     favorite: bool = False
+    hidden_from_guest: bool = Field(
+        default=False,
+        description="True if comic is visible to curator only and hidden from guests",
+    )
     cover_count: int = 4
     cover_indices: list[int] = Field(
         default_factory=list,
@@ -164,6 +168,7 @@ class LibrarySummary(BaseModel):
     actors: list[str]
     tags: list[str]
     favorite: bool = False
+    hidden_from_guest: bool = False
     page_count: int
     views: str
     likes: str
@@ -267,6 +272,7 @@ class MetadataUpdateRequest(BaseModel):
     description: str | None = None
     uploader: str | None = None
     cover_indices: list[int] | None = None
+    hidden_from_guest: bool | None = None
 
 
 class LocalChapterInput(BaseModel):
@@ -285,6 +291,7 @@ class LocalComicCreateRequest(BaseModel):
     uploader: str = "自制"
     chapters: list[LocalChapterInput] = Field(default_factory=list)
     cover_indices: list[int] = Field(default_factory=list)
+    hidden_from_guest: bool = False
 
 
 class LocalPathImportRequest(BaseModel):
@@ -298,12 +305,32 @@ class LocalPathImportRequest(BaseModel):
     description: str = ""
     uploader: str = "本地导入"
     cover_indices: list[int] = Field(default_factory=list)
-
+    hidden_from_guest: bool = False
 
 
 class LocalAppendRequest(BaseModel):
     target_chapter: str = ""
     new_chapter_title: str = ""
     server_path: str = ""
+
+
+class DiscoveryItem(BaseModel):
+    id: str
+    source_id: str
+    source: str = "jm"
+    title: str
+    author: str = ""
+    category: str = ""
+    cover_url: str = ""
+    url: str = ""
+    updated_at: str = ""
+    in_library: bool = False
+
+
+class DiscoveryFeed(BaseModel):
+    timeframe: str  # "week" | "month" | "day"
+    updated_at: str = ""
+    items: list[DiscoveryItem] = Field(default_factory=list)
+
 
 

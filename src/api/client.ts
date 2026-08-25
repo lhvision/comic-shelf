@@ -224,6 +224,10 @@ export const api = {
       body: JSON.stringify(payload),
     })
   },
+  discoveryRanking: (timeframe: import('@/types').DiscoveryTimeframe = 'week', refresh = false) =>
+    request<import('@/types').DiscoveryFeed>(
+      `/discovery/ranking?timeframe=${encodeURIComponent(timeframe)}${refresh ? '&refresh=true' : ''}`,
+    ),
 }
 
 export const pageFileUrl = (source: string, sourceId: string, index: number) =>

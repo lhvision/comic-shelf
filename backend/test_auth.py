@@ -157,7 +157,36 @@ def test_hotlink_protection():
     auth_mod.check_hotlink_protection(req_same_ref)
 
 
+def test_guest_visibility_and_discovery_auth():
+    auth_mod.AUTH_SECRET = "admin-secret-123"
+    auth_mod.GUEST_SECRET = "guest-secret-456"
+
+    # Curator request
+    req_curator = make_mock_request(
+        "/api/discovery/ranking",
+        headers={"Authorization": "Bearer admin-secret-123"},
+    )
+    assert auth_mod.is_curator(req_curator) is True
+    # require_admin passes for curator
+    auth_mod.require_admin(req_curator)
+
+    # Guest request
+    req_guest = make_mock_request(
+        "/api/discovery/ranking",
+        headers={"Authorization": "Bearer guest-secret-456"},
+    )
+    assert auth_mod.is_curator(req_guest) is False
+    assert auth_mod.is_guest(req_guest) is True
+    try:
+        auth_mod.require_admin(req_guest)
+        assert False, "Should have raised 403 Forbidden for guest"
+    except HTTPException as exc:
+        assert exc.status_code == 403
+
+
 if __name__ == "__main__":
     test_auth_logic()
     test_hotlink_protection()
+    test_guest_visibility_and_discovery_auth()
     print("All backend auth & hotlink protection tests passed!")
+

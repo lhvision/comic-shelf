@@ -5,6 +5,7 @@ import { useLibraryStore } from '@/stores/library'
 import { useAppSettings } from '@/stores/settings'
 import { useToast } from '@/composables/useToast'
 import { useViewTransition } from '@/composables/useViewTransition'
+import { api } from '@/api/client'
 import Tooltip from '@/components/Tooltip.vue'
 
 const emit = defineEmits<{
@@ -34,6 +35,9 @@ const localPath = ref('')
 const localImporting = ref(false)
 
 const canSubmit = computed(() => /^(?:JM)?\d{6,8}$/i.test(id.value.trim()))
+
+const jmBtnText = computed(() => (store.importing ? '收录中…' : '收录到纸间'))
+const localBtnText = computed(() => (localImporting.value ? '扫描中…' : '一键收录'))
 
 async function submit() {
   if (!canSubmit.value) return
@@ -99,7 +103,7 @@ function incConcurrency() {
 
 <template>
   <section class="import-panel" aria-labelledby="import-title">
-    <div>
+    <div class="import-info">
       <div class="panel-tabs">
         <button
           class="panel-tab"
@@ -120,7 +124,7 @@ function incConcurrency() {
       </div>
 
       <p class="eyebrow" id="import-title">
-        {{ activeTab === 'jm' ? 'Import / 收录' : 'Local Archive / 自建' }}
+        {{ activeTab === 'jm' ? 'IMPORT / 收录' : 'LOCAL ARCHIVE / 自建' }}
       </p>
       <h2>{{ activeTab === 'jm' ? '放进纸间' : '收录本地图集' }}</h2>
       <p class="hint">
@@ -132,36 +136,39 @@ function incConcurrency() {
       </p>
     </div>
 
-    <!-- JM Tab Form -->
-    <template v-if="activeTab === 'jm'">
-      <form class="import-form" @submit.prevent="submit">
-        <label class="field">
-          <span class="field-prefix">JM</span>
-          <input
-            v-model="id"
-            type="text"
-            inputmode="numeric"
-            autocomplete="off"
-            placeholder="523607"
-            aria-label="禁漫车号"
-          />
-        </label>
-        <button
-          ref="submitBtnRef"
-          class="btn btn-primary"
-          type="submit"
-          :disabled="!canSubmit || store.importing"
-        >
-          {{ store.importing ? '收录中…' : '收录到纸间' }}
-        </button>
-      </form>
-    </template>
+    <div class="import-controls">
+      <!-- JM Tab Form -->
+      <template v-if="activeTab === 'jm'">
+        <form class="import-form" @submit.prevent="submit">
+          <label class="field import-field">
+            <span class="field-prefix">JM</span>
+            <input
+              v-model="id"
+              type="text"
+              inputmode="numeric"
+              autocomplete="off"
+              placeholder="523607"
+              aria-label="禁漫车号"
+            />
+          </label>
+          <button
+            ref="submitBtnRef"
+            class="import-submit-btn"
+            type="submit"
+            :disabled="!canSubmit || store.importing"
+            aria-label="收录到纸间"
+          >
+            <span class="vertical-text">
+              <span v-for="(char, idx) in jmBtnText" :key="idx">{{ char }}</span>
+            </span>
+          </button>
+        </form>
+      </template>
 
-    <!-- Local Tab Form -->
-    <template v-else>
-      <div class="local-import-box">
+      <!-- Local Tab Form -->
+      <template v-else>
         <form class="import-form" @submit.prevent="submitLocalPath">
-          <label class="field">
+          <label class="field import-field">
             <span class="field-prefix">PATH</span>
             <input
               v-model="localPath"
@@ -172,106 +179,125 @@ function incConcurrency() {
             />
           </label>
           <button
-            class="btn btn-primary"
+            class="import-submit-btn"
             type="submit"
             :disabled="!localPath.trim() || localImporting"
+            aria-label="一键收录"
           >
-            {{ localImporting ? '扫描中…' : '一键收录' }}
+            <span class="vertical-text">
+              <span v-for="(char, idx) in localBtnText" :key="idx">{{ char }}</span>
+            </span>
           </button>
         </form>
 
         <div class="workshop-card">
-          <span>需要上传多图或编排多章节？</span>
-          <button class="btn btn-ghost workshop-btn" type="button" @click="goToWorkshop">
+          <span class="workshop-hint">需要上传多图或编排多章节？</span>
+          <button class="workshop-btn" type="button" @click="goToWorkshop">
             进入自建图集工坊 →
           </button>
         </div>
-      </div>
-    </template>
+      </template>
 
-    <div class="download-settings" :aria-busy="settings.loading">
-      <div class="download-settings__row">
-        <label class="cache-check">
-          <input v-model="prefetchAll" type="checkbox" />
-          <span>同时缓存全部页面</span>
-        </label>
-        <Tooltip
-          id="cache-all-tip"
-          tip="单本上限 600P，其余页面阅读时自动补齐。"
-          side="top"
-          align="end"
-        >
-          <button class="tooltip-icon" type="button" aria-label="关于缓存全部页面">
-            <svg viewBox="0 0 16 16" aria-hidden="true">
-              <circle cx="8" cy="8" r="6.4" fill="none" stroke="currentColor" stroke-width="1.4" />
-              <path
-                d="M8 7.3v3.2"
-                stroke="currentColor"
-                stroke-width="1.5"
-                stroke-linecap="round"
-              />
-              <circle cx="8" cy="5.1" r="0.9" fill="currentColor" />
-            </svg>
-          </button>
-        </Tooltip>
-      </div>
-
-      <div class="download-settings__row">
-        <span class="download-settings__title">下载并发</span>
-        <Tooltip
-          id="concurrency-tip"
-          tip="同时下载的页数：调大缓存更快，太高容易被 CDN 限流拖慢服务。"
-          side="top"
-          align="end"
-        >
-          <button class="tooltip-icon" type="button" aria-label="关于下载并发">
-            <svg viewBox="0 0 16 16" aria-hidden="true">
-              <circle cx="8" cy="8" r="6.4" fill="none" stroke="currentColor" stroke-width="1.4" />
-              <path
-                d="M8 7.3v3.2"
-                stroke="currentColor"
-                stroke-width="1.5"
-                stroke-linecap="round"
-              />
-              <circle cx="8" cy="5.1" r="0.9" fill="currentColor" />
-            </svg>
-          </button>
-        </Tooltip>
-
-        <div
-          v-if="!settings.envControlled"
-          ref="stepperRef"
-          class="stepper"
-          role="group"
-          aria-label="同时下载页数"
-        >
-          <button
-            class="stepper__btn"
-            type="button"
-            :disabled="settings.concurrency <= settings.min || settings.loading"
-            aria-label="减少下载并发"
-            @click="decConcurrency"
+      <div class="download-settings" :aria-busy="settings.loading">
+        <div class="download-settings__row">
+          <label class="cache-check">
+            <input v-model="prefetchAll" type="checkbox" />
+            <span>同时缓存全部页面</span>
+          </label>
+          <Tooltip
+            id="cache-all-tip"
+            tip="单本上限 600P，其余页面阅读时自动补齐。"
+            side="top"
+            align="end"
           >
-            −
-          </button>
-          <span class="stepper__value">{{ settings.concurrency }}</span>
-          <button
-            class="stepper__btn"
-            type="button"
-            :disabled="settings.concurrency >= settings.max || settings.loading"
-            aria-label="增加下载并发"
-            @click="incConcurrency"
-          >
-            ＋
-          </button>
+            <button class="tooltip-icon" type="button" aria-label="关于缓存全部页面">
+              <svg viewBox="0 0 16 16" aria-hidden="true">
+                <circle
+                  cx="8"
+                  cy="8"
+                  r="6.4"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="1.4"
+                />
+                <path
+                  d="M8 7.3v3.2"
+                  stroke="currentColor"
+                  stroke-width="1.5"
+                  stroke-linecap="round"
+                />
+                <circle cx="8" cy="5.1" r="0.9" fill="currentColor" />
+              </svg>
+            </button>
+          </Tooltip>
         </div>
 
-        <span v-else class="stepper__value stepper__value--locked">{{ settings.concurrency }}</span>
-        <span class="download-settings__unit">路 / 次</span>
+        <div class="download-settings__row">
+          <span class="download-settings__title">下载并发</span>
+          <Tooltip
+            id="concurrency-tip"
+            tip="同时下载的页数：调大缓存更快，太高容易被 CDN 限流拖慢服务。"
+            side="top"
+            align="end"
+          >
+            <button class="tooltip-icon" type="button" aria-label="关于下载并发">
+              <svg viewBox="0 0 16 16" aria-hidden="true">
+                <circle
+                  cx="8"
+                  cy="8"
+                  r="6.4"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="1.4"
+                />
+                <path
+                  d="M8 7.3v3.2"
+                  stroke="currentColor"
+                  stroke-width="1.5"
+                  stroke-linecap="round"
+                />
+                <circle cx="8" cy="5.1" r="0.9" fill="currentColor" />
+              </svg>
+            </button>
+          </Tooltip>
+
+          <div
+            v-if="!settings.envControlled"
+            ref="stepperRef"
+            class="stepper"
+            role="group"
+            aria-label="同时下载页数"
+          >
+            <button
+              class="stepper__btn"
+              type="button"
+              :disabled="settings.concurrency <= settings.min || settings.loading"
+              aria-label="减少下载并发"
+              @click="decConcurrency"
+            >
+              −
+            </button>
+            <span class="stepper__value">{{ settings.concurrency }}</span>
+            <button
+              class="stepper__btn"
+              type="button"
+              :disabled="settings.concurrency >= settings.max || settings.loading"
+              aria-label="增加下载并发"
+              @click="incConcurrency"
+            >
+              ＋
+            </button>
+          </div>
+
+          <span v-else class="stepper__value stepper__value--locked">{{
+            settings.concurrency
+          }}</span>
+          <span class="download-settings__unit">路 / 次</span>
+        </div>
+        <p v-if="settings.envControlled" class="download-settings__locked">
+          已由环境变量 <code>COMIC_SHELF_MAX_CONCURRENT_DOWNLOADS</code> 锁定，界面不可改。
+        </p>
       </div>
-      <p v-if="settings.envControlled" class="download-settings__locked">
-        已由环境变量 <code>COMIC_SHELF_MAX_CONCURRENT_DOWNLOADS</code> 锁定，界面不可改。
-      </p>
     </div>
 
     <div v-if="store.importMessage" class="import-message" role="status">
@@ -287,7 +313,7 @@ function incConcurrency() {
 <style scoped>
 .import-panel {
   display: grid;
-  grid-template-columns: minmax(15rem, 0.9fr) minmax(18rem, 1.4fr);
+  grid-template-columns: minmax(16rem, 1fr) minmax(21rem, 1.4fr);
   gap: var(--space-5) var(--space-6);
   padding: var(--space-6);
   border: 1px solid var(--line);
@@ -296,18 +322,20 @@ function incConcurrency() {
   box-shadow: var(--shadow-2);
 }
 
-.import-panel h2 {
-  font-size: var(--text-xl);
+.import-info {
+  display: flex;
+  flex-direction: column;
 }
 
 .panel-tabs {
   display: inline-flex;
   gap: var(--space-1);
-  margin-bottom: var(--space-3);
+  margin-bottom: var(--space-4);
   padding: 0.25rem;
   border: 1px solid var(--line);
   border-radius: var(--radius-2);
   background: var(--paper-1);
+  align-self: flex-start;
 }
 
 .panel-tab {
@@ -336,18 +364,131 @@ function incConcurrency() {
   box-shadow: var(--shadow-1);
 }
 
-.local-import-box {
-  display: grid;
+.eyebrow {
+  margin-bottom: var(--space-1);
+}
+
+.import-panel h2 {
+  font-size: var(--text-2xl);
+  font-family: var(--font-display);
+  font-weight: 600;
+  color: var(--ink-0);
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
+.hint {
+  margin-top: var(--space-3);
+  max-width: 24rem;
+  color: var(--ink-1);
+  font-size: var(--text-sm);
+  line-height: 1.6;
+}
+
+.import-controls {
+  display: flex;
+  flex-direction: column;
   gap: var(--space-3);
-  align-self: center;
+  justify-content: center;
+}
+
+.import-form {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: var(--space-3);
+  align-items: stretch;
+}
+
+.import-field {
+  min-height: 7.2rem;
+  padding: var(--space-4) var(--space-4);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-3);
+  background: var(--paper-0);
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  transition:
+    border-color var(--duration-1) var(--ease-out),
+    box-shadow var(--duration-1) var(--ease-out);
+}
+
+.import-field:focus-within {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+.field-prefix {
+  font-family: var(--font-mono);
+  font-size: var(--text-md);
+  font-weight: 700;
+  color: var(--accent);
+  letter-spacing: 0.12em;
+}
+
+.import-field input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  font-size: var(--text-md);
+  color: var(--ink-0);
+}
+
+.import-submit-btn {
+  width: 3.6rem;
+  padding: var(--space-3) 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: var(--radius-3);
+  background: var(--accent);
+  color: #fff8f2;
+  cursor: pointer;
+  user-select: none;
+  transition:
+    transform var(--duration-1) var(--ease-out),
+    background-color var(--duration-1) var(--ease-out),
+    box-shadow var(--duration-1) var(--ease-out),
+    opacity var(--duration-1) var(--ease-out);
+}
+
+.vertical-text {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.22rem;
+  font-size: var(--text-sm);
+  font-weight: 600;
+  line-height: 1.1;
+  letter-spacing: normal;
+}
+
+.import-submit-btn:hover:not(:disabled) {
+  background: var(--accent-strong);
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-1);
+}
+
+.import-submit-btn:active:not(:disabled) {
+  transform: translateY(0);
+}
+
+.import-submit-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+  transform: none;
+  box-shadow: none;
 }
 
 .workshop-card {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  gap: var(--space-2);
-  padding: var(--space-2) var(--space-3);
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
   border: 1px dashed var(--line);
   border-radius: var(--radius-2);
   background: color-mix(in oklab, var(--paper-1) 35%, transparent);
@@ -355,30 +496,30 @@ function incConcurrency() {
   color: var(--ink-1);
 }
 
+.workshop-hint {
+  white-space: nowrap;
+}
+
 .workshop-btn {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.5rem 0.95rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-2);
+  background: var(--paper-0);
   font-size: var(--text-xs);
+  font-weight: 600;
   color: var(--accent-strong);
+  white-space: nowrap;
+  cursor: pointer;
+  transition:
+    background-color var(--duration-1) var(--ease-out),
+    border-color var(--duration-1) var(--ease-out);
 }
 
-.hint {
-  margin-top: var(--space-2);
-  max-width: 34rem;
-  color: var(--ink-1);
-  font-size: var(--text-sm);
-}
-
-.import-form {
-  align-self: center;
-  display: grid;
-  grid-template-columns: 1fr auto;
-  gap: var(--space-3);
-}
-
-.field-prefix {
-  font-family: var(--font-mono);
-  font-size: var(--text-sm);
-  color: var(--accent);
-  letter-spacing: 0.1em;
+.workshop-btn:hover {
+  background: var(--paper-1);
+  border-color: var(--line-strong);
 }
 
 .cache-check {
@@ -423,10 +564,9 @@ function incConcurrency() {
 }
 
 .download-settings {
-  grid-column: 2;
   display: grid;
   gap: var(--space-2);
-  padding: var(--space-3);
+  padding: var(--space-3) var(--space-4);
   border: 1px solid var(--line);
   border-radius: var(--radius-2);
   background: color-mix(in oklab, var(--paper-0) 60%, transparent);
@@ -442,12 +582,6 @@ function incConcurrency() {
   margin-right: auto;
   color: var(--ink-1);
   font-size: var(--text-xs);
-}
-
-.download-settings__row--help {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-0-5);
 }
 
 .download-settings__unit {
@@ -539,12 +673,19 @@ function incConcurrency() {
     padding: var(--space-5);
   }
 
-  .import-form {
-    grid-template-columns: 1fr;
+  .vertical-text {
+    flex-direction: row;
+    gap: 0.1rem;
   }
 
-  .download-settings {
-    grid-column: 1;
+  .import-submit-btn {
+    width: auto;
+    min-height: 2.75rem;
+    padding: 0.55rem 1.15rem;
+  }
+
+  .import-field {
+    min-height: 3.25rem;
   }
 }
 </style>

@@ -58,6 +58,14 @@
   - 网页多图上传采用 3 路受限并发上传队列（`useUploadQueue`），保护服务器 IO；支持服务端本地目录秒级直扫收录（0 网络开销）；
   - 支持单话/多章节增量追加页面；
   - 典藏资料与标签编排（`EditMetadataModal`）：支持标题、作者、叙述修改，自定义 4 张封面展示页码（`cover_indices`，支持任意全局页号并带热更新缓存击穿），全站标签增删（仅限馆长权限）与全书库热门快选推荐。
+- 发现页与排行榜（Discovery & Leaderboard）：
+  - 支持禁漫原站周榜、月榜、日榜与总榜切换浏览（`GET /api/discovery`）；
+  - 包含排名徽章、原站外链、分类胶囊与在库状态感知，支持未收录漫画「+ 一键收录」；
+  - 配合通用 `SegmentedTabs` 分段选项卡组件，支持键盘方向键与无障碍导航。
+- 书架渲染性能与 48 图预算（Shelf Chunking & Precision Containment）：
+  - 每本漫画展示 4 张封面（1 主封面 + 3 叠牌封面），默认采用 **12 本/批（严格对应 12 × 4 = 48 张封面图）** 的增量呈现步长；
+  - 接入 VueUse `useIntersectionObserver` 监听底部哨兵平滑自动展开，筛选/检索即时重置批次；
+  - 卡片使用 `contain: layout style` + `container-type: inline-size` 进行隔离，避免 `contain: paint` 的生硬裁剪与阴影截断。
 
 - 架构上把站点差异隔离在 `backend/app/providers/`，UI 与存储层只认通用模型
 

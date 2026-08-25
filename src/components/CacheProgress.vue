@@ -120,7 +120,6 @@ const fillWidth = computed(() => `${percent.value}%`)
   width: v-bind(fillWidth);
   border-radius: inherit;
   background: var(--accent);
-  transition: width var(--duration-3) var(--ease-out);
 }
 
 .cache-progress.is-complete .cache-progress__fill {

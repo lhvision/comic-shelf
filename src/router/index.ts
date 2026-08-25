@@ -24,6 +24,12 @@ const router = createRouter({
       meta: { title: '自建图集工坊', rank: 2 },
     },
     {
+      path: '/discovery',
+      name: 'discovery',
+      component: () => import('@/views/DiscoveryView.vue'),
+      meta: { title: '官方发现与排行', rank: 1 },
+    },
+    {
       path: '/comic/:source/:sourceId/read/:page?',
       name: 'reader',
       component: () => import('@/views/ReaderView.vue'),

@@ -1,4 +1,6 @@
 import secrets
+import time
+from datetime import datetime
 
 from fastapi import FastAPI, File, HTTPException, Query, Request, Response, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
@@ -13,6 +15,7 @@ from .auth import (
     is_authenticated,
     is_curator,
     is_guest,
+    require_admin,
     set_auth_cookie,
 )
 from .config import AUTH_SECRET, DATA_DIR, ENABLE_DOCS, GUEST_SECRET, LIBRARY_DIR
@@ -26,6 +29,8 @@ from .models import (
     ConcurrencyInfo,
     ConcurrencyRequest,
     DeleteResponse,
+    DiscoveryFeed,
+    DiscoveryItem,
     FavoriteRequest,
     FavoriteResponse,
     ImageSearchItem,
@@ -200,9 +205,13 @@ def download_concurrency_put(req: ConcurrencyRequest) -> ConcurrencyInfo:
 
 @app.get("/api/library", response_model=list[LibrarySummary])
 def library(
+    request: Request,
     q: str | None = Query(default=None, description="标题/作者/标签过滤"),
 ) -> list[LibrarySummary]:
     items = store.list_library()
+    if not is_curator(request):
+        items = [item for item in items if not item.hidden_from_guest]
+
     if q is None or not q.strip():
         return items
 
@@ -226,12 +235,64 @@ def image_search_status() -> ImageSearchStatusResponse:
 
 
 @app.post("/api/search/image", response_model=list[ImageSearchItem])
-async def image_search(file: UploadFile = File(...)) -> list[ImageSearchItem]:
+async def image_search(request: Request, file: UploadFile = File(...)) -> list[ImageSearchItem]:
     """Perform visual search by uploading a screenshot or cropped image."""
     content = await file.read()
     if not content:
         raise HTTPException(status_code=400, detail="上传图片不能为空")
-    return search_imsearch(content, filename=file.filename or "query.jpg")
+    results = search_imsearch(content, filename=file.filename or "query.jpg")
+    if not is_curator(request):
+        filtered = []
+        for r in results:
+            m = store.load_meta(r.source, r.source_id)
+            if m and not getattr(m, "hidden_from_guest", False):
+                filtered.append(r)
+        return filtered
+    return results
+
+
+@app.get("/api/discovery/ranking", response_model=DiscoveryFeed)
+def discovery_ranking(
+    request: Request,
+    timeframe: str = Query(default="week", pattern="^(week|month|day)$"),
+    refresh: bool = False,
+) -> DiscoveryFeed:
+    require_admin(request)
+
+    now_ts = time.time()
+    cached_feed = store.load_discovery_feed(timeframe)
+    feed: DiscoveryFeed | None = None
+
+    if not refresh and cached_feed is not None:
+        try:
+            feed_dt = datetime.strptime(cached_feed.updated_at, "%Y-%m-%d %H:%M:%S")
+            if now_ts - feed_dt.timestamp() < 12 * 3600:
+                feed = cached_feed
+        except Exception:
+            feed = cached_feed
+
+    if feed is None:
+        provider = get_provider("jm")
+        try:
+            items = provider.fetch_ranking(timeframe=timeframe)
+            feed = DiscoveryFeed(
+                timeframe=timeframe,
+                updated_at=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                items=items,
+            )
+            store.save_discovery_feed(feed)
+        except Exception as exc:
+            if cached_feed is not None:
+                feed = cached_feed
+            else:
+                raise HTTPException(status_code=502, detail=f"拉取排行榜失败：{exc}") from exc
+
+    # Populate in_library status for current library
+    for item in feed.items:
+        meta = store.load_meta(item.source, item.source_id)
+        item.in_library = meta is not None
+
+    return feed
 
 
 @app.post("/api/library/import", response_model=ImportResult)
@@ -271,11 +332,8 @@ def import_comic(req: ImportRequest) -> ImportResult:
 
 
 @app.get("/api/library/{source}/{source_id}", response_model=ComicDetail)
-def comic_detail(source: str, source_id: str) -> ComicDetail:
-    _require_known_source(source)
-    meta = store.load_meta(source, source_id)
-    if meta is None:
-        raise HTTPException(status_code=404, detail="本子还没有导入本地书库")
+def comic_detail(source: str, source_id: str, request: Request) -> ComicDetail:
+    meta = _require_meta(source, source_id, request)
     return store.detail(meta)
 
 
@@ -390,8 +448,8 @@ def cache_job(source: str, source_id: str) -> JobInfo:
 
 
 @app.get("/api/library/{source}/{source_id}/pages/{index}", response_model=PageResponse)
-def page_info(source: str, source_id: str, index: int) -> PageResponse:
-    meta = _require_meta(source, source_id)
+def page_info(source: str, source_id: str, index: int, request: Request) -> PageResponse:
+    meta = _require_meta(source, source_id, request)
     if index < 1 or index > meta.page_count:
         raise HTTPException(status_code=404, detail=f"页 {index} 不存在")
     page = next((p for p in meta.pages if p.index == index), None)
@@ -406,8 +464,8 @@ CACHE_CONTROL_IMMUTABLE = {"Cache-Control": "public, max-age=2592000, immutable"
 
 
 @app.get("/api/library/{source}/{source_id}/pages/{index}/file")
-def page_file(source: str, source_id: str, index: int) -> FileResponse:
-    meta = _require_meta(source, source_id)
+def page_file(source: str, source_id: str, index: int, request: Request) -> FileResponse:
+    meta = _require_meta(source, source_id, request)
     if index < 1 or index > meta.page_count:
         raise HTTPException(status_code=404, detail=f"页 {index} 不存在")
 
@@ -437,10 +495,10 @@ def page_file(source: str, source_id: str, index: int) -> FileResponse:
 
 
 @app.get("/api/library/{source}/{source_id}/pages/{index}/thumbnail")
-def page_thumbnail(source: str, source_id: str, index: int) -> FileResponse:
+def page_thumbnail(source: str, source_id: str, index: int, request: Request) -> FileResponse:
     """Lightweight JPEG for the detail-page page-index grid."""
     _require_known_source(source)
-    meta = _require_meta(source, source_id)
+    meta = _require_meta(source, source_id, request)
     if index < 1 or index > meta.page_count:
         raise HTTPException(status_code=404, detail=f"页 {index} 不存在")
 
@@ -470,8 +528,8 @@ def page_thumbnail(source: str, source_id: str, index: int) -> FileResponse:
 
 
 @app.get("/api/library/{source}/{source_id}/covers/{index}/file")
-def cover_file(source: str, source_id: str, index: int, v: str | None = None) -> FileResponse:
-    meta = _require_meta(source, source_id)
+def cover_file(source: str, source_id: str, index: int, request: Request, v: str | None = None) -> FileResponse:
+    meta = _require_meta(source, source_id, request)
     max_covers = len(meta.cover_indices) if meta.cover_indices else meta.cover_count
     if index < 1 or index > max_covers or index > meta.page_count:
         raise HTTPException(status_code=404, detail=f"封面 {index} 不存在")
@@ -502,9 +560,9 @@ def cover_file(source: str, source_id: str, index: int, v: str | None = None) ->
 
 
 @app.get("/api/library/{source}/{source_id}/chapters/{chapter_id}/cover")
-def chapter_cover(source: str, source_id: str, chapter_id: str) -> FileResponse:
+def chapter_cover(source: str, source_id: str, chapter_id: str, request: Request) -> FileResponse:
     """T17：章节目录封面（该话第一页），池化在 covers/chapters/ 下，失败前端回落占位。"""
-    meta = _require_meta(source, source_id)
+    meta = _require_meta(source, source_id, request)
     chapter = next((c for c in meta.chapters if c.id == chapter_id), None)
     if chapter is None:
         raise HTTPException(status_code=404, detail="没有这个章节")
@@ -566,10 +624,12 @@ def _require_known_source(source: str) -> None:
         raise HTTPException(status_code=404, detail=f"未知来源：{source}")
 
 
-def _require_meta(source: str, source_id: str):
+def _require_meta(source: str, source_id: str, request: Request | None = None) -> ComicMeta:
     _require_known_source(source)
     meta = store.load_meta(source, source_id)
     if meta is None:
+        raise HTTPException(status_code=404, detail="本子还没有导入本地书库")
+    if request is not None and not is_curator(request) and getattr(meta, "hidden_from_guest", False):
         raise HTTPException(status_code=404, detail="本子还没有导入本地书库")
     return meta
 

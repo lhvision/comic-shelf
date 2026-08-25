@@ -14,7 +14,7 @@ from curl_cffi import requests as curl_requests
 
 from ..config import COVER_COUNT, DATA_DIR
 from ..gate import download_gate
-from ..models import Chapter, ComicMeta, FetchedComic, RemotePage
+from ..models import Chapter, ComicMeta, DiscoveryItem, FetchedComic, RemotePage
 from .base import ComicProvider
 
 _JM_REDIRECT_URL = "https://jm365.work/3YeBdF"
@@ -483,3 +483,48 @@ class JMProvider(ComicProvider):
             finally:
                 source.close()
             return tmp_path.read_bytes()
+
+    def fetch_ranking(
+        self, timeframe: str = "week", page: int = 1, limit: int = 20
+    ) -> list[DiscoveryItem]:
+        from jmcomic import JmOption
+
+        option = JmOption.default()
+        client = option.build_jm_client()
+
+        if timeframe == "day":
+            resp = client.day_ranking(page=page)
+        elif timeframe == "month":
+            resp = client.month_ranking(page=page)
+        else:
+            resp = client.week_ranking(page=page)
+
+        items: list[DiscoveryItem] = []
+        if hasattr(resp, "content") and resp.content:
+            raw_list = resp.content[:limit] if limit > 0 else resp.content
+            for item in raw_list:
+                if isinstance(item, tuple) and len(item) == 2 and isinstance(item[1], dict):
+                    data = item[1]
+                    aid = str(data.get("id") or item[0])
+                    name = str(data.get("name") or "")
+                    author = str(data.get("author") or "")
+                    cat_info = data.get("category")
+                    category = ""
+                    if isinstance(cat_info, dict):
+                        category = str(cat_info.get("title") or "")
+                    elif isinstance(cat_info, str):
+                        category = cat_info
+
+                    items.append(
+                        DiscoveryItem(
+                            id=f"JM{aid}",
+                            source_id=aid,
+                            source="jm",
+                            title=name,
+                            author=author,
+                            category=category,
+                            url=f"https://18comic.vip/album/{aid}",
+                        )
+                    )
+        return items
+

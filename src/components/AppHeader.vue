@@ -19,17 +19,31 @@ const providers = ref<ProviderInfo[]>([])
 const { authRequired, isGuest, canWrite, logout, openModal } = useAuth()
 const { brandIcon } = useBrandIcon()
 
-const navItems = computed<NavItem[]>(() => [
-  { to: '/', label: '全部' },
-  ...providers.value.map((provider, index) => ({
-    to: `/?source=${provider.key}`,
-    label: provider.short_label || provider.label,
-    index: String(index + 1).padStart(2, '0'),
-    sourceKey: provider.key,
-  })),
-])
+const navItems = computed<NavItem[]>(() => {
+  const items: NavItem[] = [
+    { to: '/', label: '全部' },
+    ...providers.value.map((provider, index) => ({
+      to: `/?source=${provider.key}`,
+      label: provider.short_label || provider.label,
+      index: String(index + 1).padStart(2, '0'),
+      sourceKey: provider.key,
+    })),
+  ]
+  if (canWrite.value) {
+    items.push({
+      to: '/discovery',
+      label: '发现',
+      index: '精选',
+    })
+  }
+  return items
+})
 
 function isActive(item: NavItem) {
+  if (item.to === '/discovery') {
+    return route.path === '/discovery'
+  }
+  if (route.path !== '/') return false
   if (!item.sourceKey) return route.query.source === undefined
   return route.query.source === item.sourceKey
 }

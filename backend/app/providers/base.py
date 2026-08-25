@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 
-from ..models import FetchedComic, RemotePage
+from ..models import DiscoveryItem, FetchedComic, RemotePage
 
 
 class ComicProvider(ABC):
@@ -39,6 +39,10 @@ class ComicProvider(ABC):
     @abstractmethod
     def download_page(self, comic: FetchedComic, page: RemotePage) -> bytes:
         """Download one page. The storage layer decides when this is called."""
+
+    def fetch_ranking(self, timeframe: str = "week", page: int = 1, limit: int = 20) -> list[DiscoveryItem]:
+        """Optional hook for discovery feeds / rankings."""
+        return []
 
     def describe(self) -> dict:
         return {

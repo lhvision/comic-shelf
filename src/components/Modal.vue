@@ -152,7 +152,7 @@ useEventListener(window, 'keydown', (event: KeyboardEvent) => {
 }
 
 .modal-enter-active .modal-panel {
-  animation: modal-pop var(--duration-2) var(--ease-spring);
+  animation: modal-pop var(--duration-2) var(--ease-out);
 }
 
 .modal-leave-active .modal-panel {

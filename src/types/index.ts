@@ -35,6 +35,7 @@ export interface ComicMeta {
   likes: string
   comment_count: number
   favorite: boolean
+  hidden_from_guest?: boolean
   cover_count: number
   cover_indices?: number[]
   source_url: string
@@ -56,6 +57,7 @@ export interface LibrarySummary {
   actors: string[]
   tags: string[]
   favorite: boolean
+  hidden_from_guest?: boolean
   page_count: number
   views: string
   likes: string
@@ -165,6 +167,7 @@ export interface MetadataUpdatePayload {
   description?: string
   uploader?: string
   cover_indices?: number[]
+  hidden_from_guest?: boolean
 }
 
 export interface LocalChapterInput {
@@ -183,6 +186,7 @@ export interface LocalComicCreatePayload {
   uploader?: string
   chapters?: LocalChapterInput[]
   cover_indices?: number[]
+  hidden_from_guest?: boolean
 }
 
 export interface LocalPathImportPayload {
@@ -196,10 +200,32 @@ export interface LocalPathImportPayload {
   description?: string
   uploader?: string
   cover_indices?: number[]
+  hidden_from_guest?: boolean
 }
 
 export interface LocalAppendPayload {
   target_chapter?: string
   new_chapter_title?: string
   server_path?: string
+}
+
+export type DiscoveryTimeframe = 'week' | 'month' | 'day'
+
+export interface DiscoveryItem {
+  id: string
+  source_id: string
+  source: string
+  title: string
+  author: string
+  category: string
+  url?: string
+  cover_url?: string
+  updated_at?: string
+  in_library: boolean
+}
+
+export interface DiscoveryFeed {
+  timeframe: DiscoveryTimeframe
+  updated_at: string
+  items: DiscoveryItem[]
 }

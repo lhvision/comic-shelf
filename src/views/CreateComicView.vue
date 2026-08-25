@@ -9,6 +9,8 @@ import { useToast } from '@/composables/useToast'
 import { useUploadQueue } from '@/composables/useUploadQueue'
 import TagManager from '@/components/form/TagManager.vue'
 import CoverIndicesPicker from '@/components/form/CoverIndicesPicker.vue'
+import SegmentedTabs from '@/components/SegmentedTabs.vue'
+import AppButton from '@/components/AppButton.vue'
 import type { LocalChapterInput } from '@/types'
 
 interface StagedChapter {
@@ -31,6 +33,10 @@ onMounted(() => {
 })
 
 const mode = ref<'upload' | 'path'>('upload')
+const modeTabs = [
+  { key: 'upload' as const, label: '网页多图上传' },
+  { key: 'path' as const, label: '服务器目录导入' },
+]
 const isMulti = ref(false)
 
 // Form fields
@@ -234,24 +240,7 @@ function goBack() {
       <section class="staging-col surface" aria-labelledby="staging-title">
         <div class="col-head">
           <h2 id="staging-title">① 画面与章节编排</h2>
-          <div class="mode-pills">
-            <button
-              class="mode-pill"
-              :class="{ 'is-active': mode === 'upload' }"
-              type="button"
-              @click="mode = 'upload'"
-            >
-              网页多图上传
-            </button>
-            <button
-              class="mode-pill"
-              :class="{ 'is-active': mode === 'path' }"
-              type="button"
-              @click="mode = 'path'"
-            >
-              服务器目录导入
-            </button>
-          </div>
+          <SegmentedTabs v-model="mode" :items="modeTabs" size="sm" />
         </div>
 
         <div v-if="mode === 'upload'" class="upload-flow">
@@ -283,9 +272,9 @@ function goBack() {
                 </button>
               </div>
             </div>
-            <button class="btn btn-ghost add-chap-btn" type="button" @click="addChapter">
+            <AppButton variant="ghost" size="xs" type="button" @click="addChapter">
               ＋ 新增话
-            </button>
+            </AppButton>
           </div>
 
           <!-- Dropzone -->
@@ -449,7 +438,7 @@ function goBack() {
               v-model="uploader"
               class="field-input"
               type="text"
-              placeholder="如：馆长"
+              placeholder="如：lhvision"
             />
           </div>
 
@@ -475,20 +464,21 @@ function goBack() {
           </div>
 
           <div class="form-actions">
-            <button class="btn btn-ghost" type="button" @click="goBack">取消</button>
-            <button
-              class="btn btn-primary btn-submit"
+            <AppButton variant="ghost" size="lg" type="button" @click="goBack"> 取消 </AppButton>
+            <AppButton
+              variant="primary"
+              size="lg"
               type="submit"
+              class="btn-submit"
+              :loading="submitting || isUploading"
               :disabled="
-                submitting ||
-                isUploading ||
                 !title.trim() ||
                 (mode === 'upload' && totalStagedFilesCount === 0) ||
                 (mode === 'path' && !serverPath.trim())
               "
             >
               {{ submitting || isUploading ? '收录中…' : '确认创建并收录到纸间' }}
-            </button>
+            </AppButton>
           </div>
         </form>
       </section>
@@ -540,41 +530,6 @@ function goBack() {
 .form-col h2 {
   font-size: var(--text-md);
   font-family: var(--font-display);
-}
-
-.mode-pills {
-  display: inline-flex;
-  gap: var(--space-1);
-  background: var(--paper-1);
-  padding: 0.25rem;
-  border: 1px solid var(--line);
-  border-radius: var(--radius-2);
-}
-
-.mode-pill {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  padding: 0.35rem 0.85rem;
-  border: 0;
-  border-radius: var(--radius-1);
-  background: transparent;
-  font-size: var(--text-xs);
-  line-height: 1.2;
-  color: var(--ink-1);
-  cursor: pointer;
-  transition: all var(--duration-1) var(--ease-out);
-}
-
-.mode-pill:hover:not(.is-active) {
-  color: var(--ink-0);
-}
-
-.mode-pill.is-active {
-  background: var(--paper-0);
-  color: var(--accent-strong);
-  box-shadow: var(--shadow-1);
-  font-weight: 600;
 }
 
 .upload-flow {
@@ -659,11 +614,6 @@ function goBack() {
   color: var(--accent-strong);
 }
 
-.add-chap-btn {
-  padding: 0.2rem 0.6rem;
-  font-size: var(--text-xs);
-}
-
 .drop-area {
   padding: var(--space-8) var(--space-4);
   border: 2px dashed var(--line-strong);
@@ -735,7 +685,6 @@ function goBack() {
 .progress-fill {
   height: 100%;
   background: var(--accent);
-  transition: width var(--duration-2) var(--ease-out);
 }
 
 .path-flow {
@@ -777,35 +726,6 @@ function goBack() {
 .field-group {
   display: grid;
   gap: var(--space-1-5);
-}
-
-.form-label {
-  font-size: var(--text-xs);
-  font-weight: 600;
-  color: var(--ink-1);
-}
-
-.field-input,
-.field-textarea {
-  width: 100%;
-  padding: var(--space-2) var(--space-3);
-  border: 1px solid var(--line);
-  border-radius: var(--radius-2);
-  background: var(--paper-0);
-  color: var(--ink-0);
-  font-size: var(--text-sm);
-  font-family: inherit;
-}
-
-.field-input:focus,
-.field-textarea:focus {
-  outline: none;
-  border-color: var(--accent);
-}
-
-.field-input--lg {
-  font-size: var(--text-md);
-  font-family: var(--font-display);
 }
 
 .grid-2 {

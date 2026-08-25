@@ -360,3 +360,17 @@
      - **VueUse `useScrollLock` 安全闭环**：使用 `useScrollLock(document.body)` 并在 `onUnmounted` 严格释放；`ComicDetailView` 在弹窗保存后使用静默刷新（`load(silent = true)`），杜绝因页面重新挂载骨架屏而导致弹窗销毁时残留 `overflow: hidden` 锁死页面滚动的问题；
      - **封面即时热刷新缓存穿透（Cache Busting Tag）**：`cover_paths()` 自动附加基于 `updated_at` 的版本摘要参数（`?v=hash`），彻底解决浏览器 `Cache-Control: immutable` 导致封面修改后沿用旧缓存不刷新的问题。
 - **验证**：`vp check`（85 文件 0 error）、`vp test` 单测全绿（`TagManager.spec.ts`、`CoverIndicesPicker.spec.ts`、`useUploadQueue.spec.ts`）、`vp build` 生产构建成功；成功完成 `public/tiya-frames`（917 帧）秒级全量收录测试与自定义封面序号热更新测试。
+
+## 25. 书架卡片渲染隔离与 48 图预算增量加载（grill-with-docs 确认 → Impeccable: shape → critique → polish → adapt）
+
+- **需求与根因定位**：
+  1. 书架卡片在 Hover 时出现「上面边框不见了 + 底下留黑」的渲染 bug；
+  2. 根因为之前在 `ComicCard.vue` 引入的 `content-visibility: auto`。W3C 规范中该属性自动开启 `contain: paint`，使得卡片 Hover 向上浮动（`-0.35rem`）与柔和弥散阴影（`--shadow-2`）超出父容器 padding-box 时被浏览器 Compositing 硬件图层生硬裁剪截断。
+- **Impeccable 设计决策与重构**：
+  1. **属性解耦与精准隔离（Precise Containment）**：
+     - `ComicCard.vue` 移除 `content-visibility: auto`（及其强制的 `contain: paint`）；
+     - 切换为 `contain: layout style` + `container-type: inline-size`，既获得组件级布局/样式计算隔离，又 100% 保留 Hover 浮动、叠牌封面旋转与柔和投影的自由溢出渲染。
+  2. **48 图预算增量呈现（48-Image Budget Shelf Chunking）**：
+     - 针对海量藏书书架，由于每本漫画展示 4 张封面图（1 主封面 + 3 叠牌封面），将详情页成熟的 48 图预算移植至书架，确立 **12 本/批（12 × 4 = 48 张封面图）** 的增量呈现步长；
+     - `ComicGrid.vue` 接入 VueUse `useIntersectionObserver` 监听底部哨兵（`rootMargin: '600px 0px'`），用户滚动至底部时平滑自动展开下一批；筛选/检索/排序切换时即时重置为初始批次，保持 View Transitions 极速响应。
+- **验证**：`vp check`（0 error）、`ComicGrid.spec.ts`（4/4 测试通过）、`e2e/tests/example.spec.ts` E2E 校验通过。

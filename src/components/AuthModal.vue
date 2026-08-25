@@ -3,6 +3,7 @@ import { nextTick, ref, watch } from 'vue'
 import { useAuth } from '@/composables/useAuth'
 import { useBrandIcon } from '@/composables/useBrandIcon'
 import AmbientWatermark from '@/components/AmbientWatermark.vue'
+import AppButton from '@/components/AppButton.vue'
 
 const {
   authRequired,
@@ -158,22 +159,26 @@ function togglePasswordVisibility() {
             </p>
 
             <div class="auth-actions">
-              <button
+              <AppButton
                 v-if="authenticated || !authRequired"
                 type="button"
-                class="btn-secondary"
+                variant="ghost"
+                size="md"
+                class="auth-action-btn"
                 @click="closeModal"
               >
                 取消
-              </button>
-              <button
+              </AppButton>
+              <AppButton
                 type="submit"
-                class="btn-primary"
-                :disabled="submitting || !inputSecret.trim()"
+                variant="primary"
+                size="md"
+                class="auth-action-btn auth-submit-btn"
+                :loading="submitting"
+                :disabled="!inputSecret.trim()"
               >
-                <span v-if="submitting">验证中…</span>
-                <span v-else>{{ authenticated && isGuest ? '解锁馆长权限' : '解锁进入' }}</span>
-              </button>
+                {{ authenticated && isGuest ? '解锁馆长权限' : '解锁进入' }}
+              </AppButton>
             </div>
           </form>
 
@@ -395,57 +400,6 @@ function togglePasswordVisibility() {
   justify-content: flex-end;
   gap: var(--space-3);
   margin-top: var(--space-1);
-}
-
-.btn-primary {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-height: var(--control-sm);
-  padding: 0 var(--space-5);
-  background: var(--accent);
-  color: var(--paper-0);
-  border: none;
-  border-radius: var(--radius-2);
-  font-size: var(--text-sm);
-  font-weight: 600;
-  letter-spacing: 0.04em;
-  cursor: pointer;
-  transition:
-    background var(--duration-1) var(--ease-out),
-    transform var(--duration-1) var(--ease-out);
-}
-
-.btn-primary:hover:not(:disabled) {
-  background: var(--accent-strong);
-}
-
-.btn-primary:active:not(:disabled) {
-  transform: scale(0.98);
-}
-
-.btn-primary:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-.btn-secondary {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-height: var(--control-sm);
-  padding: 0 var(--space-4);
-  background: transparent;
-  color: var(--ink-1);
-  border: 1px solid var(--line);
-  border-radius: var(--radius-2);
-  font-size: var(--text-sm);
-  cursor: pointer;
-}
-
-.btn-secondary:hover {
-  background: var(--paper-1);
-  color: var(--ink-0);
 }
 
 .auth-footer {

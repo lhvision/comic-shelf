@@ -9,8 +9,8 @@ import threading
 from pathlib import Path
 from typing import Callable, Iterable
 
-from .config import COVER_QUALITY, COVER_WIDTH, LIBRARY_DIR, MAX_PREFETCH, PAGE_THUMB_QUALITY, PAGE_THUMB_WIDTH, TMP_DIR
-from .models import Chapter, ComicDetail, ComicMeta, FetchedComic, ImportResult, LibrarySummary, PageRecord, RemotePage
+from .config import COVER_QUALITY, COVER_WIDTH, DATA_DIR, LIBRARY_DIR, MAX_PREFETCH, PAGE_THUMB_QUALITY, PAGE_THUMB_WIDTH, TMP_DIR
+from .models import Chapter, ComicDetail, ComicMeta, DiscoveryFeed, DiscoveryItem, FetchedComic, ImportResult, LibrarySummary, PageRecord, RemotePage
 
 _SAFE = re.compile(r"[^a-zA-Z0-9._-]+")
 
@@ -612,6 +612,7 @@ class ComicStore:
             actors=meta.actors,
             tags=meta.tags,
             favorite=meta.favorite,
+            hidden_from_guest=getattr(meta, "hidden_from_guest", False),
             page_count=meta.page_count,
             views=meta.views,
             likes=meta.likes,
@@ -658,7 +659,7 @@ class ComicStore:
 
         import datetime
 
-        for field in ("title", "authors", "works", "actors", "tags", "description", "uploader"):
+        for field in ("title", "authors", "works", "actors", "tags", "description", "uploader", "hidden_from_guest"):
             if field in updates and updates[field] is not None:
                 setattr(meta, field, updates[field])
 
@@ -736,6 +737,7 @@ class ComicStore:
             updated_at=now_str,
             imported_at=now_str,
             chapters=chapters,
+            hidden_from_guest=getattr(req, "hidden_from_guest", False),
         )
 
         _write_json_atomic(self.album_path("local", source_id), meta.model_dump())
@@ -856,6 +858,7 @@ class ComicStore:
             imported_at=now_str,
             pages=pages,
             chapters=chapters,
+            hidden_from_guest=getattr(req, "hidden_from_guest", False),
         )
 
         fetched = FetchedComic(meta=meta, remote_pages=remote_pages)
@@ -992,4 +995,30 @@ class ComicStore:
         meta.updated_at = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         self.save_fetched(fetched, refresh=True)
         return meta
+
+    # ------------------------------------------------------------------
+    # discovery feeds & rankings cache
+    # ------------------------------------------------------------------
+    def discovery_dir(self) -> Path:
+        p = DATA_DIR / "discovery"
+        p.mkdir(parents=True, exist_ok=True)
+        return p
+
+    def discovery_path(self, timeframe: str) -> Path:
+        return self.discovery_dir() / f"{self._safe(timeframe)}.json"
+
+    def load_discovery_feed(self, timeframe: str) -> DiscoveryFeed | None:
+        path = self.discovery_path(timeframe)
+        if not path.exists():
+            return None
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+            return DiscoveryFeed.model_validate(data)
+        except Exception:
+            return None
+
+    def save_discovery_feed(self, feed: DiscoveryFeed) -> None:
+        path = self.discovery_path(feed.timeframe)
+        _write_json_atomic(path, feed.model_dump())
+
 

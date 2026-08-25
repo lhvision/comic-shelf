@@ -2,6 +2,8 @@
 import { computed, ref, watch } from 'vue'
 import { useFileDialog, useDropZone } from '@vueuse/core'
 import Modal from '@/components/Modal.vue'
+import SegmentedTabs from '@/components/SegmentedTabs.vue'
+import AppButton from '@/components/AppButton.vue'
 import { useUploadQueue } from '@/composables/useUploadQueue'
 import { api } from '@/api/client'
 import { useToast } from '@/composables/useToast'
@@ -21,6 +23,10 @@ const { toast } = useToast()
 const { isUploading, progress, completedCount, totalCount, uploadFiles } = useUploadQueue()
 
 const mode = ref<'upload' | 'path'>('upload')
+const modeTabs = [
+  { key: 'upload' as const, label: '网页多图上传' },
+  { key: 'path' as const, label: '服务器本地路径扫描' },
+]
 const appendType = ref<'current' | 'new'>('current')
 const selectedChapterId = ref('')
 const newChapterTitle = ref('')
@@ -147,7 +153,7 @@ async function submit() {
         </div>
       </div>
 
-      <div v-if="appendType === 'current' && isMulti" class="field-group">
+      <div v-if="appendType === 'current' && isMulti">
         <label class="form-label" for="select-chap">选择目标章节</label>
         <select id="select-chap" v-model="selectedChapterId" class="field-select">
           <option v-for="ch in meta.chapters" :key="ch.id" :value="ch.id">
@@ -156,7 +162,7 @@ async function submit() {
         </select>
       </div>
 
-      <div v-if="appendType === 'new'" class="field-group">
+      <div v-if="appendType === 'new'">
         <label class="form-label" for="new-chap-title">新章节标题</label>
         <input
           id="new-chap-title"
@@ -167,70 +173,53 @@ async function submit() {
         />
       </div>
 
-      <div class="field-group">
-        <div class="mode-tabs">
-          <button
-            class="mode-tab"
-            :class="{ 'is-active': mode === 'upload' }"
-            type="button"
-            @click="mode = 'upload'"
+      <div>
+        <SegmentedTabs v-model="mode" :items="modeTabs" size="sm" />
+      </div>
+
+      <div v-if="mode === 'upload'" class="upload-zone">
+        <div
+          ref="dropZoneRef"
+          class="upload-zone__inner"
+          :class="{ 'is-dragover': isOverDropZone }"
+          @click="() => openFileDialog()"
+        >
+          <svg
+            viewBox="0 0 24 24"
+            width="28"
+            height="28"
+            stroke="currentColor"
+            stroke-width="1.8"
+            fill="none"
           >
-            网页多图上传
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+            <polyline points="17 8 12 3 7 8" />
+            <line x1="12" y1="3" x2="12" y2="15" />
+          </svg>
+          <p>点击选择图片，或将图片批量拖拽到此处</p>
+          <span class="upload-hint">支持 JPG, PNG, WebP, GIF, AVIF</span>
+        </div>
+
+        <div v-if="selectedFiles.length > 0" class="file-summary">
+          <span
+            >已选择 <strong>{{ selectedFiles.length }}</strong> 张图片</span
+          >
+          <button class="btn btn-ghost btn-xs" type="button" @click="selectedFiles = []">
+            清空
           </button>
-          <button
-            class="mode-tab"
-            :class="{ 'is-active': mode === 'path' }"
-            type="button"
-            @click="mode = 'path'"
-          >
-            服务器本地路径扫描
-          </button>
         </div>
+      </div>
 
-        <div v-if="mode === 'upload'" class="upload-zone">
-          <div
-            ref="dropZoneRef"
-            class="upload-zone__inner"
-            :class="{ 'is-dragover': isOverDropZone }"
-            @click="() => openFileDialog()"
-          >
-            <svg
-              viewBox="0 0 24 24"
-              width="28"
-              height="28"
-              stroke="currentColor"
-              stroke-width="1.8"
-              fill="none"
-            >
-              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-              <polyline points="17 8 12 3 7 8" />
-              <line x1="12" y1="3" x2="12" y2="15" />
-            </svg>
-            <p>点击选择图片，或将图片批量拖拽到此处</p>
-            <span class="upload-hint">支持 JPG, PNG, WebP, GIF, AVIF</span>
-          </div>
-
-          <div v-if="selectedFiles.length > 0" class="file-summary">
-            <span
-              >已选择 <strong>{{ selectedFiles.length }}</strong> 张图片</span
-            >
-            <button class="btn btn-ghost btn-xs" type="button" @click="selectedFiles = []">
-              清空
-            </button>
-          </div>
-        </div>
-
-        <div v-else class="path-zone">
-          <label class="form-label" for="append-path">服务器目录相对/绝对路径</label>
-          <input
-            id="append-path"
-            v-model="serverPath"
-            class="field-input"
-            type="text"
-            placeholder="如：public/tiya-frames 或 /data/manga/vol2"
-          />
-          <p class="path-hint">指定包含图片的文件夹，系统将就地扫描并按文件名自然序号追加。</p>
-        </div>
+      <div v-else class="path-zone">
+        <label class="form-label" for="append-path">服务器目录相对/绝对路径</label>
+        <input
+          id="append-path"
+          v-model="serverPath"
+          class="field-input"
+          type="text"
+          placeholder="如：public/tiya-frames 或 /data/manga/vol2"
+        />
+        <p class="path-hint">指定包含图片的文件夹，系统将就地扫描并按文件名自然序号追加。</p>
       </div>
 
       <div v-if="isUploading" class="upload-progress-card">
@@ -245,27 +234,26 @@ async function submit() {
     </div>
 
     <template #footer>
-      <button
-        class="btn btn-ghost"
-        type="button"
+      <AppButton
+        variant="ghost"
+        size="md"
         :disabled="submitting || isUploading"
         @click="emit('cancel')"
       >
         取消
-      </button>
-      <button
-        class="btn btn-primary"
-        type="button"
+      </AppButton>
+      <AppButton
+        variant="primary"
+        size="md"
+        :loading="submitting || isUploading"
         :disabled="
-          submitting ||
-          isUploading ||
           (mode === 'upload' && selectedFiles.length === 0) ||
           (mode === 'path' && !serverPath.trim())
         "
         @click="submit"
       >
         {{ submitting || isUploading ? '正在追加…' : '确认追加' }}
-      </button>
+      </AppButton>
     </template>
   </Modal>
 </template>
@@ -331,53 +319,6 @@ async function submit() {
   font-size: var(--text-xs);
   color: var(--ink-2);
   line-height: 1.4;
-}
-
-.field-input,
-.field-select {
-  width: 100%;
-  padding: var(--space-2) var(--space-3);
-  border: 1px solid var(--line);
-  border-radius: var(--radius-2);
-  background: var(--paper-0);
-  color: var(--ink-0);
-  font-size: var(--text-sm);
-}
-
-.mode-tabs {
-  display: inline-flex;
-  gap: var(--space-1);
-  background: var(--paper-1);
-  padding: 0.25rem;
-  border: 1px solid var(--line);
-  border-radius: var(--radius-2);
-  margin-bottom: var(--space-2);
-}
-
-.mode-tab {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  padding: 0.35rem 0.85rem;
-  border: 0;
-  border-radius: var(--radius-1);
-  background: transparent;
-  font-size: var(--text-xs);
-  line-height: 1.2;
-  color: var(--ink-1);
-  cursor: pointer;
-  transition: all var(--duration-1) var(--ease-out);
-}
-
-.mode-tab:hover:not(.is-active) {
-  color: var(--ink-0);
-}
-
-.mode-tab.is-active {
-  background: var(--paper-0);
-  color: var(--accent-strong);
-  box-shadow: var(--shadow-1);
-  font-weight: 600;
 }
 
 .upload-zone {
@@ -454,7 +395,6 @@ async function submit() {
 .progress-fill {
   height: 100%;
   background: var(--accent);
-  transition: width var(--duration-2) var(--ease-out);
 }
 
 @media (max-width: 640px) {

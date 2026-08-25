@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import { useLibraryStore } from '@/stores/library'
+import AppButton from '@/components/AppButton.vue'
 
 const props = withDefaults(
   defineProps<{
@@ -96,14 +97,15 @@ function onTagKeyDown(e: KeyboardEvent) {
         placeholder="+ 输入新标签，按 Enter 或空格添加…"
         @keydown="onTagKeyDown"
       />
-      <button
-        class="btn btn-ghost tag-add-btn"
+      <AppButton
+        variant="ghost"
+        size="sm"
         type="button"
         :disabled="!newTagInput.trim()"
         @click="addTag(newTagInput)"
       >
         添加
-      </button>
+      </AppButton>
     </div>
 
     <div v-if="popularTags.length > 0" class="popular-tags-bar">
@@ -188,11 +190,6 @@ function onTagKeyDown(e: KeyboardEvent) {
 
 .tag-input-box {
   flex: 1;
-}
-
-.tag-add-btn {
-  padding-inline: var(--space-3);
-  font-size: var(--text-xs);
 }
 
 .popular-tags-bar {

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, watch } from 'vue'
 import Modal from '@/components/Modal.vue'
+import AppButton from '@/components/AppButton.vue'
 import TagManager from '@/components/form/TagManager.vue'
 import CoverIndicesPicker from '@/components/form/CoverIndicesPicker.vue'
 import { useLibraryStore } from '@/stores/library'
@@ -29,6 +30,7 @@ const uploader = ref('')
 const description = ref('')
 const tags = ref<string[]>([])
 const coverIndices = ref<number[]>([1, 2, 3, 4])
+const hiddenFromGuest = ref(false)
 const saving = ref(false)
 
 watch(
@@ -42,6 +44,7 @@ watch(
       uploader.value = props.meta.uploader || ''
       description.value = props.meta.description || ''
       tags.value = [...(props.meta.tags || [])]
+      hiddenFromGuest.value = Boolean(props.meta.hidden_from_guest)
 
       const pCount = Math.max(1, props.meta.page_count || 1)
       const existing = props.meta.cover_indices || []
@@ -80,9 +83,10 @@ async function save() {
       description: description.value.trim(),
       tags: tags.value,
       cover_indices: coverIndices.value,
+      hidden_from_guest: hiddenFromGuest.value,
     })
     await store.load()
-    toast('资料与封面页码已更新', 'info')
+    toast('资料与设置已更新', 'info')
     emit('saved', updated.meta)
   } catch (err) {
     toast(err instanceof Error ? err.message : String(err), 'error')
@@ -175,20 +179,49 @@ async function save() {
           placeholder="可填写该图集或拆帧系列的简介、说明或来源备注…"
         />
       </div>
+
+      <div class="field-group privacy-box">
+        <label class="form-label">访客可见性 (Privacy)</label>
+        <label class="privacy-toggle-label" for="edit-hidden-guest">
+          <input
+            id="edit-hidden-guest"
+            v-model="hiddenFromGuest"
+            type="checkbox"
+            class="privacy-checkbox"
+          />
+          <div class="privacy-info">
+            <span class="privacy-title">
+              {{
+                hiddenFromGuest
+                  ? '🔒 仅馆长可见（已对访客隐藏）'
+                  : '🌐 公开阅览（访客与馆长均可见）'
+              }}
+            </span>
+            <span class="privacy-desc">
+              {{
+                hiddenFromGuest
+                  ? '开启后，未输入馆长口令的访客在书架、搜索和直链访问时均无法感知此漫画。'
+                  : '公开状态下，持访客口令或公开状态的读者均可正常浏览。'
+              }}
+            </span>
+          </div>
+        </label>
+      </div>
     </form>
 
     <template #footer>
-      <button class="btn btn-ghost" type="button" :disabled="saving" @click="emit('cancel')">
+      <AppButton variant="ghost" size="md" :disabled="saving" @click="emit('cancel')">
         取消
-      </button>
-      <button
-        class="btn btn-primary"
-        type="button"
-        :disabled="saving || !title.trim()"
+      </AppButton>
+      <AppButton
+        variant="primary"
+        size="md"
+        :loading="saving"
+        :disabled="!title.trim()"
         @click="save"
       >
         {{ saving ? '保存中…' : '保存修改' }}
-      </button>
+      </AppButton>
     </template>
   </Modal>
 </template>
@@ -204,36 +237,44 @@ async function save() {
   gap: var(--space-1-5);
 }
 
-.form-label {
-  font-family: var(--font-body);
-  font-size: var(--text-xs);
-  font-weight: 600;
-  letter-spacing: 0.04em;
-  color: var(--ink-1);
-}
-
-.field-input,
-.field-textarea {
-  width: 100%;
-  padding: var(--space-2) var(--space-3);
-  border: 1px solid var(--line);
+.privacy-box {
+  padding: var(--space-3);
+  border: 1px dashed var(--line);
   border-radius: var(--radius-2);
-  background: var(--paper-0);
-  color: var(--ink-0);
+  background: var(--paper-1);
+}
+
+.privacy-toggle-label {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+  cursor: pointer;
+}
+
+.privacy-checkbox {
+  margin-top: 0.125rem;
+  width: 1.125rem;
+  height: 1.125rem;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+.privacy-info {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.privacy-title {
   font-size: var(--text-sm);
-  font-family: inherit;
-  transition: border-color var(--duration-1) var(--ease-out);
+  font-weight: 600;
+  color: var(--ink-0);
 }
 
-.field-input:focus,
-.field-textarea:focus {
-  outline: none;
-  border-color: var(--accent);
-}
-
-.field-input--lg {
-  font-size: var(--text-md);
-  font-family: var(--font-display);
+.privacy-desc {
+  font-size: var(--text-xs);
+  color: var(--ink-2);
+  line-height: 1.4;
 }
 
 .grid-2 {

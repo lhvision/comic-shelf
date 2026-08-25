@@ -2,6 +2,7 @@
 import { computed, ref } from 'vue'
 import { onClickOutside } from '@vueuse/core'
 import Modal from '@/components/Modal.vue'
+import AppButton from '@/components/AppButton.vue'
 
 /**
  * 详情页操作栏 —— 阅读/缓存/刷新 + 「更多」菜单（含危险移除）+ 缓存进度条。
@@ -157,10 +158,16 @@ const cacheScale = computed(() => `scaleX(${props.cachePercent / 100})`)
       </label>
 
       <template #footer>
-        <button class="btn btn-ghost" type="button" @click="cancelRemove">取消</button>
-        <button class="btn danger" type="button" :disabled="!ackRemove" @click="confirmRemove">
+        <AppButton variant="ghost" size="md" type="button" @click="cancelRemove"> 取消 </AppButton>
+        <AppButton
+          variant="danger"
+          size="md"
+          type="button"
+          :disabled="!ackRemove"
+          @click="confirmRemove"
+        >
           确认移除 {{ ackRemove ? '' : '（需勾选确认）' }}
-        </button>
+        </AppButton>
       </template>
     </Modal>
 
@@ -179,15 +186,15 @@ const cacheScale = computed(() => `scaleX(${props.cachePercent / 100})`)
 }
 
 .action-bar {
-  position: relative;
   display: flex;
   flex-wrap: wrap;
+  align-items: center;
   gap: var(--space-3);
-  padding: var(--space-4);
+  padding: var(--space-3) var(--space-4);
 }
 
-/* 主操作唯一高权重 */
 .btn-read {
+  min-width: 9rem;
   letter-spacing: 0.04em;
   box-shadow: var(--shadow-1);
 }
@@ -199,24 +206,23 @@ const cacheScale = computed(() => `scaleX(${props.cachePercent / 100})`)
 
 .more-pop {
   position: absolute;
-  right: 0;
   top: calc(100% + var(--space-2));
-  z-index: 30;
-  min-width: 12.5rem;
-  padding: var(--space-2);
-  border: 1px solid var(--line);
+  right: 0;
+  z-index: 10;
+  min-width: 10rem;
+  padding: var(--space-1);
+  border: 1px solid var(--line-strong);
   border-radius: var(--radius-2);
   background: var(--paper-0);
   box-shadow: var(--shadow-2);
-  display: grid;
-  gap: var(--space-1);
 }
 
 .more-item {
+  display: block;
   width: 100%;
-  text-align: left;
   padding: var(--space-2) var(--space-3);
   border-radius: var(--radius-1);
+  text-align: left;
   font-size: var(--text-sm);
   color: var(--ink-1);
   background: transparent;
@@ -233,21 +239,6 @@ const cacheScale = computed(() => `scaleX(${props.cachePercent / 100})`)
 
 .danger-item:hover {
   background: var(--accent-soft);
-}
-
-/* 危险按钮：朱砂态（在弹窗 / 菜单内才出现） */
-.danger {
-  color: var(--accent-strong);
-  border: 1px solid color-mix(in oklab, var(--accent) 40%, transparent);
-}
-
-.danger:hover:not(:disabled) {
-  background: var(--accent-soft);
-}
-
-.danger:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
 }
 
 .remove-copy {
