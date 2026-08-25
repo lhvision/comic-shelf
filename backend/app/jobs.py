@@ -13,10 +13,36 @@ from typing import Any, Callable
 
 _locker = threading.Lock()
 _jobs: dict[str, dict[str, Any]] = {}
+_MAX_JOBS = 100
+_JOB_TTL_SECONDS = 1800  # 30 minutes
 
 
 def _key(source: str, source_id: str) -> str:
     return f"{source}/{source_id}"
+
+
+def _cleanup_unlocked() -> None:
+    now = time.time()
+    # Remove finished jobs older than TTL
+    expired = [
+        k
+        for k, v in _jobs.items()
+        if v.get("done") and v.get("finished_at") and (now - float(v["finished_at"])) > _JOB_TTL_SECONDS
+    ]
+    for k in expired:
+        _jobs.pop(k, None)
+
+    # If still above limit, remove oldest finished jobs
+    if len(_jobs) > _MAX_JOBS:
+        finished = [
+            (k, v.get("finished_at") or 0)
+            for k, v in _jobs.items()
+            if v.get("done")
+        ]
+        finished.sort(key=lambda item: item[1])
+        to_remove = len(_jobs) - _MAX_JOBS
+        for k, _ in finished[:to_remove]:
+            _jobs.pop(k, None)
 
 
 def start_job(
@@ -27,9 +53,10 @@ def start_job(
     """Start ``runner(job)`` on a daemon thread. Re-uses a running job if present."""
     key = _key(source, source_id)
     with _locker:
+        _cleanup_unlocked()
         existing = _jobs.get(key)
         if existing is not None and existing.get("running"):
-            return existing
+            return dict(existing)
 
         job: dict[str, Any] = {
             "source": source,
@@ -49,11 +76,13 @@ def start_job(
         try:
             runner(job)
         except Exception as exc:  # pragma: no cover - defensive
-            job["error"] = str(exc)
+            with _locker:
+                job["error"] = str(exc)
         finally:
-            job["running"] = False
-            job["done"] = True
-            job["finished_at"] = time.time()
+            with _locker:
+                job["running"] = False
+                job["done"] = True
+                job["finished_at"] = time.time()
 
     threading.Thread(
         target=_run,

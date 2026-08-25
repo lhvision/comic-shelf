@@ -127,9 +127,8 @@ def check_hotlink_protection(request: Request) -> None:
             ref_netloc = ref_parsed.netloc.lower()
 
             host = request.headers.get("host", "").strip().lower()
-            forwarded_host = request.headers.get("x-forwarded-host", "").strip().lower()
 
-            allowed_hosts = {h for h in (host, forwarded_host) if h}
+            allowed_hosts = {host} if host else set()
             for dev_host in ("localhost", "127.0.0.1", "0.0.0.0"):
                 allowed_hosts.add(dev_host)
                 allowed_hosts.add(f"{dev_host}:5173")

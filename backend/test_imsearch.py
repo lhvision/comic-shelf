@@ -1,6 +1,12 @@
+import asyncio
 import json
+import sys
+from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
-from backend.app.imsearch import check_imsearch_status, parse_imsearch_path, search_imsearch
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+from app.imsearch import check_imsearch_status, parse_imsearch_path, search_imsearch
 
 
 def test_parse_imsearch_path():
@@ -26,7 +32,7 @@ def test_parse_imsearch_path():
 
 
 def test_check_imsearch_status():
-    with patch("backend.app.imsearch._opener.open") as mock_open:
+    with patch("app.imsearch._opener.open") as mock_open:
         mock_resp = MagicMock()
         mock_resp.status = 200
         mock_open.return_value.__enter__.return_value = mock_resp
@@ -40,7 +46,7 @@ def test_check_imsearch_status():
 
 
 def test_search_imsearch():
-    with patch("backend.app.imsearch._opener.open") as mock_open:
+    with patch("app.imsearch._opener.open") as mock_open:
         mock_resp = MagicMock()
         mock_resp.status = 200
         mock_resp.read.return_value = json.dumps(
@@ -64,17 +70,16 @@ def test_search_imsearch():
 
 
 def test_fastapi_endpoints():
-    import asyncio
-    from backend.app.main import image_search, image_search_status
+    from app.main import image_search, image_search_status
 
-    with patch("backend.app.main.check_imsearch_status") as mock_status:
+    with patch("app.main.check_imsearch_status") as mock_status:
         mock_status.return_value = {"available": True, "url": "http://localhost:8765"}
         res = image_search_status()
         assert res.available is True
         assert res.url == "http://localhost:8765"
 
-    with patch("backend.app.main.search_imsearch") as mock_search:
-        from backend.app.models import ImageSearchItem
+    with patch("app.main.search_imsearch") as mock_search:
+        from app.models import ImageSearchItem
 
         mock_search.return_value = [
             ImageSearchItem(
@@ -85,7 +90,12 @@ def test_fastapi_endpoints():
         mock_upload.filename = "test.jpg"
         mock_upload.read = AsyncMock(return_value=b"fake-bytes")
 
-        res = asyncio.run(image_search(mock_upload))
+        mock_req = MagicMock()
+        mock_req.headers.get = lambda k, default="": ""
+        mock_req.cookies.get = lambda k, default="": ""
+        mock_req.query_params.get = lambda k, default="": ""
+
+        res = asyncio.run(image_search(mock_req, mock_upload))
         assert len(res) == 1
         assert res[0].page_index == 5
         assert res[0].score == 0.94
@@ -96,4 +106,4 @@ if __name__ == "__main__":
     test_check_imsearch_status()
     test_search_imsearch()
     test_fastapi_endpoints()
-    print("All backend tests passed!")
+    print("All backend imsearch tests passed!")

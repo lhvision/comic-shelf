@@ -241,9 +241,68 @@ def test_storage_flat_to_chapter_migration():
         shutil.rmtree(temp_dir, ignore_errors=True)
 
 
+def test_append_pages_multi_chapter_reindex():
+    temp_dir = Path(tempfile.mkdtemp())
+    try:
+        store = ComicStore(root=temp_dir)
+        source = "local"
+        source_id = "loc_test_reindex"
+
+        # Create 2 chapters with 2 pages each
+        chapters = [
+            Chapter(id="ch1", index=1, title="Chapter 1", page_count=2, start=1),
+            Chapter(id="ch2", index=2, title="Chapter 2", page_count=2, start=3),
+        ]
+        pages = [
+            PageRecord(index=1, file="00001.webp", ext=".webp", cached=True, chapter="ch1"),
+            PageRecord(index=2, file="00002.webp", ext=".webp", cached=True, chapter="ch1"),
+            PageRecord(index=3, file="00001.webp", ext=".webp", cached=True, chapter="ch2"),
+            PageRecord(index=4, file="00002.webp", ext=".webp", cached=True, chapter="ch2"),
+        ]
+        remote_pages = [
+            RemotePage(index=1, url="", file="00001.webp", ext=".webp", chapter="ch1"),
+            RemotePage(index=2, url="", file="00002.webp", ext=".webp", chapter="ch1"),
+            RemotePage(index=3, url="", file="00001.webp", ext=".webp", chapter="ch2"),
+            RemotePage(index=4, url="", file="00002.webp", ext=".webp", chapter="ch2"),
+        ]
+        meta = ComicMeta(
+            source=source,
+            source_id=source_id,
+            display_id=f"LOC_{source_id}",
+            title="Local Multi-chapter",
+            authors=["Artist"],
+            page_count=4,
+            pages=pages,
+            chapters=chapters,
+        )
+        fetched = FetchedComic(meta=meta, remote_pages=remote_pages)
+        store.save_fetched(fetched, refresh=False)
+
+        # Append 2 pages to Chapter 1
+        new_files = [("001.webp", b"new_p1"), ("002.webp", b"new_p2")]
+        updated = store.append_pages(source_id, files=new_files, target_chapter="ch1")
+
+        # Invariants to verify:
+        # Chapter 1 has 4 pages (start: 1, page_count: 4)
+        # Chapter 2 has 2 pages (start: 5, page_count: 2) -> shifted from 3 to 5
+        # Total page_count is 6
+        # meta.pages has indices strictly [1, 2, 3, 4, 5, 6]
+        assert updated.page_count == 6
+        assert len(updated.pages) == 6
+        assert [p.index for p in updated.pages] == [1, 2, 3, 4, 5, 6]
+        assert updated.chapters[0].start == 1
+        assert updated.chapters[0].page_count == 4
+        assert updated.chapters[1].start == 5
+        assert updated.chapters[1].page_count == 2
+        print("  ✓ test_append_pages_multi_chapter_reindex passed (monotonic 1..6 re-indexing verified)")
+    finally:
+        shutil.rmtree(temp_dir, ignore_errors=True)
+
+
 if __name__ == "__main__":
     print("Running incremental update backend tests...")
     test_incremental_fetch_unchanged()
     test_incremental_fetch_new_chapter()
     test_storage_flat_to_chapter_migration()
+    test_append_pages_multi_chapter_reindex()
     print("All incremental update backend tests passed successfully!")

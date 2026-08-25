@@ -21,15 +21,16 @@ describe('useImageSearch', () => {
   })
 
   it('checks status successfully', async () => {
-    vi.mocked(fetch).mockResolvedValueOnce({
+    vi.mocked(fetch).mockResolvedValue({
       ok: true,
+      status: 200,
       json: async () => ({ available: true, url: 'http://localhost:8765' }),
     } as unknown as Response)
 
     const { isAvailable, checkStatus } = useImageSearch()
     await checkStatus()
 
-    expect(fetch).toHaveBeenCalledWith('/api/search/image/status')
+    expect(fetch).toHaveBeenCalledWith('/api/search/image/status', expect.anything())
     expect(isAvailable.value).toBe(true)
   })
 
@@ -49,6 +50,7 @@ describe('useImageSearch', () => {
 
     vi.mocked(fetch).mockResolvedValueOnce({
       ok: true,
+      status: 200,
       json: async () => mockResults,
     } as unknown as Response)
 
@@ -71,6 +73,7 @@ describe('useImageSearch', () => {
 
     vi.mocked(fetch).mockResolvedValueOnce({
       ok: true,
+      status: 200,
       json: async () => [],
     } as unknown as Response)
 

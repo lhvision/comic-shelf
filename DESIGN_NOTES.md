@@ -374,3 +374,15 @@
      - 针对海量藏书书架，由于每本漫画展示 4 张封面图（1 主封面 + 3 叠牌封面），将详情页成熟的 48 图预算移植至书架，确立 **12 本/批（12 × 4 = 48 张封面图）** 的增量呈现步长；
      - `ComicGrid.vue` 接入 VueUse `useIntersectionObserver` 监听底部哨兵（`rootMargin: '600px 0px'`），用户滚动至底部时平滑自动展开下一批；筛选/检索/排序切换时即时重置为初始批次，保持 View Transitions 极速响应。
 - **验证**：`vp check`（0 error）、`ComicGrid.spec.ts`（4/4 测试通过）、`e2e/tests/example.spec.ts` E2E 校验通过。
+
+## 26. 全量代码审查与架构可维护性治理（Full-Repo Code Review & Architectural Hardening）
+
+- **背景**：针对全仓代码（130+ 文件，~13,300 行）进行全量 Code Review，排查多章节页码连续性、后台并发任务生命周期、路径安全沙箱、主事件循环调度及前端视图规范。
+- **架构与安全决策**：
+  1. **多章节页码单调连续性不变量**：`storage.py` 中 `append_pages` 往指定章节增量追加页面时，统一按章节顺序单调重排所有后续章节的 `start` 起始页号与全书 `meta.pages` 的 `index`，保证全局页码严格连续单调递增；
+  2. **后台任务生命周期与并发安全**：`jobs.py` 为全局任务字典引入 30 分钟 TTL 过期淘汰与 100 条容量上限，并在 `_locker` 互斥保护下同步更新任务状态与异常信息，杜绝长期运行下的内存膨胀与数据竞争；
+  3. **服务器路径导入沙箱防护**：`storage.py` 引入 `_is_path_allowed` 校验，强制限制本地导入路径必须位于数据目录或受信任的 `COMIC_SHELF_ALLOWED_DIRS` 白名单内，防御任意宿主机目录扫描；
+  4. **FastAPI 主事件循环解耦**：`main.py` 将阻塞式的局部特征识图（`search_imsearch`）与本地磁盘写入（`store.append_pages`）通过 `asyncio.to_thread` 调度到后台线程池，消除异步路由中的同步阻塞 I/O；
+  5. **前端视图轻量化（View Thinness）与 Composable 下沉**：新增 `src/composables/useLocalWorkshop.ts`，将 `CreateComicView.vue` 脚本从 224 行下沉至 45 行；以图搜图 Composable 统一接入 `src/api/client.ts` 保证 Token 鉴权与 401 拦截，并增加服务就绪状态自动轮询；
+  6. **冗余文件与单测闭环**：清理历史备份文件，修复 `test_imsearch.py` 模块导入路径与传参，补齐多章节页码重排单测。
+- **验证**：`vp check`（131 文件 0 error / 0 warning）、后端全量单测全绿、前端精准单测全绿。

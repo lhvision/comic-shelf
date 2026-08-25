@@ -228,6 +228,15 @@ export const api = {
     request<import('@/types').DiscoveryFeed>(
       `/discovery/ranking?timeframe=${encodeURIComponent(timeframe)}${refresh ? '&refresh=true' : ''}`,
     ),
+  imageSearchStatus: () => request<import('@/types').ImageSearchStatus>('/search/image/status'),
+  imageSearch: async (file: File) => {
+    const formData = new FormData()
+    formData.append('file', file)
+    return request<import('@/types').ImageSearchResultItem[]>('/search/image', {
+      method: 'POST',
+      body: formData,
+    })
+  },
 }
 
 export const pageFileUrl = (source: string, sourceId: string, index: number) =>

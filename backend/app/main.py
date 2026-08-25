@@ -1,3 +1,4 @@
+import asyncio
 import secrets
 import time
 from datetime import datetime
@@ -10,7 +11,6 @@ from .auth import (
     can_read,
     check_hotlink_protection,
     clear_auth_cookie,
-    is_admin,
     is_auth_required,
     is_authenticated,
     is_curator,
@@ -22,6 +22,7 @@ from .config import AUTH_SECRET, DATA_DIR, ENABLE_DOCS, GUEST_SECRET, LIBRARY_DI
 from .jobs import get_job, list_running, start_job
 from .gate import _env_explicit, get_download_concurrency, set_download_concurrency
 from .imsearch import check_imsearch_status, search_imsearch
+from .storage import ComicStore, _write_json_atomic
 from .models import (
     AuthStatusResponse,
     CacheProgress,
@@ -240,7 +241,7 @@ async def image_search(request: Request, file: UploadFile = File(...)) -> list[I
     content = await file.read()
     if not content:
         raise HTTPException(status_code=400, detail="上传图片不能为空")
-    results = search_imsearch(content, filename=file.filename or "query.jpg")
+    results = await asyncio.to_thread(search_imsearch, content, filename=file.filename or "query.jpg")
     if not is_curator(request):
         filtered = []
         for r in results:
@@ -376,7 +377,8 @@ async def upload_local_pages(
         if content:
             file_tuples.append((f.filename or "page.webp", content))
 
-    meta = store.append_pages(
+    meta = await asyncio.to_thread(
+        store.append_pages,
         source_id=source_id,
         files=file_tuples,
         target_chapter=chapter_id,
@@ -404,9 +406,8 @@ def set_favorite(source: str, source_id: str, req: FavoriteRequest) -> FavoriteR
     if meta is None:
         raise HTTPException(status_code=404, detail="本子还没有导入本地书库")
     meta.favorite = req.favorite
-    from .storage import _write_json_atomic
-
     _write_json_atomic(store.album_path(source, source_id), meta.model_dump())
+    store._invalidate_cache(source, source_id)
     return FavoriteResponse(ok=True, favorite=meta.favorite)
 
 

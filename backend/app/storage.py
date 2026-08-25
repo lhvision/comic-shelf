@@ -1,16 +1,43 @@
 from __future__ import annotations
 
+import datetime
 import json
+import logging
 import os
 import re
 import shutil
 import tempfile
 import threading
 from pathlib import Path
-from typing import Callable, Iterable
+from typing import Any, Callable, Iterable
 
-from .config import COVER_QUALITY, COVER_WIDTH, DATA_DIR, LIBRARY_DIR, MAX_PREFETCH, PAGE_THUMB_QUALITY, PAGE_THUMB_WIDTH, TMP_DIR
-from .models import Chapter, ComicDetail, ComicMeta, DiscoveryFeed, DiscoveryItem, FetchedComic, ImportResult, LibrarySummary, PageRecord, RemotePage
+from fastapi import HTTPException
+
+from .config import (
+    COVER_QUALITY,
+    COVER_WIDTH,
+    DATA_DIR,
+    LIBRARY_DIR,
+    MAX_PREFETCH,
+    PAGE_THUMB_QUALITY,
+    PAGE_THUMB_WIDTH,
+    TMP_DIR,
+)
+from .models import (
+    Chapter,
+    ComicDetail,
+    ComicMeta,
+    DiscoveryFeed,
+    DiscoveryItem,
+    FetchedComic,
+    ImportResult,
+    LibrarySummary,
+    PageRecord,
+    RemotePage,
+)
+from .providers.local import LocalProvider
+
+logger = logging.getLogger(__name__)
 
 _SAFE = re.compile(r"[^a-zA-Z0-9._-]+")
 
@@ -20,12 +47,10 @@ _SAFE = re.compile(r"[^a-zA-Z0-9._-]+")
 CURRENT_DECODE_VERSION = 2
 
 
-def _write_json_atomic(path: Path, data) -> None:
+def _write_json_atomic(path: Path, data: Any) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     fd, tmp = None, None
     try:
-        import tempfile
-
         fd, tmp_name = tempfile.mkstemp(prefix=f".{path.name}.", dir=str(path.parent))
         tmp = Path(tmp_name)
         with os.fdopen(fd, "w", encoding="utf-8") as f:
@@ -36,6 +61,30 @@ def _write_json_atomic(path: Path, data) -> None:
     finally:
         if tmp is not None and tmp.exists():
             tmp.unlink(missing_ok=True)
+
+
+def _is_path_allowed(path: Path) -> bool:
+    proj_root = Path(__file__).resolve().parents[2]
+    allowed_bases = [
+        DATA_DIR.resolve(),
+        LIBRARY_DIR.resolve(),
+        TMP_DIR.resolve(),
+        proj_root.resolve(),
+        Path.cwd().resolve(),
+    ]
+    extra = os.getenv("COMIC_SHELF_ALLOWED_DIRS", "").strip()
+    if extra:
+        for p in extra.split(os.pathsep):
+            if p.strip():
+                try:
+                    allowed_bases.append(Path(p.strip()).expanduser().resolve())
+                except Exception as e:
+                    logger.warning("Failed to parse allowed import path '%s': %s", p, e)
+    try:
+        resolved = path.resolve()
+        return any(resolved == base or resolved.is_relative_to(base) for base in allowed_bases)
+    except Exception:
+        return False
 
 
 class ComicStore:
@@ -749,9 +798,6 @@ class ComicStore:
         return meta
 
     def import_local_path(self, req: Any) -> ComicMeta:
-        from .providers.local import LocalProvider
-        import datetime
-
         IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".webp", ".gif", ".avif", ".bmp"}
         raw_path = Path(req.path).expanduser()
         if not raw_path.is_absolute():
@@ -762,9 +808,13 @@ class ComicStore:
             raw_path = cand1 if cand1.exists() else cand2
 
         if not raw_path.exists() or not raw_path.is_dir():
-            from fastapi import HTTPException
-
             raise HTTPException(status_code=400, detail=f"指定目录不存在或不是文件夹：{req.path}")
+
+        if not _is_path_allowed(raw_path):
+            raise HTTPException(
+                status_code=400,
+                detail=f"出于安全考虑，禁止从指定目录导入（{raw_path}）。如需导入，请配置 COMIC_SHELF_ALLOWED_DIRS 环境变量。",
+            )
 
         provider = LocalProvider()
         source_id = provider.normalize_id(req.id) if req.id else provider.normalize_id(raw_path.name)
@@ -822,8 +872,6 @@ class ComicStore:
             img_files = [f for f in raw_path.iterdir() if f.is_file() and f.suffix.lower() in IMAGE_EXTS]
             img_files.sort(key=lambda f: self._natural_key(f.name))
             if not img_files:
-                from fastapi import HTTPException
-
                 raise HTTPException(status_code=400, detail=f"目录中未找到支持的图片文件（支持 {', '.join(IMAGE_EXTS)}）")
 
             for local_i, img_file in enumerate(img_files, start=1):
@@ -868,15 +916,15 @@ class ComicStore:
         for i in range(1, min(meta.cover_count, meta.page_count) + 1):
             try:
                 self.ensure_cover(meta, fetched, i)
-            except Exception:
-                pass
+            except Exception as e:
+                logger.warning("Failed to generate initial cover %d for %s: %s", i, source_id, e)
 
         if meta.chapters:
             for ch in meta.chapters:
                 try:
                     self.ensure_chapter_cover(meta, fetched, ch)
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.warning("Failed to generate chapter cover for %s (%s): %s", source_id, ch.id, e)
 
         return meta
 
@@ -888,13 +936,8 @@ class ComicStore:
         target_chapter: str = "",
         new_chapter_title: str = "",
     ) -> ComicMeta:
-        from .providers.local import LocalProvider
-        import datetime
-
         fetched = self.load_fetched("local", source_id)
         if fetched is None:
-            from fastapi import HTTPException
-
             raise HTTPException(status_code=404, detail="本地漫画不存在")
 
         meta = fetched.meta
@@ -917,17 +960,18 @@ class ComicStore:
                 cand2 = Path.cwd() / raw_path
                 raw_path = cand1 if cand1.exists() else cand2
             if not raw_path.exists() or not raw_path.is_dir():
-                from fastapi import HTTPException
-
                 raise HTTPException(status_code=400, detail=f"指定目录不存在：{server_path}")
+            if not _is_path_allowed(raw_path):
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"出于安全考虑，禁止从指定目录导入（{raw_path}）。如需导入，请配置 COMIC_SHELF_ALLOWED_DIRS 环境变量。",
+                )
             img_files = [f for f in raw_path.iterdir() if f.is_file() and f.suffix.lower() in IMAGE_EXTS]
             img_files.sort(key=lambda f: self._natural_key(f.name))
             for f in img_files:
                 items.append((f.suffix.lower(), f))
 
         if not items:
-            from fastapi import HTTPException
-
             raise HTTPException(status_code=400, detail="未提供有效的图片文件")
 
         target_pages_dir = self.pages_dir("local", source_id)
@@ -962,7 +1006,10 @@ class ComicStore:
                 start=start_idx,
             )
             meta.chapters.append(new_chap)
-            self.ensure_chapter_cover(meta, fetched, new_chap)
+            try:
+                self.ensure_chapter_cover(meta, fetched, new_chap)
+            except Exception as e:
+                logger.warning("Failed to generate cover for new chapter %s: %s", new_chap_id, e)
         else:
             # Appending to existing single chapter or target chapter
             chap_id = target_chapter or (meta.chapters[0].id if meta.chapters else "")
@@ -972,8 +1019,7 @@ class ComicStore:
             existing_in_chap = [p for p in meta.pages if p.chapter == chap_id]
             offset = len(existing_in_chap)
 
-            # If comic is multi-chapter and target is not the last chapter, we need global re-indexing
-            # For simplicity, append at the end of the specified chapter
+            new_chap_pages: list[tuple[str, str]] = []
             for local_i, (ext, data_or_path) in enumerate(items, start=1):
                 dest_name = f"{offset + local_i:05d}{ext}"
                 dest_path = chap_dir / dest_name
@@ -981,16 +1027,47 @@ class ComicStore:
                     shutil.copy2(data_or_path, dest_path)
                 else:
                     dest_path.write_bytes(data_or_path)
+                new_chap_pages.append((dest_name, ext))
 
-                cur_idx = meta.page_count + local_i
-                meta.pages.append(PageRecord(index=cur_idx, file=dest_name, ext=ext, cached=True, chapter=chap_id))
-                fetched.remote_pages.append(RemotePage(index=cur_idx, url="", file=dest_name, ext=ext, chapter=chap_id))
+            if not meta.chapters:
+                # Single-chapter flat comic
+                for local_i, (dest_name, ext) in enumerate(new_chap_pages, start=1):
+                    cur_idx = offset + local_i
+                    meta.pages.append(PageRecord(index=cur_idx, file=dest_name, ext=ext, cached=True, chapter=""))
+                    fetched.remote_pages.append(RemotePage(index=cur_idx, url="", file=dest_name, ext=ext, chapter=""))
+                meta.page_count = len(meta.pages)
+            else:
+                # Multi-chapter comic: Re-index all pages and chapters monotonically
+                chap_page_map: dict[str, list[PageRecord]] = {}
+                for ch in meta.chapters:
+                    chap_page_map[ch.id] = [p for p in meta.pages if p.chapter == ch.id]
 
-            meta.page_count += len(items)
-            if meta.chapters:
-                target_chap_obj = next((c for c in meta.chapters if c.id == chap_id), None)
-                if target_chap_obj:
-                    target_chap_obj.page_count += len(items)
+                if chap_id not in chap_page_map:
+                    chap_page_map[chap_id] = []
+
+                for dest_name, ext in new_chap_pages:
+                    chap_page_map[chap_id].append(
+                        PageRecord(index=0, file=dest_name, ext=ext, cached=True, chapter=chap_id)
+                    )
+
+                rebuilt_pages: list[PageRecord] = []
+                rebuilt_remote: list[RemotePage] = []
+                global_idx = 1
+                for ch in meta.chapters:
+                    ch.start = global_idx
+                    ch_pages = chap_page_map.get(ch.id, [])
+                    ch.page_count = len(ch_pages)
+                    for p in ch_pages:
+                        p.index = global_idx
+                        rebuilt_pages.append(p)
+                        rebuilt_remote.append(
+                            RemotePage(index=global_idx, url="", file=p.file, ext=p.ext, chapter=ch.id)
+                        )
+                        global_idx += 1
+
+                meta.pages = rebuilt_pages
+                fetched.remote_pages = rebuilt_remote
+                meta.page_count = len(meta.pages)
 
         meta.updated_at = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         self.save_fetched(fetched, refresh=True)

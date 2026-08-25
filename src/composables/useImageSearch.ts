@@ -1,6 +1,7 @@
 import { ref, shallowRef } from 'vue'
 import { tryOnMounted, tryOnScopeDispose } from '@vueuse/core'
-import type { ImageSearchResultItem, ImageSearchStatus } from '@/types'
+import { api } from '@/api/client'
+import type { ImageSearchResultItem } from '@/types'
 
 export function useImageSearch() {
   const isAvailable = ref(false)
@@ -9,15 +10,17 @@ export function useImageSearch() {
   const searchImageFile = shallowRef<File | null>(null)
   const searchImagePreviewUrl = ref('')
   const searchResults = shallowRef<ImageSearchResultItem[] | null>(null)
+  let retryTimer: ReturnType<typeof setTimeout> | null = null
 
   const checkStatus = async () => {
     try {
-      const res = await fetch('/api/search/image/status')
-      if (res.ok) {
-        const data: ImageSearchStatus = await res.json()
-        isAvailable.value = data.available
-      } else {
-        isAvailable.value = false
+      const data = await api.imageSearchStatus()
+      isAvailable.value = Boolean(data.available)
+      if (!isAvailable.value && typeof window !== 'undefined') {
+        if (retryTimer) clearTimeout(retryTimer)
+        retryTimer = setTimeout(() => {
+          void checkStatus()
+        }, 6000)
       }
     } catch {
       isAvailable.value = false
@@ -39,6 +42,7 @@ export function useImageSearch() {
   }
 
   tryOnScopeDispose(() => {
+    if (retryTimer) clearTimeout(retryTimer)
     clearImage()
   })
 
@@ -50,18 +54,10 @@ export function useImageSearch() {
     error.value = ''
 
     try {
-      const formData = new FormData()
-      formData.append('file', file)
-      const res = await fetch('/api/search/image', {
-        method: 'POST',
-        body: formData,
-      })
-      if (!res.ok) {
-        throw new Error((await res.text()) || 'Visual search failed')
-      }
-      searchResults.value = await res.json()
+      const results = await api.imageSearch(file)
+      searchResults.value = results
     } catch (e: unknown) {
-      error.value = e instanceof Error ? e.message : 'Error occurred during image search'
+      error.value = e instanceof Error ? e.message : '以图搜图请求失败'
       searchResults.value = null
     } finally {
       isSearching.value = false
