@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import { useScroll } from '@vueuse/core'
 import { api, onAuthSuccess } from '@/api/client'
 import { useAuth } from '@/composables/useAuth'
 import { useBrandIcon } from '@/composables/useBrandIcon'
@@ -18,6 +19,9 @@ const router = useRouter()
 const providers = ref<ProviderInfo[]>([])
 const { authRequired, isGuest, canWrite, logout, openModal } = useAuth()
 const { brandIcon } = useBrandIcon()
+
+const navScrollEl = ref<HTMLElement | null>(null)
+const { arrivedState } = useScroll(navScrollEl)
 
 const navItems = computed<NavItem[]>(() => {
   const items: NavItem[] = [
@@ -76,25 +80,35 @@ onAuthSuccess(fetchProviders)
 
 <template>
   <header class="site-header">
-    <button class="brand" type="button" @click="goLibrary" aria-label="回到全部收藏">
-      <img class="brand-mark" :src="brandIcon" alt="" aria-hidden="true" />
-      <span>
-        <strong>纸间</strong>
-        <small>Paper Room</small>
-      </span>
-    </button>
+    <div class="header-left">
+      <button class="brand" type="button" @click="goLibrary" aria-label="回到全部收藏">
+        <img class="brand-mark" :src="brandIcon" alt="" aria-hidden="true" />
+        <span>
+          <strong>纸间</strong>
+          <small>Paper Room</small>
+        </span>
+      </button>
 
-    <nav class="site-nav" aria-label="来源导航">
-      <RouterLink
-        v-for="item in navItems"
-        :key="item.to"
-        :to="item.to"
-        :class="{ active: isActive(item) }"
+      <nav
+        ref="navScrollEl"
+        class="site-nav"
+        :class="{
+          'has-scroll-left': !arrivedState.left,
+          'has-scroll-right': !arrivedState.right,
+        }"
+        aria-label="来源导航"
       >
-        <span v-if="item.index" class="nav-index">{{ item.index }}</span>
-        {{ item.label }}
-      </RouterLink>
-    </nav>
+        <RouterLink
+          v-for="item in navItems"
+          :key="item.to"
+          :to="item.to"
+          :class="{ active: isActive(item) }"
+        >
+          <span v-if="item.index" class="nav-index">{{ item.index }}</span>
+          <span class="nav-label">{{ item.label }}</span>
+        </RouterLink>
+      </nav>
+    </div>
 
     <div class="header-right">
       <p class="header-note">本地优先 · 缓存后不再访问远端</p>
@@ -139,7 +153,7 @@ onAuthSuccess(fetchProviders)
             <path d="M7 11V7a5 5 0 0 1 10 0v4" />
           </template>
         </svg>
-        <span>
+        <span class="auth-label">
           {{ canWrite ? '〔 馆长已入座 〕' : isGuest ? '〔 访客阅览 〕' : '未解锁' }}
         </span>
       </button>
@@ -152,10 +166,10 @@ onAuthSuccess(fetchProviders)
   position: sticky;
   top: 0;
   z-index: 40;
-  display: grid;
-  grid-template-columns: auto 1fr auto;
+  display: flex;
   align-items: center;
-  gap: var(--space-5);
+  justify-content: space-between;
+  gap: var(--space-4);
   min-height: var(--header-h);
   padding: 0 var(--page-pad);
   border-bottom: 1px solid var(--line);
@@ -163,14 +177,23 @@ onAuthSuccess(fetchProviders)
   backdrop-filter: blur(14px);
 }
 
+.header-left {
+  display: flex;
+  align-items: center;
+  gap: var(--space-6);
+  min-width: 0;
+  flex: 1;
+}
+
 .brand {
   display: inline-flex;
   align-items: center;
-  gap: var(--space-3);
+  gap: var(--space-2-5);
   padding: 0;
   background: transparent;
   color: var(--ink-0);
   text-align: left;
+  flex-shrink: 0;
 }
 
 .brand-mark {
@@ -180,6 +203,7 @@ onAuthSuccess(fetchProviders)
   border-radius: 0.5rem;
   background: color-mix(in oklab, var(--ink-0) 6%, transparent);
   transition: rotate var(--duration-2) var(--ease-spring);
+  flex-shrink: 0;
 }
 
 .brand:hover .brand-mark {
@@ -192,6 +216,7 @@ onAuthSuccess(fetchProviders)
   font-size: var(--text-md);
   line-height: 1.1;
   letter-spacing: 0.08em;
+  white-space: nowrap;
 }
 
 .brand small {
@@ -200,22 +225,64 @@ onAuthSuccess(fetchProviders)
   letter-spacing: 0.14em;
   color: var(--ink-2);
   text-transform: uppercase;
+  white-space: nowrap;
 }
 
 .site-nav {
+  position: relative;
   display: flex;
+  align-items: center;
   gap: var(--space-4);
   align-self: stretch;
+  min-width: 0;
+  overflow-x: auto;
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+  padding: 0 var(--space-2);
+  /* 优雅的纸卷渐变边缘羽化遮罩，感知与引导横向滑动手势 */
+  mask-image: linear-gradient(
+    to right,
+    transparent 0,
+    black var(--mask-left, 0px),
+    black calc(100% - var(--mask-right, 0px)),
+    transparent 100%
+  );
+  -webkit-mask-image: linear-gradient(
+    to right,
+    transparent 0,
+    black var(--mask-left, 0px),
+    black calc(100% - var(--mask-right, 0px)),
+    transparent 100%
+  );
+  transition:
+    --mask-left var(--duration-2) var(--ease-out),
+    --mask-right var(--duration-2) var(--ease-out);
+}
+
+.site-nav.has-scroll-left {
+  --mask-left: 1.25rem;
+}
+
+.site-nav.has-scroll-right {
+  --mask-right: 1.5rem;
+}
+
+.site-nav::-webkit-scrollbar {
+  display: none;
 }
 
 .site-nav a {
   position: relative;
   display: inline-flex;
   align-items: center;
-  gap: var(--space-2);
+  gap: var(--space-1-5);
   font-size: var(--text-sm);
   color: var(--ink-1);
   transition: color var(--duration-1) var(--ease-out);
+  white-space: nowrap;
+  flex-shrink: 0;
+  height: 100%;
+  padding: 0 var(--space-1);
 }
 
 .site-nav a::after {
@@ -245,6 +312,11 @@ onAuthSuccess(fetchProviders)
   font-family: var(--font-mono);
   font-size: var(--text-caption);
   color: var(--ink-2);
+  line-height: 1;
+}
+
+.nav-label {
+  white-space: nowrap;
 }
 
 .header-right {
@@ -252,12 +324,14 @@ onAuthSuccess(fetchProviders)
   align-items: center;
   gap: var(--space-4);
   justify-content: flex-end;
+  flex-shrink: 0;
 }
 
 .header-note {
   font-family: var(--font-mono);
   font-size: var(--text-xs);
   color: var(--ink-2);
+  white-space: nowrap;
 }
 
 .auth-badge-btn {
@@ -272,6 +346,8 @@ onAuthSuccess(fetchProviders)
   font-size: var(--text-caption);
   color: var(--ink-1);
   cursor: pointer;
+  white-space: nowrap;
+  flex-shrink: 0;
   transition: all var(--duration-1) var(--ease-out);
 }
 
@@ -310,11 +386,35 @@ onAuthSuccess(fetchProviders)
 
 @media (max-width: 640px) {
   .site-header {
-    grid-template-columns: auto 1fr auto;
+    gap: var(--space-2-5);
+    padding: 0 var(--space-3);
+  }
+
+  .header-left {
+    gap: var(--space-2-5);
   }
 
   .header-note {
     display: none;
+  }
+
+  .site-nav {
+    gap: var(--space-2-5);
+    padding: 0 var(--space-1);
+  }
+
+  .site-nav a {
+    font-size: var(--text-xs);
+    gap: var(--space-1);
+  }
+
+  .brand small {
+    display: none;
+  }
+
+  .brand-mark {
+    width: 2rem;
+    height: 2rem;
   }
 }
 </style>

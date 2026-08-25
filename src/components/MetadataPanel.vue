@@ -29,11 +29,11 @@ const fieldRows = [
 <template>
   <section class="metadata-panel" aria-labelledby="meta-title">
     <div class="meta-head">
-      <div>
+      <div class="meta-head-top">
         <p class="eyebrow">Catalog card</p>
-        <h2 id="meta-title">{{ meta.title }}</h2>
+        <span class="meta-id">{{ meta.display_id }}</span>
       </div>
-      <span class="meta-id">{{ meta.display_id }}</span>
+      <h2 id="meta-title">{{ meta.title }}</h2>
     </div>
 
     <dl class="meta-grid">
@@ -75,14 +75,32 @@ const fieldRows = [
 
 .meta-head {
   display: flex;
-  gap: var(--space-4);
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.meta-head-top {
+  display: flex;
+  align-items: center;
   justify-content: space-between;
-  align-items: start;
+  gap: var(--space-3);
+}
+
+.meta-head-top .eyebrow {
+  margin: 0;
+  font-size: var(--text-caption);
+  letter-spacing: 0.12em;
+  color: var(--accent);
+  text-transform: uppercase;
 }
 
 .meta-head h2 {
-  margin-top: var(--space-2);
+  margin: 0;
   font-size: var(--text-xl);
+  line-height: var(--leading-tight);
+  letter-spacing: -0.01em;
+  word-break: break-word;
+  overflow-wrap: anywhere;
 }
 
 .meta-id {
@@ -93,6 +111,9 @@ const fieldRows = [
   font-size: var(--text-xs);
   color: var(--accent-strong);
   white-space: nowrap;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .meta-grid {
