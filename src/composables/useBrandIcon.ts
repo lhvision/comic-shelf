@@ -5,6 +5,9 @@ const BRAND_ICONS = [
   '/brand-icons/icon-2.webp',
   '/brand-icons/icon-3.webp',
   '/brand-icons/icon-4.webp',
+  '/brand-icons/icon-5.webp',
+  '/brand-icons/icon-6.webp',
+  '/brand-icons/icon-7.webp',
 ]
 
 // Pick a random icon on initial page load / refresh
