@@ -224,6 +224,25 @@ export const api = {
       body: JSON.stringify(payload),
     })
   },
+  updateChapter: async (source: string, sourceId: string, chapterId: string, title: string) => {
+    memoizedDetail.delete(source, sourceId)
+    return request<ComicDetail>(
+      `/library/${source}/${sourceId}/chapters/${encodeURIComponent(chapterId)}`,
+      {
+        method: 'PATCH',
+        body: JSON.stringify({ title }),
+      },
+    )
+  },
+  deleteChapter: async (source: string, sourceId: string, chapterId: string) => {
+    memoizedDetail.delete(source, sourceId)
+    return request<ComicDetail>(
+      `/library/${source}/${sourceId}/chapters/${encodeURIComponent(chapterId)}`,
+      {
+        method: 'DELETE',
+      },
+    )
+  },
   discoveryRanking: (timeframe: import('@/types').DiscoveryTimeframe = 'week', refresh = false) =>
     request<import('@/types').DiscoveryFeed>(
       `/discovery/ranking?timeframe=${encodeURIComponent(timeframe)}${refresh ? '&refresh=true' : ''}`,

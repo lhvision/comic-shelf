@@ -7,7 +7,7 @@
 | `src/views/LibraryView.vue`                    | 书架视图编排：Hero / 导入 / 筛选工具栏 / 卡片网格                          |
 | `src/views/DiscoveryView.vue`                  | 发现页视图编排：分段榜单切换、分类筛选、榜单卡片网格与一键收录             |
 | `src/views/ComicDetailView.vue`                | 详情视图编排：封面流 / 元数据 / 操作栏 / 章节目录 / 页面索引               |
-| `src/views/ChapterView.vue`                    | 章节子路由：某话章节头 + 该话 PageIndexGrid                                |
+| `src/views/ChapterView.vue`                    | 章节子路由：某话章节头（本话缓存进度/重命名/删除管理）+ 该话 PageIndexGrid |
 | `src/views/CreateComicView.vue`                | 自建图集工坊：单话/多章节多图拖拽暂存、服务器路径导入、元数据与封面编排    |
 | `src/views/ReaderView.vue`                     | 阅读器视图编排：模式切换、DOM 分屏挂载、HUD / 顶栏 / 设置面板接线          |
 | `src/composables/useAuth.ts`                   | 访问鉴权与门禁状态机：Cookie/Token 会话、状态探测、401 拦截联动            |
@@ -71,20 +71,21 @@
                     │                                     │
       • 360px JPEG 缩略图（~15KB）          • 本地磁盘原图 0 远端请求秒开
       • useIntersectionObserver             • 缇雅 30s 全长动图装订卡片
-        (48 页/批增量懒展开)                  • GPU 硬件加速 opacity 交叉淡显
+        (24 页/批增量懒展开)                  • GPU 硬件加速 opacity 交叉淡显
       • content-visibility: auto            • 视口外页面跳过渲染与 Paint
 ```
 
-- 详情页页面索引**不要一次渲染全部**：`ComicDetailView` 默认只渲染前 48 个 tile，
+- 详情页页面索引**不要一次渲染全部**：`ComicDetailView` 与 `ChapterView` 默认只渲染前 24 个 tile（`CHAPTER_PAGE_STEP = 24`），
   滚动到 sentinel 自动加载下一批，并显示“已显示 X / Y 页”。
 - tile 使用 `/pages/{n}/thumbnail`（360px JPEG，服务端懒生成并缓存），
   不要用 `/pages/{n}/file` 原图做缩略图。
 - **分级渲染与隔离准则**：
   - 页面索引 tile、章节卡片与 reader spread 节点众多，使用 `content-visibility: auto`；
-  - 书架卡片（`ComicCard`）包含 4 张展示封面与 Hover 浮动动效，**严禁使用 `content-visibility: auto`**（防 `contain: paint` 剪切 Hover 浮动与柔和阴影），改用 `contain: layout style` + `container-type: inline-size` 配合 **12 本/批（48 图预算）增量渲染**。
+  - 书架卡片（`ComicCard`）：3D 扇形副封面采用交互延迟加载（`@pointerenter.once` / `@focusin.once`），初始仅请求主封面（12 本 = 12 个请求，降低 75% 初始并发）；**严禁使用 `content-visibility: auto`**（防 `contain: paint` 剪切 Hover 浮动与柔和阴影），改用 `contain: layout style` + `container-type: inline-size` 配合 **12 本/批增量渲染**。
+  - 所有存在文本截断的按钮、下拉框（`select`/`option`）、章节标题与元数据必须 100% 绑定原生 `:title` 属性，确保 a11y 与信息可读性。
 - HTML-in-Canvas 不适合做页面索引虚拟化：为每个 tile 建 canvas 会比图片更耗内存。
   它只用于 DOM 合成（封面卡），性能优化仍以 thumbnail + 增量 DOM 为主。
-- **预热机制（Pre-warming）**：浏览页面索引缩略图时已自动触发后端原图解密入库，随后进入阅读器可 100% 本地秒开。禁止在阅读器大图使用 LQIP（模糊马赛克底图）以防破坏纸质质感。
+- **预热机制（Pre-warming）**：后台预缓存任务在拉取原图的同时自动生成 360px 缩略图，详情页访问 100% 命中暖缓存；后端同时配备 `COMIC_SHELF_THUMB_CONCURRENCY` 门禁，防止多用户并发动态生成导致 CPU 击穿。进入阅读器可 100% 本地秒开。禁止在阅读器大图使用 LQIP（模糊马赛克底图）以防破坏纸质质感。
 
 ## 6.6 多来源导航
 

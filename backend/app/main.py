@@ -28,6 +28,7 @@ from .storage import ComicStore, _write_json_atomic
 from .models import (
     AuthStatusResponse,
     CacheProgress,
+    ChapterUpdateRequest,
     ComicDetail,
     ComicMeta,
     ConcurrencyInfo,
@@ -87,8 +88,8 @@ async def auth_and_security_middleware(request: Request, call_next):
     ):
         return await call_next(request)
 
-    # Check hotlink protection for image endpoints
-    if "/pages/" in path or "/covers/" in path or "/chapters/" in path:
+    # Check hotlink protection for image binary endpoints
+    if path.endswith(("/file", "/thumbnail", "/cover")):
         try:
             check_hotlink_protection(request)
         except HTTPException as exc:
@@ -360,6 +361,25 @@ def update_comic_metadata(source: str, source_id: str, req: MetadataUpdateReques
     _require_known_source(source)
     updates = req.model_dump(exclude_unset=True)
     meta = store.update_metadata(source, source_id, updates)
+    return store.detail(meta)
+
+
+@app.patch("/api/library/{source}/{source_id}/chapters/{chapter_id}", response_model=ComicDetail)
+def update_chapter_title(
+    source: str,
+    source_id: str,
+    chapter_id: str,
+    req: ChapterUpdateRequest,
+) -> ComicDetail:
+    _require_known_source(source)
+    meta = store.update_chapter_title(source, source_id, chapter_id, req.title)
+    return store.detail(meta)
+
+
+@app.delete("/api/library/{source}/{source_id}/chapters/{chapter_id}", response_model=ComicDetail)
+def delete_chapter(source: str, source_id: str, chapter_id: str) -> ComicDetail:
+    _require_known_source(source)
+    meta = store.delete_chapter(source, source_id, chapter_id)
     return store.detail(meta)
 
 

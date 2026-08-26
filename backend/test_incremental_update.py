@@ -299,10 +299,234 @@ def test_append_pages_multi_chapter_reindex():
         shutil.rmtree(temp_dir, ignore_errors=True)
 
 
+def test_append_pages_auto_promotion():
+    temp_dir = tempfile.mkdtemp()
+    try:
+        store = ComicStore()
+        store._base_dir = Path(temp_dir)
+        source = "local"
+        source_id = "test_single_to_multi"
+
+        # Create single-chapter comic (flat pages)
+        pages = [
+            PageRecord(index=1, file="00001.webp", ext=".webp", cached=True, chapter=""),
+            PageRecord(index=2, file="00002.webp", ext=".webp", cached=True, chapter=""),
+        ]
+        remote_pages = [
+            RemotePage(index=1, url="", file="00001.webp", ext=".webp", chapter=""),
+            RemotePage(index=2, url="", file="00002.webp", ext=".webp", chapter=""),
+        ]
+        meta = ComicMeta(
+            source=source,
+            source_id=source_id,
+            display_id=f"LOC_{source_id}",
+            title="Single Comic",
+            authors=["Artist"],
+            page_count=2,
+            pages=pages,
+            chapters=[],
+        )
+        fetched = FetchedComic(meta=meta, remote_pages=remote_pages)
+        store.save_fetched(fetched, refresh=False)
+
+        # Write the initial files to flat pages_dir
+        pages_dir = store.pages_dir(source, source_id)
+        pages_dir.mkdir(parents=True, exist_ok=True)
+        (pages_dir / "00001.webp").write_bytes(b"page1")
+        (pages_dir / "00002.webp").write_bytes(b"page2")
+
+        # Now append a NEW chapter (creating Chapter 2)
+        new_files = [("001.webp", b"p3_chap2"), ("002.webp", b"p4_chap2")]
+        updated = store.append_pages(source_id, files=new_files, new_chapter_title="第 2 话")
+
+        # Verify auto-promotion:
+        # chapters length == 2
+        # Chapter 1 (synthesized): id="c1", index=1, title="第 1 话", page_count=2, start=1
+        # Chapter 2: index=2, title="第 2 话", page_count=2, start=3
+        # Total page_count == 4
+        # All pages indexed strictly 1..4
+        assert len(updated.chapters) == 2
+        assert updated.chapters[0].id == "c1"
+        assert updated.chapters[0].index == 1
+        assert updated.chapters[0].title == "第 1 话"
+        assert updated.chapters[0].page_count == 2
+        assert updated.chapters[0].start == 1
+
+        assert updated.chapters[1].index == 2
+        assert updated.chapters[1].title == "第 2 话"
+        assert updated.chapters[1].page_count == 2
+        assert updated.chapters[1].start == 3
+
+        assert updated.page_count == 4
+        assert [p.index for p in updated.pages] == [1, 2, 3, 4]
+        assert [p.chapter for p in updated.pages] == ["c1", "c1", updated.chapters[1].id, updated.chapters[1].id]
+        print("  ✓ test_append_pages_auto_promotion passed (promoted flat single comic to 2 chapters)")
+    finally:
+        shutil.rmtree(temp_dir, ignore_errors=True)
+
+
+def test_append_pages_empty_comic_no_ghost_chapter():
+    temp_dir = tempfile.mkdtemp()
+    try:
+        store = ComicStore()
+        store._base_dir = Path(temp_dir)
+        source = "local"
+        source_id = "test_empty_init"
+
+        # Create totally empty comic (0 pages, 0 chapters)
+        meta = ComicMeta(
+            source=source,
+            source_id=source_id,
+            display_id=f"LOC_{source_id}",
+            title="Empty Comic",
+            authors=["Artist"],
+            page_count=0,
+            pages=[],
+            chapters=[],
+        )
+        fetched = FetchedComic(meta=meta, remote_pages=[])
+        store.save_fetched(fetched, refresh=False)
+
+        # Append Chapter 1
+        new_files = [("001.webp", b"p1_chap1"), ("002.webp", b"p2_chap1")]
+        updated = store.append_pages(source_id, files=new_files, new_chapter_title="第 1 话")
+
+        # Must have ONLY 1 chapter, not a 0P ghost Chapter 1 + Chapter 2
+        assert len(updated.chapters) == 1
+        assert updated.chapters[0].index == 1
+        assert updated.chapters[0].title == "第 1 话"
+        assert updated.chapters[0].page_count == 2
+        assert updated.chapters[0].start == 1
+        assert updated.page_count == 2
+        print("  ✓ test_append_pages_empty_comic_no_ghost_chapter passed (0P empty comic correctly gets 1 chapter)")
+    finally:
+        shutil.rmtree(temp_dir, ignore_errors=True)
+
+
+def test_chapter_title_update_and_delete():
+    temp_dir = tempfile.mkdtemp()
+    try:
+        store = ComicStore()
+        store._base_dir = Path(temp_dir)
+        source = "local"
+        source_id = "test_crud_chap"
+
+        # Create 3 chapters with 2 pages each
+        chapters = [
+            Chapter(id="ch1", index=1, title="第 1 话", page_count=2, start=1),
+            Chapter(id="ch2", index=2, title="第 2 话", page_count=2, start=3),
+            Chapter(id="ch3", index=3, title="第 3 话", page_count=2, start=5),
+        ]
+        pages = [
+            PageRecord(index=1, file="00001.webp", ext=".webp", cached=True, chapter="ch1"),
+            PageRecord(index=2, file="00002.webp", ext=".webp", cached=True, chapter="ch1"),
+            PageRecord(index=3, file="00001.webp", ext=".webp", cached=True, chapter="ch2"),
+            PageRecord(index=4, file="00002.webp", ext=".webp", cached=True, chapter="ch2"),
+            PageRecord(index=5, file="00001.webp", ext=".webp", cached=True, chapter="ch3"),
+            PageRecord(index=6, file="00002.webp", ext=".webp", cached=True, chapter="ch3"),
+        ]
+        remote_pages = [
+            RemotePage(index=1, url="", file="00001.webp", ext=".webp", chapter="ch1"),
+            RemotePage(index=2, url="", file="00002.webp", ext=".webp", chapter="ch1"),
+            RemotePage(index=3, url="", file="00001.webp", ext=".webp", chapter="ch2"),
+            RemotePage(index=4, url="", file="00002.webp", ext=".webp", chapter="ch2"),
+            RemotePage(index=5, url="", file="00001.webp", ext=".webp", chapter="ch3"),
+            RemotePage(index=6, url="", file="00002.webp", ext=".webp", chapter="ch3"),
+        ]
+        meta = ComicMeta(
+            source=source,
+            source_id=source_id,
+            display_id=f"LOC_{source_id}",
+            title="CRUD Chapter Comic",
+            authors=["Artist"],
+            page_count=6,
+            pages=pages,
+            chapters=chapters,
+        )
+        fetched = FetchedComic(meta=meta, remote_pages=remote_pages)
+        store.save_fetched(fetched, refresh=False)
+
+        # 1. Update Chapter 2 title
+        updated = store.update_chapter_title(source, source_id, "ch2", "第 2 话 · 决战前夜")
+        assert updated.chapters[1].title == "第 2 话 · 决战前夜"
+
+        # 2. Delete Chapter 2 (middle chapter)
+        deleted_meta = store.delete_chapter(source, source_id, "ch2")
+        # Remaining: ch1 (2P, start 1), ch3 (2P, start 3, index 2)
+        assert len(deleted_meta.chapters) == 2
+        assert deleted_meta.chapters[0].id == "ch1"
+        assert deleted_meta.chapters[0].index == 1
+        assert deleted_meta.chapters[0].start == 1
+        assert deleted_meta.chapters[0].page_count == 2
+
+        assert deleted_meta.chapters[1].id == "ch3"
+        assert deleted_meta.chapters[1].index == 2
+        assert deleted_meta.chapters[1].start == 3
+        assert deleted_meta.chapters[1].page_count == 2
+
+        assert deleted_meta.page_count == 4
+        assert [p.index for p in deleted_meta.pages] == [1, 2, 3, 4]
+        assert [p.chapter for p in deleted_meta.pages] == ["ch1", "ch1", "ch3", "ch3"]
+        print("  ✓ test_chapter_title_update_and_delete passed (title updated and middle chapter deleted)")
+    finally:
+        shutil.rmtree(temp_dir, ignore_errors=True)
+
+
+def test_heal_broken_chapters():
+    temp_dir = tempfile.mkdtemp()
+    try:
+        store = ComicStore()
+        store._base_dir = Path(temp_dir)
+        source = "local"
+        source_id = "test_broken_heal"
+
+        # Simulate user's exact corrupted state: 2 pages total, page 1 orphaned (chapter=""), page 2 chapter="ch_new", chapters=[Chapter(start=2)]
+        pages = [
+            PageRecord(index=1, file="00001.webp", ext=".webp", cached=True, chapter=""),
+            PageRecord(index=2, file="00002.webp", ext=".webp", cached=True, chapter="ch_new"),
+        ]
+        chapters = [
+            Chapter(id="ch_new", index=1, title="第 2 话", page_count=1, start=2),
+        ]
+        meta = ComicMeta(
+            source=source,
+            source_id=source_id,
+            display_id=f"LOC_{source_id}",
+            title="Broken Comic",
+            authors=["Artist"],
+            page_count=2,
+            pages=pages,
+            chapters=chapters,
+        )
+        fetched = FetchedComic(meta=meta, remote_pages=[])
+        store.save_fetched(fetched, refresh=False)
+
+        # Invalidate cache and reload via load_meta -> should auto-heal
+        store._invalidate_cache(source, source_id)
+        healed = store.load_meta(source, source_id)
+        assert healed is not None
+        assert len(healed.chapters) == 2
+        assert healed.chapters[0].id == "c1"
+        assert healed.chapters[0].title == "第 1 话"
+        assert healed.chapters[0].page_count == 1
+        assert healed.chapters[0].start == 1
+        assert healed.chapters[1].id == "ch_new"
+        assert healed.chapters[1].index == 2
+        assert healed.chapters[1].start == 2
+        assert healed.pages[0].chapter == "c1"
+        print("  ✓ test_heal_broken_chapters passed (auto-healed broken chapter list)")
+    finally:
+        shutil.rmtree(temp_dir, ignore_errors=True)
+
+
 if __name__ == "__main__":
     print("Running incremental update backend tests...")
     test_incremental_fetch_unchanged()
     test_incremental_fetch_new_chapter()
     test_storage_flat_to_chapter_migration()
     test_append_pages_multi_chapter_reindex()
+    test_append_pages_auto_promotion()
+    test_append_pages_empty_comic_no_ghost_chapter()
+    test_chapter_title_update_and_delete()
+    test_heal_broken_chapters()
     print("All incremental update backend tests passed successfully!")

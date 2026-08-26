@@ -82,10 +82,15 @@ async function load(silent = false) {
     detail.value = await api.detail(source.value, sourceId.value)
     // 若尚未完全缓存或后台有任务在运行，启动前端就地状态轮询
     if (!detail.value.cache_complete && detail.value.cached_pages < detail.value.meta.page_count) {
+      const job = await api.cacheJob(source.value, sourceId.value)
+      if (job.running) caching.value = true
       startProgressPolling()
     } else {
       const job = await api.cacheJob(source.value, sourceId.value)
-      if (job.running) startProgressPolling()
+      if (job.running) {
+        caching.value = true
+        startProgressPolling()
+      }
     }
   } catch (e) {
     toast(e instanceof Error ? e.message : String(e), 'error')
@@ -114,6 +119,7 @@ const { pause: pauseProgressPolling, resume: resumeProgressPolling } = useInterv
         }
       }
       if (progress.complete) {
+        caching.value = false
         if (detail.value?.meta?.pages) {
           for (const p of detail.value.meta.pages) {
             p.cached = true
@@ -239,7 +245,13 @@ function startReading(page = progressEl.value || 1) {
 
     <template v-else-if="detail">
       <div class="detail-hero surface">
-        <button class="detail-back icon-btn" type="button" aria-label="返回书库" @click="goBack">
+        <button
+          class="detail-back icon-btn"
+          type="button"
+          aria-label="返回书库"
+          title="返回书库"
+          @click="goBack"
+        >
           <span aria-hidden="true">←</span>
         </button>
         <CoverCarousel
@@ -275,6 +287,7 @@ function startReading(page = progressEl.value || 1) {
         :source-id="sourceId"
         :chapters="chapters"
         :chapter-cache="chapterCache"
+        :running="caching"
       />
 
       <PageIndexGrid

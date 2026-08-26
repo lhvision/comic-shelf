@@ -26,6 +26,7 @@ function scrollByCard(direction: number) {
         class="carousel-arrow icon-btn"
         type="button"
         aria-label="上一张封面"
+        title="上一张封面"
         @click="scrollByCard(-1)"
       >
         ←
@@ -34,6 +35,7 @@ function scrollByCard(direction: number) {
         class="carousel-arrow icon-btn"
         type="button"
         aria-label="下一张封面"
+        title="下一张封面"
         @click="scrollByCard(1)"
       >
         →

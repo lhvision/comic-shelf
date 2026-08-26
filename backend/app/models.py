@@ -314,6 +314,10 @@ class LocalAppendRequest(BaseModel):
     server_path: str = ""
 
 
+class ChapterUpdateRequest(BaseModel):
+    title: str = ""
+
+
 class DiscoveryItem(BaseModel):
     id: str
     source_id: str

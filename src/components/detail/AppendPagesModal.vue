@@ -81,6 +81,15 @@ watch(
 
 const isMulti = computed(() => (props.meta.chapters?.length ?? 0) > 1)
 
+const selectedChapter = computed(
+  () => props.meta.chapters?.find((ch) => ch.id === selectedChapterId.value) ?? null,
+)
+const selectedChapterLabel = computed(() =>
+  selectedChapter.value
+    ? `第 ${selectedChapter.value.index} 话：${selectedChapter.value.title}（当前 ${selectedChapter.value.page_count} 页）`
+    : '',
+)
+
 async function submit() {
   submitting.value = true
   try {
@@ -155,8 +164,18 @@ async function submit() {
 
       <div v-if="appendType === 'current' && isMulti">
         <label class="form-label" for="select-chap">选择目标章节</label>
-        <select id="select-chap" v-model="selectedChapterId" class="field-select">
-          <option v-for="ch in meta.chapters" :key="ch.id" :value="ch.id">
+        <select
+          id="select-chap"
+          v-model="selectedChapterId"
+          class="field-select"
+          :title="selectedChapterLabel"
+        >
+          <option
+            v-for="ch in meta.chapters"
+            :key="ch.id"
+            :value="ch.id"
+            :title="`第 ${ch.index} 话：${ch.title}（当前 ${ch.page_count} 页）`"
+          >
             第 {{ ch.index }} 话：{{ ch.title }}（当前 {{ ch.page_count }} 页）
           </option>
         </select>

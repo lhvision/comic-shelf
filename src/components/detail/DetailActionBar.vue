@@ -80,15 +80,31 @@ const cacheScale = computed(() => `scaleX(${props.cachePercent / 100})`)
 <template>
   <div class="detail-actions">
     <div class="action-bar surface">
-      <button class="btn btn-primary btn-read" type="button" @click="emit('startReading')">
+      <button
+        class="btn btn-primary btn-read"
+        type="button"
+        :title="lastReadLabel || (lastRead ? `继续阅读 · 第 ${lastRead} 页` : '开始阅读')"
+        @click="emit('startReading')"
+      >
         {{ lastReadLabel || (lastRead ? `继续阅读 · 第 ${lastRead} 页` : '开始阅读') }}
       </button>
 
-      <button class="btn btn-ghost" type="button" @click="emit('startReading', 1)">
+      <button
+        class="btn btn-ghost"
+        type="button"
+        title="从第 1 页开始阅读"
+        @click="emit('startReading', 1)"
+      >
         从第 1 页开始
       </button>
 
-      <button v-if="canWrite" class="btn btn-ghost" type="button" @click="emit('editMetadata')">
+      <button
+        v-if="canWrite"
+        class="btn btn-ghost"
+        type="button"
+        title="编辑作品标题、作者、标签与元数据"
+        @click="emit('editMetadata')"
+      >
         编辑资料
       </button>
 
@@ -96,6 +112,7 @@ const cacheScale = computed(() => `scaleX(${props.cachePercent / 100})`)
         v-if="canWrite && source === 'local'"
         class="btn btn-ghost"
         type="button"
+        title="增量追加新页面或新章节到本地作品"
         @click="emit('appendPages')"
       >
         增量追加…
@@ -106,6 +123,13 @@ const cacheScale = computed(() => `scaleX(${props.cachePercent / 100})`)
         class="btn btn-ghost"
         type="button"
         :disabled="caching || cacheComplete"
+        :title="
+          cacheComplete
+            ? '所有页面均已完成本地缓存'
+            : caching
+              ? `正在后台缓存中（${cachePercent}%）`
+              : `缓存整本作品到本地（已缓存 ${cachedPages}/${pageCount}）`
+        "
         @click="emit('cacheAll')"
       >
         {{
@@ -121,6 +145,7 @@ const cacheScale = computed(() => `scaleX(${props.cachePercent / 100})`)
         v-if="canWrite && source !== 'local'"
         class="btn btn-ghost"
         type="button"
+        title="从远端重新同步作品章节与最新元数据"
         @click="emit('refreshMetadata')"
       >
         刷新资料
@@ -132,6 +157,7 @@ const cacheScale = computed(() => `scaleX(${props.cachePercent / 100})`)
           type="button"
           :aria-expanded="moreOpen"
           :aria-haspopup="true"
+          title="更多操作选项"
           @click="moreOpen = !moreOpen"
         >
           ⋯ 更多
@@ -141,6 +167,7 @@ const cacheScale = computed(() => `scaleX(${props.cachePercent / 100})`)
             class="more-item danger-item"
             type="button"
             role="menuitem"
+            title="移除本地已缓存的文件（不可撤销）"
             @click="requestRemove"
           >
             移除本地缓存…

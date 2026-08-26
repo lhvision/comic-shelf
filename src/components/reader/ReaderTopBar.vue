@@ -25,10 +25,10 @@ defineEmits<{
   <div class="reader-chrome" :data-hidden="hidden" :inert="hidden">
     <div class="reader-topbar">
       <ReaderButton @click="$emit('back')">← 返回</ReaderButton>
-      <div class="reader-title">
-        <strong>{{ title }}</strong>
+      <div class="reader-title" :title="`${title} (${displayId}${chapter ? ' · ' + chapter : ''})`">
+        <strong :title="title">{{ title }}</strong>
         <span>{{ displayId }}</span>
-        <span v-if="chapter" class="reader-chapter">{{ chapter }}</span>
+        <span v-if="chapter" class="reader-chapter" :title="chapter">{{ chapter }}</span>
       </div>
       <div class="reader-tools">
         <ReaderButton @click="$emit('openSettings')">设置</ReaderButton>

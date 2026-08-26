@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import type { LibrarySummary } from '@/types'
 import FavoriteButton from '@/components/FavoriteButton.vue'
 import CacheProgress from '@/components/CacheProgress.vue'
@@ -21,6 +21,13 @@ const emit = defineEmits<{
 const { isCoverActive, setActiveCover } = useCoverTransition()
 const { canWrite } = useAuth()
 
+const isDeckActive = ref(false)
+function loadDeck() {
+  if (!isDeckActive.value) {
+    isDeckActive.value = true
+  }
+}
+
 const route = computed(() => `/comic/${props.comic.source}/${props.comic.source_id}`)
 
 const deckCovers = computed(() => props.comic.cover_paths.slice(1, 4))
@@ -36,7 +43,12 @@ const cardTransitionName = computed(
 </script>
 
 <template>
-  <article class="comic-card" :style="{ viewTransitionName: cardTransitionName }">
+  <article
+    class="comic-card"
+    :style="{ viewTransitionName: cardTransitionName }"
+    @pointerenter.once="loadDeck"
+    @focusin.once="loadDeck"
+  >
     <RouterLink
       :to="route"
       class="card-link"
@@ -58,6 +70,7 @@ const cardTransitionName = computed(
           :data-deck-index="index"
         >
           <img
+            v-if="isDeckActive"
             class="deck-leaf-img"
             :src="cover"
             alt=""

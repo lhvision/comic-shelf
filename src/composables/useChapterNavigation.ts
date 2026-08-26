@@ -2,7 +2,7 @@ import { computed, ref, watch } from 'vue'
 import type { Ref } from 'vue'
 import type { ComicDetail } from '@/types'
 
-export const CHAPTER_PAGE_STEP = 48
+export const CHAPTER_PAGE_STEP = 24
 
 /**
  * 详情页「多章节导航」组合式函数 —— 承载章节切片这块业务编排。

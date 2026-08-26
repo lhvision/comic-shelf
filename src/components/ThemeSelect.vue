@@ -204,6 +204,7 @@ onBeforeUnmount(() => document.removeEventListener('click', onDocumentClick))
       :aria-label="label"
       :aria-disabled="disabled || undefined"
       :disabled="disabled"
+      :title="selectedLabel"
       @click="toggle"
       @keydown="onTriggerKeydown"
     >
@@ -236,6 +237,7 @@ onBeforeUnmount(() => document.removeEventListener('click', onDocumentClick))
         :aria-selected="option.value === modelValue"
         :aria-disabled="option.disabled || undefined"
         :disabled="option.disabled"
+        :title="option.hint ? `${option.label} (${option.hint})` : option.label"
         @click="commit(index)"
         @mouseenter="!option.disabled && (activeIndex = index)"
       >

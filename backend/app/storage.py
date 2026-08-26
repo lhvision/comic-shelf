@@ -100,6 +100,9 @@ class ComicStore:
         self.root = root
         self._page_locks: dict[tuple[str, str, int] | tuple[str, str], threading.RLock] = {}
         self._locks_guard = threading.Lock()
+        self._thumb_semaphore = threading.BoundedSemaphore(
+            int(os.getenv("COMIC_SHELF_THUMB_CONCURRENCY", "4"))
+        )
         self._meta_cache: dict[tuple[str, str], tuple[float, ComicMeta]] = {}
         self._fetched_cache: dict[tuple[str, str], tuple[float, float, FetchedComic]] = {}
         self._cache_guard = threading.Lock()
@@ -289,6 +292,26 @@ class ComicStore:
                         mtime = path.stat().st_mtime
                     except Exception:
                         pass
+
+        # Auto-heal: If comic has chapters but first chapter start > 1 (orphaned flat pages 1..start-1 exist)
+        if meta.chapters and meta.pages and meta.chapters[0].start > 1:
+            orphaned_count = meta.chapters[0].start - 1
+            first_id = "c1"
+            c1 = Chapter(id=first_id, index=1, title="第 1 话", page_count=orphaned_count, start=1)
+            self._migrate_flat_to_chapter(meta, first_id)
+            for p in meta.pages:
+                if p.index < meta.chapters[0].start:
+                    p.chapter = first_id
+            new_chapters = [c1]
+            for idx, ch in enumerate(meta.chapters, start=2):
+                ch.index = idx
+                new_chapters.append(ch)
+            meta.chapters = new_chapters
+            _write_json_atomic(path, meta.model_dump())
+            try:
+                mtime = path.stat().st_mtime
+            except Exception:
+                pass
 
         with self._cache_guard:
             self._meta_cache[(source, source_id)] = (mtime, meta)
@@ -562,29 +585,33 @@ class ComicStore:
             if target.exists() and target.stat().st_size > 0:
                 return target
 
-            page_path = self.ensure_page(fetched, index)
-            from PIL import Image, ImageOps
+            with self._thumb_semaphore:
+                if target.exists() and target.stat().st_size > 0:
+                    return target
 
-            with Image.open(page_path) as img:
-                img = ImageOps.exif_transpose(img)
-                if getattr(img, "is_animated", False):
-                    img.seek(0)
-                if img.mode not in {"RGB", "L"}:
-                    img = img.convert("RGB")
-                ratio = PAGE_THUMB_WIDTH / max(img.width, 1)
-                if ratio < 1:
-                    size = (PAGE_THUMB_WIDTH, max(1, round(img.height * ratio)))
-                    img = img.resize(size, Image.Resampling.LANCZOS)
-                target.parent.mkdir(parents=True, exist_ok=True)
-                img.save(
-                    target,
-                    format="JPEG",
-                    quality=PAGE_THUMB_QUALITY,
-                    optimize=True,
-                    progressive=True,
-                )
+                page_path = self.ensure_page(fetched, index)
+                from PIL import Image, ImageOps
 
-            return target
+                with Image.open(page_path) as img:
+                    img = ImageOps.exif_transpose(img)
+                    if getattr(img, "is_animated", False):
+                        img.seek(0)
+                    if img.mode not in {"RGB", "L"}:
+                        img = img.convert("RGB")
+                    ratio = PAGE_THUMB_WIDTH / max(img.width, 1)
+                    if ratio < 1:
+                        size = (PAGE_THUMB_WIDTH, max(1, round(img.height * ratio)))
+                        img = img.resize(size, Image.Resampling.LANCZOS)
+                    target.parent.mkdir(parents=True, exist_ok=True)
+                    img.save(
+                        target,
+                        format="JPEG",
+                        quality=PAGE_THUMB_QUALITY,
+                        optimize=True,
+                        progressive=True,
+                    )
+
+                return target
 
     def prefetch(
         self,
@@ -619,6 +646,8 @@ class ComicStore:
                 self.ensure_page(fetched, index)
                 if index <= min(meta.cover_count, meta.page_count):
                     self.ensure_cover(fetched.meta, fetched, index)
+                # T-Optimize: Pre-generate thumbnail during prefetch for warm detail-page hits
+                self.ensure_page_thumb(fetched.meta, fetched, index)
                 done += 1
             except Exception as exc:  # keep import usable even if one page fails
                 warnings.append(f"第 {index} 页缓存失败：{exc}")
@@ -979,8 +1008,31 @@ class ComicStore:
 
         is_new_chapter = bool(new_chapter_title)
         if is_new_chapter:
+            # If the comic was previously a single-chapter flat comic, promote existing pages to Chapter 1
+            if not meta.chapters and meta.pages:
+                first_chap_id = "c1"
+                self._migrate_flat_to_chapter(meta, first_chap_id)
+                old_count = len(meta.pages)
+                for p in meta.pages:
+                    p.chapter = first_chap_id
+                for rp in fetched.remote_pages:
+                    rp.chapter = first_chap_id
+                first_chap = Chapter(
+                    id=first_chap_id,
+                    index=1,
+                    title="第 1 话",
+                    page_count=old_count,
+                    start=1,
+                )
+                meta.chapters = [first_chap]
+                try:
+                    self.ensure_chapter_cover(meta, fetched, first_chap)
+                except Exception as e:
+                    logger.warning("Failed to generate cover for synthesized Chapter 1 %s: %s", source_id, e)
+
             # Adding a new chapter to the comic
-            new_chap_id = provider.normalize_id(f"ch_{len(meta.chapters) + 1}_{datetime.datetime.now().strftime('%M%S')}")
+            new_chap_idx = len(meta.chapters) + 1
+            new_chap_id = provider.normalize_id(f"c{new_chap_idx}_{datetime.datetime.now().strftime('%M%S')}")
             chap_dir = target_pages_dir / self._safe(new_chap_id)
             chap_dir.mkdir(parents=True, exist_ok=True)
 
@@ -1000,8 +1052,8 @@ class ComicStore:
             meta.page_count += len(items)
             new_chap = Chapter(
                 id=new_chap_id,
-                index=len(meta.chapters) + 1,
-                title=new_chapter_title.strip() or f"第 {len(meta.chapters) + 1} 话",
+                index=new_chap_idx,
+                title=new_chapter_title.strip() or f"第 {new_chap_idx} 话",
                 page_count=len(items),
                 start=start_idx,
             )
@@ -1071,6 +1123,92 @@ class ComicStore:
 
         meta.updated_at = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         self.save_fetched(fetched, refresh=True)
+        return meta
+
+    def update_chapter_title(self, source: str, source_id: str, chapter_id: str, new_title: str) -> ComicMeta:
+        meta = self.load_meta(source, source_id)
+        if meta is None:
+            raise HTTPException(status_code=404, detail="本子还没有导入本地书库")
+
+        chapter = next((c for c in meta.chapters if c.id == chapter_id), None)
+        if chapter is None:
+            raise HTTPException(status_code=404, detail=f"未找到章节：{chapter_id}")
+
+        chapter.title = new_title.strip() or f"第 {chapter.index} 话"
+        meta.updated_at = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        _write_json_atomic(self.album_path(source, source_id), meta.model_dump())
+        self._invalidate_cache(source, source_id)
+        return meta
+
+    def delete_chapter(self, source: str, source_id: str, chapter_id: str) -> ComicMeta:
+        fetched = self.load_fetched(source, source_id)
+        if fetched is None:
+            raise HTTPException(status_code=404, detail="本子还没有导入本地书库")
+
+        meta = fetched.meta
+        chapter = next((c for c in meta.chapters if c.id == chapter_id), None)
+        if chapter is None:
+            raise HTTPException(status_code=404, detail=f"未找到章节：{chapter_id}")
+
+        # Delete physical directory and covers for this chapter
+        safe_cid = self._safe(chapter_id)
+        chap_dir = self.pages_dir(source, source_id) / safe_cid
+        if chap_dir.exists():
+            shutil.rmtree(chap_dir, ignore_errors=True)
+
+        thumb_dir = self.thumbs_dir(source, source_id) / safe_cid
+        if thumb_dir.exists():
+            shutil.rmtree(thumb_dir, ignore_errors=True)
+
+        chap_cover = self.chapter_cover_path(meta, chapter)
+        chap_cover.unlink(missing_ok=True)
+
+        # Remove pages belonging to this chapter
+        meta.pages = [p for p in meta.pages if p.chapter != chapter_id]
+        fetched.remote_pages = [rp for rp in fetched.remote_pages if rp.chapter != chapter_id]
+        meta.chapters = [c for c in meta.chapters if c.id != chapter_id]
+
+        # Re-index all remaining pages and chapters monotonically
+        reindexed_pages: list[PageRecord] = []
+        reindexed_remote: list[RemotePage] = []
+        global_idx = 1
+
+        for c_idx, ch in enumerate(meta.chapters, start=1):
+            ch.index = c_idx
+            ch.start = global_idx
+            ch_pages = [p for p in meta.pages if p.chapter == ch.id]
+            ch.page_count = len(ch_pages)
+            for p in ch_pages:
+                p.index = global_idx
+                reindexed_pages.append(p)
+                global_idx += 1
+
+        # If no chapters left but pages exist
+        if not meta.chapters:
+            for p in meta.pages:
+                p.index = global_idx
+                p.chapter = ""
+                reindexed_pages.append(p)
+                global_idx += 1
+
+        for rp in fetched.remote_pages:
+            matching_p = next((p for p in reindexed_pages if p.chapter == rp.chapter and p.file == rp.file), None)
+            if matching_p is not None:
+                rp.index = matching_p.index
+                reindexed_remote.append(rp)
+
+        meta.pages = reindexed_pages
+        meta.page_count = len(reindexed_pages)
+        fetched.remote_pages = reindexed_remote
+        meta.updated_at = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+        _write_json_atomic(self.album_path(source, source_id), meta.model_dump())
+        remote_data = {
+            "decode_version": CURRENT_DECODE_VERSION,
+            "remote_pages": [rp.model_dump() for rp in fetched.remote_pages],
+        }
+        _write_json_atomic(self.remote_path(source, source_id), remote_data)
+        self._invalidate_cache(source, source_id)
         return meta
 
     # ------------------------------------------------------------------

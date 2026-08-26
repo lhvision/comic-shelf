@@ -400,3 +400,44 @@
   4. **零依赖 Python 静态 AST 检查器（`backend/check_backend.py`）**：引入基于 Python 标准库 AST 的作用域检查器，实时校验语法错误、模块导入完整性及未定义变量；
   5. **错题本体系落地（`docs/PITFALLS.md`）**：建立常态化错题本索引，按后端/前端/过渡/安全分类固化 7 大核心避坑红线，并写入 `AGENTS.md` 与 `CONTEXT.md` 强制防退化门禁。
 - **验证**：`pnpm test:py` 全绿（静态 AST 检查 + 中间件全链路测试 + 增量更新 + 权限 + 识图单测）、`vp check`（0 error）、JM 下架车号 `1188845` 404 容错测试通过、正常车号 `523607` 本地与远端收录测试通过。
+
+## 28. 高并发冷热加载优化 + 多章节缓存 UI 体系化 + 文本截断与 Hover 提示（grill-with-docs 确认 → Impeccable 2345 规范）
+
+- **背景与痛点**：
+  1. 首页 12 本书每张卡片默认渲染 4 张封面（1 前景 + 3 扇形副封面），首页一次触发 48 个图片请求，20 人并发达 960 个请求；
+  2. 详情页 48 个页面缩略图在冷缓存（首次加载）时触发高并发远端下载与 Pillow LANCZOS 缩放，易导致 CPU/GIL 争抢及上游 429 封禁；
+  3. 多章节详情与子路由缺少直观的章节级缓存进度，自主上传的多章节作品需要统一的视觉体验；
+  4. 超长按钮与原生下拉控件在文字截断时缺少 hover 提示。
+- **方案决策与落地**：
+  1. **首页卡牌副封面交互延迟加载（Hover/Focus-Triggered Deck）**：
+     - `ComicCard.vue` 引入 `isDeckActive` 响应式状态，在 `@pointerenter.once` 与 `@focusin.once` 时才加载背景 3 张扇形封面；
+     - 初始首屏请求量直降 75%（12 本仅 12 个请求），100% 保留纸质卡牌层叠结构与 Hover 扇形展开动效。
+  2. **详情页切片步长收敛与后端并发门禁（Thumbnail Concurrency Gate & Prefetch Warming）**：
+     - `useChapterNavigation.ts` 将 `CHAPTER_PAGE_STEP` 步长从 48 收敛为 **24**，首屏瞬时缩略图请求减半，触底平滑增量；
+     - `storage.py` 引入 `_thumb_semaphore` 信号量门禁（默认最多 4 个并发 worker 进行 Pillow LANCZOS 转换，通过 `COMIC_SHELF_THUMB_CONCURRENCY` 调节）；
+     - `storage.prefetch` 预缓存流程同步生成各页 360px 缩略图，将冷流量前置转换为 100% 命中磁盘的热缓存。
+  3. **多章节/子章节缓存 UI 体系化（Multi-Chapter Cache Progress UI）**：
+     - `ChapterCard.vue` 集成标准 `CacheProgress.vue`，底部呈现 3px 物理进度轨；
+     - `ChapterView.vue` 顶部导航栏右侧嵌入本话专属 `CacheProgress`，支持后台任务呼吸光点与成功绿实时联动；
+     - 自主上传（`CreateComicView` / `AppendPagesModal`）章节天然为 `cached: true`，UI 自动呈现为「本地 100%」，零特殊代码分支。
+  4. **文本超长与下拉框 Native Title 全面覆盖**：
+     - 针对 `ChapterCard`、`ChapterSwitcher`、`AppendPagesModal`（`select`/`option`）、`ThemeSelect`、`DetailActionBar`、`ReaderTopBar`、`MetadataPanel` 全量补齐动态原生 `:title` 属性，符合 a11y 且 0 额外 DOM 开销。
+- **验证**：`vp check`（134 文件 0 error / 0 warning）、`vp test src/__tests__/ComicGrid.spec.ts` 4/4 通过、`pnpm test:py` 全量通过。
+
+## 29. 单章升阶为多章节体系 + 子章节就地重命名与删除管理（grill-with-docs 确认 → Impeccable 2345 规范）
+
+- **背景与痛点**：
+  1. 用户在创建/导入单章节漫画（`chapters == []`）后，通过「增量追加」添加「第 2 话」时，原旧页面未被封装为「第 1 话」，导致 `meta.chapters` 仅有 1 话（且 `start` 为旧页数+1），前端仍视作单章节且页码错位（如 `LOC_loc_20260825_023256`）；
+  2. 多章节子路由（`ChapterView.vue`）缺少对当前单话名称的重命名与单话物理删除入口。
+- **架构决策与落地**：
+  1. **单章节向多章节平滑自动升阶（Flat → Multi-Chapter Promotion）**：
+     - `storage.append_pages` 判定 `is_new_chapter` 时，若作品原无章节（`not meta.chapters`），自动将已有 1~N 页封包为「第 1 话」（`id="c1"`, `start=1`, `page_count=N`），自动迁移平铺文件至 `pages/c1/` 并生成封面；
+     - 追加的页面作为「第 2 话」（`id="c2"`, `start=N+1`），`meta.chapters` 生成长度为 2 的完备章节表，详情页无缝切换为多章节目录与子路由。
+  2. **历史损坏数据自动自愈（Auto-Healing）**：
+     - `storage.load_meta` 增加自愈校验：若首个章节 `start > 1`（存在未编入章节的孤儿页面），自动合成「第 1 话」并迁移文件重构章节索引；
+     - 现存 `LOC_loc_20260825_023256` 已即时自愈为标准的 2 话多章节作品（第 1 话 121P，第 2 话 1P）。
+  3. **子章节名称修改与物理删除管理（Chapter In-Place Renaming & Deletion）**：
+     - 新增 `PATCH /api/library/{source}/{source_id}/chapters/{chapter_id}` 与 `DELETE /api/library/{source}/{source_id}/chapters/{chapter_id}` 端点；
+     - 删除单话时，后端物理销毁该话 `pages/<chap>` 与缩略图，并对全书后续章节 `start`、`index` 与 `meta.pages` 执行单调连续重排；
+     - `ChapterView.vue` 头部集成「编辑章节」Modal 与「⋯ 更多」下拉菜单（内含「删除本话…」危险操作及防误触二次确认弹窗），删除成功后平滑路由回退至父详情页并弹出 Toast。
+- **验证**：`pnpm test:py` 全量通过（新增 3 组针对升阶、CRUD 与自愈的自动化单测）、`vp check` 0 error / 0 warning、`LOC_loc_20260825_023256` 线上状态验证通过。

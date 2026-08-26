@@ -31,15 +31,15 @@ const fieldRows = [
     <div class="meta-head">
       <div class="meta-head-top">
         <p class="eyebrow">Catalog card</p>
-        <span class="meta-id">{{ meta.display_id }}</span>
+        <span class="meta-id" :title="meta.display_id">{{ meta.display_id }}</span>
       </div>
-      <h2 id="meta-title">{{ meta.title }}</h2>
+      <h2 id="meta-title" :title="meta.title">{{ meta.title }}</h2>
     </div>
 
     <dl class="meta-grid">
       <div v-for="row in fieldRows" :key="row.label" class="meta-row">
         <dt>{{ row.label }}</dt>
-        <dd :data-mono="row.mono">{{ row.value }}</dd>
+        <dd :data-mono="row.mono" :title="row.value">{{ row.value }}</dd>
       </div>
     </dl>
 

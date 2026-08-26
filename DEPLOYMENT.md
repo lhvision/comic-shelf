@@ -85,6 +85,15 @@ backend/data/
 | `COMIC_SHELF_COVER_WIDTH`               | `840`                   | 封面宽度                                                                           |
 | `COMIC_SHELF_MAX_PREFETCH`              | `600`                   | 单次全量缓存页数上限                                                               |
 | `COMIC_SHELF_MAX_CONCURRENT_DOWNLOADS`  | `3`                     | 下载并发数限制                                                                     |
+| `COMIC_SHELF_THUMB_CONCURRENCY`         | `4`                     | 缩略图生成并发门禁（限制同时进行 Pillow 转换的 worker 数，防止冷访问 CPU 雪崩）    |
+
+## 多用户高并发建议（Nginx / Caddy 反向代理）
+
+在多访客（如 20+ 人）局域网或公网部署场景下：
+
+1. **启用 HTTP/2 / HTTP/3**：前置 Nginx 或 Caddy，开启 HTTP/2 多路复用，避免浏览器 HTTP/1.1 每域名 6 连接上限排队。
+2. **利用静态强缓存**：后端图片与缩略图响应均带有 `Cache-Control: public, max-age=2592000, immutable`，访客二次加载 100% 走浏览器本地缓存，0 服务端网络负载。
+3. **冷缓存预热**：导入漫画时勾选预缓存，后台会自动预生成各页 360px 缩略图，避免访客同时打开未缓存漫画详情页时触发动态缩放。
 
 ## 和 Vite+ / vp 的关系
 

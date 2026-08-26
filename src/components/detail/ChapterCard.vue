@@ -1,13 +1,14 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import { chapterCoverUrl } from '@/api/client'
+import CacheProgress from '@/components/CacheProgress.vue'
 import type { Chapter } from '@/types'
 
 /**
  * 章节目录里的单张章节卡片 —— 封面（该话第一页）+ 章节信息 + 缓存进度。
  * - 封面走 T17「章节封面端点」（池化在 covers/chapters/）；加载失败/无页面时回落书脊占位。
  * - 点击进入该话的「章节子路由」（/comic/:source/:id/chapter/:chapterId）。
- * - 多章节本地缓存状态（T10）：父级传入 cachedPages，卡片显示「本地 N%」。
+ * - 多章节本地缓存状态：集成 CacheProgress 组件，支持静态进度与实时后台呼吸动效。
  * 纯展示组件，只依赖 props + 路由链接。
  */
 const props = withDefaults(
@@ -15,14 +16,16 @@ const props = withDefaults(
     source: string
     sourceId: string
     chapter: Chapter
-    /** 该话已本地缓存的页数（T10 章节级缓存进度） */
+    /** 该话已本地缓存的页数（章节级缓存进度） */
     cachedPages?: number
+    /** 是否正在后台缓存中 */
+    running?: boolean
   }>(),
-  { cachedPages: 0 },
+  { cachedPages: 0, running: false },
 )
 
 const coverFailed = ref(false)
-const coverUrl = chapterCoverUrl(props.source, props.sourceId, props.chapter.id)
+const coverUrl = computed(() => chapterCoverUrl(props.source, props.sourceId, props.chapter.id))
 
 watch(
   () => props.chapter.id,
@@ -34,16 +37,14 @@ watch(
 function onCoverError() {
   coverFailed.value = true
 }
-
-/** T10：本地缓存百分比文案；未缓存完单页或不传时隐藏。 */
-const cachePercent = computed(() => {
-  if (props.chapter.page_count <= 0) return null
-  return Math.round((props.cachedPages / props.chapter.page_count) * 100)
-})
 </script>
 
 <template>
-  <RouterLink :to="`/comic/${source}/${sourceId}/chapter/${chapter.id}`" class="chapter-card">
+  <RouterLink
+    :to="`/comic/${source}/${sourceId}/chapter/${chapter.id}`"
+    class="chapter-card"
+    :title="`${chapter.title || `第 ${chapter.index} 話`} (${chapter.page_count} 页)`"
+  >
     <div class="chapter-cover" :data-blank="coverFailed || chapter.page_count === 0">
       <img
         v-if="chapter.page_count > 0"
@@ -56,13 +57,13 @@ const cachePercent = computed(() => {
     </div>
     <div class="chapter-info">
       <p class="eyebrow">第 {{ chapter.index }} 話</p>
-      <h3 class="chapter-title">{{ chapter.title || `第 ${chapter.index} 話` }}</h3>
-      <p class="chapter-meta">
-        {{ chapter.page_count }} 页
-        <span v-if="cachePercent !== null && cachePercent > 0" class="chapter-cache"
-          >· 本地 {{ cachePercent }}%</span
-        >
-      </p>
+      <h3 class="chapter-title" :title="chapter.title || `第 ${chapter.index} 話`">
+        {{ chapter.title || `第 ${chapter.index} 話` }}
+      </h3>
+      <div class="chapter-meta-row">
+        <span class="chapter-meta">{{ chapter.page_count }} 页</span>
+        <CacheProgress :cached="cachedPages" :total="chapter.page_count" :running="running" />
+      </div>
     </div>
   </RouterLink>
 </template>
@@ -143,13 +144,23 @@ const cachePercent = computed(() => {
   color: var(--ink-2);
 }
 
-.chapter-cache {
-  color: var(--success);
+.chapter-meta-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  margin-top: var(--space-0-5);
 }
 
 @media (max-width: 480px) {
   .chapter-card {
     grid-template-columns: minmax(4.2rem, 0.7fr) minmax(0, 1fr);
+  }
+
+  .chapter-meta-row {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--space-1);
   }
 }
 </style>

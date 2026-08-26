@@ -145,8 +145,10 @@ JmImageTool.decode_and_save(num, source_image, save_path)
 - `POST /api/library/local/create`（自建工坊创建本地图集/多章节元数据骨架）
 - `POST /api/library/local/import-path`（扫描服务器本地目录如 `public/tiya-frames` 秒级收录）
 - `POST /api/library/local/{source_id}/upload-pages`（向本地图集分批上传图片）
-- `POST /api/library/local/{source_id}/append`（增量追加页面或新章节）
+- `POST /api/library/local/{source_id}/append`（增量追加页面或新章节，单章节追加新话时自动升阶）
 - `PATCH /api/library/{source}/{id}/metadata`（更新标题/作者/标签/叙述/自定义封面页码 `cover_indices`）
+- `PATCH /api/library/{source}/{id}/chapters/{chapterId}`（修改单章节名称）
+- `DELETE /api/library/{source}/{id}/chapters/{chapterId}`（物理删除单个章节并重排全书全局页码）
 - `GET /api/library/{source}/{id}`（详情含 `chapters`）
 - `PATCH /api/library/{source}/{id}/favorite` `{favorite: bool}`
 - `GET /api/library/{source}/{id}/pages/{n}/file`（`n` 为全局页号，带防盗链校验）
