@@ -12,6 +12,7 @@ import {
   useReaderSettings,
 } from '@/composables/useReaderSettings'
 import ReaderButton from '@/components/reader/ReaderButton.vue'
+import AppIcon from '@/components/AppIcon.vue'
 
 const emit = defineEmits<{ close: [] }>()
 
@@ -26,7 +27,10 @@ const { settings, pagesPerViewOptions, reset } = useReaderSettings()
           <p class="eyebrow">Reader settings</p>
           <h2>阅读设置</h2>
         </div>
-        <ReaderButton @click="emit('close')">关闭 ✕</ReaderButton>
+        <ReaderButton @click="emit('close')">
+          <span>关闭</span>
+          <AppIcon name="close" size="xs" />
+        </ReaderButton>
       </header>
 
       <div class="setting-group">

@@ -7,6 +7,7 @@ import TagFilterBar from '@/components/library/TagFilterBar.vue'
 import ComicGrid from '@/components/library/ComicGrid.vue'
 import ImageSearchChip from '@/components/library/ImageSearchChip.vue'
 import ThemeSelect from '@/components/ThemeSelect.vue'
+import AppIcon from '@/components/AppIcon.vue'
 import { useLibraryStore } from '@/stores/library'
 import { useExperimentsStore } from '@/stores/experiments'
 import { useLibraryFilter } from '@/composables/useLibraryFilter'
@@ -165,21 +166,7 @@ watch(searchError, (value) => {
               :title="!isAvailable ? '识图服务 (imsearch sidecar) 未启动' : '上传图片以图搜图'"
               @click="isAvailable && fileInput?.click()"
             >
-              <svg
-                viewBox="0 0 24 24"
-                width="16"
-                height="16"
-                stroke="currentColor"
-                stroke-width="2"
-                fill="none"
-                stroke-linecap="round"
-                stroke-linejoin="round"
-              >
-                <path
-                  d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"
-                ></path>
-                <circle cx="12" cy="13" r="4"></circle>
-              </svg>
+              <AppIcon name="camera" size="md" />
             </button>
             <input
               ref="fileInput"

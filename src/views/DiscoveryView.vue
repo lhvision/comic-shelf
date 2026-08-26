@@ -4,6 +4,7 @@ import { useRouter } from 'vue-router'
 import DiscoveryCard from '@/components/discovery/DiscoveryCard.vue'
 import SegmentedTabs from '@/components/SegmentedTabs.vue'
 import AppButton from '@/components/AppButton.vue'
+import AppIcon from '@/components/AppIcon.vue'
 import { useDiscovery } from '@/composables/useDiscovery'
 import { useAuth } from '@/composables/useAuth'
 import type { DiscoveryItem, DiscoveryTimeframe } from '@/types'
@@ -81,20 +82,7 @@ onMounted(() => {
             @click="refreshCurrent"
           >
             <template #prefix>
-              <svg
-                v-if="!refreshing"
-                class="refresh-svg"
-                viewBox="0 0 24 24"
-                width="14"
-                height="14"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="2"
-                stroke-linecap="round"
-                stroke-linejoin="round"
-              >
-                <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67" />
-              </svg>
+              <AppIcon v-if="!refreshing" class="refresh-svg" name="refresh" size="sm" />
             </template>
             <span>{{ refreshing ? '刷新中…' : '刷新榜单' }}</span>
           </AppButton>

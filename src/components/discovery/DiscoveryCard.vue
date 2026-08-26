@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import AppButton from '@/components/AppButton.vue'
+import AppIcon from '@/components/AppIcon.vue'
 import type { DiscoveryItem } from '@/types'
 
 const props = defineProps<{
@@ -34,20 +35,7 @@ const libraryRoute = computed(() => `/comic/${props.item.source}/${props.item.so
           <span v-if="item.category" class="cover-category-pill">{{ item.category }}</span>
           <span class="cover-hint">
             <span>原站预览</span>
-            <svg
-              viewBox="0 0 24 24"
-              width="11"
-              height="11"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="2"
-              stroke-linecap="round"
-              stroke-linejoin="round"
-            >
-              <path
-                d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6M15 3h6v6M10 14L21 3"
-              />
-            </svg>
+            <AppIcon name="external-link" size="xs" />
           </span>
         </div>
       </a>

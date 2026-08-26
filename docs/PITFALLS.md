@@ -17,6 +17,7 @@
 8. [前端：VueUse useMemoize 失败缓存残留与参数签名推导（Promise Rejection Cache Poisoning）](#8-前端vueuse-usememoize-失败缓存残留与参数签名推导)
 9. [前端：书架切页回源骨架屏闪烁与 Stale-While-Revalidate（SWR 保持）](#9-前端书架切页回源骨架屏闪烁与-stale-while-revalidate)
 10. [前端：UI 组件变体与 Composable 状态类型的契约一致性（Type Parity）](#10-前端ui-组件变体与-composable-状态类型的契约一致性)
+11. [前端：伪图标字符滥用与散落内联 SVG 碎片（Icon Cohesion & A11y）](#11-前端伪图标字符滥用与散落内联-svg-碎片)
 
 ---
 
@@ -126,8 +127,21 @@
 
 ---
 
+### 11. 前端：伪图标字符滥用与散落内联 SVG 碎片
+
+- **🚨 故障现象**：
+  1. 跨平台（Windows/macOS/iOS）文字字重不一致，导致直接书写 Unicode 字符（如 `'✕'`、`'✓'`、`'×'`、`'⋯'`、`'←'`）产生基线偏心抖动与字体回退撕裂；
+  2. 屏幕阅读器将弹窗关闭 `'×'` 误读为“乘号”，引发严重 a11y 无障碍缺陷；
+  3. 各业务视图手写零散 `<svg>`，无法享受统一的主题色与描边规范，且在单一文件中堆砌几十个 `v-if/v-else-if` 导致 Tree-shaking 粒度丧失与 OCP 开闭原则破坏。
+- **🛡️ 避坑军规与防线**：
+  1. **零字符伪图标红线**：全站禁止使用文本字符代替图标，全量收敛至 `src/components/icons/`；
+  2. **三层组件化架构**：底座 `BaseIcon.vue`（统一 1.8px 细描边、24px 视口、`aria-hidden="true"`、`currentColor`）+ 独立原子组件 `Icon*.vue` + 动态零分支分发器 `AppIcon.vue`；
+  3. 业务组件按需使用原子组件（如 `import { IconClose } from '@/components/icons'`）或 `<AppIcon :name="..." />`，全站业务代码内联 `<svg>` 保持为 0。
+
+---
+
 ## 🚦 交付前自检三步法
 
 1. **静态代码与符号检查**：`vp check`（前端 0 error） + `pnpm test:py`（后端 0 error）；
 2. **相关领域单测精准执行**：改动哪个模块，就跑哪个模块对应的单测；
-3. **红线对齐**：核对本次改动是否触碰上述 10 条红线。
+3. **红线对齐**：核对本次改动是否触碰上述 11 条红线。

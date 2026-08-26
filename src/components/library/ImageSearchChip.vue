@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import Modal from '@/components/Modal.vue'
+import AppIcon from '@/components/AppIcon.vue'
 
 const props = defineProps<{
   previewUrl: string
@@ -23,17 +24,7 @@ const isModalOpen = ref(false)
       </div>
     </button>
     <button class="chip-clear-btn" @click="emit('clear')" aria-label="清除图片">
-      <svg
-        viewBox="0 0 16 16"
-        width="12"
-        height="12"
-        stroke="currentColor"
-        stroke-width="2"
-        stroke-linecap="round"
-        fill="none"
-      >
-        <path d="M4 4l8 8m0-8l-8 8" />
-      </svg>
+      <AppIcon name="close" size="xs" :stroke-width="2.2" />
     </button>
 
     <Modal :open="isModalOpen" title="搜索图片" @cancel="isModalOpen = false">

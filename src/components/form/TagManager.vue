@@ -2,6 +2,7 @@
 import { computed, ref } from 'vue'
 import { useLibraryStore } from '@/stores/library'
 import AppButton from '@/components/AppButton.vue'
+import AppIcon from '@/components/AppIcon.vue'
 
 const props = withDefaults(
   defineProps<{
@@ -73,17 +74,7 @@ function onTagKeyDown(e: KeyboardEvent) {
           :aria-label="`删除标签 ${tag}`"
           @click="removeTag(idx)"
         >
-          <svg
-            viewBox="0 0 16 16"
-            width="10"
-            height="10"
-            stroke="currentColor"
-            stroke-width="2"
-            fill="none"
-          >
-            <line x1="3" y1="3" x2="13" y2="13" />
-            <line x1="13" y1="3" x2="3" y2="13" />
-          </svg>
+          <AppIcon name="close" size="xs" :stroke-width="2.2" />
         </button>
       </span>
       <span v-if="currentTags.length === 0" class="muted-hint">暂无标签</span>

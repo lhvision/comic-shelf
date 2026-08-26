@@ -12,6 +12,7 @@ import PageIndexGrid from '@/components/detail/PageIndexGrid.vue'
 import CacheProgress from '@/components/CacheProgress.vue'
 import Modal from '@/components/Modal.vue'
 import AppButton from '@/components/AppButton.vue'
+import AppIcon from '@/components/AppIcon.vue'
 import type { ComicDetail } from '@/types'
 
 /**
@@ -270,7 +271,7 @@ async function confirmRemoveChapter() {
               title="返回本子详情"
               @click="goToAlbum"
             >
-              <span aria-hidden="true">←</span>
+              <AppIcon name="arrow-left" size="sm" />
             </button>
             <p class="eyebrow">第 {{ activeChapter.index }} 話</p>
           </div>
@@ -301,7 +302,7 @@ async function confirmRemoveChapter() {
                   title="更多章节操作"
                   @click="moreOpen = !moreOpen"
                 >
-                  ⋯
+                  <AppIcon name="more" size="xs" />
                 </button>
                 <div v-if="moreOpen" class="more-pop" role="menu">
                   <button

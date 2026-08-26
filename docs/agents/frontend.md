@@ -27,6 +27,8 @@
 | `src/components/Modal.vue`                     | 通用无障碍二次确认弹窗：焦点圈闭、锁卷与抽屉自适应（用于删除危险操作）     |
 | `src/components/SegmentedTabs.vue`             | 典藏分段选项卡：支持泛型 `TabItem<T>`/字符串、左右/Home/End 键导航与多尺寸 |
 | `src/components/AppButton.vue`                 | 通用典藏按钮：支持 primary / secondary / soft / ghost / danger 多种变体    |
+| `src/components/AppIcon.vue`                   | 零分支矢量图标分发器（基于 `<component :is="ICON_MAP[name]">` 动态渲染）   |
+| `src/components/icons/`                        | 纸间统一矢量图标集（`BaseIcon.vue` 底座 + 21 个原子 `Icon*.vue` 组件）     |
 | `src/components/Tooltip.vue`                   | 现代 CSS Anchor Positioning 提示气泡组件                                   |
 | `src/components/CacheProgress.vue`             | 实时缓存进度条与后台任务状态指示                                           |
 | `src/components/detail/EditMetadataModal.vue`  | 典藏资料与标签编排弹窗（实时修改标题、作者、4 张封面展示页码、标签增删）   |

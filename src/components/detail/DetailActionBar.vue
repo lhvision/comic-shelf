@@ -3,6 +3,7 @@ import { computed, ref } from 'vue'
 import { onClickOutside } from '@vueuse/core'
 import Modal from '@/components/Modal.vue'
 import AppButton from '@/components/AppButton.vue'
+import AppIcon from '@/components/AppIcon.vue'
 
 /**
  * 详情页操作栏 —— 阅读/缓存/刷新 + 「更多」菜单（含危险移除）+ 缓存进度条。
@@ -160,7 +161,8 @@ const cacheScale = computed(() => `scaleX(${props.cachePercent / 100})`)
           title="更多操作选项"
           @click="moreOpen = !moreOpen"
         >
-          ⋯ 更多
+          <AppIcon name="more" size="xs" />
+          <span>更多</span>
         </button>
         <div v-if="moreOpen" class="more-pop" role="menu">
           <button

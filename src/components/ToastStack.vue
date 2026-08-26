@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { useToast } from '@/composables/useToast'
+import AppIcon from '@/components/AppIcon.vue'
 const { toasts, dismiss } = useToast()
 </script>
 
@@ -7,7 +8,13 @@ const { toasts, dismiss } = useToast()
   <div class="toast-stack" role="status" aria-live="polite">
     <TransitionGroup name="toast">
       <div v-for="toast in toasts" :key="toast.id" class="toast-item" :data-tone="toast.tone">
-        <span class="toast-stamp" aria-hidden="true">{{ toast.tone === 'error' ? '✕' : '✓' }}</span>
+        <span class="toast-stamp" aria-hidden="true">
+          <AppIcon
+            :name="toast.tone === 'error' ? 'close' : 'check'"
+            size="xs"
+            :stroke-width="2.2"
+          />
+        </span>
         <div class="toast-content">
           <p class="toast-text">{{ toast.text }}</p>
           <button class="toast-close" type="button" @click="dismiss(toast.id)">知道了</button>

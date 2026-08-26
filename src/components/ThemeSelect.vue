@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import AppIcon from '@/components/AppIcon.vue'
 
 export interface SelectOption {
   value: string
@@ -213,16 +214,7 @@ onBeforeUnmount(() => document.removeEventListener('click', onDocumentClick))
       </slot>
 
       <slot name="trailing" :open="isOpen" :selected="selected">
-        <svg class="chevron" viewBox="0 0 16 16" aria-hidden="true">
-          <path
-            d="M3.5 6 8 10.5 12.5 6"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="1.8"
-            stroke-linecap="round"
-            stroke-linejoin="round"
-          />
-        </svg>
+        <AppIcon class="chevron" name="chevron-down" size="xs" />
       </slot>
     </button>
 
@@ -241,16 +233,7 @@ onBeforeUnmount(() => document.removeEventListener('click', onDocumentClick))
         @click="commit(index)"
         @mouseenter="!option.disabled && (activeIndex = index)"
       >
-        <svg class="check" viewBox="0 0 16 16" aria-hidden="true">
-          <path
-            d="M3 8.5 6.5 12 13 4.5"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="1.8"
-            stroke-linecap="round"
-            stroke-linejoin="round"
-          />
-        </svg>
+        <AppIcon class="check" name="check" size="md" />
         <span class="option-label">{{ option.label }}</span>
         <small v-if="option.hint" class="option-hint">{{ option.hint }}</small>
       </button>

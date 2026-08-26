@@ -5,6 +5,7 @@ import { useScroll } from '@vueuse/core'
 import { api, onAuthSuccess } from '@/api/client'
 import { useAuth } from '@/composables/useAuth'
 import { useBrandIcon } from '@/composables/useBrandIcon'
+import AppIcon from '@/components/AppIcon.vue'
 import type { ProviderInfo } from '@/types'
 
 interface NavItem {
@@ -130,29 +131,11 @@ onAuthSuccess(fetchProviders)
         "
         @click="canWrite ? logout() : openModal()"
       >
-        <svg
-          viewBox="0 0 24 24"
-          width="13"
-          height="13"
-          fill="none"
-          stroke="currentColor"
-          stroke-width="2"
-          stroke-linecap="round"
-          stroke-linejoin="round"
-        >
-          <template v-if="canWrite">
-            <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
-            <path d="M7 11V7a5 5 0 0 1 9.9-1" />
-          </template>
-          <template v-else-if="isGuest">
-            <path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z" />
-            <path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z" />
-          </template>
-          <template v-else>
-            <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
-            <path d="M7 11V7a5 5 0 0 1 10 0v4" />
-          </template>
-        </svg>
+        <AppIcon
+          :name="canWrite ? 'unlock' : isGuest ? 'book-open' : 'lock'"
+          size="xs"
+          :stroke-width="2"
+        />
         <span class="auth-label">
           {{ canWrite ? '〔 馆长已入座 〕' : isGuest ? '〔 访客阅览 〕' : '未解锁' }}
         </span>

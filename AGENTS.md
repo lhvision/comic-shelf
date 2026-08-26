@@ -65,6 +65,7 @@ release. Add a tool name to select part of the graph. For example, run
 9. **VueUse 优先与零胶水代码（VueUse-First & Zero DOM Glue）**：新增组件、交互重构或状态逻辑开发时，必须读取 `vueuse-functions` skill，优先使用 VueUse 标准 composables（如 `useFileDialog`、`useDropZone`、`useScroll`、`useToggle`、`createGlobalState`、`useIntersectionObserver` 等）代替手写隐藏 input、原生事件监听及样板代码，杜绝重复造轮子。
 10. **E2E 严禁泛滥触发红线**：不涉及跨页面核心交互流程的纯样式微调、TS 类型修补、单元函数改动，绝对禁止自行启动 E2E 浏览器测试；以精准单测（`vp test <Target>.spec.ts`）与静态类型检查（`vp check`）为准。
 11. **错题本与防退化门禁**：重构或重大修改前必须核对 `docs/PITFALLS.md` 避开历史暗礁；涉及 Python 后端改动时必须运行 `pnpm test:py`，确保 0 语法/导入/未定义符号错误且中间件全链路测试通过。
+12. **零伪图标字符与矢量图标单源收敛（Unified Iconography）**：**严禁**在模板中书写 Unicode 伪图标字符（如 `'✕'`、`'✓'`、`'×'`、`'⋯'`、`'←'`、`'→'`）或手写散落内联 `<svg>`；全站图标统一使用 `src/components/icons/`（静态确定场景直接 `import { IconXxx }`，动态多态场景使用 `<AppIcon :name="..." />`）；新增图标必须基于 `BaseIcon.vue` 扩展原子组件，严禁在单个组件内堆砌巨型 `v-if/v-else-if`。
 
 ## 🧪 E2E 测试准则与 AI 协作规范
 

@@ -1,5 +1,7 @@
 <script setup lang="ts">
 import { ref } from 'vue'
+import AppIcon from '@/components/AppIcon.vue'
+
 defineProps<{
   covers: string[]
   title: string
@@ -29,7 +31,7 @@ function scrollByCard(direction: number) {
         title="上一张封面"
         @click="scrollByCard(-1)"
       >
-        ←
+        <AppIcon name="arrow-left" size="sm" />
       </button>
       <button
         class="carousel-arrow icon-btn"
@@ -38,7 +40,7 @@ function scrollByCard(direction: number) {
         title="下一张封面"
         @click="scrollByCard(1)"
       >
-        →
+        <AppIcon name="arrow-right" size="sm" />
       </button>
     </div>
 

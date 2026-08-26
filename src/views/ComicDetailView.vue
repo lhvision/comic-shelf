@@ -10,6 +10,7 @@ import { useToast } from '@/composables/useToast'
 import { useCoverTransition } from '@/composables/useCoverTransition'
 import { useAuth } from '@/composables/useAuth'
 import CoverCarousel from '@/components/CoverCarousel.vue'
+import AppIcon from '@/components/AppIcon.vue'
 
 import DetailActionBar from '@/components/detail/DetailActionBar.vue'
 import ChapterIndex from '@/components/detail/ChapterIndex.vue'
@@ -272,7 +273,7 @@ function startReading(page = progressEl.value || 1) {
           title="返回书库"
           @click="goBack"
         >
-          <span aria-hidden="true">←</span>
+          <AppIcon name="arrow-left" size="sm" />
         </button>
         <CoverCarousel
           class="detail-carousel"

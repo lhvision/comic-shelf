@@ -7,6 +7,7 @@ import { useToast } from '@/composables/useToast'
 import { useViewTransition } from '@/composables/useViewTransition'
 import { api } from '@/api/client'
 import Tooltip from '@/components/Tooltip.vue'
+import AppIcon from '@/components/AppIcon.vue'
 
 const emit = defineEmits<{
   imported: [source: string, sourceId: string]
@@ -211,28 +212,12 @@ function incConcurrency() {
           </label>
           <Tooltip
             id="cache-all-tip"
-            tip="单本上限 600P，其余页面阅读时自动补齐。"
+            tip="收录时直接把所有章节与页面下载到本地磁盘（适合整本离线保存）。不勾选则仅缓存前 4 页封面，后续页面在翻阅时按需秒级懒下载。"
             side="top"
             align="end"
           >
             <button class="tooltip-icon" type="button" aria-label="关于缓存全部页面">
-              <svg viewBox="0 0 16 16" aria-hidden="true">
-                <circle
-                  cx="8"
-                  cy="8"
-                  r="6.4"
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-width="1.4"
-                />
-                <path
-                  d="M8 7.3v3.2"
-                  stroke="currentColor"
-                  stroke-width="1.5"
-                  stroke-linecap="round"
-                />
-                <circle cx="8" cy="5.1" r="0.9" fill="currentColor" />
-              </svg>
+              <AppIcon name="info" size="xs" />
             </button>
           </Tooltip>
         </div>
@@ -246,23 +231,7 @@ function incConcurrency() {
             align="end"
           >
             <button class="tooltip-icon" type="button" aria-label="关于下载并发">
-              <svg viewBox="0 0 16 16" aria-hidden="true">
-                <circle
-                  cx="8"
-                  cy="8"
-                  r="6.4"
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-width="1.4"
-                />
-                <path
-                  d="M8 7.3v3.2"
-                  stroke="currentColor"
-                  stroke-width="1.5"
-                  stroke-linecap="round"
-                />
-                <circle cx="8" cy="5.1" r="0.9" fill="currentColor" />
-              </svg>
+              <AppIcon name="info" size="xs" />
             </button>
           </Tooltip>
 

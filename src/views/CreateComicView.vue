@@ -5,6 +5,7 @@ import TagManager from '@/components/form/TagManager.vue'
 import CoverIndicesPicker from '@/components/form/CoverIndicesPicker.vue'
 import SegmentedTabs from '@/components/SegmentedTabs.vue'
 import AppButton from '@/components/AppButton.vue'
+import AppIcon from '@/components/AppIcon.vue'
 
 const router = useRouter()
 
@@ -49,7 +50,7 @@ function goBack() {
   <div class="create-view container">
     <header class="create-head surface">
       <button class="back-btn icon-btn" type="button" aria-label="返回书库" @click="goBack">
-        ←
+        <AppIcon name="arrow-left" size="sm" />
       </button>
       <div>
         <p class="eyebrow">Local Workshop / 自建工坊</p>
@@ -90,7 +91,7 @@ function goBack() {
                   title="删除本话"
                   @click.stop="removeChapter(idx)"
                 >
-                  ×
+                  <AppIcon name="close" size="xs" :stroke-width="2.2" />
                 </button>
               </div>
             </div>
@@ -107,18 +108,7 @@ function goBack() {
             @click="() => openFileDialog()"
           >
             <div class="drop-content">
-              <svg
-                viewBox="0 0 24 24"
-                width="36"
-                height="36"
-                stroke="currentColor"
-                stroke-width="1.6"
-                fill="none"
-              >
-                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-                <polyline points="17 8 12 3 7 8" />
-                <line x1="12" y1="3" x2="12" y2="15" />
-              </svg>
+              <AppIcon name="upload" size="3xl" />
               <p class="drop-lead">
                 {{
                   isMulti

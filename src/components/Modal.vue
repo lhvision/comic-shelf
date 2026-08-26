@@ -2,6 +2,7 @@
 import { nextTick, ref, useId, watch, onUnmounted } from 'vue'
 import { useEventListener, useScrollLock } from '@vueuse/core'
 import AmbientWatermark from '@/components/AmbientWatermark.vue'
+import AppIcon from '@/components/AppIcon.vue'
 
 /**
  * 通用对话框（Impeccable：fixed-header/fixed-footer/scrollable-body 版）。
@@ -91,7 +92,7 @@ useEventListener(window, 'keydown', (event: KeyboardEvent) => {
               aria-label="关闭"
               @click="emit('cancel')"
             >
-              ×
+              <AppIcon name="close" size="sm" />
             </button>
           </header>
 

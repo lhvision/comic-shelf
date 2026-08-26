@@ -2,6 +2,7 @@
 import { ref } from 'vue'
 import { api } from '@/api/client'
 import { useViewTransition } from '@/composables/useViewTransition'
+import AppIcon from '@/components/AppIcon.vue'
 
 const props = withDefaults(
   defineProps<{
@@ -26,12 +27,12 @@ async function toggle() {
   busy.value = true
   const next = !props.favorite
   try {
-    await api.setFavorite(props.source, props.sourceId, next)
     await withViewTransition(
-      () => {
+      async () => {
         emit('toggled', next)
+        await api.setFavorite(props.source, props.sourceId, next)
       },
-      { element: btnRef.value },
+      { scope: btnRef.value },
     )
   } finally {
     busy.value = false
@@ -50,19 +51,11 @@ async function toggle() {
     :disabled="busy"
     @click.stop.prevent="toggle"
   >
-    <svg viewBox="0 0 24 24" aria-hidden="true">
-      <path
-        d="M12 20.7 4.9 13.5a4.75 4.75 0 0 1 0-6.6 4.6 4.6 0 0 1 6.5 0l.6.6.6-.6a4.6 4.6 0 0 1 6.5 0 4.75 4.75 0 0 1 0 6.6L12 20.7Z"
-      />
-    </svg>
+    <AppIcon :name="favorite ? 'heart-filled' : 'heart'" size="md" />
     <span class="visually-hidden">{{ favorite ? '已喜欢' : '喜欢' }}</span>
   </button>
   <div v-else-if="favorite" class="favorite-badge" aria-label="已标记喜欢" role="img">
-    <svg viewBox="0 0 24 24" aria-hidden="true">
-      <path
-        d="M12 20.7 4.9 13.5a4.75 4.75 0 0 1 0-6.6 4.6 4.6 0 0 1 6.5 0l.6.6.6-.6a4.6 4.6 0 0 1 6.5 0 4.75 4.75 0 0 1 0 6.6L12 20.7Z"
-      />
-    </svg>
+    <AppIcon name="heart-filled" size="sm" />
     <span class="visually-hidden">已喜欢</span>
   </div>
 </template>

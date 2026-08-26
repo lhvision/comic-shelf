@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
+import AppIcon from '@/components/AppIcon.vue'
 
 /**
  * 书架标签筛选条 —— 「只看喜欢」+ 标签 chips + 当前筛选提示。
@@ -51,11 +52,7 @@ function clearFilter() {
         :aria-pressed="favoritesOnly"
         @click="emit('toggleFavorites')"
       >
-        <svg class="heart-icon" viewBox="0 0 24 24" aria-hidden="true">
-          <path
-            d="M12 20.7 4.9 13.5a4.75 4.75 0 0 1 0-6.6 4.6 4.6 0 0 1 6.5 0l.6.6.6-.6a4.6 4.6 0 0 1 6.5 0 4.75 4.75 0 0 1 0 6.6L12 20.7Z"
-          />
-        </svg>
+        <AppIcon class="heart-icon" :name="favoritesOnly ? 'heart-filled' : 'heart'" size="xs" />
         <span>只看喜欢</span>
       </button>
 

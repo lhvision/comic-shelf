@@ -459,3 +459,20 @@
      - 拒绝封装多余的 Vue `<TextFit>` 组件或 JS 轮子，避免单一 CSS 属性带来的抽象泄漏与虚拟 DOM 开销；
      - 在 `src/styles/main.css` 沉淀 `.text-fit-shrink` 工具类，基线浏览器原生走 `text-overflow: ellipsis`，现代浏览器平滑享受 `text-fit: shrink consistent` 的自适应体验。
 - **验证**：`vp check`（0 error / 0 warning）、单测全绿。
+
+## 31. 纸间统一矢量图标集与组件分层架构（Impeccable 12345 规范落地）
+
+- **背景与痛点**：
+  1. 过去项目中混杂使用 Unicode 伪图标字符（如 `ToastStack` 的 `'✕'`/`'✓'`、`Modal` 的 `'×'`、`ReaderSettingsPanel` 的 `'关闭 ✕'`、`DetailActionBar` 与 `ChapterView` 的 `'⋯'`、`CoverCarousel` 的 `'←'`/`'→'`），在跨操作系统（Windows/macOS/iOS）渲染时存在字重撕裂、基线偏心及屏幕阅读器误读乘号等 a11y 缺陷；
+  2. 多处组件手写重复的内联 `<svg>`（如 `FavoriteButton` 与 `TagFilterBar` 的心形、`ThemeSelect` 与 `AuthModal` 的勾选、`TagManager` 与 `ImageSearchChip` 的清除叉号、`ImportPanel` 的 info 提示），维护成本高且缺少统一规范。
+- **Impeccable 12345 决策与分层架构**：
+  1. **规划与发现（Shape）**：全面盘点全站 19 处散落 SVG 与 6 处字符伪图标；
+  2. **方案与基调（Craft）**：拒绝引入外部大图标包，采用**三层组件化架构**（`src/components/icons/`）：
+     - **底座 `BaseIcon.vue`**：封装 SVG 骨架（24px 视口网格、`size` 预设/自定义计算、1.8px 细线条描边、`aria-hidden="true"`、`currentColor` 继承）；
+     - **原子层 `Icon*.vue`**：21 个纯净原子组件（`IconClose`, `IconHeart`, `IconSearch`, `IconCheck` 等，各 5~10 行），实现精准 Tree-shaking 与直观的 Vue DevTools 节点名称；
+     - **动态分发层 `AppIcon.vue`**：彻底消灭模板内 20+ 个 `v-if/v-else-if` 分支，基于 `<component :is="ICON_MAP[name]" />` 达成 0 分支动态渲染，兼顾动态切换场景（如 Toast 与鉴权状态）；
+     - **导出层 `index.ts` & `types.ts`**：强类型 `IconName` 与 `IconSize` 约束，支持按需解构导出。
+  3. **评审与挑刺（Critique）**：彻底清除全站字符图标，消除字体回退导致的偏心抖动；
+  4. **系统打磨（Polish）**：全站 18 个组件/视图 100% 收敛至 `<AppIcon>` 与原子图标，全站业务组件内联 SVG 完全归零；
+  5. **适配与安全（Adapt）**：全仓 160 文件 `vp check` 零 warning/error，补齐 `AppIcon.spec.ts` 完整单测。
+- **验证**：`vp check`（0 error / 0 warning）、单测全绿。
