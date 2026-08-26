@@ -441,3 +441,21 @@
      - 删除单话时，后端物理销毁该话 `pages/<chap>` 与缩略图，并对全书后续章节 `start`、`index` 与 `meta.pages` 执行单调连续重排；
      - `ChapterView.vue` 头部集成「编辑章节」Modal 与「⋯ 更多」下拉菜单（内含「删除本话…」危险操作及防误触二次确认弹窗），删除成功后平滑路由回退至父详情页并弹出 Toast。
 - **验证**：`pnpm test:py` 全量通过（新增 3 组针对升阶、CRUD 与自愈的自动化单测）、`vp check` 0 error / 0 warning、`LOC_loc_20260825_023256` 线上状态验证通过。
+
+## 30. 现代 CSS text-fit 调研与弹性字阶底线（Typography Floor & Progressive Enhancement）
+
+- **背景与调研**：
+  - 针对张鑫旭《卧靠，这是好东西，CSS text-fit属性简介》中提及的现代 CSS `text-fit` 属性（`text-fit: <fit-type> <fit-target>`，Chrome 150+ / CSS Text Module 提案），评估其在纸间排版系统中的适用性；
+  - 传统方案（`clamp(...)` + `cqw` 估算、JS 动态测算 `fitty`/Canvas `measureText`、SVG `<text textLength>`）各有精度脆弱、强引起重排或打断文本流的缺点。
+- **设计评审与决策（grilling & domain-modeling）**：
+  1. **禁止在网格卡片（`ComicCard` / `DiscoveryCard`）全局滥用 `grow` / `shrink`**：
+     - 书架首页以 12 本/批呈现，卡片阵列依赖一致的字阶（`--text-md`）与多行截断（`line-clamp-2`）来维持严整的视觉节奏与装订感；
+     - 若卡片 A 因字短被放大到 24px、卡片 B 因字长缩小到 10px，会导致卡片网格韵律坍塌。
+  2. **聚焦紧凑单行容器（ReaderTopBar / Meta ID Badge）**：
+     - 在空间极度紧凑的单行场景（如阅读器顶栏 `.reader-title strong` / `span`、详情页元数据 `.meta-id` 紧凑徽章），长文本若能自动受限缩小，可有效减少因省略号产生的信息截断。
+  3. **设立「字阶底线（Typography Floor）」防线**：
+     - 缩放必须有底线（不低于 `--text-xs` / 12px），杜绝超长副标题缩成无法辨识的“蚂蚁字”；超限仍然遵循省略号截断。
+  4. **零封装胶水、纯 CSS `@supports` 渐进增强**：
+     - 拒绝封装多余的 Vue `<TextFit>` 组件或 JS 轮子，避免单一 CSS 属性带来的抽象泄漏与虚拟 DOM 开销；
+     - 在 `src/styles/main.css` 沉淀 `.text-fit-shrink` 工具类，基线浏览器原生走 `text-overflow: ellipsis`，现代浏览器平滑享受 `text-fit: shrink consistent` 的自适应体验。
+- **验证**：`vp check`（0 error / 0 warning）、单测全绿。

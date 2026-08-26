@@ -552,6 +552,18 @@
     -webkit-box-orient: vertical;
     overflow: hidden;
   }
+
+  .text-fit-shrink {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  @supports (text-fit: shrink) {
+    .text-fit-shrink {
+      text-fit: shrink consistent;
+    }
+  }
 }
 
 @keyframes shimmer {

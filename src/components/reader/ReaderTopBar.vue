@@ -92,6 +92,13 @@ defineEmits<{
   white-space: nowrap;
 }
 
+@supports (text-fit: shrink) {
+  .reader-title strong,
+  .reader-title span {
+    text-fit: shrink consistent;
+  }
+}
+
 .reader-title .reader-chapter::before {
   content: ' · ';
 }
