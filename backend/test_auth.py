@@ -74,22 +74,23 @@ def test_auth_logic():
     assert auth_mod.is_curator(req_curator) is True
     assert auth_mod.can_read(req_curator) is True
 
-    # require_admin on guest raises 403 Forbidden
+    # require_curator on guest raises 403 Forbidden
     try:
-        auth_mod.require_admin(req_guest)
+        auth_mod.require_curator(req_guest)
         assert False, "Should have raised 403 Forbidden"
     except HTTPException as exc:
         assert exc.status_code == 403
         assert "访客模式" in exc.detail
 
-    # require_admin on unauthenticated raises 401 Unauthorized
+    # require_curator on unauthenticated raises 401 Unauthorized
     try:
-        auth_mod.require_admin(req_empty)
+        auth_mod.require_curator(req_empty)
         assert False, "Should have raised 401 Unauthorized"
     except HTTPException as exc:
         assert exc.status_code == 401
 
-    # require_admin on curator passes
+    # require_curator and require_admin alias on curator passes
+    auth_mod.require_curator(req_curator)
     auth_mod.require_admin(req_curator)
 
     # 3. Solo Curator mode (No guest secret configured)
@@ -167,8 +168,8 @@ def test_guest_visibility_and_discovery_auth():
         headers={"Authorization": "Bearer admin-secret-123"},
     )
     assert auth_mod.is_curator(req_curator) is True
-    # require_admin passes for curator
-    auth_mod.require_admin(req_curator)
+    # require_curator passes for curator
+    auth_mod.require_curator(req_curator)
 
     # Guest request
     req_guest = make_mock_request(
@@ -178,15 +179,93 @@ def test_guest_visibility_and_discovery_auth():
     assert auth_mod.is_curator(req_guest) is False
     assert auth_mod.is_guest(req_guest) is True
     try:
-        auth_mod.require_admin(req_guest)
+        auth_mod.require_curator(req_guest)
         assert False, "Should have raised 403 Forbidden for guest"
     except HTTPException as exc:
         assert exc.status_code == 403
+
+
+def test_auth_and_security_middleware():
+    from app.main import auth_and_security_middleware
+    from unittest.mock import AsyncMock
+
+    async def run_cases():
+        # Case 1: Open access (no secret configured)
+        auth_mod.AUTH_SECRET = ""
+        auth_mod.GUEST_SECRET = ""
+        call_next = AsyncMock(return_value="OK")
+
+        req_post = make_mock_request("/api/library/import")
+        req_post.method = "POST"
+        res = await auth_and_security_middleware(req_post, call_next)
+        assert res == "OK", "Open access should allow POST /api/library/import"
+
+        # Case 2: Protected mode (Curator + Guest)
+        auth_mod.AUTH_SECRET = "curator-key-888"
+        auth_mod.GUEST_SECRET = "guest-key-999"
+
+        # 2a. Unauthenticated POST -> 401
+        call_next.reset_mock()
+        req_unauth_post = make_mock_request("/api/library/import")
+        req_unauth_post.method = "POST"
+        res_401 = await auth_and_security_middleware(req_unauth_post, call_next)
+        assert getattr(res_401, "status_code", None) == 401
+
+        # 2b. Guest attempting POST /api/library/import -> 403
+        call_next.reset_mock()
+        req_guest_post = make_mock_request(
+            "/api/library/import",
+            headers={"Authorization": "Bearer guest-key-999"},
+        )
+        req_guest_post.method = "POST"
+        res_403 = await auth_and_security_middleware(req_guest_post, call_next)
+        assert getattr(res_403, "status_code", None) == 403
+
+        # 2c. Curator POST /api/library/import -> OK
+        call_next.reset_mock()
+        req_curator_post = make_mock_request(
+            "/api/library/import",
+            headers={"Authorization": "Bearer curator-key-888"},
+        )
+        req_curator_post.method = "POST"
+        res_ok = await auth_and_security_middleware(req_curator_post, call_next)
+        assert res_ok == "OK"
+
+        # 2d. Guest GET /api/library -> OK
+        call_next.reset_mock()
+        req_guest_get = make_mock_request(
+            "/api/library",
+            headers={"Authorization": "Bearer guest-key-999"},
+        )
+        req_guest_get.method = "GET"
+        res_get_ok = await auth_and_security_middleware(req_guest_get, call_next)
+        assert res_get_ok == "OK"
+
+        # 2e. Image search POST is allowed for guest
+        call_next.reset_mock()
+        req_img_search = make_mock_request(
+            "/api/search/image",
+            headers={"Authorization": "Bearer guest-key-999"},
+        )
+        req_img_search.method = "POST"
+        res_search_ok = await auth_and_security_middleware(req_img_search, call_next)
+        assert res_search_ok == "OK"
+
+        # 2f. Public endpoints bypass auth
+        for pub_path in ("/api/auth/status", "/api/health", "/api/auth/login"):
+            call_next.reset_mock()
+            req_pub = make_mock_request(pub_path)
+            req_pub.method = "GET"
+            res_pub = await auth_and_security_middleware(req_pub, call_next)
+            assert res_pub == "OK"
+
+    asyncio.run(run_cases())
 
 
 if __name__ == "__main__":
     test_auth_logic()
     test_hotlink_protection()
     test_guest_visibility_and_discovery_auth()
-    print("All backend auth & hotlink protection tests passed!")
+    test_auth_and_security_middleware()
+    print("All backend auth, middleware & hotlink protection tests passed!")
 

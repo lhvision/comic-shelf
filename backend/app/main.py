@@ -7,6 +7,8 @@ from fastapi import FastAPI, File, HTTPException, Query, Request, Response, Uplo
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 
+from typing import Any
+
 from .auth import (
     can_read,
     check_hotlink_protection,
@@ -15,7 +17,7 @@ from .auth import (
     is_authenticated,
     is_curator,
     is_guest,
-    require_admin,
+    require_curator,
     set_auth_cookie,
 )
 from .config import AUTH_SECRET, DATA_DIR, ENABLE_DOCS, GUEST_SECRET, LIBRARY_DIR
@@ -27,6 +29,7 @@ from .models import (
     AuthStatusResponse,
     CacheProgress,
     ComicDetail,
+    ComicMeta,
     ConcurrencyInfo,
     ConcurrencyRequest,
     DeleteResponse,
@@ -51,7 +54,6 @@ from .models import (
     ProviderInfo,
 )
 from .providers import get_provider, provider_list
-from .storage import ComicStore
 
 app = FastAPI(
     title="Paper Room API",
@@ -95,7 +97,7 @@ async def auth_and_security_middleware(request: Request, call_next):
     # Write / Mutating operations require curator privileges
     is_write = request.method in ("POST", "PUT", "PATCH", "DELETE") and path != "/api/search/image"
     if is_write:
-        if not is_admin(request):
+        if not is_curator(request):
             if is_guest(request):
                 return JSONResponse(
                     status_code=403,
@@ -258,7 +260,7 @@ def discovery_ranking(
     timeframe: str = Query(default="week", pattern="^(week|month|day)$"),
     refresh: bool = False,
 ) -> DiscoveryFeed:
-    require_admin(request)
+    require_curator(request)
 
     now_ts = time.time()
     cached_feed = store.load_discovery_feed(timeframe)
@@ -299,7 +301,10 @@ def discovery_ranking(
 @app.post("/api/library/import", response_model=ImportResult)
 def import_comic(req: ImportRequest) -> ImportResult:
     provider = get_provider(req.source)
-    source_id = provider.normalize_id(req.id)
+    try:
+        source_id = provider.normalize_id(req.id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
 
     if not req.refresh:
         fetched = store.load_fetched(req.source, source_id)
@@ -311,7 +316,13 @@ def import_comic(req: ImportRequest) -> ImportResult:
     # pushed to a background daemon thread and the UI polls cache_progress.
     # T12：refresh 时把旧 bundle 传给 provider，章节没变就不重复拉每一话的 photo HTML。
     existing = store.load_fetched(req.source, source_id) if req.refresh else None
-    fetched = provider.fetch(source_id, existing=existing)
+    try:
+        fetched = provider.fetch(source_id, existing=existing)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"从来源获取漫画失败：{exc}") from exc
+
     fetched.meta.cover_count = max(1, min(req.prefetch_covers or fetched.meta.cover_count, fetched.meta.page_count))
     meta = store.save_fetched(fetched, refresh=req.refresh)
     fetched.meta = meta

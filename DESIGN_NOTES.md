@@ -386,3 +386,17 @@
   5. **前端视图轻量化（View Thinness）与 Composable 下沉**：新增 `src/composables/useLocalWorkshop.ts`，将 `CreateComicView.vue` 脚本从 224 行下沉至 45 行；以图搜图 Composable 统一接入 `src/api/client.ts` 保证 Token 鉴权与 401 拦截，并增加服务就绪状态自动轮询；
   6. **冗余文件与单测闭环**：清理历史备份文件，修复 `test_imsearch.py` 模块导入路径与传参，补齐多章节页码重排单测。
 - **验证**：`vp check`（131 文件 0 error / 0 warning）、后端全量单测全绿、前端精准单测全绿。
+
+## 27. 全量审查后收录崩溃复盘与错题本体系建设（Post-Mortem & Pitfalls Ledger）
+
+- **事故背景与根因复盘**：
+  1. **事故现象**：在全量 Code Review 后，前端执行「收录到纸间」或本地自建/追加操作时立即报错崩溃（HTTP 500）；
+  2. **代码根因**：`backend/app/main.py` 在清理依赖时误删除了 `is_admin` 导入，而 `auth_and_security_middleware` 的写操作校验仍在使用 `if not is_admin(request):`，直接引发运行时 `NameError: name 'is_admin' is not defined`；
+  3. **测试漏网根因**：`backend/test_auth.py` 原先仅单独测试了 `auth.py` 内部函数，绕过了挂载在 FastAPI 顶层的 `auth_and_security_middleware` 真实 HTTP 请求链路；且后端缺乏静态符号检查。
+- **治理与防退化方案**：
+  1. **鉴权术语彻底收敛**：`auth.py` 与 `main.py` 统一收敛使用标准术语 `is_curator`，彻底废弃易混淆的 `is_admin` 别名；
+  2. **异常拦截与友好提示（404 容错）**：`JMProvider.fetch` 增加对下架/不存在车号（如 `1188845`）的 `album_missing` 前置探测，`import_comic` 转换为标准 HTTP 404 响应，消除晦涩的正则解析 500 崩溃；
+  3. **中间件全链路测试集成**：在 `backend/test_auth.py` 中新增 `test_auth_and_security_middleware`，对馆长、访客、未授权各态下的写操作（POST /api/library/import）、读操作及公网端点进行端到端全覆盖；
+  4. **零依赖 Python 静态 AST 检查器（`backend/check_backend.py`）**：引入基于 Python 标准库 AST 的作用域检查器，实时校验语法错误、模块导入完整性及未定义变量；
+  5. **错题本体系落地（`docs/PITFALLS.md`）**：建立常态化错题本索引，按后端/前端/过渡/安全分类固化 7 大核心避坑红线，并写入 `AGENTS.md` 与 `CONTEXT.md` 强制防退化门禁。
+- **验证**：`pnpm test:py` 全绿（静态 AST 检查 + 中间件全链路测试 + 增量更新 + 权限 + 识图单测）、`vp check`（0 error）、JM 下架车号 `1188845` 404 容错测试通过、正常车号 `523607` 本地与远端收录测试通过。

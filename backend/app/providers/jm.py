@@ -159,7 +159,19 @@ class JMProvider(ComicProvider):
         client = self._make_html_client()
 
         album_resp = client.get(f"/album/{jm_id}")
-        detail = JmcomicText.analyse_jm_album_html(album_resp.text)
+        if (
+            "album_missing" in getattr(album_resp, "url", "")
+            or "album_missing" in album_resp.text
+            or "/error/" in getattr(album_resp, "url", "")
+        ):
+            raise ValueError(f"禁漫车号 JM{jm_id} 不存在或已被下架")
+
+        try:
+            detail = JmcomicText.analyse_jm_album_html(album_resp.text)
+        except Exception as exc:
+            if "album_id" in str(exc) or "pattern_html_album_" in str(exc):
+                raise ValueError(f"禁漫车号 JM{jm_id} 页面解析失败（可能不存在或已被删除）") from exc
+            raise
         uploader = self._parse_uploader(album_resp.text)
 
         # Each album carries one or more chapters (episodes). A single-chapter

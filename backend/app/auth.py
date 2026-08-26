@@ -64,11 +64,6 @@ def is_authenticated(request: Request) -> bool:
     return is_curator(request) or is_guest(request)
 
 
-def is_admin(request: Request) -> bool:
-    """Alias for is_curator."""
-    return is_curator(request)
-
-
 def can_read(request: Request) -> bool:
     """True if caller is allowed to browse and read comics."""
     if not is_auth_required():
@@ -85,9 +80,9 @@ def get_user_role(request: Request) -> str:
     return "unauthorized"
 
 
-def require_admin(request: Request) -> None:
+def require_curator(request: Request) -> None:
     """Ensure caller has curator write permissions."""
-    if is_admin(request):
+    if is_curator(request):
         return
 
     if is_guest(request):
@@ -101,6 +96,10 @@ def require_admin(request: Request) -> None:
         detail="未授权访问，需要提供有效的通行口令",
         headers={"WWW-Authenticate": "Bearer"},
     )
+
+
+# Alias for backward compatibility
+require_admin = require_curator
 
 
 

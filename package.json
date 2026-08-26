@@ -13,6 +13,7 @@
     "preview": "vp preview",
     "api": "bash -c 'PYTHON=\"\"; for cand in .venv/bin/python ../.venv/bin/python backend/.venv/bin/python; do [ -x \"$cand\" ] && PYTHON=\"$cand\" && break; done; ${PYTHON:-python3} backend/server.py --reload'",
     "test:unit": "vp test",
+    "test:py": "bash -c 'PYTHON=\"\"; for cand in .venv/bin/python ../.venv/bin/python backend/.venv/bin/python; do [ -x \"$cand\" ] && PYTHON=\"$cand\" && break; done; ${PYTHON:-python3} backend/check_backend.py && ${PYTHON:-python3} backend/test_auth.py && ${PYTHON:-python3} backend/test_incremental_update.py && ${PYTHON:-python3} backend/test_visibility_discovery.py && ${PYTHON:-python3} backend/test_imsearch.py'",
     "build-only": "vp build",
     "type-check": "vue-tsc --build",
     "lint": "run-s \"lint:*\"",

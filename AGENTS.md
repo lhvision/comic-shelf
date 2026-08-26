@@ -43,6 +43,7 @@ release. Add a tool name to select part of the graph. For example, run
 
 | 规则文档                          | 适用任务场景                                                  |
 | --------------------------------- | ------------------------------------------------------------- |
+| `docs/PITFALLS.md`                | 错题本与避坑指南（历史故障复盘、高频反模式与避坑红线速查）    |
 | `docs/agents/architecture.md`     | 后端模型、FastAPI 路由、存储布局、Provider 扩展、安全与防盗链 |
 | `docs/agents/frontend.md`         | 书架/详情/阅读器、页面索引、多章节子路由、HTML-in-Canvas      |
 | `docs/agents/ui.md`               | 新 UI 组件、页面重构、视觉设计（调度 `impeccable` skill）     |
@@ -63,6 +64,7 @@ release. Add a tool name to select part of the graph. For example, run
 8. **View Transitions 边界与安全**：全屏路由过渡仅在跨页面跳转（书架 ⇄ 详情 ⇄ 章节 ⇄ 阅读器）触发，**严禁在阅读器内部翻页/切话触发**（防 AbortError 抢占崩溃）；所有 `startViewTransition` 必须对 `ready`/`finished`/`updateCallbackDone` 绑定 catch；弹窗与微交互走 Vue 原生 `<Transition>`，禁止对弹窗根容器滥用快照导致遮罩畸变与文字亚像素模糊。
 9. **VueUse 优先与零胶水代码（VueUse-First & Zero DOM Glue）**：新增组件、交互重构或状态逻辑开发时，必须读取 `vueuse-functions` skill，优先使用 VueUse 标准 composables（如 `useFileDialog`、`useDropZone`、`useScroll`、`useToggle`、`createGlobalState`、`useIntersectionObserver` 等）代替手写隐藏 input、原生事件监听及样板代码，杜绝重复造轮子。
 10. **E2E 严禁泛滥触发红线**：不涉及跨页面核心交互流程的纯样式微调、TS 类型修补、单元函数改动，绝对禁止自行启动 E2E 浏览器测试；以精准单测（`vp test <Target>.spec.ts`）与静态类型检查（`vp check`）为准。
+11. **错题本与防退化门禁**：重构或重大修改前必须核对 `docs/PITFALLS.md` 避开历史暗礁；涉及 Python 后端改动时必须运行 `pnpm test:py`，确保 0 语法/导入/未定义符号错误且中间件全链路测试通过。
 
 ## 🧪 E2E 测试准则与 AI 协作规范
 
