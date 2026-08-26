@@ -24,37 +24,15 @@ const emit = defineEmits<{
   click: [event: MouseEvent]
 }>()
 
-const btnClasses = computed(() => {
-  const variantClass =
-    props.variant === 'primary'
-      ? 'btn-primary'
-      : props.variant === 'ghost'
-        ? 'btn-ghost'
-        : props.variant === 'soft'
-          ? 'btn-soft'
-          : props.variant === 'danger'
-            ? 'btn-danger'
-            : 'btn-secondary'
-
-  const sizeClass =
-    props.size === 'xs'
-      ? 'btn-xs'
-      : props.size === 'sm'
-        ? 'btn-sm'
-        : props.size === 'lg'
-          ? 'btn-lg'
-          : 'btn-md'
-
-  return [
-    'btn',
-    variantClass,
-    sizeClass,
-    {
-      'btn-block': props.block,
-      'is-loading': props.loading,
-    },
-  ]
-})
+const btnClasses = computed(() => [
+  'btn',
+  `btn-${props.variant}`,
+  `btn-${props.size}`,
+  {
+    'btn-block': props.block,
+    'is-loading': props.loading,
+  },
+])
 
 function handleClick(event: MouseEvent) {
   if (props.disabled || props.loading) {

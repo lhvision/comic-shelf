@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { onClickOutside, useIntervalFn } from '@vueuse/core'
 import { api } from '@/api/client'
@@ -37,6 +37,7 @@ const chapterId = computed(() => String(route.params.chapterId))
 const detail = ref<ComicDetail | null>(null)
 const loading = ref(true)
 const caching = ref(false)
+let loadAbortController: AbortController | null = null
 
 const editOpen = ref(false)
 const chapterTitleInput = ref('')
@@ -101,10 +102,26 @@ watch(
 
 onMounted(load)
 
-async function load() {
-  loading.value = true
+onBeforeUnmount(() => {
+  if (loadAbortController) {
+    loadAbortController.abort()
+    loadAbortController = null
+  }
+})
+
+async function load(silent = false) {
+  if (loadAbortController) {
+    loadAbortController.abort()
+  }
+  const controller = new AbortController()
+  loadAbortController = controller
+
+  // SWR：若已有详情数据且非显式重载，不闪现骨架屏
+  if (!silent && !detail.value) loading.value = true
   try {
-    detail.value = await api.detail(source.value, sourceId.value)
+    const data = await api.detail(source.value, sourceId.value, { signal: controller.signal })
+    if (controller.signal.aborted) return
+    detail.value = data
     setChapterById(chapterId.value)
     // 单章节或无此章节时回落详情页
     if (!activeChapter.value) {
@@ -112,22 +129,24 @@ async function load() {
       return
     }
     // 若尚未完全缓存或后台有任务在运行，启动前端就地状态轮询
+    const job = await api.cacheJob(source.value, sourceId.value, { signal: controller.signal })
+    if (controller.signal.aborted) return
+
+    if (job.running) caching.value = true
     if (!detail.value.cache_complete && detail.value.cached_pages < detail.value.meta.page_count) {
-      const job = await api.cacheJob(source.value, sourceId.value)
-      if (job.running) caching.value = true
       startProgressPolling()
-    } else {
-      const job = await api.cacheJob(source.value, sourceId.value)
-      if (job.running) {
-        caching.value = true
-        startProgressPolling()
-      }
+    } else if (job.running) {
+      startProgressPolling()
     }
   } catch (e) {
+    if (controller.signal.aborted) return
     toast(e instanceof Error ? e.message : String(e), 'error')
     router.replace(`/comic/${source.value}/${sourceId.value}`)
   } finally {
-    loading.value = false
+    if (loadAbortController === controller) {
+      if (!silent) loading.value = false
+      loadAbortController = null
+    }
   }
 }
 
@@ -364,7 +383,7 @@ async function confirmRemoveChapter() {
             取消
           </AppButton>
           <AppButton
-            variant="solid"
+            variant="primary"
             size="sm"
             type="button"
             :loading="savingTitle"

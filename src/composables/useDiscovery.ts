@@ -1,4 +1,5 @@
 import { ref } from 'vue'
+import { tryOnScopeDispose } from '@vueuse/core'
 import { api } from '@/api/client'
 import { useToast } from '@/composables/useToast'
 import { useLibraryStore } from '@/stores/library'
@@ -11,11 +12,25 @@ export function useDiscovery() {
   const refreshing = ref(false)
   const error = ref<string | null>(null)
   const ingestingMap = ref<Record<string, boolean>>({})
+  let activeAbortController: AbortController | null = null
 
   const { toast } = useToast()
   const libraryStore = useLibraryStore()
 
+  tryOnScopeDispose(() => {
+    if (activeAbortController) {
+      activeAbortController.abort()
+      activeAbortController = null
+    }
+  })
+
   async function loadRanking(tf: DiscoveryTimeframe = timeframe.value, refresh = false) {
+    if (activeAbortController) {
+      activeAbortController.abort()
+    }
+    const controller = new AbortController()
+    activeAbortController = controller
+
     timeframe.value = tf
     if (refresh) {
       refreshing.value = true
@@ -25,15 +40,21 @@ export function useDiscovery() {
     error.value = null
 
     try {
-      const data = await api.discoveryRanking(tf, refresh)
-      feed.value = data
+      const data = await api.discoveryRanking(tf, refresh, { signal: controller.signal })
+      if (activeAbortController === controller) {
+        feed.value = data
+      }
     } catch (err) {
+      if (controller.signal.aborted) return
       const msg = err instanceof Error ? err.message : String(err)
       error.value = msg
       toast(`获取排行榜失败：${msg}`, 'error')
     } finally {
-      loading.value = false
-      refreshing.value = false
+      if (activeAbortController === controller) {
+        loading.value = false
+        refreshing.value = false
+        activeAbortController = null
+      }
     }
   }
 

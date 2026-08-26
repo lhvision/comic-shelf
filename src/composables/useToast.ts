@@ -3,13 +3,13 @@ import { readonly, ref } from 'vue'
 export interface Toast {
   id: number
   text: string
-  tone: 'info' | 'error'
+  tone: 'info' | 'error' | 'success'
 }
 
 const toasts = ref<Toast[]>([])
 let nextId = 1
 
-function push(text: string, tone: 'info' | 'error' = 'info') {
+function push(text: string, tone: 'info' | 'error' | 'success' = 'info') {
   const id = nextId++
   toasts.value.push({ id, text, tone })
   window.setTimeout(() => {

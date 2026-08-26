@@ -61,6 +61,10 @@ export function onAuthSuccess(handler: AuthSuccessHandler): () => void {
   return () => authSuccessHandlers.delete(handler)
 }
 
+export interface RequestOptions {
+  signal?: AbortSignal
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const headers = new Headers(init?.headers)
   if (!headers.has('Content-Type') && !(init?.body instanceof FormData)) {
@@ -96,11 +100,32 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 const memoizedDetail = useMemoize(
-  (source: string, sourceId: string) => request<ComicDetail>(`/library/${source}/${sourceId}`),
-  { getKey: (source, sourceId) => `${source}/${sourceId}` },
+  async (source: string, sourceId: string, options?: RequestOptions): Promise<ComicDetail> => {
+    try {
+      return await request<ComicDetail>(`/library/${source}/${sourceId}`, {
+        signal: options?.signal,
+      })
+    } catch (e) {
+      memoizedDetail.delete(source, sourceId)
+      throw e
+    }
+  },
+  {
+    getKey: (source: string, sourceId: string, _options?: RequestOptions) =>
+      `${source}/${sourceId}`,
+  },
 )
 
-const memoizedProviders = useMemoize(() => request<ProviderInfo[]>('/providers'))
+const memoizedProviders = useMemoize(async (options?: RequestOptions): Promise<ProviderInfo[]> => {
+  try {
+    return await request<ProviderInfo[]>('/providers', {
+      signal: options?.signal,
+    })
+  } catch (e) {
+    memoizedProviders.clear()
+    throw e
+  }
+})
 
 export function clearApiCaches(): void {
   memoizedDetail.clear()
@@ -119,8 +144,14 @@ export function notifyAuthSuccess(): void {
 }
 
 export const api = {
-  health: () => request<{ ok: boolean; auth_required?: boolean }>('/health'),
-  authStatus: () => request<AuthStatus>('/auth/status'),
+  health: (options?: RequestOptions) =>
+    request<{ ok: boolean; auth_required?: boolean }>('/health', {
+      signal: options?.signal,
+    }),
+  authStatus: (options?: RequestOptions) =>
+    request<AuthStatus>('/auth/status', {
+      signal: options?.signal,
+    }),
   login: (secret: string) =>
     request<LoginResult>('/auth/login', {
       method: 'POST',
@@ -131,9 +162,13 @@ export const api = {
     request<{ ok: boolean }>('/auth/logout', {
       method: 'POST',
     }),
-  providers: memoizedProviders,
-  library: () => request<LibrarySummary[]>('/library'),
-  detail: memoizedDetail,
+  providers: (options?: RequestOptions) => memoizedProviders(options),
+  library: (options?: RequestOptions) =>
+    request<LibrarySummary[]>('/library', {
+      signal: options?.signal,
+    }),
+  detail: (source: string, sourceId: string, options?: RequestOptions) =>
+    memoizedDetail(source, sourceId, options),
   importComic: async (payload: ImportRequest) => {
     memoizedDetail.clear()
     return request<ImportResult>('/library/import', {
@@ -161,12 +196,22 @@ export const api = {
       body: '{}',
     })
   },
-  cacheProgress: (source: string, sourceId: string) =>
-    request<CacheProgress>(`/library/${source}/${sourceId}/cache`),
-  cacheJob: (source: string, sourceId: string) =>
-    request<CacheJob>(`/library/${source}/${sourceId}/cache/job`),
-  cacheJobs: () => request<CacheJob[]>('/cache/jobs'),
-  downloadConcurrency: () => request<DownloadConcurrency>('/settings/download-concurrency'),
+  cacheProgress: (source: string, sourceId: string, options?: RequestOptions) =>
+    request<CacheProgress>(`/library/${source}/${sourceId}/cache`, {
+      signal: options?.signal,
+    }),
+  cacheJob: (source: string, sourceId: string, options?: RequestOptions) =>
+    request<CacheJob>(`/library/${source}/${sourceId}/cache/job`, {
+      signal: options?.signal,
+    }),
+  cacheJobs: (options?: RequestOptions) =>
+    request<CacheJob[]>('/cache/jobs', {
+      signal: options?.signal,
+    }),
+  downloadConcurrency: (options?: RequestOptions) =>
+    request<DownloadConcurrency>('/settings/download-concurrency', {
+      signal: options?.signal,
+    }),
   setDownloadConcurrency: (limit: number) =>
     request<DownloadConcurrency>('/settings/download-concurrency', {
       method: 'PUT',
@@ -243,17 +288,26 @@ export const api = {
       },
     )
   },
-  discoveryRanking: (timeframe: import('@/types').DiscoveryTimeframe = 'week', refresh = false) =>
+  discoveryRanking: (
+    timeframe: import('@/types').DiscoveryTimeframe = 'week',
+    refresh = false,
+    options?: RequestOptions,
+  ) =>
     request<import('@/types').DiscoveryFeed>(
       `/discovery/ranking?timeframe=${encodeURIComponent(timeframe)}${refresh ? '&refresh=true' : ''}`,
+      { signal: options?.signal },
     ),
-  imageSearchStatus: () => request<import('@/types').ImageSearchStatus>('/search/image/status'),
-  imageSearch: async (file: File) => {
+  imageSearchStatus: (options?: RequestOptions) =>
+    request<import('@/types').ImageSearchStatus>('/search/image/status', {
+      signal: options?.signal,
+    }),
+  imageSearch: async (file: File, options?: RequestOptions) => {
     const formData = new FormData()
     formData.append('file', file)
     return request<import('@/types').ImageSearchResultItem[]>('/search/image', {
       method: 'POST',
       body: formData,
+      signal: options?.signal,
     })
   },
 }

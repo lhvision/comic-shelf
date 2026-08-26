@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useLibraryStore } from '@/stores/library'
 import { useAppSettings } from '@/stores/settings'
@@ -34,6 +34,11 @@ const activeTab = ref<'jm' | 'local'>('jm')
 const localPath = ref('')
 const localImporting = ref(false)
 
+watch([id, localPath, activeTab], () => {
+  if (store.importMessage) store.clearImportMessage()
+  warnings.value = []
+})
+
 const canSubmit = computed(() => /^(?:JM)?\d{6,8}$/i.test(id.value.trim()))
 
 const jmBtnText = computed(() => (store.importing ? '收录中…' : '收录到纸间'))
@@ -55,7 +60,7 @@ async function submit() {
     )
     lastId.value = result.meta.display_id
     warnings.value = result.warnings
-    toast(store.importMessage, warnings.value.length ? 'error' : 'info')
+    toast(store.importMessage, warnings.value.length ? 'error' : 'success')
 
     if (!result.from_cache) {
       emit('imported', result.meta.source, result.meta.source_id)
@@ -300,9 +305,11 @@ function incConcurrency() {
       </div>
     </div>
 
-    <div v-if="store.importMessage" class="import-message" role="status">
-      {{ store.importMessage }}
-    </div>
+    <Transition name="message-fade">
+      <div v-if="store.importMessage" class="import-message" role="status">
+        {{ store.importMessage }}
+      </div>
+    </Transition>
 
     <ul v-if="warnings.length" class="import-warnings">
       <li v-for="warning in warnings" :key="warning">{{ warning }}</li>
@@ -657,6 +664,16 @@ function incConcurrency() {
   background: color-mix(in oklab, var(--success) 10%, transparent);
   color: var(--ink-1);
   font-size: var(--text-sm);
+}
+
+.message-fade-enter-active,
+.message-fade-leave-active {
+  transition: opacity var(--duration-2) var(--ease-out);
+}
+
+.message-fade-enter-from,
+.message-fade-leave-to {
+  opacity: 0;
 }
 
 .import-warnings {

@@ -21,12 +21,12 @@
 | `src/composables/useChapterNavigation.ts`      | 详情/子路由章节导航：锁定章节、章节切片、48 增量渲染、「继续阅读」文案     |
 | `src/composables/useReaderSettings.ts`         | 阅读器设置全局状态单例持久化（VueUse `createGlobalState`）                 |
 | `src/composables/useLastRead.ts`               | 每部作品继续阅读页码持久化读写                                             |
-| `src/composables/useToast.ts`                  | 全局轻量印章通知 Toast 状态机                                              |
+| `src/composables/useToast.ts`                  | 全局轻量印章通知 Toast 状态机（支持 info / error / success 三态提示）      |
 | `src/composables/useHtmlCanvas.ts`             | HTML-in-Canvas 实验特性检测与支持度判定                                    |
 | `src/components/AuthModal.vue`                 | 访问口令门禁弹窗：输入密钥、品牌 Logo、双语眉标与错误反馈                  |
 | `src/components/Modal.vue`                     | 通用无障碍二次确认弹窗：焦点圈闭、锁卷与抽屉自适应（用于删除危险操作）     |
 | `src/components/SegmentedTabs.vue`             | 典藏分段选项卡：支持泛型 `TabItem<T>`/字符串、左右/Home/End 键导航与多尺寸 |
-| `src/components/AppButton.vue`                 | 通用典藏按钮：支持 solid / soft / ghost / danger 多种变体与 loading 状态   |
+| `src/components/AppButton.vue`                 | 通用典藏按钮：支持 primary / secondary / soft / ghost / danger 多种变体    |
 | `src/components/Tooltip.vue`                   | 现代 CSS Anchor Positioning 提示气泡组件                                   |
 | `src/components/CacheProgress.vue`             | 实时缓存进度条与后台任务状态指示                                           |
 | `src/components/detail/EditMetadataModal.vue`  | 典藏资料与标签编排弹窗（实时修改标题、作者、4 张封面展示页码、标签增删）   |
@@ -44,7 +44,7 @@
 | `src/components/HtmlCanvasCard.vue`            | 实验性书架卡片：整卡 DOM（封面+标题+标签+进度）合成 canvas                 |
 | `src/components/reader/ReaderLoadingState.vue` | 典藏 WebP 呼吸微光加载组件（整本首屏与单页渐进式加载）                     |
 | `src/styles/tokens.css`                        | 设计 token 与原生 CSS 样式体系                                             |
-| `src/stores/library.ts`                        | 书库 Pinia store                                                           |
+| `src/stores/library.ts`                        | 书库 Pinia store（SWR 保持、静默回源、后台缓存轮询与自动清理收录提示）     |
 | `src/stores/settings.ts`                       | 下载并发与运行时设置 store                                                 |
 | `src/stores/experiments.ts`                    | 实验开关：HTML-in-Canvas 卡片                                              |
 
@@ -202,3 +202,16 @@
 - **拖拽响应式化**：拖拽上传与投放区域必须使用 `useDropZone(elRef, { onDrop })`，直接利用其解构出的 `isOverDropZone` 响应式变量驱动高亮样式，杜绝手写 `@dragover.prevent` 与原生 `dataTransfer` 胶水；
 - **全局状态与单例**：跨组件持久化配置必须使用 `createGlobalState` 与 `useStorage`；
 - **视口与滚动**：交叉监听优先使用 `useIntersectionObserver`，容器滚动优先使用 `useScroll`。
+
+## 11. 前端请求、缓存与生命周期取消规范（SWR & AbortController）
+
+- **集中式强类型请求层**：全站请求统一由 `src/api/client.ts` 导出，所有查询类方法必须支持可选的 `options?: RequestOptions`（透传 `signal?: AbortSignal`）。
+- **SWR 静默回源（Stale-While-Revalidate）**：
+  - 书架首页与详情页在内存中已有数据时，**绝不重置 `loading = true` 导致骨架屏闪烁**；
+  - 必须优先展示已有卡片/元数据，后台静默对齐最新状态，仅在首次无数据或用户显式刷新时呈现骨架屏。
+- **生命周期请求取消与防竞态**：
+  - 在页面加载（`ComicDetailView`、`ChapterView`、`ReaderView`）及连续触发场景（`useImageSearch` 重新选图、`useDiscovery` 快速切换周/月/总榜）中，使用局部 `AbortController`；
+  - 发起新请求前主动中止上一次未完成的请求，并在组件卸载（`tryOnScopeDispose` / `onBeforeUnmount`）时自动 abort，杜绝无效后台流量与异步竞态覆盖。
+- **`useMemoize` 失败自清理与类型签名规范**：
+  - 所有使用 `@vueuse/core` 的 `useMemoize` 缓存的异步函数，必须在 catch 中调用 `.delete(key)`，防止因 Abort 或临时网络抖动导致 rejected promise 常驻缓存污染后续访问；
+  - 在 `api` 导出对象上必须通过包装函数声明包含 `options?: RequestOptions` 的显式类型签名，杜绝 IDE 参数长度推导偏差。

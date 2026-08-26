@@ -269,9 +269,19 @@ const { toggle: toggleFullscreen } = useFullscreen(document.documentElement)
 useEventListener(window, 'keydown', onKeydown)
 
 /* ---------------- 数据加载与监听 ---------------- */
+let readerAbortController: AbortController | null = null
+
 onMounted(async () => {
+  if (readerAbortController) {
+    readerAbortController.abort()
+  }
+  const controller = new AbortController()
+  readerAbortController = controller
+
   try {
-    detail.value = await api.detail(source.value, sourceId.value)
+    const data = await api.detail(source.value, sourceId.value, { signal: controller.signal })
+    if (controller.signal.aborted) return
+    detail.value = data
     const initial = Number(route.params.page ?? 1)
     currentPage.value = clampToScope(initial)
     currentGroupIndex.value = groupIndexForPage(currentPage.value)
@@ -283,13 +293,22 @@ onMounted(async () => {
     preloadAround(currentPage.value)
     resetAutoTurnCountdown()
   } catch (e) {
+    if (controller.signal.aborted) return
     loading.value = false
     toast(e instanceof Error ? e.message : String(e), 'error')
     router.replace(`/comic/${source.value}/${sourceId.value}`)
+  } finally {
+    if (readerAbortController === controller) {
+      readerAbortController = null
+    }
   }
 })
 
 onBeforeUnmount(() => {
+  if (readerAbortController) {
+    readerAbortController.abort()
+    readerAbortController = null
+  }
   lastRead.value = currentPage.value
 })
 

@@ -14,6 +14,9 @@
 5. [前端：Vue 3 响应式解包与 Composable 顶层解构（Ref Unwrap）](#5-前端vue-3-响应式解包与-composable-顶层解构)
 6. [前端：View Transitions 边界与阅读器防抢占崩溃（AbortError）](#6-前端view-transitions-边界与阅读器防抢占崩溃)
 7. [前端：硬件图层裁剪与增量呈现（contain: paint 陷阱）](#7-前端硬件图层裁剪与增量呈现)
+8. [前端：VueUse useMemoize 失败缓存残留与参数签名推导（Promise Rejection Cache Poisoning）](#8-前端vueuse-usememoize-失败缓存残留与参数签名推导)
+9. [前端：书架切页回源骨架屏闪烁与 Stale-While-Revalidate（SWR 保持）](#9-前端书架切页回源骨架屏闪烁与-stale-while-revalidate)
+10. [前端：UI 组件变体与 Composable 状态类型的契约一致性（Type Parity）](#10-前端ui-组件变体与-composable-状态类型的契约一致性)
 
 ---
 
@@ -92,8 +95,39 @@
 
 ---
 
+### 8. 前端：VueUse useMemoize 失败缓存残留与参数签名推导
+
+- **🚨 故障现象**：
+  1. 接口因快速切页被 `AbortController` 中止或网络异常报错后，`useMemoize` 默认将 rejected promise 缓存在内存中，用户再次点击该漫画永远拿到旧的 `AbortError`，无法重试；
+  2. `useMemoize` 的 `getKey` 若只声明了 2 个参数，TS 上下文推导会将 `Args` 判定为 2 元组，导致传递第三个参数 `{ signal }` 时报错 `应有 2 个参数，但获得 3 个`。
+- **🔍 漏网根因**：`useMemoize` 默认不处理 promise 失败清理，且参数类型推导受 `getKey` 形参长度反向约束。
+- **🛡️ 避坑军规与防线**：
+  1. 所有异步 memoize 函数必须在 catch 中调用 `.delete(key)` 自动清除失败缓存；
+  2. 导出的 API 对象必须通过包装函数显式声明 3 个参数的签名类型（`(source, id, options?: RequestOptions) => memoizedDetail(...)`）。
+
+---
+
+### 9. 前端：书架切页回源骨架屏闪烁与 Stale-While-Revalidate
+
+- **🚨 故障现象**：用户从详情页或阅读器点返回书架时，页面卡片全部消失并闪现 6 个骨架屏，几百毫秒后才重新刷出列表。
+- **🔍 漏网根因**：`useLibraryStore.loadItems()` 每次被调用都无条件将 `loading.value = true`，导致 `ComicGrid.vue` 销毁 DOM 切换至骨架屏。
+- **🛡️ 避坑军规与防线**：
+  1. 采用 SWR 机制：内存中已有 `items` 时，二次加载保持 `loading = false`（页面卡片瞬时呈现 0 闪烁），在后台静默发起 `api.library()` 对齐最新状态；
+  2. 仅在内存无任何数据（初次进入应用）或显式下拉刷新时才展示骨架屏。
+
+---
+
+### 10. 前端：UI 组件变体与 Composable 状态类型的契约一致性
+
+- **🚨 故障现象**：`ToastStack.vue` 实现了 `'success'` 状态（绿色印章），但 `useToast.ts` 的 `Toast.tone` 仅定义了 `'info' | 'error'`；或 `AppButton.vue` 定义了 `primary / secondary / ghost / soft / danger`，但在业务页面误用了已废弃的 `variant="solid"`。
+- **🛡️ 避坑军规与防线**：
+  1. UI 组件的变体属性（如 `variant`、`tone`）必须在组件 Prop 与对应 Composable 的 TypeScript 联合类型之间保持 1:1 严格对齐；
+  2. 按钮主样式统一使用 `variant="primary"`，禁止使用非标准别名。
+
+---
+
 ## 🚦 交付前自检三步法
 
 1. **静态代码与符号检查**：`vp check`（前端 0 error） + `pnpm test:py`（后端 0 error）；
 2. **相关领域单测精准执行**：改动哪个模块，就跑哪个模块对应的单测；
-3. **红线对齐**：核对本次改动是否触碰上述 7 条红线。
+3. **红线对齐**：核对本次改动是否触碰上述 10 条红线。

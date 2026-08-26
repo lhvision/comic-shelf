@@ -68,5 +68,6 @@
 - **共享封面形变（Shared Cover Morph）**：书架卡片封面（`comic-cover-active`）与本子详情 Hero 封面在路由跳转时的动态连续尺寸与位置插值（神奇移动）。
 - **局域视图过渡（Element-Scoped Transition）**：局限于单个组件 DOM 子树内的独立状态过渡（如图片装订就绪、收藏按钮红心状态、并发步进器），不阻塞整页交互与全局重绘。
 - **缩略图预热与渐进呈现（Thumbnail Pre-warming & Progressive Reveal）**：详情页与子章节页通过 360px JPEG 缩略图（48 页/批增量渲染）按需下发，同时在后端磁盘完成原图持久化解密；阅读器直接读取本地文件并通过 GPU 硬件加速透明度淡入呈现，达成 0 远端重复请求与毫秒级秒开。
-- **错题本（Pitfalls Ledger）**：固化于 `docs/PITFALLS.md` 的项目核心避坑清单与故障反模式档案，记录如未定义符号中间件崩溃、图层裁剪、解包失效、过度过渡抢占等历史暗礁。
+- **书架静默回源（Shelf SWR / Stale-While-Revalidate）**：书架首页在内存已有数据时先即时呈现现有卡片，后台静默向后端对齐最新状态，仅在初次无数据时展示骨架屏，杜绝切页时卡片重载与骨架屏闪烁。
+- **请求中止与竞态隔离（Request Abort & Race Cancellation）**：利用 `AbortController` 与组件生命周期绑定，在瞬时进出页面或并发触发检索（如以图搜图重选、排行榜切档）时主动取消上一轮未完成的网络请求，避免无效流量与状态覆盖。
 - **防退化门禁（Regression Safety Net）**：全仓多层自动化防御机制，包含前端 `vp check`（TS/Vue 静态检查）、后端 `pnpm test:py`（AST 符号自检 + 真实中间件链路与多章节单测），杜绝改动引发核心功能断裂。

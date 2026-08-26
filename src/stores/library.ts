@@ -1,5 +1,5 @@
 import { computed, ref } from 'vue'
-import { useIntervalFn } from '@vueuse/core'
+import { tryOnScopeDispose, useIntervalFn } from '@vueuse/core'
 import { defineStore } from 'pinia'
 import { api, onAuthSuccess } from '@/api/client'
 import type { ImportRequest, LibrarySummary } from '@/types'
@@ -24,20 +24,39 @@ export const useLibraryStore = defineStore('library', () => {
   const displayItems = computed(() => items.value)
 
   const activeCachingCount = computed(() => Object.keys(liveCache.value).length)
+  let libraryAbortController: AbortController | null = null
 
-  async function loadItems() {
-    loading.value = true
+  async function loadItems(silent = false) {
+    if (libraryAbortController) {
+      libraryAbortController.abort()
+    }
+    const controller = new AbortController()
+    libraryAbortController = controller
+
+    // SWR：仅在内存中尚无数据且非静默模式时才置 loading = true 展示骨架屏；
+    // 若已有数据，则保持现有卡片平滑展示，后台静默对齐最新状态，杜绝切页闪烁。
+    if (!silent && items.value.length === 0) {
+      loading.value = true
+    }
+
     try {
-      items.value = await api.library()
-      error.value = ''
+      const data = await api.library({ signal: controller.signal })
+      if (libraryAbortController === controller) {
+        items.value = data
+        error.value = ''
+      }
     } catch (e) {
+      if (controller.signal.aborted) return
       const msg = e instanceof Error ? e.message : String(e)
       // When unauthenticated, the auth modal guides the user; don't trigger loud error toast
       if (!msg.includes('401') && !msg.includes('未授权')) {
         error.value = msg
       }
     } finally {
-      loading.value = false
+      if (libraryAbortController === controller) {
+        loading.value = false
+        libraryAbortController = null
+      }
     }
   }
 
@@ -76,13 +95,39 @@ export const useLibraryStore = defineStore('library', () => {
       liveCache.value = next
 
       if (finishedSomething) {
-        await loadItems()
+        await loadItems(true)
+        if (importMessage.value.includes('后台缓存')) {
+          clearImportMessage()
+        }
       }
       if (running.length === 0) poll.pause()
     } catch {
       /* transient; keep whatever we had */
     }
   }
+
+  let importMessageTimer: ReturnType<typeof setTimeout> | null = null
+
+  function setImportMessage(msg: string, autoDismissMs = 6000) {
+    if (importMessageTimer) clearTimeout(importMessageTimer)
+    importMessage.value = msg
+    if (msg && autoDismissMs > 0) {
+      importMessageTimer = setTimeout(() => {
+        if (importMessage.value === msg) {
+          importMessage.value = ''
+        }
+      }, autoDismissMs)
+    }
+  }
+
+  function clearImportMessage() {
+    if (importMessageTimer) clearTimeout(importMessageTimer)
+    importMessage.value = ''
+  }
+
+  tryOnScopeDispose(() => {
+    if (importMessageTimer) clearTimeout(importMessageTimer)
+  })
 
   const poll = useIntervalFn(refreshLiveCache, 2000, { immediate: false })
 
@@ -107,26 +152,27 @@ export const useLibraryStore = defineStore('library', () => {
     return liveCache.value[liveCacheKey(item.source, item.source_id)]
   }
 
-  async function load() {
-    await loadItems()
+  async function load(silent = false) {
+    await loadItems(silent)
     // A page reload shouldn't lose the live "缓存中" state on the shelf.
     await refreshLiveCache()
   }
 
   async function importComic(payload: ImportRequest) {
     importing.value = true
-    importMessage.value = ''
+    clearImportMessage()
     error.value = ''
     try {
       const result = await api.importComic(payload)
-      importMessage.value = result.from_cache
+      const msg = result.from_cache
         ? `${result.meta.display_id} 已在本机，没有访问远端`
         : result.background
           ? `${result.meta.display_id} 已收录，页面正在后台缓存`
           : `${result.meta.display_id} 已收录，本次预缓存 ${result.prefetched} 页`
-      if (result.warnings.length > 0) {
-        importMessage.value += `（${result.warnings.length} 条提醒）`
-      }
+      const fullMsg =
+        result.warnings.length > 0 ? `${msg}（${result.warnings.length} 条提醒）` : msg
+      setImportMessage(fullMsg, 6000)
+
       if (result.background) {
         markCaching(result.meta.source, result.meta.source_id)
       }
@@ -175,5 +221,7 @@ export const useLibraryStore = defineStore('library', () => {
     liveFor,
     startPollingIfActive,
     stopPolling,
+    setImportMessage,
+    clearImportMessage,
   }
 })

@@ -11,6 +11,7 @@ export function useImageSearch() {
   const searchImagePreviewUrl = ref('')
   const searchResults = shallowRef<ImageSearchResultItem[] | null>(null)
   let retryTimer: ReturnType<typeof setTimeout> | null = null
+  let searchAbortController: AbortController | null = null
 
   const checkStatus = async () => {
     try {
@@ -32,6 +33,10 @@ export function useImageSearch() {
   })
 
   const clearImage = () => {
+    if (searchAbortController) {
+      searchAbortController.abort()
+      searchAbortController = null
+    }
     if (searchImagePreviewUrl.value) {
       URL.revokeObjectURL(searchImagePreviewUrl.value)
     }
@@ -42,25 +47,38 @@ export function useImageSearch() {
   }
 
   tryOnScopeDispose(() => {
+    if (searchAbortController) {
+      searchAbortController.abort()
+      searchAbortController = null
+    }
     if (retryTimer) clearTimeout(retryTimer)
     clearImage()
   })
 
   const searchWithFile = async (file: File) => {
     clearImage()
+    const controller = new AbortController()
+    searchAbortController = controller
+
     searchImageFile.value = file
     searchImagePreviewUrl.value = URL.createObjectURL(file)
     isSearching.value = true
     error.value = ''
 
     try {
-      const results = await api.imageSearch(file)
-      searchResults.value = results
+      const results = await api.imageSearch(file, { signal: controller.signal })
+      if (searchAbortController === controller) {
+        searchResults.value = results
+      }
     } catch (e: unknown) {
+      if (controller.signal.aborted) return
       error.value = e instanceof Error ? e.message : '以图搜图请求失败'
       searchResults.value = null
     } finally {
-      isSearching.value = false
+      if (searchAbortController === controller) {
+        isSearching.value = false
+        searchAbortController = null
+      }
     }
   }
 
