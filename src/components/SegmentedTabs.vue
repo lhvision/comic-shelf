@@ -1,4 +1,6 @@
 <script setup lang="ts" generic="T extends string | number">
+import { computed, useId } from 'vue'
+
 export interface TabItem<T = string | number> {
   key: T
   label: string
@@ -27,6 +29,9 @@ const emit = defineEmits<{
   'update:modelValue': [value: T]
   change: [value: T]
 }>()
+
+const uid = useId().replace(/[^a-zA-Z0-9_-]+/g, '')
+const activeAnchorName = computed(() => `--tab-active-${uid}`)
 
 function normalizeItem(item: TabItem<T> | string): TabItem<T> {
   if (typeof item === 'string') {
@@ -85,6 +90,9 @@ function onKeydown(event: KeyboardEvent, index: number) {
       :tabindex="modelValue === normalizeItem(rawItem).key ? 0 : -1"
       class="segmented-tab"
       :class="{ 'is-active': modelValue === normalizeItem(rawItem).key }"
+      :style="
+        modelValue === normalizeItem(rawItem).key ? { anchorName: activeAnchorName } : undefined
+      "
       :disabled="disabled || normalizeItem(rawItem).disabled"
       @click="onSelect(normalizeItem(rawItem).key)"
       @keydown="(e) => onKeydown(e, idx)"
@@ -107,6 +115,29 @@ function onKeydown(event: KeyboardEvent, index: number) {
   border-radius: var(--radius-2);
   background: var(--paper-1);
   box-sizing: border-box;
+  position: relative;
+  isolation: isolate;
+}
+
+/* CSS Anchor 动态滑动胶囊指示器 */
+.segmented-tabs::before {
+  content: '';
+  position: absolute;
+  position-anchor: v-bind(activeAnchorName);
+  left: anchor(left);
+  top: anchor(top);
+  width: anchor-size(width);
+  height: anchor-size(height);
+  background: var(--paper-0);
+  border-radius: var(--radius-1);
+  box-shadow: var(--shadow-1);
+  transition:
+    left var(--duration-2) var(--ease-spring),
+    top var(--duration-2) var(--ease-spring),
+    width var(--duration-2) var(--ease-spring),
+    height var(--duration-2) var(--ease-spring);
+  pointer-events: none;
+  z-index: 0;
 }
 
 .segmented-tabs.is-full-width {
@@ -124,6 +155,8 @@ function onKeydown(event: KeyboardEvent, index: number) {
 }
 
 .segmented-tab {
+  position: relative;
+  z-index: 1;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -134,9 +167,8 @@ function onKeydown(event: KeyboardEvent, index: number) {
   color: var(--ink-1);
   cursor: pointer;
   transition:
-    background-color var(--duration-1) var(--ease-out),
     color var(--duration-1) var(--ease-out),
-    box-shadow var(--duration-1) var(--ease-out);
+    background-color var(--duration-1) var(--ease-out);
   user-select: none;
   white-space: nowrap;
   box-sizing: border-box;
@@ -154,15 +186,24 @@ function onKeydown(event: KeyboardEvent, index: number) {
 }
 
 .segmented-tab.is-active {
-  background: var(--paper-0);
   color: var(--accent-strong);
   font-weight: 600;
-  box-shadow: var(--shadow-1);
 }
 
 .segmented-tab:disabled {
   cursor: not-allowed;
   opacity: 0.5;
+}
+
+/* 锚点不可用时降级：隐藏 ::before 滑动胶囊，恢复 static 背景 */
+@supports not (anchor-name: --test-anchor) {
+  .segmented-tabs::before {
+    display: none;
+  }
+  .segmented-tab.is-active {
+    background: var(--paper-0);
+    box-shadow: var(--shadow-1);
+  }
 }
 
 /* Sizes */
@@ -197,5 +238,11 @@ function onKeydown(event: KeyboardEvent, index: number) {
 
 .segmented-tab.is-active .tab-sub {
   color: var(--accent);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .segmented-tabs::before {
+    transition: none;
+  }
 }
 </style>

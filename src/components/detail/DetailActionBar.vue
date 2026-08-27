@@ -1,9 +1,9 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
-import { onClickOutside } from '@vueuse/core'
 import Modal from '@/components/Modal.vue'
 import AppButton from '@/components/AppButton.vue'
 import AppIcon from '@/components/AppIcon.vue'
+import AppDropdown, { type DropdownOption } from '@/components/AppDropdown.vue'
+import { computed, ref } from 'vue'
 
 /**
  * 详情页操作栏 —— 阅读/缓存/刷新 + 「更多」菜单（含危险移除）+ 缓存进度条。
@@ -41,17 +41,25 @@ const emit = defineEmits<{
   appendPages: []
 }>()
 
-/** 「更多」弹出菜单开合 */
-const moreOpen = ref(false)
-const moreRoot = ref<HTMLElement | null>(null)
 /** 移除确认弹窗开合 */
 const removeOpen = ref(false)
 /** 二次确认勾选 */
 const ackRemove = ref(false)
 
-onClickOutside(moreRoot, () => {
-  moreOpen.value = false
-})
+const moreOptions = computed<DropdownOption[]>(() => [
+  {
+    key: 'remove',
+    label: '移除本地缓存…',
+    danger: true,
+    hint: '不可撤销',
+  },
+])
+
+function onMoreSelect(option: DropdownOption) {
+  if (option.key === 'remove') {
+    requestRemove()
+  }
+}
 
 const removeBody = computed(
   () =>
@@ -60,7 +68,6 @@ const removeBody = computed(
 )
 
 function requestRemove() {
-  moreOpen.value = false
   ackRemove.value = false
   removeOpen.value = true
 }
@@ -152,30 +159,25 @@ const cacheScale = computed(() => `scaleX(${props.cachePercent / 100})`)
         刷新资料
       </button>
 
-      <div v-if="canWrite" ref="moreRoot" class="more-menu">
-        <button
-          class="btn btn-ghost more-trigger"
-          type="button"
-          :aria-expanded="moreOpen"
-          :aria-haspopup="true"
-          title="更多操作选项"
-          @click="moreOpen = !moreOpen"
-        >
-          <AppIcon name="more" size="xs" />
-          <span>更多</span>
-        </button>
-        <div v-if="moreOpen" class="more-pop" role="menu">
+      <AppDropdown
+        v-if="canWrite"
+        class="more-menu"
+        :options="moreOptions"
+        align="end"
+        @select="onMoreSelect"
+      >
+        <template #trigger="{ open }">
           <button
-            class="more-item danger-item"
+            class="btn btn-ghost more-trigger"
+            :class="{ 'is-open': open }"
             type="button"
-            role="menuitem"
-            title="移除本地已缓存的文件（不可撤销）"
-            @click="requestRemove"
+            title="更多操作选项"
           >
-            移除本地缓存…
+            <AppIcon name="more" size="xs" />
+            <span>更多</span>
           </button>
-        </div>
-      </div>
+        </template>
+      </AppDropdown>
     </div>
 
     <Modal :open="removeOpen" :title="`移除《${title}》？`" @cancel="cancelRemove">
@@ -231,43 +233,6 @@ const cacheScale = computed(() => `scaleX(${props.cachePercent / 100})`)
 .more-menu {
   position: relative;
   margin-left: auto;
-}
-
-.more-pop {
-  position: absolute;
-  top: calc(100% + var(--space-2));
-  right: 0;
-  z-index: 10;
-  min-width: 10rem;
-  padding: var(--space-1);
-  border: 1px solid var(--line-strong);
-  border-radius: var(--radius-2);
-  background: var(--paper-0);
-  box-shadow: var(--shadow-2);
-}
-
-.more-item {
-  display: block;
-  width: 100%;
-  padding: var(--space-2) var(--space-3);
-  border-radius: var(--radius-1);
-  text-align: left;
-  font-size: var(--text-sm);
-  color: var(--ink-1);
-  background: transparent;
-  border: 0;
-}
-
-.more-item:hover {
-  background: var(--paper-1);
-}
-
-.danger-item {
-  color: var(--accent-strong);
-}
-
-.danger-item:hover {
-  background: var(--accent-soft);
 }
 
 .remove-copy {

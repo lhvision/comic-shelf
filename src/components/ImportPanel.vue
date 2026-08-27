@@ -40,7 +40,7 @@ watch([id, localPath, activeTab], () => {
   warnings.value = []
 })
 
-const canSubmit = computed(() => /^(?:JM)?\d{6,8}$/i.test(id.value.trim()))
+const canSubmit = computed(() => /^(?:JM)?\d{5,8}$/i.test(id.value.trim()))
 
 const jmBtnText = computed(() => (store.importing ? '收录中…' : '收录到纸间'))
 const localBtnText = computed(() => (localImporting.value ? '扫描中…' : '一键收录'))

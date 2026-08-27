@@ -200,7 +200,7 @@
 - **规则沉淀**：
   - 视图只做纯编排（View Thinness），单文件 `<script setup>` 原则上不超过 150 行；
   - 严格遵守 `DESIGN_NOTES §13` 顶层解构约束；
-  - 规则已同步固化至 [`AGENTS.md`](file:///home/miku/dsh/comic-shelf/AGENTS.md) 与 [`docs/agents/frontend.md`](file:///home/miku/dsh/comic-shelf/docs/agents/frontend.md)。
+  - 规则已同步固化至 `AGENTS.md` 与 [`docs/agents/frontend.md`](./docs/agents/frontend.md)。
 - **验证**：`vp check`（58 文件 0 error）、`vp test` 单元测试全部通过。
 
 ## 18. 阅读器 Loading 界面重构（WebP 插画 + 纸间呼吸微光质感）
@@ -476,3 +476,32 @@
   4. **系统打磨（Polish）**：全站 18 个组件/视图 100% 收敛至 `<AppIcon>` 与原子图标，全站业务组件内联 SVG 完全归零；
   5. **适配与安全（Adapt）**：全仓 160 文件 `vp check` 零 warning/error，补齐 `AppIcon.spec.ts` 完整单测。
 - **验证**：`vp check`（0 error / 0 warning）、单测全绿。
+
+## 32. 现代浮层体系升级（HTML Popover + CSS Anchor + 容器回退检测与滑动动效）
+
+- **背景与痛点**：
+  1. 过去前端弹出交互缺乏统一基建：`Modal.vue` 独占一处，`ThemeSelect.vue` 与 `DetailActionBar.vue` 操作栏分别手写绝对定位与 `document.addEventListener('click')` 外部点击监听胶水；
+  2. `Tooltip.vue` 虽有基础 Anchor Positioning，但未利用 Top-layer `popover="hint"`，且缺乏边界翻转时的箭头自适应；
+  3. `SegmentedTabs.vue` 缺乏物理滑动指示质感，选项卡切换生硬。
+- **Impeccable 12345 规范推进与落地**：
+  1. **规划与发现（Shape）**：
+     - 基于张鑫旭 5 篇前沿技术文章与 MDN 最新标准，确认三层正交原子浮层体系：`AppTooltip`（轻量提示）+ `AppPopover`（通用富浮层）+ `AppDropdown`（操作选单/选择器）；
+     - 确立「渐进增强（Progressive Enhancement）」原则：优先拥抱 W3C 现代规范，不支持时利用 VueUse 与 CSS `@supports not` 平滑降级，坚决不引入重型第三方定位库；
+     - 沉淀 [ADR 0004](./docs/adr/0004-modern-floating-system.md) 并更新 `CONTEXT.md` 领域术语表。
+  2. **方案与基调（Craft）**：
+     - **`AppTooltip.vue`**：结合 `popover="hint"` 与 CSS Anchor Positioning，引入 `container-type: anchored` + `@container anchored(fallback: flip-block)` 纯 CSS 感知视口边缘翻转自动对调指示小三角；
+     - **`AppPopover.vue`**：基于 `popover="auto"` 原生 Top Layer（杜绝 `z-index` 竞争与父级 `overflow` 裁剪），结合 `anchor-name` / `position-anchor` / `position-try-fallbacks`，原生支持 Light Dismiss；
+     - **`AppDropdown.vue`**：基于 `AppPopover` 封装完整键盘导航（上下箭头、Home、End、Enter、Esc、Tab 焦点流）、单选勾选标记、危险操作警示与分隔线；
+     - **`SegmentedTabs.vue` 滑动跟随**：通过 `:style="{ anchorName: activeAnchorName }"` 动态为活动 Tab 绑定锚点名，外层伪元素借助 `position-anchor` 与 `transition: var(--duration-2) var(--ease-spring)` 达成纯 CSS 物理滑动胶囊动效。
+  3. **评审与挑刺（Critique & Audit）**：
+     - 审查 a11y 无障碍：补充 `role="tooltip"`、`role="listbox"`、`role="option"`、`aria-expanded`、`aria-controls` 与 `aria-describedby` 映射；
+     - 防御 JSDOM 单测环境下 `scrollIntoView` 兼容性，采用安全链式调用 `activeEl?.scrollIntoView?.(...)`；
+     - 审查 `popover="hint"` 与 `popover="auto"` 的层级互斥行为，确保轻提示展示绝不意外关闭已展开的下拉菜单。
+  4. **系统打磨（Polish）**：
+     - 全站浮层与气泡 100% 收敛到 `--paper-0`、`--line-strong`、`--shadow-2`、`--radius-2`，配合 `<AppIcon>` 矢量单源图标；
+     - 消除 `ThemeSelect.vue` 中 420 行手写定位与事件监听，精简为基于 `AppDropdown` 的 60 行薄包装；
+     - 重构 `DetailActionBar.vue` 中的「更多 ⋯」菜单，彻底删除分散的 `.more-pop` CSS 规则与 `onClickOutside` 监听。
+  5. **响应式与无障碍（Adapt）**：
+     - 移动端小屏下，操作项保持触控舒适度（`min-height: var(--control-sm/md)`，触控目标 ≥ 44px）；
+     - `@media (prefers-reduced-motion: reduce)` 全面关闭位移与形变动画。
+- **验证**：`vp check`（125 文件 0 error / 0 warning）、`ModernFloatingSystem.spec.ts` 与 `SegmentedTabs.spec.ts` 11 项精准单元测试全绿。

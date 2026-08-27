@@ -15,7 +15,6 @@
 ## 9. 常用命令
 
 ```bash
-cd /home/miku/dsh/comic-shelf
 pnpm dev:all                             # 同时起 API + Web（./scripts/dev.sh，带热重载）
 pnpm api                                 # 只起 API（自动探测 Python 并热重载）
 vp dev                                   # 只起 Web（Vite+ dev server）

@@ -37,7 +37,7 @@ class JMProvider(ComicProvider):
     key = "jm"
     label = "禁漫天堂 (JMComic)"
     short_label = "禁漫"
-    id_pattern = r"^(?:JM)?(\d{6,8})$"
+    id_pattern = r"^(?:JM)?(\d{5,8})$"
     example = "JM523607"
 
     def __init__(self) -> None:

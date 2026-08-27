@@ -13,6 +13,7 @@ import CacheProgress from '@/components/CacheProgress.vue'
 import Modal from '@/components/Modal.vue'
 import AppButton from '@/components/AppButton.vue'
 import AppIcon from '@/components/AppIcon.vue'
+import AppDropdown, { type DropdownOption } from '@/components/AppDropdown.vue'
 import type { ComicDetail } from '@/types'
 
 /**
@@ -23,20 +24,22 @@ import type { ComicDetail } from '@/types'
  * 点某话进入本子路由，只渲染这一话的页面索引 + 章节头（标题/页数/上一话/下一话/本话缓存进度/章节管理）。
  * 阅读器沿用全局页码，因此本页 PageTile 仍链接全局页号。
  *
- * ⚠️ 必须把 composable 的 Ref 解构到 setup 顶层再喂给模板/子组件（普通对象属性
- * `nav.xxx` 不会自动 unwrap，会导致 `props.chapters.findIndex is not a function`、图片不显示）。
+ * 遵守 docs/agents/frontend.md 规范：
+ * - Composable（useChapterNavigation）解构至 setup 顶层，Ref 直接绑定模板；
+ * - 视图只做编排，状态下沉。
  */
 const route = useRoute()
 const router = useRouter()
 const { toast } = useToast()
 const { canWrite } = useAuth()
 
-const source = computed(() => String(route.params.source))
-const sourceId = computed(() => String(route.params.sourceId))
-const chapterId = computed(() => String(route.params.chapterId))
+const source = computed(() => (route.params.source as string) || 'jm')
+const sourceId = computed(() => (route.params.sourceId as string) || '')
+const chapterId = computed(() => (route.params.chapterId as string) || '')
 
-const detail = ref<ComicDetail | null>(null)
 const loading = ref(true)
+const error = ref<string | null>(null)
+const detail = ref<ComicDetail | null>(null)
 const caching = ref(false)
 let loadAbortController: AbortController | null = null
 
@@ -48,12 +51,20 @@ const removeOpen = ref(false)
 const ackRemove = ref(false)
 const removing = ref(false)
 
-const moreOpen = ref(false)
-const moreRoot = ref<HTMLElement | null>(null)
+const chapterMoreOptions = computed<DropdownOption[]>(() => [
+  {
+    key: 'remove',
+    label: '删除本话…',
+    danger: true,
+    hint: '不可撤销',
+  },
+])
 
-onClickOutside(moreRoot, () => {
-  moreOpen.value = false
-})
+function onChapterMoreSelect(option: DropdownOption) {
+  if (option.key === 'remove') {
+    requestRemoveChapter()
+  }
+}
 
 const lastRead = useLastRead(source, sourceId)
 const {
@@ -231,7 +242,6 @@ async function saveChapterTitle() {
 }
 
 function requestRemoveChapter() {
-  moreOpen.value = false
   ackRemove.value = false
   removeOpen.value = true
 }
@@ -293,29 +303,18 @@ async function confirmRemoveChapter() {
                 编辑章节
               </button>
 
-              <div ref="moreRoot" class="more-menu">
-                <button
-                  class="btn btn-ghost btn-xs more-trigger"
-                  type="button"
-                  :aria-expanded="moreOpen"
-                  :aria-haspopup="true"
-                  title="更多章节操作"
-                  @click="moreOpen = !moreOpen"
-                >
-                  <AppIcon name="more" size="xs" />
-                </button>
-                <div v-if="moreOpen" class="more-pop" role="menu">
+              <AppDropdown :options="chapterMoreOptions" align="end" @select="onChapterMoreSelect">
+                <template #trigger="{ open }">
                   <button
-                    class="more-item danger-item"
+                    class="btn btn-ghost btn-xs more-trigger"
+                    :class="{ 'is-open': open }"
                     type="button"
-                    role="menuitem"
-                    title="移除本章节页面与文件（不可撤销）"
-                    @click="requestRemoveChapter"
+                    title="更多章节操作"
                   >
-                    删除本话…
+                    <AppIcon name="more" size="xs" />
                   </button>
-                </div>
-              </div>
+                </template>
+              </AppDropdown>
             </div>
           </div>
         </div>
@@ -505,44 +504,6 @@ async function confirmRemoveChapter() {
 .more-trigger {
   min-width: 1.75rem;
   font-weight: bold;
-}
-
-.more-pop {
-  position: absolute;
-  top: calc(100% + var(--space-1));
-  right: 0;
-  z-index: 10;
-  min-width: 8.5rem;
-  padding: var(--space-1);
-  border: 1px solid var(--line-strong);
-  border-radius: var(--radius-2);
-  background: var(--paper-0);
-  box-shadow: var(--shadow-2);
-}
-
-.more-item {
-  display: block;
-  width: 100%;
-  padding: var(--space-2) var(--space-3);
-  border-radius: var(--radius-1);
-  text-align: left;
-  font-size: var(--text-sm);
-  color: var(--ink-1);
-  background: transparent;
-  border: 0;
-  cursor: pointer;
-}
-
-.more-item:hover {
-  background: var(--paper-1);
-}
-
-.danger-item {
-  color: var(--accent-strong);
-}
-
-.danger-item:hover {
-  background: var(--accent-soft);
 }
 
 .edit-chap-form {
