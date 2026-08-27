@@ -5,6 +5,7 @@ import AppHeader from '@/components/AppHeader.vue'
 import AuthModal from '@/components/AuthModal.vue'
 import ToastStack from '@/components/ToastStack.vue'
 import AmbientWatermark from '@/components/AmbientWatermark.vue'
+import BackToTop from '@/components/BackToTop.vue'
 import { useAuth } from '@/composables/useAuth'
 import { useHtmlCanvas } from '@/composables/useHtmlCanvas'
 import { useBrandIcon } from '@/composables/useBrandIcon'
@@ -28,6 +29,7 @@ onMounted(async () => {
     <main class="app-main">
       <RouterView />
     </main>
+    <BackToTop v-if="route.name !== 'reader'" />
     <ToastStack />
     <AuthModal />
   </div>

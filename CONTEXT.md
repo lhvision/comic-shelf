@@ -77,4 +77,5 @@
 - **悬停安全桥（Hover Bridge）**：气泡与触发源之间的无形触控延伸区（纯 CSS 伪元素实现）。无缝填补两者之间的物理 margin 空隙，确保光标滑入气泡时轨迹全程处于命中区，彻底杜绝穿过空白缝隙时的闪退痛点。
 - **顶层层级与轻量失焦关闭（Top Layer & Light Dismiss）**：利用浏览器原生顶层特性，天然解决浮层被父级 `overflow: hidden` 或 `contain: paint` 截断的问题；原生支持点击外部空白或 Esc 键无缝自动收起。
 - **锚定回退感知与滑动动效（Anchor Fallback & Sliding Indicator）**：利用 `container-type: anchored` 与 `@container anchored(fallback: flip-block)` 纯 CSS 感知碰撞翻转自适应箭头与安全桥；借助动态 `anchor-name` 实现分段选项卡与选单项的纯 CSS 物理滑动胶囊动效。
+- **回到顶部（Back to top / Scroll-to-top）**：纸间长页面（书架、多章节详情）的标准导航辅助微件。采用 VueUse `useWindowScroll` 监听视口（默认 >400px 阈值浮现），以正圆暖纸印章质感呈现，支持自适应 `prefers-reduced-motion` 与键盘焦点平滑转移，阅读器沉浸模式下自动隐身。
 - **防退化门禁（Regression Safety Net）**：全仓多层自动化防御机制，包含前端 `vp check`（TS/Vue 静态检查）、后端 `pnpm test:py`（AST 符号自检 + 真实中间件链路与多章节单测），杜绝改动引发核心功能断裂。

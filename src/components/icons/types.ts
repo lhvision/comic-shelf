@@ -11,6 +11,7 @@ export type IconName =
   | 'more'
   | 'arrow-left'
   | 'arrow-right'
+  | 'arrow-up'
   | 'chevron-down'
   | 'upload'
   | 'download'

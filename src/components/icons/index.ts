@@ -9,6 +9,7 @@ import IconInfo from './IconInfo.vue'
 import IconMore from './IconMore.vue'
 import IconArrowLeft from './IconArrowLeft.vue'
 import IconArrowRight from './IconArrowRight.vue'
+import IconArrowUp from './IconArrowUp.vue'
 import IconChevronDown from './IconChevronDown.vue'
 import IconUpload from './IconUpload.vue'
 import IconDownload from './IconDownload.vue'
@@ -34,6 +35,7 @@ export {
   IconMore,
   IconArrowLeft,
   IconArrowRight,
+  IconArrowUp,
   IconChevronDown,
   IconUpload,
   IconDownload,
@@ -59,6 +61,7 @@ export const ICON_MAP: Record<IconName, Component> = {
   more: IconMore,
   'arrow-left': IconArrowLeft,
   'arrow-right': IconArrowRight,
+  'arrow-up': IconArrowUp,
   'chevron-down': IconChevronDown,
   upload: IconUpload,
   download: IconDownload,

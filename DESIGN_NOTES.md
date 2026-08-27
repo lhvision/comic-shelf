@@ -526,3 +526,27 @@
   4. **领域概念边界固化**：
      - 明确 Tooltip 专注于只读辅助说明与选词复制，复杂表单与交互面板严格由 `AppPopover` 承载，更新 `CONTEXT.md` 术语表。
 - **验证**：`vp check` 0 error / 0 warning、`ModernFloatingSystem.spec.ts` 新增 WCAG 1.4.13 与箭头联动自动化单测 12/12 全绿。
+
+## 34. 长页面通用回到顶部（Back to Top）与无障碍/视觉系统闭环
+
+- **背景与痛点**：
+  1. **深层浏览回顶成本高**：用户在书架首页或包含几十话章节的长详情页向下滚动数屏后，若想重新搜索、筛选或收录新本子，必须长时间连续滑动滚轮或触控上滑，缺乏秒级回到顶部的快捷通路；
+  2. **过度工程化警惕**：曾探讨是否将搜索框和收录入口吸顶或做成复杂悬浮岛，经双轮 Grilling 审视，确认吸顶会严重挤占移动端阅览高度并破坏书架 Hero 统计与排版仪式感；轻量、纯粹的物理纸印「回到顶部」浮动按钮（FAB）是最小必要且心智成本最低的解决方案。
+- **架构决策与落地（Impeccable & Grilling 决策）**：
+  1. **状态驱动与性能**：
+     - 采用 VueUse `useWindowScroll()` 响应式监听视口位置，设立 400px 阈值（略大于 Hero 统计区高度）；
+     - 仅在滚过首屏操作区进入瀑布流卡片时，通过 Vue 原生 `<Transition name="back-to-top">` 触发微位移弹簧上浮淡入（`translateY(8px)` -> `0`，`--duration-2` + `--ease-spring`）。
+  2. **物理装订与纸印美学**：
+     - 44×44px 正圆形印章造型（`border-radius: 50%`），遵循 WCAG 2.1 触控底线；
+     - 暖纸色基底（`var(--paper-1)`）配合墨线边框与微投影，Hover 触发朱砂色（`var(--accent)`）点缀与轻微上浮（`-2px`）；
+     - 扩展 `src/components/icons/` 矢量单源字典，新增符合 24px 网格与细线描边的 `IconArrowUp.vue` 原子组件。
+  3. **无障碍深度打磨（A 轨独立设计总监审查自愈）**：
+     - **前庭障碍保护**：动态嗅探 `window.matchMedia('(prefers-reduced-motion: reduce)')`，在用户开启减弱动效偏好时自适应切换为瞬间回顶（`behavior: 'auto'`），避免长距离平滑滚动引发眩晕；
+     - **键盘焦点平滑转移（Focus Dump 预防）**：当组件因滚回顶部 `v-if` 销毁前，主动将焦点转移至 `<main class="app-main" tabindex="-1">`，防止视障与键盘导航用户焦点坠入 `document.body` 迷航；
+     - **Landmark 纯净化**：外层去除 `role="region"`，消除屏幕阅读器地标噪音，由内部 `<button aria-label="回到顶部">` 与 `AppTooltip` 声明式承载提示；
+     - **移动端安全区避让**：使用 `calc(var(--space-6) + env(safe-area-inset-bottom, 0px))` 累加边距，并在小屏断点自适应缩紧，杜绝贴死手势条导致的误触。
+  4. **全站布局挂载与排他**：
+     - 挂载于 `App.vue`，作为全局长页面基础设施；
+     - 通过 `route.name !== 'reader'` 在沉浸阅读器中天然隐藏，互不干扰；
+     - 与 `ToastStack`（z-index 60）天然物理分层（BackToTop 采用 z-index 30），零多余响应式几何胶水。
+- **验证**：`vp check`（130 文件 0 error / 0 warning）、`BackToTop.spec.ts` 6/6 全面单测通过（覆盖显隐阈值、默认平滑滚动、减弱动效 auto 降级、键盘焦点安全转移）、`detect:slop` 静态规约扫描 0 finding。

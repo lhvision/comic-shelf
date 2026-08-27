@@ -1,8 +1,10 @@
+import io
 import sys
 import tempfile
 import shutil
 from pathlib import Path
 from unittest.mock import MagicMock, patch
+from PIL import Image
 
 # Ensure backend package is importable
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -299,11 +301,18 @@ def test_append_pages_multi_chapter_reindex():
         shutil.rmtree(temp_dir, ignore_errors=True)
 
 
+def _make_dummy_image() -> bytes:
+    img = Image.new("RGB", (10, 10), color="blue")
+    buf = io.BytesIO()
+    img.save(buf, format="WEBP")
+    return buf.getvalue()
+
+
 def test_append_pages_auto_promotion():
-    temp_dir = tempfile.mkdtemp()
+    temp_dir = Path(tempfile.mkdtemp())
+    dummy_img = _make_dummy_image()
     try:
-        store = ComicStore()
-        store._base_dir = Path(temp_dir)
+        store = ComicStore(root=temp_dir)
         source = "local"
         source_id = "test_single_to_multi"
 
@@ -332,11 +341,11 @@ def test_append_pages_auto_promotion():
         # Write the initial files to flat pages_dir
         pages_dir = store.pages_dir(source, source_id)
         pages_dir.mkdir(parents=True, exist_ok=True)
-        (pages_dir / "00001.webp").write_bytes(b"page1")
-        (pages_dir / "00002.webp").write_bytes(b"page2")
+        (pages_dir / "00001.webp").write_bytes(dummy_img)
+        (pages_dir / "00002.webp").write_bytes(dummy_img)
 
         # Now append a NEW chapter (creating Chapter 2)
-        new_files = [("001.webp", b"p3_chap2"), ("002.webp", b"p4_chap2")]
+        new_files = [("001.webp", dummy_img), ("002.webp", dummy_img)]
         updated = store.append_pages(source_id, files=new_files, new_chapter_title="第 2 话")
 
         # Verify auto-promotion:
@@ -366,10 +375,10 @@ def test_append_pages_auto_promotion():
 
 
 def test_append_pages_empty_comic_no_ghost_chapter():
-    temp_dir = tempfile.mkdtemp()
+    temp_dir = Path(tempfile.mkdtemp())
+    dummy_img = _make_dummy_image()
     try:
-        store = ComicStore()
-        store._base_dir = Path(temp_dir)
+        store = ComicStore(root=temp_dir)
         source = "local"
         source_id = "test_empty_init"
 
@@ -388,7 +397,7 @@ def test_append_pages_empty_comic_no_ghost_chapter():
         store.save_fetched(fetched, refresh=False)
 
         # Append Chapter 1
-        new_files = [("001.webp", b"p1_chap1"), ("002.webp", b"p2_chap1")]
+        new_files = [("001.webp", dummy_img), ("002.webp", dummy_img)]
         updated = store.append_pages(source_id, files=new_files, new_chapter_title="第 1 话")
 
         # Must have ONLY 1 chapter, not a 0P ghost Chapter 1 + Chapter 2
@@ -404,10 +413,9 @@ def test_append_pages_empty_comic_no_ghost_chapter():
 
 
 def test_chapter_title_update_and_delete():
-    temp_dir = tempfile.mkdtemp()
+    temp_dir = Path(tempfile.mkdtemp())
     try:
-        store = ComicStore()
-        store._base_dir = Path(temp_dir)
+        store = ComicStore(root=temp_dir)
         source = "local"
         source_id = "test_crud_chap"
 
@@ -473,10 +481,9 @@ def test_chapter_title_update_and_delete():
 
 
 def test_heal_broken_chapters():
-    temp_dir = tempfile.mkdtemp()
+    temp_dir = Path(tempfile.mkdtemp())
     try:
-        store = ComicStore()
-        store._base_dir = Path(temp_dir)
+        store = ComicStore(root=temp_dir)
         source = "local"
         source_id = "test_broken_heal"
 
