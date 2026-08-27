@@ -214,7 +214,6 @@ function incConcurrency() {
             id="cache-all-tip"
             tip="收录时直接把所有章节与页面下载到本地磁盘（适合整本离线保存）。不勾选则仅缓存前 4 页封面，后续页面在翻阅时按需秒级懒下载。"
             side="top"
-            align="end"
           >
             <button class="tooltip-icon" type="button" aria-label="关于缓存全部页面">
               <AppIcon name="info" size="xs" />
@@ -228,7 +227,6 @@ function incConcurrency() {
             id="concurrency-tip"
             tip="同时下载的页数：调大缓存更快，太高容易被 CDN 限流拖慢服务。"
             side="top"
-            align="end"
           >
             <button class="tooltip-icon" type="button" aria-label="关于下载并发">
               <AppIcon name="info" size="xs" />

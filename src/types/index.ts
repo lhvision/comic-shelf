@@ -1,3 +1,5 @@
+import type { IconName } from '@/components/icons'
+
 export interface PageRecord {
   index: number
   file: string
@@ -228,4 +230,16 @@ export interface DiscoveryFeed {
   timeframe: DiscoveryTimeframe
   updated_at: string
   items: DiscoveryItem[]
+}
+
+export interface DropdownOption<K = string | number> {
+  key: K
+  label: string
+  icon?: IconName | (string & {})
+  hint?: string
+  sub?: string
+  disabled?: boolean
+  danger?: boolean
+  separator?: boolean
+  checked?: boolean
 }

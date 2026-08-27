@@ -6,6 +6,7 @@ import AppPopover from '@/components/AppPopover.vue'
 import AppDropdown from '@/components/AppDropdown.vue'
 import ThemeSelect from '@/components/ThemeSelect.vue'
 import SegmentedTabs from '@/components/SegmentedTabs.vue'
+import type { DropdownOption } from '@/types'
 
 describe('Modern Floating System', () => {
   describe('Tooltip & AppTooltip', () => {
@@ -32,6 +33,25 @@ describe('Modern Floating System', () => {
 
       const describedBy = trigger.attributes('aria-describedby')
       expect(describedBy).toBe(tip.attributes('id'))
+      expect(tip.classes()).toContain('side-top')
+      expect(tip.classes()).toContain('align-center')
+    })
+
+    it('applies side and align classes for dynamic arrow targeting', () => {
+      const wrapper = mount(Tooltip, {
+        props: {
+          tip: '说明',
+          side: 'top',
+          align: 'end',
+        },
+        slots: {
+          default: '<button>按钮</button>',
+        },
+      })
+
+      const tip = wrapper.find('.tooltip__tip')
+      expect(tip.classes()).toContain('side-top')
+      expect(tip.classes()).toContain('align-end')
     })
 
     it('supports AppTooltip alias with rich content slot', () => {
@@ -48,6 +68,49 @@ describe('Modern Floating System', () => {
       const tip = wrapper.find('.tooltip__tip')
       expect(tip.find('.rich').exists()).toBe(true)
       expect(tip.text()).toContain('富文本内容')
+    })
+
+    it('keeps tooltip open when cursor moves onto the tip element (WCAG 1.4.13 hoverable)', async () => {
+      vi.useFakeTimers()
+      const wrapper = mount(Tooltip, {
+        props: {
+          tip: '说明文本',
+          delay: 50,
+        },
+        slots: {
+          default: '<button class="trigger">悬停</button>',
+        },
+      })
+
+      const root = wrapper.find('.tooltip-wrapper')
+      const tip = wrapper.find('.tooltip__tip')
+
+      // 移入触发元素
+      await root.trigger('mouseenter')
+      vi.advanceTimersByTime(50)
+      await wrapper.vm.$nextTick()
+      expect(tip.classes()).toContain('is-visible')
+
+      // 移出触发元素（触发 150ms 缓冲计时）
+      await root.trigger('mouseleave')
+
+      // 50ms 内指针划入气泡本身（安全桥连通）
+      vi.advanceTimersByTime(50)
+      await tip.trigger('mouseenter')
+
+      // 推进 200ms（已超过 150ms 缓冲延时）
+      vi.advanceTimersByTime(200)
+      await wrapper.vm.$nextTick()
+      // 气泡因处于悬停保护期而依然保持展开
+      expect(tip.classes()).toContain('is-visible')
+
+      // 最终光标移出气泡
+      await tip.trigger('mouseleave')
+      vi.advanceTimersByTime(150)
+      await wrapper.vm.$nextTick()
+      expect(tip.classes()).not.toContain('is-visible')
+
+      vi.useRealTimers()
     })
   })
 
@@ -77,7 +140,7 @@ describe('Modern Floating System', () => {
   })
 
   describe('AppDropdown', () => {
-    const options = [
+    const options: DropdownOption[] = [
       { key: 'opt1', label: '选项一', hint: '快捷键 1' },
       { key: 'opt2', label: '选项二', icon: 'check' },
       { key: 'sep', label: '', separator: true },
@@ -158,7 +221,7 @@ describe('Modern Floating System', () => {
       expect(scrollMock).toHaveBeenCalled()
     })
     it('does not render item-leading for action menu without icons', () => {
-      const actionOptions = [
+      const actionOptions: DropdownOption[] = [
         { key: 'remove', label: '移除本地缓存…', danger: true, hint: '不可撤销' },
       ]
       const wrapper = mount(AppDropdown, {

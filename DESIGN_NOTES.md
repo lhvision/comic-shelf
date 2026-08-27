@@ -505,3 +505,24 @@
      - 移动端小屏下，操作项保持触控舒适度（`min-height: var(--control-sm/md)`，触控目标 ≥ 44px）；
      - `@media (prefers-reduced-motion: reduce)` 全面关闭位移与形变动画。
 - **验证**：`vp check`（125 文件 0 error / 0 warning）、`ModernFloatingSystem.spec.ts` 与 `SegmentedTabs.spec.ts` 11 项精准单元测试全绿。
+
+## 33. Tooltip 幽灵滚动条根除与 WCAG 1.4.13 悬停安全桥（Hover Bridge）
+
+- **背景与痛点**：
+  1. **幽灵滚动条（Phantom Scrollbar）**：HTML `popover="hint"` 在 Chromium 内核中默认继承 User-Agent 样式的 `overflow: auto`。当 CSS Anchor Positioning 与 `width: max-content` / `max-width` 结合折行时，行高微弱浮点误差（0.1px）会触发垂直滚动条，在短文本气泡右侧挤占空间并出现粗灰滑块；
+  2. **指针脱靶无法移入气泡**：气泡写死了 `pointer-events: none` 阻断指针命中，且触发图标与气泡之间存在物理间距（`margin-bottom/top: var(--space-1-5)`），光标穿过空白间隙时触发了 `@mouseleave` 导致气泡瞬时销毁，违背了 WCAG 2.1 准则 1.4.13（Content on Hover or Focus - Hoverable 可悬停标准），用户无法划词选读。
+- **架构决策与落地（Grilling & Domain Modeling）**：
+  1. **彻底根治幽灵滚动条**：
+     - 重置 UA 默认样式，显式声明 `overflow: visible; box-sizing: border-box;`；
+     - 保留气泡尖角指示器（`::before` 负偏移外露），并补充 `overflow-wrap: anywhere; word-break: break-word;` 兜底超长字符。
+  2. **WCAG 2.1 悬停安全桥（Hover Bridge）**：
+     - 将 `pointer-events: none` 调整为 `auto`，允许气泡接受指针事件并支持划词复制；
+     - 引入纯 CSS 悬停安全桥：利用 `.tooltip__tip::after` 透明伪元素向下/上/左/右延展 `var(--space-2)` 触控区，无缝填补物理间隙，配合 `@container anchored(fallback: flip-block)` 在视口翻转时自适应反向；
+     - 状态平滑连通：气泡绑定 `@mouseenter="onTipEnter"` 与 `@mouseleave="onTipLeave"`，关闭缓冲延时由 60ms 提升至 150ms，光标从触发源滑入气泡时主动取消销毁定时器。
+  3. **小三角指示器（Arrow）与对齐动态联动（Align Targeting）**：
+     - 将箭头的位置与 `align` 参数解耦联动：`align="center"` 时居中（`left: 50%`），`align="end"` 时贴右（`right: 0.85rem; left: auto;`），`align="start"` 时贴左（`left: 0.85rem; right: auto;`）；
+     - 彻底修复了过去因死锁 `left: 50%` 导致气泡大跨度偏移时箭头“指空”脱靶的视觉割裂 Bug；
+     - 清理 `ImportPanel.vue` 中充裕空间下误用的 `align="end"`，恢复以 `(i)` 图标为视觉中心的优雅对称居中。
+  4. **领域概念边界固化**：
+     - 明确 Tooltip 专注于只读辅助说明与选词复制，复杂表单与交互面板严格由 `AppPopover` 承载，更新 `CONTEXT.md` 术语表。
+- **验证**：`vp check` 0 error / 0 warning、`ModernFloatingSystem.spec.ts` 新增 WCAG 1.4.13 与箭头联动自动化单测 12/12 全绿。

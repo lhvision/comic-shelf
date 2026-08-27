@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import AppDropdown, { type DropdownOption } from '@/components/AppDropdown.vue'
+import AppDropdown from '@/components/AppDropdown.vue'
+import type { DropdownOption } from '@/types'
 
 export interface SelectOption {
   value: string

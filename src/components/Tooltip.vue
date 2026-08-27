@@ -96,10 +96,25 @@ function show() {
   }, props.delay)
 }
 
+function onTipEnter() {
+  if (props.disabled) return
+  if (hideTimer) {
+    clearTimeout(hideTimer)
+    hideTimer = null
+  }
+}
+
+function onTipLeave() {
+  hide()
+}
+
 function hide() {
   if (showTimer) {
     clearTimeout(showTimer)
     showTimer = null
+  }
+  if (hideTimer) {
+    clearTimeout(hideTimer)
   }
   hideTimer = setTimeout(() => {
     isVisible.value = false
@@ -112,7 +127,7 @@ function hide() {
     } catch {
       // 忽略不支持或已收起情况
     }
-  }, 60)
+  }, 150)
 }
 
 onBeforeUnmount(() => {
@@ -151,6 +166,8 @@ onBeforeUnmount(() => {
         [`align-${align}`]: true,
       }"
       :data-side="side"
+      @mouseenter="onTipEnter"
+      @mouseleave="onTipLeave"
     >
       <slot name="content">
         {{ tip }}
@@ -173,9 +190,11 @@ onBeforeUnmount(() => {
 }
 
 .tooltip__tip {
-  /* 原生 Popover 样式重置 */
+  /* 原生 Popover 样式重置与防幽灵滚动条 */
   margin: 0;
   inset: auto;
+  overflow: visible;
+  box-sizing: border-box;
   border: 1px solid var(--line-strong);
   padding: var(--space-2) var(--space-3);
   border-radius: var(--radius-2);
@@ -187,7 +206,11 @@ onBeforeUnmount(() => {
   line-height: 1.6;
   text-align: left;
   white-space: normal;
-  pointer-events: none;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  pointer-events: auto;
+  user-select: text;
+  cursor: default;
   width: max-content;
   max-width: min(calc(100vw - 2rem), v-bind('props.width'));
 
@@ -256,36 +279,107 @@ onBeforeUnmount(() => {
   pointer-events: none;
 }
 
+/* 方位基准偏移（Side） */
 .tooltip__tip.side-top::before {
   bottom: -0.3rem;
-  left: 50%;
-  translate: -50% 0;
   border-top: none;
   border-left: none;
 }
 
 .tooltip__tip.side-bottom::before {
   top: -0.3rem;
-  left: 50%;
-  translate: -50% 0;
   border-bottom: none;
   border-right: none;
 }
 
 .tooltip__tip.side-left::before {
   right: -0.3rem;
-  top: 50%;
-  translate: 0 -50%;
   border-bottom: none;
   border-left: none;
 }
 
 .tooltip__tip.side-right::before {
   left: -0.3rem;
-  top: 50%;
-  translate: 0 -50%;
   border-top: none;
   border-right: none;
+}
+
+/* 对齐基准偏移（Align）：保证指示小三角永远精准对齐触发源图标 */
+.tooltip__tip.side-top.align-center::before,
+.tooltip__tip.side-bottom.align-center::before {
+  left: 50%;
+  right: auto;
+  translate: -50% 0;
+}
+
+.tooltip__tip.side-top.align-start::before,
+.tooltip__tip.side-bottom.align-start::before {
+  left: 0.85rem;
+  right: auto;
+  translate: 0 0;
+}
+
+.tooltip__tip.side-top.align-end::before,
+.tooltip__tip.side-bottom.align-end::before {
+  left: auto;
+  right: 0.85rem;
+  translate: 0 0;
+}
+
+.tooltip__tip.side-left.align-center::before,
+.tooltip__tip.side-right.align-center::before {
+  top: 50%;
+  bottom: auto;
+  translate: 0 -50%;
+}
+
+.tooltip__tip.side-left.align-start::before,
+.tooltip__tip.side-right.align-start::before {
+  top: 0.85rem;
+  bottom: auto;
+  translate: 0 0;
+}
+
+.tooltip__tip.side-left.align-end::before,
+.tooltip__tip.side-right.align-end::before {
+  top: auto;
+  bottom: 0.85rem;
+  translate: 0 0;
+}
+
+/* 悬停安全桥（Hover Bridge）：透明扩展触控区，连接触发元素与气泡，防止跨空隙时失焦 */
+.tooltip__tip::after {
+  content: '';
+  position: absolute;
+  pointer-events: auto;
+}
+
+.tooltip__tip[data-side='top']::after {
+  left: 0;
+  right: 0;
+  bottom: calc(-1 * var(--space-2));
+  height: var(--space-2);
+}
+
+.tooltip__tip[data-side='bottom']::after {
+  left: 0;
+  right: 0;
+  top: calc(-1 * var(--space-2));
+  height: var(--space-2);
+}
+
+.tooltip__tip[data-side='left']::after {
+  top: 0;
+  bottom: 0;
+  right: calc(-1 * var(--space-2));
+  width: var(--space-2);
+}
+
+.tooltip__tip[data-side='right']::after {
+  top: 0;
+  bottom: 0;
+  left: calc(-1 * var(--space-2));
+  width: var(--space-2);
 }
 
 /* 容器查询回退检测（Chrome 143+ 原生感知 flip-block 翻转） */
@@ -305,6 +399,16 @@ onBeforeUnmount(() => {
     border-right: 1px solid var(--line-strong);
     border-top: none;
     border-left: none;
+  }
+  .tooltip__tip[data-side='top']::after {
+    bottom: auto;
+    top: calc(-1 * var(--space-2));
+    height: var(--space-2);
+  }
+  .tooltip__tip[data-side='bottom']::after {
+    top: auto;
+    bottom: calc(-1 * var(--space-2));
+    height: var(--space-2);
   }
 }
 

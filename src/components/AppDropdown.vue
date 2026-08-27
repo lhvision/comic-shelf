@@ -2,19 +2,9 @@
 import { computed, nextTick, ref, useId, watch } from 'vue'
 import AppIcon from '@/components/AppIcon.vue'
 import AppPopover from '@/components/AppPopover.vue'
-import type { IconName } from '@/components/icons'
+import type { DropdownOption } from '@/types'
 
-export interface DropdownOption<K = string | number> {
-  key: K
-  label: string
-  icon?: IconName
-  hint?: string
-  sub?: string
-  disabled?: boolean
-  danger?: boolean
-  separator?: boolean
-  checked?: boolean
-}
+export type { DropdownOption }
 
 const props = withDefaults(
   defineProps<{

@@ -6,7 +6,7 @@ export type { IconName, IconSize }
 
 const props = withDefaults(
   defineProps<{
-    name: IconName
+    name: IconName | (string & {})
     size?: IconSize
     strokeWidth?: number | string
   }>(),
@@ -16,7 +16,7 @@ const props = withDefaults(
   },
 )
 
-const currentComponent = computed(() => ICON_MAP[props.name])
+const currentComponent = computed(() => ICON_MAP[props.name as IconName])
 </script>
 
 <template>
