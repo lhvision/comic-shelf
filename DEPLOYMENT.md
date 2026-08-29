@@ -227,12 +227,77 @@ backend/data/
 
 ---
 
-## 6. 镜像体积与构建控制
+## 6. 镜像构建与发布指南（Docker Hub / 镜像仓库）
 
 纸间采用 **多阶段构建（Multi-stage Build）** 严格控制生产镜像体积：
 
-- **Node.js 编译阶段（打包后完全丢弃）**：使用轻量 `node:22-alpine` 仅执行前端构建（`pnpm build`），**Node.js、pnpm 及庞大的 `node_modules` 均不会打包进最终镜像**。
+- **Node.js 编译阶段（打包后完全丢弃）**：使用轻量 `node:22-alpine` 仅执行前端构建（`pnpm build`），**Node.js、pnpm 及庞大的 `node_modules` 均不会打包进最终镜像**；
 - **最终生产镜像**：仅基于官方精简镜像 `python:3.12-slim`，安装纯 Python 运行时依赖，附带约 2MB 的前端静态成品，镜像极小、拉取速度极快。
+
+### 6.1 本地打包构建与测试
+
+在包含源码的项目根目录下执行：
+
+```bash
+# 1. 本地构建生产镜像（默认打上 paper-room:latest 标签）
+docker build -t paper-room:latest .
+
+# 2. （可选）在本地快速测试运行
+docker run -d \
+  --name paper-room-test \
+  -p 8000:8000 \
+  -v ./backend/data:/app/data \
+  paper-room:latest
+```
+
+### 6.2 离线导出镜像包（传输给 TrueNAS / 群晖 NAS）
+
+若 NAS 无法直接联网拉取外部镜像，可通过 tar 包离线导入：
+
+```bash
+# 1. 在开发机将已构建的镜像导出并压缩
+docker save paper-room:latest | gzip > paper-room.tar.gz
+
+# 2. 将 paper-room.tar.gz 上传至 NAS 存储目录后，在 NAS 终端导入：
+docker load -i /path/to/paper-room.tar.gz
+
+# 3. 验证 NAS 本地镜像列表已存在
+docker images | grep paper-room
+```
+
+### 6.3 推送发布至 Docker Hub / 阿里云 / GHCR 镜像仓库
+
+后续若希望直接公开镜像让其他用户一键拉取部署，可推送到 Docker 镜像仓库：
+
+```bash
+# 1. 登录 Docker 仓库
+docker login
+
+# 2. 为镜像打上你的仓库命名空间标签（将 yourname 替换为你的 Docker Hub 用户名）
+docker tag paper-room:latest yourname/paper-room:latest
+docker tag paper-room:latest yourname/paper-room:v1.0.0
+
+# 3. 推送镜像到仓库
+docker push yourname/paper-room:latest
+docker push yourname/paper-room:v1.0.0
+```
+
+### 6.4 他人使用公开镜像部署的方式
+
+当镜像推送到 Docker Hub 后，其他用户无需下载源码即可一键部署：
+
+- **TrueNAS Scale / 群晖 Web 界面**：在镜像仓库直接填 `yourname/paper-room:latest`，NAS 会全自动从云端拉取；
+- **Docker CLI**：
+  ```bash
+  docker run -d \
+    --name paper-room \
+    -p 8000:8000 \
+    -v /mnt/tank/comics:/app/data \
+    -e COMIC_SHELF_SECRET="your_curator_password" \
+    --restart unless-stopped \
+    yourname/paper-room:latest
+  ```
+- **Docker Compose**：将 `docker-compose.yml` 中的 `build: .` 替换为 `image: yourname/paper-room:latest` 即可直接拉起。
 
 ---
 

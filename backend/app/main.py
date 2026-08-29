@@ -692,10 +692,39 @@ _DIST_DIR = Path(
 
 if _DIST_DIR.exists() and (_DIST_DIR / "index.html").exists():
     from fastapi.staticfiles import StaticFiles
+    from starlette.exceptions import HTTPException
+
+    class SPAStaticFiles(StaticFiles):
+        """SPA-aware static file handler: falls back to index.html for client routes on 404."""
+
+        async def get_response(self, path: str, scope):
+            try:
+                return await super().get_response(path, scope)
+            except HTTPException as ex:
+                if ex.status_code == 404:
+                    # Do not fallback for missing static assets (images, js, css, etc.)
+                    if not any(
+                        path.endswith(ext)
+                        for ext in (
+                            ".js",
+                            ".css",
+                            ".png",
+                            ".jpg",
+                            ".jpeg",
+                            ".webp",
+                            ".svg",
+                            ".ico",
+                            ".woff",
+                            ".woff2",
+                            ".map",
+                        )
+                    ):
+                        return await super().get_response("index.html", scope)
+                raise
 
     app.mount(
         "/",
-        StaticFiles(directory=str(_DIST_DIR), html=True),
+        SPAStaticFiles(directory=str(_DIST_DIR), html=True),
         name="spa",
     )
 
