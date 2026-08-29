@@ -108,8 +108,8 @@ vp build                               # 生产打包
 # 方式 1：双容器一键启动（含以图搜图，需 CPU 支持 AVX2）
 docker compose up -d --build
 
-# 方式 2：极简轻量启动（推荐低功耗 NAS 如 N5095/N5105/J4105，跳过搜图避免 132 报错）
-docker compose up -d --build paper-room
+# 方式 2：极简轻量单容器启动（推荐低功耗 NAS 如 N5095/N5105/J4105，加 --no-deps 跳过搜图避免 132 报错）
+docker compose up -d --no-deps --build paper-room
 
 # 常用启停运维：
 # docker compose down                # 停止并移除容器

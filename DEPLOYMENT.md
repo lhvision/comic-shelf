@@ -86,8 +86,8 @@ Compose 会同时拉起纸间核心服务（`:8000`）与本地识图引擎 `ims
 > 纸间主服务完美适配全系列低功耗 CPU，且内置全自动优雅降级。只需单独启动 `paper-room`：
 
 ```bash
-# 单独启动主容器（彻底跳过 imsearch，0 冗余开销，几秒就绪）：
-docker compose up -d --build paper-room
+# 单独启动主容器（务必加上 --no-deps 忽略 depends_on 依赖，确保绝不拉起 imsearch）：
+docker compose up -d --no-deps --build paper-room
 ```
 
 ### 方式 C：TrueNAS Scale / 群晖 Web 界面 / Docker CLI 单容器运行
@@ -116,16 +116,16 @@ docker run -d \
 
 ### 2.1 常用启停与容器运维命令速查
 
-| 场景需求             | 终端执行命令                              | 说明                                                     |
-| :------------------- | :---------------------------------------- | :------------------------------------------------------- |
-| **单独启动主容器**   | `docker compose up -d paper-room`         | 极简轻量，适用于日常免搜图看书或无 AVX2 硬件             |
-| **启动全部容器**     | `docker compose up -d`                    | 同时拉起主程序与以图搜图                                 |
-| **安全停止全部服务** | `docker compose down`                     | 停止并移除容器与内部网络，存储卷数据 100% 安全保留       |
-| **暂停容器运行**     | `docker compose stop`                     | 仅暂停容器不删除，后续 `docker compose start` 可秒级恢复 |
-| **单独停掉以图搜图** | `docker compose stop imsearch`            | 解决由于硬件缺少 AVX2 导致容器反复崩溃报错 132 的问题    |
-| **查看运行状态**     | `docker compose ps`                       | 查看容器状态（`Up` 为正常运行）                          |
-| **查看主程序日志**   | `docker compose logs -f paper-room`       | 追踪排查后端与启动日志，按 `Ctrl+C` 退出                 |
-| **代码更新后重启**   | `docker compose up -d --build paper-room` | 自动命中缓存，仅需 2~3 秒增量编译平滑重启                |
+| 场景需求                   | 终端执行命令                                | 说明                                                      |
+| :------------------------- | :------------------------------------------ | :-------------------------------------------------------- |
+| **仅启动主容器（免搜图）** | `docker compose up -d --no-deps paper-room` | **加 `--no-deps` 忽略依赖**，不拉起 imsearch，防 132 报错 |
+| **启动全部容器**           | `docker compose up -d`                      | 适用于带 AVX2 机器，同时拉起主程序与以图搜图              |
+| **安全停止全部服务**       | `docker compose down`                       | 停止并移除容器与内部网络，存储卷数据 100% 安全保留        |
+| **暂停容器运行**           | `docker compose stop`                       | 仅暂停容器不删除，后续 `docker compose start` 可秒级恢复  |
+| **单独停掉以图搜图**       | `docker compose stop imsearch`              | 解决由于硬件缺少 AVX2 导致容器反复崩溃报错 132 的问题     |
+| **查看运行状态**           | `docker compose ps`                         | 查看容器状态（`Up` 为正常运行）                           |
+| **查看主程序日志**         | `docker compose logs -f paper-room`         | 追踪排查后端与启动日志，按 `Ctrl+C` 退出                  |
+| **代码更新后重启**         | `docker compose up -d --build paper-room`   | 自动命中缓存，仅需 2~3 秒增量编译平滑重启                 |
 
 ---
 
