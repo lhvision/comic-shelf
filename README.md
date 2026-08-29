@@ -105,8 +105,15 @@ vp build                               # 生产打包
 纸间支持 Docker Compose 一键启动或 NAS（TrueNAS Scale / Unraid / 群晖）图形化部署，开箱即用：
 
 ```bash
-# 一键启动（含纸间服务与以图搜图 Sidecar）
+# 方式 1：双容器一键启动（含以图搜图，需 CPU 支持 AVX2）
 docker compose up -d --build
+
+# 方式 2：极简轻量启动（推荐低功耗 NAS 如 N5095/N5105/J4105，跳过搜图避免 132 报错）
+docker compose up -d --build paper-room
+
+# 常用启停运维：
+# docker compose down                # 停止并移除容器
+# docker compose logs -f paper-room  # 查看主服务运行日志
 
 # 访问阅览室：浏览器打开 http://<服务器IP>:8000
 ```

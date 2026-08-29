@@ -61,14 +61,16 @@ Paper Room (Web & API 核心容器)
 
 ## 2. 快速启动
 
-### 方式 A：Docker Compose 一键启动（推荐）
+### 方式 A：Docker Compose 双容器启动（含以图搜图，需 CPU 支持 AVX2）
+
+适合主流 x86 电脑、工作站或配备支持 AVX2 指令集处理器的服务器：
 
 ```bash
 # 1. （可选）若公网部署需设置密码，可直接编辑 docker-compose.yml 中的 environment：
 #    取消注释 COMIC_SHELF_SECRET: '你的管理密码'
 #    若为纯内网家庭环境，无需任何修改！
 
-# 2. 一键构建并启动
+# 2. 一键构建并启动双容器（包含主服务与识图 Sidecar）
 docker compose up -d --build
 
 # 3. 浏览器访问
@@ -77,7 +79,18 @@ docker compose up -d --build
 
 Compose 会同时拉起纸间核心服务（`:8000`）与本地识图引擎 `imsearch`（`:8765`）。
 
-### 方式 B：TrueNAS Scale / 群晖 Web 界面 / Docker CLI 单容器运行
+### 方式 B：极简单容器启动（推荐低功耗 NAS / 低配 VPS / 免以图搜图）
+
+> 💡 **低功耗 CPU 避坑指引（AVX2 兼容性）**：
+> Intel 赛扬 N5095 / N5105 / N5050 / J4105 / J1900 等低功耗架构在硬件底层**不支持 AVX2 向量指令集**。若拉起 `imsearch` 识图容器会报 `SIGILL (Exit 132)` 核心转储（Core Dump）并陷入无限重启。
+> 纸间主服务完美适配全系列低功耗 CPU，且内置全自动优雅降级。只需单独启动 `paper-room`：
+
+```bash
+# 单独启动主容器（彻底跳过 imsearch，0 冗余开销，几秒就绪）：
+docker compose up -d --build paper-room
+```
+
+### 方式 C：TrueNAS Scale / 群晖 Web 界面 / Docker CLI 单容器运行
 
 ```bash
 # 1. 构建镜像（若直接拉取镜像则跳过）
@@ -98,6 +111,21 @@ docker run -d \
 > - **端口映射**：宿主机端口（如 `8000`） $\rightarrow$ 容器内部端口 `8000`
 > - **存储卷挂载**：宿主机真实路径（如 `/mnt/tank/paper-room`） $\rightarrow$ 容器内部路径 **`/app/data`**
 > - **环境变量设置**：在表单的“环境变量”卡片中添加名称 `COMIC_SHELF_SECRET`，值为你的访问密码。
+
+---
+
+### 2.1 常用启停与容器运维命令速查
+
+| 场景需求             | 终端执行命令                              | 说明                                                     |
+| :------------------- | :---------------------------------------- | :------------------------------------------------------- |
+| **单独启动主容器**   | `docker compose up -d paper-room`         | 极简轻量，适用于日常免搜图看书或无 AVX2 硬件             |
+| **启动全部容器**     | `docker compose up -d`                    | 同时拉起主程序与以图搜图                                 |
+| **安全停止全部服务** | `docker compose down`                     | 停止并移除容器与内部网络，存储卷数据 100% 安全保留       |
+| **暂停容器运行**     | `docker compose stop`                     | 仅暂停容器不删除，后续 `docker compose start` 可秒级恢复 |
+| **单独停掉以图搜图** | `docker compose stop imsearch`            | 解决由于硬件缺少 AVX2 导致容器反复崩溃报错 132 的问题    |
+| **查看运行状态**     | `docker compose ps`                       | 查看容器状态（`Up` 为正常运行）                          |
+| **查看主程序日志**   | `docker compose logs -f paper-room`       | 追踪排查后端与启动日志，按 `Ctrl+C` 退出                 |
+| **代码更新后重启**   | `docker compose up -d --build paper-room` | 自动命中缓存，仅需 2~3 秒增量编译平滑重启                |
 
 ---
 
