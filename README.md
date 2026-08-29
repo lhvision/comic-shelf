@@ -146,9 +146,23 @@ docker compose exec imsearch sh -c "imsearch add /app/data/library && imsearch t
 docker compose restart imsearch
 ```
 
-### 2. 宿主机一键脚本智能代理
+### 2. 宿主机 / WSL2 一键服务运维（分布式高性能识图）
 
-如果你在项目根目录下，直接运行：
+当 NAS 为低功耗 CPU 时，可在电脑/WSL2 上运行 `imsearch`，通过 SMB 挂载 NAS 漫画目录进行高性能识图：
+
+```bash
+pnpm imsearch start    # 后台启动识图服务 (:8765)
+pnpm imsearch stop     # 停止服务
+pnpm imsearch restart  # 重启服务
+pnpm imsearch status   # 查看运行状态与健康度
+pnpm imsearch reindex  # 日常增量追加新本子特征并自动热重载（秒级）
+pnpm imsearch train    # 全量重新训练 512 聚类中心并重建索引
+pnpm imsearch logs     # 查看实时搜索日志
+```
+
+### 3. 宿主机一键脚本智能代理（单机 Docker 模式）
+
+如果你在项目根目录下，也可直接运行：
 
 ```bash
 # 日常增量构建（脚本会自动检测正在运行的 Docker 识图容器并自动在容器内执行）

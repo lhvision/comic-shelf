@@ -229,6 +229,57 @@ bash scripts/reindex.sh --full
 
 ---
 
+### 4.5 方式四：分布式运行（低功耗 NAS + WSL2 / 独立 PC 运维全指南）
+
+> **适用场景**：
+> 当 TrueNAS 采用 Intel 赛扬 N5095 / N5105 / J4105 等缺少 AVX2 指令集的低功耗处理器时，可将 `imsearch` 部署在拥有强劲 CPU（支持 AVX2）的独立 Windows / Mac / Linux / **WSL2** 电脑上。
+> 运算由电脑处理，图片与特征库依然保存在 NAS，零冗余拷贝。
+
+#### 1. 挂载 NAS 共享目录到本地（WSL2 示例）
+
+在 WSL2 终端将 NAS 的 SMB 共享挂载为本地目录：
+
+```bash
+# 创建挂载点并挂载 NAS 共享路径（将 <NAS-IP> 和 <SHARE-NAME> 替换为你的实际共享路径）
+sudo mkdir -p /mnt/nas_manga
+sudo mount -t drvfs '\\<NAS-IP>\<SHARE-NAME>' /mnt/nas_manga
+# 示例：sudo mount -t drvfs '\\192.168.1.100\comics' /mnt/nas_manga
+```
+
+#### 2. 一键脚本运维速查表（推荐）
+
+项目内置了专用运维脚本 `scripts/imsearch.sh`（支持 `pnpm imsearch` 触发，自动智能探测 `/mnt/nas_manga` 挂载点）：
+
+| 操作目标         | 推荐执行命令            | 说明                                                      |
+| :--------------- | :---------------------- | :-------------------------------------------------------- |
+| **启动后台服务** | `pnpm imsearch start`   | 监听 `0.0.0.0:8765` 端口，后台常驻运行并自动健康探测      |
+| **停止服务**     | `pnpm imsearch stop`    | 优雅终止运行中的 imsearch 进程                            |
+| **重启服务**     | `pnpm imsearch restart` | 平滑重启以加载最新索引                                    |
+| **查看运行状态** | `pnpm imsearch status`  | 查看运行状态、PID、端口、内存占用与健康度                 |
+| **日常增量更新** | `pnpm imsearch reindex` | 扫描 NAS 新图提取特征、追加倒排索引并自动重启服务（秒级） |
+| **全量重置重训** | `pnpm imsearch train`   | 重新训练 512 聚类中心并彻底重建索引库                     |
+| **查看实时日志** | `pnpm imsearch logs`    | 跟踪查看实时搜索日志（`Ctrl+C` 退出）                     |
+
+_(也可以直接运行 `bash scripts/imsearch.sh <action>`)_
+
+#### 3. 在 NAS 端配置连通
+
+在 NAS 的 `docker-compose.yml` 中填入这台 WSL2 / PC 的局域网 IP：
+
+```yaml
+environment:
+  # 指向运行 imsearch 的电脑局域网 IP（例如 http://192.168.1.50:8765）：
+  COMIC_SHELF_IMSEARCH_URL: http://<WSL2_OR_PC_IP>:8765
+```
+
+然后在 NAS 终端执行平滑重启：
+
+```bash
+docker compose up -d paper-room
+```
+
+---
+
 ## 5. 数据持久化与备份迁移
 
 所有漫画元数据、图片和搜图特征库统一存放在数据目录（`COMIC_SHELF_DATA`，容器内为 `/app/data`）：

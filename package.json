@@ -8,6 +8,7 @@
     "dev": "vp dev --host 0.0.0.0",
     "dev:all": "bash scripts/dev.sh",
     "reindex:image": "bash scripts/reindex.sh",
+    "imsearch": "bash scripts/imsearch.sh",
     "build": "run-p type-check \"build-only {@}\" --",
     "setup:py": "python3 -m venv .venv && .venv/bin/pip install -r backend/requirements.txt",
     "preview": "vp preview",

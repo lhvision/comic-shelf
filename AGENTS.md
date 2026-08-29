@@ -97,6 +97,7 @@ pnpm dev:all                             # 同时启动 API + Web（热重载）
 pnpm api                                 # 只起 API（自动探测 Python 虚拟环境）
 vp dev                                   # 只起 Web（Vite+ dev server）
 vp check                                 # fmt + lint + type-check
+pnpm imsearch <action>                   # 识图服务运维 (start/stop/restart/status/reindex/train/logs)
 vp test src/__tests__/<Target>.spec.ts   # 运行目标文件单测（严禁日常全量）
 pnpm critique write <slug> <file>        # 归档 Impeccable 评审快照
 pnpm detect:slop <target>                # 运行 B 轨确定性 Slop 静态扫描
