@@ -25,23 +25,23 @@ IMSEARCH_BIN="$(which imsearch 2>/dev/null || echo "$HOME/.cargo/bin/imsearch")"
 
 # 若显式指定 --docker 或宿主机未安装 imsearch，尝试探测 Docker 容器环境
 if [ "$USE_DOCKER" = true ] || [ ! -x "$IMSEARCH_BIN" ]; then
-  DOCKER_EXEC=""
+  DOCKER_CMD=()
   if command -v docker &>/dev/null; then
     if docker compose ps --services --status running 2>/dev/null | grep -q "^imsearch$"; then
-      DOCKER_EXEC="docker compose exec imsearch"
+      DOCKER_CMD=(docker compose exec -T imsearch)
     elif docker ps --filter "name=paper-room-imsearch" --filter "status=running" -q 2>/dev/null | grep -q .; then
-      DOCKER_EXEC="docker exec -i paper-room-imsearch"
+      DOCKER_CMD=(docker exec -i paper-room-imsearch)
     fi
   fi
 
-  if [ -n "$DOCKER_EXEC" ]; then
+  if [ ${#DOCKER_CMD[@]} -gt 0 ]; then
     echo "⚡ 检测到 Docker 运行中的 imsearch 容器，将通过容器执行索引任务..."
     if [ "$FORCE_FULL" = true ]; then
       echo "=== [容器全量重训] 增量提取特征 -> 重训聚类中心 -> 重建倒排索引 ==="
-      $DOCKER_EXEC sh -c "imsearch add /app/data/library && imsearch train -c 512 -i 800 -m 30 && rm -f /root/.config/imsearch/invlists.bin && imsearch build"
+      "${DOCKER_CMD[@]}" sh -c "imsearch add /app/data/library && imsearch train -c 512 -i 800 -m 30 && rm -f /root/.config/imsearch/invlists.bin && imsearch build"
     else
       echo "=== [容器增量追加] 增量提取新图特征 -> 追加倒排索引（秒级完成） ==="
-      $DOCKER_EXEC sh -c "imsearch add /app/data/library && imsearch build"
+      "${DOCKER_CMD[@]}" sh -c "imsearch add /app/data/library && imsearch build"
     fi
     echo "🔄 重启 imsearch 服务以加载最新索引..."
     if command -v docker &>/dev/null && docker compose version &>/dev/null; then

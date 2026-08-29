@@ -299,6 +299,8 @@ docker push yourname/paper-room:v1.0.0
   ```
 - **Docker Compose**：将 `docker-compose.yml` 中的 `build: .` 替换为 `image: yourname/paper-room:latest` 即可直接拉起。
 
+> 💡 **私有仓库拉取提示**：若将镜像推送至个人私有镜像仓库（Private Registry）而非公开镜像，在 NAS 端拉取前需先配置认证凭据（TrueNAS 在“Apps $\rightarrow$ Manage Container Images”中添加 Docker Credentials；群晖在 Container Manager 注册表设置中勾选登录；服务器终端执行 `docker login`）。
+
 ---
 
 ## 7. 多用户高并发建议（Nginx / Caddy 反向代理）

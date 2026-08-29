@@ -702,23 +702,10 @@ if _DIST_DIR.exists() and (_DIST_DIR / "index.html").exists():
                 return await super().get_response(path, scope)
             except HTTPException as ex:
                 if ex.status_code == 404:
-                    # Do not fallback for missing static assets (images, js, css, etc.)
-                    if not any(
-                        path.endswith(ext)
-                        for ext in (
-                            ".js",
-                            ".css",
-                            ".png",
-                            ".jpg",
-                            ".jpeg",
-                            ".webp",
-                            ".svg",
-                            ".ico",
-                            ".woff",
-                            ".woff2",
-                            ".map",
-                        )
-                    ):
+                    filename = Path(path).name
+                    # If target has a file extension (e.g. .js, .png, .json), it is a missing static file -> keep 404
+                    is_file_request = "." in filename and not filename.startswith(".")
+                    if not is_file_request:
                         return await super().get_response("index.html", scope)
                 raise
 
