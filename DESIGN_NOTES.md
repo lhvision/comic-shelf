@@ -65,7 +65,7 @@
 ## 8. 多章节支持（grill-with-docs 确认 → critique → polish → adapt）
 
 - **需求**：禁漫“一本”可能是多话合集（`album.episode_list` 多个 photo），详见
-  `docs/specs/0002-multi-chapter.md`。旧实现只拉 `/photo/{album_id}`，多话合集取不到。
+  `docs/agents/architecture.md`。旧实现只拉 `/photo/{album_id}`，多话合集取不到。
 - **grill-with-docs（先查证再动手）**：通读 `docs/agents/*`、`CONTEXT.md`、既有 spec，
   确认现状只有“单章 + 扁平 pages/”，决定采用**全局页码拍平 + 章节 id 切片**的增量方案，
   保证单章节零回归、旧缓存零迁移。

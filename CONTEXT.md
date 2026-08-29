@@ -39,6 +39,8 @@
 - **以图搜图（Visual search / Image search）**：通过上传/粘贴截图特征比对，快速定位所属本子及具体匹配页码的检索能力。
 - **识图芯片（Image search chip）**：搜索输入框内呈现当前检索图片的紧凑卡片微件，包含微缩预览、点击查看大图与清除按钮（×）。
 - **匹配结果（Match result）**：识图检索命中的作品（`source`/`source_id`）、具体页码（`page_index`）与匹配置信度。
+- **识图增量追加（Incremental Feature Indexing）**：识图引擎默认的工作流。仅对新缓存图片提取 ORB 特征并直接追加未索引向量至倒排索引；原有特征与聚类中心 100% 保留，秒级完成，零重复计算。
+- **全量重置重训（Full Quantizer Retraining）**：重新运行 K-Means 聚类（512 聚类中心）并重建全量倒排索引的高开销维护行为（`--full` 参数），仅在首次初始化或模型重构时使用。
 
 ## 阅读器
 
@@ -64,6 +66,7 @@
 - **访客（Guest / Reader）**：持有访客口令的阅览者身份。仅拥有浏览书架、检索筛选、阅读翻页（含未缓存页的单页按需懒下载）与以图搜图权限；界面完全隐藏所有数据写入与变更操作控件，已喜欢标记作为只读印章呈现。
 
 - **防盗链（Hotlink Protection）**：基于现代浏览器 `Sec-Fetch-Site: cross-site` 识别及 Referer 校验机制，严禁外部第三方网站跨站直连纸间作为存储桶或图片代理。
+- **外部目录白名单（Allowed Directories Whitelist）**：环境变量 `COMIC_SHELF_ALLOWED_DIRS` 构筑的安全沙箱。仅允许馆长扫描导入位于该白名单内的服务器本地目录，彻底防止任意路径文件遍历与探测攻击。
 - **视图过渡（View Transition）**：全站单页与局域状态变更时的平滑快照过渡机制，包括页面层级路由推进/后退（`forward` / `backward` Types）、封面到详情大画幅的「共享封面形变」、局域视图过渡（`Element.startViewTransition`）以及弹窗与按钮状态演进，无缝遵循纸间 `--duration-1/2/3` 与无障碍降级。
 - **共享封面形变（Shared Cover Morph）**：书架卡片封面（`comic-cover-active`）与本子详情 Hero 封面在路由跳转时的动态连续尺寸与位置插值（神奇移动）。
 - **局域视图过渡（Element-Scoped Transition）**：局限于单个组件 DOM 子树内的独立状态过渡（如图片装订就绪、收藏按钮红心状态、并发步进器），不阻塞整页交互与全局重绘。

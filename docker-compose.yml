@@ -9,14 +9,19 @@ services:
       COMIC_SHELF_DATA: /app/data
       COMIC_SHELF_HOST: 0.0.0.0
       COMIC_SHELF_PORT: 8000
-      COMIC_SHELF_PAGE_THUMB_WIDTH: '360'
       COMIC_SHELF_IMSEARCH_URL: http://imsearch:8765
-      # 访问通行口令（公网部署建议填写；留空则局域网免密）：
-      # COMIC_SHELF_SECRET: 'your_secret_password'
-      # 防盗链拦截（默认已为 true）：
-      # COMIC_SHELF_ENABLE_HOTLINK_PROTECTION: 'true'
+      # 访问控制口令（可在 .env 文件中定义，或在此显式指定）
+      COMIC_SHELF_SECRET: ${COMIC_SHELF_SECRET:-}
+      COMIC_SHELF_GUEST_SECRET: ${COMIC_SHELF_GUEST_SECRET:-}
+      # 允许本地直扫导入的挂载目录白名单（多个路径用冒号分隔）
+      COMIC_SHELF_ALLOWED_DIRS: ${COMIC_SHELF_ALLOWED_DIRS:-}
+      # 防盗链与功能开关
+      COMIC_SHELF_ENABLE_HOTLINK_PROTECTION: ${COMIC_SHELF_ENABLE_HOTLINK_PROTECTION:-true}
+      COMIC_SHELF_PAGE_THUMB_WIDTH: ${COMIC_SHELF_PAGE_THUMB_WIDTH:-360}
     volumes:
       - ./backend/data:/app/data
+      # 若需从 NAS 外部目录直扫收录漫画，解开并映射外部路径：
+      # - /mnt/tank/comics:/external-comics:ro
     ports:
       - '8000:8000'
     depends_on:

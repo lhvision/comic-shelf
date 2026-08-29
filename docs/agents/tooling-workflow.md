@@ -20,6 +20,7 @@ pnpm api                                 # 只起 API（自动探测 Python 并�
 vp dev                                   # 只起 Web（Vite+ dev server）
 vp check                                 # fmt + lint + type-check
 vp test src/__tests__/<Target>.spec.ts   # 运行目标文件单测（严禁日常全量）
+pnpm reindex:image                       # 智能增量追加以图搜图索引（自动探测 Docker）
 vp build                                 # 生产构建
 pnpm ai-e2e:test e2e/tests/<file>.spec.ts -g "用例名" # 单条 E2E 用例
 ```

@@ -7,7 +7,7 @@ export const CHAPTER_PAGE_STEP = 24
 /**
  * 详情页「多章节导航」组合式函数 —— 承载章节切片这块业务编排。
  *
- * 依据 `docs/agents/frontend.md` 与 `docs/specs/0001` 的拆分约定：页面视图只做
+ * 依据 `docs/agents/frontend.md` 的拆分约定：页面视图只做
  * 数据加载/流程编排，领域逻辑收敛到 composable（与 `useReaderSettings` /
  * `useLastRead` 同一模式）。本函数收纳了：
  * - 按当前章节对全局 `meta.pages` 切片（多章节作品仍是全局页码拍平）；

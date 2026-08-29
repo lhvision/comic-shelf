@@ -34,11 +34,11 @@ IMSEARCH_BIN="$(which imsearch 2>/dev/null || echo "$HOME/.cargo/bin/imsearch")"
 if [ -x "$IMSEARCH_BIN" ]; then
   IMSEARCH_DATA="backend/data/imsearch"
   mkdir -p "$IMSEARCH_DATA"
-  # Initialize index if quantizer.bin is not present yet
-  if [ ! -f "$IMSEARCH_DATA/quantizer.bin" ] && [ -d "backend/data/library" ]; then
+  # Initialize index if centroids.bin is not present yet
+  if [ ! -f "$IMSEARCH_DATA/centroids.bin" ] && [ -d "backend/data/library" ]; then
     echo "Initializing local imsearch index in $IMSEARCH_DATA..."
     "$IMSEARCH_BIN" -c "$IMSEARCH_DATA" add backend/data/library >/dev/null 2>&1 || true
-    "$IMSEARCH_BIN" -c "$IMSEARCH_DATA" train -c 2048 -i 400 >/dev/null 2>&1 || true
+    "$IMSEARCH_BIN" -c "$IMSEARCH_DATA" train -c 512 -i 800 -m 30 >/dev/null 2>&1 || true
     "$IMSEARCH_BIN" -c "$IMSEARCH_DATA" build >/dev/null 2>&1 || true
   fi
   "$IMSEARCH_BIN" -c "$IMSEARCH_DATA" server --addr 127.0.0.1:8765 --nprobe 32 --count 20 &
@@ -51,5 +51,5 @@ pnpm run dev &
 WEB_PID=$!
 
 echo "Paper Room API: http://127.0.0.1:8000"
-echo "Paper Room Web: https://127.0.0.1:5173"
+echo "Paper Room Web: http://127.0.0.1:5173"
 wait
