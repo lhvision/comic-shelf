@@ -83,6 +83,10 @@ function confirmRemove() {
 }
 
 const cacheScale = computed(() => `scaleX(${props.cachePercent / 100})`)
+
+function prefetchReader() {
+  void import('@/views/ReaderView.vue').catch(() => {})
+}
 </script>
 
 <template>
@@ -92,6 +96,9 @@ const cacheScale = computed(() => `scaleX(${props.cachePercent / 100})`)
         class="btn btn-primary btn-read"
         type="button"
         :title="lastReadLabel || (lastRead ? `继续阅读 · 第 ${lastRead} 页` : '开始阅读')"
+        @pointerenter.once="prefetchReader"
+        @focusin.once="prefetchReader"
+        @touchstart.passive.once="prefetchReader"
         @click="emit('startReading')"
       >
         {{ lastReadLabel || (lastRead ? `继续阅读 · 第 ${lastRead} 页` : '开始阅读') }}
@@ -101,6 +108,9 @@ const cacheScale = computed(() => `scaleX(${props.cachePercent / 100})`)
         class="btn btn-ghost"
         type="button"
         title="从第 1 页开始阅读"
+        @pointerenter.once="prefetchReader"
+        @focusin.once="prefetchReader"
+        @touchstart.passive.once="prefetchReader"
         @click="emit('startReading', 1)"
       >
         从第 1 页开始

@@ -1,11 +1,11 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useIntervalFn } from '@vueuse/core'
-import { api } from '@/api/client'
+import { api, pageFileUrl } from '@/api/client'
 import { useLastRead } from '@/composables/useLastRead'
 import { useChapterNavigation } from '@/composables/useChapterNavigation'
-import { useLibraryStore } from '@/stores/library'
+import { useLibraryStore, createPlaceholderDetail } from '@/stores/library'
 import { useToast } from '@/composables/useToast'
 import { useCoverTransition } from '@/composables/useCoverTransition'
 import { useAuth } from '@/composables/useAuth'
@@ -40,8 +40,14 @@ const { canWrite } = useAuth()
 const source = computed(() => String(route.params.source))
 
 const sourceId = computed(() => String(route.params.sourceId))
-const detail = ref<ComicDetail | null>(null)
-const loading = ref(true)
+
+// SWR 即时占位：若书架 Store 中已有该本子概要，立即构造初态渲染 Hero（封面、标题、作者等）
+// 让 View Transition 精准咬合 Shared Cover Morph，彻底杜绝白屏/骨架屏二次闪烁
+const cachedSummary = store.byId(source.value, sourceId.value)
+const detail = ref<ComicDetail | null>(
+  cachedSummary ? createPlaceholderDetail(cachedSummary) : null,
+)
+const loading = ref(!detail.value)
 const caching = ref(false)
 const editOpen = ref(false)
 const appendOpen = ref(false)
@@ -76,7 +82,22 @@ const chapterCache = computed(() => {
   return cache
 })
 
-onMounted(load)
+onMounted(() => {
+  void load()
+  // 后台预热阅读器视图组件，消除进入阅读器时的 chunk 延迟
+  void import('@/views/ReaderView.vue').catch(() => {})
+})
+
+// 同组件跨漫画跳转时重新以 SWR 占位并重新拉取详情
+watch(
+  () => [source.value, sourceId.value],
+  () => {
+    const summary = store.byId(source.value, sourceId.value)
+    detail.value = summary ? createPlaceholderDetail(summary) : null
+    loading.value = !detail.value
+    void load()
+  },
+)
 
 onBeforeUnmount(() => {
   if (loadAbortController) {
@@ -98,6 +119,14 @@ async function load(silent = false) {
     const data = await api.detail(source.value, sourceId.value, { signal: controller.signal })
     if (controller.signal.aborted) return
     detail.value = data
+
+    // 预热目标阅读页的原图资源（浏览器内存/磁盘缓存），读者点击「继续阅读」时秒出
+    const pageCount = detail.value.meta.page_count ?? 0
+    if (pageCount > 0) {
+      const targetPage = progressEl.value || 1
+      const preloadImg = new Image()
+      preloadImg.src = pageFileUrl(source.value, sourceId.value, targetPage)
+    }
 
     // 若尚未完全缓存或后台有任务在运行，启动前端就地状态轮询
     const job = await api.cacheJob(source.value, sourceId.value, { signal: controller.signal })

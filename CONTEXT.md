@@ -87,3 +87,5 @@
 - **阅览室存储与设备卡片（Storage & Device Card）**：基于 `AppPopover` 呈现的客户端离线状态微件，承载 PWA 安装状态、存储占用标尺、分项容量明细与图片缓存安全清理。
 - **独立应用与视口检测（PWA Standalone Mode）**：通过 `display-mode: standalone` 媒体查询及 iOS `navigator.standalone` 探测读者是否以桌面/手机独立窗口形式运行纸间，提供无地址栏与沉浸阅读器全屏联动。
 - **周期性更新检查（Periodic Service Worker Update Check）**：应用在长期待机或回到前台时，在后台以 `cache: 'no-store'` 每小时静默探测远端 `sw.js` 脚本哈希并触发更新，避免读者客户端被旧版本 Service Worker 僵死。
+- **意图预热（Prefetch on Intent）**：在读者光标悬停（`pointerenter`）、键盘聚焦（`focusin`）或触屏接触（`touchstart`）时，静默并发预热目标视图组件 chunk 与详情元数据（写入 `useMemoize` 内存），将异步模块拉取与接口耗时无感消化在读者的决策延迟（100~300ms）内。
+- **即时元数据占位（SWR Hero Placeholder）**：跨页面跳转进入详情页时，优先直接复用书架 Store 已持有的 `LibrarySummary` 渲染顶部 Hero 真实标题与封面，使共享封面形变（`comic-cover-active`）精准生效，杜绝抓取纯灰骨架屏导致的二次闪烁与排版跳变。

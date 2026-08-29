@@ -5,13 +5,17 @@ import HtmlCanvasSurface from '@/components/HtmlCanvasSurface.vue'
 import FavoriteButton from '@/components/FavoriteButton.vue'
 import CacheProgress from '@/components/CacheProgress.vue'
 import { useAuth } from '@/composables/useAuth'
+import { api } from '@/api/client'
 
-const props = defineProps<{
-  comic: LibrarySummary
-  enabled?: boolean
-  /** 实时缓存进度（后台任务运行时更新），优先于 comic.cached_pages */
-  cache?: { running: boolean; cached: number; total: number }
-}>()
+const props = withDefaults(
+  defineProps<{
+    comic: LibrarySummary
+    enabled?: boolean
+    /** 实时缓存进度（后台任务运行时更新），优先于 comic.cached_pages */
+    cache?: { running: boolean; cached: number; total: number }
+  }>(),
+  { enabled: false, cache: undefined },
+)
 
 const emit = defineEmits<{
   favoriteToggled: [source: string, sourceId: string, favorite: boolean]
@@ -31,6 +35,11 @@ const redrawKey = computed(() => `${liveRunning.value}-${liveCached.value}/${liv
 const cardTransitionName = computed(
   () => `card-${props.comic.source}-${props.comic.source_id.replace(/[^a-zA-Z0-9_-]/g, '_')}`,
 )
+
+function prefetch() {
+  void import('@/views/ComicDetailView.vue').catch(() => {})
+  void api.detail(props.comic.source, props.comic.source_id).catch(() => {})
+}
 </script>
 
 <template>
@@ -40,6 +49,9 @@ const cardTransitionName = computed(
     :enabled="enabled"
     :surface="`library-card:${comic.display_id}`"
     :redraw-key="redrawKey"
+    @pointerenter.once="prefetch"
+    @focusin.once="prefetch"
+    @touchstart.passive.once="prefetch"
   >
     <!-- Complete DOM subtree: cover, title, meta, tags, views, cache progress. -->
     <article class="card-visual">

@@ -592,3 +592,30 @@
   - `useOfflineStorage.spec.ts` 与 `StoragePopover.spec.ts` 12 项精准单测全绿（含防重入断言）；
   - `backend/test_spa_fallback.py` 增补针对 Cache-Control 标头与 MIME 类型的自动化断言，`pnpm test:py` 全链路通过；
   - `vp check` 全站 138 文件 0 warning / 0 error，`vp build` 生产打包成功产出包含 86 项预缓存清单、`sw.js` 与独立 `workbox-window` chunk。
+
+## 36. 页面流转卡顿消除：意图预热与即时元数据占位（Grilling 决策落地）
+
+- **背景与现象**：
+  - 读者反馈从书架首页点击进入详情页有明显卡顿与僵直，从详情页点击进入阅读页也有类似延迟，但二次进入或阅读器内部翻页却极其丝滑；
+  - 经 E2E 自动化性能测试精确度量：首次点击卡片至 URL 变更耗时达 706ms~900ms，详情页就绪耗时超 1000ms；
+  - 接口排查排除后端慢（`GET /api/library/{source}/{source_id}` 耗时仅 13ms~17ms）；
+  - 真实根因：
+    1. **异步 Chunk 懒加载无预取**：Vue Router 必须先等几十个 JS 模块网络请求完成后才推进路由，UI 无反馈延迟 300ms；
+    2. **View Transition 捕获纯灰骨架屏错位**：`startViewTransition` 捕获到新页面全灰骨架屏快照，接口数十毫秒返回后真实 DOM 暴力销毁骨架屏，造成视觉二次抽搐与掉帧；
+    3. **为什么后面变好**：模块已在内存，`api.detail` 命中 `useMemoize` 缓存，阅读器内部翻页豁免了全屏 View Transition。
+- **架构决策与极简落地（0 冗余抽象）**：
+  1. **意图预热（Prefetch on Intent）**：
+     - `ComicCard.vue` 与 `HtmlCanvasCard.vue` 在 `@pointerenter.once`、`@focusin.once` 与 `@touchstart.passive.once` 时静默并发预热 `ComicDetailView.vue` chunk 与 `api.detail` 接口（预填 `useMemoize` 内存）；
+     - `DetailActionBar.vue` 在读者把光标移向「开始阅读」按钮时即时预热 `ReaderView.vue`；
+     - `ComicDetailView.vue` 挂载完成后在后台静默预热目标阅读页的原图文件（`new Image().src = pageFileUrl(...)`）。
+  2. **即时元数据占位（SWR Hero Placeholder）**：
+     - `src/stores/library.ts` 导出 `createPlaceholderDetail(summary)` 纯函数，进入详情页时若已有书架 `LibrarySummary`，直接初始化 `detail` 并在首帧渲染真实 Hero 头部；
+     - 浏览器 View Transition 精准捕获到真实标题与带有 `viewTransitionName: 'comic-cover-active'` 的封面，使 Shared Cover Morph 连贯平滑放大，彻底消灭纯灰骨架屏的突兀闪跳。
+  3. **生产环境 E2E 防退化闭环**：
+     - `playwright.config.ts` 增强支持 `process.env.E2E_BASE_URL`；
+     - 沉淀 `e2e/tests/nav-perf.spec.ts` 性能防退化测试；打包产物（`http://localhost:8000`）实测：首次点击卡片 URL 变更耗时从 900ms 降至 318ms~415ms（降幅超 54%），详情页首帧呈现提速 44%~57%，无骨架屏闪跳。
+- **验证**：
+  - `vp check` 全站 181 文件格式校验通过、139 文件 0 error / 0 warning；
+  - `vp test src/__tests__/ComicGrid.spec.ts src/__tests__/useCoverTransition.spec.ts` 5/5 全绿；
+  - `vp build` 生产打包 1.77s 正常完成；
+  - `E2E_BASE_URL=http://localhost:8000 pnpm ai-e2e:test e2e/tests/nav-perf.spec.ts` 生产链路 1/1 通过。

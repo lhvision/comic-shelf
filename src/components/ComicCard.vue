@@ -3,6 +3,7 @@ import { computed, ref } from 'vue'
 import type { LibrarySummary } from '@/types'
 import FavoriteButton from '@/components/FavoriteButton.vue'
 import CacheProgress from '@/components/CacheProgress.vue'
+import { api } from '@/api/client'
 import { useCoverTransition } from '@/composables/useCoverTransition'
 import { useAuth } from '@/composables/useAuth'
 
@@ -28,6 +29,13 @@ function loadDeck() {
   }
 }
 
+/** 意图预热：在读者悬停或触碰卡片时预加载目标路由 chunk 与详情 API 数据 */
+function prefetch() {
+  loadDeck()
+  void import('@/views/ComicDetailView.vue').catch(() => {})
+  void api.detail(props.comic.source, props.comic.source_id).catch(() => {})
+}
+
 const route = computed(() => `/comic/${props.comic.source}/${props.comic.source_id}`)
 
 const deckCovers = computed(() => props.comic.cover_paths.slice(1, 4))
@@ -46,8 +54,9 @@ const cardTransitionName = computed(
   <article
     class="comic-card"
     :style="{ viewTransitionName: cardTransitionName }"
-    @pointerenter.once="loadDeck"
-    @focusin.once="loadDeck"
+    @pointerenter.once="prefetch"
+    @focusin.once="prefetch"
+    @touchstart.passive.once="prefetch"
   >
     <RouterLink
       :to="route"

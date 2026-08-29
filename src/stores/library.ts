@@ -2,7 +2,7 @@ import { computed, ref } from 'vue'
 import { tryOnScopeDispose, useIntervalFn } from '@vueuse/core'
 import { defineStore } from 'pinia'
 import { api, onAuthSuccess } from '@/api/client'
-import type { ImportRequest, LibrarySummary } from '@/types'
+import type { ComicDetail, ImportRequest, LibrarySummary } from '@/types'
 
 export interface LiveCacheState {
   running: boolean
@@ -11,6 +11,53 @@ export interface LiveCacheState {
 }
 
 export const liveCacheKey = (source: string, sourceId: string) => `${source}/${sourceId}`
+
+/**
+ * 基于书架概要数据构造初始 ComicDetail 占位结构。
+ * 用于从书架进入详情页时立即呈现 Hero 头部（标题、封面轮播、元数据与操作栏），
+ * 让 View Transition 能精准捕获并连贯执行 Shared Cover Morph，杜绝白屏/灰骨架屏闪烁。
+ */
+export function createPlaceholderDetail(s: LibrarySummary): ComicDetail {
+  return {
+    meta: {
+      source: s.source,
+      source_id: s.source_id,
+      display_id: s.display_id,
+      title: s.title,
+      authors: s.authors,
+      works: s.works,
+      actors: s.actors,
+      tags: s.tags,
+      description: '',
+      uploader: '',
+      page_count: s.page_count,
+      cover_count: s.cover_count,
+      cover_indices: [],
+      pages: [],
+      chapters: (s.chapter_titles ?? []).map((title, idx) => ({
+        id: String(idx + 1),
+        index: idx + 1,
+        title,
+        page_count: 0,
+        start: 1,
+      })),
+      views: s.views,
+      likes: s.likes,
+      comment_count: 0,
+      favorite: s.favorite,
+      hidden_from_guest: s.hidden_from_guest,
+      source_url: '',
+      published_at: s.published_at,
+      updated_at: s.updated_at,
+      imported_at: s.imported_at,
+      last_checked_at: s.imported_at,
+      raw: {},
+    },
+    cached_pages: s.cached_pages,
+    cache_complete: s.cached_pages >= s.page_count,
+    cover_paths: s.cover_paths,
+  }
+}
 
 export const useLibraryStore = defineStore('library', () => {
   const items = ref<LibrarySummary[]>([])

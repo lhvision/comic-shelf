@@ -112,7 +112,10 @@ watch(
   { immediate: true },
 )
 
-onMounted(load)
+onMounted(() => {
+  void load()
+  void import('@/views/ReaderView.vue').catch(() => {})
+})
 
 onBeforeUnmount(() => {
   if (loadAbortController) {

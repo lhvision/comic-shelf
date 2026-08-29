@@ -95,6 +95,9 @@
 - HTML-in-Canvas 不适合做页面索引虚拟化：为每个 tile 建 canvas 会比图片更耗内存。
   它只用于 DOM 合成（封面卡），性能优化仍以 thumbnail + 增量 DOM 为主。
 - **预热机制（Pre-warming）**：后台预缓存任务在拉取原图的同时自动生成 360px 缩略图，详情页访问 100% 命中暖缓存；后端同时配备 `COMIC_SHELF_THUMB_CONCURRENCY` 门禁，防止多用户并发动态生成导致 CPU 击穿。进入阅读器可 100% 本地秒开。禁止在阅读器大图使用 LQIP（模糊马赛克底图）以防破坏纸质质感。
+- **意图预热与即时元数据占位（Prefetch on Intent & SWR Hero Placeholder）**：
+  - **意图预热（卡片与按钮）**：`ComicCard` 与 `HtmlCanvasCard` 在 `@pointerenter.once` / `@focusin.once` / `@touchstart.passive.once` 时静默预热 `ComicDetailView.vue` 路由 chunk 与 `api.detail` 接口（写入 `useMemoize` 内存）；`DetailActionBar` 在悬停阅读按钮时同步预热 `ReaderView.vue`；
+  - **SWR Hero 占位（消灭白屏/闪烁）**：从书架跳入详情页时，初始直接调用 `createPlaceholderDetail(store.byId(source, sourceId))` 渲染 Hero 头部（真实标题、封面轮播与元数据），使浏览器 View Transition 精准捕获到真正的 `comic-cover-active` 并连贯执行共享封面形变（Shared Cover Morph），彻底杜绝捕获纯灰骨架屏导致的二次闪烁。
 
 ## 6.6 多来源导航
 
