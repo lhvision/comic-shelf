@@ -70,18 +70,24 @@ if [ "$USE_DOCKER" = true ] || [ ! -x "$IMSEARCH_BIN" ]; then
   fi
 fi
 
-PYTHON="../.venv/bin/python"
-if [ ! -x "$PYTHON" ]; then
-  PYTHON=".venv/bin/python"
-  if [ ! -x "$PYTHON" ]; then
-    PYTHON="python3"
+# Auto-detect Python interpreter
+PYTHON=""
+for cand in ".venv/bin/python" "../.venv/bin/python" "backend/.venv/bin/python"; do
+  if [ -x "$cand" ]; then
+    PYTHON="$cand"
+    break
   fi
+done
+if [ -z "$PYTHON" ]; then
+  PYTHON="$(command -v python3 || command -v python || echo "python3")"
 fi
 
-DATA_DIR="backend/data"
+# 目标数据目录：优先读取环境变量 COMIC_SHELF_DATA，默认指向本地工程目录 backend/data
+DATA_DIR="${COMIC_SHELF_DATA:-backend/data}"
+
 IMSEARCH_DATA="$DATA_DIR/imsearch"
 LIBRARY_DATA="$DATA_DIR/library"
-CENTROIDS_FILE="$IMSEARCH_DATA/centroids.bin"
+QUANTIZER_FILE="$IMSEARCH_DATA/quantizer.bin"
 
 mkdir -p "$IMSEARCH_DATA"
 
@@ -90,10 +96,22 @@ if [ ! -d "$LIBRARY_DATA" ]; then
   exit 0
 fi
 
+# 检测是否有常驻服务正在运行，若有先优雅停止以释放 SMB/文件锁
+WAS_RUNNING=false
+if pgrep -f "imsearch.*server" >/dev/null 2>&1; then
+  WAS_RUNNING=true
+  echo "⏸️ 检测到 imsearch 服务正在运行，先停止服务以释放索引文件锁..."
+  pkill -f "imsearch.*server" || true
+  sleep 1
+  if pgrep -f "imsearch.*server" >/dev/null 2>&1; then
+    pkill -9 -f "imsearch.*server" || true
+  fi
+fi
+
 echo "=== 1/2 增量扫描漫画图片并提取特征点 (add) ==="
 "$IMSEARCH_BIN" -c "$IMSEARCH_DATA" add "$LIBRARY_DATA"
 
-if [ "$FORCE_FULL" = true ] || [ ! -f "$CENTROIDS_FILE" ]; then
+if [ "$FORCE_FULL" = true ] || [ ! -f "$QUANTIZER_FILE" ]; then
   if [ "$FORCE_FULL" = true ]; then
     echo "=== [全量模式] 重新训练聚类量化器 (train) ==="
   else
@@ -110,4 +128,10 @@ else
   echo "=== 2/2 复用已有聚类中心，增量追加倒排索引 (build) ==="
   "$IMSEARCH_BIN" -c "$IMSEARCH_DATA" build
   echo "⚡ 识图特征库【增量追加】完成（耗时数秒，旧特征与聚类完全保留）！数据保存在 $IMSEARCH_DATA"
+fi
+
+if [ "$WAS_RUNNING" = true ]; then
+  echo "🔄 恢复启动 imsearch 服务..."
+  setsid "$IMSEARCH_BIN" -c "$IMSEARCH_DATA" server --addr "0.0.0.0:8765" </dev/null > /tmp/imsearch.log 2>&1 &
+  sleep 1
 fi

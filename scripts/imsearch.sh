@@ -138,6 +138,13 @@ cmd_reindex() {
     exit 1
   fi
 
+  local was_running=false
+  if is_running; then
+    was_running=true
+    echo "⏸️ 检测到 imsearch 服务正在运行，先停止服务以释放 SMB 索引文件锁..."
+    cmd_stop
+  fi
+
   echo "=== 1/2 扫描漫画图片并提取新增特征点 (add) ==="
   "$IMSEARCH_BIN" -c "$IMSEARCH_CONF" add "$LIBRARY_DATA"
 
@@ -146,9 +153,9 @@ cmd_reindex() {
 
   echo "🎉 识图特征库【增量追加】完成！"
 
-  if is_running; then
-    echo "🔄 检测到服务运行中，平滑重启以热加载新索引..."
-    cmd_restart
+  if [ "$was_running" = true ]; then
+    echo "🔄 恢复启动 imsearch 服务以热加载新索引..."
+    cmd_start
   fi
 }
 
@@ -156,6 +163,13 @@ cmd_train() {
   if [ ! -d "$LIBRARY_DATA" ]; then
     echo "❌ 错误: 未找到漫画目录 ($LIBRARY_DATA)。"
     exit 1
+  fi
+
+  local was_running=false
+  if is_running; then
+    was_running=true
+    echo "⏸️ 检测到 imsearch 服务正在运行，先停止服务以释放 SMB 索引文件锁..."
+    cmd_stop
   fi
 
   echo "⚠️ 即将开始【全量重新训练】（适用于聚类模型重构或首次初始化）"
@@ -173,9 +187,9 @@ cmd_train() {
 
   echo "🎉 识图特征库【全量训练与构建】完成！"
 
-  if is_running; then
-    echo "🔄 重启服务加载新索引..."
-    cmd_restart
+  if [ "$was_running" = true ]; then
+    echo "🔄 恢复启动 imsearch 服务加载新索引..."
+    cmd_start
   fi
 }
 
