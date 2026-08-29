@@ -1,16 +1,18 @@
 # ---- Stage 1: Build Vue 3 Frontend (Vite+) ----
 # 使用轻量级 Node 22 Alpine 作为构建环境（编译完成后会被完全丢弃，不进最终镜像）
 FROM node:22-alpine AS frontend-builder
+ENV PUPPETEER_SKIP_DOWNLOAD=true \
+    PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1
 RUN apk add --no-cache libstdc++ \
     && npm install -g pnpm@11.22.0
 
 WORKDIR /app
 
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
-RUN pnpm install --frozen-lockfile
+RUN pnpm install --frozen-lockfile --ignore-scripts
 
 COPY . .
-RUN pnpm build
+RUN pnpm run build-only
 
 # ---- Stage 2: Python Backend Runtime with Static SPA ----
 FROM python:3.12-slim
