@@ -203,28 +203,28 @@ $COMIC_SHELF_DATA/
 
 ## 常用 API 清单
 
-| 方法       | 路径                                              | 说明                                                               |
-| :--------- | :------------------------------------------------ | :----------------------------------------------------------------- |
-| **GET**    | `/api/library`                                    | 书架列表（支持 `q` 关键词过滤、按章节标题检索）                    |
-| **POST**   | `/api/library/import`                             | 禁漫收录（`{id, source, prefetch_covers, prefetch_all, refresh}`） |
-| **GET**    | `/api/library/{source}/{id}`                      | 漫画详情与缓存进度（包含 `chapters[]` 目录）                       |
-| **PATCH**  | `/api/library/{source}/{id}/metadata`             | 典藏资料编辑（标题、作者、叙述、自定义 `cover_indices`、标签增删） |
-| **DELETE** | `/api/library/{source}/{id}`                      | 从书库彻底删除本地漫画及所有文件                                   |
-| **GET**    | `/api/library/{source}/{id}/pages/{n}/file`       | 获取第 `n` 页原图（全局页号，未缓存时自动按需解密下载）            |
-| **GET**    | `/api/library/{source}/{id}/pages/{n}/thumbnail`  | 获取第 `n` 页 360px 缩略图（用于页面索引与自适应呈现）             |
-| **GET**    | `/api/library/{source}/{id}/covers/{n}/file`      | 获取第 `n` 张展示封面                                              |
-| **GET**    | `/api/library/{source}/{id}/chapters/{cid}/cover` | 获取指定章节的池化封面                                             |
-| **POST**   | `/api/library/{source}/{id}/cache`                | 一键缓存整本全部页面                                               |
-| **PATCH**  | `/api/library/{source}/{id}/favorite`             | 标记 / 取消喜欢                                                    |
-| **POST**   | `/api/library/local/create`                       | 自建工坊：创建本地漫画骨架                                         |
-| **POST**   | `/api/library/local/import-path`                  | 自建工坊：从服务器外部白名单目录直扫收录                           |
-| **POST**   | `/api/library/local/{id}/upload-pages`            | 自建工坊：批量上传页面文件                                         |
-| **POST**   | `/api/library/local/{id}/append`                  | 自建工坊：向现有漫画/章节增量追加新页面                            |
-| **GET**    | `/api/search/image/status`                        | 检查以图搜图 Sidecar 服务可用性                                    |
-| **POST**   | `/api/search/image`                               | 上传截图进行局部 ORB 特征向量检索                                  |
-| **GET**    | `/api/discovery/ranking`                          | 发现页：禁漫原站周榜/月榜/日榜/总榜流                              |
-| **POST**   | `/api/auth/login`                                 | 馆长/访客访问口令登录验证                                          |
-| **GET**    | `/api/auth/status`                                | 当前会话鉴权状态检查                                               |
+| 方法       | 路径                                                    | 说明                                                                       |
+| :--------- | :------------------------------------------------------ | :------------------------------------------------------------------------- |
+| **GET**    | `/api/library`                                          | 书架列表（支持 `q` 关键词过滤、按章节标题检索）                            |
+| **POST**   | `/api/library/import`                                   | 禁漫收录（`{id, source, prefetch_covers, prefetch_all, refresh}`）         |
+| **GET**    | `/api/library/{source}/{id}`                            | 漫画详情与缓存进度（包含 `chapters[]` 目录）                               |
+| **PATCH**  | `/api/library/{source}/{id}/metadata`                   | 典藏资料编辑（标题、作者、叙述、自定义 `cover_indices`、标签增删）         |
+| **DELETE** | `/api/library/{source}/{id}`                            | 从书库彻底删除本地漫画及所有文件                                           |
+| **GET**    | `/api/library/{source}/{id}/pages/{n}/file[.webp]`      | 获取第 `n` 页原图（全局页号，支持 `.webp` 静态别名，未缓存时自动解密下载） |
+| **GET**    | `/api/library/{source}/{id}/pages/{n}/thumbnail[.jpg]`  | 获取第 `n` 页 360px 缩略图（支持 `.jpg` 静态别名，用于索引与自适应呈现）   |
+| **GET**    | `/api/library/{source}/{id}/covers/{n}/file[.jpg]`      | 获取第 `n` 张展示封面（支持 `.jpg` 静态别名）                              |
+| **GET**    | `/api/library/{source}/{id}/chapters/{cid}/cover[.jpg]` | 获取指定章节的池化封面（支持 `.jpg` 静态别名）                             |
+| **POST**   | `/api/library/{source}/{id}/cache`                      | 一键缓存整本全部页面                                                       |
+| **PATCH**  | `/api/library/{source}/{id}/favorite`                   | 标记 / 取消喜欢                                                            |
+| **POST**   | `/api/library/local/create`                             | 自建工坊：创建本地漫画骨架                                                 |
+| **POST**   | `/api/library/local/import-path`                        | 自建工坊：从服务器外部白名单目录直扫收录                                   |
+| **POST**   | `/api/library/local/{id}/upload-pages`                  | 自建工坊：批量上传页面文件                                                 |
+| **POST**   | `/api/library/local/{id}/append`                        | 自建工坊：向现有漫画/章节增量追加新页面                                    |
+| **GET**    | `/api/search/image/status`                              | 检查以图搜图 Sidecar 服务可用性                                            |
+| **POST**   | `/api/search/image`                                     | 上传截图进行局部 ORB 特征向量检索                                          |
+| **GET**    | `/api/discovery/ranking`                                | 发现页：禁漫原站周榜/月榜/日榜/总榜流                                      |
+| **POST**   | `/api/auth/login`                                       | 馆长/访客访问口令登录验证                                                  |
+| **GET**    | `/api/auth/status`                                      | 当前会话鉴权状态检查                                                       |
 
 ---
 

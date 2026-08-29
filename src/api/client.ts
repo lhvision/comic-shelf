@@ -325,14 +325,14 @@ export const api = {
 }
 
 export const pageFileUrl = (source: string, sourceId: string, index: number) =>
-  `${BASE}/library/${source}/${sourceId}/pages/${index}/file`
+  `${BASE}/library/${source}/${sourceId}/pages/${index}/file.webp`
 
 export const pageThumbUrl = (source: string, sourceId: string, index: number) =>
-  `${BASE}/library/${source}/${sourceId}/pages/${index}/thumbnail`
+  `${BASE}/library/${source}/${sourceId}/pages/${index}/thumbnail.jpg`
 
 export const coverFileUrl = (source: string, sourceId: string, index: number) =>
-  `${BASE}/library/${source}/${sourceId}/covers/${index}/file`
+  `${BASE}/library/${source}/${sourceId}/covers/${index}/file.jpg`
 
 // T17：章节目录封面端点（后端按章节 id 定位，从该话第一页生成并池化缓存）
 export const chapterCoverUrl = (source: string, sourceId: string, chapterId: string) =>
-  `${BASE}/library/${source}/${sourceId}/chapters/${chapterId}/cover`
+  `${BASE}/library/${source}/${sourceId}/chapters/${chapterId}/cover.jpg`

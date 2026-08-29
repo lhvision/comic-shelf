@@ -173,6 +173,7 @@ docker run -d \
 | `COMIC_SHELF_COVER_COUNT`              | `4`    | 每本漫画默认生成的封面预览张数。                                                                                                                              |
 | `COMIC_SHELF_WORKERS`                  | `1`    | Uvicorn 工作进程数。多核服务器可适当调大。                                                                                                                    |
 | `COMIC_SHELF_LOG_LEVEL`                | `info` | 后端运行日志级别（可选 `debug`, `info`, `warning`, `error`）。                                                                                                |
+| `COMIC_SHELF_ACCESS_LOG`               | `true` | 是否开启 Uvicorn 请求访问日志。默认已内置高频探针静音过滤（`/api/health` 与搜图状态 200 正常时不输出）；若需彻底关闭访问日志可设为 `false`。                  |
 
 ---
 
@@ -382,13 +383,79 @@ docker push yourname/paper-room:v1.0.0
 
 ---
 
-## 7. 多用户高并发建议（Nginx / Caddy 反向代理）
+## 7. 网络性能与反向代理调优（Cloudflare、HTTP/2 与缓存）
 
-在多访客（如 20+ 人）局域网或公网部署场景下，建议在前置增加 Nginx 或 Caddy 反向代理：
+### 7.1 Cloudflare 穿透与边缘强缓存优化（解决 100KB 图片 20~30s 延迟）
 
-1. **启用 HTTP/2 / HTTP/3**：开启 HTTP/2 多路复用，彻底解除浏览器同域名 6 个并发连接排队的瓶颈。
-2. **利用静态强缓存**：纸间后端图片与缩略图响应均内置了 `Cache-Control: public, max-age=2592000, immutable`（30 天强缓存），客户端二次加载 100% 命中浏览器本地缓存，0 服务端负载。
-3. **冷缓存预热**：导入漫画时勾选“缓存全部”，后台会自动完成解密与缩略图预生成，避免多访客同时翻阅未缓存作品时触发实时下载与动态缩放。
+如果使用 Cloudflare（含 Cloudflare Tunnel）将处于家庭宽带或国内 NAS 的纸间映射到公网：
+
+1. **为什么直连会慢？**
+   - 国内连接 Cloudflare 免费节点常被路由至美国西海岸 Anycast 节点；
+   - 若 Cloudflare 判定为动态请求，每次加载都会触发跨太平洋往返回源（家庭宽带上行 + 跨洋晚高峰丢包导致 TCP 重传卡顿）。
+2. **静态扩展名别名（代码层已内置）**：
+   - 纸间已在图片与缩略图接口全面支持语义化静态扩展名（`/file.webp`、`/thumbnail.jpg`、`/covers/{index}/file.jpg`）；
+   - Cloudflare 及主流 CDN 看到 `.jpg` / `.webp` 会开箱自动识别为静态资源进行边缘缓存。
+3. **Cloudflare Cache Rule 推荐配置（彻底杜绝跨洋穿透）**：
+   - 进入 Cloudflare Dashboard → **Caching** → **Cache Rules** → 点击 **Create rule**：
+     - **Rule name**: `Paper Room Media Cache`
+     - **When incoming requests match...**:
+       `(http.request.uri.path contains "/api/library/" and (http.request.uri.path.extension in {"webp" "jpg" "jpeg" "png"} or ends_with(http.request.uri.path, "/file") or ends_with(http.request.uri.path, "/thumbnail")))`
+     - **Cache eligibility**: `Eligible for cache`
+     - **Edge TTL**: `Override origin` → `1 month`（1 个月）
+     - **Browser TTL**: `Respect origin headers`（遵循纸间返回的 30 天 immutable 强缓存）
+   - **效果**：首位读者翻阅或后台预热完成后，所有页面原图与缩略图直接由距离读者最近的 Cloudflare 边缘节点以 **HTTP/2 或 HTTP/3 (QUIC)** 多路复用毫秒级下发，源站回源流量降至 0。
+
+### 7.2 HTTP/2 与 HTTP/3 架构分工（为什么 Uvicorn 内部打印 HTTP/1.1？）
+
+在生产日志中若看到形如 `<网关或反代IP> - "GET ... HTTP/1.1" 200 OK`：
+
+1. **外部与内部的分层职责**：
+   - **客户端 ⇄ Cloudflare / 反代网关（外网高延迟段）**：
+     - 现代浏览器访问 HTTPS 域名时，与 Cloudflare 之间**默认已自动启用 HTTP/2 或 HTTP/3 (QUIC)**；可在浏览器控制台 Network 选项卡勾选 `Protocol` 查看确认（显示 `h2` 或 `h3`）；
+   - **反代网关 ⇄ 纸间容器（内网零延迟段）**：
+     - Cloudflare Tunnel (`cloudflared`)、Nginx、Traefik 等反代在向上游 Python ASGI（Uvicorn）转发时，**行业标准一律走 HTTP/1.1**；
+     - Uvicorn 官方不支持也不推荐在内部直接运行 HTTP/2（内网 <0.1ms 下 HTTP/1.1 Keep-Alive 连接池足以支撑极高吞吐，HTTP/2 流控在单线程 Python 运行时反而会增加 CPU framing 开销）。
+2. **局域网直接访问 TrueNAS 如何开启 HTTP/2？**
+   - **浏览器安全限制**：所有现代浏览器（Chrome / Firefox / Safari / Edge）**强制要求 HTTP/2 必须建立在 TLS（HTTPS）加密之上**，不支持明文 HTTP/2（h2c）；
+   - 若直接通过 `http://<NAS_IP>:8000` 访问，浏览器必然协商为 HTTP/1.1；
+   - **开启方法**：在 TrueNAS 上通过 Nginx Proxy Manager、Traefik 或 Caddy 前置并配置 SSL 证书，由反代开启 HTTP/2/3 对外监听 `https://...` 并转发至纸间端口。例如 Caddy 极简配置：
+     ```Caddyfile
+     comic.lan {
+         reverse_proxy paper-room:8000
+     }
+     ```
+
+### 7.3 局域网与公网分流访问（Split-Horizon DNS，内网千兆直连零延迟）
+
+在家庭网络中，最理想的阅览体验是：**同一套域名、同一套书签，在家里自动跑千兆局域网直连（0 延迟），出门在外自动走 Cloudflare 边缘缓存**。
+
+#### 1. 为什么推荐 Split-Horizon DNS（本地 DNS 重写）？
+
+- **公网回流痛点**：若在家里依然通过公网 DNS 解析域名，数据包将走跨洋 Cloudflare Anycast 回流，白白浪费宽带且增加数百毫秒网络开销；
+- **双域名痛点**：若在书签中保存 `http://<NAS_IP>:8000` 和公网域名两个地址，PWA 离线缓存、阅读进度（`localStorage`）与登录态无法跨源共享；
+- **分流效果**：通过本地 DNS 重写，局域网内将公网域名强制解析为 TrueNAS 内网 IP（如 `<NAS_IP>`），实现局域网 0 跨洋直连秒开。
+
+#### 2. 三种主流分流配置方式
+
+- **方式一：AdGuard Home / Pi-hole / 路由器 DNS 重写（推荐，全家无感生效）**
+  - 在家庭路由或 DNS 服务（AdGuard Home / OpenWrt / iKuai）中进入 **过滤器** → **DNS 重写**（或 Hosts 规则）：
+    - **域名**: `comic.yourdomain.com`
+    - **IP 地址**: `<TrueNAS 内网 IP>`
+  - 全屋设备连接家庭 WiFi 时自动享受内网千兆带宽直连。
+
+- **方式二：单机 Hosts 文件指定（极简单机测试）**
+  - 在电脑 hosts 文件（Linux `/etc/hosts` 或 Windows `C:\Windows\System32\drivers\etc\hosts`）追加：
+    ```text
+    <NAS_IP>  comic.yourdomain.com
+    ```
+
+- **方式三：Tailscale / 私网 VPN 组网（免公网暴露，出门如在家）**
+  - 在 TrueNAS 与手机/笔记本上运行 Tailscale 并启用 MagicDNS，直接通过内网私有地址通信，免去公网端口暴露。
+
+#### 3. 内网直接解析的 SSL 证书与端口建议
+
+- 若在外网使用标准 HTTPS（443 端口），局域网内 TrueNAS 前置的反代（Nginx / Caddy）也建议监听 443 端口并配置相同的域名证书（可通过 ACME DNS-01 验证自动申请通配符证书）；
+- 这样内网直连时浏览器不会产生任何证书警告，同时直接激活 HTTP/2 多路复用。
 
 ---
 
@@ -399,7 +466,7 @@ docker push yourname/paper-room:v1.0.0
 1. **安全上下文（HTTPS 要求）**：
    - 现代浏览器（Chrome / Safari / Edge / Firefox）规范强制要求：**Service Worker 与 PWA 安装必须在安全上下文（HTTPS 或 `localhost`）下运行**；
    - 本机开发（`localhost:8000` / `localhost:5173`）浏览器默认视为安全上下文，可直接测试安装；
-   - 若部署于内网 NAS（如 `http://192.168.1.100:8000`）或公网 VPS，建议前置反向代理（Nginx / Caddy / NPM / Cloudflare Tunnel）并配置 SSL 证书（HTTPS），方可开启独立应用安装与离线运行能力。
+   - 若部署于内网 NAS（如 `http://<NAS_IP>:8000`）或公网 VPS，建议前置反向代理（Nginx / Caddy / NPM / Cloudflare Tunnel）并配置 SSL 证书（HTTPS），方可开启独立应用安装与离线运行能力。
 2. **反向代理 Cache-Control 防死锁准则**：
    - 纸间后端的 `SPAStaticFiles` 中间件已对关键入口下发了严格的防死锁标头：
      - `/`、`/index.html`、`/sw.js`、`/registerSW.js`、`/manifest.webmanifest`：强制 `Cache-Control: no-cache, no-store, must-revalidate`；

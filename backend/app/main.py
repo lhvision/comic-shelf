@@ -88,8 +88,13 @@ async def auth_and_security_middleware(request: Request, call_next):
     ):
         return await call_next(request)
 
-    # Check hotlink protection for image binary endpoints
-    if path.endswith(("/file", "/thumbnail", "/cover")):
+    # Check hotlink protection for image binary endpoints (including static extension aliases)
+    clean_stem = path
+    if "." in path:
+        stem, ext = path.rsplit(".", 1)
+        if ext.lower() in {"webp", "jpg", "jpeg", "png"}:
+            clean_stem = stem
+    if clean_stem.endswith(("/file", "/thumbnail", "/cover")):
         try:
             check_hotlink_protection(request)
         except HTTPException as exc:
@@ -487,7 +492,7 @@ def page_info(source: str, source_id: str, index: int, request: Request) -> Page
     page = next((p for p in meta.pages if p.index == index), None)
     return PageResponse(
         index=index,
-        url=f"/api/library/{source}/{source_id}/pages/{index}/file",
+        url=f"/api/library/{source}/{source_id}/pages/{index}/file.webp",
         cached=page.cached if page is not None else False,
     )
 
@@ -496,7 +501,9 @@ CACHE_CONTROL_IMMUTABLE = {"Cache-Control": "public, max-age=2592000, immutable"
 
 
 @app.get("/api/library/{source}/{source_id}/pages/{index}/file")
-def page_file(source: str, source_id: str, index: int, request: Request) -> FileResponse:
+@app.get("/api/library/{source}/{source_id}/pages/{index}/file.{ext}")
+def page_file(source: str, source_id: str, index: int, request: Request, ext: str | None = None) -> FileResponse:
+    # Note: `ext` is bound by route pattern for CDN cache recognition; media_type is inferred from on-disk file.
     meta = _require_meta(source, source_id, request)
     if index < 1 or index > meta.page_count:
         raise HTTPException(status_code=404, detail=f"页 {index} 不存在")
@@ -527,8 +534,9 @@ def page_file(source: str, source_id: str, index: int, request: Request) -> File
 
 
 @app.get("/api/library/{source}/{source_id}/pages/{index}/thumbnail")
-def page_thumbnail(source: str, source_id: str, index: int, request: Request) -> FileResponse:
-    """Lightweight JPEG for the detail-page page-index grid."""
+@app.get("/api/library/{source}/{source_id}/pages/{index}/thumbnail.{ext}")
+def page_thumbnail(source: str, source_id: str, index: int, request: Request, ext: str | None = None) -> FileResponse:
+    """Lightweight JPEG for the detail-page page-index grid (`ext` bound for CDN caching)."""
     _require_known_source(source)
     meta = _require_meta(source, source_id, request)
     if index < 1 or index > meta.page_count:
@@ -560,7 +568,9 @@ def page_thumbnail(source: str, source_id: str, index: int, request: Request) ->
 
 
 @app.get("/api/library/{source}/{source_id}/covers/{index}/file")
-def cover_file(source: str, source_id: str, index: int, request: Request, v: str | None = None) -> FileResponse:
+@app.get("/api/library/{source}/{source_id}/covers/{index}/file.{ext}")
+def cover_file(source: str, source_id: str, index: int, request: Request, v: str | None = None, ext: str | None = None) -> FileResponse:
+    # Note: `ext` is bound by route pattern for CDN cache recognition; response is always JPEG.
     meta = _require_meta(source, source_id, request)
     max_covers = len(meta.cover_indices) if meta.cover_indices else meta.cover_count
     if index < 1 or index > max_covers or index > meta.page_count:
@@ -592,8 +602,9 @@ def cover_file(source: str, source_id: str, index: int, request: Request, v: str
 
 
 @app.get("/api/library/{source}/{source_id}/chapters/{chapter_id}/cover")
-def chapter_cover(source: str, source_id: str, chapter_id: str, request: Request) -> FileResponse:
-    """T17：章节目录封面（该话第一页），池化在 covers/chapters/ 下，失败前端回落占位。"""
+@app.get("/api/library/{source}/{source_id}/chapters/{chapter_id}/cover.{ext}")
+def chapter_cover(source: str, source_id: str, chapter_id: str, request: Request, ext: str | None = None) -> FileResponse:
+    """T17：章节目录封面（该话第一页），池化在 covers/chapters/ 下，失败前端回落占位（`ext` 供 CDN 缓存识别）。"""
     meta = _require_meta(source, source_id, request)
     chapter = next((c for c in meta.chapters if c.id == chapter_id), None)
     if chapter is None:

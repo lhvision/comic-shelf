@@ -257,9 +257,70 @@ def test_auth_and_security_middleware():
             req_pub = make_mock_request(pub_path)
             req_pub.method = "GET"
             res_pub = await auth_and_security_middleware(req_pub, call_next)
-            assert res_pub == "OK"
+        # 2g. Image binary endpoints with static extension aliases trigger hotlink check
+        for img_ext_path in (
+            "/api/library/jm/1/covers/1/file.jpg",
+            "/api/library/jm/1/pages/1/file.webp",
+            "/api/library/jm/1/pages/1/thumbnail.jpg",
+            "/api/library/jm/1/chapters/chap1/cover.jpg",
+        ):
+            call_next.reset_mock()
+            req_img_cross = make_mock_request(
+                img_ext_path,
+                headers={
+                    "Authorization": "Bearer guest-key-999",
+                    "Sec-Fetch-Site": "cross-site",
+                },
+            )
+            req_img_cross.method = "GET"
+            res_cross = await auth_and_security_middleware(req_img_cross, call_next)
+            assert getattr(res_cross, "status_code", None) == 403, f"Cross-site access to {img_ext_path} should be blocked (403)"
 
     asyncio.run(run_cases())
+
+
+def test_quiet_access_log_filter():
+    import logging
+    from server import QuietAccessLogFilter
+
+    f = QuietAccessLogFilter()
+
+    # Health probe 200 OK should be silenced regardless of client IP (e.g. 10.0.0.1, 192.168.x, 172.x, IPv6)
+    for probe_ip in ("10.0.0.1", "192.168.1.100", "172.20.0.2", "127.0.0.1", "::1"):
+        rec_health = logging.LogRecord(
+            "uvicorn.access", logging.INFO, "", 0,
+            '%s - "%s %s HTTP/%s" %d',
+            (probe_ip, "GET", "/api/health", "1.1", 200),
+            None,
+        )
+        assert f.filter(rec_health) is False, f"Probe from {probe_ip} should be silenced"
+
+    # Image search status probe 200 OK should be silenced
+    rec_status_200 = logging.LogRecord(
+        "uvicorn.access", logging.INFO, "", 0,
+        '%s - "%s %s HTTP/%s" %d',
+        ("192.168.1.50", "GET", "/api/search/image/status", "1.1", 200),
+        None,
+    )
+    assert f.filter(rec_status_200) is False
+
+    # Health probe with 500 error should be preserved
+    rec_health_500 = logging.LogRecord(
+        "uvicorn.access", logging.INFO, "", 0,
+        '%s - "%s %s HTTP/%s" %d',
+        ("10.0.0.2", "GET", "/api/health", "1.1", 500),
+        None,
+    )
+    assert f.filter(rec_health_500) is True
+
+    # Real image request 200 OK should be preserved
+    rec_img_200 = logging.LogRecord(
+        "uvicorn.access", logging.INFO, "", 0,
+        '%s - "%s %s HTTP/%s" %d',
+        ("192.168.1.200", "GET", "/api/library/jm/148952/pages/23/thumbnail.jpg", "1.1", 200),
+        None,
+    )
+    assert f.filter(rec_img_200) is True
 
 
 if __name__ == "__main__":
@@ -267,5 +328,7 @@ if __name__ == "__main__":
     test_hotlink_protection()
     test_guest_visibility_and_discovery_auth()
     test_auth_and_security_middleware()
+    test_quiet_access_log_filter()
     print("All backend auth, middleware & hotlink protection tests passed!")
+
 

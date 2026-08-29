@@ -161,10 +161,10 @@ JmImageTool.decode_and_save(num, source_image, save_path)
 - `DELETE /api/library/{source}/{id}/chapters/{chapterId}`（物理删除单个章节并重排全书全局页码）
 - `GET /api/library/{source}/{id}`（详情含 `chapters`）
 - `PATCH /api/library/{source}/{id}/favorite` `{favorite: bool}`
-- `GET /api/library/{source}/{id}/pages/{n}/file`（`n` 为全局页号，带防盗链校验）
-- `GET /api/library/{source}/{id}/pages/{n}/thumbnail`（同上）
-- `GET /api/library/{source}/{id}/covers/{n}/file`（封面取 `cover_indices` 或前 N 页，带防盗链校验）
-- `GET /api/library/{source}/{id}/chapters/{chapterId}/cover`（章节封面端点，带防盗链校验）
+- `GET /api/library/{source}/{id}/pages/{n}/file`（`n` 为全局页号，带防盗链校验，支持 `.{ext}` 静态扩展名别名）
+- `GET /api/library/{source}/{id}/pages/{n}/thumbnail`（同上，支持 `.{ext}` 别名）
+- `GET /api/library/{source}/{id}/covers/{n}/file`（封面取 `cover_indices` 或前 N 页，带防盗链校验，支持 `.{ext}` 别名）
+- `GET /api/library/{source}/{id}/chapters/{chapterId}/cover`（章节封面端点，带防盗链校验，支持 `.{ext}` 别名）
 - `GET /api/search/image/status`（以图搜图 Sidecar 服务健康探测）
 - `POST /api/search/image`（以图搜图，上传截图/裁切图匹配所属本子与对应页码）
 - `GET /api/providers`

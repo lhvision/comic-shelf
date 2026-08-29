@@ -19,6 +19,8 @@
 13. **不要**在进入详情页时因详情数据尚未返回就全屏呈现纯灰骨架屏；**必须**利用书架已有 `LibrarySummary`（`createPlaceholderDetail`）先渲染 Hero 头部（标题与封面），使 View Transition 能精准捕获并连贯完成共享封面形变（`comic-cover-active`），杜绝白屏/骨架屏二次闪烁与排版跳动；同时在卡片与操作按钮上增加 `@pointerenter.once` / `@focusin.once` 意图预热。
 14. **不要**在 Service Worker（Workbox）中将动态鉴权或探活端点（`/api/auth/*`、`/api/search/*`）通配进 `NetworkFirst` 等离线缓存，**且必须**在 PWA Manifest 中配置 `useCredentials: true`（因离线缓存命中历史 guest/未认证状态会导致馆长身份被永久降级锁死为 403，只有注销 SW 才能恢复）。
 15. **不要**在后台定时轮询任务（如 `useIntervalFn` 轮询 `cacheJobs`）遇到网络或鉴权报错时静默忽略；**必须**在 catch 中执行 `poll.pause()` 立即熔断，且跨路由共享的状态（如 `useImageSearch`）**必须**使用 `createGlobalState` 单例化管理（防止后端停机或网络波动时浏览器陷入 2 秒高频死循环重试，引发自挂式请求风暴与反代/WAF 封锁）。
+16. **不要**让图片与缩略图使用无静态扩展名的裸 API 路径（如裸 `/file`、`/thumbnail`）；**必须**提供 `.webp`、`.jpg` 静态扩展名路由别名，且在 CDN（如 Cloudflare）配置针对静态扩展名的 Cache Rules（因 Cloudflare 等主流 CDN 默认将无扩展名的 `/api/...` 判定为 DYNAMIC 动态内容，导致图片 100% 穿透回源，在跨洋公网或家庭宽带下单张 100KB 图片就会卡顿 20~30 秒）。
+17. **不要**让容器心跳探针（如 `/api/health`）的 200 OK 正常流水日志打满 Uvicorn 控制台；**必须**在 Uvicorn 注入针对心跳探针的静音过滤器（`QuietAccessLogFilter`），并在部署时支持 `COMIC_SHELF_ACCESS_LOG=false` 彻底消除流水日志刷屏。
 
 ---
 
