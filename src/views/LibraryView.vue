@@ -35,12 +35,14 @@ const activeSource = computed(() =>
 
 const {
   isAvailable,
+  isChecking,
   isSearching,
   error: searchError,
   searchImagePreviewUrl,
   searchResults,
   searchWithFile,
   clearImage,
+  checkStatus,
   handlePaste,
   handleDrop,
 } = useImageSearch()
@@ -117,6 +119,21 @@ function onFileSelected(event: Event) {
   }
 }
 
+const cameraBtnTooltip = computed(() => {
+  if (isChecking.value) return '正在探测识图服务...'
+  if (isAvailable.value) return '上传图片以图搜图'
+  return '识图服务未连接，点击重新探测'
+})
+
+async function onCameraClick() {
+  if (isChecking.value) return
+  if (isAvailable.value || (await checkStatus(true))) {
+    fileInput.value?.click()
+  } else {
+    toast('识图服务未启动或无法连接，请确认后台服务已开启', 'error')
+  }
+}
+
 watch(
   () => store.error,
   (value) => {
@@ -162,9 +179,11 @@ watch(searchError, (value) => {
             <button
               class="camera-btn icon-btn"
               type="button"
-              :class="{ 'is-muted': !isAvailable }"
-              :title="!isAvailable ? '识图服务 (imsearch sidecar) 未启动' : '上传图片以图搜图'"
-              @click="isAvailable && fileInput?.click()"
+              :class="{ 'is-muted': !isAvailable, 'is-loading': isChecking }"
+              :title="cameraBtnTooltip"
+              :aria-label="cameraBtnTooltip"
+              :aria-busy="isChecking"
+              @click="onCameraClick"
             >
               <AppIcon name="camera" size="md" />
             </button>
@@ -305,16 +324,27 @@ watch(searchError, (value) => {
   width: 2rem;
   height: 2rem;
   color: var(--ink-2);
-  transition: color var(--duration-2) var(--ease-out);
+  transition:
+    color var(--duration-2) var(--ease-out),
+    opacity var(--duration-2) var(--ease-out);
+  cursor: pointer;
 }
 
-.camera-btn:not(.is-muted):hover {
+.camera-btn:hover {
   color: var(--ink-0);
 }
 
 .camera-btn.is-muted {
-  opacity: 0.5;
-  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.camera-btn.is-muted:hover {
+  opacity: 0.9;
+}
+
+.camera-btn.is-loading {
+  opacity: 0.35;
+  cursor: wait;
 }
 
 .visually-hidden {

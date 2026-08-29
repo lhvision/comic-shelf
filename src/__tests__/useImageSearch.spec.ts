@@ -89,4 +89,79 @@ describe('useImageSearch', () => {
     expect(searchImagePreviewUrl.value).toBe('')
     expect(revokeObjectURLMock).toHaveBeenCalledWith('blob:test')
   })
+
+  it('caps auto retries at 3 attempts and allows manual recheck', async () => {
+    vi.useFakeTimers()
+    vi.mocked(fetch).mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({ available: false }),
+    } as unknown as Response)
+
+    const { isAvailable, checkStatus } = useImageSearch()
+
+    // 1st attempt (initial check)
+    await checkStatus()
+    expect(isAvailable.value).toBe(false)
+    expect(fetch).toHaveBeenCalledTimes(1)
+
+    // 2nd attempt (after 6s)
+    await vi.advanceTimersByTimeAsync(6000)
+    expect(fetch).toHaveBeenCalledTimes(2)
+
+    // 3rd attempt (after another 6s)
+    await vi.advanceTimersByTimeAsync(6000)
+    expect(fetch).toHaveBeenCalledTimes(3)
+
+    // Advancing further should NOT trigger any more fetches (capped at 3)
+    await vi.advanceTimersByTimeAsync(6000)
+    await vi.advanceTimersByTimeAsync(60000)
+    expect(fetch).toHaveBeenCalledTimes(3)
+
+    // Manual click triggers an immediate check
+    const manualResult = await checkStatus(true)
+    expect(manualResult).toBe(false)
+    expect(fetch).toHaveBeenCalledTimes(4)
+
+    // Manual failed check does not resume auto polling
+    await vi.advanceTimersByTimeAsync(60000)
+    expect(fetch).toHaveBeenCalledTimes(4)
+
+    vi.useRealTimers()
+  })
+
+  it('suppresses auto retry when manual check is requested during in-flight fetch', async () => {
+    vi.useFakeTimers()
+    let resolveFetch!: (res: Response) => void
+    const pendingPromise = new Promise<Response>((resolve) => {
+      resolveFetch = resolve
+    })
+    vi.mocked(fetch).mockReturnValue(pendingPromise)
+
+    const { checkStatus } = useImageSearch()
+
+    // 1st attempt starts in background (auto)
+    const initialPromise = checkStatus(false)
+    expect(fetch).toHaveBeenCalledTimes(1)
+
+    // User clicks while fetch is in-flight
+    const manualPromise = checkStatus(true)
+    expect(fetch).toHaveBeenCalledTimes(1) // reuses in-flight
+
+    resolveFetch({
+      ok: true,
+      status: 200,
+      json: async () => ({ available: false }),
+    } as unknown as Response)
+
+    const [res1, res2] = await Promise.all([initialPromise, manualPromise])
+    expect(res1).toBe(false)
+    expect(res2).toBe(false)
+
+    // Ensure no retry timer was scheduled because manual check was requested
+    await vi.advanceTimersByTimeAsync(60000)
+    expect(fetch).toHaveBeenCalledTimes(1)
+
+    vi.useRealTimers()
+  })
 })

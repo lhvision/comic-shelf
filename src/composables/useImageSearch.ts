@@ -3,8 +3,12 @@ import { tryOnMounted, tryOnScopeDispose } from '@vueuse/core'
 import { api } from '@/api/client'
 import type { ImageSearchResultItem } from '@/types'
 
+const MAX_AUTO_RETRIES = 3
+const RETRY_INTERVAL_MS = 6000
+
 export function useImageSearch() {
   const isAvailable = ref(false)
+  const isChecking = ref(false)
   const isSearching = ref(false)
   const error = ref('')
   const searchImageFile = shallowRef<File | null>(null)
@@ -12,20 +16,58 @@ export function useImageSearch() {
   const searchResults = shallowRef<ImageSearchResultItem[] | null>(null)
   let retryTimer: ReturnType<typeof setTimeout> | null = null
   let searchAbortController: AbortController | null = null
+  let autoRetryCount = 0
+  let inFlightCheck: Promise<boolean> | null = null
+  let isDisposed = false
+  let isManualRequested = false
 
-  const checkStatus = async () => {
-    try {
-      const data = await api.imageSearchStatus()
-      isAvailable.value = Boolean(data.available)
-      if (!isAvailable.value && typeof window !== 'undefined') {
-        if (retryTimer) clearTimeout(retryTimer)
-        retryTimer = setTimeout(() => {
-          void checkStatus()
-        }, 6000)
-      }
-    } catch {
-      isAvailable.value = false
+  const clearRetryTimer = () => {
+    if (retryTimer) {
+      clearTimeout(retryTimer)
+      retryTimer = null
     }
+  }
+
+  const scheduleRetry = () => {
+    if (isDisposed || isManualRequested) return
+    autoRetryCount++
+    if (autoRetryCount < MAX_AUTO_RETRIES && typeof window !== 'undefined') {
+      clearRetryTimer()
+      retryTimer = setTimeout(() => {
+        void checkStatus()
+      }, RETRY_INTERVAL_MS)
+    }
+  }
+
+  const checkStatus = async (manual = false): Promise<boolean> => {
+    if (manual) {
+      isManualRequested = true
+      clearRetryTimer()
+    }
+    if (inFlightCheck) return inFlightCheck
+
+    isChecking.value = true
+    inFlightCheck = (async () => {
+      try {
+        const data = await api.imageSearchStatus()
+        isAvailable.value = Boolean(data.available)
+        if (isAvailable.value) {
+          autoRetryCount = 0
+          clearRetryTimer()
+        } else {
+          scheduleRetry()
+        }
+        return isAvailable.value
+      } catch {
+        isAvailable.value = false
+        scheduleRetry()
+        return false
+      } finally {
+        isChecking.value = false
+        inFlightCheck = null
+      }
+    })()
+    return inFlightCheck
   }
 
   tryOnMounted(() => {
@@ -47,11 +89,12 @@ export function useImageSearch() {
   }
 
   tryOnScopeDispose(() => {
+    isDisposed = true
     if (searchAbortController) {
       searchAbortController.abort()
       searchAbortController = null
     }
-    if (retryTimer) clearTimeout(retryTimer)
+    clearRetryTimer()
     clearImage()
   })
 
@@ -116,6 +159,7 @@ export function useImageSearch() {
 
   return {
     isAvailable,
+    isChecking,
     isSearching,
     error,
     searchImageFile,
