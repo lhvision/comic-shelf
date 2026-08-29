@@ -65,6 +65,18 @@ export interface RequestOptions {
   signal?: AbortSignal
 }
 
+export class ApiError extends Error {
+  status: number
+  detail: string
+
+  constructor(status: number, detail: string) {
+    super(detail)
+    this.name = 'ApiError'
+    this.status = status
+    this.detail = detail
+  }
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const headers = new Headers(init?.headers)
   if (!headers.has('Content-Type') && !(init?.body instanceof FormData)) {
@@ -93,7 +105,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     } catch {
       /* keep default message */
     }
-    throw new Error(detail)
+    throw new ApiError(response.status, detail)
   }
 
   return (await response.json()) as T

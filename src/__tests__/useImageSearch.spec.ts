@@ -6,6 +6,7 @@ describe('useImageSearch', () => {
   const createObjectURLMock = vi.fn<() => string>(() => 'blob:test')
 
   beforeEach(() => {
+    useImageSearch().resetState()
     vi.stubGlobal(
       'fetch',
       vi.fn<(input: RequestInfo | URL, init?: RequestInit) => Promise<Response>>(),

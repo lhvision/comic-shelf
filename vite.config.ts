@@ -105,6 +105,7 @@ export default defineConfig({
     basicSsl(),
     VitePWA({
       registerType: 'autoUpdate',
+      useCredentials: true,
       includeAssets: [
         'brand-icon.webp',
         'pwa-192x192.png',
@@ -174,6 +175,8 @@ export default defineConfig({
           {
             urlPattern: ({ url }) =>
               url.pathname.startsWith('/api/') &&
+              !url.pathname.startsWith('/api/auth/') &&
+              !url.pathname.startsWith('/api/search/') &&
               !url.pathname.includes('/pages/') &&
               !url.pathname.includes('/covers/') &&
               !url.pathname.includes('/cover'),

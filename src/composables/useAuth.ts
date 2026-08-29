@@ -1,6 +1,7 @@
 import { computed, ref } from 'vue'
 import {
   api,
+  ApiError,
   getStoredToken,
   notifyAuthSuccess,
   onUnauthorized,
@@ -37,24 +38,35 @@ export function useAuth() {
       authRequired.value = status.auth_required
       authenticated.value = status.authenticated
       role.value = status.role
-      if (status.auth_required && !status.authenticated) {
-        // If we have a stored token, try logging in with it
-        const stored = getStoredToken()
-        if (stored) {
-          try {
-            const res = await api.login(stored)
-            authenticated.value = true
-            role.value = res.role || 'admin'
-            modalVisible.value = false
-            notifyAuthSuccess()
-            return true
-          } catch {
+
+      // If auth is required, check if we have a stored token to restore curator privileges
+      const stored = getStoredToken()
+      if (status.auth_required && stored && role.value !== 'admin') {
+        try {
+          const res = await api.login(stored)
+          authenticated.value = true
+          role.value = res.role || 'admin'
+          modalVisible.value = false
+          notifyAuthSuccess()
+          return true
+        } catch (err: unknown) {
+          // Only clear stored token if the server explicitly rejected the credentials with 401
+          const isUnauthorized =
+            (err instanceof ApiError && err.status === 401) ||
+            (err instanceof Error &&
+              (err.message.includes('401') ||
+                err.message.includes('口令错误') ||
+                err.message.includes('未授权')))
+
+          if (isUnauthorized) {
             setStoredToken('')
-            modalVisible.value = true
+            if (!authenticated.value) {
+              modalVisible.value = true
+            }
           }
-        } else {
-          modalVisible.value = true
         }
+      } else if (status.auth_required && !status.authenticated) {
+        modalVisible.value = true
       }
     } catch {
       /* network or server offline */

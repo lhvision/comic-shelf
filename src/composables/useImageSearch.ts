@@ -1,12 +1,12 @@
 import { ref, shallowRef } from 'vue'
-import { tryOnMounted, tryOnScopeDispose } from '@vueuse/core'
+import { createGlobalState, tryOnMounted, tryOnScopeDispose } from '@vueuse/core'
 import { api } from '@/api/client'
 import type { ImageSearchResultItem } from '@/types'
 
 const MAX_AUTO_RETRIES = 3
 const RETRY_INTERVAL_MS = 6000
 
-export function useImageSearch() {
+export const useImageSearch = createGlobalState(() => {
   const isAvailable = ref(false)
   const isChecking = ref(false)
   const isSearching = ref(false)
@@ -157,6 +157,22 @@ export function useImageSearch() {
     }
   }
 
+  const resetState = () => {
+    clearRetryTimer()
+    if (searchAbortController) {
+      searchAbortController.abort()
+      searchAbortController = null
+    }
+    clearImage()
+    isAvailable.value = false
+    isChecking.value = false
+    isSearching.value = false
+    autoRetryCount = 0
+    inFlightCheck = null
+    isDisposed = false
+    isManualRequested = false
+  }
+
   return {
     isAvailable,
     isChecking,
@@ -170,5 +186,6 @@ export function useImageSearch() {
     checkStatus,
     handlePaste,
     handleDrop,
+    resetState,
   }
-}
+})

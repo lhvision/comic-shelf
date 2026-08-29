@@ -17,6 +17,8 @@
 11. **不要**在模板中书写 Unicode 伪图标文本（`✕`/`✓`/`×`/`⋯`/`←`）或手写散落内联 `<svg>`；**必须**统一使用 `src/components/icons/` 原子组件与 `AppIcon` 分发（因跨平台字体字重不一致导致基线撕裂、且读屏器会将 `×` 误读为乘号）。
 12. **不要**在仓库任何代码、文档或配置中写入宿主机绝对路径（如 `file:///home/...` 或 `C:\Users\...`）；**必须**统一使用仓库相对路径，写盘前必须剥离 AI 对话的 `file://` 协议（因绝对路径在他人 clone 或部署到 NAS 时全部失效泄露）。
 13. **不要**在进入详情页时因详情数据尚未返回就全屏呈现纯灰骨架屏；**必须**利用书架已有 `LibrarySummary`（`createPlaceholderDetail`）先渲染 Hero 头部（标题与封面），使 View Transition 能精准捕获并连贯完成共享封面形变（`comic-cover-active`），杜绝白屏/骨架屏二次闪烁与排版跳动；同时在卡片与操作按钮上增加 `@pointerenter.once` / `@focusin.once` 意图预热。
+14. **不要**在 Service Worker（Workbox）中将动态鉴权或探活端点（`/api/auth/*`、`/api/search/*`）通配进 `NetworkFirst` 等离线缓存，**且必须**在 PWA Manifest 中配置 `useCredentials: true`（因离线缓存命中历史 guest/未认证状态会导致馆长身份被永久降级锁死为 403，只有注销 SW 才能恢复）。
+15. **不要**在后台定时轮询任务（如 `useIntervalFn` 轮询 `cacheJobs`）遇到网络或鉴权报错时静默忽略；**必须**在 catch 中执行 `poll.pause()` 立即熔断，且跨路由共享的状态（如 `useImageSearch`）**必须**使用 `createGlobalState` 单例化管理（防止后端停机或网络波动时浏览器陷入 2 秒高频死循环重试，引发自挂式请求风暴与反代/WAF 封锁）。
 
 ---
 

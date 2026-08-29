@@ -149,7 +149,8 @@ export const useLibraryStore = defineStore('library', () => {
       }
       if (running.length === 0) poll.pause()
     } catch {
-      /* transient; keep whatever we had */
+      /* transient; keep whatever we had and pause polling to avoid hammering failing backend/WAF */
+      poll.pause()
     }
   }
 

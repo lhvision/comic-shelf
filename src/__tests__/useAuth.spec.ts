@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vite-plus/test'
 import { useAuth } from '@/composables/useAuth'
-import { api, getStoredToken, setStoredToken } from '@/api/client'
+import { api, ApiError, getStoredToken, setStoredToken } from '@/api/client'
 
 describe('useAuth', () => {
   beforeEach(() => {
@@ -90,5 +90,78 @@ describe('useAuth', () => {
     expect(authenticated.value).toBe(false)
     expect(canWrite.value).toBe(false)
     expect(getStoredToken()).toBe('')
+  })
+
+  it('restores curator privileges when status returns guest but valid curator token exists', async () => {
+    setStoredToken('curator-secret-777')
+    vi.spyOn(api, 'authStatus').mockResolvedValueOnce({
+      auth_required: true,
+      authenticated: true,
+      can_write: false,
+      role: 'guest',
+    })
+    vi.spyOn(api, 'login').mockResolvedValueOnce({
+      ok: true,
+      token: 'curator-secret-777',
+      role: 'admin',
+    })
+
+    const { authenticated, canWrite, isGuest, role, checkStatus } = useAuth()
+    await checkStatus()
+
+    expect(authenticated.value).toBe(true)
+    expect(canWrite.value).toBe(true)
+    expect(isGuest.value).toBe(false)
+    expect(role.value).toBe('admin')
+    expect(getStoredToken()).toBe('curator-secret-777')
+  })
+
+  it('preserves stored token on transient network failure during checkStatus', async () => {
+    setStoredToken('curator-secret-888')
+    vi.spyOn(api, 'authStatus').mockResolvedValueOnce({
+      auth_required: true,
+      authenticated: false,
+      can_write: false,
+      role: 'unauthorized',
+    })
+    vi.spyOn(api, 'login').mockRejectedValueOnce(new TypeError('Failed to fetch (offline)'))
+
+    const { checkStatus } = useAuth()
+    await checkStatus()
+
+    // Token must NOT be wiped on network errors
+    expect(getStoredToken()).toBe('curator-secret-888')
+  })
+
+  it('clears stored token when server rejects credentials with ApiError 401', async () => {
+    setStoredToken('invalid-secret-999')
+    vi.spyOn(api, 'authStatus').mockResolvedValueOnce({
+      auth_required: true,
+      authenticated: false,
+      can_write: false,
+      role: 'unauthorized',
+    })
+    vi.spyOn(api, 'login').mockRejectedValueOnce(new ApiError(401, '通行口令错误，请重试'))
+
+    const { checkStatus } = useAuth()
+    await checkStatus()
+
+    expect(getStoredToken()).toBe('')
+  })
+
+  it('preserves stored token on gateway/server error with ApiError 502', async () => {
+    setStoredToken('valid-secret-999')
+    vi.spyOn(api, 'authStatus').mockResolvedValueOnce({
+      auth_required: true,
+      authenticated: false,
+      can_write: false,
+      role: 'unauthorized',
+    })
+    vi.spyOn(api, 'login').mockRejectedValueOnce(new ApiError(502, 'Bad Gateway'))
+
+    const { checkStatus } = useAuth()
+    await checkStatus()
+
+    expect(getStoredToken()).toBe('valid-secret-999')
   })
 })
