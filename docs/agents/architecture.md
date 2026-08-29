@@ -138,7 +138,7 @@ JmImageTool.decode_and_save(num, source_image, save_path)
 - `POST /api/auth/login`（验证口令并写入 Cookie）
 - `POST /api/auth/logout`（清除登录凭据）
 - `GET /api/settings` / `PUT /api/settings`（获取与修改运行时配置，如并发数）
-- `GET /api/discovery`（发现页与排行榜数据：周榜/月榜/日榜/总榜，支持 `time_type` 与分类筛选）
+- `GET /api/discovery/ranking`（发现页与排行榜数据：周榜/月榜/日榜/总榜，支持 `time_type` 与分类筛选）
 - `GET /api/library`（`q` 也能命中章节标题）
 - `POST /api/library/import` `{id, source, prefetch_covers, prefetch_all, refresh}`（`refresh=true` 走增量，章节未变则复用旧 remote）
 - `POST /api/library/local/create`（自建工坊创建本地图集/多章节元数据骨架）

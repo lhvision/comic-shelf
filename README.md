@@ -96,20 +96,21 @@ vp build                               # 生产打包
 
 ## Docker & TrueNAS 部署（推荐）
 
-纸间提供生产级 Docker 镜像，支持 All-in-One 单容器托管与 Docker Compose 双容器部署。
+纸间支持 Docker Compose 一键启动或 NAS（TrueNAS Scale / Unraid / 群晖）图形化部署，开箱即用：
 
 ```bash
-# 1. 复制环境变量配置文件
-cp .env.example .env
-# 按需在 .env 中配置馆长密码 COMIC_SHELF_SECRET 等
-
-# 2. 一键启动（含纸间服务与以图搜图 Sidecar）
+# 一键启动（含纸间服务与以图搜图 Sidecar）
 docker compose up -d --build
 
-# 3. 访问阅览室
-# 浏览器打开 http://<服务器IP>:8000
+# 访问阅览室：浏览器打开 http://<服务器IP>:8000
 ```
 
+> **⚡ 容器环境变量与部署核对（Docker 零依赖，无需 .env 文件）**：
+>
+> - 🔴 **公网 / VPS 部署唯一必配**：设置容器环境变量 `COMIC_SHELF_SECRET="你的管理密码"`（可在 `docker-compose.yml` 的 `environment` 节直接填入，或在 NAS 图形界面添加；纯内网家庭环境直接留空免密）；
+> - 🟡 **存储持久化生命线**：将宿主机存储卷映射至容器内的 `/app/data`（所有漫画原图、元数据与搜图索引均保存在此处）；
+> - 🟢 **其余所有 19 个环境变量**：全部内置生产级默认值（8000 端口、3 路防封下载并发、4 路缩略图限流等），初次部署完全不用改动。
+>
 > 📖 **完整部署指引与参数字典**：包含 TrueNAS Scale、Unraid、群晖 NAS 挂载配置、21 个环境变量详解、反向代理与权限排查，请参阅 **[DEPLOYMENT.md](file:///home/miku/lhvision/comic-shelf/DEPLOYMENT.md)**。
 
 ---

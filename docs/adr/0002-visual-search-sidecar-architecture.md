@@ -18,7 +18,7 @@
 ## 决策
 
 1. **架构隔离（Sidecar Pattern）**：
-   - 将 `imsearch` 作为独立的容器服务（Docker Sidecar，镜像 `aloxaf/imsearch:latest`）运行，通过 HTTP API（如 `http://imsearch:8080`）与纸间 FastAPI 后端通信。
+   - 将 `imsearch` 作为独立的容器服务（Docker Sidecar，镜像 `aloxaf/imsearch:latest`）运行，通过 HTTP API（如 `http://imsearch:8765`）与纸间 FastAPI 后端通信。
    - 保持网络 IPC 隔离，纸间源码不包含、不链接、不编译任何 GPL-3.0 代码，严格保障纸间项目的 **MIT 开源合规性**。
 
 2. **增量特征索引（Incremental Indexing）**：

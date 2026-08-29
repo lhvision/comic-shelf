@@ -29,7 +29,10 @@
 | `src/components/AppButton.vue`                 | 通用典藏按钮：支持 primary / secondary / soft / ghost / danger 多种变体    |
 | `src/components/AppIcon.vue`                   | 零分支矢量图标分发器（基于 `<component :is="ICON_MAP[name]">` 动态渲染）   |
 | `src/components/icons/`                        | 纸间统一矢量图标集（`BaseIcon.vue` 底座 + 21 个原子 `Icon*.vue` 组件）     |
-| `src/components/Tooltip.vue`                   | 现代 CSS Anchor Positioning 提示气泡组件                                   |
+| `src/components/AppTooltip.vue`                | 现代声明式轻量气泡提示组件（Popover API + CSS Anchor + 悬停安全桥）        |
+| `src/components/AppPopover.vue`                | 现代顶层锚定交互浮层（自动碰撞翻转、轻量失焦关闭）                         |
+| `src/components/AppDropdown.vue`               | 现代操作选单与选择器（无依赖 Top Layer + 键盘导航）                        |
+| `src/components/BackToTop.vue`                 | 正圆暖纸印章回到顶部微件（VueUse `useWindowScroll` 视口监听）              |
 | `src/components/CacheProgress.vue`             | 实时缓存进度条与后台任务状态指示                                           |
 | `src/components/detail/EditMetadataModal.vue`  | 典藏资料与标签编排弹窗（实时修改标题、作者、4 张封面展示页码、标签增删）   |
 | `src/components/detail/AppendPagesModal.vue`   | 本地漫画增量追加弹窗（追加至已有话或新建分话、支持网页上传/服务器路径）    |
