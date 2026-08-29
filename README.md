@@ -117,7 +117,7 @@ docker compose up -d --build
 > - 🟡 **存储持久化生命线**：将宿主机存储卷映射至容器内的 `/app/data`（所有漫画原图、元数据与搜图索引均保存在此处）；
 > - 🟢 **其余所有 19 个环境变量**：全部内置生产级默认值（8000 端口、3 路防封下载并发、4 路缩略图限流等），初次部署完全不用改动。
 >
-> 📖 **完整部署指引与参数字典**：包含 TrueNAS Scale、Unraid、群晖 NAS 挂载配置、21 个环境变量详解、反向代理与权限排查，请参阅 **[DEPLOYMENT.md](file:///home/miku/lhvision/comic-shelf/DEPLOYMENT.md)**。
+> 📖 **完整部署指引与参数字典**：包含 TrueNAS Scale、Unraid、群晖 NAS 挂载配置、21 个环境变量详解、反向代理与权限排查，请参阅 **[DEPLOYMENT.md](DEPLOYMENT.md)**。
 
 ---
 

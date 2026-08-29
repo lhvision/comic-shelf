@@ -110,7 +110,7 @@ docker run -d \
 >   1. **Docker Compose**：直接在 `docker-compose.yml` 的 `environment` 节修改或取消注释；
 >   2. **NAS Web 图形界面（TrueNAS / 群晖 / Portainer）**：在应用的“环境变量”设置表单中填入 Key 与 Value；
 >   3. **Docker 命令行**：启动时增加 `-e KEY="value"` 参数；
->   4. （可选）本地开发或习惯使用 dotenv 的用户，可参考根目录 [`.env.example`](file:///home/miku/lhvision/comic-shelf/.env.example) 模版查阅参数说明。
+>   4. （可选）本地开发或习惯使用 dotenv 的用户，可参考根目录 [`.env.example`](.env.example) 模版查阅参数说明。
 
 ### 3.1 核心权限与安全配置（必看）
 

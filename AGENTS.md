@@ -68,6 +68,7 @@ release. Add a tool name to select part of the graph. For example, run
 11. **错题本与防退化门禁**：重构或重大修改前必须核对 `docs/PITFALLS.md` 避开历史暗礁；涉及 Python 后端改动时必须运行 `pnpm test:py`，确保 0 语法/导入/未定义符号错误且中间件全链路测试通过。
 12. **零伪图标字符与矢量图标单源收敛（Unified Iconography）**：**严禁**在模板中书写 Unicode 伪图标字符（如 `'✕'`、`'✓'`、`'×'`、`'⋯'`、`'←'`、`'→'`）或手写散落内联 `<svg>`；全站图标统一使用 `src/components/icons/`（静态确定场景直接 `import { IconXxx }`，动态多态场景使用 `<AppIcon :name="..." />`）；新增图标必须基于 `BaseIcon.vue` 扩展原子组件，严禁在单个组件内堆砌巨型 `v-if/v-else-if`。
 13. **UI 流程实质落地红线（Persistence Gate）**：结构性 UI 变更必须经由 `invoke_subagent` 独立评审产出具有真实 P1 改进项的 `.impeccable/critique/` 快照，并在 `DESIGN_NOTES.md` 追加章节。严禁在对话中宣称走完流程却未在磁盘留下物理快照，严禁全满分敷衍汇报。
+14. **零宿主机本地绝对路径（Zero Local Path Leakage）**：**严禁**在仓库任何代码、文档或配置中写入宿主机绝对路径（如 `file:///home/...`、`C:\Users\...`）；跨文件与文档引用必须使用仓库标准相对路径；AI 助手向磁盘落盘修改时必须剥离对话生成的 `file://` 协议。
 
 ## 🧪 E2E 测试准则与 AI 协作规范
 

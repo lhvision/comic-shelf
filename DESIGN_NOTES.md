@@ -585,8 +585,8 @@
   - **P2 防重入防护**：Composable 底层 `clearImageCache` 与 `resetAllStorage` 增加 `clearing.value` 防重入守卫；
   - **P3 极简精简与定时器闭环**：安全清除无消费者的 `lastCleanedTime` 冗余状态；在 Popover 重新打开时清除未完成的重置定时器。
 - **PWA 规范与部署防线全量达标**：
-  - 入口补齐 `<meta name="description">`，替换 WebP 为标准的 PNG 192px `apple-touch-icon`，新增 [public/robots.txt](file:///home/miku/lhvision/comic-shelf/public/robots.txt)；
-  - 引入 `workbox-window` 与 [src/pwa.ts](file:///home/miku/lhvision/comic-shelf/src/pwa.ts) 托管 SW 生命周期，开启每小时周期性静默更新探测与弱网安全容错；
+  - 入口补齐 `<meta name="description">`，替换 WebP 为标准的 PNG 192px `apple-touch-icon` 与 Favicon 兼容降级；
+  - 引入 `workbox-window` 与 `src/pwa.ts` 托管 SW 生命周期，开启每小时周期性静默更新探测与弱网安全容错；
   - 服务端 `SPAStaticFiles` 显式注册 `application/manifest+json` MIME 映射，并对关键入口（`/`、`index.html`、`sw.js`、`manifest.webmanifest`）施加严格 `Cache-Control: no-cache, no-store, must-revalidate` 防死锁防线；
 - **全链路测试验收**：
   - `useOfflineStorage.spec.ts` 与 `StoragePopover.spec.ts` 12 项精准单测全绿（含防重入断言）；

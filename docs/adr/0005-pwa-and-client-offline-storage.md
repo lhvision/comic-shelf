@@ -20,7 +20,7 @@
 
 2. **分级离线缓存与 PWA 规范全量达标（Tiered Offline Caching via Workbox）**：
    - 遵循 Vite PWA 官方规范与 Web App Manifest 最低要求：
-     - 入口点补齐 `<meta name="description">`，替换 Apple Touch Icon 为标准的 PNG 格式，补齐 `public/robots.txt`；
+     - 入口点补齐 `<meta name="description">`，替换 Apple Touch Icon 为标准的 PNG 格式与 Favicon 兼容降级；
      - Web App Manifest 完整配置 `start_url`、`scope`、`display: standalone`，以及满足 Android / iOS 规范的 `any` 与 `maskable` 双分辨率图标；
      - 引入 `workbox-window` 与 `virtual:pwa-register`，实现生命周期托管与每小时周期性更新探测（`onRegisteredSW` + 弱网安全容错）；
      - 服务端 `SPAStaticFiles` 注册 `application/manifest+json` MIME 类型，并对关键入口（`/`、`index.html`、`sw.js`、`manifest.webmanifest`）强制下发 `Cache-Control: no-cache, no-store, must-revalidate`，避免客户端被陈旧脚本死锁；
