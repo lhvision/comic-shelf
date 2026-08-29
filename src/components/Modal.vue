@@ -85,7 +85,9 @@ useEventListener(window, 'keydown', (event: KeyboardEvent) => {
           <AmbientWatermark variant="modal" />
 
           <header class="modal-head">
-            <h2 :id="titleId">{{ title }}</h2>
+            <h2 :id="titleId">
+              <slot name="title">{{ title }}</slot>
+            </h2>
             <button
               class="modal-close icon-btn"
               type="button"

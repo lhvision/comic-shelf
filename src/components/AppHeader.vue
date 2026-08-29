@@ -7,6 +7,8 @@ import { useAuth } from '@/composables/useAuth'
 import { useBrandIcon } from '@/composables/useBrandIcon'
 import AppIcon from '@/components/AppIcon.vue'
 import StoragePopover from '@/components/StoragePopover.vue'
+import GuestModal from '@/components/curator/GuestModal.vue'
+import { useGuestPasses } from '@/composables/useGuestPasses'
 import type { ProviderInfo } from '@/types'
 
 interface NavItem {
@@ -21,6 +23,7 @@ const router = useRouter()
 const providers = ref<ProviderInfo[]>([])
 const { authRequired, isGuest, canWrite, logout, openModal } = useAuth()
 const { brandIcon } = useBrandIcon()
+const { openModal: openGuestModal } = useGuestPasses()
 
 const navScrollEl = ref<HTMLElement | null>(null)
 const { arrivedState } = useScroll(navScrollEl)
@@ -116,6 +119,17 @@ onAuthSuccess(fetchProviders)
       <p class="header-note">本地优先 · 缓存后不再访问远端</p>
       <StoragePopover />
       <button
+        v-if="canWrite"
+        type="button"
+        class="guest-roster-btn"
+        title="打开访客簿，管理与印发专属通行证"
+        @click="openGuestModal"
+      >
+        <AppIcon name="users" size="xs" :stroke-width="1.8" />
+        <span class="guest-roster-label">〔 访客簿 〕</span>
+      </button>
+
+      <button
         v-if="authRequired"
         type="button"
         class="auth-badge-btn"
@@ -143,6 +157,7 @@ onAuthSuccess(fetchProviders)
         </span>
       </button>
     </div>
+    <GuestModal />
   </header>
 </template>
 
@@ -319,6 +334,29 @@ onAuthSuccess(fetchProviders)
   white-space: nowrap;
 }
 
+.guest-roster-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: var(--space-1) var(--space-2);
+  background: var(--paper-1);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-1);
+  font-family: var(--font-mono);
+  font-size: var(--text-caption);
+  color: var(--ink-1);
+  cursor: pointer;
+  white-space: nowrap;
+  flex-shrink: 0;
+  transition: all var(--duration-1) var(--ease-out);
+}
+
+.guest-roster-btn:hover {
+  background: var(--paper-2);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
 .auth-badge-btn {
   display: inline-flex;
   align-items: center;
@@ -400,6 +438,17 @@ onAuthSuccess(fetchProviders)
   .brand-mark {
     width: 2rem;
     height: 2rem;
+  }
+
+  .guest-roster-label {
+    display: none;
+  }
+
+  .guest-roster-btn {
+    min-width: 36px;
+    height: 36px;
+    padding: 0;
+    justify-content: center;
   }
 }
 </style>

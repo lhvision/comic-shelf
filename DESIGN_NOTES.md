@@ -663,3 +663,59 @@
   - `pnpm detect:slop src/components/detail/ReplacePagesModal.vue` 0 finding（100% 洁净）；
   - `pnpm critique write replace-pages ...` 成功落盘评审快照；
   - `vp check` 全站 183 文件代码格式通过、141 文件 0 error / 0 warning。
+
+## 38. 访客通行证派发与个性化数据隔离（访客簿模态框）
+
+- **背景与主体语境对齐**：
+  1. **废除单一静态访客码**：原 `COMIC_SHELF_GUEST_SECRET` 缺乏健壮性与生命周期管理，无法对单人进行准入控制与续期；
+  2. **从抽屉到模态框的形态收敛（消灭系统割裂）**：
+     - 初始尝试的右侧滑出抽屉带有浓烈的中后台 SaaS / 云控制台既视感，与全站典藏书房居中弹层的视觉心智严重割裂；
+     - 依据用户决策，统一收敛至全站标准 `Modal.vue`（居中暖纸弹层 + 沉静暗室沉降 `var(--reader-scrim-strong)` + 水印），彻底达成设计语言单源闭环；
+     - 结合 `SegmentedTabs.vue` 提供「现存名册 (N)」与「登记印发」分段选项卡，维持开阔专注的视界。
+  3. **数据隔离与全局隐藏双轨并存**：
+     - **个性化隔离（User-Isolated State）**：收藏红心（`favorite`）与跨端阅读进度（`reading_progress`）完全按用户隔离，馆长与各访客互不影响；
+     - **全景隐藏（Hidden from Guest）**：馆长标记隐藏的本子对所有访客统一 404 不可见。
+- **架构决策与极简落地（0 冗余抽象）**：
+  1. **存储分层（SQLite WAL 驱动轻量动态状态）**：
+     - 引入内置 `sqlite3` + WAL 模式（`backend/data/comic_shelf.db`），管理 `guest_passes`、`user_favorites`、`user_reading_progress`；
+     - 漫画核心元数据与图包继续维持自包含 `album.json` + 目录结构，不破坏纸间「本地优先」不变量；
+     - 启动时自动初始化表结构并平滑迁移既有 `album.json` 的馆长收藏数据至 `user_favorites`（`user_id = 'curator'`）。
+  2. **阅读进度多端同步与防抖上报**：
+     - 前端 `useLastRead.ts` 升级为「本地 LocalStorage 瞬时响应」+「服务端 SQLite 隔离存储」双轨；
+     - 初始化时静默向后端获取服务端进度对齐；翻页时由 VueUse `useDebounceFn` 800ms 防抖静默上报服务端。
+  3. **统一图标系统原子收敛**：
+     - 基于 `BaseIcon.vue` 扩充 `IconUsers.vue`（访客名册）与 `IconCopy.vue`（口令/链接复制）；
+     - 严禁模板内联 SVG 或假字符，注册至 `AppIcon`。
+- **Impeccable UI 双轨审查与打磨（A/B 双轨 SOP 闭环）**：
+  1. **A 轨（独立设计总监子代理评审）**：
+     - 调用 `invoke_subagent` 针对 `GuestModal.vue` 独立审查，产出可用性评分 **24/40**（快照落盘至 `.impeccable/critique/2026-08-29T19-21-10Z__guest-modal.md`）；
+     - 逼出 3 项关键 P1 缺陷：
+       - **[P1] 双重滚动死锁陷阱**：列表内部曾硬编码 `max-height: 420px; overflow-y: auto;` 与 `Modal.vue` 的 `.modal-body` 产生双层嵌套滚动死锁；
+       - **[P1] 触控人机工效与移动端折行挤压**：底栏按钮仅 32~36px，全量跌破 WCAG 2.5.5 与 Craft Floor 44px 底线，展开确认时底栏剧烈横向拉伸折断；
+       - **[P1] 印发流心流阻断与状态孤岛**：登记印发成功后粗暴切回名册，打断立即复制链接发给朋友的直觉心流，也阻碍连续派发；
+     - 逼出 2 项 P2 缺陷：异步防重入缺失与未校验假性复制反馈、WAI-ARIA `tabpanel` 语义断链。
+  2. **B 轨（确定性规则扫描）**：
+     - `pnpm detect:slop src/components/curator/GuestModal.vue` 扫描结果 0 缺陷。
+  3. **Polish 打磨落地**：
+     - **消灭嵌套滚动死锁**：彻底剔除 `.pass-card-list` 的 `max-height` 与 `overflow`，卡片列表在 `Modal.vue` 单源滚动画卷中自然流动；
+     - **印发成功实体凭据卡（Issued Voucher）**：登记印发成功后不切页，原位升格为「印发成功凭据卡」，展示醒目的「一键复制免密直达链接」主按钮与口令，并提供「继续登记下一张」与「查看现存名册」双通道；
+     - **触控热区与移动端适配**：增补 `@media (max-width: 640px)` 断点，所有触控目标拉升至 ≥40~44px，移动端将有效期与管理工具分两行网格化编排；
+     - **防重入与剪贴板容错**：在 `useGuestPasses.ts` 引入 `operatingId` 锁，捕获复制异常并降级提示；
+     - **典藏暗室沉降与印章语义纠偏**：统一继承 `Modal.vue` 的静谧暗室沉降（`var(--reader-scrim-strong)`）；生效期采用朱砂方印微质感（`〔 准入 · 剩 N 天 〕`），停用/过期采用沉静墨印（`var(--ink-2)`）；
+     - **WAI-ARIA 规范对齐**：面板添加 `role="tabpanel"` 与 `aria-label`；清除硬编码 `#fff` 与字面量；
+     - **分段选项卡吸顶（Sticky Tabs）**：`.tabs-nav-bar` 采用 `position: sticky; top: calc(-1 * var(--space-5))` 结合负边距与背景融合，在长名册滚动时持久固定在标题栏下方，无需回滚即可随时切换视窗；
+     - **全域圆角严格收敛**：根除未定义变量，说明条（`.modal-notice`）、借书卡（`.pass-card`）、凭据卡（`.issued-voucher-card`）及表单（`.issue-form`）全面统一采用 `var(--radius-2)`（0.625rem），按钮与输入框统一采用 `var(--radius-1)`（0.375rem），达成 100% 视觉和谐一致；
+     - **说明条蒸馏至标题栏 Tooltip 气泡**：`Modal.vue` 标题栏开放 `<slot name="title">`，彻底移除弹窗内部常驻占高 52px 的浅色说明框，将“派发专属通行证，进度与收藏隔离”收敛为标题旁典雅的 `info` 圆形触发点 + 现代轻量 `Tooltip`，彻底还给名册最纯净开阔的竖向视界；
+     - **复制反馈典雅沉静微状态（Success Tone & Smooth Decay）**：复制口令或专属链接成功时，按钮就地切换至竹绿印泥质感（`color-mix(in oklab, var(--success) 45%, transparent)` 边框 + `8% var(--success)` 纸底色 + 墨绿字），并伴随图标切换为 `check`；经由 `var(--duration-2)` 缓动曲线在 1.5 秒后优雅平滑地淡出恢复，给用户精准确信感而无任何跳跃感；
+     - **专家代码评审闭环加固（Code Review Expert Hardening）**：
+       1. **多租户阅读进度强隔离**：`useLastRead.ts` 本地存储键引入 `userId` 命名空间（`comic-shelf:last-read:${uid}:${source}/${sourceId}`），且在拉取服务端进度时无条件对齐，彻底根治公用设备同浏览器跨用户阅读进度污染；
+       2. **SQLite 连接安全释放**：`db.py` 中 `get_db()` 改造为 `@contextmanager`并在 `finally` 显式调用 `conn.close()`，彻底杜绝文件句柄累积与 WAL 库锁冲突；
+       3. **口令冲突防御**：拦截 `sqlite3.IntegrityError` 并转换为 400 Bad Request（“该通行口令已存在，请更换口令”），对过期天数校验 `gt=0`，直达免密链接失效时由 `useToast` 给出明确引导。
+- **验证**：
+  - `pnpm test:py`（含 `test_db_and_passes.py`）后端全链路单元测试 100% 全绿；
+  - `vp test src/__tests__/GuestPasses.spec.ts` 4/4 单元测试全绿；
+  - `vp test src/__tests__/useAuth.spec.ts` 10/10 单元测试全绿（含免密直达自动登录与异常测试）；
+  - `pnpm detect:slop src/components/curator/GuestModal.vue` 0 finding；
+  - `pnpm critique write guest-modal ...` 评审快照已归档至 `.impeccable/critique/2026-08-29T19-21-10Z__guest-modal.md`；
+  - `vp check` 全站 191 个文件代码格式通过、146 个文件 0 warning / 0 error；
+  - `vp build` 生产打包 1.21s 成功完成。

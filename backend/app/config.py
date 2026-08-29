@@ -58,9 +58,6 @@ ENABLE_DOCS = os.getenv("COMIC_SHELF_ENABLE_DOCS", "false").lower() in ("1", "tr
 # Curator key for full access (blank = open access, non-blank = protected)
 AUTH_SECRET = os.getenv("COMIC_SHELF_SECRET", os.getenv("COMIC_SHELF_AUTH_TOKEN", "")).strip()
 
-# Guest key for read-only viewing (optional; blank = no guest access allowed when AUTH_SECRET is set)
-GUEST_SECRET = os.getenv("COMIC_SHELF_GUEST_SECRET", "").strip()
-
 # Anti-hotlinking / storage bucket abuse protection
 ENABLE_HOTLINK_PROTECTION = os.getenv("COMIC_SHELF_ENABLE_HOTLINK_PROTECTION", "true").lower() in ("1", "true", "yes")
 

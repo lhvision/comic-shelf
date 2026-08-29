@@ -152,13 +152,16 @@ export interface AuthStatus {
   authenticated: boolean
   can_write: boolean
   role: 'admin' | 'guest' | 'unauthorized'
-  has_guest_secret?: boolean
+  username?: string
+  user_id?: string
 }
 
 export interface LoginResult {
   ok: boolean
   token: string
   role?: 'admin' | 'guest'
+  username?: string
+  user_id?: string
 }
 
 export interface MetadataUpdatePayload {
@@ -243,4 +246,36 @@ export interface DropdownOption<K = string | number> {
   danger?: boolean
   separator?: boolean
   checked?: boolean
+}
+
+export interface GuestPass {
+  id: number
+  username: string
+  token: string
+  expires_at: number | null
+  is_active: boolean
+  is_expired: boolean
+  created_at: number
+  updated_at: number
+}
+
+export interface CreateGuestPassPayload {
+  username: string
+  expires_days?: number | null
+  custom_token?: string | null
+}
+
+export interface UpdateGuestPassPayload {
+  username?: string
+  is_active?: boolean
+  extend_days?: number
+  reset_token?: boolean
+  expires_days?: number | null
+}
+
+export interface ReadingProgressInfo {
+  ok: boolean
+  last_page: number
+  total_pages: number
+  updated_at: number
 }

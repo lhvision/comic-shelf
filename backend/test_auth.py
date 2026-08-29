@@ -6,9 +6,16 @@ from unittest.mock import MagicMock
 # Ensure backend package is importable
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
+import tempfile
 from fastapi import HTTPException
 import app.auth as auth_mod
 import app.config as config_mod
+import app.db as db_mod
+
+# Point db to a temp sqlite database for tests
+_temp_dir = tempfile.mkdtemp()
+_temp_db = Path(_temp_dir) / "test_comic_shelf.db"
+db_mod.init_db(_temp_db)
 
 
 def make_mock_request(
@@ -18,6 +25,7 @@ def make_mock_request(
     query_params=None,
 ):
     req = MagicMock()
+    req.state = type("State", (), {})()
     req.url.path = path
     headers_dict = {k.lower(): v for k, v in (headers or {}).items()}
     req.headers.get = lambda k, default="": headers_dict.get(k.lower(), default)
@@ -29,17 +37,26 @@ def make_mock_request(
 def test_auth_logic():
     # 1. No secret configured -> open access
     auth_mod.AUTH_SECRET = ""
-    auth_mod.GUEST_SECRET = ""
     assert auth_mod.is_auth_required() is False
     req = make_mock_request("/api/library")
     assert auth_mod.is_authenticated(req) is True
     assert auth_mod.is_curator(req) is True
     assert auth_mod.can_read(req) is True
 
-    # 2. Dual secret configured (Curator + Guest)
+    # 2. Curator + Guest Pass configured
     auth_mod.AUTH_SECRET = "admin-secret-123"
-    auth_mod.GUEST_SECRET = "guest-secret-456"
     assert auth_mod.is_auth_required() is True
+
+    # Create active guest pass
+    active_pass = db_mod.create_guest_pass("TestGuest", expires_days=30, custom_token="guest-secret-456")
+    assert active_pass["token"] == "guest-secret-456"
+
+    # Create expired guest pass
+    db_mod.create_guest_pass("ExpiredGuest", expires_days=-1, custom_token="expired-secret-789")
+
+    # Create disabled guest pass
+    dis_pass = db_mod.create_guest_pass("DisabledGuest", expires_days=30, custom_token="disabled-secret-000")
+    db_mod.update_guest_pass(dis_pass["id"], is_active=False)
 
     req_empty = make_mock_request("/api/library")
     assert auth_mod.is_authenticated(req_empty) is False
@@ -64,6 +81,30 @@ def test_auth_logic():
     assert auth_mod.is_guest(req_guest) is True
     assert auth_mod.is_curator(req_guest) is False
     assert auth_mod.can_read(req_guest) is True
+    uid, uname, role = auth_mod.get_user_context(req_guest)
+    assert uid == f"guest:{active_pass['id']}"
+    assert uname == "TestGuest"
+    assert role == "guest"
+
+    # Expired token -> is_authenticated=False
+    req_expired = make_mock_request(
+        "/api/library",
+        headers={"Authorization": "Bearer expired-secret-789"},
+    )
+    assert auth_mod.is_authenticated(req_expired) is False
+    try:
+        auth_mod.require_curator(req_expired)
+        assert False, "Should raise 401 for expired token"
+    except HTTPException as exc:
+        assert exc.status_code == 401
+        assert "过期" in exc.detail
+
+    # Disabled token -> is_authenticated=False
+    req_disabled = make_mock_request(
+        "/api/library",
+        headers={"Authorization": "Bearer disabled-secret-000"},
+    )
+    assert auth_mod.is_authenticated(req_disabled) is False
 
     # Curator Bearer token -> is_curator=True, is_guest=False, can_read=True
     req_curator = make_mock_request(
@@ -73,6 +114,9 @@ def test_auth_logic():
     assert auth_mod.is_authenticated(req_curator) is True
     assert auth_mod.is_curator(req_curator) is True
     assert auth_mod.can_read(req_curator) is True
+    c_uid, c_name, c_role = auth_mod.get_user_context(req_curator)
+    assert c_uid == "curator"
+    assert c_role == "admin"
 
     # require_curator on guest raises 403 Forbidden
     try:
@@ -93,11 +137,15 @@ def test_auth_logic():
     auth_mod.require_curator(req_curator)
     auth_mod.require_admin(req_curator)
 
-    # 3. Solo Curator mode (No guest secret configured)
-    auth_mod.AUTH_SECRET = "admin-secret-123"
-    auth_mod.GUEST_SECRET = ""
-    assert auth_mod.can_read(req_guest) is False
-    assert auth_mod.can_read(req_curator) is True
+    # 3. Test user isolation for favorites and reading progress
+    db_mod.set_user_favorite("curator", "jm", "12345", True)
+    assert db_mod.is_user_favorite("curator", "jm", "12345") is True
+    assert db_mod.is_user_favorite(f"guest:{active_pass['id']}", "jm", "12345") is False
+
+    db_mod.set_user_progress(f"guest:{active_pass['id']}", "jm", "12345", 18, 100)
+    prog_guest = db_mod.get_user_progress(f"guest:{active_pass['id']}", "jm", "12345")
+    assert prog_guest is not None and prog_guest["last_page"] == 18
+    assert db_mod.get_user_progress("curator", "jm", "12345") is None
 
 
 
@@ -160,7 +208,6 @@ def test_hotlink_protection():
 
 def test_guest_visibility_and_discovery_auth():
     auth_mod.AUTH_SECRET = "admin-secret-123"
-    auth_mod.GUEST_SECRET = "guest-secret-456"
 
     # Curator request
     req_curator = make_mock_request(
@@ -171,7 +218,7 @@ def test_guest_visibility_and_discovery_auth():
     # require_curator passes for curator
     auth_mod.require_curator(req_curator)
 
-    # Guest request
+    # Guest request (using guest-secret-456 created in test_auth_logic)
     req_guest = make_mock_request(
         "/api/discovery/ranking",
         headers={"Authorization": "Bearer guest-secret-456"},
@@ -189,10 +236,13 @@ def test_auth_and_security_middleware():
     from app.main import auth_and_security_middleware
     from unittest.mock import AsyncMock
 
+    # Ensure guest-key-999 exists in test DB
+    if not db_mod.get_guest_pass_by_token("guest-key-999"):
+        db_mod.create_guest_pass("MidGuest", expires_days=30, custom_token="guest-key-999")
+
     async def run_cases():
         # Case 1: Open access (no secret configured)
         auth_mod.AUTH_SECRET = ""
-        auth_mod.GUEST_SECRET = ""
         call_next = AsyncMock(return_value="OK")
 
         req_post = make_mock_request("/api/library/import")
@@ -200,9 +250,8 @@ def test_auth_and_security_middleware():
         res = await auth_and_security_middleware(req_post, call_next)
         assert res == "OK", "Open access should allow POST /api/library/import"
 
-        # Case 2: Protected mode (Curator + Guest)
+        # Case 2: Protected mode (Curator + Guest Pass)
         auth_mod.AUTH_SECRET = "curator-key-888"
-        auth_mod.GUEST_SECRET = "guest-key-999"
 
         # 2a. Unauthenticated POST -> 401
         call_next.reset_mock()

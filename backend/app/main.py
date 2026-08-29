@@ -13,6 +13,8 @@ from .auth import (
     can_read,
     check_hotlink_protection,
     clear_auth_cookie,
+    get_current_user_id,
+    get_user_context,
     is_auth_required,
     is_authenticated,
     is_curator,
@@ -20,7 +22,21 @@ from .auth import (
     require_curator,
     set_auth_cookie,
 )
-from .config import AUTH_SECRET, DATA_DIR, ENABLE_DOCS, GUEST_SECRET, LIBRARY_DIR
+from .config import AUTH_SECRET, DATA_DIR, ENABLE_DOCS, LIBRARY_DIR
+from .db import (
+    create_guest_pass,
+    delete_guest_pass,
+    get_guest_pass_by_token,
+    get_user_favorites,
+    get_user_progress,
+    init_db,
+    is_user_favorite,
+    list_guest_passes,
+    migrate_legacy_favorites,
+    set_user_favorite,
+    set_user_progress,
+    update_guest_pass,
+)
 from .jobs import get_job, list_running, start_job
 from .gate import _env_explicit, get_download_concurrency, set_download_concurrency
 from .imsearch import check_imsearch_status, search_imsearch
@@ -33,11 +49,13 @@ from .models import (
     ComicMeta,
     ConcurrencyInfo,
     ConcurrencyRequest,
+    CreateGuestPassRequest,
     DeleteResponse,
     DiscoveryFeed,
     DiscoveryItem,
     FavoriteRequest,
     FavoriteResponse,
+    GuestPassItem,
     ImageSearchItem,
     ImageSearchResponse,
     ImageSearchStatusResponse,
@@ -53,7 +71,10 @@ from .models import (
     MetadataUpdateRequest,
     PageResponse,
     ProviderInfo,
+    ReadingProgressRequest,
+    ReadingProgressResponse,
     ReplacePathRequest,
+    UpdateGuestPassRequest,
 )
 from .providers import get_provider, provider_list
 
@@ -101,8 +122,14 @@ async def auth_and_security_middleware(request: Request, call_next):
         except HTTPException as exc:
             return JSONResponse(status_code=exc.status_code, content={"detail": exc.detail})
 
-    # Write / Mutating operations require curator privileges
-    is_write = request.method in ("POST", "PUT", "PATCH", "DELETE") and path != "/api/search/image"
+    # Allow guest-permitted mutating operations (search, isolated favorite & reading progress)
+    is_user_mutation = (
+        (request.method == "POST" and path == "/api/search/image")
+        or (request.method == "PATCH" and path.endswith("/favorite"))
+        or (request.method == "PUT" and path.endswith("/progress"))
+    )
+
+    is_write = request.method in ("POST", "PUT", "PATCH", "DELETE") and not is_user_mutation
     if is_write:
         if not is_curator(request):
             if is_guest(request):
@@ -116,49 +143,89 @@ async def auth_and_security_middleware(request: Request, call_next):
                 headers={"WWW-Authenticate": "Bearer"},
             )
     else:
-        # Read operations: require valid curator or guest token
+        # Read or guest-allowed mutation: require valid curator or guest token
         if not can_read(request):
+            _uid, _name, role = get_user_context(request)
+            detail = "通行证已过期，请联系馆长续期" if role == "expired" else "未授权访问，需要提供有效的通行口令"
             return JSONResponse(
                 status_code=401,
-                content={"detail": "未授权访问，需要提供有效的通行口令"},
+                content={"detail": detail},
                 headers={"WWW-Authenticate": "Bearer"},
             )
 
     return await call_next(request)
 
 
+init_db()
 store = ComicStore()
+
+
+def _migrate_existing_favorites_to_db() -> None:
+    try:
+        curator_favs = get_user_favorites("curator")
+        if curator_favs:
+            return
+        legacy_favs = []
+        if LIBRARY_DIR.exists():
+            for s_dir in LIBRARY_DIR.iterdir():
+                if not s_dir.is_dir():
+                    continue
+                for c_dir in s_dir.iterdir():
+                    if not c_dir.is_dir():
+                        continue
+                    meta = store.load_meta(s_dir.name, c_dir.name)
+                    if meta and getattr(meta, "favorite", False):
+                        legacy_favs.append((s_dir.name, c_dir.name))
+        if legacy_favs:
+            migrate_legacy_favorites(legacy_favs, "curator")
+    except Exception:
+        pass
+
+
+_migrate_existing_favorites_to_db()
 
 
 @app.get("/api/auth/status", response_model=AuthStatusResponse)
 def auth_status(request: Request) -> AuthStatusResponse:
     auth_req = is_auth_required()
-    curator = is_curator(request)
-    guest = is_guest(request)
+    user_id, username, role = get_user_context(request)
+    curator = role == "admin"
+    guest = role == "guest"
     authed = curator or guest
-    role = "admin" if curator else ("guest" if guest else "unauthorized")
     return AuthStatusResponse(
         auth_required=auth_req,
         authenticated=authed,
         can_write=curator,
-        role=role,
-        has_guest_secret=bool(GUEST_SECRET),
+        role=role if authed else "unauthorized",
+        username=username if authed else "",
+        user_id=user_id if authed else "",
     )
 
 
 @app.post("/api/auth/login", response_model=LoginResponse)
 def auth_login(req: LoginRequest, response: Response) -> LoginResponse:
     if not is_auth_required():
-        return LoginResponse(ok=True, token="", role="admin")
+        return LoginResponse(ok=True, token="", role="admin", username="馆长", user_id="curator")
 
     secret = req.secret.strip()
     if AUTH_SECRET and secrets.compare_digest(secret, AUTH_SECRET):
         set_auth_cookie(response, AUTH_SECRET)
-        return LoginResponse(ok=True, token=AUTH_SECRET, role="admin")
+        return LoginResponse(ok=True, token=AUTH_SECRET, role="admin", username="馆长", user_id="curator")
 
-    if GUEST_SECRET and secrets.compare_digest(secret, GUEST_SECRET):
-        set_auth_cookie(response, GUEST_SECRET)
-        return LoginResponse(ok=True, token=GUEST_SECRET, role="guest")
+    pass_item = get_guest_pass_by_token(secret)
+    if pass_item is not None:
+        if not pass_item["is_active"]:
+            raise HTTPException(status_code=401, detail="该访客通行证已被停用")
+        if pass_item["is_expired"]:
+            raise HTTPException(status_code=401, detail="通行证已过期，请联系馆长续期")
+        set_auth_cookie(response, pass_item["token"])
+        return LoginResponse(
+            ok=True,
+            token=pass_item["token"],
+            role="guest",
+            username=pass_item["username"],
+            user_id=f"guest:{pass_item['id']}",
+        )
 
     raise HTTPException(status_code=401, detail="通行口令错误，请重试")
 
@@ -218,7 +285,12 @@ def library(
     request: Request,
     q: str | None = Query(default=None, description="标题/作者/标签过滤"),
 ) -> list[LibrarySummary]:
+    user_id = get_current_user_id(request)
+    user_favs = get_user_favorites(user_id)
     items = store.list_library()
+    for item in items:
+        item.favorite = (item.source, item.source_id) in user_favs
+
     if not is_curator(request):
         items = [item for item in items if not item.hidden_from_guest]
 
@@ -353,7 +425,10 @@ def import_comic(req: ImportRequest) -> ImportResult:
 @app.get("/api/library/{source}/{source_id}", response_model=ComicDetail)
 def comic_detail(source: str, source_id: str, request: Request) -> ComicDetail:
     meta = _require_meta(source, source_id, request)
-    return store.detail(meta)
+    detail = store.detail(meta)
+    user_id = get_current_user_id(request)
+    detail.meta.favorite = is_user_favorite(user_id, source, source_id)
+    return detail
 
 
 @app.delete("/api/library/{source}/{source_id}", response_model=DeleteResponse)
@@ -476,15 +551,92 @@ def replace_comic_pages_from_path(
 
 
 @app.patch("/api/library/{source}/{source_id}/favorite", response_model=FavoriteResponse)
-def set_favorite(source: str, source_id: str, req: FavoriteRequest) -> FavoriteResponse:
+def set_favorite(source: str, source_id: str, req: FavoriteRequest, request: Request) -> FavoriteResponse:
     _require_known_source(source)
-    meta = store.load_meta(source, source_id)
-    if meta is None:
-        raise HTTPException(status_code=404, detail="本子还没有导入本地书库")
-    meta.favorite = req.favorite
-    _write_json_atomic(store.album_path(source, source_id), meta.model_dump())
-    store._invalidate_cache(source, source_id)
-    return FavoriteResponse(ok=True, favorite=meta.favorite)
+    _require_meta(source, source_id, request)
+    user_id = get_current_user_id(request)
+    new_fav = set_user_favorite(user_id, source, source_id, req.favorite)
+    return FavoriteResponse(ok=True, favorite=new_fav)
+
+
+@app.get("/api/library/{source}/{source_id}/progress", response_model=ReadingProgressResponse)
+def get_reading_progress_api(source: str, source_id: str, request: Request) -> ReadingProgressResponse:
+    meta = _require_meta(source, source_id, request)
+    user_id = get_current_user_id(request)
+    prog = get_user_progress(user_id, source, source_id)
+    if prog is None:
+        return ReadingProgressResponse(ok=True, last_page=0, total_pages=meta.page_count, updated_at=0)
+    return ReadingProgressResponse(
+        ok=True,
+        last_page=prog["last_page"],
+        total_pages=prog["total_pages"],
+        updated_at=prog["updated_at"],
+    )
+
+
+@app.put("/api/library/{source}/{source_id}/progress", response_model=ReadingProgressResponse)
+def save_reading_progress_api(
+    source: str,
+    source_id: str,
+    req: ReadingProgressRequest,
+    request: Request,
+) -> ReadingProgressResponse:
+    meta = _require_meta(source, source_id, request)
+    user_id = get_current_user_id(request)
+    prog = set_user_progress(user_id, source, source_id, req.page, req.total_pages or meta.page_count)
+    return ReadingProgressResponse(ok=True, **prog)
+
+
+# ----------------------------------------------------------------------
+# 馆长访客通行证管理（Curator Passes Management）
+# ----------------------------------------------------------------------
+
+@app.get("/api/curator/passes", response_model=list[GuestPassItem])
+def curator_list_passes(request: Request) -> list[GuestPassItem]:
+    require_curator(request)
+    return [GuestPassItem(**p) for p in list_guest_passes()]
+
+
+@app.post("/api/curator/passes", response_model=GuestPassItem)
+def curator_create_pass(req: CreateGuestPassRequest, request: Request) -> GuestPassItem:
+    require_curator(request)
+    try:
+        p = create_guest_pass(
+            username=req.username,
+            expires_days=req.expires_days,
+            custom_token=req.custom_token,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    return GuestPassItem(**p)
+
+
+@app.patch("/api/curator/passes/{pass_id}", response_model=GuestPassItem)
+def curator_update_pass(pass_id: int, req: UpdateGuestPassRequest, request: Request) -> GuestPassItem:
+    require_curator(request)
+    try:
+        p = update_guest_pass(
+            pass_id=pass_id,
+            username=req.username,
+            is_active=req.is_active,
+            extend_days=req.extend_days,
+            reset_token=req.reset_token,
+            expires_days=req.expires_days,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    if p is None:
+        raise HTTPException(status_code=404, detail="未找到该访客通行证")
+    return GuestPassItem(**p)
+
+
+@app.delete("/api/curator/passes/{pass_id}")
+def curator_delete_pass(pass_id: int, request: Request) -> dict[str, bool]:
+    require_curator(request)
+    ok = delete_guest_pass(pass_id)
+    if not ok:
+        raise HTTPException(status_code=404, detail="未找到该访客通行证")
+    return {"ok": True}
 
 
 @app.get("/api/library/{source}/{source_id}/cache", response_model=CacheProgress)

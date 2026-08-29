@@ -164,4 +164,45 @@ describe('useAuth', () => {
 
     expect(getStoredToken()).toBe('valid-secret-999')
   })
+
+  it('automatically logs in when ?token=... is present in URL search', async () => {
+    const origLocation = window.location
+    const mockLocation = new URL('http://localhost:5173/?token=share-token-123')
+    Object.defineProperty(window, 'location', {
+      value: mockLocation,
+      writable: true,
+      configurable: true,
+    })
+
+    vi.spyOn(api, 'authStatus').mockResolvedValueOnce({
+      auth_required: true,
+      authenticated: false,
+      can_write: false,
+      role: 'unauthorized',
+    })
+    vi.spyOn(api, 'login').mockResolvedValueOnce({
+      ok: true,
+      token: 'share-token-123',
+      role: 'guest',
+      username: 'AliceFriend',
+      user_id: 'guest:5',
+    })
+
+    const { authenticated, isGuest, username, userId, modalVisible, checkStatus } = useAuth()
+    const ok = await checkStatus()
+
+    expect(ok).toBe(true)
+    expect(authenticated.value).toBe(true)
+    expect(isGuest.value).toBe(true)
+    expect(username.value).toBe('AliceFriend')
+    expect(userId.value).toBe('guest:5')
+    expect(modalVisible.value).toBe(false)
+    expect(getStoredToken()).toBe('share-token-123')
+
+    Object.defineProperty(window, 'location', {
+      value: origLocation,
+      writable: true,
+      configurable: true,
+    })
+  })
 })

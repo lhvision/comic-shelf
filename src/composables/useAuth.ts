@@ -7,10 +7,13 @@ import {
   onUnauthorized,
   setStoredToken,
 } from '@/api/client'
+import { useToast } from '@/composables/useToast'
 
 const authRequired = ref(false)
 const authenticated = ref(true)
 const role = ref<'admin' | 'guest' | 'unauthorized'>('admin')
+const username = ref('')
+const userId = ref('')
 const modalVisible = ref(false)
 const checking = ref(false)
 const submitting = ref(false)
@@ -31,6 +34,8 @@ onUnauthorized(() => {
 })
 
 export function useAuth() {
+  const { toast } = useToast()
+
   async function checkStatus() {
     checking.value = true
     try {
@@ -38,6 +43,41 @@ export function useAuth() {
       authRequired.value = status.auth_required
       authenticated.value = status.authenticated
       role.value = status.role
+      username.value = status.username || (status.role === 'admin' ? '馆长' : '')
+      userId.value = status.user_id || ''
+
+      // 0. 支持链接免密直达：若 URL Query 携带 ?token=...，自动验证入馆
+      let urlToken: string | null = null
+      if (typeof window !== 'undefined') {
+        const params = new URLSearchParams(window.location.search)
+        urlToken = params.get('token')
+      }
+
+      if (urlToken) {
+        try {
+          const res = await api.login(urlToken)
+          setStoredToken(urlToken)
+          authenticated.value = true
+          role.value = res.role || 'guest'
+          username.value = res.username || (res.role === 'admin' ? '馆长' : '访客')
+          userId.value = res.user_id || ''
+          modalVisible.value = false
+          notifyAuthSuccess()
+
+          // 清理地址栏 token 参数，防止二次复制分享泄露口令
+          const cleanUrl = new URL(window.location.href)
+          cleanUrl.searchParams.delete('token')
+          window.history.replaceState({}, '', cleanUrl.pathname + cleanUrl.search + cleanUrl.hash)
+          return true
+        } catch (err: unknown) {
+          const msg =
+            err instanceof Error ? err.message : '该直达通行证已失效或过期，请向馆长申请新凭证'
+          toast(msg, 'error')
+          const cleanUrl = new URL(window.location.href)
+          cleanUrl.searchParams.delete('token')
+          window.history.replaceState({}, '', cleanUrl.pathname + cleanUrl.search + cleanUrl.hash)
+        }
+      }
 
       // If auth is required, check if we have a stored token to restore curator privileges
       const stored = getStoredToken()
@@ -46,6 +86,8 @@ export function useAuth() {
           const res = await api.login(stored)
           authenticated.value = true
           role.value = res.role || 'admin'
+          username.value = res.username || (res.role === 'admin' ? '馆长' : '')
+          userId.value = res.user_id || ''
           modalVisible.value = false
           notifyAuthSuccess()
           return true
@@ -60,6 +102,8 @@ export function useAuth() {
 
           if (isUnauthorized) {
             setStoredToken('')
+            username.value = ''
+            userId.value = ''
             if (!authenticated.value) {
               modalVisible.value = true
             }
@@ -88,6 +132,8 @@ export function useAuth() {
       setStoredToken(res.token)
       authenticated.value = true
       role.value = res.role || 'admin'
+      username.value = res.username || (res.role === 'admin' ? '馆长' : '')
+      userId.value = res.user_id || ''
       modalVisible.value = false
       notifyAuthSuccess()
       return true
@@ -106,6 +152,8 @@ export function useAuth() {
       setStoredToken('')
       authenticated.value = false
       role.value = 'unauthorized'
+      username.value = ''
+      userId.value = ''
       if (authRequired.value) {
         modalVisible.value = true
       }
@@ -128,6 +176,8 @@ export function useAuth() {
     authRequired,
     authenticated,
     role,
+    username,
+    userId,
     canWrite,
     isGuest,
     modalVisible,

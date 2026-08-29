@@ -24,6 +24,8 @@ import IconEye from './IconEye.vue'
 import IconEyeOff from './IconEyeOff.vue'
 import IconArchive from './IconArchive.vue'
 import IconTrash from './IconTrash.vue'
+import IconUsers from './IconUsers.vue'
+import IconCopy from './IconCopy.vue'
 import type { IconName, IconSize } from './types'
 
 export {
@@ -52,6 +54,8 @@ export {
   IconEyeOff,
   IconArchive,
   IconTrash,
+  IconUsers,
+  IconCopy,
 }
 export type { IconSize, IconName }
 
@@ -80,4 +84,6 @@ export const ICON_MAP: Record<IconName, Component> = {
   'eye-off': IconEyeOff,
   archive: IconArchive,
   trash: IconTrash,
+  users: IconUsers,
+  copy: IconCopy,
 }

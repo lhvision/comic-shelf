@@ -360,6 +360,50 @@ export const api = {
       signal: options?.signal,
     })
   },
+  getReadingProgress: (source: string, sourceId: string, options?: RequestOptions) =>
+    request<import('@/types').ReadingProgressInfo>(`/library/${source}/${sourceId}/progress`, {
+      signal: options?.signal,
+    }),
+  saveReadingProgress: (
+    source: string,
+    sourceId: string,
+    page: number,
+    total_pages?: number,
+    options?: RequestOptions,
+  ) =>
+    request<import('@/types').ReadingProgressInfo>(`/library/${source}/${sourceId}/progress`, {
+      method: 'PUT',
+      body: JSON.stringify({ page, total_pages }),
+      signal: options?.signal,
+    }),
+  getCuratorPasses: (options?: RequestOptions) =>
+    request<import('@/types').GuestPass[]>('/curator/passes', {
+      signal: options?.signal,
+    }),
+  createCuratorPass: (
+    payload: import('@/types').CreateGuestPassPayload,
+    options?: RequestOptions,
+  ) =>
+    request<import('@/types').GuestPass>('/curator/passes', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+      signal: options?.signal,
+    }),
+  updateCuratorPass: (
+    passId: number,
+    payload: import('@/types').UpdateGuestPassPayload,
+    options?: RequestOptions,
+  ) =>
+    request<import('@/types').GuestPass>(`/curator/passes/${passId}`, {
+      method: 'PATCH',
+      body: JSON.stringify(payload),
+      signal: options?.signal,
+    }),
+  deleteCuratorPass: (passId: number, options?: RequestOptions) =>
+    request<{ ok: boolean }>(`/curator/passes/${passId}`, {
+      method: 'DELETE',
+      signal: options?.signal,
+    }),
 }
 
 export const pageFileUrl = (source: string, sourceId: string, index: number) =>

@@ -1,0 +1,314 @@
+from __future__ import annotations
+
+import logging
+import secrets
+import sqlite3
+import time
+from contextlib import contextmanager
+from pathlib import Path
+from typing import Any, Iterator
+
+from .config import DATA_DIR
+
+logger = logging.getLogger(__name__)
+
+DEFAULT_DB_PATH = DATA_DIR / "comic_shelf.db"
+_DB_PATH: Path = DEFAULT_DB_PATH
+
+
+def set_db_path(path: Path) -> None:
+    global _DB_PATH
+    _DB_PATH = path
+
+
+def get_db_path() -> Path:
+    return _DB_PATH
+
+
+@contextmanager
+def get_db() -> Iterator[sqlite3.Connection]:
+    conn = sqlite3.connect(_DB_PATH, timeout=15.0)
+    conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA journal_mode = WAL")
+    conn.execute("PRAGMA foreign_keys = ON")
+    conn.execute("PRAGMA busy_timeout = 5000")
+    try:
+        with conn:
+            yield conn
+    finally:
+        conn.close()
+
+
+def init_db(db_path: Path | None = None) -> None:
+    if db_path is not None:
+        set_db_path(db_path)
+
+    _DB_PATH.parent.mkdir(parents=True, exist_ok=True)
+    with get_db() as conn:
+        conn.executescript(
+            """
+            CREATE TABLE IF NOT EXISTS guest_passes (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                username TEXT NOT NULL,
+                token TEXT UNIQUE NOT NULL,
+                expires_at INTEGER,
+                is_active INTEGER NOT NULL DEFAULT 1,
+                created_at INTEGER NOT NULL,
+                updated_at INTEGER NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS idx_guest_passes_token ON guest_passes(token);
+
+            CREATE TABLE IF NOT EXISTS user_favorites (
+                user_id TEXT NOT NULL,
+                source TEXT NOT NULL,
+                source_id TEXT NOT NULL,
+                created_at INTEGER NOT NULL,
+                PRIMARY KEY (user_id, source, source_id)
+            );
+            CREATE INDEX IF NOT EXISTS idx_user_favorites_user ON user_favorites(user_id);
+
+            CREATE TABLE IF NOT EXISTS user_reading_progress (
+                user_id TEXT NOT NULL,
+                source TEXT NOT NULL,
+                source_id TEXT NOT NULL,
+                last_page INTEGER NOT NULL,
+                total_pages INTEGER NOT NULL DEFAULT 0,
+                updated_at INTEGER NOT NULL,
+                PRIMARY KEY (user_id, source, source_id)
+            );
+            CREATE INDEX IF NOT EXISTS idx_user_progress_user ON user_reading_progress(user_id);
+            """
+        )
+        conn.commit()
+
+
+# ----------------------------------------------------------------------
+# 访客通行证（Guest Pass）CRUD
+# ----------------------------------------------------------------------
+
+def _row_to_pass(row: sqlite3.Row | dict[str, Any]) -> dict[str, Any]:
+    d = dict(row)
+    now = int(time.time())
+    expires_at = d.get("expires_at")
+    is_expired = bool(expires_at is not None and now > expires_at)
+    return {
+        "id": d["id"],
+        "username": d["username"],
+        "token": d["token"],
+        "expires_at": expires_at,
+        "is_active": bool(d["is_active"]),
+        "is_expired": is_expired,
+        "created_at": d["created_at"],
+        "updated_at": d["updated_at"],
+    }
+
+
+def create_guest_pass(
+    username: str,
+    expires_days: int | None = None,
+    custom_token: str | None = None,
+    expires_at: int | None = None,
+) -> dict[str, Any]:
+    username = username.strip()
+    if not username:
+        raise ValueError("访客名称不能为空")
+    token = custom_token.strip() if custom_token and custom_token.strip() else secrets.token_hex(16)
+    now = int(time.time())
+    if expires_at is None and expires_days is not None:
+        expires_at = now + expires_days * 86400
+
+    try:
+        with get_db() as conn:
+            cur = conn.execute(
+                """
+                INSERT INTO guest_passes (username, token, expires_at, is_active, created_at, updated_at)
+                VALUES (?, ?, ?, 1, ?, ?)
+                """,
+                (username, token, expires_at, now, now),
+            )
+            conn.commit()
+            pass_id = cur.lastrowid
+    except sqlite3.IntegrityError:
+        raise ValueError("该通行口令已存在，请更换口令")
+
+    return get_guest_pass_by_id(pass_id)  # type: ignore[return-value]
+
+
+def list_guest_passes() -> list[dict[str, Any]]:
+    with get_db() as conn:
+        rows = conn.execute("SELECT * FROM guest_passes ORDER BY created_at DESC").fetchall()
+        return [_row_to_pass(r) for r in rows]
+
+
+def get_guest_pass_by_id(pass_id: int) -> dict[str, Any] | None:
+    with get_db() as conn:
+        row = conn.execute("SELECT * FROM guest_passes WHERE id = ?", (pass_id,)).fetchone()
+        return _row_to_pass(row) if row else None
+
+
+def get_guest_pass_by_token(token: str) -> dict[str, Any] | None:
+    if not token or not token.strip():
+        return None
+    with get_db() as conn:
+        row = conn.execute("SELECT * FROM guest_passes WHERE token = ?", (token.strip(),)).fetchone()
+        return _row_to_pass(row) if row else None
+
+
+def update_guest_pass(
+    pass_id: int,
+    username: str | None = None,
+    is_active: bool | None = None,
+    extend_days: int | None = None,
+    reset_token: bool = False,
+    expires_days: int | None = None,
+) -> dict[str, Any] | None:
+    existing = get_guest_pass_by_id(pass_id)
+    if existing is None:
+        return None
+
+    now = int(time.time())
+    new_username = username.strip() if username is not None else existing["username"]
+    new_is_active = int(is_active) if is_active is not None else (1 if existing["is_active"] else 0)
+    new_token = secrets.token_hex(16) if reset_token else existing["token"]
+
+    new_expires_at = existing["expires_at"]
+    if expires_days is not None:
+        new_expires_at = (now + expires_days * 86400) if expires_days > 0 else None
+    elif extend_days is not None and extend_days > 0:
+        base_time = now if (new_expires_at is None or new_expires_at < now) else new_expires_at
+        new_expires_at = base_time + extend_days * 86400
+
+    try:
+        with get_db() as conn:
+            conn.execute(
+                """
+                UPDATE guest_passes
+                SET username = ?, token = ?, expires_at = ?, is_active = ?, updated_at = ?
+                WHERE id = ?
+                """,
+                (new_username, new_token, new_expires_at, new_is_active, now, pass_id),
+            )
+            conn.commit()
+    except sqlite3.IntegrityError:
+        raise ValueError("该通行口令已存在，请更换口令")
+
+    return get_guest_pass_by_id(pass_id)
+
+
+def delete_guest_pass(pass_id: int) -> bool:
+    with get_db() as conn:
+        cur = conn.execute("DELETE FROM guest_passes WHERE id = ?", (pass_id,))
+        conn.commit()
+        return cur.rowcount > 0
+
+
+# ----------------------------------------------------------------------
+# 用户专属喜欢（User Favorites）
+# ----------------------------------------------------------------------
+
+def get_user_favorites(user_id: str) -> set[tuple[str, str]]:
+    with get_db() as conn:
+        rows = conn.execute(
+            "SELECT source, source_id FROM user_favorites WHERE user_id = ?",
+            (user_id,),
+        ).fetchall()
+        return {(r["source"], r["source_id"]) for r in rows}
+
+
+def is_user_favorite(user_id: str, source: str, source_id: str) -> bool:
+    with get_db() as conn:
+        row = conn.execute(
+            "SELECT 1 FROM user_favorites WHERE user_id = ? AND source = ? AND source_id = ?",
+            (user_id, source, source_id),
+        ).fetchone()
+        return row is not None
+
+
+def set_user_favorite(user_id: str, source: str, source_id: str, favorite: bool) -> bool:
+    now = int(time.time())
+    with get_db() as conn:
+        if favorite:
+            conn.execute(
+                """
+                INSERT OR IGNORE INTO user_favorites (user_id, source, source_id, created_at)
+                VALUES (?, ?, ?, ?)
+                """,
+                (user_id, source, source_id, now),
+            )
+        else:
+            conn.execute(
+                "DELETE FROM user_favorites WHERE user_id = ? AND source = ? AND source_id = ?",
+                (user_id, source, source_id),
+            )
+        conn.commit()
+    return favorite
+
+
+def migrate_legacy_favorites(album_favorites: list[tuple[str, str]], curator_id: str = "curator") -> int:
+    """首次初始化时，将 album.json 中历史标记的 favorite: true 迁移到馆长的独立喜欢库中"""
+    now = int(time.time())
+    count = 0
+    with get_db() as conn:
+        for source, source_id in album_favorites:
+            cur = conn.execute(
+                """
+                INSERT OR IGNORE INTO user_favorites (user_id, source, source_id, created_at)
+                VALUES (?, ?, ?, ?)
+                """,
+                (curator_id, source, source_id, now),
+            )
+            if cur.rowcount > 0:
+                count += 1
+        conn.commit()
+    return count
+
+
+# ----------------------------------------------------------------------
+# 用户专属阅读进度（User Reading Progress）
+# ----------------------------------------------------------------------
+
+def get_user_progress(user_id: str, source: str, source_id: str) -> dict[str, Any] | None:
+    with get_db() as conn:
+        row = conn.execute(
+            """
+            SELECT last_page, total_pages, updated_at
+            FROM user_reading_progress
+            WHERE user_id = ? AND source = ? AND source_id = ?
+            """,
+            (user_id, source, source_id),
+        ).fetchone()
+        if row:
+            return {
+                "last_page": row["last_page"],
+                "total_pages": row["total_pages"],
+                "updated_at": row["updated_at"],
+            }
+        return None
+
+
+def set_user_progress(
+    user_id: str,
+    source: str,
+    source_id: str,
+    last_page: int,
+    total_pages: int = 0,
+) -> dict[str, Any]:
+    now = int(time.time())
+    with get_db() as conn:
+        conn.execute(
+            """
+            INSERT INTO user_reading_progress (user_id, source, source_id, last_page, total_pages, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?)
+            ON CONFLICT(user_id, source, source_id) DO UPDATE SET
+                last_page = excluded.last_page,
+                total_pages = CASE WHEN excluded.total_pages > 0 THEN excluded.total_pages ELSE user_reading_progress.total_pages END,
+                updated_at = excluded.updated_at
+            """,
+            (user_id, source, source_id, last_page, total_pages, now),
+        )
+        conn.commit()
+    return {
+        "last_page": last_page,
+        "total_pages": total_pages,
+        "updated_at": now,
+    }

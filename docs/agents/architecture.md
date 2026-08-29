@@ -160,13 +160,18 @@ JmImageTool.decode_and_save(num, source_image, save_path)
 - `PATCH /api/library/{source}/{id}/chapters/{chapterId}`（修改单章节名称）
 - `DELETE /api/library/{source}/{id}/chapters/{chapterId}`（物理删除单个章节并重排全书全局页码）
 - `GET /api/library/{source}/{id}`（详情含 `chapters`）
-- `PATCH /api/library/{source}/{id}/favorite` `{favorite: bool}`
 - `GET /api/library/{source}/{id}/pages/{n}/file`（`n` 为全局页号，带防盗链校验，支持 `.{ext}` 静态扩展名别名）
 - `GET /api/library/{source}/{id}/pages/{n}/thumbnail`（同上，支持 `.{ext}` 别名）
 - `GET /api/library/{source}/{id}/covers/{n}/file`（封面取 `cover_indices` 或前 N 页，带防盗链校验，支持 `.{ext}` 别名）
 - `GET /api/library/{source}/{id}/chapters/{chapterId}/cover`（章节封面端点，带防盗链校验，支持 `.{ext}` 别名）
 - `GET /api/search/image/status`（以图搜图 Sidecar 服务健康探测）
-- `POST /api/search/image`（以图搜图，上传截图/裁切图匹配所属本子与对应页码）
+- `GET /api/curator/passes`（馆长获取访客名册列表）
+- `POST /api/curator/passes` `{username, expires_days, custom_token}`（馆长登记印发专属通行证）
+- `PATCH /api/curator/passes/{id}` `{username, is_active, extend_days, reset_token}`（通行证续期、密钥换新、启停）
+- `DELETE /api/curator/passes/{id}`（注销指定通行证）
+- `GET /api/library/{source}/{id}/progress`（获取当前用户阅读进度）
+- `PUT /api/library/{source}/{id}/progress` `{last_page}`（保存当前用户阅读进度，防抖上报）
+- `PATCH /api/library/{source}/{id}/favorite` `{favorite: bool}`（独立用户收藏切换）
 - `GET /api/providers`
 - `POST /api/library/{source}/{id}/cache`
 - `DELETE /api/library/{source}/{id}`
@@ -190,7 +195,8 @@ JmImageTool.decode_and_save(num, source_image, save_path)
 
 ### 7.1 当前存储机制（本地优先 + 零依赖）
 
-- **核心书库**：采用 **文件系统分片 + 原子 JSON（`album.json` / `remote.json`）+ 内存二级缓存（`_meta_cache`）**，而非中心化关系数据库。
+- **核心书库**：采用 **文件系统分片 + 原子 JSON（`album.json` / `remote.json`）+ 内存二级缓存（`_meta_cache`）**，保持本地优先与自包含，脱离数据库亦可独立迁移与阅读。
+- **状态与通行证**：采用 **轻量 SQLite WAL（`comic_shelf.db`）**，管理动态访客通行证（`guest_passes`）、按用户红心收藏（`user_favorites`）与跨端阅读进度（`user_reading_progress`），彻底实现个性化数据隔离。
 - **识图模块**：采用 **SQLite（`imsearch.db`）+ 二进制倒排索引（`invlists.bin`）**。
 
 ### 7.2 性能表现与规模分层评估

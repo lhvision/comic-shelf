@@ -20,7 +20,7 @@ const emit = defineEmits<{
 }>()
 
 const { isCoverActive, setActiveCover } = useCoverTransition()
-const { canWrite } = useAuth()
+const { authenticated } = useAuth()
 
 const isDeckActive = ref(false)
 function loadDeck() {
@@ -68,7 +68,7 @@ const cardTransitionName = computed(
           :source="comic.source"
           :source-id="comic.source_id"
           :favorite="comic.favorite"
-          :interactive="canWrite"
+          :interactive="authenticated"
           @toggled="(value) => emit('favoriteToggled', comic.source, comic.source_id, value)"
         />
 

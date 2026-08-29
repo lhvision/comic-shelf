@@ -254,7 +254,8 @@ class AuthStatusResponse(BaseModel):
     authenticated: bool
     can_write: bool = True
     role: str = "admin"  # "admin" | "guest" | "unauthorized"
-    has_guest_secret: bool = False
+    username: str = ""
+    user_id: str = ""
 
 
 class LoginRequest(BaseModel):
@@ -265,6 +266,45 @@ class LoginResponse(BaseModel):
     ok: bool
     token: str
     role: str = "admin"  # "admin" | "guest"
+    username: str = ""
+    user_id: str = ""
+
+
+class GuestPassItem(BaseModel):
+    id: int
+    username: str
+    token: str
+    expires_at: int | None = None
+    is_active: bool
+    is_expired: bool
+    created_at: int
+    updated_at: int
+
+
+class CreateGuestPassRequest(BaseModel):
+    username: str
+    expires_days: int | None = Field(default=None, gt=0)
+    custom_token: str | None = None
+
+
+class UpdateGuestPassRequest(BaseModel):
+    username: str | None = None
+    is_active: bool | None = None
+    extend_days: int | None = Field(default=None, gt=0)
+    reset_token: bool = False
+    expires_days: int | None = Field(default=None, gt=0)
+
+
+class ReadingProgressRequest(BaseModel):
+    page: int = Field(ge=1)
+    total_pages: int = 0
+
+
+class ReadingProgressResponse(BaseModel):
+    ok: bool = True
+    last_page: int
+    total_pages: int
+    updated_at: int
 
 
 class MetadataUpdateRequest(BaseModel):

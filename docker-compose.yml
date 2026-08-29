@@ -10,9 +10,8 @@ services:
       COMIC_SHELF_HOST: 0.0.0.0
       COMIC_SHELF_PORT: 8000
       COMIC_SHELF_IMSEARCH_URL: http://imsearch:8765
-      # 常用环境变量（公网部署建议取消注释并设置密码；留空则为局域网免密模式）：
+      # 常用环境变量（公网部署建议取消注释并设置馆长密码；留空则为局域网免密模式）：
       # COMIC_SHELF_SECRET: 'your_curator_password'
-      # COMIC_SHELF_GUEST_SECRET: 'your_guest_password'
       # 访问日志开关（默认 true，若不需要控制台打印每次 HTTP 访问流水可设为 false）：
       # COMIC_SHELF_ACCESS_LOG: 'false'
       # 允许本地直扫导入的外部挂载目录白名单（多个路径用冒号分隔）：

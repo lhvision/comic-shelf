@@ -21,7 +21,7 @@ const emit = defineEmits<{
   favoriteToggled: [source: string, sourceId: string, favorite: boolean]
 }>()
 
-const { canWrite } = useAuth()
+const { authenticated } = useAuth()
 
 const route = computed(() => `/comic/${props.comic.source}/${props.comic.source_id}`)
 const primaryTags = computed(() => props.comic.tags.slice(0, 3))
@@ -86,7 +86,7 @@ function prefetch() {
         :source="comic.source"
         :source-id="comic.source_id"
         :favorite="comic.favorite"
-        :interactive="canWrite"
+        :interactive="authenticated"
         @toggled="(value) => emit('favoriteToggled', comic.source, comic.source_id, value)"
       />
     </template>

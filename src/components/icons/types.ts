@@ -26,3 +26,5 @@ export type IconName =
   | 'eye-off'
   | 'archive'
   | 'trash'
+  | 'users'
+  | 'copy'

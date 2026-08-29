@@ -5,14 +5,15 @@ from urllib.parse import urlparse
 
 from fastapi import HTTPException, Request, Response
 
-from .config import AUTH_SECRET, ENABLE_HOTLINK_PROTECTION, GUEST_SECRET
+from .config import AUTH_SECRET, ENABLE_HOTLINK_PROTECTION
+from .db import get_guest_pass_by_token
 
 COOKIE_NAME = "comic_shelf_token"
 
 
 def is_auth_required() -> bool:
-    """True if any secret (curator or guest) is configured."""
-    return bool(AUTH_SECRET or GUEST_SECRET)
+    """True if curator secret is configured."""
+    return bool(AUTH_SECRET)
 
 
 def extract_token(request: Request) -> str:
@@ -39,56 +40,90 @@ def extract_token(request: Request) -> str:
     return ""
 
 
+def get_user_context(request: Request) -> tuple[str, str, str]:
+    """Returns (user_id, username, role) where role is 'admin' | 'guest' | 'unauthorized' | 'expired'."""
+    if hasattr(request.state, "user_context"):
+        return request.state.user_context  # type: ignore[no-any-return]
+
+    if not is_auth_required():
+        ctx = ("curator", "馆长", "admin")
+        request.state.user_context = ctx
+        return ctx
+
+    token = extract_token(request)
+    if not token:
+        ctx = ("anonymous", "未授权", "unauthorized")
+        request.state.user_context = ctx
+        return ctx
+
+    if AUTH_SECRET and secrets.compare_digest(token, AUTH_SECRET):
+        ctx = ("curator", "馆长", "admin")
+        request.state.user_context = ctx
+        return ctx
+
+    pass_item = get_guest_pass_by_token(token)
+    if pass_item is not None:
+        if not pass_item["is_active"]:
+            ctx = ("anonymous", "已停用", "unauthorized")
+        elif pass_item["is_expired"]:
+            ctx = ("anonymous", "已过期", "expired")
+        else:
+            ctx = (f"guest:{pass_item['id']}", pass_item["username"], "guest")
+        request.state.user_context = ctx
+        return ctx
+
+    ctx = ("anonymous", "未授权", "unauthorized")
+    request.state.user_context = ctx
+    return ctx
+
+
+def get_current_user_id(request: Request) -> str:
+    return get_user_context(request)[0]
+
+
 def is_curator(request: Request) -> bool:
     """True if caller has full curator write/management permissions."""
-    if not is_auth_required():
-        return True
-    if not AUTH_SECRET:
-        return False
-    token = extract_token(request)
-    return bool(token and secrets.compare_digest(token, AUTH_SECRET))
+    return get_user_context(request)[2] == "admin"
 
 
 def is_guest(request: Request) -> bool:
-    """True if caller provided the valid guest reading secret."""
-    if not is_auth_required() or not GUEST_SECRET:
-        return False
-    token = extract_token(request)
-    return bool(token and secrets.compare_digest(token, GUEST_SECRET))
+    """True if caller provided a valid active, unexpired guest pass."""
+    return get_user_context(request)[2] == "guest"
 
 
 def is_authenticated(request: Request) -> bool:
-    """True if caller provided either a valid curator or guest token."""
-    if not is_auth_required():
-        return True
-    return is_curator(request) or is_guest(request)
+    """True if caller provided either a valid curator secret or active guest pass."""
+    return get_user_context(request)[2] in ("admin", "guest")
 
 
 def can_read(request: Request) -> bool:
     """True if caller is allowed to browse and read comics."""
-    if not is_auth_required():
-        return True
-    return is_curator(request) or is_guest(request)
+    return is_authenticated(request)
 
 
 def get_user_role(request: Request) -> str:
     """Returns 'admin', 'guest', or 'unauthorized'."""
-    if not is_auth_required() or is_curator(request):
-        return "admin"
-    if is_guest(request):
-        return "guest"
-    return "unauthorized"
+    role = get_user_context(request)[2]
+    return role if role in ("admin", "guest") else "unauthorized"
 
 
 def require_curator(request: Request) -> None:
     """Ensure caller has curator write permissions."""
-    if is_curator(request):
+    _uid, _name, role = get_user_context(request)
+    if role == "admin":
         return
 
-    if is_guest(request):
+    if role == "guest":
         raise HTTPException(
             status_code=403,
             detail="访客模式下禁止执行修改操作，请先解锁馆长权限",
+        )
+
+    if role == "expired":
+        raise HTTPException(
+            status_code=401,
+            detail="通行证已过期，请联系馆长续期",
+            headers={"WWW-Authenticate": "Bearer"},
         )
 
     raise HTTPException(

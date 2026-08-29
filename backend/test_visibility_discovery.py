@@ -10,8 +10,12 @@ import app.auth as auth_mod
 import app.main as main_mod
 
 
+import app.db as db_mod
+
+
 def make_mock_request(path="/api/library", token=""):
     req = MagicMock()
+    req.state = type("State", (), {})()
     req.url.path = path
     headers_dict = {"authorization": f"Bearer {token}"} if token else {}
     req.headers.get = lambda k, default="": headers_dict.get(k.lower(), default)
@@ -28,7 +32,7 @@ def test_visibility_filtering():
         display_id="LOC_pub_1",
         title="Public Book",
         hidden_from_guest=False,
-        page_count=5,
+        page_count=10,
     )
     meta_private = ComicMeta(
         source="local",
@@ -40,7 +44,8 @@ def test_visibility_filtering():
     )
 
     auth_mod.AUTH_SECRET = "admin-secret-123"
-    auth_mod.GUEST_SECRET = "guest-secret-456"
+    if not db_mod.get_guest_pass_by_token("guest-secret-456"):
+        db_mod.create_guest_pass("VisGuest", expires_days=30, custom_token="guest-secret-456")
 
     # Guest request
     req_guest = make_mock_request("/api/library", token="guest-secret-456")
