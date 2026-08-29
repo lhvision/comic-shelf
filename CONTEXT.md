@@ -41,6 +41,7 @@
 - **匹配结果（Match result）**：识图检索命中的作品（`source`/`source_id`）、具体页码（`page_index`）与匹配置信度。
 - **识图增量追加（Incremental Feature Indexing）**：识图引擎默认的工作流。仅对新缓存图片提取 ORB 特征并直接追加未索引向量至倒排索引；原有特征与聚类中心 100% 保留，秒级完成，零重复计算。
 - **全量重置重训（Full Quantizer Retraining）**：重新运行 K-Means 聚类（512 聚类中心）并重建全量倒排索引的高开销维护行为（`--full` 参数），仅在首次初始化或模型重构时使用。
+- **特征倒排索引同步（Quantizer-Invlists Alignment）**：量化聚类中心（`quantizer.bin`）与特征倒排列表（`invlists.bin`）必须基于同一次训练产生的聚类中心构建。若量化器被重新训练而倒排列表未同步重置重建，将产生**索引失步（Index Desynchronization）**，导致特征向量落入错误聚类桶，使真实匹配退化为低分噪点。发生失步时必须重置已索引标记并重建倒排索引。
 
 ## 阅读器
 

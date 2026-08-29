@@ -29,6 +29,18 @@ LIBRARY_DATA="$DATA_DIR/library"
 LOG_FILE="/tmp/imsearch.log"
 PORT=8765
 
+# Auto-detect Python interpreter
+PYTHON=""
+for cand in ".venv/bin/python" "../.venv/bin/python" "backend/.venv/bin/python"; do
+  if [ -x "$cand" ]; then
+    PYTHON="$cand"
+    break
+  fi
+done
+if [ -z "$PYTHON" ]; then
+  PYTHON="$(command -v python3 || command -v python || echo "python3")"
+fi
+
 mkdir -p "$IMSEARCH_CONF"
 
 get_pid() {
@@ -104,6 +116,16 @@ cmd_status() {
     else
       echo "   - 健康状态: 响应异常"
     fi
+    if [ -f "$IMSEARCH_CONF/quantizer.bin" ] && [ -f "$IMSEARCH_CONF/invlists.bin" ]; then
+      local q_mtime i_mtime
+      q_mtime=$(stat -c %Y "$IMSEARCH_CONF/quantizer.bin" 2>/dev/null || echo 0)
+      i_mtime=$(stat -c %Y "$IMSEARCH_CONF/invlists.bin" 2>/dev/null || echo 0)
+      if [ "$q_mtime" -gt "$((i_mtime + 10))" ]; then
+        echo "   - ⚠️ 警告: quantizer.bin 比 invlists.bin 新，可能存在索引失步风险！建议执行 pnpm imsearch train"
+      else
+        echo "   - 索引同步: 正常（聚类模型与倒排列表已对齐）"
+      fi
+    fi
   else
     echo "🔴 状态: 未运行"
     echo "   启动命令: bash scripts/imsearch.sh start"
@@ -116,7 +138,7 @@ cmd_reindex() {
     exit 1
   fi
 
-  echo "=== 1/2 扫描 NAS 漫画图片并提取新增特征点 (add) ==="
+  echo "=== 1/2 扫描漫画图片并提取新增特征点 (add) ==="
   "$IMSEARCH_BIN" -c "$IMSEARCH_CONF" add "$LIBRARY_DATA"
 
   echo "=== 2/2 复用已有聚类模型，增量追加倒排索引 (build) ==="
@@ -144,6 +166,8 @@ cmd_train() {
   "$IMSEARCH_BIN" -c "$IMSEARCH_CONF" train -c 512 -i 800 -m 30
 
   echo "=== 3/3 重置并构建全量倒排索引 (build) ==="
+  # 重新训练量化模型后必须重置 indexed=0，确保所有特征向量与新聚类中心重新对齐构建倒排列表
+  "$PYTHON" -c "import sqlite3; c=sqlite3.connect('$IMSEARCH_CONF/imsearch.db'); c.execute('UPDATE vector_stats SET indexed = 0'); c.commit(); c.close()" 2>/dev/null || true
   rm -f "$IMSEARCH_CONF/invlists.bin"
   "$IMSEARCH_BIN" -c "$IMSEARCH_CONF" build
 

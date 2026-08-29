@@ -32,13 +32,26 @@ API_PID=$!
 # 2. Check and start local imsearch binary if present (optional)
 IMSEARCH_BIN="$(which imsearch 2>/dev/null || echo "$HOME/.cargo/bin/imsearch")"
 if [ -x "$IMSEARCH_BIN" ]; then
-  IMSEARCH_DATA="backend/data/imsearch"
+  if [ -n "${COMIC_SHELF_DATA:-}" ] && [ -d "$COMIC_SHELF_DATA" ]; then
+    IMSEARCH_DATA="$COMIC_SHELF_DATA/imsearch"
+    LIBRARY_DATA="$COMIC_SHELF_DATA/library"
+  elif [ -d "/mnt/nas_manga/library" ]; then
+    IMSEARCH_DATA="/mnt/nas_manga/imsearch"
+    LIBRARY_DATA="/mnt/nas_manga/library"
+  else
+    IMSEARCH_DATA="backend/data/imsearch"
+    LIBRARY_DATA="backend/data/library"
+  fi
   mkdir -p "$IMSEARCH_DATA"
-  # Initialize index if centroids.bin is not present yet
-  if [ ! -f "$IMSEARCH_DATA/centroids.bin" ] && [ -d "backend/data/library" ]; then
+  # Initialize index only if quantizer.bin or invlists.bin is missing
+  if { [ ! -f "$IMSEARCH_DATA/quantizer.bin" ] || [ ! -f "$IMSEARCH_DATA/invlists.bin" ]; } && [ -d "$LIBRARY_DATA" ]; then
     echo "Initializing local imsearch index in $IMSEARCH_DATA..."
-    "$IMSEARCH_BIN" -c "$IMSEARCH_DATA" add backend/data/library >/dev/null 2>&1 || true
-    "$IMSEARCH_BIN" -c "$IMSEARCH_DATA" train -c 512 -i 800 -m 30 >/dev/null 2>&1 || true
+    "$IMSEARCH_BIN" -c "$IMSEARCH_DATA" add "$LIBRARY_DATA" >/dev/null 2>&1 || true
+    if [ ! -f "$IMSEARCH_DATA/quantizer.bin" ]; then
+      "$IMSEARCH_BIN" -c "$IMSEARCH_DATA" train -c 512 -i 800 -m 30 >/dev/null 2>&1 || true
+    fi
+    "$PYTHON" -c "import sqlite3; c=sqlite3.connect('$IMSEARCH_DATA/imsearch.db'); c.execute('UPDATE vector_stats SET indexed = 0'); c.commit(); c.close()" >/dev/null 2>&1 || true
+    rm -f "$IMSEARCH_DATA/invlists.bin"
     "$IMSEARCH_BIN" -c "$IMSEARCH_DATA" build >/dev/null 2>&1 || true
   fi
   "$IMSEARCH_BIN" -c "$IMSEARCH_DATA" server --addr 127.0.0.1:8765 --nprobe 32 --count 20 &
