@@ -40,6 +40,6 @@ services:
       # - /mnt/pool/apps/comic-shelf/imsearch:/root/.config/imsearch
       - ./backend/data:/app/data
       - ./backend/data/imsearch:/root/.config/imsearch
-    command: ['imsearch', 'server', '--addr', '0.0.0.0:8765', '--nprobe', '32', '--count', '20']
+    command: ['server', '--addr', '0.0.0.0:8765', '--nprobe', '32', '--count', '20']
     ports:
       - '8765:8765'
