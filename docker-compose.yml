@@ -18,8 +18,11 @@ services:
       COMIC_SHELF_ENABLE_HOTLINK_PROTECTION: 'true'
       COMIC_SHELF_PAGE_THUMB_WIDTH: '360'
     volumes:
+      # 核心数据持久化目录（存放所有漫画原图、元数据、封面、缩略图与配置等）：
+      # 默认映射本地相对路径 ./backend/data；若在 TrueNAS / 群晖 / Unraid 等 NAS 部署，可改为宿主机绝对路径，例如：
+      # - /mnt/pool/apps/comic-shelf:/app/data
       - ./backend/data:/app/data
-      # 若需从 NAS 外部目录直扫收录漫画，解开并映射外部路径：
+      # 若需从 NAS 外部目录直扫收录漫画，解开并映射外部路径（同时配置 COMIC_SHELF_ALLOWED_DIRS 白名单）：
       # - /mnt/tank/comics:/external-comics:ro
     ports:
       - '8000:8000'
@@ -31,6 +34,10 @@ services:
     container_name: paper-room-imsearch
     restart: unless-stopped
     volumes:
+      # 以图搜图数据源与特征库持久化：
+      # 注意：若上面 paper-room 修改了宿主机路径，这里务必同步修改为一致的宿主机路径：
+      # - /mnt/pool/apps/comic-shelf:/app/data
+      # - /mnt/pool/apps/comic-shelf/imsearch:/root/.config/imsearch
       - ./backend/data:/app/data
       - ./backend/data/imsearch:/root/.config/imsearch
     command: ['imsearch', 'server', '--addr', '0.0.0.0:8765', '--nprobe', '32', '--count', '20']
