@@ -22,6 +22,7 @@ TEST_FILES=(
   "backend/test_visibility_discovery.py"
   "backend/test_imsearch.py"
   "backend/test_spa_fallback.py"
+  "backend/test_replace_pages.py"
 )
 
 # Support running specific tests (e.g. pnpm test:py auth) or all by default

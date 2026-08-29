@@ -737,7 +737,7 @@ class ComicStore:
 
         import datetime
 
-        for field in ("title", "authors", "works", "actors", "tags", "description", "uploader", "hidden_from_guest"):
+        for field in ("title", "authors", "works", "actors", "tags", "description", "uploader", "hidden_from_guest", "custom_pages"):
             if field in updates and updates[field] is not None:
                 setattr(meta, field, updates[field])
 
@@ -1124,6 +1124,199 @@ class ComicStore:
         meta.updated_at = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         self.save_fetched(fetched, refresh=True)
         return meta
+
+    def replace_pages(
+        self,
+        source: str,
+        source_id: str,
+        files: list[tuple[str, bytes]] | None = None,
+        server_path: str = "",
+        target_chapter: str = "",
+    ) -> ComicMeta:
+        with self._lock_for(source, source_id):
+            fetched = self.load_fetched(source, source_id)
+            if fetched is None:
+                raise HTTPException(status_code=404, detail="漫画不存在")
+
+            meta = fetched.meta
+            IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".webp", ".gif", ".avif", ".bmp"}
+
+            valid_items: list[tuple[str, bytes]] = []
+            if files:
+                sorted_files = sorted(files, key=lambda f: self._natural_key(f[0]))
+                for filename, content in sorted_files:
+                    ext = Path(filename).suffix.lower()
+                    if ext in IMAGE_EXTS and content:
+                        valid_items.append((ext, content))
+            elif server_path:
+                raw_path = Path(server_path).expanduser()
+                if not raw_path.is_absolute():
+                    proj_root = Path(__file__).resolve().parents[2]
+                    cand1 = proj_root / raw_path
+                    cand2 = Path.cwd() / raw_path
+                    raw_path = cand1 if cand1.exists() else cand2
+                if not raw_path.exists():
+                    raise HTTPException(status_code=400, detail=f"指定路径不存在：{server_path}")
+                if not _is_path_allowed(raw_path):
+                    raise HTTPException(
+                        status_code=400,
+                        detail=f"出于安全考虑，禁止从指定目录导入（{raw_path}）。如需导入，请配置 COMIC_SHELF_ALLOWED_DIRS 环境变量。",
+                    )
+                if raw_path.is_dir():
+                    img_files = [
+                        f
+                        for f in raw_path.iterdir()
+                        if f.is_file() and f.suffix.lower() in IMAGE_EXTS and _is_path_allowed(f.resolve())
+                    ]
+                elif raw_path.is_file() and raw_path.suffix.lower() in IMAGE_EXTS and _is_path_allowed(raw_path.resolve()):
+                    img_files = [raw_path]
+                else:
+                    raise HTTPException(status_code=400, detail=f"指定路径不是有效的图片文件或目录：{server_path}")
+
+                img_files.sort(key=lambda f: self._natural_key(f.name))
+                for f in img_files:
+                    valid_items.append((f.suffix.lower(), f.read_bytes()))
+
+            if not valid_items:
+                raise HTTPException(status_code=400, detail="未提供有效的图片文件")
+
+            # 暂存与严格 PIL 合法性校验（原子性保证）
+            comic_dir = self.pages_dir(source, source_id).parent
+            staging_dir = comic_dir / ".tmp_replace"
+            if staging_dir.exists():
+                shutil.rmtree(staging_dir, ignore_errors=True)
+            staging_dir.mkdir(parents=True, exist_ok=True)
+
+            from PIL import Image
+            import io
+
+            staged_names: list[tuple[str, str]] = []
+            try:
+                for idx, (ext, content) in enumerate(valid_items, start=1):
+                    try:
+                        img = Image.open(io.BytesIO(content))
+                        img.verify()
+                    except Exception as exc:
+                        raise HTTPException(
+                            status_code=400,
+                            detail=f"上传的文件损坏或不是有效图片 (第 {idx} 张): {exc}",
+                        )
+                    dest_name = f"{idx:05d}{ext}"
+                    dest_path = staging_dir / dest_name
+                    dest_path.write_bytes(content)
+                    staged_names.append((dest_name, ext))
+            except Exception:
+                shutil.rmtree(staging_dir, ignore_errors=True)
+                raise
+
+            target_pages_dir = self.pages_dir(source, source_id)
+            target_pages_dir.mkdir(parents=True, exist_ok=True)
+
+            if target_chapter and meta.chapters:
+                target_ch = next((c for c in meta.chapters if c.id == target_chapter), None)
+                if not target_ch:
+                    shutil.rmtree(staging_dir, ignore_errors=True)
+                    raise HTTPException(status_code=404, detail=f"章节 {target_chapter} 不存在")
+
+                chap_dir = target_pages_dir / self._safe(target_chapter)
+                backup_chap_dir = target_pages_dir / f".tmp_chap_old_{self._safe(target_chapter)}"
+                if backup_chap_dir.exists():
+                    shutil.rmtree(backup_chap_dir, ignore_errors=True)
+
+                if chap_dir.exists():
+                    chap_dir.rename(backup_chap_dir)
+
+                try:
+                    staging_dir.rename(chap_dir)
+                    shutil.rmtree(backup_chap_dir, ignore_errors=True)
+                except Exception:
+                    if backup_chap_dir.exists() and not chap_dir.exists():
+                        backup_chap_dir.rename(chap_dir)
+                    shutil.rmtree(staging_dir, ignore_errors=True)
+                    raise
+
+                chap_page_map: dict[str, list[PageRecord]] = {}
+                for ch in meta.chapters:
+                    if ch.id == target_chapter:
+                        chap_page_map[ch.id] = [
+                            PageRecord(index=0, file=dest_name, ext=ext, cached=True, chapter=ch.id)
+                            for dest_name, ext in staged_names
+                        ]
+                    else:
+                        chap_page_map[ch.id] = [p for p in meta.pages if p.chapter == ch.id]
+
+                rebuilt_pages: list[PageRecord] = []
+                rebuilt_remote: list[RemotePage] = []
+                global_idx = 1
+                for ch in meta.chapters:
+                    ch.start = global_idx
+                    ch_pages = chap_page_map.get(ch.id, [])
+                    ch.page_count = len(ch_pages)
+                    for p in ch_pages:
+                        p.index = global_idx
+                        rebuilt_pages.append(p)
+                        rebuilt_remote.append(
+                            RemotePage(index=global_idx, url="", file=p.file, ext=p.ext, chapter=ch.id)
+                        )
+                        global_idx += 1
+
+                meta.pages = rebuilt_pages
+                fetched.remote_pages = rebuilt_remote
+                meta.page_count = len(meta.pages)
+                try:
+                    self.ensure_chapter_cover(meta, fetched, target_ch)
+                except Exception as e:
+                    logger.warning("Failed to regenerate cover for chapter %s: %s", target_chapter, e)
+            else:
+                backup_pages_dir = comic_dir / ".pages_old"
+                if backup_pages_dir.exists():
+                    shutil.rmtree(backup_pages_dir, ignore_errors=True)
+
+                if target_pages_dir.exists():
+                    target_pages_dir.rename(backup_pages_dir)
+
+                try:
+                    staging_dir.rename(target_pages_dir)
+                    shutil.rmtree(backup_pages_dir, ignore_errors=True)
+                except Exception:
+                    if backup_pages_dir.exists() and not target_pages_dir.exists():
+                        backup_pages_dir.rename(target_pages_dir)
+                    shutil.rmtree(staging_dir, ignore_errors=True)
+                    raise
+
+                new_pages = [
+                    PageRecord(index=i, file=dest_name, ext=ext, cached=True, chapter="")
+                    for i, (dest_name, ext) in enumerate(staged_names, start=1)
+                ]
+                new_remote = [
+                    RemotePage(index=i, url="", file=dest_name, ext=ext, chapter="")
+                    for i, (dest_name, ext) in enumerate(staged_names, start=1)
+                ]
+                meta.pages = new_pages
+                fetched.remote_pages = new_remote
+                meta.page_count = len(new_pages)
+                meta.chapters = []
+
+            meta.custom_pages = True
+            meta.cover_count = min(4, meta.page_count)
+            meta.cover_indices = []
+
+            thumbs_dir = self.thumbs_dir(source, source_id)
+            covers_dir = self.covers_dir(source, source_id)
+            shutil.rmtree(thumbs_dir, ignore_errors=True)
+            shutil.rmtree(covers_dir, ignore_errors=True)
+            thumbs_dir.mkdir(parents=True, exist_ok=True)
+            covers_dir.mkdir(parents=True, exist_ok=True)
+
+            for i in range(1, min(5, meta.page_count + 1)):
+                try:
+                    self.ensure_cover(meta, fetched, i)
+                except Exception as e:
+                    logger.warning("Failed to regenerate cover %d for %s/%s: %s", i, source, source_id, e)
+
+            meta.updated_at = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            self.save_fetched(fetched, refresh=True)
+            return meta
 
     def update_chapter_title(self, source: str, source_id: str, chapter_id: str, new_title: str) -> ComicMeta:
         meta = self.load_meta(source, source_id)

@@ -274,6 +274,44 @@ export const api = {
       body: formData,
     })
   },
+  replaceComicPages: async (
+    source: string,
+    sourceId: string,
+    files: File[],
+    chapterId = '',
+    options?: RequestOptions,
+  ) => {
+    memoizedDetail.delete(source, sourceId)
+    const formData = new FormData()
+    for (const file of files) {
+      formData.append('files', file)
+    }
+    const params = new URLSearchParams()
+    if (chapterId) params.set('chapter_id', chapterId)
+    const qs = params.toString() ? `?${params.toString()}` : ''
+    return request<ComicDetail>(`/library/${source}/${sourceId}/replace-pages${qs}`, {
+      method: 'POST',
+      body: formData,
+      signal: options?.signal,
+    })
+  },
+  replaceComicPagesFromPath: async (
+    source: string,
+    sourceId: string,
+    serverPath: string,
+    chapterId = '',
+    options?: RequestOptions,
+  ) => {
+    memoizedDetail.delete(source, sourceId)
+    return request<ComicDetail>(`/library/${source}/${sourceId}/replace-path`, {
+      method: 'POST',
+      body: JSON.stringify({
+        server_path: serverPath,
+        target_chapter: chapterId,
+      }),
+      signal: options?.signal,
+    })
+  },
   appendLocalComic: async (sourceId: string, payload: import('@/types').LocalAppendPayload) => {
     memoizedDetail.delete('local', sourceId)
     return request<ComicDetail>(`/library/local/${sourceId}/append`, {

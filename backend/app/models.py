@@ -70,6 +70,10 @@ class ComicMeta(BaseModel):
         default_factory=list,
         description="Explicit 1-based page indices to use as covers (up to 4 items); empty defaults to 1..min(cover_count, page_count)",
     )
+    custom_pages: bool = Field(
+        default=False,
+        description="True if pages were manually replaced by curator, preventing remote auto-overwrite",
+    )
     source_url: str = ""
     pages: list[PageRecord] = Field(default_factory=list)
     imported_at: str = ""
@@ -273,6 +277,7 @@ class MetadataUpdateRequest(BaseModel):
     uploader: str | None = None
     cover_indices: list[int] | None = None
     hidden_from_guest: bool | None = None
+    custom_pages: bool | None = None
 
 
 class LocalChapterInput(BaseModel):
@@ -312,6 +317,11 @@ class LocalAppendRequest(BaseModel):
     target_chapter: str = ""
     new_chapter_title: str = ""
     server_path: str = ""
+
+
+class ReplacePathRequest(BaseModel):
+    server_path: str = ""
+    target_chapter: str = ""
 
 
 class ChapterUpdateRequest(BaseModel):

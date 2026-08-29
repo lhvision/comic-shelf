@@ -28,8 +28,9 @@ const props = withDefaults(
     pageCount: number
     canWrite?: boolean
     source?: string
+    customPages?: boolean
   }>(),
-  { canWrite: true, source: 'jm' },
+  { canWrite: true, source: 'jm', customPages: false },
 )
 
 const emit = defineEmits<{
@@ -39,6 +40,7 @@ const emit = defineEmits<{
   removeComic: []
   editMetadata: []
   appendPages: []
+  replacePages: []
 }>()
 
 /** 移除确认弹窗开合 */
@@ -46,18 +48,29 @@ const removeOpen = ref(false)
 /** 二次确认勾选 */
 const ackRemove = ref(false)
 
-const moreOptions = computed<DropdownOption[]>(() => [
-  {
+const moreOptions = computed<DropdownOption[]>(() => {
+  const list: DropdownOption[] = []
+  if (props.canWrite) {
+    list.push({
+      key: 'replace_pages',
+      label: '重新装订…',
+      hint: '重订画页',
+    })
+  }
+  list.push({
     key: 'remove',
     label: '移除本地缓存…',
     danger: true,
     hint: '不可撤销',
-  },
-])
+  })
+  return list
+})
 
 function onMoreSelect(option: DropdownOption) {
   if (option.key === 'remove') {
     requestRemove()
+  } else if (option.key === 'replace_pages') {
+    emit('replacePages')
   }
 }
 
@@ -140,22 +153,26 @@ function prefetchReader() {
         v-if="canWrite && source !== 'local'"
         class="btn btn-ghost"
         type="button"
-        :disabled="caching || cacheComplete"
+        :disabled="caching || cacheComplete || customPages"
         :title="
-          cacheComplete
-            ? '所有页面均已完成本地缓存'
-            : caching
-              ? `正在后台缓存中（${cachePercent}%）`
-              : `缓存整本作品到本地（已缓存 ${cachedPages}/${pageCount}）`
+          customPages
+            ? '画页已由馆长重新装订保护，禁止远端自动覆盖'
+            : cacheComplete
+              ? '所有页面均已完成本地缓存'
+              : caching
+                ? `正在后台缓存中（${cachePercent}%）`
+                : `缓存整本作品到本地（已缓存 ${cachedPages}/${pageCount}）`
         "
         @click="emit('cacheAll')"
       >
         {{
-          cacheComplete
-            ? '已全部本地化'
-            : caching
-              ? `缓存中 ${cachePercent}%`
-              : `缓存全部（已缓存 ${cachedPages}/${pageCount}）`
+          customPages
+            ? '已保护（重新装订）'
+            : cacheComplete
+              ? '已全部本地化'
+              : caching
+                ? `缓存中 ${cachePercent}%`
+                : `缓存全部（已缓存 ${cachedPages}/${pageCount}）`
         }}
       </button>
 

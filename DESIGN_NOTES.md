@@ -619,3 +619,47 @@
   - `vp test src/__tests__/ComicGrid.spec.ts src/__tests__/useCoverTransition.spec.ts` 5/5 全绿；
   - `vp build` 生产打包 1.77s 正常完成；
   - `E2E_BASE_URL=http://localhost:8000 pnpm ai-e2e:test e2e/tests/nav-perf.spec.ts` 生产链路 1/1 通过。
+
+## 37. 画页重新装订（Re-binding）与重订保护（纸间主体语境收敛）
+
+- **背景与主体语境对齐**：
+  1. **远端源切片与瑕疵**：部分远端作品（如 JM616255）在来源站上传时即被物理截断或存在脏数据，无论如何重拉远端依然是切碎的图片；
+  2. **馆长案头重订隐喻**：摒弃冷冰冰的 CMS 后台技术术语「手动替换页面图片」，统一收敛为契合纸间私人阅览室与案头书卷物理质感的**「重新装订…」**（与「自建工坊」、「增量追加」保持一致的典藏动作句式）；
+  3. **双模操作体验对齐（对标自建工坊与增量追加）**：支持「网页多图上传」与「服务器本地路径扫描」，既可直接拖拽上传无损图，也可直接指向服务器上的拆帧/外接卷宗目录就地重订。
+- **架构决策与极简落地（0 冗余抽象）**：
+  1. **纯图片事务性原子交替（Staging & Atomic Swap）**：
+     - 前端仅允许图片格式（JPG、PNG、WebP、AVIF 等），严禁 ZIP；
+     - 后端将文件或服务器扫描图片写入 `.tmp_replace` 暂存区，逐一经由 PIL `Image.open().verify()` 进行完整性检验；只有全数合法时才原子切换至 `pages/` 目录，单张出错即刻清空暂存，原漫画数据 100% 毫发无损；
+     - 自动按文件名自然升序重新映射为 `00001.webp` ~ `0000N.webp`，同步重算 `page_count` 并重建全套封面与缩略图。
+  2. **重新装订保护（Re-bound Pages Protection）**：
+     - 在 `album.json` 中标记 `custom_pages: true`；
+     - 保留原始来源、车号、作者与标签，但在 `cache_all` 与 `_prefetch_worker` 中拦截远端下载覆盖；
+     - `DetailActionBar.vue` 操作栏中将「缓存全部」置灰显示为「已保护（重新装订）」，提供明确安全感。
+  3. **多章节动态感知**：
+     - 单章节漫画直接整本全量重订；
+     - 多章节漫画在弹窗内支持选择“仅重订指定章节（自动保持全局页码单调递增并重算后续章节偏移）”或“整部重新装订（抹除多话合并为单卷）”。
+  4. **详情页极简交互收敛**：
+     - 在 `DetailActionBar.vue` 的「更多 ⋯」菜单中提供「重新装订…」，唤起 `ReplacePagesModal.vue`（弹窗标题：重新装订画页）；
+     - 采用 VueUse `useFileDialog` + `useDropZone` 零胶水实现；经 `pnpm detect:slop` 扫描排除边条等 AI 模板痕迹。
+- **Impeccable UI 双轨审查与打磨（A/B 双轨 SOP 闭环）**：
+  1. **A 轨（独立设计总监子代理评审）**：
+     - 调用 `invoke_subagent` 独立审查，产出可用性评分 **20/40**（快照落盘至 `.impeccable/critique/2026-08-29T17-35-19Z__replace-pages.md`）；
+     - 逼出 3 项关键 P1 缺陷：
+       - **[P1] 假想 CSS Token 污染**：初版捏造了 7 个未定义变量（`--border-color`, `--text-color` 等），暗色模式边框与对比度劣化；
+       - **[P1] Dropzone 键盘 a11y 断路**：纯 `div` 无 `role="button"` / `tabindex` 与 Enter/Space 响应，全键盘用户完全无法触发；
+       - **[P1] 盲盒式黑盒覆盖与重复追加**：重复选择文件时发生静默追加堆叠，且缺少新旧页数直观对比；
+     - 逼出 3 项 P2 缺陷：破坏性操作主按钮语义混淆、上传中表单未锁定、触控热区低于 44px。
+  2. **B 轨（机器确定性规则扫描）**：
+     - `pnpm detect:slop` 扫描拦截并消除了 side-tab 强调色边框反模式。
+  3. **Polish 打磨落地**：
+     - 彻底消除假想 Token，全量收敛到 `tokens.css` 原生语义变量（`--ink-0/1/2`, `--line`, `--paper-1/2`, `--radius-1/2`, `--duration-1`）；
+     - 为 Dropzone 补齐 `role="button"`、`tabindex="0"`、`aria-label` 与回车/空格触发，图标换用物理装订典藏隐喻 `archive`；
+     - 增加文件名与大小组合 Deduplicate 去重机制，并增补鲜明的 `原有 X 页 ➔ 新选 Y 页（增减比对）` 物理指示牌，首尾长文件名做单行文本截断；
+     - 上传激活时对 Dropzone、Radio、Select、Cancel 加锁（`is-submitting`），多章节全量重置模式下操作按钮升级为 `danger` 警示态；
+     - 勾选框 `.replace-ack` 增加 ≥44px 触控垫高，断点收敛至全站统一的 `681px`。
+- **验证**：
+  - `pnpm test:py`（`backend/test_replace_pages.py`）单章节、多章节与事务回滚单测全绿；
+  - `vp test src/__tests__/ReplacePages.spec.ts` 3/3 单元测试全绿；
+  - `pnpm detect:slop src/components/detail/ReplacePagesModal.vue` 0 finding（100% 洁净）；
+  - `pnpm critique write replace-pages ...` 成功落盘评审快照；
+  - `vp check` 全站 183 文件代码格式通过、141 文件 0 error / 0 warning。

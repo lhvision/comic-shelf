@@ -18,6 +18,7 @@ import MetadataPanel from '@/components/MetadataPanel.vue'
 import PageIndexGrid from '@/components/detail/PageIndexGrid.vue'
 import EditMetadataModal from '@/components/detail/EditMetadataModal.vue'
 import AppendPagesModal from '@/components/detail/AppendPagesModal.vue'
+import ReplacePagesModal from '@/components/detail/ReplacePagesModal.vue'
 import type { ComicDetail } from '@/types'
 
 /**
@@ -51,6 +52,7 @@ const loading = ref(!detail.value)
 const caching = ref(false)
 const editOpen = ref(false)
 const appendOpen = ref(false)
+const replaceOpen = ref(false)
 let loadAbortController: AbortController | null = null
 
 const lastRead = useLastRead(source, sourceId)
@@ -323,12 +325,14 @@ function startReading(page = progressEl.value || 1) {
         :page-count="detail.meta.page_count"
         :can-write="canWrite"
         :source="source"
+        :custom-pages="detail.meta.custom_pages"
         @start-reading="startReading"
         @cache-all="cacheAll"
         @refresh-metadata="refreshMetadata"
         @remove-comic="removeComic"
         @edit-metadata="editOpen = true"
         @append-pages="appendOpen = true"
+        @replace-pages="replaceOpen = true"
       />
 
       <ChapterIndex
@@ -372,6 +376,19 @@ function startReading(page = progressEl.value || 1) {
           () => {
             appendOpen = false
             load(true)
+          }
+        "
+      />
+
+      <ReplacePagesModal
+        :open="replaceOpen"
+        :meta="detail.meta"
+        @cancel="replaceOpen = false"
+        @replaced="
+          () => {
+            replaceOpen = false
+            load(true)
+            store.load()
           }
         "
       />

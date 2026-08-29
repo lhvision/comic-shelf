@@ -40,6 +40,7 @@ export interface ComicMeta {
   hidden_from_guest?: boolean
   cover_count: number
   cover_indices?: number[]
+  custom_pages?: boolean
   source_url: string
   pages: PageRecord[]
   imported_at: string

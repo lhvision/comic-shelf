@@ -53,6 +53,7 @@ from .models import (
     MetadataUpdateRequest,
     PageResponse,
     ProviderInfo,
+    ReplacePathRequest,
 )
 from .providers import get_provider, provider_list
 
@@ -434,6 +435,45 @@ def append_local_comic(source_id: str, req: LocalAppendRequest) -> ComicDetail:
     return store.detail(meta)
 
 
+@app.post("/api/library/{source}/{source_id}/replace-pages", response_model=ComicDetail)
+async def replace_comic_pages(
+    source: str,
+    source_id: str,
+    chapter_id: str = Query(default="", description="目标章节 id（多章节漫画可选）"),
+    files: list[UploadFile] = File(...),
+) -> ComicDetail:
+    _require_known_source(source)
+    file_tuples: list[tuple[str, bytes]] = []
+    for f in files:
+        content = await f.read()
+        if content:
+            file_tuples.append((f.filename or "page.webp", content))
+
+    meta = await asyncio.to_thread(
+        store.replace_pages,
+        source=source,
+        source_id=source_id,
+        files=file_tuples,
+        target_chapter=chapter_id,
+    )
+    return store.detail(meta)
+
+
+@app.post("/api/library/{source}/{source_id}/replace-path", response_model=ComicDetail)
+def replace_comic_pages_from_path(
+    source: str,
+    source_id: str,
+    req: ReplacePathRequest,
+) -> ComicDetail:
+    _require_known_source(source)
+    meta = store.replace_pages(
+        source=source,
+        source_id=source_id,
+        server_path=req.server_path,
+        target_chapter=req.target_chapter,
+    )
+    return store.detail(meta)
+
 
 @app.patch("/api/library/{source}/{source_id}/favorite", response_model=FavoriteResponse)
 def set_favorite(source: str, source_id: str, req: FavoriteRequest) -> FavoriteResponse:
@@ -467,6 +507,9 @@ def cache_all(source: str, source_id: str) -> CacheProgress:
     fetched = store.load_fetched(source, source_id)
     if fetched is None:
         raise HTTPException(status_code=404, detail="本子还没有导入本地书库")
+
+    if fetched.meta.custom_pages:
+        raise HTTPException(status_code=400, detail="该漫画画页已由馆长重新装订保护，禁止远端自动覆盖。")
 
     start_job(source, source_id, lambda job: _prefetch_worker(job, fetched, fetched.meta.cover_count, True))
 
@@ -646,6 +689,11 @@ def _prefetch_worker(
 ) -> None:
     """Run inside a background thread; keeps job progress fresh for polling."""
     meta = fetched.meta
+    if meta.custom_pages:
+        job["status"] = "done"
+        job["prefetched"] = meta.page_count
+        job["total"] = meta.page_count
+        return
 
     def _on_progress(done: int, total: int) -> None:
         job["prefetched"] = done
