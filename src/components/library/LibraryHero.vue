@@ -17,21 +17,21 @@ withDefaults(
   <section class="hero container" :class="{ 'hero--single': !$slots.import }">
     <div class="hero-copy">
       <p class="eyebrow">Read · Keep · Revisit</p>
-      <h1>读过的，<br />都收进纸间。</h1>
+      <h1>读过的，<br class="hero-br" />都收进纸间。</h1>
       <p class="hero-lede">
         纸间是私人漫画收藏夹：把看过的作品收进来，喜欢的打上标记，
         之后只从本地打开与重读，不再给漫画站添重复请求。
       </p>
       <div class="hero-stats" aria-label="书库统计">
-        <div>
+        <div class="hero-stat-item">
           <strong>{{ bookCount }}</strong>
           <span>本藏书</span>
         </div>
-        <div>
+        <div class="hero-stat-item">
           <strong>{{ cachedPages }}</strong>
           <span>页已本地化</span>
         </div>
-        <div>
+        <div class="hero-stat-item">
           <strong>{{ totalPages }}</strong>
           <span>页总藏量</span>
         </div>
@@ -78,7 +78,7 @@ withDefaults(
   border-top: 1px solid var(--line);
 }
 
-.hero-stats div {
+.hero-stats .hero-stat-item {
   display: grid;
   gap: 0.1rem;
 }
@@ -103,9 +103,54 @@ withDefaults(
   }
 }
 
-@media (max-width: 560px) {
+@media (max-width: 640px) {
+  .hero {
+    padding-block: var(--space-4) var(--space-2);
+    gap: var(--space-3);
+  }
+
+  .hero.hero--single {
+    padding-block: var(--space-4) var(--space-2);
+  }
+
+  .hero .eyebrow,
+  .hero-lede {
+    display: none;
+  }
+
+  .hero h1 {
+    font-size: var(--text-md);
+    line-height: 1.25;
+    letter-spacing: 0.02em;
+  }
+
+  .hero-br {
+    display: none;
+  }
+
   .hero-stats {
-    gap: var(--space-4);
+    display: flex;
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: var(--space-3);
+    margin-top: var(--space-2);
+    padding-top: 0;
+    border-top: none;
+  }
+
+  .hero-stats .hero-stat-item {
+    display: inline-flex;
+    align-items: baseline;
+    gap: 0.25rem;
+  }
+
+  .hero-stats strong {
+    font-size: var(--text-md);
+  }
+
+  .hero-stats span {
+    font-size: var(--text-caption);
   }
 }
 </style>

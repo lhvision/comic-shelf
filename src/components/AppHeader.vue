@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { useScroll } from '@vueuse/core'
+import { useEventListener, useResizeObserver, useScroll } from '@vueuse/core'
 import { api, onAuthSuccess } from '@/api/client'
 import { useAuth } from '@/composables/useAuth'
 import { useBrandIcon } from '@/composables/useBrandIcon'
@@ -26,7 +26,14 @@ const { brandIcon } = useBrandIcon()
 const { openModal: openGuestModal } = useGuestPasses()
 
 const navScrollEl = ref<HTMLElement | null>(null)
-const { arrivedState } = useScroll(navScrollEl)
+const { arrivedState, measure } = useScroll(navScrollEl)
+
+useResizeObserver(navScrollEl, () => {
+  measure()
+})
+useEventListener('resize', () => {
+  measure()
+})
 
 const navItems = computed<NavItem[]>(() => {
   const items: NavItem[] = [
@@ -175,6 +182,8 @@ onAuthSuccess(fetchProviders)
   border-bottom: 1px solid var(--line);
   background: color-mix(in oklab, var(--paper-0) 82%, transparent);
   backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  transform: translateZ(0);
 }
 
 .header-left {
@@ -335,10 +344,12 @@ onAuthSuccess(fetchProviders)
 }
 
 .guest-roster-btn {
+  position: relative;
   display: inline-flex;
   align-items: center;
   gap: var(--space-1);
   padding: var(--space-1) var(--space-2);
+  line-height: 1.5;
   background: var(--paper-1);
   border: 1px solid var(--line);
   border-radius: var(--radius-1);
@@ -358,10 +369,12 @@ onAuthSuccess(fetchProviders)
 }
 
 .auth-badge-btn {
+  position: relative;
   display: inline-flex;
   align-items: center;
   gap: var(--space-1);
   padding: var(--space-1) var(--space-2);
+  line-height: 1.5;
   background: var(--paper-1);
   border: 1px solid var(--line);
   border-radius: var(--radius-1);
@@ -409,12 +422,16 @@ onAuthSuccess(fetchProviders)
 
 @media (max-width: 640px) {
   .site-header {
-    gap: var(--space-2-5);
+    gap: var(--space-2);
     padding: 0 var(--space-3);
   }
 
   .header-left {
-    gap: var(--space-2-5);
+    gap: var(--space-2);
+  }
+
+  .header-right {
+    gap: var(--space-2);
   }
 
   .header-note {
@@ -422,7 +439,7 @@ onAuthSuccess(fetchProviders)
   }
 
   .site-nav {
-    gap: var(--space-2-5);
+    gap: var(--space-2);
     padding: 0 var(--space-1);
   }
 
@@ -440,15 +457,32 @@ onAuthSuccess(fetchProviders)
     height: 2rem;
   }
 
-  .guest-roster-label {
+  .guest-roster-label,
+  .auth-label {
     display: none;
   }
 
-  .guest-roster-btn {
-    min-width: 36px;
-    height: 36px;
+  .guest-roster-btn,
+  .auth-badge-btn {
+    width: var(--control-sm);
+    height: var(--control-sm);
+    min-width: var(--control-sm);
+    min-height: var(--control-sm);
     padding: 0;
     justify-content: center;
+  }
+}
+
+@media (max-width: 640px) and (pointer: coarse) {
+  .guest-roster-btn::before,
+  .auth-badge-btn::before {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    min-width: 44px;
+    min-height: 44px;
   }
 }
 </style>

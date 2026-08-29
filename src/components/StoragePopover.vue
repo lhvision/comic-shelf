@@ -233,6 +233,7 @@ function cancelReset() {
   align-items: center;
   gap: var(--space-1-5);
   padding: var(--space-1) var(--space-2);
+  line-height: 1.5;
   background: var(--paper-1);
   border: 1px solid var(--line);
   border-radius: var(--radius-1);
@@ -505,15 +506,29 @@ function cancelReset() {
 }
 
 @media (max-width: 640px) {
+  .storage-label {
+    display: none;
+  }
+
   .storage-badge-btn {
-    min-width: 44px;
-    min-height: 44px;
+    width: var(--control-sm);
+    height: var(--control-sm);
+    min-width: var(--control-sm);
+    min-height: var(--control-sm);
     padding: 0;
     justify-content: center;
   }
+}
 
-  .storage-label {
-    display: none;
+@media (max-width: 640px) and (pointer: coarse) {
+  .storage-badge-btn::before {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    min-width: 44px;
+    min-height: 44px;
   }
 }
 

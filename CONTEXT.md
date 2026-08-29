@@ -96,6 +96,9 @@
 - **周期性更新检查（Periodic Service Worker Update Check）**：应用在长期待机或回到前台时，在后台以 `cache: 'no-store'` 每小时静默探测远端 `sw.js` 脚本哈希并触发更新，避免读者客户端被旧版本 Service Worker 僵死。
 - **意图预热（Prefetch on Intent）**：在读者光标悬停（`pointerenter`）、键盘聚焦（`focusin`）或触屏接触（`touchstart`）时，静默并发预热目标视图组件 chunk 与详情元数据（写入 `useMemoize` 内存），将异步模块拉取与接口耗时无感消化在读者的决策延迟（100~300ms）内。
 - **即时元数据占位（SWR Hero Placeholder）**：跨页面跳转进入详情页时，优先直接复用书架 Store 已持有的 `LibrarySummary` 渲染顶部 Hero 真实标题与封面，使共享封面形变（`comic-cover-active`）精准生效，杜绝抓取纯灰骨架屏导致的二次闪烁与排版跳变。
+- **顶栏控件组（Header Control Group）**：顶栏右侧承载设备存储状态（`StoragePopover`）、访客簿（`GuestModal`）与身份认证（`useAuth`）的操作按钮集合。在桌面端以「图标 + 紧凑单源字体标签」呈现；在移动端（`≤640px`）统一步调收敛为 36px 正方形纸印图标按钮（`--control-sm`），文字无感隐退，通过视觉印章与提示语对齐，触控命中区经由伪元素平滑扩展至 44px 标准。
+- **紧凑首屏标语（Compact Hero Banner）**：书架首屏 `LibraryHero` 的响应式形态。桌面端展开双栏文学宣言与大号统计；移动端（`≤640px`）自动收紧为单行标题与单行内联统计点缀（`本数 · 本地页 · 总页`），折叠长篇说明，释放首屏 70% 纵向空间，让书单与搜索框在手机第一屏即可直接阅读。
+- **移动端收录折叠卡片（Collapsible Import Panel）**：馆长身份下收录面板在移动端的紧凑形态。默认折叠为单行「+ 收录新作品」轻量卡片，点击平滑展开完整输入与并发设置，杜绝在手机首屏对书单的视线遮挡。
 - **静态扩展名别名与边缘强缓存（Static Extension Aliasing & Edge Cache）**：为了让 Cloudflare 等通用 CDN 默认识别静态图片并激活边缘缓存，图片二进制与缩略图端点同时暴露语义化扩展名别名（`.webp`、`.jpg`），彻底杜绝无后缀动态请求反复穿透家庭宽带跨洋回源。
 - **探针静音与访问日志门禁（Probe Quiet Filtering & Access Log Gate）**：Uvicorn 访问流水日志过滤机制。对容器健康探针与高频心跳在返回 200 正常时默认静音，仅在异常报错时输出；支持环境变量彻底关闭请求日志，消除控制台刷屏。
 - **内外网分流（Split-Horizon DNS）**：纸间倡导的局域网与公网融合网络拓扑。同一域名在家庭局域网内通过本地 DNS 重写直连 NAS 内网 IP，享受千兆内网零延迟；公网环境下解析至 Cloudflare 命中边缘缓存，兼顾多端单点登录、PWA 离线缓存隔离与极致阅览性能。

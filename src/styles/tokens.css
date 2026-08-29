@@ -157,3 +157,15 @@
     --shadow-3: 0 30px 70px rgb(0 0 0 / 52%);
   }
 }
+
+@property --mask-left {
+  syntax: '<length>';
+  inherits: false;
+  initial-value: 0px;
+}
+
+@property --mask-right {
+  syntax: '<length>';
+  inherits: false;
+  initial-value: 0px;
+}

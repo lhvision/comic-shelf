@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, onMounted, ref, useId, watch } from 'vue'
 import { useRouter } from 'vue-router'
+import { useEventListener } from '@vueuse/core'
 import { useLibraryStore } from '@/stores/library'
 import { useAppSettings } from '@/stores/settings'
 import { useToast } from '@/composables/useToast'
@@ -21,6 +22,14 @@ const { withViewTransition } = useViewTransition()
 
 const submitBtnRef = ref<HTMLButtonElement | null>(null)
 const stepperRef = ref<HTMLElement | null>(null)
+const contentId = useId()
+const isMobileExpanded = ref(false)
+
+useEventListener('resize', () => {
+  if (typeof window !== 'undefined' && window.innerWidth > 640 && isMobileExpanded.value) {
+    isMobileExpanded.value = false
+  }
+})
 
 onMounted(() => {
   void settings.load()
@@ -108,179 +117,207 @@ function incConcurrency() {
 </script>
 
 <template>
-  <section class="import-panel" aria-labelledby="import-title">
-    <div class="import-info">
-      <div class="panel-tabs">
-        <button
-          class="panel-tab"
-          :class="{ 'is-active': activeTab === 'jm' }"
-          type="button"
-          @click="activeTab = 'jm'"
-        >
-          禁漫车号
-        </button>
-        <button
-          class="panel-tab"
-          :class="{ 'is-active': activeTab === 'local' }"
-          type="button"
-          @click="activeTab = 'local'"
-        >
-          本地自建 / 拆帧
-        </button>
-      </div>
+  <section
+    class="import-panel"
+    :class="{ 'is-mobile-collapsed': !isMobileExpanded }"
+    aria-labelledby="import-title"
+  >
+    <button
+      type="button"
+      class="mobile-collapse-bar"
+      :aria-expanded="isMobileExpanded"
+      :aria-controls="contentId"
+      @click="isMobileExpanded = !isMobileExpanded"
+    >
+      <span class="mobile-collapse-lead">
+        <AppIcon name="plus" size="xs" :stroke-width="2" />
+        <span>收录新作品 / 本地图集</span>
+      </span>
+      <span class="mobile-collapse-action font-mono">
+        <span class="action-text">{{ isMobileExpanded ? '收起' : '展开' }}</span>
+        <AppIcon
+          name="chevron-down"
+          size="xs"
+          class="collapse-chevron"
+          :class="{ 'is-rotated': isMobileExpanded }"
+        />
+      </span>
+    </button>
 
-      <p class="eyebrow" id="import-title">
-        {{ activeTab === 'jm' ? 'IMPORT / 收录' : 'LOCAL ARCHIVE / 自建' }}
-      </p>
-      <h2>{{ activeTab === 'jm' ? '放进纸间' : '收录本地图集' }}</h2>
-      <p class="hint">
-        {{
-          activeTab === 'jm'
-            ? '输入禁漫车号。首次收录会读取元数据并缓存前 4 页做封面；之后永远先读本地，不再打扰远端。'
-            : '输入服务器目录（如 public/tiya-frames）一键扫描收录，或进入工坊上传多图与多章节。'
-        }}
-      </p>
-    </div>
-
-    <div class="import-controls">
-      <!-- JM Tab Form -->
-      <template v-if="activeTab === 'jm'">
-        <form class="import-form" @submit.prevent="submit">
-          <label class="field import-field">
-            <span class="field-prefix">JM</span>
-            <input
-              v-model="id"
-              type="text"
-              inputmode="numeric"
-              autocomplete="off"
-              placeholder="523607"
-              aria-label="禁漫车号"
-            />
-          </label>
+    <div :id="contentId" class="import-content">
+      <div class="import-info">
+        <div class="panel-tabs">
           <button
-            ref="submitBtnRef"
-            class="import-submit-btn"
-            type="submit"
-            :disabled="!canSubmit || store.importing"
-            aria-label="收录到纸间"
+            class="panel-tab"
+            :class="{ 'is-active': activeTab === 'jm' }"
+            type="button"
+            @click="activeTab = 'jm'"
           >
-            <span class="vertical-text">
-              <span v-for="(char, idx) in jmBtnText" :key="idx">{{ char }}</span>
-            </span>
+            禁漫车号
           </button>
-        </form>
-      </template>
-
-      <!-- Local Tab Form -->
-      <template v-else>
-        <form class="import-form" @submit.prevent="submitLocalPath">
-          <label class="field import-field">
-            <span class="field-prefix">PATH</span>
-            <input
-              v-model="localPath"
-              type="text"
-              autocomplete="off"
-              placeholder="public/tiya-frames"
-              aria-label="服务器本地目录路径"
-            />
-          </label>
           <button
-            class="import-submit-btn"
-            type="submit"
-            :disabled="!localPath.trim() || localImporting"
-            aria-label="一键收录"
+            class="panel-tab"
+            :class="{ 'is-active': activeTab === 'local' }"
+            type="button"
+            @click="activeTab = 'local'"
           >
-            <span class="vertical-text">
-              <span v-for="(char, idx) in localBtnText" :key="idx">{{ char }}</span>
-            </span>
-          </button>
-        </form>
-
-        <div class="workshop-card">
-          <span class="workshop-hint">需要上传多图或编排多章节？</span>
-          <button class="workshop-btn" type="button" @click="goToWorkshop">
-            进入自建图集工坊 →
+            本地自建 / 拆帧
           </button>
         </div>
-      </template>
 
-      <div class="download-settings" :aria-busy="settings.loading">
-        <div class="download-settings__row">
-          <label class="cache-check">
-            <input v-model="prefetchAll" type="checkbox" />
-            <span>同时缓存全部页面</span>
-          </label>
-          <Tooltip
-            id="cache-all-tip"
-            tip="收录时直接把所有章节与页面下载到本地磁盘（适合整本离线保存）。不勾选则仅缓存前 4 页封面，后续页面在翻阅时按需秒级懒下载。"
-            side="top"
-          >
-            <button class="tooltip-icon" type="button" aria-label="关于缓存全部页面">
-              <AppIcon name="info" size="xs" />
-            </button>
-          </Tooltip>
-        </div>
-
-        <div class="download-settings__row">
-          <span class="download-settings__title">下载并发</span>
-          <Tooltip
-            id="concurrency-tip"
-            tip="同时下载的页数：调大缓存更快，太高容易被 CDN 限流拖慢服务。"
-            side="top"
-          >
-            <button class="tooltip-icon" type="button" aria-label="关于下载并发">
-              <AppIcon name="info" size="xs" />
-            </button>
-          </Tooltip>
-
-          <div
-            v-if="!settings.envControlled"
-            ref="stepperRef"
-            class="stepper"
-            role="group"
-            aria-label="同时下载页数"
-          >
-            <button
-              class="stepper__btn"
-              type="button"
-              :disabled="settings.concurrency <= settings.min || settings.loading"
-              aria-label="减少下载并发"
-              @click="decConcurrency"
-            >
-              −
-            </button>
-            <span class="stepper__value">{{ settings.concurrency }}</span>
-            <button
-              class="stepper__btn"
-              type="button"
-              :disabled="settings.concurrency >= settings.max || settings.loading"
-              aria-label="增加下载并发"
-              @click="incConcurrency"
-            >
-              ＋
-            </button>
-          </div>
-
-          <span v-else class="stepper__value stepper__value--locked">{{
-            settings.concurrency
-          }}</span>
-          <span class="download-settings__unit">路 / 次</span>
-        </div>
-        <p v-if="settings.envControlled" class="download-settings__locked">
-          已由环境变量 <code>COMIC_SHELF_MAX_CONCURRENT_DOWNLOADS</code> 锁定，界面不可改。
+        <p class="eyebrow" id="import-title">
+          {{ activeTab === 'jm' ? 'IMPORT / 收录' : 'LOCAL ARCHIVE / 自建' }}
+        </p>
+        <h2>{{ activeTab === 'jm' ? '放进纸间' : '收录本地图集' }}</h2>
+        <p class="hint">
+          {{
+            activeTab === 'jm'
+              ? '输入禁漫车号。首次收录会读取元数据并缓存前 4 页做封面；之后永远先读本地，不再打扰远端。'
+              : '输入服务器目录（如 public/tiya-frames）一键扫描收录，或进入工坊上传多图与多章节。'
+          }}
         </p>
       </div>
-    </div>
 
-    <Transition name="message-fade">
-      <div v-if="store.importMessage" class="import-message" role="status">
-        {{ store.importMessage }}
+      <div class="import-controls">
+        <!-- JM Tab Form -->
+        <template v-if="activeTab === 'jm'">
+          <form class="import-form" @submit.prevent="submit">
+            <label class="field import-field">
+              <span class="field-prefix">JM</span>
+              <input
+                v-model="id"
+                type="text"
+                inputmode="numeric"
+                autocomplete="off"
+                placeholder="523607"
+                aria-label="禁漫车号"
+              />
+            </label>
+            <button
+              ref="submitBtnRef"
+              class="import-submit-btn"
+              type="submit"
+              :disabled="!canSubmit || store.importing"
+              aria-label="收录到纸间"
+            >
+              <span class="vertical-text">
+                <span v-for="(char, idx) in jmBtnText" :key="idx">{{ char }}</span>
+              </span>
+            </button>
+          </form>
+        </template>
+
+        <!-- Local Tab Form -->
+        <template v-else>
+          <form class="import-form" @submit.prevent="submitLocalPath">
+            <label class="field import-field">
+              <span class="field-prefix">PATH</span>
+              <input
+                v-model="localPath"
+                type="text"
+                autocomplete="off"
+                placeholder="public/tiya-frames"
+                aria-label="服务器本地目录路径"
+              />
+            </label>
+            <button
+              class="import-submit-btn"
+              type="submit"
+              :disabled="!localPath.trim() || localImporting"
+              aria-label="一键收录"
+            >
+              <span class="vertical-text">
+                <span v-for="(char, idx) in localBtnText" :key="idx">{{ char }}</span>
+              </span>
+            </button>
+          </form>
+
+          <div class="workshop-card">
+            <span class="workshop-hint">需要上传多图或编排多章节？</span>
+            <button class="workshop-btn" type="button" @click="goToWorkshop">
+              进入自建图集工坊 →
+            </button>
+          </div>
+        </template>
+
+        <div class="download-settings" :aria-busy="settings.loading">
+          <div class="download-settings__row">
+            <label class="cache-check">
+              <input v-model="prefetchAll" type="checkbox" />
+              <span>同时缓存全部页面</span>
+            </label>
+            <Tooltip
+              id="cache-all-tip"
+              tip="收录时直接把所有章节与页面下载到本地磁盘（适合整本离线保存）。不勾选则仅缓存前 4 页封面，后续页面在翻阅时按需秒级懒下载。"
+              side="top"
+            >
+              <button class="tooltip-icon" type="button" aria-label="关于缓存全部页面">
+                <AppIcon name="info" size="xs" />
+              </button>
+            </Tooltip>
+          </div>
+
+          <div class="download-settings__row">
+            <span class="download-settings__title">下载并发</span>
+            <Tooltip
+              id="concurrency-tip"
+              tip="同时下载的页数：调大缓存更快，太高容易被 CDN 限流拖慢服务。"
+              side="top"
+            >
+              <button class="tooltip-icon" type="button" aria-label="关于下载并发">
+                <AppIcon name="info" size="xs" />
+              </button>
+            </Tooltip>
+
+            <div
+              v-if="!settings.envControlled"
+              ref="stepperRef"
+              class="stepper"
+              role="group"
+              aria-label="同时下载页数"
+            >
+              <button
+                class="stepper__btn"
+                type="button"
+                :disabled="settings.concurrency <= settings.min || settings.loading"
+                aria-label="减少下载并发"
+                @click="decConcurrency"
+              >
+                −
+              </button>
+              <span class="stepper__value">{{ settings.concurrency }}</span>
+              <button
+                class="stepper__btn"
+                type="button"
+                :disabled="settings.concurrency >= settings.max || settings.loading"
+                aria-label="增加下载并发"
+                @click="incConcurrency"
+              >
+                ＋
+              </button>
+            </div>
+
+            <span v-else class="stepper__value stepper__value--locked">{{
+              settings.concurrency
+            }}</span>
+            <span class="download-settings__unit">路 / 次</span>
+          </div>
+          <p v-if="settings.envControlled" class="download-settings__locked">
+            已由环境变量 <code>COMIC_SHELF_MAX_CONCURRENT_DOWNLOADS</code> 锁定，界面不可改。
+          </p>
+        </div>
       </div>
-    </Transition>
 
-    <ul v-if="warnings.length" class="import-warnings">
-      <li v-for="warning in warnings" :key="warning">{{ warning }}</li>
-    </ul>
+      <Transition name="message-fade">
+        <div v-if="store.importMessage" class="import-message" role="status">
+          {{ store.importMessage }}
+        </div>
+      </Transition>
+
+      <ul v-if="warnings.length" class="import-warnings">
+        <li v-for="warning in warnings" :key="warning">{{ warning }}</li>
+      </ul>
+    </div>
   </section>
 </template>
 
@@ -651,6 +688,22 @@ function incConcurrency() {
   font-size: var(--text-xs);
 }
 
+.mobile-collapse-bar {
+  display: none;
+}
+
+.import-content {
+  display: contents;
+}
+
+.collapse-chevron {
+  transition: transform var(--duration-2) var(--ease-spring);
+}
+
+.collapse-chevron.is-rotated {
+  transform: rotate(180deg);
+}
+
 @media (max-width: 760px) {
   .import-panel {
     grid-template-columns: 1fr;
@@ -670,6 +723,62 @@ function incConcurrency() {
 
   .import-field {
     min-height: 3.25rem;
+  }
+}
+
+@media (max-width: 640px) {
+  .mobile-collapse-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    width: 100%;
+    min-height: 2.75rem;
+    padding: var(--space-2) var(--space-3);
+    background: transparent;
+    border: 0;
+    color: var(--accent-strong);
+    cursor: pointer;
+    font-family: var(--font-body);
+    font-size: var(--text-sm);
+  }
+
+  .mobile-collapse-lead {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-1-5);
+    font-weight: 600;
+  }
+
+  .mobile-collapse-action {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-1);
+    font-size: var(--text-xs);
+    color: var(--ink-2);
+  }
+
+  .import-panel.is-mobile-collapsed {
+    display: flex;
+    padding: 0;
+    border: 1px dashed color-mix(in oklab, var(--accent) 35%, var(--line));
+    border-radius: var(--radius-2);
+    background: color-mix(in oklab, var(--paper-1) 60%, var(--paper-0));
+    box-shadow: none;
+  }
+
+  .import-panel.is-mobile-collapsed .import-content {
+    display: none;
+  }
+
+  .import-panel:not(.is-mobile-collapsed) {
+    grid-template-columns: 1fr;
+    padding: var(--space-3-5);
+    gap: var(--space-3-5);
+  }
+
+  .import-panel:not(.is-mobile-collapsed) .mobile-collapse-bar {
+    padding: 0 0 var(--space-2) 0;
+    border-bottom: 1px dashed var(--line);
   }
 }
 </style>

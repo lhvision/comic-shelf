@@ -719,3 +719,28 @@
   - `pnpm critique write guest-modal ...` 评审快照已归档至 `.impeccable/critique/2026-08-29T19-21-10Z__guest-modal.md`；
   - `vp check` 全站 191 个文件代码格式通过、146 个文件 0 warning / 0 error；
   - `vp build` 生产打包 1.21s 成功完成。
+
+## 39. 顶栏控件统一收敛、紧凑首屏与移动端即时渲染优化（Grilling 确认落地）
+
+- **问题复盘**：
+  1. **按钮高度撕裂**：顶栏右侧由「离线存储（`StoragePopover`）」、「访客簿（`guest-roster-btn`）」与「身份通行证（`auth-badge-btn`）」构成。此前在移动端分别写死 44px、36px 与自适应内容高（~28px），造成极其突兀的三级台阶撕裂；
+  2. **移动端占位过大**：`LibraryHero` 在 `≤960px` 折叠为单列后保留全量宣传长文（`hero-lede`）、眉标与大字号标题，加上馆长收录面板（`ImportPanel`），在手机第一屏占据 >500px 高度，完全挤压了书架列表和检索区；
+  3. **DevTools 切换机型样式延迟 / 需滚动才刷新**：
+     - `AppHeader` 的横向滚动渐变羽化遮罩 `useScroll(navScrollEl)` 仅监听滚动事件，视口或容器尺寸变化时 `arrivedState` 未及时计算；
+     - 顶栏毛玻璃合成层在 Chromium 部分版本下切换 Device Metrics 时未主动失效重绘脏矩形。
+- **治理与设计落地**：
+  1. **顶栏操作群（Header Control Group）高度与无障碍双标对齐**：
+     - 桌面端：保留原本轻量典雅的徽章微尺寸（`padding: var(--space-1) var(--space-2)` + `line-height: 1.2`），高度维持在 ~26px 的轻巧纸签质感，杜绝粗笨高按键；
+     - 移动端（`≤640px`）：三按钮统一步调收敛为 36px 正方形纯图标（`storage-label`、`guest-roster-label`、`auth-label` 无感隐退），利用 CSS `::before` 伪元素扩展至 44px 隐形触控热区（兼顾 WCAG 2.5.5 / iOS HIG 触控门禁与手机顶栏紧凑美感）；
+  2. **紧凑首屏标语（Compact Hero Banner）**：
+     - 在 `≤640px` 下隐藏眉标 `eyebrow` 与长句 `hero-lede`，标题字号收拢为单行 `1.25rem`；
+     - 三项统计（藏书、已本地化、总藏量）平直内联为单行流动点缀，将 Hero 区域纵向占位由 >350px 压缩至 ~75px，首屏直达书库；
+  3. **移动端收录折叠卡片（Collapsible Import Panel）**：
+     - 馆长模式下的 `ImportPanel` 在移动端（`≤640px`）默认折叠为单行轻量条（`+ 收录新作品 / 本地图集` + 展开图标），点击顺滑展开完整输入与并发调节，平时绝不霸占第一屏；
+  4. **视口尺寸动态重算与合成层防停滞**：
+     - 在 `AppHeader.vue` 补充 VueUse `useResizeObserver` 与 `useEventListener('resize')`，视口/机型切换瞬间主动触发 `measure()` 同步滚动到达态，遮罩无需滚动即时呈现；
+     - 显式声明 `@property --mask-left` 与 `@property --mask-right`，规范平滑插值；
+     - 顶栏补充 `transform: translateZ(0)`，消除 Chromium DevTools 模拟机型切换时的图层光栅化延迟。
+- **验证**：
+  - `vp check` 0 lint error / 0 type error，代码格式 100% 通过；
+  - `vp test src/__tests__/StoragePopover.spec.ts`、`App.spec.ts`、`GuestPasses.spec.ts`、`useAuth.spec.ts` 全部精准单测通过。
