@@ -9,6 +9,8 @@
 export interface ViewTransitionOptions {
   /** 目标容器元素（用于 element-scoped view transition） */
   element?: HTMLElement | null
+  /** 目标容器元素（兼容别名） */
+  scope?: HTMLElement | null
   /** 视图过渡类型（配合 :active-view-transition-type()） */
   types?: string[]
 }
@@ -38,9 +40,9 @@ export function useViewTransition() {
       return await callback()
     }
 
-    // 若显式指定了 element 作用域（如单图加载、独立按钮状态）
-    if (options?.element !== undefined) {
-      const targetEl = options.element
+    // 若显式指定了 element 或 scope 作用域（如单图加载、独立按钮状态）
+    const targetEl = options?.element ?? options?.scope
+    if (targetEl !== undefined) {
       if (
         targetEl &&
         typeof (targetEl as unknown as { startViewTransition?: unknown }).startViewTransition ===

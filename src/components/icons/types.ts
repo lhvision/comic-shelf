@@ -24,3 +24,5 @@ export type IconName =
   | 'book-open'
   | 'eye'
   | 'eye-off'
+  | 'archive'
+  | 'trash'

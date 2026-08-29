@@ -82,3 +82,8 @@
 - **锚定回退感知与滑动动效（Anchor Fallback & Sliding Indicator）**：利用 `container-type: anchored` 与 `@container anchored(fallback: flip-block)` 纯 CSS 感知碰撞翻转自适应箭头与安全桥；借助动态 `anchor-name` 实现分段选项卡与选单项的纯 CSS 物理滑动胶囊动效。
 - **回到顶部（Back to top / Scroll-to-top）**：纸间长页面（书架、多章节详情）的标准导航辅助微件。采用 VueUse `useWindowScroll` 监听视口（默认 >400px 阈值浮现），以正圆暖纸印章质感呈现，支持自适应 `prefers-reduced-motion` 与键盘焦点平滑转移，阅读器沉浸模式下自动隐身。
 - **防退化门禁（Regression Safety Net）**：全仓多层自动化防御机制，包含前端 `vp check`（TS/Vue 静态检查）、后端 `pnpm test:py`（AST 符号自检 + 真实中间件链路与多章节单测），杜绝改动引发核心功能断裂。
+- **客户端离线缓存（Client Offline Cache / PWA Cache）**：浏览器 Service Worker 与 CacheStorage 在当前设备上存储的静态资产与阅读图片缓存，受本设备存储配额（`StorageManager`）约束。纯客户端生命周期，区别于后端「本地化持久数据（Library Data）」，可由用户随时一键安全清理且绝不影响服务器书库。
+- **分级离线缓存策略（Tiered Offline Caching）**：App Shell 核心静态资产预缓存（Stale-While-Revalidate）、API 动态元数据优先回源（Network-First）、漫画页面原图与缩略图离线命中（Cache-First）配合 LRU 淘汰配额（如 500MB / 1000 张上限）与手动清理。
+- **阅览室存储与设备卡片（Storage & Device Card）**：基于 `AppPopover` 呈现的客户端离线状态微件，承载 PWA 安装状态、存储占用标尺、分项容量明细与图片缓存安全清理。
+- **独立应用与视口检测（PWA Standalone Mode）**：通过 `display-mode: standalone` 媒体查询及 iOS `navigator.standalone` 探测读者是否以桌面/手机独立窗口形式运行纸间，提供无地址栏与沉浸阅读器全屏联动。
+- **周期性更新检查（Periodic Service Worker Update Check）**：应用在长期待机或回到前台时，在后台以 `cache: 'no-store'` 每小时静默探测远端 `sw.js` 脚本哈希并触发更新，避免读者客户端被旧版本 Service Worker 僵死。

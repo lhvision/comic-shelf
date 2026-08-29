@@ -6,6 +6,7 @@ import { api, onAuthSuccess } from '@/api/client'
 import { useAuth } from '@/composables/useAuth'
 import { useBrandIcon } from '@/composables/useBrandIcon'
 import AppIcon from '@/components/AppIcon.vue'
+import StoragePopover from '@/components/StoragePopover.vue'
 import type { ProviderInfo } from '@/types'
 
 interface NavItem {
@@ -113,6 +114,7 @@ onAuthSuccess(fetchProviders)
 
     <div class="header-right">
       <p class="header-note">本地优先 · 缓存后不再访问远端</p>
+      <StoragePopover />
       <button
         v-if="authRequired"
         type="button"

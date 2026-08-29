@@ -32,7 +32,7 @@ async function toggle() {
         emit('toggled', next)
         await api.setFavorite(props.source, props.sourceId, next)
       },
-      { scope: btnRef.value },
+      { element: btnRef.value },
     )
   } finally {
     busy.value = false

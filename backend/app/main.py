@@ -691,23 +691,36 @@ _DIST_DIR = Path(
 )
 
 if _DIST_DIR.exists() and (_DIST_DIR / "index.html").exists():
+    import mimetypes
     from fastapi.staticfiles import StaticFiles
     from starlette.exceptions import HTTPException
+
+    mimetypes.add_type("application/manifest+json", ".webmanifest")
 
     class SPAStaticFiles(StaticFiles):
         """SPA-aware static file handler: falls back to index.html for client routes on 404."""
 
         async def get_response(self, path: str, scope):
             try:
-                return await super().get_response(path, scope)
+                response = await super().get_response(path, scope)
             except HTTPException as ex:
                 if ex.status_code == 404:
                     filename = Path(path).name
                     # If target has a file extension (e.g. .js, .png, .json), it is a missing static file -> keep 404
                     is_file_request = "." in filename and not filename.startswith(".")
                     if not is_file_request:
-                        return await super().get_response("index.html", scope)
+                        response = await super().get_response("index.html", scope)
+                        response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+                        return response
                 raise
+
+            clean_path = path.strip("/")
+            if clean_path in ("", "index.html", "sw.js", "registerSW.js", "manifest.webmanifest"):
+                response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+            elif clean_path.startswith("assets/"):
+                response.headers["Cache-Control"] = "public, max-age=31536000, immutable"
+
+            return response
 
     app.mount(
         "/",

@@ -355,24 +355,15 @@ defineExpose({
   border-left: none;
 }
 
-/* 容器查询回退检测（翻转时自动对调箭头） */
-@container anchored(fallback: flip-block) {
-  .app-popover-panel.side-bottom::before {
-    top: auto;
-    bottom: -0.32rem;
-    border-bottom: 1px solid var(--line-strong);
-    border-right: 1px solid var(--line-strong);
-    border-top: none;
-    border-left: none;
-  }
-  .app-popover-panel.side-top::before {
-    bottom: auto;
-    top: -0.32rem;
-    border-top: 1px solid var(--line-strong);
-    border-left: 1px solid var(--line-strong);
-    border-bottom: none;
-    border-right: none;
-  }
+.app-popover-panel.align-end::before {
+  left: auto;
+  right: var(--space-4);
+}
+
+.app-popover-panel.align-center::before {
+  left: 50%;
+  right: auto;
+  translate: -50% 0;
 }
 
 /* 锚点定位与 Popover 不可用时的绝对定位优雅降级 */

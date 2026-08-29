@@ -313,7 +313,25 @@ docker push yourname/paper-room:v1.0.0
 
 ---
 
-## 8. 和 Vite+ / vp 的关系说明
+## 8. PWA 与生产静态缓存防线（重要）
+
+纸间已原生集成 PWA（渐进式 Web 应用）与 Service Worker 离线运行能力：
+
+1. **安全上下文（HTTPS 要求）**：
+   - 现代浏览器（Chrome / Safari / Edge / Firefox）规范强制要求：**Service Worker 与 PWA 安装必须在安全上下文（HTTPS 或 `localhost`）下运行**；
+   - 本机开发（`localhost:8000` / `localhost:5173`）浏览器默认视为安全上下文，可直接测试安装；
+   - 若部署于内网 NAS（如 `http://192.168.1.100:8000`）或公网 VPS，建议前置反向代理（Nginx / Caddy / NPM / Cloudflare Tunnel）并配置 SSL 证书（HTTPS），方可开启独立应用安装与离线运行能力。
+2. **反向代理 Cache-Control 防死锁准则**：
+   - 纸间后端的 `SPAStaticFiles` 中间件已对关键入口下发了严格的防死锁标头：
+     - `/`、`/index.html`、`/sw.js`、`/registerSW.js`、`/manifest.webmanifest`：强制 `Cache-Control: no-cache, no-store, must-revalidate`；
+     - `/assets/*`（带内容指纹静态资源）：下发 `Cache-Control: public, max-age=31536000, immutable`；
+   - **反代配置警告**：若使用自建 Nginx / Caddy 反代，**切勿**对 `/` 或 `sw.js` 覆盖为持久强缓存，否则会导致客户端 Service Worker 永久死锁在旧版本无法自动更新。
+3. **MIME 类型保障**：
+   - 后端已在 Python 层面显式注册 `.webmanifest` 映射为 `application/manifest+json`，保障无论在何种精简 Docker 镜像或宿主机下，浏览器都能正确识别应用清单。
+
+---
+
+## 9. 和 Vite+ / vp 的关系说明
 
 仓库已全面迁移至 Vite+：
 

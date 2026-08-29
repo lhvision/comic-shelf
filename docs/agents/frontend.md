@@ -23,14 +23,18 @@
 | `src/composables/useLastRead.ts`               | 每部作品继续阅读页码持久化读写                                             |
 | `src/composables/useToast.ts`                  | 全局轻量印章通知 Toast 状态机（支持 info / error / success 三态提示）      |
 | `src/composables/useHtmlCanvas.ts`             | HTML-in-Canvas 实验特性检测与支持度判定                                    |
+| `src/composables/useOfflineStorage.ts`         | 端侧离线物理存储探测与分级清理状态机（StorageManager + CacheStorage 统计） |
+| `src/composables/usePwaInstall.ts`             | PWA 安装与独立应用视口检测状态机（`beforeinstallprompt` + Standalone）     |
+| `src/pwa.ts`                                   | PWA Service Worker 注册与每小时周期性静默更新检查调度器                    |
 | `src/components/AuthModal.vue`                 | 访问口令门禁弹窗：输入密钥、品牌 Logo、双语眉标与错误反馈                  |
 | `src/components/Modal.vue`                     | 通用无障碍二次确认弹窗：焦点圈闭、锁卷与抽屉自适应（用于删除危险操作）     |
 | `src/components/SegmentedTabs.vue`             | 典藏分段选项卡：支持泛型 `TabItem<T>`/字符串、左右/Home/End 键导航与多尺寸 |
 | `src/components/AppButton.vue`                 | 通用典藏按钮：支持 primary / secondary / soft / ghost / danger 多种变体    |
 | `src/components/AppIcon.vue`                   | 零分支矢量图标分发器（基于 `<component :is="ICON_MAP[name]">` 动态渲染）   |
-| `src/components/icons/`                        | 纸间统一矢量图标集（`BaseIcon.vue` 底座 + 21 个原子 `Icon*.vue` 组件）     |
+| `src/components/icons/`                        | 纸间统一矢量图标集（`BaseIcon.vue` 底座 + 23 个原子 `Icon*.vue` 组件）     |
 | `src/components/AppTooltip.vue`                | 现代声明式轻量气泡提示组件（Popover API + CSS Anchor + 悬停安全桥）        |
 | `src/components/AppPopover.vue`                | 现代顶层锚定交互浮层（自动碰撞翻转、轻量失焦关闭）                         |
+| `src/components/StoragePopover.vue`            | 阅览室设备与离线存储管理浮层（3px平直刻度槽/分项账单/双级清理/两步确认）   |
 | `src/components/AppDropdown.vue`               | 现代操作选单与选择器（无依赖 Top Layer + 键盘导航）                        |
 | `src/components/BackToTop.vue`                 | 正圆暖纸印章回到顶部微件（VueUse `useWindowScroll` 视口监听）              |
 | `src/components/CacheProgress.vue`             | 实时缓存进度条与后台任务状态指示                                           |

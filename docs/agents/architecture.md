@@ -13,14 +13,14 @@
 
 ## 2. 技术栈
 
-| 层       | 技术                                                                       |
-| -------- | -------------------------------------------------------------------------- |
-| 前端     | Vite 8 + Vue 3 + TypeScript + Vue Router + Pinia + VueUse                  |
-| 样式     | 原生 CSS：`@layer`、Nesting、`color-mix()`、`oklch()`、`calc()`、`clamp()` |
-| 后端     | Python 3.12+ / 3.14 + FastAPI + uvicorn                                    |
-| 禁漫源   | `jmcomic==2.7.4`（metadata 用 HTML client，图片算法用 `JmImageTool`）      |
-| 图片处理 | Pillow（封面缩略图、解密）                                                 |
-| 识图引擎 | `imsearch`（Docker Sidecar / 本地独立进程，ORB 特征 + 倒排索引）           |
+| 层       | 技术                                                                          |
+| -------- | ----------------------------------------------------------------------------- |
+| 前端     | Vite 8 + Vue 3 + TypeScript + Vue Router + Pinia + VueUse + VitePWA (Workbox) |
+| 样式     | 原生 CSS：`@layer`、Nesting、`color-mix()`、`oklch()`、`calc()`、`clamp()`    |
+| 后端     | Python 3.12+ / 3.14 + FastAPI + uvicorn                                       |
+| 禁漫源   | `jmcomic==2.7.4`（metadata 用 HTML client，图片算法用 `JmImageTool`）         |
+| 图片处理 | Pillow（封面缩略图、解密）                                                    |
+| 识图引擎 | `imsearch`（Docker Sidecar / 本地独立进程，ORB 特征 + 倒排索引）              |
 
 约定：**不用 SCSS**。新增视觉请走 `src/styles/tokens.css` 的设计 token。
 设计基线见 `DESIGN_NOTES.md`：私人阅览室 / 卡片目录，禁紫色渐变，禁玻璃拟态堆叠。
@@ -28,8 +28,8 @@
 ## 3. 架构
 
 ```text
-Browser (Vue 3)
-   │  /api/*
+Browser (Vue 3 + PWA Workbox)
+   │  /api/* (NetworkFirst)
    ▼
 FastAPI (backend/app/main.py)
    │
@@ -57,6 +57,17 @@ backend/data/library/<source>/<source_id>/
 > `chapter` 字段（空串 = 单章节扁平布局）；`ComicMeta.chapters[]` 记录各章节
 > id / 序数 / 标题 / 页数 / 起始全局页（`start`）。这样阅读器页码、继续阅读、
 > 封面、API 路径都不用为章节拆分端点。
+
+### 客户端离线缓存与服务端数据边界（正交隔离）
+
+- **端侧 CacheStorage（PWA 离线运行）**：
+  - `workbox-precache`：HTML/JS/CSS/WebP 应用外壳预缓存；
+  - `manga-images-cache`：漫画原图与缩略图 Cache-First（LRU 限制 1000 篇目 / 30 天）；
+  - `api-metadata-cache`：动态 API Network-First；
+  - **安全红线**：所有针对缓存的查看与清理（`useOfflineStorage`）**100% 局限于端侧浏览器**，零破坏性服务端 API，绝不触碰服务端持久化目录 `backend/data/`。
+- **服务端 SPAStaticFiles 部署中间件**：
+  - 对 `/`、`/index.html`、`/sw.js`、`/registerSW.js`、`/manifest.webmanifest` 强制下发 `Cache-Control: no-cache, no-store, must-revalidate`；
+  - 显式注册 `application/manifest+json` 对应 `.webmanifest`。
 
 ### Provider 扩展点
 

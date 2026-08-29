@@ -58,6 +58,12 @@
 - **统一矢量图标集与现代浮层基建**：
   - 全站图标收敛到 `src/components/icons/`（1.8px 细线条描边 / 朱砂质感），零 Unicode 伪字符（`✕`/`✓`）；
   - 基于 HTML Popover API 与 CSS Anchor Positioning 规范构建现代浮层，包含 `Modal`、`AppPopover`、`AppDropdown` 与带悬停安全桥的 `AppTooltip`。
+- **PWA 独立安装与端侧离线存储管理（`StoragePopover`）**：
+  - **标准 PWA 规范支持**：完整支持桌面/移动端独立窗口安装（Standalone）、离线秒开与后台静默更新，符合 W3C Web App Manifest 与 Service Worker 规范；
+  - **分级离线缓存体系**：基于 Workbox 实现 App Shell 核心资产预缓存 + 漫画原图/缩略图 Cache-First（最大 1000 篇目 LRU 自动淘汰）+ API 元数据 Network-First；
+  - **端侧存储独立账单与安全边界**：基于 `navigator.storage.estimate()` 毫秒级探测本机物理占用，清晰展示核心资产与漫画图片分项；
+  - **两档安全清理**：日常级「清理阅览图片缓存」一键安全释放设备空间；重置级提供 5 秒两步倒计时防误触防线；
+  - **绝对数据安全**：清理逻辑 100% 运行于浏览器端侧，零破坏性后端调用，**绝对不触碰服务器已下载珍藏数据（`backend/data/`）**。
 
 ---
 

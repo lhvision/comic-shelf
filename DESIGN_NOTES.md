@@ -550,3 +550,45 @@
      - 通过 `route.name !== 'reader'` 在沉浸阅读器中天然隐藏，互不干扰；
      - 与 `ToastStack`（z-index 60）天然物理分层（BackToTop 采用 z-index 30），零多余响应式几何胶水。
 - **验证**：`vp check`（130 文件 0 error / 0 warning）、`BackToTop.spec.ts` 6/6 全面单测通过（覆盖显隐阈值、默认平滑滚动、减弱动效 auto 降级、键盘焦点安全转移）、`detect:slop` 静态规约扫描 0 finding。
+
+## 35. PWA 渐进式集成与设备离线存储面板（Grilling & Impeccable 闭环落地）
+
+- **背景与诉求**：
+  1. **渐进式离线能力（PWA）**：纸间定位于个人私有收藏夹，读者常在手机/平板/桌面离线翻阅。需要引入 Service Worker 离线预缓存与 PWA 独立安装能力；
+  2. **离线膨胀与安全清理痛点**：高频看漫会导致客户端 CacheStorage 空间占用迅速增长（可能占几百 MB 到数 GB），用户需要清晰获知当前设备占用的真实体积，并能一键安全释放空间；
+  3. **领域概念混淆风险**：必须严格区隔「客户端浏览器离线缓存（PWA CacheStorage）」与「服务端本地化磁盘数据（`backend/data/library/`）」，绝不允许清理操作误删服务器漫画资产。
+- **架构决策与实现（Grilling Q1~Q5 拍板）**：
+  1. **分级离线策略（Tiered Offline Caching）**：
+     - 利用 `vite-plugin-pwa`（Workbox）构建统一离线流；
+     - 静态资产（HTML/JS/CSS/WebP）预缓存（Stale-While-Revalidate）；
+     - API 动态数据（书库列表、详情、发现）走 Network-First 避免脏数据；
+     - 漫画原图与缩略图（`/pages/.../file`、`/thumbnail`）走 Cache-First，配置 `maxEntries: 1000, maxAgeSeconds: 30天` 进行 LRU 自动淘汰。
+  2. **双层存储隔离与精密探测**：
+     - 基于 `navigator.storage.estimate()` 毫秒级直接读取本 Origin 真实物理占用；
+     - 细分探测 CacheStorage 中的漫画图片缓存张数与体积，清晰区分「纸间核心资产」与「漫画阅览缓存」；
+     - 提供「清理阅览图片缓存」（保留核心 App Shell，释放设备存储）与「重置全部离线环境」两档操作。
+  3. **顶栏独立印章微件 + 纸卷账单 Popover**：
+     - 在 `AppHeader.vue` 右侧设置 `<StoragePopover />`，采用暖纸色、墨线细边框与朱砂强调；
+     - 扩展 `src/components/icons/` 原子字典（`IconArchive.vue`, `IconTrash.vue`）；
+     - 移动端自适应（小屏隐藏文字，保持 ≥ 44px 舒适触控区）。
+- **A 轨独立设计总监 Critique 与 Polish 闭环**：
+  1. **P1 缺陷修复（Toast 数值竞态）**：直接透传 `clearImageCache()` 返回的 `freedBytes` 格式化展示，彻底根治清理后读到 0 的 Bug；
+  2. **P1 缺陷修复（高危破坏操作两步防线）**：为「重置全部离线环境」引入两步确认防线（`isConfirmingReset` + 5秒自动回滚 + 独立取消按钮），并将点击热区提升至 38px；
+  3. **P1 缺陷修复（浮层指示箭头脱靶）**：在 `AppPopover.vue` 补齐 `.align-end::before` 与 `.align-center::before` 相对偏移规则，解决右对齐时箭头指空的问题；
+  4. **P2 优化（顶栏语义防歧义）**：Badge 标识由混淆的「离线 12.4 MB」优化为具有明确设备边界的「设备 12.4 MB」（0 占用时为「设备就绪」），消除与「本地优先」的心智冲突；
+  5. **P2 优化（消除小红点通知焦虑）**：剔除触发按钮常驻朱砂红点，保持阅览室静谧典雅；
+  6. **P2 优化（3px 平直装订规范）**：刻度槽对齐全站 3px 纸印规范，修正规则文案为真实的「保留最新 1000 页面」。
+- **B 轨机器扫描与代码审查专家（Code Review Expert）深度闭环**：
+  - `pnpm detect:slop` 检出并消除进度条 `transition: width` 引起的布局重排（改为 GPU 硬件加速的 `transform: scaleX(...)` 与 `transform-origin: left`），复扫 0 缺陷；
+  - **P1 逻辑修复（零页面缓存归零）**：修复在读者未缓存任何漫画页面时，因预缓存整体体量而错误扣除魔法数值计算出虚假缓存体积的缺陷，建立 `count === 0` 优先归零防线；
+  - **P2 请求级穿透**：修复 Fetch API `cache: 'no-store'` 误置于 `headers` 导致请求级缓存穿透失效的问题，移至顶级 `RequestInit`；
+  - **P2 防重入防护**：Composable 底层 `clearImageCache` 与 `resetAllStorage` 增加 `clearing.value` 防重入守卫；
+  - **P3 极简精简与定时器闭环**：安全清除无消费者的 `lastCleanedTime` 冗余状态；在 Popover 重新打开时清除未完成的重置定时器。
+- **PWA 规范与部署防线全量达标**：
+  - 入口补齐 `<meta name="description">`，替换 WebP 为标准的 PNG 192px `apple-touch-icon`，新增 [public/robots.txt](file:///home/miku/lhvision/comic-shelf/public/robots.txt)；
+  - 引入 `workbox-window` 与 [src/pwa.ts](file:///home/miku/lhvision/comic-shelf/src/pwa.ts) 托管 SW 生命周期，开启每小时周期性静默更新探测与弱网安全容错；
+  - 服务端 `SPAStaticFiles` 显式注册 `application/manifest+json` MIME 映射，并对关键入口（`/`、`index.html`、`sw.js`、`manifest.webmanifest`）施加严格 `Cache-Control: no-cache, no-store, must-revalidate` 防死锁防线；
+- **全链路测试验收**：
+  - `useOfflineStorage.spec.ts` 与 `StoragePopover.spec.ts` 12 项精准单测全绿（含防重入断言）；
+  - `backend/test_spa_fallback.py` 增补针对 Cache-Control 标头与 MIME 类型的自动化断言，`pnpm test:py` 全链路通过；
+  - `vp check` 全站 138 文件 0 warning / 0 error，`vp build` 生产打包成功产出包含 86 项预缓存清单、`sw.js` 与独立 `workbox-window` chunk。

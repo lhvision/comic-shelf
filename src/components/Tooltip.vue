@@ -382,36 +382,6 @@ onBeforeUnmount(() => {
   width: var(--space-2);
 }
 
-/* 容器查询回退检测（Chrome 143+ 原生感知 flip-block 翻转） */
-@container anchored(fallback: flip-block) {
-  .tooltip__tip.side-top::before {
-    bottom: auto;
-    top: -0.3rem;
-    border-top: 1px solid var(--line-strong);
-    border-left: 1px solid var(--line-strong);
-    border-bottom: none;
-    border-right: none;
-  }
-  .tooltip__tip.side-bottom::before {
-    top: auto;
-    bottom: -0.3rem;
-    border-bottom: 1px solid var(--line-strong);
-    border-right: 1px solid var(--line-strong);
-    border-top: none;
-    border-left: none;
-  }
-  .tooltip__tip[data-side='top']::after {
-    bottom: auto;
-    top: calc(-1 * var(--space-2));
-    height: var(--space-2);
-  }
-  .tooltip__tip[data-side='bottom']::after {
-    top: auto;
-    bottom: calc(-1 * var(--space-2));
-    height: var(--space-2);
-  }
-}
-
 /* 锚点定位不可用时的优雅降级（传统 absolute 定位） */
 @supports not (anchor-name: --tooltip-anchor-test) {
   .tooltip__tip {

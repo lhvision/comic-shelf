@@ -9,20 +9,33 @@ from starlette.exceptions import HTTPException
 
 
 def create_test_spa_app(dist_dir: Path) -> FastAPI:
+    import mimetypes
+
+    mimetypes.add_type("application/manifest+json", ".webmanifest")
+
     class SPAStaticFiles(StaticFiles):
         """SPA-aware static file handler: falls back to index.html for client routes on 404."""
 
         async def get_response(self, path: str, scope):
             try:
-                return await super().get_response(path, scope)
+                response = await super().get_response(path, scope)
             except HTTPException as ex:
                 if ex.status_code == 404:
                     filename = Path(path).name
-                    # If target has a file extension (e.g. .js, .png, .json), it is a missing static file -> keep 404
                     is_file_request = "." in filename and not filename.startswith(".")
                     if not is_file_request:
-                        return await super().get_response("index.html", scope)
+                        response = await super().get_response("index.html", scope)
+                        response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+                        return response
                 raise
+
+            clean_path = path.strip("/")
+            if clean_path in ("", "index.html", "sw.js", "registerSW.js", "manifest.webmanifest"):
+                response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+            elif clean_path.startswith("assets/"):
+                response.headers["Cache-Control"] = "public, max-age=31536000, immutable"
+
+            return response
 
     app = FastAPI()
 
@@ -34,13 +47,15 @@ def create_test_spa_app(dist_dir: Path) -> FastAPI:
     return app
 
 
-async def run_request(app: FastAPI, path: str) -> int:
+async def run_request_with_headers(app: FastAPI, path: str):
     status_code = 0
+    headers = {}
 
     async def send(msg):
-        nonlocal status_code
+        nonlocal status_code, headers
         if msg["type"] == "http.response.start":
             status_code = msg["status"]
+            headers = {k.decode().lower(): v.decode() for k, v in msg.get("headers", [])}
 
     scope = {
         "type": "http",
@@ -50,6 +65,11 @@ async def run_request(app: FastAPI, path: str) -> int:
         "query_string": b"",
     }
     await app(scope, None, send)
+    return status_code, headers
+
+
+async def run_request(app: FastAPI, path: str) -> int:
+    status_code, _ = await run_request_with_headers(app, path)
     return status_code
 
 
@@ -82,6 +102,23 @@ async def test_spa_fallback():
         assert await run_request(app, "/missing.PNG") == 404, "Missing uppercase .PNG should 404"
         assert await run_request(app, "/manifest.json") == 404, "Missing .json should 404"
         assert await run_request(app, "/fonts/icon.woff2") == 404, "Missing .woff2 should 404"
+
+        # 5. PWA deployment requirements: Cache-Control and MIME types
+        (dist / "sw.js").write_text("/* sw */")
+        (dist / "manifest.webmanifest").write_text("{}")
+
+        code, headers = await run_request_with_headers(app, "/sw.js")
+        assert code == 200 and "no-cache" in headers.get("cache-control", ""), "sw.js cache-control failed"
+
+        code, headers = await run_request_with_headers(app, "/manifest.webmanifest")
+        assert code == 200 and "no-cache" in headers.get("cache-control", ""), "manifest cache-control failed"
+        assert "application/manifest+json" in headers.get("content-type", ""), "manifest content-type failed"
+
+        code, headers = await run_request_with_headers(app, "/assets/app.js")
+        assert code == 200 and "immutable" in headers.get("cache-control", ""), "assets cache-control failed"
+
+        code, headers = await run_request_with_headers(app, "/discovery")
+        assert code == 200 and "no-cache" in headers.get("cache-control", ""), "SPA fallback cache-control failed"
 
         print("All SPAStaticFiles fallback unit tests passed successfully!")
 

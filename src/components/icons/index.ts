@@ -22,6 +22,8 @@ import IconUnlock from './IconUnlock.vue'
 import IconBookOpen from './IconBookOpen.vue'
 import IconEye from './IconEye.vue'
 import IconEyeOff from './IconEyeOff.vue'
+import IconArchive from './IconArchive.vue'
+import IconTrash from './IconTrash.vue'
 import type { IconName, IconSize } from './types'
 
 export {
@@ -48,6 +50,8 @@ export {
   IconBookOpen,
   IconEye,
   IconEyeOff,
+  IconArchive,
+  IconTrash,
 }
 export type { IconSize, IconName }
 
@@ -74,4 +78,6 @@ export const ICON_MAP: Record<IconName, Component> = {
   'book-open': IconBookOpen,
   eye: IconEye,
   'eye-off': IconEyeOff,
+  archive: IconArchive,
+  trash: IconTrash,
 }

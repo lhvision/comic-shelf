@@ -5,6 +5,7 @@ import vue from '@vitejs/plugin-vue'
 import vueJsx from '@vitejs/plugin-vue-jsx'
 import vueDevTools from 'vite-plugin-vue-devtools'
 import basicSsl from '@vitejs/plugin-basic-ssl'
+import { VitePWA } from 'vite-plugin-pwa'
 
 // https://vite.dev/config/
 export default defineConfig({
@@ -97,7 +98,102 @@ export default defineConfig({
       },
     ],
   },
-  plugins: lazyPlugins(() => [vue(), vueJsx(), vueDevTools(), basicSsl()]),
+  plugins: lazyPlugins(() => [
+    vue(),
+    vueJsx(),
+    vueDevTools(),
+    basicSsl(),
+    VitePWA({
+      registerType: 'autoUpdate',
+      includeAssets: [
+        'brand-icon.webp',
+        'pwa-192x192.png',
+        'pwa-512x512.png',
+        'pwa-maskable-512x512.png',
+        'robots.txt',
+        'brand-icons/*.webp',
+        'loading-*.webp',
+      ],
+      manifest: {
+        name: '纸间 · Paper Room',
+        short_name: '纸间',
+        description: '本地优先的个人漫画收藏夹与典藏阅览室',
+        theme_color: '#f3ede3',
+        background_color: '#f3ede3',
+        display: 'standalone',
+        orientation: 'any',
+        scope: '/',
+        start_url: '/',
+        icons: [
+          {
+            src: '/pwa-192x192.png',
+            sizes: '192x192',
+            type: 'image/png',
+          },
+          {
+            src: '/pwa-512x512.png',
+            sizes: '512x512',
+            type: 'image/png',
+            purpose: 'any',
+          },
+          {
+            src: '/pwa-maskable-512x512.png',
+            sizes: '512x512',
+            type: 'image/png',
+            purpose: 'maskable',
+          },
+          {
+            src: '/brand-icon.webp',
+            sizes: '512x512',
+            type: 'image/webp',
+          },
+        ],
+      },
+      workbox: {
+        maximumFileSizeToCacheInBytes: 6 * 1024 * 1024,
+        globPatterns: ['**/*.{js,css,html,ico,png,svg,webp,woff,woff2}'],
+        navigateFallbackDenylist: [/^\/api/],
+        runtimeCaching: [
+          {
+            urlPattern: ({ url }) =>
+              url.pathname.startsWith('/api/library/') &&
+              (url.pathname.includes('/pages/') ||
+                url.pathname.includes('/covers/') ||
+                url.pathname.includes('/cover')),
+            handler: 'CacheFirst',
+            options: {
+              cacheName: 'manga-images-cache',
+              expiration: {
+                maxEntries: 1000,
+                maxAgeSeconds: 30 * 24 * 60 * 60,
+              },
+              cacheableResponse: {
+                statuses: [0, 200],
+              },
+            },
+          },
+          {
+            urlPattern: ({ url }) =>
+              url.pathname.startsWith('/api/') &&
+              !url.pathname.includes('/pages/') &&
+              !url.pathname.includes('/covers/') &&
+              !url.pathname.includes('/cover'),
+            handler: 'NetworkFirst',
+            options: {
+              cacheName: 'api-metadata-cache',
+              expiration: {
+                maxEntries: 100,
+                maxAgeSeconds: 24 * 60 * 60,
+              },
+              cacheableResponse: {
+                statuses: [0, 200],
+              },
+            },
+          },
+        ],
+      },
+    }),
+  ]),
   resolve: {
     alias: {
       '@': fileURLToPath(new URL('./src', import.meta.url)),
