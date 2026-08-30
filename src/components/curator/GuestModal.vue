@@ -383,9 +383,20 @@ watch(activeTab, async (tab) => {
                 <span class="pass-date">{{ formatTimestamp(item.created_at) }} 印发</span>
               </div>
 
-              <!-- 典藏印章（四态流转：待激活为草木印，使用中为墨绿印，满额为琥珀印，过期与停用为灰印） -->
-              <div class="status-seal" :class="item.activation_status">
-                <span v-if="item.activation_status === 'disabled'">〔 已停用 〕</span>
+              <!-- 典藏印章（支持展示争抢锁定与速率受限异常印章） -->
+              <div
+                class="status-seal"
+                :class="[
+                  item.is_cooling_locked
+                    ? 'cooling-locked'
+                    : item.is_rate_limited
+                      ? 'rate-limited'
+                      : item.activation_status,
+                ]"
+              >
+                <span v-if="item.is_cooling_locked">〔 ⚠️ 争抢锁定 〕</span>
+                <span v-else-if="item.is_rate_limited">〔 ⚠️ 速率受限 〕</span>
+                <span v-else-if="item.activation_status === 'disabled'">〔 已停用 〕</span>
                 <span v-else-if="item.activation_status === 'expired'">〔 已过期 〕</span>
                 <span v-else-if="item.activation_status === 'pending'">〔 待激活 · 0台占用 〕</span>
                 <span v-else-if="item.activation_status === 'full'"
@@ -426,6 +437,19 @@ watch(activeTab, async (tab) => {
 
             <!-- 物理设备与会话托盘 -->
             <div class="device-tray">
+              <!-- 异常告警条（频发争抢锁定 / 速率超标） -->
+              <div v-if="item.is_cooling_locked" class="device-abuse-alert lock">
+                <AppIcon name="info" size="xs" />
+                <span>
+                  该通行证近期频繁发生设备挤出置换，已启动 10
+                  分钟争抢保护锁定。当前在册设备正常使用，新设备暂无法接入。若怀疑口令外泄，建议点击底栏「重置密钥」立即将所有设备下线。
+                </span>
+              </div>
+              <div v-else-if="item.is_rate_limited" class="device-abuse-alert rate">
+                <AppIcon name="info" size="xs" />
+                <span>检测到高频翻页/下载图片请求（>120页/分钟），已触发轻量限流保护。</span>
+              </div>
+
               <div class="device-tray-head">
                 <div class="device-tray-title">
                   <AppIcon name="users" size="xs" />
@@ -1104,6 +1128,20 @@ watch(activeTab, async (tab) => {
   border-color: color-mix(in oklab, var(--warning, #b45309) 35%, transparent);
 }
 
+.status-seal.cooling-locked {
+  color: var(--accent);
+  background: var(--accent-soft);
+  border-color: color-mix(in oklab, var(--accent) 40%, transparent);
+  font-weight: 600;
+}
+
+.status-seal.rate-limited {
+  color: var(--warning, #b45309);
+  background: color-mix(in oklab, var(--warning, #b45309) 12%, var(--paper-0));
+  border-color: color-mix(in oklab, var(--warning, #b45309) 40%, transparent);
+  font-weight: 600;
+}
+
 .status-seal.expired {
   color: var(--ink-2);
   background: var(--paper-1);
@@ -1114,6 +1152,29 @@ watch(activeTab, async (tab) => {
   color: var(--ink-2);
   background: var(--paper-2);
   border-color: var(--line);
+}
+
+.device-abuse-alert {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-1-5);
+  padding: var(--space-2) var(--space-2-5);
+  margin-bottom: var(--space-2-5);
+  border-radius: var(--radius-1);
+  font-size: var(--text-xs);
+  line-height: 1.4;
+}
+
+.device-abuse-alert.lock {
+  color: var(--accent);
+  background: color-mix(in oklab, var(--accent) 8%, var(--paper-0));
+  border: 1px solid color-mix(in oklab, var(--accent) 30%, transparent);
+}
+
+.device-abuse-alert.rate {
+  color: var(--warning, #b45309);
+  background: color-mix(in oklab, var(--warning, #b45309) 8%, var(--paper-0));
+  border: 1px solid color-mix(in oklab, var(--warning, #b45309) 30%, transparent);
 }
 
 /* 核心高频动作区 */

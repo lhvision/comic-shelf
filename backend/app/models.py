@@ -293,10 +293,15 @@ class GuestPassItem(BaseModel):
     device_count: int = 0
     devices: list[GuestDeviceItem] = Field(default_factory=list)
     first_used_at: int | None = None
-    last_used_at: int | None = None
     activation_status: str = "pending"  # "pending" | "active" | "full" | "disabled" | "expired"
+    is_cooling_locked: bool = False
+    is_rate_limited: bool = False
     created_at: int
     updated_at: int
+
+
+class GuestPrivacySettings(BaseModel):
+    guest_hide_new_comics: bool = False
 
 
 class CreateGuestPassRequest(BaseModel):

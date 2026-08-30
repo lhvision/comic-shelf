@@ -258,6 +258,26 @@ function incConcurrency() {
           </div>
 
           <div class="download-settings__row">
+            <label class="cache-check">
+              <input
+                :checked="settings.guestHideNewComics"
+                type="checkbox"
+                @change="settings.setGuestHideNewComics(!settings.guestHideNewComics)"
+              />
+              <span>新入库默认对访客隐藏</span>
+            </label>
+            <Tooltip
+              id="guest-hide-tip"
+              tip="开启后，新收录或导入的漫画初始状态将对访客隐身，防止私人敏感藏书误暴露。馆长审核后可在卡片底部手动公开借阅。"
+              side="top"
+            >
+              <button class="tooltip-icon" type="button" aria-label="关于新入库默认对访客隐藏">
+                <AppIcon name="info" size="xs" />
+              </button>
+            </Tooltip>
+          </div>
+
+          <div class="download-settings__row">
             <span class="download-settings__title">下载并发</span>
             <Tooltip
               id="concurrency-tip"
@@ -664,7 +684,8 @@ function incConcurrency() {
 .import-message {
   grid-column: 1 / -1;
   padding: var(--space-2) var(--space-3);
-  border-left: 3px solid var(--success);
+  border: 1px solid color-mix(in oklab, var(--success) 30%, transparent);
+  border-radius: var(--radius-1);
   background: color-mix(in oklab, var(--success) 10%, transparent);
   color: var(--ink-1);
   font-size: var(--text-sm);

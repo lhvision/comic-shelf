@@ -11,6 +11,7 @@ export const useAppSettings = defineStore('appSettings', () => {
   const concurrency = ref(3)
   const envControlled = ref(false)
   const loading = ref(false)
+  const guestHideNewComics = ref(false)
 
   async function load() {
     loading.value = true
@@ -34,6 +35,27 @@ export const useAppSettings = defineStore('appSettings', () => {
       /* 后端不支持时保留默认值 */
     } finally {
       loading.value = false
+    }
+    await loadGuestPrivacy()
+  }
+
+  async function loadGuestPrivacy() {
+    try {
+      const info = await api.guestPrivacy()
+      guestHideNewComics.value = info.guest_hide_new_comics
+    } catch {
+      /* ignore */
+    }
+  }
+
+  async function setGuestHideNewComics(value: boolean) {
+    guestHideNewComics.value = value
+    try {
+      const info = await api.setGuestPrivacy(value)
+      guestHideNewComics.value = info.guest_hide_new_comics
+      return true
+    } catch {
+      return false
     }
   }
 
@@ -63,10 +85,13 @@ export const useAppSettings = defineStore('appSettings', () => {
   return {
     concurrency,
     envControlled,
+    guestHideNewComics,
     loading,
     min: MIN,
     max: MAX,
     load,
+    loadGuestPrivacy,
+    setGuestHideNewComics,
     set,
     inc,
     dec,

@@ -274,8 +274,14 @@ export interface GuestPass {
   first_used_at: number | null
   last_used_at: number | null
   activation_status: GuestPassActivationStatus
+  is_cooling_locked?: boolean
+  is_rate_limited?: boolean
   created_at: number
   updated_at: number
+}
+
+export interface GuestPrivacySettings {
+  guest_hide_new_comics: boolean
 }
 
 export interface CreateGuestPassPayload {

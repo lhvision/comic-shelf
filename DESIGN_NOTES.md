@@ -788,3 +788,32 @@
   - `pnpm detect:slop src/components/curator/GuestModal.vue` 0 finding；
   - `pnpm critique write guest-modal-devices ...` 评审快照已归档至 `.impeccable/critique/2026-08-30T09-27-48Z__guest-modal-devices.md`；
   - `vp check` 全站 193 个文件代码格式校验通过、147 个文件 0 warning / 0 error。
+
+## 41. 访客防滥用加固：置换熔断冷却锁、令牌桶限流与默认隐私隐藏（ADR 0008）
+
+- **背景与威胁模型**：
+  1. **恶性互挤攻击（DoS by LRU Thrashing）**：攻击者利用 LRU“后到者优先”置换逻辑，编写脚本伪造随机 UA 频繁触发登录，导致合法号主看书时秒级掉线并陷入死循环；
+  2. **Token 泄露全库爬取（Bulk Scraping）**：单张通票被群发或截获后，爬虫携带有效 Cookie 并发抓取整站所有漫画图片，拉满 NAS 上行带宽与 CPU 并发；
+  3. **私人藏书误暴露（Private Collection Leakage）**：馆长新导入私人藏书若未手动打上 `hidden_from_guest`，访客即可在书架直接看到。
+- **架构决策与落地实现（ADR 0008 & backend/app/abuse.py）**：
+  1. **置换频次熔断冷却锁（Eviction Cooling Lock）**：
+     - 在纯内存滑动窗口记录每个 Pass 的置换事件（5 分钟 = 300 秒）；
+     - 若 5 分钟内发生超过 3 次新设备置换，自动激活 10 分钟置换冷却锁；
+     - 锁定期间：当前已在线合法设备 100% 正常阅读，新接入置换请求返回 HTTP `429 Too Many Requests`；
+     - 馆长在名册点击「重置密钥」时，自动全量注销旧设备并清空冷却锁；
+  2. **访客令牌桶静态图片请求限流（120P/min + 45P 突发）**：
+     - 在全局中间件中针对 `guest` 角色拦截二进制图片端点（`/file`, `/thumbnail`, `/cover`）；
+     - 限制单 Pass 速率为 120 页/分钟（2.0 tokens/s），提供 45 页瞬时突发桶（完美覆盖画集打开瞬时预取与急速滑屏寻页）；
+     - 超额触发 HTTP 429（“阅读翻页速率异常（超过 120 页/分钟），请稍憩数秒”）；
+  3. **新入库藏书默认隐身策略（Default Hide for New Imports）**：
+     - 全局配置 `guest_hide_new_comics: bool` 持久化于 `data/settings.json`；
+     - 在前端收录面板（`ImportPanel.vue`）提供轻量设置选项；
+     - 开启后，远端收录与本地扫描导入的本子初始状态自动打上 `hidden_from_guest: true`，须由馆长核验满意后主动公开借阅，消除疏漏隐患；
+  4. **馆长态势感知与一键熔断**：
+     - 名册卡片支持呈现赤红色警示印章 `〔 ⚠️ 争抢锁定 〕` 或 `〔 ⚠️ 速率受限 〕`；
+     - 设备抽屉顶部呈现异常说明条，提示馆长一键重置密钥强制踢出所有端。
+- **验证**：
+  - `pnpm test:py` 后端测试 100% 通过（包含 14: 熔断冷却锁、15: 令牌桶限流与 16: 隐私设置完整断言）；
+  - `vp test src/__tests__/GuestPasses.spec.ts src/__tests__/useAuth.spec.ts` 16/16 单测全绿；
+  - `pnpm detect:slop src/components/curator/GuestModal.vue src/components/ImportPanel.vue` 全部 0 finding；
+  - `vp check` 195 个文件格式校验通过、147 个文件 0 warning / 0 error。

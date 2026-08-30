@@ -229,6 +229,15 @@ export const api = {
       method: 'PUT',
       body: JSON.stringify({ limit }),
     }),
+  guestPrivacy: (options?: RequestOptions) =>
+    request<import('@/types').GuestPrivacySettings>('/settings/guest-privacy', {
+      signal: options?.signal,
+    }),
+  setGuestPrivacy: (guest_hide_new_comics: boolean) =>
+    request<import('@/types').GuestPrivacySettings>('/settings/guest-privacy', {
+      method: 'PUT',
+      body: JSON.stringify({ guest_hide_new_comics }),
+    }),
   updateMetadata: async (
     source: string,
     sourceId: string,

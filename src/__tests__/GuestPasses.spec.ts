@@ -201,4 +201,30 @@ describe('useGuestPasses', () => {
     await copyToken(freshPass)
     expect(mockToast).toHaveBeenCalledWith(expect.stringContaining('可安心发放给新朋友'), 'success')
   })
+
+  it('supports passes with is_cooling_locked and is_rate_limited flags', async () => {
+    const lockedPass: GuestPass = {
+      id: 3,
+      username: 'Abuser',
+      token: 'token33333333333333333333333333',
+      expires_at: null,
+      is_active: true,
+      is_expired: false,
+      max_devices: 2,
+      device_count: 2,
+      devices: [],
+      first_used_at: 1700000000,
+      last_used_at: 1700000000,
+      activation_status: 'full',
+      is_cooling_locked: true,
+      is_rate_limited: true,
+      created_at: 1700000000,
+      updated_at: 1700000000,
+    }
+    vi.mocked(api.getCuratorPasses).mockResolvedValueOnce([lockedPass])
+    const { passes, fetchPasses } = useGuestPasses()
+    await fetchPasses()
+    expect(passes.value[0]?.is_cooling_locked).toBe(true)
+    expect(passes.value[0]?.is_rate_limited).toBe(true)
+  })
 })

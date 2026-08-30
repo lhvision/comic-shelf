@@ -108,3 +108,36 @@ def set_download_concurrency(limit: int) -> int:
         value = min(value, MAX_CONCURRENT_DOWNLOADS)
     _save_persisted(value)
     return download_gate.set_limit(value)
+
+
+_GUEST_HIDE_NEW_KEY = "guest_hide_new_comics"
+
+
+def get_guest_hide_new_comics() -> bool:
+    try:
+        if _SETTINGS_FILE.exists():
+            data = json.loads(_SETTINGS_FILE.read_text(encoding="utf-8"))
+            return bool(data.get(_GUEST_HIDE_NEW_KEY, False))
+    except Exception:
+        pass
+    return False
+
+
+def set_guest_hide_new_comics(hide: bool) -> bool:
+    try:
+        _SETTINGS_FILE.parent.mkdir(parents=True, exist_ok=True)
+        data = {}
+        if _SETTINGS_FILE.exists():
+            try:
+                data = json.loads(_SETTINGS_FILE.read_text(encoding="utf-8"))
+            except Exception:
+                data = {}
+        data[_GUEST_HIDE_NEW_KEY] = bool(hide)
+        _SETTINGS_FILE.write_text(
+            json.dumps(data, ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
+        return bool(hide)
+    except Exception:
+        return False
+

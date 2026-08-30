@@ -35,6 +35,7 @@ from .models import (
     PageRecord,
     RemotePage,
 )
+from .gate import get_guest_hide_new_comics
 from .providers.local import LocalProvider
 
 logger = logging.getLogger(__name__)
@@ -815,7 +816,7 @@ class ComicStore:
             updated_at=now_str,
             imported_at=now_str,
             chapters=chapters,
-            hidden_from_guest=getattr(req, "hidden_from_guest", False),
+            hidden_from_guest=getattr(req, "hidden_from_guest", False) or get_guest_hide_new_comics(),
         )
 
         _write_json_atomic(self.album_path("local", source_id), meta.model_dump())
@@ -935,7 +936,7 @@ class ComicStore:
             imported_at=now_str,
             pages=pages,
             chapters=chapters,
-            hidden_from_guest=getattr(req, "hidden_from_guest", False),
+            hidden_from_guest=getattr(req, "hidden_from_guest", False) or get_guest_hide_new_comics(),
         )
 
         fetched = FetchedComic(meta=meta, remote_pages=remote_pages)

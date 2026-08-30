@@ -63,6 +63,7 @@ from .models import (
     FavoriteRequest,
     FavoriteResponse,
     GuestPassItem,
+    GuestPrivacySettings,
     ImageSearchItem,
     ImageSearchResponse,
     ImageSearchStatusResponse,
@@ -83,6 +84,8 @@ from .models import (
     ReplacePathRequest,
     UpdateGuestPassRequest,
 )
+from .abuse import check_guest_rate_limit
+from .gate import get_guest_hide_new_comics, set_guest_hide_new_comics
 from .providers import get_provider, provider_list
 
 app = FastAPI(
@@ -128,6 +131,20 @@ async def auth_and_security_middleware(request: Request, call_next):
             check_hotlink_protection(request)
         except HTTPException as exc:
             return JSONResponse(status_code=exc.status_code, content={"detail": exc.detail})
+
+        # Rate limiting for guest readers on image binary endpoints (120 P/min + 45 P burst)
+        _uid, _name, role = get_user_context(request)
+        if role == "guest" and _uid.startswith("guest:"):
+            try:
+                pass_id_val = int(_uid.split(":", 1)[1])
+                if not check_guest_rate_limit(pass_id_val):
+                    return JSONResponse(
+                        status_code=429,
+                        content={"detail": "阅读翻页速率异常（超过 120 页/分钟），请稍憩数秒"},
+                        headers={"Retry-After": "5"},
+                    )
+            except (ValueError, IndexError):
+                pass
 
     # Allow guest-permitted mutating operations (search, isolated favorite & reading progress)
     is_user_mutation = (
@@ -230,7 +247,13 @@ def auth_login(req: LoginRequest, request: Request, response: Response) -> Login
 
         ua = request.headers.get("user-agent", "")
         ip = get_client_ip(request)
-        dev = register_guest_device(pass_item["id"], user_agent=ua, ip=ip)
+        try:
+            dev = register_guest_device(pass_item["id"], user_agent=ua, ip=ip)
+        except ValueError as exc:
+            msg = str(exc)
+            if "频繁" in msg or "安全保护锁定" in msg:
+                raise HTTPException(status_code=429, detail=msg)
+            raise HTTPException(status_code=400, detail=msg)
 
         set_auth_cookie(response, pass_item["token"])
         set_device_cookie(response, dev["device_token"])
@@ -300,6 +323,19 @@ def download_concurrency_put(req: ConcurrencyRequest) -> ConcurrencyInfo:
         max=16,
         env_controlled=_env_explicit(),
     )
+
+
+@app.get("/api/settings/guest-privacy", response_model=GuestPrivacySettings)
+def guest_privacy_get() -> GuestPrivacySettings:
+    return GuestPrivacySettings(guest_hide_new_comics=get_guest_hide_new_comics())
+
+
+@app.put("/api/settings/guest-privacy", response_model=GuestPrivacySettings)
+def guest_privacy_put(req: GuestPrivacySettings, request: Request) -> GuestPrivacySettings:
+    require_curator(request)
+    val = set_guest_hide_new_comics(req.guest_hide_new_comics)
+    return GuestPrivacySettings(guest_hide_new_comics=val)
+
 
 
 @app.get("/api/library", response_model=list[LibrarySummary])
@@ -425,6 +461,8 @@ def import_comic(req: ImportRequest) -> ImportResult:
         raise HTTPException(status_code=502, detail=f"从来源获取漫画失败：{exc}") from exc
 
     fetched.meta.cover_count = max(1, min(req.prefetch_covers or fetched.meta.cover_count, fetched.meta.page_count))
+    if not req.refresh and existing is None and get_guest_hide_new_comics():
+        fetched.meta.hidden_from_guest = True
     meta = store.save_fetched(fetched, refresh=req.refresh)
     fetched.meta = meta
 

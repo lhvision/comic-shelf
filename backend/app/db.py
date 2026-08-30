@@ -8,6 +8,13 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, Iterator
 
+from .abuse import (
+    clear_cooling_lock,
+    clear_rate_limit,
+    is_eviction_cooling_locked,
+    is_pass_rate_limited,
+    record_eviction_and_check_lock,
+)
 from .config import DATA_DIR
 
 logger = logging.getLogger(__name__)
@@ -181,6 +188,8 @@ def _row_to_pass(
         "first_used_at": first_used_at,
         "last_used_at": last_used_at,
         "activation_status": activation_status,
+        "is_cooling_locked": is_eviction_cooling_locked(d["id"]),
+        "is_rate_limited": is_pass_rate_limited(d["id"]),
         "created_at": d["created_at"],
         "updated_at": d["updated_at"],
     }
@@ -296,8 +305,10 @@ def update_guest_pass(
                 (new_username, new_token, new_expires_at, new_is_active, new_max_devices, now, pass_id),
             )
             if reset_token:
-                # Token changed: invalidate all active devices for this pass
+                # Token changed: invalidate all active devices for this pass and clear locks
                 conn.execute("DELETE FROM guest_devices WHERE pass_id = ?", (pass_id,))
+                clear_cooling_lock(pass_id)
+                clear_rate_limit(pass_id)
             elif max_devices is not None:
                 # If quota shrunk below current device count, evict oldest devices
                 dev_rows = conn.execute(
@@ -316,6 +327,8 @@ def update_guest_pass(
 
 
 def delete_guest_pass(pass_id: int) -> bool:
+    clear_cooling_lock(pass_id)
+    clear_rate_limit(pass_id)
     with get_db() as conn:
         conn.execute("DELETE FROM guest_devices WHERE pass_id = ?", (pass_id,))
         conn.execute("DELETE FROM user_favorites WHERE user_id = ?", (f"guest:{pass_id}",))
@@ -354,9 +367,13 @@ def register_guest_device(
             (pass_id,),
         ).fetchall()
 
+        if len(dev_rows) >= max_devices and is_eviction_cooling_locked(pass_id):
+            raise ValueError("该通行证近期设备置换过于频繁，已触发安全保护锁定 10 分钟，暂不允许新设备接入")
+
         while len(dev_rows) >= max_devices:
             oldest_id = dev_rows.pop(0)["id"]
             conn.execute("DELETE FROM guest_devices WHERE id = ?", (oldest_id,))
+            record_eviction_and_check_lock(pass_id)
 
         token = device_token.strip() if device_token and device_token.strip() else secrets.token_hex(24)
         safe_ua = str(user_agent) if isinstance(user_agent, str) else ""

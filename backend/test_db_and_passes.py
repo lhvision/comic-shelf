@@ -143,7 +143,68 @@ def test_db_and_passes_crud():
     assert len(db_mod.get_user_favorites(guest_uid)) == 0
     assert db_mod.get_user_progress(guest_uid, "jm", "12345") is None
 
+    # 14. Eviction Cooling Lock: 5 min > 3 evictions triggers lock
+    from app.abuse import check_guest_rate_limit, clear_cooling_lock, is_eviction_cooling_locked
+    from app.gate import get_guest_hide_new_comics, set_guest_hide_new_comics
+
+    p_test = db_mod.create_guest_pass(username="Eve", max_devices=1)
+    pid = p_test["id"]
+    clear_cooling_lock(pid)
+
+    # Initial device (1 of 1)
+    db_mod.register_guest_device(pid, user_agent="dev0")
+    # Eviction 1
+    db_mod.register_guest_device(pid, user_agent="dev1")
+    assert not is_eviction_cooling_locked(pid)
+    # Eviction 2
+    db_mod.register_guest_device(pid, user_agent="dev2")
+    assert not is_eviction_cooling_locked(pid)
+    # Eviction 3
+    db_mod.register_guest_device(pid, user_agent="dev3")
+    assert not is_eviction_cooling_locked(pid)
+    # Eviction 4 (> 3) triggers cooling lock
+    db_mod.register_guest_device(pid, user_agent="dev4")
+    assert is_eviction_cooling_locked(pid)
+
+    # Subsequent eviction attempt is blocked while locked
+    try:
+        db_mod.register_guest_device(pid, user_agent="dev5_attacker")
+        assert False, "Should have been blocked by cooling lock"
+    except ValueError as exc:
+        assert "频繁" in str(exc) or "安全保护锁定" in str(exc)
+
+    # Pass status reflects cooling lock
+    p_info = db_mod.get_guest_pass_by_id(pid)
+    assert p_info["is_cooling_locked"] is True
+
+    # Reset token clears cooling lock
+    db_mod.update_guest_pass(pid, reset_token=True)
+    assert not is_eviction_cooling_locked(pid)
+    p_info = db_mod.get_guest_pass_by_id(pid)
+    assert p_info["is_cooling_locked"] is False
+
+    # 15. Guest Rate Limiting: 45 burst + refill
+    assert check_guest_rate_limit(pid) is True
+    # Consume remaining 44 tokens
+    for _ in range(44):
+        assert check_guest_rate_limit(pid) is True
+    # 46th request exceeds burst capacity
+    assert check_guest_rate_limit(pid) is False
+    p_info = db_mod.get_guest_pass_by_id(pid)
+    assert p_info["is_rate_limited"] is True
+
+    # 16. Guest Privacy Settings
+    orig_privacy = get_guest_hide_new_comics()
+    set_guest_hide_new_comics(True)
+    assert get_guest_hide_new_comics() is True
+    set_guest_hide_new_comics(False)
+    assert get_guest_hide_new_comics() is False
+    set_guest_hide_new_comics(orig_privacy)
+
+    db_mod.delete_guest_pass(pid)
+
 
 if __name__ == "__main__":
     test_db_and_passes_crud()
     print("Database and passes unit tests passed!")
+
