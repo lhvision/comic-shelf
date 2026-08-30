@@ -1,19 +1,34 @@
-from __future__ import annotations
-
 import secrets
+import time
 from urllib.parse import urlparse
 
 from fastapi import HTTPException, Request, Response
 
 from .config import AUTH_SECRET, ENABLE_HOTLINK_PROTECTION
-from .db import get_guest_pass_by_token
+from .db import (
+    get_device_by_token,
+    get_guest_pass_by_token,
+    register_guest_device,
+    touch_device_active,
+)
 
 COOKIE_NAME = "comic_shelf_token"
+DEVICE_COOKIE_NAME = "comic_shelf_device"
 
 
 def is_auth_required() -> bool:
     """True if curator secret is configured."""
     return bool(AUTH_SECRET)
+
+
+def get_client_ip(request: Request) -> str:
+    xff = request.headers.get("x-forwarded-for")
+    if xff and isinstance(xff, str):
+        return xff.split(",")[0].strip()
+    client = getattr(request, "client", None)
+    if client and hasattr(client, "host") and isinstance(client.host, str):
+        return client.host
+    return ""
 
 
 def extract_token(request: Request) -> str:
@@ -40,6 +55,20 @@ def extract_token(request: Request) -> str:
     return ""
 
 
+def extract_device_token(request: Request) -> str:
+    # 1. Header X-Device-Token
+    x_dev = request.headers.get("x-device-token", "").strip()
+    if x_dev:
+        return x_dev
+
+    # 2. Cookie
+    cookie_dev = request.cookies.get(DEVICE_COOKIE_NAME, "").strip()
+    if cookie_dev:
+        return cookie_dev
+
+    return ""
+
+
 def get_user_context(request: Request) -> tuple[str, str, str]:
     """Returns (user_id, username, role) where role is 'admin' | 'guest' | 'unauthorized' | 'expired'."""
     if hasattr(request.state, "user_context"):
@@ -51,26 +80,53 @@ def get_user_context(request: Request) -> tuple[str, str, str]:
         return ctx
 
     token = extract_token(request)
-    if not token:
-        ctx = ("anonymous", "未授权", "unauthorized")
-        request.state.user_context = ctx
-        return ctx
+    device_token = extract_device_token(request)
 
-    if AUTH_SECRET and secrets.compare_digest(token, AUTH_SECRET):
+    # 1. Curator token check
+    if token and AUTH_SECRET and secrets.compare_digest(token, AUTH_SECRET):
         ctx = ("curator", "馆长", "admin")
         request.state.user_context = ctx
         return ctx
 
-    pass_item = get_guest_pass_by_token(token)
-    if pass_item is not None:
-        if not pass_item["is_active"]:
-            ctx = ("anonymous", "已停用", "unauthorized")
-        elif pass_item["is_expired"]:
-            ctx = ("anonymous", "已过期", "expired")
+    # 2. Device token check (fast path for established device sessions)
+    if device_token:
+        dev = get_device_by_token(device_token)
+        if dev is not None:
+            now = int(time.time())
+            if not dev["pass_is_active"]:
+                ctx = ("anonymous", "已停用", "unauthorized")
+            elif dev["pass_expires_at"] and now > dev["pass_expires_at"]:
+                ctx = ("anonymous", "已过期", "expired")
+            else:
+                client_ip = get_client_ip(request)
+                touch_device_active(dev["id"], client_ip)
+                ctx = (f"guest:{dev['pass_id']}", dev["username"], "guest")
+                request.state.device_id = dev["id"]
+            request.state.user_context = ctx
+            return ctx
         else:
-            ctx = (f"guest:{pass_item['id']}", pass_item["username"], "guest")
-        request.state.user_context = ctx
-        return ctx
+            # Device token was provided but evicted or deleted
+            ctx = ("anonymous", "设备已失效或已被踢下线", "unauthorized")
+            request.state.user_context = ctx
+            return ctx
+
+    # 3. Pass token check (e.g. ?token=... or initial access)
+    if token:
+        pass_item = get_guest_pass_by_token(token)
+        if pass_item is not None:
+            if not pass_item["is_active"]:
+                ctx = ("anonymous", "已停用", "unauthorized")
+            elif pass_item["is_expired"]:
+                ctx = ("anonymous", "已过期", "expired")
+            else:
+                ua = request.headers.get("user-agent", "")
+                ip = get_client_ip(request)
+                dev = register_guest_device(pass_item["id"], user_agent=ua, ip=ip)
+                ctx = (f"guest:{pass_item['id']}", pass_item["username"], "guest")
+                request.state.device_id = dev["id"]
+                request.state.new_device_token = dev["device_token"]
+            request.state.user_context = ctx
+            return ctx
 
     ctx = ("anonymous", "未授权", "unauthorized")
     request.state.user_context = ctx
@@ -193,8 +249,26 @@ def set_auth_cookie(response: Response, token: str) -> None:
     )
 
 
+def set_device_cookie(response: Response, device_token: str) -> None:
+    response.set_cookie(
+        key=DEVICE_COOKIE_NAME,
+        value=device_token,
+        max_age=2592000,  # 30 days
+        httponly=True,
+        samesite="lax",
+        path="/",
+    )
+
+
 def clear_auth_cookie(response: Response) -> None:
     response.delete_cookie(
         key=COOKIE_NAME,
+        path="/",
+    )
+
+
+def clear_device_cookie(response: Response) -> None:
+    response.delete_cookie(
+        key=DEVICE_COOKIE_NAME,
         path="/",
     )

@@ -61,12 +61,87 @@ def test_db_and_passes_crud():
     assert db_mod.get_guest_pass_by_id(p1["id"]) is None
 
     # 8. Token conflict handling
-    db_mod.create_guest_pass("Bob", custom_token="unique_token_xyz")
+    db_mod.create_guest_pass("Bob", custom_token="unique_token_xyz", max_devices=2)
     try:
         db_mod.create_guest_pass("Charlie", custom_token="unique_token_xyz")
         assert False, "Should raise ValueError for duplicate token"
     except ValueError as exc:
         assert "存在" in str(exc)
+
+    # 9. Device slots & activation states lifecycle
+    bob_pass = db_mod.get_guest_pass_by_token("unique_token_xyz")
+    assert bob_pass is not None
+    assert bob_pass["activation_status"] == "pending"  # 0 devices = pending
+    assert bob_pass["device_count"] == 0
+    assert bob_pass["first_used_at"] is None
+
+    # Register Device 1 (iPhone)
+    d1 = db_mod.register_guest_device(
+        bob_pass["id"],
+        user_agent="Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 Mobile/15E148 Safari/604.1",
+        ip="192.168.1.100",
+    )
+    assert d1["device_name"] == "iPhone · Safari"
+    bob_pass = db_mod.get_guest_pass_by_id(bob_pass["id"])
+    assert bob_pass["activation_status"] == "active"  # 1 of 2 devices
+    assert bob_pass["device_count"] == 1
+    assert bob_pass["first_used_at"] is not None
+
+    time.sleep(0.01)
+
+    # Register Device 2 (Windows Chrome)
+    d2 = db_mod.register_guest_device(
+        bob_pass["id"],
+        user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120.0.0.0 Safari/537.36",
+        ip="10.0.0.50",
+    )
+    assert d2["device_name"] == "Windows · Chrome"
+    bob_pass = db_mod.get_guest_pass_by_id(bob_pass["id"])
+    assert bob_pass["activation_status"] == "full"  # 2 of 2 devices (quota reached)
+    assert bob_pass["device_count"] == 2
+
+    time.sleep(0.01)
+
+    # 10. LRU Eviction: Register Device 3 (MacBook Safari), d1 should be evicted automatically
+    d3 = db_mod.register_guest_device(
+        bob_pass["id"],
+        user_agent="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 Safari/605.1.15",
+        ip="172.16.0.1",
+    )
+    assert d3["device_name"] == "macOS · Safari"
+    bob_pass = db_mod.get_guest_pass_by_id(bob_pass["id"])
+    assert bob_pass["device_count"] == 2  # Still 2
+    assert bob_pass["activation_status"] == "full"
+
+    # d1 should be gone from DB
+    assert db_mod.get_device_by_token(d1["device_token"]) is None
+    # d2 and d3 should still exist
+    assert db_mod.get_device_by_token(d2["device_token"]) is not None
+    assert db_mod.get_device_by_token(d3["device_token"]) is not None
+
+    # 11. Delete single device (curator kicks d2)
+    assert db_mod.delete_guest_device(d2["id"], pass_id=bob_pass["id"]) is True
+    bob_pass = db_mod.get_guest_pass_by_id(bob_pass["id"])
+    assert bob_pass["device_count"] == 1
+    assert bob_pass["activation_status"] == "active"
+
+    # 12. Reset token invalidates all devices
+    bob_reset = db_mod.update_guest_pass(bob_pass["id"], reset_token=True)
+    assert bob_reset is not None
+    assert bob_reset["device_count"] == 0
+    assert bob_reset["activation_status"] == "pending"
+    assert db_mod.get_device_by_token(d3["device_token"]) is None
+
+    # 13. Delete pass cleans up devices, favorites and reading progress
+    guest_uid = f"guest:{bob_pass['id']}"
+    db_mod.set_user_favorite(guest_uid, "jm", "12345", favorite=True)
+    db_mod.set_user_progress(guest_uid, "jm", "12345", 5, 20)
+    assert len(db_mod.get_user_favorites(guest_uid)) == 1
+    assert db_mod.get_user_progress(guest_uid, "jm", "12345") is not None
+
+    db_mod.delete_guest_pass(bob_pass["id"])
+    assert len(db_mod.get_user_favorites(guest_uid)) == 0
+    assert db_mod.get_user_progress(guest_uid, "jm", "12345") is None
 
 
 if __name__ == "__main__":

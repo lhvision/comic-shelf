@@ -404,6 +404,11 @@ export const api = {
       method: 'DELETE',
       signal: options?.signal,
     }),
+  deleteCuratorPassDevice: (passId: number, deviceId: number, options?: RequestOptions) =>
+    request<{ ok: boolean }>(`/curator/passes/${passId}/devices/${deviceId}`, {
+      method: 'DELETE',
+      signal: options?.signal,
+    }),
 }
 
 export const pageFileUrl = (source: string, sourceId: string, index: number) =>

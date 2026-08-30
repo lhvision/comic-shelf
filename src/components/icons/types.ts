@@ -19,6 +19,7 @@ export type IconName =
   | 'external-link'
   | 'refresh'
   | 'plus'
+  | 'minus'
   | 'lock'
   | 'unlock'
   | 'book-open'

@@ -21,16 +21,21 @@ const {
   resetToken,
   toggleActive,
   removePass,
+  removeDevice,
+  updateMaxDevices,
   copyToken,
   copyShareLink,
   closeModal,
 } = useGuestPasses()
 
 type TabKey = 'roster' | 'issue'
+type FilterKey = 'all' | 'pending' | 'active' | 'full' | 'disabled'
 
 const activeTab = ref<TabKey>('roster')
+const currentFilter = ref<FilterKey>('all')
 const newUsername = ref('')
 const selectedDays = ref<number | null>(30)
+const selectedMaxDevices = ref(2)
 const creating = ref(false)
 const inputRef = ref<HTMLInputElement | null>(null)
 
@@ -40,8 +45,10 @@ const justCreatedPass = ref<GuestPass | null>(null)
 // 局部内联确认与状态反馈
 const confirmResetId = ref<number | null>(null)
 const confirmDeleteId = ref<number | null>(null)
+const confirmKickDeviceId = ref<number | null>(null)
 const copiedLinkId = ref<number | null>(null)
 const copiedTokenId = ref<number | null>(null)
+const searchQuery = ref('')
 
 const tabs = computed<TabItem<TabKey>[]>(() => [
   { key: 'roster', label: '现存名册', sub: String(passes.value.length) },
@@ -56,6 +63,58 @@ const dayOptions: { label: string; value: number | null }[] = [
   { label: '永久有效', value: null },
 ]
 
+const deviceOptions: { label: string; value: number }[] = [
+  { label: '1 台 · 独占', value: 1 },
+  { label: '2 台 · 手机+电脑', value: 2 },
+  { label: '3 台 · 全家桶', value: 3 },
+  { label: '4 台', value: 4 },
+  { label: '5 台', value: 5 },
+]
+
+const pendingCount = computed(
+  () => passes.value.filter((p) => p.activation_status === 'pending').length,
+)
+const activeCount = computed(
+  () => passes.value.filter((p) => p.activation_status === 'active').length,
+)
+const fullCount = computed(() => passes.value.filter((p) => p.activation_status === 'full').length)
+const disabledCount = computed(
+  () =>
+    passes.value.filter(
+      (p) => p.activation_status === 'disabled' || p.activation_status === 'expired',
+    ).length,
+)
+
+const filterTabs = computed(() => [
+  { key: 'all' as const, label: '全部', count: passes.value.length },
+  { key: 'pending' as const, label: '待激活', count: pendingCount.value },
+  { key: 'active' as const, label: '使用中', count: activeCount.value },
+  { key: 'full' as const, label: '已满额', count: fullCount.value },
+  { key: 'disabled' as const, label: '已失效', count: disabledCount.value },
+])
+
+const filteredPasses = computed(() => {
+  let list = passes.value
+  if (currentFilter.value === 'pending') {
+    list = list.filter((p) => p.activation_status === 'pending')
+  } else if (currentFilter.value === 'active') {
+    list = list.filter((p) => p.activation_status === 'active')
+  } else if (currentFilter.value === 'full') {
+    list = list.filter((p) => p.activation_status === 'full')
+  } else if (currentFilter.value === 'disabled') {
+    list = list.filter(
+      (p) => p.activation_status === 'disabled' || p.activation_status === 'expired',
+    )
+  }
+
+  const query = searchQuery.value.trim().toLowerCase()
+  if (query) {
+    list = list.filter((p) => p.username.toLowerCase().includes(query))
+  }
+
+  return list
+})
+
 async function handleCreate() {
   if (!newUsername.value.trim() || creating.value) return
   creating.value = true
@@ -63,6 +122,7 @@ async function handleCreate() {
     const created = await createPass({
       username: newUsername.value.trim(),
       expires_days: selectedDays.value,
+      max_devices: selectedMaxDevices.value,
     })
     if (created) {
       newUsername.value = ''
@@ -77,6 +137,7 @@ async function handleCreate() {
 function resetIssueForm() {
   justCreatedPass.value = null
   newUsername.value = ''
+  selectedMaxDevices.value = 2
   nextTick(() => {
     inputRef.value?.focus()
   })
@@ -87,8 +148,8 @@ function goToRoster() {
   activeTab.value = 'roster'
 }
 
-async function handleCopyLink(item: { id: number; token: string }) {
-  const ok = await copyShareLink(item.token)
+async function handleCopyLink(item: GuestPass) {
+  const ok = await copyShareLink(item)
   if (ok) {
     copiedLinkId.value = item.id
     setTimeout(() => {
@@ -99,8 +160,8 @@ async function handleCopyLink(item: { id: number; token: string }) {
   }
 }
 
-async function handleCopyToken(item: { id: number; token: string }) {
-  const ok = await copyToken(item.token)
+async function handleCopyToken(item: GuestPass) {
+  const ok = await copyToken(item)
   if (ok) {
     copiedTokenId.value = item.id
     setTimeout(() => {
@@ -111,6 +172,10 @@ async function handleCopyToken(item: { id: number; token: string }) {
   }
 }
 
+async function handleRemoveDevice(passId: number, deviceId: number) {
+  await removeDevice(passId, deviceId)
+}
+
 function formatTimestamp(ts: number | null): string {
   if (!ts) return '永久有效'
   const date = new Date(ts * 1000)
@@ -118,6 +183,18 @@ function formatTimestamp(ts: number | null): string {
   const m = String(date.getMonth() + 1).padStart(2, '0')
   const d = String(date.getDate()).padStart(2, '0')
   return `${y}-${m}-${d}`
+}
+
+function formatRelativeTime(ts: number | null): string {
+  if (!ts) return '从未'
+  const now = Math.floor(Date.now() / 1000)
+  const diff = now - ts
+  if (diff < 60) return '刚刚'
+  if (diff < 3600) return `${Math.floor(diff / 60)} 分钟前`
+  if (diff < 86400) return `${Math.floor(diff / 3600)} 小时前`
+  const days = Math.floor(diff / 86400)
+  if (days < 30) return `${days} 天前`
+  return formatTimestamp(ts)
 }
 
 function getDaysRemaining(expiresAt: number | null): string {
@@ -138,9 +215,12 @@ watch(modalVisible, (visible) => {
   if (visible) {
     confirmResetId.value = null
     confirmDeleteId.value = null
+    confirmKickDeviceId.value = null
     copiedLinkId.value = null
     copiedTokenId.value = null
     justCreatedPass.value = null
+    currentFilter.value = 'all'
+    searchQuery.value = ''
     if (passes.value.length === 0) {
       activeTab.value = 'roster'
     }
@@ -194,16 +274,52 @@ watch(activeTab, async (tab) => {
         aria-label="现存名册列表"
       >
         <div class="roster-toolbar">
-          <span class="roster-tip">共登记 {{ passes.length }} 位访客</span>
+          <div class="roster-summary">
+            <span class="roster-tip">共登记 {{ passes.length }} 位访客</span>
+          </div>
+          <div class="roster-toolbar-right">
+            <div v-if="passes.length > 2" class="roster-search-box">
+              <AppIcon name="search" size="xs" class="search-icon" />
+              <input
+                v-model="searchQuery"
+                type="search"
+                class="roster-search-input"
+                placeholder="搜索访客..."
+                aria-label="搜索访客名称"
+              />
+            </div>
+            <button
+              type="button"
+              class="refresh-btn"
+              title="重新获取最新名册数据"
+              :disabled="loading"
+              @click="fetchPasses"
+            >
+              <AppIcon name="refresh" size="xs" :class="{ 'spin-icon': loading }" />
+              <span>刷新</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- 状态快捷筛选胶囊 -->
+        <div
+          v-if="passes.length > 0"
+          class="filter-bar"
+          role="radiogroup"
+          aria-label="名册激活状态筛选"
+        >
           <button
+            v-for="flt in filterTabs"
+            :key="flt.key"
             type="button"
-            class="refresh-btn"
-            title="重新获取最新名册数据"
-            :disabled="loading"
-            @click="fetchPasses"
+            class="filter-tab-btn"
+            :class="{ active: currentFilter === flt.key }"
+            :aria-checked="currentFilter === flt.key"
+            role="radio"
+            @click="currentFilter = flt.key"
           >
-            <AppIcon name="refresh" size="xs" :class="{ 'spin-icon': loading }" />
-            <span>刷新</span>
+            <span>{{ flt.label }}</span>
+            <span class="filter-badge">{{ flt.count }}</span>
           </button>
         </div>
 
@@ -220,7 +336,7 @@ watch(activeTab, async (tab) => {
           <button type="button" class="retry-btn" @click="fetchPasses">重新翻阅名册</button>
         </div>
 
-        <!-- 暂无名册 -->
+        <!-- 暂无名册（无数据） -->
         <div v-else-if="passes.length === 0" class="state-panel empty">
           <div class="empty-seal">暂无访客</div>
           <p class="empty-hint">尚未印发任何通行证，点击下方按钮即可派发。</p>
@@ -230,15 +346,35 @@ watch(activeTab, async (tab) => {
           </AppButton>
         </div>
 
-        <!-- 借书卡名册卡片列表（消除 420px 嵌套滚动死锁，自然随 Modal 滚动） -->
+        <!-- 筛选无结果 -->
+        <div v-else-if="filteredPasses.length === 0" class="state-panel empty">
+          <div class="empty-seal">无匹配通行证</div>
+          <p class="empty-hint">当前筛选或搜索条件下暂无访客卡片。</p>
+          <AppButton
+            variant="secondary"
+            size="sm"
+            @click="
+              () => {
+                currentFilter = 'all'
+                searchQuery = ''
+              }
+            "
+          >
+            <span>重置筛选并查看全部 {{ passes.length }} 位访客</span>
+          </AppButton>
+        </div>
+
+        <!-- 借书卡名册卡片列表 -->
         <ul v-else class="pass-card-list">
           <li
-            v-for="item in passes"
+            v-for="item in filteredPasses"
             :key="item.id"
             class="pass-card"
             :class="{
-              disabled: !item.is_active,
-              expired: item.is_expired && item.is_active,
+              disabled: item.activation_status === 'disabled',
+              expired: item.activation_status === 'expired',
+              pending: item.activation_status === 'pending',
+              full: item.activation_status === 'full',
             }"
           >
             <div class="pass-card-top">
@@ -247,18 +383,15 @@ watch(activeTab, async (tab) => {
                 <span class="pass-date">{{ formatTimestamp(item.created_at) }} 印发</span>
               </div>
 
-              <!-- 典藏印章（语义纠偏：生效为朱砂印，过期与停用为沉静墨印） -->
-              <div
-                class="status-seal"
-                :class="{
-                  active: item.is_active && !item.is_expired,
-                  expired: item.is_active && item.is_expired,
-                  disabled: !item.is_active,
-                }"
-              >
-                <span v-if="!item.is_active">〔 已停用 〕</span>
-                <span v-else-if="item.is_expired">〔 已过期 〕</span>
-                <span v-else>〔 {{ getDaysRemaining(item.expires_at) }} 〕</span>
+              <!-- 典藏印章（四态流转：待激活为草木印，使用中为墨绿印，满额为琥珀印，过期与停用为灰印） -->
+              <div class="status-seal" :class="item.activation_status">
+                <span v-if="item.activation_status === 'disabled'">〔 已停用 〕</span>
+                <span v-else-if="item.activation_status === 'expired'">〔 已过期 〕</span>
+                <span v-else-if="item.activation_status === 'pending'">〔 待激活 · 0台占用 〕</span>
+                <span v-else-if="item.activation_status === 'full'"
+                  >〔 满额 · {{ item.device_count }}/{{ item.max_devices }}台 〕</span
+                >
+                <span v-else>〔 活跃 · {{ item.device_count }}/{{ item.max_devices }}台 〕</span>
               </div>
             </div>
 
@@ -291,6 +424,79 @@ watch(activeTab, async (tab) => {
               </button>
             </div>
 
+            <!-- 物理设备与会话托盘 -->
+            <div class="device-tray">
+              <div class="device-tray-head">
+                <div class="device-tray-title">
+                  <AppIcon name="users" size="xs" />
+                  <span>授权设备（{{ item.device_count }} / {{ item.max_devices }}）</span>
+                </div>
+                <span
+                  v-if="item.activation_status === 'pending'"
+                  class="device-tray-status pending"
+                >
+                  尚未绑定任何设备（可安全转赠/分发）
+                </span>
+                <span v-else-if="item.activation_status === 'full'" class="device-tray-status full">
+                  席位已满，新端登入将按 LRU 置换最旧端
+                </span>
+                <span v-else class="device-tray-status active">
+                  已绑定 {{ item.device_count }} 台设备
+                </span>
+              </div>
+
+              <!-- 设备名册列表 -->
+              <ul v-if="item.devices && item.devices.length > 0" class="device-chip-list">
+                <li v-for="dev in item.devices" :key="dev.id" class="device-chip">
+                  <div class="device-chip-meta">
+                    <span class="device-name">{{ dev.device_name }}</span>
+                    <span class="device-time"
+                      >活跃于 {{ formatRelativeTime(dev.last_active_at) }}</span
+                    >
+                    <span v-if="dev.last_ip" class="device-ip">{{ dev.last_ip }}</span>
+                  </div>
+
+                  <!-- 单设备踢除二次确认防误触 -->
+                  <div class="device-kick-wrapper">
+                    <template v-if="confirmKickDeviceId === dev.id">
+                      <span class="device-kick-confirm-text">下线？</span>
+                      <button
+                        type="button"
+                        class="device-kick-action confirm-yes"
+                        :disabled="operatingId !== null"
+                        @click="
+                          () => {
+                            handleRemoveDevice(item.id, dev.id)
+                            confirmKickDeviceId = null
+                          }
+                        "
+                      >
+                        踢出
+                      </button>
+                      <button
+                        type="button"
+                        class="device-kick-action confirm-no"
+                        @click="confirmKickDeviceId = null"
+                      >
+                        取消
+                      </button>
+                    </template>
+                    <button
+                      v-else
+                      type="button"
+                      class="device-kick-btn"
+                      :title="`将设备「${dev.device_name}」踢下线`"
+                      :aria-label="`将设备「${dev.device_name}」踢下线`"
+                      :disabled="operatingId !== null"
+                      @click="confirmKickDeviceId = dev.id"
+                    >
+                      <AppIcon name="close" size="xs" />
+                    </button>
+                  </div>
+                </li>
+              </ul>
+            </div>
+
             <!-- 辅助信息与次要管理工具栏 -->
             <div class="card-footer">
               <div class="expiry-info">
@@ -299,6 +505,38 @@ watch(activeTab, async (tab) => {
               </div>
 
               <div class="sub-toolbar">
+                <!-- 席位配额调节 -->
+                <div
+                  class="quota-stepper"
+                  role="spinbutton"
+                  :aria-valuenow="item.max_devices"
+                  aria-valuemin="1"
+                  aria-valuemax="5"
+                  :aria-label="`访客「${item.username}」的设备席位上限`"
+                  title="调整允许同时绑定的设备数（1~5台）"
+                >
+                  <span class="quota-label">席位:</span>
+                  <button
+                    type="button"
+                    class="quota-step-btn"
+                    :disabled="item.max_devices <= 1 || operatingId !== null"
+                    aria-label="减少设备配额"
+                    @click="updateMaxDevices(item.id, item.max_devices - 1)"
+                  >
+                    <AppIcon name="minus" size="xs" />
+                  </button>
+                  <span class="quota-val">{{ item.max_devices }}</span>
+                  <button
+                    type="button"
+                    class="quota-step-btn"
+                    :disabled="item.max_devices >= 5 || operatingId !== null"
+                    aria-label="增加设备配额"
+                    @click="updateMaxDevices(item.id, item.max_devices + 1)"
+                  >
+                    <AppIcon name="plus" size="xs" />
+                  </button>
+                </div>
+
                 <button
                   type="button"
                   class="sub-tool-btn"
@@ -414,7 +652,9 @@ watch(activeTab, async (tab) => {
             <span class="voucher-seal">〔 通行凭据已印发 〕</span>
             <h3 class="voucher-title">{{ justCreatedPass.username }}</h3>
             <p class="voucher-sub">
-              专属通行证已生成，有效期至 {{ formatTimestamp(justCreatedPass.expires_at) }}。
+              专属通行证已生成，有效期至
+              {{ formatTimestamp(justCreatedPass.expires_at) }}，允许同时授权
+              {{ justCreatedPass.max_devices }} 台设备。
             </p>
           </div>
 
@@ -500,6 +740,27 @@ watch(activeTab, async (tab) => {
             </div>
           </div>
 
+          <div class="form-group">
+            <label class="form-label">允许同时登入设备数（席位）</label>
+            <div class="days-selector" role="radiogroup" aria-label="设备席位配额选择">
+              <button
+                v-for="opt in deviceOptions"
+                :key="opt.value"
+                type="button"
+                class="day-pill"
+                :class="{ active: selectedMaxDevices === opt.value }"
+                :aria-checked="selectedMaxDevices === opt.value"
+                role="radio"
+                @click="selectedMaxDevices = opt.value"
+              >
+                {{ opt.label }}
+              </button>
+            </div>
+            <p class="field-hint">
+              允许同时授权的物理设备上限。超出时自动置换挤出最久未活跃设备，防止口令群发扩散。
+            </p>
+          </div>
+
           <AppButton
             type="submit"
             variant="primary"
@@ -565,7 +826,7 @@ watch(activeTab, async (tab) => {
   padding: var(--space-4) var(--space-5) var(--space-3) var(--space-5);
   margin-bottom: var(--space-1);
   border-bottom: 1px solid var(--line);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.04);
+  box-shadow: var(--shadow-1);
 }
 
 /* 面板内容容器 */
@@ -580,7 +841,53 @@ watch(activeTab, async (tab) => {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: var(--space-2);
   padding: 0 var(--space-1);
+}
+
+.roster-summary {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.roster-toolbar-right {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.roster-search-box {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0 var(--space-2);
+  height: 32px;
+  background: var(--paper-1);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-pill, 9999px);
+  color: var(--ink-2);
+  transition: all var(--duration-1) var(--ease-out);
+}
+
+.roster-search-box:focus-within {
+  border-color: var(--accent);
+  background: var(--paper-0);
+  color: var(--ink-0);
+}
+
+.roster-search-input {
+  border: none;
+  background: transparent;
+  padding: 0;
+  font-size: var(--text-xs);
+  color: var(--ink-0);
+  outline: none;
+  width: 110px;
+}
+
+.roster-search-input::placeholder {
+  color: var(--ink-2);
 }
 
 .roster-tip {
@@ -606,6 +913,64 @@ watch(activeTab, async (tab) => {
 .refresh-btn:hover {
   color: var(--ink-0);
   border-color: var(--line);
+}
+
+/* 状态快捷筛选胶囊栏 */
+.filter-bar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  overflow-x: auto;
+  padding: 2px var(--space-1) var(--space-1) var(--space-1);
+  scrollbar-width: none;
+}
+
+.filter-bar::-webkit-scrollbar {
+  display: none;
+}
+
+.filter-tab-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 32px;
+  padding: 0 var(--space-3);
+  border-radius: var(--radius-pill, 9999px);
+  border: 1px solid var(--line);
+  background: var(--paper-1);
+  color: var(--ink-1);
+  font-size: var(--text-caption);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all var(--duration-1) var(--ease-out);
+}
+
+.filter-tab-btn:hover {
+  background: var(--paper-2);
+  color: var(--ink-0);
+  border-color: var(--line-strong);
+}
+
+.filter-tab-btn.active {
+  background: var(--paper-0);
+  border-color: var(--accent);
+  color: var(--accent);
+  font-weight: 600;
+  box-shadow: var(--shadow-1);
+}
+
+.filter-badge {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  padding: 0 6px;
+  border-radius: 9999px;
+  background: var(--paper-2);
+  color: var(--ink-2);
+}
+
+.filter-tab-btn.active .filter-badge {
+  background: var(--accent-soft);
+  color: var(--accent);
 }
 
 /* 状态占位 */
@@ -711,7 +1076,7 @@ watch(activeTab, async (tab) => {
   color: var(--ink-2);
 }
 
-/* 典藏印章 */
+/* 典藏印章（四态流转） */
 .status-seal {
   font-family: var(--font-mono);
   font-size: var(--text-caption);
@@ -721,10 +1086,22 @@ watch(activeTab, async (tab) => {
   border: 1px solid transparent;
 }
 
+.status-seal.pending {
+  color: var(--ink-1);
+  background: var(--paper-1);
+  border-color: color-mix(in oklab, var(--ink-2) 35%, var(--line));
+}
+
 .status-seal.active {
-  color: var(--accent);
-  background: var(--accent-soft);
-  border-color: color-mix(in oklab, var(--accent) 30%, transparent);
+  color: var(--success, #2e7d32);
+  background: color-mix(in oklab, var(--success, #2e7d32) 10%, var(--paper-0));
+  border-color: color-mix(in oklab, var(--success, #2e7d32) 30%, transparent);
+}
+
+.status-seal.full {
+  color: var(--warning, #b45309);
+  background: color-mix(in oklab, var(--warning, #b45309) 10%, var(--paper-0));
+  border-color: color-mix(in oklab, var(--warning, #b45309) 35%, transparent);
 }
 
 .status-seal.expired {
@@ -737,7 +1114,6 @@ watch(activeTab, async (tab) => {
   color: var(--ink-2);
   background: var(--paper-2);
   border-color: var(--line);
-  text-decoration: line-through;
 }
 
 /* 核心高频动作区 */
@@ -801,6 +1177,172 @@ watch(activeTab, async (tab) => {
   color: var(--success) !important;
 }
 
+/* 物理设备与会话托盘 */
+.device-tray {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  background: var(--paper-1);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-1);
+  padding: var(--space-2) var(--space-3);
+}
+
+.device-tray-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  font-size: var(--text-caption);
+  color: var(--ink-1);
+}
+
+.device-tray-title {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  font-weight: 600;
+  color: var(--ink-0);
+}
+
+.device-tray-status {
+  font-size: var(--text-xs);
+}
+
+.device-tray-status.pending {
+  color: var(--ink-2);
+}
+
+.device-tray-status.full {
+  color: var(--accent);
+  font-weight: 500;
+}
+
+.device-tray-status.active {
+  color: var(--success, #2e7d32);
+}
+
+.device-chip-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.device-chip {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: var(--paper-0);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-1);
+  padding: 4px 8px;
+  gap: var(--space-2);
+}
+
+.device-chip-meta {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.device-name {
+  font-weight: 600;
+  font-size: var(--text-xs);
+  color: var(--ink-0);
+}
+
+.device-time {
+  font-size: 11px;
+  color: var(--ink-2);
+}
+
+.device-ip {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--ink-2);
+  padding: 1px 4px;
+  background: var(--paper-2);
+  border-radius: 2px;
+}
+
+.device-kick-wrapper {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.device-kick-confirm-text {
+  font-size: 11px;
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.device-kick-action {
+  font-size: 11px;
+  padding: 2px 6px;
+  min-height: 24px;
+  border-radius: var(--radius-1);
+  border: 1px solid var(--line);
+  background: var(--paper-1);
+  color: var(--ink-1);
+  cursor: pointer;
+  transition: all var(--duration-1) var(--ease-out);
+}
+
+.device-kick-action.confirm-yes {
+  background: var(--accent-soft);
+  border-color: color-mix(in oklab, var(--accent) 40%, transparent);
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.device-kick-action.confirm-no {
+  background: var(--paper-0);
+  color: var(--ink-2);
+}
+
+.device-kick-btn {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: var(--radius-1);
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--ink-2);
+  cursor: pointer;
+  transition: all var(--duration-1) var(--ease-out);
+  flex-shrink: 0;
+}
+
+/* WCAG 触控热区扩展至 40px */
+.device-kick-btn::before {
+  content: '';
+  position: absolute;
+  top: -8px;
+  bottom: -8px;
+  left: -8px;
+  right: -8px;
+}
+
+.device-kick-btn:hover:not(:disabled) {
+  color: var(--accent);
+  background: var(--accent-soft);
+  border-color: color-mix(in oklab, var(--accent) 30%, transparent);
+}
+
+.device-kick-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
 /* 卡片底栏 */
 .card-footer {
   display: flex;
@@ -832,6 +1374,70 @@ watch(activeTab, async (tab) => {
   display: flex;
   align-items: center;
   gap: var(--space-1-5);
+}
+
+/* 席位配额微调 */
+.quota-stepper {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 0 4px;
+  min-height: 36px;
+  background: var(--paper-0);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-1);
+  font-size: var(--text-caption);
+}
+
+.quota-label {
+  color: var(--ink-2);
+  font-size: 11px;
+  padding-left: 2px;
+}
+
+.quota-val {
+  font-family: var(--font-mono);
+  font-weight: 600;
+  color: var(--ink-0);
+  padding: 0 4px;
+  font-size: 12px;
+}
+
+.quota-step-btn {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  background: var(--paper-1);
+  border: 1px solid var(--line);
+  border-radius: 2px;
+  color: var(--ink-1);
+  cursor: pointer;
+  padding: 0;
+  transition: all var(--duration-1) var(--ease-out);
+}
+
+/* WCAG 触控热区扩展至 36px */
+.quota-step-btn::before {
+  content: '';
+  position: absolute;
+  top: -7px;
+  bottom: -7px;
+  left: -7px;
+  right: -7px;
+}
+
+.quota-step-btn:hover:not(:disabled) {
+  color: var(--accent);
+  border-color: var(--accent);
+  background: var(--paper-0);
+}
+
+.quota-step-btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
 }
 
 .sub-tool-btn {
@@ -1081,18 +1687,46 @@ watch(activeTab, async (tab) => {
 @media (max-width: 640px) {
   .card-footer {
     flex-direction: column;
-    align-items: flex-start;
+    align-items: stretch;
     gap: var(--space-2);
   }
 
   .sub-toolbar {
     width: 100%;
-    justify-content: space-between;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-2);
+  }
+
+  .quota-stepper {
+    margin-right: auto;
   }
 
   .sub-tool-btn {
-    min-height: 40px;
-    padding: 0 var(--space-3);
+    min-height: 36px;
+    padding: 0 var(--space-2-5);
+  }
+
+  .roster-toolbar {
+    flex-direction: column;
+    align-items: stretch;
+    gap: var(--space-2);
+  }
+
+  .roster-toolbar-right {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    width: 100%;
+  }
+
+  .roster-search-box {
+    flex: 1;
+  }
+
+  .roster-search-input {
+    width: 100%;
   }
 }
 

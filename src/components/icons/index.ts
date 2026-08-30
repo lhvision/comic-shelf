@@ -17,6 +17,7 @@ import IconCamera from './IconCamera.vue'
 import IconExternalLink from './IconExternalLink.vue'
 import IconRefresh from './IconRefresh.vue'
 import IconPlus from './IconPlus.vue'
+import IconMinus from './IconMinus.vue'
 import IconLock from './IconLock.vue'
 import IconUnlock from './IconUnlock.vue'
 import IconBookOpen from './IconBookOpen.vue'
@@ -47,6 +48,7 @@ export {
   IconExternalLink,
   IconRefresh,
   IconPlus,
+  IconMinus,
   IconLock,
   IconUnlock,
   IconBookOpen,
@@ -77,6 +79,7 @@ export const ICON_MAP: Record<IconName, Component> = {
   'external-link': IconExternalLink,
   refresh: IconRefresh,
   plus: IconPlus,
+  minus: IconMinus,
   lock: IconLock,
   unlock: IconUnlock,
   'book-open': IconBookOpen,

@@ -96,10 +96,54 @@ export function useGuestPasses() {
     }
   }
 
-  async function copyToken(token: string): Promise<boolean> {
+  async function removeDevice(passId: number, deviceId: number): Promise<boolean> {
+    if (operatingId.value !== null) return false
+    operatingId.value = passId
+    try {
+      await api.deleteCuratorPassDevice(passId, deviceId)
+      const pass = passes.value.find((p) => p.id === passId)
+      if (pass && pass.devices) {
+        pass.devices = pass.devices.filter((d) => d.id !== deviceId)
+        pass.device_count = pass.devices.length
+        if (pass.device_count === 0) {
+          pass.activation_status = 'pending'
+          pass.first_used_at = null
+          pass.last_used_at = null
+        } else if (pass.device_count >= pass.max_devices) {
+          pass.activation_status = 'full'
+        } else {
+          pass.activation_status = 'active'
+        }
+      }
+      toast('已移除该设备，该端已被踢下线', 'info')
+      return true
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : '移除设备失败'
+      toast(msg, 'error')
+      return false
+    } finally {
+      operatingId.value = null
+    }
+  }
+
+  async function updateMaxDevices(passId: number, maxDevices: number): Promise<boolean> {
+    const ok = await updatePass(passId, { max_devices: maxDevices })
+    if (ok) {
+      toast(`已将设备配额调整为 ${maxDevices} 台`, 'success')
+    }
+    return ok
+  }
+
+  async function copyToken(target: GuestPass | string): Promise<boolean> {
+    const token = typeof target === 'string' ? target : target.token
+    const deviceCount = typeof target === 'string' ? 0 : target.device_count || 0
     try {
       await copy(token)
-      toast('通行口令已复制到剪贴板', 'success')
+      if (deviceCount > 0) {
+        toast(`⚠️ 口令已复制。该通行证已有 ${deviceCount} 台设备在使用中，谨防设备互挤`, 'info')
+      } else {
+        toast('通行口令已复制，可安心发放给新朋友', 'success')
+      }
       return true
     } catch {
       toast('复制失败，请手动长按或选中复制', 'error')
@@ -107,12 +151,18 @@ export function useGuestPasses() {
     }
   }
 
-  async function copyShareLink(token: string): Promise<boolean> {
+  async function copyShareLink(target: GuestPass | string): Promise<boolean> {
+    const token = typeof target === 'string' ? target : target.token
+    const deviceCount = typeof target === 'string' ? 0 : target.device_count || 0
     try {
       const url = new URL(window.location.origin)
       url.searchParams.set('token', token)
       await copy(url.toString())
-      toast('直达链接已复制，朋友打开即可免密入馆', 'success')
+      if (deviceCount > 0) {
+        toast(`⚠️ 直达链接已复制。该通行证已有 ${deviceCount} 台设备在使用中，谨防设备互挤`, 'info')
+      } else {
+        toast('专属直达链接已复制，朋友打开即可免密入馆', 'success')
+      }
       return true
     } catch {
       toast('复制失败，请手动长按或选中复制', 'error')
@@ -141,6 +191,8 @@ export function useGuestPasses() {
     resetToken,
     toggleActive,
     removePass,
+    removeDevice,
+    updateMaxDevices,
     copyToken,
     copyShareLink,
     openModal,

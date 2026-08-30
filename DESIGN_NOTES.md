@@ -744,3 +744,47 @@
 - **验证**：
   - `vp check` 0 lint error / 0 type error，代码格式 100% 通过；
   - `vp test src/__tests__/StoragePopover.spec.ts`、`App.spec.ts`、`GuestPasses.spec.ts`、`useAuth.spec.ts` 全部精准单测通过。
+
+## 40. 访客通行证唯一使用、LRU 多设备漫游与防重发放预警（Impeccable & ADR 0007）
+
+- **背景与问题**：
+  1. **通行证无限制共享**：原访客码一旦泄露或群发，任何人均可无限制登入，缺少设备绑定与名额约束；
+  2. **合法访客多端与漫游诉求**：访客日常需在手机、平板与电脑间流转，且通勤中频繁在 4G/5G 蜂窝与 Wi-Fi 间切换 IP，粗暴锁死 IP 会导致误杀踢出；
+  3. **馆长重复发放困惑**：馆长难以分辨某张通行证是否已被朋友实际激活使用，复制时缺乏直观警示，容易造成同一张卡片误发多人引发设备互挤。
+- **架构决策与领域建模（ADR 0007 & CONTEXT.md）**：
+  1. **两层凭据流转机制**：
+     - 口令凭据（Pass Token）：由馆长派发，仅在初次登入或打开专属直达链接时使用；
+     - 设备凭据（Device Session Token）：服务端校验后，为当前物理端颁发专属持久化凭据（存储于 `guest_devices` 表并以 `comic_shelf_device` HttpOnly Cookie 返回）；
+  2. **LRU 设备滑动窗口淘汰**：
+     - 每张通行证配置设备席位配额（默认 2 台，支持 1~5 台微调）；
+     - 当新设备登入且超过配额时，系统自动淘汰踢出最久未活跃（`last_active_at` 最小）的旧设备；合法号主换新机自愈无需沟通，非法群发扩散则导致号主自身设备被挤下线，形成内在自律制约；
+  3. **IP 彻底解耦脱敏**：IP 变动 100% 无感放行，仅记录为审计字段供馆长名册排查。
+- **UI 评审与工程落地（Impeccable 双轨闭环）**：
+  1. **状态筛选胶囊（Filter Pills）**：
+     - 名册顶部新增快速分类胶囊（全部 · 待激活 · 使用中 · 已满额 · 已失效），附带数量徽章；
+     - 采用 WAI-ARIA `role="radiogroup"` 与 `role="radio"` 语义，馆长可一秒筛选出所有待激活卡片，杜绝重复赠予；
+     - 头部新增轻量即时模糊搜索框，大名单秒级过滤；
+  2. **典藏印章四态流转与语义纠偏**：
+     - 待激活（`pending`）：淡雅草木灰印 `〔 待激活 · 0台占用 〕`；
+     - 活跃中（`active`）：墨绿印 `〔 活跃 · N/M台 〕`（`--success` 纸本混色）；
+     - 已满额（`full`）：琥珀古铜印 `〔 满额 · M/M台 〕`（`--warning`），彻底解除原先误用朱砂红导致的警报恐慌感；
+     - 已失效（`disabled/expired`）：沉静墨印 `〔 已停用 〕` / `〔 已过期 〕`，移除现代删除线回归古籍质感；
+  3. **物理设备抽屉与防误触踢除**：
+     - 每张借书卡配备独立设备托盘，呈现每台设备的名称（根据 UA 解析系统与浏览器）、最后活跃相对时间与 IP；
+     - 踢除动作（`device-kick-btn`）引入内联防误触微交互（点击后在芯片内部展开“下线？”、“踢出”与“取消”），辅以 `::before` 伪元素扩展至 40px 触控区，并声明完整 `aria-label`；
+  4. **席位配额微调器（Quota Stepper）与零伪字符合规**：
+     - 新增原子图标组件 `IconMinus.vue` 并纳入 `src/components/icons/` 单源字典；
+     - 席位加减全面使用 `<AppIcon name="minus" size="xs" />` 与 `<AppIcon name="plus" size="xs" />`，彻底消灭硬编码 Unicode 伪字符；
+     - 容器声明 `role="spinbutton"`、`aria-valuenow`、`aria-valuemin="1"` 与 `aria-valuemax="5"`；
+     - 优化 `updateMaxDevices` 消除冗余全量拉取，实现就地响应式更新；
+  5. **防重发放轻量告警 Toast**：
+     - 复制已有设备绑定的通行证口令或链接时，弹出琥珀色微提示 `⚠️ 口令已复制。该通行证已有 X 台设备在使用中，谨防设备互挤`；若为未激活卡片则提示 `可安心发放给新朋友`；
+  6. **移动端响应式与暗室阴影收敛**：
+     - 移动端（`≤640px`）底栏采用弹性自适应折行排版，彻底解决二次确认展开时宽度暴增撑破卡片的问题；
+     - 硬编码 `rgba(0,0,0,0.04/0.05)` 阴影全量收敛至 `var(--shadow-1)`。
+- **验证**：
+  - `pnpm test:py` 后端单元测试全链路 100% 通过（含设备注册、LRU 自动淘汰、多态流转与单设备踢除测试）；
+  - `vp test src/__tests__/GuestPasses.spec.ts` 前端单测 6/6 全绿；
+  - `pnpm detect:slop src/components/curator/GuestModal.vue` 0 finding；
+  - `pnpm critique write guest-modal-devices ...` 评审快照已归档至 `.impeccable/critique/2026-08-30T09-27-48Z__guest-modal-devices.md`；
+  - `vp check` 全站 193 个文件代码格式校验通过、147 个文件 0 warning / 0 error。

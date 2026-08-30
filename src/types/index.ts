@@ -248,6 +248,19 @@ export interface DropdownOption<K = string | number> {
   checked?: boolean
 }
 
+export type GuestPassActivationStatus = 'pending' | 'active' | 'full' | 'disabled' | 'expired'
+
+export interface GuestDevice {
+  id: number
+  pass_id: number
+  device_token: string
+  device_name: string
+  user_agent: string
+  last_ip: string
+  created_at: number
+  last_active_at: number
+}
+
 export interface GuestPass {
   id: number
   username: string
@@ -255,6 +268,12 @@ export interface GuestPass {
   expires_at: number | null
   is_active: boolean
   is_expired: boolean
+  max_devices: number
+  device_count: number
+  devices: GuestDevice[]
+  first_used_at: number | null
+  last_used_at: number | null
+  activation_status: GuestPassActivationStatus
   created_at: number
   updated_at: number
 }
@@ -263,6 +282,7 @@ export interface CreateGuestPassPayload {
   username: string
   expires_days?: number | null
   custom_token?: string | null
+  max_devices?: number
 }
 
 export interface UpdateGuestPassPayload {
@@ -271,6 +291,7 @@ export interface UpdateGuestPassPayload {
   extend_days?: number
   reset_token?: boolean
   expires_days?: number | null
+  max_devices?: number
 }
 
 export interface ReadingProgressInfo {

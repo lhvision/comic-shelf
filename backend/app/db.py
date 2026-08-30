@@ -53,10 +53,25 @@ def init_db(db_path: Path | None = None) -> None:
                 token TEXT UNIQUE NOT NULL,
                 expires_at INTEGER,
                 is_active INTEGER NOT NULL DEFAULT 1,
+                max_devices INTEGER NOT NULL DEFAULT 2,
                 created_at INTEGER NOT NULL,
                 updated_at INTEGER NOT NULL
             );
             CREATE INDEX IF NOT EXISTS idx_guest_passes_token ON guest_passes(token);
+
+            CREATE TABLE IF NOT EXISTS guest_devices (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                pass_id INTEGER NOT NULL,
+                device_token TEXT UNIQUE NOT NULL,
+                device_name TEXT NOT NULL,
+                user_agent TEXT NOT NULL DEFAULT '',
+                last_ip TEXT NOT NULL DEFAULT '',
+                created_at INTEGER NOT NULL,
+                last_active_at INTEGER NOT NULL,
+                FOREIGN KEY (pass_id) REFERENCES guest_passes(id) ON DELETE CASCADE
+            );
+            CREATE INDEX IF NOT EXISTS idx_guest_devices_token ON guest_devices(device_token);
+            CREATE INDEX IF NOT EXISTS idx_guest_devices_pass ON guest_devices(pass_id);
 
             CREATE TABLE IF NOT EXISTS user_favorites (
                 user_id TEXT NOT NULL,
@@ -79,25 +94,93 @@ def init_db(db_path: Path | None = None) -> None:
             CREATE INDEX IF NOT EXISTS idx_user_progress_user ON user_reading_progress(user_id);
             """
         )
+        # Migration: ensure max_devices column exists for existing DB
+        cols = [r["name"] for r in conn.execute("PRAGMA table_info(guest_passes)").fetchall()]
+        if "max_devices" not in cols:
+            conn.execute("ALTER TABLE guest_passes ADD COLUMN max_devices INTEGER NOT NULL DEFAULT 2")
         conn.commit()
 
 
 # ----------------------------------------------------------------------
-# 访客通行证（Guest Pass）CRUD
+# 访客通行证（Guest Pass）CRUD 与设备会话
 # ----------------------------------------------------------------------
 
-def _row_to_pass(row: sqlite3.Row | dict[str, Any]) -> dict[str, Any]:
+def parse_device_name(ua: str) -> str:
+    if not ua:
+        return "未知设备"
+    ua_lower = ua.lower()
+
+    # Platform
+    platform = "未知系统"
+    if "iphone" in ua_lower:
+        platform = "iPhone"
+    elif "ipad" in ua_lower:
+        platform = "iPad"
+    elif "android" in ua_lower:
+        platform = "Android"
+    elif "macintosh" in ua_lower or "mac os" in ua_lower:
+        platform = "macOS"
+    elif "windows" in ua_lower:
+        platform = "Windows"
+    elif "linux" in ua_lower:
+        platform = "Linux"
+
+    # Browser
+    browser = "浏览器"
+    if "micromessenger" in ua_lower:
+        browser = "微信"
+    elif "edg" in ua_lower:
+        browser = "Edge"
+    elif "chrome" in ua_lower or "crios" in ua_lower:
+        browser = "Chrome"
+    elif "safari" in ua_lower and "chrome" not in ua_lower and "crios" not in ua_lower:
+        browser = "Safari"
+    elif "firefox" in ua_lower or "fxios" in ua_lower:
+        browser = "Firefox"
+
+    return f"{platform} · {browser}"
+
+
+def _row_to_pass(
+    row: sqlite3.Row | dict[str, Any],
+    devices: list[dict[str, Any]] | None = None,
+) -> dict[str, Any]:
     d = dict(row)
     now = int(time.time())
     expires_at = d.get("expires_at")
     is_expired = bool(expires_at is not None and now > expires_at)
+    is_active = bool(d.get("is_active", 1))
+    max_devices = int(d.get("max_devices", 2) or 2)
+    dev_list = devices if devices is not None else []
+    device_count = len(dev_list)
+
+    if not is_active:
+        activation_status = "disabled"
+    elif is_expired:
+        activation_status = "expired"
+    elif device_count == 0:
+        activation_status = "pending"
+    elif device_count >= max_devices:
+        activation_status = "full"
+    else:
+        activation_status = "active"
+
+    first_used_at = min((dev["created_at"] for dev in dev_list), default=None)
+    last_used_at = max((dev["last_active_at"] for dev in dev_list), default=None)
+
     return {
         "id": d["id"],
         "username": d["username"],
         "token": d["token"],
         "expires_at": expires_at,
-        "is_active": bool(d["is_active"]),
+        "is_active": is_active,
         "is_expired": is_expired,
+        "max_devices": max_devices,
+        "device_count": device_count,
+        "devices": dev_list,
+        "first_used_at": first_used_at,
+        "last_used_at": last_used_at,
+        "activation_status": activation_status,
         "created_at": d["created_at"],
         "updated_at": d["updated_at"],
     }
@@ -108,6 +191,7 @@ def create_guest_pass(
     expires_days: int | None = None,
     custom_token: str | None = None,
     expires_at: int | None = None,
+    max_devices: int = 2,
 ) -> dict[str, Any]:
     username = username.strip()
     if not username:
@@ -116,15 +200,16 @@ def create_guest_pass(
     now = int(time.time())
     if expires_at is None and expires_days is not None:
         expires_at = now + expires_days * 86400
+    safe_max_devices = max(1, min(5, max_devices))
 
     try:
         with get_db() as conn:
             cur = conn.execute(
                 """
-                INSERT INTO guest_passes (username, token, expires_at, is_active, created_at, updated_at)
-                VALUES (?, ?, ?, 1, ?, ?)
+                INSERT INTO guest_passes (username, token, expires_at, is_active, max_devices, created_at, updated_at)
+                VALUES (?, ?, ?, 1, ?, ?, ?)
                 """,
-                (username, token, expires_at, now, now),
+                (username, token, expires_at, safe_max_devices, now, now),
             )
             conn.commit()
             pass_id = cur.lastrowid
@@ -136,14 +221,27 @@ def create_guest_pass(
 
 def list_guest_passes() -> list[dict[str, Any]]:
     with get_db() as conn:
-        rows = conn.execute("SELECT * FROM guest_passes ORDER BY created_at DESC").fetchall()
-        return [_row_to_pass(r) for r in rows]
+        pass_rows = conn.execute("SELECT * FROM guest_passes ORDER BY created_at DESC").fetchall()
+        device_rows = conn.execute("SELECT * FROM guest_devices ORDER BY last_active_at DESC").fetchall()
+
+        dev_map: dict[int, list[dict[str, Any]]] = {}
+        for dr in device_rows:
+            d = dict(dr)
+            dev_map.setdefault(d["pass_id"], []).append(d)
+
+        return [_row_to_pass(r, dev_map.get(r["id"], [])) for r in pass_rows]
 
 
 def get_guest_pass_by_id(pass_id: int) -> dict[str, Any] | None:
     with get_db() as conn:
         row = conn.execute("SELECT * FROM guest_passes WHERE id = ?", (pass_id,)).fetchone()
-        return _row_to_pass(row) if row else None
+        if not row:
+            return None
+        dev_rows = conn.execute(
+            "SELECT * FROM guest_devices WHERE pass_id = ? ORDER BY last_active_at DESC",
+            (pass_id,),
+        ).fetchall()
+        return _row_to_pass(row, [dict(r) for r in dev_rows])
 
 
 def get_guest_pass_by_token(token: str) -> dict[str, Any] | None:
@@ -151,7 +249,14 @@ def get_guest_pass_by_token(token: str) -> dict[str, Any] | None:
         return None
     with get_db() as conn:
         row = conn.execute("SELECT * FROM guest_passes WHERE token = ?", (token.strip(),)).fetchone()
-        return _row_to_pass(row) if row else None
+        if not row:
+            return None
+        pass_id = row["id"]
+        dev_rows = conn.execute(
+            "SELECT * FROM guest_devices WHERE pass_id = ? ORDER BY last_active_at DESC",
+            (pass_id,),
+        ).fetchall()
+        return _row_to_pass(row, [dict(r) for r in dev_rows])
 
 
 def update_guest_pass(
@@ -161,6 +266,7 @@ def update_guest_pass(
     extend_days: int | None = None,
     reset_token: bool = False,
     expires_days: int | None = None,
+    max_devices: int | None = None,
 ) -> dict[str, Any] | None:
     existing = get_guest_pass_by_id(pass_id)
     if existing is None:
@@ -170,6 +276,7 @@ def update_guest_pass(
     new_username = username.strip() if username is not None else existing["username"]
     new_is_active = int(is_active) if is_active is not None else (1 if existing["is_active"] else 0)
     new_token = secrets.token_hex(16) if reset_token else existing["token"]
+    new_max_devices = max(1, min(5, max_devices)) if max_devices is not None else existing["max_devices"]
 
     new_expires_at = existing["expires_at"]
     if expires_days is not None:
@@ -183,11 +290,24 @@ def update_guest_pass(
             conn.execute(
                 """
                 UPDATE guest_passes
-                SET username = ?, token = ?, expires_at = ?, is_active = ?, updated_at = ?
+                SET username = ?, token = ?, expires_at = ?, is_active = ?, max_devices = ?, updated_at = ?
                 WHERE id = ?
                 """,
-                (new_username, new_token, new_expires_at, new_is_active, now, pass_id),
+                (new_username, new_token, new_expires_at, new_is_active, new_max_devices, now, pass_id),
             )
+            if reset_token:
+                # Token changed: invalidate all active devices for this pass
+                conn.execute("DELETE FROM guest_devices WHERE pass_id = ?", (pass_id,))
+            elif max_devices is not None:
+                # If quota shrunk below current device count, evict oldest devices
+                dev_rows = conn.execute(
+                    "SELECT id FROM guest_devices WHERE pass_id = ? ORDER BY last_active_at ASC, id ASC",
+                    (pass_id,),
+                ).fetchall()
+                while len(dev_rows) > new_max_devices:
+                    oldest_id = dev_rows.pop(0)["id"]
+                    conn.execute("DELETE FROM guest_devices WHERE id = ?", (oldest_id,))
+
             conn.commit()
     except sqlite3.IntegrityError:
         raise ValueError("该通行口令已存在，请更换口令")
@@ -197,9 +317,112 @@ def update_guest_pass(
 
 def delete_guest_pass(pass_id: int) -> bool:
     with get_db() as conn:
+        conn.execute("DELETE FROM guest_devices WHERE pass_id = ?", (pass_id,))
+        conn.execute("DELETE FROM user_favorites WHERE user_id = ?", (f"guest:{pass_id}",))
+        conn.execute("DELETE FROM user_reading_progress WHERE user_id = ?", (f"guest:{pass_id}",))
         cur = conn.execute("DELETE FROM guest_passes WHERE id = ?", (pass_id,))
         conn.commit()
         return cur.rowcount > 0
+
+
+# ----------------------------------------------------------------------
+# 访客物理设备会话（Guest Devices & LRU Eviction）
+# ----------------------------------------------------------------------
+
+def register_guest_device(
+    pass_id: int,
+    user_agent: str = "",
+    ip: str = "",
+    device_token: str | None = None,
+) -> dict[str, Any]:
+    now = int(time.time())
+    with get_db() as conn:
+        pass_row = conn.execute("SELECT * FROM guest_passes WHERE id = ?", (pass_id,)).fetchone()
+        if not pass_row:
+            raise ValueError("通行证不存在")
+        pass_dict = dict(pass_row)
+        if not pass_dict["is_active"]:
+            raise ValueError("通行证已被停用")
+        if pass_dict["expires_at"] and now > pass_dict["expires_at"]:
+            raise ValueError("通行证已过期")
+
+        max_devices = int(pass_dict.get("max_devices", 2) or 2)
+
+        # LRU eviction: if devices count >= max_devices, delete oldest
+        dev_rows = conn.execute(
+            "SELECT id FROM guest_devices WHERE pass_id = ? ORDER BY last_active_at ASC, id ASC",
+            (pass_id,),
+        ).fetchall()
+
+        while len(dev_rows) >= max_devices:
+            oldest_id = dev_rows.pop(0)["id"]
+            conn.execute("DELETE FROM guest_devices WHERE id = ?", (oldest_id,))
+
+        token = device_token.strip() if device_token and device_token.strip() else secrets.token_hex(24)
+        safe_ua = str(user_agent) if isinstance(user_agent, str) else ""
+        safe_ip = str(ip) if isinstance(ip, str) else ""
+        name = parse_device_name(safe_ua)
+        cur = conn.execute(
+            """
+            INSERT INTO guest_devices (pass_id, device_token, device_name, user_agent, last_ip, created_at, last_active_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            """,
+            (pass_id, token, name, safe_ua, safe_ip, now, now),
+        )
+        conn.commit()
+        dev_id = cur.lastrowid
+        row = conn.execute("SELECT * FROM guest_devices WHERE id = ?", (dev_id,)).fetchone()
+        return dict(row)
+
+
+def get_device_by_token(device_token: str) -> dict[str, Any] | None:
+    if not device_token or not device_token.strip():
+        return None
+    with get_db() as conn:
+        row = conn.execute(
+            """
+            SELECT d.*, p.username, p.token as pass_token, p.is_active as pass_is_active,
+                   p.expires_at as pass_expires_at, p.max_devices
+            FROM guest_devices d
+            JOIN guest_passes p ON d.pass_id = p.id
+            WHERE d.device_token = ?
+            """,
+            (device_token.strip(),),
+        ).fetchone()
+        return dict(row) if row else None
+
+
+def touch_device_active(device_id: int, ip: str = "") -> None:
+    now = int(time.time())
+    with get_db() as conn:
+        if ip:
+            conn.execute(
+                "UPDATE guest_devices SET last_active_at = ?, last_ip = ? WHERE id = ?",
+                (now, ip, device_id),
+            )
+        else:
+            conn.execute(
+                "UPDATE guest_devices SET last_active_at = ? WHERE id = ?",
+                (now, device_id),
+            )
+        conn.commit()
+
+
+def delete_guest_device(device_id: int, pass_id: int | None = None) -> bool:
+    with get_db() as conn:
+        if pass_id is not None:
+            cur = conn.execute("DELETE FROM guest_devices WHERE id = ? AND pass_id = ?", (device_id, pass_id))
+        else:
+            cur = conn.execute("DELETE FROM guest_devices WHERE id = ?", (device_id,))
+        conn.commit()
+        return cur.rowcount > 0
+
+
+def delete_pass_devices(pass_id: int) -> int:
+    with get_db() as conn:
+        cur = conn.execute("DELETE FROM guest_devices WHERE pass_id = ?", (pass_id,))
+        conn.commit()
+        return cur.rowcount
 
 
 # ----------------------------------------------------------------------

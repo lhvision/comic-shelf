@@ -268,6 +268,18 @@ class LoginResponse(BaseModel):
     role: str = "admin"  # "admin" | "guest"
     username: str = ""
     user_id: str = ""
+    device_token: str = ""
+
+
+class GuestDeviceItem(BaseModel):
+    id: int
+    pass_id: int
+    device_token: str
+    device_name: str
+    user_agent: str = ""
+    last_ip: str = ""
+    created_at: int
+    last_active_at: int
 
 
 class GuestPassItem(BaseModel):
@@ -277,6 +289,12 @@ class GuestPassItem(BaseModel):
     expires_at: int | None = None
     is_active: bool
     is_expired: bool
+    max_devices: int = 2
+    device_count: int = 0
+    devices: list[GuestDeviceItem] = Field(default_factory=list)
+    first_used_at: int | None = None
+    last_used_at: int | None = None
+    activation_status: str = "pending"  # "pending" | "active" | "full" | "disabled" | "expired"
     created_at: int
     updated_at: int
 
@@ -285,6 +303,7 @@ class CreateGuestPassRequest(BaseModel):
     username: str
     expires_days: int | None = Field(default=None, gt=0)
     custom_token: str | None = None
+    max_devices: int = Field(default=2, ge=1, le=5)
 
 
 class UpdateGuestPassRequest(BaseModel):
@@ -293,6 +312,7 @@ class UpdateGuestPassRequest(BaseModel):
     extend_days: int | None = Field(default=None, gt=0)
     reset_token: bool = False
     expires_days: int | None = Field(default=None, gt=0)
+    max_devices: int | None = Field(default=None, ge=1, le=5)
 
 
 class ReadingProgressRequest(BaseModel):

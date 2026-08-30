@@ -13,6 +13,9 @@ from .auth import (
     can_read,
     check_hotlink_protection,
     clear_auth_cookie,
+    clear_device_cookie,
+    extract_device_token,
+    get_client_ip,
     get_current_user_id,
     get_user_context,
     is_auth_required,
@@ -21,11 +24,14 @@ from .auth import (
     is_guest,
     require_curator,
     set_auth_cookie,
+    set_device_cookie,
 )
 from .config import AUTH_SECRET, DATA_DIR, ENABLE_DOCS, LIBRARY_DIR
 from .db import (
     create_guest_pass,
+    delete_guest_device,
     delete_guest_pass,
+    get_device_by_token,
     get_guest_pass_by_token,
     get_user_favorites,
     get_user_progress,
@@ -33,6 +39,7 @@ from .db import (
     is_user_favorite,
     list_guest_passes,
     migrate_legacy_favorites,
+    register_guest_device,
     set_user_favorite,
     set_user_progress,
     update_guest_pass,
@@ -186,12 +193,14 @@ _migrate_existing_favorites_to_db()
 
 
 @app.get("/api/auth/status", response_model=AuthStatusResponse)
-def auth_status(request: Request) -> AuthStatusResponse:
+def auth_status(request: Request, response: Response) -> AuthStatusResponse:
     auth_req = is_auth_required()
     user_id, username, role = get_user_context(request)
     curator = role == "admin"
     guest = role == "guest"
     authed = curator or guest
+    if authed and hasattr(request.state, "new_device_token"):
+        set_device_cookie(response, request.state.new_device_token)
     return AuthStatusResponse(
         auth_required=auth_req,
         authenticated=authed,
@@ -203,7 +212,7 @@ def auth_status(request: Request) -> AuthStatusResponse:
 
 
 @app.post("/api/auth/login", response_model=LoginResponse)
-def auth_login(req: LoginRequest, response: Response) -> LoginResponse:
+def auth_login(req: LoginRequest, request: Request, response: Response) -> LoginResponse:
     if not is_auth_required():
         return LoginResponse(ok=True, token="", role="admin", username="馆长", user_id="curator")
 
@@ -218,13 +227,20 @@ def auth_login(req: LoginRequest, response: Response) -> LoginResponse:
             raise HTTPException(status_code=401, detail="该访客通行证已被停用")
         if pass_item["is_expired"]:
             raise HTTPException(status_code=401, detail="通行证已过期，请联系馆长续期")
+
+        ua = request.headers.get("user-agent", "")
+        ip = get_client_ip(request)
+        dev = register_guest_device(pass_item["id"], user_agent=ua, ip=ip)
+
         set_auth_cookie(response, pass_item["token"])
+        set_device_cookie(response, dev["device_token"])
         return LoginResponse(
             ok=True,
             token=pass_item["token"],
             role="guest",
             username=pass_item["username"],
             user_id=f"guest:{pass_item['id']}",
+            device_token=dev["device_token"],
         )
 
     raise HTTPException(status_code=401, detail="通行口令错误，请重试")
@@ -232,8 +248,14 @@ def auth_login(req: LoginRequest, response: Response) -> LoginResponse:
 
 
 @app.post("/api/auth/logout")
-def auth_logout(response: Response) -> dict[str, bool]:
+def auth_logout(request: Request, response: Response) -> dict[str, bool]:
+    dev_token = extract_device_token(request)
+    if dev_token:
+        dev = get_device_by_token(dev_token)
+        if dev:
+            delete_guest_device(dev["id"])
     clear_auth_cookie(response)
+    clear_device_cookie(response)
     return {"ok": True}
 
 
@@ -605,6 +627,7 @@ def curator_create_pass(req: CreateGuestPassRequest, request: Request) -> GuestP
             username=req.username,
             expires_days=req.expires_days,
             custom_token=req.custom_token,
+            max_devices=req.max_devices,
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
@@ -622,6 +645,7 @@ def curator_update_pass(pass_id: int, req: UpdateGuestPassRequest, request: Requ
             extend_days=req.extend_days,
             reset_token=req.reset_token,
             expires_days=req.expires_days,
+            max_devices=req.max_devices,
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
@@ -636,6 +660,15 @@ def curator_delete_pass(pass_id: int, request: Request) -> dict[str, bool]:
     ok = delete_guest_pass(pass_id)
     if not ok:
         raise HTTPException(status_code=404, detail="未找到该访客通行证")
+    return {"ok": True}
+
+
+@app.delete("/api/curator/passes/{pass_id}/devices/{device_id}")
+def curator_delete_pass_device(pass_id: int, device_id: int, request: Request) -> dict[str, bool]:
+    require_curator(request)
+    ok = delete_guest_device(device_id, pass_id=pass_id)
+    if not ok:
+        raise HTTPException(status_code=404, detail="未找到该设备或已被移除")
     return {"ok": True}
 
 
