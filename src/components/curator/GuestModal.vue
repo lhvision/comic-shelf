@@ -727,7 +727,7 @@ watch(activeTab, async (tab) => {
               v-model="newUsername"
               type="text"
               class="form-input"
-              placeholder="如：好友阿杰 / 客厅 iPad"
+              placeholder="如：好友xx / 客厅 iPad"
               maxlength="32"
               required
             />
@@ -861,6 +861,8 @@ watch(activeTab, async (tab) => {
   display: flex;
   align-items: center;
   gap: var(--space-2);
+  flex-shrink: 0;
+  white-space: nowrap;
 }
 
 .roster-toolbar-right {
@@ -919,6 +921,8 @@ watch(activeTab, async (tab) => {
   font-size: var(--text-caption);
   color: var(--ink-2);
   cursor: pointer;
+  white-space: nowrap;
+  flex-shrink: 0;
   transition: all var(--duration-1) var(--ease-out);
 }
 
@@ -1758,24 +1762,25 @@ watch(activeTab, async (tab) => {
   }
 
   .roster-toolbar {
-    flex-direction: column;
-    align-items: stretch;
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
     gap: var(--space-2);
   }
 
   .roster-toolbar-right {
     display: flex;
     align-items: center;
-    justify-content: space-between;
-    width: 100%;
+    gap: var(--space-1-5);
+    margin-left: auto;
   }
 
   .roster-search-box {
-    flex: 1;
+    width: auto;
   }
 
   .roster-search-input {
-    width: 100%;
+    width: 90px;
   }
 }
 

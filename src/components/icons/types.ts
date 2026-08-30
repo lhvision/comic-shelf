@@ -29,3 +29,4 @@ export type IconName =
   | 'trash'
   | 'users'
   | 'copy'
+  | 'logout'

@@ -6,16 +6,8 @@ import AmbientWatermark from '@/components/AmbientWatermark.vue'
 import AppButton from '@/components/AppButton.vue'
 import AppIcon from '@/components/AppIcon.vue'
 
-const {
-  authRequired,
-  authenticated,
-  isGuest,
-  modalVisible,
-  submitting,
-  errorMessage,
-  login,
-  closeModal,
-} = useAuth()
+const { authRequired, authenticated, modalVisible, submitting, errorMessage, login, closeModal } =
+  useAuth()
 const { brandIcon } = useBrandIcon()
 
 const inputSecret = ref('')
@@ -73,16 +65,8 @@ function togglePasswordVisibility() {
                 <strong>纸间</strong>
                 <span>Paper Room</span>
               </div>
-              <h2 id="auth-modal-title" class="auth-title">
-                {{ authenticated && isGuest ? '解锁馆长权限' : '阅览室通行口令' }}
-              </h2>
-              <p class="auth-subtitle">
-                {{
-                  authenticated && isGuest
-                    ? '当前为访客阅览模式，输入馆长密钥以解锁全部管理权限'
-                    : '私人收藏受口令保护，请输入通行口令以进入'
-                }}
-              </p>
+              <h2 id="auth-modal-title" class="auth-title">阅览室通行口令</h2>
+              <p class="auth-subtitle">私人收藏受口令保护，请输入通行口令以进入</p>
             </div>
           </header>
 
@@ -96,11 +80,7 @@ function togglePasswordVisibility() {
                 v-model="inputSecret"
                 :type="showPassword ? 'text' : 'password'"
                 class="secret-input"
-                :placeholder="
-                  authenticated && isGuest
-                    ? '输入馆长密钥 (COMIC_SHELF_SECRET)'
-                    : '输入通行口令 (馆长或访客)'
-                "
+                placeholder="输入通行口令 (馆长密钥或访客口令)"
                 autocomplete="current-password"
                 :disabled="submitting"
               />
@@ -137,7 +117,7 @@ function togglePasswordVisibility() {
                 :loading="submitting"
                 :disabled="!inputSecret.trim()"
               >
-                {{ authenticated && isGuest ? '解锁馆长权限' : '解锁进入' }}
+                解锁进入
               </AppButton>
             </div>
           </form>

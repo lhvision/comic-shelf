@@ -7,6 +7,7 @@ import { useAuth } from '@/composables/useAuth'
 import { useBrandIcon } from '@/composables/useBrandIcon'
 import AppIcon from '@/components/AppIcon.vue'
 import StoragePopover from '@/components/StoragePopover.vue'
+import ReaderPassPopover from '@/components/ReaderPassPopover.vue'
 import GuestModal from '@/components/curator/GuestModal.vue'
 import { useGuestPasses } from '@/composables/useGuestPasses'
 import type { ProviderInfo } from '@/types'
@@ -136,31 +137,24 @@ onAuthSuccess(fetchProviders)
         <span class="guest-roster-label">〔 访客簿 〕</span>
       </button>
 
+      <!-- 访客借阅凭证卡（仅持证访客可见） -->
+      <ReaderPassPopover v-if="authRequired && isGuest" />
+
+      <!-- 馆长管理态 / 未解锁门禁入口 -->
       <button
-        v-if="authRequired"
+        v-else-if="authRequired"
         type="button"
         class="auth-badge-btn"
         :class="{
           curator: canWrite,
-          guest: isGuest,
-          locked: !canWrite && !isGuest,
+          locked: !canWrite,
         }"
-        :title="
-          canWrite
-            ? '馆长管理中（点击退出管理回到访客）'
-            : isGuest
-              ? '访客阅览中（点击解锁馆长权限）'
-              : '点击输入通行口令'
-        "
+        :title="canWrite ? '馆长管理中（点击退出管理回到未登录）' : '点击输入通行口令'"
         @click="canWrite ? logout() : openModal()"
       >
-        <AppIcon
-          :name="canWrite ? 'unlock' : isGuest ? 'book-open' : 'lock'"
-          size="xs"
-          :stroke-width="2"
-        />
+        <AppIcon :name="canWrite ? 'unlock' : 'lock'" size="xs" :stroke-width="2" />
         <span class="auth-label">
-          {{ canWrite ? '〔 馆长已入座 〕' : isGuest ? '〔 访客阅览 〕' : '未解锁' }}
+          {{ canWrite ? '〔 馆长已入座 〕' : '未解锁' }}
         </span>
       </button>
     </div>
@@ -400,18 +394,6 @@ onAuthSuccess(fetchProviders)
 
 .auth-badge-btn.curator:hover {
   background: color-mix(in oklab, var(--accent) 22%, var(--paper-0));
-}
-
-.auth-badge-btn.guest {
-  color: var(--ink-2);
-  border-color: var(--line);
-  background: color-mix(in oklab, var(--paper-0) 60%, var(--paper-1));
-}
-
-.auth-badge-btn.guest:hover {
-  color: var(--ink-0);
-  background: var(--paper-2);
-  border-color: var(--line-strong);
 }
 
 .auth-badge-btn.locked {

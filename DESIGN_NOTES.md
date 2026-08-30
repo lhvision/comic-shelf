@@ -817,3 +817,28 @@
   - `vp test src/__tests__/GuestPasses.spec.ts src/__tests__/useAuth.spec.ts` 16/16 单测全绿；
   - `pnpm detect:slop src/components/curator/GuestModal.vue src/components/ImportPanel.vue` 全部 0 finding；
   - `vp check` 195 个文件格式校验通过、147 个文件 0 warning / 0 error。
+
+## 42. 访客借阅凭证卡（ReaderPassPopover）与特权入口去污染
+
+- **背景与痛点**：
+  在访客模式下，右上方徽章显示 `〔 访客阅览 〕`，悬停为“访客阅览中（点击解锁馆长权限）”，点击弹出解锁馆长口令的弹窗。这打破了“私人阅览室”的借阅隐喻，将管理特权入口直接暴露给读者，且读者在离开时缺乏主动交还借书卡释放当前设备席位的入口。
+- **架构决策与落地实现（Impeccable 5 步 SOP）**：
+  1. **特权入口去污染与纯净读者视角**：
+     - 彻底从访客 UI 中抹除“解锁馆长权限”与“输入馆长密钥”字样，门禁口令弹窗（`AuthModal.vue`）收敛为单纯的“阅览室通行口令 / 请输入通行口令以进入”；
+  2. **读者专属借阅印章（Reader Badge）**：
+     - 顶栏为持证读者展示古典墨印风格 `〔 读者 · Alice 〕`，无用户名时自适应为 `〔 阅览室读者 〕`；
+     - 严格遵守 `≤640px` 顶栏移动端规约，小屏下平滑收折文字，尺寸保持 `var(--control-sm)`（36px），通过 `::before` 垫高至 44px 触控标准；
+  3. **借阅凭证卡浮层（ReaderPassPopover.vue）**：
+     - 采用原生规范 `AppPopover`（`bottom-end` 带指示箭头）；
+     - 呈现持证读者姓名、`〔 持证阅览 〕` 状态印章，以及专属书架就绪的定心提示；
+  4. **防误触双列交还操作与设备席位释放**：
+     - 常态按钮采用温雅的 `variant="secondary"` 纸本质感配 `IconLogOut.vue` 矢量图标，杜绝刺眼报警红底噪；
+     - 点击就地展开纵向确认框，提示“交还后将释放本设备席位，后续仍可凭原口令随时入座”；
+     - 确认操作区采用双列大按钮（高度 36px，间距 8px），消除小屏幕误触；
+     - 严格 WAI-ARIA 无障碍与焦点管理：触发按钮声明 `:aria-expanded` 与 `aria-haspopup="dialog"`，展开确认时通过 `nextTick` 自动聚焦至「暂不交还」，取消时平滑还回焦点，彻底移除硬编码无提示的 5 秒超时计时器；
+     - 点击确认后调用 `useAuth.logout()`，后端清理 Cookie 并自动在数据库中释放本台物理设备席位，弹出 Toast `已交还借阅凭证，设备席位已释放`，优雅回到封底门禁。
+- **验证**：
+  - `vp check` 198 个文件格式化通过、150 个源码文件 0 warning / 0 error；
+  - `pnpm detect:slop src/components/ReaderPassPopover.vue` 0 finding；
+  - `invoke_subagent` 独立设计总监完成可用性审计并落盘至 `.impeccable/critique/`；
+  - `vp test src/__tests__/ReaderPassPopover.spec.ts src/__tests__/useAuth.spec.ts` 14/14 单测全绿。
