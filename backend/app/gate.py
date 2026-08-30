@@ -61,31 +61,43 @@ def _env_explicit() -> bool:
     return _ENV in os.environ
 
 
+_settings_lock = threading.Lock()
+
+
+def _read_settings_unlocked() -> dict:
+    if _SETTINGS_FILE.exists():
+        try:
+            return json.loads(_SETTINGS_FILE.read_text(encoding="utf-8"))
+        except Exception:
+            return {}
+    return {}
+
+
+def _write_settings_atomic_unlocked(data: dict) -> None:
+    _SETTINGS_FILE.parent.mkdir(parents=True, exist_ok=True)
+    tmp_path = _SETTINGS_FILE.with_suffix(".tmp")
+    tmp_path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+    tmp_path.replace(_SETTINGS_FILE)
+
+
 def _load_persisted() -> int | None:
-    try:
-        data = json.loads(_SETTINGS_FILE.read_text(encoding="utf-8"))
-        value = int(data.get(_SETTINGS_KEY) or 0)
-        return max(_MIN, value) if value > 0 else None
-    except Exception:
-        return None
+    with _settings_lock:
+        try:
+            data = _read_settings_unlocked()
+            value = int(data.get(_SETTINGS_KEY) or 0)
+            return max(_MIN, value) if value > 0 else None
+        except Exception:
+            return None
 
 
 def _save_persisted(limit: int) -> None:
-    try:
-        _SETTINGS_FILE.parent.mkdir(parents=True, exist_ok=True)
-        data: dict = {}
-        if _SETTINGS_FILE.exists():
-            try:
-                data = json.loads(_SETTINGS_FILE.read_text(encoding="utf-8"))
-            except Exception:
-                data = {}
-        data[_SETTINGS_KEY] = limit
-        _SETTINGS_FILE.write_text(
-            json.dumps(data, ensure_ascii=False, indent=2),
-            encoding="utf-8",
-        )
-    except Exception:
-        pass
+    with _settings_lock:
+        try:
+            data = _read_settings_unlocked()
+            data[_SETTINGS_KEY] = limit
+            _write_settings_atomic_unlocked(data)
+        except Exception:
+            pass
 
 
 # Startup priority: explicit env var > persisted in-app choice > default.
@@ -114,30 +126,21 @@ _GUEST_HIDE_NEW_KEY = "guest_hide_new_comics"
 
 
 def get_guest_hide_new_comics() -> bool:
-    try:
-        if _SETTINGS_FILE.exists():
-            data = json.loads(_SETTINGS_FILE.read_text(encoding="utf-8"))
+    with _settings_lock:
+        try:
+            data = _read_settings_unlocked()
             return bool(data.get(_GUEST_HIDE_NEW_KEY, False))
-    except Exception:
-        pass
-    return False
+        except Exception:
+            return False
 
 
 def set_guest_hide_new_comics(hide: bool) -> bool:
-    try:
-        _SETTINGS_FILE.parent.mkdir(parents=True, exist_ok=True)
-        data = {}
-        if _SETTINGS_FILE.exists():
-            try:
-                data = json.loads(_SETTINGS_FILE.read_text(encoding="utf-8"))
-            except Exception:
-                data = {}
-        data[_GUEST_HIDE_NEW_KEY] = bool(hide)
-        _SETTINGS_FILE.write_text(
-            json.dumps(data, ensure_ascii=False, indent=2),
-            encoding="utf-8",
-        )
-        return bool(hide)
-    except Exception:
-        return False
+    with _settings_lock:
+        try:
+            data = _read_settings_unlocked()
+            data[_GUEST_HIDE_NEW_KEY] = bool(hide)
+            _write_settings_atomic_unlocked(data)
+            return bool(hide)
+        except Exception:
+            return False
 

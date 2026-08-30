@@ -107,8 +107,6 @@ export function useGuestPasses() {
         pass.device_count = pass.devices.length
         if (pass.device_count === 0) {
           pass.activation_status = 'pending'
-          pass.first_used_at = null
-          pass.last_used_at = null
         } else if (pass.device_count >= pass.max_devices) {
           pass.activation_status = 'full'
         } else {

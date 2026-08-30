@@ -26,11 +26,11 @@
      - 任何企图新接入并置换旧端的新设备请求均被拦截，返回 HTTP `429 Too Many Requests`（“设备置换过于频繁，通行证已启动安全保护，请稍后再试”）；
      - 冷却期结束后若无新高频争抢，自动恢复正常 LRU 置换。
 2. **轻量内存令牌桶速率限流（Guest Rate Limiting / Token Bucket）**：
-   - 针对 `guest` 角色的静态页面/封面二进制请求（`.../file`, `.../thumbnail`, `.../cover`），在 FastAPI 中间件层挂载轻量级纯内存令牌桶：
+   - 针对 `guest` 角色的正文阅读页面与缩略图二进制请求（`.../file`, `.../thumbnail`），在 FastAPI 中间件层挂载轻量级纯内存令牌桶（书架封面 `.../cover` 独立解耦免除限流，杜绝首屏批量并发加载误伤破图）：
      - **持续限额（Sustained Rate）**：`120 页 / 分钟`（相当于每秒可稳定拉取 2 张大图）；
      - **瞬时突发容量（Burst Capacity）**：`45 张`（覆盖读者打开画集时的瞬时预取及快速划屏寻页）；
-   - **超额惩罚**：仅当超出速率且突发桶耗尽时，返回 HTTP `429 Too Many Requests`（“翻阅速率异常（超过 120 页/分钟），请稍憩数秒”）；
-   - 纯 Python 内存管理（毫秒级算术运算），无外部 Redis 依赖。
+     - **超额惩罚**：仅当超出速率且突发桶耗尽时，返回 HTTP `429 Too Many Requests`（“翻阅速率异常（超过 120 页/分钟），请稍憩数秒”）；
+     - 纯 Python 内存管理（毫秒级算术运算），无外部 Redis 依赖。
 3. **新入库藏书默认隐身策略（Default Hide for New Imports）**：
    - 在全局设置（`data/settings.json`）中提供 `guest_hide_new_comics: bool` 配置；
    - 在前端导入面板（`ImportPanel.vue`）提供轻量勾选框；

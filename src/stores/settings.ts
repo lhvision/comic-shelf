@@ -49,12 +49,14 @@ export const useAppSettings = defineStore('appSettings', () => {
   }
 
   async function setGuestHideNewComics(value: boolean) {
+    const prev = guestHideNewComics.value
     guestHideNewComics.value = value
     try {
       const info = await api.setGuestPrivacy(value)
       guestHideNewComics.value = info.guest_hide_new_comics
       return true
     } catch {
+      guestHideNewComics.value = prev
       return false
     }
   }

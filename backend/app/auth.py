@@ -24,10 +24,10 @@ def is_auth_required() -> bool:
 def get_client_ip(request: Request) -> str:
     xff = request.headers.get("x-forwarded-for")
     if xff and isinstance(xff, str):
-        return xff.split(",")[0].strip()
+        return xff.split(",")[0].strip()[:45]
     client = getattr(request, "client", None)
     if client and hasattr(client, "host") and isinstance(client.host, str):
-        return client.host
+        return client.host[:45]
     return ""
 
 
@@ -99,7 +99,10 @@ def get_user_context(request: Request) -> tuple[str, str, str]:
                 ctx = ("anonymous", "已过期", "expired")
             else:
                 client_ip = get_client_ip(request)
-                touch_device_active(dev["id"], client_ip)
+                # Throttle database write: touch device active only if > 60s elapsed or IP changed
+                last_active = int(dev.get("last_active_at", 0) or 0)
+                if (now - last_active > 60) or (client_ip and dev.get("last_ip") != client_ip):
+                    touch_device_active(dev["id"], client_ip)
                 ctx = (f"guest:{dev['pass_id']}", dev["username"], "guest")
                 request.state.device_id = dev["id"]
             request.state.user_context = ctx
@@ -119,12 +122,37 @@ def get_user_context(request: Request) -> tuple[str, str, str]:
             elif pass_item["is_expired"]:
                 ctx = ("anonymous", "已过期", "expired")
             else:
+                devices = pass_item.get("devices") or []
                 ua = request.headers.get("user-agent", "")
                 ip = get_client_ip(request)
-                dev = register_guest_device(pass_item["id"], user_agent=ua, ip=ip)
-                ctx = (f"guest:{pass_item['id']}", pass_item["username"], "guest")
-                request.state.device_id = dev["id"]
-                request.state.new_device_token = dev["device_token"]
+                matching_dev = next((d for d in devices if d.get("user_agent") == ua), None)
+
+                # Only register a new device row if:
+                # (1) It is an onboarding / status request (/api/auth/status) AND no matching device exists,
+                # or (2) the pass has 0 registered devices.
+                # For arbitrary read requests (e.g. /api/library or static images), do NOT churn devices!
+                path = getattr(request, "url", None) and request.url.path or ""
+                should_register = (not devices) or (path == "/api/auth/status" and matching_dev is None)
+
+                if matching_dev is not None:
+                    ctx = (f"guest:{pass_item['id']}", pass_item["username"], "guest")
+                    request.state.device_id = matching_dev["id"]
+                    request.state.new_device_token = matching_dev["device_token"]
+                    now = int(time.time())
+                    if (now - int(matching_dev.get("last_active_at", 0) or 0) > 60) or (ip and matching_dev.get("last_ip") != ip):
+                        touch_device_active(matching_dev["id"], ip)
+                elif should_register:
+                    try:
+                        dev = register_guest_device(pass_item["id"], user_agent=ua, ip=ip)
+                        ctx = (f"guest:{pass_item['id']}", pass_item["username"], "guest")
+                        request.state.device_id = dev["id"]
+                        request.state.new_device_token = dev["device_token"]
+                    except ValueError as exc:
+                        ctx = ("anonymous", str(exc), "unauthorized")
+                else:
+                    ctx = (f"guest:{pass_item['id']}", pass_item["username"], "guest")
+                    if devices:
+                        request.state.device_id = devices[0]["id"]
             request.state.user_context = ctx
             return ctx
 

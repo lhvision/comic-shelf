@@ -271,8 +271,6 @@ export interface GuestPass {
   max_devices: number
   device_count: number
   devices: GuestDevice[]
-  first_used_at: number | null
-  last_used_at: number | null
   activation_status: GuestPassActivationStatus
   is_cooling_locked?: boolean
   is_rate_limited?: boolean

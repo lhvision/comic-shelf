@@ -197,15 +197,6 @@ function formatRelativeTime(ts: number | null): string {
   return formatTimestamp(ts)
 }
 
-function getDaysRemaining(expiresAt: number | null): string {
-  if (!expiresAt) return '永久准入'
-  const now = Math.floor(Date.now() / 1000)
-  const diff = expiresAt - now
-  if (diff <= 0) return '已过期'
-  const days = Math.ceil(diff / 86400)
-  return `准入 · 剩 ${days} 天`
-}
-
 function maskToken(token: string): string {
   if (!token || token.length < 12) return token
   return `${token.slice(0, 6)}••••${token.slice(-6)}`
@@ -532,10 +523,7 @@ watch(activeTab, async (tab) => {
                 <!-- 席位配额调节 -->
                 <div
                   class="quota-stepper"
-                  role="spinbutton"
-                  :aria-valuenow="item.max_devices"
-                  aria-valuemin="1"
-                  aria-valuemax="5"
+                  role="group"
                   :aria-label="`访客「${item.username}」的设备席位上限`"
                   title="调整允许同时绑定的设备数（1~5台）"
                 >

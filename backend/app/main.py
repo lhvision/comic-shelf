@@ -42,6 +42,7 @@ from .db import (
     register_guest_device,
     set_user_favorite,
     set_user_progress,
+    touch_device_active,
     update_guest_pass,
 )
 from .jobs import get_job, list_running, start_job
@@ -132,19 +133,21 @@ async def auth_and_security_middleware(request: Request, call_next):
         except HTTPException as exc:
             return JSONResponse(status_code=exc.status_code, content={"detail": exc.detail})
 
-        # Rate limiting for guest readers on image binary endpoints (120 P/min + 45 P burst)
-        _uid, _name, role = get_user_context(request)
-        if role == "guest" and _uid.startswith("guest:"):
-            try:
-                pass_id_val = int(_uid.split(":", 1)[1])
-                if not check_guest_rate_limit(pass_id_val):
-                    return JSONResponse(
-                        status_code=429,
-                        content={"detail": "阅读翻页速率异常（超过 120 页/分钟），请稍憩数秒"},
-                        headers={"Retry-After": "5"},
-                    )
-            except (ValueError, IndexError):
-                pass
+        # Rate limiting for guest readers on reading page binary endpoints (120 P/min + 45 P burst)
+        # Note: /cover is excluded to prevent bookshelf grid loading from false-positive rate limiting
+        if clean_stem.endswith(("/file", "/thumbnail")):
+            _uid, _name, role = get_user_context(request)
+            if role == "guest" and _uid.startswith("guest:"):
+                try:
+                    pass_id_val = int(_uid.split(":", 1)[1])
+                    if not check_guest_rate_limit(pass_id_val):
+                        return JSONResponse(
+                            status_code=429,
+                            content={"detail": "阅读翻页速率异常（超过 120 页/分钟），请稍憩数秒"},
+                            headers={"Retry-After": "5"},
+                        )
+                except (ValueError, IndexError):
+                    pass
 
     # Allow guest-permitted mutating operations (search, isolated favorite & reading progress)
     is_user_mutation = (
@@ -247,13 +250,22 @@ def auth_login(req: LoginRequest, request: Request, response: Response) -> Login
 
         ua = request.headers.get("user-agent", "")
         ip = get_client_ip(request)
-        try:
-            dev = register_guest_device(pass_item["id"], user_agent=ua, ip=ip)
-        except ValueError as exc:
-            msg = str(exc)
-            if "频繁" in msg or "安全保护锁定" in msg:
-                raise HTTPException(status_code=429, detail=msg)
-            raise HTTPException(status_code=400, detail=msg)
+        dev = None
+        existing_dev_token = extract_device_token(request)
+        if existing_dev_token:
+            existing_dev = get_device_by_token(existing_dev_token)
+            if existing_dev and existing_dev.get("pass_id") == pass_item["id"]:
+                dev = existing_dev
+                touch_device_active(dev["id"], ip)
+
+        if dev is None:
+            try:
+                dev = register_guest_device(pass_item["id"], user_agent=ua, ip=ip)
+            except ValueError as exc:
+                msg = str(exc)
+                if "频繁" in msg or "安全保护锁定" in msg:
+                    raise HTTPException(status_code=429, detail=msg)
+                raise HTTPException(status_code=400, detail=msg)
 
         set_auth_cookie(response, pass_item["token"])
         set_device_cookie(response, dev["device_token"])

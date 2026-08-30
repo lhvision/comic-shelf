@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 import secrets
 import sqlite3
+import threading
 import time
 from contextlib import contextmanager
 from pathlib import Path
@@ -172,9 +173,6 @@ def _row_to_pass(
     else:
         activation_status = "active"
 
-    first_used_at = min((dev["created_at"] for dev in dev_list), default=None)
-    last_used_at = max((dev["last_active_at"] for dev in dev_list), default=None)
-
     return {
         "id": d["id"],
         "username": d["username"],
@@ -185,8 +183,6 @@ def _row_to_pass(
         "max_devices": max_devices,
         "device_count": device_count,
         "devices": dev_list,
-        "first_used_at": first_used_at,
-        "last_used_at": last_used_at,
         "activation_status": activation_status,
         "is_cooling_locked": is_eviction_cooling_locked(d["id"]),
         "is_rate_limited": is_pass_rate_limited(d["id"]),
@@ -342,54 +338,58 @@ def delete_guest_pass(pass_id: int) -> bool:
 # 访客物理设备会话（Guest Devices & LRU Eviction）
 # ----------------------------------------------------------------------
 
+_device_register_lock = threading.Lock()
+
+
 def register_guest_device(
     pass_id: int,
     user_agent: str = "",
     ip: str = "",
-    device_token: str | None = None,
 ) -> dict[str, Any]:
     now = int(time.time())
-    with get_db() as conn:
-        pass_row = conn.execute("SELECT * FROM guest_passes WHERE id = ?", (pass_id,)).fetchone()
-        if not pass_row:
-            raise ValueError("通行证不存在")
-        pass_dict = dict(pass_row)
-        if not pass_dict["is_active"]:
-            raise ValueError("通行证已被停用")
-        if pass_dict["expires_at"] and now > pass_dict["expires_at"]:
-            raise ValueError("通行证已过期")
+    with _device_register_lock:
+        with get_db() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            pass_row = conn.execute("SELECT * FROM guest_passes WHERE id = ?", (pass_id,)).fetchone()
+            if not pass_row:
+                raise ValueError("通行证不存在")
+            pass_dict = dict(pass_row)
+            if not pass_dict["is_active"]:
+                raise ValueError("通行证已被停用")
+            if pass_dict["expires_at"] and now > pass_dict["expires_at"]:
+                raise ValueError("通行证已过期")
 
-        max_devices = int(pass_dict.get("max_devices", 2) or 2)
+            max_devices = int(pass_dict.get("max_devices", 2) or 2)
 
-        # LRU eviction: if devices count >= max_devices, delete oldest
-        dev_rows = conn.execute(
-            "SELECT id FROM guest_devices WHERE pass_id = ? ORDER BY last_active_at ASC, id ASC",
-            (pass_id,),
-        ).fetchall()
+            # LRU eviction: if devices count >= max_devices, delete oldest
+            dev_rows = conn.execute(
+                "SELECT id FROM guest_devices WHERE pass_id = ? ORDER BY last_active_at ASC, id ASC",
+                (pass_id,),
+            ).fetchall()
 
-        if len(dev_rows) >= max_devices and is_eviction_cooling_locked(pass_id):
-            raise ValueError("该通行证近期设备置换过于频繁，已触发安全保护锁定 10 分钟，暂不允许新设备接入")
+            if len(dev_rows) >= max_devices and is_eviction_cooling_locked(pass_id):
+                raise ValueError("该通行证近期设备置换过于频繁，已触发安全保护锁定 10 分钟，暂不允许新设备接入")
 
-        while len(dev_rows) >= max_devices:
-            oldest_id = dev_rows.pop(0)["id"]
-            conn.execute("DELETE FROM guest_devices WHERE id = ?", (oldest_id,))
-            record_eviction_and_check_lock(pass_id)
+            while len(dev_rows) >= max_devices:
+                oldest_id = dev_rows.pop(0)["id"]
+                conn.execute("DELETE FROM guest_devices WHERE id = ?", (oldest_id,))
+                record_eviction_and_check_lock(pass_id)
 
-        token = device_token.strip() if device_token and device_token.strip() else secrets.token_hex(24)
-        safe_ua = str(user_agent) if isinstance(user_agent, str) else ""
-        safe_ip = str(ip) if isinstance(ip, str) else ""
-        name = parse_device_name(safe_ua)
-        cur = conn.execute(
-            """
-            INSERT INTO guest_devices (pass_id, device_token, device_name, user_agent, last_ip, created_at, last_active_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
-            """,
-            (pass_id, token, name, safe_ua, safe_ip, now, now),
-        )
-        conn.commit()
-        dev_id = cur.lastrowid
-        row = conn.execute("SELECT * FROM guest_devices WHERE id = ?", (dev_id,)).fetchone()
-        return dict(row)
+            token = secrets.token_hex(24)
+            safe_ua = str(user_agent) if isinstance(user_agent, str) else ""
+            safe_ip = str(ip) if isinstance(ip, str) else ""
+            name = parse_device_name(safe_ua)
+            cur = conn.execute(
+                """
+                INSERT INTO guest_devices (pass_id, device_token, device_name, user_agent, last_ip, created_at, last_active_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+                """,
+                (pass_id, token, name, safe_ua, safe_ip, now, now),
+            )
+            conn.commit()
+            dev_id = cur.lastrowid
+            row = conn.execute("SELECT * FROM guest_devices WHERE id = ?", (dev_id,)).fetchone()
+            return dict(row)
 
 
 def get_device_by_token(device_token: str) -> dict[str, Any] | None:
@@ -433,13 +433,6 @@ def delete_guest_device(device_id: int, pass_id: int | None = None) -> bool:
             cur = conn.execute("DELETE FROM guest_devices WHERE id = ?", (device_id,))
         conn.commit()
         return cur.rowcount > 0
-
-
-def delete_pass_devices(pass_id: int) -> int:
-    with get_db() as conn:
-        cur = conn.execute("DELETE FROM guest_devices WHERE pass_id = ?", (pass_id,))
-        conn.commit()
-        return cur.rowcount
 
 
 # ----------------------------------------------------------------------

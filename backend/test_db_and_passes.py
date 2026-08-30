@@ -73,7 +73,6 @@ def test_db_and_passes_crud():
     assert bob_pass is not None
     assert bob_pass["activation_status"] == "pending"  # 0 devices = pending
     assert bob_pass["device_count"] == 0
-    assert bob_pass["first_used_at"] is None
 
     # Register Device 1 (iPhone)
     d1 = db_mod.register_guest_device(
@@ -85,7 +84,6 @@ def test_db_and_passes_crud():
     bob_pass = db_mod.get_guest_pass_by_id(bob_pass["id"])
     assert bob_pass["activation_status"] == "active"  # 1 of 2 devices
     assert bob_pass["device_count"] == 1
-    assert bob_pass["first_used_at"] is not None
 
     time.sleep(0.01)
 
@@ -202,6 +200,90 @@ def test_db_and_passes_crud():
     set_guest_hide_new_comics(orig_privacy)
 
     db_mod.delete_guest_pass(pid)
+
+    # 17. Client IP truncation in get_client_ip
+    from app.auth import get_client_ip, get_user_context
+    from unittest.mock import MagicMock
+
+    req_long_ip = MagicMock()
+    req_long_ip.headers.get = lambda k, default="": "192.168.1.1" + "a" * 100 if k.lower() == "x-forwarded-for" else ""
+    client_ip = get_client_ip(req_long_ip)
+    assert len(client_ip) <= 45
+    assert client_ip.startswith("192.168.1.1")
+
+    # 18. Concurrent Device Registration Race Prevention
+    from concurrent.futures import ThreadPoolExecutor
+    p_race = db_mod.create_guest_pass(username="RaceUser", max_devices=2)
+    race_pid = p_race["id"]
+
+    def _reg(idx: int):
+        try:
+            return db_mod.register_guest_device(race_pid, user_agent=f"agent_{idx}")
+        except ValueError:
+            return None
+
+    with ThreadPoolExecutor(max_workers=5) as executor:
+        futures = [executor.submit(_reg, i) for i in range(5)]
+        results = [f.result() for f in futures]
+
+    race_pass = db_mod.get_guest_pass_by_id(race_pid)
+    assert race_pass["device_count"] <= 2, f"Expected <= 2 devices, got {race_pass['device_count']}"
+    assert len(race_pass["devices"]) <= 2
+
+    # 19. Same-device Re-login Reuses Existing Device Token
+    from app.main import auth_login
+    from app.models import LoginRequest
+    from fastapi import Response
+    import app.auth as auth_mod
+
+    auth_mod.AUTH_SECRET = "curator-test-secret"
+    p_relogin = db_mod.create_guest_pass(username="ReloginUser", max_devices=2)
+    relogin_token = p_relogin["token"]
+
+    req_login1 = MagicMock()
+    req_login1.headers.get = lambda k, default="": "Mozilla/5.0 (iPhone) Safari" if k.lower() == "user-agent" else ""
+    req_login1.cookies.get = lambda k, default="": ""
+    req_login1.client.host = "127.0.0.1"
+
+    resp1 = Response()
+    res1 = auth_login(LoginRequest(secret=relogin_token), req_login1, resp1)
+    dev1_token = res1.device_token
+    assert dev1_token
+
+    # Re-login with the same device cookie
+    req_login2 = MagicMock()
+    req_login2.headers.get = lambda k, default="": "Mozilla/5.0 (iPhone) Safari" if k.lower() == "user-agent" else ""
+    req_login2.cookies.get = lambda k, default="": dev1_token if k == "comic_shelf_device" else ""
+    req_login2.client.host = "127.0.0.1"
+
+    resp2 = Response()
+    res2 = auth_login(LoginRequest(secret=relogin_token), req_login2, resp2)
+    assert res2.device_token == dev1_token, "Same-device re-login must reuse existing device token"
+    p_after_relogin = db_mod.get_guest_pass_by_id(p_relogin["id"])
+    assert p_after_relogin["device_count"] == 1, "Should not allocate extra device row on re-login"
+
+    # 20. Direct Pass Token Access Does Not Churn Devices or Trigger Cooling Lock
+    req_direct = MagicMock()
+    req_direct.state = type("State", (), {})()
+    req_direct.url.path = "/api/library"
+    req_direct.headers.get = lambda k, default="": f"Bearer {relogin_token}" if k.lower() == "authorization" else ""
+    req_direct.cookies.get = lambda k, default="": ""
+    req_direct.query_params.get = lambda k, default="": ""
+    req_direct.client.host = "127.0.0.1"
+
+    for _ in range(10):
+        # Clear cached state on request to simulate separate requests
+        req_direct.state = type("State", (), {})()
+        ctx = get_user_context(req_direct)
+        assert ctx[2] == "guest"
+        assert ctx[0] == f"guest:{p_relogin['id']}"
+
+    p_check = db_mod.get_guest_pass_by_id(p_relogin["id"])
+    assert p_check["device_count"] == 1
+    assert p_check["is_cooling_locked"] is False
+
+    db_mod.delete_guest_pass(race_pid)
+    db_mod.delete_guest_pass(p_relogin["id"])
 
 
 if __name__ == "__main__":
