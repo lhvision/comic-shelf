@@ -4,6 +4,8 @@
  * 纯展示组件：倒计时刻度和页码都由 ReaderView 计算后通过 props 传入，
  * 交互统一以 emit 上抛（切换暂停 / 翻页）。
  */
+import AppIcon from '@/components/AppIcon.vue'
+
 const props = defineProps<{
   /** 自动切换是否已启用（启用时 HUD 常驻不隐藏） */
   autoTurn: boolean
@@ -42,7 +44,7 @@ const autoTurnCountdownAriaLabel = () => {
   return `${props.autoTurnRemaining} 秒后切换，点击暂停`
 }
 
-const autoTurnActionLabel = () => (props.autoTurnPaused || props.settingsOpen ? '' : '暂停')
+const autoTurnActionLabel = () => (props.autoTurnPaused || props.settingsOpen ? '继续' : '暂停')
 </script>
 
 <template>
@@ -55,7 +57,14 @@ const autoTurnActionLabel = () => (props.autoTurnPaused || props.settingsOpen ? 
       :aria-label="autoTurnCountdownAriaLabel()"
       @click="emit('toggleAutoTurnPause')"
     >
-      <span class="auto-turn-count" aria-hidden="true">{{ autoTurnRemaining }}</span>
+      <span class="auto-turn-display">
+        <span v-if="!autoTurnPaused && !settingsOpen" class="auto-turn-count" aria-hidden="true">
+          {{ autoTurnRemaining }}
+        </span>
+        <span v-else class="auto-turn-icon" aria-hidden="true">
+          <AppIcon name="pause" size="xs" />
+        </span>
+      </span>
       <span class="auto-turn-action" aria-hidden="true">{{ autoTurnActionLabel() }}</span>
     </button>
 
@@ -148,21 +157,29 @@ const autoTurnActionLabel = () => (props.autoTurnPaused || props.settingsOpen ? 
     border-color var(--duration-1) var(--ease-out);
 }
 
-.auto-turn-count,
+.auto-turn-display,
 .auto-turn-action {
   grid-area: 1 / 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.auto-turn-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--accent);
 }
 
 .auto-turn-action {
   opacity: 0;
 }
 
-.auto-turn-countdown[data-paused='true'] .auto-turn-count,
-.auto-turn-countdown:focus-visible .auto-turn-count {
+.auto-turn-countdown:focus-visible .auto-turn-display {
   opacity: 0;
 }
 
-.auto-turn-countdown[data-paused='true'] .auto-turn-action,
 .auto-turn-countdown:focus-visible .auto-turn-action {
   opacity: 1;
 }
@@ -178,7 +195,7 @@ const autoTurnActionLabel = () => (props.autoTurnPaused || props.settingsOpen ? 
     background: var(--reader-backdrop);
   }
 
-  .auto-turn-countdown:hover .auto-turn-count {
+  .auto-turn-countdown:hover .auto-turn-display {
     opacity: 0;
   }
 

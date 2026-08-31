@@ -5,7 +5,9 @@
  * 关闭按钮复用 ReaderButton（票据 05：与顶栏共用一套控件样式）（createGlobalState 单例），
  * 所以面板与 ReaderView 天然共享同一份设置，无需 props 层层传递。
  */
+import { computed, nextTick, ref } from 'vue'
 import {
+  AUTO_TURN_INTERVALS,
   AUTO_TURN_OPTIONS,
   FIT_OPTIONS,
   MODE_OPTIONS,
@@ -17,6 +19,54 @@ import AppIcon from '@/components/AppIcon.vue'
 const emit = defineEmits<{ close: [] }>()
 
 const { settings, pagesPerViewOptions, reset } = useReaderSettings()
+
+const isCustomInterval = computed(
+  () => !AUTO_TURN_INTERVALS.some((val) => val === settings.autoTurnInterval),
+)
+
+const customInputRef = ref<HTMLInputElement | null>(null)
+const customValue = ref(settings.autoTurnInterval)
+
+function selectPreset(val: number) {
+  settings.autoTurnInterval = val
+  customValue.value = val
+}
+
+function enableCustom() {
+  if (!isCustomInterval.value) {
+    if (
+      customValue.value === 5 ||
+      customValue.value === 10 ||
+      customValue.value === 15 ||
+      customValue.value === 30
+    ) {
+      customValue.value = 20
+    }
+    settings.autoTurnInterval = customValue.value
+  }
+  nextTick(() => {
+    customInputRef.value?.focus()
+    customInputRef.value?.select()
+  })
+}
+
+function onCustomInput(event: Event) {
+  const target = event.target as HTMLInputElement
+  const num = parseInt(target.value, 10)
+  if (!Number.isNaN(num) && num >= 1 && num <= 300) {
+    settings.autoTurnInterval = num
+    customValue.value = num
+  }
+}
+
+function onCustomBlur() {
+  if (!customValue.value || customValue.value < 1) {
+    customValue.value = 1
+  } else if (customValue.value > 300) {
+    customValue.value = 300
+  }
+  settings.autoTurnInterval = customValue.value
+}
 </script>
 
 <template>
@@ -91,11 +141,37 @@ const { settings, pagesPerViewOptions, reset } = useReaderSettings()
             v-for="option in AUTO_TURN_OPTIONS"
             :key="option.value"
             type="button"
-            :aria-pressed="settings.autoTurnInterval === option.value"
-            @click="settings.autoTurnInterval = option.value"
+            :aria-pressed="!isCustomInterval && settings.autoTurnInterval === option.value"
+            @click="selectPreset(option.value)"
           >
             {{ option.label }}
           </button>
+
+          <button
+            v-if="!isCustomInterval"
+            type="button"
+            class="custom-chip-btn"
+            aria-label="自定义自动翻页秒数"
+            @click="enableCustom"
+          >
+            自定义…
+          </button>
+
+          <div v-else class="custom-interval-pill" :class="{ 'is-active': isCustomInterval }">
+            <input
+              ref="customInputRef"
+              v-model.number="customValue"
+              type="number"
+              min="1"
+              max="300"
+              class="custom-interval-input"
+              aria-label="自定义自动切换秒数（1至300秒）"
+              @input="onCustomInput"
+              @blur="onCustomBlur"
+              @keydown.enter="onCustomBlur"
+            />
+            <span class="custom-unit">秒</span>
+          </div>
         </div>
       </div>
 
@@ -324,6 +400,64 @@ const { settings, pagesPerViewOptions, reset } = useReaderSettings()
 .segmented button[aria-pressed='true'] {
   border-color: var(--accent);
   background: color-mix(in oklab, var(--accent) 20%, transparent);
+}
+
+.custom-chip-btn {
+  min-height: var(--control-md);
+  padding: var(--space-1) var(--space-3);
+  border: 1px dashed var(--reader-line-strong);
+  border-radius: var(--radius-2);
+  background: var(--reader-surface-strong);
+  color: var(--reader-muted);
+  font-size: var(--text-sm);
+  cursor: pointer;
+  transition:
+    border-color var(--duration-1) var(--ease-out),
+    color var(--duration-1) var(--ease-out),
+    background-color var(--duration-1) var(--ease-out);
+}
+
+.custom-chip-btn:hover {
+  border-color: var(--accent);
+  color: var(--reader-ink);
+  background: color-mix(in oklab, var(--accent) 12%, var(--reader-surface-strong));
+}
+
+.custom-interval-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  min-height: var(--control-md);
+  padding: 0 var(--space-2);
+  border: 1px solid var(--accent);
+  border-radius: var(--radius-2);
+  background: color-mix(in oklab, var(--accent) 20%, transparent);
+  color: var(--reader-ink);
+  font-size: var(--text-sm);
+}
+
+.custom-interval-input {
+  width: 2.8rem;
+  height: calc(var(--control-md) - 0.5rem);
+  padding: 0 0.25rem;
+  border: 1px solid color-mix(in oklab, var(--accent) 60%, var(--reader-line));
+  border-radius: var(--radius-1);
+  background: var(--reader-bg);
+  color: var(--reader-ink);
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  text-align: center;
+  outline: none;
+}
+
+.custom-interval-input:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px color-mix(in oklab, var(--accent) 30%, transparent);
+}
+
+.custom-unit {
+  font-size: var(--text-sm);
+  color: var(--reader-ink);
 }
 
 .settings-foot {

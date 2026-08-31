@@ -45,6 +45,7 @@ release. Add a tool name to select part of the graph. For example, run
 | 规则文档                          | 适用任务场景                                                                         |
 | --------------------------------- | ------------------------------------------------------------------------------------ |
 | `docs/PITFALLS.md`                | 错题本与避坑指南（历史故障复盘、高频反模式与避坑红线速查）                           |
+| `docs/CSS_RADAR.md`               | CSS 前瞻技术雷达：已落地特性用法、渐进增强降级方案、实验草案追踪与升级路线图         |
 | `docs/agents/architecture.md`     | 后端模型、FastAPI 路由、存储布局、Provider 扩展、安全与防盗链                        |
 | `docs/agents/frontend.md`         | 书架/详情/阅读器、页面索引、多章节子路由、HTML-in-Canvas                             |
 | `docs/agents/ui.md`               | 新 UI 组件、核心交互重构、视觉设计（调度 `impeccable`，执行 A/B 双轨评审与物理落盘） |

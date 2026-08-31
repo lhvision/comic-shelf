@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import AppIcon from '@/components/AppIcon.vue'
 
 /**
@@ -28,10 +28,21 @@ const emit = defineEmits<{
 /** 默认展示的高频标签数（连「全部」一起 ≤9 个 chip） */
 const VISIBLE_TAGS = 8
 
-const expanded = ref(false)
 const moreCount = computed(() => Math.max(0, props.tagCounts.length - VISIBLE_TAGS))
-const shownTags = computed(() =>
-  expanded.value ? props.tagCounts : props.tagCounts.slice(0, VISIBLE_TAGS),
+const primaryTags = computed(() => props.tagCounts.slice(0, VISIBLE_TAGS))
+const overflowTags = computed(() => props.tagCounts.slice(VISIBLE_TAGS))
+
+const expanded = ref(
+  Boolean(props.activeTag && overflowTags.value.some(([t]) => t === props.activeTag)),
+)
+
+watch(
+  () => props.activeTag,
+  (newTag) => {
+    if (newTag && overflowTags.value.some(([t]) => t === newTag)) {
+      expanded.value = true
+    }
+  },
 )
 
 function selectTag(tag: string) {
@@ -68,7 +79,7 @@ function clearFilter() {
           全部
         </button>
         <button
-          v-for="[tag, count] in shownTags"
+          v-for="[tag, count] in primaryTags"
           :key="tag"
           class="chip chip-button"
           type="button"
@@ -85,9 +96,39 @@ function clearFilter() {
           :aria-expanded="expanded"
           @click="expanded = !expanded"
         >
-          {{ expanded ? '收起标签' : `更多 · ${moreCount}` }}
+          <span>{{ expanded ? '收起标签' : `更多 · ${moreCount}` }}</span>
+          <AppIcon
+            name="chevron-down"
+            size="xs"
+            class="more-chevron"
+            :class="{ 'is-rotated': expanded }"
+          />
         </button>
       </template>
+    </div>
+
+    <!-- 溢出标签平滑展开抽屉（CSS Grid 0fr ⇄ 1fr 尺寸插值） -->
+    <div
+      v-if="moreCount > 0"
+      class="more-tags-tray"
+      :class="{ 'is-expanded': expanded }"
+      :aria-hidden="!expanded"
+    >
+      <div class="more-tags-inner">
+        <div class="overflow-cluster cluster">
+          <button
+            v-for="[tag, count] in overflowTags"
+            :key="tag"
+            class="chip chip-button"
+            type="button"
+            :tabindex="expanded ? 0 : -1"
+            :aria-pressed="activeTag === tag"
+            @click="selectTag(tag)"
+          >
+            {{ tag }} <small class="tag-count">{{ count }}</small>
+          </button>
+        </div>
+      </div>
     </div>
 
     <p v-if="activeTag" class="filter-note">
@@ -142,7 +183,52 @@ function clearFilter() {
 }
 
 .more-tags {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
   font-family: var(--font-mono);
+}
+
+.more-chevron {
+  transition: transform var(--duration-2) var(--ease-spring);
+}
+
+.more-chevron.is-rotated {
+  transform: rotate(180deg);
+}
+
+/* 溢出标签托盘：CSS Grid 轨道尺寸插值 */
+.more-tags-tray {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows var(--duration-2) var(--ease-out);
+}
+
+.more-tags-tray.is-expanded {
+  grid-template-rows: 1fr;
+}
+
+.more-tags-inner {
+  min-height: 0;
+  overflow: clip;
+}
+
+.overflow-cluster {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  padding-top: var(--space-2);
+  opacity: 0;
+  transform: translateY(-4px);
+  transition:
+    opacity var(--duration-2) var(--ease-out),
+    transform var(--duration-2) var(--ease-out);
+}
+
+.more-tags-tray.is-expanded .overflow-cluster {
+  opacity: 1;
+  transform: translateY(0);
 }
 
 .filter-note {

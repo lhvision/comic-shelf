@@ -28,6 +28,8 @@ import IconTrash from './IconTrash.vue'
 import IconUsers from './IconUsers.vue'
 import IconCopy from './IconCopy.vue'
 import IconLogOut from './IconLogOut.vue'
+import IconPause from './IconPause.vue'
+import IconPlay from './IconPlay.vue'
 import type { IconName, IconSize } from './types'
 
 export {
@@ -60,6 +62,8 @@ export {
   IconUsers,
   IconCopy,
   IconLogOut,
+  IconPause,
+  IconPlay,
 }
 export type { IconSize, IconName }
 
@@ -92,4 +96,6 @@ export const ICON_MAP: Record<IconName, Component> = {
   users: IconUsers,
   copy: IconCopy,
   logout: IconLogOut,
+  pause: IconPause,
+  play: IconPlay,
 }

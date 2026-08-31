@@ -16,7 +16,7 @@ import { createGlobalState, useLocalStorage, useMediaQuery } from '@vueuse/core'
 export type ReaderMode = 'vertical-continuous' | 'vertical-paged' | 'horizontal'
 export type FitMode = 'width' | 'height'
 export type SpreadDirection = 'ltr' | 'rtl'
-export type AutoTurnInterval = 5 | 10 | 15 | 30
+export type AutoTurnInterval = number
 
 export interface ReaderSettings {
   mode: ReaderMode
@@ -54,8 +54,9 @@ export const FIT_OPTIONS: Array<{ value: FitMode; label: string }> = [
   { value: 'height', label: '适应高度' },
 ]
 
-export const AUTO_TURN_OPTIONS: Array<{ value: AutoTurnInterval; label: string }> =
-  AUTO_TURN_INTERVALS.map((seconds) => ({ value: seconds, label: `${seconds} 秒` }))
+export const AUTO_TURN_OPTIONS: Array<{ value: number; label: string }> = AUTO_TURN_INTERVALS.map(
+  (seconds) => ({ value: seconds, label: `${seconds} 秒` }),
+)
 
 /**
  * 归一化设置值：只信任合法枚举，非法/缺失取值回落默认。
@@ -70,9 +71,14 @@ function clampSettings(value: Partial<ReaderSettings>, wideViewport: boolean): R
         ? pagesPerView
         : 2
       : DEFAULT_SETTINGS.pagesPerView
-  const autoTurnInterval = AUTO_TURN_INTERVALS.some((entry) => entry === value.autoTurnInterval)
-    ? (value.autoTurnInterval as AutoTurnInterval)
-    : DEFAULT_SETTINGS.autoTurnInterval
+  const rawInterval = value.autoTurnInterval
+  const autoTurnInterval =
+    typeof rawInterval === 'number' &&
+    Number.isFinite(rawInterval) &&
+    rawInterval >= 1 &&
+    rawInterval <= 300
+      ? Math.round(rawInterval)
+      : DEFAULT_SETTINGS.autoTurnInterval
 
   return {
     mode:

@@ -30,3 +30,5 @@ export type IconName =
   | 'users'
   | 'copy'
   | 'logout'
+  | 'pause'
+  | 'play'

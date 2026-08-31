@@ -11,6 +11,7 @@
 
   html {
     color-scheme: light dark;
+    interpolate-size: allow-keywords;
     -webkit-text-size-adjust: 100%;
   }
 
@@ -129,6 +130,23 @@
     border: 3px solid transparent;
     border-radius: 999px;
     background-clip: content-box;
+  }
+
+  /* HTML5 <details> & ::details-content 原生展开收起与尺寸插值 */
+  details {
+    interpolate-size: allow-keywords;
+  }
+
+  ::details-content {
+    transition:
+      height var(--duration-2) var(--ease-out),
+      content-visibility var(--duration-2) var(--ease-out) allow-discrete;
+    height: 0;
+    overflow: clip;
+  }
+
+  details[open]::details-content {
+    height: auto;
   }
 }
 
@@ -675,11 +693,20 @@ html:active-view-transition-type(backward) {
   }
 }
 
-/* 无障碍：减弱动效时直接关闭所有 View Transition 动画 */
+/* 无障碍：减弱动效时直接关闭所有 View Transition 动画与高频位移过渡 */
 @media (prefers-reduced-motion: reduce) {
   ::view-transition-group(*),
   ::view-transition-old(*),
   ::view-transition-new(*) {
     animation: none !important;
+  }
+
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
   }
 }

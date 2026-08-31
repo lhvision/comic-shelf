@@ -842,3 +842,37 @@
   - `pnpm detect:slop src/components/ReaderPassPopover.vue` 0 finding；
   - `invoke_subagent` 独立设计总监完成可用性审计并落盘至 `.impeccable/critique/`；
   - `vp test src/__tests__/ReaderPassPopover.spec.ts src/__tests__/useAuth.spec.ts` 14/14 单测全绿。
+
+## 43. 现代 CSS 动效与雷达规范落地（标签流式抽屉 + 移动端折叠卡片 + 尺寸插值）
+
+- **背景与调研依据（docs/CSS_RADAR.md）**：
+  1. **特性准入过滤**：严格遵守《CSS 前瞻技术雷达》红线，排除处于实验阶段或会导致构建工具（LightningCSS/Oxlint）抛错的 `@function`、`if()` 及 `@container scroll-state`；
+  2. **色彩体系防御**：坚守既有 `#hex` + `oklch()` 双层回退模式，严禁直接全量替换为 `light-dark()`（避免部分老内核色彩丢失与视觉坍塌）；
+  3. **尺寸插值痛点**：消除历史通过 `slice(0, 8)` 硬增删标签及移动端 `display: none` 隐藏面板造成的突兀跳版，系统化升级为现代 CSS 无级尺寸插值（`interpolate-size` 与 CSS Grid `0fr ⇄ 1fr` 复合轨道）。
+- **设计决策与落地实现**：
+  1. **标签筛选条溢出抽屉（TagFilterBar.vue）**：
+     - 将超出 8 个的高频标签收纳于独立的 `.more-tags-tray`；
+     - 采用 CSS Grid `grid-template-rows: 0fr ⇄ 1fr` 与 `.more-tags-inner`（`min-height: 0; overflow: clip;`）驱动丝滑展开；
+     - 内置 `.overflow-cluster` 配合 `opacity` 与轻微纵向位移（`-4px`），展开按钮集成 `chevron-down`（`--ease-spring` 旋转 180°）；
+     - 严格遵循 WCAG 2.1 无障碍规范：折叠态下对溢出标签设置 `:tabindex="-1"` 与 `:aria-hidden="true"`，杜绝隐藏控件产生键盘焦点陷阱。
+  2. **移动端收录折叠面板（ImportPanel.vue）**：
+     - 桌面端（`>640px`）通过 `display: contents` 无缝融入既有双栏 Grid 网格；
+     - 移动端（`≤640px`）通过 `.import-animator` 激活 `grid-template-rows: 0fr ⇄ 1fr` 轨道插值；
+     - 外框边框（实线 ⇄ 虚线）、内边距（`var(--space-3-5)` ⇄ `0`）、暗纸底色及折叠把手指示图标实现多维物理弹性过渡（`--ease-spring`）；
+  3. **动效节律与无障碍基准**：
+     - 动效时长统一对齐 `--duration-2`（260ms），缓动曲线对齐 `--ease-out` / `--ease-spring`；
+     - 全局 `@media (prefers-reduced-motion: reduce)` 原生接管，系统偏好减弱动效时直接关闭动画。
+
+## 44. 阅读器自动翻页精细化与导入面板领域上下文收敛
+
+- **阅读器自动翻页自定义秒数（ReaderSettingsPanel.vue + useReaderSettings.ts）**：
+  - 在保持经典预设 `[5 秒]`、`[10 秒]`、`[15 秒]`、`[30 秒]` 快速直达的同时，在分段控件右侧追加 `[自定义…]` 扩展按钮；
+  - 激活后就地变为高亮活跃的 `[ 20 ] 秒` 紧凑输入胶囊，支持读者自由设定 **1 ~ 300 秒** 的个性化阅读节奏；
+  - 状态层归一化自动钳制非法输入与负数，保证响应式数据流的健壮性。
+- **底部 HUD 暂停态图元闭环（ReaderHud.vue）**：
+  - 新增原子级矢量图标 `IconPause.vue` 与 `IconPlay.vue`，彻底消除旧版本暂停时显示为空白黑胶囊的视觉缺陷；
+  - 运行态常驻渲染倒计时秒数，悬停/聚焦显示「`暂停`」；
+  - 暂停态常驻渲染朱砂印章色 `IconPause` 暂停图标，悬停/聚焦平滑淡入「`继续`」文案，实现无障碍焦点与状态的完整自洽。
+- **数据源表单上下文按需隔离（ImportPanel.vue）**：
+  - 严格遵循领域模型边界：切换至「本地自建 / 拆帧」时，自动隐退「同时缓存全部页面」与「下载并发（X 路/次）」等仅适用于远端抓取的控制项；
+  - 全局隐私策略「新入库默认对访客隐藏」在双模式下保持常驻，降低读者与馆长的决策认知负荷。
