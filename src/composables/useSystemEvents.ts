@@ -1,7 +1,9 @@
 import { ref, watch } from 'vue'
-import { createGlobalState, useNetwork } from '@vueuse/core'
+import { createGlobalState, useDocumentVisibility, useNetwork } from '@vueuse/core'
 import { usePwaUpdate } from '@/composables/usePwaUpdate'
 import { useLibraryStore } from '@/stores/library'
+
+export const MAX_SSE_RETRY_ATTEMPTS = 10
 
 export interface SystemVersionEvent {
   version?: string
@@ -26,7 +28,7 @@ export interface AiTaskProgressEvent {
 /**
  * 纸间全站单向系统事件流（SSE）
  * 承载版本更新广播、藏书后台变动与未来 AI 任务流式状态
- * 0 轮询开销，0% CPU 占用，自动断线自愈
+ * 0 轮询开销，0% CPU 占用，自动断线自愈并设最大重试上限
  */
 export const useSystemEvents = createGlobalState(() => {
   const isConnected = ref(false)
@@ -35,6 +37,7 @@ export const useSystemEvents = createGlobalState(() => {
   const lastLibraryEvent = ref<LibraryChangeEvent | null>(null)
   const aiTasks = ref<Record<string, AiTaskProgressEvent>>({})
 
+  const visibility = useDocumentVisibility()
   const { isOnline } = useNetwork()
   const { checkForUpdate } = usePwaUpdate()
 
@@ -108,8 +111,8 @@ export const useSystemEvents = createGlobalState(() => {
           eventSource.close()
           eventSource = null
         }
-        // 指数平滑退避自动重连（从 2s 起步，上限 30s，附加抖动）
-        if (isOnline.value && !reconnectTimer) {
+        // 指数平滑退避自动重连（连续失败超过 MAX_SSE_RETRY_ATTEMPTS 后挂起，等待页面唤醒或网络切换自愈）
+        if (isOnline.value && !reconnectTimer && retryAttempts < MAX_SSE_RETRY_ATTEMPTS) {
           const delay = Math.min(30000, 2000 * Math.pow(1.5, retryAttempts) + Math.random() * 1000)
           retryAttempts += 1
           reconnectTimer = setTimeout(() => {
@@ -136,12 +139,21 @@ export const useSystemEvents = createGlobalState(() => {
     isConnected.value = false
   }
 
-  // 监听网络连接变化：网络恢复时重新连接
+  // 1. 监听网络连接变化：网络恢复时重置重试计数并重新连接
   watch(isOnline, (online) => {
     if (online && !isConnected.value && !eventSource) {
+      retryAttempts = 0
       connect()
     } else if (!online) {
       disconnect()
+    }
+  })
+
+  // 2. 监听页面可见性变化：用户切回标签页且未连接时，重置重试计数并即时唤醒重连
+  watch(visibility, (current) => {
+    if (current === 'visible' && isOnline.value && !isConnected.value && !eventSource) {
+      retryAttempts = 0
+      connect()
     }
   })
 
