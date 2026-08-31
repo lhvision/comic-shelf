@@ -85,9 +85,19 @@ from .models import (
     ReplacePathRequest,
     UpdateGuestPassRequest,
 )
+from contextlib import asynccontextmanager
+
 from .abuse import check_guest_rate_limit
+from .events import broadcast_event, shutdown_events, router as events_router
 from .gate import get_guest_hide_new_comics, set_guest_hide_new_comics
 from .providers import get_provider, provider_list
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    yield
+    shutdown_events()
+
 
 app = FastAPI(
     title="Paper Room API",
@@ -96,7 +106,10 @@ app = FastAPI(
     docs_url="/docs" if ENABLE_DOCS else None,
     redoc_url="/redoc" if ENABLE_DOCS else None,
     openapi_url="/openapi.json" if ENABLE_DOCS else None,
+    lifespan=lifespan,
 )
+
+app.include_router(events_router)
 
 app.add_middleware(
     CORSMiddleware,
@@ -115,6 +128,7 @@ async def auth_and_security_middleware(request: Request, call_next):
     if (
         not path.startswith("/api/")
         or path in {"/api/health", "/api/auth/status", "/api/auth/login", "/api/auth/logout"}
+        or path.startswith("/api/events")
         or path.startswith("/docs")
         or path.startswith("/redoc")
         or path.startswith("/openapi.json")
@@ -478,6 +492,8 @@ def import_comic(req: ImportRequest) -> ImportResult:
     meta = store.save_fetched(fetched, refresh=req.refresh)
     fetched.meta = meta
 
+    broadcast_event("library_changed", {"action": "import", "timestamp": time.time()})
+
     cover_count = (
         fetched.meta.cover_count
         if req.prefetch_all
@@ -506,7 +522,10 @@ def comic_detail(source: str, source_id: str, request: Request) -> ComicDetail:
 @app.delete("/api/library/{source}/{source_id}", response_model=DeleteResponse)
 def delete_comic(source: str, source_id: str) -> DeleteResponse:
     _require_known_source(source)
-    return DeleteResponse(ok=store.delete(source, source_id), source=source, source_id=source_id)
+    ok = store.delete(source, source_id)
+    if ok:
+        broadcast_event("library_changed", {"action": "delete", "timestamp": time.time()})
+    return DeleteResponse(ok=ok, source=source, source_id=source_id)
 
 
 @app.patch("/api/library/{source}/{source_id}/metadata", response_model=ComicDetail)
@@ -943,6 +962,7 @@ def _prefetch_worker(
     job["prefetched"] = done
     job["total"] = meta.page_count
     job["warnings"] = warnings
+    broadcast_event("library_changed", {"action": "cache_complete", "timestamp": time.time()})
 
 
 def _require_known_source(source: str) -> None:

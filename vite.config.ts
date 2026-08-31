@@ -104,7 +104,7 @@ export default defineConfig({
     vueDevTools(),
     basicSsl(),
     VitePWA({
-      registerType: 'autoUpdate',
+      registerType: 'prompt',
       useCredentials: true,
       includeAssets: [
         'brand-icon.webp',

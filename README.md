@@ -59,8 +59,10 @@
 - **统一矢量图标集与现代浮层基建**：
   - 全站图标收敛到 `src/components/icons/`（1.8px 细线条描边 / 朱砂质感），零 Unicode 伪字符（`✕`/`✓`）；
   - 基于 HTML Popover API 与 CSS Anchor Positioning 规范构建现代浮层，包含 `Modal`、`AppPopover`、`AppDropdown` 与带悬停安全桥的 `AppTooltip`。
-- **PWA 独立安装与端侧离线存储管理（`StoragePopover`）**：
+- **PWA 独立安装、离线存储与零轮询系统事件流**：
   - **标准 PWA 规范支持**：完整支持桌面/移动端独立窗口安装（Standalone）、离线秒开与后台静默更新，符合 W3C Web App Manifest 与 Service Worker 规范；
+  - **优雅装订提醒（Prompt 模式）**：前端采用非侵入式悬浮装订横幅（`UpdateBanner`），阅读器沉浸模式下自动隐退避让，新版本随时在顶栏设备卡片内就绪装订；
+  - **零轮询单向系统事件流（SSE `/api/events/stream`）**：版本发布、多端书架实时同步（藏书导入/删除即时反映）与后台下载完成通过轻量 SSE 广播，0 CPU 轮询开销；
   - **分级离线缓存体系**：基于 Workbox 实现 App Shell 核心资产预缓存 + 漫画原图/缩略图 Cache-First（最大 1000 篇目 LRU 自动淘汰）+ API 元数据 Network-First；
   - **端侧存储独立账单与安全边界**：基于 `navigator.storage.estimate()` 毫秒级探测本机物理占用，清晰展示核心资产与漫画图片分项；
   - **两档安全清理**：日常级「清理阅览图片缓存」一键安全释放设备空间；重置级提供 5 秒两步倒计时防误触防线；
@@ -202,30 +204,18 @@ $COMIC_SHELF_DATA/
 
 ---
 
-## 常用 API 清单
+## 接口与开发文档索引
 
-| 方法       | 路径                                                    | 说明                                                                       |
-| :--------- | :------------------------------------------------------ | :------------------------------------------------------------------------- |
-| **GET**    | `/api/library`                                          | 书架列表（支持 `q` 关键词过滤、按章节标题检索）                            |
-| **POST**   | `/api/library/import`                                   | 禁漫收录（`{id, source, prefetch_covers, prefetch_all, refresh}`）         |
-| **GET**    | `/api/library/{source}/{id}`                            | 漫画详情与缓存进度（包含 `chapters[]` 目录）                               |
-| **PATCH**  | `/api/library/{source}/{id}/metadata`                   | 典藏资料编辑（标题、作者、叙述、自定义 `cover_indices`、标签增删）         |
-| **DELETE** | `/api/library/{source}/{id}`                            | 从书库彻底删除本地漫画及所有文件                                           |
-| **GET**    | `/api/library/{source}/{id}/pages/{n}/file[.webp]`      | 获取第 `n` 页原图（全局页号，支持 `.webp` 静态别名，未缓存时自动解密下载） |
-| **GET**    | `/api/library/{source}/{id}/pages/{n}/thumbnail[.jpg]`  | 获取第 `n` 页 360px 缩略图（支持 `.jpg` 静态别名，用于索引与自适应呈现）   |
-| **GET**    | `/api/library/{source}/{id}/covers/{n}/file[.jpg]`      | 获取第 `n` 张展示封面（支持 `.jpg` 静态别名）                              |
-| **GET**    | `/api/library/{source}/{id}/chapters/{cid}/cover[.jpg]` | 获取指定章节的池化封面（支持 `.jpg` 静态别名）                             |
-| **POST**   | `/api/library/{source}/{id}/cache`                      | 一键缓存整本全部页面                                                       |
-| **PATCH**  | `/api/library/{source}/{id}/favorite`                   | 标记 / 取消喜欢                                                            |
-| **POST**   | `/api/library/local/create`                             | 自建工坊：创建本地漫画骨架                                                 |
-| **POST**   | `/api/library/local/import-path`                        | 自建工坊：从服务器外部白名单目录直扫收录                                   |
-| **POST**   | `/api/library/local/{id}/upload-pages`                  | 自建工坊：批量上传页面文件                                                 |
-| **POST**   | `/api/library/local/{id}/append`                        | 自建工坊：向现有漫画/章节增量追加新页面                                    |
-| **GET**    | `/api/search/image/status`                              | 检查以图搜图 Sidecar 服务可用性                                            |
-| **POST**   | `/api/search/image`                                     | 上传截图进行局部 ORB 特征向量检索                                          |
-| **GET**    | `/api/discovery/ranking`                                | 发现页：禁漫原站周榜/月榜/日榜/总榜流                                      |
-| **POST**   | `/api/auth/login`                                       | 馆长/访客访问口令登录验证                                                  |
-| **GET**    | `/api/auth/status`                                      | 当前会话鉴权状态检查                                                       |
+纸间拥有完备的接口定义与系统设计文档体系：
+
+| 文档                                                           | 内容与定位                                                                                                            |
+| :------------------------------------------------------------- | :-------------------------------------------------------------------------------------------------------------------- |
+| **交互式 API 文档**                                            | 启动服务后浏览器直接访问 `http://localhost:8000/docs`（Swagger UI）或 `/redoc` 查看全部实时端点、请求模型与参数定义   |
+| **[DEPLOYMENT.md](DEPLOYMENT.md)**                             | 生产容器化部署全景：Docker Compose、TrueNAS Scale / Unraid / 群晖 NAS 挂载配置、21 个环境变量详解、反向代理与权限排查 |
+| **[docs/agents/architecture.md](docs/agents/architecture.md)** | 后端架构设计、数据存储模型、Provider 扩展体系、安全门禁与 SSE 单向事件流                                              |
+| **[docs/agents/frontend.md](docs/agents/frontend.md)**         | 前端视图与 Composable 地图、阅读器分页与手势、PWA 离线缓存与性能策略                                                  |
+| **[DESIGN_NOTES.md](DESIGN_NOTES.md)**                         | 纸间设计系统演进、物理质感与装订美学、UI 交互决策与错题复盘                                                           |
+| **[docs/adr/](docs/adr/)**                                     | 架构决策记录（Architecture Decision Records，涵盖现代浮层、PWA 与事件流）                                             |
 
 ---
 

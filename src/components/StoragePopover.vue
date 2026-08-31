@@ -5,6 +5,7 @@ import AppButton from '@/components/AppButton.vue'
 import AppIcon from '@/components/AppIcon.vue'
 import { formatBytes, useOfflineStorage } from '@/composables/useOfflineStorage'
 import { usePwaInstall } from '@/composables/usePwaInstall'
+import { usePwaUpdate } from '@/composables/usePwaUpdate'
 import { useToast } from '@/composables/useToast'
 
 const {
@@ -24,6 +25,7 @@ const {
 } = useOfflineStorage()
 
 const { canInstall, isStandalone, installApp } = usePwaInstall()
+const { needRefresh, isUpdating, applyUpdate } = usePwaUpdate()
 const { toast } = useToast()
 const isOpen = ref(false)
 const isConfirmingReset = ref(false)
@@ -94,11 +96,17 @@ function cancelReset() {
     <button
       type="button"
       class="storage-badge-btn"
-      :title="`设备离线存储占用 ${usageFormatted}（点击查看与管理）`"
+      :class="{ 'has-update': needRefresh }"
+      :title="
+        needRefresh
+          ? `发现新版本卷本可装订（离线占用 ${usageFormatted}）`
+          : `设备离线存储占用 ${usageFormatted}（点击查看与管理）`
+      "
       :aria-label="`设备离线存储占用 ${usageFormatted}，点击展开管理面板`"
     >
       <AppIcon name="archive" size="xs" :stroke-width="1.8" />
       <span class="storage-label">{{ badgeText }}</span>
+      <span v-if="needRefresh" class="update-indicator-dot" aria-hidden="true"></span>
     </button>
 
     <template #content>
@@ -124,6 +132,26 @@ function cancelReset() {
             <span v-else-if="isStandalone" class="pwa-standalone-pill"> 〔 独立应用 〕 </span>
           </div>
         </header>
+
+        <!-- 新卷本装订就绪提示卡片 -->
+        <section v-if="needRefresh" class="storage-update-card" aria-label="应用更新">
+          <div class="update-card-left">
+            <span class="update-pill font-mono">UPD</span>
+            <div class="update-card-text">
+              <strong class="update-card-title">新卷本装订就绪</strong>
+              <small class="update-card-sub">应用最新功能与静态补丁</small>
+            </div>
+          </div>
+          <button type="button" class="update-card-btn" :disabled="isUpdating" @click="applyUpdate">
+            <AppIcon
+              name="refresh"
+              size="xs"
+              :stroke-width="1.8"
+              :class="{ 'is-spinning': isUpdating }"
+            />
+            <span>{{ isUpdating ? '装订中…' : '立即装订' }}</span>
+          </button>
+        </section>
 
         <!-- 存储容量平直标尺（延续 3px 纸印规范） -->
         <section class="storage-gauge" aria-label="存储容量使用情况">
@@ -250,6 +278,108 @@ function cancelReset() {
   background: var(--paper-2);
   border-color: var(--line-strong);
   color: var(--ink-0);
+}
+
+.storage-badge-btn.has-update {
+  border-color: color-mix(in oklab, var(--accent) 60%, var(--line));
+}
+
+.update-indicator-dot {
+  width: 0.45rem;
+  height: 0.45rem;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 0 1.5px var(--paper-1);
+}
+
+.storage-update-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-2-5);
+  border: 1px solid color-mix(in oklab, var(--accent) 45%, var(--line));
+  border-radius: var(--radius-2);
+  background: color-mix(in oklab, var(--accent-soft) 40%, var(--paper-0));
+}
+
+.update-card-left {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.update-pill {
+  display: inline-grid;
+  place-items: center;
+  padding: 0.1rem 0.35rem;
+  border-radius: var(--radius-1);
+  background: var(--accent);
+  color: var(--paper-0);
+  font-size: var(--text-caption);
+  font-weight: 600;
+  line-height: 1;
+  flex: 0 0 auto;
+}
+
+.update-card-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.update-card-title {
+  font-size: var(--text-xs);
+  font-weight: 600;
+  color: var(--ink-0);
+  line-height: var(--leading-tight);
+}
+
+.update-card-sub {
+  font-size: 0.625rem;
+  color: var(--ink-2);
+  line-height: 1.2;
+}
+
+.update-card-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  height: var(--control-xs);
+  padding: 0 var(--space-2-5);
+  border: 1px solid color-mix(in oklab, var(--accent) 60%, transparent);
+  border-radius: var(--radius-1);
+  background: var(--accent);
+  color: var(--paper-0);
+  font-size: var(--text-xs);
+  font-weight: 500;
+  cursor: pointer;
+  white-space: nowrap;
+  flex: 0 0 auto;
+  transition: all var(--duration-1) var(--ease-out);
+}
+
+.update-card-btn:hover:not(:disabled) {
+  background: var(--accent-strong);
+}
+
+.update-card-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.is-spinning {
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .storage-panel {

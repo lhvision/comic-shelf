@@ -40,6 +40,7 @@ FastAPI (backend/app/main.py)
    │
    ├── gate.py              # 下载并发闸门控制
    ├── jobs.py              # 后台批量缓存任务管理
+   ├── events.py            # 单向系统事件流（SSE，广播版本更新/书库变动/AI进度）
    ├── imsearch.py          # 局部特征搜图客户端（HTTP 隔离通信）
    └── storage.py           # 本地缓存与文件布局
          │

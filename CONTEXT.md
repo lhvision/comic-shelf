@@ -120,3 +120,6 @@
 
 - **探针静音与访问日志门禁（Probe Quiet Filtering & Access Log Gate）**：Uvicorn 访问流水日志过滤机制。对容器健康探针与高频心跳在返回 200 正常时默认静音，仅在异常报错时输出；支持环境变量彻底关闭请求日志，消除控制台刷屏。
 - **内外网分流（Split-Horizon DNS）**：纸间倡导的局域网与公网融合网络拓扑。同一域名在家庭局域网内通过本地 DNS 重写直连 NAS 内网 IP，享受千兆内网零延迟；公网环境下解析至 Cloudflare 命中边缘缓存，兼顾多端单点登录、PWA 离线缓存隔离与极致阅览性能。
+- **单向系统事件流（Unified System Event Stream / SSE）**：基于 FastAPI 异步协程与 `asyncio.Queue` 驱动的零轮询长连接通道（`/api/events/stream`），承载新版本构建广播、后台书库变动与未来 AI 任务流式状态。在无事件时 0 CPU 挂起，断线自动重连，彻底消除前端 HTTP 定时轮询负载。
+- **纸印更新气泡与双重提醒（Prompted Update Toast & Dual Notice）**：PWA Service Worker 发现新静态资产构建就绪时激活的轻量交互机制。在屏幕边缘浮现极具纸间水墨质感的非侵入提示胶囊（支持「立即装订 (刷新)」与「稍后」），并在顶栏设备微件保留朱砂徽标，沉浸翻阅时自动避让。
+- **视口与唤醒回源校验（Visibility & Online Wakeup Sync）**：利用 VueUse `useDocumentVisibility` 与 `useNetwork` 在页面重获焦点或网络自愈时触发的轻量 Service Worker 脚本比对（`registration.update()`），以 0 业务接口开销确保长期待机设备自愈回源。

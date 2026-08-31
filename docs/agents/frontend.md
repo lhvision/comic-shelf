@@ -25,7 +25,10 @@
 | `src/composables/useHtmlCanvas.ts`             | HTML-in-Canvas 实验特性检测与支持度判定                                    |
 | `src/composables/useOfflineStorage.ts`         | 端侧离线物理存储探测与分级清理状态机（StorageManager + CacheStorage 统计） |
 | `src/composables/usePwaInstall.ts`             | PWA 安装与独立应用视口检测状态机（`beforeinstallprompt` + Standalone）     |
-| `src/pwa.ts`                                   | PWA Service Worker 注册与每小时周期性静默更新检查调度器                    |
+| `src/composables/usePwaUpdate.ts`              | PWA Prompt 模式生命周期状态机：更新捕获、装订刷新与视口唤醒自愈探测        |
+| `src/composables/useSystemEvents.ts`           | 纸间单向系统事件流（SSE）：新版本广播、藏书变动与未来 AI 任务流式状态机    |
+| `src/pwa.ts`                                   | PWA 与 SSE 系统事件流统一初始化入口                                        |
+| `src/components/UpdateBanner.vue`              | 纸间新卷本装订更新提示横幅（水墨胶囊悬浮卡片、沉浸阅读器自动避让）         |
 | `src/components/AuthModal.vue`                 | 访问口令门禁弹窗：输入密钥、品牌 Logo、双语眉标与错误反馈                  |
 | `src/components/Modal.vue`                     | 通用无障碍二次确认弹窗：焦点圈闭、锁卷与抽屉自适应（用于删除危险操作）     |
 | `src/components/SegmentedTabs.vue`             | 典藏分段选项卡：支持泛型 `TabItem<T>`/字符串、左右/Home/End 键导航与多尺寸 |

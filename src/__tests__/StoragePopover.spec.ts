@@ -60,4 +60,16 @@ describe('StoragePopover component', () => {
     expect(wrapper.find('.confirm-box').exists()).toBe(false)
     expect(wrapper.find('.reset-btn').exists()).toBe(true)
   })
+
+  it('renders update indicator dot and card when needRefresh is active', async () => {
+    const { usePwaUpdate } = await import('@/composables/usePwaUpdate')
+    const { needRefresh } = usePwaUpdate()
+    needRefresh.value = true
+
+    const wrapper = mount(StoragePopover)
+    expect(wrapper.find('.storage-badge-btn.has-update').exists()).toBe(true)
+    expect(wrapper.find('.update-indicator-dot').exists()).toBe(true)
+    expect(wrapper.find('.storage-update-card').exists()).toBe(true)
+    expect(wrapper.find('.update-card-title').text()).toBe('新卷本装订就绪')
+  })
 })

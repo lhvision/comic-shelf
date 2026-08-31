@@ -4,6 +4,7 @@ import { useRoute } from 'vue-router'
 import AppHeader from '@/components/AppHeader.vue'
 import AuthModal from '@/components/AuthModal.vue'
 import ToastStack from '@/components/ToastStack.vue'
+import UpdateBanner from '@/components/UpdateBanner.vue'
 import AmbientWatermark from '@/components/AmbientWatermark.vue'
 import BackToTop from '@/components/BackToTop.vue'
 import { useAuth } from '@/composables/useAuth'
@@ -31,6 +32,7 @@ onMounted(async () => {
     </main>
     <BackToTop v-if="route.name !== 'reader'" />
     <ToastStack />
+    <UpdateBanner />
     <AuthModal />
   </div>
 </template>
