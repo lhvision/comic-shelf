@@ -39,6 +39,8 @@ export function useReaderChrome(options: UseReaderChromeOptions) {
     chromeVisible.value = !chromeVisible.value
     if (chromeVisible.value) {
       startChromeHide()
+    } else {
+      stopChromeHide()
     }
   }
 

@@ -67,8 +67,8 @@ defineEmits<{
   grid-template-columns: auto 1fr auto;
   align-items: center;
   gap: var(--space-4);
-  min-height: var(--header-h);
-  padding: 0 var(--page-pad);
+  min-height: calc(var(--header-h) + env(safe-area-inset-top, 0px));
+  padding: env(safe-area-inset-top, 0px) var(--page-pad) 0;
 }
 
 .reader-title {

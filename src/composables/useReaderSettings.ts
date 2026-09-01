@@ -69,7 +69,7 @@ function clampSettings(value: Partial<ReaderSettings>, wideViewport: boolean): R
     pagesPerView === 1 || pagesPerView === 2 || pagesPerView === 4
       ? allowedPages.some((entry) => entry === pagesPerView)
         ? pagesPerView
-        : 2
+        : 1
       : DEFAULT_SETTINGS.pagesPerView
   const rawInterval = value.autoTurnInterval
   const autoTurnInterval =
@@ -107,9 +107,9 @@ export const useReaderSettings = createGlobalState(() => {
 
   const settings = reactive<ReaderSettings>(clampSettings(stored.value, isWideViewport.value))
 
-  // 视口收窄时把 4 连页强制收敛到 2 连页（横向翻页不允许窄屏 4 页）
+  // 视口收窄时把 4 连页强制收敛到 1 连页（窄屏默认单页阅读）
   watch(isWideViewport, (wide) => {
-    if (!wide && settings.pagesPerView === 4) settings.pagesPerView = 2
+    if (!wide && settings.pagesPerView === 4) settings.pagesPerView = 1
   })
 
   // 深度写回：任何子字段变化都同步到 localStorage（与 useStorage 的深 watch 行为一致）

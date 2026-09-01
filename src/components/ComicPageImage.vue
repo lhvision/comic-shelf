@@ -100,20 +100,21 @@ watch(
   position: relative;
   width: 100%;
   height: 100%;
-  display: grid;
-  align-content: center;
-  place-items: center;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   min-width: 0;
   min-height: 0;
 }
 
 .comic-page-image[data-state='loading'] {
   width: 100%;
-  height: 100%;
-  min-height: clamp(18rem, 60vh, 52rem);
+  min-height: clamp(16rem, 55vh, 48rem);
+  aspect-ratio: 0.72;
 }
 
 .comic-page-img {
+  display: block;
   max-width: 100%;
   max-height: 100%;
   opacity: 0;

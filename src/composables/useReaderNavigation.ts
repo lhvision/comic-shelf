@@ -171,7 +171,9 @@ export function useReaderNavigation(options: UseReaderNavigationOptions) {
       currentPage.value = groupFirstPage(nearest)
     }
 
-    if (!settings.autoTurn) showChromeTemporarily()
+    if (!settings.autoTurn && settings.mode !== 'vertical-continuous') {
+      showChromeTemporarily()
+    }
     resetAutoTurnCountdown()
   }
 

@@ -160,6 +160,18 @@ function backToDetail() {
   router.push(backTarget.value)
 }
 
+function onReaderClick(event: MouseEvent) {
+  const target = event.target as HTMLElement | null
+  if (target?.closest('button, a, input, select, textarea, [role="button"]')) {
+    return
+  }
+  // 文本选区状态下不误触切换工具栏显隐
+  if (window.getSelection()?.toString()) {
+    return
+  }
+  toggleChrome()
+}
+
 const { toggleFullscreen } = useReaderKeyboard({
   settingsOpen,
   settings,
@@ -285,6 +297,7 @@ watch(
       @scroll.passive="onScroll"
       @wheel="onWheel"
       @mousemove="showChromeTemporarily"
+      @click="onReaderClick"
     >
       <ReaderEndCard
         v-if="rtlHorizontal && showEndCard"
@@ -368,15 +381,6 @@ watch(
       @next="nextGroup"
     />
 
-    <button
-      class="reader-chrome-toggle"
-      type="button"
-      :aria-label="chromeVisible ? '隐藏工具栏' : '显示工具栏'"
-      @click="toggleChrome"
-    >
-      {{ chromeVisible ? '—' : '☰' }}
-    </button>
-
     <ReaderSettingsPanel v-if="settingsOpen" @close="settingsOpen = false" />
   </div>
 </template>
@@ -415,6 +419,30 @@ watch(
   contain-intrinsic-inline-size: auto 100vw;
 }
 
+/* ------------------------------ 页面与图片 ------------------------------ */
+.reader-page {
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.page-frame {
+  width: 100%;
+  min-height: 0;
+  min-width: 0;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.page-frame :deep(.comic-page-img) {
+  min-height: 40px;
+  background: var(--reader-page-bg);
+  box-shadow: var(--shadow-3);
+}
+
 /* ------------------------------ 竖向连续 ------------------------------ */
 .reader-scroll[data-mode='vertical-continuous'] {
   display: block;
@@ -427,11 +455,17 @@ watch(
   gap: var(--reader-gap-tight);
   grid-template-columns: repeat(var(--pages-per-view), minmax(0, 1fr));
   align-content: start;
+  justify-items: center;
   padding: 0 var(--reader-gutter);
+  max-width: var(--content-width);
+  margin-inline: auto;
 }
 
 .reader-scroll[data-mode='vertical-continuous'] .reader-spread:first-child {
-  padding-top: var(--reader-chrome-h);
+  padding-top: max(
+    var(--reader-chrome-h),
+    calc(var(--header-h) + env(safe-area-inset-top, 0px) + var(--space-2))
+  );
 }
 
 .reader-scroll[data-mode='vertical-continuous'] .reader-spread:not(:first-child) {
@@ -439,7 +473,54 @@ watch(
 }
 
 .reader-scroll[data-mode='vertical-continuous'] .reader-spread:last-of-type {
-  padding-bottom: var(--space-4);
+  padding-bottom: max(var(--space-6), env(safe-area-inset-bottom, 0px));
+}
+
+.reader-scroll[data-mode='vertical-continuous'] .reader-page {
+  width: 100%;
+  height: auto;
+}
+
+.reader-scroll[data-mode='vertical-continuous'] .page-frame {
+  height: auto;
+}
+
+/* 连续模式 适应宽度：全宽纵向下流 */
+.reader-scroll[data-mode='vertical-continuous']
+  .page-frame[data-fit='width']
+  :deep(.comic-page-image) {
+  width: 100%;
+  height: auto;
+}
+
+.reader-scroll[data-mode='vertical-continuous']
+  .page-frame[data-fit='width']
+  :deep(.comic-page-img) {
+  width: 100%;
+  height: auto;
+  max-width: 100%;
+  max-height: none;
+  object-fit: contain;
+}
+
+/* 连续模式 适应高度：高度受限，保持整页入目 */
+.reader-scroll[data-mode='vertical-continuous']
+  .page-frame[data-fit='height']
+  :deep(.comic-page-image) {
+  width: 100%;
+  height: auto;
+  display: flex;
+  justify-content: center;
+}
+
+.reader-scroll[data-mode='vertical-continuous']
+  .page-frame[data-fit='height']
+  :deep(.comic-page-img) {
+  width: auto;
+  max-width: 100%;
+  height: auto;
+  max-height: calc(100dvh - var(--reader-chrome-h) - var(--reader-frame-pad-v));
+  object-fit: contain;
 }
 
 /* ------------------------------ 竖向翻页 ------------------------------ */
@@ -449,14 +530,45 @@ watch(
 }
 
 .reader-scroll[data-mode='vertical-paged'] .reader-spread {
+  height: 100dvh;
   min-height: 100dvh;
   display: grid;
   gap: var(--reader-gap);
   grid-template-columns: repeat(var(--pages-per-view), minmax(0, 1fr));
   align-content: center;
+  justify-items: center;
   padding: var(--reader-chrome-h) var(--reader-gutter) var(--space-4);
   scroll-snap-align: start;
   scroll-snap-stop: always;
+  box-sizing: border-box;
+}
+
+.reader-scroll[data-mode='vertical-paged'] .reader-page {
+  height: 100%;
+  max-height: calc(100dvh - var(--reader-chrome-h) - var(--reader-frame-pad-v));
+  width: 100%;
+  justify-content: center;
+}
+
+.reader-scroll[data-mode='vertical-paged'] .page-frame {
+  flex: 1;
+  height: 100%;
+}
+
+.reader-scroll[data-mode='vertical-paged'] .page-frame :deep(.comic-page-image) {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.reader-scroll[data-mode='vertical-paged'] .page-frame :deep(.comic-page-img) {
+  width: auto;
+  height: auto;
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
 }
 
 /* ------------------------------ 横向翻页 ------------------------------ */
@@ -482,113 +594,38 @@ watch(
   gap: var(--reader-gap-tight);
   grid-template-columns: repeat(var(--pages-per-view), minmax(0, 1fr));
   align-content: center;
+  justify-items: center;
   padding: var(--reader-chrome-h) var(--reader-gutter) var(--space-4);
   scroll-snap-align: start;
   scroll-snap-stop: always;
+  box-sizing: border-box;
 }
 
-/* ------------------------------ 页面与图片 ------------------------------ */
-.reader-page {
-  min-width: 0;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
+.reader-scroll[data-mode='horizontal'] .reader-page {
+  height: 100%;
+  max-height: calc(100dvh - var(--reader-chrome-h) - var(--reader-frame-pad-v));
+  width: 100%;
+  justify-content: center;
 }
 
-.page-frame {
+.reader-scroll[data-mode='horizontal'] .page-frame {
   flex: 1;
-  display: grid;
-  place-items: center;
-  min-height: 0;
-  min-width: 0;
-}
-
-.page-frame :deep(.comic-page-img) {
-  min-height: 40px;
-  background: var(--reader-page-bg);
-  box-shadow: var(--shadow-3);
-}
-
-/* 连续竖向 1 页：页面尺寸与竖向翻页一致，在视口内 contain */
-.reader-scroll[data-mode='vertical-continuous'][data-pages='1']
-  .page-frame
-  :deep(.comic-page-image) {
   height: 100%;
 }
 
-/* 连续竖向 2/4 页：按列宽自然排版，避免页面内部留出整段空白 */
-.reader-scroll[data-mode='vertical-continuous']:not([data-pages='1'])
-  .page-frame
-  :deep(.comic-page-image) {
-  height: auto;
-}
-
-/* Loading 阶段预留最终高度，避免图片加载后滚动高度突变/卡住 */
-.reader-scroll[data-mode='horizontal'] .page-frame :deep(.comic-page-image[data-state='loading']),
-.reader-scroll[data-mode='vertical-paged']
-  .page-frame
-  :deep(.comic-page-image[data-state='loading']),
-.reader-scroll[data-mode='vertical-continuous'][data-pages='1']
-  .page-frame
-  :deep(.comic-page-image[data-state='loading']) {
-  min-height: 100%;
-}
-
-.reader-scroll[data-mode='vertical-continuous']:not([data-pages='1'])
-  .page-frame
-  :deep(.comic-page-image[data-state='loading']) {
-  min-height: 0;
-  aspect-ratio: 0.72;
-  width: 100%;
-}
-
-.reader-scroll[data-mode='vertical-continuous'][data-pages='1']
-  .page-frame[data-fit='width']
-  :deep(.comic-page-img) {
+.reader-scroll[data-mode='horizontal'] .page-frame :deep(.comic-page-image) {
   width: 100%;
   height: 100%;
-  object-fit: contain;
+  display: flex;
+  justify-content: center;
+  align-items: center;
 }
 
-.reader-scroll[data-mode='vertical-continuous'][data-pages='1']
-  .page-frame[data-fit='height']
-  :deep(.comic-page-img) {
+.reader-scroll[data-mode='horizontal'] .page-frame :deep(.comic-page-img) {
   width: auto;
-  max-width: 100%;
-  height: 100%;
-  object-fit: contain;
-}
-
-.reader-scroll[data-mode='vertical-continuous']:not([data-pages='1'])
-  .page-frame[data-fit='width']
-  :deep(.comic-page-img) {
-  width: 100%;
   height: auto;
-  max-height: none;
-}
-
-.reader-scroll[data-mode='vertical-continuous']:not([data-pages='1'])
-  .page-frame[data-fit='height']
-  :deep(.comic-page-img) {
-  width: auto;
   max-width: 100%;
-  height: auto;
-  max-height: calc(100dvh - var(--reader-chrome-h) - var(--reader-frame-pad-v));
-}
-
-/* 翻页模式：整页 contain，不裁切 */
-.reader-scroll[data-mode='horizontal'] .page-frame,
-.reader-scroll[data-mode='vertical-paged'] .page-frame,
-.reader-scroll[data-mode='vertical-continuous'][data-pages='1'] .page-frame {
-  height: calc(100dvh - var(--reader-chrome-h) - var(--reader-frame-pad-v));
-  max-height: calc(100dvh - var(--reader-chrome-h) - var(--reader-frame-pad-v));
-}
-
-.reader-scroll[data-mode='horizontal'] .page-frame :deep(.comic-page-img),
-.reader-scroll[data-mode='vertical-paged'] .page-frame :deep(.comic-page-img),
-.reader-scroll[data-mode='vertical-continuous'][data-pages='1'] .page-frame :deep(.comic-page-img) {
-  width: 100%;
-  height: 100%;
+  max-height: 100%;
   object-fit: contain;
 }
 
@@ -635,51 +672,6 @@ watch(
   }
 }
 
-/* ---------------- 顶栏折叠开关 ---------------- */
-.reader-chrome-toggle {
-  position: absolute;
-  top: var(--space-2);
-  left: 50%;
-  z-index: 7;
-  translate: -50% 0;
-  width: var(--control-md);
-  height: var(--control-md);
-  display: grid;
-  align-items: start;
-  justify-items: center;
-  padding-top: var(--space-1);
-  border-radius: 999px;
-  background: transparent;
-  color: var(--reader-muted);
-  font-size: var(--text-xs);
-  line-height: 1;
-}
-
-.reader-chrome-toggle::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: 50%;
-  width: var(--control-sm);
-  height: 1rem;
-  translate: -50% 0;
-  border-radius: 999px;
-  background: var(--reader-scrim-soft);
-}
-
-@media (min-width: 681px) {
-  .reader-scroll[data-mode='vertical-continuous'][data-pages='1'] .reader-page,
-  .reader-scroll[data-mode='vertical-paged'] .reader-page {
-    height: calc(100dvh - var(--reader-chrome-h) + var(--space-1));
-  }
-}
-
-@media (max-width: 680px) {
-  .reader-chrome-toggle {
-    top: var(--space-1);
-  }
-}
-
 /* T08：跨话翻页横幅 —— 呆在话首的「← 上一话」、话末的「本话完 · 下一话 →」 */
 .reader-chapter-next,
 .reader-chapter-prev {
@@ -716,5 +708,14 @@ watch(
   overflow: hidden;
   text-overflow: ellipsis;
   max-width: 60vw;
+}
+
+@media (max-width: 680px) {
+  .reader-chapter-next,
+  .reader-chapter-prev {
+    bottom: calc(
+      var(--control-md) + max(var(--space-4), env(safe-area-inset-bottom)) + var(--space-2)
+    );
+  }
 }
 </style>

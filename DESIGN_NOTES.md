@@ -983,3 +983,32 @@
   - `pnpm test:py` 后端全量测试 100% 通过；
   - `vp test` 相关单测全绿；
   - `vp build` 生产构建成功。
+
+## 49. 移动端阅读器高度塌陷与条漫模型重构（Android 28×40px 邮票灾难修复）
+
+- **问题现象与事故复盘**：
+  在 Android 移动端（窄屏视口 < 681px）打开阅读器时，整本漫画的所有画面全部塌陷为 28px × 40px 的微型邮票方块垂直堆叠在一屏内（单屏塞入 9~14 张微缩图），顶栏与第一屏画面发生重叠穿透，竖向连续模式（Webtoon / 条漫流）彻底不可读。
+- **根因深度诊断（CSS 几何尺寸与模型混淆）**：
+  1. **致命弹性盒高度断裂**：原代码仅在 `@media (min-width: 681px)` 声明了 `.reader-page` 的高度，移动端（<681px）完全缺失显式高度，回落为 `height: auto`。弹性子元素 `.page-frame` 声明了 `flex: 1; min-height: 0;`，在父级 `height: auto` 时计算基准高度（flex basis）收缩为 0；
+  2. **替换元素内生比例收敛至最小底线**：图片加载就绪后，子元素 `.comic-page-image` 与 `.comic-page-img` 继承父级百分比高度计算为 0，触底至样式表中声明的唯一正向尺寸 `.page-frame :deep(.comic-page-img) { min-height: 40px; }`。由于单页原生宽高比大多约为 0.70（28:40），浏览器在 `min-height: 40px` 下计算出宽度为 28px，全本页面全部塌陷为 28px × 40px 邮票；
+  3. **“竖向连续”与“分页 Contain”语义混淆**：原代码在 `[data-mode='vertical-continuous'][data-pages='1']` 上强行套用 `height: calc(100dvh - ...)` 与 `object-fit: contain`，试图用分页截断的思路来约束连续卷轴流；
+  4. **顶栏安全区与伪字符违规**：`ReaderTopBar.vue` 缺失 `env(safe-area-inset-top)` 导致刘海屏打孔遮挡；折叠按钮使用 `'☰'`/`'—'` 伪字符违反规范。
+- **架构决策与落地实现（Impeccable 5 步 SOP）**：
+  1. **三大排版模式独立解耦与纯净卷轴流**：
+     - **竖向连续流（vertical-continuous）**：彻底解除 `100dvh` 锁死与百分比高度陷阱。`.reader-page` 与 `.page-frame` 采用自然流排版，`fit: 'width'` 下设定 `width: 100%; height: auto; max-width: 100%;`，高度随图片内生比例自然伸展，完美呈现条漫/日漫连续滚动质感；
+     - **竖向翻页（vertical-paged）**：保持单屏吸附（`height: 100dvh; scroll-snap-align: start;`），`.page-frame` 与 `.comic-page-image` 使用纯净 Flexbox 居中并约束最大视口高度（`max-height: calc(100dvh - ...)`）；
+     - **横向翻页（horizontal）**：保持整屏横向滑动（`height: 100dvh; scroll-snap-align: start;`），解耦纵向冲突。
+  2. **图片容器防抖与 Flexbox 居中**：
+     - `ComicPageImage.vue` 将根容器升级为 Flexbox 居中，消除 CSS Grid 替换元素在移动端 Blink/WebKit 引擎下的内生尺寸计算 Bug；
+     - 加载占位态明确配置 `aspect-ratio: 0.72` 与 `min-height: clamp(16rem, 55vh, 48rem)`，确保加载前后的布局稳定性（CLS = 0）。
+  3. **移动端单列约束与视口自适应**：
+     - `useReaderSettings.ts` 中针对窄屏视口（< 681px）归一化逻辑，将非法/超出配置强制收敛并默认回退为单列（`pagesPerView = 1`），避免多列网格挤压手机屏幕。
+  4. **沉浸阅读交互与顶栏安全区收敛**：
+     - `ReaderTopBar.vue` 补齐 `min-height: calc(var(--header-h) + env(safe-area-inset-top, 0px))` 与 `padding-top: env(safe-area-inset-top, 0px)`；
+     - 彻底废除顶部悬浮遮挡画面的折叠按钮（`reader-chrome-toggle`），回归业界标准阅读器沉浸交互：画面点击/轻触任意非按钮区域自然切换工具栏显隐，滑动与无操作延时（2.6s）平滑淡出，彻底清除悬浮视觉噪点；
+     - 扩展 `src/components/icons/`（新增 `IconChevronUp.vue` 与 `IconMenu.vue`）供全站统一按需引用。
+- **验证**：
+  - `invoke_subagent` 独立设计总监完成双轨评审，评审报告落盘至 `.impeccable/critique/2026-09-01T12-54-42Z__reader-mobile-layout-fix.md`；
+  - `pnpm detect:slop` 静态规则扫描 0 finding；
+  - `vp test src/__tests__/ReaderLoadingState.spec.ts src/__tests__/ReaderAutoTurn.spec.ts src/__tests__/ReaderPassPopover.spec.ts src/__tests__/AppIcon.spec.ts` 17/17 单测全绿；
+  - `vp check` 238 个文件 0 warning / 0 lint / 0 type error。
