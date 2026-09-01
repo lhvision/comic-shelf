@@ -35,7 +35,7 @@ release. Add a tool name to select part of the graph. For example, run
 
 - [ ] **静态检查**：代码编写完成后运行 `vp check` 确保 0 lint error / 0 type error。
 - [ ] **精准单测验证（严禁无差别全量）**：改动涉及逻辑时，**只运行改动对应的单测文件**（如 `vp test src/__tests__/ReaderLoadingState.spec.ts`），严禁日常开发无差别全量执行 `vp test`（防止用例增多后全量卡死/阻塞）。
-- [ ] **UI 流程实质落地门禁（涉及组件新建、核心交互变更、视觉重构）**：必须严格执行 `docs/agents/ui.md` 五步 SOP（开动前 Craft 方案确认、`invoke_subagent` 独立设计总监跑 A 轨挑刺逼出 P1、`pnpm detect:slop` 跑 B 轨扫描、Polish 照单修复后执行 `pnpm critique write <slug> <file>` 物理落盘并更新 `DESIGN_NOTES.md`），严禁敷衍全满分报告，严禁同一会话自导自演。
+- [ ] **UI 流程实质落地门禁（涉及组件新建、核心交互变更、视觉重构）**：必须严格执行 `docs/agents/ui.md` 五步 SOP（开动前 Craft 方案确认、`invoke_subagent` 独立设计总监跑 A 轨挑刺逼出 P1、`pnpm detect:slop` 跑 B 轨扫描、Polish 照单修复后执行 `pnpm critique write <slug> <file>` 物理落盘并在涉及设计系统演进时更新 `DESIGN_NOTES.md`），严禁敷衍全满分报告，严禁同一会话自导自演。
 - [ ] **E2E 准入与豁免（严禁无意义自跑 E2E）**：
   - **豁免场景（严禁自跑 E2E）**：纯样式/CSS 微调、TS 类型修复、单组件单元逻辑修复、纯后端逻辑单测及文档改动，**绝不自主触发 E2E 测试**；
   - **准入场景（单条终验）**：仅在新增页面路由、核心跨页面流程重构、新增全流程用户交互，或用户显式要求跑 E2E 时，才在最终阶段运行单条特定测试（`pnpm ai-e2e:test ... -g "..."`）。
@@ -50,7 +50,7 @@ release. Add a tool name to select part of the graph. For example, run
 | `docs/agents/frontend.md`         | 书架/详情/阅读器、页面索引、多章节子路由、HTML-in-Canvas                             |
 | `docs/agents/ui.md`               | 新 UI 组件、核心交互重构、视觉设计（调度 `impeccable`，执行 A/B 双轨评审与物理落盘） |
 | `docs/agents/tooling-workflow.md` | Vite+ 工具链、Docker 单容器部署、排错建议                                            |
-| `DESIGN_NOTES.md`                 | UI 视觉改动前必读（设计系统演进、物理质感决策与踩坑记录）                            |
+| `DESIGN_NOTES.md`                 | UI 视觉改动前必读（设计系统规范、色彩/组件层级与避坑定律）                           |
 | `DEPLOYMENT.md`                   | 环境变量、TrueNAS / Docker 容器化与以图搜图 Sidecar                                  |
 | `README.md`                       | 项目功能总览、运行方式与 API 清单                                                    |
 
@@ -68,7 +68,7 @@ release. Add a tool name to select part of the graph. For example, run
 10. **E2E 严禁泛滥触发红线**：不涉及跨页面核心交互流程的纯样式微调、TS 类型修补、单元函数改动，绝对禁止自行启动 E2E 浏览器测试；以精准单测（`vp test <Target>.spec.ts`）与静态类型检查（`vp check`）为准。
 11. **错题本与防退化门禁**：重构或重大修改前必须核对 `docs/PITFALLS.md` 避开历史暗礁；涉及 Python 后端改动时必须运行 `pnpm test:py`，确保 0 语法/导入/未定义符号错误且中间件全链路测试通过。
 12. **零伪图标字符与矢量图标单源收敛（Unified Iconography）**：**严禁**在模板中书写 Unicode 伪图标字符（如 `'✕'`、`'✓'`、`'×'`、`'⋯'`、`'←'`、`'→'`）或手写散落内联 `<svg>`；全站图标统一使用 `src/components/icons/`（静态确定场景直接 `import { IconXxx }`，动态多态场景使用 `<AppIcon :name="..." />`）；新增图标必须基于 `BaseIcon.vue` 扩展原子组件，严禁在单个组件内堆砌巨型 `v-if/v-else-if`。
-13. **UI 流程实质落地红线（Persistence Gate）**：结构性 UI 变更必须经由 `invoke_subagent` 独立评审产出具有真实 P1 改进项的 `.impeccable/critique/` 快照，并在 `DESIGN_NOTES.md` 追加章节。严禁在对话中宣称走完流程却未在磁盘留下物理快照，严禁全满分敷衍汇报。
+13. **UI 流程实质落地红线（Persistence Gate）**：结构性 UI 变更必须经由 `invoke_subagent` 独立评审产出具有真实 P1 改进项的 `.impeccable/critique/` 快照，并在涉及设计系统演进时提炼更新 `DESIGN_NOTES.md`。严禁在对话中宣称走完流程却未在磁盘留下物理快照，严禁全满分敷衍汇报。
 14. **零宿主机本地绝对路径（Zero Local Path Leakage）**：**严禁**在仓库任何代码、文档或配置中写入宿主机绝对路径（如 `file:///home/...`、`C:\Users\...`）；跨文件与文档引用必须使用仓库标准相对路径；AI 助手向磁盘落盘修改时必须剥离对话生成的 `file://` 协议。
 15. **契约自解释与精准解构门禁（Self-Documenting Contracts & Precise Destructuring）**：新增或重构 Composable 及子组件时，必须编写完整 JSDoc/TSDoc 注释（注明文件职责、入参说明、返回值说明、组件 Props/Emits 业务契约）；视图消费层只解构当前模板或方法实际使用的 Ref 与函数，严禁无脑全量解构导致 TS6133 冗余声明或模板漏绑。
 

@@ -59,6 +59,8 @@
 ## 基础设施
 
 - **书库数据（Library data）**：后端 `backend/data/library/` 下的本地持久化，不得删除。
+- **常青设计系统规范（Living Design System）**：`DESIGN_NOTES.md` 所承载的纸间全站设计规范与单一真理源。包含品牌哲学、禁止清单、Token 契约、组件架构与核心设计红线（如 §13 顶层解构定律）。
+- **设计演进里程碑归档（Design Milestones Archive）**：`docs/design-archive/` 下收录的纸间历史演进推演、挑刺与重构记录，供历史溯源，与常青设计规范物理解耦。
 - **设计令牌（Design tokens）**：`src/styles/tokens.css` 中的颜色/间距/字号/圆角/动效体系，UI 改动必须收敛到 token，禁止硬编码漂移。
 - **实验开关（Experiment）**：`HTML-in-Canvas 卡片`——把书架卡片整块 DOM 绘制进 canvas 的实验性渲染路径，由实验 store 控制开关。
 - **插画资产池（Illustration Pool）**：全站看板角色与加载插画的统一发现与随机轮换池（`/loading-*.webp`），支持零配置自动感知新资产。

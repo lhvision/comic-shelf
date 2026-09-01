@@ -214,7 +214,7 @@ $COMIC_SHELF_DATA/
 | **[DEPLOYMENT.md](DEPLOYMENT.md)**                             | 生产容器化部署全景：Docker Compose、TrueNAS Scale / Unraid / 群晖 NAS 挂载配置、21 个环境变量详解、反向代理与权限排查 |
 | **[docs/agents/architecture.md](docs/agents/architecture.md)** | 后端架构设计、数据存储模型、Provider 扩展体系、安全门禁与 SSE 单向事件流                                              |
 | **[docs/agents/frontend.md](docs/agents/frontend.md)**         | 前端视图与 Composable 地图、阅读器分页与手势、PWA 离线缓存与性能策略                                                  |
-| **[DESIGN_NOTES.md](DESIGN_NOTES.md)**                         | 纸间设计系统演进、物理质感与装订美学、UI 交互决策与错题复盘                                                           |
+| **[DESIGN_NOTES.md](DESIGN_NOTES.md)**                         | 纸间设计系统规范（Living Design System）、品牌哲学、色彩/组件层级与核心设计定律（历史演进见 `docs/design-archive/`）  |
 | **[docs/adr/](docs/adr/)**                                     | 架构决策记录（Architecture Decision Records，涵盖现代浮层、PWA 与事件流）                                             |
 
 ---
