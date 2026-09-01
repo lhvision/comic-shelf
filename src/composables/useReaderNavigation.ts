@@ -11,7 +11,7 @@
  * 6. 跨章节边界切入（`goNextChapter` / `goPrevChapter`）：自动维护 `?chapter=` 作用域与 URL 替换。
  */
 
-import { ref, type ComputedRef, type Ref } from 'vue'
+import { getCurrentScope, onScopeDispose, ref, type ComputedRef, type Ref } from 'vue'
 import type { Router } from 'vue-router'
 import { pageFileUrl } from '@/api/client'
 import type { Chapter } from '@/types'
@@ -142,8 +142,27 @@ export function useReaderNavigation(options: UseReaderNavigationOptions) {
     goToGroup(currentGroupIndex.value + 1)
   }
 
-  /** 监听容器滚动事件（计算进度、探测最临近屏以更新当前页码） */
+  let scrollRafId: number | null = null
+
+  if (getCurrentScope()) {
+    onScopeDispose(() => {
+      if (scrollRafId !== null) {
+        cancelAnimationFrame(scrollRafId)
+        scrollRafId = null
+      }
+    })
+  }
+
+  /** 监听容器滚动事件（rAF 节流计算进度、探测最临近屏以更新当前页码） */
   function onScroll() {
+    if (scrollRafId !== null) return
+    scrollRafId = requestAnimationFrame(() => {
+      scrollRafId = null
+      handleScroll()
+    })
+  }
+
+  function handleScroll() {
     const el = scrollEl.value
     if (!el) return
 

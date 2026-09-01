@@ -21,23 +21,24 @@
 
 > 数据来源：MDN BCD + Can I Use，更新于 2026-08。
 
-| 特性                               | Chrome | Firefox | Safari |          状态           |                     本项目状态                     |
-| :--------------------------------- | :----: | :-----: | :----: | :---------------------: | :------------------------------------------------: |
-| `light-dark()`                     |  123+  |  120+   | 17.5+  |    ✅ Baseline 2024     | ⚠️ 审慎评估（保留 hex+oklch 双层回退，防色彩丢失） |
-| `color-mix(in oklab, ...)`         |  111+  |  113+   | 16.2+  |    ✅ Baseline 2023     |                     ✅ 已落地                      |
-| `@container (inline-size)`         |  105+  |  110+   |  16+   |    ✅ Baseline 2023     |                     ✅ 已落地                      |
-| `@layer`                           |  99+   |   97+   | 15.4+  |    ✅ Baseline 2022     |                     ✅ 已落地                      |
-| CSS Nesting (`&`)                  |  120+  |  117+   | 17.2+  |    ✅ Baseline 2024     |                     ✅ 已落地                      |
-| `@property`                        |  85+   |  128+   | 16.4+  |    ✅ Baseline 2024     |        ✅ 已落地（tokens.css 遮罩变量插值）        |
-| `interpolate-size: allow-keywords` |  129+  |   ⏳    |   ⏳   | 🔶 Limited Availability |      ✅ 已落地（TagFilterBar / ImportPanel）       |
-| `::details-content`                |  131+  |  143+   | 18.4+  | 🔶 Limited Availability |                    ✅ 渐进增强                     |
-| `@container scroll-state(...)`     |  133+  |   ❌    |   ❌   |     🧪 Experimental     |      ⚠️ LightningCSS 解析报错，降级为 VueUse       |
-| `@container style(...)`            |  111+  |  151+   |  18+   |       🔶 有限支持       |                     — 暂未采用                     |
-| `CSSStyleSheet` (Constructable)    |  73+   |  101+   | 16.4+  |    ✅ Baseline 2023     |                 ⚠️ 与 Vue SFC 冲突                 |
-| CSS `@scope`                       |  118+  |  128+   | 17.4+  |    ✅ Baseline 2024     |                ⚠️ Vue scoped 已覆盖                |
-| `calc-size()`                      |  129+  |   ❌    |   ❌   |       🔶 Limited        |                   ➖ 无需此函数                    |
-| CSS `if()` 行内条件                | 137+🚩 |   ❌    |   ❌   |       🧪 Stage 1        |                  🚫 构建工具报错                   |
-| CSS `@function`                    | 139+🚩 |   ❌    |   ❌   |       🧪 Stage 2        |                    🚫 过早引入                     |
+| 特性                                | Chrome | Firefox | Safari  |          状态           |                     本项目状态                     |
+| :---------------------------------- | :----: | :-----: | :-----: | :---------------------: | :------------------------------------------------: |
+| `light-dark()`                      |  123+  |  120+   |  17.5+  |    ✅ Baseline 2024     | ⚠️ 审慎评估（保留 hex+oklch 双层回退，防色彩丢失） |
+| `color-mix(in oklab, ...)`          |  111+  |  113+   |  16.2+  |    ✅ Baseline 2023     |                     ✅ 已落地                      |
+| `@container (inline-size)`          |  105+  |  110+   |   16+   |    ✅ Baseline 2023     |                     ✅ 已落地                      |
+| `@layer`                            |  99+   |   97+   |  15.4+  |    ✅ Baseline 2022     |                     ✅ 已落地                      |
+| CSS Nesting (`&`)                   |  120+  |  117+   |  17.2+  |    ✅ Baseline 2024     |                     ✅ 已落地                      |
+| `@property`                         |  85+   |  128+   |  16.4+  |    ✅ Baseline 2024     |        ✅ 已落地（tokens.css 遮罩变量插值）        |
+| `interpolate-size: allow-keywords`  |  129+  |   ⏳    |   ⏳    | 🔶 Limited Availability |      ✅ 已落地（TagFilterBar / ImportPanel）       |
+| `::details-content`                 |  131+  |  143+   |  18.4+  | 🔶 Limited Availability |                    ✅ 渐进增强                     |
+| `scroll-timeline` / `view-timeline` |  115+  | 111+🚩  | 18.0+⏳ | 🔶 Limited Availability |        ✅ 已落地（ReaderView 读物双轨渲染）        |
+| `@container scroll-state(...)`      |  133+  |   ❌    |   ❌    |     🧪 Experimental     |      ⚠️ LightningCSS 解析报错，降级为 VueUse       |
+| `@container style(...)`             |  111+  |  151+   |   18+   |       🔶 有限支持       |                     — 暂未采用                     |
+| `CSSStyleSheet` (Constructable)     |  73+   |  101+   |  16.4+  |    ✅ Baseline 2023     |                 ⚠️ 与 Vue SFC 冲突                 |
+| CSS `@scope`                        |  118+  |  128+   |  17.4+  |    ✅ Baseline 2024     |                ⚠️ Vue scoped 已覆盖                |
+| `calc-size()`                       |  129+  |   ❌    |   ❌    |       🔶 Limited        |                   ➖ 无需此函数                    |
+| CSS `if()` 行内条件                 | 137+🚩 |   ❌    |   ❌    |       🧪 Stage 1        |                  🚫 构建工具报错                   |
+| CSS `@function`                     | 139+🚩 |   ❌    |   ❌    |       🧪 Stage 2        |                    🚫 过早引入                     |
 
 **图例**：✅ 可用 · 🔶 部分支持 · 🧪 实验旗 · 🚩 需开 Flag · ❌ 未支持 · 🚫 本项目不采用
 
@@ -417,6 +418,115 @@ details[open]::details-content {
 
 ---
 
+### 3.4 `scroll-timeline` 与 `view-timeline` — 滚动驱动动画（Dual-Track 渐进增强架构）
+
+**MDN**：[CSS Scroll-driven Animations](https://developer.mozilla.org/en-US/docs/Web/CSS/CSS_scroll-driven_animations)  
+**可用**：Chrome 115+, Safari 18+ (部分) · Firefox 需开启实验 Flag  
+**参考**：
+
+- [张鑫旭 不能落后，好好缕缕CSS滚动动画](https://www.zhangxinxu.com/wordpress/2024/08/css-scroll-timeline/)
+- [前端侦探 CSS 滚动驱动动画终于正式支持了](https://mp.weixin.qq.com/s/xpMXcFTz53S2E1ntlvtZ0A)
+
+**作用**：将动画执行进度与滚动位置或可视区交叉状态直接绑定，脱离主线程 JS 监听，由合成线程（Compositor Thread）以 60/120Hz 满帧运行。
+
+**本项目实战落地范式（`ReaderView.vue` / `ReaderProgress.vue`）**：
+
+#### 范式 A：横竖双向与日漫 RTL 滚动进度条（`scroll-timeline` + `timeline-scope`）
+
+```css
+/* 1. 滚动容器声明命名时间线与轴向 */
+.reader-scroll {
+  scroll-timeline-name: --reader-scroll;
+  scroll-timeline-axis: block;
+}
+
+.reader-scroll[data-mode='horizontal'] {
+  scroll-timeline-axis: inline;
+}
+
+/* 2. 根视图提升作用域，穿透外围进度条 */
+@supports (animation-timeline: scroll()) {
+  .reader-view {
+    timeline-scope: --reader-scroll;
+  }
+
+  /* 纵向与横向 LTR 模式：从左向右生长（附带 1ms duration 兼容补丁） */
+  .reader-view :deep(.reader-progress span) {
+    transform: none;
+    animation: reader-progress 1ms linear both;
+    animation-timeline: --reader-scroll;
+    transform-origin: 0 50%;
+  }
+
+  /* 横向 RTL 日漫模式：从右向左生长 */
+  .reader-view[data-mode='horizontal'] :deep(.reader-progress.is-rtl span) {
+    transform: none;
+    animation: reader-progress-rtl 1ms linear both;
+    animation-timeline: --reader-scroll;
+    transform-origin: 100% 50%;
+  }
+}
+
+@keyframes reader-progress {
+  from {
+    transform: scaleX(0);
+  }
+  to {
+    transform: scaleX(1);
+  }
+}
+
+@keyframes reader-progress-rtl {
+  from {
+    transform: scaleX(0);
+  }
+  to {
+    transform: scaleX(1);
+  }
+}
+```
+
+#### 范式 B：连续滚动单页微质感入场与话末横幅（`view-timeline` + `animation-range`）
+
+```css
+@supports (animation-timeline: view()) {
+  @media (prefers-reduced-motion: no-preference) {
+    /* 连续模式单页克制微显（≤6px 位移 + 35% 视区收敛） */
+    .reader-scroll[data-mode='vertical-continuous'] .reader-page {
+      animation: reader-page-appear 1ms var(--ease-out) both;
+      animation-timeline: view();
+      animation-range: entry 0% contain 35%;
+    }
+
+    @keyframes reader-page-appear {
+      from {
+        opacity: 0.15;
+        transform: translateY(6px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    /* 话末到达横幅浮入 */
+    .reader-scroll[data-mode='vertical-continuous'] ~ .reader-chapter-next {
+      animation: reader-banner-appear 1ms var(--ease-out) both;
+      animation-timeline: --reader-scroll;
+      animation-range: calc(100% - 180px) 100%;
+    }
+  }
+}
+```
+
+**双轨架构不变量（Dual-Track Invariant）**：
+
+1. **视觉归 CSS**：所有位移、变形与透明度动画由 CSS 滚动驱动接管；
+2. **状态归 JS**：页码持久化（`useLastRead`）、图片预热（`preloadAround`）、路由对齐等领域状态必须留在 Composable，严禁废弃 JS 数据闭环；
+3. **无障碍降级**：必须在 `@media (prefers-reduced-motion: no-preference)` 保护下执行动效，不支持的旧引擎由 JS 内联样式兜底。
+
+---
+
 ## 4. 实验草案特性（Experimental / Stage 1-2）
 
 > 这些特性**不能用于生产**，但值得持续追踪。当浏览器支持度达到 Baseline 时，可以按照下方用法示例直接落地。
@@ -582,3 +692,4 @@ h1 {
 | `light-dark()` 色彩函数            | https://www.zhangxinxu.com/wordpress/2026/06/css-color-theme-light-dark-function/ |
 | `<details>` & `::details-content`  | https://www.zhangxinxu.com/wordpress/2025/11/css-details-target-content-open/     |
 | `interpolate-size` & `calc-size()` | https://www.zhangxinxu.com/wordpress/2024/11/css-calc-interpolate-size/           |
+| `scroll-timeline` 滚动驱动动画     | https://www.zhangxinxu.com/wordpress/2024/08/css-scroll-timeline/                 |

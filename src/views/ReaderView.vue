@@ -580,6 +580,7 @@ watch(
   scroll-snap-type: x mandatory;
   scroll-behavior: smooth;
   scrollbar-width: none;
+  scroll-timeline-axis: inline;
 }
 
 .reader-scroll[data-mode='horizontal']::-webkit-scrollbar {
@@ -655,11 +656,20 @@ watch(
     timeline-scope: --reader-scroll;
   }
 
-  .reader-view[data-vertical='true'] :deep(.reader-progress span) {
+  /* 纵向与横向 LTR 模式：从左向右生长 */
+  .reader-view :deep(.reader-progress span) {
     transform: none;
-    animation: reader-progress linear both;
+    animation: reader-progress 1ms linear both;
     animation-timeline: --reader-scroll;
     transform-origin: 0 50%;
+  }
+
+  /* 横向 RTL 日漫模式：从右向左生长 */
+  .reader-view[data-mode='horizontal'] :deep(.reader-progress.is-rtl span) {
+    transform: none;
+    animation: reader-progress-rtl 1ms linear both;
+    animation-timeline: --reader-scroll;
+    transform-origin: 100% 50%;
   }
 }
 
@@ -669,6 +679,58 @@ watch(
   }
   to {
     transform: scaleX(1);
+  }
+}
+
+@keyframes reader-progress-rtl {
+  from {
+    transform: scaleX(1);
+  }
+  to {
+    transform: scaleX(0);
+  }
+}
+
+/* ---------------- 连续模式页面进场（view-timeline 增强） ----------------
+   支持 view() 的浏览器在连续模式下提供微位移与淡入（≤6px），提升翻阅物理质感；
+   采用 entry 0% entry 100% 覆盖区间，确保超高条漫切页也能稳定过渡；
+   并在 prefers-reduced-motion: reduce 下秒级静默禁用。 */
+@supports (animation-timeline: view()) {
+  @media (prefers-reduced-motion: no-preference) {
+    .reader-scroll[data-mode='vertical-continuous'] .reader-page {
+      animation: reader-page-appear 1ms var(--ease-out) both;
+      animation-timeline: view();
+      animation-range: entry 0% entry 100%;
+    }
+
+    @keyframes reader-page-appear {
+      from {
+        opacity: 0.15;
+        transform: translateY(6px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    /* 话末到达横幅浮入微动效 */
+    .reader-scroll[data-mode='vertical-continuous'] ~ .reader-chapter-next {
+      animation: reader-banner-appear 1ms var(--ease-out) both;
+      animation-timeline: --reader-scroll;
+      animation-range: calc(100% - 180px) 100%;
+    }
+
+    @keyframes reader-banner-appear {
+      from {
+        opacity: 0;
+        transform: translate(-50%, 8px);
+      }
+      to {
+        opacity: 1;
+        transform: translate(-50%, 0);
+      }
+    }
   }
 }
 

@@ -160,6 +160,12 @@
 - **复现场景**：原样式仅在 `@media (min-width: 681px)` 声明了 `.reader-page` 高度，移动端（<681px）缺失显式高度；且将连续条漫流（`vertical-continuous`）与分页 Contain 模式混写，并在画面中央悬浮遮挡画卷的药丸折叠按钮。
 - **红线与防误伤**：**不要**在移动端 `height: auto` 的弹性父级下给替换元素设百分比高度，**不要**在阅读器中放置遮挡正文的悬浮折叠控件，**不要**将条漫模式与分页模式尺寸规则强行混杂；**放行/改用**连续滚动流采用自然文档流（`width: 100%; height: auto`），图片外层采用 Flexbox 居中并配合 `aspect-ratio: 0.72` 预占位，工具栏显隐统一由全屏轻触（Tap/Click-to-Toggle）驱动并在无操作 2.6s 自动淡出（杜绝首屏 9+ 页邮票排版崩溃与画卷遮挡）。
 
+### 27. CSS ScrollTimeline 坐标镜像反转与主线程重排抖动（RTL Scroll Coordinates Inversion & Layout Thrashing in Dual-Track Scroll Architecture）
+
+- **本质**：在 RTL 横向模式下，`scrollLeft` 物理原点与阅读逻辑相反，未做关键帧镜像会导致 CSS 进度条从 100% 倒退至 0%；且在双轨架构中，若 JS `onScroll` 每帧同步密集读取 `offsetLeft/offsetTop`，会引发主线程 Layout Thrashing，击穿合成器线程（Compositor Thread）的性能红利。
+- **复现场景**：在日漫模式从右往左翻页时，CSS 进度条一打开就是 100% 满格，往左翻反而越来越短；长图集快速滑动时 `onScroll` 高频读取 DOM 导致滑动掉帧卡顿。
+- **红线与防误伤**：**不要**在 RTL 模式下直接复用 LTR 的 0%->100% 关键帧，**不要**在滚动事件处理函数中无节流密集读取 DOM 几何属性；**放行/改用**RTL 模式使用 `@keyframes reader-progress-rtl { from { transform: scaleX(1); } to { transform: scaleX(0); } }` 搭配 `transform-origin: 100% 50%`，JS 轨必须通过 `requestAnimationFrame` 调度节流并配合 `onScopeDispose` 清理定时器（确保 120fps 满帧与双轨 100% 逻辑一致）。
+
 ---
 
 ## 🚦 交付门禁（三步必跑）

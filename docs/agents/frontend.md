@@ -176,9 +176,13 @@
 - 移动端沉浸交互：彻底废除顶部中央悬浮遮挡画面的折叠按钮，统一由画面点击/轻触（Tap/Click-to-Toggle）唤醒与收起顶栏及 HUD；连续滚动模式下滚动不反复弹顶栏，无操作 2.6s 自动淡出。
 - 移动端安全区全覆盖：顶栏与底栏 HUD 均计算 `env(safe-area-inset-top/bottom/left/right)`，移动端跨话悬浮横幅自动垫高避让 HUD。
 - 点击详情页任意页码进入阅读器后，会定位到该页所在屏（`loading=false` 渲染完成后 `await nextTick()` 再 scroll）。
-- 阅读器 DOM 使用 `data-group-index` 标记每一屏；页码定位依赖这个属性。
 - `.reader-view` 必须保留 `timeline-scope: --reader-scroll`：进度条是 `.reader-scroll` 的兄弟节点，
-  scroll timeline 只有提升作用域后才能跨子树引用；删掉它会导致竖向进度条失去 scroll-driven 动画。
+  scroll timeline 只有提升作用域后才能跨子树引用；
+- **全场景 CSS 滚动驱动双轨架构**：
+  - 竖向排版（连续/翻页）绑定 `scroll-timeline-axis: block`，横向排版动态切换 `scroll-timeline-axis: inline`；
+  - 横向 RTL（日漫模式）通过 `@keyframes reader-progress-rtl` 镜像翻转（`scaleX(1) → scaleX(0)`）与 `transform-origin: 100% 50%` 确保从右向左阅读时进度条平滑正向生长；
+  - 竖向连续条漫模式应用 `animation-timeline: view()` 与 `animation-range: entry 0% entry 100%`，提供纸质微显入场动效（`opacity: 0.15 → 1`、`translateY: 6px → 0`），在 `prefers-reduced-motion: reduce` 下自动静默降级；
+  - JS 轨通过 `useReaderNavigation` 引入 `requestAnimationFrame` 调度节流，杜绝主线程 Layout Thrashing。
 - 竖向连续模式的 `.reader-spread` 不要加 `min-height: 100dvh`，否则移动端每页后会留整屏空白；页间间隔由后续 spread 的 `padding-top` 控制。
 - 自动切换按“屏”计时：默认关闭，间隔 5/10/15/30 秒（支持 1~300 秒自定义）。开启后右下角倒计时 HUD 常驻，
   手动翻页/滚动会重置倒计时；设置面板打开或页面切后台时暂停，最后一屏自动停止。

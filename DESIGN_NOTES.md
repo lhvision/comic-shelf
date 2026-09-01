@@ -1038,3 +1038,27 @@
   - `pnpm detect:slop` 静态规则扫描 0 finding；
   - `vp test src/__tests__/ReaderAutoTurn.spec.ts src/__tests__/Modal.spec.ts src/__tests__/useReaderSettings.spec.ts` 12/12 单测全绿；
   - `vp check` 187 个文件 0 warning / 0 lint / 0 type error。
+
+## 51. 阅读器 CSS 滚动驱动动画与双轨架构演进（grill-with-docs 确认 → critique → polish → adapt）
+
+- **背景与调研**：
+  结合微信公众平台前沿调研（《CSS 滚动驱动动画终于正式支持了~》）与张鑫旭博客（《不能落后，好好缕缕CSS滚动动画》），系统调研了现代 CSS `scroll-timeline`、`view-timeline`、`timeline-scope` 与 `animation-range` 在纸间阅读器主视图（`ReaderView.vue`）中的工程化落地可能。
+- **架构决策与设计落地（双轨分离架构 Dual-Track Architecture）**：
+  1. **A 轨：视觉渲染轨（GPU / CSS Scroll-Driven）**：
+     - `.reader-scroll` 滚动容器声明 `scroll-timeline-name: --reader-scroll`，并在横向翻页模式下动态切换 `scroll-timeline-axis: inline`；
+     - `.reader-view` 根视图利用 `timeline-scope: --reader-scroll` 跨层级提升作用域，直接由合成器线程（Compositor Thread）以 120Hz 满帧驱动顶部进度条 `ReaderProgress.vue`；
+     - 日漫 RTL 横向模式（从右往左）精准配置 `@keyframes reader-progress-rtl { from { transform: scaleX(1); } to { transform: scaleX(0); } }` 与 `transform-origin: 100% 50%`，确保从右向左阅读时进度条平滑正向生长；
+     - 竖向连续条漫模式应用 `animation-timeline: view()` 与 `animation-range: entry 0% entry 100%`，提供纸质微显入场动效（`opacity: 0.15 → 1`、`translateY: 6px → 0`），并在 `prefers-reduced-motion: reduce` 下秒级静默禁用；
+     - 遵循 Firefox 兼容补丁规范，所有滚动动画简写均附带 `1ms` 显式非零时长（如 `animation: reader-progress 1ms linear both`）。
+  2. **B 轨：领域状态轨（Vue Reactivity / JS Composable）**：
+     - `useReaderNavigation.ts` 的 `onScroll` 逻辑引入 `requestAnimationFrame` 调度节流，消除长图集滚动时高频 `querySelectorAll` 与 `offsetLeft/offsetTop` 读取引发的强制同步重排（Layout Thrashing）；
+     - `useLastRead` 本地进度落盘、`preloadAround` 邻近图片后台预热与 `useAutoTurn` 自动翻页节拍器维持严格响应式数据闭环；
+     - 不支持 CSS 滚动时间线的旧内核由 `ReaderProgress.vue` 内部 `watchEffect` 内联样式无缝降级保底。
+  3. **无障碍语义契约补齐**：
+     - `ReaderProgress.vue` 升级标准无障碍属性：`role="progressbar"`、`:aria-valuenow="Math.round(progress * 100)"`、`aria-valuemin="0"`、`aria-valuemax="100"` 与 `aria-label="阅读进度"`。
+- **验证**：
+  - `invoke_subagent` 独立设计总监完成双轨评审，评审快照归档至 `.impeccable/critique/2026-09-01T15-36-21Z__reader-scroll-driven-animations.md`；
+  - `pnpm detect:slop` 静态规则扫描 0 finding；
+  - `docs/CSS_RADAR.md` 知识库同步补齐 3.4 节《`scroll-timeline` 与 `view-timeline` — 滚动驱动动画》及权威外链引用；
+  - `vp test src/__tests__/useReaderSettings.spec.ts src/__tests__/ReaderLoadingState.spec.ts src/__tests__/ReaderAutoTurn.spec.ts` 单测全绿；
+  - `vp check` 187 个文件 0 warning / 0 lint / 0 type error。
