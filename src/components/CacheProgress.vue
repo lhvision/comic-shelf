@@ -17,9 +17,11 @@ const props = defineProps<{
 }>()
 
 const safeTotal = computed(() => Math.max(props.total, 0))
-const percent = computed(() =>
-  safeTotal.value === 0 ? 0 : Math.min(100, Math.round((props.cached / safeTotal.value) * 100)),
-)
+const percent = computed(() => {
+  if (safeTotal.value === 0) return 0
+  const clampedCached = Math.max(0, props.cached)
+  return Math.min(100, Math.round((clampedCached / safeTotal.value) * 100))
+})
 
 const complete = computed(() => safeTotal.value > 0 && props.cached >= safeTotal.value)
 
@@ -43,7 +45,6 @@ const fillWidth = computed(() => `${percent.value}%`)
     <div
       class="cache-progress__label"
       role="status"
-      :aria-label="label"
       :data-running="running || undefined"
       :data-complete="complete || undefined"
     >
@@ -58,6 +59,7 @@ const fillWidth = computed(() => `${percent.value}%`)
       aria-valuemax="100"
       :aria-valuenow="valueNow"
       :aria-valuetext="label"
+      :aria-label="label"
     >
       <span class="cache-progress__fill" />
     </div>

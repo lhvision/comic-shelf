@@ -937,3 +937,26 @@
   - `vp check` 180 个文件 0 warning / 0 error，全量对齐；
   - `vp test` 8 个测试套件 37/37 单测全绿；
   - `ai-e2e run e2e/tests/component-governance.spec.ts` 与 `ai-e2e run e2e/tests/nav-perf.spec.ts` 均 100% 通过。
+
+## 47. Lighthouse 无障碍（ARIA）审计治理与浮层/进度条规范化
+
+- **背景与问题定位**：
+  Lighthouse 针对部署首页运行无障碍（Accessibility）审计时，暴露出 2 类规范不匹配问题：
+  1. **`[aria-*]` 属性与其角色不匹配**（`div.app-popover-trigger`）：`AppPopover.vue` 将 `aria-haspopup`、`aria-expanded` 与 `aria-controls` 直接挂载在作为锚点定位容器的 `<div>`（generic role）上，违反 W3C HTML-ARIA 规则；
+  2. **ARIA `progressbar` 元素缺少可供访问的名称**（`div.cache-progress__track`）：`CacheProgress.vue` 声明了 `role="progressbar"` 与 `aria-valuetext`，但缺少 WCAG 必需的无障碍名称（`aria-label`）。
+- **架构决策与设计落地**：
+  1. **浮层触发器 ARIA 职责边界收敛与角色契约**：
+     - 从 `AppPopover.vue` 的 generic 容器剥离状态属性，将定位容器与语义按钮解耦；
+     - 扩展 `AppPopover` 的 `role` prop（默认为 `region`，可指定为 `dialog`），使面板 ARIA 角色与触发器声明的 `aria-haspopup` 严格契合；
+     - 在插槽消费层（`StoragePopover.vue` 与 `ReaderPassPopover.vue`）中，将插槽暴露的 `{ open, targetId }` 准确绑定到内部真实的 `<button>` 交互节点（`:aria-expanded="open"`、`:aria-controls="targetId"`、`aria-haspopup="dialog"`）；
+  2. **进度条无障碍名称（Accessible Name）闭环与边界防御**：
+     - 为 `CacheProgress.vue` 进度条轨道补全 `:aria-label="label"`（如「本地 100%」、「缓存中 45%」），并对计算公式增加 `[0, 100]` 双向钳位保护；
+     - 剥离 `.cache-progress__label` 上冗余的 `aria-label`，交由子树文本自然播报；
+     - 同步对 `StorageGaugeSection.vue` 存储进度条补充 `:aria-label="`本机离线占用 ${Math.round(percentage)}%`"`；
+  3. **单元测试与防退化体系**：
+     - 新建 `src/__tests__/CacheProgress.spec.ts` 覆盖 idle / running / complete / 边界钳位全状态无障碍属性断言；
+     - 更新 `StoragePopover.spec.ts` 增加 `aria-label` 断言；
+     - 更新 `ModernFloatingSystem.spec.ts` 增加 `AppPopover` `role` prop 自定义断言。
+- **验证**：
+  - `vp check` 0 warning / 0 error；
+  - `vp test` 4 个测试套件 29/29 单测全绿。

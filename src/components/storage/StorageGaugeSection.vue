@@ -48,6 +48,7 @@ defineProps<{
         aria-valuemin="0"
         aria-valuemax="100"
         :aria-valuetext="`已占用 ${usageFormatted}`"
+        :aria-label="`本机离线占用 ${Math.round(percentage)}%`"
       >
         <div
           class="storage-fill"

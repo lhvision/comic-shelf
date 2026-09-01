@@ -61,20 +61,24 @@ async function handleConfirmReturn() {
     align="end"
     arrow
     width="20.5rem"
+    role="dialog"
     aria-label="读者借阅凭证卡"
     @open="onOpen"
   >
-    <button
-      type="button"
-      class="reader-badge-btn"
-      :title="`持证读者：${displayName}（点击查看借阅凭证）`"
-      :aria-label="`持证读者：${displayName}，点击展开借阅凭证`"
-      :aria-expanded="isOpen"
-      aria-haspopup="dialog"
-    >
-      <AppIcon name="book-open" size="xs" :stroke-width="1.8" />
-      <span class="reader-label">{{ badgeLabel }}</span>
-    </button>
+    <template #default="{ open, targetId }">
+      <button
+        type="button"
+        class="reader-badge-btn"
+        :title="`持证读者：${displayName}（点击查看借阅凭证）`"
+        :aria-label="`持证读者：${displayName}，点击展开借阅凭证`"
+        :aria-expanded="open"
+        :aria-controls="targetId"
+        aria-haspopup="dialog"
+      >
+        <AppIcon name="book-open" size="xs" :stroke-width="1.8" />
+        <span class="reader-label">{{ badgeLabel }}</span>
+      </button>
+    </template>
 
     <template #content>
       <div class="reader-card">

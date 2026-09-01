@@ -26,6 +26,8 @@ const props = withDefaults(
     width?: string
     /** 无障碍标签 */
     ariaLabel?: string
+    /** 面板无障碍角色（默认由 ariaLabel 决定为 'region'） */
+    role?: string
   }>(),
   {
     open: undefined,
@@ -36,6 +38,7 @@ const props = withDefaults(
     arrow: false,
     width: undefined,
     ariaLabel: '弹出面板',
+    role: undefined,
   },
 )
 
@@ -216,9 +219,6 @@ defineExpose({
     <div
       ref="triggerEl"
       class="app-popover-trigger"
-      :aria-haspopup="true"
-      :aria-expanded="isOpen"
-      :aria-controls="popoverId"
       :data-popover-anchor="anchorName"
       @click="trigger === 'click' && toggle()"
     >
@@ -235,7 +235,7 @@ defineExpose({
       :id="popoverId"
       ref="popoverEl"
       popover="auto"
-      :role="ariaLabel ? 'region' : undefined"
+      :role="role || (ariaLabel ? 'region' : undefined)"
       :aria-label="ariaLabel"
       class="app-popover-panel surface"
       :class="{

@@ -137,6 +137,18 @@ describe('Modern Floating System', () => {
       await wrapper.find('.pop-btn').trigger('click')
       expect(wrapper.emitted('update:open')?.[0]).toEqual([true])
     })
+
+    it('supports custom role prop on popover panel', () => {
+      const wrapper = mount(AppPopover, {
+        props: {
+          role: 'dialog',
+          ariaLabel: '测试对话框',
+        },
+      })
+      const panel = wrapper.find('.app-popover-panel')
+      expect(panel.attributes('role')).toBe('dialog')
+      expect(panel.attributes('aria-label')).toBe('测试对话框')
+    })
   })
 
   describe('AppDropdown', () => {

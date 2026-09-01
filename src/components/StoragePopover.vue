@@ -85,24 +85,30 @@ async function handleResetAll() {
     align="end"
     arrow
     width="21.5rem"
+    role="dialog"
     aria-label="阅览室设备与离线存储管理"
     @open="onOpen"
   >
-    <button
-      type="button"
-      class="storage-badge-btn"
-      :class="{ 'has-update': needRefresh }"
-      :title="
-        needRefresh
-          ? `发现新版本卷本可装订（离线占用 ${usageFormatted}）`
-          : `设备离线存储占用 ${usageFormatted}（点击查看与管理）`
-      "
-      :aria-label="`设备离线存储占用 ${usageFormatted}，点击展开管理面板`"
-    >
-      <AppIcon name="archive" size="xs" :stroke-width="1.8" />
-      <span class="storage-label">{{ badgeText }}</span>
-      <span v-if="needRefresh" class="update-indicator-dot" aria-hidden="true"></span>
-    </button>
+    <template #default="{ open, targetId }">
+      <button
+        type="button"
+        class="storage-badge-btn"
+        :class="{ 'has-update': needRefresh }"
+        :title="
+          needRefresh
+            ? `发现新版本卷本可装订（离线占用 ${usageFormatted}）`
+            : `设备离线存储占用 ${usageFormatted}（点击查看与管理）`
+        "
+        :aria-label="`设备离线存储占用 ${usageFormatted}，点击展开管理面板`"
+        :aria-expanded="open"
+        :aria-controls="targetId"
+        aria-haspopup="dialog"
+      >
+        <AppIcon name="archive" size="xs" :stroke-width="1.8" />
+        <span class="storage-label">{{ badgeText }}</span>
+        <span v-if="needRefresh" class="update-indicator-dot" aria-hidden="true"></span>
+      </button>
+    </template>
 
     <template #content>
       <div class="storage-panel">
