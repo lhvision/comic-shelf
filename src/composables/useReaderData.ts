@@ -5,57 +5,25 @@
  * 核心职责：
  * 1. 漫画详情数据拉取（`api.detail`）与 `AbortController` 竞态取消；
  * 2. 路由参数解析（`source`, `sourceId`, `scopeId`）与 404/网络异常 Toast 容错拦截；
- * 3. 阅读历史页码（`lastRead`）与相邻画页预加载（`preloadAround`）响应式同步；
- * 4. 路由切页（`route.params.page`）与章节切换（`route.query.chapter`）动态重定位与状态重置；
+ * 3. 漫画车号变更防御性响应（`[source, sourceId]` 监听重新拉取）；
+ * 4. 阅读历史页码（`lastRead`）响应式同步；
  * 5. 详情页/子路由返回路径（`backTarget` / `backToDetail`）计算与导航。
  */
 
-import {
-  computed,
-  nextTick,
-  onBeforeUnmount,
-  onMounted,
-  ref,
-  watch,
-  type ComputedRef,
-  type Ref,
-} from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch, type ComputedRef, type Ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { api } from '@/api/client'
 import { useToast } from '@/composables/useToast'
 import { useLastRead } from '@/composables/useLastRead'
 import { useIllustrationPool } from '@/composables/useIllustrationPool'
-import type { ReaderSettings } from '@/composables/useReaderSettings'
 import type { ComicDetail } from '@/types'
 
 /**
  * `useReaderData` 初始化依赖项契约
  */
 export interface UseReaderDataOptions {
-  /** 阅读器设置（排版模式、翻页方向、单屏页数等） */
-  settings: ReaderSettings
-  /** 当前展示的全局/本地页码 Ref */
-  currentPage: Ref<number>
-  /** 当前展示的分屏分组索引 Ref（0-based） */
-  currentGroupIndex: Ref<number>
-  /** 当前作用域下的所有全局页码列表 */
-  scopedPages: ComputedRef<number[]>
-  /** 限制页码在当前章节范围内的钳制函数 */
-  clampToScope: (page: number) => number
-  /** 给定页码查询对应分组索引的计算函数 */
-  groupIndexForPage: (page: number) => number
-  /** 将滚动容器物理定位到指定分屏分组 */
-  scrollToGroup: (groupIndex: number, behavior?: ScrollBehavior) => void
-  /** 导航跳转到指定全局页码 */
-  goToPage: (page: number, behavior?: ScrollBehavior) => void
-  /** 预加载目标页码周边的图片资源 */
-  preloadAround: (page: number) => void
-  /** 临时唤醒阅读器悬浮顶栏与 HUD */
-  showChromeTemporarily: () => void
-  /** 安排延时隐藏顶栏与 HUD */
-  scheduleChromeHide: () => void
-  /** 重置自动翻页倒计时节拍器 */
-  resetAutoTurnCountdown: () => void
+  /** 详情数据成功加载并就绪时的回调函数 */
+  onLoaded?: (detail: ComicDetail) => void | Promise<void>
 }
 
 /**
@@ -80,6 +48,8 @@ export interface UseReaderDataReturn {
   backToDetail: () => void
   /** 继续阅读持久化页码 Ref */
   lastRead: Ref<number>
+  /** 手动重新加载当前漫画数据 */
+  loadDetail: () => Promise<void>
 }
 
 /**
@@ -87,21 +57,8 @@ export interface UseReaderDataReturn {
  * @param options 配置依赖
  * @returns 阅读器数据与路由导航状态
  */
-export function useReaderData(options: UseReaderDataOptions): UseReaderDataReturn {
-  const {
-    settings,
-    currentPage,
-    currentGroupIndex,
-    scopedPages,
-    clampToScope,
-    groupIndexForPage,
-    scrollToGroup,
-    goToPage,
-    preloadAround,
-    showChromeTemporarily,
-    scheduleChromeHide,
-    resetAutoTurnCountdown,
-  } = options
+export function useReaderData(options: UseReaderDataOptions = {}): UseReaderDataReturn {
+  const { onLoaded } = options
 
   const route = useRoute()
   const router = useRouter()
@@ -143,27 +100,24 @@ export function useReaderData(options: UseReaderDataOptions): UseReaderDataRetur
   /* ---------------- 数据加载与生命周期 ---------------- */
   let readerAbortController: AbortController | null = null
 
-  onMounted(async () => {
+  async function loadDetail() {
+    if (!source.value || !sourceId.value) return
+
     if (readerAbortController) {
       readerAbortController.abort()
     }
     const controller = new AbortController()
     readerAbortController = controller
+    loading.value = true
 
     try {
       const data = await api.detail(source.value, sourceId.value, { signal: controller.signal })
       if (controller.signal.aborted) return
       detail.value = data
-      const initial = Number(route.params.page ?? 1)
-      currentPage.value = clampToScope(initial)
-      currentGroupIndex.value = groupIndexForPage(currentPage.value)
+      if (onLoaded) {
+        await onLoaded(data)
+      }
       loading.value = false
-
-      await nextTick()
-      scrollToGroup(currentGroupIndex.value, 'instant')
-      scheduleChromeHide()
-      preloadAround(currentPage.value)
-      resetAutoTurnCountdown()
     } catch (e) {
       if (controller.signal.aborted) return
       loading.value = false
@@ -174,58 +128,28 @@ export function useReaderData(options: UseReaderDataOptions): UseReaderDataRetur
         readerAbortController = null
       }
     }
+  }
+
+  onMounted(() => {
+    void loadDetail()
   })
+
+  // 防御性监听：若在同路由组件复用状态下切换了漫画源或漫画 ID，主动拉取新详情
+  watch(
+    () => `${source.value}/${sourceId.value}`,
+    (newKey, oldKey) => {
+      if (newKey && oldKey && newKey !== oldKey) {
+        void loadDetail()
+      }
+    },
+  )
 
   onBeforeUnmount(() => {
     if (readerAbortController) {
       readerAbortController.abort()
       readerAbortController = null
     }
-    lastRead.value = currentPage.value
   })
-
-  /* ---------------- 状态与路由响应式监听 ---------------- */
-  watch(currentPage, (page) => {
-    lastRead.value = page
-    preloadAround(page)
-  })
-
-  watch(
-    () => route.params.page,
-    (value) => {
-      const page = Number(value ?? 1)
-      const pages = scopedPages.value
-      if (!Number.isFinite(page) || pages.length === 0) return
-      if (page < pages[0]! || page > pages[pages.length - 1]!) return
-      if (page === currentPage.value) return
-      goToPage(page, 'smooth')
-    },
-  )
-
-  watch(
-    () => `${settings.mode}|${settings.pagesPerView}|${settings.direction}`,
-    async () => {
-      currentGroupIndex.value = groupIndexForPage(currentPage.value)
-      await nextTick()
-      scrollToGroup(currentGroupIndex.value, 'instant')
-      showChromeTemporarily()
-      resetAutoTurnCountdown()
-    },
-  )
-
-  watch(
-    () => scopeId.value,
-    async () => {
-      if (!detail.value) return
-      const clamped = clampToScope(currentPage.value)
-      if (clamped !== currentPage.value) currentPage.value = clamped
-      currentGroupIndex.value = groupIndexForPage(currentPage.value)
-      await nextTick()
-      scrollToGroup(currentGroupIndex.value, 'instant')
-      showChromeTemporarily()
-      resetAutoTurnCountdown()
-    },
-  )
 
   return {
     detail,
@@ -237,5 +161,6 @@ export function useReaderData(options: UseReaderDataOptions): UseReaderDataRetur
     backTarget,
     backToDetail,
     lastRead,
+    loadDetail,
   }
 }

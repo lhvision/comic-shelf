@@ -1068,18 +1068,21 @@
 - **背景与痛点**：
   `ReaderView.vue` 单文件曾膨胀至 784 行（272 行脚本 + 112 行模板 + 395 行样式），违反 `AGENTS.md` 规则 4 规定的「视图轻量化（`views/*.vue` 脚本严格 ≤150 行）」红线；同时排版引擎样式、滚动驱动动画与视图骨架高度耦合，数据流生命周期与路由监听混杂。
 - **架构决策与重构落地**：
-  1. **数据流与生命周期状态机下沉（`useReaderData.ts`）**：
-     - 将 `api.detail` 元数据加载、`AbortController` 竞态隔离、404/网络异常 Toast 容错重定向、`route.params.page` 与 `route.query.chapter` 的 URL 同步监听、`lastRead` 本地进度同步全部收敛至 `src/composables/useReaderData.ts`；
-     - 结合 `vueuse-functions` skill，采用 `useToggle` 管理设置面板状态、`usePreferredReducedMotion` 监听动效偏好；
-     - `ReaderView.vue` 脚本从 272 行骤降至 **134 行**，彻底合规。
+  1.  **数据流与生命周期状态机下沉（`useReaderData.ts`）**：
+  - 将 `api.detail` 元数据加载、`AbortController` 竞态取消、404/网络异常 Toast 容错重定向、`[source, sourceId]` 动态变更防御性重入、`lastRead` 本地进度同步全部收敛至 `src/composables/useReaderData.ts`；
+  - 暴露 `onLoaded` 生命周期契约，由 `ReaderView.vue` 在数据成功就绪后进行物理定位与 HUD 编排，彻底解耦组合式函数间的闭包依赖与 TDZ 隐患；
+  - 结合 `vueuse-functions` skill，采用 `useToggle` 管理设置面板状态、`usePreferredReducedMotion` 监听动效偏好；
+  - `ReaderView.vue` 脚本严格控制在 ≤150 行内，彻底合规。
   2. **画卷视口组件抽离（`ReaderViewport.vue`）**：
      - 抽取 `src/components/reader/ReaderViewport.vue`，接管 `<main class="reader-scroll">` 物理滚动容器、`ReaderEndCard` 完结卡片、`orderedGroups` 分屏切片与 `ComicPageImage` 循环渲染；
      - 将三种阅读模式（纵向连续、纵向翻页、横向翻页）与 `@supports (animation-timeline: view())` 页面进场动效相关的 ~300 行 CSS 样式物理收敛至视口组件内，保持 CSS 规则与视觉效果 100% 不变。
-  3. **跨话悬浮横幅组件抽离（`ReaderChapterBanners.vue`）**：
-     - 抽取 `src/components/reader/ReaderChapterBanners.vue`，接管话首「← 上一话」与话末「本话完 · 下一话 →」导航交互胶囊与滚动驱动浮入动效；
+  3. **跨话悬浮横幅组件抽离与移动端对齐（`ReaderChapterBanners.vue`）**：
+     - 抽取 `src/components/reader/ReaderChapterBanners.vue`，接管话首「上一话」与话末「本话完 · 下一话」导航交互胶囊与滚动驱动浮入动效；
+     - 严格落实 `AGENTS.md` Rule 12 统一图标收敛，采用 `<IconArrowLeft>` 与 `<IconArrowRight>` 替代 Unicode 字符；
+     - 解决移动端长标题折行畸变与动画 `transform` 叠加引发的横向偏位问题，统一 `translate: -50% 0` 居中物理定位与自适应打点截断；
      - `ReaderView.vue` 模板精简为纯粹的顶层装配树（TopBar + Loading + Viewport + Progress + HUD + SettingsPanel + ChapterBanners），样式仅保留 ~45 行 `.reader-view` 容器与进度条时间线定义。
   4. **领域术语对齐（Domain Modeling）**：
      - 在 `CONTEXT.md` 术语表与 `docs/agents/frontend.md` 文件地图中正式登记「画卷视口（Reader Viewport）」与「跨话横幅（Chapter Banners）」。
 - **验证**：
-  - `vp check`（191 个文件 0 warning / 0 lint / 0 type error）；
-  - `vp test` 精准单测覆盖 `ReaderComponents.spec.ts`、`useReaderData.spec.ts`、`ReaderAutoTurn.spec.ts`、`ReaderLoadingState.spec.ts`、`ReaderProgress.spec.ts`、`useReaderSettings.spec.ts` 全部通过（23/23 用例全绿）。
+  - `vp check`（193 个文件 0 warning / 0 lint / 0 type error）；
+  - `vp test` 精准单测覆盖 `ReaderComponents.spec.ts`、`useReaderData.spec.ts`、`ReaderAutoTurn.spec.ts`、`ReaderLoadingState.spec.ts`、`ReaderProgress.spec.ts`、`useReaderSettings.spec.ts` 全部通过（24/24 用例全绿）。

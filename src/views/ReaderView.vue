@@ -12,8 +12,8 @@
  * 6. 自动翻页状态机：`useAutoTurn`（倒计时、节拍器、页面可见性联动与暂停/继续）。
  */
 
-import { computed, ref } from 'vue'
-import { useRouter } from 'vue-router'
+import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { usePreferredReducedMotion, useToggle } from '@vueuse/core'
 import { useReaderSettings } from '@/composables/useReaderSettings'
 import { useReaderPaging } from '@/composables/useReaderPaging'
@@ -30,6 +30,7 @@ import ReaderChapterBanners from '@/components/reader/ReaderChapterBanners.vue'
 import ReaderHud from '@/components/reader/ReaderHud.vue'
 import ReaderSettingsPanel from '@/components/reader/ReaderSettingsPanel.vue'
 
+const route = useRoute()
 const router = useRouter()
 const { settings } = useReaderSettings()
 const currentPage = ref(1)
@@ -40,20 +41,20 @@ const reducedMotion = usePreferredReducedMotion()
 const viewportRef = ref<{ scrollEl: HTMLElement | null } | null>(null)
 const scrollEl = computed(() => viewportRef.value?.scrollEl ?? null)
 
-const { detail, loading, loadingVariant, source, sourceId, scopeId, backToDetail } = useReaderData({
-  settings,
-  currentPage,
-  currentGroupIndex,
-  scopedPages: computed(() => scopedPages.value),
-  clampToScope: (page) => clampToScope(page),
-  groupIndexForPage: (page) => groupIndexForPage(page),
-  scrollToGroup: (idx, beh) => scrollToGroup(idx, beh),
-  goToPage: (page, beh) => goToPage(page, beh),
-  preloadAround: (page) => preloadAround(page),
-  showChromeTemporarily: () => showChromeTemporarily(),
-  scheduleChromeHide: () => scheduleChromeHide(),
-  resetAutoTurnCountdown: () => resetAutoTurnCountdown(),
-})
+const { detail, loading, loadingVariant, source, sourceId, scopeId, backToDetail, lastRead } =
+  useReaderData({
+    onLoaded: async () => {
+      const initial = Number(route.params.page ?? 1)
+      currentPage.value = clampToScope(initial)
+      currentGroupIndex.value = groupIndexForPage(currentPage.value)
+
+      await nextTick()
+      scrollToGroup(currentGroupIndex.value, 'instant')
+      scheduleChromeHide()
+      preloadAround(currentPage.value)
+      resetAutoTurnCountdown()
+    },
+  })
 
 const {
   scopedPages,
@@ -138,6 +139,53 @@ const { autoTurnRemaining, autoTurnPaused, resetAutoTurnCountdown, toggleAutoTur
     onAdvance: advanceAutoTurn,
     onScheduleChromeHide: scheduleChromeHide,
   })
+
+/* ---------------- 页面响应式联动与历史同步 ---------------- */
+watch(currentPage, (page) => {
+  lastRead.value = page
+  preloadAround(page)
+})
+
+onBeforeUnmount(() => {
+  lastRead.value = currentPage.value
+})
+
+watch(
+  () => route.params.page,
+  (value) => {
+    const page = Number(value ?? 1)
+    const pages = scopedPages.value
+    if (!Number.isFinite(page) || pages.length === 0) return
+    if (page < pages[0]! || page > pages[pages.length - 1]!) return
+    if (page === currentPage.value) return
+    goToPage(page, 'smooth')
+  },
+)
+
+watch(
+  () => `${settings.mode}|${settings.pagesPerView}|${settings.direction}`,
+  async () => {
+    currentGroupIndex.value = groupIndexForPage(currentPage.value)
+    await nextTick()
+    scrollToGroup(currentGroupIndex.value, 'instant')
+    showChromeTemporarily()
+    resetAutoTurnCountdown()
+  },
+)
+
+watch(
+  () => scopeId.value,
+  async () => {
+    if (!detail.value) return
+    const clamped = clampToScope(currentPage.value)
+    if (clamped !== currentPage.value) currentPage.value = clamped
+    currentGroupIndex.value = groupIndexForPage(currentPage.value)
+    await nextTick()
+    scrollToGroup(currentGroupIndex.value, 'instant')
+    showChromeTemporarily()
+    resetAutoTurnCountdown()
+  },
+)
 
 function onReaderClick(event: MouseEvent) {
   const target = event.target as HTMLElement | null

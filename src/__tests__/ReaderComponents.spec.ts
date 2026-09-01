@@ -108,7 +108,7 @@ describe('ReaderChapterBanners', () => {
     (c: Chapter) => c.title || `第 ${c.index} 話`,
   )
 
-  it('renders prev banner when at chapter start and prevChapter exists', async () => {
+  it('renders prev banner with IconArrowLeft when at chapter start and prevChapter exists', async () => {
     const wrapper = mount(ReaderChapterBanners, {
       props: {
         prevChapter,
@@ -122,8 +122,9 @@ describe('ReaderChapterBanners', () => {
 
     const prevBtn = wrapper.find('.reader-chapter-prev')
     expect(prevBtn.exists()).toBe(true)
-    expect(prevBtn.text()).toContain('← 上一话：第 1 话：起点')
+    expect(prevBtn.text()).toContain('上一话：第 1 话：起点')
     expect(prevBtn.text()).toContain('本话首')
+    expect(wrapper.findComponent({ name: 'IconArrowLeft' }).exists()).toBe(true)
 
     expect(wrapper.find('.reader-chapter-next').exists()).toBe(false)
 
@@ -131,7 +132,7 @@ describe('ReaderChapterBanners', () => {
     expect(wrapper.emitted('prevChapter')).toBeTruthy()
   })
 
-  it('renders next banner when at chapter end and nextChapter exists', async () => {
+  it('renders next banner with IconArrowRight when at chapter end and nextChapter exists', async () => {
     const wrapper = mount(ReaderChapterBanners, {
       props: {
         prevChapter: null,
@@ -146,7 +147,8 @@ describe('ReaderChapterBanners', () => {
     const nextBtn = wrapper.find('.reader-chapter-next')
     expect(nextBtn.exists()).toBe(true)
     expect(nextBtn.text()).toContain('本话完')
-    expect(nextBtn.text()).toContain('下一话：第 2 话：进发 →')
+    expect(nextBtn.text()).toContain('下一话：第 2 话：进发')
+    expect(wrapper.findComponent({ name: 'IconArrowRight' }).exists()).toBe(true)
 
     expect(wrapper.find('.reader-chapter-prev').exists()).toBe(false)
 

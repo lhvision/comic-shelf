@@ -1,8 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vite-plus/test'
-import { defineComponent, ref, computed } from 'vue'
-import { mount } from '@vue/test-utils'
+import { defineComponent } from 'vue'
+import { mount, flushPromises } from '@vue/test-utils'
 import { useReaderData, type UseReaderDataReturn } from '@/composables/useReaderData'
-import { DEFAULT_SETTINGS } from '@/composables/useReaderSettings'
 import { api } from '@/api/client'
 import type { ComicDetail } from '@/types'
 
@@ -22,16 +21,24 @@ vi.mock('vue-router', () => ({
   }),
 }))
 
+const mockToast = vi.fn<(_msg: string, _type?: string) => void>()
+vi.mock('@/composables/useToast', () => ({
+  useToast: () => ({
+    toast: mockToast,
+  }),
+}))
+
 describe('useReaderData', () => {
   beforeEach(() => {
     vi.restoreAllMocks()
     mockPush.mockReset()
     mockReplace.mockReset()
+    mockToast.mockReset()
     mockRouteParams = { source: 'jm', sourceId: '123' }
     mockRouteQuery = { chapter: undefined }
   })
 
-  it('loads detail on mount and initializes page/group positions', async () => {
+  it('loads detail on mount and triggers onLoaded callback', async () => {
     const mockDetail: ComicDetail = {
       meta: {
         source: 'jm',
@@ -71,48 +78,45 @@ describe('useReaderData', () => {
 
     vi.spyOn(api, 'detail').mockResolvedValueOnce(mockDetail)
 
-    const scrollToGroupMock = vi.fn<(_idx: number, _beh?: ScrollBehavior) => void>()
-    const preloadAroundMock = vi.fn<(_page: number) => void>()
-    const scheduleChromeHideMock = vi.fn<() => void>()
-    const resetAutoTurnCountdownMock = vi.fn<() => void>()
-
+    const onLoadedMock = vi.fn<(_data: ComicDetail) => void>()
     let hookResult!: UseReaderDataReturn
 
     const TestComponent = defineComponent({
       setup() {
-        const currentPage = ref(1)
-        const currentGroupIndex = ref(0)
-        const scopedPages = computed(() => [1, 2, 3, 4, 5, 6, 7, 8, 9, 10])
-
         hookResult = useReaderData({
-          settings: { ...DEFAULT_SETTINGS },
-          currentPage,
-          currentGroupIndex,
-          scopedPages,
-          clampToScope: (p) => p,
-          groupIndexForPage: (p) => Math.floor((p - 1) / 2),
-          scrollToGroup: scrollToGroupMock,
-          goToPage: vi.fn<(_page: number, _beh?: ScrollBehavior) => void>(),
-          preloadAround: preloadAroundMock,
-          showChromeTemporarily: vi.fn<() => void>(),
-          scheduleChromeHide: scheduleChromeHideMock,
-          resetAutoTurnCountdown: resetAutoTurnCountdownMock,
+          onLoaded: onLoadedMock,
         })
-
         return () => null
       },
     })
 
     const wrapper = mount(TestComponent)
-    // Wait for async onMounted promise
-    await new Promise((resolve) => setTimeout(resolve, 50))
+    await flushPromises()
 
     expect(hookResult.loading.value).toBe(false)
     expect(hookResult.detail.value?.meta.title).toBe('Sample Book')
-    expect(scrollToGroupMock).toHaveBeenCalledWith(0, 'instant')
-    expect(scheduleChromeHideMock).toHaveBeenCalled()
-    expect(preloadAroundMock).toHaveBeenCalledWith(1)
-    expect(resetAutoTurnCountdownMock).toHaveBeenCalled()
+    expect(onLoadedMock).toHaveBeenCalledWith(mockDetail)
+
+    wrapper.unmount()
+  })
+
+  it('handles API error with toast and redirects to comic detail view', async () => {
+    vi.spyOn(api, 'detail').mockRejectedValueOnce(new Error('Network failure'))
+
+    let hookResult!: UseReaderDataReturn
+    const TestComponent = defineComponent({
+      setup() {
+        hookResult = useReaderData()
+        return () => null
+      },
+    })
+
+    const wrapper = mount(TestComponent)
+    await flushPromises()
+
+    expect(hookResult.loading.value).toBe(false)
+    expect(mockToast).toHaveBeenCalledWith('Network failure', 'error')
+    expect(mockReplace).toHaveBeenCalledWith('/comic/jm/123')
 
     wrapper.unmount()
   })
@@ -125,21 +129,7 @@ describe('useReaderData', () => {
 
     const TestComponent = defineComponent({
       setup() {
-        hookResult = useReaderData({
-          settings: { ...DEFAULT_SETTINGS },
-          currentPage: ref(1),
-          currentGroupIndex: ref(0),
-          scopedPages: computed(() => [1]),
-          clampToScope: (p) => p,
-          groupIndexForPage: () => 0,
-          scrollToGroup: vi.fn<(_idx: number, _beh?: ScrollBehavior) => void>(),
-          goToPage: vi.fn<(_page: number, _beh?: ScrollBehavior) => void>(),
-          preloadAround: vi.fn<(_page: number) => void>(),
-          showChromeTemporarily: vi.fn<() => void>(),
-          scheduleChromeHide: vi.fn<() => void>(),
-          resetAutoTurnCountdown: vi.fn<() => void>(),
-        })
-
+        hookResult = useReaderData()
         return () => null
       },
     })

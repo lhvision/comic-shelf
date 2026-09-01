@@ -1,15 +1,18 @@
 <script setup lang="ts">
 /**
  * @file ReaderChapterBanners.vue
- * @description 阅读器跨话悬浮横幅组件（话首「← 上一话」与话末「本话完 · 下一话 →」）。
+ * @description 阅读器跨话悬浮横幅组件（话首「上一话」与话末「本话完 · 下一话」）。
  *
  * 核心职责：
- * 1. 处于当前话首（`atChapterStart`）且存在上一话时渲染「← 上一话」按钮；
- * 2. 处于当前话末（`atChapterEnd`）且存在下一话时渲染「本话完 · 下一话 →」按钮；
+ * 1. 处于当前话首（`atChapterStart`）且存在上一话时渲染「上一话」按钮；
+ * 2. 处于当前话末（`atChapterEnd`）且存在下一话时渲染「本话完 · 下一话」按钮；
  * 3. 纵向连续条漫模式下接入 CSS Scroll-Driven 滚动驱动浮入动画；
- * 4. 抛出跨话切页跳转事件（`prevChapter` / `nextChapter`）。
+ * 4. 严格收敛单行文本与文字溢出省略（ellipsis），防止移动端长标题折行撑开胶囊；
+ * 5. 统一物理定位（`left: 50%; translate: -50% 0;`），杜绝 transform 叠加导致的偏位。
  */
 
+import IconArrowLeft from '@/components/icons/IconArrowLeft.vue'
+import IconArrowRight from '@/components/icons/IconArrowRight.vue'
 import type { Chapter } from '@/types'
 import type { ReaderSettings } from '@/composables/useReaderSettings'
 
@@ -44,77 +47,106 @@ defineEmits<{
 <template>
   <button
     v-if="prevChapter && atChapterStart"
-    class="reader-chapter-prev"
+    class="reader-chapter-banner reader-chapter-prev"
     type="button"
     @click="$emit('prevChapter')"
   >
-    <span class="reader-chapter-prev-title">← 上一话：{{ chapterShortLabel(prevChapter) }}</span>
-    <span>本话首</span>
+    <IconArrowLeft :size="14" class="reader-chapter-icon" />
+    <span class="reader-chapter-title">上一话：{{ chapterShortLabel(prevChapter) }}</span>
+    <span class="reader-chapter-badge">本话首</span>
   </button>
 
   <button
     v-if="nextChapter && atChapterEnd"
-    class="reader-chapter-next"
+    class="reader-chapter-banner reader-chapter-next"
     :data-mode="mode"
     type="button"
     @click="$emit('nextChapter')"
   >
-    <span>本话完</span>
-    <span class="reader-chapter-next-title">下一话：{{ chapterShortLabel(nextChapter) }} →</span>
+    <span class="reader-chapter-badge">本话完</span>
+    <span class="reader-chapter-title">下一话：{{ chapterShortLabel(nextChapter) }}</span>
+    <IconArrowRight :size="14" class="reader-chapter-icon" />
   </button>
 </template>
 
 <style scoped>
-/* T08：跨话翻页横幅 —— 呆在话首的「← 上一话」、话末的「本话完 · 下一话 →」 */
-.reader-chapter-next,
-.reader-chapter-prev {
+/* T08：跨话翻页横幅 —— 呆在话首的「上一话」、话末的「本话完 · 下一话」 */
+.reader-chapter-banner {
   position: absolute;
   left: 50%;
-  bottom: max(calc(var(--space-6) * 1), env(safe-area-inset-bottom));
+  bottom: max(var(--space-6), env(safe-area-inset-bottom, 0px));
   translate: -50% 0;
   z-index: 7;
   display: inline-flex;
   align-items: center;
-  gap: var(--space-3);
-  min-height: var(--control-md);
-  padding: var(--space-2) var(--space-4);
+  justify-content: center;
+  gap: var(--space-2);
+  height: var(--control-md);
+  max-height: var(--control-md);
+  max-width: min(calc(100vw - var(--space-6) * 2), 26rem);
+  padding: 0 var(--space-3);
   border: 1px solid var(--accent);
   border-radius: 999px;
   background: var(--reader-scrim-strong);
   color: var(--reader-ink);
+  white-space: nowrap;
+  box-sizing: border-box;
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  cursor: pointer;
+  user-select: none;
   transition:
     background var(--duration-2) var(--ease-out),
-    color var(--duration-2) var(--ease-out);
+    color var(--duration-2) var(--ease-out),
+    border-color var(--duration-2) var(--ease-out);
 }
 
-.reader-chapter-next:hover,
-.reader-chapter-prev:hover {
+.reader-chapter-banner:hover {
   background: var(--accent);
   color: var(--paper-0);
 }
 
-.reader-chapter-next-title,
-.reader-chapter-prev-title {
+.reader-chapter-icon {
+  flex-shrink: 0;
+}
+
+.reader-chapter-badge {
+  flex-shrink: 0;
+  white-space: nowrap;
+  font-size: var(--text-xs);
+  font-family: var(--font-sans);
+  opacity: 0.85;
+}
+
+.reader-chapter-title {
+  flex: 0 1 auto;
+  min-width: 0;
   font-family: var(--font-mono);
   font-size: var(--text-xs);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  max-width: 60vw;
+  max-width: clamp(5rem, 36vw, 14rem);
 }
 
 @media (max-width: 680px) {
-  .reader-chapter-next,
-  .reader-chapter-prev {
+  .reader-chapter-banner {
     bottom: calc(
-      var(--control-md) + max(var(--space-4), env(safe-area-inset-bottom)) + var(--space-2)
+      var(--control-md) + max(var(--space-4), env(safe-area-inset-bottom, 0px)) + var(--space-2)
     );
+    max-width: calc(100vw - var(--space-4) * 2);
+    padding: 0 var(--space-2-5, 0.625rem);
+    gap: var(--space-1-5, 0.375rem);
+  }
+
+  .reader-chapter-title {
+    max-width: clamp(4rem, 42vw, 11rem);
   }
 }
 
-@supports (animation-timeline: view()) {
+@supports (animation-timeline: scroll()) {
   @media (prefers-reduced-motion: no-preference) {
-    /* 话末到达横幅浮入微动效 */
+    /* 话末到达横幅浮入微动效：直接使用 translate 属性，与基类 translate: -50% 0 协调，避免 transform 叠加 */
     .reader-chapter-next[data-mode='vertical-continuous'] {
       animation: reader-banner-appear 1ms var(--ease-out) both;
       animation-timeline: --reader-scroll;
@@ -124,11 +156,11 @@ defineEmits<{
     @keyframes reader-banner-appear {
       from {
         opacity: 0;
-        transform: translate(-50%, 8px);
+        translate: -50% 8px;
       }
       to {
         opacity: 1;
-        transform: translate(-50%, 0);
+        translate: -50% 0;
       }
     }
   }
