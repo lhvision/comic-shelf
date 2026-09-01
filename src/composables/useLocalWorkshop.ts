@@ -6,6 +6,7 @@ import { useLibraryStore } from '@/stores/library'
 import { useAuth } from '@/composables/useAuth'
 import { useToast } from '@/composables/useToast'
 import { useUploadQueue } from '@/composables/useUploadQueue'
+import { filterImageFiles, naturalSortFiles } from '@/composables/useFileStaging'
 import type { LocalChapterInput } from '@/types'
 
 export interface StagedChapter {
@@ -56,21 +57,15 @@ export function useLocalWorkshop() {
   // DropZone & FileDialog via VueUse
   const dropAreaRef = ref<HTMLElement | null>(null)
 
-  function naturalSortFiles(files: File[]): File[] {
-    return [...files].sort((a, b) =>
-      a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' }),
-    )
-  }
-
   function stageFiles(rawList: File[]) {
-    const list = rawList.filter((f) => /\.(jpe?g|png|webp|gif|avif|bmp)$/i.test(f.name))
+    const { valid } = filterImageFiles(rawList)
     if (isMulti.value) {
       const ch = chapters.value[activeChapterIdx.value]
       if (ch) {
-        ch.files = naturalSortFiles([...ch.files, ...list])
+        ch.files = naturalSortFiles([...ch.files, ...valid])
       }
     } else {
-      singleFiles.value = naturalSortFiles([...singleFiles.value, ...list])
+      singleFiles.value = naturalSortFiles([...singleFiles.value, ...valid])
     }
   }
 

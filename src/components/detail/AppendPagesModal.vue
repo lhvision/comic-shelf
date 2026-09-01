@@ -1,11 +1,11 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
-import { useFileDialog, useDropZone } from '@vueuse/core'
 import Modal from '@/components/Modal.vue'
 import SegmentedTabs from '@/components/SegmentedTabs.vue'
 import AppButton from '@/components/AppButton.vue'
 import AppIcon from '@/components/AppIcon.vue'
 import { useUploadQueue } from '@/composables/useUploadQueue'
+import { useFileStaging } from '@/composables/useFileStaging'
 import { api } from '@/api/client'
 import { useToast } from '@/composables/useToast'
 import type { ComicMeta } from '@/types'
@@ -32,37 +32,14 @@ const appendType = ref<'current' | 'new'>('current')
 const selectedChapterId = ref('')
 const newChapterTitle = ref('')
 const serverPath = ref('')
-const selectedFiles = ref<File[]>([])
 const submitting = ref(false)
 
-const dropZoneRef = ref<HTMLElement | null>(null)
-
-function naturalSortFiles(files: File[]): File[] {
-  return [...files].sort((a, b) =>
-    a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' }),
-  )
-}
-
-function stageFiles(rawList: File[]) {
-  const list = rawList.filter((f) => /\.(jpe?g|png|webp|gif|avif|bmp)$/i.test(f.name))
-  selectedFiles.value = naturalSortFiles([...selectedFiles.value, ...list])
-}
-
-const { open: openFileDialog, onChange: onFileDialogChange } = useFileDialog({
-  multiple: true,
-  accept: 'image/*',
-  reset: true,
-})
-
-onFileDialogChange((files) => {
-  if (files) stageFiles(Array.from(files))
-})
-
-const { isOverDropZone } = useDropZone(dropZoneRef, {
-  onDrop: (files) => {
-    if (files) stageFiles(files)
-  },
-})
+const {
+  files: selectedFiles,
+  dropZoneRef,
+  isOverDropZone,
+  openFileDialog,
+} = useFileStaging({ deduplicate: false, notifyIgnored: true, disabled: submitting })
 
 watch(
   () => props.open,

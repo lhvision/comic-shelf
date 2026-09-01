@@ -145,6 +145,10 @@ export function useReaderPaging(options: UseReaderPagingOptions) {
     return pageGroups.value[groupIndex]?.[0] ?? 1
   }
 
+  function chapterShortLabel(c: Chapter): string {
+    return c.title ? c.title : `第 ${c.index} 話`
+  }
+
   return {
     scopedChapter,
     scopedPages,
@@ -152,6 +156,7 @@ export function useReaderPaging(options: UseReaderPagingOptions) {
     clampToScope,
     currentChapter,
     chapterLabel,
+    chapterShortLabel,
     chapters,
     currentChapterIndex,
     nextChapter,

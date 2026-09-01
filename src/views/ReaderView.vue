@@ -1,7 +1,19 @@
 <script setup lang="ts">
+/**
+ * @file ReaderView.vue
+ * @description 沉浸式阅读器主视图（纯编排视图，脚本严格 ≤150 行）。
+ *
+ * 状态机分层架构：
+ * 1. 分页与作用域：`useReaderPaging`（多屏切片、全局/本地页码转换、跨话首尾探测）；
+ * 2. 顶栏与 HUD 调度：`useReaderChrome`（延时隐藏与交互唤醒）；
+ * 3. 导航与定位：`useReaderNavigation`（物理滚动、进度换算、滚轮映射、预加载）；
+ * 4. 键盘与全屏：`useReaderKeyboard`（方向键/翻页键/切话键/全屏 F / ESC 返回）；
+ * 5. 自动翻页状态机：`useAutoTurn`（倒计时、节拍器、页面可见性联动与暂停/继续）。
+ */
+
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { useEventListener, useFullscreen, usePreferredReducedMotion } from '@vueuse/core'
+import { usePreferredReducedMotion } from '@vueuse/core'
 import { api, pageFileUrl } from '@/api/client'
 import { useToast } from '@/composables/useToast'
 import { useLastRead } from '@/composables/useLastRead'
@@ -9,6 +21,8 @@ import { useReaderSettings } from '@/composables/useReaderSettings'
 import { useReaderPaging } from '@/composables/useReaderPaging'
 import { useReaderChrome } from '@/composables/useReaderChrome'
 import { useAutoTurn } from '@/composables/useAutoTurn'
+import { useReaderNavigation } from '@/composables/useReaderNavigation'
+import { useReaderKeyboard } from '@/composables/useReaderKeyboard'
 import { useIllustrationPool } from '@/composables/useIllustrationPool'
 import ComicPageImage from '@/components/ComicPageImage.vue'
 import ReaderEndCard from '@/components/reader/ReaderEndCard.vue'
@@ -17,19 +31,13 @@ import ReaderProgress from '@/components/reader/ReaderProgress.vue'
 import ReaderLoadingState from '@/components/reader/ReaderLoadingState.vue'
 import ReaderSettingsPanel from '@/components/reader/ReaderSettingsPanel.vue'
 import ReaderTopBar from '@/components/reader/ReaderTopBar.vue'
-import type { Chapter, ComicDetail } from '@/types'
-
-/**
- * 阅读器视图 —— 编排视图。
- * 分页切片下沉至 useReaderPaging，顶栏隐显下沉至 useReaderChrome，
- * 自动切换状态机下沉至 useAutoTurn，各功能面板作为独立纯展示子组件挂载。
- */
+import type { ComicDetail } from '@/types'
 
 const route = useRoute()
 const router = useRouter()
 const { toast } = useToast()
 
-const { settings, isWideViewport } = useReaderSettings()
+const { settings } = useReaderSettings()
 const source = computed(() => String(route.params.source))
 const sourceId = computed(() => String(route.params.sourceId))
 const lastRead = useLastRead(source, sourceId)
@@ -40,7 +48,6 @@ const currentPage = ref(1)
 const currentGroupIndex = ref(0)
 const settingsOpen = ref(false)
 const loading = ref(true)
-const progressValue = ref(0)
 const { getRandomIllustration } = useIllustrationPool()
 const loadingVariant = ref(getRandomIllustration())
 const reducedMotion = usePreferredReducedMotion()
@@ -56,16 +63,12 @@ watch(
   { immediate: true },
 )
 
-// 遵守 DESIGN_NOTES §13 约束：Composable 返回值在 setup 顶层解构
 const {
-  scopedChapter,
   scopedPages,
   total,
   clampToScope,
-  currentChapter,
   chapterLabel,
-  chapters,
-  currentChapterIndex,
+  chapterShortLabel,
   nextChapter,
   prevChapter,
   atChapterEnd,
@@ -96,19 +99,35 @@ const { chromeVisible, showChromeTemporarily, scheduleChromeHide, toggleChrome }
 })
 
 const {
-  autoTurnRemaining,
-  autoTurnPaused,
-  startAutoTurnCountdown,
-  stopAutoTurnCountdown,
-  resetAutoTurnCountdown,
-  toggleAutoTurnPause,
-} = useAutoTurn({
+  progressValue,
+  scrollToGroup,
+  goToPage,
+  prevGroup,
+  nextGroup,
+  onScroll,
+  onWheel,
+  preloadAround,
+  goNextChapter,
+  goPrevChapter,
+} = useReaderNavigation({
+  scrollEl,
   settings,
+  currentPage,
   currentGroupIndex,
+  pageGroups,
   lastGroupIndex,
-  settingsOpen,
-  onAdvance: advanceAutoTurn,
-  onScheduleChromeHide: scheduleChromeHide,
+  clampToScope,
+  groupIndexForPage,
+  groupFirstPage,
+  showChromeTemporarily,
+  // 倒计时重置回调仅在用户交互触发时执行，解耦初始化依赖
+  resetAutoTurnCountdown: () => resetAutoTurnCountdown(),
+  source,
+  sourceId,
+  nextChapter,
+  prevChapter,
+  scopeId,
+  router,
 })
 
 function advanceAutoTurn() {
@@ -119,154 +138,39 @@ function advanceAutoTurn() {
   scrollToGroup(nextIndex, behavior)
 }
 
-/* ---------------- 分屏定位 ---------------- */
-function scrollToGroup(groupIndex: number, behavior: ScrollBehavior = 'smooth') {
-  const el = scrollEl.value
-  if (!el) return
-  const target = el.querySelector<HTMLElement>(`[data-group-index="${groupIndex}"]`)
-  if (!target) return
+const { autoTurnRemaining, autoTurnPaused, resetAutoTurnCountdown, toggleAutoTurnPause } =
+  useAutoTurn({
+    settings,
+    currentGroupIndex,
+    lastGroupIndex,
+    settingsOpen,
+    onAdvance: advanceAutoTurn,
+    onScheduleChromeHide: scheduleChromeHide,
+  })
 
-  if (settings.mode === 'horizontal') {
-    el.scrollTo({ left: target.offsetLeft, top: 0, behavior })
-  } else {
-    el.scrollTo({ left: 0, top: target.offsetTop, behavior })
+const backTarget = computed(() => {
+  const chapter = route.query.chapter
+  if (chapter && typeof chapter === 'string') {
+    return `/comic/${source.value}/${sourceId.value}/chapter/${encodeURIComponent(chapter)}`
   }
+  return `/comic/${source.value}/${sourceId.value}`
+})
+
+function backToDetail() {
+  router.push(backTarget.value)
 }
 
-function goToGroup(groupIndex: number, behavior: ScrollBehavior = 'smooth') {
-  const clamped = Math.min(Math.max(groupIndex, 0), Math.max(0, pageGroups.value.length - 1))
-  currentGroupIndex.value = clamped
-  currentPage.value = groupFirstPage(clamped)
-  scrollToGroup(clamped, behavior)
-  showChromeTemporarily()
-  resetAutoTurnCountdown()
-}
-
-function goToPage(page: number, behavior: ScrollBehavior = 'smooth') {
-  const clampedPage = clampToScope(page)
-  const groupIndex = groupIndexForPage(clampedPage)
-  currentPage.value = clampedPage
-  currentGroupIndex.value = groupIndex
-  scrollToGroup(groupIndex, behavior)
-  showChromeTemporarily()
-  resetAutoTurnCountdown()
-}
-
-/* ---------------- 滚动与键盘 ---------------- */
-function onScroll() {
-  const el = scrollEl.value
-  if (!el) return
-
-  const horizontal = settings.mode === 'horizontal'
-  const rtl = horizontal && settings.direction === 'rtl'
-  const position = horizontal ? el.scrollLeft : el.scrollTop
-  const max = horizontal ? el.scrollWidth - el.clientWidth : el.scrollHeight - el.clientHeight
-  const rawProgress = max <= 0 ? 1 : Math.min(1, Math.max(0, position / max))
-  progressValue.value = rtl ? 1 - rawProgress : rawProgress
-
-  const spreads = [...el.querySelectorAll<HTMLElement>('[data-group-index]')]
-  let nearest = currentGroupIndex.value
-  let bestDistance = Number.POSITIVE_INFINITY
-  for (const spread of spreads) {
-    const spreadPosition = horizontal ? spread.offsetLeft : spread.offsetTop
-    const distance = Math.abs(spreadPosition - position)
-    if (distance < bestDistance) {
-      bestDistance = distance
-      nearest = Number(spread.dataset.groupIndex)
-    }
-  }
-
-  if (Number.isFinite(nearest) && nearest !== currentGroupIndex.value) {
-    currentGroupIndex.value = nearest
-    currentPage.value = groupFirstPage(nearest)
-  }
-
-  if (!settings.autoTurn) showChromeTemporarily()
-  resetAutoTurnCountdown()
-}
-
-function onWheel(event: WheelEvent) {
-  if (settings.mode !== 'horizontal') return
-  const el = scrollEl.value
-  if (!el) return
-
-  if (Math.abs(event.deltaY) <= Math.abs(event.deltaX)) return
-
-  event.preventDefault()
-  const factor = event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? innerHeight : 1
-  el.scrollBy({ left: event.deltaY * factor, behavior: 'auto' })
-  if (!settings.autoTurn) showChromeTemporarily()
-  resetAutoTurnCountdown()
-}
-
-function onKeydown(event: KeyboardEvent) {
-  if (event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement) {
-    return
-  }
-  if (event.target instanceof HTMLSelectElement) return
-
-  if (settingsOpen.value) {
-    if (event.key === 'Escape') {
-      event.preventDefault()
-      settingsOpen.value = false
-    }
-    return
-  }
-
-  const rtl = settings.mode === 'horizontal' && settings.direction === 'rtl'
-  const nextLeft = rtl
-
-  switch (event.key) {
-    case 'ArrowRight':
-      event.preventDefault()
-      if (nextLeft) prevGroup()
-      else nextGroup()
-      break
-    case 'ArrowLeft':
-      event.preventDefault()
-      if (nextLeft) nextGroup()
-      else prevGroup()
-      break
-    case 'ArrowDown':
-    case 'PageDown':
-    case ' ':
-      event.preventDefault()
-      nextGroup()
-      break
-    case 'ArrowUp':
-    case 'PageUp':
-      event.preventDefault()
-      prevGroup()
-      break
-    case 'Home':
-      event.preventDefault()
-      goToPage(1)
-      break
-    case 'End':
-      event.preventDefault()
-      goToPage(total.value)
-      break
-    case 'n':
-    case 'N':
-      goNextChapter()
-      break
-    case 'p':
-    case 'P':
-      goPrevChapter()
-      break
-    case 'f':
-    case 'F':
-      toggleFullscreen()
-      break
-    case 'Escape':
-      event.preventDefault()
-      backToDetail()
-      break
-  }
-}
-
-const { toggle: toggleFullscreen } = useFullscreen(document.documentElement)
-useEventListener(window, 'keydown', onKeydown)
+const { toggleFullscreen } = useReaderKeyboard({
+  settingsOpen,
+  settings,
+  total,
+  goToPage,
+  prevGroup,
+  nextGroup,
+  goNextChapter,
+  goPrevChapter,
+  backToDetail,
+})
 
 /* ---------------- 数据加载与监听 ---------------- */
 let readerAbortController: AbortController | null = null
@@ -340,50 +244,6 @@ watch(
   },
 )
 
-function preloadAround(page: number) {
-  const groupIndex = groupIndexForPage(page)
-  const startGroup = Math.max(0, groupIndex - 1)
-  const endGroup = Math.min(pageGroups.value.length - 1, groupIndex + 1)
-  for (let group = startGroup; group <= endGroup; group += 1) {
-    for (const targetPage of pageGroups.value[group] ?? []) {
-      const image = new Image()
-      image.src = pageFileUrl(source.value, sourceId.value, targetPage)
-    }
-  }
-}
-
-function prevGroup() {
-  goToGroup(currentGroupIndex.value - 1)
-}
-
-function nextGroup() {
-  goToGroup(currentGroupIndex.value + 1)
-}
-
-function chapterShortLabel(c: Chapter) {
-  return c.title ? c.title : `第 ${c.index} 話`
-}
-
-function setScope(id: string, page: number) {
-  scopeId.value = id
-  const target = `/comic/${source.value}/${sourceId.value}/read/${page}?chapter=${encodeURIComponent(id)}`
-  void router.replace(target)
-}
-
-function goNextChapter() {
-  const c = nextChapter.value
-  if (!c) return
-  setScope(c.id, c.start)
-  goToPage(c.start, 'smooth')
-}
-
-function goPrevChapter() {
-  const c = prevChapter.value
-  if (!c) return
-  setScope(c.id, c.start + c.page_count - 1)
-  goToPage(c.start + c.page_count - 1, 'smooth')
-}
-
 watch(
   () => scopeId.value,
   async () => {
@@ -397,18 +257,6 @@ watch(
     resetAutoTurnCountdown()
   },
 )
-
-const backTarget = computed(() => {
-  const chapter = route.query.chapter
-  if (chapter && typeof chapter === 'string') {
-    return `/comic/${source.value}/${sourceId.value}/chapter/${encodeURIComponent(chapter)}`
-  }
-  return `/comic/${source.value}/${sourceId.value}`
-})
-
-function backToDetail() {
-  router.push(backTarget.value)
-}
 </script>
 
 <template>

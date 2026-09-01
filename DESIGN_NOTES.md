@@ -896,3 +896,44 @@
   3. **安全性与防护边界**：
      - 事件体仅包含粗粒度动作信号（`{"action": "import"}`），不携带任何敏感书名、车号或封面，鉴权数据 100% 经后端门禁过滤；
      - 内置连接上限（全局 200 / 单 IP 10），超时下发 25s keepalive 心跳，彻底杜绝 Slowloris 挂起攻击。
+
+## 46. 前端组件架构治理（巨型单文件解耦 + VueUse 标准化 + 视图瘦身门禁）
+
+- **背景与治理目标**：
+  历史迭代中部分核心弹窗与视图（如 `GuestModal.vue` 1792 行、`ImportPanel.vue` 854 行、`StoragePopover.vue` 673 行、`ReaderView.vue` script >400 行）过度堆叠逻辑与子视图，且多处存在手写 `setTimeout` 导致的计时器泄漏与冗余文件暂存逻辑。
+- **重构架构与落地成果**：
+  1. **巨型访客弹窗解耦（GuestModal.vue：1792 行 ➔ 124 行，-93%）**：
+     - 拆分子目录 `src/components/curator/guest/`：
+       - `guestUtils.ts`：收敛时间戳格式化、相对时间与 Token 脱敏辅助；
+       - `GuestCard.vue`：单张通行证卡片与操作门禁；
+       - `GuestDeviceList.vue`：在线设备列表与 4s 踢出确认；
+       - `GuestRosterTab.vue`：名册搜索、状态胶囊与卡片列表编排；
+       - `GuestIssueTab.vue`：印发表单与自动聚焦；
+       - `GuestSuccessVoucher.vue`：印发成功凭证与一键复制；
+     - 深度应用 VueUse `refAutoReset(false, 1500)` 与 `refAutoReset(false, 4000)`，彻底消除手写 `setTimeout`/`clearTimeout`/`onUnmounted` 样板代码与状态泄漏。
+  2. **存储与离线浮层模块化（StoragePopover.vue：673 行 ➔ 138 行，-79%）**：
+     - 拆分子目录 `src/components/storage/`：
+       - `StorageHeader.vue`：标题与桌面 PWA 安装入口；
+       - `StoragePwaCard.vue`：新卷本装订就绪提示与旋转动画；
+       - `StorageGaugeSection.vue`：平直标尺、百分比与资产分项账单；
+       - `StorageActionsSection.vue`：图片缓存释放与 5s 重置离线危险区；
+  3. **收录面板模块化（ImportPanel.vue：854 行 ➔ 486 行，-43%）**：
+     - 拆分子目录 `src/components/import/`：
+       - `ImportJmTab.vue`：禁漫车号输入与全量缓存开关；
+       - `ImportLocalTab.vue`：服务器本地路径扫描与工坊入口；
+       - `ImportConcurrencyStepper.vue`：并发步进器与环境变量锁定展示；
+     - 引入 VueUse `useMediaQuery('(min-width: 640px)')` 替代手写 `resize` 监听。
+  4. **文件暂存通用化（useFileStaging.ts）**：
+     - 统一收敛 `ReplacePagesModal.vue`、`AppendPagesModal.vue` 与 `useLocalWorkshop.ts`；
+     - 统一提供自然文件名数字排序（`naturalSortFiles`）、图片格式过滤（`filterImageFiles`）、`useFileDialog` 与 `useDropZone` 聚合。
+  5. **阅读器视图编排化（ReaderView.vue 脚本 ≤150 行门禁）**：
+     - 提取 `useReaderNavigation.ts`（滚动与多屏定位、全屏 progress 换算、横向滚轮适配、章节首尾边界跳跃）；
+     - 提取 `useReaderKeyboard.ts`（按键映射、全屏 `useFullscreen` 联动与 ESC 返回）；
+     - 视图脚本从 415 行精简至 **128 行**，100% 满足《AGENTS.md》视图轻量化红线。
+  6. **契约自解释与 JSDoc/TSDoc 规范化落地**：
+     - 彻底解决拆分后「Hook/子组件无注释黑盒化」与「全量无脑解构造成 TS6133 冗余声明」的暗礁；
+     - 为全部 17 个拆分文件补全 JSDoc/TSDoc，规范了职责说明、参数/返回值与 Props/Emits 业务契约，并在视图层严格按需精准解构。
+- **验证**：
+  - `vp check` 180 个文件 0 warning / 0 error，全量对齐；
+  - `vp test` 8 个测试套件 37/37 单测全绿；
+  - `ai-e2e run e2e/tests/component-governance.spec.ts` 与 `ai-e2e run e2e/tests/nav-perf.spec.ts` 均 100% 通过。

@@ -1,11 +1,11 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
-import { useFileDialog, useDropZone } from '@vueuse/core'
 import Modal from '@/components/Modal.vue'
 import SegmentedTabs from '@/components/SegmentedTabs.vue'
 import AppButton from '@/components/AppButton.vue'
 import AppIcon from '@/components/AppIcon.vue'
 import { api } from '@/api/client'
+import { useFileStaging } from '@/composables/useFileStaging'
 import { useToast } from '@/composables/useToast'
 import type { ComicMeta } from '@/types'
 
@@ -30,12 +30,16 @@ const modeTabs = [
 const replaceScope = ref<'full' | 'chapter'>('full')
 const selectedChapterId = ref('')
 const serverPath = ref('')
-const selectedFiles = ref<File[]>([])
 const submitting = ref(false)
 const ackReplace = ref(false)
 const uploadAbortController = ref<AbortController | null>(null)
 
-const dropZoneRef = ref<HTMLElement | null>(null)
+const {
+  files: selectedFiles,
+  dropZoneRef,
+  isOverDropZone,
+  openFileDialog,
+} = useFileStaging({ deduplicate: true, notifyIgnored: true, disabled: submitting })
 
 function cancelModal() {
   if (uploadAbortController.value) {
@@ -51,41 +55,6 @@ onBeforeUnmount(() => {
     uploadAbortController.value.abort()
     uploadAbortController.value = null
   }
-})
-
-function naturalSortFiles(files: File[]): File[] {
-  return [...files].sort((a, b) =>
-    a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' }),
-  )
-}
-
-function stageFiles(rawList: File[]) {
-  const list = rawList.filter((f) => /\.(jpe?g|png|webp|gif|avif|bmp)$/i.test(f.name))
-  if (list.length < rawList.length) {
-    toast('已自动忽略非图片格式文件（仅支持 JPG/PNG/WebP/AVIF 等）', 'info')
-  }
-  // Deduplicate by filename and size to prevent accidental double-staging
-  const fileMap = new Map(selectedFiles.value.map((f) => [`${f.name}_${f.size}`, f]))
-  for (const f of list) {
-    fileMap.set(`${f.name}_${f.size}`, f)
-  }
-  selectedFiles.value = naturalSortFiles(Array.from(fileMap.values()))
-}
-
-const { open: openFileDialog, onChange: onFileDialogChange } = useFileDialog({
-  multiple: true,
-  accept: 'image/*',
-  reset: true,
-})
-
-onFileDialogChange((files) => {
-  if (files && !submitting.value) stageFiles(Array.from(files))
-})
-
-const { isOverDropZone } = useDropZone(dropZoneRef, {
-  onDrop: (files) => {
-    if (files && !submitting.value) stageFiles(files)
-  },
 })
 
 watch(
