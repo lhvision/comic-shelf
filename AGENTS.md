@@ -42,17 +42,18 @@ release. Add a tool name to select part of the graph. For example, run
 
 ## 📚 规则文件索引（按需读取）
 
-| 规则文档                          | 适用任务场景                                                                         |
-| --------------------------------- | ------------------------------------------------------------------------------------ |
-| `docs/PITFALLS.md`                | 错题本与避坑指南（历史故障复盘、高频反模式与避坑红线速查）                           |
-| `docs/CSS_RADAR.md`               | CSS 前瞻技术雷达：已落地特性用法、渐进增强降级方案、实验草案追踪与升级路线图         |
-| `docs/agents/architecture.md`     | 后端模型、FastAPI 路由、存储布局、Provider 扩展、安全与防盗链                        |
-| `docs/agents/frontend.md`         | 书架/详情/阅读器、页面索引、多章节子路由、HTML-in-Canvas                             |
-| `docs/agents/ui.md`               | 新 UI 组件、核心交互重构、视觉设计（调度 `impeccable`，执行 A/B 双轨评审与物理落盘） |
-| `docs/agents/tooling-workflow.md` | Vite+ 工具链、Docker 单容器部署、排错建议                                            |
-| `DESIGN_NOTES.md`                 | UI 视觉改动前必读（设计系统规范、色彩/组件层级与避坑定律）                           |
-| `DEPLOYMENT.md`                   | 环境变量、TrueNAS / Docker 容器化与以图搜图 Sidecar                                  |
-| `README.md`                       | 项目功能总览、运行方式与 API 清单                                                    |
+| 规则文档                           | 适用任务场景                                                                         |
+| ---------------------------------- | ------------------------------------------------------------------------------------ |
+| `docs/PITFALLS.md`                 | 错题本与避坑指南（历史故障复盘、高频反模式与避坑红线速查）                           |
+| `docs/CSS_RADAR.md`                | CSS 前瞻技术雷达：已落地特性用法、渐进增强降级方案、实验草案追踪与升级路线图         |
+| `docs/agents/architecture.md`      | 后端模型、FastAPI 路由、存储布局、Provider 扩展、安全与防盗链                        |
+| `docs/agents/frontend.md`          | 书架/详情/阅读器、页面索引、多章节子路由、HTML-in-Canvas                             |
+| `docs/agents/ui.md`                | 新 UI 组件、核心交互重构、视觉设计（调度 `impeccable`，执行 A/B 双轨评审与物理落盘） |
+| `docs/agents/tooling-workflow.md`  | Vite+ 工具链、Docker 单容器部署、排错建议                                            |
+| `docs/HOMELAB_NETWORKING_GUIDE.md` | 家庭公网 IP + Cloudflare 边缘加速、Origin Rules 端口重写与 Mac mini 迁移指南         |
+| `DESIGN_NOTES.md`                  | UI 视觉改动前必读（设计系统规范、色彩/组件层级与避坑定律）                           |
+| `DEPLOYMENT.md`                    | 环境变量、TrueNAS / Docker 容器化与以图搜图 Sidecar                                  |
+| `README.md`                        | 项目功能总览、运行方式与 API 清单                                                    |
 
 ## ⚡ 核心不变量与红线（改动必守）
 
