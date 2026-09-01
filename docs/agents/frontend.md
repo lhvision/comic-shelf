@@ -178,7 +178,7 @@
 - 每屏页数按视口开放：`min-width: 681px` 的 PC/平板允许 1/2/4 页，更窄屏幕（<681px）默认收敛为 1 页（可选 1/2 页）；窄屏下 4 页配置自动降级单列渲染。
 - 移动端沉浸交互：彻底废除顶部中央悬浮遮挡画面的折叠按钮，统一由画面点击/轻触（Tap/Click-to-Toggle）唤醒与收起顶栏及 HUD；连续滚动模式下滚动不反复弹顶栏，无操作 2.6s 自动淡出。
 - 移动端安全区全覆盖：顶栏与底栏 HUD 均计算 `env(safe-area-inset-top/bottom/left/right)`，移动端跨话悬浮横幅自动垫高避让 HUD。
-- 点击详情页任意页码进入阅读器后，会定位到该页所在屏（`loading=false` 渲染完成后 `await nextTick()` 再 scroll）。
+- 点击详情页/章节页进入阅读器后，精准定位到目标页（`useReaderData` 先执行 `loading=false` 确保 DOM 视口挂载，`onLoaded` 在 `await nextTick()` 后执行 `scrollToGroup('instant')` 物理定位；缺省 `:page` 时优先回落至 `lastRead.value` 进度；纵向连续模式下由 `recalibrateTargetOffset` 在图片异步加载时微调位移）。
 - `.reader-view` 必须保留 `timeline-scope: --reader-scroll`：进度条是 `.reader-scroll` 的兄弟节点，
   scroll timeline 只有提升作用域后才能跨子树引用；
 - **全场景 CSS 滚动驱动双轨架构**：

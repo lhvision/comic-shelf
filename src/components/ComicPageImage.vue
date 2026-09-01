@@ -24,12 +24,22 @@ const displaySrc = computed(() => {
   return `${props.src}${sep}retry=${retryKey.value}`
 })
 
+const emit = defineEmits<{
+  ready: []
+}>()
+
+let hasEmittedReady = false
+
 function checkReadyState() {
   const img = imageEl.value
   if (!img || !img.complete) return
   if (img.naturalWidth > 0) {
     loading.value = false
     failed.value = false
+    if (!hasEmittedReady) {
+      hasEmittedReady = true
+      emit('ready')
+    }
   } else {
     loading.value = false
     failed.value = true
@@ -39,6 +49,10 @@ function checkReadyState() {
 function onLoad() {
   loading.value = false
   failed.value = false
+  if (!hasEmittedReady) {
+    hasEmittedReady = true
+    emit('ready')
+  }
 }
 
 function onError() {
@@ -47,6 +61,7 @@ function onError() {
 }
 
 function retry() {
+  hasEmittedReady = false
   retryKey.value += 1
   loading.value = true
   failed.value = false
@@ -57,6 +72,7 @@ onMounted(checkReadyState)
 watch(
   () => props.src,
   () => {
+    hasEmittedReady = false
     retryKey.value = 0
     loading.value = true
     failed.value = false

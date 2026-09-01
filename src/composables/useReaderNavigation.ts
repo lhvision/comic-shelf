@@ -248,9 +248,24 @@ export function useReaderNavigation(options: UseReaderNavigationOptions) {
     goToPage(c.start + c.page_count - 1, 'smooth')
   }
 
+  /**
+   * 纵向连续模式下在图片异步加载撑高后，微调视口位置以消除排版位移
+   * @param groupIndex 目标分屏索引
+   */
+  function recalibrateTargetOffset(groupIndex: number) {
+    const el = scrollEl.value
+    if (!el || settings.mode !== 'vertical-continuous') return
+    const target = el.querySelector<HTMLElement>(`[data-group-index="${groupIndex}"]`)
+    if (!target) return
+    if (Math.abs(el.scrollTop - target.offsetTop) > 8) {
+      el.scrollTo({ left: 0, top: target.offsetTop, behavior: 'instant' })
+    }
+  }
+
   return {
     progressValue,
     scrollToGroup,
+    recalibrateTargetOffset,
     goToGroup,
     goToPage,
     prevGroup,

@@ -114,10 +114,10 @@ export function useReaderData(options: UseReaderDataOptions = {}): UseReaderData
       const data = await api.detail(source.value, sourceId.value, { signal: controller.signal })
       if (controller.signal.aborted) return
       detail.value = data
+      loading.value = false
       if (onLoaded) {
         await onLoaded(data)
       }
-      loading.value = false
     } catch (e) {
       if (controller.signal.aborted) return
       loading.value = false

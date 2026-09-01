@@ -52,6 +52,9 @@ describe('ReaderViewport', () => {
     await main.trigger('wheel')
     expect(wrapper.emitted('wheel')).toBeTruthy()
 
+    await main.trigger('touchstart')
+    expect(wrapper.emitted('userInteract')).toBeTruthy()
+
     await main.trigger('mousemove')
     expect(wrapper.emitted('mousemove')).toBeTruthy()
 

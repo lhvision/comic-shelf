@@ -60,6 +60,10 @@ defineEmits<{
   mousemove: [event: MouseEvent]
   /** 视口点击事件（切换顶栏显隐） */
   readerClick: [event: MouseEvent]
+  /** 用户主动交互（触屏/按压） */
+  userInteract: []
+  /** 单页图片加载就绪事件（用于连续模式微调定位） */
+  pageReady: [page: number]
   /** 点击完结卡片返回详情页 */
   backToDetail: []
 }>()
@@ -81,6 +85,8 @@ defineExpose({
     tabindex="0"
     @scroll.passive="$emit('scroll', $event)"
     @wheel="$emit('wheel', $event)"
+    @touchstart.passive="$emit('userInteract')"
+    @pointerdown.passive="$emit('userInteract')"
     @mousemove="$emit('mousemove', $event)"
     @click="$emit('readerClick', $event)"
   >
@@ -110,6 +116,7 @@ defineExpose({
             :alt="`第 ${toLocalPage(page)} 页`"
             :eager="toLocalPage(page) <= settings.pagesPerView * 3"
             :loading-variant="loadingVariant"
+            @ready="$emit('pageReady', page)"
           />
         </div>
         <footer class="page-footer">

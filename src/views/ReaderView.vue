@@ -40,11 +40,20 @@ const reducedMotion = usePreferredReducedMotion()
 
 const viewportRef = ref<{ scrollEl: HTMLElement | null } | null>(null)
 const scrollEl = computed(() => viewportRef.value?.scrollEl ?? null)
+const userInteracted = ref(false)
 
 const { detail, loading, loadingVariant, source, sourceId, scopeId, backToDetail, lastRead } =
   useReaderData({
     onLoaded: async () => {
-      const initial = Number(route.params.page ?? 1)
+      const rawParam = route.params.page
+      const rawNum =
+        typeof rawParam === 'string'
+          ? Number(rawParam)
+          : Array.isArray(rawParam)
+            ? Number(rawParam[0])
+            : Number.NaN
+      const initial =
+        Number.isFinite(rawNum) && rawNum > 0 ? rawNum : lastRead.value || scopedPages.value[0] || 1
       currentPage.value = clampToScope(initial)
       currentGroupIndex.value = groupIndexForPage(currentPage.value)
 
@@ -94,6 +103,7 @@ const { chromeVisible, showChromeTemporarily, scheduleChromeHide, toggleChrome }
 const {
   progressValue,
   scrollToGroup,
+  recalibrateTargetOffset,
   goToPage,
   prevGroup,
   nextGroup,
@@ -121,6 +131,17 @@ const {
   scopeId,
   router,
 })
+
+function onPageReady(_page: number) {
+  if (!userInteracted.value && settings.mode === 'vertical-continuous') {
+    recalibrateTargetOffset(currentGroupIndex.value)
+  }
+}
+
+function onViewportWheel(event: WheelEvent) {
+  userInteracted.value = true
+  onWheel(event)
+}
 
 function advanceAutoTurn() {
   const nextIndex = Math.min(currentGroupIndex.value + 1, lastGroupIndex.value)
@@ -153,7 +174,15 @@ onBeforeUnmount(() => {
 watch(
   () => route.params.page,
   (value) => {
-    const page = Number(value ?? 1)
+    if (loading.value) return
+    const rawNum =
+      typeof value === 'string'
+        ? Number(value)
+        : Array.isArray(value)
+          ? Number(value[0])
+          : Number.NaN
+    const page =
+      Number.isFinite(rawNum) && rawNum > 0 ? rawNum : lastRead.value || scopedPages.value[0] || 1
     const pages = scopedPages.value
     if (!Number.isFinite(page) || pages.length === 0) return
     if (page < pages[0]! || page > pages[pages.length - 1]!) return
@@ -208,6 +237,9 @@ const { toggleFullscreen } = useReaderKeyboard({
   goNextChapter,
   goPrevChapter,
   backToDetail,
+  onUserInteract: () => {
+    userInteracted.value = true
+  },
 })
 </script>
 
@@ -239,7 +271,9 @@ const { toggleFullscreen } = useReaderKeyboard({
       :loading-variant="loadingVariant"
       :to-local-page="toLocalPage"
       @scroll="onScroll"
-      @wheel="onWheel"
+      @wheel="onViewportWheel"
+      @user-interact="userInteracted = true"
+      @page-ready="onPageReady"
       @mousemove="showChromeTemporarily"
       @reader-click="onReaderClick"
       @back-to-detail="backToDetail"

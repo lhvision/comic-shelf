@@ -78,7 +78,10 @@ describe('useReaderData', () => {
 
     vi.spyOn(api, 'detail').mockResolvedValueOnce(mockDetail)
 
-    const onLoadedMock = vi.fn<(_data: ComicDetail) => void>()
+    let loadingDuringOnLoaded: boolean | undefined
+    const onLoadedMock = vi.fn<(_data: ComicDetail) => void>((_data) => {
+      loadingDuringOnLoaded = hookResult.loading.value
+    })
     let hookResult!: UseReaderDataReturn
 
     const TestComponent = defineComponent({
@@ -93,6 +96,7 @@ describe('useReaderData', () => {
     const wrapper = mount(TestComponent)
     await flushPromises()
 
+    expect(loadingDuringOnLoaded).toBe(false)
     expect(hookResult.loading.value).toBe(false)
     expect(hookResult.detail.value?.meta.title).toBe('Sample Book')
     expect(onLoadedMock).toHaveBeenCalledWith(mockDetail)

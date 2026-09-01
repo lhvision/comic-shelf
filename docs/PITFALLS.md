@@ -166,6 +166,12 @@
 - **复现场景**：在日漫模式从右往左翻页时，CSS 进度条一打开就是 100% 满格，往左翻反而越来越短；长图集快速滑动时 `onScroll` 高频读取 DOM 导致滑动掉帧卡顿。
 - **红线与防误伤**：**不要**在 RTL 模式下直接复用 LTR 的 0%->100% 关键帧，**不要**在滚动事件处理函数中无节流密集读取 DOM 几何属性；**放行/改用**RTL 模式使用 `@keyframes reader-progress-rtl { from { transform: scaleX(1); } to { transform: scaleX(0); } }` 搭配 `transform-origin: 100% 50%`，JS 轨必须通过 `requestAnimationFrame` 调度节流并配合 `onScopeDispose` 清理定时器（确保 120fps 满帧与双轨 100% 逻辑一致）。
 
+### 28. 视口挂载与初次定位时序脱节导致阅读进度重置（DOM Mount Timing & Initial Positioning Failure Under v-if="loading"）
+
+- **本质**：在 Composable（如 `useReaderData`）生命周期中，若数据到达后先执行 `onLoaded` 回调、之后才将 `loading.value` 置为 `false`，而视图层的真实画卷视口（`ReaderViewport`）受 `v-if="!loading"` 控制；导致 `onLoaded` 内部即使调用 `await nextTick()`，DOM 滚动容器（`scrollEl`）也尚未挂载，使得物理瞬时定位 `scrollToGroup(..., 'instant')` 静默失败并停留在第 1 页，随后滚动容器的默认 0 偏移量反向触发 `handleScroll` 冲刷覆写用户的 `lastRead` 阅读历史。
+- **复现场景**：读者从漫画详情页「页面索引」或「继续阅读」点击跳转至 `/comic/:source/:id/read/:page` 时，无论点击第几页，阅读器均被重置到第 1 页且历史记录被冲刷为 1。
+- **红线与防误伤**：**不要**在数据加载 Composable 中将 `loading = false` 延迟到依赖 DOM 的 `onLoaded` 之后；**放行/改用**遵循「数据就绪 → 先解除 `loading = false` → 触发 `onLoaded` / `await nextTick()` 物理瞬时定位」的单向流水线原则；并在路由未携带 `:page` 时优先回落至本地持久化 `lastRead.value`，纵向连续模式下由 `recalibrateTargetOffset` 在图片异步加载时微调位移（确保 0 丢帧与 100% 精确进场定位）。
+
 ---
 
 ## 🚦 交付门禁（三步必跑）

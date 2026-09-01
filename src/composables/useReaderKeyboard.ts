@@ -40,6 +40,8 @@ export interface UseReaderKeyboardOptions {
   goPrevChapter: () => void
   /** 返回详情页回调 */
   backToDetail: () => void
+  /** 用户主动键盘翻阅交互通知 */
+  onUserInteract?: () => void
 }
 
 /**
@@ -57,6 +59,7 @@ export function useReaderKeyboard(options: UseReaderKeyboardOptions) {
     goNextChapter,
     goPrevChapter,
     backToDetail,
+    onUserInteract,
   } = options
 
   /** 通过 VueUse useFullscreen 控制 root HTML 元素全屏 */
@@ -87,11 +90,13 @@ export function useReaderKeyboard(options: UseReaderKeyboardOptions) {
     switch (event.key) {
       case 'ArrowRight':
         event.preventDefault()
+        onUserInteract?.()
         if (nextLeft) prevGroup()
         else nextGroup()
         break
       case 'ArrowLeft':
         event.preventDefault()
+        onUserInteract?.()
         if (nextLeft) nextGroup()
         else prevGroup()
         break
@@ -99,27 +104,33 @@ export function useReaderKeyboard(options: UseReaderKeyboardOptions) {
       case 'PageDown':
       case ' ':
         event.preventDefault()
+        onUserInteract?.()
         nextGroup()
         break
       case 'ArrowUp':
       case 'PageUp':
         event.preventDefault()
+        onUserInteract?.()
         prevGroup()
         break
       case 'Home':
         event.preventDefault()
+        onUserInteract?.()
         goToPage(1)
         break
       case 'End':
         event.preventDefault()
+        onUserInteract?.()
         goToPage(total.value)
         break
       case 'n':
       case 'N':
+        onUserInteract?.()
         goNextChapter()
         break
       case 'p':
       case 'P':
+        onUserInteract?.()
         goPrevChapter()
         break
       case 'f':
