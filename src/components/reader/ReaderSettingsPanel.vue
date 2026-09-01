@@ -1,11 +1,11 @@
 <script setup lang="ts">
 /**
  * 阅读器设置面板 —— 模式 / 每屏页数 / 自动切换 / 方向 / 图片适配。
- * 状态直接来自全局 `useReaderSettings`；
- * 关闭按钮复用 ReaderButton（票据 05：与顶栏共用一套控件样式）（createGlobalState 单例），
- * 所以面板与 ReaderView 天然共享同一份设置，无需 props 层层传递。
+ * 基于公共 Modal.vue（variant="reader" + size="lg"）构建；
+ * 状态直接来自全局 `useReaderSettings`（createGlobalState 单例），
+ * 面板与 ReaderView 天然共享同一份设置，修改即时响应式生效。
  */
-import { computed, nextTick, ref } from 'vue'
+import { computed, nextTick, ref, watch } from 'vue'
 import {
   AUTO_TURN_INTERVALS,
   AUTO_TURN_OPTIONS,
@@ -13,8 +13,17 @@ import {
   MODE_OPTIONS,
   useReaderSettings,
 } from '@/composables/useReaderSettings'
-import ReaderButton from '@/components/reader/ReaderButton.vue'
-import AppIcon from '@/components/AppIcon.vue'
+import Modal from '@/components/Modal.vue'
+import AppButton from '@/components/AppButton.vue'
+
+const props = withDefaults(
+  defineProps<{
+    open?: boolean
+  }>(),
+  {
+    open: true,
+  },
+)
 
 const emit = defineEmits<{ close: [] }>()
 
@@ -27,6 +36,13 @@ const isCustomInterval = computed(
 const customInputRef = ref<HTMLInputElement | null>(null)
 const customValue = ref(settings.autoTurnInterval)
 
+watch(
+  () => settings.autoTurnInterval,
+  (val) => {
+    customValue.value = val
+  },
+)
+
 function selectPreset(val: number) {
   settings.autoTurnInterval = val
   customValue.value = val
@@ -34,12 +50,7 @@ function selectPreset(val: number) {
 
 function enableCustom() {
   if (!isCustomInterval.value) {
-    if (
-      customValue.value === 5 ||
-      customValue.value === 10 ||
-      customValue.value === 15 ||
-      customValue.value === 30
-    ) {
+    if ((AUTO_TURN_INTERVALS as readonly number[]).includes(customValue.value)) {
       customValue.value = 20
     }
     settings.autoTurnInterval = customValue.value
@@ -70,20 +81,9 @@ function onCustomBlur() {
 </script>
 
 <template>
-  <div class="settings-backdrop" @click.self="emit('close')">
-    <section class="settings-panel" role="dialog" aria-modal="true" aria-label="阅读设置">
-      <header class="settings-head">
-        <div>
-          <p class="eyebrow">Reader settings</p>
-          <h2>阅读设置</h2>
-        </div>
-        <ReaderButton @click="emit('close')">
-          <span>关闭</span>
-          <AppIcon name="close" size="xs" />
-        </ReaderButton>
-      </header>
-
-      <div class="setting-group">
+  <Modal :open="props.open" title="阅读设置" variant="reader" size="lg" @cancel="emit('close')">
+    <div class="settings-content">
+      <div class="setting-group setting-group--first">
         <h3>阅读模式</h3>
         <div class="mode-cards">
           <button
@@ -209,56 +209,36 @@ function onCustomBlur() {
           </button>
         </div>
       </div>
+    </div>
 
-      <footer class="settings-foot">
+    <template #footer>
+      <div class="settings-foot-inner">
         <p class="settings-save-note">设置会自动保存到本机</p>
         <div class="settings-actions">
-          <button class="btn btn-ghost" type="button" @click="reset">恢复默认</button>
-          <button class="btn btn-primary" type="button" @click="emit('close')">完成</button>
+          <AppButton variant="ghost" size="sm" type="button" @click="reset">恢复默认</AppButton>
+          <AppButton variant="primary" size="sm" type="button" @click="emit('close')"
+            >完成</AppButton
+          >
         </div>
-      </footer>
-    </section>
-  </div>
+      </div>
+    </template>
+  </Modal>
 </template>
 
 <style scoped>
-.settings-backdrop {
-  position: absolute;
-  inset: 0;
-  z-index: 20;
-  display: grid;
-  place-items: center;
-  padding: var(--space-4);
-  background: var(--reader-backdrop);
-}
-
-.settings-panel {
-  width: min(42rem, 100%);
-  max-height: calc(100dvh - 2 * var(--space-4));
-  overflow: auto;
-  padding: var(--space-5);
-  border: 1px solid var(--reader-line);
-  border-radius: var(--radius-3);
-  background: var(--reader-bg);
-  color: var(--reader-ink);
-  box-shadow: var(--shadow-3);
-}
-
-.settings-head {
+.settings-content {
   display: flex;
-  justify-content: space-between;
-  align-items: start;
-  gap: var(--space-4);
-  margin-bottom: var(--space-5);
-}
-
-.settings-head h2 {
-  font-size: var(--text-xl);
+  flex-direction: column;
 }
 
 .setting-group {
   padding: var(--space-4) 0;
   border-top: 1px solid var(--reader-line-soft);
+}
+
+.setting-group.setting-group--first {
+  padding-top: 0;
+  border-top: none;
 }
 
 .setting-group h3 {
@@ -295,6 +275,7 @@ function onCustomBlur() {
   border: 0;
   border-radius: 999px;
   background: transparent;
+  cursor: pointer;
 }
 
 .switch::before {
@@ -362,9 +343,15 @@ function onCustomBlur() {
   background: var(--reader-surface);
   color: var(--reader-ink);
   text-align: left;
+  cursor: pointer;
   transition:
     border-color var(--duration-1) var(--ease-out),
     background-color var(--duration-1) var(--ease-out);
+}
+
+.mode-card:hover {
+  border-color: var(--reader-line-strong);
+  background: var(--reader-surface-hover);
 }
 
 .mode-card[aria-pressed='true'] {
@@ -395,6 +382,15 @@ function onCustomBlur() {
   background: var(--reader-surface-strong);
   color: var(--reader-ink);
   font-size: var(--text-sm);
+  cursor: pointer;
+  transition:
+    border-color var(--duration-1) var(--ease-out),
+    background-color var(--duration-1) var(--ease-out);
+}
+
+.segmented button:hover {
+  border-color: var(--reader-line-strong);
+  background: var(--reader-surface-hover);
 }
 
 .segmented button[aria-pressed='true'] {
@@ -460,17 +456,16 @@ function onCustomBlur() {
   color: var(--reader-ink);
 }
 
-.settings-foot {
+.settings-foot-inner {
   display: flex;
+  width: 100%;
   flex-wrap: wrap;
   justify-content: space-between;
+  align-items: center;
   gap: var(--space-3);
-  padding-top: var(--space-5);
-  border-top: 1px solid var(--reader-line-soft);
 }
 
 .settings-save-note {
-  align-self: center;
   color: var(--reader-muted);
   font-family: var(--font-mono);
   font-size: var(--text-xs);
@@ -479,21 +474,13 @@ function onCustomBlur() {
 
 .settings-actions {
   display: flex;
+  align-items: center;
   gap: var(--space-3);
-}
-
-.settings-foot .btn-ghost {
-  border-color: var(--reader-line-strong);
-  color: var(--reader-ink);
 }
 
 @media (max-width: 680px) {
   .mode-cards {
     grid-template-columns: 1fr;
-  }
-
-  .settings-panel {
-    padding: var(--space-4);
   }
 
   .setting-row {

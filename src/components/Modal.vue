@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { nextTick, ref, useId, watch, onUnmounted } from 'vue'
+import { computed, nextTick, ref, useId, watch, onUnmounted } from 'vue'
 import { useEventListener, useScrollLock } from '@vueuse/core'
 import AmbientWatermark from '@/components/AmbientWatermark.vue'
 import AppIcon from '@/components/AppIcon.vue'
@@ -11,15 +11,34 @@ import AppIcon from '@/components/AppIcon.vue'
  * - 标题栏与底部操作栏固定在顶部与底部，超长内容区独立平滑滚动；
  * - 全部颜色/间距/圆角走 token，无第三方 UI 库。
  */
-const props = defineProps<{
-  open: boolean
-  title: string
-}>()
+const props = withDefaults(
+  defineProps<{
+    open: boolean
+    title?: string
+    /** 主题变体：paper（默认纸间典藏） | reader（阅读器暗室） */
+    variant?: 'paper' | 'reader'
+    /** 尺寸规格：sm (26rem) | md (34rem, 默认) | lg (42rem) | xl (54rem) */
+    size?: 'sm' | 'md' | 'lg' | 'xl'
+    /** 是否渲染暗印水印（默认 paper 下为 true，reader 下为 false） */
+    watermark?: boolean
+  }>(),
+  {
+    title: '',
+    variant: 'paper',
+    size: 'md',
+    watermark: undefined,
+  },
+)
 
 const emit = defineEmits<{ cancel: [] }>()
 
 const titleId = `modal-title-${useId().replace(/[^a-zA-Z0-9_-]/g, '')}`
 const panel = ref<HTMLElement | null>(null)
+
+const showWatermark = computed(() => props.watermark ?? props.variant === 'paper')
+
+const FOCUSABLE_SELECTOR =
+  'button:not([disabled]):not([tabindex="-1"]), [href]:not([tabindex="-1"]), input:not([disabled]):not([tabindex="-1"]), select:not([disabled]):not([tabindex="-1"]), textarea:not([disabled]):not([tabindex="-1"]), [tabindex]:not([tabindex="-1"])'
 
 const isLocked = useScrollLock(typeof document !== 'undefined' ? document.body : null)
 
@@ -29,9 +48,7 @@ watch(
     isLocked.value = open
     if (open) {
       await nextTick()
-      const first = panel.value?.querySelector<HTMLElement>(
-        'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
-      )
+      const first = panel.value?.querySelector<HTMLElement>(FOCUSABLE_SELECTOR)
       first?.focus()
     }
   },
@@ -52,18 +69,23 @@ useEventListener(window, 'keydown', (event: KeyboardEvent) => {
   if (event.key !== 'Tab') return
   const el = panel.value
   if (!el) return
-  const focusables = Array.from(
-    el.querySelectorAll<HTMLElement>(
-      'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
-    ),
-  )
+  const focusables = Array.from(el.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR))
   if (focusables.length === 0) return
   const first = focusables[0]!
   const last = focusables[focusables.length - 1]!
-  if (event.shiftKey && document.activeElement === first) {
+  const active = document.activeElement as HTMLElement | null
+
+  if (!active || !el.contains(active)) {
+    event.preventDefault()
+    if (event.shiftKey) {
+      last.focus()
+    } else {
+      first.focus()
+    }
+  } else if (event.shiftKey && active === first) {
     event.preventDefault()
     last.focus()
-  } else if (!event.shiftKey && document.activeElement === last) {
+  } else if (!event.shiftKey && active === last) {
     event.preventDefault()
     first.focus()
   }
@@ -73,16 +95,17 @@ useEventListener(window, 'keydown', (event: KeyboardEvent) => {
 <template>
   <Teleport to="body">
     <Transition name="modal">
-      <div v-if="open" class="modal-root">
+      <div v-if="open" class="modal-root" :class="`is-${variant}`">
         <div class="modal-scrim" @click="emit('cancel')" />
         <div
           ref="panel"
           class="modal-panel surface"
+          :class="[`is-${variant}`, `size-${size}`]"
           role="dialog"
           aria-modal="true"
           :aria-labelledby="titleId"
         >
-          <AmbientWatermark variant="modal" />
+          <AmbientWatermark v-if="showWatermark" variant="modal" />
 
           <header class="modal-head">
             <h2 :id="titleId">
@@ -140,6 +163,73 @@ useEventListener(window, 'keydown', (event: KeyboardEvent) => {
   background: var(--paper-0);
 }
 
+/* 尺寸规格 */
+.modal-panel.size-sm {
+  width: min(100%, 26rem);
+}
+
+.modal-panel.size-md {
+  width: min(100%, 34rem);
+}
+
+.modal-panel.size-lg {
+  width: min(100%, 42rem);
+}
+
+.modal-panel.size-xl {
+  width: min(100%, 54rem);
+}
+
+/* 主题变体：reader 暗室体系 */
+.modal-panel.is-reader {
+  background: var(--reader-bg);
+  color: var(--reader-ink);
+  border: 1px solid var(--reader-line);
+}
+
+.modal-panel.is-reader .modal-head {
+  background: var(--reader-bg);
+  border-bottom: 1px solid var(--reader-line-soft);
+  color: var(--reader-ink);
+}
+
+.modal-panel.is-reader .modal-body {
+  color: var(--reader-ink);
+}
+
+.modal-panel.is-reader .modal-foot {
+  background: var(--reader-bg);
+  border-top: 1px solid var(--reader-line-soft);
+}
+
+.modal-panel.is-reader .modal-close {
+  background: var(--reader-surface-strong);
+  border: 1px solid var(--reader-line);
+  color: var(--reader-ink);
+  box-shadow: none;
+  backdrop-filter: none;
+}
+
+.modal-panel.is-reader .modal-close:hover {
+  background: var(--reader-surface-hover);
+  border-color: var(--reader-line-strong);
+  color: var(--reader-ink);
+}
+
+.modal-panel.is-reader :deep(.btn-ghost),
+.modal-panel.is-reader .btn-ghost {
+  background: transparent;
+  color: var(--reader-ink);
+  border: 1px solid var(--reader-line-strong);
+}
+
+.modal-panel.is-reader :deep(.btn-ghost:hover:not(:disabled)),
+.modal-panel.is-reader .btn-ghost:hover:not(:disabled) {
+  background: var(--reader-surface-hover);
+  border-color: var(--reader-line);
+  color: var(--reader-ink);
+}
+
 /* 进退场分层动效：遮罩淡入淡出，面板弹入微降 */
 .modal-enter-active {
   transition: opacity var(--duration-2) var(--ease-out);
@@ -193,6 +283,11 @@ useEventListener(window, 'keydown', (event: KeyboardEvent) => {
   flex: 0 0 auto;
 }
 
+.modal-close:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
 .modal-body {
   flex: 1 1 auto;
   overflow-y: auto;
@@ -242,6 +337,12 @@ useEventListener(window, 'keydown', (event: KeyboardEvent) => {
     width: 100%;
     max-height: 92dvh;
     border-radius: var(--radius-3) var(--radius-3) 0 0;
+  }
+
+  .modal-panel.is-reader {
+    border-bottom: none;
+    border-left: none;
+    border-right: none;
   }
 
   .modal-foot {

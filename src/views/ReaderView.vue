@@ -381,7 +381,7 @@ watch(
       @next="nextGroup"
     />
 
-    <ReaderSettingsPanel v-if="settingsOpen" @close="settingsOpen = false" />
+    <ReaderSettingsPanel :open="settingsOpen" @close="settingsOpen = false" />
   </div>
 </template>
 

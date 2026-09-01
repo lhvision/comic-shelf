@@ -15,7 +15,13 @@ describe('Reader AutoTurn Custom Seconds and Paused Icon', () => {
     settings.autoTurn = true
     settings.autoTurnInterval = 10
 
-    const wrapper = mount(ReaderSettingsPanel)
+    const wrapper = mount(ReaderSettingsPanel, {
+      global: {
+        stubs: {
+          Teleport: true,
+        },
+      },
+    })
 
     // Preset buttons and custom chip button
     const presetButtons = wrapper.findAll('.auto-turn-options button')

@@ -32,7 +32,7 @@ export const SETTINGS_KEY = 'comic-shelf:reader-settings:v1'
 export const AUTO_TURN_INTERVALS = [5, 10, 15, 30] as const
 export const DEFAULT_SETTINGS: Readonly<ReaderSettings> = {
   mode: 'vertical-continuous',
-  fit: 'width',
+  fit: 'height',
   pagesPerView: 1,
   direction: 'ltr',
   autoTurn: false,
@@ -82,12 +82,17 @@ function clampSettings(value: Partial<ReaderSettings>, wideViewport: boolean): R
 
   return {
     mode:
-      value.mode === 'vertical-paged' || value.mode === 'horizontal'
+      value.mode === 'vertical-continuous' ||
+      value.mode === 'vertical-paged' ||
+      value.mode === 'horizontal'
         ? value.mode
         : DEFAULT_SETTINGS.mode,
-    fit: value.fit === 'height' ? 'height' : DEFAULT_SETTINGS.fit,
+    fit: value.fit === 'width' || value.fit === 'height' ? value.fit : DEFAULT_SETTINGS.fit,
     pagesPerView: normalizedPages,
-    direction: value.direction === 'rtl' ? 'rtl' : DEFAULT_SETTINGS.direction,
+    direction:
+      value.direction === 'ltr' || value.direction === 'rtl'
+        ? value.direction
+        : DEFAULT_SETTINGS.direction,
     autoTurn: value.autoTurn === true,
     autoTurnInterval,
   }

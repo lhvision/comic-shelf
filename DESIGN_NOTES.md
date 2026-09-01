@@ -1012,3 +1012,29 @@
   - `pnpm detect:slop` 静态规则扫描 0 finding；
   - `vp test src/__tests__/ReaderLoadingState.spec.ts src/__tests__/ReaderAutoTurn.spec.ts src/__tests__/ReaderPassPopover.spec.ts src/__tests__/AppIcon.spec.ts` 17/17 单测全绿；
   - `vp check` 238 个文件 0 warning / 0 lint / 0 type error。
+
+## 50. 全站弹窗与阅读器设置体系收敛（Modal.vue 变体演进与暗室主题隔离）
+
+- **背景与痛点**：
+  1. `ReaderSettingsPanel.vue` 曾采用独立手写的绝对定位遮罩（`.settings-backdrop`），缺少全局公共组件标准的 Teleport、`<Transition>` 分层进退场动效与 Tab 焦点圈闭（Focus Trap）；
+  2. 公共 `Modal.vue` 原先硬编码为典藏纸张亮色主题（`--paper-0`），若直接生硬套用会导致阅读器在系统亮色模式下弹出刺眼的白底弹窗，破坏阅读器固定暗室（Dark Room）的视觉沉浸感。
+- **架构决策与设计落地（Impeccable 5 步 SOP）**：
+  1. **公共组件 `Modal.vue` 多主题变体与尺寸规格演进**：
+     - 新增 `variant: 'paper' | 'reader'`（默认 `paper` 纸间典藏模式，`reader` 阅读器暗室模式）；
+     - 新增 `size: 'sm' | 'md' | 'lg' | 'xl'`（默认 `md` 34rem，`lg` 42rem 完美适配宽版控制面板）；
+     - 新增 `watermark: boolean`（`paper` 默认显示暗印水印，`reader` 默认关闭水印以确保纯黑读图纯净度）；
+     - 补齐 `.modal-close:focus-visible` 专属高对比度聚焦环，并在 `<=`480px 移动端抽屉模式下针对暗室边框执行针对性贴边优化；
+  2. **`ReaderSettingsPanel.vue` 全面重构收敛**：
+     - 切换为底层消费 `<Modal variant="reader" size="lg" :open="open" @cancel="emit('close')">`；
+     - 彻底删除冗余手写的 `.settings-backdrop`、`.settings-panel` 与 `.settings-head` 样板代码；
+     - 删除初版违反 Anti-Slop 规则的冗余英文 eyebrow（`<p class="eyebrow">Reader settings</p>`），由主标题自然呈现视觉层级；
+     - 操作栏复用 `AppButton` 并通过 `:deep(.modal-panel.is-reader .btn-ghost)` 对齐暗室色板；
+  3. **全站弹窗分层与边界清晰化（Domain Modeling）**：
+     - **业务与功能弹窗**（`GuestModal`、`EditMetadataModal`、`AppendPagesModal`、`ReplacePagesModal`、`ReaderSettingsPanel` 及简单内联确认）：统一收敛至 `Modal.vue`；
+     - **系统安全门禁**（`AuthModal`）：维持单一职责的独立门禁（强制拦截、无关闭叉、全屏毛玻璃与专属品牌大徽章）；
+     - **轻量锚定浮层**（`StoragePopover`、`ReaderPassPopover`、`AppDropdown`）：维持基于 Popover API 的轻量气泡浮层。
+- **验证**：
+  - `pnpm critique write` 归档评审快照至 `.impeccable/critique/2026-09-01T14-12-40Z__reader-settings-modal.md`；
+  - `pnpm detect:slop` 静态规则扫描 0 finding；
+  - `vp test src/__tests__/ReaderAutoTurn.spec.ts src/__tests__/Modal.spec.ts src/__tests__/useReaderSettings.spec.ts` 12/12 单测全绿；
+  - `vp check` 187 个文件 0 warning / 0 lint / 0 type error。
