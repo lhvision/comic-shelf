@@ -134,7 +134,7 @@ JmImageTool.decode_and_save(num, source_image, save_path)
 
 | 文件                                | 职责                                                                                                   |
 | ----------------------------------- | ------------------------------------------------------------------------------------------------------ |
-| `backend/app/main.py`               | FastAPI 路由与安全中间件                                                                               |
+| `backend/app/main.py`               | FastAPI 路由与安全中间件、GZip 传输层压缩、SPA 静态文件回落挂载                                        |
 | `backend/app/auth.py`               | 鉴权校验、Cookie 会话管理、Sec-Fetch-Site 与 Referer 防盗链校验                                        |
 | `backend/app/gate.py`               | 运行时下载并发控制闸门（支持环境变量锁定与设置持久化）                                                 |
 | `backend/app/jobs.py`               | 后台异步缓存任务执行器与进度追踪                                                                       |

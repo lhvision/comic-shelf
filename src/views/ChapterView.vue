@@ -6,6 +6,7 @@ import { api } from '@/api/client'
 import { useAuth } from '@/composables/useAuth'
 import { useLastRead } from '@/composables/useLastRead'
 import { useChapterNavigation } from '@/composables/useChapterNavigation'
+import { useIdlePrefetch } from '@/composables/useIdlePrefetch'
 import { useToast } from '@/composables/useToast'
 import ChapterSwitcher from '@/components/detail/ChapterSwitcher.vue'
 import PageIndexGrid from '@/components/detail/PageIndexGrid.vue'
@@ -112,9 +113,11 @@ watch(
   { immediate: true },
 )
 
+// 在主线程与首屏关键资产加载空闲时后台预热阅读器视图组件，避免混入初始关键请求链
+useIdlePrefetch(() => import('@/views/ReaderView.vue'))
+
 onMounted(() => {
   void load()
-  void import('@/views/ReaderView.vue').catch(() => {})
 })
 
 onBeforeUnmount(() => {

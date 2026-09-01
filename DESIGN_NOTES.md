@@ -960,3 +960,26 @@
 - **验证**：
   - `vp check` 0 warning / 0 error；
   - `vp test` 4 个测试套件 29/29 单测全绿。
+
+## 48. Lighthouse 渲染阻塞（FCP/LCP）与关键请求链治理（GZip + 闲时意图预热 + 资产预算）
+
+- **背景与痛点**：
+  在 NAS 局域网真实部署环境下运行 Lighthouse 性能审计（`/comic/jm/616255`），发现三处核心性能与渲染路径问题：
+  1. **首屏渲染阻塞资源（Render-blocking Resources）**：`index.css`（78.65 KiB）以原始未压缩体积传输，耗时 170ms 阻塞 FCP/LCP；
+  2. **关键请求链混入预热 Chunk（Critical Request Chains Contamination）**：`ComicDetailView.vue` 与 `ChapterView.vue` 在 `onMounted` 钩子中同步执行 `import('@/views/ReaderView.vue')`，导致阅读器的 JS/CSS（`ReaderView.css` 23.4 KiB）混入详情页首屏加载瀑布流，被判定为链式阻塞；
+  3. **静态资产与封面物理尺寸超额**：`brand-icons` 采用 512×512 物理尺寸（~62 KiB）渲染在 36px 顶栏徽标上；详情页封面直接拉取 840px 宽画幅 JPEG。
+- **架构决策与设计落地**：
+  1. **FastAPI 服务端 GZip 动态压缩（GZipMiddleware）**：
+     - 在 `backend/app/main.py` 挂载 `GZipMiddleware(minimum_size=1000)`；
+     - 自动压缩静态文件（`index.css` 压缩至 **12.6 KiB，-84%**；`index.js` 压缩至 **80.38 KiB，-64.5%**）及 API JSON 数据；
+  2. **阅读器 Chunk 闲时预热与意图悬停解耦（Idle & Intent Prefetching）**：
+     - 移除视图 `onMounted` 中同步的 `import()`，改用 `requestIdleCallback`（降级 `setTimeout` 2s）在首屏关键绘制与网络空闲后再静默拉取；
+     - 保持「开始阅读」按钮与章节卡片在 `pointerenter` / `focusin` 时的意图即时预热，兼顾首屏轻量与秒开交互；
+  3. **品牌图标与封面渲染预算精简**：
+     - 静态 `public/brand-icons/` 全量重构为 144×144 规格（4× 视网膜密度），单图体积从 67 KiB 降至 6.5 KiB（-89.4%）；
+     - `COVER_WIDTH` 默认基线由 840px 收敛至 720px（`COVER_QUALITY = 80`），完美覆盖详情与书架卡片在 2x Retina 下的画质需求。
+- **验证**：
+  - `vp check` 233 个文件 0 warning / 0 error；
+  - `pnpm test:py` 后端全量测试 100% 通过；
+  - `vp test` 相关单测全绿；
+  - `vp build` 生产构建成功。

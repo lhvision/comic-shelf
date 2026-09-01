@@ -167,8 +167,8 @@ docker run -d \
 | `COMIC_SHELF_MAX_PREFETCH`             | `600`  | 单次点击“缓存全部”允许下载的单本最大页数上限，保护磁盘与网络。                                                                                                |
 | `COMIC_SHELF_PAGE_THUMB_WIDTH`         | `360`  | 详情页与子章节网格缩略图宽度（px）。                                                                                                                          |
 | `COMIC_SHELF_PAGE_THUMB_QUALITY`       | `78`   | 缩略图 JPEG 压缩质量（兼顾清晰度与微秒级传输）。                                                                                                              |
-| `COMIC_SHELF_COVER_WIDTH`              | `840`  | 书架与详情页大封面宽度（px）。                                                                                                                                |
-| `COMIC_SHELF_COVER_QUALITY`            | `82`   | 大封面 JPEG 质量。                                                                                                                                            |
+| `COMIC_SHELF_COVER_WIDTH`              | `720`  | 书架与详情页大封面宽度（px，默认 720 完美匹配 2x 视网膜高清度）。                                                                                             |
+| `COMIC_SHELF_COVER_QUALITY`            | `80`   | 大封面 JPEG 质量（默认 80 兼顾微秒级传输与典藏画质）。                                                                                                        |
 | `COMIC_SHELF_COVER_COUNT`              | `4`    | 每本漫画默认生成的封面预览张数。                                                                                                                              |
 | `COMIC_SHELF_WORKERS`                  | `1`    | Uvicorn 工作进程数。多核服务器可适当调大。                                                                                                                    |
 | `COMIC_SHELF_LOG_LEVEL`                | `info` | 后端运行日志级别（可选 `debug`, `info`, `warning`, `error`）。                                                                                                |

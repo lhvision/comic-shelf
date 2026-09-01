@@ -5,6 +5,7 @@ import { useIntervalFn } from '@vueuse/core'
 import { api, pageFileUrl } from '@/api/client'
 import { useLastRead } from '@/composables/useLastRead'
 import { useChapterNavigation } from '@/composables/useChapterNavigation'
+import { useIdlePrefetch } from '@/composables/useIdlePrefetch'
 import { useLibraryStore, createPlaceholderDetail } from '@/stores/library'
 import { useToast } from '@/composables/useToast'
 import { useCoverTransition } from '@/composables/useCoverTransition'
@@ -84,10 +85,11 @@ const chapterCache = computed(() => {
   return cache
 })
 
+// 在主线程与首屏关键资产加载空闲时后台预热阅读器视图组件，避免混入初始关键请求链
+useIdlePrefetch(() => import('@/views/ReaderView.vue'))
+
 onMounted(() => {
   void load()
-  // 后台预热阅读器视图组件，消除进入阅读器时的 chunk 延迟
-  void import('@/views/ReaderView.vue').catch(() => {})
 })
 
 // 同组件跨漫画跳转时重新以 SWR 占位并重新拉取详情

@@ -123,3 +123,6 @@
 - **单向系统事件流（Unified System Event Stream / SSE）**：基于 FastAPI 异步协程与 `asyncio.Queue` 驱动的零轮询长连接通道（`/api/events/stream`），承载新版本构建广播、后台书库变动与未来 AI 任务流式状态。在无事件时 0 CPU 挂起，断线自动重连，彻底消除前端 HTTP 定时轮询负载。
 - **纸印更新气泡与双重提醒（Prompted Update Toast & Dual Notice）**：PWA Service Worker 发现新静态资产构建就绪时激活的轻量交互机制。在屏幕边缘浮现极具纸间水墨质感的非侵入提示胶囊（支持「立即装订 (刷新)」与「稍后」），并在顶栏设备微件保留朱砂徽标，沉浸翻阅时自动避让。
 - **视口与唤醒回源校验（Visibility & Online Wakeup Sync）**：利用 VueUse `useDocumentVisibility` 与 `useNetwork` 在页面重获焦点或网络自愈时触发的轻量 Service Worker 脚本比对（`registration.update()`），以 0 业务接口开销确保长期待机设备自愈回源。
+- **闲时意图预热（Idle & Intent Prefetching）**：跨路由异步视图组件（如阅读器）的加载策略。首屏渲染期间通过 `requestIdleCallback` 在主线程空闲时静默预热，同时在交互按钮上绑定 `pointerenter`/`focusin`/`touchstart` 意图触发，杜绝预热流量混入初始关键请求链（Critical Request Chains）。
+- **静态资产传输压缩（Static Transfer Compression / GZip Middleware）**：单容器与 NAS 本地部署时后端全局挂载的动态压缩中间件（阈值 1000 字节）。将 CSS/JS/JSON 资源体积压缩 60~85%，消除未压缩静态文件对初始渲染的阻塞。
+- **封面渲染预算（Cover Dimension Budget / 720px）**：封面与缩略图的物理像素规格。默认采用 720px 宽度（JPEG/WebP 高画质），完美匹配 360~375px 卡片容器在 Retina 2x 屏幕下的物理细腻度，兼顾视觉质感与网络/解码开销。
