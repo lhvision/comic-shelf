@@ -124,8 +124,8 @@ defineExpose({
           v-model="newUsername"
           type="text"
           class="form-input"
-          placeholder="如：好友xx / 客厅 iPad"
-          maxlength="32"
+          placeholder="如：好友xx / 客厅 iPad (1~20字)"
+          maxlength="20"
           required
         />
         <p class="field-hint">

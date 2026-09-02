@@ -54,7 +54,7 @@ function handleBackToSecret() {
           v-model="inputNickname"
           type="text"
           class="gate-input"
-          placeholder="您的读者昵称 (留空保持原称呼)"
+          placeholder="您的读者昵称 (1~20字，留空保持原称呼)"
           maxlength="20"
           :disabled="submitting"
         />
@@ -141,6 +141,14 @@ function handleBackToSecret() {
   background: var(--paper-1);
   border-radius: var(--radius-1);
   border: 1px solid var(--line);
+  flex-shrink: 0;
+}
+
+.claim-meta {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .claim-meta strong {

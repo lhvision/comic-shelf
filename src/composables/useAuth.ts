@@ -21,6 +21,32 @@ const requiresClaim = ref(false)
 const requiresPin = ref(false)
 const pendingToken = ref('')
 
+const PENDING_TOKEN_SESSION_KEY = 'comic-shelf:pending-token'
+
+export function getSessionPendingToken(): string {
+  try {
+    return typeof window !== 'undefined'
+      ? window.sessionStorage.getItem(PENDING_TOKEN_SESSION_KEY) || ''
+      : ''
+  } catch {
+    return ''
+  }
+}
+
+export function setSessionPendingToken(token: string): void {
+  try {
+    if (typeof window !== 'undefined') {
+      if (token) {
+        window.sessionStorage.setItem(PENDING_TOKEN_SESSION_KEY, token)
+      } else {
+        window.sessionStorage.removeItem(PENDING_TOKEN_SESSION_KEY)
+      }
+    }
+  } catch {
+    // Ignore storage quota or security errors
+  }
+}
+
 const canWrite = computed(
   () => !authRequired.value || (authenticated.value && role.value === 'admin'),
 )
@@ -43,7 +69,26 @@ onUnauthorized(async () => {
         requiresClaim.value = false
         requiresPin.value = false
         pendingToken.value = ''
+        setSessionPendingToken('')
         notifyAuthSuccess()
+        return
+      } else if (res.requires_pin) {
+        pendingToken.value = stored
+        setSessionPendingToken(stored)
+        requiresPin.value = true
+        requiresClaim.value = false
+        username.value = res.username || ''
+        authenticated.value = false
+        role.value = 'unauthorized'
+        return
+      } else if (res.requires_claim) {
+        pendingToken.value = stored
+        setSessionPendingToken(stored)
+        requiresClaim.value = true
+        requiresPin.value = false
+        username.value = res.username || ''
+        authenticated.value = false
+        role.value = 'unauthorized'
         return
       }
     } catch {
@@ -92,11 +137,13 @@ export function useAuth() {
             notifyAuthSuccess()
           } else if (res.requires_claim) {
             pendingToken.value = urlToken
+            setSessionPendingToken(urlToken)
             requiresClaim.value = true
             requiresPin.value = false
             username.value = res.username || ''
           } else if (res.requires_pin) {
             pendingToken.value = urlToken
+            setSessionPendingToken(urlToken)
             requiresPin.value = true
             requiresClaim.value = false
             username.value = res.username || ''
@@ -108,6 +155,7 @@ export function useAuth() {
           window.history.replaceState({}, '', cleanUrl.pathname + cleanUrl.search + cleanUrl.hash)
           if (res.ok) return true
         } catch (err: unknown) {
+          setSessionPendingToken('')
           const msg =
             err instanceof Error ? err.message : '该直达通行证已失效或过期，请向馆长申请新凭证'
           toast(msg, 'error')
@@ -129,14 +177,17 @@ export function useAuth() {
               requiresClaim.value = false
               requiresPin.value = false
               pendingToken.value = ''
+              setSessionPendingToken('')
               notifyAuthSuccess()
               return true
             } else if (res.requires_claim) {
               pendingToken.value = stored
+              setSessionPendingToken(stored)
               requiresClaim.value = true
               requiresPin.value = false
             } else if (res.requires_pin) {
               pendingToken.value = stored
+              setSessionPendingToken(stored)
               requiresPin.value = true
               requiresClaim.value = false
             }
@@ -156,6 +207,41 @@ export function useAuth() {
               username.value = ''
               userId.value = ''
             }
+          }
+        }
+
+        // Check if there is an in-flight pending pass token in sessionStorage (survives tab reload / mobile switch)
+        const sessionPending = getSessionPendingToken()
+        if (status.auth_required && !authenticated.value && sessionPending && !pendingToken.value) {
+          try {
+            const res = await api.login(sessionPending)
+            if (res.ok) {
+              setStoredToken(res.token)
+              authenticated.value = true
+              role.value = res.role || 'guest'
+              username.value = res.username || (res.role === 'admin' ? '馆长' : '访客')
+              userId.value = res.user_id || ''
+              requiresClaim.value = false
+              requiresPin.value = false
+              pendingToken.value = ''
+              setSessionPendingToken('')
+              notifyAuthSuccess()
+              return true
+            } else if (res.requires_claim) {
+              pendingToken.value = sessionPending
+              requiresClaim.value = true
+              requiresPin.value = false
+              username.value = res.username || ''
+            } else if (res.requires_pin) {
+              pendingToken.value = sessionPending
+              requiresPin.value = true
+              requiresClaim.value = false
+              username.value = res.username || ''
+            } else {
+              setSessionPendingToken('')
+            }
+          } catch {
+            setSessionPendingToken('')
           }
         }
       }
@@ -185,10 +271,12 @@ export function useAuth() {
         requiresClaim.value = false
         requiresPin.value = false
         pendingToken.value = ''
+        setSessionPendingToken('')
         notifyAuthSuccess()
         return true
       } else if (res.requires_claim) {
         pendingToken.value = secret.trim()
+        setSessionPendingToken(secret.trim())
         requiresClaim.value = true
         requiresPin.value = false
         username.value = res.username || ''
@@ -196,6 +284,7 @@ export function useAuth() {
         return false
       } else if (res.requires_pin) {
         pendingToken.value = secret.trim()
+        setSessionPendingToken(secret.trim())
         requiresPin.value = true
         requiresClaim.value = false
         username.value = res.username || ''
@@ -223,11 +312,14 @@ export function useAuth() {
     }
     submitting.value = true
     errorMessage.value = ''
+    const sanitizedUsername = customUsername
+      ? customUsername.replace(/[<>]/g, '').trim().slice(0, 20) || undefined
+      : undefined
     try {
       const res = await api.claimPass({
         token: tokenToClaim,
         pin: pin.trim(),
-        username: customUsername?.trim() || undefined,
+        username: sanitizedUsername,
       })
       if (res.ok) {
         setStoredToken(res.token)
@@ -238,6 +330,7 @@ export function useAuth() {
         requiresClaim.value = false
         requiresPin.value = false
         pendingToken.value = ''
+        setSessionPendingToken('')
         notifyAuthSuccess()
         toast('借阅通行证认领成功！欢迎入馆', 'success')
         return true
@@ -255,6 +348,7 @@ export function useAuth() {
     requiresClaim.value = false
     requiresPin.value = false
     pendingToken.value = ''
+    setSessionPendingToken('')
     errorMessage.value = ''
   }
 
@@ -263,6 +357,7 @@ export function useAuth() {
       await api.logout()
     } finally {
       setStoredToken('')
+      setSessionPendingToken('')
       authenticated.value = false
       role.value = 'unauthorized'
       username.value = ''

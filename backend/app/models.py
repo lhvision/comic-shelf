@@ -264,7 +264,7 @@ class AuthStatusResponse(BaseModel):
 class LoginRequest(BaseModel):
     secret: str
     pin: str | None = Field(default=None, max_length=10)
-    username: str | None = None
+    username: str | None = Field(default=None, max_length=20)
 
 
 class LoginResponse(BaseModel):
@@ -282,7 +282,7 @@ class LoginResponse(BaseModel):
 class ClaimGuestPassRequest(BaseModel):
     token: str
     pin: str = Field(min_length=4, max_length=6, pattern=r"^\d{4,6}$")
-    username: str | None = None
+    username: str | None = Field(default=None, max_length=20)
 
 
 class GuestDeviceItem(BaseModel):
@@ -320,15 +320,15 @@ class GuestPrivacySettings(BaseModel):
 
 
 class CreateGuestPassRequest(BaseModel):
-    username: str
+    username: str = Field(min_length=1, max_length=20)
     expires_days: int | None = Field(default=None, gt=0)
-    custom_token: str | None = None
+    custom_token: str | None = Field(default=None, min_length=4, max_length=64, pattern=r"^[A-Za-z0-9_\-]+$")
     pin: str | None = Field(default=None, pattern=r"^\d{4,6}$")
     max_devices: int = Field(default=2, ge=1, le=5)
 
 
 class UpdateGuestPassRequest(BaseModel):
-    username: str | None = None
+    username: str | None = Field(default=None, max_length=20)
     is_active: bool | None = None
     extend_days: int | None = Field(default=None, gt=0)
     reset_token: bool = False

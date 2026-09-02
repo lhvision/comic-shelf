@@ -380,12 +380,16 @@ function handleRemovePass() {
   display: flex;
   flex-direction: column;
   gap: 2px;
+  min-width: 0;
 }
 
 .pass-name {
   font-size: var(--text-body);
   font-weight: 700;
   color: var(--ink-0);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .pass-date {

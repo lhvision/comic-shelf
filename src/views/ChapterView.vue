@@ -169,8 +169,11 @@ async function load(silent = false) {
 }
 
 /* 缓存进度轮询：若后台在预缓存/全量缓存，就地更新当前章节每页 cached 状态 */
+let isPollingProgress = false
 const { pause: pauseProgressPolling, resume: resumeProgressPolling } = useIntervalFn(
   async () => {
+    if (isPollingProgress) return
+    isPollingProgress = true
     try {
       const progress = await api.cacheProgress(source.value, sourceId.value)
       if (detail.value) {
@@ -196,6 +199,8 @@ const { pause: pauseProgressPolling, resume: resumeProgressPolling } = useInterv
       }
     } catch {
       /* transient */
+    } finally {
+      isPollingProgress = false
     }
   },
   1000,

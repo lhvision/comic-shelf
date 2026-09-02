@@ -155,8 +155,11 @@ async function load(silent = false) {
 }
 
 /* 缓存进度轮询：缓存进行时就地更新每页 cached 标记，绝不触碰已有图片与网络连接 */
+let isPollingProgress = false
 const { pause: pauseProgressPolling, resume: resumeProgressPolling } = useIntervalFn(
   async () => {
+    if (isPollingProgress) return
+    isPollingProgress = true
     try {
       const progress = await api.cacheProgress(source.value, sourceId.value)
       if (detail.value) {
@@ -183,6 +186,8 @@ const { pause: pauseProgressPolling, resume: resumeProgressPolling } = useInterv
       }
     } catch {
       /* the long-running request owns the error path */
+    } finally {
+      isPollingProgress = false
     }
   },
   1000,

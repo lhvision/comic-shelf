@@ -87,7 +87,7 @@
    - 尺寸属性 `size="sm" | "md" | "lg" | "xl"`（适配简单确认至多字段大面板）；
    - 水印开关 `watermark: boolean`（纸间默认开启，暗室默认关闭）；
 2. **系统安全门禁（`GateView.vue` & `src/components/gate/`）**：
-   - 根级 Zero-DOM 物理隔离大门，挂载 `MutationObserver` 反 DevTools 篡改哨兵，三态表单（口令/首次认领设 PIN/已认领输 PIN）模块化收敛；
+   - 根级 Zero-DOM 物理隔离大门（未鉴权时应用骨架与阅读器物理 0 挂载），三态表单（口令/首次认领设 PIN/已认领输 PIN）模块化收敛；会话凭据 `sessionStorage` 暂存自愈，移动端切屏误刷 0 掉态；
 3. **轻量浮层与 Popover（`Popover.vue` / `Tooltip.vue`）**：
    - 基于 HTML Popover API + CSS Anchor Positioning（`anchor-name` / `position-anchor`）构建；
    - 具备 `@supports not (anchor-name: ...)` 绝对定位回退与 WCAG 1.4.13 悬停安全桥（Hover Bridge）保护。

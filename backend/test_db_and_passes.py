@@ -263,11 +263,19 @@ def test_db_and_passes_crud():
     p_after_relogin = db_mod.get_guest_pass_by_id(p_relogin["id"])
     assert p_after_relogin["device_count"] == 1, "Should not allocate extra device row on re-login"
 
-    # 20. Direct Pass Token Access Does Not Churn Devices or Trigger Cooling Lock
+    # 20. Direct Pass Token Access Without Device Session Is Blocked; Device Session Access Is Authorized
+    req_unauth_pass = MagicMock()
+    req_unauth_pass.state = type("State", (), {})()
+    req_unauth_pass.url.path = "/api/library"
+    req_unauth_pass.headers.get = lambda k, default="": f"Bearer {relogin_token}" if k.lower() == "authorization" else ""
+    req_unauth_pass.cookies.get = lambda k, default="": ""
+    req_unauth_pass.query_params.get = lambda k, default="": ""
+    assert get_user_context(req_unauth_pass)[2] == "unauthorized"
+
     req_direct = MagicMock()
     req_direct.state = type("State", (), {})()
     req_direct.url.path = "/api/library"
-    req_direct.headers.get = lambda k, default="": f"Bearer {relogin_token}" if k.lower() == "authorization" else ""
+    req_direct.headers.get = lambda k, default="": dev1_token if k.lower() == "x-device-token" else ""
     req_direct.cookies.get = lambda k, default="": ""
     req_direct.query_params.get = lambda k, default="": ""
     req_direct.client.host = "127.0.0.1"
@@ -348,6 +356,55 @@ def test_db_and_passes_crud():
     except HTTPException as exc:
         assert exc.status_code == 429
         assert "锁定" in exc.detail
+
+    # 25. Dual-Key Anti-DoS: Stranger IP (1.2.3.4) is locked, but Legitimate Owner IP (5.6.7.8) can still enter with correct PIN
+    req_owner_device = MagicMock()
+    req_owner_device.headers.get = lambda k, default="": "Mozilla/5.0 (iPhone) Owner" if k.lower() == "user-agent" else ""
+    req_owner_device.cookies.get = lambda k, default="": ""
+    req_owner_device.client.host = "5.6.7.8"
+    resp_owner_device = Response()
+
+    res_owner_brute = auth_login(LoginRequest(secret=p_brute["token"], pin="8888"), req_owner_device, resp_owner_device)
+    assert res_owner_brute.ok is True, "Legitimate owner on different IP must not be DoS locked by stranger"
+
+    # 26. IP-level Login Brute-Force Limiter: 10 wrong secrets from same IP trigger 429
+    req_bot = MagicMock()
+    req_bot.headers.get = lambda k, default="": ""
+    req_bot.cookies.get = lambda k, default="": ""
+    req_bot.client.host = "9.9.9.9"
+    resp_bot = Response()
+
+    for i in range(9):
+        try:
+            auth_login(LoginRequest(secret=f"bad-guess-{i}"), req_bot, resp_bot)
+        except HTTPException as exc:
+            assert exc.status_code == 401
+    try:
+        auth_login(LoginRequest(secret="bad-guess-10"), req_bot, resp_bot)
+        assert False, "10th bad login from same IP must trigger 429"
+    except HTTPException as exc:
+        assert exc.status_code == 429
+        assert "网络地址已临时锁定" in exc.detail
+
+    # 27. Username XSS, Control Characters & Formula Injection Sanitization
+    p_xss = db_mod.create_guest_pass(username="<script>alert(1)</script>Legit", max_devices=2)
+    assert "<" not in p_xss["username"]
+    assert ">" not in p_xss["username"]
+    assert p_xss["username"] == "scriptalert(1)/scrip"
+
+    p_claimed_xss = db_mod.claim_guest_pass(
+        p_xss["id"],
+        "2026",
+        username="=cmd|' /C calc'!A0<img src=x onerror=alert(1)>Alice\r\n\x00\x08",
+    )
+    assert "<" not in p_claimed_xss["username"]
+    assert ">" not in p_claimed_xss["username"]
+    assert "\r" not in p_claimed_xss["username"]
+    assert "\n" not in p_claimed_xss["username"]
+    assert "\x00" not in p_claimed_xss["username"]
+    assert not p_claimed_xss["username"].startswith("=")
+    assert len(p_claimed_xss["username"]) <= 20
+    db_mod.delete_guest_pass(p_xss["id"])
 
     db_mod.delete_guest_pass(race_pid)
     db_mod.delete_guest_pass(p_relogin["id"])

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import logging
+import re
 import secrets
 import sqlite3
 import threading
@@ -12,6 +13,7 @@ from typing import Any, Iterator
 
 from .abuse import (
     clear_cooling_lock,
+    clear_pin_failures,
     clear_rate_limit,
     is_eviction_cooling_locked,
     is_pass_rate_limited,
@@ -50,16 +52,50 @@ def get_db() -> Iterator[sqlite3.Connection]:
 
 def hash_pin(pin: str, salt: str = "") -> tuple[str, str]:
     if not salt:
-        salt = secrets.token_hex(8)
-    h = hashlib.sha256(f"{salt}:{pin.strip()}".encode("utf-8")).hexdigest()
+        salt = secrets.token_hex(16)
+    h = hashlib.pbkdf2_hmac("sha256", pin.strip().encode("utf-8"), salt.encode("utf-8"), 100_000).hex()
     return h, salt
 
 
 def verify_pin(pin: str, pin_hash: str, salt: str) -> bool:
     if not pin_hash or not salt or not pin:
         return False
-    h, _ = hash_pin(pin.strip(), salt)
-    return secrets.compare_digest(h, pin_hash)
+    # Standard PBKDF2 verification (100,000 rounds)
+    h_pbkdf2, _ = hash_pin(pin.strip(), salt)
+    if secrets.compare_digest(h_pbkdf2, pin_hash):
+        return True
+    # Legacy single-round SHA-256 fallback for migration compatibility
+    h_legacy = hashlib.sha256(f"{salt}:{pin.strip()}".encode("utf-8")).hexdigest()
+    return secrets.compare_digest(h_legacy, pin_hash)
+
+
+_INVISIBLE_OR_OVERRIDE_CHARS = frozenset(
+    "\u200B\u200C\u200D\uFEFF\u202A\u202B\u202C\u202D\u202E\u2066\u2067\u2068\u2069\u00A0"
+)
+
+
+def sanitize_username(name: str, max_length: int = 20) -> str:
+    """Sanitizes visitor username against XSS tags, control characters, and formula injection:
+    - Strips leading/trailing whitespace and normalizes consecutive spaces
+    - Removes ASCII control characters (0x00-0x1F, 0x7F) and zero-width/bidi overrides
+    - Strips HTML-sensitive brackets (<, >)
+    - Strips spreadsheet formula trigger characters (=, +, -, @) if at the beginning
+    - Truncates to max_length
+    """
+    if not name:
+        return ""
+    # Remove control characters, zero-width characters, and bidirectional override characters
+    cleaned = "".join(
+        ch for ch in name
+        if ord(ch) >= 32 and ord(ch) != 127 and ch not in _INVISIBLE_OR_OVERRIDE_CHARS
+    )
+    # Normalize multiple whitespace into a single space
+    cleaned = re.sub(r"\s+", " ", cleaned).strip()
+    # Strip HTML brackets to prevent raw tag storage
+    cleaned = cleaned.replace("<", "").replace(">", "")
+    # Strip leading formula characters to prevent CSV injection
+    cleaned = cleaned.lstrip("=+-@\t\r\n")
+    return cleaned[:max_length].strip()
 
 
 def init_db(db_path: Path | None = None) -> None:
@@ -223,9 +259,9 @@ def create_guest_pass(
     max_devices: int = 2,
     pin: str | None = None,
 ) -> dict[str, Any]:
-    username = username.strip()
+    username = sanitize_username(username)
     if not username:
-        raise ValueError("访客名称不能为空")
+        raise ValueError("访客名称不能为空或包含非法字符")
     token = custom_token.strip() if custom_token and custom_token.strip() else secrets.token_hex(16)
     now = int(time.time())
     if expires_at is None and expires_days is not None:
@@ -277,18 +313,24 @@ def claim_guest_pass(
 
     h, salt = hash_pin(pin_str)
     now = int(time.time())
-    new_username = username.strip() if username and username.strip() else pass_item["username"]
+    if username and username.strip():
+        sanitized = sanitize_username(username)
+        new_username = sanitized or pass_item["username"]
+    else:
+        new_username = pass_item["username"]
 
     with get_db() as conn:
-        conn.execute(
+        cur = conn.execute(
             """
             UPDATE guest_passes
             SET pin_hash = ?, pin_salt = ?, username = ?, updated_at = ?
-            WHERE id = ?
+            WHERE id = ? AND (pin_hash = '' OR pin_hash IS NULL)
             """,
             (h, salt, new_username, now, pass_id),
         )
         conn.commit()
+        if cur.rowcount == 0:
+            raise ValueError("该通行证已被认领，请直接输入 PIN 码登入")
 
     return get_guest_pass_by_id(pass_id)  # type: ignore[return-value]
 
@@ -357,7 +399,12 @@ def update_guest_pass(
         return None
 
     now = int(time.time())
-    new_username = username.strip() if username is not None else existing["username"]
+    new_username = existing["username"]
+    if username is not None:
+        cleaned = sanitize_username(username)
+        if not cleaned:
+            raise ValueError("访客名称不能为空或包含非法字符")
+        new_username = cleaned
     new_is_active = int(is_active) if is_active is not None else (1 if existing["is_active"] else 0)
     new_token = secrets.token_hex(16) if reset_token else existing["token"]
     new_max_devices = max(1, min(5, max_devices)) if max_devices is not None else existing["max_devices"]
@@ -399,6 +446,7 @@ def update_guest_pass(
                 conn.execute("DELETE FROM guest_devices WHERE pass_id = ?", (pass_id,))
                 clear_cooling_lock(pass_id)
                 clear_rate_limit(pass_id)
+                clear_pin_failures(pass_id)
             elif max_devices is not None:
                 # If quota shrunk below current device count, evict oldest devices
                 dev_rows = conn.execute(
@@ -419,6 +467,7 @@ def update_guest_pass(
 def delete_guest_pass(pass_id: int) -> bool:
     clear_cooling_lock(pass_id)
     clear_rate_limit(pass_id)
+    clear_pin_failures(pass_id)
     with get_db() as conn:
         conn.execute("DELETE FROM guest_devices WHERE pass_id = ?", (pass_id,))
         conn.execute("DELETE FROM user_favorites WHERE user_id = ?", (f"guest:{pass_id}",))

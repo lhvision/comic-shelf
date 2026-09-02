@@ -50,7 +50,18 @@ from .db import (
     update_guest_pass,
     verify_guest_pass_pin,
 )
-from .abuse import clear_pin_failures, is_pin_locked, record_pin_failure_and_check_lock
+from .abuse import (
+    clear_cooling_lock,
+    clear_ip_login_failures,
+    clear_pin_failures,
+    clear_rate_limit,
+    is_eviction_cooling_locked,
+    is_ip_login_locked,
+    is_pass_rate_limited,
+    is_pin_locked,
+    record_ip_login_failure_and_check_lock,
+    record_pin_failure_and_check_lock,
+)
 from .jobs import get_job, list_running, start_job
 from .gate import _env_explicit, get_download_concurrency, set_download_concurrency
 from .imsearch import check_imsearch_status, search_imsearch
@@ -130,6 +141,15 @@ app.add_middleware(
 )
 
 
+PUBLIC_AUTH_PATHS = frozenset({
+    "/api/health",
+    "/api/auth/status",
+    "/api/auth/login",
+    "/api/auth/claim",
+    "/api/auth/logout",
+})
+
+
 @app.middleware("http")
 async def auth_and_security_middleware(request: Request, call_next):
     path = request.url.path
@@ -137,12 +157,11 @@ async def auth_and_security_middleware(request: Request, call_next):
     # Allow public endpoints and non-API static files
     if (
         not path.startswith("/api/")
-        or path.startswith("/api/auth/")
-        or path == "/api/health"
+        or path in PUBLIC_AUTH_PATHS
         or path.startswith("/api/events")
         or path.startswith("/docs")
         or path.startswith("/redoc")
-        or path.startswith("/openapi.json")
+        or path == "/openapi.json"
     ):
         return await call_next(request)
 
@@ -251,6 +270,7 @@ def auth_status(request: Request, response: Response) -> AuthStatusResponse:
     requires_claim = False
     requires_pin = False
     token = extract_token(request)
+    p_item = None
     if not authed and token:
         p_item = get_guest_pass_by_token(token)
         if p_item and p_item["is_active"] and not p_item["is_expired"]:
@@ -264,8 +284,8 @@ def auth_status(request: Request, response: Response) -> AuthStatusResponse:
         authenticated=authed,
         can_write=curator,
         role=role if authed else "unauthorized",
-        username=username if authed else "",
-        user_id=user_id if authed else "",
+        username=username if authed else (p_item["username"] if p_item and (requires_claim or requires_pin) else ""),
+        user_id=user_id if authed else (f"guest:{p_item['id']}" if p_item and (requires_claim or requires_pin) else ""),
         is_claimed=not requires_claim,
         requires_pin=requires_pin,
         requires_claim=requires_claim,
@@ -277,9 +297,14 @@ def auth_login(req: LoginRequest, request: Request, response: Response) -> Login
     if not is_auth_required():
         return LoginResponse(ok=True, token="", role="admin", username="馆长", user_id="curator")
 
+    ip = get_client_ip(request)
+    if is_ip_login_locked(ip):
+        raise HTTPException(status_code=429, detail="口令尝试过于频繁，该网络地址已临时锁定 5 分钟，请稍后再试")
+
     is_sec = is_request_secure(request)
     secret = req.secret.strip()
     if AUTH_SECRET and secrets.compare_digest(secret, AUTH_SECRET):
+        clear_ip_login_failures(ip)
         set_auth_cookie(response, AUTH_SECRET, secure=is_sec)
         clear_device_cookie(response)  # Clean up any lingering guest device session
         return LoginResponse(ok=True, token=AUTH_SECRET, role="admin", username="馆长", user_id="curator")
@@ -287,12 +312,13 @@ def auth_login(req: LoginRequest, request: Request, response: Response) -> Login
     pass_item = get_guest_pass_by_token(secret)
     if pass_item is not None:
         if not pass_item["is_active"]:
+            record_ip_login_failure_and_check_lock(ip)
             raise HTTPException(status_code=401, detail="该访客通行证已被停用")
         if pass_item["is_expired"]:
+            record_ip_login_failure_and_check_lock(ip)
             raise HTTPException(status_code=401, detail="通行证已过期，请联系馆长续期")
 
         ua = request.headers.get("user-agent", "")
-        ip = get_client_ip(request)
 
         # Case A: Unclaimed pass -> requires setting PIN
         if not pass_item["is_claimed"]:
@@ -319,6 +345,7 @@ def auth_login(req: LoginRequest, request: Request, response: Response) -> Login
                     raise HTTPException(status_code=429, detail=msg)
                 raise HTTPException(status_code=400, detail=msg)
 
+            clear_ip_login_failures(ip)
             set_auth_cookie(response, claimed["token"], secure=is_sec)
             set_device_cookie(response, dev["device_token"], secure=is_sec)
             return LoginResponse(
@@ -341,6 +368,7 @@ def auth_login(req: LoginRequest, request: Request, response: Response) -> Login
                 touch_device_active(dev["id"], ip)
 
         if dev is not None:
+            clear_ip_login_failures(ip)
             set_auth_cookie(response, pass_item["token"], secure=is_sec)
             set_device_cookie(response, dev["device_token"], secure=is_sec)
             return LoginResponse(
@@ -364,16 +392,18 @@ def auth_login(req: LoginRequest, request: Request, response: Response) -> Login
                 requires_pin=True,
             )
 
-        if is_pin_locked(pass_item["id"]):
-            raise HTTPException(status_code=429, detail="PIN 码连续输错次数过多，已临时锁定 5 分钟，请稍后再试")
+        locked, lock_reason = is_pin_locked(pass_item["id"], ip)
+        if locked:
+            raise HTTPException(status_code=429, detail=lock_reason)
 
         if not verify_guest_pass_pin(pass_item["id"], req.pin.strip()):
-            is_locked = record_pin_failure_and_check_lock(pass_item["id"])
-            if is_locked:
-                raise HTTPException(status_code=429, detail="PIN 码连续输错达到上限，已临时锁定 5 分钟")
+            is_now_locked, failure_reason = record_pin_failure_and_check_lock(pass_item["id"], ip)
+            if is_now_locked:
+                raise HTTPException(status_code=429, detail=failure_reason)
             raise HTTPException(status_code=401, detail="PIN 码错误，请重新输入")
 
-        clear_pin_failures(pass_item["id"])
+        clear_pin_failures(pass_item["id"], ip)
+        clear_ip_login_failures(ip)
 
         try:
             dev = register_guest_device(pass_item["id"], user_agent=ua, ip=ip)
@@ -395,6 +425,8 @@ def auth_login(req: LoginRequest, request: Request, response: Response) -> Login
             is_claimed=True,
         )
 
+    if record_ip_login_failure_and_check_lock(ip):
+        raise HTTPException(status_code=429, detail="口令尝试过于频繁，该网络地址已临时锁定 5 分钟，请稍后再试")
     raise HTTPException(status_code=401, detail="通行口令错误，请重试")
 
 

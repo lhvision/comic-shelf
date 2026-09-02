@@ -2,6 +2,8 @@ import argparse
 import logging
 import os
 
+from pathlib import Path
+
 import uvicorn
 
 
@@ -45,11 +47,19 @@ if __name__ == "__main__":
             handlers_access = log_config["handlers"]["access"]
             handlers_access["filters"] = handlers_access.get("filters", []) + ["quiet_probe"]
 
+    app_dir = Path(__file__).resolve().parent / "app"
+    reload_dirs = [str(app_dir)] if args.reload else None
+    reload_includes = ["*.py"] if args.reload else None
+    reload_excludes = ["*.db*", "*.sqlite*", "*data/*", "*__pycache__*", "*.log*"] if args.reload else None
+
     uvicorn.run(
         "app.main:app",
         host=args.host,
         port=args.port,
         reload=args.reload,
+        reload_dirs=reload_dirs,
+        reload_includes=reload_includes,
+        reload_excludes=reload_excludes,
         workers=args.workers if not args.reload else None,
         timeout_keep_alive=30,
         backlog=2048,

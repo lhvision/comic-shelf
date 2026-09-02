@@ -119,10 +119,17 @@ export const useLibraryStore = defineStore('library', () => {
     void load()
   })
 
+  let isRefreshingLiveCache = false
+  let refreshAbortController: AbortController | null = null
+
   async function refreshLiveCache() {
+    if (isRefreshingLiveCache) return
+    isRefreshingLiveCache = true
+    refreshAbortController = new AbortController()
+    const signal = refreshAbortController.signal
     const previousKeys = new Set(Object.keys(liveCache.value))
     try {
-      const jobs = await api.cacheJobs()
+      const jobs = await api.cacheJobs({ signal })
       const running = jobs.filter((job) => job.running)
       const next: Record<string, LiveCacheState> = {}
       await Promise.all(
@@ -130,7 +137,7 @@ export const useLibraryStore = defineStore('library', () => {
           const key = liveCacheKey(job.source, job.source_id)
           const prev = liveCache.value[key]
           try {
-            const progress = await api.cacheProgress(job.source, job.source_id)
+            const progress = await api.cacheProgress(job.source, job.source_id, { signal })
             const cached = Math.max(progress.cached, prev?.cached ?? 0)
             next[key] = { running: true, cached, total: progress.total }
           } catch {
@@ -162,6 +169,9 @@ export const useLibraryStore = defineStore('library', () => {
     } catch {
       /* transient; keep whatever we had and pause polling to avoid hammering failing backend/WAF */
       poll.pause()
+    } finally {
+      isRefreshingLiveCache = false
+      refreshAbortController = null
     }
   }
 
@@ -186,6 +196,7 @@ export const useLibraryStore = defineStore('library', () => {
 
   tryOnScopeDispose(() => {
     if (importMessageTimer) clearTimeout(importMessageTimer)
+    stopPolling()
   })
 
   const poll = useIntervalFn(refreshLiveCache, 2000, { immediate: false })
@@ -197,6 +208,10 @@ export const useLibraryStore = defineStore('library', () => {
 
   function stopPolling() {
     poll.pause()
+    if (refreshAbortController) {
+      refreshAbortController.abort()
+      refreshAbortController = null
+    }
   }
 
   function markCaching(source: string, sourceId: string) {

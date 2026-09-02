@@ -113,7 +113,9 @@ def get_user_context(request: Request) -> tuple[str, str, str]:
             request.state.user_context = ctx
             return ctx
 
-    # 3. Pass token check (e.g. ?token=... or initial access)
+    # 3. Pass token check
+    # Under ADR 0008, all guest access to protected endpoints MUST be authenticated via an active
+    # device session (device_token). A bare pass token cannot grant 'guest' role without PIN verification.
     if token:
         pass_item = get_guest_pass_by_token(token)
         if pass_item is not None:
@@ -121,38 +123,10 @@ def get_user_context(request: Request) -> tuple[str, str, str]:
                 ctx = ("anonymous", "已停用", "unauthorized")
             elif pass_item["is_expired"]:
                 ctx = ("anonymous", "已过期", "expired")
+            elif pass_item.get("is_claimed") or pass_item.get("pin_hash"):
+                ctx = ("anonymous", "需要 PIN 码验证", "unauthorized")
             else:
-                devices = pass_item.get("devices") or []
-                ua = request.headers.get("user-agent", "")
-                ip = get_client_ip(request)
-                matching_dev = next((d for d in devices if d.get("user_agent") == ua), None)
-
-                # Only register a new device row if:
-                # (1) It is an onboarding / status request (/api/auth/status) AND no matching device exists,
-                # or (2) the pass has 0 registered devices.
-                # For arbitrary read requests (e.g. /api/library or static images), do NOT churn devices!
-                path = getattr(request, "url", None) and request.url.path or ""
-                should_register = (not devices) or (path == "/api/auth/status" and matching_dev is None)
-
-                if matching_dev is not None:
-                    ctx = (f"guest:{pass_item['id']}", pass_item["username"], "guest")
-                    request.state.device_id = matching_dev["id"]
-                    request.state.new_device_token = matching_dev["device_token"]
-                    now = int(time.time())
-                    if (now - int(matching_dev.get("last_active_at", 0) or 0) > 60) or (ip and matching_dev.get("last_ip") != ip):
-                        touch_device_active(matching_dev["id"], ip)
-                elif should_register:
-                    try:
-                        dev = register_guest_device(pass_item["id"], user_agent=ua, ip=ip)
-                        ctx = (f"guest:{pass_item['id']}", pass_item["username"], "guest")
-                        request.state.device_id = dev["id"]
-                        request.state.new_device_token = dev["device_token"]
-                    except ValueError as exc:
-                        ctx = ("anonymous", str(exc), "unauthorized")
-                else:
-                    ctx = (f"guest:{pass_item['id']}", pass_item["username"], "guest")
-                    if devices:
-                        request.state.device_id = devices[0]["id"]
+                ctx = ("anonymous", "待认领通行证", "unauthorized")
             request.state.user_context = ctx
             return ctx
 

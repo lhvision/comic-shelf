@@ -184,6 +184,22 @@
 - **复现场景**：后台预缓存任务完成时，书架卡片进度条从 100% 突然跳回 4%，几百毫秒后等 `loadItems()` 返回才再次跳回 100%；或详情页初次进入时章节缓存数瞬间归 0。
 - **红线与防误伤**：**不要**在后台任务从运行列表消失时立即释放前端实时缓存状态；**放行/改用**必须先异步执行 `await loadItems(true)` 同步最新快照再原子化解封 `liveCache`，在轮询闭环中引入 `Math.max(cached, prevMax)` 高水位单调递增防护，并在 SWR 占位初始化时预填对应长度的占位页（彻底杜绝进度骤降跳变与闪烁）。
 
+### 31. Uvicorn StatReload 全仓扫描假死与轮询无锁导致浏览器 Socket 连接池耗尽（Uvicorn StatReload Scan Deadlock & Browser 6-Socket Starvation）
+
+- **本质**：
+  1. 后端 Uvicorn 未安装 `watchfiles` 时降级为低效的 `StatReload`，未配置 `reload_dirs` 时默认扫描全仓（含 30,000+ 文件的 `node_modules/` 与海量图片的 `backend/data/`），CPU 占用飙满且在 SQLite 写入 `comic_shelf.db` 时频繁引发误重启，造成“后端不热更新或假死”；
+  2. 前端 `useIntervalFn` 异步轮询缺失并发互斥锁（`isPolling`），在服务重启或网络延迟时定时器无脑发射新请求，快速超出 HTTP/1.1 浏览器单域名 6 个并发 TCP Socket 上限，导致连接池被彻底打满，后续全站接口（如 `/api/library`、`/api/auth/status`）全被 Chrome 强行挂起在 `(待处理)` 状态；
+  3. 前端 `fetch` 缺少默认超时保护，挂起的连接永久占死浏览器连接槽位。
+- **复现场景**：启动开发环境后修改 Python 代码服务无反应或频繁假死；网络面板中 `jobs` 接口每隔 2 秒发起一次且全部处于 `(待处理)` 状态，累积十余个后连正常页面 `library` 接口也变成 `(待处理)` 无法加载。
+- **红线与防误伤**：
+  - **不要**让 Uvicorn 在未安装 `watchfiles` 的情况下裸跑全仓 `StatReload`，**不要**在 `reload` 中监听 `data/` 和 `node_modules/`；
+  - **不要**在前端异步轮询定时器（`useIntervalFn`）中直接裸调 `await api.xxx()` 而不设 `isPolling` 防并发重入锁；
+  - **不要**使用无超时的原生 `fetch` 处理关键 API；
+  - **放行/改用**：
+    1. 虚拟环境强制安装 `watchfiles>=1.0.0`，Uvicorn 显式指定 `reload_dirs=[backend/app]` 并严格配置 `reload_excludes`；
+    2. 所有轮询方法（书架 `refreshLiveCache`、详情/章节 `cacheProgress`）必须挂载 `isPolling` 并发锁，未决时丢弃新 tick，并绑定 `AbortController`；
+    3. 全局 API 请求统一封装 15s 超时控制器（`combineSignals` + `TimeoutError`），杜绝霸占浏览器 Socket 槽位。
+
 ---
 
 ## 🚦 交付门禁（三步必跑）

@@ -131,6 +131,8 @@ async function handleCopyToken() {
   font-size: var(--text-title);
   color: var(--ink-0);
   font-weight: 700;
+  max-width: 100%;
+  word-break: break-word;
 }
 
 .voucher-sub {

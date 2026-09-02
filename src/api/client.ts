@@ -77,6 +77,39 @@ export class ApiError extends Error {
   }
 }
 
+function combineSignals(
+  timeoutMs: number,
+  callerSignal?: AbortSignal | null,
+): { signal: AbortSignal; cleanup: () => void } {
+  const controller = new AbortController()
+  const timer = setTimeout(() => {
+    controller.abort(new DOMException('请求超时，请重试', 'TimeoutError'))
+  }, timeoutMs)
+
+  let onAbort: (() => void) | null = null
+  if (callerSignal) {
+    if (callerSignal.aborted) {
+      clearTimeout(timer)
+      controller.abort(callerSignal.reason)
+    } else {
+      onAbort = () => {
+        clearTimeout(timer)
+        controller.abort(callerSignal.reason)
+      }
+      callerSignal.addEventListener('abort', onAbort, { once: true })
+    }
+  }
+
+  const cleanup = () => {
+    clearTimeout(timer)
+    if (callerSignal && onAbort) {
+      callerSignal.removeEventListener('abort', onAbort)
+    }
+  }
+
+  return { signal: controller.signal, cleanup }
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const headers = new Headers(init?.headers)
   if (!headers.has('Content-Type') && !(init?.body instanceof FormData)) {
@@ -88,27 +121,33 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     headers.set('Authorization', `Bearer ${token}`)
   }
 
-  const response = await fetch(`${BASE}${path}`, {
-    ...init,
-    headers,
-    credentials: 'same-origin',
-  })
+  const { signal, cleanup } = combineSignals(15000, init?.signal)
+  try {
+    const response = await fetch(`${BASE}${path}`, {
+      ...init,
+      headers,
+      signal,
+      credentials: 'same-origin',
+    })
 
-  if (!response.ok) {
-    if (response.status === 401) {
-      notifyUnauthorized()
+    if (!response.ok) {
+      if (response.status === 401) {
+        notifyUnauthorized()
+      }
+      let detail = `请求失败（${response.status}）`
+      try {
+        const body = (await response.json()) as { detail?: string; message?: string }
+        detail = body.detail || body.message || detail
+      } catch {
+        /* keep default message */
+      }
+      throw new ApiError(response.status, detail)
     }
-    let detail = `请求失败（${response.status}）`
-    try {
-      const body = (await response.json()) as { detail?: string; message?: string }
-      detail = body.detail || body.message || detail
-    } catch {
-      /* keep default message */
-    }
-    throw new ApiError(response.status, detail)
+
+    return (await response.json()) as T
+  } finally {
+    cleanup()
   }
-
-  return (await response.json()) as T
 }
 
 const memoizedDetail = useMemoize(

@@ -1,10 +1,12 @@
 import { describe, it, expect, vi, beforeEach } from 'vite-plus/test'
-import { useAuth } from '@/composables/useAuth'
-import { api, ApiError, getStoredToken, setStoredToken } from '@/api/client'
+import { useAuth, setSessionPendingToken } from '@/composables/useAuth'
+import { api, ApiError, getStoredToken, notifyUnauthorized, setStoredToken } from '@/api/client'
 
 describe('useAuth', () => {
   beforeEach(() => {
     setStoredToken('')
+    setSessionPendingToken('')
+    useAuth().resetAuthFormState()
     vi.restoreAllMocks()
   })
 
@@ -268,5 +270,52 @@ describe('useAuth', () => {
     expect(loginAttempt2).toBe(true)
     expect(authenticated.value).toBe(true)
     expect(requiresPin.value).toBe(false)
+  })
+
+  it('handles 401 onUnauthorized by prompting for PIN if evicted pass has PIN', async () => {
+    setStoredToken('evicted-token-111')
+    vi.spyOn(api, 'login').mockResolvedValueOnce({
+      ok: false,
+      token: 'evicted-token-111',
+      role: 'guest',
+      username: 'EvictedUser',
+      is_claimed: true,
+      requires_pin: true,
+    })
+
+    const { requiresPin, pendingToken, username, authenticated } = useAuth()
+    notifyUnauthorized()
+
+    await new Promise((r) => setTimeout(r, 10))
+
+    expect(authenticated.value).toBe(false)
+    expect(requiresPin.value).toBe(true)
+    expect(pendingToken.value).toBe('evicted-token-111')
+    expect(username.value).toBe('EvictedUser')
+  })
+
+  it('recovers pendingToken from sessionStorage on reload when awaiting PIN', async () => {
+    setSessionPendingToken('session-token-333')
+    vi.spyOn(api, 'authStatus').mockResolvedValueOnce({
+      auth_required: true,
+      authenticated: false,
+      can_write: false,
+      role: 'unauthorized',
+    })
+    vi.spyOn(api, 'login').mockResolvedValueOnce({
+      ok: false,
+      token: 'session-token-333',
+      role: 'guest',
+      username: 'SessionUser',
+      is_claimed: true,
+      requires_pin: true,
+    })
+
+    const { requiresPin, pendingToken, username, checkStatus } = useAuth()
+    await checkStatus()
+
+    expect(requiresPin.value).toBe(true)
+    expect(pendingToken.value).toBe('session-token-333')
+    expect(username.value).toBe('SessionUser')
   })
 })

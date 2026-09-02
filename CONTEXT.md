@@ -70,7 +70,12 @@
 - **访客通行证（Guest Pass / Guest Token）**：由馆长在管理后台动态派发与维护的专属身份凭证，包含用户名/备注、独立 Token、过期时间与启用状态。替代已废弃的旧版全局环境变量访客口令。
 - **通行证派发与生命周期（Pass Issuance & Lifecycle）**：馆长为特定朋友或设备创建通行证、延长过期期限（续期）、重置 Token 密钥或即时禁用的安全控制闭环。
 - **通行证激活状态（Pass Activation State）**：访客通行证在生命周期中所处的流转阶段，包括「待认领（未设 PIN）」、「使用中（已设 PIN 且有设备接入）」、「已满额（绑定设备达上限）」与「已失效（已过期或手动停用）」。
-- **读者自设 PIN 码 / 认领通行证（Reader PIN / Pass Claiming）**：4~6 位纯数字代码，由读者在首次点开通行证时自行设定（将卡片从待认领 `pending` 转化为已认领 `claimed`）。密码经盐值 SHA-256 哈希后存储于 SQLite，用于确立该通行证的唯一号主身份，彻底阻断群聊转发时的未授权偷用。
+- **读者自设 PIN 码 / 认领通行证（Reader PIN / Pass Claiming）**：4~6 位纯数字代码，由读者在首次点开通行证时自行设定（将卡片从待认领 `pending` 转化为已认领 `claimed`）。密码经 16 字节随机盐与 100,000 轮 PBKDF2-HMAC-SHA256 哈希后存储于 SQLite，用于确立该通行证的唯一号主身份，彻底阻断群聊转发时的未授权偷用。
+- **访客称呼净化与长度规约（Username Sanitization & Length Boundary）**：全站访客昵称收敛为 1~20 字符标准，后端持久化时经 `sanitize_username` 剥离 HTML 尖括号、不可见/零宽字符与表格公式前缀（`=+-@`），结合前端单行文本打点折叠，形成零 XSS、零排版溢出与零 CSV 注入的纵深防护。
+- **轮询防重入与超时熔断（Anti-Starvation Polling & Global Request Timeout）**：前端所有状态轮询（`liveCache`、`cacheProgress`）均挂载互斥锁，并在 API 请求封装层统一注入 15 秒超时守护控制器，杜绝因单次网络滞后或服务重启引起的请求并发堆叠，防范浏览器 HTTP/1.1 单域 6 个 TCP Socket 耗尽导致全站假死。
+- **双重限流键防 DoS（Dual-Key Rate Limiting / Anti-DoS）**：针对群聊恶意尝试 PIN 码的保护屏障。采用 `(client_ip, pass_id)` 双重键限流：单 IP 输错 5 次仅封禁该攻击者 IP 5 分钟，号主合法设备不受影响；跨 IP 累计超 20 次触发全局 30 分钟保护，彻底杜绝恶意账户锁定拒绝服务（Account Lockout DoS）。
+- **门禁口令撞库熔断器（IP Login Brute-Force Limiter）**：针对全屏门禁 `/api/auth/login` 的网络层保护。单个 IP 在 1 分钟内口令错误达到 10 次立即触发 5 分钟 IP 熔断（HTTP 429），防止并发字典碰撞馆长密钥或暴力探测通行证。
+- **会话凭据自愈暂存（Session Pending Token Resilience）**：前端解决移动端切屏、浏览器后台重载或误触下拉刷新导致待认领/待输 PIN 状态丢失的韧性基建。在未完成登录前将 `pendingToken` 暂存至 `sessionStorage`，刷新自动自愈恢复表单，登录成功或主动更换口令即刻物理抹除。
 - **群聊扩散防互挤屏障（Anti-Group-Spam Gate）**：通行证被认领后，任何新设备打开链接均必须提供正确的个人 PIN 码。未获授权的群友因无法通过 PIN 校验被拦截在门外，彻底消除群内多人轮替挤占与误触发熔断锁的痛点。
 - **PIN 码防护漫游（PIN-Guarded LRU Eviction）**：在通过个人 PIN 码确认为合法号主本人的前提下，当号主接入第 N+1 台设备时自动淘汰最久未活跃旧设备（LRU），实现合法号主多端漫游与自愈换机。
 - **设备插槽与配额（Device Slots & Quota）**：单个访客通行证允许同时授权绑定的有效物理设备数量（默认 2 台，馆长可调节 1~5 台），用于限制凭证滥用扩散。

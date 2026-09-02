@@ -30,8 +30,36 @@
    - 未鉴权时**绝对不挂载** `AppHeader`、`RouterView`、`BackToTop` 及任何业务视图，仅渲染全屏独立的「门禁纸室（`GateView`）」；
    - 即使在 DevTools 控制台强行修改 CSS 或删除门禁节点，页面仅展现纯空白 `<body>`，DOM 树物理级 0 残留，彻底杜绝窥探。
 
+5. **双重限流键防暴力破解与防 DoS 锁死（Dual-Key PIN Rate Limiter）**：
+   - 为避免恶意群友输入 5 次错误 PIN 码导致正常号主被全局封禁的**账户锁定拒绝服务（Account Lockout DoS）**，限流采用 `(IP, pass_id)` 联合键：
+     - 单 IP 1 分钟内连续输错 5 次 ➔ 仅锁定该攻击者 IP 5 分钟，号主自己的设备与家庭 WiFi 完全不受影响；
+     - 全网跨 IP 累计连续输错 20 次（1 小时内）➔ 触发通行证全局保护性锁定 30 分钟，防范分布式撞库。
+
+6. **全局口令撞库熔断器（IP Login Brute-Force Limiter）**：
+   - `/api/auth/login` 引入基于客户端 IP 的防碰撞频控：
+     - 单个 IP 1 分钟内口令错误达到 10 次 ➔ 立即锁定该 IP 5 分钟（HTTP 429），彻底杜绝黑客对馆长口令或通行证的秒级并发爆破。
+
+7. **密码学强度升级（PBKDF2-HMAC-SHA256）**：
+   - PIN 码哈希升级为 Python 标准库内置的 `hashlib.pbkdf2_hmac("sha256", ..., 100_000)`，配合 16 字节随机盐；
+   - 保持对旧版单轮 SHA-256 哈希的双向比对兼容，平滑过渡。
+
+8. **移动端与多标签页重载会话暂存韧性（sessionStorage Pending Token Resilience）**：
+   - 解决直达链接 `/?token=xxx` 在被 `replaceState` 抹平后，读者在待认领或输 PIN 阶段切屏或误触刷新导致 Token 丢失、跌退至最底层馆长口令界面的 UX 摩擦；
+   - 前端在未完成入馆前将 `pendingToken` 暂存至 `sessionStorage`；一旦验证成功、主动登出或更换口令即刻物理抹除，兼顾极致安全与移动端防丢韧性。
+
+9. **访客自定义昵称全链路安全净化与长度收敛（Username Sanitization & Length Guard）**：
+   - 统一全站昵称/备注为 1~20 字符标准（前端 `maxlength="20"`，后端 Pydantic `Field(min_length=1, max_length=20)`，持久化 `max_length=20`）；
+   - 后端 `sanitize_username` 过滤 HTML 敏感字符 `<>` 彻底杜绝存储型 XSS 污染、过滤不可见/零宽字符与 BiDi 欺骗字符（`\u200B`、`\u202E` 等）、去除开头表格公式字符（`=+-@`）防范 CSV 注入；
+   - 视图层统一增加打点折叠保护（`text-overflow: ellipsis;`），杜绝 20 字符在顶栏徽章和卡片上拉伸排版；
+   - 馆长自定义 Token 引入强正则校验 `^[A-Za-z0-9_\-]+$`（4~64 字符），确保直达链接 100% URL-Safe。
+
+10. **防拥塞轮询互斥锁与全局请求超时熔断守护（Anti-Starvation Polling & Global Timeout Gate）**：
+    - 前端所有轮询定时器（书架页 `liveCache`、详情页与章节页 `cacheProgress`）全部挂载 `isPolling` 互斥并发锁，杜绝异步网络响应延迟下的无脑请求堆叠；
+    - 全局 API 请求统一注入 15 秒超时守护熔断（`combineSignals` + `DOMException("TimeoutError")`），避免长挂起连接撑满 Chrome 单域名 6 个 HTTP/1.1 Socket 导致后续所有同源请求假死 `(待处理)`；
+    - 后端开发环境引入 `watchfiles` 并将 `reload_dirs` 精准收敛于 `backend/app`，彻底消除 `StatReload` 扫描 `node_modules` 造成的假热更新与 SQLite 写入无限重启。
+
 ## 后果
 
-- **安全防御闭环**：结合后端 401 拦截、前端 Zero-DOM 物理隔离、Pydantic `^\d{4,6}$` 强正则校验与参数化 SQL 查询，系统在 XSS、SQL 注入与客户端篡改上形成无死角防御；
-- **群聊分享鲁棒性**：彻底解决了单张通行证转发群聊引发的频繁互挤与熔断瘫痪问题；
-- **多端体验提升**：保留了合法号主在自设 PIN 保护下的无感跨设备平滑顺延体验。
+- **公网级零信任安全闭环**：结合后端 401/429 双层硬拦截、Dual-Key 限流防 DoS、PBKDF2 100,000 轮密码学哈希、前端 Zero-DOM 物理隔离、输入层 XSS/公式清洗与参数化 SQL，系统在 XSS、撞库、离线彩虹表与并发竞态上达到生产级防御；
+- **群聊分享鲁棒性**：彻底消除了单张通行证转发群聊引发的恶意抢跑、设备互挤与误触发熔断锁痛点；
+- **高并发与连接池韧性**：通过轮询互斥锁与 15 秒超时切断，消除了单域 6 连接耗尽引发的前端全站冻结隐患，保障了网络异常时的自愈能力。

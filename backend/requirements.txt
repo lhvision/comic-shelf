@@ -4,3 +4,4 @@ uvicorn>=0.52
 curl-cffi>=0.16
 pillow>=12
 python-multipart>=0.0.18
+watchfiles>=1.0.0

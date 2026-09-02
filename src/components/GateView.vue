@@ -5,11 +5,9 @@
  *
  * 核心架构：
  * 1. 作为 App.vue 的根级 v-else 视图，未通过验证前整个 App 骨架（顶栏、书架、阅读器）物理级 0 DOM 挂载；
- * 2. 编排门禁三态表单（GateSecretForm ➔ GateClaimForm ➔ GatePinForm）；
- * 3. 挂载 MutationObserver 哨兵，免疫 DevTools 控制台篡改 display: none / 删除节点。
+ * 2. 编排门禁三态表单（GateSecretForm ➔ GateClaimForm ➔ GatePinForm）。
  */
 
-import { onMounted, onUnmounted, ref } from 'vue'
 import { useAuth } from '@/composables/useAuth'
 import { useBrandIcon } from '@/composables/useBrandIcon'
 import AmbientWatermark from '@/components/AmbientWatermark.vue'
@@ -19,48 +17,12 @@ import GatePinForm from '@/components/gate/GatePinForm.vue'
 
 const { requiresClaim, requiresPin, username } = useAuth()
 const { brandIcon } = useBrandIcon()
-
-const gateCardRef = ref<HTMLElement | null>(null)
-let tamperObserver: MutationObserver | null = null
-
-onMounted(() => {
-  // 🛡️ Active Anti-Tamper Safeguard: Prevent DevTools from style-injecting display: none or hiding the gate
-  if (typeof window !== 'undefined' && gateCardRef.value) {
-    tamperObserver = new MutationObserver((mutations) => {
-      for (const m of mutations) {
-        if (
-          m.type === 'attributes' &&
-          (m.attributeName === 'style' ||
-            m.attributeName === 'hidden' ||
-            m.attributeName === 'class')
-        ) {
-          const target = m.target as HTMLElement
-          if (target && target.style.display === 'none') {
-            target.style.removeProperty('display')
-          }
-          if (target && target.hasAttribute('hidden')) {
-            target.removeAttribute('hidden')
-          }
-        }
-      }
-    })
-    tamperObserver.observe(gateCardRef.value, { attributes: true })
-    if (gateCardRef.value.parentElement) {
-      tamperObserver.observe(gateCardRef.value.parentElement, { attributes: true })
-    }
-  }
-})
-
-onUnmounted(() => {
-  tamperObserver?.disconnect()
-  tamperObserver = null
-})
 </script>
 
 <template>
   <div class="gate-viewport" role="main" aria-labelledby="gate-title">
     <AmbientWatermark variant="page" />
-    <div ref="gateCardRef" class="gate-card">
+    <div class="gate-card">
       <AmbientWatermark variant="modal" />
 
       <!-- Header Section -->

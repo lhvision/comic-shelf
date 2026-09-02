@@ -34,7 +34,10 @@ function handleCopyRoamLink() {
     toast('未找到当前借阅口令', 'error')
     return
   }
-  const roamUrl = `${window.location.origin}/?token=${token}`
+  const url = new URL(window.location.href)
+  url.searchParams.set('token', token)
+  url.hash = ''
+  const roamUrl = url.toString()
   void copy(roamUrl)
   toast('已复制跨端入馆链接，在新设备打开输入您的 PIN 码即可入座', 'success')
 }
@@ -213,6 +216,10 @@ async function handleConfirmReturn() {
 
 .reader-label {
   letter-spacing: 0.02em;
+  max-width: 140px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* 凭证卡面板 */

@@ -72,10 +72,19 @@ def test_auth_logic():
     assert auth_mod.is_authenticated(req_wrong) is False
     assert auth_mod.can_read(req_wrong) is False
 
-    # Guest Bearer token -> is_guest=True, is_curator=False, can_read=True
-    req_guest = make_mock_request(
+    # Bare guest pass token alone without verified device session -> unauthenticated
+    req_bare_pass = make_mock_request(
         "/api/library",
         headers={"Authorization": "Bearer guest-secret-456"},
+    )
+    assert auth_mod.is_authenticated(req_bare_pass) is False
+    assert auth_mod.can_read(req_bare_pass) is False
+
+    # Authenticated guest device session -> is_guest=True, is_curator=False, can_read=True
+    dev_guest = db_mod.register_guest_device(active_pass["id"])
+    req_guest = make_mock_request(
+        "/api/library",
+        headers={"X-Device-Token": dev_guest["device_token"]},
     )
     assert auth_mod.is_authenticated(req_guest) is True
     assert auth_mod.is_guest(req_guest) is True
@@ -218,10 +227,12 @@ def test_guest_visibility_and_discovery_auth():
     # require_curator passes for curator
     auth_mod.require_curator(req_curator)
 
-    # Guest request (using guest-secret-456 created in test_auth_logic)
+    # Guest request (using guest-secret-456 registered device)
+    g_pass = db_mod.get_guest_pass_by_token("guest-secret-456")
+    dev_ranking = db_mod.register_guest_device(g_pass["id"], user_agent="RankingDevice")
     req_guest = make_mock_request(
         "/api/discovery/ranking",
-        headers={"Authorization": "Bearer guest-secret-456"},
+        headers={"X-Device-Token": dev_ranking["device_token"]},
     )
     assert auth_mod.is_curator(req_guest) is False
     assert auth_mod.is_guest(req_guest) is True
@@ -236,9 +247,12 @@ def test_auth_and_security_middleware():
     from app.main import auth_and_security_middleware
     from unittest.mock import AsyncMock
 
-    # Ensure guest-key-999 exists in test DB
-    if not db_mod.get_guest_pass_by_token("guest-key-999"):
-        db_mod.create_guest_pass("MidGuest", expires_days=30, custom_token="guest-key-999")
+    # Ensure guest-key-999 exists in test DB with an active device session
+    mid_pass = db_mod.get_guest_pass_by_token("guest-key-999")
+    if not mid_pass:
+        mid_pass = db_mod.create_guest_pass("MidGuest", expires_days=30, custom_token="guest-key-999")
+    mid_dev = db_mod.register_guest_device(mid_pass["id"], user_agent="MidDevice")
+    mid_dev_token = mid_dev["device_token"]
 
     async def run_cases():
         # Case 1: Open access (no secret configured)
@@ -264,7 +278,7 @@ def test_auth_and_security_middleware():
         call_next.reset_mock()
         req_guest_post = make_mock_request(
             "/api/library/import",
-            headers={"Authorization": "Bearer guest-key-999"},
+            headers={"X-Device-Token": mid_dev_token},
         )
         req_guest_post.method = "POST"
         res_403 = await auth_and_security_middleware(req_guest_post, call_next)
@@ -284,7 +298,7 @@ def test_auth_and_security_middleware():
         call_next.reset_mock()
         req_guest_get = make_mock_request(
             "/api/library",
-            headers={"Authorization": "Bearer guest-key-999"},
+            headers={"X-Device-Token": mid_dev_token},
         )
         req_guest_get.method = "GET"
         res_get_ok = await auth_and_security_middleware(req_guest_get, call_next)
@@ -294,7 +308,7 @@ def test_auth_and_security_middleware():
         call_next.reset_mock()
         req_img_search = make_mock_request(
             "/api/search/image",
-            headers={"Authorization": "Bearer guest-key-999"},
+            headers={"X-Device-Token": mid_dev_token},
         )
         req_img_search.method = "POST"
         res_search_ok = await auth_and_security_middleware(req_img_search, call_next)
