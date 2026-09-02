@@ -33,7 +33,13 @@ export function createPlaceholderDetail(s: LibrarySummary): ComicDetail {
       page_count: s.page_count,
       cover_count: s.cover_count,
       cover_indices: [],
-      pages: [],
+      pages: Array.from({ length: s.page_count }, (_, idx) => ({
+        index: idx + 1,
+        file: `${String(idx + 1).padStart(5, '0')}.webp`,
+        ext: '.webp',
+        cached: idx < s.cached_pages,
+        chapter: s.chapter_titles?.length ? '1' : undefined,
+      })),
       chapters: (s.chapter_titles ?? []).map((title, idx) => ({
         id: String(idx + 1),
         index: idx + 1,
@@ -122,24 +128,26 @@ export const useLibraryStore = defineStore('library', () => {
       await Promise.all(
         running.map(async (job) => {
           const key = liveCacheKey(job.source, job.source_id)
+          const prev = liveCache.value[key]
           try {
             const progress = await api.cacheProgress(job.source, job.source_id)
-            next[key] = { running: true, cached: progress.cached, total: progress.total }
+            const cached = Math.max(progress.cached, prev?.cached ?? 0)
+            next[key] = { running: true, cached, total: progress.total }
           } catch {
+            const cached = Math.max(job.prefetched, prev?.cached ?? 0)
             next[key] = {
               running: true,
-              cached: job.prefetched,
-              total: Math.max(job.total, job.prefetched),
+              cached,
+              total: Math.max(job.total, job.prefetched, prev?.total ?? 0),
             }
           }
         }),
       )
 
       // A finished job must not leave the card showing stale static counts;
-      // resync the shelf snapshot from disk exactly when a job completes.
+      // resync the shelf snapshot from disk BEFORE releasing the live cache lock.
       const finishedSomething =
         previousKeys.size > 0 && Object.keys(next).length < previousKeys.size
-      liveCache.value = next
 
       if (finishedSomething) {
         await loadItems(true)
@@ -147,6 +155,9 @@ export const useLibraryStore = defineStore('library', () => {
           clearImportMessage()
         }
       }
+
+      liveCache.value = next
+
       if (running.length === 0) poll.pause()
     } catch {
       /* transient; keep whatever we had and pause polling to avoid hammering failing backend/WAF */
@@ -190,8 +201,11 @@ export const useLibraryStore = defineStore('library', () => {
 
   function markCaching(source: string, sourceId: string) {
     const key = liveCacheKey(source, sourceId)
+    const existing = byId(source, sourceId)
+    const initialCached = existing?.cached_pages ?? 0
+    const initialTotal = existing?.page_count ?? 0
     if (!liveCache.value[key]) {
-      liveCache.value[key] = { running: true, cached: 0, total: 0 }
+      liveCache.value[key] = { running: true, cached: initialCached, total: initialTotal }
     }
     poll.resume()
   }

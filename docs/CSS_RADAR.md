@@ -21,24 +21,23 @@
 
 > 数据来源：MDN BCD + Can I Use，更新于 2026-08。
 
-| 特性                                | Chrome | Firefox | Safari  |          状态           |                     本项目状态                     |
-| :---------------------------------- | :----: | :-----: | :-----: | :---------------------: | :------------------------------------------------: |
-| `light-dark()`                      |  123+  |  120+   |  17.5+  |    ✅ Baseline 2024     | ⚠️ 审慎评估（保留 hex+oklch 双层回退，防色彩丢失） |
-| `color-mix(in oklab, ...)`          |  111+  |  113+   |  16.2+  |    ✅ Baseline 2023     |                     ✅ 已落地                      |
-| `@container (inline-size)`          |  105+  |  110+   |   16+   |    ✅ Baseline 2023     |                     ✅ 已落地                      |
-| `@layer`                            |  99+   |   97+   |  15.4+  |    ✅ Baseline 2022     |                     ✅ 已落地                      |
-| CSS Nesting (`&`)                   |  120+  |  117+   |  17.2+  |    ✅ Baseline 2024     |                     ✅ 已落地                      |
-| `@property`                         |  85+   |  128+   |  16.4+  |    ✅ Baseline 2024     |        ✅ 已落地（tokens.css 遮罩变量插值）        |
-| `interpolate-size: allow-keywords`  |  129+  |   ⏳    |   ⏳    | 🔶 Limited Availability |      ✅ 已落地（TagFilterBar / ImportPanel）       |
-| `::details-content`                 |  131+  |  143+   |  18.4+  | 🔶 Limited Availability |                    ✅ 渐进增强                     |
-| `scroll-timeline` / `view-timeline` |  115+  | 111+🚩  | 18.0+⏳ | 🔶 Limited Availability |        ✅ 已落地（ReaderView 读物双轨渲染）        |
-| `@container scroll-state(...)`      |  133+  |   ❌    |   ❌    |     🧪 Experimental     |      ⚠️ LightningCSS 解析报错，降级为 VueUse       |
-| `@container style(...)`             |  111+  |  151+   |   18+   |       🔶 有限支持       |                     — 暂未采用                     |
-| `CSSStyleSheet` (Constructable)     |  73+   |  101+   |  16.4+  |    ✅ Baseline 2023     |                 ⚠️ 与 Vue SFC 冲突                 |
-| CSS `@scope`                        |  118+  |  128+   |  17.4+  |    ✅ Baseline 2024     |                ⚠️ Vue scoped 已覆盖                |
-| `calc-size()`                       |  129+  |   ❌    |   ❌    |       🔶 Limited        |                   ➖ 无需此函数                    |
-| CSS `if()` 行内条件                 | 137+🚩 |   ❌    |   ❌    |       🧪 Stage 1        |                  🚫 构建工具报错                   |
-| CSS `@function`                     | 139+🚩 |   ❌    |   ❌    |       🧪 Stage 2        |                    🚫 过早引入                     |
+| 特性                                | Chrome | Firefox | Safari  |          状态           |                       本项目状态                       |
+| :---------------------------------- | :----: | :-----: | :-----: | :---------------------: | :----------------------------------------------------: |
+| `light-dark()`                      |  123+  |  120+   |  17.5+  |    ✅ Baseline 2024     |   ⚠️ 审慎评估（保留 hex+oklch 双层回退，防色彩丢失）   |
+| `color-mix(in oklab, ...)`          |  111+  |  113+   |  16.2+  |    ✅ Baseline 2023     |                       ✅ 已落地                        |
+| `@container (inline-size)`          |  105+  |  110+   |   16+   |    ✅ Baseline 2023     |                       ✅ 已落地                        |
+| `@layer`                            |  99+   |   97+   |  15.4+  |    ✅ Baseline 2022     |                       ✅ 已落地                        |
+| CSS Nesting (`&`)                   |  120+  |  117+   |  17.2+  |    ✅ Baseline 2024     |                       ✅ 已落地                        |
+| `@property`                         |  85+   |  128+   |  16.4+  |    ✅ Baseline 2024     |          ✅ 已落地（tokens.css 遮罩变量插值）          |
+| `interpolate-size: allow-keywords`  |  129+  |   ⏳    |   ⏳    | 🔶 Limited Availability |        ✅ 已落地（TagFilterBar / ImportPanel）         |
+| `::details-content`                 |  131+  |  143+   |  18.4+  | 🔶 Limited Availability |                      ✅ 渐进增强                       |
+| `scroll-timeline` / `view-timeline` |  115+  | 111+🚩  | 18.0+⏳ | 🔶 Limited Availability |          ✅ 已落地（ReaderView 读物双轨渲染）          |
+| `@container scroll-state(...)`      |  133+  |   ❌    |   ❌    |     🧪 Experimental     |        ⚠️ LightningCSS 解析报错，降级为 VueUse         |
+| `@container style(...)`             |  111+  |  151+   |   18+   |       🔶 有限支持       |                       — 暂未采用                       |
+| `CSSStyleSheet` (Constructable)     |  73+   |  101+   |  16.4+  |    ✅ Baseline 2023     |                   ⚠️ 与 Vue SFC 冲突                   |
+| CSS `if()` 行内条件                 | 137+🚩 |   ❌    |   ❌    |       🧪 Stage 1        |                    🚫 构建工具报错                     |
+| CSS `@function`                     | 139+🚩 |   ❌    |   ❌    |       🧪 Stage 2        |                      🚫 过早引入                       |
+| CSS `progress()` 数学函数           |  138+  |  155+   |   26+   | 🔶 Newly Available 2026 | ✅ 渐进增强（以 `--progress` + `AppProgressBar` 承接） |
 
 **图例**：✅ 可用 · 🔶 部分支持 · 🧪 实验旗 · 🚩 需开 Flag · ❌ 未支持 · 🚫 本项目不采用
 
@@ -644,7 +643,40 @@ h1 {
 }
 ```
 
-**当前建议**：尺寸响应用 `@container (inline-size)`；主题切换用 `light-dark()`；复杂条件分支等待 `if()` 落地。
+### 4.4 CSS `progress()` 数学函数
+
+**规范阶段**：CSS Values and Units Module Level 5 · Standard Track (`web-features:progress-function`)  
+**可用**：Chrome 138+ (2025-06) · Edge 138+ · Firefox 155+ (2026-09) · Safari 26+ (2025-09) · Opera 122+  
+**参考**：
+
+- MDN: [progress()](https://developer.mozilla.org/en-US/docs/Web/CSS/Reference/Values/progress)
+- [张鑫旭 CSS progress() 函数简介](https://www.zhangxinxu.com/wordpress/2025/12/css-progress-function/)
+
+**语法与原理**：
+`progress(<value>, <start>, <end>)` 计算公式为 `(<value> - <start>) / (<end> - <start>)`，自动返回 `0~1` 的无量纲纯数值。
+
+```css
+/* 基础数值映射：返回 0.3 */
+width: calc(100px * progress(300, 0, 1000));
+
+/* 结合容器宽度 cqw 与 calc() 实现响应式动态尺寸 */
+.card img {
+  width: calc(100px + 200px * progress(80cqw, 150px, 800px));
+}
+
+/* 结合 CSS 变量与 clamp */
+.progress-fill {
+  transform: scaleX(progress(var(--cached), 0, var(--total)));
+}
+```
+
+**纸间落地架构与渐进增强范式（`AppProgressBar.vue`）**：
+
+1. **统一数据契约**：视图层统一以 CSS Custom Property `--progress: 0.xx`（0~1）作为单一事实源；
+2. **合成层渲染**：内部由合成线程执行 `transform: scaleX(var(--progress, 0))` 渲染，具备 0 Reflow 的极佳性能；
+3. **平滑承接**：已完全兼容原生 `progress()` 与 `@property` 规范，实现跨版本平滑渐进增强。
+
+---
 
 ## 5. 升级路线图（Roadmap）
 
@@ -653,6 +685,7 @@ h1 {
 - [x] **`@property` 整合到 `tokens.css`**：已为 `--mask-left`、`--mask-right` 声明 `<length>` 类型，支持渐变遮罩的纯 CSS 平滑数值插值；
 - [x] **CSS Grid 复合轨道无级折叠动效**：已在 `TagFilterBar.vue`（标签溢出抽屉）与 `ImportPanel.vue`（移动端收录面板）落地，消除跳版与 `scrollHeight` 胶水代码；
 - [x] **色彩双层回退基线固化**：坚持 `#hex` + `oklch()` 双层声明，防御低版本引擎的颜色丢失问题；
+- [x] **`AppProgressBar.vue` 统一 CSS 进度条架构**：全站进度条收敛为 CSS 变量 `--progress` + GPU 合成层驱动，彻底根治缓存进度回退与时序竞争闪烁；
 
 ### 短期（预计 2026 Q4，等浏览器 Baseline 达标）
 
@@ -663,9 +696,10 @@ h1 {
 - [ ] **CSS `@function`**：当 Vite/LightningCSS 支持且三大内核跟进后，可将项目中的 `clamp()` 组合、阴影合成等提取为命名 CSS 函数，彻底消除重复代码；
 - [ ] **`@container style(...)` 范围语法稳定后**：考虑将 `ImportPanel` 的密度模式（桌面/移动）从容器尺寸查询演进为样式查询，实现更语义化的主题化组件；
 
-### 长期（等 CSS `if()` 落地）
+### 长期（等 CSS `if()` 与 `progress()` 落地 Baseline）
 
 - [ ] **CSS `if()` 行内条件**：届时部分类名状态机（如 `is-active`、`is-invalid`）可以收敛为纯 CSS 声明，减少 Vue 模板绑定中的类名拼接逻辑；
+- [ ] **原生 CSS `progress()` 数学函数**：当主流引擎全量支持后，可将进度换算彻底移交 CSS 引擎就地计算（`progress(var(--cached), 0, var(--total))`）。
 
 ---
 
@@ -682,6 +716,7 @@ h1 {
 
 | 特性                               | 文章                                                                              |
 | :--------------------------------- | :-------------------------------------------------------------------------------- |
+| CSS `progress()` 函数              | https://www.zhangxinxu.com/wordpress/2025/12/css-progress-function/               |
 | CSS `if()` 函数                    | https://www.zhangxinxu.com/wordpress/2025/07/css-if-function/                     |
 | `@container scroll-state(...)`     | https://www.zhangxinxu.com/wordpress/2025/08/css-container-scroll-state/          |
 | `@container` 容器查询基础          | https://www.zhangxinxu.com/wordpress/2022/09/css-container-rule/                  |
@@ -693,3 +728,10 @@ h1 {
 | `<details>` & `::details-content`  | https://www.zhangxinxu.com/wordpress/2025/11/css-details-target-content-open/     |
 | `interpolate-size` & `calc-size()` | https://www.zhangxinxu.com/wordpress/2024/11/css-calc-interpolate-size/           |
 | `scroll-timeline` 滚动驱动动画     | https://www.zhangxinxu.com/wordpress/2024/08/css-scroll-timeline/                 |
+
+### 前端侦探 / CodePen 参考
+
+| 特性 / 技巧                 | 资源                                                                                           |
+| :-------------------------- | :--------------------------------------------------------------------------------------------- |
+| CSS 拟真非线性进度条        | https://mp.weixin.qq.com/s/LIDMxVSqBhT1RX41WnCKHg （前端侦探《CSS 如何模拟“真实”的进度条？》） |
+| 拟真进度条交互 CodePen Demo | https://codepen.io/xboxyan/pen/emOmazz                                                         |

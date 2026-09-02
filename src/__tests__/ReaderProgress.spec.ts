@@ -17,14 +17,13 @@ describe('ReaderProgress.vue', () => {
     expect(wrapper.attributes('aria-valuemax')).toBe('100')
     expect(wrapper.attributes('aria-label')).toBe('阅读进度')
     expect(wrapper.classes()).not.toContain('is-rtl')
+    expect(wrapper.attributes('style')).toContain('--progress: 0.42')
 
-    const span = wrapper.find('span')
-    expect(span.exists()).toBe(true)
-    expect(span.element.style.transform).toBe('scaleX(0.42)')
-    expect(span.element.style.transformOrigin).toBe('0 50%')
+    const fill = wrapper.find('.app-progress-bar__fill')
+    expect(fill.exists()).toBe(true)
   })
 
-  it('renders .is-rtl and anchors transformOrigin to 100% 50% in RTL mode', () => {
+  it('renders .is-rtl and anchors transformOrigin in RTL mode', () => {
     const wrapper = mount(ReaderProgress, {
       props: {
         progress: 0.85,
@@ -34,24 +33,21 @@ describe('ReaderProgress.vue', () => {
 
     expect(wrapper.classes()).toContain('is-rtl')
     expect(wrapper.attributes('aria-valuenow')).toBe('85')
-
-    const span = wrapper.find('span')
-    expect(span.element.style.transform).toBe('scaleX(0.85)')
-    expect(span.element.style.transformOrigin).toBe('100% 50%')
+    expect(wrapper.attributes('style')).toContain('--progress: 0.85')
   })
 
-  it('updates transform reactively when progress prop changes', async () => {
+  it('updates progress and style reactively when progress prop changes', async () => {
     const wrapper = mount(ReaderProgress, {
       props: {
         progress: 0.1,
       },
     })
 
-    const span = wrapper.find('span')
-    expect(span.element.style.transform).toBe('scaleX(0.1)')
+    expect(wrapper.attributes('aria-valuenow')).toBe('10')
+    expect(wrapper.attributes('style')).toContain('--progress: 0.1')
 
     await wrapper.setProps({ progress: 0.99 } as Record<string, unknown>)
-    expect(span.element.style.transform).toBe('scaleX(0.99)')
+    expect(wrapper.attributes('style')).toContain('--progress: 0.99')
     expect(wrapper.attributes('aria-valuenow')).toBe('99')
   })
 })

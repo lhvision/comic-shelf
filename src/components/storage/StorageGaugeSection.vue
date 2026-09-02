@@ -10,6 +10,7 @@
  */
 
 import AppIcon from '@/components/AppIcon.vue'
+import AppProgressBar from '@/components/AppProgressBar.vue'
 import { MANGA_IMAGE_MAX_BUDGET } from '@/composables/useOfflineStorage'
 
 defineProps<{
@@ -48,22 +49,14 @@ defineProps<{
         </span>
       </div>
 
-      <div
-        class="storage-track"
-        role="progressbar"
-        :aria-valuenow="Math.round(budgetPercentage ?? percentage)"
-        aria-valuemin="0"
-        aria-valuemax="100"
-        :aria-valuetext="`已占用 ${mangaImageCount} 张画页 (${mangaImageBytesFormatted})`"
-        :aria-label="`漫画离线缓存已使用 ${Math.round(budgetPercentage ?? percentage)}%`"
-      >
-        <div
-          class="storage-fill"
-          :style="{
-            transform: `scaleX(${Math.max((budgetPercentage ?? percentage) > 0 ? 0.015 : 0, Math.min(1, (budgetPercentage ?? percentage) / 100))})`,
-          }"
-        ></div>
-      </div>
+      <AppProgressBar
+        :value="budgetPercentage ?? percentage"
+        :max="100"
+        variant="gauge"
+        color="accent"
+        :value-text="`已占用 ${mangaImageCount} 张画页 (${mangaImageBytesFormatted})`"
+        :label="`漫画离线缓存已使用 ${Math.round(budgetPercentage ?? percentage)}%`"
+      />
     </section>
 
     <!-- 分项账单细分清单 -->
@@ -138,24 +131,6 @@ defineProps<{
   color: var(--ink-2);
 }
 
-.storage-track {
-  width: 100%;
-  height: 6px;
-  background: var(--paper-2);
-  border: 1px solid var(--line);
-  border-radius: var(--radius-1);
-  overflow: hidden;
-}
-
-.storage-fill {
-  height: 100%;
-  width: 100%;
-  background: var(--accent);
-  border-radius: var(--radius-1);
-  transform-origin: left;
-  transition: transform var(--duration-2) var(--ease-out);
-}
-
 /* 分项清单 */
 .storage-breakdown {
   margin: 0;
@@ -224,11 +199,5 @@ defineProps<{
 
 .storage-boundary p {
   margin: 0;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .storage-fill {
-    transition: none !important;
-  }
 }
 </style>

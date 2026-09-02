@@ -4,6 +4,7 @@ import Modal from '@/components/Modal.vue'
 import SegmentedTabs from '@/components/SegmentedTabs.vue'
 import AppButton from '@/components/AppButton.vue'
 import AppIcon from '@/components/AppIcon.vue'
+import AppProgressBar from '@/components/AppProgressBar.vue'
 import { useUploadQueue } from '@/composables/useUploadQueue'
 import { useFileStaging } from '@/composables/useFileStaging'
 import { api } from '@/api/client'
@@ -213,9 +214,14 @@ async function submit() {
           <span>正在推送到书库（3 路并发）…</span>
           <span>{{ completedCount }} / {{ totalCount }} 页（{{ progress }}%）</span>
         </div>
-        <div class="progress-track">
-          <div class="progress-fill" :style="{ width: `${progress}%` }" />
-        </div>
+        <AppProgressBar
+          :value="progress"
+          :max="100"
+          variant="track"
+          color="accent"
+          animated
+          label="画页推送进度"
+        />
       </div>
     </div>
 
@@ -369,18 +375,6 @@ async function submit() {
   justify-content: space-between;
   font-size: var(--text-xs);
   color: var(--ink-1);
-}
-
-.progress-track {
-  height: 6px;
-  border-radius: 999px;
-  background: var(--paper-2);
-  overflow: hidden;
-}
-
-.progress-fill {
-  height: 100%;
-  background: var(--accent);
 }
 
 @media (max-width: 640px) {

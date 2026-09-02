@@ -1,13 +1,14 @@
 <script setup lang="ts">
 import { computed } from 'vue'
+import AppProgressBar from '@/components/AppProgressBar.vue'
 
 /**
- * 书架卡片上的缓存进度条：三种状态一次讲清
+ * 书架卡片/章节卡片上的缓存进度条：三种状态一次讲清
  *  - idle     本地已缓存 N%
  *  - running  后台缓存中 N%（附呼吸动效，不抢戏）
  *  - complete 本地缓存 100%
  *
- * 颜色/间距全部走 tokens.css，动效只用一个 --duration + 一个 ease。
+ * 颜色/间距全部走 tokens.css，底层依托 AppProgressBar 获得 GPU 加速与现代 CSS 变量驱动。
  */
 const props = defineProps<{
   cached: number
@@ -29,9 +30,6 @@ const label = computed(() => {
   if (props.running) return `缓存中 ${percent.value}%`
   return `本地 ${percent.value}%`
 })
-
-const valueNow = computed(() => percent.value)
-const fillWidth = computed(() => `${percent.value}%`)
 </script>
 
 <template>
@@ -52,17 +50,16 @@ const fillWidth = computed(() => `${percent.value}%`)
       <span class="cache-progress__text">{{ label }}</span>
     </div>
 
-    <div
+    <AppProgressBar
       class="cache-progress__track"
-      role="progressbar"
-      aria-valuemin="0"
-      aria-valuemax="100"
-      :aria-valuenow="valueNow"
-      :aria-valuetext="label"
-      :aria-label="label"
-    >
-      <span class="cache-progress__fill" />
-    </div>
+      :value="props.cached"
+      :max="safeTotal"
+      variant="track"
+      :color="complete ? 'success' : 'accent'"
+      :animated="running && !complete"
+      :label="label"
+      :value-text="label"
+    />
   </div>
 </template>
 
@@ -106,43 +103,6 @@ const fillWidth = computed(() => `${percent.value}%`)
   display: none;
 }
 
-.cache-progress__track {
-  position: relative;
-  height: 3px;
-  border-radius: 999px;
-  background: var(--paper-2);
-  overflow: hidden;
-}
-
-.cache-progress__fill {
-  position: relative;
-  display: block;
-  height: 100%;
-  min-width: 0;
-  width: v-bind(fillWidth);
-  border-radius: inherit;
-  background: var(--accent);
-}
-
-.cache-progress.is-complete .cache-progress__fill {
-  background: var(--success);
-}
-
-/* 后台缓存中的斜纹扫描，只覆盖 fill，克制不花哨 */
-.cache-progress.is-running .cache-progress__fill::after {
-  content: '';
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(
-    100deg,
-    transparent 20%,
-    color-mix(in oklab, var(--paper-0) 55%, transparent) 50%,
-    transparent 80%
-  );
-  translate: -100% 0;
-  animation: stripe-shimmer 1.6s var(--ease-out) infinite;
-}
-
 @keyframes pulse {
   0%,
   100% {
@@ -153,19 +113,9 @@ const fillWidth = computed(() => `${percent.value}%`)
   }
 }
 
-@keyframes stripe-shimmer {
-  to {
-    translate: 100% 0;
-  }
-}
-
 @media (prefers-reduced-motion: reduce) {
-  .cache-progress__dot,
-  .cache-progress.is-running .cache-progress__fill::after {
+  .cache-progress__dot {
     animation: none;
-  }
-  .cache-progress__fill {
-    transition: none;
   }
 }
 </style>

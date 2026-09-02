@@ -174,7 +174,7 @@ const { pause: pauseProgressPolling, resume: resumeProgressPolling } = useInterv
     try {
       const progress = await api.cacheProgress(source.value, sourceId.value)
       if (detail.value) {
-        detail.value.cached_pages = progress.cached
+        detail.value.cached_pages = Math.max(detail.value.cached_pages, progress.cached)
         detail.value.cache_complete = progress.complete
 
         if (detail.value.meta?.pages) {

@@ -160,7 +160,7 @@ const { pause: pauseProgressPolling, resume: resumeProgressPolling } = useInterv
     try {
       const progress = await api.cacheProgress(source.value, sourceId.value)
       if (detail.value) {
-        detail.value.cached_pages = progress.cached
+        detail.value.cached_pages = Math.max(detail.value.cached_pages, progress.cached)
         detail.value.cache_complete = progress.complete
 
         // 前端就地标记已完成的页码，保证零 DOM 销毁、零图片重复加载、角标与进度秒级同步

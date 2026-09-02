@@ -3,6 +3,7 @@ import Modal from '@/components/Modal.vue'
 import AppButton from '@/components/AppButton.vue'
 import AppIcon from '@/components/AppIcon.vue'
 import AppDropdown, { type DropdownOption } from '@/components/AppDropdown.vue'
+import AppProgressBar from '@/components/AppProgressBar.vue'
 import { computed, ref } from 'vue'
 
 /**
@@ -94,8 +95,6 @@ function confirmRemove() {
   ackRemove.value = false
   emit('removeComic')
 }
-
-const cacheScale = computed(() => `scaleX(${props.cachePercent / 100})`)
 
 function prefetchReader() {
   void import('@/views/ReaderView.vue').catch(() => {})
@@ -229,9 +228,16 @@ function prefetchReader() {
       </template>
     </Modal>
 
-    <div class="cache-summary" aria-hidden="true">
-      <span />
-    </div>
+    <AppProgressBar
+      class="cache-summary-bar"
+      :value="cachedPages"
+      :max="pageCount"
+      variant="track"
+      :color="cacheComplete ? 'success' : 'accent'"
+      :animated="caching && !cacheComplete"
+      :label="`本地缓存 ${cachedPages} / ${pageCount} 页（${cachePercent}%）`"
+      :value-text="`本地缓存 ${cachedPages} / ${pageCount} 页（${cachePercent}%）`"
+    />
     <p class="cache-summary-text">
       本地缓存 {{ cachedPages }} / {{ pageCount }} 页（{{ cachePercent }}%）
     </p>
@@ -284,22 +290,8 @@ function prefetchReader() {
   accent-color: var(--accent);
 }
 
-.cache-summary {
-  height: 4px;
+.cache-summary-bar {
   margin-top: var(--space-3);
-  border-radius: 999px;
-  background: var(--paper-2);
-  overflow: hidden;
-}
-
-.cache-summary span {
-  display: block;
-  width: 100%;
-  height: 100%;
-  background: var(--accent);
-  transform-origin: 0 50%;
-  transform: v-bind(cacheScale);
-  transition: transform var(--duration-3) var(--ease-out);
 }
 
 .cache-summary-text {
