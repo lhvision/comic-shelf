@@ -1,10 +1,11 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, ref, useId } from 'vue'
+import { computed, nextTick, onBeforeUnmount, ref, useId, watch } from 'vue'
+import { useEventListener } from '@vueuse/core'
 
 /**
  * 现代轻量气泡提示组件（Modern AppTooltip）。
  * - 结合 HTML Popover API (popover="hint") 与 CSS Anchor Positioning
- * - 支持 @container anchored(fallback: flip-block) 容器回退检测自适应翻转
+ * - 智能检测视口碰撞自适应纠正实际展示方位（actualSide）与箭头指向
  * - 支持 top / right / bottom / left 与 start / center / end 对齐
  * - 支持 hover / focus-within 唤起与无障碍 aria-describedby
  * - 非现代浏览器优雅降级为绝对定位与 Vue 状态控制
@@ -73,6 +74,40 @@ const alignSelf = computed(() => {
 
 const isVisible = ref(false)
 const tipElement = ref<HTMLElement | null>(null)
+const triggerElement = ref<HTMLElement | null>(null)
+const actualSide = ref<'top' | 'right' | 'bottom' | 'left'>(props.side)
+
+watch(
+  () => props.side,
+  (val) => {
+    actualSide.value = val
+  },
+)
+
+function updateActualSide() {
+  const trigger = triggerElement.value
+  const tip = tipElement.value
+  if (!trigger || !tip) return
+  const triggerRect = trigger.getBoundingClientRect()
+  const tipRect = tip.getBoundingClientRect()
+
+  if (tipRect.width === 0 && tipRect.height === 0) return
+
+  if (props.side === 'top' || props.side === 'bottom') {
+    if (tipRect.top >= triggerRect.top) {
+      actualSide.value = 'bottom'
+    } else {
+      actualSide.value = 'top'
+    }
+  } else if (props.side === 'left' || props.side === 'right') {
+    if (tipRect.left >= triggerRect.left) {
+      actualSide.value = 'right'
+    } else {
+      actualSide.value = 'left'
+    }
+  }
+}
+
 let showTimer: ReturnType<typeof setTimeout> | null = null
 let hideTimer: ReturnType<typeof setTimeout> | null = null
 
@@ -93,6 +128,11 @@ function show() {
     } catch {
       // 忽略不支持或已展开情况
     }
+
+    updateActualSide()
+    nextTick(() => {
+      updateActualSide()
+    })
   }, props.delay)
 }
 
@@ -130,6 +170,24 @@ function hide() {
   }, 150)
 }
 
+useEventListener(
+  window,
+  'scroll',
+  () => {
+    if (isVisible.value) updateActualSide()
+  },
+  { passive: true },
+)
+
+useEventListener(
+  window,
+  'resize',
+  () => {
+    if (isVisible.value) updateActualSide()
+  },
+  { passive: true },
+)
+
 onBeforeUnmount(() => {
   if (showTimer) clearTimeout(showTimer)
   if (hideTimer) clearTimeout(hideTimer)
@@ -145,6 +203,7 @@ onBeforeUnmount(() => {
     @focusout="hide"
   >
     <span
+      ref="triggerElement"
       class="tooltip__trigger"
       :aria-describedby="disabled ? undefined : tipId"
       :data-tip-anchor="anchorName"
@@ -162,10 +221,10 @@ onBeforeUnmount(() => {
       :class="{
         'is-visible': isVisible,
         'has-arrow': arrow,
-        [`side-${side}`]: true,
+        [`side-${actualSide}`]: true,
         [`align-${align}`]: true,
       }"
-      :data-side="side"
+      :data-side="actualSide"
       @mouseenter="onTipEnter"
       @mouseleave="onTipLeave"
     >
@@ -187,6 +246,7 @@ onBeforeUnmount(() => {
   display: inline-flex;
   align-items: center;
   anchor-name: v-bind(anchorName);
+  interest-delay: 100ms 150ms;
 }
 
 .tooltip__tip {
@@ -345,6 +405,67 @@ onBeforeUnmount(() => {
   top: auto;
   bottom: 0.85rem;
   translate: 0 0;
+}
+
+/* 锚点容器查询：视口碰撞翻转时自适应反转小三角指示器与悬停安全桥 */
+@container anchored (fallback: flip-block) {
+  .tooltip__tip.side-top::before {
+    bottom: auto;
+    top: -0.3rem;
+    border-bottom: none;
+    border-right: none;
+    border-top: 1px solid var(--line-strong);
+    border-left: 1px solid var(--line-strong);
+  }
+
+  .tooltip__tip.side-bottom::before {
+    top: auto;
+    bottom: -0.3rem;
+    border-top: none;
+    border-left: none;
+    border-bottom: 1px solid var(--line-strong);
+    border-right: 1px solid var(--line-strong);
+  }
+
+  .tooltip__tip[data-side='top']::after {
+    bottom: auto;
+    top: calc(-1 * var(--space-2));
+  }
+
+  .tooltip__tip[data-side='bottom']::after {
+    top: auto;
+    bottom: calc(-1 * var(--space-2));
+  }
+}
+
+@container anchored (fallback: flip-inline) {
+  .tooltip__tip.side-left::before {
+    right: auto;
+    left: -0.3rem;
+    border-top: none;
+    border-right: none;
+    border-bottom: 1px solid var(--line-strong);
+    border-left: 1px solid var(--line-strong);
+  }
+
+  .tooltip__tip.side-right::before {
+    left: auto;
+    right: -0.3rem;
+    border-bottom: none;
+    border-left: none;
+    border-top: 1px solid var(--line-strong);
+    border-right: 1px solid var(--line-strong);
+  }
+
+  .tooltip__tip[data-side='left']::after {
+    right: auto;
+    left: calc(-1 * var(--space-2));
+  }
+
+  .tooltip__tip[data-side='right']::after {
+    left: auto;
+    right: calc(-1 * var(--space-2));
+  }
 }
 
 /* 悬停安全桥（Hover Bridge）：透明扩展触控区，连接触发元素与气泡，防止跨空隙时失焦 */

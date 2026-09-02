@@ -105,6 +105,8 @@
 - **悬停安全桥（Hover Bridge）**：气泡与触发源之间的无形触控延伸区（纯 CSS 伪元素实现）。无缝填补两者之间的物理 margin 空隙，确保光标滑入气泡时轨迹全程处于命中区，彻底杜绝穿过空白缝隙时的闪退痛点。
 - **顶层层级与轻量失焦关闭（Top Layer & Light Dismiss）**：利用浏览器原生顶层特性，天然解决浮层被父级 `overflow: hidden` 或 `contain: paint` 截断的问题；原生支持点击外部空白或 Esc 键无缝自动收起。
 - **锚定回退感知与滑动动效（Anchor Fallback & Sliding Indicator）**：利用 `container-type: anchored` 与 `@container anchored(fallback: flip-block)` 纯 CSS 感知碰撞翻转自适应箭头与安全桥；借助动态 `anchor-name` 实现分段选项卡与选单项的纯 CSS 物理滑动胶囊动效。
+- **意图触发与隐式锚定（Interest Invoker & Implicit Anchor）**：基于 HTML `interestfor` 属性与 `:interest-source` / `:interest-target` 伪类的声明式悬停交互规范；触发源与气泡目标天然建立隐式锚点（无需显式声明 `position-anchor`），配合 `interest-delay` 纯 CSS 控制延时与快速划过连环触发。
+- **动态鼠标跟随锚点（Mouse-Follow Dynamic Anchor）**：将画卷光标坐标（`--mouse-x`、`--mouse-y`）与纯 CSS 锚点定位相结合的动态定位机制，用于实现 0 渲染重排开销的漫画高倍局部放大镜（Loupe Zoom）与实时悬浮卡片。
 - **回到顶部（Back to top / Scroll-to-top）**：纸间长页面（书架、多章节详情）的标准导航辅助微件。采用 VueUse `useWindowScroll` 监听视口（默认 >400px 阈值浮现），以正圆暖纸印章质感呈现，支持自适应 `prefers-reduced-motion` 与键盘焦点平滑转移，阅读器沉浸模式下自动隐身。
 - **防退化门禁（Regression Safety Net）**：全仓多层自动化防御机制，包含前端 `vp check`（TS/Vue 静态检查）、后端 `pnpm test:py`（AST 符号自检 + 真实中间件链路与多章节单测），杜绝改动引发核心功能断裂。
 - **客户端离线缓存（Client Offline Cache / PWA Cache）**：浏览器 Service Worker 与 CacheStorage 在当前设备上存储的静态资产与阅读图片缓存，受本设备存储配额（`StorageManager`）约束。纯客户端生命周期，区别于后端「本地化持久数据（Library Data）」，可由用户随时一键安全清理且绝不影响服务器书库。

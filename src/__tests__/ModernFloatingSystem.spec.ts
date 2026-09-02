@@ -112,6 +112,57 @@ describe('Modern Floating System', () => {
 
       vi.useRealTimers()
     })
+
+    it('dynamically flips actualSide class and data-side when collision causes vertical inversion', async () => {
+      vi.useFakeTimers()
+      const wrapper = mount(Tooltip, {
+        props: {
+          tip: '顶部提示',
+          side: 'top',
+          delay: 0,
+        },
+        slots: {
+          default: '<button class="trigger">按钮</button>',
+        },
+      })
+
+      const trigger = wrapper.find('.tooltip__trigger')
+      const tip = wrapper.find('.tooltip__tip')
+
+      // 模拟视口顶部空间不足导致锚点渲染在下方 (tip.top >= trigger.top)
+      vi.spyOn(trigger.element, 'getBoundingClientRect').mockReturnValue({
+        top: 50,
+        bottom: 70,
+        left: 100,
+        right: 150,
+        width: 50,
+        height: 20,
+        x: 100,
+        y: 50,
+        toJSON: () => {},
+      })
+      vi.spyOn(tip.element, 'getBoundingClientRect').mockReturnValue({
+        top: 80,
+        bottom: 180,
+        left: 100,
+        right: 250,
+        width: 150,
+        height: 100,
+        x: 100,
+        y: 80,
+        toJSON: () => {},
+      })
+
+      await wrapper.find('.tooltip-wrapper').trigger('mouseenter')
+      vi.advanceTimersByTime(10)
+      await wrapper.vm.$nextTick()
+
+      // 实际渲染在下方，实际类名与属性自适应更新为 side-bottom，确保箭头指向正确的上方
+      expect(tip.classes()).toContain('side-bottom')
+      expect(tip.attributes('data-side')).toBe('bottom')
+
+      vi.useRealTimers()
+    })
   })
 
   describe('AppPopover', () => {

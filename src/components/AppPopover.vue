@@ -1,10 +1,11 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, useId, watch } from 'vue'
-import { onClickOutside } from '@vueuse/core'
+import { onClickOutside, useEventListener } from '@vueuse/core'
 
 /**
  * 现代通用弹出层组件（AppPopover）。
  * - 结合 HTML Popover API (popover="auto") 与 CSS Anchor Positioning
+ * - 智能检测视口碰撞自适应纠正实际展示方位（actualSide）与小三角指向
  * - 享受原生 Top Layer 顶层层级（免受父级 overflow 截断与 z-index 冲突）
  * - 原生支持失焦自动关闭（Light Dismiss / Esc）
  * - 兼容 click、hover 与 manual 触发模式，非现代浏览器提供稳健回退
@@ -89,6 +90,38 @@ const isOpen = computed(() => (props.open !== undefined ? props.open : internalO
 const popoverEl = ref<HTMLElement | null>(null)
 const triggerEl = ref<HTMLElement | null>(null)
 const rootEl = ref<HTMLElement | null>(null)
+const actualSide = ref<'top' | 'bottom' | 'left' | 'right'>(props.side)
+
+watch(
+  () => props.side,
+  (val) => {
+    actualSide.value = val
+  },
+)
+
+function updateActualSide() {
+  const trigger = triggerEl.value
+  const panel = popoverEl.value
+  if (!trigger || !panel) return
+  const triggerRect = trigger.getBoundingClientRect()
+  const panelRect = panel.getBoundingClientRect()
+
+  if (panelRect.width === 0 && panelRect.height === 0) return
+
+  if (props.side === 'top' || props.side === 'bottom') {
+    if (panelRect.top >= triggerRect.top) {
+      actualSide.value = 'bottom'
+    } else {
+      actualSide.value = 'top'
+    }
+  } else if (props.side === 'left' || props.side === 'right') {
+    if (panelRect.left >= triggerRect.left) {
+      actualSide.value = 'right'
+    } else {
+      actualSide.value = 'left'
+    }
+  }
+}
 
 let hoverTimer: ReturnType<typeof setTimeout> | null = null
 
@@ -108,6 +141,8 @@ function openPopover() {
     } catch {
       // 忽略不支持
     }
+
+    updateActualSide()
   })
 }
 
@@ -144,8 +179,12 @@ function onNativeToggle(e: Event) {
   if (newState !== isOpen.value) {
     if (props.open === undefined) internalOpen.value = newState
     emit('update:open', newState)
-    if (newState) emit('open')
-    else emit('close')
+    if (newState) {
+      emit('open')
+      nextTick(() => updateActualSide())
+    } else {
+      emit('close')
+    }
   }
 }
 
@@ -160,6 +199,24 @@ watch(
       closePopover()
     }
   },
+)
+
+useEventListener(
+  window,
+  'scroll',
+  () => {
+    if (isOpen.value) updateActualSide()
+  },
+  { passive: true },
+)
+
+useEventListener(
+  window,
+  'resize',
+  () => {
+    if (isOpen.value) updateActualSide()
+  },
+  { passive: true },
 )
 
 // Hover 模式交互
@@ -241,10 +298,10 @@ defineExpose({
       :class="{
         'is-open': isOpen,
         'has-arrow': arrow,
-        [`side-${side}`]: true,
+        [`side-${actualSide}`]: true,
         [`align-${align}`]: true,
       }"
-      :data-side="side"
+      :data-side="actualSide"
     >
       <slot name="content" :close="closePopover" />
     </div>
@@ -355,6 +412,20 @@ defineExpose({
   border-left: none;
 }
 
+.app-popover-panel.side-left::before {
+  right: -0.32rem;
+  top: var(--space-4);
+  border-bottom: none;
+  border-left: none;
+}
+
+.app-popover-panel.side-right::before {
+  left: -0.32rem;
+  top: var(--space-4);
+  border-top: none;
+  border-right: none;
+}
+
 .app-popover-panel.align-end::before {
   left: auto;
   right: var(--space-4);
@@ -364,6 +435,61 @@ defineExpose({
   left: 50%;
   right: auto;
   translate: -50% 0;
+}
+
+.app-popover-panel.side-left.align-center::before,
+.app-popover-panel.side-right.align-center::before {
+  top: 50%;
+  bottom: auto;
+  left: auto;
+  right: -0.32rem;
+  translate: 0 -50%;
+}
+
+.app-popover-panel.side-right.align-center::before {
+  left: -0.32rem;
+  right: auto;
+}
+
+/* 锚点容器查询：视口碰撞翻转时自适应反转小三角指示器 */
+@container anchored (fallback: flip-block) {
+  .app-popover-panel.side-bottom::before {
+    top: auto;
+    bottom: -0.32rem;
+    border-top: none;
+    border-left: none;
+    border-bottom: 1px solid var(--line-strong);
+    border-right: 1px solid var(--line-strong);
+  }
+
+  .app-popover-panel.side-top::before {
+    bottom: auto;
+    top: -0.32rem;
+    border-bottom: none;
+    border-right: none;
+    border-top: 1px solid var(--line-strong);
+    border-left: 1px solid var(--line-strong);
+  }
+}
+
+@container anchored (fallback: flip-inline) {
+  .app-popover-panel.side-left::before {
+    right: auto;
+    left: -0.32rem;
+    border-top: none;
+    border-right: none;
+    border-bottom: 1px solid var(--line-strong);
+    border-left: 1px solid var(--line-strong);
+  }
+
+  .app-popover-panel.side-right::before {
+    left: auto;
+    right: -0.32rem;
+    border-bottom: none;
+    border-left: none;
+    border-top: 1px solid var(--line-strong);
+    border-right: 1px solid var(--line-strong);
+  }
 }
 
 /* 锚点定位与 Popover 不可用时的绝对定位优雅降级 */
