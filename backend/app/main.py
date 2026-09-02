@@ -34,7 +34,6 @@ from .db import (
     delete_guest_device,
     delete_guest_pass,
     get_device_by_token,
-    get_guest_pass_by_id,
     get_guest_pass_by_token,
     get_user_favorites,
     get_user_progress,

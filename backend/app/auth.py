@@ -228,10 +228,10 @@ def is_request_secure(request: Request | None) -> bool:
     if getattr(request, "url", None) and request.url.scheme == "https":
         return True
     x_proto = request.headers.get("x-forwarded-proto", "").strip().lower()
-    if x_proto == "https":
+    if x_proto and x_proto.split(",")[0].strip() == "https":
         return True
     x_scheme = request.headers.get("x-forwarded-scheme", "").strip().lower()
-    if x_scheme == "https":
+    if x_scheme and x_scheme.split(",")[0].strip() == "https":
         return True
     cf_visitor = request.headers.get("cf-visitor", "")
     if '"scheme":"https"' in cf_visitor.lower():
@@ -264,11 +264,15 @@ def check_hotlink_protection(request: Request) -> None:
             xf_host = request.headers.get("x-forwarded-host", "").strip().lower()
 
             allowed_hosts: set[str] = set()
-            for h in (host, xf_host):
-                if h:
-                    allowed_hosts.add(h)
-                    if ":" in h:
-                        allowed_hosts.add(h.split(":", 1)[0])
+            for raw_h in (host, xf_host):
+                if not raw_h:
+                    continue
+                for item in raw_h.split(","):
+                    h = item.strip()
+                    if h:
+                        allowed_hosts.add(h)
+                        if ":" in h:
+                            allowed_hosts.add(h.split(":", 1)[0])
 
             for dev_host in ("localhost", "127.0.0.1", "0.0.0.0"):
                 allowed_hosts.add(dev_host)

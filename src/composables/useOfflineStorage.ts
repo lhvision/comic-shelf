@@ -52,18 +52,17 @@ export const useOfflineStorage = createGlobalState(() => {
 
   const isSecureContext = computed(() => {
     if (typeof window === 'undefined') return true
-    return window.isSecureContext === true
+    return window.isSecureContext !== false
   })
 
   const environmentStatus = computed<'ready' | 'insecure_http' | 'unsupported'>(() => {
     if (typeof window === 'undefined') return 'ready'
-    if (!window.isSecureContext) return 'insecure_http'
+    if (window.isSecureContext === false) return 'insecure_http'
     if (!('serviceWorker' in navigator) || typeof caches === 'undefined') return 'unsupported'
     return 'ready'
   })
 
   const badgeText = computed(() => {
-    if (!isSecureContext.value) return '局域网 HTTP'
     if (usage.value <= 0) return '设备就绪'
     return `设备 ${formatBytes(usage.value)}`
   })

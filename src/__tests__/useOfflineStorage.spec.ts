@@ -35,12 +35,16 @@ describe('useOfflineStorage composable', () => {
     expect(storage.percentage.value).toBe(0)
   })
 
-  it('provides unambiguous device badge text', () => {
+  it('provides unambiguous device badge text and handles environment status', () => {
     const storage = useOfflineStorage()
     storage.usage.value = 0
     expect(storage.badgeText.value).toBe('设备就绪')
+
     storage.usage.value = 1024 * 1024 * 8.5
     expect(storage.badgeText.value).toBe('设备 8.5 MB')
+
+    // In jsdom environment without serviceWorker/caches, it correctly detects unsupported
+    expect(storage.environmentStatus.value).toBe('unsupported')
   })
 
   it('prevents re-entrant clearing operations when clearing is active', async () => {

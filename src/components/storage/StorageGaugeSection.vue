@@ -10,6 +10,7 @@
  */
 
 import AppIcon from '@/components/AppIcon.vue'
+import { MANGA_IMAGE_MAX_BUDGET } from '@/composables/useOfflineStorage'
 
 defineProps<{
   /** 浏览器提供的总配额字节数（为 0 表示未知） */
@@ -39,7 +40,11 @@ defineProps<{
         <span class="gauge-name">漫画离线缓存预算</span>
         <span class="gauge-value font-mono">
           <strong>{{ mangaImageCount }}</strong>
-          <small> / 3,000 张上限 ({{ mangaImageBytesFormatted }})</small>
+          <small>
+            / {{ MANGA_IMAGE_MAX_BUDGET.toLocaleString() }} 张上限 ({{
+              mangaImageBytesFormatted
+            }})</small
+          >
         </span>
       </div>
 
@@ -75,7 +80,8 @@ defineProps<{
         <div class="item-text">
           <span class="item-title">漫画阅览缓存</span>
           <small class="item-desc">
-            {{ mangaImageCount }} 张已读页面与封面 · 保留最新 3,000 页面
+            {{ mangaImageCount }} 张已读页面与封面 · 保留最新
+            {{ MANGA_IMAGE_MAX_BUDGET.toLocaleString() }} 页面
           </small>
         </div>
         <span class="item-metric font-mono">{{ mangaImageBytesFormatted }}</span>
