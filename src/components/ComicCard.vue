@@ -3,6 +3,7 @@ import { computed, ref } from 'vue'
 import type { LibrarySummary } from '@/types'
 import FavoriteButton from '@/components/FavoriteButton.vue'
 import CacheProgress from '@/components/CacheProgress.vue'
+import AppTextClamp from '@/components/AppTextClamp.vue'
 import { api } from '@/api/client'
 import { useCoverTransition } from '@/composables/useCoverTransition'
 import { useAuth } from '@/composables/useAuth'
@@ -117,8 +118,26 @@ const cardTransitionName = computed(
       </div>
 
       <div class="card-body">
-        <h2 class="card-title line-clamp-2" :title="comic.title">{{ comic.title }}</h2>
-        <p class="card-meta">{{ comic.authors.join(' / ') || '佚名' }} · {{ comic.page_count }}P</p>
+        <AppTextClamp
+          as="h2"
+          class="card-title"
+          :lines="2"
+          :text="comic.title"
+          :delay="350"
+          tooltip-align="end"
+          tooltip-side="top"
+          tooltip-width="22rem"
+        />
+        <AppTextClamp
+          as="p"
+          class="card-meta"
+          :lines="1"
+          :text="`${comic.authors.join(' / ') || '佚名'} · ${comic.page_count}P`"
+          :delay="350"
+          tooltip-align="end"
+          tooltip-side="bottom"
+          tooltip-width="24rem"
+        />
         <div v-if="primaryTags.length" class="cluster card-tags">
           <span v-for="tag in primaryTags" :key="tag" class="chip">{{ tag }}</span>
         </div>

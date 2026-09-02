@@ -19,21 +19,30 @@ const props = withDefaults(
     align?: 'start' | 'center' | 'end'
     /** 浮层宽度 */
     width?: string
+    /** 最大高度限制（如超长文本支持内部滚动，默认 16rem） */
+    maxHeight?: string
     /** 显式禁用 */
     disabled?: boolean
-    /** 是否显示指示小三角 */
+    /** 是否显示指示小三角（默认 true） */
     arrow?: boolean
     /** 唤起延迟 (ms) */
     delay?: number
+    /** 离开关闭缓冲延迟 (ms，默认 150ms) */
+    hideDelay?: number
+    /** 延迟挂载：仅在激活时挂载 DOM，彻底消除页面大量 Tooltip 时的 DOM 节点开销（默认 true） */
+    lazy?: boolean
   }>(),
   {
     tip: '',
     side: 'top',
     align: 'center',
     width: '15rem',
+    maxHeight: '16rem',
     disabled: false,
     arrow: true,
     delay: 100,
+    hideDelay: 150,
+    lazy: true,
   },
 )
 
@@ -76,11 +85,19 @@ const isVisible = ref(false)
 const tipElement = ref<HTMLElement | null>(null)
 const triggerElement = ref<HTMLElement | null>(null)
 const actualSide = ref<'top' | 'right' | 'bottom' | 'left'>(props.side)
+const actualAlign = ref<'start' | 'center' | 'end'>(props.align)
 
 watch(
   () => props.side,
   (val) => {
     actualSide.value = val
+  },
+)
+
+watch(
+  () => props.align,
+  (val) => {
+    actualAlign.value = val
   },
 )
 
@@ -98,6 +115,20 @@ function updateActualSide() {
       actualSide.value = 'bottom'
     } else {
       actualSide.value = 'top'
+    }
+
+    // 横向对齐碰撞自适应：当浮层在视口边缘发生水平翻转（flip-inline）时，
+    // 动态调整箭头方位（start/end），确保指示小三角始终精准对齐触发源！
+    const triggerMidX = triggerRect.left + triggerRect.width / 2
+    const tipMidX = tipRect.left + tipRect.width / 2
+    const threshold = Math.max(16, tipRect.width * 0.15)
+
+    if (triggerMidX > tipMidX + threshold) {
+      actualAlign.value = 'end'
+    } else if (triggerMidX < tipMidX - threshold) {
+      actualAlign.value = 'start'
+    } else {
+      actualAlign.value = 'center'
     }
   } else if (props.side === 'left' || props.side === 'right') {
     if (tipRect.left >= triggerRect.left) {
@@ -131,6 +162,15 @@ function show() {
 
     updateActualSide()
     nextTick(() => {
+      if (props.lazy && tipElement.value && typeof tipElement.value.showPopover === 'function') {
+        try {
+          if (!tipElement.value.matches(':popover-open')) {
+            tipElement.value.showPopover()
+          }
+        } catch {
+          // 忽略不支持或已展开情况
+        }
+      }
       updateActualSide()
     })
   }, props.delay)
@@ -167,28 +207,50 @@ function hide() {
     } catch {
       // 忽略不支持或已收起情况
     }
-  }, 150)
+  }, props.hideDelay)
 }
 
-useEventListener(
-  window,
-  'scroll',
-  () => {
-    if (isVisible.value) updateActualSide()
-  },
-  { passive: true },
-)
+/* 性能铁律：仅在气泡真正可见时动态挂载 window 监听器，气泡休眠时为 0 监听器开销 */
+let stopScroll: (() => void) | null = null
+let stopResize: (() => void) | null = null
 
-useEventListener(
-  window,
-  'resize',
-  () => {
-    if (isVisible.value) updateActualSide()
-  },
-  { passive: true },
-)
+function attachWindowListeners() {
+  if (!stopScroll) {
+    stopScroll = useEventListener(
+      window,
+      'scroll',
+      () => {
+        if (isVisible.value) updateActualSide()
+      },
+      { passive: true },
+    )
+  }
+  if (!stopResize) {
+    stopResize = useEventListener(
+      window,
+      'resize',
+      () => {
+        if (isVisible.value) updateActualSide()
+      },
+      { passive: true },
+    )
+  }
+}
+
+function detachWindowListeners() {
+  stopScroll?.()
+  stopScroll = null
+  stopResize?.()
+  stopResize = null
+}
+
+watch(isVisible, (val) => {
+  if (val) attachWindowListeners()
+  else detachWindowListeners()
+})
 
 onBeforeUnmount(() => {
+  detachWindowListeners()
   if (showTimer) clearTimeout(showTimer)
   if (hideTimer) clearTimeout(hideTimer)
 })
@@ -213,6 +275,7 @@ onBeforeUnmount(() => {
     </span>
 
     <span
+      v-if="!lazy || isVisible"
       :id="tipId"
       ref="tipElement"
       popover="hint"
@@ -222,15 +285,19 @@ onBeforeUnmount(() => {
         'is-visible': isVisible,
         'has-arrow': arrow,
         [`side-${actualSide}`]: true,
-        [`align-${align}`]: true,
+        [`align-${actualAlign}`]: true,
       }"
       :data-side="actualSide"
+      :data-align="actualAlign"
       @mouseenter="onTipEnter"
       @mouseleave="onTipLeave"
+      @click.stop
     >
-      <slot name="content">
-        {{ tip }}
-      </slot>
+      <div class="tooltip__content">
+        <slot name="content">
+          {{ tip }}
+        </slot>
+      </div>
     </span>
   </span>
 </template>
@@ -256,7 +323,7 @@ onBeforeUnmount(() => {
   overflow: visible;
   box-sizing: border-box;
   border: 1px solid var(--line-strong);
-  padding: var(--space-2) var(--space-3);
+  padding: 0;
   border-radius: var(--radius-2);
   background: var(--paper-0);
   color: var(--ink-1);
@@ -265,7 +332,7 @@ onBeforeUnmount(() => {
   font-family: var(--font-body);
   line-height: 1.6;
   text-align: left;
-  white-space: normal;
+  white-space: pre-wrap;
   overflow-wrap: anywhere;
   word-break: break-word;
   pointer-events: auto;
@@ -293,6 +360,17 @@ onBeforeUnmount(() => {
     visibility var(--duration-1) step-end,
     overlay var(--duration-1) var(--ease-out) allow-discrete,
     display var(--duration-1) var(--ease-out) allow-discrete;
+}
+
+.tooltip__content {
+  box-sizing: border-box;
+  padding: var(--space-2) var(--space-3);
+  max-height: v-bind('props.maxHeight');
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: var(--line-strong) transparent;
+  border-radius: calc(var(--radius-2) - 1px);
 }
 
 /* 各方位默认位移动效 */

@@ -2,6 +2,7 @@
 import { computed, ref, watch } from 'vue'
 import { chapterCoverUrl } from '@/api/client'
 import CacheProgress from '@/components/CacheProgress.vue'
+import AppTextClamp from '@/components/AppTextClamp.vue'
 import type { Chapter } from '@/types'
 
 /**
@@ -57,9 +58,15 @@ function onCoverError() {
     </div>
     <div class="chapter-info">
       <p class="eyebrow">第 {{ chapter.index }} 話</p>
-      <h3 class="chapter-title" :title="chapter.title || `第 ${chapter.index} 話`">
-        {{ chapter.title || `第 ${chapter.index} 話` }}
-      </h3>
+      <AppTextClamp
+        as="h3"
+        class="chapter-title"
+        :lines="2"
+        :text="chapter.title || `第 ${chapter.index} 話`"
+        :delay="350"
+        tooltip-side="top"
+        tooltip-width="20rem"
+      />
       <div class="chapter-meta-row">
         <span class="chapter-meta">{{ chapter.page_count }} 页</span>
         <CacheProgress :cached="cachedPages" :total="chapter.page_count" :running="running" />
@@ -128,14 +135,11 @@ function onCoverError() {
   gap: var(--space-1);
 }
 
-.chapter-title {
+.chapter-title,
+:deep(.chapter-title) {
   font-size: var(--text-sm);
   line-height: 1.45;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
+  margin: 0;
 }
 
 .chapter-meta {

@@ -1,9 +1,18 @@
 <script setup lang="ts">
+import { computed } from 'vue'
+import { useToggle } from '@vueuse/core'
 import type { ComicMeta } from '@/types'
+import AppTextClamp from '@/components/AppTextClamp.vue'
 
 const props = defineProps<{
   meta: ComicMeta
 }>()
+
+const [descExpanded, toggleDesc] = useToggle(false)
+const hasLongDescription = computed(() => {
+  const desc = props.meta.description || ''
+  return desc.length > 90 || desc.includes('\n')
+})
 
 const fieldRows = [
   { label: '禁漫车', value: props.meta.display_id, mono: true },
@@ -33,13 +42,30 @@ const fieldRows = [
         <p class="eyebrow">Catalog card</p>
         <span class="meta-id" :title="meta.display_id">{{ meta.display_id }}</span>
       </div>
-      <h2 id="meta-title" :title="meta.title">{{ meta.title }}</h2>
+      <AppTextClamp
+        id="meta-title"
+        as="h2"
+        :lines="2"
+        :text="meta.title"
+        tooltip-side="bottom"
+        tooltip-width="30rem"
+      />
     </div>
 
     <dl class="meta-grid">
-      <div v-for="row in fieldRows" :key="row.label" class="meta-row">
+      <div v-for="(row, idx) in fieldRows" :key="row.label" class="meta-row">
         <dt>{{ row.label }}</dt>
-        <dd :data-mono="row.mono" :title="row.value">{{ row.value }}</dd>
+        <dd :data-mono="row.mono">
+          <AppTextClamp
+            as="span"
+            :lines="2"
+            :text="row.value"
+            :mono="row.mono"
+            tooltip-side="top"
+            :tooltip-align="idx % 2 === 1 ? 'end' : 'start'"
+            tooltip-width="26rem"
+          />
+        </dd>
       </div>
     </dl>
 
@@ -52,8 +78,18 @@ const fieldRows = [
     </div>
 
     <div class="meta-block">
-      <h3>叙述</h3>
-      <p class="description">
+      <div class="meta-block-header">
+        <h3>叙述</h3>
+        <button
+          v-if="hasLongDescription"
+          type="button"
+          class="desc-toggle-btn"
+          @click="toggleDesc()"
+        >
+          {{ descExpanded ? '收起 ▴' : '展开全文 ▾' }}
+        </button>
+      </div>
+      <p class="description" :class="{ 'line-clamp-3': !descExpanded && hasLongDescription }">
         {{ meta.description || '原页面没有填写叙述。' }}
       </p>
     </div>
@@ -94,7 +130,8 @@ const fieldRows = [
   text-transform: uppercase;
 }
 
-.meta-head h2 {
+.meta-head h2,
+.meta-head :deep(h2) {
   margin: 0;
   font-size: var(--text-xl);
   line-height: var(--leading-tight);
@@ -176,7 +213,44 @@ const fieldRows = [
   margin-bottom: var(--space-2);
 }
 
-.description {
+.meta-block-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  margin-bottom: var(--space-2);
+}
+
+.meta-block-header h3 {
+  margin-bottom: 0;
+}
+
+.desc-toggle-btn {
+  background: none;
+  border: none;
+  padding: var(--space-0-5) var(--space-1);
+  font-family: var(--font-body);
+  font-size: var(--text-xs);
+  color: var(--accent);
+  cursor: pointer;
+  border-radius: var(--radius-1);
+  transition:
+    color var(--duration-1) var(--ease-out),
+    background-color var(--duration-1) var(--ease-out);
+}
+
+.desc-toggle-btn:hover {
+  color: var(--accent-strong);
+  background-color: var(--accent-soft);
+}
+
+.desc-toggle-btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.description,
+:deep(.description) {
   padding: var(--space-3) var(--space-4);
   border: 1px solid var(--line);
   border-radius: var(--radius-2);

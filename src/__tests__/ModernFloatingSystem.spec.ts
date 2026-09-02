@@ -10,12 +10,14 @@ import type { DropdownOption } from '@/types'
 
 describe('Modern Floating System', () => {
   describe('Tooltip & AppTooltip', () => {
-    it('renders trigger element and popover=hint tip element with accessibility attributes', () => {
+    it('defaults to lazy: true (zero-DOM) and mounts popover=hint tip element on hover', async () => {
+      vi.useFakeTimers()
       const wrapper = mount(Tooltip, {
         props: {
           tip: '提示信息说明',
           side: 'top',
           align: 'center',
+          delay: 50,
         },
         slots: {
           default: '<button class="test-trigger">悬停我</button>',
@@ -23,9 +25,15 @@ describe('Modern Floating System', () => {
       })
 
       const trigger = wrapper.find('.tooltip__trigger')
-      const tip = wrapper.find('.tooltip__tip')
-
       expect(trigger.exists()).toBe(true)
+      // 默认状态下 0 DOM 挂载
+      expect(wrapper.find('.tooltip__tip').exists()).toBe(false)
+
+      await wrapper.find('.tooltip-wrapper').trigger('mouseenter')
+      vi.advanceTimersByTime(50)
+      await wrapper.vm.$nextTick()
+
+      const tip = wrapper.find('.tooltip__tip')
       expect(tip.exists()).toBe(true)
       expect(tip.attributes('popover')).toBe('hint')
       expect(tip.attributes('role')).toBe('tooltip')
@@ -35,14 +43,17 @@ describe('Modern Floating System', () => {
       expect(describedBy).toBe(tip.attributes('id'))
       expect(tip.classes()).toContain('side-top')
       expect(tip.classes()).toContain('align-center')
+
+      vi.useRealTimers()
     })
 
-    it('applies side and align classes for dynamic arrow targeting', () => {
+    it('applies side and align classes for dynamic arrow targeting when lazy=false', () => {
       const wrapper = mount(Tooltip, {
         props: {
           tip: '说明',
           side: 'top',
           align: 'end',
+          lazy: false,
         },
         slots: {
           default: '<button>按钮</button>',
@@ -58,6 +69,7 @@ describe('Modern Floating System', () => {
       const wrapper = mount(AppTooltip, {
         props: {
           side: 'bottom',
+          lazy: false,
         },
         slots: {
           default: '<span class="target">文本</span>',
@@ -76,6 +88,7 @@ describe('Modern Floating System', () => {
         props: {
           tip: '说明文本',
           delay: 50,
+          lazy: false,
         },
         slots: {
           default: '<button class="trigger">悬停</button>',
@@ -83,12 +96,14 @@ describe('Modern Floating System', () => {
       })
 
       const root = wrapper.find('.tooltip-wrapper')
-      const tip = wrapper.find('.tooltip__tip')
 
       // 移入触发元素
       await root.trigger('mouseenter')
       vi.advanceTimersByTime(50)
       await wrapper.vm.$nextTick()
+
+      const tip = wrapper.find('.tooltip__tip')
+      expect(tip.exists()).toBe(true)
       expect(tip.classes()).toContain('is-visible')
 
       // 移出触发元素（触发 150ms 缓冲计时）
@@ -120,6 +135,7 @@ describe('Modern Floating System', () => {
           tip: '顶部提示',
           side: 'top',
           delay: 0,
+          lazy: false,
         },
         slots: {
           default: '<button class="trigger">按钮</button>',

@@ -2,6 +2,7 @@
 import { computed } from 'vue'
 import AppButton from '@/components/AppButton.vue'
 import AppIcon from '@/components/AppIcon.vue'
+import AppTextClamp from '@/components/AppTextClamp.vue'
 import type { DiscoveryItem } from '@/types'
 
 const props = defineProps<{
@@ -64,7 +65,15 @@ const libraryRoute = computed(() => `/comic/${props.item.source}/${props.item.so
     </div>
 
     <div class="card-body">
-      <h2 class="card-title line-clamp-2" :title="item.title">
+      <AppTextClamp
+        as="h2"
+        class="card-title"
+        :lines="2"
+        :text="item.title"
+        :delay="350"
+        tooltip-side="top"
+        tooltip-width="22rem"
+      >
         <a
           v-if="item.url"
           :href="item.url"
@@ -77,8 +86,15 @@ const libraryRoute = computed(() => `/comic/${props.item.source}/${props.item.so
         <template v-else>
           {{ item.title }}
         </template>
-      </h2>
-      <p class="card-author">{{ item.author || '佚名' }}</p>
+      </AppTextClamp>
+      <AppTextClamp
+        as="p"
+        class="card-author"
+        :lines="1"
+        :text="item.author || '佚名'"
+        tooltip-side="bottom"
+        tooltip-width="20rem"
+      />
 
       <div class="card-action-bar">
         <RouterLink

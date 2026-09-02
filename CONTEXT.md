@@ -108,6 +108,9 @@
 - **纸间统一图标集（Unified Archive Iconography）**：全站矢量图标单源字典体系。统一步调为暖纸细线条描边与朱砂印章质感（1.8px 细描边 / 24px 网格），彻底杜绝跨平台字符（`✕`/`✓`/`×`）渲染字重撕裂与重复内联 SVG 碎片。
 - **现代浮层体系（Modern Floating System）**：基于 HTML Popover API 与 CSS Anchor Positioning 规范构建的无依赖顶层浮动交互基建，包含 `Modal`（强中断模态对话框）、`AppPopover`（富交互锚定浮层）、`AppDropdown`（操作选单与选择器）与 `AppTooltip`（`popover="hint"` 轻量气泡提示），彻底消除散落的绝对定位胶水代码与 z-index 冲突。
 - **气泡提示（Tooltip / AppTooltip）**：`popover="hint"` 声明式轻量提示微件，专门承载辅助性只读文案；覆写浏览器 User-Agent 样式实现零幽灵滚动条；内置**悬停安全桥（Hover Bridge）**，遵循 WCAG 2.1 1.4.13 国际标准，支持光标无缝移入划词选读与复制。复杂表单、按钮列表与多级菜单严格收敛至 `AppPopover` / `AppDropdown`。
+- **文本多行自适应截断与纸印气泡（Text Clamping & Paper Tooltip）**：全站卡片与元数据网格中对超长文本施加的行数预算约束（`line-clamp-N`）。配合基于 HTML Popover API + CSS Anchor Positioning 的按需气泡，在保证书架卡片严整对齐的同时，提供 100ms~350ms 延迟的无感查阅与选词复制。
+- **零开销懒浮层架构（Zero-DOM & Zero-Listener Floating Architecture）**：针对百张卡片长列表性能建立的浮层优化定律。默认仅渲染普通语义文本标签，浮层 DOM 节点与全局 `window` 滚动/尺寸监听器仅在激活可见时按需挂载，休眠时监听器占用与多余 DOM 精确为 0，彻底免疫高频滚动卡顿。
+- **内联手风琴折叠（Inline Disclosure / 叙述展开）**：详情页中对长篇叙述简介采用的非侵入展示策略。默认展示前 3 行并提供「展开全文 ▾ / 收起 ▴」切换按钮，完美保留汉化组段落换行与空格，规避浮动气泡对图书呼吸感与移动端触控的遮挡。
 - **悬停安全桥（Hover Bridge）**：气泡与触发源之间的无形触控延伸区（纯 CSS 伪元素实现）。无缝填补两者之间的物理 margin 空隙，确保光标滑入气泡时轨迹全程处于命中区，彻底杜绝穿过空白缝隙时的闪退痛点。
 - **顶层层级与轻量失焦关闭（Top Layer & Light Dismiss）**：利用浏览器原生顶层特性，天然解决浮层被父级 `overflow: hidden` 或 `contain: paint` 截断的问题；原生支持点击外部空白或 Esc 键无缝自动收起。
 - **锚定回退感知与滑动动效（Anchor Fallback & Sliding Indicator）**：利用 `container-type: anchored` 与 `@container anchored(fallback: flip-block)` 纯 CSS 感知碰撞翻转自适应箭头与安全桥；借助动态 `anchor-name` 实现分段选项卡与选单项的纯 CSS 物理滑动胶囊动效。

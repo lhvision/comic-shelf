@@ -586,6 +586,11 @@ details[open]::details-content {
 }
 ```
 
+> 💡 **工程避坑守则（现行浏览器落地实录）**：
+>
+> 1. **物理分层（避免幽灵滚动条）**：当浮层内有超长文本需要滚动时，**绝对禁止**将 `overflow-y: auto` 施加在包含 `::before`（小三角）与 `::after`（安全桥）的根浮层容器上，否则负边距伪元素会被计入溢出计算导致短文本常驻垂直滚动条并裁切箭头；必须将滚动收敛至内部独立容器 `.tooltip__content`；
+> 2. **动态横向对齐翻转感知（`actualAlign`）**：在不支持 `@container anchored (fallback: flip-inline)` 的现行浏览器中，若视口右缘碰撞触发 CSS Anchor 的 `flip-inline` 向左展开，模板静态绑定的 `align-start` 会将箭头错误留在最左端。必须在 JS `updateActualSide()` 中计算触发源中线相对浮层的位置偏移，动态切换 `actualAlign` 为 `end`（`right: 0.85rem`），确保箭头始终精准垂直对齐触发源。
+
 ---
 
 ### 3.7 `Element.prototype.startViewTransition` — 局部作用域视图过渡

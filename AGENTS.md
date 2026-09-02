@@ -34,6 +34,7 @@ release. Add a tool name to select part of the graph. For example, run
 ## 🎯 任务交付验收门禁（Definition of Done）
 
 - [ ] **静态检查**：代码编写完成后运行 `vp check` 确保 0 lint error / 0 type error。
+- [ ] **Vue 模板与增量类型检查（组件改动必跑）**：改动涉及 `.vue` 组件后，必须运行 `pnpm type-check`（基于 `vue-tsc --build` 增量模式，只验证改动文件加速），彻底排查 Vue 模板内部的 TS 属性绑定与类型错误。
 - [ ] **精准单测验证（严禁无差别全量）**：改动涉及逻辑时，**只运行改动对应的单测文件**（如 `vp test src/__tests__/ReaderLoadingState.spec.ts`），严禁日常开发无差别全量执行 `vp test`（防止用例增多后全量卡死/阻塞）。
 - [ ] **UI 流程实质落地门禁（涉及组件新建、核心交互变更、视觉重构）**：必须严格执行 `docs/agents/ui.md` 五步 SOP（开动前 Craft 方案确认、`invoke_subagent` 独立设计总监跑 A 轨挑刺逼出 P1、`pnpm detect:slop` 跑 B 轨扫描、Polish 照单修复后执行 `pnpm critique write <slug> <file>` 物理落盘并在涉及设计系统演进时更新 `DESIGN_NOTES.md`），严禁敷衍全满分报告，严禁同一会话自导自演。
 - [ ] **E2E 准入与豁免（严禁无意义自跑 E2E）**：
@@ -99,7 +100,8 @@ release. Add a tool name to select part of the graph. For example, run
 pnpm dev:all                             # 同时启动 API + Web（热重载）
 pnpm api                                 # 只起 API（自动探测 Python 虚拟环境）
 vp dev                                   # 只起 Web（Vite+ dev server）
-vp check                                 # fmt + lint + type-check
+vp check                                 # fmt + lint + type-check (TS script)
+pnpm type-check                          # 增量验证 Vue 模板内的 TS 类型 (vue-tsc --build)
 pnpm imsearch <action>                   # 识图服务运维 (start/stop/restart/status/reindex/train/logs)
 vp test src/__tests__/<Target>.spec.ts   # 运行目标文件单测（严禁日常全量）
 pnpm critique write <slug> <file>        # 归档 Impeccable 评审快照

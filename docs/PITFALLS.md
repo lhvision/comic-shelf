@@ -200,10 +200,27 @@
     2. 所有轮询方法（书架 `refreshLiveCache`、详情/章节 `cacheProgress`）必须挂载 `isPolling` 并发锁，未决时丢弃新 tick，并绑定 `AbortController`；
     3. 全局 API 请求统一封装 15s 超时控制器（`combineSignals` + `TimeoutError`），杜绝霸占浏览器 Socket 槽位。
 
+### 32. 盒模型伪元素导致浮层误触滚动条与尖角装饰裁切（Pseudo-Element Scrollbar Leakage & Arrow Clipping）
+
+- **本质**：具有绝对定位负边距/偏移的伪元素（如指示小三角 `::before`、WCAG 悬停安全桥 `::after`）属于容器盒模型的溢出部分。若浮层根节点声明了 `overflow-y: auto`，浏览器会将其一律判定为纵向溢出（`scrollHeight > clientHeight` 恒成立），导致即使仅有 1~2 行短文本也会被强行渲染出灰色垂直滚动条，且将伸出盒外的尖角箭头硬切消失。
+- **复现场景**：悬停在仅有两行文字的作品名气泡上，右侧常驻禁用样式的垂直滚动条，指示箭头消失不见。
+- **红线与防误伤**：
+  - **不要**在包含外部定位伪元素（小三角、安全桥）的浮层根容器上直接设置 `overflow: auto` 或 `overflow-y: auto`；
+  - **放行/改用**根容器严格保持 `overflow: visible; padding: 0;`，由内部独立的内容容器 `.tooltip__content` 承载 `padding` 与 `max-height + overflow-y: auto`，实现几何装饰与内部滚动的物理分层。
+
+### 33. CSS Anchor 碰撞翻转与静态类名脱节导致指示箭头指错方向（Anchor Inline-Flip & Desynced Arrow Alignment）
+
+- **本质**：CSS Anchor Positioning 在视口边界触发 `position-try-fallbacks: flip-inline` 水平翻转（如 `span-right` 翻转为 `span-left`）时，若 Vue 模板中的对齐类名仍然静态绑定 `props.align`（`align-start`），会导致指示小三角继续停留于左侧（`left: 0.85rem`），而触发源已由于翻转位于浮层右侧，形成“指鹿为马”的严重视觉脱节。
+- **复现场景**：在详情页右列（如作品、作者）悬停时，浮层因右侧空间不足翻转至左边，但小三角依然在左侧指向左列车号，与右列触发文字完全错位。
+- **红线与防误伤**：
+  - **不要**在带有翻转回退的 Anchor 浮层上静态绑定 `props.align` 类名；
+  - **放行/改用**引入响应式 `actualAlign` 与几何位置判定（检测触发源相对浮层中线位置），当翻转至一侧时自动动态切换为 `align-end` 或 `align-start`，并在右边界固定列（如详情页网格右列）显式提供 `:tooltip-align="end"` 默认契约。
+
 ---
 
-## 🚦 交付门禁（三步必跑）
+## 🚦 交付门禁（四步必跑）
 
 1. **静态检查**：`vp check`（前端 0 error、0 warning、格式规范）；
-2. **后端测试**：`pnpm test:py`（后端 0 syntax/import error，中间件全链路测试通过）；
-3. **定向单测**：仅运行改动对应的单测文件（严禁无差别全量阻塞）。
+2. **Vue 模板类型检查**：`pnpm type-check`（基于 `vue-tsc --build` 增量模式，排查 Vue template 内部 TS 属性绑定与类型错误，只验证改动文件加速）；
+3. **后端测试**：`pnpm test:py`（后端 0 syntax/import error，中间件全链路测试通过）；
+4. **定向单测**：仅运行改动对应的单测文件（严禁无差别全量阻塞）。

@@ -110,6 +110,20 @@
 - **双轨渲染架构**：以 CSS Custom Property `--progress: 0~1` 与 `--value / --max` 驱动 GPU 合成层 `transform: scaleX(...)`，并在现代浏览器中渐进增强为原生 CSS `progress()` 数学函数，实现零 Reflow 开销；
 - **拟真未定态（Indeterminate Mode）**：结合 `--ease-progress`（`cubic-bezier(.08, .81, .29, .99)`）与关键帧实现先快后慢的心理学非线性进度模拟，彻底替代 JS 定时器伪刷新。
 
+### 3.5 文本多行自适应截断与纸印气泡体系（Text Clamping & Paper Tooltip Architecture）
+
+- **统一原子组件（`AppTextClamp.vue`）**：收敛全站单行/多行超长文本截断与悬停气泡提示；
+- **行数预算准则**：
+  - **书架卡片**：标题 2 行（`line-clamp-2`）、作者与页数严格 1 行（`line-clamp-1`），气泡呼出延迟拉长至 `350ms`（离开缓冲 `250ms`），杜绝光标漫游误触与卡片网格高低不齐；
+  - **详情页卡片**：大标题 2 行、元数据网格（作品/登场人物/作者等）2 行截断，超长文案悬停显示气泡；长篇叙述（`description`）升级为内联手风琴折叠（`Inline Disclosure`，3 行折叠 +「展开全文 ▾ / 收起 ▴」），绝不使用半空浮层破坏书籍呼吸感；
+- **零开销性能铁律（Zero-DOM & Zero-Listener Overhead）**：
+  - 默认状态仅渲染原生语义标签，Tooltip 浮层节点延迟挂载（`lazy: true` 为全局默认），休眠状态 0 额外 DOM；
+  - `Tooltip.vue` 的 `window` 滚动与尺寸监听器仅在 `isVisible === true` 时按需挂载，休眠时监听器开销精确为 0，彻底免疫百张卡片滚动卡顿；
+  - 挂载生命周期与 `useResizeObserver` 前置完成溢出探测（`isTruncated`），消除首次悬停测量死锁，键盘 Tab 巡航自动为截断项提供焦点环；
+- **物理分层与横向翻转对齐（Physical Separation & Dynamic Alignment）**：
+  - **装饰与内滚物理分层**：根容器 `.tooltip__tip` 保持 `overflow: visible; padding: 0;`，保护 `::before`（45° 指示小三角）与 `::after`（WCAG 悬停安全桥）自由延伸而不被计入盒模型滚动范围；内部独立内容容器 `.tooltip__content` 承载 `padding` 与 `max-height + overflow-y: auto`，从底层杜绝短文本“幽灵滚动条”；
+  - **横向碰撞箭头自适应**：浮层响应式监测几何相对位置（`actualAlign`），当视口边界触发 `flip-inline` 导致浮层向左翻转时，小三角自动从左端（`start`）动态翻转至右端（`end: right 0.85rem`），精准指向触发源；详情页 2 列网格右列天然支持 `:tooltip-align="end"` 默认端对齐。
+
 ---
 
 ## 4. 核心设计红线与避坑定律（Permanent Laws & Anti-Regression Anchors）
