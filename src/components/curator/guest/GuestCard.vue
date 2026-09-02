@@ -26,6 +26,7 @@ const {
   operatingId,
   renewPass,
   resetToken,
+  resetPin,
   toggleActive,
   removePass,
   removeDevice,
@@ -40,6 +41,8 @@ const copiedLink = refAutoReset(false, 1500)
 const copiedToken = refAutoReset(false, 1500)
 /** 重置密钥二次确认弹层状态（4s 未操作自动归位） */
 const isConfirmingReset = refAutoReset(false, 4000)
+/** 清空 PIN 码二次确认弹层状态（4s 未操作自动归位） */
+const isConfirmingResetPin = refAutoReset(false, 4000)
 /** 注销通行证二次确认弹层状态（4s 未操作自动归位） */
 const isConfirmingDelete = refAutoReset(false, 4000)
 
@@ -64,6 +67,12 @@ function handleRemoveDevice(passId: number, deviceId: number) {
 function handleResetToken() {
   void resetToken(props.item.id)
   isConfirmingReset.value = false
+}
+
+/** 确认清空自设 PIN 码并恢复待认领 */
+function handleResetPin() {
+  void resetPin(props.item.id)
+  isConfirmingResetPin.value = false
 }
 
 /** 确认从名册中注销该通行证 */
@@ -97,18 +106,20 @@ function handleRemovePass() {
             ? 'cooling-locked'
             : item.is_rate_limited
               ? 'rate-limited'
-              : item.activation_status,
+              : !item.is_claimed
+                ? 'pending'
+                : item.activation_status,
         ]"
       >
         <span v-if="item.is_cooling_locked">〔 ⚠️ 争抢锁定 〕</span>
         <span v-else-if="item.is_rate_limited">〔 ⚠️ 速率受限 〕</span>
         <span v-else-if="item.activation_status === 'disabled'">〔 已停用 〕</span>
         <span v-else-if="item.activation_status === 'expired'">〔 已过期 〕</span>
-        <span v-else-if="item.activation_status === 'pending'">〔 待激活 · 0台占用 〕</span>
+        <span v-else-if="!item.is_claimed">〔 🌿 待认领 (未设 PIN) 〕</span>
         <span v-else-if="item.activation_status === 'full'">
           〔 满额 · {{ item.device_count }}/{{ item.max_devices }}台 〕
         </span>
-        <span v-else>〔 活跃 · {{ item.device_count }}/{{ item.max_devices }}台 〕</span>
+        <span v-else>〔 🍃 活跃 · {{ item.device_count }}/{{ item.max_devices }}台 〕</span>
       </div>
     </div>
 
@@ -247,6 +258,38 @@ function handleRemovePass() {
               确定
             </button>
             <button type="button" class="confirm-act confirm-no" @click="isConfirmingReset = false">
+              取消
+            </button>
+          </div>
+        </div>
+
+        <!-- 清空 PIN 码 -->
+        <div v-if="item.is_claimed" class="confirm-wrapper">
+          <button
+            v-if="!isConfirmingResetPin"
+            type="button"
+            class="sub-tool-btn"
+            title="清空读者自设 PIN 码并恢复为待认领"
+            :disabled="operatingId !== null"
+            @click="isConfirmingResetPin = true"
+          >
+            <span>清空PIN</span>
+          </button>
+          <div v-else class="confirm-pop">
+            <span class="confirm-text">清空PIN？</span>
+            <button
+              type="button"
+              class="confirm-act confirm-yes"
+              :disabled="operatingId !== null"
+              @click="handleResetPin"
+            >
+              确定
+            </button>
+            <button
+              type="button"
+              class="confirm-act confirm-no"
+              @click="isConfirmingResetPin = false"
+            >
               取消
             </button>
           </div>

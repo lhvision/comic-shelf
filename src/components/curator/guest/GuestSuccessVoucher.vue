@@ -54,8 +54,9 @@ async function handleCopyToken() {
       <span class="voucher-seal">〔 通行凭据已印发 〕</span>
       <h3 class="voucher-title">{{ pass.username }}</h3>
       <p class="voucher-sub">
-        专属通行证已生成，有效期至
-        {{ formatTimestamp(pass.expires_at) }}，允许同时授权 {{ pass.max_devices }} 台设备。
+        专属通行证已印发，有效期至
+        {{ formatTimestamp(pass.expires_at) }}，支持 {{ pass.max_devices }} 台席位（首次打开自设 PIN
+        码绑定）。
       </p>
     </div>
 

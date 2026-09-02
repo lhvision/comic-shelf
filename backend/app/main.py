@@ -16,6 +16,7 @@ from .auth import (
     clear_auth_cookie,
     clear_device_cookie,
     extract_device_token,
+    extract_token,
     get_client_ip,
     get_current_user_id,
     get_user_context,
@@ -30,6 +31,7 @@ from .auth import (
 )
 from .config import AUTH_SECRET, DATA_DIR, ENABLE_DOCS, LIBRARY_DIR
 from .db import (
+    claim_guest_pass,
     create_guest_pass,
     delete_guest_device,
     delete_guest_pass,
@@ -46,7 +48,9 @@ from .db import (
     set_user_progress,
     touch_device_active,
     update_guest_pass,
+    verify_guest_pass_pin,
 )
+from .abuse import clear_pin_failures, is_pin_locked, record_pin_failure_and_check_lock
 from .jobs import get_job, list_running, start_job
 from .gate import _env_explicit, get_download_concurrency, set_download_concurrency
 from .imsearch import check_imsearch_status, search_imsearch
@@ -55,6 +59,7 @@ from .models import (
     AuthStatusResponse,
     CacheProgress,
     ChapterUpdateRequest,
+    ClaimGuestPassRequest,
     ComicDetail,
     ComicMeta,
     ConcurrencyInfo,
@@ -132,7 +137,8 @@ async def auth_and_security_middleware(request: Request, call_next):
     # Allow public endpoints and non-API static files
     if (
         not path.startswith("/api/")
-        or path in {"/api/health", "/api/auth/status", "/api/auth/login", "/api/auth/logout"}
+        or path.startswith("/api/auth/")
+        or path == "/api/health"
         or path.startswith("/api/events")
         or path.startswith("/docs")
         or path.startswith("/redoc")
@@ -241,6 +247,18 @@ def auth_status(request: Request, response: Response) -> AuthStatusResponse:
     if authed and hasattr(request.state, "new_device_token"):
         is_sec = is_request_secure(request)
         set_device_cookie(response, request.state.new_device_token, secure=is_sec)
+
+    requires_claim = False
+    requires_pin = False
+    token = extract_token(request)
+    if not authed and token:
+        p_item = get_guest_pass_by_token(token)
+        if p_item and p_item["is_active"] and not p_item["is_expired"]:
+            if not p_item["is_claimed"]:
+                requires_claim = True
+            else:
+                requires_pin = True
+
     return AuthStatusResponse(
         auth_required=auth_req,
         authenticated=authed,
@@ -248,6 +266,9 @@ def auth_status(request: Request, response: Response) -> AuthStatusResponse:
         role=role if authed else "unauthorized",
         username=username if authed else "",
         user_id=user_id if authed else "",
+        is_claimed=not requires_claim,
+        requires_pin=requires_pin,
+        requires_claim=requires_claim,
     )
 
 
@@ -272,6 +293,45 @@ def auth_login(req: LoginRequest, request: Request, response: Response) -> Login
 
         ua = request.headers.get("user-agent", "")
         ip = get_client_ip(request)
+
+        # Case A: Unclaimed pass -> requires setting PIN
+        if not pass_item["is_claimed"]:
+            if not req.pin or not req.pin.strip():
+                return LoginResponse(
+                    ok=False,
+                    token=pass_item["token"],
+                    role="guest",
+                    username=pass_item["username"],
+                    user_id=f"guest:{pass_item['id']}",
+                    is_claimed=False,
+                    requires_claim=True,
+                )
+            try:
+                claimed = claim_guest_pass(pass_item["id"], req.pin, req.username)
+            except ValueError as exc:
+                raise HTTPException(status_code=400, detail=str(exc))
+
+            try:
+                dev = register_guest_device(claimed["id"], user_agent=ua, ip=ip)
+            except ValueError as exc:
+                msg = str(exc)
+                if "频繁" in msg or "安全保护锁定" in msg:
+                    raise HTTPException(status_code=429, detail=msg)
+                raise HTTPException(status_code=400, detail=msg)
+
+            set_auth_cookie(response, claimed["token"], secure=is_sec)
+            set_device_cookie(response, dev["device_token"], secure=is_sec)
+            return LoginResponse(
+                ok=True,
+                token=claimed["token"],
+                role="guest",
+                username=claimed["username"],
+                user_id=f"guest:{claimed['id']}",
+                device_token=dev["device_token"],
+                is_claimed=True,
+            )
+
+        # Case B: Claimed pass -> check device token or require PIN
         dev = None
         existing_dev_token = extract_device_token(request)
         if existing_dev_token:
@@ -280,14 +340,48 @@ def auth_login(req: LoginRequest, request: Request, response: Response) -> Login
                 dev = existing_dev
                 touch_device_active(dev["id"], ip)
 
-        if dev is None:
-            try:
-                dev = register_guest_device(pass_item["id"], user_agent=ua, ip=ip)
-            except ValueError as exc:
-                msg = str(exc)
-                if "频繁" in msg or "安全保护锁定" in msg:
-                    raise HTTPException(status_code=429, detail=msg)
-                raise HTTPException(status_code=400, detail=msg)
+        if dev is not None:
+            set_auth_cookie(response, pass_item["token"], secure=is_sec)
+            set_device_cookie(response, dev["device_token"], secure=is_sec)
+            return LoginResponse(
+                ok=True,
+                token=pass_item["token"],
+                role="guest",
+                username=pass_item["username"],
+                user_id=f"guest:{pass_item['id']}",
+                device_token=dev["device_token"],
+                is_claimed=True,
+            )
+
+        if not req.pin or not req.pin.strip():
+            return LoginResponse(
+                ok=False,
+                token=pass_item["token"],
+                role="guest",
+                username=pass_item["username"],
+                user_id=f"guest:{pass_item['id']}",
+                is_claimed=True,
+                requires_pin=True,
+            )
+
+        if is_pin_locked(pass_item["id"]):
+            raise HTTPException(status_code=429, detail="PIN 码连续输错次数过多，已临时锁定 5 分钟，请稍后再试")
+
+        if not verify_guest_pass_pin(pass_item["id"], req.pin.strip()):
+            is_locked = record_pin_failure_and_check_lock(pass_item["id"])
+            if is_locked:
+                raise HTTPException(status_code=429, detail="PIN 码连续输错达到上限，已临时锁定 5 分钟")
+            raise HTTPException(status_code=401, detail="PIN 码错误，请重新输入")
+
+        clear_pin_failures(pass_item["id"])
+
+        try:
+            dev = register_guest_device(pass_item["id"], user_agent=ua, ip=ip)
+        except ValueError as exc:
+            msg = str(exc)
+            if "频繁" in msg or "安全保护锁定" in msg:
+                raise HTTPException(status_code=429, detail=msg)
+            raise HTTPException(status_code=400, detail=msg)
 
         set_auth_cookie(response, pass_item["token"], secure=is_sec)
         set_device_cookie(response, dev["device_token"], secure=is_sec)
@@ -298,9 +392,15 @@ def auth_login(req: LoginRequest, request: Request, response: Response) -> Login
             username=pass_item["username"],
             user_id=f"guest:{pass_item['id']}",
             device_token=dev["device_token"],
+            is_claimed=True,
         )
 
     raise HTTPException(status_code=401, detail="通行口令错误，请重试")
+
+
+@app.post("/api/auth/claim", response_model=LoginResponse)
+def auth_claim(req: ClaimGuestPassRequest, request: Request, response: Response) -> LoginResponse:
+    return auth_login(LoginRequest(secret=req.token, pin=req.pin, username=req.username), request, response)
 
 
 
@@ -714,6 +814,7 @@ def curator_create_pass(req: CreateGuestPassRequest, request: Request) -> GuestP
             username=req.username,
             expires_days=req.expires_days,
             custom_token=req.custom_token,
+            pin=req.pin,
             max_devices=req.max_devices,
         )
     except ValueError as exc:
@@ -731,6 +832,8 @@ def curator_update_pass(pass_id: int, req: UpdateGuestPassRequest, request: Requ
             is_active=req.is_active,
             extend_days=req.extend_days,
             reset_token=req.reset_token,
+            reset_pin=req.reset_pin,
+            custom_pin=req.custom_pin,
             expires_days=req.expires_days,
             max_devices=req.max_devices,
         )
@@ -738,6 +841,8 @@ def curator_update_pass(pass_id: int, req: UpdateGuestPassRequest, request: Requ
         raise HTTPException(status_code=400, detail=str(exc))
     if p is None:
         raise HTTPException(status_code=404, detail="未找到该访客通行证")
+    if req.reset_pin or req.custom_pin:
+        clear_pin_failures(pass_id)
     return GuestPassItem(**p)
 
 

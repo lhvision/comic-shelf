@@ -2,7 +2,7 @@
 import { onMounted } from 'vue'
 import { useRoute } from 'vue-router'
 import AppHeader from '@/components/AppHeader.vue'
-import AuthModal from '@/components/AuthModal.vue'
+import GateView from '@/components/GateView.vue'
 import ToastStack from '@/components/ToastStack.vue'
 import UpdateBanner from '@/components/UpdateBanner.vue'
 import AmbientWatermark from '@/components/AmbientWatermark.vue'
@@ -13,7 +13,7 @@ import { useBrandIcon } from '@/composables/useBrandIcon'
 
 const route = useRoute()
 const { supported, publishStatus } = useHtmlCanvas()
-const { checkStatus } = useAuth()
+const { authRequired, authenticated, checkStatus } = useAuth()
 const { syncFavicon } = useBrandIcon()
 
 onMounted(async () => {
@@ -24,7 +24,11 @@ onMounted(async () => {
 </script>
 
 <template>
-  <div class="app-frame" :data-reader="route.name === 'reader'">
+  <div
+    v-if="!authRequired || authenticated"
+    class="app-frame"
+    :data-reader="route.name === 'reader'"
+  >
     <AmbientWatermark variant="page" />
     <AppHeader v-if="route.name !== 'reader'" />
     <main class="app-main">
@@ -33,8 +37,9 @@ onMounted(async () => {
     <BackToTop v-if="route.name !== 'reader'" />
     <ToastStack />
     <UpdateBanner />
-    <AuthModal />
   </div>
+
+  <GateView v-else />
 </template>
 
 <style scoped>

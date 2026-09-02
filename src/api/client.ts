@@ -172,10 +172,15 @@ export const api = {
     request<AuthStatus>('/auth/status', {
       signal: options?.signal,
     }),
-  login: (secret: string) =>
+  login: (secret: string, pin?: string, username?: string) =>
     request<LoginResult>('/auth/login', {
       method: 'POST',
-      body: JSON.stringify({ secret }),
+      body: JSON.stringify({ secret, pin, username }),
+    }),
+  claimPass: (payload: import('@/types').ClaimGuestPassPayload) =>
+    request<LoginResult>('/auth/claim', {
+      method: 'POST',
+      body: JSON.stringify(payload),
     }),
 
   logout: () =>

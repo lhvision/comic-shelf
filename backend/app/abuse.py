@@ -118,3 +118,54 @@ def clear_rate_limit(pass_id: int) -> None:
     with _rate_mutex:
         _guest_rate_buckets.pop(pass_id, None)
         _guest_rate_limited_until.pop(pass_id, None)
+
+
+# ----------------------------------------------------------------------
+# 3. PIN 码防暴力破解限制器 (PIN Brute-Force Rate Limiter)
+# 1 分钟内输错 5 次 -> 锁定 5 分钟
+# ----------------------------------------------------------------------
+_PIN_ATTEMPT_WINDOW_SECONDS = 60.0   # 1 minute
+_PIN_MAX_FAILED_ATTEMPTS = 5         # max 5 failed attempts
+_PIN_LOCK_SECONDS = 300.0            # 5 minutes lock
+
+_pin_failed_history: dict[int, list[float]] = {}
+_pin_locks: dict[int, float] = {}  # pass_id -> locked_until
+_pin_mutex = threading.Lock()
+
+
+def is_pin_locked(pass_id: int) -> bool:
+    now = time.time()
+    with _pin_mutex:
+        locked_until = _pin_locks.get(pass_id, 0.0)
+        if locked_until > now:
+            return True
+        elif locked_until > 0.0:
+            del _pin_locks[pass_id]
+        return False
+
+
+def record_pin_failure_and_check_lock(pass_id: int) -> bool:
+    """Records a wrong PIN attempt. Returns True if pass is now locked."""
+    now = time.time()
+    with _pin_mutex:
+        locked_until = _pin_locks.get(pass_id, 0.0)
+        if locked_until > now:
+            return True
+
+        history = _pin_failed_history.setdefault(pass_id, [])
+        cutoff = now - _PIN_ATTEMPT_WINDOW_SECONDS
+        history = [t for t in history if t > cutoff]
+        history.append(now)
+        _pin_failed_history[pass_id] = history
+
+        if len(history) >= _PIN_MAX_FAILED_ATTEMPTS:
+            _pin_locks[pass_id] = now + _PIN_LOCK_SECONDS
+            return True
+        return False
+
+
+def clear_pin_failures(pass_id: int) -> None:
+    with _pin_mutex:
+        _pin_locks.pop(pass_id, None)
+        _pin_failed_history.pop(pass_id, None)
+

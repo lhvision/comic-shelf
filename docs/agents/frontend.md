@@ -37,7 +37,8 @@
 | `src/components/storage/`                        | 存储管理模块化组件群：头部卡片、PWA 装订、刻度槽与双级清理危险区                     |
 | `src/components/import/`                         | 收录面板模块化组件群：车号表单、本地目录扫描与下载并发步进器                         |
 | `src/components/UpdateBanner.vue`                | 纸间新卷本装订更新提示横幅（水墨胶囊悬浮卡片、沉浸阅读器自动避让）                   |
-| `src/components/AuthModal.vue`                   | 访问口令门禁弹窗：输入密钥、品牌 Logo、双语眉标与错误反馈                            |
+| `src/components/GateView.vue`                    | 全屏 Zero-DOM 门禁大门视图：反 DevTools 篡改哨兵与三态表单编排外壳                   |
+| `src/components/gate/`                           | 门禁模块化表单群：初始口令表单、首访认领自设 PIN 表单、已认领 PIN 验证表单           |
 | `src/components/Modal.vue`                       | 通用无障碍二次确认弹窗：焦点圈闭、锁卷与抽屉自适应（用于删除危险操作）               |
 | `src/components/SegmentedTabs.vue`               | 典藏分段选项卡：支持泛型 `TabItem<T>`/字符串、左右/Home/End 键导航与多尺寸           |
 | `src/components/AppButton.vue`                   | 通用典藏按钮：支持 primary / secondary / soft / ghost / danger 多种变体              |
@@ -224,7 +225,7 @@
 - **阅读器内严禁过渡**：同在阅读器内部翻页、切话或滚动时（`to.name === 'reader' && from.name === 'reader'`），**严格禁止触发路由 View Transition**，防止快速翻页时与阅读器内部虚拟滚动冲突产生 `AbortError`。
 - **Promise 全生命周期安全兜底**：任何 `startViewTransition` 调用必须为 `ready`、`finished`、`updateCallbackDone` 绑定 `.catch(() => {})`，防止动画被抢占时向控制台泄漏未捕获异常。
 - **共享封面形变（神奇移动）**：由 `useCoverTransition` 管理 `comic-cover-active` 赋名，在 `router.afterEach` 延时 400ms 自动清理，防止书架出现重名冲突。
-- **弹窗动效分工**：弹窗（`Modal.vue` / `AuthModal.vue`）必须走 Vue 原生 `<Transition>`，利用组件内 Scoped CSS 分离遮罩（沉降）与面板（微弹），严禁将整个弹窗根容器包装进 View Transition 快照，防止全屏遮罩空间畸变与文字亚像素插值模糊。
+- **弹窗动效分工**：弹窗（`Modal.vue` 及内部子弹窗）必须走 Vue 原生 `<Transition>`，利用组件内 Scoped CSS 分离遮罩（沉降）与面板（微弹），严禁将整个弹窗根容器包装进 View Transition 快照，防止全屏遮罩空间畸变与文字亚像素插值模糊。
 
 ## 10. VueUse 优先与零 DOM 胶水代码规范
 

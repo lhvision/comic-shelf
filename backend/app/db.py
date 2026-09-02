@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import logging
 import secrets
 import sqlite3
@@ -47,6 +48,20 @@ def get_db() -> Iterator[sqlite3.Connection]:
         conn.close()
 
 
+def hash_pin(pin: str, salt: str = "") -> tuple[str, str]:
+    if not salt:
+        salt = secrets.token_hex(8)
+    h = hashlib.sha256(f"{salt}:{pin.strip()}".encode("utf-8")).hexdigest()
+    return h, salt
+
+
+def verify_pin(pin: str, pin_hash: str, salt: str) -> bool:
+    if not pin_hash or not salt or not pin:
+        return False
+    h, _ = hash_pin(pin.strip(), salt)
+    return secrets.compare_digest(h, pin_hash)
+
+
 def init_db(db_path: Path | None = None) -> None:
     if db_path is not None:
         set_db_path(db_path)
@@ -59,6 +74,8 @@ def init_db(db_path: Path | None = None) -> None:
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 username TEXT NOT NULL,
                 token TEXT UNIQUE NOT NULL,
+                pin_hash TEXT NOT NULL DEFAULT '',
+                pin_salt TEXT NOT NULL DEFAULT '',
                 expires_at INTEGER,
                 is_active INTEGER NOT NULL DEFAULT 1,
                 max_devices INTEGER NOT NULL DEFAULT 2,
@@ -102,10 +119,14 @@ def init_db(db_path: Path | None = None) -> None:
             CREATE INDEX IF NOT EXISTS idx_user_progress_user ON user_reading_progress(user_id);
             """
         )
-        # Migration: ensure max_devices column exists for existing DB
+        # Migrations: ensure max_devices, pin_hash, pin_salt columns exist for existing DB
         cols = [r["name"] for r in conn.execute("PRAGMA table_info(guest_passes)").fetchall()]
         if "max_devices" not in cols:
             conn.execute("ALTER TABLE guest_passes ADD COLUMN max_devices INTEGER NOT NULL DEFAULT 2")
+        if "pin_hash" not in cols:
+            conn.execute("ALTER TABLE guest_passes ADD COLUMN pin_hash TEXT NOT NULL DEFAULT ''")
+        if "pin_salt" not in cols:
+            conn.execute("ALTER TABLE guest_passes ADD COLUMN pin_salt TEXT NOT NULL DEFAULT ''")
         conn.commit()
 
 
@@ -161,6 +182,7 @@ def _row_to_pass(
     max_devices = int(d.get("max_devices", 2) or 2)
     dev_list = devices if devices is not None else []
     device_count = len(dev_list)
+    is_claimed = bool(d.get("pin_hash"))
 
     if not is_active:
         activation_status = "disabled"
@@ -180,6 +202,8 @@ def _row_to_pass(
         "expires_at": expires_at,
         "is_active": is_active,
         "is_expired": is_expired,
+        "is_claimed": is_claimed,
+        "has_pin": is_claimed,
         "max_devices": max_devices,
         "device_count": device_count,
         "devices": dev_list,
@@ -197,6 +221,7 @@ def create_guest_pass(
     custom_token: str | None = None,
     expires_at: int | None = None,
     max_devices: int = 2,
+    pin: str | None = None,
 ) -> dict[str, Any]:
     username = username.strip()
     if not username:
@@ -207,14 +232,21 @@ def create_guest_pass(
         expires_at = now + expires_days * 86400
     safe_max_devices = max(1, min(5, max_devices))
 
+    pin_h, pin_s = ("", "")
+    if pin and pin.strip():
+        p_str = pin.strip()
+        if not (len(p_str) >= 4 and len(p_str) <= 6 and p_str.isdigit()):
+            raise ValueError("PIN 码必须为 4~6 位纯数字")
+        pin_h, pin_s = hash_pin(p_str)
+
     try:
         with get_db() as conn:
             cur = conn.execute(
                 """
-                INSERT INTO guest_passes (username, token, expires_at, is_active, max_devices, created_at, updated_at)
-                VALUES (?, ?, ?, 1, ?, ?, ?)
+                INSERT INTO guest_passes (username, token, pin_hash, pin_salt, expires_at, is_active, max_devices, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, 1, ?, ?, ?)
                 """,
-                (username, token, expires_at, safe_max_devices, now, now),
+                (username, token, pin_h, pin_s, expires_at, safe_max_devices, now, now),
             )
             conn.commit()
             pass_id = cur.lastrowid
@@ -222,6 +254,51 @@ def create_guest_pass(
         raise ValueError("该通行口令已存在，请更换口令")
 
     return get_guest_pass_by_id(pass_id)  # type: ignore[return-value]
+
+
+def claim_guest_pass(
+    pass_id: int,
+    pin: str,
+    username: str | None = None,
+) -> dict[str, Any]:
+    pin_str = str(pin).strip()
+    if not (len(pin_str) >= 4 and len(pin_str) <= 6 and pin_str.isdigit()):
+        raise ValueError("PIN 码必须为 4~6 位纯数字")
+
+    pass_item = get_guest_pass_by_id(pass_id)
+    if pass_item is None:
+        raise ValueError("通行证不存在")
+    if not pass_item["is_active"]:
+        raise ValueError("通行证已被停用")
+    if pass_item["is_expired"]:
+        raise ValueError("通行证已过期")
+    if pass_item["is_claimed"]:
+        raise ValueError("该通行证已被认领，请直接输入 PIN 码登入")
+
+    h, salt = hash_pin(pin_str)
+    now = int(time.time())
+    new_username = username.strip() if username and username.strip() else pass_item["username"]
+
+    with get_db() as conn:
+        conn.execute(
+            """
+            UPDATE guest_passes
+            SET pin_hash = ?, pin_salt = ?, username = ?, updated_at = ?
+            WHERE id = ?
+            """,
+            (h, salt, new_username, now, pass_id),
+        )
+        conn.commit()
+
+    return get_guest_pass_by_id(pass_id)  # type: ignore[return-value]
+
+
+def verify_guest_pass_pin(pass_id: int, pin: str) -> bool:
+    with get_db() as conn:
+        row = conn.execute("SELECT pin_hash, pin_salt FROM guest_passes WHERE id = ?", (pass_id,)).fetchone()
+        if not row or not row["pin_hash"]:
+            return False
+        return verify_pin(pin, row["pin_hash"], row["pin_salt"])
 
 
 def list_guest_passes() -> list[dict[str, Any]]:
@@ -272,6 +349,8 @@ def update_guest_pass(
     reset_token: bool = False,
     expires_days: int | None = None,
     max_devices: int | None = None,
+    reset_pin: bool = False,
+    custom_pin: str | None = None,
 ) -> dict[str, Any] | None:
     existing = get_guest_pass_by_id(pass_id)
     if existing is None:
@@ -282,6 +361,21 @@ def update_guest_pass(
     new_is_active = int(is_active) if is_active is not None else (1 if existing["is_active"] else 0)
     new_token = secrets.token_hex(16) if reset_token else existing["token"]
     new_max_devices = max(1, min(5, max_devices)) if max_devices is not None else existing["max_devices"]
+
+    with get_db() as conn:
+        row = conn.execute("SELECT pin_hash, pin_salt FROM guest_passes WHERE id = ?", (pass_id,)).fetchone()
+        current_pin_hash = row["pin_hash"] if row else ""
+        current_pin_salt = row["pin_salt"] if row else ""
+
+    if reset_pin:
+        current_pin_hash = ""
+        current_pin_salt = ""
+    elif custom_pin is not None:
+        p_str = custom_pin.strip()
+        if p_str:
+            if not (len(p_str) >= 4 and len(p_str) <= 6 and p_str.isdigit()):
+                raise ValueError("PIN 码必须为 4~6 位纯数字")
+            current_pin_hash, current_pin_salt = hash_pin(p_str)
 
     new_expires_at = existing["expires_at"]
     if expires_days is not None:
@@ -295,13 +389,13 @@ def update_guest_pass(
             conn.execute(
                 """
                 UPDATE guest_passes
-                SET username = ?, token = ?, expires_at = ?, is_active = ?, max_devices = ?, updated_at = ?
+                SET username = ?, token = ?, pin_hash = ?, pin_salt = ?, expires_at = ?, is_active = ?, max_devices = ?, updated_at = ?
                 WHERE id = ?
                 """,
-                (new_username, new_token, new_expires_at, new_is_active, new_max_devices, now, pass_id),
+                (new_username, new_token, current_pin_hash, current_pin_salt, new_expires_at, new_is_active, new_max_devices, now, pass_id),
             )
-            if reset_token:
-                # Token changed: invalidate all active devices for this pass and clear locks
+            if reset_token or reset_pin:
+                # Token or PIN changed: invalidate all active devices for this pass and clear locks
                 conn.execute("DELETE FROM guest_devices WHERE pass_id = ?", (pass_id,))
                 clear_cooling_lock(pass_id)
                 clear_rate_limit(pass_id)

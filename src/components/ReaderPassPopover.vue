@@ -1,13 +1,15 @@
 <script setup lang="ts">
 import { computed, nextTick, ref } from 'vue'
+import { useClipboard } from '@vueuse/core'
 import AppPopover from '@/components/AppPopover.vue'
 import AppButton from '@/components/AppButton.vue'
 import AppIcon from '@/components/AppIcon.vue'
 import { useAuth } from '@/composables/useAuth'
 import { useToast } from '@/composables/useToast'
 
-const { username, logout } = useAuth()
+const { username, logout, getStoredToken } = useAuth()
 const { toast } = useToast()
+const { copy, copied } = useClipboard({ copiedDuring: 1500 })
 
 const isOpen = ref(false)
 const isConfirming = ref(false)
@@ -24,6 +26,17 @@ const badgeLabel = computed(() =>
 
 function onOpen() {
   cancelReturn()
+}
+
+function handleCopyRoamLink() {
+  const token = getStoredToken()
+  if (!token) {
+    toast('未找到当前借阅口令', 'error')
+    return
+  }
+  const roamUrl = `${window.location.origin}/?token=${token}`
+  void copy(roamUrl)
+  toast('已复制跨端入馆链接，在新设备打开输入您的 PIN 码即可入座', 'success')
 }
 
 async function handlePromptReturn() {
@@ -106,6 +119,17 @@ async function handleConfirmReturn() {
             <AppIcon name="heart" size="xs" class="note-icon" />
             <span class="note-text">专属书架已就绪 · 个人收藏与阅读进度已独立绑定</span>
           </div>
+
+          <button
+            type="button"
+            class="btn-copy-roam"
+            :class="{ copied }"
+            title="复制专属直达链接，发给自己在新设备打开输入 PIN 码入座"
+            @click="handleCopyRoamLink"
+          >
+            <AppIcon :name="copied ? 'check' : 'external-link'" size="xs" />
+            <span>{{ copied ? '已复制跨端链接' : '复制入馆链接（换设备看）' }}</span>
+          </button>
         </div>
 
         <!-- 底部交还操作 -->
@@ -304,6 +328,38 @@ async function handleConfirmReturn() {
 
 .note-text {
   flex: 1;
+}
+
+.btn-copy-roam {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-1-5);
+  width: 100%;
+  padding: var(--space-2) var(--space-3);
+  font-family: var(--font-body);
+  font-size: var(--text-caption);
+  color: var(--ink-1);
+  background: var(--paper-1);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-1);
+  cursor: pointer;
+  transition:
+    background-color var(--duration-1) var(--ease-out),
+    border-color var(--duration-1) var(--ease-out),
+    color var(--duration-1) var(--ease-out);
+}
+
+.btn-copy-roam:hover {
+  background: var(--paper-2);
+  color: var(--ink-0);
+  border-color: var(--accent);
+}
+
+.btn-copy-roam.copied {
+  color: var(--success);
+  border-color: color-mix(in oklab, var(--success) 45%, transparent);
+  background: color-mix(in oklab, var(--success) 8%, var(--paper-1));
 }
 
 /* 底部操作 */

@@ -74,6 +74,13 @@ export function useGuestPasses() {
     }
   }
 
+  async function resetPin(passId: number): Promise<void> {
+    const ok = await updatePass(passId, { reset_pin: true })
+    if (ok) {
+      toast('PIN 码已清空，通行证已恢复为待认领状态', 'success')
+    }
+  }
+
   async function toggleActive(passId: number, active: boolean): Promise<void> {
     const ok = await updatePass(passId, { is_active: active })
     if (ok) {
@@ -187,6 +194,7 @@ export function useGuestPasses() {
     createPass,
     renewPass,
     resetToken,
+    resetPin,
     toggleActive,
     removePass,
     removeDevice,

@@ -14,10 +14,12 @@ const authenticated = ref(true)
 const role = ref<'admin' | 'guest' | 'unauthorized'>('admin')
 const username = ref('')
 const userId = ref('')
-const modalVisible = ref(false)
 const checking = ref(false)
 const submitting = ref(false)
 const errorMessage = ref('')
+const requiresClaim = ref(false)
+const requiresPin = ref(false)
+const pendingToken = ref('')
 
 const canWrite = computed(
   () => !authRequired.value || (authenticated.value && role.value === 'admin'),
@@ -33,13 +35,17 @@ onUnauthorized(async () => {
     isReauthenticating = true
     try {
       const res = await api.login(stored)
-      authenticated.value = true
-      role.value = res.role || 'admin'
-      username.value = res.username || (res.role === 'admin' ? '馆长' : '访客')
-      userId.value = res.user_id || ''
-      modalVisible.value = false
-      notifyAuthSuccess()
-      return
+      if (res.ok) {
+        authenticated.value = true
+        role.value = res.role || 'admin'
+        username.value = res.username || (res.role === 'admin' ? '馆长' : '访客')
+        userId.value = res.user_id || ''
+        requiresClaim.value = false
+        requiresPin.value = false
+        pendingToken.value = ''
+        notifyAuthSuccess()
+        return
+      }
     } catch {
       // Re-authentication failed, proceed to unauthorized state
     } finally {
@@ -49,9 +55,6 @@ onUnauthorized(async () => {
 
   authenticated.value = false
   role.value = 'unauthorized'
-  if (authRequired.value) {
-    modalVisible.value = true
-  }
 })
 
 export function useAuth() {
@@ -77,19 +80,33 @@ export function useAuth() {
       if (urlToken) {
         try {
           const res = await api.login(urlToken)
-          setStoredToken(urlToken)
-          authenticated.value = true
-          role.value = res.role || 'guest'
-          username.value = res.username || (res.role === 'admin' ? '馆长' : '访客')
-          userId.value = res.user_id || ''
-          modalVisible.value = false
-          notifyAuthSuccess()
+          if (res.ok) {
+            setStoredToken(urlToken)
+            authenticated.value = true
+            role.value = res.role || 'guest'
+            username.value = res.username || (res.role === 'admin' ? '馆长' : '访客')
+            userId.value = res.user_id || ''
+            requiresClaim.value = false
+            requiresPin.value = false
+            pendingToken.value = ''
+            notifyAuthSuccess()
+          } else if (res.requires_claim) {
+            pendingToken.value = urlToken
+            requiresClaim.value = true
+            requiresPin.value = false
+            username.value = res.username || ''
+          } else if (res.requires_pin) {
+            pendingToken.value = urlToken
+            requiresPin.value = true
+            requiresClaim.value = false
+            username.value = res.username || ''
+          }
 
           // 清理地址栏 token 参数，防止二次复制分享泄露口令
           const cleanUrl = new URL(window.location.href)
           cleanUrl.searchParams.delete('token')
           window.history.replaceState({}, '', cleanUrl.pathname + cleanUrl.search + cleanUrl.hash)
-          return true
+          if (res.ok) return true
         } catch (err: unknown) {
           const msg =
             err instanceof Error ? err.message : '该直达通行证已失效或过期，请向馆长申请新凭证'
@@ -98,42 +115,49 @@ export function useAuth() {
           cleanUrl.searchParams.delete('token')
           window.history.replaceState({}, '', cleanUrl.pathname + cleanUrl.search + cleanUrl.hash)
         }
-      }
+      } else {
+        // If auth is required, check if we have a stored token to restore curator privileges
+        const stored = getStoredToken()
+        if (status.auth_required && stored && (!status.authenticated || role.value !== 'admin')) {
+          try {
+            const res = await api.login(stored)
+            if (res.ok) {
+              authenticated.value = true
+              role.value = res.role || 'admin'
+              username.value = res.username || (res.role === 'admin' ? '馆长' : '')
+              userId.value = res.user_id || ''
+              requiresClaim.value = false
+              requiresPin.value = false
+              pendingToken.value = ''
+              notifyAuthSuccess()
+              return true
+            } else if (res.requires_claim) {
+              pendingToken.value = stored
+              requiresClaim.value = true
+              requiresPin.value = false
+            } else if (res.requires_pin) {
+              pendingToken.value = stored
+              requiresPin.value = true
+              requiresClaim.value = false
+            }
+          } catch (err: unknown) {
+            // Only clear stored token if the server explicitly rejected the credentials with wrong password / disabled
+            const isExplicitWrongAuth =
+              (err instanceof ApiError &&
+                (err.status === 401 || err.status === 403) &&
+                (err.detail.includes('口令错误') ||
+                  err.detail.includes('已停用') ||
+                  err.detail.includes('已失效'))) ||
+              (err instanceof Error &&
+                (err.message.includes('口令错误') || err.message.includes('已停用')))
 
-      // If auth is required, check if we have a stored token to restore curator privileges
-      const stored = getStoredToken()
-      if (status.auth_required && stored && (!status.authenticated || role.value !== 'admin')) {
-        try {
-          const res = await api.login(stored)
-          authenticated.value = true
-          role.value = res.role || 'admin'
-          username.value = res.username || (res.role === 'admin' ? '馆长' : '')
-          userId.value = res.user_id || ''
-          modalVisible.value = false
-          notifyAuthSuccess()
-          return true
-        } catch (err: unknown) {
-          // Only clear stored token if the server explicitly rejected the credentials with wrong password / disabled
-          const isExplicitWrongAuth =
-            (err instanceof ApiError &&
-              (err.status === 401 || err.status === 403) &&
-              (err.detail.includes('口令错误') ||
-                err.detail.includes('已停用') ||
-                err.detail.includes('已失效'))) ||
-            (err instanceof Error &&
-              (err.message.includes('口令错误') || err.message.includes('已停用')))
-
-          if (isExplicitWrongAuth) {
-            setStoredToken('')
-            username.value = ''
-            userId.value = ''
-          }
-          if (!authenticated.value) {
-            modalVisible.value = true
+            if (isExplicitWrongAuth) {
+              setStoredToken('')
+              username.value = ''
+              userId.value = ''
+            }
           }
         }
-      } else if (status.auth_required && !status.authenticated) {
-        modalVisible.value = true
       }
     } catch {
       /* network or server offline */
@@ -143,7 +167,7 @@ export function useAuth() {
     return authenticated.value
   }
 
-  async function login(secret: string): Promise<boolean> {
+  async function login(secret: string, pin?: string): Promise<boolean> {
     if (!secret.trim()) {
       errorMessage.value = '请输入通行口令'
       return false
@@ -151,21 +175,87 @@ export function useAuth() {
     submitting.value = true
     errorMessage.value = ''
     try {
-      const res = await api.login(secret.trim())
-      setStoredToken(res.token)
-      authenticated.value = true
-      role.value = res.role || 'admin'
-      username.value = res.username || (res.role === 'admin' ? '馆长' : '')
-      userId.value = res.user_id || ''
-      modalVisible.value = false
-      notifyAuthSuccess()
-      return true
+      const res = await api.login(secret.trim(), pin?.trim())
+      if (res.ok) {
+        setStoredToken(res.token)
+        authenticated.value = true
+        role.value = res.role || 'admin'
+        username.value = res.username || (res.role === 'admin' ? '馆长' : '访客')
+        userId.value = res.user_id || ''
+        requiresClaim.value = false
+        requiresPin.value = false
+        pendingToken.value = ''
+        notifyAuthSuccess()
+        return true
+      } else if (res.requires_claim) {
+        pendingToken.value = secret.trim()
+        requiresClaim.value = true
+        requiresPin.value = false
+        username.value = res.username || ''
+        errorMessage.value = ''
+        return false
+      } else if (res.requires_pin) {
+        pendingToken.value = secret.trim()
+        requiresPin.value = true
+        requiresClaim.value = false
+        username.value = res.username || ''
+        errorMessage.value = ''
+        return false
+      }
+      return false
     } catch (err: unknown) {
       errorMessage.value = err instanceof Error ? err.message : '通行口令错误'
       return false
     } finally {
       submitting.value = false
     }
+  }
+
+  async function claimPass(pin: string, customUsername?: string): Promise<boolean> {
+    const tokenToClaim = pendingToken.value.trim()
+    if (!tokenToClaim) {
+      errorMessage.value = '通行凭证缺失，请重新输入口令'
+      return false
+    }
+    if (!pin.trim() || !/^\d{4,6}$/.test(pin.trim())) {
+      errorMessage.value = 'PIN 码必须为 4~6 位纯数字'
+      return false
+    }
+    submitting.value = true
+    errorMessage.value = ''
+    try {
+      const res = await api.claimPass({
+        token: tokenToClaim,
+        pin: pin.trim(),
+        username: customUsername?.trim() || undefined,
+      })
+      if (res.ok) {
+        setStoredToken(res.token)
+        authenticated.value = true
+        role.value = 'guest'
+        username.value = res.username || '访客'
+        userId.value = res.user_id || ''
+        requiresClaim.value = false
+        requiresPin.value = false
+        pendingToken.value = ''
+        notifyAuthSuccess()
+        toast('借阅通行证认领成功！欢迎入馆', 'success')
+        return true
+      }
+      return false
+    } catch (err: unknown) {
+      errorMessage.value = err instanceof Error ? err.message : '认领失败，请重试'
+      return false
+    } finally {
+      submitting.value = false
+    }
+  }
+
+  function resetAuthFormState() {
+    requiresClaim.value = false
+    requiresPin.value = false
+    pendingToken.value = ''
+    errorMessage.value = ''
   }
 
   async function logout(): Promise<void> {
@@ -177,21 +267,7 @@ export function useAuth() {
       role.value = 'unauthorized'
       username.value = ''
       userId.value = ''
-      if (authRequired.value) {
-        modalVisible.value = true
-      }
-    }
-  }
-
-  function openModal() {
-    modalVisible.value = true
-    errorMessage.value = ''
-  }
-
-  function closeModal() {
-    if (authenticated.value || !authRequired.value) {
-      modalVisible.value = false
-      errorMessage.value = ''
+      resetAuthFormState()
     }
   }
 
@@ -203,14 +279,17 @@ export function useAuth() {
     userId,
     canWrite,
     isGuest,
-    modalVisible,
     checking,
     submitting,
     errorMessage,
+    requiresClaim,
+    requiresPin,
+    pendingToken,
     checkStatus,
     login,
+    claimPass,
+    resetAuthFormState,
     logout,
-    openModal,
-    closeModal,
+    getStoredToken,
   }
 }

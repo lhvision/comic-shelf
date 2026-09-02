@@ -22,7 +22,7 @@ interface NavItem {
 const route = useRoute()
 const router = useRouter()
 const providers = ref<ProviderInfo[]>([])
-const { authRequired, isGuest, canWrite, logout, openModal } = useAuth()
+const { authRequired, isGuest, canWrite, logout } = useAuth()
 const { brandIcon } = useBrandIcon()
 const { openModal: openGuestModal } = useGuestPasses()
 
@@ -137,25 +137,19 @@ onAuthSuccess(fetchProviders)
         <span class="guest-roster-label">〔 访客簿 〕</span>
       </button>
 
-      <!-- 访客借阅凭证卡（仅持证访客可见） -->
+      <!-- 访客借阅凭证卡（仅持证访客可见，零馆长痕迹） -->
       <ReaderPassPopover v-if="authRequired && isGuest" />
 
-      <!-- 馆长管理态 / 未解锁门禁入口 -->
+      <!-- 馆长管理态（仅馆长可见，点击退出登录回到门禁大门） -->
       <button
-        v-else-if="authRequired"
+        v-else-if="authRequired && canWrite"
         type="button"
-        class="auth-badge-btn"
-        :class="{
-          curator: canWrite,
-          locked: !canWrite,
-        }"
-        :title="canWrite ? '馆长管理中（点击退出管理回到未登录）' : '点击输入通行口令'"
-        @click="canWrite ? logout() : openModal()"
+        class="auth-badge-btn curator"
+        title="馆长管理中（点击退出登录回到门禁）"
+        @click="logout"
       >
-        <AppIcon :name="canWrite ? 'unlock' : 'lock'" size="xs" :stroke-width="2" />
-        <span class="auth-label">
-          {{ canWrite ? '〔 馆长已入座 〕' : '未解锁' }}
-        </span>
+        <AppIcon name="unlock" size="xs" :stroke-width="2" />
+        <span class="auth-label">〔 馆长已入座 〕</span>
       </button>
     </div>
     <GuestModal />
@@ -394,12 +388,6 @@ onAuthSuccess(fetchProviders)
 
 .auth-badge-btn.curator:hover {
   background: color-mix(in oklab, var(--accent) 22%, var(--paper-0));
-}
-
-.auth-badge-btn.locked {
-  color: var(--accent);
-  border-color: var(--accent-soft);
-  background: var(--accent-soft);
 }
 
 @media (max-width: 640px) {

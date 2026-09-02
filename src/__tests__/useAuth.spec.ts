@@ -16,17 +16,16 @@ describe('useAuth', () => {
       role: 'admin',
     })
 
-    const { authRequired, authenticated, canWrite, isGuest, modalVisible, checkStatus } = useAuth()
+    const { authRequired, authenticated, canWrite, isGuest, checkStatus } = useAuth()
     await checkStatus()
 
     expect(authRequired.value).toBe(false)
     expect(authenticated.value).toBe(true)
     expect(canWrite.value).toBe(true)
     expect(isGuest.value).toBe(false)
-    expect(modalVisible.value).toBe(false)
   })
 
-  it('opens modal when auth is required and not authenticated', async () => {
+  it('updates auth state when auth is required and not authenticated', async () => {
     vi.spyOn(api, 'authStatus').mockResolvedValueOnce({
       auth_required: true,
       authenticated: false,
@@ -34,14 +33,13 @@ describe('useAuth', () => {
       role: 'unauthorized',
     })
 
-    const { authRequired, authenticated, canWrite, isGuest, modalVisible, checkStatus } = useAuth()
+    const { authRequired, authenticated, canWrite, isGuest, checkStatus } = useAuth()
     await checkStatus()
 
     expect(authRequired.value).toBe(true)
     expect(authenticated.value).toBe(false)
     expect(canWrite.value).toBe(false)
     expect(isGuest.value).toBe(false)
-    expect(modalVisible.value).toBe(true)
   })
 
   it('handles login flow as curator', async () => {
@@ -51,14 +49,13 @@ describe('useAuth', () => {
       role: 'admin',
     })
 
-    const { authenticated, canWrite, isGuest, modalVisible, login } = useAuth()
+    const { authenticated, canWrite, isGuest, login } = useAuth()
     const success = await login('curator-pass-123')
 
     expect(success).toBe(true)
     expect(authenticated.value).toBe(true)
     expect(canWrite.value).toBe(true)
     expect(isGuest.value).toBe(false)
-    expect(modalVisible.value).toBe(false)
     expect(getStoredToken()).toBe('curator-pass-123')
   })
 
@@ -69,14 +66,13 @@ describe('useAuth', () => {
       role: 'guest',
     })
 
-    const { authenticated, canWrite, isGuest, modalVisible, login } = useAuth()
+    const { authenticated, canWrite, isGuest, login } = useAuth()
     const success = await login('guest-pass-456')
 
     expect(success).toBe(true)
     expect(authenticated.value).toBe(true)
     expect(canWrite.value).toBe(false)
     expect(isGuest.value).toBe(true)
-    expect(modalVisible.value).toBe(false)
     expect(getStoredToken()).toBe('guest-pass-456')
   })
 
@@ -188,7 +184,7 @@ describe('useAuth', () => {
       user_id: 'guest:5',
     })
 
-    const { authenticated, isGuest, username, userId, modalVisible, checkStatus } = useAuth()
+    const { authenticated, isGuest, username, userId, checkStatus } = useAuth()
     const ok = await checkStatus()
 
     expect(ok).toBe(true)
@@ -196,7 +192,6 @@ describe('useAuth', () => {
     expect(isGuest.value).toBe(true)
     expect(username.value).toBe('AliceFriend')
     expect(userId.value).toBe('guest:5')
-    expect(modalVisible.value).toBe(false)
     expect(getStoredToken()).toBe('share-token-123')
 
     Object.defineProperty(window, 'location', {
@@ -204,5 +199,74 @@ describe('useAuth', () => {
       writable: true,
       configurable: true,
     })
+  })
+
+  it('handles requires_claim state and executes claimPass', async () => {
+    vi.spyOn(api, 'login').mockResolvedValueOnce({
+      ok: false,
+      token: 'unclaimed-token-777',
+      role: 'guest',
+      username: 'InitialGuest',
+      is_claimed: false,
+      requires_claim: true,
+    })
+
+    const { requiresClaim, pendingToken, username, login, claimPass, authenticated } = useAuth()
+    const loginRes = await login('unclaimed-token-777')
+
+    expect(loginRes).toBe(false)
+    expect(requiresClaim.value).toBe(true)
+    expect(pendingToken.value).toBe('unclaimed-token-777')
+    expect(username.value).toBe('InitialGuest')
+
+    vi.spyOn(api, 'claimPass').mockResolvedValueOnce({
+      ok: true,
+      token: 'unclaimed-token-777',
+      role: 'guest',
+      username: 'CustomNick',
+      user_id: 'guest:10',
+      is_claimed: true,
+    })
+
+    const claimRes = await claimPass('2026', 'CustomNick')
+    expect(claimRes).toBe(true)
+    expect(authenticated.value).toBe(true)
+    expect(requiresClaim.value).toBe(false)
+    expect(username.value).toBe('CustomNick')
+  })
+
+  it('handles requires_pin state when claimed pass is opened on new device', async () => {
+    vi.spyOn(api, 'login').mockResolvedValueOnce({
+      ok: false,
+      token: 'claimed-token-888',
+      role: 'guest',
+      username: 'ClaimedGuest',
+      is_claimed: true,
+      requires_pin: true,
+    })
+
+    const { requiresPin, pendingToken, username, login, authenticated } = useAuth()
+    const loginAttempt1 = await login('claimed-token-888')
+
+    expect(loginAttempt1).toBe(false)
+    expect(requiresPin.value).toBe(true)
+    expect(pendingToken.value).toBe('claimed-token-888')
+    expect(username.value).toBe('ClaimedGuest')
+
+    // Second attempt with PIN
+    vi.spyOn(api, 'login').mockResolvedValueOnce({
+      ok: true,
+      token: 'claimed-token-888',
+      role: 'guest',
+      username: 'ClaimedGuest',
+      user_id: 'guest:11',
+      device_token: 'dev-token-999',
+      is_claimed: true,
+    })
+
+    const loginAttempt2 = await login('claimed-token-888', '2026')
+    expect(loginAttempt2).toBe(true)
+    expect(authenticated.value).toBe(true)
+    expect(requiresPin.value).toBe(false)
   })
 })

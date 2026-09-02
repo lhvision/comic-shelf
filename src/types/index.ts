@@ -154,6 +154,9 @@ export interface AuthStatus {
   role: 'admin' | 'guest' | 'unauthorized'
   username?: string
   user_id?: string
+  is_claimed?: boolean
+  requires_pin?: boolean
+  requires_claim?: boolean
 }
 
 export interface LoginResult {
@@ -162,6 +165,10 @@ export interface LoginResult {
   role?: 'admin' | 'guest'
   username?: string
   user_id?: string
+  device_token?: string
+  is_claimed?: boolean
+  requires_pin?: boolean
+  requires_claim?: boolean
 }
 
 export interface MetadataUpdatePayload {
@@ -268,6 +275,8 @@ export interface GuestPass {
   expires_at: number | null
   is_active: boolean
   is_expired: boolean
+  is_claimed?: boolean
+  has_pin?: boolean
   max_devices: number
   device_count: number
   devices: GuestDevice[]
@@ -286,6 +295,7 @@ export interface CreateGuestPassPayload {
   username: string
   expires_days?: number | null
   custom_token?: string | null
+  pin?: string | null
   max_devices?: number
 }
 
@@ -294,8 +304,16 @@ export interface UpdateGuestPassPayload {
   is_active?: boolean
   extend_days?: number
   reset_token?: boolean
+  reset_pin?: boolean
+  custom_pin?: string | null
   expires_days?: number | null
   max_devices?: number
+}
+
+export interface ClaimGuestPassPayload {
+  token: string
+  pin: string
+  username?: string
 }
 
 export interface ReadingProgressInfo {

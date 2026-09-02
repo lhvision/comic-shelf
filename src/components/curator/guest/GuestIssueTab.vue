@@ -128,7 +128,9 @@ defineExpose({
           maxlength="32"
           required
         />
-        <p class="field-hint">登记访客专属名称，生成后可一键复制免密直达链接发给朋友。</p>
+        <p class="field-hint">
+          登记访客专属名称。朋友首次打开直达链接将引导自设 PIN 码认领锁定，杜绝群聊扩散互挤。
+        </p>
       </div>
 
       <div class="form-group">

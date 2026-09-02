@@ -33,6 +33,7 @@ describe('Guest Modal Components', () => {
     expires_at: 1800000000,
     is_active: true,
     is_expired: false,
+    is_claimed: true,
     max_devices: 2,
     device_count: 1,
     devices: [

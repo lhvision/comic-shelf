@@ -256,10 +256,15 @@ class AuthStatusResponse(BaseModel):
     role: str = "admin"  # "admin" | "guest" | "unauthorized"
     username: str = ""
     user_id: str = ""
+    is_claimed: bool = True
+    requires_pin: bool = False
+    requires_claim: bool = False
 
 
 class LoginRequest(BaseModel):
     secret: str
+    pin: str | None = Field(default=None, max_length=10)
+    username: str | None = None
 
 
 class LoginResponse(BaseModel):
@@ -269,6 +274,15 @@ class LoginResponse(BaseModel):
     username: str = ""
     user_id: str = ""
     device_token: str = ""
+    is_claimed: bool = True
+    requires_pin: bool = False
+    requires_claim: bool = False
+
+
+class ClaimGuestPassRequest(BaseModel):
+    token: str
+    pin: str = Field(min_length=4, max_length=6, pattern=r"^\d{4,6}$")
+    username: str | None = None
 
 
 class GuestDeviceItem(BaseModel):
@@ -289,6 +303,8 @@ class GuestPassItem(BaseModel):
     expires_at: int | None = None
     is_active: bool
     is_expired: bool
+    is_claimed: bool = False
+    has_pin: bool = False
     max_devices: int = 2
     device_count: int = 0
     devices: list[GuestDeviceItem] = Field(default_factory=list)
@@ -307,6 +323,7 @@ class CreateGuestPassRequest(BaseModel):
     username: str
     expires_days: int | None = Field(default=None, gt=0)
     custom_token: str | None = None
+    pin: str | None = Field(default=None, pattern=r"^\d{4,6}$")
     max_devices: int = Field(default=2, ge=1, le=5)
 
 
@@ -315,6 +332,8 @@ class UpdateGuestPassRequest(BaseModel):
     is_active: bool | None = None
     extend_days: int | None = Field(default=None, gt=0)
     reset_token: bool = False
+    reset_pin: bool = False
+    custom_pin: str | None = Field(default=None, pattern=r"^\d{4,6}$")
     expires_days: int | None = Field(default=None, gt=0)
     max_devices: int | None = Field(default=None, ge=1, le=5)
 

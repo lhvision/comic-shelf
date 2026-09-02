@@ -5,6 +5,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
+from starlette.exceptions import HTTPException
 import app.db as db_mod
 
 
@@ -237,7 +238,7 @@ def test_db_and_passes_crud():
     import app.auth as auth_mod
 
     auth_mod.AUTH_SECRET = "curator-test-secret"
-    p_relogin = db_mod.create_guest_pass(username="ReloginUser", max_devices=2)
+    p_relogin = db_mod.create_guest_pass(username="ReloginUser", max_devices=2, pin="1234")
     relogin_token = p_relogin["token"]
 
     req_login1 = MagicMock()
@@ -246,7 +247,7 @@ def test_db_and_passes_crud():
     req_login1.client.host = "127.0.0.1"
 
     resp1 = Response()
-    res1 = auth_login(LoginRequest(secret=relogin_token), req_login1, resp1)
+    res1 = auth_login(LoginRequest(secret=relogin_token, pin="1234"), req_login1, resp1)
     dev1_token = res1.device_token
     assert dev1_token
 
@@ -282,8 +283,76 @@ def test_db_and_passes_crud():
     assert p_check["device_count"] == 1
     assert p_check["is_cooling_locked"] is False
 
+    # 21. Reader Pass Claiming & PIN Verification
+    p_pin = db_mod.create_guest_pass(username="PinUser", max_devices=2)
+    assert p_pin["is_claimed"] is False
+    assert p_pin["activation_status"] == "pending"
+    assert db_mod.verify_guest_pass_pin(p_pin["id"], "1234") is False
+
+    # First-time user claims with PIN "2026"
+    p_claimed = db_mod.claim_guest_pass(p_pin["id"], "2026", username="PinUserCustom")
+    assert p_claimed["is_claimed"] is True
+    assert p_claimed["username"] == "PinUserCustom"
+    assert db_mod.verify_guest_pass_pin(p_pin["id"], "2026") is True
+    assert db_mod.verify_guest_pass_pin(p_pin["id"], "9999") is False
+
+    # Cannot claim an already claimed pass
+    try:
+        db_mod.claim_guest_pass(p_pin["id"], "5678")
+        assert False, "Should raise ValueError for claiming already claimed pass"
+    except ValueError as exc:
+        assert "已被认领" in str(exc)
+
+    # 22. Anti-Group-Spam & PIN-Guarded Login
+    req_stranger = MagicMock()
+    req_stranger.headers.get = lambda k, default="": "Mozilla/5.0 (iPhone) Stranger" if k.lower() == "user-agent" else ""
+    req_stranger.cookies.get = lambda k, default="": ""
+    req_stranger.client.host = "1.2.3.4"
+    resp_stranger = Response()
+
+    # Stranger opens pass link without PIN -> returns requires_pin=True (cannot enter or evict!)
+    res_stranger = auth_login(LoginRequest(secret=p_claimed["token"]), req_stranger, resp_stranger)
+    assert res_stranger.ok is False
+    assert res_stranger.requires_pin is True
+
+    # Stranger tries wrong PIN -> 401
+    try:
+        auth_login(LoginRequest(secret=p_claimed["token"], pin="0000"), req_stranger, resp_stranger)
+        assert False, "Should raise 401 for wrong PIN"
+    except HTTPException as exc:
+        assert exc.status_code == 401
+        assert "PIN" in exc.detail
+
+    # Legitimate owner enters correct PIN -> succeeds and registers device
+    res_owner = auth_login(LoginRequest(secret=p_claimed["token"], pin="2026"), req_stranger, resp_stranger)
+    assert res_owner.ok is True
+    assert res_owner.device_token != ""
+
+    # 23. Curator Reset PIN cleans all devices & restores pass to pending
+    p_reset_pin = db_mod.update_guest_pass(p_claimed["id"], reset_pin=True)
+    assert p_reset_pin is not None
+    assert p_reset_pin["is_claimed"] is False
+    assert p_reset_pin["activation_status"] == "pending"
+    assert p_reset_pin["device_count"] == 0
+
+    # 24. PIN Brute-force rate limiting: 5 wrong attempts trigger 429 lock
+    p_brute = db_mod.create_guest_pass("BruteUser", max_devices=2, pin="8888")
+    for _ in range(4):
+        try:
+            auth_login(LoginRequest(secret=p_brute["token"], pin="1111"), req_stranger, resp_stranger)
+        except HTTPException as exc:
+            assert exc.status_code == 401
+    try:
+        auth_login(LoginRequest(secret=p_brute["token"], pin="1111"), req_stranger, resp_stranger)
+        assert False, "5th wrong attempt must trigger 429"
+    except HTTPException as exc:
+        assert exc.status_code == 429
+        assert "锁定" in exc.detail
+
     db_mod.delete_guest_pass(race_pid)
     db_mod.delete_guest_pass(p_relogin["id"])
+    db_mod.delete_guest_pass(p_pin["id"])
+    db_mod.delete_guest_pass(p_brute["id"])
 
 
 if __name__ == "__main__":

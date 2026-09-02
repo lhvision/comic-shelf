@@ -301,11 +301,12 @@ def test_auth_and_security_middleware():
         assert res_search_ok == "OK"
 
         # 2f. Public endpoints bypass auth
-        for pub_path in ("/api/auth/status", "/api/health", "/api/auth/login"):
+        for pub_path in ("/api/auth/status", "/api/health", "/api/auth/login", "/api/auth/claim", "/api/auth/logout"):
             call_next.reset_mock()
             req_pub = make_mock_request(pub_path)
-            req_pub.method = "GET"
+            req_pub.method = "POST" if "login" in pub_path or "claim" in pub_path or "logout" in pub_path else "GET"
             res_pub = await auth_and_security_middleware(req_pub, call_next)
+            assert res_pub == "OK", f"Endpoint {pub_path} should bypass middleware"
         # 2g. Image binary endpoints with static extension aliases trigger hotlink check
         for img_ext_path in (
             "/api/library/jm/1/covers/1/file.jpg",
