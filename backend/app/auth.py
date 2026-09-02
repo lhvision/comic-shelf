@@ -221,7 +221,22 @@ def require_curator(request: Request) -> None:
 require_admin = require_curator
 
 
-
+def is_request_secure(request: Request | None) -> bool:
+    """Check if the incoming HTTP request is over HTTPS (including Cloudflare/reverse proxy)."""
+    if not request:
+        return False
+    if getattr(request, "url", None) and request.url.scheme == "https":
+        return True
+    x_proto = request.headers.get("x-forwarded-proto", "").strip().lower()
+    if x_proto == "https":
+        return True
+    x_scheme = request.headers.get("x-forwarded-scheme", "").strip().lower()
+    if x_scheme == "https":
+        return True
+    cf_visitor = request.headers.get("cf-visitor", "")
+    if '"scheme":"https"' in cf_visitor.lower():
+        return True
+    return False
 
 
 def check_hotlink_protection(request: Request) -> None:
@@ -242,20 +257,32 @@ def check_hotlink_protection(request: Request) -> None:
     if referer:
         try:
             ref_parsed = urlparse(referer)
+            ref_host = (ref_parsed.hostname or "").lower()
             ref_netloc = ref_parsed.netloc.lower()
 
             host = request.headers.get("host", "").strip().lower()
+            xf_host = request.headers.get("x-forwarded-host", "").strip().lower()
 
-            allowed_hosts = {host} if host else set()
+            allowed_hosts: set[str] = set()
+            for h in (host, xf_host):
+                if h:
+                    allowed_hosts.add(h)
+                    if ":" in h:
+                        allowed_hosts.add(h.split(":", 1)[0])
+
             for dev_host in ("localhost", "127.0.0.1", "0.0.0.0"):
                 allowed_hosts.add(dev_host)
                 allowed_hosts.add(f"{dev_host}:5173")
                 allowed_hosts.add(f"{dev_host}:4173")
                 allowed_hosts.add(f"{dev_host}:8000")
 
-            if ref_netloc and ref_netloc not in allowed_hosts and not any(
-                ref_netloc.startswith(f"{h}:") or ref_netloc == h for h in allowed_hosts
-            ):
+            is_allowed = (
+                ref_netloc in allowed_hosts
+                or ref_host in allowed_hosts
+                or any(ref_netloc.startswith(f"{h}:") or ref_netloc == h for h in allowed_hosts)
+            )
+
+            if not is_allowed:
                 raise HTTPException(
                     status_code=403,
                     detail=f"防盗链保护：来源域名未经允许 ({ref_netloc})",
@@ -266,23 +293,25 @@ def check_hotlink_protection(request: Request) -> None:
             pass
 
 
-def set_auth_cookie(response: Response, token: str) -> None:
+def set_auth_cookie(response: Response, token: str, secure: bool = False) -> None:
     response.set_cookie(
         key=COOKIE_NAME,
         value=token,
         max_age=2592000,  # 30 days
         httponly=True,
+        secure=secure,
         samesite="lax",
         path="/",
     )
 
 
-def set_device_cookie(response: Response, device_token: str) -> None:
+def set_device_cookie(response: Response, device_token: str, secure: bool = False) -> None:
     response.set_cookie(
         key=DEVICE_COOKIE_NAME,
         value=device_token,
         max_age=2592000,  # 30 days
         httponly=True,
+        secure=secure,
         samesite="lax",
         path="/",
     )

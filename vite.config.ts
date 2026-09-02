@@ -111,6 +111,8 @@ export default defineConfig({
         'pwa-192x192.png',
         'pwa-512x512.png',
         'pwa-maskable-512x512.png',
+        'apple-touch-icon.png',
+        'apple-touch-icon-precomposed.png',
         'brand-icons/*.webp',
         'loading-*.webp',
       ],
@@ -153,6 +155,8 @@ export default defineConfig({
         maximumFileSizeToCacheInBytes: 6 * 1024 * 1024,
         globPatterns: ['**/*.{js,css,html,ico,png,svg,webp,woff,woff2}'],
         navigateFallbackDenylist: [/^\/api/],
+        clientsClaim: true,
+        skipWaiting: false,
         runtimeCaching: [
           {
             urlPattern: ({ url }) =>
@@ -164,28 +168,8 @@ export default defineConfig({
             options: {
               cacheName: 'manga-images-cache',
               expiration: {
-                maxEntries: 1000,
+                maxEntries: 3000,
                 maxAgeSeconds: 30 * 24 * 60 * 60,
-              },
-              cacheableResponse: {
-                statuses: [0, 200],
-              },
-            },
-          },
-          {
-            urlPattern: ({ url }) =>
-              url.pathname.startsWith('/api/') &&
-              !url.pathname.startsWith('/api/auth/') &&
-              !url.pathname.startsWith('/api/search/') &&
-              !url.pathname.includes('/pages/') &&
-              !url.pathname.includes('/covers/') &&
-              !url.pathname.includes('/cover'),
-            handler: 'NetworkFirst',
-            options: {
-              cacheName: 'api-metadata-cache',
-              expiration: {
-                maxEntries: 100,
-                maxAgeSeconds: 24 * 60 * 60,
               },
               cacheableResponse: {
                 statuses: [0, 200],

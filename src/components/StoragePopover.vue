@@ -24,6 +24,7 @@ import { useToast } from '@/composables/useToast'
 const {
   quota,
   percentage,
+  budgetPercentage,
   mangaImageCount,
   mangaImageBytes,
   usageFormatted,
@@ -31,6 +32,7 @@ const {
   mangaImageBytesFormatted,
   coreAssetBytesFormatted,
   badgeText,
+  environmentStatus,
   clearing,
   refreshEstimate,
   clearImageCache,
@@ -128,13 +130,14 @@ async function handleResetAll() {
 
         <!-- 存储容量平直标尺与账单清单 -->
         <StorageGaugeSection
-          :usage-formatted="usageFormatted"
           :quota="quota"
           :quota-formatted="quotaFormatted"
           :percentage="percentage"
+          :budget-percentage="budgetPercentage"
           :core-asset-bytes-formatted="coreAssetBytesFormatted"
           :manga-image-count="mangaImageCount"
           :manga-image-bytes-formatted="mangaImageBytesFormatted"
+          :environment-status="environmentStatus"
         />
 
         <!-- 操作按钮区 -->

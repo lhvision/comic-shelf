@@ -23,6 +23,7 @@ from .auth import (
     is_authenticated,
     is_curator,
     is_guest,
+    is_request_secure,
     require_curator,
     set_auth_cookie,
     set_device_cookie,
@@ -33,6 +34,7 @@ from .db import (
     delete_guest_device,
     delete_guest_pass,
     get_device_by_token,
+    get_guest_pass_by_id,
     get_guest_pass_by_token,
     get_user_favorites,
     get_user_progress,
@@ -96,6 +98,8 @@ from .providers import get_provider, provider_list
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # Broadcast version event on service start so connected clients check for updates
+    broadcast_event("system_version", {"version": "latest", "timestamp": time.time()})
     yield
     shutdown_events()
 
@@ -236,7 +240,8 @@ def auth_status(request: Request, response: Response) -> AuthStatusResponse:
     guest = role == "guest"
     authed = curator or guest
     if authed and hasattr(request.state, "new_device_token"):
-        set_device_cookie(response, request.state.new_device_token)
+        is_sec = is_request_secure(request)
+        set_device_cookie(response, request.state.new_device_token, secure=is_sec)
     return AuthStatusResponse(
         auth_required=auth_req,
         authenticated=authed,
@@ -252,9 +257,11 @@ def auth_login(req: LoginRequest, request: Request, response: Response) -> Login
     if not is_auth_required():
         return LoginResponse(ok=True, token="", role="admin", username="馆长", user_id="curator")
 
+    is_sec = is_request_secure(request)
     secret = req.secret.strip()
     if AUTH_SECRET and secrets.compare_digest(secret, AUTH_SECRET):
-        set_auth_cookie(response, AUTH_SECRET)
+        set_auth_cookie(response, AUTH_SECRET, secure=is_sec)
+        clear_device_cookie(response)  # Clean up any lingering guest device session
         return LoginResponse(ok=True, token=AUTH_SECRET, role="admin", username="馆长", user_id="curator")
 
     pass_item = get_guest_pass_by_token(secret)
@@ -283,8 +290,8 @@ def auth_login(req: LoginRequest, request: Request, response: Response) -> Login
                     raise HTTPException(status_code=429, detail=msg)
                 raise HTTPException(status_code=400, detail=msg)
 
-        set_auth_cookie(response, pass_item["token"])
-        set_device_cookie(response, dev["device_token"])
+        set_auth_cookie(response, pass_item["token"], secure=is_sec)
+        set_device_cookie(response, dev["device_token"], secure=is_sec)
         return LoginResponse(
             ok=True,
             token=pass_item["token"],
@@ -494,7 +501,10 @@ def import_comic(req: ImportRequest) -> ImportResult:
     meta = store.save_fetched(fetched, refresh=req.refresh)
     fetched.meta = meta
 
-    broadcast_event("library_changed", {"action": "import", "timestamp": time.time()})
+    broadcast_event(
+        "library_changed",
+        {"action": "import", "source": req.source, "source_id": source_id, "timestamp": time.time()},
+    )
 
     cover_count = (
         fetched.meta.cover_count
@@ -526,7 +536,10 @@ def delete_comic(source: str, source_id: str) -> DeleteResponse:
     _require_known_source(source)
     ok = store.delete(source, source_id)
     if ok:
-        broadcast_event("library_changed", {"action": "delete", "timestamp": time.time()})
+        broadcast_event(
+            "library_changed",
+            {"action": "delete", "source": source, "source_id": source_id, "timestamp": time.time()},
+        )
     return DeleteResponse(ok=ok, source=source, source_id=source_id)
 
 
@@ -535,6 +548,10 @@ def update_comic_metadata(source: str, source_id: str, req: MetadataUpdateReques
     _require_known_source(source)
     updates = req.model_dump(exclude_unset=True)
     meta = store.update_metadata(source, source_id, updates)
+    broadcast_event(
+        "library_changed",
+        {"action": "update_metadata", "source": source, "source_id": source_id, "timestamp": time.time()},
+    )
     return store.detail(meta)
 
 
@@ -964,7 +981,10 @@ def _prefetch_worker(
     job["prefetched"] = done
     job["total"] = meta.page_count
     job["warnings"] = warnings
-    broadcast_event("library_changed", {"action": "cache_complete", "timestamp": time.time()})
+    broadcast_event(
+        "library_changed",
+        {"action": "cache_complete", "source": fetched.meta.source, "source_id": fetched.meta.source_id, "timestamp": time.time()},
+    )
 
 
 def _require_known_source(source: str) -> None:

@@ -139,8 +139,16 @@ const memoizedProviders = useMemoize(async (options?: RequestOptions): Promise<P
   }
 })
 
+export function clearApiDetailCache(source?: string, sourceId?: string): void {
+  if (source && sourceId) {
+    memoizedDetail.delete(source, sourceId)
+  } else {
+    memoizedDetail.clear()
+  }
+}
+
 export function clearApiCaches(): void {
-  memoizedDetail.clear()
+  clearApiDetailCache()
   memoizedProviders.clear()
 }
 

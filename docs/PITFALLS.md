@@ -82,11 +82,11 @@
 - **复现场景**：从书架点击漫画进入详情页，详情接口尚未返回时。
 - **红线与防误伤**：**不要**在详情数据返回前全屏呈现纯灰骨架屏；**放行/改用**利用书架已有 `LibrarySummary` 先渲染 Hero 头部（标题与封面），使 View Transition 能精准捕获并连贯完成共享封面形变（`comic-cover-active`），且在卡片上增加 `@pointerenter.once` 意图预热（杜绝白屏/骨架屏二次闪烁与排版跳动）。
 
-### 14. PWA 鉴权端点与离线缓存隔离
+### 14. PWA 鉴权端点与离线缓存隔离（API Metadata Cache Ban & Apple Touch Icon）
 
-- **本质**：将状态敏感型鉴权 API 纳入离线缓存策略，导致客户端身份被陈旧响应持久劫持。
-- **复现场景**：Service Worker 将 `/api/auth/*` 纳入 `NetworkFirst`，网络抖动或弱网下命中 guest 历史缓存。
-- **红线与防误伤**：**不要**在 Service Worker（Workbox）中将动态鉴权或探活端点（`/api/auth/*`、`/api/search/*`）通配进 `NetworkFirst` 离线缓存，且必须在 Manifest 中配置 `useCredentials: true`；**放行/改用**只读元数据与图片正常离线缓存，鉴权接口一律绕过 SW 直连后端（防止馆长身份被永久降级锁死为 403）。
+- **本质**：将状态敏感型 API 纳入 Service Worker 离线缓存策略，导致客户端身份被陈旧响应持久劫持；或 iOS PWA 缺失标准 180px PNG 根文件导致添加到主屏幕图标变截图。
+- **复现场景**：Workbox 将 `/api/*`（如 `/api/library`、`/api/settings`）纳入 `NetworkFirst`，反向代理或弱网下命中未授权缓存导致馆长权限丢失且必须全量重置；iOS Safari 找不到 180x180 图标回退抓取网页截图。
+- **红线与防误伤**：**不要**在 Service Worker（Workbox）中缓存任何 `/api/` 数据端点（严禁配置 `api-metadata-cache`），**不要**在 `index.html` 仅书写 192px 尺寸图标；**放行/改用**Service Worker 仅缓存静态 App Shell 与二进制漫画画页（`manga-images-cache`），动态 API 统一走内存 SWR（`useMemoize`）直连后端；`public/` 与 `index.html` 必须提供标准 180×180 `apple-touch-icon.png` 与通配链接。
 
 ### 15. 后台轮询容错与熔断隔离
 

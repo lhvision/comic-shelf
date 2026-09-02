@@ -24,8 +24,29 @@ const canWrite = computed(
 )
 const isGuest = computed(() => authenticated.value && role.value === 'guest')
 
-// Register 401 listener once at module level
-onUnauthorized(() => {
+// Register 401 listener once at module level with auto-reconnect attempt
+let isReauthenticating = false
+onUnauthorized(async () => {
+  if (isReauthenticating) return
+  const stored = getStoredToken()
+  if (stored) {
+    isReauthenticating = true
+    try {
+      const res = await api.login(stored)
+      authenticated.value = true
+      role.value = res.role || 'admin'
+      username.value = res.username || (res.role === 'admin' ? '馆长' : '访客')
+      userId.value = res.user_id || ''
+      modalVisible.value = false
+      notifyAuthSuccess()
+      return
+    } catch {
+      // Re-authentication failed, proceed to unauthorized state
+    } finally {
+      isReauthenticating = false
+    }
+  }
+
   authenticated.value = false
   role.value = 'unauthorized'
   if (authRequired.value) {
@@ -81,7 +102,7 @@ export function useAuth() {
 
       // If auth is required, check if we have a stored token to restore curator privileges
       const stored = getStoredToken()
-      if (status.auth_required && stored && role.value !== 'admin') {
+      if (status.auth_required && stored && (!status.authenticated || role.value !== 'admin')) {
         try {
           const res = await api.login(stored)
           authenticated.value = true
@@ -92,21 +113,23 @@ export function useAuth() {
           notifyAuthSuccess()
           return true
         } catch (err: unknown) {
-          // Only clear stored token if the server explicitly rejected the credentials with 401
-          const isUnauthorized =
-            (err instanceof ApiError && err.status === 401) ||
+          // Only clear stored token if the server explicitly rejected the credentials with wrong password / disabled
+          const isExplicitWrongAuth =
+            (err instanceof ApiError &&
+              (err.status === 401 || err.status === 403) &&
+              (err.detail.includes('口令错误') ||
+                err.detail.includes('已停用') ||
+                err.detail.includes('已失效'))) ||
             (err instanceof Error &&
-              (err.message.includes('401') ||
-                err.message.includes('口令错误') ||
-                err.message.includes('未授权')))
+              (err.message.includes('口令错误') || err.message.includes('已停用')))
 
-          if (isUnauthorized) {
+          if (isExplicitWrongAuth) {
             setStoredToken('')
             username.value = ''
             userId.value = ''
-            if (!authenticated.value) {
-              modalVisible.value = true
-            }
+          }
+          if (!authenticated.value) {
+            modalVisible.value = true
           }
         }
       } else if (status.auth_required && !status.authenticated) {

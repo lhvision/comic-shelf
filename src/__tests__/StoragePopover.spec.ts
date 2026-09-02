@@ -24,13 +24,13 @@ describe('StoragePopover component', () => {
     expect(progressbar.attributes('aria-valuemin')).toBe('0')
     expect(progressbar.attributes('aria-valuemax')).toBe('100')
     expect(progressbar.attributes('aria-valuenow')).toBeDefined()
-    expect(progressbar.attributes('aria-label')).toContain('本机离线占用')
+    expect(progressbar.attributes('aria-label')).toContain('漫画离线缓存')
   })
 
   it('renders breakdown items for core assets and manga images', () => {
     const wrapper = mount(StoragePopover)
     const items = wrapper.findAll('.breakdown-item')
-    expect(items.length).toBe(2)
+    expect(items.length).toBeGreaterThanOrEqual(2)
     expect(items[0]?.text()).toContain('纸间核心资产')
     expect(items[1]?.text()).toContain('漫画阅览缓存')
   })

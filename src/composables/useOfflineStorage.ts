@@ -10,6 +10,8 @@ export function formatBytes(bytes: number): string {
   return `${val < 10 && i > 0 ? val.toFixed(1) : Math.round(val)} ${units[i]}`
 }
 
+export const MANGA_IMAGE_MAX_BUDGET = 3000
+
 export const useOfflineStorage = createGlobalState(() => {
   const usage = ref(0)
   const quota = ref(0)
@@ -25,9 +27,16 @@ export const useOfflineStorage = createGlobalState(() => {
     )
   })
 
+  // 物理磁盘配额百分比
   const percentage = computed(() => {
     if (!quota.value || quota.value <= 0) return 0
     return Math.min(100, Math.max(0, (usage.value / quota.value) * 100))
+  })
+
+  // 漫画画页离线预算百分比（相对于 3,000 张上限）
+  const budgetPercentage = computed(() => {
+    if (mangaImageCount.value <= 0) return 0
+    return Math.min(100, Math.max(0, (mangaImageCount.value / MANGA_IMAGE_MAX_BUDGET) * 100))
   })
 
   const usageFormatted = computed(() => formatBytes(usage.value))
@@ -41,7 +50,20 @@ export const useOfflineStorage = createGlobalState(() => {
   const coreAssetBytesFormatted = computed(() => formatBytes(coreAssetBytes.value))
   const mangaImageBytesFormatted = computed(() => formatBytes(mangaImageBytes.value))
 
+  const isSecureContext = computed(() => {
+    if (typeof window === 'undefined') return true
+    return window.isSecureContext === true
+  })
+
+  const environmentStatus = computed<'ready' | 'insecure_http' | 'unsupported'>(() => {
+    if (typeof window === 'undefined') return 'ready'
+    if (!window.isSecureContext) return 'insecure_http'
+    if (!('serviceWorker' in navigator) || typeof caches === 'undefined') return 'unsupported'
+    return 'ready'
+  })
+
   const badgeText = computed(() => {
+    if (!isSecureContext.value) return '局域网 HTTP'
     if (usage.value <= 0) return '设备就绪'
     return `设备 ${formatBytes(usage.value)}`
   })
@@ -156,6 +178,7 @@ export const useOfflineStorage = createGlobalState(() => {
     usage,
     quota,
     percentage,
+    budgetPercentage,
     mangaImageCount,
     mangaImageBytes,
     usageFormatted,
@@ -163,6 +186,8 @@ export const useOfflineStorage = createGlobalState(() => {
     mangaImageBytesFormatted,
     coreAssetBytesFormatted,
     badgeText,
+    isSecureContext,
+    environmentStatus,
     clearing,
     refreshEstimate,
     clearImageCache,

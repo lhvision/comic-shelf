@@ -53,9 +53,12 @@ async def run_events_tests():
     assert "event: ping" in first_chunk
     assert "connected" in first_chunk
 
-    second_chunk = await anext(gen)
-    assert "event: library_changed" in second_chunk
-    assert "cache_complete" in second_chunk
+    version_chunk = await anext(gen)
+    assert "event: system_version" in version_chunk
+
+    third_chunk = await anext(gen)
+    assert "event: library_changed" in third_chunk
+    assert "cache_complete" in third_chunk
 
     # 6. Stream finishes and cleanly releases listener on close
     await gen.aclose()

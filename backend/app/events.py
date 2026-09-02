@@ -2,6 +2,7 @@ import asyncio
 import json
 import logging
 import threading
+import time
 from typing import Any, AsyncGenerator
 
 from fastapi import APIRouter, HTTPException, Request
@@ -103,7 +104,8 @@ async def sse_event_stream(request: Request) -> StreamingResponse:
     async def event_generator() -> AsyncGenerator[str, None]:
         try:
             # Send initial connection handshake
-            yield f"event: ping\ndata: {json.dumps({'status': 'connected', 'timestamp': asyncio.get_event_loop().time()})}\n\n"
+            yield f"event: ping\ndata: {json.dumps({'status': 'connected', 'timestamp': time.time()})}\n\n"
+            yield f"event: system_version\ndata: {json.dumps({'version': 'latest', 'timestamp': time.time()})}\n\n"
 
             while True:
                 if await request.is_disconnected():

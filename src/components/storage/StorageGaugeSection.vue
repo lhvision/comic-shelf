@@ -12,48 +12,50 @@
 import AppIcon from '@/components/AppIcon.vue'
 
 defineProps<{
-  /** 格式化后的已使用总存储字符串（如 "12.4 MB"） */
-  usageFormatted: string
   /** 浏览器提供的总配额字节数（为 0 表示未知） */
   quota: number
   /** 格式化后的总配额字符串（如 "120.0 GB"） */
   quotaFormatted: string
   /** 已使用百分比数值（0 ~ 100） */
   percentage: number
+  /** 漫画画页离线预算百分比数值（0 ~ 100） */
+  budgetPercentage?: number
   /** 格式化后的应用核心资源占用大小 */
   coreAssetBytesFormatted: string
   /** 离线缓存的漫画画页总数 */
   mangaImageCount: number
   /** 格式化后的漫画画页占用大小 */
   mangaImageBytesFormatted: string
+  /** 客户端运行环境状态 */
+  environmentStatus?: 'ready' | 'insecure_http' | 'unsupported'
 }>()
 </script>
 
 <template>
   <div>
-    <!-- 存储容量平直标尺（延续 3px 纸印规范） -->
-    <section class="storage-gauge" aria-label="存储容量使用情况">
+    <!-- 存储容量平直标尺（基于漫画画页预算） -->
+    <section class="storage-gauge" aria-label="漫画画页离线预算">
       <div class="gauge-meta">
-        <span class="gauge-name">本机离线占用</span>
+        <span class="gauge-name">漫画离线缓存预算</span>
         <span class="gauge-value font-mono">
-          <strong>{{ usageFormatted }}</strong>
-          <small v-if="quota > 0"> / {{ quotaFormatted }}</small>
+          <strong>{{ mangaImageCount }}</strong>
+          <small> / 3,000 张上限 ({{ mangaImageBytesFormatted }})</small>
         </span>
       </div>
 
       <div
         class="storage-track"
         role="progressbar"
-        :aria-valuenow="Math.round(percentage)"
+        :aria-valuenow="Math.round(budgetPercentage ?? percentage)"
         aria-valuemin="0"
         aria-valuemax="100"
-        :aria-valuetext="`已占用 ${usageFormatted}`"
-        :aria-label="`本机离线占用 ${Math.round(percentage)}%`"
+        :aria-valuetext="`已占用 ${mangaImageCount} 张画页 (${mangaImageBytesFormatted})`"
+        :aria-label="`漫画离线缓存已使用 ${Math.round(budgetPercentage ?? percentage)}%`"
       >
         <div
           class="storage-fill"
           :style="{
-            transform: `scaleX(${Math.max(percentage > 0 ? 0.015 : 0, Math.min(1, percentage / 100))})`,
+            transform: `scaleX(${Math.max((budgetPercentage ?? percentage) > 0 ? 0.015 : 0, Math.min(1, (budgetPercentage ?? percentage) / 100))})`,
           }"
         ></div>
       </div>
@@ -73,12 +75,26 @@ defineProps<{
         <div class="item-text">
           <span class="item-title">漫画阅览缓存</span>
           <small class="item-desc">
-            {{ mangaImageCount }} 张已读页面与封面 · 保留最新 1000 页面
+            {{ mangaImageCount }} 张已读页面与封面 · 保留最新 3,000 页面
           </small>
         </div>
         <span class="item-metric font-mono">{{ mangaImageBytesFormatted }}</span>
       </li>
+
+      <li v-if="quota > 0" class="breakdown-item">
+        <div class="item-text">
+          <span class="item-title">设备物理总配额</span>
+          <small class="item-desc">浏览器物理磁盘分配空间（总容量充裕）</small>
+        </div>
+        <span class="item-metric font-mono font-muted">{{ quotaFormatted }}</span>
+      </li>
     </ul>
+
+    <!-- 局域网 HTTP 模式提示 -->
+    <div v-if="environmentStatus === 'insecure_http'" class="storage-notice font-mono">
+      <AppIcon name="info" size="xs" :stroke-width="1.8" />
+      <span>当前为局域网 HTTP 模式，离线持久化需在 HTTPS 域名下生效</span>
+    </div>
 
     <!-- 安全边界提示 -->
     <div class="storage-boundary">
@@ -174,6 +190,20 @@ defineProps<{
   font-size: var(--text-xs);
   color: var(--ink-1);
   white-space: nowrap;
+}
+
+.storage-notice {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1-5);
+  padding: var(--space-1-5) var(--space-2);
+  margin-bottom: var(--space-2-5);
+  background: color-mix(in oklab, var(--accent) 8%, var(--paper-1));
+  border: 1px solid color-mix(in oklab, var(--accent) 25%, var(--line));
+  border-radius: var(--radius-1);
+  color: var(--ink-1);
+  font-size: var(--text-caption);
+  line-height: 1.4;
 }
 
 /* 安全边界提示 */

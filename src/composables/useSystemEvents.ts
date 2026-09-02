@@ -1,5 +1,6 @@
 import { ref, watch } from 'vue'
 import { createGlobalState, useDocumentVisibility, useNetwork } from '@vueuse/core'
+import { clearApiDetailCache } from '@/api/client'
 import { usePwaUpdate } from '@/composables/usePwaUpdate'
 import { useLibraryStore } from '@/stores/library'
 
@@ -87,6 +88,11 @@ export const useSystemEvents = createGlobalState(() => {
         try {
           const data: LibraryChangeEvent = JSON.parse(e.data)
           lastLibraryEvent.value = data
+          if (data.source && data.source_id) {
+            clearApiDetailCache(data.source, data.source_id)
+          } else {
+            clearApiDetailCache()
+          }
           const libraryStore = useLibraryStore()
           void libraryStore.load(true)
         } catch {

@@ -1,6 +1,6 @@
 import { computed, ref, watch } from 'vue'
 import { registerSW } from 'virtual:pwa-register'
-import { createGlobalState, useDocumentVisibility, useNetwork } from '@vueuse/core'
+import { createGlobalState, useDocumentVisibility, useIntervalFn, useNetwork } from '@vueuse/core'
 
 /**
  * PWA Prompt 模式生命周期状态机
@@ -49,6 +49,16 @@ export const usePwaUpdate = createGlobalState(() => {
         void checkForUpdate()
       }
     })
+
+    // 3. 周期性静默探测 Service Worker 版本变更（每 30 分钟一次）
+    useIntervalFn(
+      () => {
+        if (isOnline.value && registration.value) {
+          void checkForUpdate()
+        }
+      },
+      30 * 60 * 1000,
+    )
   }
 
   /**
