@@ -172,6 +172,12 @@
 - **复现场景**：读者从漫画详情页「页面索引」或「继续阅读」点击跳转至 `/comic/:source/:id/read/:page` 时，无论点击第几页，阅读器均被重置到第 1 页且历史记录被冲刷为 1。
 - **红线与防误伤**：**不要**在数据加载 Composable 中将 `loading = false` 延迟到依赖 DOM 的 `onLoaded` 之后；**放行/改用**遵循「数据就绪 → 先解除 `loading = false` → 触发 `onLoaded` / `await nextTick()` 物理瞬时定位」的单向流水线原则；并在路由未携带 `:page` 时优先回落至本地持久化 `lastRead.value`，纵向连续模式下由 `recalibrateTargetOffset` 在图片异步加载时微调位移（确保 0 丢帧与 100% 精确进场定位）。
 
+### 29. PWA Prompt 模式装订更新死锁与 Service Worker controlling 事件缺失兜底（PWA Prompt Mode Update Deadlock & Missing Fallback Reload）
+
+- **本质**：在 PWA Prompt 模式下，调用 `updateServiceWorker(true)` 仅向 Service Worker 发送 `SKIP_WAITING` 消息，完全依赖底层 `workbox-window` 监听的 `controlling` 事件且其内部要求 `event.isUpdate == true` 才能执行 `window.location.reload()`。在单容器静态托管、本地开发历史缓存或特定浏览器生命周期边缘态下，`controlling` 事件可能无法满足条件或未能触发，而业务层将 `isUpdating` 置为 `true` 后缺乏安全熔断与超时重载保底，导致装订按钮陷入无限旋转动画死锁。
+- **复现场景**：在浏览器检测到新版本并弹出「纸间已有新卷本装订就绪」横幅时，点击「立即装订」，按钮显示「装订中…」并一直转圈，页面未自动刷新。
+- **红线与防误伤**：**不要**仅将页面刷新的控制权完全交给未设超时的底层第三方 SW 事件监听；**放行/改用**在 `usePwaUpdate.ts` 中显式绑定 `navigator.serviceWorker` 的 `controllerchange` 监听，向 `waiting` Worker 直接派发 `SKIP_WAITING` 信号，并设立 **1.2s 安全熔断定时器（Fallback Reload）**，无论底层事件是否准时到达均保证窗口平滑重载生效（彻底根治装订无限转圈死锁）。
+
 ---
 
 ## 🚦 交付门禁（三步必跑）

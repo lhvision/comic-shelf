@@ -3,6 +3,18 @@ import { registerSW } from 'virtual:pwa-register'
 import { createGlobalState, useDocumentVisibility, useIntervalFn, useNetwork } from '@vueuse/core'
 
 /**
+ * 适配不同宿主环境（浏览器 / jsdom 单测 / SSR）的安全页面重载执行器
+ */
+function triggerWindowReload(): void {
+  if (typeof window === 'undefined') return
+  try {
+    window.location.reload()
+  } catch {
+    // jsdom 或部分轻量无头单测环境下 location.reload 可能未完整实现，静默容错
+  }
+}
+
+/**
  * PWA Prompt 模式生命周期状态机
  * 托管 Service Worker 更新发现、离线就绪、页面唤醒回源探测与平滑装订
  */
@@ -79,14 +91,43 @@ export const usePwaUpdate = createGlobalState(() => {
   async function applyUpdate(): Promise<void> {
     if (isUpdating.value) return
     isUpdating.value = true
+
+    // 设置安全熔断兜底：若 ServiceWorker 未能在预期时间内触发 controllerchange，强制执行刷新，彻底防止无限转圈
+    let reloaded = false
+    const safeReload = () => {
+      if (reloaded) return
+      reloaded = true
+      triggerWindowReload()
+    }
+
+    const fallbackTimer = setTimeout(safeReload, 1200)
+
     try {
+      if (typeof window !== 'undefined' && 'serviceWorker' in navigator) {
+        navigator.serviceWorker.addEventListener(
+          'controllerchange',
+          () => {
+            clearTimeout(fallbackTimer)
+            safeReload()
+          },
+          { once: true },
+        )
+
+        // 若存在等待中的新 ServiceWorker，直接发送跳过等待消息
+        if (registration.value?.waiting) {
+          registration.value.waiting.postMessage({ type: 'SKIP_WAITING' })
+        }
+      }
+
       if (updateSWFn) {
         await updateSWFn(true)
       } else {
-        window.location.reload()
+        clearTimeout(fallbackTimer)
+        safeReload()
       }
     } catch {
-      window.location.reload()
+      clearTimeout(fallbackTimer)
+      safeReload()
     }
   }
 
