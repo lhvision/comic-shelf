@@ -2,74 +2,74 @@
 
 ## 6. 前端文件地图
 
-| 文件                                             | 职责                                                                                 |
-| ------------------------------------------------ | ------------------------------------------------------------------------------------ |
-| `src/views/LibraryView.vue`                      | 书架视图编排：Hero / 导入 / 筛选工具栏 / 卡片网格                                    |
-| `src/views/DiscoveryView.vue`                    | 发现页视图编排：分段榜单切换、分类筛选、榜单卡片网格与一键收录                       |
-| `src/views/ComicDetailView.vue`                  | 详情视图编排：封面流 / 元数据 / 操作栏 / 章节目录 / 页面索引                         |
-| `src/views/ChapterView.vue`                      | 章节子路由：某话章节头（本话缓存进度/重命名/删除管理）+ 该话 PageIndexGrid           |
-| `src/views/CreateComicView.vue`                  | 自建图集工坊：单话/多章节多图拖拽暂存、服务器路径导入、元数据与封面编排              |
-| `src/views/ReaderView.vue`                       | 阅读器视图编排：模式切换、DOM 分屏挂载、HUD / 顶栏 / 设置面板接线                    |
-| `src/composables/useAuth.ts`                     | 访问鉴权与门禁状态机：Cookie/Token 会话、状态探测、401 拦截联动                      |
-| `src/composables/useDiscovery.ts`                | 发现页排行榜状态机：周榜/月榜/日榜/总榜拉取、分类过滤与收录状态追踪                  |
-| `src/composables/useUploadQueue.ts`              | 受限并发批量上传队列控制器（3 路 Worker 并发、细粒度进度与取消支持）                 |
-| `src/composables/useFileStaging.ts`              | 多图与画页暂存：自然文件名数字排序、格式过滤、`useFileDialog` + `useDropZone` 聚合   |
-| `src/composables/useLibraryFilter.ts`            | 书架检索与筛选：模糊搜索、标签频率统计、多模式排序与喜欢过滤                         |
-| `src/composables/useImageSearch.ts`              | 以图搜图状态机：文件上传、剪贴板粘贴、拖拽、置信度与状态管理                         |
-| `src/composables/useReaderData.ts`               | 阅读器数据流与路由状态机：元数据拉取、`AbortController` 竞态取消、URL 同步与返回路径 |
-| `src/composables/useReaderPaging.ts`             | 阅读器分页与作用域：分组切片、全局/本地页码映射、跨话首尾探测与边界计算              |
-| `src/composables/useReaderNavigation.ts`         | 阅读器导航与定位：多屏滚动定位、进度计算、横向滚轮适配、跨话切换                     |
-| `src/composables/useReaderKeyboard.ts`           | 阅读器键盘与全屏：按键映射（翻页/切话/首末页）、`useFullscreen` 与 ESC 退出          |
-| `src/composables/useAutoTurn.ts`                 | 阅读器自动翻页：倒计时状态机、节拍器、页面可见性联动与暂停/继续                      |
-| `src/composables/useReaderChrome.ts`             | 阅读器顶栏/HUD 延时隐藏与交互唤醒控制                                                |
-| `src/composables/useChapterNavigation.ts`        | 详情/子路由章节导航：锁定章节、章节切片、48 增量渲染、「继续阅读」文案               |
-| `src/composables/useReaderSettings.ts`           | 阅读器设置全局状态单例持久化（VueUse `createGlobalState`）                           |
-| `src/composables/useLastRead.ts`                 | 每部作品继续阅读页码持久化读写                                                       |
-| `src/composables/useToast.ts`                    | 全局轻量印章通知 Toast 状态机（支持 info / error / success 三态提示）                |
-| `src/composables/useHtmlCanvas.ts`               | HTML-in-Canvas 实验特性检测与支持度判定                                              |
-| `src/composables/useOfflineStorage.ts`           | 端侧离线物理存储探测与分级清理状态机（StorageManager + CacheStorage 统计）           |
-| `src/composables/usePwaInstall.ts`               | PWA 安装与独立应用视口检测状态机（`beforeinstallprompt` + Standalone）               |
-| `src/composables/usePwaUpdate.ts`                | PWA Prompt 模式生命周期状态机：更新捕获、装订刷新与视口唤醒自愈探测                  |
-| `src/composables/useSystemEvents.ts`             | 纸间单向系统事件流（SSE）：新版本广播、藏书变动与未来 AI 任务流式状态机              |
-| `src/composables/useIdlePrefetch.ts`             | 闲时意图预热状态机：利用 requestIdleCallback 在主线程空闲时静默预拉取目标路由 chunk  |
-| `src/pwa.ts`                                     | PWA 与 SSE 系统事件流统一初始化入口                                                  |
-| `src/components/curator/guest/`                  | 访客簿模块化组件群：名册卡片、设备抽屉、印发表单、凭据展示与时间格式化               |
-| `src/components/storage/`                        | 存储管理模块化组件群：头部卡片、PWA 装订、刻度槽与双级清理危险区                     |
-| `src/components/import/`                         | 收录面板模块化组件群：车号表单、本地目录扫描与下载并发步进器                         |
-| `src/components/UpdateBanner.vue`                | 纸间新卷本装订更新提示横幅（水墨胶囊悬浮卡片、沉浸阅读器自动避让）                   |
-| `src/components/GateView.vue`                    | 全屏 Zero-DOM 门禁大门视图：反 DevTools 篡改哨兵与三态表单编排外壳                   |
-| `src/components/gate/`                           | 门禁模块化表单群：初始口令表单、首访认领自设 PIN 表单、已认领 PIN 验证表单           |
-| `src/components/Modal.vue`                       | 通用无障碍二次确认弹窗：焦点圈闭、锁卷与抽屉自适应（用于删除危险操作）               |
-| `src/components/SegmentedTabs.vue`               | 典藏分段选项卡：支持泛型 `TabItem<T>`/字符串、左右/Home/End 键导航与多尺寸           |
-| `src/components/AppButton.vue`                   | 通用典藏按钮：支持 primary / secondary / soft / ghost / danger 多种变体              |
-| `src/components/AppIcon.vue`                     | 零分支矢量图标分发器（基于 `<component :is="ICON_MAP[name]">` 动态渲染）             |
-| `src/components/icons/`                          | 纸间统一矢量图标集（`BaseIcon.vue` 底座 + 23 个原子 `Icon*.vue` 组件）               |
-| `src/components/AppTooltip.vue`                  | 现代声明式轻量气泡提示组件（Popover API + CSS Anchor + 悬停安全桥）                  |
-| `src/components/AppPopover.vue`                  | 现代顶层锚定交互浮层（自动碰撞翻转、轻量失焦关闭）                                   |
-| `src/components/StoragePopover.vue`              | 阅览室设备与离线存储管理浮层（3px平直刻度槽/分项账单/双级清理/两步确认）             |
-| `src/components/AppDropdown.vue`                 | 现代操作选单与选择器（无依赖 Top Layer + 键盘导航）                                  |
-| `src/components/BackToTop.vue`                   | 正圆暖纸印章回到顶部微件（VueUse `useWindowScroll` 视口监听）                        |
-| `src/components/CacheProgress.vue`               | 实时缓存进度条与后台任务状态指示                                                     |
-| `src/components/detail/EditMetadataModal.vue`    | 典藏资料与标签编排弹窗（实时修改标题、作者、4 张封面展示页码、标签增删）             |
-| `src/components/detail/AppendPagesModal.vue`     | 本地漫画增量追加弹窗（追加至已有话或新建分话、支持网页上传/服务器路径）              |
-| `src/components/discovery/DiscoveryCard.vue`     | 榜单漫画卡片：排名徽章、原站外链、分类胶囊与一键收录/在库直达                        |
-| `src/components/form/TagManager.vue`             | 交互式标签管理器（Chip 展示、Enter/空格添加、SVG 居中删除、热门快选推荐）            |
-| `src/components/form/CoverIndicesPicker.vue`     | 4 张封面展示页码选定器（4 槽位数值输入、实时越界纠偏与默认值安全回退）               |
-| `src/components/detail/ChapterIndex.vue`         | 章节目录整段：head + 分批卡片网格（首屏 24 话增量展开、哨兵触底加载、展开记忆）      |
-| `src/components/detail/ChapterCard.vue`          | 目录单卡：第一页封面缩略图（失败回落书脊）+ 序数/标题/页数 + 独立离线缓存操作按钮    |
-| `src/components/detail/ChapterSwitcher.vue`      | 章节切换条（用于 ChapterView 内跳话）：横向 chips + 方向键 + `useScroll`             |
-| `src/components/FavoriteButton.vue`              | 喜欢标记按钮（书架卡片 / 实验卡片 overlay）                                          |
-| `src/components/ComicPageImage.vue`              | 每页图片 loading / error / retry 兜底                                                |
-| `src/components/CoverCarousel.vue`               | scroll-snap + view-timeline 封面流                                                   |
-| `src/components/reader/ReaderViewport.vue`       | 阅读器画卷视口：三种排版模式（连续/竖翻/横翻）与分屏画页 DOM 渲染                    |
-| `src/components/reader/ReaderChapterBanners.vue` | 阅读器跨话悬浮横幅：话首「← 上一话」与话末「本话完 · 下一话 →」导航交互胶囊          |
-| `src/components/HtmlCanvasSurface.vue`           | 实验性 DOM→canvas 绘制原语，default slot 是完整 DOM 子树                             |
-| `src/components/HtmlCanvasCard.vue`              | 实验性书架卡片：整卡 DOM（封面+标题+标签+进度）合成 canvas                           |
-| `src/components/reader/ReaderLoadingState.vue`   | 典藏 WebP 呼吸微光加载组件（整本首屏与单页渐进式加载）                               |
-| `src/styles/tokens.css`                          | 设计 token 与原生 CSS 样式体系                                                       |
-| `src/stores/library.ts`                          | 书库 Pinia store（SWR 保持、静默回源、后台缓存轮询与自动清理收录提示）               |
-| `src/stores/settings.ts`                         | 下载并发与运行时设置 store                                                           |
-| `src/stores/experiments.ts`                      | 实验开关：HTML-in-Canvas 卡片                                                        |
+| 文件                                             | 职责                                                                                                                                                           |
+| ------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `src/views/LibraryView.vue`                      | 书架视图编排：Hero / 导入 / 筛选工具栏 / 卡片网格                                                                                                              |
+| `src/views/DiscoveryView.vue`                    | 发现页视图编排：分段榜单切换、分类筛选、榜单卡片网格与一键收录                                                                                                 |
+| `src/views/ComicDetailView.vue`                  | 详情视图编排：封面流 / 元数据 / 操作栏 / 章节目录 / 页面索引                                                                                                   |
+| `src/views/ChapterView.vue`                      | 章节子路由：某话章节头（本话缓存进度/重命名/删除管理）+ 该话 PageIndexGrid                                                                                     |
+| `src/views/CreateComicView.vue`                  | 自建图集工坊：单话/多章节多图拖拽暂存、服务器路径导入、元数据与封面编排                                                                                        |
+| `src/views/ReaderView.vue`                       | 阅读器视图编排：模式切换、DOM 分屏挂载、HUD / 顶栏 / 设置面板接线                                                                                              |
+| `src/composables/useAuth.ts`                     | 访问鉴权与门禁状态机：Cookie/Token 会话、状态探测、401 拦截联动                                                                                                |
+| `src/composables/useDiscovery.ts`                | 发现页排行榜状态机：周榜/月榜/日榜/总榜拉取、分类过滤与收录状态追踪                                                                                            |
+| `src/composables/useUploadQueue.ts`              | 受限并发批量上传队列控制器（3 路 Worker 并发、细粒度进度与取消支持）                                                                                           |
+| `src/composables/useFileStaging.ts`              | 多图与画页暂存：自然文件名数字排序、格式过滤、`useFileDialog` + `useDropZone` 聚合                                                                             |
+| `src/composables/useLibraryFilter.ts`            | 书架检索与筛选：模糊搜索、标签频率统计、多模式排序与喜欢过滤                                                                                                   |
+| `src/composables/useImageSearch.ts`              | 以图搜图状态机：文件上传、剪贴板粘贴、拖拽、置信度与状态管理                                                                                                   |
+| `src/composables/useReaderData.ts`               | 阅读器数据流与路由状态机：元数据拉取、`AbortController` 竞态取消、URL 同步与返回路径                                                                           |
+| `src/composables/useReaderPaging.ts`             | 阅读器分页与作用域：分组切片、全局/本地页码映射、跨话首尾探测与边界计算                                                                                        |
+| `src/composables/useReaderNavigation.ts`         | 阅读器导航与定位：多屏滚动定位、进度计算、横向滚轮适配、跨话切换                                                                                               |
+| `src/composables/useReaderKeyboard.ts`           | 阅读器键盘与全屏：按键映射（翻页/切话/首末页）、`useFullscreen` 与 ESC 退出                                                                                    |
+| `src/composables/useAutoTurn.ts`                 | 阅读器自动翻页：倒计时状态机、节拍器、页面可见性联动与暂停/继续                                                                                                |
+| `src/composables/useReaderChrome.ts`             | 阅读器顶栏/HUD 延时隐藏与交互唤醒控制                                                                                                                          |
+| `src/composables/useChapterNavigation.ts`        | 详情/子路由章节导航：锁定章节、章节切片、48 增量渲染、「继续阅读」文案                                                                                         |
+| `src/composables/useReaderSettings.ts`           | 阅读器设置全局状态单例持久化（VueUse `createGlobalState`）                                                                                                     |
+| `src/composables/useLastRead.ts`                 | 每部作品继续阅读页码持久化读写                                                                                                                                 |
+| `src/composables/useToast.ts`                    | 全局轻量印章通知 Toast 状态机（支持 info / error / success 三态提示）                                                                                          |
+| `src/composables/useHtmlCanvas.ts`               | HTML-in-Canvas 实验特性检测与支持度判定                                                                                                                        |
+| `src/composables/useOfflineStorage.ts`           | 端侧离线物理存储探测与分级清理状态机（StorageManager + CacheStorage 统计）                                                                                     |
+| `src/composables/usePwaInstall.ts`               | PWA 安装与独立应用视口检测状态机（`beforeinstallprompt` + Standalone）                                                                                         |
+| `src/composables/usePwaUpdate.ts`                | PWA Prompt 模式生命周期状态机：更新捕获、装订刷新与视口唤醒自愈探测                                                                                            |
+| `src/composables/useSystemEvents.ts`             | 纸间单向系统事件流（SSE）：新版本广播、藏书变动与未来 AI 任务流式状态机                                                                                        |
+| `src/composables/useIdlePrefetch.ts`             | 闲时意图预热状态机：利用 requestIdleCallback 在主线程空闲时静默预拉取目标路由 chunk                                                                            |
+| `src/pwa.ts`                                     | PWA 与 SSE 系统事件流统一初始化入口                                                                                                                            |
+| `src/components/curator/guest/`                  | 访客簿模块化组件群：名册卡片、设备抽屉、印发表单、凭据展示与时间格式化                                                                                         |
+| `src/components/storage/`                        | 存储管理模块化组件群：头部卡片、PWA 装订、刻度槽与双级清理危险区                                                                                               |
+| `src/components/import/`                         | 收录面板模块化组件群：车号表单、本地目录扫描与下载并发步进器                                                                                                   |
+| `src/components/UpdateBanner.vue`                | 纸间新卷本装订更新提示横幅（水墨胶囊悬浮卡片、沉浸阅读器自动避让）                                                                                             |
+| `src/components/GateView.vue`                    | 全屏 Zero-DOM 门禁大门视图：反 DevTools 篡改哨兵与三态表单编排外壳                                                                                             |
+| `src/components/gate/`                           | 门禁模块化表单群：初始口令表单、首访认领自设 PIN 表单、已认领 PIN 验证表单                                                                                     |
+| `src/components/Modal.vue`                       | 通用顶层模态对话框：基于 HTML5 原生 `<dialog>` Top Layer 与无障碍焦点圈闭，支持声明式关闭指令 (`commandfor`)、焦点记忆自动返还、防穿透微弹反馈与子表单安全防护 |
+| `src/components/SegmentedTabs.vue`               | 典藏分段选项卡：支持泛型 `TabItem<T>`/字符串、左右/Home/End 键导航与多尺寸                                                                                     |
+| `src/components/AppButton.vue`                   | 通用典藏按钮：支持 primary / secondary / soft / ghost / danger 多种变体                                                                                        |
+| `src/components/AppIcon.vue`                     | 零分支矢量图标分发器（基于 `<component :is="ICON_MAP[name]">` 动态渲染）                                                                                       |
+| `src/components/icons/`                          | 纸间统一矢量图标集（`BaseIcon.vue` 底座 + 23 个原子 `Icon*.vue` 组件）                                                                                         |
+| `src/components/AppTooltip.vue`                  | 现代声明式轻量气泡提示组件（Popover API + CSS Anchor + 悬停安全桥）                                                                                            |
+| `src/components/AppPopover.vue`                  | 现代顶层锚定交互浮层（自动碰撞翻转、轻量失焦关闭、Invoker Commands API 声明式触发器与焦点归还）                                                                |
+| `src/components/StoragePopover.vue`              | 阅览室设备与离线存储管理浮层（3px平直刻度槽/分项账单/双级清理/两步确认）                                                                                       |
+| `src/components/AppDropdown.vue`                 | 现代操作选单与选择器（无依赖 Top Layer + 键盘导航）                                                                                                            |
+| `src/components/BackToTop.vue`                   | 正圆暖纸印章回到顶部微件（VueUse `useWindowScroll` 视口监听）                                                                                                  |
+| `src/components/CacheProgress.vue`               | 实时缓存进度条与后台任务状态指示                                                                                                                               |
+| `src/components/detail/EditMetadataModal.vue`    | 典藏资料与标签编排弹窗（实时修改标题、作者、4 张封面展示页码、标签增删）                                                                                       |
+| `src/components/detail/AppendPagesModal.vue`     | 本地漫画增量追加弹窗（追加至已有话或新建分话、支持网页上传/服务器路径）                                                                                        |
+| `src/components/discovery/DiscoveryCard.vue`     | 榜单漫画卡片：排名徽章、原站外链、分类胶囊与一键收录/在库直达                                                                                                  |
+| `src/components/form/TagManager.vue`             | 交互式标签管理器（Chip 展示、Enter/空格添加、SVG 居中删除、热门快选推荐）                                                                                      |
+| `src/components/form/CoverIndicesPicker.vue`     | 4 张封面展示页码选定器（4 槽位数值输入、实时越界纠偏与默认值安全回退）                                                                                         |
+| `src/components/detail/ChapterIndex.vue`         | 章节目录整段：head + 分批卡片网格（首屏 24 话增量展开、哨兵触底加载、展开记忆）                                                                                |
+| `src/components/detail/ChapterCard.vue`          | 目录单卡：第一页封面缩略图（失败回落书脊）+ 序数/标题/页数 + 独立离线缓存操作按钮                                                                              |
+| `src/components/detail/ChapterSwitcher.vue`      | 章节切换条（用于 ChapterView 内跳话）：横向 chips + 方向键 + `useScroll`                                                                                       |
+| `src/components/FavoriteButton.vue`              | 喜欢标记按钮（书架卡片 / 实验卡片 overlay）                                                                                                                    |
+| `src/components/ComicPageImage.vue`              | 每页图片 loading / error / retry 兜底                                                                                                                          |
+| `src/components/CoverCarousel.vue`               | scroll-snap + view-timeline 封面流                                                                                                                             |
+| `src/components/reader/ReaderViewport.vue`       | 阅读器画卷视口：三种排版模式（连续/竖翻/横翻）与分屏画页 DOM 渲染                                                                                              |
+| `src/components/reader/ReaderChapterBanners.vue` | 阅读器跨话悬浮横幅：话首「← 上一话」与话末「本话完 · 下一话 →」导航交互胶囊                                                                                    |
+| `src/components/HtmlCanvasSurface.vue`           | 实验性 DOM→canvas 绘制原语，default slot 是完整 DOM 子树                                                                                                       |
+| `src/components/HtmlCanvasCard.vue`              | 实验性书架卡片：整卡 DOM（封面+标题+标签+进度）合成 canvas                                                                                                     |
+| `src/components/reader/ReaderLoadingState.vue`   | 典藏 WebP 呼吸微光加载组件（整本首屏与单页渐进式加载）                                                                                                         |
+| `src/styles/tokens.css`                          | 设计 token 与原生 CSS 样式体系                                                                                                                                 |
+| `src/stores/library.ts`                          | 书库 Pinia store（SWR 保持、静默回源、后台缓存轮询与自动清理收录提示）                                                                                         |
+| `src/stores/settings.ts`                         | 下载并发与运行时设置 store                                                                                                                                     |
+| `src/stores/experiments.ts`                      | 实验开关：HTML-in-Canvas 卡片                                                                                                                                  |
 
 ## 6.5 页面索引性能策略与全链路图片流水线闭环
 
