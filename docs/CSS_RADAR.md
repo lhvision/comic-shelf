@@ -861,7 +861,7 @@ await withViewTransition(
 **MDN**：[Invoker Commands API](https://developer.mozilla.org/en-US/docs/Web/API/Invoker_Commands_API) · [CommandEvent](https://developer.mozilla.org/en-US/docs/Web/API/CommandEvent)  
 **Baseline**：2025/2026 · Chrome 135+, Firefox 144+, Safari 26.2+  
 **参考**：[张鑫旭 全是好东西！HTML command属性和JS toggle事件](https://www.zhangxinxu.com/wordpress/2026/06/html-common-toggle-beforetoggle-event/)  
-**本项目落地决策**：✅ **渐进增强（允许页面按钮免 JS 声明式唤起/关闭 Dialog 或 Popover，由 ToggleEvent 联动同步 Vue 响应式）**
+**本项目落地状态**：✅ **已在 `Modal.vue`（`command="close"` 与 `@command` 监听）、`AppPopover.vue`、`StoragePopover.vue` 与 `ReaderPassPopover.vue`（`command="toggle-popover"`）全量实装落地**
 
 **核心原理与优势**：
 

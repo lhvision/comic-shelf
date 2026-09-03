@@ -88,11 +88,15 @@
    - 变体属性 `variant="paper" | "reader"`：`paper` 为典藏纸张亮色主题，`reader` 为阅读器暗室模式（深底、无亮白水印、高对比焦点环）；
    - 尺寸属性 `size="sm" | "md" | "lg" | "xl"`（适配简单确认至多字段大面板）；
    - 水印开关 `watermark: boolean`（纸间默认开启，暗室默认关闭）；
+   - 架构基建：基于 HTML5 原生 `<dialog>` 顶层渲染体系（Top Layer）与原生无障碍焦点陷阱，辅以 `<Transition>` 保持淡出平滑度；
+   - 交互契约：支持 `closeOnBackdrop`、`closeOnEsc`、`showCloseButton`、`preventClose` 与 `ariaLabel`，阻止关闭时触发 `is-shaking` 优雅微弹反馈；
+   - 焦点归还：关闭后自动将光标送回触发源（遵循 WCAG 2.1 2.4.3 Focus Restoration）；
+   - 声明式指令：关闭按钮原生挂载 `:commandfor="dialogId" command="close"`，并监听原生 `command` 事件；
 2. **系统安全门禁（`GateView.vue` & `src/components/gate/`）**：
    - 根级 Zero-DOM 物理隔离大门（未鉴权时应用骨架与阅读器物理 0 挂载），三态表单（口令/首次认领设 PIN/已认领输 PIN）模块化收敛；会话凭据 `sessionStorage` 暂存自愈，移动端切屏误刷 0 掉态；
-3. **轻量浮层与 Popover（`Popover.vue` / `Tooltip.vue`）**：
+3. **轻量浮层与 Popover（`AppPopover.vue` / `Tooltip.vue`）**：
    - 基于 HTML Popover API + CSS Anchor Positioning（`anchor-name` / `position-anchor`）构建；
-   - 具备 `@supports not (anchor-name: ...)` 绝对定位回退与 WCAG 1.4.13 悬停安全桥（Hover Bridge）保护。
+   - 触发器原生扩展 `commandfor` 与 `command="toggle-popover"`，具备 `@supports not (anchor-name: ...)` 绝对定位回退与 WCAG 1.4.13 悬停安全桥（Hover Bridge）保护。
 
 ### 3.2 矢量图标单源契约（Unified Iconography）
 

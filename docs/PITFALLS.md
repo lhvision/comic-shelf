@@ -265,6 +265,22 @@
   - **不要**在 `<script setup>` 声明需要跨组件销毁/挂载存活的页面级状态；
   - **放行/改用**：将跨路由/跨实例持久状态提升至独立的 Composable / Store 模块顶层单例，并提供规范的 getter/setter 与清理函数。
 
+### 39. 原生 `<dialog>` 顶层浮层陷阱与 CSS 覆盖（Top Layer & User-Agent Stylesheet Collision）
+
+- **本质**：原生 `<dialog>` 的 User-Agent 样式（`dialog:not([open]) { display: none }`）优先级极低，极易被常规 CSS 类选择器（如 `.modal-root { display: grid }`）意外覆写；且 `dialog::backdrop` 作为独立的 Top Layer 渲染盒，绝不自动继承 `<dialog>` 容器的 `opacity` / `transform`，与 Vue 响应式卸载时机脱节导致全屏点击锁死或黑屏硬闪。
+- **复现场景**：
+  1. 将普通模态窗迁移为 HTML5 `<dialog>` 时，为尝试纯 CSS 离散属性过渡而移除了 `v-if="open"`；
+  2. 外层 CSS 类显式声明了 `.modal-root { display: grid; position: fixed; inset: 0; }` 且内部遮罩带有 `pointer-events: auto`；
+  3. 导致页面在默认关闭状态下，被一层全屏透明的幽灵遮罩截断全部鼠标点击，平台所有交互瘫痪；
+  4. 此外，直接使用 `::backdrop` 承接视觉黑色高斯模糊时，Vue `<Transition>` 只能改变 `<dialog>` 本身透明度，离开时黑色蒙层无法同频淡出，DOM 卸载瞬间产生生硬黑屏闪退。
+- **红线与防误伤**：
+  - **不要**在复杂声明式框架（Vue/React）中为追求纯 CSS 动画而移除 `<dialog>` 的 `v-if="open"` 物理隔离；
+  - **不要**让组件 CSS 类无条件给未打开的 dialog 赋予 `display: grid/flex`；
+  - **放行/改用**：
+    1. 模态窗外层必须使用 `<dialog v-if="open">` 配合 `<Transition>`，确保关闭态物理脱离 DOM 树，从物理根源杜绝幽灵遮罩；
+    2. 将 `dialog::backdrop` 保持透明，仅利用其顶级原生阻断点击能力，将视觉墨色与 4px 模糊交由内部 `.modal-scrim` 管理，实现蒙层与面板 100% 同频丝滑淡入淡出；
+    3. 在 CSS 中补充 `dialog:not([open]) { display: none !important; }` 作为样式级双重防线。
+
 ---
 
 ## 🚦 交付门禁（四步必跑）
