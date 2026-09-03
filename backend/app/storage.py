@@ -152,7 +152,7 @@ class ComicStore:
         return base / f"{page.index:05d}.jpg"
 
     def cover_path(self, meta: ComicMeta, index: int, width: int | None = None) -> Path:
-        if width and width <= COVER_THUMB_WIDTH:
+        if width and 0 < width <= COVER_THUMB_WIDTH:
             return self.covers_dir(meta.source, meta.source_id) / f"{index:03d}_{width}.jpg"
         return self.covers_dir(meta.source, meta.source_id) / f"{index:03d}.jpg"
 
@@ -535,8 +535,16 @@ class ComicStore:
                 img = img.resize(size, Image.Resampling.LANCZOS)
             target.parent.mkdir(parents=True, exist_ok=True)
             tmp = target.with_suffix(f".tmp.{os.getpid()}.{threading.get_ident()}.jpg")
-            img.save(tmp, format="JPEG", quality=COVER_QUALITY, optimize=True, progressive=True)
-            tmp.replace(target)
+            try:
+                img.save(tmp, format="JPEG", quality=COVER_QUALITY, optimize=True, progressive=True)
+                tmp.replace(target)
+            except Exception:
+                try:
+                    if tmp.exists():
+                        tmp.unlink()
+                except OSError:
+                    pass
+                raise
 
     def scale_cover(self, source_cover: Path, target: Path, target_width: int = COVER_THUMB_WIDTH) -> Path:
         """Downscale an existing high-res cover to target_width (e.g. 360px)."""
@@ -556,7 +564,7 @@ class ComicStore:
             if target.exists() and target.stat().st_size > 0:
                 return target
 
-            if width and width <= COVER_THUMB_WIDTH:
+            if width and 0 < width <= COVER_THUMB_WIDTH:
                 base_cover = self.cover_path(meta, index)
                 if not (base_cover.exists() and base_cover.stat().st_size > 0):
                     if meta.cover_indices and 1 <= index <= len(meta.cover_indices):
@@ -583,7 +591,7 @@ class ComicStore:
         return self.covers_dir(source, source_id) / "chapters"
 
     def chapter_cover_path(self, meta: ComicMeta, chapter: Chapter, width: int | None = None) -> Path:
-        if width and width <= COVER_THUMB_WIDTH:
+        if width and 0 < width <= COVER_THUMB_WIDTH:
             return self.chapter_covers_dir(meta.source, meta.source_id) / f"{self._safe(chapter.id)}_{width}.jpg"
         return self.chapter_covers_dir(meta.source, meta.source_id) / f"{self._safe(chapter.id)}.jpg"
 
@@ -603,7 +611,7 @@ class ComicStore:
             if target.exists() and target.stat().st_size > 0:
                 return target
 
-            if width and width <= COVER_THUMB_WIDTH:
+            if width and 0 < width <= COVER_THUMB_WIDTH:
                 base_cover = self.chapter_cover_path(meta, chapter)
                 if not (base_cover.exists() and base_cover.stat().st_size > 0):
                     page_path = self.ensure_page(fetched, chapter.start)

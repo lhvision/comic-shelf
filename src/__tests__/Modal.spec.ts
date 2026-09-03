@@ -267,4 +267,29 @@ describe('Modal Component', () => {
     expect(dialog.attributes('aria-label')).toBe('无障碍浮层描述')
     expect(dialog.attributes('aria-labelledby')).toBeUndefined()
   })
+
+  it('handles command="close" with preventDefault and respects preventClose', async () => {
+    const wrapper = mount(Modal, {
+      props: {
+        open: true,
+        title: '指令测试',
+        preventClose: true,
+      },
+      global: {
+        stubs: {
+          Teleport: true,
+        },
+      },
+    })
+
+    const dialog = wrapper.find('dialog.modal-dialog')
+    const cmdEvent = new Event('command', { cancelable: true }) as Event & { command?: string }
+    cmdEvent.command = 'close'
+    dialog.element.dispatchEvent(cmdEvent)
+    await wrapper.vm.$nextTick()
+
+    expect(cmdEvent.defaultPrevented).toBe(true)
+    expect(wrapper.emitted('cancel')).toBeFalsy()
+    expect(wrapper.find('.modal-panel').classes()).toContain('is-shaking')
+  })
 })

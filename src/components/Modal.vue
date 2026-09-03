@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, onMounted, onUnmounted, ref, useId, watch } from 'vue'
+import { computed, nextTick, onUnmounted, ref, useId, watch } from 'vue'
 import { useEventListener, useScrollLock } from '@vueuse/core'
 import AmbientWatermark from '@/components/AmbientWatermark.vue'
 import AppIcon from '@/components/AppIcon.vue'
@@ -97,6 +97,7 @@ function restoreFocus() {
 }
 
 function requestClose() {
+  if (!props.open) return
   emit('update:open', false)
   emit('cancel')
   nextTick(() => {
@@ -114,7 +115,11 @@ function handleBackdropAction() {
 
 // 当 open 为 true 时，记录当前焦点并提升至 Top Layer
 async function openDialog() {
-  if (typeof document !== 'undefined' && document.activeElement instanceof HTMLElement) {
+  if (
+    typeof document !== 'undefined' &&
+    document.activeElement instanceof HTMLElement &&
+    (!dialogEl.value || !dialogEl.value.contains(document.activeElement))
+  ) {
     previousActiveElement.value = document.activeElement
   }
   await nextTick()
@@ -131,17 +136,30 @@ async function openDialog() {
       dialog.setAttribute('open', '')
     }
   }
-  const first = panel.value?.querySelector<HTMLElement>(FOCUSABLE_SELECTOR)
-  first?.focus()
+  const focusables = Array.from(
+    panel.value?.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR) ?? [],
+  ).filter(
+    (node) => node.offsetParent !== null || (node.checkVisibility ? node.checkVisibility() : true),
+  )
+  focusables[0]?.focus()
 }
 
 watch(
   () => props.open,
   (open) => {
-    isLocked.value = open
     if (open) {
+      isLocked.value = true
       openDialog()
     } else {
+      if (typeof document !== 'undefined') {
+        const otherModals = document.querySelectorAll('dialog.modal-dialog[open]')
+        const remaining = Array.from(otherModals).filter((m) => m !== dialogEl.value)
+        if (remaining.length === 0) {
+          isLocked.value = false
+        }
+      } else {
+        isLocked.value = false
+      }
       nextTick(() => {
         restoreFocus()
       })
@@ -149,12 +167,6 @@ watch(
   },
   { immediate: true },
 )
-
-onMounted(() => {
-  if (props.open) {
-    openDialog()
-  }
-})
 
 onUnmounted(() => {
   restoreFocus()
@@ -198,6 +210,11 @@ function onToggle(event: Event) {
 function onCommand(event: Event) {
   const cmdEvent = event as Event & { command?: string }
   if (cmdEvent.command === 'close') {
+    event.preventDefault()
+    if (props.preventClose) {
+      triggerAttention()
+      return
+    }
     requestClose()
   }
 }
@@ -224,7 +241,9 @@ useEventListener(window, 'keydown', (event: KeyboardEvent) => {
   if (event.key !== 'Tab') return
   const el = panel.value
   if (!el) return
-  const focusables = Array.from(el.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR))
+  const focusables = Array.from(el.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR)).filter(
+    (node) => node.offsetParent !== null || (node.checkVisibility ? node.checkVisibility() : true),
+  )
   if (focusables.length === 0) return
   const first = focusables[0]!
   const last = focusables[focusables.length - 1]!

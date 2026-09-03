@@ -510,15 +510,25 @@ export const chapterCoverUrl = (
   return width ? `${base}?w=${width}` : base
 }
 
-/** 为图片/封面 URL 安全附加宽度参数（?w=360 或 &w=360） */
+/** 为图片/封面 URL 安全附加宽度参数（?w=360 或 &w=360），自动保护 data:/blob: 协议并更新已有参数 */
 export const withWidth = (url: string, width: number): string => {
   if (!url) return ''
-  const sep = url.includes('?') ? '&' : '?'
-  return `${url}${sep}w=${width}`
+  if (url.startsWith('data:') || url.startsWith('blob:')) return url
+  try {
+    const parsed = new URL(url, 'http://localhost')
+    parsed.searchParams.set('w', String(width))
+    if (!url.startsWith('http://') && !url.startsWith('https://')) {
+      return `${parsed.pathname}${parsed.search}`
+    }
+    return parsed.toString()
+  } catch {
+    const sep = url.includes('?') ? '&' : '?'
+    return `${url}${sep}w=${width}`
+  }
 }
 
 /** 生成符合 HTML5 规范的响应式封面 srcset 字符串（默认 360w 阶梯 + 720w 高保真原图） */
 export const coverSrcset = (url: string, thumbWidth = 360, fullWidth = 720): string => {
-  if (!url) return ''
+  if (!url || url.startsWith('data:') || url.startsWith('blob:')) return ''
   return `${withWidth(url, thumbWidth)} ${thumbWidth}w, ${url} ${fullWidth}w`
 }

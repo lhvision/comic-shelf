@@ -281,6 +281,17 @@
     2. 将 `dialog::backdrop` 保持透明，仅利用其顶级原生阻断点击能力，将视觉墨色与 4px 模糊交由内部 `.modal-scrim` 管理，实现蒙层与面板 100% 同频丝滑淡入淡出；
     3. 在 CSS 中补充 `dialog:not([open]) { display: none !important; }` 作为样式级双重防线。
 
+### 40. HTML Invoker Commands API 与 Click 冒泡的双重触发冲突（Invoker Commands & Bubble Race）
+
+- **本质**：HTML Invoker Commands API（`commandfor` / `command`）是现代浏览器（Baseline 2025/2026）的声明式交互规范。当包含 `commandfor` 的按钮被点击时，浏览器在底层会原生派发 `CommandEvent` 驱动目标弹窗/浮层状态，但原生 `click` 事件仍会照常产生并向上冒泡。若外层父容器同时监听了 `@click="toggle()"`，会导致同一次点击内状态被连续翻转两次（例如打开后立刻被再次关闭，造成“点击无反应”或闪退）。
+- **此外**：原生 `command="close"` 默认行为会直接同步调用目标 `<dialog>` 的 `close()` 方法，抹去其 `open` 属性，导致 User-Agent 样式（`dialog:not([open])`）立即生效，硬生生掐断 Vue `<Transition>` 的离场淡出过渡动画；且原生的直接关闭会绕过业务侧的 `preventClose` 保护。
+- **红线与防误伤**：
+  - **不要**在带有 `commandfor` 的组件中，在外层 `@click` 中无条件执行二次 `toggle()`；
+  - **不要**在 `<dialog>` 的 `@command` 事件监听中遗漏 `event.preventDefault()`；
+  - **放行/改用**：
+    1. 在触发器容器点击处理中，检测若触发源包含 `[commandfor]` 且当前浏览器原生支持 `commandForElement`，由浏览器原生处理，跳过手动的 JS `toggle()`；
+    2. 在 `<dialog>` 的 `@command` 处理器中执行 `event.preventDefault()` 接管关闭流程，并在此阻断 `props.preventClose`（触发微弹提醒），随后通过响应式变量驱动 Vue `<Transition>` 优雅离场。
+
 ---
 
 ## 🚦 交付门禁（四步必跑）

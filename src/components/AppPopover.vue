@@ -257,6 +257,21 @@ onBeforeUnmount(() => {
   if (hoverTimer) clearTimeout(hoverTimer)
 })
 
+function onTriggerClick(event: MouseEvent) {
+  if (props.trigger !== 'click' || props.disabled) return
+  const target = event.target as HTMLElement | null
+  const invokerBtn = target?.closest?.('button[commandfor], [commandfor]')
+  // 若浏览器原生支持 Invoker Commands API 且触发源包含 commandfor，由浏览器原生处理，避免双重 toggle 冲突
+  if (
+    invokerBtn &&
+    typeof HTMLButtonElement !== 'undefined' &&
+    'commandForElement' in HTMLButtonElement.prototype
+  ) {
+    return
+  }
+  toggle()
+}
+
 defineExpose({
   open: openPopover,
   close: closePopover,
@@ -277,7 +292,7 @@ defineExpose({
       ref="triggerEl"
       class="app-popover-trigger"
       :data-popover-anchor="anchorName"
-      @click="trigger === 'click' && toggle()"
+      @click="onTriggerClick"
     >
       <slot
         :open="isOpen"

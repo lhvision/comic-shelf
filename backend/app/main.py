@@ -1089,7 +1089,7 @@ def cover_file(
     if index < 1 or index > max_covers or index > meta.page_count:
         raise HTTPException(status_code=404, detail=f"封面 {index} 不存在")
 
-    target_width = COVER_THUMB_WIDTH if (w and w <= COVER_THUMB_WIDTH) else None
+    target_width = COVER_THUMB_WIDTH if (w is not None and w == COVER_THUMB_WIDTH) else None
     cover_path = store.cover_path(meta, index, target_width)
     if cover_path.exists() and cover_path.stat().st_size > 0:
         return FileResponse(
@@ -1142,7 +1142,7 @@ def chapter_cover(
     if chapter is None:
         raise HTTPException(status_code=404, detail="没有这个章节")
 
-    target_width = COVER_THUMB_WIDTH if (w and w <= COVER_THUMB_WIDTH) else None
+    target_width = COVER_THUMB_WIDTH if (w is not None and w == COVER_THUMB_WIDTH) else None
     chap_cover_path = store.chapter_cover_path(meta, chapter, target_width)
     if chap_cover_path.exists() and chap_cover_path.stat().st_size > 0:
         return FileResponse(

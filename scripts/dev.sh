@@ -85,6 +85,7 @@ check_and_free_port() {
 # Pre-flight ports self-healing check
 check_and_free_port 8000 "backend/server\.py|comic-shelf|uvicorn"
 check_and_free_port 5173 "vite|comic-shelf"
+check_and_free_port 8765 "imsearch"
 
 CLEANED_UP=0
 API_PID=""
@@ -156,6 +157,17 @@ cleanup() {
     done
   fi
 
+  # 6. Final sweep on port 8765
+  local stale_imsearch_pids
+  stale_imsearch_pids=$(get_port_pids 8765)
+  if [ -n "$stale_imsearch_pids" ]; then
+    for p in $stale_imsearch_pids; do
+      if [ -r "/proc/$p/cmdline" ] && grep -E -q "imsearch" "/proc/$p/cmdline" 2>/dev/null; then
+        kill -9 "$p" 2>/dev/null || true
+      fi
+    done
+  fi
+
   echo "Paper Room 服务已安全退出。"
 }
 trap cleanup EXIT INT TERM HUP
@@ -192,8 +204,9 @@ if [ -x "$IMSEARCH_BIN" ]; then
 
   # Check if imsearch is already running on port 8765
   IMSEARCH_EXISTING_PIDS=$(get_port_pids 8765)
-  if [ -n "$IMSEARCH_EXISTING_PIDS" ] || curl -s http://127.0.0.1:8765/metrics &>/dev/null; then
-    echo "Imsearch Sidecar: 已在运行中 (http://127.0.0.1:8765)"
+  if [ -n "$IMSEARCH_EXISTING_PIDS" ]; then
+    IMSEARCH_PID="$(echo "$IMSEARCH_EXISTING_PIDS" | head -n 1)"
+    echo "Imsearch Sidecar: 已在运行中 (PID: $IMSEARCH_PID, http://127.0.0.1:8765)"
   else
     "$IMSEARCH_BIN" -c "$IMSEARCH_DATA" server --addr 127.0.0.1:8765 --nprobe 32 --count 20 &
     IMSEARCH_PID=$!
