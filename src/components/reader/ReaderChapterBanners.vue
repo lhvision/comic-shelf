@@ -91,8 +91,8 @@ defineEmits<{
   color: var(--reader-ink);
   white-space: nowrap;
   box-sizing: border-box;
-  backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(12px);
   cursor: pointer;
   user-select: none;
   transition:

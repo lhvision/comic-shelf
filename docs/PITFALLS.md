@@ -234,6 +234,21 @@
   - **不要**仅凭页码未满开启自动轮询；
   - **放行/改用**严格的任务驱动机制：仅当 `job.running === true` 时才启动轮询，一旦后台任务完成或进入页面探测到无活跃任务，立即执行 `pause()` 暂停轮询，静默状态 CPU 占用归零。
 
+### 36. 盲从 IDE 警告双写未熟 CSS 属性与前缀级联倒置（Vendor-Prefix False Alarms & Cascade Inversion）
+
+- **本质**：盲从 IDE 静态语法检查的通用提示，在尚未落地的规范过渡期盲目双写伪标准属性（如尚未普及且规范演进中的无前缀 `line-clamp`），或将标准属性声明置于前缀属性之前，导致现代标准行为被遗留前缀语法反向覆盖。
+- **复现场景**：
+  1. VS Code 报 `Also define the standard property 'line-clamp' for compatibility`，开发者顺从提示盲目补上 `line-clamp: 2`；
+  2. 在组件样式中先写标准属性 `mask-image` / `backdrop-filter`，后写 `-webkit-` 前缀，导致标准行为被前缀覆盖；
+  3. 残留 2011 年 iOS 5 时代的 `-webkit-overflow-scrolling: touch` 废弃死代码。
+- **红线与防误伤**：
+  - **不要**盲目顺从 IDE 提示双写尚未全浏览器正式 Baseline 的标准属性（如 `line-clamp`）；在 `.vscode/settings.json` 中配置 `"css.lint.vendorPrefix": "ignore"` 消除虚假噪音；
+  - **不要**在同一规则块中将标准属性写在 `-webkit-` 前缀前面；
+  - **不要**保留已废弃且现代移动端默认自带的原生特性（如 `-webkit-overflow-scrolling`）；
+  - **放行/改用**：
+    1. 文本截断统一收敛至 `<AppTextClamp>` 原子组件或全局 `.line-clamp-N` 实用类；
+    2. 多浏览器前缀与标准并存时，严格执行“前缀在前、标准在后”的级联顺序（前缀兜底，标准覆盖）。
+
 ---
 
 ## 🚦 交付门禁（四步必跑）

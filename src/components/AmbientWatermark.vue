@@ -45,13 +45,13 @@ const watermarkUrl = computed(() => `url("${illustrationSrc.value}")`)
   opacity: 0.038;
   mix-blend-mode: multiply;
   filter: grayscale(12%) contrast(0.92);
-  mask-image: radial-gradient(
+  -webkit-mask-image: radial-gradient(
     ellipse at 50% 50%,
     black 40%,
     rgb(0 0 0 / 70%) 75%,
     transparent 100%
   );
-  -webkit-mask-image: radial-gradient(
+  mask-image: radial-gradient(
     ellipse at 50% 50%,
     black 40%,
     rgb(0 0 0 / 70%) 75%,
@@ -68,13 +68,13 @@ const watermarkUrl = computed(() => `url("${illustrationSrc.value}")`)
   opacity: 0.048;
   mix-blend-mode: multiply;
   filter: grayscale(10%) contrast(0.92);
-  mask-image: radial-gradient(
+  -webkit-mask-image: radial-gradient(
     ellipse at 50% 50%,
     black 50%,
     rgb(0 0 0 / 60%) 80%,
     transparent 100%
   );
-  -webkit-mask-image: radial-gradient(
+  mask-image: radial-gradient(
     ellipse at 50% 50%,
     black 50%,
     rgb(0 0 0 / 60%) 80%,

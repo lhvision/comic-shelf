@@ -313,14 +313,6 @@ const libraryRoute = computed(() => `/comic/${props.item.source}/${props.item.so
   color: var(--accent);
 }
 
-.line-clamp-2 {
-  display: -webkit-box;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
-  line-clamp: 2;
-  overflow: hidden;
-}
-
 .card-author {
   font-size: var(--text-caption);
   color: var(--ink-2);

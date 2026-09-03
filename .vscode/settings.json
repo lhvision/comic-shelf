@@ -26,5 +26,8 @@
   },
   "oxc.disableNestedConfig": true,
   "oxc.fmt.disableNestedConfig": true,
-  "editor.formatOnSaveMode": "file"
+  "editor.formatOnSaveMode": "file",
+  "css.lint.vendorPrefix": "ignore",
+  "less.lint.vendorPrefix": "ignore",
+  "scss.lint.vendorPrefix": "ignore"
 }

@@ -68,7 +68,7 @@ function prefetch() {
       </div>
 
       <div class="body">
-        <h2 class="title">{{ comic.title }}</h2>
+        <h2 class="title line-clamp-2">{{ comic.title }}</h2>
         <p class="meta">{{ comic.authors.join(' / ') || '佚名' }} · {{ comic.page_count }}P</p>
         <div v-if="primaryTags.length" class="tags">
           <span v-for="tag in primaryTags" :key="tag" class="chip">{{ tag }}</span>
@@ -171,10 +171,6 @@ function prefetch() {
   font-weight: 600;
   line-height: 1.25;
   min-height: 2.5em;
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
 }
 
 .meta {

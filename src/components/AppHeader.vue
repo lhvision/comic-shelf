@@ -169,8 +169,8 @@ onAuthSuccess(fetchProviders)
   padding: 0 var(--page-pad);
   border-bottom: 1px solid var(--line);
   background: color-mix(in oklab, var(--paper-0) 82%, transparent);
-  backdrop-filter: blur(14px);
   -webkit-backdrop-filter: blur(14px);
+  backdrop-filter: blur(14px);
   transform: translateZ(0);
 }
 
@@ -234,17 +234,16 @@ onAuthSuccess(fetchProviders)
   min-width: 0;
   overflow-x: auto;
   scrollbar-width: none;
-  -webkit-overflow-scrolling: touch;
   padding: 0 var(--space-2);
   /* 优雅的纸卷渐变边缘羽化遮罩，感知与引导横向滑动手势 */
-  mask-image: linear-gradient(
+  -webkit-mask-image: linear-gradient(
     to right,
     transparent 0,
     black var(--mask-left, 0px),
     black calc(100% - var(--mask-right, 0px)),
     transparent 100%
   );
-  -webkit-mask-image: linear-gradient(
+  mask-image: linear-gradient(
     to right,
     transparent 0,
     black var(--mask-left, 0px),

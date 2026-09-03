@@ -295,7 +295,6 @@ useEventListener(window, 'keydown', (event: KeyboardEvent) => {
   font-size: var(--text-sm);
   line-height: 1.7;
   color: var(--ink-1);
-  -webkit-overflow-scrolling: touch;
 }
 
 .modal-foot {
