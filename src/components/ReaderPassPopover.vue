@@ -89,6 +89,8 @@ async function handleConfirmReturn() {
         :aria-label="`持证读者：${displayName}，点击展开借阅凭证`"
         :aria-expanded="open"
         :aria-controls="targetId"
+        :commandfor="targetId"
+        command="toggle-popover"
         aria-haspopup="dialog"
       >
         <AppIcon name="book-open" size="xs" :stroke-width="1.8" />

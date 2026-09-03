@@ -104,6 +104,8 @@ async function handleResetAll() {
         :aria-label="`设备离线存储占用 ${usageFormatted}，点击展开管理面板`"
         :aria-expanded="open"
         :aria-controls="targetId"
+        :commandfor="targetId"
+        command="toggle-popover"
         aria-haspopup="dialog"
       >
         <AppIcon name="archive" size="xs" :stroke-width="1.8" />

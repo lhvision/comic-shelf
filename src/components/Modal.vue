@@ -52,7 +52,9 @@ const emit = defineEmits<{
   cancel: []
 }>()
 
-const titleId = `modal-title-${useId().replace(/[^a-zA-Z0-9_-]/g, '')}`
+const uid = useId().replace(/[^a-zA-Z0-9_-]/g, '')
+const titleId = `modal-title-${uid}`
+const dialogId = `modal-dialog-${uid}`
 const dialogEl = ref<HTMLDialogElement | null>(null)
 const panel = ref<HTMLElement | null>(null)
 const isShaking = ref(false)
@@ -192,6 +194,14 @@ function onToggle(event: Event) {
   }
 }
 
+// 原生 command 事件（响应 Invoker Commands API 的 command="close" 等指令）
+function onCommand(event: Event) {
+  const cmdEvent = event as Event & { command?: string }
+  if (cmdEvent.command === 'close') {
+    requestClose()
+  }
+}
+
 // 点击遮罩关闭兜底（针对 Safari 等尚未支持 closedby="any" 的环境）
 function onDialogClick(event: MouseEvent) {
   if (event.target === dialogEl.value) {
@@ -242,6 +252,7 @@ useEventListener(window, 'keydown', (event: KeyboardEvent) => {
     <Transition name="modal">
       <dialog
         v-if="open"
+        :id="dialogId"
         ref="dialogEl"
         class="modal-root modal-dialog"
         :class="`is-${variant}`"
@@ -251,6 +262,7 @@ useEventListener(window, 'keydown', (event: KeyboardEvent) => {
         @cancel="onCancel"
         @click="onDialogClick"
         @toggle="onToggle"
+        @command="onCommand"
         @submit.prevent
       >
         <div class="modal-scrim" aria-hidden="true" @click="handleBackdropAction" />
@@ -271,6 +283,8 @@ useEventListener(window, 'keydown', (event: KeyboardEvent) => {
               class="modal-close icon-btn"
               type="button"
               aria-label="关闭"
+              :commandfor="dialogId"
+              command="close"
               @click="requestClose"
             >
               <AppIcon name="close" size="sm" />
@@ -278,11 +292,20 @@ useEventListener(window, 'keydown', (event: KeyboardEvent) => {
           </header>
 
           <div class="modal-body">
-            <slot />
+            <slot
+              :close="requestClose"
+              :dialog-id="dialogId"
+              :close-command="{ commandfor: dialogId, command: 'close' }"
+            />
           </div>
 
           <footer v-if="$slots.footer" class="modal-foot">
-            <slot name="footer" />
+            <slot
+              name="footer"
+              :close="requestClose"
+              :dialog-id="dialogId"
+              :close-command="{ commandfor: dialogId, command: 'close' }"
+            />
           </footer>
         </div>
       </dialog>

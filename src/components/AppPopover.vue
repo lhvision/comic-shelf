@@ -285,6 +285,7 @@ defineExpose({
         :close="closePopover"
         :target-id="popoverId"
         :anchor-name="anchorName"
+        :command-props="{ commandfor: popoverId, command: 'toggle-popover' }"
       />
     </div>
 

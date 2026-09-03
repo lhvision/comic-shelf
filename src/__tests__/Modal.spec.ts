@@ -135,6 +135,11 @@ describe('Modal Component', () => {
     const dialog = wrapper.find('dialog.modal-dialog')
     expect(dialog.exists()).toBe(true)
     expect(dialog.attributes('closedby')).toBe('any')
+    expect(dialog.attributes('id')).toBeTruthy()
+
+    const closeBtn = wrapper.find('button.modal-close')
+    expect(closeBtn.attributes('command')).toBe('close')
+    expect(closeBtn.attributes('commandfor')).toBe(dialog.attributes('id'))
 
     // Simulate native toggle event closing dialog
     const toggleEvent = new Event('toggle') as Event & { newState?: 'open' | 'closed' }
