@@ -22,6 +22,7 @@
    - [2.10 `-webkit-line-clamp` 与多行文本截断体系（W3C 兼容规范与单源收敛）](#210--webkit-line-clamp-与多行文本截断体系w3c-兼容规范与单源收敛)
    - [2.11 `font-size-adjust` — 字形度量均衡与微型字阶渲染（Baseline 2024）](#211-font-size-adjust--字形度量均衡与微型字阶渲染baseline-2024)
    - [2.12 `srcset` 与 `sizes` — 响应式阶梯封面与多密屏幕自适应（HTML5/CSS 媒体管线）](#212-srcset-与-sizes--响应式阶梯封面与多密屏幕自适应html5css-媒体管线)
+   - [2.13 `HTML5 <dialog>` 与原生顶层模态体系（Top Layer Dialog & Baseline 2022/2026）](#213-html5-dialog-与原生顶层模态体系top-layer-dialog--baseline-20222026)
 3. [渐进增强特性（Progressive Enhancement）](#3-渐进增强特性progressive-enhancement)
    - [3.1 `interpolate-size: allow-keywords` 与 CSS Grid 复合轨道](#31-interpolate-size-allow-keywords-与-css-grid-复合轨道)
    - [3.2 `::details-content` — 原生展开内容伪元素](#32-details-content--原生展开内容伪元素)
@@ -31,6 +32,8 @@
    - [3.6 `@container anchored(fallback)` — 锚点容器查询与小三角自适应翻转](#36-container-anchoredfallback--锚点容器查询与小三角自适应翻转)
    - [3.7 `Element.prototype.startViewTransition` — 局部作用域视图过渡](#37-elementprototypestartviewtransition--局部作用域视图过渡)
    - [3.8 Interest Invokers API (`interestfor`) — 声明式悬停意图交互](#38-interest-invokers-api-interestfor--声明式悬停意图交互)
+   - [3.9 Invoker Commands API (`commandfor` & `command` / `CommandEvent`)](#39-invoker-commands-api-commandfor--command--commandevent)
+   - [3.10 `ToggleEvent` 体系（`beforetoggle` / `toggle` 与 `source` 属性）](#310-toggleevent-体系beforetoggle--toggle-与-source-属性)
 4. [实验草案特性（Experimental / Stage 1-2）](#4-实验草案特性experimental--stage-1-2)
    - [4.1 CSS `if()` 行内条件函数](#41-css-if-行内条件函数)
    - [4.2 CSS `@function` 自定义函数](#42-css-function-自定义函数)
@@ -47,36 +50,40 @@
 
 > 数据来源：MDN BCD + Can I Use，更新于 2026-09。
 
-| 特性 / API                              |             Chrome              |             Firefox              |                Safari                 |                 规范状态 / Baseline                  |                        本项目落地状态                        |
-| :-------------------------------------- | :-----------------------------: | :------------------------------: | :-----------------------------------: | :--------------------------------------------------: | :----------------------------------------------------------: |
-| `light-dark()`                          |              123+               |               120+               |                 17.5+                 |                   ✅ Baseline 2024                   |      ⚠️ 审慎评估（保留 hex+oklch 双层回退，防色彩丢失）      |
-| `color-mix(in oklab, ...)`              |              111+               |               113+               |                 16.2+                 |                   ✅ Baseline 2023                   |           ✅ 已落地（tokens.css / 柔和半透明色阶）           |
-| `@container (inline-size)`              |              105+               |               110+               |                  16+                  |                   ✅ Baseline 2023                   |            ✅ 已落地（ImportPanel / 响应式侧栏）             |
-| `@layer`                                |               99+               |               97+                |                 15.4+                 |                   ✅ Baseline 2022                   |            ✅ 已落地（main.css 顶层样式层级声明）            |
-| CSS Nesting (`&`)                       |              120+               |               117+               |                 17.2+                 |                   ✅ Baseline 2024                   |                ✅ 已落地（全站 SFC 样式规范）                |
-| `@property`                             |               85+               |               128+               |                 16.4+                 |                   ✅ Baseline 2024                   |           ✅ 已落地（tokens.css 渐变遮罩变量插值）           |
-| **HTML Popover (`auto`/`manual`)**      |              114+               |               125+               |                  17+                  |                   ✅ Baseline 2024                   | ✅ 已落地（`AppPopover` / `AppDropdown` / `StoragePopover`） |
-| **HTML Popover (`hint`)**               |              151+               |               153+               |                  ⏳                   |               🔶 Newly Available 2026                |          ✅ 渐进增强（`Tooltip.vue` 轻量气泡提示）           |
-| **Interest Invokers (`interestfor`)**   |             130+🚩              |                ⏳                |                  ⏳                   |                   🧪 Experimental                    |   ✅ 渐进增强（`Tooltip.vue` 声明式属性 + JS 定时器兜底）    |
-| **CSS Anchor Positioning API**          |              125+               |               147+               |                  26+                  |                ✅ Baseline 2025/2026                 |   ✅ 已落地（`AppPopover` / `Tooltip` / `SegmentedTabs`）    |
-| **`@container anchored(fallback)`**     |              135+               |                ⏳                |                  ⏳                   |                   🧪 Experimental                    |   ✅ 渐进增强（`AppPopover` / `Tooltip` 小三角自适应翻转）   |
-| **全局 View Transitions API**           |     111+<br>_(125+ types)_      |      144+<br>_(147+ types)_      |        18+<br>_(18.2+ types)_         |                ✅ Baseline 2024/2025                 |     ✅ 已落地（`useViewTransition.ts` / 跨页面路由推进）     |
-| **`-webkit-line-clamp` / `line-clamp`** | 6+ (前缀)<br>_(Preview 无前缀)_ | 68+ (前缀)<br>_(Preview 无前缀)_ | 5+ (前缀)<br>_(18.2-18.3 误开已回退)_ | ✅ W3C 兼容事实标准（前缀）<br>⏳ 规范草案（无前缀） |     ✅ 已落地（`AppTextClamp.vue` / `main.css` 实用类）      |
-| **`font-size-adjust`**                  |              127+               |     3+<br>_(92+ two-values)_     |      16.4+<br>_(17+ two-values)_      |                   ✅ Baseline 2024                   |    ✅ 渐进增强（微标 `--text-caption` 与多语言字形排版）     |
-| **`srcset` / `sizes` (`w` 描述符)**     |      38+<br>_(34+ srcset)_      |               38+                |         9.1+<br>_(8+ srcset)_         |                   ✅ Baseline 2016                   |           📋 路线图（响应式阶梯封面分阶调度管线）            |
-| **`sizes="auto"` (懒加载原生联动)**     |              126+               |               150+               |                  ⏳                   |               🔶 Newly Available 2026                |         📋 路线图（配合 `loading="lazy"` 自动槽位）          |
-| **局部 Element-Scoped VT**              |              147+               |                ⏳                |                  ⏳                   |                      🧪 Stage 2                      |     ✅ 渐进增强（`useViewTransition.ts` 元素级门面封装）     |
-| `interpolate-size: allow-keywords`      |              129+               |                ⏳                |                  ⏳                   |               🔶 Limited Availability                |         ✅ 已落地（TagFilterBar / ImportPanel 展开）         |
-| `::details-content`                     |              131+               |               143+               |                 18.4+                 |               🔶 Limited Availability                |          ✅ 渐进增强（main.css 全局 details 动画）           |
-| `scroll-timeline` / `view-timeline`     |              115+               |              111+🚩              |                18.0+⏳                |               🔶 Limited Availability                |             ✅ 已落地（ReaderView 读物双轨渲染）             |
-| `@container scroll-state(...)`          |              133+               |                ❌                |                  ❌                   |                   🧪 Experimental                    |           ⚠️ LightningCSS 解析限制，降级为 VueUse            |
-| `@container style(...)`                 |              111+               |               151+               |                  18+                  |                     🔶 有限支持                      |                 — 暂未采用（等范围语法成熟）                 |
-| `CSSStyleSheet` (Constructable)         |               73+               |               101+               |                 16.4+                 |                   ✅ Baseline 2023                   |              ⚠️ 与 Vue SFC scoped CSS 模式冲突               |
-| CSS `progress()` 数学函数               |              138+               |               155+               |                  26+                  |               🔶 Newly Available 2026                |    ✅ 渐进增强（以 `--progress` + `AppProgressBar` 承接）    |
-| CSS 动态鼠标跟随锚点                    |              144+               |                ⏳                |                  ⏳                   |                      🧪 Stage 2                      |          📋 路线图（未来漫画阅读器局部高倍放大镜）           |
-| **`text-fit`**                          |              150+               |                ❌                |                  ❌                   |                      🧪 Stage 2                      |         📋 路线图（未来阅读器顶栏长标题压缩防折行）          |
-| CSS `if()` 行内条件                     |             137+🚩              |                ❌                |                  ❌                   |                      🧪 Stage 1                      |                  🚫 构建工具限制，暂不采用                   |
-| CSS `@function`                         |             139+🚩              |                ❌                |                  ❌                   |                      🧪 Stage 2                      |                    🚫 过早引入，暂不采用                     |
+| 特性 / API                                |             Chrome              |             Firefox              |                Safari                 |                 规范状态 / Baseline                  |                        本项目落地状态                        |
+| :---------------------------------------- | :-----------------------------: | :------------------------------: | :-----------------------------------: | :--------------------------------------------------: | :----------------------------------------------------------: |
+| `light-dark()`                            |              123+               |               120+               |                 17.5+                 |                   ✅ Baseline 2024                   |      ⚠️ 审慎评估（保留 hex+oklch 双层回退，防色彩丢失）      |
+| `color-mix(in oklab, ...)`                |              111+               |               113+               |                 16.2+                 |                   ✅ Baseline 2023                   |           ✅ 已落地（tokens.css / 柔和半透明色阶）           |
+| `@container (inline-size)`                |              105+               |               110+               |                  16+                  |                   ✅ Baseline 2023                   |            ✅ 已落地（ImportPanel / 响应式侧栏）             |
+| `@layer`                                  |               99+               |               97+                |                 15.4+                 |                   ✅ Baseline 2022                   |            ✅ 已落地（main.css 顶层样式层级声明）            |
+| CSS Nesting (`&`)                         |              120+               |               117+               |                 17.2+                 |                   ✅ Baseline 2024                   |                ✅ 已落地（全站 SFC 样式规范）                |
+| `@property`                               |               85+               |               128+               |                 16.4+                 |                   ✅ Baseline 2024                   |           ✅ 已落地（tokens.css 渐变遮罩变量插值）           |
+| **HTML Popover (`auto`/`manual`)**        |              114+               |               125+               |                  17+                  |                   ✅ Baseline 2024                   | ✅ 已落地（`AppPopover` / `AppDropdown` / `StoragePopover`） |
+| **HTML Popover (`hint`)**                 |              151+               |               153+               |                  ⏳                   |               🔶 Newly Available 2026                |          ✅ 渐进增强（`Tooltip.vue` 轻量气泡提示）           |
+| **HTML5 `<dialog>` (Top Layer)**          |               37+               |               98+                |                 15.4+                 |                   ✅ Baseline 2022                   |            ✅ 已落地（`Modal.vue` 核心弹窗基建）             |
+| **`<dialog closedby="any">`**             |              134+               |               141+               |                  ⏳                   |               🔶 Newly Available 2025                |      ✅ 渐进增强（`Modal.vue` 原生属性 + 蒙层点击兜底）      |
+| **Invoker Commands (`commandfor`)**       |              135+               |               144+               |                 26.2+                 |                ✅ Baseline 2025/2026                 |     ✅ 渐进增强（支持原生调用，由 ToggleEvent 联动同步）     |
+| **`ToggleEvent` (`beforetoggle/toggle`)** | 114+ (popover)<br>132+ (dialog) | 125+ (popover)<br>133+ (dialog)  |     17+ (popover)<br>26+ (dialog)     |                ✅ Baseline 2025/2026                 |      ✅ 已落地（`Modal.vue` / `AppPopover.vue` 状态机）      |
+| **Interest Invokers (`interestfor`)**     |             130+🚩              |                ⏳                |                  ⏳                   |                   🧪 Experimental                    |   ✅ 渐进增强（`Tooltip.vue` 声明式属性 + JS 定时器兜底）    |
+| **CSS Anchor Positioning API**            |              125+               |               147+               |                  26+                  |                ✅ Baseline 2025/2026                 |   ✅ 已落地（`AppPopover` / `Tooltip` / `SegmentedTabs`）    |
+| **`@container anchored(fallback)`**       |              135+               |                ⏳                |                  ⏳                   |                   🧪 Experimental                    |   ✅ 渐进增强（`AppPopover` / `Tooltip` 小三角自适应翻转）   |
+| **全局 View Transitions API**             |     111+<br>_(125+ types)_      |      144+<br>_(147+ types)_      |        18+<br>_(18.2+ types)_         |                ✅ Baseline 2024/2025                 |     ✅ 已落地（`useViewTransition.ts` / 跨页面路由推进）     |
+| **`-webkit-line-clamp` / `line-clamp`**   | 6+ (前缀)<br>_(Preview 无前缀)_ | 68+ (前缀)<br>_(Preview 无前缀)_ | 5+ (前缀)<br>_(18.2-18.3 误开已回退)_ | ✅ W3C 兼容事实标准（前缀）<br>⏳ 规范草案（无前缀） |     ✅ 已落地（`AppTextClamp.vue` / `main.css` 实用类）      |
+| **`font-size-adjust`**                    |              127+               |     3+<br>_(92+ two-values)_     |      16.4+<br>_(17+ two-values)_      |                   ✅ Baseline 2024                   |    ✅ 渐进增强（微标 `--text-caption` 与多语言字形排版）     |
+| **`srcset` / `sizes` (`w` 描述符)**       |      38+<br>_(34+ srcset)_      |               38+                |         9.1+<br>_(8+ srcset)_         |                   ✅ Baseline 2016                   |           📋 路线图（响应式阶梯封面分阶调度管线）            |
+| **`sizes="auto"` (懒加载原生联动)**       |              126+               |               150+               |                  ⏳                   |               🔶 Newly Available 2026                |         📋 路线图（配合 `loading="lazy"` 自动槽位）          |
+| **局部 Element-Scoped VT**                |              147+               |                ⏳                |                  ⏳                   |                      🧪 Stage 2                      |     ✅ 渐进增强（`useViewTransition.ts` 元素级门面封装）     |
+| `interpolate-size: allow-keywords`        |              129+               |                ⏳                |                  ⏳                   |               🔶 Limited Availability                |         ✅ 已落地（TagFilterBar / ImportPanel 展开）         |
+| `::details-content`                       |              131+               |               143+               |                 18.4+                 |               🔶 Limited Availability                |          ✅ 渐进增强（main.css 全局 details 动画）           |
+| `scroll-timeline` / `view-timeline`       |              115+               |              111+🚩              |                18.0+⏳                |               🔶 Limited Availability                |             ✅ 已落地（ReaderView 读物双轨渲染）             |
+| `@container scroll-state(...)`            |              133+               |                ❌                |                  ❌                   |                   🧪 Experimental                    |           ⚠️ LightningCSS 解析限制，降级为 VueUse            |
+| `@container style(...)`                   |              111+               |               151+               |                  18+                  |                     🔶 有限支持                      |                 — 暂未采用（等范围语法成熟）                 |
+| `CSSStyleSheet` (Constructable)           |               73+               |               101+               |                 16.4+                 |                   ✅ Baseline 2023                   |              ⚠️ 与 Vue SFC scoped CSS 模式冲突               |
+| CSS `progress()` 数学函数                 |              138+               |               155+               |                  26+                  |               🔶 Newly Available 2026                |    ✅ 渐进增强（以 `--progress` + `AppProgressBar` 承接）    |
+| CSS 动态鼠标跟随锚点                      |              144+               |                ⏳                |                  ⏳                   |                      🧪 Stage 2                      |          📋 路线图（未来漫画阅读器局部高倍放大镜）           |
+| **`text-fit`**                            |              150+               |                ❌                |                  ❌                   |                      🧪 Stage 2                      |         📋 路线图（未来阅读器顶栏长标题压缩防折行）          |
+| CSS `if()` 行内条件                       |             137+🚩              |                ❌                |                  ❌                   |                      🧪 Stage 1                      |                  🚫 构建工具限制，暂不采用                   |
+| CSS `@function`                           |             139+🚩              |                ❌                |                  ❌                   |                      🧪 Stage 2                      |                    🚫 过早引入，暂不采用                     |
 
 **图例**：✅ 可用 · 🔶 部分支持 · 🧪 实验旗 · 🚩 需开 Flag · ❌ 未支持 · 🚫 本项目不采用
 
@@ -510,6 +517,84 @@ overflow: hidden;
 
 ---
 
+### 2.13 `HTML5 <dialog>` 与原生顶层模态体系（Top Layer Dialog & Baseline 2022/2026）
+
+**MDN**：[<dialog>](https://developer.mozilla.org/en-US/docs/Web/HTML/Reference/Elements/dialog) · [HTMLDialogElement: closedBy](https://developer.mozilla.org/en-US/docs/Web/API/HTMLDialogElement/closedBy)  
+**Baseline**：
+
+- `<dialog>` 基础与 `showModal()`：✅ **Baseline 2022**（Chrome 37+, Firefox 98+, Safari 15.4+）
+- `<dialog closedby="any">`：🔶 **Newly Available 2025**（Chrome 134+, Firefox 141+, Safari TP）  
+  **参考**：[张鑫旭 HTML command属性和JS toggle事件](https://www.zhangxinxu.com/wordpress/2026/06/html-common-toggle-beforetoggle-event/)  
+  **本项目落地状态**：✅ 已在 `src/components/Modal.vue` 全面落地
+
+**核心原理与架构升级**：
+
+1. **原生 Top Layer 与 0 层叠冲突**：
+   - 彻底免除传统模态弹窗因父级容器声明了 `transform`、`perspective`、`filter`、`overflow: hidden` 或 `contain: paint` 导致的位置偏移与像素截断；
+   - 浏览器原生将通过 `dialog.showModal()` 唤起的对话框提升至视口最顶层，无需在 CSS 中维系危险膨胀的 `z-index`。
+2. **原生 `::backdrop` 遮罩与滚动阻断**：
+   - 原生提供全屏遮罩伪元素 `dialog::backdrop`，内置阻断下层页面一切鼠标与触控事件，天然防背景点击穿透；
+   - 纸间在 `::backdrop` 上绑定 `background: var(--reader-scrim-strong)` 与 `backdrop-filter: blur(4px)`，兼顾性能与质感。
+3. **原生焦点捕获（Focus Trapping）与 Esc 监听**：
+   - 键盘 Tab 键焦点被浏览器原生锁定在 `<dialog>` 内部循环，无需手写复杂的 Focus Trap 事件循环；
+   - 按下 `Escape` 键原生派发 `cancel` 事件，支持被 `event.preventDefault()` 拦截以防未保存表单误关。
+4. **CSS 离散属性过渡（Discrete Transitions & @starting-style）**：
+   - 借助 `overlay` 与 `display` 的 `allow-discrete` 特性，配合 `@starting-style`，原生 `<dialog>` 在调用 `close()` 时平滑等待 `--duration-2` 退场缩放过渡完成才切换为 `display: none`，彻底摆脱 Vue `<Transition>` 对原生 Top Layer 的撕裂影响。
+5. **渐进增强 Light Dismiss 兜底**：
+   - 声明 `closedby="any"`（针对 Chrome 134+ / Firefox 141+）；
+   - 在尚未实装 `closedby` 的 Safari iOS 等环境下，通过 `event.target === dialogEl` 判定点击是否落在 `::backdrop` 区域实现无缝兜底。
+
+**纸间生产落地范式（`Modal.vue`）**：
+
+```html
+<dialog
+  ref="dialogEl"
+  :open="open ? true : undefined"
+  class="modal-root modal-dialog"
+  :class="`is-${variant}`"
+  :aria-labelledby="titleId"
+  closedby="any"
+  @cancel="onCancel"
+  @click="onDialogClick"
+  @toggle="onToggle"
+>
+  <div class="modal-scrim" aria-hidden="true" @click="requestClose" />
+  <div ref="panel" class="modal-panel surface" role="document">
+    <!-- 头部、正文、底部 -->
+  </div>
+</dialog>
+```
+
+```css
+.modal-dialog {
+  transition:
+    display var(--duration-2) var(--ease-out) allow-discrete,
+    overlay var(--duration-2) var(--ease-out) allow-discrete;
+}
+
+.modal-dialog::backdrop {
+  background: var(--reader-scrim-strong);
+  backdrop-filter: blur(4px);
+  opacity: 0;
+  transition:
+    opacity var(--duration-2) var(--ease-out),
+    overlay var(--duration-2) var(--ease-out) allow-discrete,
+    display var(--duration-2) var(--ease-out) allow-discrete;
+}
+
+.modal-dialog[open]::backdrop {
+  opacity: 1;
+}
+
+@starting-style {
+  .modal-dialog[open]::backdrop {
+    opacity: 0;
+  }
+}
+```
+
+---
+
 ## 3. 渐进增强特性（Progressive Enhancement）
 
 ### 3.1 `interpolate-size: allow-keywords` 与 CSS Grid 复合轨道
@@ -768,6 +853,55 @@ await withViewTransition(
 1. **声明式悬停关联**：`<button interestfor="tooltip-id">` 自动将悬停/聚焦意图派发至目标 popover，无需 JS 监听 mouseenter；
 2. **隐式锚点（Implicit Anchor）**：目标浮层只需写 `position-area: top` 即可自动定位，无需手写 `position-anchor`；
 3. **CSS 延迟与连环触发**：通过 `interest-delay: 100ms 150ms` 避免扫过时的误触，结合 `p:has(:interest-source) button { interest-delay-start: 0s }` 实现群组图标连续划过即时显现。
+
+---
+
+### 3.9 Invoker Commands API (`commandfor` & `command` / `CommandEvent`)
+
+**MDN**：[Invoker Commands API](https://developer.mozilla.org/en-US/docs/Web/API/Invoker_Commands_API) · [CommandEvent](https://developer.mozilla.org/en-US/docs/Web/API/CommandEvent)  
+**Baseline**：2025/2026 · Chrome 135+, Firefox 144+, Safari 26.2+  
+**参考**：[张鑫旭 全是好东西！HTML command属性和JS toggle事件](https://www.zhangxinxu.com/wordpress/2026/06/html-common-toggle-beforetoggle-event/)  
+**本项目落地决策**：✅ **渐进增强（允许页面按钮免 JS 声明式唤起/关闭 Dialog 或 Popover，由 ToggleEvent 联动同步 Vue 响应式）**
+
+**核心原理与优势**：
+
+1. **声明式无 JS 控制交互元素**：
+   - `<button commandfor="my-dialog" command="show-modal">` 原生调用目标元素的 `showModal()` 方法；
+   - `<button commandfor="my-dialog" command="close">` 原生调用 `close()`；
+   - `<button commandfor="my-popover" command="toggle-popover">` 原生切换 popover。
+2. **自定义命令与事件总线（`CommandEvent`）**：
+   - 声明 `command="--custom-action"`，触发目标元素上派发的 `command` 原生事件：
+     ```js
+     element.addEventListener('command', (event) => {
+       if (event.command === '--custom-action') {
+         // 执行业务自定义逻辑
+       }
+     })
+     ```
+3. **隐式无障碍控制关系**：
+   - 相比手写 `@click`，浏览器根据 `commandfor` 自动在可访问性树（A11y Tree）中建立触发者与目标弹窗/浮层的控制关系（`aria-controls` / invoker relationship），提升读屏器体验。
+
+---
+
+### 3.10 `ToggleEvent` 体系（`beforetoggle` / `toggle` 与 `source` 属性）
+
+**MDN**：[ToggleEvent](https://developer.mozilla.org/en-US/docs/Web/API/ToggleEvent) · [HTMLElement: beforetoggle event](https://developer.mozilla.org/en-US/docs/Web/API/HTMLElement/beforetoggle_event)  
+**Baseline**：
+
+- Popover 元素的 `beforetoggle` / `toggle`：✅ **Baseline 2024**（Chrome 114+, Firefox 125+, Safari 17+）
+- `<dialog>` 元素的 `beforetoggle` / `toggle`：✅ **Baseline 2025/2026**（Chrome 132+, Firefox 133+, Safari 26+）
+- `ToggleEvent.source`：Chrome 140+, Firefox 141+, Safari 16.5+  
+  **本项目落地状态**：✅ 已在 `src/components/Modal.vue` 与 `src/components/AppPopover.vue` 落地双向状态对齐
+
+**核心价值与纸间落地守则**：
+
+1. **Vue 响应式与原生 DOM 状态机的双向单源同步**：
+   - 当弹窗或浮层由外部 HTML 原生 `commandfor` 按钮、Esc 键、或原生 Light Dismiss（点击蒙层）触发开关时，Vue 响应式变量尚未感知；
+   - 在 `<dialog>` 或 Popover 挂载 `@toggle="onToggle"`，通过 `event.newState === 'open'` 即时向父组件 `emit('update:open', newState)`，完美维系单向数据流的一致性。
+2. **`beforetoggle` 的微时序拦截与准备**：
+   - 在弹窗正式进入 Top Layer 前派发，可用于预热子组件、重置内部表单验证错误或执行 `event.preventDefault()` 阻止未授权展开。
+3. **`ToggleEvent.source` 精准焦点归还**：
+   - 在多处入口可触发同一对话框时，通过 `event.source` 捕获发起关闭或开启的精确 DOM 节点，关闭后自动归还焦点，实现无障碍体验闭环。
 
 ---
 

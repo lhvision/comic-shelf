@@ -118,6 +118,9 @@
 - **内联手风琴折叠（Inline Disclosure / 叙述展开）**：详情页中对长篇叙述简介采用的非侵入展示策略。默认展示前 3 行并提供「展开全文 ▾ / 收起 ▴」切换按钮，完美保留汉化组段落换行与空格，规避浮动气泡对图书呼吸感与移动端触控的遮挡。
 - **悬停安全桥（Hover Bridge）**：气泡与触发源之间的无形触控延伸区（纯 CSS 伪元素实现）。无缝填补两者之间的物理 margin 空隙，确保光标滑入气泡时轨迹全程处于命中区，彻底杜绝穿过空白缝隙时的闪退痛点。
 - **顶层层级与轻量失焦关闭（Top Layer & Light Dismiss）**：利用浏览器原生顶层特性，天然解决浮层被父级 `overflow: hidden` 或 `contain: paint` 截断的问题；原生支持点击外部空白或 Esc 键无缝自动收起。
+- **原生顶层模态（Top Layer Dialog / `<dialog>`）**：基于 HTML5 `<dialog>` 元素构建的顶层模态体系（`Modal.vue`）。享有浏览器原生 Top Layer 层级、`::backdrop` 视口遮罩与输入焦点循环捕获，免疫页面容器层叠上下文与滚动穿透干扰。
+- **声明式命令触发器（Command Invoker / `commandfor`）**：基于 HTML Invoker Commands API 的无 JS 交互控制机制。通过 `<button commandfor="id" command="...">` 声明式触发对话框与浮层的打开、关闭或自定义指令（`CommandEvent`），并在无障碍树中自动绑定控制关系。
+- **状态切换事件体系（Toggle Event System / `beforetoggle` & `toggle`）**：原生 DOM 浮层与模态状态变更事件机制。在元素显示/隐藏前后派发并携带 `oldState`/`newState` 与触发源 `source`，作为外部声明式操作与 Vue 单向响应式状态机双向对齐的单一同步纽带。
 - **锚定回退感知与滑动动效（Anchor Fallback & Sliding Indicator）**：利用 `container-type: anchored` 与 `@container anchored(fallback: flip-block)` 纯 CSS 感知碰撞翻转自适应箭头与安全桥；借助动态 `anchor-name` 实现分段选项卡与选单项的纯 CSS 物理滑动胶囊动效。
 - **意图触发与隐式锚定（Interest Invoker & Implicit Anchor）**：基于 HTML `interestfor` 属性与 `:interest-source` / `:interest-target` 伪类的声明式悬停交互规范；触发源与气泡目标天然建立隐式锚点（无需显式声明 `position-anchor`），配合 `interest-delay` 纯 CSS 控制延时与快速划过连环触发。
 - **动态鼠标跟随锚点（Mouse-Follow Dynamic Anchor）**：将画卷光标坐标（`--mouse-x`、`--mouse-y`）与纯 CSS 锚点定位相结合的动态定位机制，用于实现 0 渲染重排开销的漫画高倍局部放大镜（Loupe Zoom）与实时悬浮卡片。

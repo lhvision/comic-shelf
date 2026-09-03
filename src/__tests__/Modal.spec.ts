@@ -118,4 +118,148 @@ describe('Modal Component', () => {
 
     wrapper.unmount()
   })
+
+  it('renders native <dialog> with closedby="any" and syncs toggle events', async () => {
+    const wrapper = mount(Modal, {
+      props: {
+        open: true,
+        title: '原生对话框测试',
+      },
+      global: {
+        stubs: {
+          Teleport: true,
+        },
+      },
+    })
+
+    const dialog = wrapper.find('dialog.modal-dialog')
+    expect(dialog.exists()).toBe(true)
+    expect(dialog.attributes('closedby')).toBe('any')
+
+    // Simulate native toggle event closing dialog
+    const toggleEvent = new Event('toggle') as Event & { newState?: 'open' | 'closed' }
+    toggleEvent.newState = 'closed'
+    dialog.element.dispatchEvent(toggleEvent)
+
+    expect(wrapper.emitted('cancel')).toBeTruthy()
+    expect(wrapper.emitted('update:open')?.[0]).toEqual([false])
+  })
+
+  it('respects closeOnBackdrop=false and triggers attention instead of cancel', async () => {
+    const wrapper = mount(Modal, {
+      props: {
+        open: true,
+        title: '不可点击遮罩关闭',
+        closeOnBackdrop: false,
+      },
+      global: {
+        stubs: {
+          Teleport: true,
+        },
+      },
+    })
+
+    const scrim = wrapper.find('.modal-scrim')
+    expect(scrim.exists()).toBe(true)
+    await scrim.trigger('click')
+
+    // Cancel should NOT have been emitted
+    expect(wrapper.emitted('cancel')).toBeFalsy()
+
+    // Panel should have received is-shaking class
+    expect(wrapper.find('.modal-panel').classes()).toContain('is-shaking')
+  })
+
+  it('respects closeOnEsc=false and preventClose=true', async () => {
+    const wrapper = mount(Modal, {
+      props: {
+        open: true,
+        title: '完全强制进行中',
+        preventClose: true,
+      },
+      global: {
+        stubs: {
+          Teleport: true,
+        },
+      },
+      attachTo: document.body,
+    })
+
+    // Close button should not be rendered
+    expect(wrapper.find('.modal-close').exists()).toBe(false)
+
+    // Esc should not close
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))
+    expect(wrapper.emitted('cancel')).toBeFalsy()
+
+    // Scrim click should not close
+    await wrapper.find('.modal-scrim').trigger('click')
+    expect(wrapper.emitted('cancel')).toBeFalsy()
+
+    expect(wrapper.find('.modal-panel').classes()).toContain('is-shaking')
+    wrapper.unmount()
+  })
+
+  it('hides close button when showCloseButton=false', () => {
+    const wrapper = mount(Modal, {
+      props: {
+        open: true,
+        title: '无关闭按钮',
+        showCloseButton: false,
+      },
+      global: {
+        stubs: {
+          Teleport: true,
+        },
+      },
+    })
+
+    expect(wrapper.find('.modal-close').exists()).toBe(false)
+  })
+
+  it('restores previous active element focus on close and unmount', async () => {
+    const triggerBtn = document.createElement('button')
+    triggerBtn.id = 'trigger-btn'
+    document.body.appendChild(triggerBtn)
+    triggerBtn.focus()
+    expect(document.activeElement).toBe(triggerBtn)
+
+    const wrapper = mount(Modal, {
+      props: {
+        open: true,
+        title: '焦点记忆归还测试',
+      },
+      global: {
+        stubs: {
+          Teleport: true,
+        },
+      },
+      attachTo: document.body,
+    })
+
+    // Close modal
+    await wrapper.find('.modal-close').trigger('click')
+    wrapper.unmount()
+
+    expect(document.activeElement).toBe(triggerBtn)
+    document.body.removeChild(triggerBtn)
+  })
+
+  it('uses aria-label fallback when no title is provided', () => {
+    const wrapper = mount(Modal, {
+      props: {
+        open: true,
+        ariaLabel: '无障碍浮层描述',
+      },
+      global: {
+        stubs: {
+          Teleport: true,
+        },
+      },
+    })
+
+    const dialog = wrapper.find('dialog.modal-dialog')
+    expect(dialog.attributes('aria-label')).toBe('无障碍浮层描述')
+    expect(dialog.attributes('aria-labelledby')).toBeUndefined()
+  })
 })
