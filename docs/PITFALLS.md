@@ -249,6 +249,22 @@
     1. 文本截断统一收敛至 `<AppTextClamp>` 原子组件或全局 `.line-clamp-N` 实用类；
     2. 多浏览器前缀与标准并存时，严格执行“前缀在前、标准在后”的级联顺序（前缀兜底，标准覆盖）。
 
+### 37. 单话离线画页缓存误标与非连续页码污染（Chapter-Scoped Cache Page Index Pollution）
+
+- **本质**：在引入单话按需离线缓存后，若前端轮询盲目复用全书顺序下载时假设的 `p.index <= progress.cached` 进行本地就地更新。单话缓存任务通常从中间章节页码（如 `index = 46`）开始下载，而全局累加的已缓存数（如已下完 5 页，`progress.cached = 5`）会导致第 1 话的前 5 页被虚假误标为 `cached = true`，而真正下载的第 3 话画页因 `index >= 46` 始终无法被标记，且任务结束时由于全书 `progress.complete` 为 false 导致单话状态永久脱节。
+- **复现场景**：用户点击第 3 话「缓存本话」，第 1 话画页角标突然亮起，第 3 话画页进度纹丝不动，直到手动硬刷新才同步。
+- **红线与防误伤**：
+  - **不要**在单话缓存任务中使用全局页码阈值 `p.index <= progress.cached`；
+  - **放行/改用**：轮询时识别 `job.chapter_id`，基于 `job.prefetched` 精确计算并仅标记该话范围内的画页（`p.chapter === ch.id && p.index <= ch.start + job.prefetched - 1`）；并在任务结束或完成时触发一次静默 `load(true)` 同步最新权威状态。
+
+### 38. 误将跨路由持久状态置于 `<script setup>` 实例闭包内（`<script setup>` State Persistence Trap）
+
+- **本质**：误将跨路由需要恢复的内存状态（如离开视图时的滚动位点 `detailScrollPositions`、虚拟/分批渲染的展开折叠计数 `expandedChapterCounts`）以普通顶级变量声明在 `<script setup>` 内部。在 Vue 3 中，`<script setup>` 的顶层代码属于组件实例的 `setup()` 函数内部闭包，每次跨路由离开并再次进入时组件重新实例化，状态被重置为空对象 `{}`，记忆机制完全失效。
+- **复现场景**：读者在包含 150 话的详情页展开至第 80 话并滚动到下方，点击某话进入 `ChapterView` 再点击返回，详情页重置回第 1 屏 24 话并滚到顶部。
+- **红线与防误伤**：
+  - **不要**在 `<script setup>` 声明需要跨组件销毁/挂载存活的页面级状态；
+  - **放行/改用**：将跨路由/跨实例持久状态提升至独立的 Composable / Store 模块顶层单例，并提供规范的 getter/setter 与清理函数。
+
 ---
 
 ## 🚦 交付门禁（四步必跑）

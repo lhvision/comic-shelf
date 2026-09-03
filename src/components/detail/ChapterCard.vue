@@ -20,10 +20,12 @@ const props = withDefaults(
     chapter: Chapter
     /** 该话已本地缓存的页数（章节级缓存进度） */
     cachedPages?: number
-    /** 是否正在后台缓存中 */
+    /** 是否本话正在后台缓存中（控制进度条呼吸动效） */
     running?: boolean
+    /** 是否全书有任何缓存任务在进行（控制下载按钮禁用状态） */
+    busy?: boolean
   }>(),
-  { cachedPages: 0, running: false },
+  { cachedPages: 0, running: false, busy: false },
 )
 
 const emit = defineEmits<{
@@ -80,9 +82,13 @@ function onCoverError() {
             v-if="cachedPages < chapter.page_count"
             class="chapter-cache-btn"
             type="button"
-            :disabled="running"
-            :title="running ? '缓存进行中...' : '离线缓存本话'"
-            :aria-label="running ? '缓存进行中' : '离线缓存本话'"
+            :disabled="running || busy"
+            :title="
+              running ? '本话正在缓存中…' : busy ? '已有后台缓存任务在进行中' : '离线缓存本话'
+            "
+            :aria-label="
+              running ? '本话正在缓存中' : busy ? '已有后台缓存任务在进行中' : '离线缓存本话'
+            "
             @click.prevent.stop="emit('cache', chapter.id)"
           >
             <AppIcon name="download" size="xs" />

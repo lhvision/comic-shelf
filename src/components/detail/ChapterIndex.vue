@@ -2,6 +2,10 @@
 import { computed, ref, watch } from 'vue'
 import { useIntersectionObserver } from '@vueuse/core'
 import ChapterCard from '@/components/detail/ChapterCard.vue'
+import {
+  getExpandedChapterCount,
+  setExpandedChapterCount,
+} from '@/composables/useChapterNavigation'
 import type { Chapter } from '@/types'
 
 const CHAPTER_CHUNK_STEP = 24
@@ -35,8 +39,6 @@ const props = withDefaults(
   },
 )
 
-const expandedChapterCounts: Record<string, number> = {}
-
 const emit = defineEmits<{
   (e: 'cacheChapter', chapterId: string): void
 }>()
@@ -45,7 +47,7 @@ const comicKey = computed(() => `${props.source}/${props.sourceId}`)
 
 const initialCount = computed(() => {
   const target = props.initialVisibleChapter || 1
-  const remembered = expandedChapterCounts[comicKey.value] || 0
+  const remembered = getExpandedChapterCount(comicKey.value) || 0
   const needed = Math.max(target, remembered)
   return Math.max(CHAPTER_CHUNK_STEP, Math.ceil(needed / CHAPTER_CHUNK_STEP) * CHAPTER_CHUNK_STEP)
 })
@@ -64,12 +66,12 @@ const remainingCount = computed(() => Math.max(0, props.chapters.length - visibl
 
 function loadMore() {
   visibleCount.value = Math.min(props.chapters.length, visibleCount.value + CHAPTER_CHUNK_STEP)
-  expandedChapterCounts[comicKey.value] = visibleCount.value
+  setExpandedChapterCount(comicKey.value, visibleCount.value)
 }
 
 function loadAll() {
   visibleCount.value = props.chapters.length
-  expandedChapterCounts[comicKey.value] = visibleCount.value
+  setExpandedChapterCount(comicKey.value, visibleCount.value)
 }
 
 const sentinelEl = ref<HTMLElement | null>(null)
@@ -103,6 +105,7 @@ useIntersectionObserver(
         :chapter="chapter"
         :cached-pages="chapterCache?.[chapter.id] ?? 0"
         :running="running && (!runningChapterId || runningChapterId === chapter.id)"
+        :busy="running"
         @cache="emit('cacheChapter', $event)"
       />
     </div>

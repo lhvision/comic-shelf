@@ -4,7 +4,11 @@ import { onBeforeRouteLeave, useRoute, useRouter } from 'vue-router'
 import { useIntervalFn } from '@vueuse/core'
 import { api, pageFileUrl } from '@/api/client'
 import { useLastRead } from '@/composables/useLastRead'
-import { useChapterNavigation } from '@/composables/useChapterNavigation'
+import {
+  getDetailScrollPosition,
+  setDetailScrollPosition,
+  useChapterNavigation,
+} from '@/composables/useChapterNavigation'
 import { useIdlePrefetch } from '@/composables/useIdlePrefetch'
 import { useLibraryStore, createPlaceholderDetail } from '@/stores/library'
 import { useToast } from '@/composables/useToast'
@@ -43,8 +47,6 @@ const source = computed(() => String(route.params.source))
 
 const sourceId = computed(() => String(route.params.sourceId))
 
-// SWR 即时占位：若书架 Store 中已有该本子概要，立即构造初态渲染 Hero（封面、标题、作者等）
-// 让 View Transition 精准咬合 Shared Cover Morph，彻底杜绝白屏/骨架屏二次闪烁
 // SWR 即时占位：若书架 Store 中已有完整缓存或概要，立即构造初态渲染
 // 让 View Transition 精准咬合，彻底杜绝白屏/骨架屏二次闪烁与重复 JSON 解析
 const cachedSummary = store.byId(source.value, sourceId.value)
@@ -70,6 +72,7 @@ const {
   lastReadLabel,
   lastReadChapter,
   pageStep,
+  chapterForPage,
   loadMore,
 } = useChapterNavigation(detail, lastRead)
 
@@ -93,11 +96,9 @@ const chapterCache = computed(() => {
 // 在主线程与首屏关键资产加载空闲时后台预热阅读器视图组件，避免混入初始关键请求链
 useIdlePrefetch(() => import('@/views/ReaderView.vue'))
 
-const detailScrollPositions: Record<string, number> = {}
-
 function restoreScrollPosition() {
   const key = `${source.value}/${sourceId.value}`
-  const saved = detailScrollPositions[key]
+  const saved = getDetailScrollPosition(key)
   if (saved !== undefined && saved > 0) {
     nextTick(() => {
       window.scrollTo({ top: saved, behavior: 'instant' })
@@ -106,8 +107,8 @@ function restoreScrollPosition() {
 }
 
 onBeforeRouteLeave((to) => {
-  if (to.name === 'comic-chapter') {
-    detailScrollPositions[`${source.value}/${sourceId.value}`] = window.scrollY
+  if (to.name === 'comic-chapter' || to.name === 'reader') {
+    setDetailScrollPosition(`${source.value}/${sourceId.value}`, window.scrollY)
   }
 })
 
@@ -200,11 +201,27 @@ const { pause: pauseProgressPolling, resume: resumeProgressPolling } = useInterv
         detail.value.cached_pages = Math.max(detail.value.cached_pages, progress.cached)
         detail.value.cache_complete = progress.complete
 
-        // 前端就地标记已完成的页码，保证零 DOM 销毁、零图片重复加载、角标与进度秒级同步
+        // 精准就地标记已完成的页码：单话任务仅标记本话区间，全书任务标记已下载全局区间
         if (detail.value.meta?.pages) {
-          for (const p of detail.value.meta.pages) {
-            if (progress.complete || p.index <= progress.cached) {
+          if (job.chapter_id) {
+            const ch = chapters.value.find((c) => c.id === job.chapter_id)
+            if (ch) {
+              const maxPage = ch.start + job.prefetched - 1
+              for (const p of detail.value.meta.pages) {
+                if (p.chapter === ch.id && (!job.running || p.index <= maxPage)) {
+                  p.cached = true
+                }
+              }
+            }
+          } else if (progress.complete) {
+            for (const p of detail.value.meta.pages) {
               p.cached = true
+            }
+          } else if (job.running && !job.chapter_id) {
+            for (const p of detail.value.meta.pages) {
+              if (p.index <= job.prefetched) {
+                p.cached = true
+              }
             }
           }
         }
@@ -213,6 +230,7 @@ const { pause: pauseProgressPolling, resume: resumeProgressPolling } = useInterv
         caching.value = false
         runningChapterId.value = null
         pauseProgressPolling()
+        void load(true)
       }
     } catch {
       /* the long-running request owns the error path */
@@ -238,11 +256,9 @@ async function cacheAll() {
     const progress = await api.cacheAll(source.value, sourceId.value)
     detail.value.cached_pages = progress.cached
     detail.value.cache_complete = progress.complete
-    if (detail.value.meta?.pages) {
+    if (progress.complete && detail.value.meta?.pages) {
       for (const p of detail.value.meta.pages) {
-        if (progress.complete || p.index <= progress.cached) {
-          p.cached = true
-        }
+        p.cached = true
       }
     }
     await store.load()
@@ -250,6 +266,7 @@ async function cacheAll() {
     if (progress.complete) {
       pauseProgressPolling()
       caching.value = false
+      void load(true)
     } else {
       resumeProgressPolling()
     }
@@ -268,9 +285,9 @@ async function handleCacheChapter(chapterId: string) {
   try {
     const progress = await api.cacheChapter(source.value, sourceId.value, chapterId)
     const ch = chapters.value.find((c) => c.id === chapterId)
-    if (ch && detail.value.meta?.pages) {
+    if (ch && detail.value.meta?.pages && progress.complete) {
       for (const p of detail.value.meta.pages) {
-        if (p.chapter === chapterId && progress.complete) {
+        if (p.chapter === chapterId) {
           p.cached = true
         }
       }
@@ -280,6 +297,7 @@ async function handleCacheChapter(chapterId: string) {
       pauseProgressPolling()
       caching.value = false
       runningChapterId.value = null
+      void load(true)
     }
   } catch (e) {
     pauseProgressPolling()
@@ -337,17 +355,10 @@ function goBack() {
   router.replace({ name: 'library' })
 }
 
-/** 定位某个全局页码所属的话（多章节作品；单章节返回 null）。 */
-function chapterIdForPage(page: number): string | null {
-  const chs = chapters.value
-  if (chs.length <= 1) return null
-  return chs.find((c) => page >= c.start && page < c.start + c.page_count)?.id ?? chs[0]?.id ?? null
-}
-
 function startReading(page = progressEl.value || 1) {
   // 多章节作品从父详情的任何「直接进入」都走章节维度：带 ?chapter= 让阅读器
   // 只渲染当前话（比如 37 页），绝不一次把 7227 页铺进阅读器。
-  const chapterId = chapterIdForPage(page)
+  const chapterId = chapterForPage(page)
   const path = chapterId
     ? `/comic/${source.value}/${sourceId.value}/read/${page}?chapter=${encodeURIComponent(chapterId)}`
     : `/comic/${source.value}/${sourceId.value}/read/${page}`

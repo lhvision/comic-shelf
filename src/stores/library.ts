@@ -267,6 +267,7 @@ export const useLibraryStore = defineStore('library', () => {
 
   async function remove(source: string, sourceId: string) {
     await api.deleteComic(source, sourceId)
+    removeDetail(source, sourceId)
     await load()
   }
 
@@ -283,12 +284,25 @@ export const useLibraryStore = defineStore('library', () => {
     if (item) item.favorite = favorite
   }
 
+  const MAX_DETAIL_CACHE = 20
+
   function getDetail(source: string, sourceId: string): ComicDetail | undefined {
     return detailCache.value[`${source}/${sourceId}`]
   }
 
   function setDetail(detail: ComicDetail) {
-    detailCache.value[`${detail.meta.source}/${detail.meta.source_id}`] = detail
+    const key = `${detail.meta.source}/${detail.meta.source_id}`
+    delete detailCache.value[key]
+    detailCache.value[key] = detail
+    const keys = Object.keys(detailCache.value)
+    if (keys.length > MAX_DETAIL_CACHE) {
+      const oldest = keys[0]
+      if (oldest) delete detailCache.value[oldest]
+    }
+  }
+
+  function removeDetail(source: string, sourceId: string) {
+    delete detailCache.value[`${source}/${sourceId}`]
   }
 
   return {
@@ -306,6 +320,7 @@ export const useLibraryStore = defineStore('library', () => {
     byId,
     getDetail,
     setDetail,
+    removeDetail,
     setFavoriteLocal,
     liveFor,
     startPollingIfActive,

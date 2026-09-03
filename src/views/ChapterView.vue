@@ -46,9 +46,14 @@ const detail = ref<ComicDetail | null>(
   existingDetail ?? (cachedSummary ? createPlaceholderDetail(cachedSummary) : null),
 )
 const loading = ref(!detail.value)
-const error = ref<string | null>(null)
 const caching = ref(false)
+const runningChapterId = ref<string | null>(null)
 let loadAbortController: AbortController | null = null
+
+const isCurrentChapterCaching = computed(() => {
+  if (!caching.value) return false
+  return !runningChapterId.value || runningChapterId.value === activeChapter.value?.id
+})
 
 const editOpen = ref(false)
 const chapterTitleInput = ref('')
@@ -96,7 +101,7 @@ const activeChapterCached = computed(() => {
   const ch = activeChapter.value
   let cached = 0
   for (const p of detail.value.meta?.pages ?? []) {
-    if (p.index >= ch.start && p.index < ch.start + ch.page_count) {
+    if (p.chapter === ch.id || (p.index >= ch.start && p.index < ch.start + ch.page_count)) {
       if (p.cached) cached++
     }
   }
@@ -183,6 +188,7 @@ async function load(silent = false) {
     if (controller.signal.aborted) return
 
     caching.value = job.running
+    runningChapterId.value = job.chapter_id ?? null
     if (job.running) {
       startProgressPolling()
     } else {
@@ -212,22 +218,41 @@ const { pause: pauseProgressPolling, resume: resumeProgressPolling } = useInterv
         api.cacheJob(source.value, sourceId.value),
       ])
       caching.value = job.running
+      runningChapterId.value = job.chapter_id ?? null
 
       if (detail.value) {
         detail.value.cached_pages = Math.max(detail.value.cached_pages, progress.cached)
         detail.value.cache_complete = progress.complete
 
         if (detail.value.meta?.pages) {
-          for (const p of detail.value.meta.pages) {
-            if (progress.complete || p.index <= progress.cached) {
+          if (job.chapter_id) {
+            const ch = chapters.value.find((c) => c.id === job.chapter_id)
+            if (ch) {
+              const maxPage = ch.start + job.prefetched - 1
+              for (const p of detail.value.meta.pages) {
+                if (p.chapter === ch.id && (!job.running || p.index <= maxPage)) {
+                  p.cached = true
+                }
+              }
+            }
+          } else if (progress.complete) {
+            for (const p of detail.value.meta.pages) {
               p.cached = true
+            }
+          } else if (job.running && !job.chapter_id) {
+            for (const p of detail.value.meta.pages) {
+              if (p.index <= job.prefetched) {
+                p.cached = true
+              }
             }
           }
         }
       }
       if (!job.running || progress.complete) {
         caching.value = false
+        runningChapterId.value = null
         pauseProgressPolling()
+        void load(true)
       }
     } catch {
       /* transient */
@@ -247,13 +272,14 @@ function startProgressPolling() {
 async function cacheCurrentChapter() {
   if (!activeChapter.value || !detail.value || caching.value) return
   caching.value = true
+  runningChapterId.value = activeChapter.value.id
   startProgressPolling()
   try {
     const progress = await api.cacheChapter(source.value, sourceId.value, activeChapter.value.id)
-    if (detail.value.meta?.pages) {
+    if (detail.value.meta?.pages && progress.complete) {
       const ch = activeChapter.value
       for (const p of detail.value.meta.pages) {
-        if (p.chapter === ch.id && progress.complete) {
+        if (p.chapter === ch.id) {
           p.cached = true
         }
       }
@@ -262,10 +288,13 @@ async function cacheCurrentChapter() {
     if (progress.complete) {
       pauseProgressPolling()
       caching.value = false
+      runningChapterId.value = null
+      void load(true)
     }
   } catch (e) {
     pauseProgressPolling()
     caching.value = false
+    runningChapterId.value = null
     toast(e instanceof Error ? e.message : String(e), 'error')
   }
 }
@@ -295,12 +324,14 @@ async function saveChapterTitle() {
   if (!activeChapter.value) return
   savingTitle.value = true
   try {
-    detail.value = await api.updateChapter(
+    const updated = await api.updateChapter(
       source.value,
       sourceId.value,
       activeChapter.value.id,
       chapterTitleInput.value,
     )
+    detail.value = updated
+    store.setDetail(updated)
     editOpen.value = false
     toast('章节名称已更新', 'success')
   } catch (e) {
@@ -321,6 +352,7 @@ async function confirmRemoveChapter() {
   const deletedTitle = activeChapter.value.title || `第 ${activeChapter.value.index} 话`
   try {
     await api.deleteChapter(source.value, sourceId.value, activeChapter.value.id)
+    store.removeDetail(source.value, sourceId.value)
     removeOpen.value = false
     toast(`已删除「${deletedTitle}」`, 'success')
     router.replace(`/comic/${source.value}/${sourceId.value}`)
@@ -359,7 +391,7 @@ async function confirmRemoveChapter() {
             <CacheProgress
               :cached="activeChapterCached"
               :total="activeChapterTotal"
-              :running="caching"
+              :running="isCurrentChapterCaching"
             />
 
             <button
@@ -376,10 +408,16 @@ async function confirmRemoveChapter() {
               class="btn btn-secondary btn-xs"
               type="button"
               :disabled="caching"
-              :title="caching ? '缓存进行中...' : '离线缓存本话所有画页'"
+              :title="
+                isCurrentChapterCaching
+                  ? '本话缓存进行中...'
+                  : caching
+                    ? '已有其他缓存任务在进行中'
+                    : '离线缓存本话所有画页'
+              "
               @click="cacheCurrentChapter"
             >
-              {{ caching ? '缓存中…' : '缓存本话' }}
+              {{ isCurrentChapterCaching ? '缓存中…' : caching ? '排队中…' : '缓存本话' }}
             </button>
 
             <div v-if="canWrite" class="chapter-mgmt-group">

@@ -5,6 +5,35 @@ import type { ComicDetail } from '@/types'
 export const CHAPTER_PAGE_STEP = 24
 
 /**
+ * 跨路由组件挂载/卸载保持的单例状态（例如从详情页进入章节页再返回时恢复）：
+ * - detailScrollPositions: 记录各个漫画详情页离开时的 window.scrollY
+ * - expandedChapterCounts: 记录各个漫画章节目录已展开的卡片数量
+ */
+const detailScrollPositions: Record<string, number> = {}
+const expandedChapterCounts: Record<string, number> = {}
+
+export function getDetailScrollPosition(key: string): number | undefined {
+  return detailScrollPositions[key]
+}
+
+export function setDetailScrollPosition(key: string, pos: number): void {
+  detailScrollPositions[key] = pos
+}
+
+export function getExpandedChapterCount(key: string): number | undefined {
+  return expandedChapterCounts[key]
+}
+
+export function setExpandedChapterCount(key: string, count: number): void {
+  expandedChapterCounts[key] = count
+}
+
+export function clearNavigationMemory(): void {
+  for (const k of Object.keys(detailScrollPositions)) delete detailScrollPositions[k]
+  for (const k of Object.keys(expandedChapterCounts)) delete expandedChapterCounts[k]
+}
+
+/**
  * 详情页「多章节导航」组合式函数 —— 承载章节切片这块业务编排。
  *
  * 依据 `docs/agents/frontend.md` 的拆分约定：页面视图只做
@@ -134,6 +163,7 @@ export function useChapterNavigation(detail: Ref<ComicDetail | null>, lastRead: 
     lastReadLabel,
     lastReadChapter,
     pageStep: CHAPTER_PAGE_STEP,
+    chapterForPage,
     switchTo,
     setChapterById,
     setInitialChapter,
