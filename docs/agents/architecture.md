@@ -175,6 +175,8 @@ JmImageTool.decode_and_save(num, source_image, save_path)
 - `PATCH /api/library/{source}/{id}/favorite` `{favorite: bool}`（独立用户收藏切换）
 - `GET /api/providers`
 - `POST /api/library/{source}/{id}/cache`
+- `GET /api/library/{source}/{id}/chapters/{chapterId}/cache`（查询单章节离线缓存进度，受 `_require_meta` 隐私保护）
+- `POST /api/library/{source}/{id}/chapters/{chapterId}/cache`（触发单章节后台异步离线下载任务）
 - `DELETE /api/library/{source}/{id}`
 
 页面 / 封面响应带 `Cache-Control: public, max-age=2592000, immutable`（30 天浏览器长效强缓存），配合 `_meta_cache` 内存二级缓存与 Fast-Path 直通，实现多章节和二次浏览秒开。

@@ -897,11 +897,8 @@ def curator_delete_pass_device(pass_id: int, device_id: int, request: Request) -
 
 
 @app.get("/api/library/{source}/{source_id}/cache", response_model=CacheProgress)
-def cache_progress(source: str, source_id: str) -> CacheProgress:
-    _require_known_source(source)
-    meta = store.load_meta(source, source_id)
-    if meta is None:
-        raise HTTPException(status_code=404, detail="本子还没有导入本地书库")
+def cache_progress(source: str, source_id: str, request: Request) -> CacheProgress:
+    meta = _require_meta(source, source_id, request)
     cached = store.cached_page_count(meta)
     return CacheProgress(
         cached=cached,
@@ -911,8 +908,8 @@ def cache_progress(source: str, source_id: str) -> CacheProgress:
 
 
 @app.post("/api/library/{source}/{source_id}/cache", response_model=CacheProgress)
-def cache_all(source: str, source_id: str) -> CacheProgress:
-    _require_known_source(source)
+def cache_all(source: str, source_id: str, request: Request) -> CacheProgress:
+    _require_meta(source, source_id, request)
     fetched = store.load_fetched(source, source_id)
     if fetched is None:
         raise HTTPException(status_code=404, detail="本子还没有导入本地书库")
@@ -927,13 +924,69 @@ def cache_all(source: str, source_id: str) -> CacheProgress:
 
 
 @app.get("/api/library/{source}/{source_id}/cache/job", response_model=JobInfo)
-def cache_job(source: str, source_id: str) -> JobInfo:
+def cache_job(source: str, source_id: str, request: Request) -> JobInfo:
     """Poll an in-flight prefetch job (the UI already polls cache_progress)."""
-    _require_known_source(source)
+    _require_meta(source, source_id, request)
     job = get_job(source, source_id)
     if job is None:
         return JobInfo(source=source, source_id=source_id, running=False, done=True, total=0, prefetched=0)
     return JobInfo(**job)
+
+
+@app.get("/api/library/{source}/{source_id}/chapters/{chapter_id}/cache", response_model=CacheProgress)
+def chapter_cache_progress(source: str, source_id: str, chapter_id: str, request: Request) -> CacheProgress:
+    meta = _require_meta(source, source_id, request)
+    chapter = next((c for c in (meta.chapters or []) if c.id == chapter_id), None)
+    if chapter is None:
+        raise HTTPException(status_code=404, detail=f"未找到章节 {chapter_id}")
+    cached = sum(1 for p in meta.pages if p.chapter == chapter_id and p.cached)
+    return CacheProgress(
+        cached=cached,
+        total=chapter.page_count,
+        complete=cached >= chapter.page_count,
+    )
+
+
+@app.post("/api/library/{source}/{source_id}/chapters/{chapter_id}/cache", response_model=CacheProgress)
+def cache_chapter(source: str, source_id: str, chapter_id: str, request: Request) -> CacheProgress:
+    _require_meta(source, source_id, request)
+    fetched = store.load_fetched(source, source_id)
+    if fetched is None:
+        raise HTTPException(status_code=404, detail="本子还没有导入本地书库")
+    if fetched.meta.custom_pages:
+        raise HTTPException(status_code=400, detail="该漫画画页已由馆长重新装订保护，禁止远端自动覆盖。")
+
+    chapter = next((c for c in (fetched.meta.chapters or []) if c.id == chapter_id), None)
+    if chapter is None:
+        raise HTTPException(status_code=404, detail=f"未找到章节 {chapter_id}")
+
+    def _chapter_worker(job: dict) -> None:
+        def _on_progress(done: int, total: int) -> None:
+            job["prefetched"] = done
+            job["total"] = total
+
+        done, warnings = store.prefetch_chapter(fetched, chapter, on_progress=_on_progress)
+        job["prefetched"] = done
+        job["total"] = chapter.page_count
+        job["warnings"] = warnings
+        broadcast_event(
+            "library_changed",
+            {
+                "action": "chapter_cache_complete",
+                "source": source,
+                "source_id": source_id,
+                "chapter_id": chapter_id,
+                "timestamp": time.time(),
+            },
+        )
+
+    start_job(source, source_id, _chapter_worker, chapter_id=chapter_id)
+    cached = sum(1 for p in fetched.meta.pages if p.chapter == chapter_id and p.cached)
+    return CacheProgress(
+        cached=cached,
+        total=chapter.page_count,
+        complete=cached >= chapter.page_count,
+    )
 
 
 @app.get("/api/library/{source}/{source_id}/pages/{index}", response_model=PageResponse)

@@ -141,6 +141,7 @@ class ImportResult(BaseModel):
 class JobInfo(BaseModel):
     source: str
     source_id: str
+    chapter_id: str | None = None
     running: bool
     done: bool
     total: int

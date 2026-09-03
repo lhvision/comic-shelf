@@ -49,6 +49,8 @@ def start_job(
     source: str,
     source_id: str,
     runner: Callable[[dict[str, Any]], None],
+    *,
+    chapter_id: str | None = None,
 ) -> dict[str, Any]:
     """Start ``runner(job)`` on a daemon thread. Re-uses a running job if present."""
     key = _key(source, source_id)
@@ -61,6 +63,7 @@ def start_job(
         job: dict[str, Any] = {
             "source": source,
             "source_id": source_id,
+            "chapter_id": chapter_id,
             "running": True,
             "done": False,
             "total": 0,

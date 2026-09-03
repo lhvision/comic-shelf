@@ -73,6 +73,8 @@ export const useLibraryStore = defineStore('library', () => {
   const importMessage = ref('')
   /** Live cache progress for comics with a running background prefetch job. */
   const liveCache = ref<Record<string, LiveCacheState>>({})
+  /** In-memory cache for full ComicDetail to prevent re-fetching/re-parsing huge JSONs on view navigation */
+  const detailCache = ref<Record<string, ComicDetail>>({})
 
   const displayItems = computed(() => items.value)
 
@@ -281,6 +283,14 @@ export const useLibraryStore = defineStore('library', () => {
     if (item) item.favorite = favorite
   }
 
+  function getDetail(source: string, sourceId: string): ComicDetail | undefined {
+    return detailCache.value[`${source}/${sourceId}`]
+  }
+
+  function setDetail(detail: ComicDetail) {
+    detailCache.value[`${detail.meta.source}/${detail.meta.source_id}`] = detail
+  }
+
   return {
     items,
     displayItems,
@@ -294,6 +304,8 @@ export const useLibraryStore = defineStore('library', () => {
     importComic,
     remove,
     byId,
+    getDetail,
+    setDetail,
     setFavoriteLocal,
     liveFor,
     startPollingIfActive,

@@ -660,6 +660,39 @@ class ComicStore:
 
         return done, warnings
 
+    def prefetch_chapter(
+        self,
+        fetched: FetchedComic,
+        chapter: Chapter,
+        *,
+        on_progress: Callable[[int, int], None] | None = None,
+    ) -> tuple[int, list[str]]:
+        """Download all pages of a specific chapter eagerly."""
+        meta = fetched.meta
+        warnings: list[str] = []
+        done = 0
+        indexes = list(range(chapter.start, chapter.start + chapter.page_count))
+        total = len(indexes)
+
+        for index in indexes:
+            try:
+                self.ensure_page(fetched, index)
+                self.ensure_page_thumb(fetched.meta, fetched, index)
+                done += 1
+            except Exception as exc:
+                warnings.append(f"第 {index} 页缓存失败：{exc}")
+            finally:
+                if on_progress is not None:
+                    on_progress(done, total)
+
+        try:
+            self.ensure_chapter_cover(meta, fetched, chapter)
+        except Exception:
+            pass
+
+        return done, warnings
+
+
     # ------------------------------------------------------------------
     # library queries
     # ------------------------------------------------------------------

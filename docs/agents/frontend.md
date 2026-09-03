@@ -55,8 +55,8 @@
 | `src/components/discovery/DiscoveryCard.vue`     | 榜单漫画卡片：排名徽章、原站外链、分类胶囊与一键收录/在库直达                        |
 | `src/components/form/TagManager.vue`             | 交互式标签管理器（Chip 展示、Enter/空格添加、SVG 居中删除、热门快选推荐）            |
 | `src/components/form/CoverIndicesPicker.vue`     | 4 张封面展示页码选定器（4 槽位数值输入、实时越界纠偏与默认值安全回退）               |
-| `src/components/detail/ChapterIndex.vue`         | 章节目录整段：head + 卡片网格（多话作品详情页主视图，代替几千页平铺）                |
-| `src/components/detail/ChapterCard.vue`          | 目录单卡：该话第一页封面缩略图（失败回落书脊占位）+ 序数/标题/页数                   |
+| `src/components/detail/ChapterIndex.vue`         | 章节目录整段：head + 分批卡片网格（首屏 24 话增量展开、哨兵触底加载、展开记忆）      |
+| `src/components/detail/ChapterCard.vue`          | 目录单卡：第一页封面缩略图（失败回落书脊）+ 序数/标题/页数 + 独立离线缓存操作按钮    |
 | `src/components/detail/ChapterSwitcher.vue`      | 章节切换条（用于 ChapterView 内跳话）：横向 chips + 方向键 + `useScroll`             |
 | `src/components/FavoriteButton.vue`              | 喜欢标记按钮（书架卡片 / 实验卡片 overlay）                                          |
 | `src/components/ComicPageImage.vue`              | 每页图片 loading / error / retry 兜底                                                |

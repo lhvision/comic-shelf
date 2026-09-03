@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { onBeforeRouteLeave, useRoute, useRouter } from 'vue-router'
 import { useIntervalFn } from '@vueuse/core'
 import { api, pageFileUrl } from '@/api/client'
 import { useLastRead } from '@/composables/useLastRead'
@@ -45,12 +45,16 @@ const sourceId = computed(() => String(route.params.sourceId))
 
 // SWR 即时占位：若书架 Store 中已有该本子概要，立即构造初态渲染 Hero（封面、标题、作者等）
 // 让 View Transition 精准咬合 Shared Cover Morph，彻底杜绝白屏/骨架屏二次闪烁
+// SWR 即时占位：若书架 Store 中已有完整缓存或概要，立即构造初态渲染
+// 让 View Transition 精准咬合，彻底杜绝白屏/骨架屏二次闪烁与重复 JSON 解析
 const cachedSummary = store.byId(source.value, sourceId.value)
+const existingDetail = store.getDetail(source.value, sourceId.value)
 const detail = ref<ComicDetail | null>(
-  cachedSummary ? createPlaceholderDetail(cachedSummary) : null,
+  existingDetail ?? (cachedSummary ? createPlaceholderDetail(cachedSummary) : null),
 )
 const loading = ref(!detail.value)
 const caching = ref(false)
+const runningChapterId = ref<string | null>(null)
 const editOpen = ref(false)
 const appendOpen = ref(false)
 const replaceOpen = ref(false)
@@ -64,6 +68,7 @@ const {
   remainingPages,
   showingRange,
   lastReadLabel,
+  lastReadChapter,
   pageStep,
   loadMore,
 } = useChapterNavigation(detail, lastRead)
@@ -88,7 +93,26 @@ const chapterCache = computed(() => {
 // 在主线程与首屏关键资产加载空闲时后台预热阅读器视图组件，避免混入初始关键请求链
 useIdlePrefetch(() => import('@/views/ReaderView.vue'))
 
+const detailScrollPositions: Record<string, number> = {}
+
+function restoreScrollPosition() {
+  const key = `${source.value}/${sourceId.value}`
+  const saved = detailScrollPositions[key]
+  if (saved !== undefined && saved > 0) {
+    nextTick(() => {
+      window.scrollTo({ top: saved, behavior: 'instant' })
+    })
+  }
+}
+
+onBeforeRouteLeave((to) => {
+  if (to.name === 'comic-chapter') {
+    detailScrollPositions[`${source.value}/${sourceId.value}`] = window.scrollY
+  }
+})
+
 onMounted(() => {
+  restoreScrollPosition()
   void load()
 })
 
@@ -97,13 +121,15 @@ watch(
   () => [source.value, sourceId.value],
   () => {
     const summary = store.byId(source.value, sourceId.value)
-    detail.value = summary ? createPlaceholderDetail(summary) : null
+    const existing = store.getDetail(source.value, sourceId.value)
+    detail.value = existing ?? (summary ? createPlaceholderDetail(summary) : null)
     loading.value = !detail.value
     void load()
   },
 )
 
 onBeforeUnmount(() => {
+  pauseProgressPolling()
   if (loadAbortController) {
     loadAbortController.abort()
     loadAbortController = null
@@ -123,6 +149,7 @@ async function load(silent = false) {
     const data = await api.detail(source.value, sourceId.value, { signal: controller.signal })
     if (controller.signal.aborted) return
     detail.value = data
+    store.setDetail(data)
 
     // 预热目标阅读页的原图资源（浏览器内存/磁盘缓存），读者点击「继续阅读」时秒出
     const pageCount = detail.value.meta.page_count ?? 0
@@ -132,15 +159,16 @@ async function load(silent = false) {
       preloadImg.src = pageFileUrl(source.value, sourceId.value, targetPage)
     }
 
-    // 若尚未完全缓存或后台有任务在运行，启动前端就地状态轮询
+    // 严格任务驱动轮询（ADR 0010）：仅在后台有任务在运行时才开启轮询，静默状态绝不空转
     const job = await api.cacheJob(source.value, sourceId.value, { signal: controller.signal })
     if (controller.signal.aborted) return
 
-    if (job.running) caching.value = true
-    if (!detail.value.cache_complete && detail.value.cached_pages < detail.value.meta.page_count) {
+    caching.value = job.running
+    runningChapterId.value = job.chapter_id ?? null
+    if (job.running) {
       startProgressPolling()
-    } else if (job.running) {
-      startProgressPolling()
+    } else {
+      pauseProgressPolling()
     }
   } catch (e) {
     if (controller.signal.aborted) return
@@ -154,14 +182,20 @@ async function load(silent = false) {
   }
 }
 
-/* 缓存进度轮询：缓存进行时就地更新每页 cached 标记，绝不触碰已有图片与网络连接 */
+/* 缓存进度轮询：任务执行时就地更新进度与 cached 标记；任务完成立即停止轮询 */
 let isPollingProgress = false
 const { pause: pauseProgressPolling, resume: resumeProgressPolling } = useIntervalFn(
   async () => {
     if (isPollingProgress) return
     isPollingProgress = true
     try {
-      const progress = await api.cacheProgress(source.value, sourceId.value)
+      const [progress, job] = await Promise.all([
+        api.cacheProgress(source.value, sourceId.value),
+        api.cacheJob(source.value, sourceId.value),
+      ])
+      caching.value = job.running
+      runningChapterId.value = job.chapter_id ?? null
+
       if (detail.value) {
         detail.value.cached_pages = Math.max(detail.value.cached_pages, progress.cached)
         detail.value.cache_complete = progress.complete
@@ -175,13 +209,9 @@ const { pause: pauseProgressPolling, resume: resumeProgressPolling } = useInterv
           }
         }
       }
-      if (progress.complete) {
+      if (!job.running || progress.complete) {
         caching.value = false
-        if (detail.value?.meta?.pages) {
-          for (const p of detail.value.meta.pages) {
-            p.cached = true
-          }
-        }
+        runningChapterId.value = null
         pauseProgressPolling()
       }
     } catch {
@@ -202,6 +232,7 @@ function startProgressPolling() {
 async function cacheAll() {
   if (!detail.value || caching.value) return
   caching.value = true
+  runningChapterId.value = null
   startProgressPolling()
   try {
     const progress = await api.cacheAll(source.value, sourceId.value)
@@ -218,14 +249,43 @@ async function cacheAll() {
     toast(progress.complete ? '已全部缓存到本地' : '后台缓存进行中，进度会自动更新', 'info')
     if (progress.complete) {
       pauseProgressPolling()
+      caching.value = false
     } else {
       resumeProgressPolling()
     }
   } catch (e) {
     pauseProgressPolling()
-    toast(e instanceof Error ? e.message : String(e), 'error')
-  } finally {
     caching.value = false
+    toast(e instanceof Error ? e.message : String(e), 'error')
+  }
+}
+
+async function handleCacheChapter(chapterId: string) {
+  if (!detail.value || caching.value) return
+  caching.value = true
+  runningChapterId.value = chapterId
+  startProgressPolling()
+  try {
+    const progress = await api.cacheChapter(source.value, sourceId.value, chapterId)
+    const ch = chapters.value.find((c) => c.id === chapterId)
+    if (ch && detail.value.meta?.pages) {
+      for (const p of detail.value.meta.pages) {
+        if (p.chapter === chapterId && progress.complete) {
+          p.cached = true
+        }
+      }
+    }
+    toast(`已开始缓存第 ${ch?.index ?? ''} 話，进度会自动更新`, 'info')
+    if (progress.complete) {
+      pauseProgressPolling()
+      caching.value = false
+      runningChapterId.value = null
+    }
+  } catch (e) {
+    pauseProgressPolling()
+    caching.value = false
+    runningChapterId.value = null
+    toast(e instanceof Error ? e.message : String(e), 'error')
   }
 }
 
@@ -349,6 +409,9 @@ function startReading(page = progressEl.value || 1) {
         :chapters="chapters"
         :chapter-cache="chapterCache"
         :running="caching"
+        :running-chapter-id="runningChapterId"
+        :initial-visible-chapter="lastReadChapter?.index"
+        @cache-chapter="handleCacheChapter"
       />
 
       <PageIndexGrid

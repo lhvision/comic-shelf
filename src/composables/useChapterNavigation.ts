@@ -82,11 +82,14 @@ export function useChapterNavigation(detail: Ref<ComicDetail | null>, lastRead: 
     )
   })
 
-  /** 「继续阅读」按钮文案：多章节时带章节定位，单章节保持「第 N 页」原文案。 */
+  /** 「继续阅读」按钮文案：多章节时带章节定位与章内相对页码，单章节保持「第 N 页」原文案。 */
   const lastReadLabel = computed(() => {
     if (progressEl.value < 1) return ''
     const c = lastReadChapter.value
-    if (c) return `继续阅读 · 第 ${c.index} 話 · 第 ${progressEl.value} 页`
+    if (c) {
+      const localPage = progressEl.value - c.start + 1
+      return `继续阅读 · 第 ${c.index} 話 · 第 ${localPage} 页`
+    }
     return `继续阅读 · 第 ${progressEl.value} 页`
   })
 
@@ -129,6 +132,7 @@ export function useChapterNavigation(detail: Ref<ComicDetail | null>, lastRead: 
     remainingPages,
     showingRange,
     lastReadLabel,
+    lastReadChapter,
     pageStep: CHAPTER_PAGE_STEP,
     switchTo,
     setChapterById,

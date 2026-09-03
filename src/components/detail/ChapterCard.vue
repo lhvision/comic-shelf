@@ -3,6 +3,7 @@ import { computed, ref, watch } from 'vue'
 import { chapterCoverUrl } from '@/api/client'
 import CacheProgress from '@/components/CacheProgress.vue'
 import AppTextClamp from '@/components/AppTextClamp.vue'
+import AppIcon from '@/components/AppIcon.vue'
 import type { Chapter } from '@/types'
 
 /**
@@ -10,7 +11,7 @@ import type { Chapter } from '@/types'
  * - 封面走 T17「章节封面端点」（池化在 covers/chapters/）；加载失败/无页面时回落书脊占位。
  * - 点击进入该话的「章节子路由」（/comic/:source/:id/chapter/:chapterId）。
  * - 多章节本地缓存状态：集成 CacheProgress 组件，支持静态进度与实时后台呼吸动效。
- * 纯展示组件，只依赖 props + 路由链接。
+ * - 支持单话按需离线（@cache 事件）。
  */
 const props = withDefaults(
   defineProps<{
@@ -24,6 +25,10 @@ const props = withDefaults(
   }>(),
   { cachedPages: 0, running: false },
 )
+
+const emit = defineEmits<{
+  (e: 'cache', chapterId: string): void
+}>()
 
 const coverFailed = ref(false)
 const coverUrl = computed(() => chapterCoverUrl(props.source, props.sourceId, props.chapter.id))
@@ -69,7 +74,20 @@ function onCoverError() {
       />
       <div class="chapter-meta-row">
         <span class="chapter-meta">{{ chapter.page_count }} 页</span>
-        <CacheProgress :cached="cachedPages" :total="chapter.page_count" :running="running" />
+        <div class="chapter-cache-action">
+          <CacheProgress :cached="cachedPages" :total="chapter.page_count" :running="running" />
+          <button
+            v-if="cachedPages < chapter.page_count"
+            class="chapter-cache-btn"
+            type="button"
+            :disabled="running"
+            :title="running ? '缓存进行中...' : '离线缓存本话'"
+            :aria-label="running ? '缓存进行中' : '离线缓存本话'"
+            @click.prevent.stop="emit('cache', chapter.id)"
+          >
+            <AppIcon name="download" size="xs" />
+          </button>
+        </div>
       </div>
     </div>
   </RouterLink>
@@ -154,6 +172,39 @@ function onCoverError() {
   justify-content: space-between;
   gap: var(--space-2);
   margin-top: var(--space-0-5);
+}
+
+.chapter-cache-action {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+.chapter-cache-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.35rem;
+  height: 1.35rem;
+  padding: 0;
+  border-radius: var(--radius-full);
+  border: 1px solid var(--line);
+  background: var(--paper-1);
+  color: var(--ink-2);
+  cursor: pointer;
+  transition: all var(--duration-1) var(--ease-out);
+}
+
+.chapter-cache-btn:hover:not(:disabled) {
+  border-color: var(--ink-1);
+  color: var(--ink-0);
+  background: var(--paper-2);
+  transform: scale(1.08);
+}
+
+.chapter-cache-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 @media (max-width: 480px) {

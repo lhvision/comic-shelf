@@ -107,7 +107,13 @@ function prefetchReader() {
       <button
         class="btn btn-primary btn-read"
         type="button"
-        :title="lastReadLabel || (lastRead ? `继续阅读 · 第 ${lastRead} 页` : '开始阅读')"
+        :title="
+          lastReadLabel && lastRead
+            ? `${lastReadLabel} (全书第 ${lastRead} 页)`
+            : lastRead
+              ? `继续阅读 · 第 ${lastRead} 页`
+              : '开始阅读'
+        "
         @pointerenter.once="prefetchReader"
         @focusin.once="prefetchReader"
         @touchstart.passive.once="prefetchReader"

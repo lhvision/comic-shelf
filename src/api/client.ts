@@ -264,6 +264,22 @@ export const api = {
     request<CacheProgress>(`/library/${source}/${sourceId}/cache`, {
       signal: options?.signal,
     }),
+  chapterCacheProgress: (
+    source: string,
+    sourceId: string,
+    chapterId: string,
+    options?: RequestOptions,
+  ) =>
+    request<CacheProgress>(`/library/${source}/${sourceId}/chapters/${chapterId}/cache`, {
+      signal: options?.signal,
+    }),
+  cacheChapter: (source: string, sourceId: string, chapterId: string, options?: RequestOptions) =>
+    request<CacheProgress>(`/library/${source}/${sourceId}/chapters/${chapterId}/cache`, {
+      method: 'POST',
+      signal: options?.signal,
+      headers: { 'Content-Type': 'application/json' },
+      body: '{}',
+    }),
   cacheJob: (source: string, sourceId: string, options?: RequestOptions) =>
     request<CacheJob>(`/library/${source}/${sourceId}/cache/job`, {
       signal: options?.signal,

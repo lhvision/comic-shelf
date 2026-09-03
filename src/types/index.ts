@@ -102,6 +102,7 @@ export interface ImportResult {
 export interface CacheJob {
   source: string
   source_id: string
+  chapter_id?: string | null
   running: boolean
   done: boolean
   total: number

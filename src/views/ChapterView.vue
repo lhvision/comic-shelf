@@ -15,6 +15,7 @@ import Modal from '@/components/Modal.vue'
 import AppButton from '@/components/AppButton.vue'
 import AppIcon from '@/components/AppIcon.vue'
 import AppDropdown, { type DropdownOption } from '@/components/AppDropdown.vue'
+import { useLibraryStore, createPlaceholderDetail } from '@/stores/library'
 import type { ComicDetail } from '@/types'
 
 /**
@@ -31,6 +32,7 @@ import type { ComicDetail } from '@/types'
  */
 const route = useRoute()
 const router = useRouter()
+const store = useLibraryStore()
 const { toast } = useToast()
 const { canWrite } = useAuth()
 
@@ -38,9 +40,13 @@ const source = computed(() => (route.params.source as string) || 'jm')
 const sourceId = computed(() => (route.params.sourceId as string) || '')
 const chapterId = computed(() => (route.params.chapterId as string) || '')
 
-const loading = ref(true)
+const cachedSummary = store.byId(source.value, sourceId.value)
+const existingDetail = store.getDetail(source.value, sourceId.value)
+const detail = ref<ComicDetail | null>(
+  existingDetail ?? (cachedSummary ? createPlaceholderDetail(cachedSummary) : null),
+)
+const loading = ref(!detail.value)
 const error = ref<string | null>(null)
-const detail = ref<ComicDetail | null>(null)
 const caching = ref(false)
 let loadAbortController: AbortController | null = null
 
@@ -70,6 +76,7 @@ function onChapterMoreSelect(option: DropdownOption) {
 const lastRead = useLastRead(source, sourceId)
 const {
   chapters,
+  progressEl,
   activeChapterLabel,
   visiblePages,
   remainingPages,
@@ -105,6 +112,28 @@ const chapterRange = computed(() => {
   return `第 ${c.start}–${end} 全局页`
 })
 
+const isCurrentChapterLastRead = computed(() => {
+  if (!activeChapter.value || progressEl.value < 1) return false
+  const ch = activeChapter.value
+  return progressEl.value >= ch.start && progressEl.value < ch.start + ch.page_count
+})
+
+const readChapterLabel = computed(() => {
+  if (isCurrentChapterLastRead.value && activeChapter.value) {
+    const localPage = progressEl.value - activeChapter.value.start + 1
+    return `继续阅读 · 第 ${localPage} 页`
+  }
+  return '开始阅读本话'
+})
+
+function startReadingChapter() {
+  if (!activeChapter.value) return
+  const targetPage = isCurrentChapterLastRead.value ? progressEl.value : activeChapter.value.start
+  router.push(
+    `/comic/${source.value}/${sourceId.value}/read/${targetPage}?chapter=${encodeURIComponent(activeChapter.value.id)}`,
+  )
+}
+
 watch(
   chapterId,
   () => {
@@ -121,6 +150,7 @@ onMounted(() => {
 })
 
 onBeforeUnmount(() => {
+  pauseProgressPolling()
   if (loadAbortController) {
     loadAbortController.abort()
     loadAbortController = null
@@ -140,21 +170,23 @@ async function load(silent = false) {
     const data = await api.detail(source.value, sourceId.value, { signal: controller.signal })
     if (controller.signal.aborted) return
     detail.value = data
+    store.setDetail(data)
     setChapterById(chapterId.value)
     // 单章节或无此章节时回落详情页
     if (!activeChapter.value) {
       router.replace(`/comic/${source.value}/${sourceId.value}`)
       return
     }
-    // 若尚未完全缓存或后台有任务在运行，启动前端就地状态轮询
+
+    // 严格任务驱动轮询（ADR 0010）：仅在后台有任务在运行时才开启轮询，静默状态绝不空转
     const job = await api.cacheJob(source.value, sourceId.value, { signal: controller.signal })
     if (controller.signal.aborted) return
 
-    if (job.running) caching.value = true
-    if (!detail.value.cache_complete && detail.value.cached_pages < detail.value.meta.page_count) {
+    caching.value = job.running
+    if (job.running) {
       startProgressPolling()
-    } else if (job.running) {
-      startProgressPolling()
+    } else {
+      pauseProgressPolling()
     }
   } catch (e) {
     if (controller.signal.aborted) return
@@ -175,7 +207,12 @@ const { pause: pauseProgressPolling, resume: resumeProgressPolling } = useInterv
     if (isPollingProgress) return
     isPollingProgress = true
     try {
-      const progress = await api.cacheProgress(source.value, sourceId.value)
+      const [progress, job] = await Promise.all([
+        api.cacheProgress(source.value, sourceId.value),
+        api.cacheJob(source.value, sourceId.value),
+      ])
+      caching.value = job.running
+
       if (detail.value) {
         detail.value.cached_pages = Math.max(detail.value.cached_pages, progress.cached)
         detail.value.cache_complete = progress.complete
@@ -188,13 +225,8 @@ const { pause: pauseProgressPolling, resume: resumeProgressPolling } = useInterv
           }
         }
       }
-      if (progress.complete) {
+      if (!job.running || progress.complete) {
         caching.value = false
-        if (detail.value?.meta?.pages) {
-          for (const p of detail.value.meta.pages) {
-            p.cached = true
-          }
-        }
         pauseProgressPolling()
       }
     } catch {
@@ -210,6 +242,32 @@ const { pause: pauseProgressPolling, resume: resumeProgressPolling } = useInterv
 function startProgressPolling() {
   pauseProgressPolling()
   resumeProgressPolling()
+}
+
+async function cacheCurrentChapter() {
+  if (!activeChapter.value || !detail.value || caching.value) return
+  caching.value = true
+  startProgressPolling()
+  try {
+    const progress = await api.cacheChapter(source.value, sourceId.value, activeChapter.value.id)
+    if (detail.value.meta?.pages) {
+      const ch = activeChapter.value
+      for (const p of detail.value.meta.pages) {
+        if (p.chapter === ch.id && progress.complete) {
+          p.cached = true
+        }
+      }
+    }
+    toast(`已开始缓存第 ${activeChapter.value.index} 話，后台进行中`, 'info')
+    if (progress.complete) {
+      pauseProgressPolling()
+      caching.value = false
+    }
+  } catch (e) {
+    pauseProgressPolling()
+    caching.value = false
+    toast(e instanceof Error ? e.message : String(e), 'error')
+  }
 }
 
 function goToAlbum() {
@@ -303,6 +361,26 @@ async function confirmRemoveChapter() {
               :total="activeChapterTotal"
               :running="caching"
             />
+
+            <button
+              class="btn btn-primary btn-xs"
+              type="button"
+              :title="readChapterLabel"
+              @click="startReadingChapter"
+            >
+              {{ readChapterLabel }}
+            </button>
+
+            <button
+              v-if="activeChapterCached < activeChapterTotal"
+              class="btn btn-secondary btn-xs"
+              type="button"
+              :disabled="caching"
+              :title="caching ? '缓存进行中...' : '离线缓存本话所有画页'"
+              @click="cacheCurrentChapter"
+            >
+              {{ caching ? '缓存中…' : '缓存本话' }}
+            </button>
 
             <div v-if="canWrite" class="chapter-mgmt-group">
               <button

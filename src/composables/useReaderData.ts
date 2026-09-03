@@ -94,7 +94,7 @@ export function useReaderData(options: UseReaderDataOptions = {}): UseReaderData
   })
 
   function backToDetail() {
-    void router.push(backTarget.value)
+    void router.replace(backTarget.value)
   }
 
   /* ---------------- 数据加载与生命周期 ---------------- */
