@@ -191,9 +191,8 @@ if [ -x "$IMSEARCH_BIN" ]; then
   fi
 
   # Check if imsearch is already running on port 8765
-  local imsearch_existing_pids
-  imsearch_existing_pids=$(get_port_pids 8765)
-  if [ -n "$imsearch_existing_pids" ] || curl -s http://127.0.0.1:8765/metrics &>/dev/null; then
+  IMSEARCH_EXISTING_PIDS=$(get_port_pids 8765)
+  if [ -n "$IMSEARCH_EXISTING_PIDS" ] || curl -s http://127.0.0.1:8765/metrics &>/dev/null; then
     echo "Imsearch Sidecar: 已在运行中 (http://127.0.0.1:8765)"
   else
     "$IMSEARCH_BIN" -c "$IMSEARCH_DATA" server --addr 127.0.0.1:8765 --nprobe 32 --count 20 &
