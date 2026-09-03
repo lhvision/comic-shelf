@@ -1,6 +1,5 @@
 import asyncio
 import json
-import logging
 import threading
 import time
 from typing import Any, AsyncGenerator
@@ -10,8 +9,6 @@ from fastapi.responses import StreamingResponse
 
 from .auth import get_client_ip
 
-logger = logging.getLogger("paper_room.events")
-
 router = APIRouter(prefix="/api/events", tags=["events"])
 
 # Concurrency limits for SSE stream protection
@@ -19,7 +16,7 @@ _MAX_TOTAL_LISTENERS = 200
 _MAX_IP_LISTENERS = 10
 
 # Stores (queue, event_loop) pairs to support thread-safe broadcasting from background threads
-_listeners: set[tuple[asyncio.Queue[str], asyncio.AbstractEventLoop]] = set()
+_listeners: set[tuple[asyncio.Queue[str | None], asyncio.AbstractEventLoop]] = set()
 _ip_counts: dict[str, int] = {}
 _pool_lock = threading.Lock()
 
@@ -38,7 +35,7 @@ def broadcast_event(event_type: str, data: dict[str, Any] | None = None) -> int:
     payload_data = json.dumps(data or {})
     sse_message = f"event: {event_type}\ndata: {payload_data}\n\n"
 
-    dead_entries: list[tuple[asyncio.Queue[str], asyncio.AbstractEventLoop]] = []
+    dead_entries: list[tuple[asyncio.Queue[str | None], asyncio.AbstractEventLoop]] = []
     delivered = 0
 
     try:
@@ -77,8 +74,26 @@ def get_active_listener_count() -> int:
 def shutdown_events() -> None:
     """Close and clear all active SSE listener queues on application shutdown."""
     with _pool_lock:
+        current_listeners = list(_listeners)
         _listeners.clear()
         _ip_counts.clear()
+
+    def _deliver_poison_pill(q: asyncio.Queue[str | None]) -> None:
+        try:
+            q.put_nowait(None)
+        except asyncio.QueueFull:
+            try:
+                q.get_nowait()
+                q.put_nowait(None)
+            except Exception:
+                pass
+
+    for queue, loop in current_listeners:
+        if not loop.is_closed():
+            try:
+                loop.call_soon_threadsafe(_deliver_poison_pill, queue)
+            except Exception:
+                pass
 
 
 @router.get("/stream")
@@ -96,7 +111,7 @@ async def sse_event_stream(request: Request) -> StreamingResponse:
         if _ip_counts.get(client_ip, 0) >= _MAX_IP_LISTENERS:
             raise HTTPException(status_code=429, detail="单设备事件流连接数已达上限")
 
-        queue: asyncio.Queue[str] = asyncio.Queue(maxsize=100)
+        queue: asyncio.Queue[str | None] = asyncio.Queue(maxsize=100)
         entry = (queue, loop)
         _listeners.add(entry)
         _ip_counts[client_ip] = _ip_counts.get(client_ip, 0) + 1
@@ -113,6 +128,8 @@ async def sse_event_stream(request: Request) -> StreamingResponse:
                 try:
                     # Suspend with 0 CPU load until an event is pushed or timeout triggers
                     msg = await asyncio.wait_for(queue.get(), timeout=25.0)
+                    if msg is None:
+                        break
                     yield msg
                 except asyncio.TimeoutError:
                     # 25s keepalive heartbeat preventing Cloudflare / Nginx proxy timeouts

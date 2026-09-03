@@ -66,8 +66,28 @@ async def run_events_tests():
     # Listener should be removed in finally block
     assert get_active_listener_count() == 0, "Listener count should return to 0 after disconnect"
 
+    # 7. Test graceful shutdown terminating active SSE stream immediately
+    response2 = await sse_event_stream(mock_request)
+    assert get_active_listener_count() == 1
+    gen2 = response2.body_iterator
+    await anext(gen2)  # ping
+    await anext(gen2)  # version
+
+    # Trigger application shutdown
+    shutdown_events()
+    assert get_active_listener_count() == 0
+
+    # Generator should stop immediately (raising StopAsyncIteration) rather than blocking for 25s
+    stopped = False
+    try:
+        await anext(gen2)
+    except StopAsyncIteration:
+        stopped = True
+    assert stopped, "Active SSE generator should exit immediately upon shutdown_events()"
+
     print("All backend SSE events unit tests passed successfully!")
 
 
 if __name__ == "__main__":
     asyncio.run(run_events_tests())
+

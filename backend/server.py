@@ -62,6 +62,7 @@ if __name__ == "__main__":
         reload_excludes=reload_excludes,
         workers=args.workers if not args.reload else None,
         timeout_keep_alive=30,
+        timeout_graceful_shutdown=3,
         backlog=2048,
         log_level=os.getenv("COMIC_SHELF_LOG_LEVEL", "info"),
         log_config=log_config,

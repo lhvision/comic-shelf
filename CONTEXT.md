@@ -109,7 +109,7 @@
 - **缩略图预热与渐进呈现（Thumbnail Pre-warming & Progressive Reveal）**：详情页与子章节页通过 360px JPEG 缩略图（48 页/批增量渲染）按需下发，同时在后端磁盘完成原图持久化解密；阅读器直接读取本地文件并通过 GPU 硬件加速透明度淡入呈现，达成 0 远端重复请求与毫秒级秒开。
 - **书架静默回源（Shelf SWR / Stale-While-Revalidate）**：书架首页在内存已有数据时先即时呈现现有卡片，后台静默向后端对齐最新状态，仅在初次无数据时展示骨架屏，杜绝切页时卡片重载与骨架屏闪烁。
 - **请求中止与竞态隔离（Request Abort & Race Cancellation）**：利用 `AbortController` 与组件生命周期绑定，在瞬时进出页面或并发触发检索（如以图搜图重选、排行榜切档）时主动取消上一轮未完成的网络请求，避免无效流量与状态覆盖。
-- **字阶底线与自适应排版（Typography Floor & Fitting）**：纸间对单行文字自适应（如阅读器顶栏标题、车号徽章）设立的排版保护原则。在采用现代弹性缩放防溢出的同时，强制受限于离散字阶底线（≥ `--text-xs` / 12px）；书架网格阵列坚守固定字阶与多行截断，杜绝卡片间字号忽大忽小破坏视觉节律。
+- **字阶底线与自适应排版（Typography Floor & Fitting）**：纸间对单行文字自适应（如阅读器顶栏标题、车号徽章）设立的排版保护原则。在采用现代弹性缩放防溢出的同时，强制受限于离散字阶底线（≥ `--text-xs` / 12px），极小徽标（`--text-caption` / 11px）优先借助 `font-size-adjust` 渐进增强突破 12px 限制并保持盒模型稳定，杜绝 `transform: scale()` 模糊与偏移；单行容器长文本防折行压缩（未来 `text-fit: shrink per-line`）严格限定于阅读器 HUD 与工具栏等单体上下文，严禁侵入书架网格阵列，坚守卡片阵列固定字阶与多行截断，杜绝卡片间字号忽大忽小破坏视觉节律。
 - **纸间统一图标集（Unified Archive Iconography）**：全站矢量图标单源字典体系。统一步调为暖纸细线条描边与朱砂印章质感（1.8px 细描边 / 24px 网格），彻底杜绝跨平台字符（`✕`/`✓`/`×`）渲染字重撕裂与重复内联 SVG 碎片。
 - **现代浮层体系（Modern Floating System）**：基于 HTML Popover API 与 CSS Anchor Positioning 规范构建的无依赖顶层浮动交互基建，包含 `Modal`（强中断模态对话框）、`AppPopover`（富交互锚定浮层）、`AppDropdown`（操作选单与选择器）与 `AppTooltip`（`popover="hint"` 轻量气泡提示），彻底消除散落的绝对定位胶水代码与 z-index 冲突。
 - **气泡提示（Tooltip / AppTooltip）**：`popover="hint"` 声明式轻量提示微件，专门承载辅助性只读文案；覆写浏览器 User-Agent 样式实现零幽灵滚动条；内置**悬停安全桥（Hover Bridge）**，遵循 WCAG 2.1 1.4.13 国际标准，支持光标无缝移入划词选读与复制。复杂表单、按钮列表与多级菜单严格收敛至 `AppPopover` / `AppDropdown`。
@@ -146,3 +146,5 @@
 - **闲时意图预热（Idle & Intent Prefetching）**：跨路由异步视图组件（如阅读器）的加载策略。首屏渲染期间通过 `requestIdleCallback` 在主线程空闲时静默预热，同时在交互按钮上绑定 `pointerenter`/`focusin`/`touchstart` 意图触发，杜绝预热流量混入初始关键请求链（Critical Request Chains）。
 - **静态资产传输压缩（Static Transfer Compression / GZip Middleware）**：单容器与 NAS 本地部署时后端全局挂载的动态压缩中间件（阈值 1000 字节）。将 CSS/JS/JSON 资源体积压缩 60~85%，消除未压缩静态文件对初始渲染的阻塞。
 - **封面渲染预算（Cover Dimension Budget / 720px）**：封面与缩略图的物理像素规格。默认采用 720px 宽度（JPEG/WebP 高画质），完美匹配 360~375px 卡片容器在 Retina 2x 屏幕下的物理细腻度，兼顾视觉质感与网络/解码开销。
+- **服务自愈与优雅退出熔断（Self-Healing Startup & Graceful Shutdown Timeout）**：本地开发环境与单容器部署的服务生命周期保护机制。启动前自动探测 8000 端口，识别并自愈回收历史残留的 Uvicorn/Python 僵尸进程；Uvicorn 配置 3 秒优雅停机超时熔断（`timeout_graceful_shutdown=3`），结合开发脚本（`dev.sh`）的进程树两阶段退出（`SIGTERM` -> 2s 缓冲 -> `SIGKILL` 兜底），彻底消除端口幽灵占用与孤儿进程。
+- **单向系统事件流主动注销（SSE Active Stream Teardown）**：后端优雅停机或热重载时针对 `/api/events/stream` 挂载的长连接实施的主动熔断机制。通过向活跃的 `asyncio.Queue` 投递 `None` 退出哨兵（Poison Pill），唤醒阻塞在 `queue.get()` 上的生成器协程即刻退出并关闭 HTTP 响应流，避免持久长连接阻止 Uvicorn 关停流程。
