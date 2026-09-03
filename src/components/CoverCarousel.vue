@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import AppIcon from '@/components/AppIcon.vue'
+import { coverSrcset } from '@/api/client'
 
 defineProps<{
   covers: string[]
@@ -59,6 +60,8 @@ function scrollByCard(direction: number) {
           <img
             class="cover-image"
             :src="cover"
+            :srcset="coverSrcset(cover)"
+            sizes="(max-width: 680px) 75vw, 360px"
             :alt="`${title} 第 ${index + 1} 页封面`"
             :loading="index < 2 ? 'eager' : 'lazy'"
             decoding="async"

@@ -387,12 +387,47 @@ def test_quiet_access_log_filter():
     assert f.filter(rec_img_200) is True
 
 
+def test_stepped_covers():
+    from PIL import Image
+    from app.storage import ComicStore
+    from app.models import ComicMeta
+    import tempfile
+
+    with tempfile.TemporaryDirectory() as td:
+        store = ComicStore(root=Path(td))
+        meta = ComicMeta(
+            source="test",
+            source_id="123",
+            display_id="123",
+            title="Stepped Cover Test",
+            page_count=1,
+        )
+        # Create a mock base 720px cover
+        base_cov = store.cover_path(meta, 1)
+        base_cov.parent.mkdir(parents=True, exist_ok=True)
+        with Image.new("RGB", (720, 1000), color="blue") as img:
+            img.save(base_cov, format="JPEG")
+
+        # Check 360px stepped path
+        thumb_cov = store.cover_path(meta, 1, width=360)
+        assert thumb_cov.name == "001_360.jpg"
+        assert not thumb_cov.exists()
+
+        # Downscale cover
+        scaled_res = store.scale_cover(base_cov, thumb_cov, target_width=360)
+        assert scaled_res.exists()
+        with Image.open(scaled_res) as simg:
+            assert simg.width == 360
+            assert simg.height == 500
+
+
 if __name__ == "__main__":
     test_auth_logic()
     test_hotlink_protection()
     test_guest_visibility_and_discovery_auth()
     test_auth_and_security_middleware()
     test_quiet_access_log_filter()
+    test_stepped_covers()
     print("All backend auth, middleware & hotlink protection tests passed!")
 
 

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
-import { chapterCoverUrl } from '@/api/client'
+import { chapterCoverUrl, coverSrcset } from '@/api/client'
 import CacheProgress from '@/components/CacheProgress.vue'
 import AppTextClamp from '@/components/AppTextClamp.vue'
 import AppIcon from '@/components/AppIcon.vue'
@@ -57,6 +57,8 @@ function onCoverError() {
       <img
         v-if="chapter.page_count > 0"
         :src="coverUrl"
+        :srcset="coverSrcset(coverUrl)"
+        sizes="(max-width: 680px) 120px, 160px"
         :alt="`第 ${chapter.index} 話 封面`"
         loading="lazy"
         decoding="async"

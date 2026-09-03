@@ -5,7 +5,7 @@ import HtmlCanvasSurface from '@/components/HtmlCanvasSurface.vue'
 import FavoriteButton from '@/components/FavoriteButton.vue'
 import CacheProgress from '@/components/CacheProgress.vue'
 import { useAuth } from '@/composables/useAuth'
-import { api } from '@/api/client'
+import { api, coverSrcset } from '@/api/client'
 
 const props = withDefaults(
   defineProps<{
@@ -59,6 +59,8 @@ function prefetch() {
         <img
           v-if="comic.cover_paths[0]"
           :src="comic.cover_paths[0]"
+          :srcset="coverSrcset(comic.cover_paths[0])"
+          sizes="(max-width: 680px) calc(50vw - 1.5rem), (max-width: 1200px) 25vw, 240px"
           :alt="`${comic.title} 封面`"
           loading="lazy"
           decoding="async"
@@ -155,6 +157,7 @@ function prefetch() {
   border-radius: var(--radius-1);
   font-family: var(--font-mono);
   font-size: var(--text-caption);
+  font-size-adjust: ch-width 0.48;
   letter-spacing: 0.08em;
 }
 

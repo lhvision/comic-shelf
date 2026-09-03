@@ -4,7 +4,7 @@ import type { LibrarySummary } from '@/types'
 import FavoriteButton from '@/components/FavoriteButton.vue'
 import CacheProgress from '@/components/CacheProgress.vue'
 import AppTextClamp from '@/components/AppTextClamp.vue'
-import { api } from '@/api/client'
+import { api, coverSrcset } from '@/api/client'
 import { useCoverTransition } from '@/composables/useCoverTransition'
 import { useAuth } from '@/composables/useAuth'
 
@@ -83,6 +83,8 @@ const cardTransitionName = computed(
             v-if="isDeckActive"
             class="deck-leaf-img"
             :src="cover"
+            :srcset="coverSrcset(cover)"
+            sizes="(max-width: 680px) calc(50vw - 1.5rem), (max-width: 1200px) 25vw, 240px"
             alt=""
             loading="lazy"
             decoding="async"
@@ -97,6 +99,8 @@ const cardTransitionName = computed(
             v-if="comic.cover_paths[0]"
             class="cover-image"
             :src="comic.cover_paths[0]"
+            :srcset="coverSrcset(comic.cover_paths[0])"
+            sizes="(max-width: 680px) calc(50vw - 1.5rem), (max-width: 1200px) 25vw, 240px"
             :alt="`${comic.title} 封面`"
             loading="lazy"
             decoding="async"

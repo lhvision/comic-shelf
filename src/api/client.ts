@@ -494,9 +494,31 @@ export const pageFileUrl = (source: string, sourceId: string, index: number) =>
 export const pageThumbUrl = (source: string, sourceId: string, index: number) =>
   `${BASE}/library/${source}/${sourceId}/pages/${index}/thumbnail.jpg`
 
-export const coverFileUrl = (source: string, sourceId: string, index: number) =>
-  `${BASE}/library/${source}/${sourceId}/covers/${index}/file.jpg`
+export const coverFileUrl = (source: string, sourceId: string, index: number, width?: number) => {
+  const base = `${BASE}/library/${source}/${sourceId}/covers/${index}/file.jpg`
+  return width ? `${base}?w=${width}` : base
+}
 
 // T17：章节目录封面端点（后端按章节 id 定位，从该话第一页生成并池化缓存）
-export const chapterCoverUrl = (source: string, sourceId: string, chapterId: string) =>
-  `${BASE}/library/${source}/${sourceId}/chapters/${chapterId}/cover.jpg`
+export const chapterCoverUrl = (
+  source: string,
+  sourceId: string,
+  chapterId: string,
+  width?: number,
+) => {
+  const base = `${BASE}/library/${source}/${sourceId}/chapters/${chapterId}/cover.jpg`
+  return width ? `${base}?w=${width}` : base
+}
+
+/** 为图片/封面 URL 安全附加宽度参数（?w=360 或 &w=360） */
+export const withWidth = (url: string, width: number): string => {
+  if (!url) return ''
+  const sep = url.includes('?') ? '&' : '?'
+  return `${url}${sep}w=${width}`
+}
+
+/** 生成符合 HTML5 规范的响应式封面 srcset 字符串（默认 360w 阶梯 + 720w 高保真原图） */
+export const coverSrcset = (url: string, thumbWidth = 360, fullWidth = 720): string => {
+  if (!url) return ''
+  return `${withWidth(url, thumbWidth)} ${thumbWidth}w, ${url} ${fullWidth}w`
+}

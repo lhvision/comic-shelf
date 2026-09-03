@@ -15,6 +15,7 @@ from fastapi import HTTPException
 
 from .config import (
     COVER_QUALITY,
+    COVER_THUMB_WIDTH,
     COVER_WIDTH,
     DATA_DIR,
     LIBRARY_DIR,
@@ -150,7 +151,9 @@ class ComicStore:
             return base / self._safe(page.chapter) / f"{page.index:05d}.jpg"
         return base / f"{page.index:05d}.jpg"
 
-    def cover_path(self, meta: ComicMeta, index: int) -> Path:
+    def cover_path(self, meta: ComicMeta, index: int, width: int | None = None) -> Path:
+        if width and width <= COVER_THUMB_WIDTH:
+            return self.covers_dir(meta.source, meta.source_id) / f"{index:03d}_{width}.jpg"
         return self.covers_dir(meta.source, meta.source_id) / f"{index:03d}.jpg"
 
     def thumbs_dir(self, source: str, source_id: str) -> Path:
@@ -516,7 +519,7 @@ class ComicStore:
         return sum(1 for page in meta.pages if page.cached)
 
     @staticmethod
-    def _save_cover(page_path: Path, target: Path) -> None:
+    def _save_cover(page_path: Path, target: Path, target_width: int = COVER_WIDTH) -> None:
         """Resize one finished page into a JPEG cover/thumbnail file."""
         from PIL import Image, ImageOps
 
@@ -526,20 +529,44 @@ class ComicStore:
                 img.seek(0)
             if img.mode not in {"RGB", "L"}:
                 img = img.convert("RGB")
-            ratio = COVER_WIDTH / max(img.width, 1)
+            ratio = target_width / max(img.width, 1)
             if ratio < 1:
-                size = (COVER_WIDTH, max(1, round(img.height * ratio)))
+                size = (target_width, max(1, round(img.height * ratio)))
                 img = img.resize(size, Image.Resampling.LANCZOS)
             target.parent.mkdir(parents=True, exist_ok=True)
-            img.save(target, format="JPEG", quality=COVER_QUALITY, optimize=True, progressive=True)
+            tmp = target.with_suffix(f".tmp.{os.getpid()}.{threading.get_ident()}.jpg")
+            img.save(tmp, format="JPEG", quality=COVER_QUALITY, optimize=True, progressive=True)
+            tmp.replace(target)
 
-    def ensure_cover(self, meta: ComicMeta, fetched: FetchedComic, index: int) -> Path:
-        target = self.cover_path(meta, index)
+    def scale_cover(self, source_cover: Path, target: Path, target_width: int = COVER_THUMB_WIDTH) -> Path:
+        """Downscale an existing high-res cover to target_width (e.g. 360px)."""
+        if target.exists() and target.stat().st_size > 0:
+            return target
+        self._save_cover(source_cover, target, target_width=target_width)
+        return target
+
+    def ensure_cover(
+        self, meta: ComicMeta, fetched: FetchedComic, index: int, width: int | None = None
+    ) -> Path:
+        target = self.cover_path(meta, index, width)
         if target.exists() and target.stat().st_size > 0:
             return target
 
         with self._lock_for_page(meta.source, meta.source_id, index):
             if target.exists() and target.stat().st_size > 0:
+                return target
+
+            if width and width <= COVER_THUMB_WIDTH:
+                base_cover = self.cover_path(meta, index)
+                if not (base_cover.exists() and base_cover.stat().st_size > 0):
+                    if meta.cover_indices and 1 <= index <= len(meta.cover_indices):
+                        page_index = meta.cover_indices[index - 1]
+                    else:
+                        page_index = index
+                    page_index = max(1, min(page_index, meta.page_count or 1))
+                    page_path = self.ensure_page(fetched, page_index)
+                    self._save_cover(page_path, base_cover)
+                self.scale_cover(base_cover, target, target_width=width)
                 return target
 
             if meta.cover_indices and 1 <= index <= len(meta.cover_indices):
@@ -555,21 +582,33 @@ class ComicStore:
     def chapter_covers_dir(self, source: str, source_id: str) -> Path:
         return self.covers_dir(source, source_id) / "chapters"
 
-    def chapter_cover_path(self, meta: ComicMeta, chapter: Chapter) -> Path:
+    def chapter_cover_path(self, meta: ComicMeta, chapter: Chapter, width: int | None = None) -> Path:
+        if width and width <= COVER_THUMB_WIDTH:
+            return self.chapter_covers_dir(meta.source, meta.source_id) / f"{self._safe(chapter.id)}_{width}.jpg"
         return self.chapter_covers_dir(meta.source, meta.source_id) / f"{self._safe(chapter.id)}.jpg"
 
-    def ensure_chapter_cover(self, meta: ComicMeta, fetched: FetchedComic, chapter: Chapter) -> Path:
+    def ensure_chapter_cover(
+        self, meta: ComicMeta, fetched: FetchedComic, chapter: Chapter, width: int | None = None
+    ) -> Path:
         """JPEG cover for a chapter = its first page, pooled under covers/chapters/.
 
         T17（章节目录封面池化）：目录不再走每话第一页的 thumbnail（那也要下载整页 +
         生成 360px 缩略图），改用章节封面端点一次生成并缓存，失败由前端回落书脊占位。
         """
-        target = self.chapter_cover_path(meta, chapter)
+        target = self.chapter_cover_path(meta, chapter, width)
         if target.exists() and target.stat().st_size > 0:
             return target
 
         with self._lock_for_page(meta.source, meta.source_id, chapter.start):
             if target.exists() and target.stat().st_size > 0:
+                return target
+
+            if width and width <= COVER_THUMB_WIDTH:
+                base_cover = self.chapter_cover_path(meta, chapter)
+                if not (base_cover.exists() and base_cover.stat().st_size > 0):
+                    page_path = self.ensure_page(fetched, chapter.start)
+                    self._save_cover(page_path, base_cover)
+                self.scale_cover(base_cover, target, target_width=width)
                 return target
 
             page_path = self.ensure_page(fetched, chapter.start)

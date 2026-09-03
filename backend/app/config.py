@@ -34,6 +34,7 @@ LIBRARY_DIR.mkdir(parents=True, exist_ok=True)
 TMP_DIR.mkdir(parents=True, exist_ok=True)
 
 COVER_WIDTH = int(os.getenv("COMIC_SHELF_COVER_WIDTH", "720"))
+COVER_THUMB_WIDTH = int(os.getenv("COMIC_SHELF_COVER_THUMB_WIDTH", "360"))
 COVER_QUALITY = int(os.getenv("COMIC_SHELF_COVER_QUALITY", "80"))
 COVER_COUNT = int(os.getenv("COMIC_SHELF_COVER_COUNT", "4"))
 

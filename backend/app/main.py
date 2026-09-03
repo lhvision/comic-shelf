@@ -29,7 +29,7 @@ from .auth import (
     set_auth_cookie,
     set_device_cookie,
 )
-from .config import AUTH_SECRET, DATA_DIR, ENABLE_DOCS, LIBRARY_DIR
+from .config import AUTH_SECRET, COVER_THUMB_WIDTH, DATA_DIR, ENABLE_DOCS, LIBRARY_DIR
 from .db import (
     claim_guest_pass,
     create_guest_pass,
@@ -1074,14 +1074,23 @@ def page_thumbnail(source: str, source_id: str, index: int, request: Request, ex
 
 @app.get("/api/library/{source}/{source_id}/covers/{index}/file")
 @app.get("/api/library/{source}/{source_id}/covers/{index}/file.{ext}")
-def cover_file(source: str, source_id: str, index: int, request: Request, v: str | None = None, ext: str | None = None) -> FileResponse:
+def cover_file(
+    source: str,
+    source_id: str,
+    index: int,
+    request: Request,
+    v: str | None = None,
+    ext: str | None = None,
+    w: int | None = None,
+) -> FileResponse:
     # Note: `ext` is bound by route pattern for CDN cache recognition; response is always JPEG.
     meta = _require_meta(source, source_id, request)
     max_covers = len(meta.cover_indices) if meta.cover_indices else meta.cover_count
     if index < 1 or index > max_covers or index > meta.page_count:
         raise HTTPException(status_code=404, detail=f"封面 {index} 不存在")
 
-    cover_path = store.cover_path(meta, index)
+    target_width = COVER_THUMB_WIDTH if (w and w <= COVER_THUMB_WIDTH) else None
+    cover_path = store.cover_path(meta, index, target_width)
     if cover_path.exists() and cover_path.stat().st_size > 0:
         return FileResponse(
             cover_path,
@@ -1089,12 +1098,23 @@ def cover_file(source: str, source_id: str, index: int, request: Request, v: str
             headers=CACHE_CONTROL_IMMUTABLE,
         )
 
+    # Fast path: if requesting stepped 360px cover and base 720px cover exists on disk, downscale directly
+    if target_width:
+        base_cover = store.cover_path(meta, index)
+        if base_cover.exists() and base_cover.stat().st_size > 0:
+            path = store.scale_cover(base_cover, cover_path, target_width)
+            return FileResponse(
+                path,
+                media_type="image/jpeg",
+                headers=CACHE_CONTROL_IMMUTABLE,
+            )
+
     fetched = store.load_fetched(source, source_id)
     if fetched is None:
         raise HTTPException(status_code=404, detail="本子缓存不完整，请先刷新导入")
 
     try:
-        path = store.ensure_cover(meta, fetched, index)
+        path = store.ensure_cover(meta, fetched, index, target_width)
     except HTTPException:
         raise
     except Exception as exc:
@@ -1108,14 +1128,22 @@ def cover_file(source: str, source_id: str, index: int, request: Request, v: str
 
 @app.get("/api/library/{source}/{source_id}/chapters/{chapter_id}/cover")
 @app.get("/api/library/{source}/{source_id}/chapters/{chapter_id}/cover.{ext}")
-def chapter_cover(source: str, source_id: str, chapter_id: str, request: Request, ext: str | None = None) -> FileResponse:
+def chapter_cover(
+    source: str,
+    source_id: str,
+    chapter_id: str,
+    request: Request,
+    ext: str | None = None,
+    w: int | None = None,
+) -> FileResponse:
     """T17：章节目录封面（该话第一页），池化在 covers/chapters/ 下，失败前端回落占位（`ext` 供 CDN 缓存识别）。"""
     meta = _require_meta(source, source_id, request)
     chapter = next((c for c in meta.chapters if c.id == chapter_id), None)
     if chapter is None:
         raise HTTPException(status_code=404, detail="没有这个章节")
 
-    chap_cover_path = store.chapter_cover_path(meta, chapter)
+    target_width = COVER_THUMB_WIDTH if (w and w <= COVER_THUMB_WIDTH) else None
+    chap_cover_path = store.chapter_cover_path(meta, chapter, target_width)
     if chap_cover_path.exists() and chap_cover_path.stat().st_size > 0:
         return FileResponse(
             chap_cover_path,
@@ -1123,12 +1151,23 @@ def chapter_cover(source: str, source_id: str, chapter_id: str, request: Request
             headers=CACHE_CONTROL_IMMUTABLE,
         )
 
+    # Fast path: if requesting stepped 360px chapter cover and base exists on disk, downscale directly
+    if target_width:
+        base_cover = store.chapter_cover_path(meta, chapter)
+        if base_cover.exists() and base_cover.stat().st_size > 0:
+            path = store.scale_cover(base_cover, chap_cover_path, target_width)
+            return FileResponse(
+                path,
+                media_type="image/jpeg",
+                headers=CACHE_CONTROL_IMMUTABLE,
+            )
+
     fetched = store.load_fetched(source, source_id)
     if fetched is None:
         raise HTTPException(status_code=404, detail="本子缓存不完整，请先刷新导入")
 
     try:
-        path = store.ensure_chapter_cover(meta, fetched, chapter)
+        path = store.ensure_chapter_cover(meta, fetched, chapter, target_width)
     except HTTPException:
         raise
     except Exception as exc:
