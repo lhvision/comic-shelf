@@ -98,6 +98,7 @@ function readerLink() {
   color: var(--paper-0);
   font-family: var(--font-mono);
   font-size: var(--text-caption);
+  font-size-adjust: ch-width 0.48;
 }
 
 .page-state {
@@ -109,6 +110,7 @@ function readerLink() {
   background: color-mix(in oklab, var(--paper-0) 76%, transparent);
   color: var(--ink-1);
   font-size: var(--text-caption);
+  font-size-adjust: ic-width 0.6875;
 }
 
 .page-tile[data-cached='true'] .page-state {

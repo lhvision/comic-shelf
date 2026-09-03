@@ -62,6 +62,8 @@
   - **标题与典藏名**：Serif Display（衬线体，营造书籍装订典雅感）；
   - **正文与控件**：Sans-serif（高可读性现代无衬线体）；
   - **页码与统计元数据**：Monospace 等宽字体（如 `01 / 24 P`，保证排版整齐不抖动）。
+- **微标与字阶底线（Typography Floor & Caption）**：全站正文字阶受限于 `--text-xs` (12px) 底线；极小徽章与微标采用 `--text-caption: 0.6875rem` (11px)，借助 `font-size-adjust` 渐进增强突破传统 12px 限制并保持盒模型稳定，**严禁使用 `transform: scale()`**（避免引发盒模型不收缩、文字亚像素发虚与定位漂移反模式）；
+- **自适应长文本防折行边界**：单行长文本自适应压缩（未来 `text-fit: shrink per-line`）严格局限于阅读器 HUD / 紧凑工具栏等单体场景，**绝对禁止侵入书架卡片网格阵列**（书架卡片标题坚守固定字阶 + `<AppTextClamp :lines="2">` 截断，杜绝卡片间字号忽大忽小破坏视觉节律）。
 
 ### 2.3 动效与触控底线（Motion & Touch Floor）
 
@@ -102,7 +104,8 @@
 
 - **书架 48 图预算（Shelf 48-Cover Budget）**：首页每本漫画包含 4 张展示封面（1 主封面 + 3 叠牌封面），采用 12 本/批（严格对应 12 × 4 = 48 张封面图）的增量渲染机制（VueUse `useIntersectionObserver` 监听底部哨兵）；
 - **详情页 48 页切片（Detail Index Chunking）**：详情页缩略图按 48 页增量展开，避免千页巨作一次性阻塞主线程；
-- **Canvas 重绘防抖（Canvas Redraw Debounce）**：Canvas 卡片采用 `redrawKey` + 80ms 防抖调度，消除高频进度重绘带来的掉帧。
+- **Canvas 重绘防抖（Canvas Redraw Debounce）**：Canvas 卡片采用 `redrawKey` + 80ms 防抖调度，消除高频进度重绘带来的掉帧；
+- **响应式阶梯封面（Responsive Stepped Covers）**：封面与缩略图遵循 `Cover Dimension Budget`（720px 物理基线）；未来多阶分发严格遵循 `srcset`（`360w`, `720w`）+ `sizes` 规范，**严禁只写 `w` 漏写 `sizes`**（防浏览器默认 100vw 拉取超大图），渐进增强支持 `sizes="auto"` 与 `loading="lazy"` 原生尺寸联动。
 
 ### 3.4 现代进度条与拟真加载体系（Progress Bar System）
 

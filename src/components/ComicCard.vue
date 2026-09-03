@@ -290,6 +290,7 @@ const cardTransitionName = computed(
   border-radius: var(--radius-1);
   font-family: var(--font-mono);
   font-size: var(--text-caption);
+  font-size-adjust: ch-width 0.48;
   letter-spacing: 0.08em;
   backdrop-filter: blur(4px);
 }
@@ -308,6 +309,7 @@ const cardTransitionName = computed(
   border-radius: var(--radius-1);
   font-family: var(--font-mono);
   font-size: var(--text-caption);
+  font-size-adjust: ch-width 0.48;
   letter-spacing: 0.04em;
   font-weight: 600;
   text-decoration: none;

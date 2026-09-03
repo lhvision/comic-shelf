@@ -20,6 +20,8 @@
    - [2.8 CSS Anchor Positioning — 锚点定位与动态指示器](#28-css-anchor-positioning--锚点定位与动态指示器)
    - [2.9 全局 View Transitions API (`startViewTransition`) — 页面级丝滑过渡](#29-全局-view-transitions-api-startviewtransition--页面级丝滑过渡)
    - [2.10 `-webkit-line-clamp` 与多行文本截断体系（W3C 兼容规范与单源收敛）](#210--webkit-line-clamp-与多行文本截断体系w3c-兼容规范与单源收敛)
+   - [2.11 `font-size-adjust` — 字形度量均衡与微型字阶渲染（Baseline 2024）](#211-font-size-adjust--字形度量均衡与微型字阶渲染baseline-2024)
+   - [2.12 `srcset` 与 `sizes` — 响应式阶梯封面与多密屏幕自适应（HTML5/CSS 媒体管线）](#212-srcset-与-sizes--响应式阶梯封面与多密屏幕自适应html5css-媒体管线)
 3. [渐进增强特性（Progressive Enhancement）](#3-渐进增强特性progressive-enhancement)
    - [3.1 `interpolate-size: allow-keywords` 与 CSS Grid 复合轨道](#31-interpolate-size-allow-keywords-与-css-grid-复合轨道)
    - [3.2 `::details-content` — 原生展开内容伪元素](#32-details-content--原生展开内容伪元素)
@@ -35,6 +37,7 @@
    - [4.3 `@container style(...)` 样式容器查询（范围语法）](#43-container-style-样式容器查询范围语法)
    - [4.4 CSS `progress()` 数学函数](#44-css-progress-数学函数)
    - [4.5 CSS 动态鼠标跟随锚点（Mouse-Follow Anchor）](#45-css-动态鼠标跟随锚点mouse-follow-anchor)
+   - [4.6 `text-fit` — 容器宽度文字自动适配（Stage 1-2 / Chrome 150+）](#46-text-fit--容器宽度文字自动适配stage-1-2--chrome-150)
 5. [升级路线图（Roadmap）](#5-升级路线图roadmap)
 6. [参考资源（MDN & 博客专栏）](#6-参考资源mdn--博客专栏)
 
@@ -59,6 +62,9 @@
 | **`@container anchored(fallback)`**     |              135+               |                ⏳                |                  ⏳                   |                   🧪 Experimental                    |   ✅ 渐进增强（`AppPopover` / `Tooltip` 小三角自适应翻转）   |
 | **全局 View Transitions API**           |     111+<br>_(125+ types)_      |      144+<br>_(147+ types)_      |        18+<br>_(18.2+ types)_         |                ✅ Baseline 2024/2025                 |     ✅ 已落地（`useViewTransition.ts` / 跨页面路由推进）     |
 | **`-webkit-line-clamp` / `line-clamp`** | 6+ (前缀)<br>_(Preview 无前缀)_ | 68+ (前缀)<br>_(Preview 无前缀)_ | 5+ (前缀)<br>_(18.2-18.3 误开已回退)_ | ✅ W3C 兼容事实标准（前缀）<br>⏳ 规范草案（无前缀） |     ✅ 已落地（`AppTextClamp.vue` / `main.css` 实用类）      |
+| **`font-size-adjust`**                  |              127+               |     3+<br>_(92+ two-values)_     |      16.4+<br>_(17+ two-values)_      |                   ✅ Baseline 2024                   |    ✅ 渐进增强（微标 `--text-caption` 与多语言字形排版）     |
+| **`srcset` / `sizes` (`w` 描述符)**     |      38+<br>_(34+ srcset)_      |               38+                |         9.1+<br>_(8+ srcset)_         |                   ✅ Baseline 2016                   |           📋 路线图（响应式阶梯封面分阶调度管线）            |
+| **`sizes="auto"` (懒加载原生联动)**     |              126+               |               150+               |                  ⏳                   |               🔶 Newly Available 2026                |         📋 路线图（配合 `loading="lazy"` 自动槽位）          |
 | **局部 Element-Scoped VT**              |              147+               |                ⏳                |                  ⏳                   |                      🧪 Stage 2                      |     ✅ 渐进增强（`useViewTransition.ts` 元素级门面封装）     |
 | `interpolate-size: allow-keywords`      |              129+               |                ⏳                |                  ⏳                   |               🔶 Limited Availability                |         ✅ 已落地（TagFilterBar / ImportPanel 展开）         |
 | `::details-content`                     |              131+               |               143+               |                 18.4+                 |               🔶 Limited Availability                |          ✅ 渐进增强（main.css 全局 details 动画）           |
@@ -68,6 +74,7 @@
 | `CSSStyleSheet` (Constructable)         |               73+               |               101+               |                 16.4+                 |                   ✅ Baseline 2023                   |              ⚠️ 与 Vue SFC scoped CSS 模式冲突               |
 | CSS `progress()` 数学函数               |              138+               |               155+               |                  26+                  |               🔶 Newly Available 2026                |    ✅ 渐进增强（以 `--progress` + `AppProgressBar` 承接）    |
 | CSS 动态鼠标跟随锚点                    |              144+               |                ⏳                |                  ⏳                   |                      🧪 Stage 2                      |          📋 路线图（未来漫画阅读器局部高倍放大镜）           |
+| **`text-fit`**                          |              150+               |                ❌                |                  ❌                   |                      🧪 Stage 2                      |         📋 路线图（未来阅读器顶栏长标题压缩防折行）          |
 | CSS `if()` 行内条件                     |             137+🚩              |                ❌                |                  ❌                   |                      🧪 Stage 1                      |                  🚫 构建工具限制，暂不采用                   |
 | CSS `@function`                         |             139+🚩              |                ❌                |                  ❌                   |                      🧪 Stage 2                      |                    🚫 过早引入，暂不采用                     |
 
@@ -421,6 +428,88 @@ overflow: hidden;
 
 ---
 
+### 2.11 `font-size-adjust` — 字形度量均衡与微型字阶渲染（Baseline 2024）
+
+**MDN**：[font-size-adjust](https://developer.mozilla.org/en-US/docs/Web/CSS/font-size-adjust)  
+**Baseline**：2024 · Chrome 127+ (2024-07) · Firefox 3+ (92+ 双值语法) · Safari 16.4+ (17+ 双值语法)  
+**参考**：[张鑫旭 不要搞混了，不是text而是CSS font-size-adjust属性](https://www.zhangxinxu.com/wordpress/2025/02/css-font-size-adjust/)  
+**本项目落地决策**：✅ **渐进增强（已在设计规范确立，用于微型徽标 `--text-caption` (11px) 与多语言书名排版）**
+
+**核心原理与度量体系**：
+
+传统 Web 排版中，不同字体的字形高度与宽度比例截然不同（例如英文字体 Times 相比 Verdana 显得小一圈；中文字体楷体比苹方显得小一圈）。`font-size-adjust` 允许声明一个比率值，强制浏览器按指定度量微调字符视觉尺寸，使不同字体或回退字体展现出近乎一致的视觉字重。
+
+支持 5 种字体度量（Font Metrics）模式：
+
+- `ex-height`（默认）：基于小写字母 `x` 的高度占比调节；
+- `cap-height`：基于大写字母高度调节；
+- `ch-width`：基于数字 `0` 的宽度调节（单等宽数字排版极佳）；
+- `ic-width`：基于中文字“水”的宽度调节；
+- `ic-height`：基于中文字“水”的高度调节。
+
+**三大核心价值与纸间落地场景**：
+
+1. **突破 12px 最小渲染限制（取代 `transform: scale()` 反模式）**：
+   - **痛点**：纸间设计系统中定义了极小徽标/角标 Token `--text-caption: 0.6875rem`（11px）。在过往前端实践中，由于桌面端浏览器有 12px 渲染限制，开发者常通过 `transform: scale(0.85)` 缩放，但这会导致外层盒模型尺寸不缩小、定位基准偏移、文本模糊与鼠标命中区错位；
+   - **解法**：通过 `font-size-adjust: ic-width 0.6875` 或结合等宽数字 `font-size-adjust: ch-width 0.5`，可在不改变 `font-size` 真实计算值（保持盒模型几何稳定）的前提下，由文本渲染引擎直接将字形清晰微调至 11px 真实大小，0 变形、0 模糊。
+2. **不影响 `em` 相对单位计算**：
+   - `font-size-adjust` 仅调整字形的视觉渲染大小，并不改变元素的 `font-size` 计算值。因此，子元素或内联图标如果使用 `width: 1em; height: 1em;`，依然会严格锚定原始的 `font-size` 物理像素，不会产生意外的布局雪崩。
+3. **中日西文混排与后备字体平滑过渡**：
+   - 漫画车号、汉化组署名、多语言长书名常包含中/日/西文与特殊符号。当首选西文字体（如 `Avenir Next`）与中文字体（如 `Noto Sans SC`）切换时，统一声明 `font-size-adjust: from-font` 或指定 `ex-height`，可消除视觉下沉感与字形撕裂。
+
+**代码范式（微标与紧凑徽章）**：
+
+```css
+.badge-caption {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs); /* 12px 兜底 */
+  font-size-adjust: ch-width 0.48; /* 视觉微调至 ~11px，保持盒模型完整 */
+  line-height: var(--leading-tight);
+}
+```
+
+---
+
+### 2.12 `srcset` 与 `sizes` — 响应式阶梯封面与多密屏幕自适应（HTML5/CSS 媒体管线）
+
+**MDN**：[HTMLImageElement: srcset](https://developer.mozilla.org/en-US/docs/Web/API/HTMLImageElement/srcset) · [HTMLImageElement: sizes](https://developer.mozilla.org/en-US/docs/Web/API/HTMLImageElement/sizes)  
+**Baseline**：2016（全网事实标准）· Chrome 38+ · Firefox 38+ · Safari 9.1+  
+**现代演进**：`sizes="auto"`（Chrome 126+, Firefox 150+）  
+**参考**：[张鑫旭 响应式图片srcset全新释义sizes属性w描述符](https://www.zhangxinxu.com/wordpress/2014/10/responsive-images-srcset-size-w-descriptor/)  
+**本项目落地决策**：📋 **纳入响应式媒体管线标准，指导封面派生图与阅读器高分屏分阶按需拉取**
+
+**核心机制与关键原理**：
+
+1. **`w` 描述符是物理像素，不是视口宽**：
+   - 例如 `srcset="cover-360.webp 360w, cover-720.webp 720w"` 表示各张切片真实的物理像素宽度。
+2. **`sizes` 是渲染预期的 CSS 槽位尺寸**：
+   - 浏览器在解析 HTML 阶段，尚未执行 CSS 样式计算和重排，不知道图片最终在屏幕上会渲染成多大；
+   - `sizes` 用于在 HTML 解析阶段提前告知浏览器该图片在不同断点下的预期槽位宽度（如 `sizes="(max-width: 680px) 50vw, 200px"`）；
+   - 浏览器将 `sizes 计算宽度 × 设备像素比 (DPR)`，计算出所需的最小物理像素数，再从 `srcset` 中选择最适宜的一档资源。
+3. **避坑红线：严禁只写 `w` 描述符而省略 `sizes`**：
+   - **痛点复盘**：如果写了 `srcset="... 360w, ... 720w, ... 1440w"` 却漏写了 `sizes`，WHATWG 规范规定浏览器默认按 `sizes="100vw"` 处理；
+   - **后果**：在桌面 2K/4K 屏幕上，即便书架卡片在界面上只占 180px 宽度，浏览器也会按 2000px+ 视口计算，导致强行下载最大的 1440w 超大原图，带来严重的带宽浪费与解码内存暴涨！必须始终配套编写精确的 `sizes`。
+4. **现代前瞻：`sizes="auto"` 与懒加载原生联动**：
+   - Chrome 126+ 与 Firefox 150+ 已支持 `sizes="auto"`；
+   - 当图片带有 `loading="lazy"` 时，浏览器在图片即将进入视口前，会根据已完成排版的 DOM 真实布局宽度自动推导 `sizes`，彻底免去手动编写复杂媒体查询的成本。
+
+**纸间生产落地蓝图（`ComicCard.vue` 封面标准契约）**：
+
+```html
+<!-- 书架卡片封面响应式声明范式 -->
+<img
+  :src="coverUrl"
+  :srcset="`${coverUrlThumb} 360w, ${coverUrl} 720w`"
+  sizes="(max-width: 680px) calc(50vw - 1.5rem), (max-width: 960px) 33vw, 200px"
+  loading="lazy"
+  decoding="async"
+  alt="封面"
+  class="comic-cover"
+/>
+```
+
+---
+
 ## 3. 渐进增强特性（Progressive Enhancement）
 
 ### 3.1 `interpolate-size: allow-keywords` 与 CSS Grid 复合轨道
@@ -741,6 +830,52 @@ await withViewTransition(
 
 ---
 
+### 4.6 `text-fit` — 容器宽度文字自动适配（Stage 1-2 / Chrome 150+）
+
+**MDN / 规范**：[CSS Text Module Level 5: text-fit](https://drafts.csswg.org/css-text-5/#text-fit-property)  
+**规范阶段**：Stage 1-2（Experimental / Standard Track）  
+**可用**：Chrome 150+ (2026-06-30), Opera 134+ · Firefox ❌ · Safari ❌  
+**参考**：[张鑫旭 卧靠，这是好东西，CSS text-fit属性简介](https://www.zhangxinxu.com/wordpress/2026/08/css-text-fit/)  
+**本项目落地决策**：📋 **实验草案储备；严格界定使用边界（限单体 HUD/工具栏长标题防折行，严禁侵入书架网格阵列）**
+
+**语法与适配模型**：
+
+```css
+text-fit: <fit-type> <fit-target>;
+```
+
+- `<fit-type>`（缩放类型）：
+  - `none`：不进行自动适配；
+  - `grow`：放大文本以填满可用空间；
+  - `shrink`：缩小过长文本以防止溢出。
+- `<fit-target>`（适配目标）：
+  - `per-line`：逐行单独计算，让每行各自填满容器；
+  - `per-line-all`：所有行共同参与、强制填满；
+  - `consistent`：整块文本按统一比例等比缩放，保持行间字号相对一致。
+
+**纸间适配场景与设计红线**：
+
+1. **强适用场景（阅读器顶栏 HUD & 紧凑工具栏）**：
+   - **痛点**：在 `ReaderView` 顶栏或手机端窄屏下，部分长篇漫画书名（如《关于我转生变成史莱姆这档事...》）会换行并撑破沉浸式工具栏，以往必须手写 JS 测量或粗暴截断；
+   - **解法**：在单行顶栏标题声明 `text-fit: shrink per-line`，配合 `white-space: nowrap`，超出容器宽度的长书名由浏览器底层排版引擎无级缩小至容纳，0 JS 开销且绝不折行。
+2. **严苛禁止场景（书架卡片网格流）**：
+   - **红线**：**绝对禁止在书架卡片网格的标题中使用 `text-fit: grow`**！
+   - **根因**：网格排版依赖严整的视觉节律与统一字阶底线（`DESIGN_NOTES.md` §2.2 / `CONTEXT.md` 第 112 条）。如果短标题（如 4 个字）被放大至 36px，长标题被缩小至 12px，整个书架卡片网格的字号高低错落，视觉美感完全丧失。书架卡片标题坚决坚守 `<AppTextClamp :lines="2">` 截断 + 悬停 Tooltip 浮层。
+
+**未来试验代码模型**：
+
+```css
+/* 阅读器 HUD 紧凑长标题自适应（前瞻草案） */
+.reader-hud__title {
+  font-size: var(--text-md);
+  white-space: nowrap;
+  overflow: hidden;
+  text-fit: shrink per-line; /* 现代 Chrome 150+ 自动压缩防折行 */
+}
+```
+
+---
+
 ## 5. 升级路线图（Roadmap）
 
 ### 已落地（2026-08 / 2026-09）
@@ -753,12 +888,14 @@ await withViewTransition(
 - [x] **全局与局域双轨 View Transitions (`useViewTransition.ts`)**：封装 `document` 与 `Element.prototype.startViewTransition` 门面，完善 Promise 异常拦截与 Rule 8 边界防护；
 - [x] **CSS Grid 复合轨道无级折叠动效**：已在 `TagFilterBar.vue` 与 `ImportPanel.vue` 落地；
 - [x] **色彩双层回退基线固化**：坚持 `#hex` + `oklch()` 双层声明；
-- [x] **`AppProgressBar.vue` 统一 CSS 进度条架构**：全站进度条收敛为 CSS 变量 `--progress` + GPU 合成层驱动。
+- [x] **`AppProgressBar.vue` 统一 CSS 进度条架构**：全站进度条收敛为 CSS 变量 `--progress` + GPU 合成层驱动；
+- [x] **`font-size-adjust` 字形度量规范确立**：确立在 `--text-caption` (11px) 微标与多语言混排中取代 `transform: scale()` 盒模型副作用的渐进增强方案。
 
 ### 短期（预计 2026 Q4，等浏览器 Baseline 达标）
 
 - [ ] **`::details-content` 落地 Baseline**（Safari 18.4+ 已支持，等 Firefox 144+ 稳定版）：统一全站原生 `<details>` 折叠展开；
-- [ ] **全量启用原生 `interestfor` 意图触发**：当 Chromium 与 WebKit 正式版稳定支持后，逐步减少 Tooltip 中的 `useTimeout` 定时器。
+- [ ] **全量启用原生 `interestfor` 意图触发**：当 Chromium 与 WebKit 正式版稳定支持后，逐步减少 Tooltip 中的 `useTimeout` 定时器；
+- [ ] **响应式阶梯封面（Responsive Stepped Covers）**：结合后端派生缩略图在 `ComicCard` 与详情页接入 `srcset` (`360w`, `720w`) + `sizes` 规范，配合 Chrome 126+/Firefox 150+ `sizes="auto"` 渐进增强。
 
 ### 中期（预计 2027，等规范 Stage 3-4）
 
@@ -766,10 +903,11 @@ await withViewTransition(
 - [ ] **CSS `@function`**：当 Vite/LightningCSS 支持且三大内核跟进后，将 `clamp()` 组合与阴影合成提取为命名 CSS 函数；
 - [ ] **`@container style(...)` 范围语法稳定后**：将密度模式从尺寸查询演进为样式查询。
 
-### 长期（等 CSS `if()` 与 `progress()` 落地 Baseline）
+### 长期（等 CSS `if()`、`progress()` 与 `text-fit` 落地 Baseline）
 
 - [ ] **CSS `if()` 行内条件**：收敛部分类名状态机为纯 CSS 声明；
-- [ ] **原生 CSS `progress()` 数学函数**：将进度换算移交 CSS 引擎就地计算。
+- [ ] **原生 CSS `progress()` 数学函数**：将进度换算移交 CSS 引擎就地计算；
+- [ ] **`text-fit` 阅读器顶栏长标题压缩**：当 Firefox 与 Safari 稳定支持后，在沉浸顶栏 HUD 落地 `text-fit: shrink per-line`。
 
 ---
 
@@ -778,6 +916,10 @@ await withViewTransition(
 ### 规范与 MDN 官方文档
 
 - [MDN CSS 参考](https://developer.mozilla.org/en-US/docs/Web/CSS)
+- [MDN font-size-adjust 属性](https://developer.mozilla.org/en-US/docs/Web/CSS/font-size-adjust)
+- [MDN HTMLImageElement: srcset 属性](https://developer.mozilla.org/en-US/docs/Web/API/HTMLImageElement/srcset)
+- [MDN HTMLImageElement: sizes 属性](https://developer.mozilla.org/en-US/docs/Web/API/HTMLImageElement/sizes)
+- [W3C CSS Text Module Level 5: text-fit 草案](https://drafts.csswg.org/css-text-5/#text-fit-property)
 - [MDN Popover API](https://developer.mozilla.org/en-US/docs/Web/API/Popover_API)
 - [MDN Using Interest Invokers](https://developer.mozilla.org/en-US/docs/Web/API/Popover_API/Using_interest_invokers)
 - [MDN CSS Anchor Positioning](https://developer.mozilla.org/en-US/docs/Web/CSS/Guides/Anchor_positioning)
@@ -789,24 +931,27 @@ await withViewTransition(
 
 ### 张鑫旭技术博客专栏清单
 
-| 特性分类     | 特性名称 / 主题                                         | 专栏文章链接                                                                        |
-| :----------- | :------------------------------------------------------ | :---------------------------------------------------------------------------------- |
-| **浮层交互** | CSS `interestfor` 与 Invoker Target/Source 机制         | https://www.zhangxinxu.com/wordpress/2026/03/css-interestfor-invoker-target-source/ |
-| **浮层交互** | HTML `popover="hint"` 提示类型深度解析                  | https://www.zhangxinxu.com/wordpress/2025/07/html-popover-hint/                     |
-| **浮层交互** | JS 原生 HTML `popover` 实现下拉菜单                     | https://www.zhangxinxu.com/wordpress/2024/01/js-html-popover-dropdown/              |
-| **锚点定位** | CSS Anchor Positioning API 深入浅出                     | https://www.zhangxinxu.com/wordpress/2024/06/css-anchor-positioning-api/            |
-| **锚点定位** | CSS Anchor + Container Query 容器查询                   | https://www.zhangxinxu.com/wordpress/2025/12/css-anchor-container-query/            |
-| **锚点定位** | CSS 锚点定位实现鼠标跟随效果                            | https://www.zhangxinxu.com/wordpress/2025/11/css-anchor-position-mouse-follow/      |
-| **视图过渡** | `Element.prototype.startViewTransition` 与 DOM 局部更新 | https://www.zhangxinxu.com/wordpress/2026/07/sethtml-element-startviewtransition/   |
-| **视图过渡** | View Transitions API 基础与 SPA 实践                    | https://www.zhangxinxu.com/wordpress/2024/08/view-transitions-api/                  |
-| **现代函数** | CSS `progress()` 函数简介与应用                         | https://www.zhangxinxu.com/wordpress/2025/12/css-progress-function/                 |
-| **现代函数** | CSS `if()` 行内条件函数                                 | https://www.zhangxinxu.com/wordpress/2025/07/css-if-function/                       |
-| **滚动容器** | `@container scroll-state(...)` 状态感知                 | https://www.zhangxinxu.com/wordpress/2025/08/css-container-scroll-state/            |
-| **动画折叠** | `interpolate-size` 与 `calc-size()` 无级尺寸插值        | https://www.zhangxinxu.com/wordpress/2024/11/css-calc-interpolate-size/             |
-| **滚动驱动** | `scroll-timeline` 滚动驱动动画详解                      | https://www.zhangxinxu.com/wordpress/2024/08/css-scroll-timeline/                   |
-| **色彩管理** | `light-dark()` 色彩函数实战                             | https://www.zhangxinxu.com/wordpress/2026/06/css-color-theme-light-dark-function/   |
-| **原生折叠** | `<details>` & `::details-content` 伪元素                | https://www.zhangxinxu.com/wordpress/2025/11/css-details-target-content-open/       |
-| **函数规则** | CSS `@function` at-rules 自定义函数                     | https://www.zhangxinxu.com/wordpress/2025/09/css-function-at-rules/                 |
+| 特性分类     | 特性名称 / 主题                                         | 专栏文章链接                                                                             |
+| :----------- | :------------------------------------------------------ | :--------------------------------------------------------------------------------------- |
+| **排版字效** | CSS `font-size-adjust` 属性详解与字形度量               | https://www.zhangxinxu.com/wordpress/2025/02/css-font-size-adjust/                       |
+| **排版字效** | CSS `text-fit` 容器宽度文本自动适配                     | https://www.zhangxinxu.com/wordpress/2026/08/css-text-fit/                               |
+| **媒体管线** | 响应式图片 `srcset` 全新释义、`sizes` 属性与 `w` 描述符 | https://www.zhangxinxu.com/wordpress/2014/10/responsive-images-srcset-size-w-descriptor/ |
+| **浮层交互** | CSS `interestfor` 与 Invoker Target/Source 机制         | https://www.zhangxinxu.com/wordpress/2026/03/css-interestfor-invoker-target-source/      |
+| **浮层交互** | HTML `popover="hint"` 提示类型深度解析                  | https://www.zhangxinxu.com/wordpress/2025/07/html-popover-hint/                          |
+| **浮层交互** | JS 原生 HTML `popover` 实现下拉菜单                     | https://www.zhangxinxu.com/wordpress/2024/01/js-html-popover-dropdown/                   |
+| **锚点定位** | CSS Anchor Positioning API 深入浅出                     | https://www.zhangxinxu.com/wordpress/2024/06/css-anchor-positioning-api/                 |
+| **锚点定位** | CSS Anchor + Container Query 容器查询                   | https://www.zhangxinxu.com/wordpress/2025/12/css-anchor-container-query/                 |
+| **锚点定位** | CSS 锚点定位实现鼠标跟随效果                            | https://www.zhangxinxu.com/wordpress/2025/11/css-anchor-position-mouse-follow/           |
+| **视图过渡** | `Element.prototype.startViewTransition` 与 DOM 局部更新 | https://www.zhangxinxu.com/wordpress/2026/07/sethtml-element-startviewtransition/        |
+| **视图过渡** | View Transitions API 基础与 SPA 实践                    | https://www.zhangxinxu.com/wordpress/2024/08/view-transitions-api/                       |
+| **现代函数** | CSS `progress()` 函数简介与应用                         | https://www.zhangxinxu.com/wordpress/2025/12/css-progress-function/                      |
+| **现代函数** | CSS `if()` 行内条件函数                                 | https://www.zhangxinxu.com/wordpress/2025/07/css-if-function/                            |
+| **滚动容器** | `@container scroll-state(...)` 状态感知                 | https://www.zhangxinxu.com/wordpress/2025/08/css-container-scroll-state/                 |
+| **动画折叠** | `interpolate-size` 与 `calc-size()` 无级尺寸插值        | https://www.zhangxinxu.com/wordpress/2024/11/css-calc-interpolate-size/                  |
+| **滚动驱动** | `scroll-timeline` 滚动驱动动画详解                      | https://www.zhangxinxu.com/wordpress/2024/08/css-scroll-timeline/                        |
+| **色彩管理** | `light-dark()` 色彩函数实战                             | https://www.zhangxinxu.com/wordpress/2026/06/css-color-theme-light-dark-function/        |
+| **原生折叠** | `<details>` & `::details-content` 伪元素                | https://www.zhangxinxu.com/wordpress/2025/11/css-details-target-content-open/            |
+| **函数规则** | CSS `@function` at-rules 自定义函数                     | https://www.zhangxinxu.com/wordpress/2025/09/css-function-at-rules/                      |
 
 ### 前端侦探 / CodePen 参考
 

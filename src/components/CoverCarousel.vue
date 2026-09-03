@@ -131,6 +131,7 @@ function scrollByCard(direction: number) {
   border-radius: var(--radius-1);
   font-family: var(--font-mono);
   font-size: var(--text-caption);
+  font-size-adjust: ch-width 0.48;
   letter-spacing: 0.08em;
 }
 
