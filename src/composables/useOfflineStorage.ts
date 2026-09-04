@@ -1,5 +1,6 @@
 import { computed, ref } from 'vue'
 import { createGlobalState } from '@vueuse/core'
+import { withResolvers } from '@/utils/promise'
 
 export function formatBytes(bytes: number): string {
   if (!Number.isFinite(bytes) || bytes <= 0) return '0 B'
@@ -162,65 +163,59 @@ export const useOfflineStorage = createGlobalState(() => {
    */
   async function clearIndexedDbRecords(dbName: string, targetStoreName?: string): Promise<void> {
     if (typeof indexedDB === 'undefined') return
-    await new Promise<void>((resolve) => {
-      let settled = false
-      const safeResolve = () => {
-        if (!settled) {
-          settled = true
+    const { promise, resolve } = withResolvers<void>()
+
+    // 1.5s 兜底定时器，防止 IDB 锁死阻塞整个重置流程
+    const timer = setTimeout(resolve, 1500)
+
+    try {
+      const openReq = indexedDB.open(dbName)
+      openReq.onsuccess = () => {
+        const db = openReq.result
+        const allStores = Array.from(db.objectStoreNames)
+        const storesToClear = targetStoreName
+          ? allStores.filter((name) => name === targetStoreName || name.includes(targetStoreName))
+          : allStores
+
+        if (storesToClear.length > 0) {
+          try {
+            const tx = db.transaction(storesToClear, 'readwrite')
+            for (const name of storesToClear) {
+              tx.objectStore(name).clear()
+            }
+            const done = () => {
+              clearTimeout(timer)
+              db.close()
+              resolve()
+            }
+            tx.oncomplete = done
+            tx.onerror = done
+            tx.onabort = done
+          } catch {
+            clearTimeout(timer)
+            db.close()
+            resolve()
+          }
+        } else {
+          clearTimeout(timer)
+          db.close()
           resolve()
         }
       }
-
-      // 1.5s 兜底定时器，防止 IDB 锁死阻塞整个重置流程
-      const timer = setTimeout(safeResolve, 1500)
-
-      try {
-        const openReq = indexedDB.open(dbName)
-        openReq.onsuccess = () => {
-          const db = openReq.result
-          const allStores = Array.from(db.objectStoreNames)
-          const storesToClear = targetStoreName
-            ? allStores.filter((name) => name === targetStoreName || name.includes(targetStoreName))
-            : allStores
-
-          if (storesToClear.length > 0) {
-            try {
-              const tx = db.transaction(storesToClear, 'readwrite')
-              for (const name of storesToClear) {
-                tx.objectStore(name).clear()
-              }
-              const done = () => {
-                clearTimeout(timer)
-                db.close()
-                safeResolve()
-              }
-              tx.oncomplete = done
-              tx.onerror = done
-              tx.onabort = done
-            } catch {
-              clearTimeout(timer)
-              db.close()
-              safeResolve()
-            }
-          } else {
-            clearTimeout(timer)
-            db.close()
-            safeResolve()
-          }
-        }
-        openReq.onerror = () => {
-          clearTimeout(timer)
-          safeResolve()
-        }
-        openReq.onblocked = () => {
-          clearTimeout(timer)
-          safeResolve()
-        }
-      } catch {
+      openReq.onerror = () => {
         clearTimeout(timer)
-        safeResolve()
+        resolve()
       }
-    })
+      openReq.onblocked = () => {
+        clearTimeout(timer)
+        resolve()
+      }
+    } catch {
+      clearTimeout(timer)
+      resolve()
+    }
+
+    await promise
 
     // 仅在全量清空（未指定 targetStoreName）时才执行彻底删除库
     if (!targetStoreName) {

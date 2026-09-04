@@ -1,4 +1,5 @@
 import { useMemoize } from '@vueuse/core'
+import { promiseTry } from '@/utils/promise'
 import type {
   AuthStatus,
   CacheJob,
@@ -35,7 +36,7 @@ export function setStoredToken(token: string): void {
   }
 }
 
-type UnauthorizedHandler = () => void
+type UnauthorizedHandler = () => void | Promise<void>
 const unauthorizedHandlers = new Set<UnauthorizedHandler>()
 
 export function onUnauthorized(handler: UnauthorizedHandler): () => void {
@@ -45,15 +46,11 @@ export function onUnauthorized(handler: UnauthorizedHandler): () => void {
 
 export function notifyUnauthorized(): void {
   for (const handler of unauthorizedHandlers) {
-    try {
-      handler()
-    } catch {
-      // ignore
-    }
+    promiseTry(handler).catch(() => {})
   }
 }
 
-type AuthSuccessHandler = () => void
+type AuthSuccessHandler = () => void | Promise<void>
 const authSuccessHandlers = new Set<AuthSuccessHandler>()
 
 export function onAuthSuccess(handler: AuthSuccessHandler): () => void {
@@ -77,6 +74,19 @@ export class ApiError extends Error {
   }
 }
 
+/**
+ * 聚合请求超时信号与调用方的主动取消信号。
+ *
+ * 架构考量（避坑防泄漏）：
+ * 1. 为什么不裸用 `AbortSignal.timeout()`？
+ *    MDN 明确指出 `AbortSignal.timeout()` 无法被外部手动取消。在短生命周期 RPC 中，
+ *    即便请求 10ms 兑现，底层系统定时器仍会在后台挂满 15s 并持有监听引用，高频请求下阻碍 GC。
+ *    因此超时控制采用 `AbortController` + `clearTimeout(timer)` 可控生命周期；
+ * 2. 信号合成采用原生 Baseline 2024 `AbortSignal.any()`：
+ *    当传入 callerSignal 时，由浏览器引擎底层自动联合监听多个信号，彻底消除手动
+ *    `addEventListener('abort')` 与 `removeEventListener` 的胶水代码与事件监听器泄漏风险；
+ * 3. 旧版环境自动降级至安全事件监听兜底。
+ */
 function combineSignals(
   timeoutMs: number,
   callerSignal?: AbortSignal | null,
@@ -86,28 +96,42 @@ function combineSignals(
     controller.abort(new DOMException('请求超时，请重试', 'TimeoutError'))
   }, timeoutMs)
 
-  let onAbort: (() => void) | null = null
-  if (callerSignal) {
-    if (callerSignal.aborted) {
-      clearTimeout(timer)
-      controller.abort(callerSignal.reason)
-    } else {
-      onAbort = () => {
-        clearTimeout(timer)
-        controller.abort(callerSignal.reason)
-      }
-      callerSignal.addEventListener('abort', onAbort, { once: true })
-    }
-  }
-
   const cleanup = () => {
     clearTimeout(timer)
-    if (callerSignal && onAbort) {
-      callerSignal.removeEventListener('abort', onAbort)
+  }
+
+  if (!callerSignal) {
+    return { signal: controller.signal, cleanup }
+  }
+
+  if (callerSignal.aborted) {
+    clearTimeout(timer)
+    controller.abort(callerSignal.reason)
+    return { signal: controller.signal, cleanup }
+  }
+
+  // 现代环境：原生复合信号合成，由引擎底层调度
+  if (typeof AbortSignal !== 'undefined' && 'any' in AbortSignal) {
+    return {
+      signal: AbortSignal.any([controller.signal, callerSignal]),
+      cleanup,
     }
   }
 
-  return { signal: controller.signal, cleanup }
+  // 旧版降级：传统一次性事件监听
+  const onAbort = () => {
+    clearTimeout(timer)
+    controller.abort(callerSignal.reason)
+  }
+  callerSignal.addEventListener('abort', onAbort, { once: true })
+
+  return {
+    signal: controller.signal,
+    cleanup: () => {
+      clearTimeout(timer)
+      callerSignal.removeEventListener('abort', onAbort)
+    },
+  }
 }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
@@ -194,11 +218,7 @@ export function clearApiCaches(): void {
 export function notifyAuthSuccess(): void {
   clearApiCaches()
   for (const handler of authSuccessHandlers) {
-    try {
-      handler()
-    } catch {
-      // ignore
-    }
+    promiseTry(handler).catch(() => {})
   }
 }
 

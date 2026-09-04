@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, useSlots, watch } from 'vue'
 import { useHtmlCanvas } from '@/composables/useHtmlCanvas'
+import { withResolvers } from '@/utils/promise'
 
 /**
  * Experimental HTML-in-Canvas surface.
@@ -57,16 +58,24 @@ async function draw() {
 
   // Wait for every image inside the DOM subtree; otherwise the canvas would
   // capture empty/broken image boxes.
+  // 结合 img.decode() 异步离屏解码管线与 Promise.withResolvers() 状态解耦
   const images = [...layer.querySelectorAll('img')]
   await Promise.all(
-    images.map(
-      (img) =>
-        new Promise<void>((resolve) => {
-          if (img.complete) return resolve()
-          img.addEventListener('load', () => resolve(), { once: true })
-          img.addEventListener('error', () => resolve(), { once: true })
-        }),
-    ),
+    images.map(async (img) => {
+      if (!img.complete) {
+        const { promise, resolve } = withResolvers<void>()
+        img.addEventListener('load', () => resolve(), { once: true })
+        img.addEventListener('error', () => resolve(), { once: true })
+        await promise
+      }
+      try {
+        if (typeof img.decode === 'function') {
+          await img.decode()
+        }
+      } catch {
+        // 损坏或空图容错，不中断整体绘制
+      }
+    }),
   )
 
   const rect = layer.getBoundingClientRect()

@@ -332,6 +332,36 @@
     2. 探测到目标文件过滤匹配后，通过 `server.moduleGraph.getModuleById(resolvedVirtualModuleId)`（或 Vite 6 环境 API 的 `client.moduleGraph`）精准标记失效（`invalidateModule`），并通过 `server.ws.send({ type: 'full-reload', path: '*' })` 平滑触发重载；
     3. 模块内部解析目录时，使用兼容 Node 原生与 JSDOM 测试环境的协议安全检测（检查 `url.protocol === 'file:'` 后再调用 `fileURLToPath`，否则降级回 `path.resolve(process.cwd(), ...)`），杜绝测试环境中 `TypeError: The URL must be of scheme file` 报错。
 
+### 45. 现代异步 API 认知误区与宏任务错误逃逸（Promise.try & Promise.withResolvers Invariants）
+
+- **本质**：
+  1. 误以为 `Promise.try` 能捕获所有异步错误：`Promise.try()` 仅统一捕获同步抛错（`throw`）与返回的 Promise 拒付（`reject`），脱离当前执行栈的宏任务（如 `setTimeout`、未封装的 DOM 事件监听回调）内部抛错依然会沦为未捕获异常并击穿主事件循环；
+  2. 误以为 `Promise.withResolvers()` 解决后无需清理外部定时器：虽然 Promise 状态一旦 Settled（Resolved/Rejected）后具有不可变幂等性，但与其配合的后台竞争定时器（如 1.5s 兜底、网络超时）若不显式 `clearTimeout()`，仍会驻留在全局定时器堆中，在极端高频轮询或快速切页时导致无意义的回调唤醒与闭包内存滞留；
+  3. 试图在构建层引入 Babel 实验性插件转译 Stage 1-2 草案语法（如模式匹配、管道运算符），破坏 Vite+ 纯净架构并引入不可逆的技术负债。
+- **红线与防误伤**：
+  - **不要**在宏任务内未包裹 Promise 的情况下依赖 `Promise.try` 做全局错误兜底；
+  - **不要**在使用 `Promise.withResolvers()` 配合超时控制时省略 `clearTimeout`；
+  - **不要**为了语法糖在生产引入非标准 TC39 Stage 1-2 转译工具链；
+  - **放行/改用**：
+    1. 门面回调与 Composable 注入函数使用 `promiseTry` 包裹，并在末尾绑定 `task.catch(() => {})` 隔离非业务层异常；
+    2. 任何与 `Promise.withResolvers()` 配合的超时定时器，在业务 resolve 或 reject 时一并显式清除；
+    3. 多源取消采用“可控定时器（`clearTimeout`）+ 原生 `AbortSignal.any`”，兼具立即销毁定时器与零事件胶水代码；
+    4. 所有 Stage 1-2 草案仅在 `docs/JS_RADAR.md` 实验区归档观测，生产代码坚决恪守 Baseline 2024/2025 标准。
+
+### 46. 现代 AbortSignal 认知误区与不可撤销定时器隐患（AbortSignal.timeout vs Managed AbortController）
+
+- **本质**：
+  1. 误以为 `AbortSignal.timeout(ms)` 可以完全无脑替代传统的 `setTimeout + clearTimeout`：根据 W3C DOM 与 MDN 规范，`AbortSignal.timeout()` **不提供任何取消机制（No early cancellation）**。即便请求在 5ms 内成功兑现，底层的系统超时定时器依然会在浏览器引擎中挂满设定的超时时间（如 15 秒），并在底层对信号对象和事件监听器保持强引用；
+  2. 在短生命周期、高频并发的 RPC 场景（如搜索防抖请求、漫画翻页元数据拉取）中，盲目裸用 `AbortSignal.timeout()` 会导致事件循环中堆积大量未触发的悬空定时器，阻碍垃圾回收（GC），甚至在开发服务器热重载或快速切换页面时引发连接竞争；
+  3. 误以为 `AbortSignal.any(signals)` 可以容纳非 Signal 对象：若传入了 `null`、`undefined` 或测试用例中的非标准 mock 对象，底层会直接抛出 `TypeError` 中断执行。
+- **红线与防误伤**：
+  - **不要**在频繁触发的短生命周期 RPC 中裸用 `AbortSignal.timeout()` 且放弃 `cleanup()` 清理；
+  - **不要**给 `AbortSignal.any()` 传入未过滤的 falsy 值或非 `AbortSignal` 实例；
+  - **放行/改用**：
+    1. 超时控制采用受控的 `AbortController` + `setTimeout`，在请求 `finally` 阶段立即执行 `clearTimeout(timer)`，杜绝无意义定时器空转；
+    2. 信号合成使用 Baseline 2024 原生 `AbortSignal.any([controller.signal, callerSignal])`，免去手写 `addEventListener('abort')` 与 `removeEventListener` 的样板胶水，彻底杜绝闭包泄漏；
+    3. 异常提示保持一致：使用自定义 `new DOMException('请求超时，请重试', 'TimeoutError')` 提供一致的人性化报错提示。
+
 ---
 
 ## 🚦 交付门禁（四步必跑）

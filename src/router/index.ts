@@ -1,6 +1,7 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import { nextTick } from 'vue'
 import { useCoverTransition } from '@/composables/useCoverTransition'
+import { withResolvers } from '@/utils/promise'
 
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
@@ -75,49 +76,44 @@ router.beforeResolve(async (to, from) => {
   const toRank = Number(to.meta?.rank ?? 1)
   const direction = toRank >= fromRank ? 'forward' : 'backward'
 
-  return new Promise<void>((resolve) => {
-    let resolved = false
-    const performUpdate = async () => {
-      if (!resolved) {
-        resolved = true
-        resolve()
-      }
-      await nextTick()
-    }
+  const { promise, resolve } = withResolvers<void>()
 
-    try {
-      const doc = document as unknown as {
-        startViewTransition: (opt: { update: () => Promise<void>; types: string[] }) => {
-          ready?: Promise<void>
-          finished?: Promise<void>
-          updateCallbackDone?: Promise<void>
-        }
+  const performUpdate = async () => {
+    resolve()
+    await nextTick()
+  }
+
+  try {
+    const doc = document as unknown as {
+      startViewTransition: (opt: { update: () => Promise<void>; types: string[] }) => {
+        ready?: Promise<void>
+        finished?: Promise<void>
+        updateCallbackDone?: Promise<void>
       }
-      const transition = doc.startViewTransition({
-        update: performUpdate,
-        types: [direction],
-      })
+    }
+    const transition = doc.startViewTransition({
+      update: performUpdate,
+      types: [direction],
+    })
+    transition?.ready?.catch(() => {})
+    transition?.finished?.catch(() => {})
+    transition?.updateCallbackDone?.catch(() => {})
+  } catch {
+    try {
+      const transition = document.startViewTransition(performUpdate) as unknown as {
+        ready?: Promise<void>
+        finished?: Promise<void>
+        updateCallbackDone?: Promise<void>
+      }
       transition?.ready?.catch(() => {})
       transition?.finished?.catch(() => {})
       transition?.updateCallbackDone?.catch(() => {})
     } catch {
-      try {
-        const transition = document.startViewTransition(performUpdate) as unknown as {
-          ready?: Promise<void>
-          finished?: Promise<void>
-          updateCallbackDone?: Promise<void>
-        }
-        transition?.ready?.catch(() => {})
-        transition?.finished?.catch(() => {})
-        transition?.updateCallbackDone?.catch(() => {})
-      } catch {
-        if (!resolved) {
-          resolved = true
-          resolve()
-        }
-      }
+      resolve()
     }
-  })
+  }
+
+  return promise
 })
 
 const { clearActiveCover } = useCoverTransition()

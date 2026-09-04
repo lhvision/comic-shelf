@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vite-plus/test'
 import { useImageSearch } from '@/composables/useImageSearch'
+import { withResolvers } from '@/utils/promise'
 
 describe('useImageSearch', () => {
   const revokeObjectURLMock = vi.fn<(url: string) => void>()
@@ -133,10 +134,7 @@ describe('useImageSearch', () => {
 
   it('suppresses auto retry when manual check is requested during in-flight fetch', async () => {
     vi.useFakeTimers()
-    let resolveFetch!: (res: Response) => void
-    const pendingPromise = new Promise<Response>((resolve) => {
-      resolveFetch = resolve
-    })
+    const { promise: pendingPromise, resolve: resolveFetch } = withResolvers<Response>()
     vi.mocked(fetch).mockReturnValue(pendingPromise)
 
     const { checkStatus } = useImageSearch()
