@@ -26,6 +26,7 @@ describe('illustrationsPlugin', () => {
     expect(result).toBeDefined()
     expect(result).toContain('export const illustrations = [')
     expect(result).toContain('/loading-1.webp')
+    expect(result).toContain('/loading-tiya.webp')
     // Crucial: addWatchFile must NOT be called in load to avoid Vite import-analysis directory panic
     expect(addWatchFileMock).not.toHaveBeenCalled()
   })
