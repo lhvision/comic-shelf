@@ -406,16 +406,31 @@ useIntersectionObserver(
 @media (max-width: 680px) {
   .recommend-grid {
     display: flex;
-    overflow-x: auto;
-    scroll-snap-type: x mandatory;
-    gap: var(--space-3);
-    padding: var(--space-2) var(--space-2) var(--space-3);
-    -webkit-overflow-scrolling: touch;
+    flex-direction: column;
+    gap: var(--space-2);
   }
 
-  .rec-card {
-    flex: 0 0 10.5rem;
-    scroll-snap-align: center;
+  .rec-card-main {
+    flex-direction: row;
+    align-items: center;
+  }
+
+  .rec-cover-wrap {
+    width: 3.5rem;
+    flex-shrink: 0;
+  }
+
+  .rec-status-badge {
+    font-size: 0.625rem;
+    padding: 1px var(--space-1);
+    left: var(--space-1);
+    bottom: var(--space-1);
+  }
+
+  .rec-info {
+    flex: 1;
+    min-width: 0;
+    padding-right: var(--space-8);
   }
 
   .reader-end-actions {
