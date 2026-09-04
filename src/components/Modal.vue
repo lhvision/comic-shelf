@@ -7,6 +7,9 @@ import AppIcon from '@/components/AppIcon.vue'
 /**
  * 通用对话框（Impeccable & HTML5 原生 <dialog> 顶层架构版）。
  * - 根容器采用原生 HTML <dialog> 元素，享受顶级 Top Layer 与原生无障碍焦点循环捕获；
+ * - 坚守 <Teleport to="body">：原生 <dialog> 仅在渲染层提升至 Top Layer，但 DOM 树仍驻留于宿主分支。
+ *   保留 Teleport 是为了彻底隔离宿主 CSS 继承污染（如局部字阶/变量）、阻断原生 DOM 点击事件向祖先冒泡击穿、
+ *   并规避祖先 display: none 导致元素无法生成盒模型（Box Generation）的问题，两者正交互补；
  * - 严格采用 v-if="open" 与 <Transition>，确保关闭状态下物理脱离 DOM，绝不产生幽灵遮罩阻挡页面点击；
  * - 全功能 Props 契约：支持 closeOnBackdrop / closeOnEsc / showCloseButton / preventClose 精准控制交互自由度；
  * - 阻止关闭时触发轻量微弹提醒（triggerAttention），杜绝用户无感知迷茫；

@@ -279,7 +279,8 @@
   - **放行/改用**：
     1. 模态窗外层必须使用 `<dialog v-if="open">` 配合 `<Transition>`，确保关闭态物理脱离 DOM 树，从物理根源杜绝幽灵遮罩；
     2. 将 `dialog::backdrop` 保持透明，仅利用其顶级原生阻断点击能力，将视觉墨色与 4px 模糊交由内部 `.modal-scrim` 管理，实现蒙层与面板 100% 同频丝滑淡入淡出；
-    3. 在 CSS 中补充 `dialog:not([open]) { display: none !important; }` 作为样式级双重防线。
+    3. 在 CSS 中补充 `dialog:not([open]) { display: none !important; }` 作为样式级双重防线；
+    4. **即便使用了原生 `<dialog>`，模态窗外层仍需坚守 `<Teleport to="body">`**：Top Layer 仅改变屏幕渲染层叠，不改变 DOM 树父子拓扑。保留 Teleport 是为了：① 彻底隔绝宿主节点的 CSS 属性与局部 `--*` 变量继承；② 阻断内部原生点击事件向调用处祖先冒泡击穿；③ 免疫祖先节点 `display: none`（如 `v-show="false"` 或未激活 Tab）导致无法生成盒模型（Box Generation）使顶层弹窗无法渲染；④ 确保自动化单测（JSDOM）与降级模式下的全屏 fixed 视口依然稳固。
 
 ### 40. HTML Invoker Commands API 与 Click 冒泡的双重触发冲突（Invoker Commands & Bubble Race）
 
