@@ -39,6 +39,7 @@ from .db import (
     get_guest_pass_by_token,
     get_user_favorites,
     get_user_progress,
+    get_user_all_progress,
     init_db,
     is_user_favorite,
     list_guest_passes,
@@ -511,9 +512,11 @@ def library(
 ) -> list[LibrarySummary]:
     user_id = get_current_user_id(request)
     user_favs = get_user_favorites(user_id)
+    user_prog = get_user_all_progress(user_id)
     items = store.list_library()
     for item in items:
         item.favorite = (item.source, item.source_id) in user_favs
+        item.last_page = user_prog.get((item.source, item.source_id), 0)
 
     if not is_curator(request):
         items = [item for item in items if not item.hidden_from_guest]

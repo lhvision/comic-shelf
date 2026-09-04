@@ -16,6 +16,7 @@ import { pageFileUrl } from '@/api/client'
 import ComicPageImage from '@/components/ComicPageImage.vue'
 import ReaderEndCard from '@/components/reader/ReaderEndCard.vue'
 import type { ReaderSettings } from '@/composables/useReaderSettings'
+import type { LibrarySummary } from '@/types'
 
 /**
  * 分屏页码分组定义
@@ -47,6 +48,8 @@ export interface ReaderViewportProps {
   loadingVariant: string | number
   /** 全局页码转分章本地页码函数 */
   toLocalPage: (page: number) => number
+  /** 卷末接卷推荐藏书列表 */
+  recommendations?: LibrarySummary[]
 }
 
 defineProps<ReaderViewportProps>()
@@ -66,6 +69,14 @@ defineEmits<{
   pageReady: [page: number]
   /** 点击完结卡片返回详情页 */
   backToDetail: []
+  /** 返回书架首页 */
+  backToShelf: []
+  /** 直接开读推荐作品 */
+  selectComic: [source: string, sourceId: string]
+  /** 查看推荐作品详情 */
+  openComicDetail: [source: string, sourceId: string]
+  /** 触达末页完成阅读事件 */
+  completed: []
 }>()
 
 const scrollEl = ref<HTMLElement | null>(null)
@@ -94,7 +105,12 @@ defineExpose({
       v-if="rtlHorizontal && showEndCard"
       snap
       class="reader-end-rtl"
+      :recommendations="recommendations"
       @back="$emit('backToDetail')"
+      @home="$emit('backToShelf')"
+      @select="(src, sid) => $emit('selectComic', src, sid)"
+      @detail="(src, sid) => $emit('openComicDetail', src, sid)"
+      @completed="$emit('completed')"
     />
 
     <section
@@ -128,7 +144,12 @@ defineExpose({
     <ReaderEndCard
       v-if="!rtlHorizontal && showEndCard"
       :snap="settings.mode === 'horizontal'"
+      :recommendations="recommendations"
       @back="$emit('backToDetail')"
+      @home="$emit('backToShelf')"
+      @select="(src, sid) => $emit('selectComic', src, sid)"
+      @detail="(src, sid) => $emit('openComicDetail', src, sid)"
+      @completed="$emit('completed')"
     />
   </main>
 </template>

@@ -13,6 +13,7 @@ import { useIntersectionObserver } from '@vueuse/core'
 import type { LibrarySummary } from '@/types'
 import ComicCard from '@/components/ComicCard.vue'
 import HtmlCanvasCard from '@/components/HtmlCanvasCard.vue'
+import AppIcon from '@/components/AppIcon.vue'
 import { liveCacheKey, type LiveCacheState } from '@/stores/library'
 
 const props = withDefaults(
@@ -29,11 +30,37 @@ const props = withDefaults(
     searchMatchMap?: Map<string, { bestMatchPage: number; bestScore: number }>
     /** 每批增量渲染本数，默认 12 本（对应 12 × 4 = 48 张封面图） */
     batchStep?: number
+    /** 是否为默认的最近收录排序（用于展示卷末归档分割线） */
+    isRecentSort?: boolean
   }>(),
   {
     batchStep: 12,
+    isRecentSort: true,
   },
 )
+
+const completedCount = computed(
+  () =>
+    props.items.filter((item) => (item.last_page ?? 0) >= item.page_count && item.page_count > 0)
+      .length,
+)
+
+const allCompleted = computed(
+  () =>
+    props.isRecentSort &&
+    props.items.length > 0 &&
+    props.items.every((item) => (item.last_page ?? 0) >= item.page_count && item.page_count > 0),
+)
+
+const firstCompletedIndex = computed(() => {
+  if (!props.isRecentSort) return -1
+  if (allCompleted.value) return 0
+  const activeExists = props.items.some((item) => (item.last_page ?? 0) < item.page_count)
+  if (!activeExists) return -1
+  return props.items.findIndex(
+    (item) => (item.last_page ?? 0) >= item.page_count && item.page_count > 0,
+  )
+})
 
 const emit = defineEmits<{
   favoriteToggled: [source: string, sourceId: string, favorite: boolean]
@@ -90,10 +117,30 @@ useIntersectionObserver(
 
   <div v-else-if="items.length" class="comic-grid-wrap">
     <div class="comic-grid">
-      <template v-if="useCanvas">
+      <template
+        v-for="(item, index) in visibleItems"
+        :key="`item-${item.source}/${item.source_id}`"
+      >
+        <div
+          v-if="index === firstCompletedIndex"
+          class="shelf-archive-divider"
+          role="separator"
+          aria-label="卷末归档"
+        >
+          <span class="archive-divider-line" />
+          <span class="archive-divider-badge">
+            <AppIcon name="archive" size="sm" />
+            {{
+              allCompleted
+                ? `典藏归档 · 全部已翻阅（${completedCount} 本）`
+                : `卷末归档 · 已读完 ${completedCount} 本`
+            }}
+          </span>
+          <span class="archive-divider-line" />
+        </div>
+
         <HtmlCanvasCard
-          v-for="item in visibleItems"
-          :key="`canvas-${item.source}/${item.source_id}`"
+          v-if="useCanvas"
           :comic="item"
           :enabled="true"
           :cache="liveCache?.[keyOf(item.source, item.source_id)]"
@@ -101,11 +148,8 @@ useIntersectionObserver(
             (source, sourceId, value) => emit('favoriteToggled', source, sourceId, value)
           "
         />
-      </template>
-      <template v-else>
         <ComicCard
-          v-for="item in visibleItems"
-          :key="`dom-${item.source}/${item.source_id}`"
+          v-else
           :comic="item"
           :cache="liveCache?.[keyOf(item.source, item.source_id)]"
           :search-match="searchMatchMap?.get(`${item.source}_${item.source_id}`)"
@@ -127,7 +171,7 @@ useIntersectionObserver(
   </div>
 
   <div v-else class="empty-shelf surface">
-    <p class="empty-mark" aria-hidden="true">▤</p>
+    <AppIcon name="archive" size="xl" class="empty-mark-icon" aria-hidden="true" />
     <h3>{{ hasAnyItems ? '没有匹配的本子' : '书架还是空的' }}</h3>
     <p>
       {{
@@ -150,6 +194,35 @@ useIntersectionObserver(
   grid-template-columns: repeat(auto-fill, minmax(min(15rem, 100%), 1fr));
   gap: var(--space-5);
   padding-top: var(--space-5);
+}
+
+.shelf-archive-divider {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  padding: var(--space-6) 0 var(--space-2);
+}
+
+.archive-divider-line {
+  flex: 1;
+  height: 1px;
+  background: var(--line);
+}
+
+.archive-divider-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-1) var(--space-3);
+  background: color-mix(in oklab, var(--paper-0) 70%, var(--paper-1));
+  border: 1px solid var(--line);
+  border-radius: var(--radius-full);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--ink-2);
+  letter-spacing: 0.04em;
+  box-shadow: var(--shadow-1);
 }
 
 .shelf-sentinel {
@@ -196,7 +269,7 @@ useIntersectionObserver(
   color: var(--ink-1);
 }
 
-.empty-mark {
+.empty-mark-icon {
   font-size: 3rem;
   color: var(--ink-2);
 }

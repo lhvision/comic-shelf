@@ -4,6 +4,13 @@ import type { LibrarySummary, ImageSearchResultItem } from '@/types'
 export type SortKey = 'recent' | 'title' | 'pages' | 'cached'
 
 /**
+ * 判定一本藏书是否已被当前用户完全翻阅读完
+ */
+export function isCompletedComic(item: LibrarySummary): boolean {
+  return (item.last_page ?? 0) >= item.page_count && item.page_count > 0
+}
+
+/**
  * 书架筛选与检索 Composable：
  * 负责来源过滤、关键词模糊检索、标签过滤、只看喜欢与多模式排序。
  */
@@ -15,6 +22,7 @@ export function useLibraryFilter(
   const search = ref('')
   const activeTag = ref('')
   const favoritesOnly = ref(false)
+  const completedOnly = ref(false)
   const sortBy = ref<SortKey>('recent')
 
   const sourceItems = computed(() =>
@@ -72,6 +80,7 @@ export function useLibraryFilter(
 
       const matchTag = activeTag.value === '' || item.tags.includes(activeTag.value)
       const matchFavorite = !favoritesOnly.value || item.favorite
+      const matchCompleted = !completedOnly.value || isCompletedComic(item)
 
       // If we have image search results, it must also be in the matches
       let matchImageSearch = true
@@ -80,7 +89,7 @@ export function useLibraryFilter(
         matchImageSearch = imageSearchMatchMap.value.has(key)
       }
 
-      return matchSearch && matchTag && matchFavorite && matchImageSearch
+      return matchSearch && matchTag && matchFavorite && matchCompleted && matchImageSearch
     })
 
     list = [...list]
@@ -107,11 +116,16 @@ export function useLibraryFilter(
               a.cached_pages / Math.max(a.page_count, 1),
           )
           break
-        default:
-          list.sort(
-            (a, b) =>
-              new Date(b.imported_at || 0).getTime() - new Date(a.imported_at || 0).getTime(),
-          )
+        default: {
+          const activeList = list.filter((item) => !isCompletedComic(item))
+          const completedList = list.filter((item) => isCompletedComic(item))
+          const sortByImportedDesc = (a: LibrarySummary, b: LibrarySummary) =>
+            new Date(b.imported_at || 0).getTime() - new Date(a.imported_at || 0).getTime()
+          activeList.sort(sortByImportedDesc)
+          completedList.sort(sortByImportedDesc)
+          list = [...activeList, ...completedList]
+          break
+        }
       }
     }
     return list
@@ -125,6 +139,7 @@ export function useLibraryFilter(
     search,
     activeTag,
     favoritesOnly,
+    completedOnly,
     sortBy,
     sourceItems,
     totalPages,

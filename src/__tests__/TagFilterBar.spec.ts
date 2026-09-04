@@ -27,8 +27,8 @@ describe('TagFilterBar', () => {
     })
 
     const primaryButtons = wrapper.find('.filter-cluster').findAll('.chip-button')
-    // favorite (1) + all (1) + 8 primary + more button (1) = 11 buttons
-    expect(primaryButtons.length).toBe(11)
+    // favorite (1) + completed (1) + all (1) + 8 primary + more button (1) = 12 buttons
+    expect(primaryButtons.length).toBe(12)
     expect(wrapper.find('.more-tags').text()).toContain('更多 · 2')
 
     // Tray exists in DOM but collapsed
@@ -96,6 +96,27 @@ describe('TagFilterBar', () => {
     await favBtn.trigger('click')
 
     expect(wrapper.emitted('toggleFavorites')).toBeTruthy()
+  })
+
+  it('emits toggleCompleted when completed button is clicked', async () => {
+    const wrapper = mount(TagFilterBar, {
+      props: {
+        favoritesOnly: false,
+        completedOnly: false,
+        activeTag: '',
+        tagCounts,
+        filteredCount: 10,
+      },
+    })
+
+    const completedBtn = wrapper.find('.completed-filter')
+    expect(completedBtn.attributes('aria-pressed')).toBe('false')
+    await completedBtn.trigger('click')
+
+    expect(wrapper.emitted('toggleCompleted')).toBeTruthy()
+
+    await wrapper.setProps({ completedOnly: true } as Record<string, unknown>)
+    expect(completedBtn.attributes('aria-pressed')).toBe('true')
   })
 
   it('auto-expands tray when initialized with activeTag in overflow tags', () => {

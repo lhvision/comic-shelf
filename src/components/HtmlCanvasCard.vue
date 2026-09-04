@@ -29,9 +29,15 @@ const primaryTags = computed(() => props.comic.tags.slice(0, 3))
 const liveCached = computed(() => props.cache?.cached ?? props.comic.cached_pages)
 const liveTotal = computed(() => props.cache?.total || props.comic.page_count)
 const liveRunning = computed(() => Boolean(props.cache?.running))
+const isCompleted = computed(
+  () => (props.comic.last_page ?? 0) >= props.comic.page_count && props.comic.page_count > 0,
+)
+const isInProgress = computed(() => !isCompleted.value && (props.comic.last_page ?? 0) > 0)
 
-// Force the canvas surface to re-paint whenever live progress changes.
-const redrawKey = computed(() => `${liveRunning.value}-${liveCached.value}/${liveTotal.value}`)
+// Force the canvas surface to re-paint whenever live progress or read status changes.
+const redrawKey = computed(
+  () => `${liveRunning.value}-${liveCached.value}/${liveTotal.value}-${isCompleted.value}`,
+)
 const cardTransitionName = computed(
   () => `card-${props.comic.source}-${props.comic.source_id.replace(/[^a-zA-Z0-9_-]/g, '_')}`,
 )
@@ -54,7 +60,7 @@ function prefetch() {
     @touchstart.passive.once="prefetch"
   >
     <!-- Complete DOM subtree: cover, title, meta, tags, views, cache progress. -->
-    <article class="card-visual">
+    <article class="card-visual" :data-completed="isCompleted">
       <div class="cover">
         <img
           v-if="comic.cover_paths[0]"
@@ -66,6 +72,10 @@ function prefetch() {
           decoding="async"
         />
         <div v-else class="cover-empty">{{ comic.display_id }}</div>
+        <span v-if="isCompleted" class="reading-stamp is-completed"> 已读完 </span>
+        <span v-else-if="isInProgress" class="reading-stamp is-reading">
+          {{ comic.last_page }}P / {{ comic.page_count }}P
+        </span>
         <span class="id-stamp">{{ comic.display_id }}</span>
       </div>
 
@@ -159,6 +169,41 @@ function prefetch() {
   font-size: var(--text-caption);
   font-size-adjust: ch-width 0.48;
   letter-spacing: 0.08em;
+}
+
+.reading-stamp {
+  position: absolute;
+  left: var(--space-2);
+  bottom: var(--space-2);
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: var(--space-0-5) var(--space-2);
+  border-radius: var(--radius-1);
+  font-family: var(--font-mono);
+  font-size: var(--text-caption);
+  font-size-adjust: ch-width 0.48;
+  letter-spacing: 0.04em;
+  font-weight: 500;
+  z-index: 2;
+  box-shadow: var(--shadow-1);
+}
+
+.reading-stamp.is-completed {
+  background: color-mix(in oklab, var(--paper-0) 88%, var(--paper-1));
+  color: var(--ink-1);
+  border: 1px solid color-mix(in oklab, var(--line) 85%, transparent);
+}
+
+.reading-stamp.is-reading {
+  background: color-mix(in oklab, var(--accent) 92%, black 8%);
+  color: var(--paper-0);
+  border: 1px solid color-mix(in oklab, var(--paper-0) 28%, transparent);
+}
+
+.card-visual[data-completed='true'] {
+  opacity: 0.82;
+  filter: grayscale(0.12);
 }
 
 .body {

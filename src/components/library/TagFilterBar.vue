@@ -10,17 +10,24 @@ import AppIcon from '@/components/AppIcon.vue'
  * 「更多标签」展开按钮之下（再点收起），避免 ~20 个 chip 的墙造成
  * 决策点超载，也避免移动端出现无休止换行。
  */
-const props = defineProps<{
-  favoritesOnly: boolean
-  activeTag: string
-  /** [标签, 数量] 有序列表，按出现次数降序 */
-  tagCounts: Array<[string, number]>
-  /** 当前筛选命中的数量（用于提示文案） */
-  filteredCount: number
-}>()
+const props = withDefaults(
+  defineProps<{
+    favoritesOnly: boolean
+    completedOnly?: boolean
+    activeTag: string
+    /** [标签, 数量] 有序列表，按出现次数降序 */
+    tagCounts: Array<[string, number]>
+    /** 当前筛选命中的数量（用于提示文案） */
+    filteredCount: number
+  }>(),
+  {
+    completedOnly: false,
+  },
+)
 
 const emit = defineEmits<{
   toggleFavorites: []
+  toggleCompleted: []
   selectTag: [tag: string]
   clearTag: []
 }>()
@@ -65,6 +72,16 @@ function clearFilter() {
       >
         <AppIcon class="heart-icon" :name="favoritesOnly ? 'heart-filled' : 'heart'" size="xs" />
         <span>只看喜欢</span>
+      </button>
+
+      <button
+        class="chip chip-button completed-filter"
+        type="button"
+        :aria-pressed="completedOnly"
+        @click="emit('toggleCompleted')"
+      >
+        <AppIcon class="archive-icon" name="archive" size="xs" />
+        <span>只看已读</span>
       </button>
 
       <span v-if="tagCounts.length" class="filter-divider" aria-hidden="true" />
@@ -150,10 +167,16 @@ function clearFilter() {
   gap: var(--space-2);
 }
 
-.favorite-filter {
+.favorite-filter,
+.completed-filter {
   display: inline-flex;
   align-items: center;
   gap: var(--space-1);
+}
+
+.completed-filter .archive-icon {
+  width: 0.85rem;
+  height: 0.85rem;
 }
 
 .favorite-filter .heart-icon {

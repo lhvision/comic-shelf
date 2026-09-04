@@ -23,7 +23,7 @@ export function illustrationsPlugin(): Plugin {
     load(id: string) {
       if (id === resolvedVirtualModuleId) {
         const publicDir = fileURLToPath(new URL('../public', import.meta.url))
-        if (typeof this.addWatchFile === 'function') {
+        if (!process.env.VITEST && typeof this.addWatchFile === 'function') {
           this.addWatchFile(publicDir)
         }
         const files = fs.existsSync(publicDir)

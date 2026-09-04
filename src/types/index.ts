@@ -73,6 +73,8 @@ export interface LibrarySummary {
   cover_count: number
   /** T11：章节标题，书架搜索可命中「第 5 话」等 */
   chapter_titles?: string[]
+  /** 用户个人阅读进度：上次翻到的页码（0 表示未读） */
+  last_page?: number
 }
 
 export interface ComicDetail {

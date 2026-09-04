@@ -196,6 +196,23 @@
 
 - **铁律**：`src/views/*.vue` 单文件脚本严格 ≤ 150 行，只负责顶层生命周期编排与装配树挂载；核心业务状态机下沉至 `src/composables/`，复杂子视口与交互横幅抽离为专职子组件（如 `ReaderViewport.vue`, `ReaderChapterBanners.vue`）。
 
+<a id="sec-53"></a>
+
+### §53. 卷末归档与已读微降权体系（Shelf Archive & Read Deemphasis Architecture）
+
+- **分桶与排序契约**：书架仅在「最近收录（未读优先）」默认排序下执行两层分桶（未读与在读书卷置顶，已读完书籍沉底）；在切换为按标题、页数、本地完整度时保持纯粹字典序；
+- **只看已读快速归档检索**：在书架标签筛选条（`TagFilterBar`）中并列提供 `[只看喜欢]` 与 `[只看已读]` 两大正交快筛 Chip；支持与标签（如 `全彩`）多重叠加，一键直达典藏已读书目而无需冗长滚动；
+- **装订压痕分界**：通过 `grid-column: 1 / -1` 跨越全网格渲染细压痕线（`--line`）与居中徽标（`〔 卷末归档 · 已读完 N 本 〕` / `〔 典藏归档 · 全部已翻阅 〕`）；
+- **微降权质感**：已读卡片仅应用克制的微降权（`opacity: 0.82; filter: grayscale(0.12)`），并在读者悬浮或聚焦时平滑还原为 100% 彩色与不透明度，兼具典雅书脊陈列感与新鲜阅读重心。
+
+<a id="sec-54"></a>
+
+### §54. 阅读器末页接卷推荐架构（Reader End Next Reads Architecture）
+
+- **视口真实触达感知**：严禁在 `onMounted` 钩子中盲目将作品标记为「已读完」；必须使用 VueUse `useIntersectionObserver` 监听末页卡片容器（`cardEl`），仅当读者真正滚动至书末并进入视口后才触发完成事件；
+- **暗室多端响应**：桌面端采用三联卡片网格，移动端（≤680px）采用原生 CSS `scroll-snap-type: x mandatory` 横向滑轨；卡片与辅助按钮必须严格遵循 `--reader-bg`、`--reader-panel` 与 `--reader-text` Token，严禁散落 Hex 魔法值；
+- **触控安全与双向出口**：详情辅助按钮通过 `::before` 伪元素扩展至 ≥ 44×44px 物理判定热区，与大卡片直接开读解耦；底部统一提供「回到详情」与「返回书架」双向离开出口。
+
 ---
 
 ## 5. 历史演进里程碑归档索引（Historical Milestones Archive）

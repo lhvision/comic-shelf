@@ -14,7 +14,8 @@
 | `src/composables/useDiscovery.ts`                | 发现页排行榜状态机：周榜/月榜/日榜/总榜拉取、分类过滤与收录状态追踪                                                                                            |
 | `src/composables/useUploadQueue.ts`              | 受限并发批量上传队列控制器（3 路 Worker 并发、细粒度进度与取消支持）                                                                                           |
 | `src/composables/useFileStaging.ts`              | 多图与画页暂存：自然文件名数字排序、格式过滤、`useFileDialog` + `useDropZone` 聚合                                                                             |
-| `src/composables/useLibraryFilter.ts`            | 书架检索与筛选：模糊搜索、标签频率统计、多模式排序与喜欢过滤                                                                                                   |
+| `src/composables/useLibraryFilter.ts`            | 书架检索与筛选：模糊搜索、标签频率统计、多模式排序、只看喜欢与只看已读过滤、已读沉底分桶                                                                       |
+| `src/composables/useReaderRecommendations.ts`    | 阅读器末页接卷推荐：启发式元数据权重评分（同作者/同原作/共有标签/在读状态）与未读作品遴选                                                                      |
 | `src/composables/useImageSearch.ts`              | 以图搜图状态机：文件上传、剪贴板粘贴、拖拽、置信度与状态管理                                                                                                   |
 | `src/composables/useReaderData.ts`               | 阅读器数据流与路由状态机：元数据拉取、`AbortController` 竞态取消、URL 同步与返回路径                                                                           |
 | `src/composables/useReaderPaging.ts`             | 阅读器分页与作用域：分组切片、全局/本地页码映射、跨话首尾探测与边界计算                                                                                        |
@@ -63,6 +64,7 @@
 | `src/components/CoverCarousel.vue`               | scroll-snap + view-timeline 封面流                                                                                                                             |
 | `src/components/reader/ReaderViewport.vue`       | 阅读器画卷视口：三种排版模式（连续/竖翻/横翻）与分屏画页 DOM 渲染                                                                                              |
 | `src/components/reader/ReaderChapterBanners.vue` | 阅读器跨话悬浮横幅：话首「← 上一话」与话末「本话完 · 下一话 →」导航交互胶囊                                                                                    |
+| `src/components/reader/ReaderEndCard.vue`        | 阅读器末页结尾卡片：视口真实触达感知（`useIntersectionObserver`）、暗室响应式接卷推荐三联卡与双向离开出口                                                      |
 | `src/components/HtmlCanvasSurface.vue`           | 实验性 DOM→canvas 绘制原语，default slot 是完整 DOM 子树                                                                                                       |
 | `src/components/HtmlCanvasCard.vue`              | 实验性书架卡片：整卡 DOM（封面+标题+标签+进度）合成 canvas                                                                                                     |
 | `src/components/reader/ReaderLoadingState.vue`   | 典藏 WebP 呼吸微光加载组件（整本首屏与单页渐进式加载）                                                                                                         |

@@ -2,8 +2,9 @@ import { describe, it, expect, vi } from 'vite-plus/test'
 import { mount } from '@vue/test-utils'
 import ReaderViewport from '@/components/reader/ReaderViewport.vue'
 import ReaderChapterBanners from '@/components/reader/ReaderChapterBanners.vue'
+import ReaderEndCard from '@/components/reader/ReaderEndCard.vue'
 import { DEFAULT_SETTINGS } from '@/composables/useReaderSettings'
-import type { Chapter } from '@/types'
+import type { Chapter, LibrarySummary } from '@/types'
 
 describe('ReaderViewport', () => {
   const defaultProps = {
@@ -157,5 +158,111 @@ describe('ReaderChapterBanners', () => {
 
     await nextBtn.trigger('click')
     expect(wrapper.emitted('nextChapter')).toBeTruthy()
+  })
+})
+
+describe('ReaderEndCard', () => {
+  const dummyRecs: LibrarySummary[] = [
+    {
+      source: 'jm',
+      source_id: '101',
+      display_id: '101',
+      title: 'Recommend A',
+      authors: ['Author 1'],
+      works: [],
+      actors: [],
+      tags: [],
+      favorite: false,
+      page_count: 30,
+      views: '10',
+      likes: '1',
+      uploaded_at: '',
+      published_at: '',
+      updated_at: '',
+      imported_at: '',
+      cover_paths: ['/cover1.webp'],
+      cached_pages: 0,
+      cover_count: 1,
+      last_page: 0, // unread
+    },
+    {
+      source: 'jm',
+      source_id: '102',
+      display_id: '102',
+      title: 'Recommend B',
+      authors: ['Author 2'],
+      works: [],
+      actors: [],
+      tags: [],
+      favorite: false,
+      page_count: 20,
+      views: '20',
+      likes: '2',
+      uploaded_at: '',
+      published_at: '',
+      updated_at: '',
+      imported_at: '',
+      cover_paths: ['/cover2.webp'],
+      cached_pages: 5,
+      cover_count: 1,
+      last_page: 10, // in-progress
+    },
+  ]
+
+  it('renders end title, recommendations and emits events correctly', async () => {
+    const wrapper = mount(ReaderEndCard, {
+      props: {
+        recommendations: dummyRecs,
+      },
+    })
+
+    // Defends against premature auto-completion bug: does NOT emit completed on mere mount
+    expect(wrapper.emitted('completed')).toBeFalsy()
+
+    // Title and seal
+    expect(wrapper.text()).toContain('本子翻完了')
+    expect(wrapper.text()).toContain('接卷阅览')
+
+    // Recommendations count
+    const cards = wrapper.findAll('.rec-card')
+    expect(cards.length).toBe(2)
+    expect(wrapper.text()).toContain('Recommend A')
+    expect(wrapper.text()).toContain('Recommend B')
+
+    // Status badges
+    expect(wrapper.text()).toContain('未读')
+    expect(wrapper.text()).toContain('在读 10P')
+
+    // Click on recommendation card main triggers select
+    const firstCardMain = wrapper.find('.rec-card-main')
+    await firstCardMain.trigger('click')
+    expect(wrapper.emitted('select')).toBeTruthy()
+    expect(wrapper.emitted('select')![0]).toEqual(['jm', '101'])
+
+    // Click on detail button triggers detail
+    const firstDetailBtn = wrapper.find('.rec-detail-btn')
+    await firstDetailBtn.trigger('click')
+    expect(wrapper.emitted('detail')).toBeTruthy()
+    expect(wrapper.emitted('detail')![0]).toEqual(['jm', '101'])
+
+    // Click back to detail
+    const backBtn = wrapper.find('.btn-primary')
+    await backBtn.trigger('click')
+    expect(wrapper.emitted('back')).toBeTruthy()
+
+    // Click back to shelf
+    const homeBtn = wrapper.find('.btn-ghost')
+    await homeBtn.trigger('click')
+    expect(wrapper.emitted('home')).toBeTruthy()
+  })
+
+  it('renders poetic empty note when recommendations are empty', () => {
+    const wrapper = mount(ReaderEndCard, {
+      props: {
+        recommendations: [],
+      },
+    })
+    expect(wrapper.text()).toContain('当前藏书均已翻阅完毕')
+    expect(wrapper.find('.recommend-section').exists()).toBe(false)
   })
 })

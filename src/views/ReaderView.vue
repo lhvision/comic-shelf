@@ -12,7 +12,7 @@
  * 6. 自动翻页状态机：`useAutoTurn`（倒计时、节拍器、页面可见性联动与暂停/继续）。
  */
 
-import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { usePreferredReducedMotion, useToggle } from '@vueuse/core'
 import { useReaderSettings } from '@/composables/useReaderSettings'
@@ -22,6 +22,9 @@ import { useAutoTurn } from '@/composables/useAutoTurn'
 import { useReaderNavigation } from '@/composables/useReaderNavigation'
 import { useReaderKeyboard } from '@/composables/useReaderKeyboard'
 import { useReaderData } from '@/composables/useReaderData'
+import { api } from '@/api/client'
+import { useLibraryStore } from '@/stores/library'
+import { useReaderRecommendations } from '@/composables/useReaderRecommendations'
 import ReaderTopBar from '@/components/reader/ReaderTopBar.vue'
 import ReaderLoadingState from '@/components/reader/ReaderLoadingState.vue'
 import ReaderViewport from '@/components/reader/ReaderViewport.vue'
@@ -45,6 +48,7 @@ const userInteracted = ref(false)
 const { detail, loading, loadingVariant, source, sourceId, scopeId, backToDetail, lastRead } =
   useReaderData({
     onLoaded: async () => {
+      userInteracted.value = false
       const rawParam = route.params.page
       const rawNum =
         typeof rawParam === 'string'
@@ -164,6 +168,7 @@ const { autoTurnRemaining, autoTurnPaused, resetAutoTurnCountdown, toggleAutoTur
 /* ---------------- 页面响应式联动与历史同步 ---------------- */
 watch(currentPage, (page) => {
   lastRead.value = page
+  libraryStore.setReadingProgressLocal(source.value, sourceId.value, page)
   preloadAround(page)
 })
 
@@ -241,6 +246,55 @@ const { toggleFullscreen } = useReaderKeyboard({
     userInteracted.value = true
   },
 })
+
+const libraryStore = useLibraryStore()
+
+onMounted(() => {
+  if (libraryStore.items.length === 0) {
+    void libraryStore.load()
+  }
+})
+
+const recommendTarget = computed(() => {
+  if (!detail.value?.meta) return null
+  return {
+    source: source.value,
+    source_id: sourceId.value,
+    authors: detail.value.meta.authors,
+    works: detail.value.meta.works,
+    tags: detail.value.meta.tags,
+  }
+})
+
+const { recommendations } = useReaderRecommendations(
+  recommendTarget,
+  computed(() => libraryStore.items),
+  3,
+)
+
+function onReaderCompleted() {
+  const finalPage = detail.value?.meta.page_count ?? total.value
+  if (finalPage > 0) {
+    lastRead.value = finalPage
+    libraryStore.setReadingProgressLocal(source.value, sourceId.value, finalPage)
+    void api.saveReadingProgress(source.value, sourceId.value, finalPage).catch(() => {})
+  }
+}
+
+function onSelectComic(nextSource: string, nextSourceId: string) {
+  const item = libraryStore.byId(nextSource, nextSourceId)
+  const targetPage =
+    item?.last_page && item.last_page > 0 && item.last_page < item.page_count ? item.last_page : 1
+  void router.push(`/comic/${nextSource}/${nextSourceId}/read/${targetPage}`)
+}
+
+function onOpenComicDetail(nextSource: string, nextSourceId: string) {
+  void router.push(`/comic/${nextSource}/${nextSourceId}`)
+}
+
+function onBackToShelf() {
+  void router.push('/')
+}
 </script>
 
 <template>
@@ -270,6 +324,7 @@ const { toggleFullscreen } = useReaderKeyboard({
       :rtl-horizontal="rtlHorizontal"
       :loading-variant="loadingVariant"
       :to-local-page="toLocalPage"
+      :recommendations="recommendations"
       @scroll="onScroll"
       @wheel="onViewportWheel"
       @user-interact="userInteracted = true"
@@ -277,6 +332,10 @@ const { toggleFullscreen } = useReaderKeyboard({
       @mousemove="showChromeTemporarily"
       @reader-click="onReaderClick"
       @back-to-detail="backToDetail"
+      @back-to-shelf="onBackToShelf"
+      @select-comic="onSelectComic"
+      @open-comic-detail="onOpenComicDetail"
+      @completed="onReaderCompleted"
     />
 
     <ReaderProgress :progress="progressValue" :invert="rtlHorizontal" />

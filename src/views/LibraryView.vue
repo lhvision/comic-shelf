@@ -52,6 +52,7 @@ const {
   search,
   activeTag,
   favoritesOnly,
+  completedOnly,
   sortBy,
   sourceItems,
   totalPages,
@@ -91,6 +92,12 @@ function selectTag(tag: string) {
 function toggleFavorites() {
   void withViewTransition(() => {
     favoritesOnly.value = !favoritesOnly.value
+  })
+}
+
+function toggleCompleted() {
+  void withViewTransition(() => {
+    completedOnly.value = !completedOnly.value
   })
 }
 
@@ -203,7 +210,7 @@ watch(searchError, (value) => {
             label="排序"
             :model-value="sortBy"
             :options="[
-              { value: 'recent', label: '最近收录' },
+              { value: 'recent', label: '最近收录（未读优先）' },
               { value: 'title', label: '标题' },
               { value: 'pages', label: '页数' },
               { value: 'cached', label: '本地完整度' },
@@ -231,10 +238,12 @@ watch(searchError, (value) => {
 
       <TagFilterBar
         :favorites-only="favoritesOnly"
+        :completed-only="completedOnly"
         :active-tag="activeTag"
         :tag-counts="tagCounts"
         :filtered-count="filtered.length"
         @toggle-favorites="toggleFavorites"
+        @toggle-completed="toggleCompleted"
         @select-tag="selectTag"
       />
 
@@ -250,6 +259,7 @@ watch(searchError, (value) => {
         :has-any-items="store.items.length > 0"
         :live-cache="store.liveCache"
         :search-match-map="imageSearchMatchMap"
+        :is-recent-sort="sortBy === 'recent' && !searchImagePreviewUrl"
         @favorite-toggled="onFavoriteToggled"
       />
     </section>

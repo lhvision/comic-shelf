@@ -662,6 +662,20 @@ def get_user_progress(user_id: str, source: str, source_id: str) -> dict[str, An
         return None
 
 
+def get_user_all_progress(user_id: str) -> dict[tuple[str, str], int]:
+    """批量获取用户的所有漫画阅读进度映射: (source, source_id) -> last_page"""
+    with get_db() as conn:
+        rows = conn.execute(
+            """
+            SELECT source, source_id, last_page
+            FROM user_reading_progress
+            WHERE user_id = ?
+            """,
+            (user_id,),
+        ).fetchall()
+        return {(row["source"], row["source_id"]): int(row["last_page"]) for row in rows}
+
+
 def set_user_progress(
     user_id: str,
     source: str,

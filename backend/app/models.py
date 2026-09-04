@@ -184,6 +184,7 @@ class LibrarySummary(BaseModel):
     cover_paths: list[str]
     cached_pages: int
     cover_count: int
+    last_page: int = 0
     chapter_titles: list[str] = Field(
         default_factory=list,
         description="Chapter titles, so the shelf search can match '第 5 话' too",

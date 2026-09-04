@@ -284,6 +284,15 @@ export const useLibraryStore = defineStore('library', () => {
     if (item) item.favorite = favorite
   }
 
+  /**
+   * 本地乐观更新「阅读进度」标记：读者在阅读器翻页或读完时，
+   * 原地改内存里的 last_page，不整表刷新，保证书架排序与状态印章即时响应。
+   */
+  function setReadingProgressLocal(source: string, sourceId: string, page: number) {
+    const item = byId(source, sourceId)
+    if (item) item.last_page = page
+  }
+
   const MAX_DETAIL_CACHE = 20
 
   function getDetail(source: string, sourceId: string): ComicDetail | undefined {
@@ -322,6 +331,7 @@ export const useLibraryStore = defineStore('library', () => {
     setDetail,
     removeDetail,
     setFavoriteLocal,
+    setReadingProgressLocal,
     liveFor,
     startPollingIfActive,
     stopPolling,

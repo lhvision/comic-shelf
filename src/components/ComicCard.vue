@@ -46,6 +46,10 @@ const liveCached = computed(() => props.cache?.cached ?? props.comic.cached_page
 const liveTotal = computed(() => props.cache?.total || props.comic.page_count)
 const liveRunning = computed(() => Boolean(props.cache?.running))
 const isTargetCover = computed(() => isCoverActive(props.comic.source, props.comic.source_id))
+const isCompleted = computed(
+  () => (props.comic.last_page ?? 0) >= props.comic.page_count && props.comic.page_count > 0,
+)
+const isInProgress = computed(() => !isCompleted.value && (props.comic.last_page ?? 0) > 0)
 const cardTransitionName = computed(
   () => `card-${props.comic.source}-${props.comic.source_id.replace(/[^a-zA-Z0-9_-]/g, '_')}`,
 )
@@ -54,6 +58,7 @@ const cardTransitionName = computed(
 <template>
   <article
     class="comic-card"
+    :data-completed="isCompleted"
     :style="{ viewTransitionName: cardTransitionName }"
     @pointerenter.once="prefetch"
     @focusin.once="prefetch"
@@ -108,6 +113,16 @@ const cardTransitionName = computed(
           <div v-else class="cover-placeholder">
             <span>{{ comic.display_id }}</span>
           </div>
+          <span v-if="isCompleted" class="reading-stamp is-completed" title="全书已读完">
+            已读完
+          </span>
+          <span
+            v-else-if="isInProgress"
+            class="reading-stamp is-reading"
+            :title="`上次翻至第 ${comic.last_page} 页`"
+          >
+            {{ comic.last_page }}P / {{ comic.page_count }}P
+          </span>
           <span class="id-stamp">{{ comic.display_id }}</span>
           <RouterLink
             v-if="searchMatch"
@@ -367,5 +382,46 @@ const cardTransitionName = computed(
     flex-direction: column;
     gap: var(--space-1);
   }
+}
+
+.reading-stamp {
+  position: absolute;
+  left: var(--space-2);
+  bottom: var(--space-2);
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: var(--space-0-5) var(--space-2);
+  border-radius: var(--radius-1);
+  font-family: var(--font-mono);
+  font-size: var(--text-caption);
+  font-size-adjust: ch-width 0.48;
+  letter-spacing: 0.04em;
+  font-weight: 500;
+  backdrop-filter: blur(4px);
+  z-index: 2;
+  box-shadow: var(--shadow-1);
+}
+
+.reading-stamp.is-completed {
+  background: color-mix(in oklab, var(--paper-0) 88%, var(--paper-1));
+  color: var(--ink-1);
+  border: 1px solid color-mix(in oklab, var(--line) 85%, transparent);
+}
+
+.reading-stamp.is-reading {
+  background: color-mix(in oklab, var(--accent) 92%, black 8%);
+  color: var(--paper-0);
+  border: 1px solid color-mix(in oklab, var(--paper-0) 28%, transparent);
+}
+
+.comic-card[data-completed='true'] .card-link {
+  opacity: 0.82;
+  filter: grayscale(0.12);
+}
+
+.comic-card[data-completed='true'] .card-link:hover {
+  opacity: 1;
+  filter: none;
 }
 </style>
