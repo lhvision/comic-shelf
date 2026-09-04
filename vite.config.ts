@@ -7,6 +7,8 @@ import vueDevTools from 'vite-plugin-vue-devtools'
 import basicSsl from '@vitejs/plugin-basic-ssl'
 import { VitePWA } from 'vite-plugin-pwa'
 
+import { illustrationsPlugin } from './plugins/illustrations'
+
 // https://vite.dev/config/
 export default defineConfig({
   staged: {
@@ -103,29 +105,46 @@ export default defineConfig({
     vueJsx(),
     vueDevTools(),
     basicSsl(),
+    illustrationsPlugin(),
     VitePWA({
       registerType: 'prompt',
-      useCredentials: true,
       includeAssets: [
         'brand-icon.webp',
         'pwa-192x192.png',
         'pwa-512x512.png',
         'pwa-maskable-512x512.png',
         'apple-touch-icon.png',
-        'apple-touch-icon-precomposed.png',
         'brand-icons/*.webp',
-        'loading-*.webp',
       ],
       manifest: {
         name: '纸间 · Paper Room',
         short_name: '纸间',
         description: '本地优先的个人漫画收藏夹与典藏阅览室',
+        lang: 'zh-CN',
         theme_color: '#f3ede3',
         background_color: '#f3ede3',
         display: 'standalone',
         orientation: 'any',
+        id: '/',
+        categories: ['books', 'entertainment'],
         scope: '/',
         start_url: '/',
+        shortcuts: [
+          {
+            name: '书架首页',
+            short_name: '书架',
+            description: '前往个人漫画收藏书架',
+            url: '/',
+            icons: [{ src: '/pwa-192x192.png', sizes: '192x192', type: 'image/png' }],
+          },
+          {
+            name: '发现藏书',
+            short_name: '发现',
+            description: '探索全网藏书与收录',
+            url: '/discovery',
+            icons: [{ src: '/pwa-192x192.png', sizes: '192x192', type: 'image/png' }],
+          },
+        ],
         icons: [
           {
             src: '/pwa-192x192.png',
@@ -154,9 +173,11 @@ export default defineConfig({
       workbox: {
         maximumFileSizeToCacheInBytes: 6 * 1024 * 1024,
         globPatterns: ['**/*.{js,css,html,ico,png,svg,webp,woff,woff2}'],
+        globIgnores: ['**/loading-*'],
         navigateFallbackDenylist: [/^\/api/],
         clientsClaim: true,
         skipWaiting: false,
+        cleanupOutdatedCaches: true,
         runtimeCaching: [
           {
             urlPattern: ({ url }) =>
@@ -169,6 +190,20 @@ export default defineConfig({
               cacheName: 'manga-images-cache',
               expiration: {
                 maxEntries: 3000,
+                maxAgeSeconds: 30 * 24 * 60 * 60,
+              },
+              cacheableResponse: {
+                statuses: [0, 200],
+              },
+            },
+          },
+          {
+            urlPattern: ({ url }) => url.pathname.match(/\/loading-[^/]+\.(webp|png|jpg|jpeg)$/i),
+            handler: 'CacheFirst',
+            options: {
+              cacheName: 'illustration-pool-cache',
+              expiration: {
+                maxEntries: 30,
                 maxAgeSeconds: 30 * 24 * 60 * 60,
               },
               cacheableResponse: {

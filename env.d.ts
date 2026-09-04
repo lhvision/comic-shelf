@@ -8,3 +8,7 @@ declare module '*.vue' {
 }
 
 declare module '*.css'
+
+declare module 'virtual:illustrations' {
+  export const illustrations: string[]
+}

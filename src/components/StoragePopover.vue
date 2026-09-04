@@ -39,7 +39,7 @@ const {
   resetAllStorage,
 } = useOfflineStorage()
 
-const { canInstall, isStandalone, installApp } = usePwaInstall()
+const { canInstall, isStandalone, showIosGuide, installApp } = usePwaInstall()
 const { needRefresh, isUpdating, applyUpdate } = usePwaUpdate()
 const { toast } = useToast()
 
@@ -75,8 +75,17 @@ async function handleClearImages() {
 async function handleResetAll() {
   if (clearing.value) return
   const freedBytes = await resetAllStorage()
-  toast(`已彻底重置离线环境（释放 ${formatBytes(freedBytes)}）`, 'info')
+  toast(`已彻底重置离线环境（释放 ${formatBytes(freedBytes)}），即将刷新...`, 'info')
   isOpen.value = false
+  if (typeof window !== 'undefined') {
+    setTimeout(() => {
+      try {
+        window.location.reload()
+      } catch {
+        // jsdom 环境容错
+      }
+    }, 600)
+  }
 }
 </script>
 
@@ -120,6 +129,7 @@ async function handleResetAll() {
         <StorageHeader
           :can-install="canInstall"
           :is-standalone="isStandalone"
+          :show-ios-guide="showIosGuide"
           @install="handleInstall"
         />
 

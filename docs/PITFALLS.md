@@ -292,6 +292,34 @@
     1. 在触发器容器点击处理中，检测若触发源包含 `[commandfor]` 且当前浏览器原生支持 `commandForElement`，由浏览器原生处理，跳过手动的 JS `toggle()`；
     2. 在 `<dialog>` 的 `@command` 处理器中执行 `event.preventDefault()` 接管关闭流程，并在此阻断 `props.preventClose`（触发微弹提醒），随后通过响应式变量驱动 Vue `<Transition>` 优雅离场。
 
+### 41. PWA 预缓存动态多媒体资产泄漏与虚拟模块隔离（Precache Media Bloat & Virtual Module Isolation）
+
+- **本质**：使用 `import.meta.glob('/public/...')` 扫描 public 静态资产时，Vite 会将其判定为工程依赖并无差别克隆拷贝至 `dist/assets/` 中；同时 VitePWA 的 Workbox 预缓存探测默认会将其全部纳入 App Shell 静态预缓存清单，导致首屏静态预缓存（Precache）瞬间从原本的 ~900 KiB 暴涨至近 10 MB（例如 Live2D 动画 `loading-tiya.webp` 3.98 MB 与多张插画），严重阻断首屏网络并浪费读者手机流量。
+- **红线与防误伤**：
+  - **不要**对 `public/` 目录下的大体积多媒体、动图或按需资产使用 `import.meta.glob`；
+  - **不要**将运行时动态插画无条件塞入 `includeAssets`；
+  - **放行/改用**：
+    1. 在 `plugins/illustrations.ts` 中编写 Vite 虚拟模块插件（`virtual:illustrations`），在编译期仅扫描文件系统并输出轻量纯文本路径数组（`['/loading-1.webp', ...]`），零资产克隆；
+    2. 在 Workbox 配置中将 `globIgnores: ['**/loading-*']` 排除核心预缓存，改为通过 `runtimeCaching` 注册 `illustration-pool-cache`（`CacheFirst`），实现运行时按需懒加载并离线驻留。
+
+### 42. iOS WebKit 针对 Web App Manifest 凭据限制（iOS PWA Manifest Credential Drop）
+
+- **本质**：iOS Safari / WebKit 在解析 `<link rel="manifest">` 时对凭据配置（`crossorigin="use-credentials"`）有极其严苛且反直觉的阻断行为。当在 VitePWA 中配置了 `useCredentials: true` 时，WebKit 会判定请求需要同源认证而直接静默丢弃该 Manifest 响应，导致在 iOS Safari 点击“分享 ➔ 添加到主屏幕”时完全不识别 PWA 特性，仅能生成一个普通的 Safari 网页快捷方式，且无法以 Standalone 独立视口启动。
+- **红线与防误伤**：
+  - **不要**在不需要跨域鉴权的 Web App Manifest 上配置 `useCredentials: true`；
+  - **放行/改用**：保持 Manifest 公开无凭据获取（默认 `crossorigin="anonymous"` 或不传凭据），并在 `index.html` 的 `viewport` 中补充 `viewport-fit=cover` 以支持 iPhone 灵动岛/刘海屏安全边距自适应。
+
+### 43. Service Worker 活跃连接阻断与浏览器缓存重置竞态（SW Active Connection & Storage Teardown Race）
+
+- **本质**：在客户端执行“重置全部离线环境”时，若直接调用 `indexedDB.deleteDatabase()`，正在运行中的 Service Worker 或当前页面并发请求极易持有 open 数据库连接，导致删除操作永久停留在 `blocked` 挂起态；此外，若未注销 Service Worker 或注销后未刷新页面，页面上已挂载的 `<img>` 标签会立即触发活跃 Service Worker 的 Fetch Handler 重新抓取并写回 `CacheStorage`，导致用户点击“清空”后数据看似完全没有被清空。
+- **红线与防误伤**：
+  - **不要**在重置时仅调用 `indexedDB.deleteDatabase()` 而不预先清空内部存储表；
+  - **不要**在注销 Service Worker 后停留在当前页面不触发刷新；
+  - **放行/改用**：
+    1. 在删除 IndexedDB 前，先打开数据库并逐一调用全部 `objectStore.clear()` 清空记录，确保即使 `deleteDatabase` 被暂时阻塞也能清零数据；
+    2. 注销 Service Worker 注册项并调用 `caches.delete()` 遍历清理；
+    3. 在清理逻辑末尾设置 600ms 定时器强制执行 `window.location.reload()`，彻底斩断 Service Worker 的幽灵线程连接并刷新所有前端内存状态。
+
 ---
 
 ## 🚦 交付门禁（四步必跑）

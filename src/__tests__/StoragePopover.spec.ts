@@ -73,4 +73,17 @@ describe('StoragePopover component', () => {
     expect(wrapper.find('.storage-update-card').exists()).toBe(true)
     expect(wrapper.find('.update-card-title').text()).toBe('新卷本装订就绪')
   })
+
+  it('renders iOS guide pill when showIosGuide is true in StorageHeader', async () => {
+    const { default: StorageHeader } = await import('@/components/storage/StorageHeader.vue')
+    const wrapper = mount(StorageHeader, {
+      props: {
+        canInstall: false,
+        isStandalone: false,
+        showIosGuide: true,
+      },
+    })
+    expect(wrapper.find('.pwa-ios-guide-pill').exists()).toBe(true)
+    expect(wrapper.find('.pwa-ios-guide-pill').text()).toContain('Safari 分享 ➔ 加到主屏幕')
+  })
 })

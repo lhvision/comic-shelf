@@ -7,10 +7,12 @@
 import AppIcon from '@/components/AppIcon.vue'
 
 defineProps<{
-  /** 浏览器是否支持并触发了 PWA 安装提示 */
+  /** 浏览器是否支持并触发了 PWA 安装提示（Chromium/Android 原生事件） */
   canInstall: boolean
   /** 当前是否已在 Standalone 独立视口运行 */
   isStandalone: boolean
+  /** 当前是否处于 iOS Safari 且尚未添加至主屏（展示原生添加引导） */
+  showIosGuide?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -37,6 +39,14 @@ const emit = defineEmits<{
         <AppIcon name="download" size="xs" :stroke-width="1.8" />
         <span>安装至桌面</span>
       </button>
+      <span
+        v-else-if="showIosGuide"
+        class="pwa-ios-guide-pill"
+        title="在 iOS Safari 点击底栏分享按钮 ➔ 选择「添加到主屏幕」即可作为独立应用全屏运行"
+      >
+        <AppIcon name="upload" size="xs" :stroke-width="1.8" />
+        <span>Safari 分享 ➔ 加到主屏幕</span>
+      </span>
       <span v-else-if="isStandalone" class="pwa-standalone-pill"> 〔 独立应用 〕 </span>
     </div>
   </header>
@@ -91,6 +101,20 @@ const emit = defineEmits<{
   font-family: var(--font-mono);
   font-size: var(--text-caption);
   color: var(--ink-2);
+}
+
+.pwa-ios-guide-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: 0.2rem 0.5rem;
+  border: 1px dashed color-mix(in oklab, var(--line) 75%, var(--accent));
+  border-radius: var(--radius-1);
+  background: var(--paper-1);
+  color: var(--ink-1);
+  font-family: var(--font-mono);
+  font-size: var(--text-caption);
+  user-select: none;
 }
 
 @media (prefers-reduced-motion: reduce) {

@@ -1281,8 +1281,15 @@ if _DIST_DIR.exists() and (_DIST_DIR / "index.html").exists():
             clean_path = path.strip("/")
             if clean_path in ("", "index.html", "sw.js", "registerSW.js", "manifest.webmanifest"):
                 response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
-            elif clean_path.startswith("assets/"):
+            elif clean_path.startswith("assets/") or clean_path.startswith("workbox-"):
                 response.headers["Cache-Control"] = "public, max-age=31536000, immutable"
+
+            if clean_path == "sw.js":
+                response.headers["Service-Worker-Allowed"] = "/"
+
+            if clean_path == "manifest.webmanifest":
+                response.headers["Access-Control-Allow-Origin"] = "*"
+                response.headers["Content-Type"] = "application/manifest+json"
 
             return response
 

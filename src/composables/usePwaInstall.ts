@@ -26,6 +26,18 @@ export const usePwaInstall = createGlobalState(() => {
     return !!(isStandaloneDisplay || isIosStandalone)
   })
 
+  // 探测当前是否处于 iOS / iPadOS 环境
+  const isIos = computed(() => {
+    if (typeof navigator === 'undefined') return false
+    const ua = navigator.userAgent || ''
+    const isAppleMobile = /iPhone|iPad|iPod/i.test(ua)
+    const isIpadOs = navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1
+    return isAppleMobile || isIpadOs
+  })
+
+  // iOS Safari 因 WebKit 不支持 beforeinstallprompt，当处于非独立视口时展示添加到主屏幕引导
+  const showIosGuide = computed(() => isIos.value && !isStandalone.value)
+
   const canInstall = computed(
     () => !isStandalone.value && !isInstalled.value && !!deferredPrompt.value,
   )
@@ -60,8 +72,15 @@ export const usePwaInstall = createGlobalState(() => {
   }
 
   return {
+    /** Chromium / Android 设备是否可弹出原生安装面板 */
     canInstall,
+    /** 当前是否已在 Standalone 独立视口运行 */
     isStandalone,
+    /** 当前运行设备是否为 iOS / iPadOS */
+    isIos,
+    /** 是否向 iOS 用户展示原生「添加到主屏幕」指引胶囊 */
+    showIosGuide,
+    /** 触发应用安装流 */
     installApp,
   }
 })

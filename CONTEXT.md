@@ -152,3 +152,8 @@
 - **服务自愈与优雅退出熔断（Self-Healing Startup & Graceful Shutdown Timeout）**：本地开发环境与单容器部署的服务生命周期保护机制。启动前自动探测 8000 端口，识别并自愈回收历史残留的 Uvicorn/Python 僵尸进程；Uvicorn 配置 3 秒优雅停机超时熔断（`timeout_graceful_shutdown=3`），结合开发脚本（`dev.sh`）的进程树两阶段退出（`SIGTERM` -> 2s 缓冲 -> `SIGKILL` 兜底），彻底消除端口幽灵占用与孤儿进程。
 - **单向系统事件流主动注销（SSE Active Stream Teardown）**：后端优雅停机或热重载时针对 `/api/events/stream` 挂载的长连接实施的主动熔断机制。通过向活跃的 `asyncio.Queue` 投递 `None` 退出哨兵（Poison Pill），唤醒阻塞在 `queue.get()` 上的生成器协程即刻退出并关闭 HTTP 响应流，避免持久长连接阻止 Uvicorn 关停流程。
 - **响应式阶梯封面（Responsive Stepped Covers / srcset & sizes）**：基于 HTML5 `srcset`（`w` 物理宽度描述符）与 `sizes` 布局槽位规范的多阶封面分发体系。根据书架卡片槽位（~180px）、详情页 Hero 槽位（~360-480px）与设备像素比（1x/2x/3x DPR），由浏览器自主决策拉取最适宜规格图片（如 360w / 720w），兼顾移动端低内存与高分屏细腻度；严格遵循 `sizes` 显式声明守则，杜绝缺省 `sizes` 导致浏览器默认按 100vw 误拉超大原图；配合现代 `sizes="auto"`（Chrome 126+, Firefox 150+）在懒加载场景实现原生排版尺寸联动。
+- **核心资产预缓存（Core Assets Precache）**：Workbox 在客户端首次加载时静默拉取并写入 CacheStorage 的核心静态代码与界面图标外壳（App Shell）。设计规范要求核心预缓存严格收敛在 1.5 MB 预算内，超大媒体资产严禁入列。
+- **离线插画池（Illustration Pool）**：全站看板角色与加载插画的按需运行时缓存池（`/loading-*.webp`）。通过虚拟模块编译期探测、运行时 `CacheFirst` 懒加载策略，兼顾离线可用性与首屏秒开，杜绝首屏吞吐近 10 MB 媒体的流量黑洞。
+- **iOS 桌面引导（iOS PWA Add-to-Home Guidance）**：针对 WebKit 缺少 `beforeinstallprompt` 规范特性的平台交互补偿。在 iOS Safari 视口下以典雅纸面徽印呈现「Safari 分享 ➔ 加到主屏幕」引导，并在 Web Manifest 层面剔除凭据陷阱，保障 Standalone 独立视口无缝唤起。
+- **Service Worker 边缘穿透（PWA Edge Bypass）**：Cloudflare 等 CDN 边缘对 `sw.js` 与 `manifest.webmanifest` 实施的绝对穿透规则（Bypass Cache）。确保客户端版本发现永远直通源站，彻底隔绝因 CDN 缓存旧 SW 引发的旧哈希静态资源 404 连锁崩溃。
+- **统一构建插件架构（Modular Vite Plugins / `plugins/`）**：根目录收敛的自定义构建扩展体系。将文件系统探测、虚拟模块生成（如 `virtual:illustrations`）等非标准逻辑从 `vite.config.ts` 抽离解耦，由 `tsconfig.node.json` 全局类型纳管，保持主配置文件轻巧可读，为未来构建插件提供规范单一源。

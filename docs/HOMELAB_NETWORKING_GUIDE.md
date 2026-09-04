@@ -241,6 +241,37 @@ _原理：将所有解密漫画原图、封面图、缩略图强制缓存在距�
    - **Browser TTL（浏览器客户端缓存）**：选择 **Respect origin headers (遵循源服务器 TTL)**。
 3. 点击右下角 **Deploy（部署）**。
 
+### 6.4 配置 PWA / Service Worker 绕过边缘缓存规则（Bypass Cache —— 根治版本更新 404 与旧版卡死）
+
+_原理：Cloudflare 默认会强缓存 JavaScript 等静态资源。如果 `/sw.js` 或 `/manifest.webmanifest` 被 Cloudflare 边缘节点缓存，当纸间发布新版本部署后，访客仍会从 Cloudflare 下载旧版 Service Worker。而旧版 Service Worker 的预缓存清单仍指向已被服务器替换删除的旧 CSS/JS 哈希文件（如 `index-Dm4SBQ3G.css`），从而直接触发 HTTP 404，导致整个 Service Worker 的安装生命周期报错崩溃。因此，必须显式让 Cloudflare 对 PWA 入口与 Service Worker 脚本执行**绕过缓存（Bypass Cache）**，保证版本探测永远直通源站。_
+
+1. 左侧菜单点击 **Caching（缓存）** ➔ **Cache Rules（缓存规则）** ➔ 点击 **Create rule**。
+2. 填写规则参数：
+   - **Rule name**：`paper-room-pwa-bypass`
+   - **When incoming requests match...（自定义匹配表达式）**：
+     点击右上角的 `Edit expression（编辑表达式）`，粘贴以下表达式：
+     ```text
+     (http.request.uri.path in {"/sw.js" "/manifest.webmanifest" "/registerSW.js"} or starts_with(http.request.uri.path, "/workbox-"))
+     ```
+   - **Cache eligibility（缓存资格）**：选择 **Bypass cache (绕过缓存)**。
+3. 点击右下角 **Deploy（部署）**。
+4. **规则顺序提示**：在 Cache Rules 列表中，请确保 `paper-room-pwa-bypass` 规则位于 `paper-room-media-cache` 之上（或两者的匹配路径互不相交即可）。
+
+### 6.5 配置 Cloudflare WAF 边缘防盗链与防探测规则（可选进阶 —— 极致防直链刺探）
+
+_原理：虽然未鉴权的外部人员绝对无法获取你的书库目录（`/api/library` 受口令 401 保护且不被 CDN 缓存），但如果合法用户读过某本漫画后，该图片在 CDN 边缘已建立缓存。配置此规则后，任何没有携带本站 Referer 的外部爬虫、恶意直链或浏览器地址栏直接探测，将在 Cloudflare Anycast 边缘被**直接阻断（Block）**，连边缘缓存都无法触碰。_
+
+1. 左侧菜单点击 **Security（安全性）** ➔ **WAF** ➔ **Custom Rules（自定义规则）** ➔ 点击 **Create rule**。
+2. 填写规则参数：
+   - **Rule name**：`paper-room-media-sniff-block`
+   - **When incoming requests match...（自定义匹配表达式）**：
+     点击右上角的 `Edit expression`，粘贴以下表达式（将 `yourdomain.com` 替换为你的实际主域名）：
+     ```text
+     (http.request.uri.path contains "/api/library/" and (ends_with(http.request.uri.path, "/file") or ends_with(http.request.uri.path, "/thumbnail") or http.request.uri.path.extension in {"webp" "jpg" "jpeg" "png"}) and not (http.referer contains "yourdomain.com"))
+     ```
+   - **Choose action（采取的操作）**：选择 **Block（阻止）**。
+3. 点击右下角 **Deploy（部署）**。
+
 ---
 
 ## 🚀 七、后续新增任意新项目（如 Memos、Gitea、网盘等）标准运维手册

@@ -4,17 +4,9 @@
  * 新增插画直接放入 public 目录即可自动扩容，无需修改任何代码。
  */
 
-const globMap = import.meta.glob('/public/loading-*.{webp,png,jpg,jpeg}', {
-  eager: true,
-})
+import { illustrations as discoveredIllustrations } from 'virtual:illustrations'
 
-const discovered = Object.keys(globMap)
-  .map((path) => {
-    const match = path.match(/(loading-[^/]+\.(?:webp|png|jpg|jpeg))$/i)
-    return match ? `/${match[1]}` : ''
-  })
-  .filter(Boolean)
-  .sort((a, b) => a.localeCompare(b, undefined, { numeric: true }))
+const discovered = Array.isArray(discoveredIllustrations) ? discoveredIllustrations : []
 
 export const DEFAULT_ILLUSTRATIONS: readonly string[] =
   discovered.length > 0
@@ -25,6 +17,12 @@ export const DEFAULT_ILLUSTRATIONS: readonly string[] =
         '/loading-3.webp',
         '/loading-4.webp',
         '/loading-5.webp',
+        '/loading-6.webp',
+        '/loading-7.webp',
+        '/loading-8.webp',
+        '/loading-9.webp',
+        '/loading-10.webp',
+        '/loading-11.webp',
         '/loading-tiya.webp',
       ]
 
