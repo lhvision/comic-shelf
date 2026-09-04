@@ -23,7 +23,6 @@ export const DEFAULT_ILLUSTRATIONS: readonly string[] =
         '/loading-9.webp',
         '/loading-10.webp',
         '/loading-11.webp',
-        '/loading-tiya.webp',
       ]
 
 export function useIllustrationPool() {
@@ -39,7 +38,7 @@ export function useIllustrationPool() {
   function getIllustration(variantOrIndex?: number | string): string {
     if (typeof variantOrIndex === 'string') {
       if (variantOrIndex.startsWith('/')) return variantOrIndex
-      if (variantOrIndex === 'tiya') return '/loading-tiya.webp'
+      if (variantOrIndex === 'tiya') return '/tiya-live2d.webp'
       return `/${variantOrIndex}`
     }
     if (typeof variantOrIndex === 'number' && Number.isFinite(variantOrIndex)) {

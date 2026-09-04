@@ -322,6 +322,16 @@
     3. 注销 Service Worker 注册项并调用 `caches.delete()` 遍历清理；
     4. 在全局重置末尾设置 600ms 定时器强制执行 `window.location.reload()`，彻底斩断 Service Worker 的幽灵线程连接并刷新所有前端内存状态。
 
+### 44. Vite 虚拟模块在 load() 钩子误调 this.addWatchFile 触发目录导入解析崩溃（Vite Virtual Module addWatchFile Directory Panic）
+
+- **本质**：在 Rollup 中，`this.addWatchFile(path)` 仅作为监听外部文件/目录变化的构建辅助；但在 Vite 的开发服务容器（`LoadPluginContext`）中，`addWatchFile` 会将传入的路径直接推入 `this._addedImports`。随后在 Vite 的 `vite:import-analysis` 插件对虚拟模块进行转换时，会无差别遍历 `_addedImports` 并调用 `this.resolve(id, importerFile)` 将其解析为 ES 模块依赖。若在 `load()` 中对目录路径（如 `public/`）或非模块静态资源调用了 `this.addWatchFile(publicDir)`，Vite 的解析器会因为目录无法被当作 JavaScript 模块 resolve 而直接崩溃，抛出 `Internal server error: Failed to resolve import ".../public" from "virtual:illustrations". Does the file exist?`。
+- **红线与防误伤**：
+  - **不要**在 Vite 插件的 `load()` 或 `transform()` 中对目录路径或非模块静态资源调用 `this.addWatchFile()`；
+  - **放行/改用**：
+    1. 静态目录或非模块文件的变更监听统一迁移到插件的 `configureServer(server)` 钩子中，利用 `server.watcher` 监听文件事件（`add`、`unlink`、`change`）；
+    2. 探测到目标文件过滤匹配后，通过 `server.moduleGraph.getModuleById(resolvedVirtualModuleId)`（或 Vite 6 环境 API 的 `client.moduleGraph`）精准标记失效（`invalidateModule`），并通过 `server.ws.send({ type: 'full-reload', path: '*' })` 平滑触发重载；
+    3. 模块内部解析目录时，使用兼容 Node 原生与 JSDOM 测试环境的协议安全检测（检查 `url.protocol === 'file:'` 后再调用 `fileURLToPath`，否则降级回 `path.resolve(process.cwd(), ...)`），杜绝测试环境中 `TypeError: The URL must be of scheme file` 报错。
+
 ---
 
 ## 🚦 交付门禁（四步必跑）
