@@ -108,14 +108,6 @@ export default defineConfig({
     illustrationsPlugin(),
     VitePWA({
       registerType: 'prompt',
-      includeAssets: [
-        'brand-icon.webp',
-        'pwa-192x192.png',
-        'pwa-512x512.png',
-        'pwa-maskable-512x512.png',
-        'apple-touch-icon.png',
-        'brand-icons/*.webp',
-      ],
       manifest: {
         name: '纸间 · Paper Room',
         short_name: '纸间',
@@ -158,7 +150,7 @@ export default defineConfig({
             purpose: 'any',
           },
           {
-            src: '/pwa-maskable-512x512.png',
+            src: '/pwa-512x512.png',
             sizes: '512x512',
             type: 'image/png',
             purpose: 'maskable',

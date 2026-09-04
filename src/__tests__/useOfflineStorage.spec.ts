@@ -38,10 +38,10 @@ describe('useOfflineStorage composable', () => {
   it('provides unambiguous device badge text and handles environment status', () => {
     const storage = useOfflineStorage()
     storage.usage.value = 0
-    expect(storage.badgeText.value).toBe('设备离线')
+    expect(storage.badgeText.value).toBe('离线存储')
 
     storage.usage.value = 1024 * 1024 * 8.5
-    expect(storage.badgeText.value).toBe('设备离线')
+    expect(storage.badgeText.value).toBe('离线存储')
 
     // In jsdom environment without serviceWorker/caches, it correctly detects unsupported
     expect(storage.environmentStatus.value).toBe('unsupported')

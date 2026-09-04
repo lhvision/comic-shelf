@@ -1,7 +1,7 @@
 /**
  * 插画资产池 —— 自动发现与随机轮换池。
- * 通过 Vite import.meta.glob 自动感知 public/loading-*.webp 资产，
- * 新增插画直接放入 public 目录即可自动扩容，无需修改任何代码。
+ * 通过 Vite 虚拟模块插件 virtual:illustrations 在编译期自动感知 public/loading-*.webp 资产，
+ * 配合 Workbox CacheFirst 运行时懒加载，新增插画直接放入 public 目录即可自动扩容，无需修改任何代码。
  */
 
 import { illustrations as discoveredIllustrations } from 'virtual:illustrations'

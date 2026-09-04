@@ -63,7 +63,7 @@ export const useOfflineStorage = createGlobalState(() => {
   })
 
   const badgeText = computed(() => {
-    return '设备离线'
+    return '离线存储'
   })
 
   async function refreshEstimate(): Promise<void> {
@@ -82,44 +82,70 @@ export const useOfflineStorage = createGlobalState(() => {
           )
 
           let count = 0
-          let calculatedBytes = 0
+          const cacheEntries: { cache: Cache; requests: readonly Request[] }[] = []
 
           for (const name of imageCacheNames) {
             try {
               const cache = await caches.open(name)
               const requests = await cache.keys()
               count += requests.length
-              for (const req of requests) {
-                try {
-                  const res = await cache.match(req)
-                  if (res) {
-                    const len = res.headers.get('content-length')
-                    if (len) {
-                      calculatedBytes += parseInt(len, 10) || 0
-                    }
-                  }
-                } catch {
-                  // 忽略单张图片响应解析异常
-                }
-              }
+              cacheEntries.push({ cache, requests })
             } catch {
               // 忽略单个缓存打开异常
             }
           }
+          // 立即更新数量，界面第一时间呈现
           mangaImageCount.value = count
 
           if (count === 0) {
             mangaImageBytes.value = 0
-          } else if (calculatedBytes > 0) {
-            mangaImageBytes.value = calculatedBytes
           } else {
-            // 回退估算：优先从 usageDetails.caches 扣除核心外壳（~1.5MB），或按每张约 120KB 兜底
-            const cachesTotal = (estimate as unknown as { usageDetails?: { caches?: number } })
-              .usageDetails?.caches
-            if (typeof cachesTotal === 'number' && cachesTotal > 0) {
-              mangaImageBytes.value = Math.max(count * 80 * 1024, cachesTotal - 1.5 * 1024 * 1024)
+            // 限制并发与样本量：若 <= 50 全量并行；若 > 50 抽样前 40 张估算平均单图大小线性推算
+            let calculatedBytes = 0
+            const SAMPLE_LIMIT = 40
+            const sampleTasks: Promise<number>[] = []
+            let sampledCount = 0
+
+            outer: for (const { cache, requests } of cacheEntries) {
+              for (const req of requests) {
+                if (sampledCount >= SAMPLE_LIMIT && count > 50) break outer
+                sampledCount++
+                sampleTasks.push(
+                  cache
+                    .match(req)
+                    .then((res) => {
+                      if (!res) return 0
+                      const len = res.headers.get('content-length')
+                      return len ? parseInt(len, 10) || 0 : 0
+                    })
+                    .catch(() => 0),
+                )
+              }
+            }
+
+            const sampledSizes = await Promise.all(sampleTasks)
+            const validSizes = sampledSizes.filter((s) => s > 0)
+            if (validSizes.length > 0) {
+              const sumSampled = validSizes.reduce((acc, curr) => acc + curr, 0)
+              if (count <= 50 || count === validSizes.length) {
+                calculatedBytes = sumSampled
+              } else {
+                const avgBytes = sumSampled / validSizes.length
+                calculatedBytes = Math.round(avgBytes * count)
+              }
+            }
+
+            if (calculatedBytes > 0) {
+              mangaImageBytes.value = calculatedBytes
             } else {
-              mangaImageBytes.value = count * 120 * 1024
+              // 回退估算：优先从 usageDetails.caches 扣除核心外壳（~1.5MB），或按每张约 120KB 兜底
+              const cachesTotal = (estimate as unknown as { usageDetails?: { caches?: number } })
+                .usageDetails?.caches
+              if (typeof cachesTotal === 'number' && cachesTotal > 0) {
+                mangaImageBytes.value = Math.max(count * 80 * 1024, cachesTotal - 1.5 * 1024 * 1024)
+              } else {
+                mangaImageBytes.value = count * 120 * 1024
+              }
             }
           }
         }
@@ -132,48 +158,77 @@ export const useOfflineStorage = createGlobalState(() => {
   /**
    * 深度清空指定 IndexedDB 内部的数据表记录并尝试删除数据库，
    * 避免因 Service Worker 长连接未释放导致 deleteDatabase 触发 blocked 挂起。
+   * 增加 1.5s 兜底超时与 onabort 容错，防止 IDB 事务异常挂死。
    */
-  async function clearIndexedDbRecords(dbName: string): Promise<void> {
+  async function clearIndexedDbRecords(dbName: string, targetStoreName?: string): Promise<void> {
     if (typeof indexedDB === 'undefined') return
     await new Promise<void>((resolve) => {
+      let settled = false
+      const safeResolve = () => {
+        if (!settled) {
+          settled = true
+          resolve()
+        }
+      }
+
+      // 1.5s 兜底定时器，防止 IDB 锁死阻塞整个重置流程
+      const timer = setTimeout(safeResolve, 1500)
+
       try {
         const openReq = indexedDB.open(dbName)
         openReq.onsuccess = () => {
           const db = openReq.result
-          const storeNames = Array.from(db.objectStoreNames)
-          if (storeNames.length > 0) {
+          const allStores = Array.from(db.objectStoreNames)
+          const storesToClear = targetStoreName
+            ? allStores.filter((name) => name === targetStoreName || name.includes(targetStoreName))
+            : allStores
+
+          if (storesToClear.length > 0) {
             try {
-              const tx = db.transaction(storeNames, 'readwrite')
-              for (const name of storeNames) {
+              const tx = db.transaction(storesToClear, 'readwrite')
+              for (const name of storesToClear) {
                 tx.objectStore(name).clear()
               }
-              tx.oncomplete = () => {
+              const done = () => {
+                clearTimeout(timer)
                 db.close()
-                resolve()
+                safeResolve()
               }
-              tx.onerror = () => {
-                db.close()
-                resolve()
-              }
+              tx.oncomplete = done
+              tx.onerror = done
+              tx.onabort = done
             } catch {
+              clearTimeout(timer)
               db.close()
-              resolve()
+              safeResolve()
             }
           } else {
+            clearTimeout(timer)
             db.close()
-            resolve()
+            safeResolve()
           }
         }
-        openReq.onerror = () => resolve()
+        openReq.onerror = () => {
+          clearTimeout(timer)
+          safeResolve()
+        }
+        openReq.onblocked = () => {
+          clearTimeout(timer)
+          safeResolve()
+        }
       } catch {
-        resolve()
+        clearTimeout(timer)
+        safeResolve()
       }
     })
 
-    try {
-      indexedDB.deleteDatabase(dbName)
-    } catch {
-      // 降级容错
+    // 仅在全量清空（未指定 targetStoreName）时才执行彻底删除库
+    if (!targetStoreName) {
+      try {
+        indexedDB.deleteDatabase(dbName)
+      } catch {
+        // 降级容错
+      }
     }
   }
 
@@ -195,20 +250,22 @@ export const useOfflineStorage = createGlobalState(() => {
       mangaImageCount.value = 0
       mangaImageBytes.value = 0
 
-      // 清理 workbox-expiration 中的 IndexedDB 记录
+      // 仅清理与 manga-images 相关的 IndexedDB objectStore，避免抹除插画池等其他缓存的生命周期元数据
       if (typeof indexedDB !== 'undefined' && typeof indexedDB.databases === 'function') {
         try {
           const dbs = await indexedDB.databases()
           for (const db of dbs) {
-            if (db.name && (db.name.includes('workbox') || db.name.includes('manga'))) {
+            if (db.name && db.name.includes('manga')) {
               await clearIndexedDbRecords(db.name)
+            } else if (db.name && db.name.includes('workbox')) {
+              await clearIndexedDbRecords(db.name, 'manga-images')
             }
           }
         } catch {
           // ignore
         }
       } else {
-        await clearIndexedDbRecords('workbox-expiration')
+        await clearIndexedDbRecords('workbox-expiration', 'manga-images')
       }
 
       await refreshEstimate()

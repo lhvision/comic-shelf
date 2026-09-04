@@ -317,9 +317,10 @@
   - **不要**在重置时仅调用 `indexedDB.deleteDatabase()` 而不预先清空内部存储表；
   - **不要**在注销 Service Worker 后停留在当前页面不触发刷新；
   - **放行/改用**：
-    1. 在删除 IndexedDB 前，先打开数据库并逐一调用全部 `objectStore.clear()` 清空记录，确保即使 `deleteDatabase` 被暂时阻塞也能清零数据；
-    2. 注销 Service Worker 注册项并调用 `caches.delete()` 遍历清理；
-    3. 在清理逻辑末尾设置 600ms 定时器强制执行 `window.location.reload()`，彻底斩断 Service Worker 的幽灵线程连接并刷新所有前端内存状态。
+    1. 区分细粒度清理与整库重置：局部清理（如清空画页）仅清空目标 `objectStore.clear()`（保护插画池等其他 Runtime 缓存的元数据），仅在全局重置时清空并注销整库；
+    2. 对 IndexedDB 打开与事务操作绑定 1.5s 兜底超时与 `onabort` 监听，防止连接或锁死导致 UI 永久 loading；
+    3. 注销 Service Worker 注册项并调用 `caches.delete()` 遍历清理；
+    4. 在全局重置末尾设置 600ms 定时器强制执行 `window.location.reload()`，彻底斩断 Service Worker 的幽灵线程连接并刷新所有前端内存状态。
 
 ---
 
