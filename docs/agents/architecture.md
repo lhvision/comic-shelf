@@ -132,7 +132,7 @@ JmImageTool.decode_and_save(num, source_image, save_path)
   `chapters`（压平标题空白）并原位修复 `album.json`，和 v1→v2 迁移同一哲学——不碰远端。
 - **Provider 边界**：章节概念只存在于 provider 的 `fetch()`（读 `album.episode_list`）；
   storage / API 只认 `Chapter{id,index,title,page_count,start}`，不感知禁漫具体字段。
-- **封面归属**：封面永远取全局前 `cover_count` 页（即第一章），不按章节生成。
+- **封面归属与全生命周期预热**：封面默认取全局前 `cover_count` 页（或馆长指定的 `cover_indices`）。在导入作品（`import_comic`）、元数据更新（`update_metadata`）、重新装订（`rebind_archive`）与后台异步预热（`prefetch_comic`/`prefetch_chapter`）时，系统均同步预热生成 720px 基准图与 360px 缩略图的双模（WebP + JPEG）物理缓存。封面端点严格遵守 HTTP 状态语义（底层画页缺失或未导入时响应 404 Not Found，严禁误抛 502）。
 
 ## 5. 后端文件地图
 
@@ -172,8 +172,8 @@ JmImageTool.decode_and_save(num, source_image, save_path)
 - `GET /api/library/{source}/{id}`（详情含 `chapters`）
 - `GET /api/library/{source}/{id}/pages/{n}/file`（`n` 为全局页号，带防盗链校验，支持 `.{ext}` 静态扩展名别名）
 - `GET /api/library/{source}/{id}/pages/{n}/thumbnail`（同上，支持 `.{ext}` 别名）
-- `GET /api/library/{source}/{id}/covers/{n}/file`（封面取 `cover_indices` 或前 N 页，带防盗链校验，支持 `Accept: image/webp` 内容协商、360 规格 `?w=360` 与 `.{ext}` 别名，带 `Vary: Accept`）
-- `GET /api/library/{source}/{id}/chapters/{chapterId}/cover`（章节封面端点，带防盗链校验，支持 WebP 内容协商与 360 规格，支持 `.{ext}` 别名）
+- `GET /api/library/{source}/{id}/covers/{n}/file`（封面取 `cover_indices` 或前 N 页，带防盗链校验，支持 `Accept: image/webp` 内容协商、360 规格 `?w=360` 与 `.{ext}` 别名，带 `Vary: Accept`；资源缺失响应 404，由 `_serve_negotiated_image` 统一服务）
+- `GET /api/library/{source}/{id}/chapters/{chapterId}/cover`（章节封面端点，带防盗链校验，支持 WebP 内容协商与 360 规格，支持 `.{ext}` 别名；资源缺失响应 404）
 - `GET /api/search/image/status`（以图搜图 Sidecar 服务健康探测）
 - `GET /api/curator/passes`（馆长获取访客名册列表）
 - `POST /api/curator/passes` `{username, expires_days, custom_token}`（馆长登记印发专属通行证）

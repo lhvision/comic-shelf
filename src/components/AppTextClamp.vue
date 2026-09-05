@@ -59,6 +59,7 @@ const props = withDefaults(defineProps<Props>(), {
   disabled: false,
 })
 
+const tooltipRef = ref<InstanceType<typeof Tooltip> | null>(null)
 const textRef = ref<HTMLElement | null>(null)
 const isTruncated = ref(false)
 
@@ -66,18 +67,30 @@ const isTruncated = ref(false)
  * 几何尺寸探测：检查容器是否存在纵向高度截断或横向宽度截断
  * 严格遵循 JIT（Just-In-Time）按需原则，仅在读者交互瞬间执行单次单元素读取
  */
-function checkTruncation() {
+function checkTruncation(): boolean {
   if (props.disabled) {
     isTruncated.value = false
-    return
+    return false
   }
   const el = textRef.value
-  if (!el) return
+  if (!el) return false
 
   // 1px 容差消除次像素渲染舍入抖动
   const hasVerticalOverflow = el.scrollHeight > el.clientHeight + 1
   const hasHorizontalOverflow = el.scrollWidth > el.clientWidth + 1
-  isTruncated.value = hasVerticalOverflow || hasHorizontalOverflow
+  const truncated = hasVerticalOverflow || hasHorizontalOverflow
+  isTruncated.value = truncated
+  return truncated
+}
+
+/**
+ * 移动端触碰交互感知：探测溢出并在截断时主动唤起 Tooltip
+ */
+function handleTouchStart() {
+  const truncated = checkTruncation()
+  if (truncated && !props.disabled) {
+    tooltipRef.value?.show()
+  }
 }
 
 // 文案更新时重置截断状态，下一次交互时自动按需重新探测，杜绝非交互态下触发布局重排
@@ -91,6 +104,7 @@ watch(
 
 <template>
   <Tooltip
+    ref="tooltipRef"
     class="app-text-clamp-wrapper"
     :class="{ 'is-block': block }"
     :tip="text"
@@ -103,7 +117,7 @@ watch(
     :hide-delay="hideDelay"
     @pointerenter.capture="checkTruncation"
     @focusin.capture="checkTruncation"
-    @touchstart.passive="checkTruncation"
+    @touchstart.passive="handleTouchStart"
   >
     <component
       :is="as"
@@ -115,7 +129,7 @@ watch(
       :aria-label="isTruncated ? text : undefined"
       @pointerenter="checkTruncation"
       @focusin="checkTruncation"
-      @touchstart.passive="checkTruncation"
+      @touchstart.passive="handleTouchStart"
     >
       <slot>{{ text }}</slot>
     </component>

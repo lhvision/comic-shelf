@@ -36,9 +36,14 @@
    - `w=360` 缩略图：用于书架卡片网格、章节封面列表、以图搜图微缩芯片，彻底解决首屏卡片网络瀑布流瓶颈；
    - `w=None`（720px 基准封面）：用于详情页顶层 Hero 卡片与高清视网膜屏放大展示，两档尺寸享有完全对称的 WebP 缓存与更新策略。
 
-6. **封面意图主动预热（Active Cover Pre-warming）**：
-   - 馆长在自建工坊、阅读器或详情页更新 `cover_indices`（设为封面）时，后端在原子写入 `album.json` 的同时，即刻预热生成该页对应的 `360px` 与 `720px` WebP/JPEG 缩略图，并原子清理旧封面失效文件；
-   - 确保读者设定完成后回跳书架或刷新时，首屏 100% 毫秒级命中现成静态缓存。
+6. **全生命周期封面主动预热（Comprehensive Lifecycle Cover Pre-warming）**：
+   - 不仅在馆长更新 `cover_indices`（设为封面）时，在作品导入（`import_comic`）、全本重新装订（`rebind_archive`）、后台整本预热（`prefetch_comic`）以及单章节预热（`prefetch_chapter`）等全链路数据写入节点，后端均同步预热生成对应画页的 `360px` 与 `720px` 双模（WebP + JPEG）缩略图，并清理旧封面失效文件；
+   - 彻底避免单规格或单格式遗漏（如仅预热 720px 或仅预热 WebP），确保无论客户端 `Accept` 头协商为 WebP 还是回退至 JPEG，无论书架请求 360px 缩略图还是详情 Hero 请求 720px 基准图，首屏 100% 毫秒级命中磁盘静态缓存。
+
+7. **HTTP 状态码严格语义收敛（Strict Error Semantics）**：
+   - 封面与章节封面端点严格区分“资源不存在”与“服务端故障”：
+     - 若底层画页文件缺失、章节未离线或画卷未导入（触发 `FileNotFoundError` 或 `KeyError`），必须精准响应 `404 Not Found`；
+     - 严禁误抛 `502 Bad Gateway`，避免触发 Cloudflare 边缘错误页接管或 APM 上游故障报警；仅在解码崩溃等非预期错误时抛出 500/502。
 
 ## 影响与收益
 

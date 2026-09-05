@@ -143,7 +143,6 @@ let showTimer: ReturnType<typeof setTimeout> | null = null
 let hideTimer: ReturnType<typeof setTimeout> | null = null
 
 function show() {
-  if (props.disabled && props.delay === 0) return
   if (hideTimer) {
     clearTimeout(hideTimer)
     hideTimer = null
@@ -254,6 +253,12 @@ onBeforeUnmount(() => {
   detachWindowListeners()
   if (showTimer) clearTimeout(showTimer)
   if (hideTimer) clearTimeout(hideTimer)
+})
+
+defineExpose({
+  show,
+  hide,
+  isVisible,
 })
 </script>
 

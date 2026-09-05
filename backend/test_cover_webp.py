@@ -171,6 +171,21 @@ class TestWebPCover(unittest.TestCase):
             self.assertEqual(resp_chap.media_type, "image/webp")
             self.assertTrue(str(resp_chap.path).endswith("_360.webp"))
 
+            # 6. Missing cache raises 404 Not Found (not 502 Bad Gateway)
+            covers_dir = self.store.covers_dir("local", "c4")
+            if covers_dir.exists():
+                shutil.rmtree(covers_dir)
+            pages_dir = self.store.pages_dir("local", "c4")
+            if pages_dir.exists():
+                shutil.rmtree(pages_dir)
+            self.store.remote_path("local", "c4").unlink(missing_ok=True)
+            global_store._invalidate_cache("local", "c4")
+
+            from starlette.exceptions import HTTPException
+            with self.assertRaises(HTTPException) as ctx:
+                cover_file(source="local", source_id="c4", index=1, request=req_webp, w=360)
+            self.assertEqual(ctx.exception.status_code, 404)
+
         finally:
             global_store.root = old_root
 

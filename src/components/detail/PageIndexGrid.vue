@@ -57,7 +57,13 @@ function handleCollapse() {
   emit('collapse')
   void nextTick(() => {
     if (sectionEl.value && typeof sectionEl.value.scrollIntoView === 'function') {
-      sectionEl.value.scrollIntoView({ behavior: 'smooth', block: 'start' })
+      const prefersReducedMotion =
+        typeof window !== 'undefined' &&
+        window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches
+      sectionEl.value.scrollIntoView({
+        behavior: prefersReducedMotion ? 'auto' : 'smooth',
+        block: 'start',
+      })
     }
   })
 }
@@ -120,19 +126,25 @@ function handleCollapse() {
               <AppIcon name="chevron-down" size="xs" />
               再展开 {{ Math.min(pageStep, remainingPages) }} 页
             </button>
-            <button class="btn btn-ghost btn-small" type="button" @click.prevent="emit('loadAll')">
-              <AppIcon name="book-open" size="xs" />
-              展开全部
-            </button>
-            <button
-              v-if="canCollapse"
-              class="btn btn-ghost btn-small"
-              type="button"
-              @click.prevent="handleCollapse"
-            >
-              <AppIcon name="chevron-up" size="xs" />
-              收起画卷
-            </button>
+            <div class="fold-card-sub-actions">
+              <button
+                class="btn btn-ghost btn-small"
+                type="button"
+                @click.prevent="emit('loadAll')"
+              >
+                <AppIcon name="book-open" size="xs" />
+                展开全部
+              </button>
+              <button
+                v-if="canCollapse"
+                class="btn btn-ghost btn-small"
+                type="button"
+                @click.prevent="handleCollapse"
+              >
+                <AppIcon name="chevron-up" size="xs" />
+                收起画卷
+              </button>
+            </div>
           </div>
         </div>
       </div>
@@ -295,6 +307,13 @@ function handleCollapse() {
   margin-top: var(--space-1);
 }
 
+.fold-card-sub-actions {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  width: 100%;
+}
+
 .fold-card-actions .btn {
   width: 100%;
   min-height: 1.85rem;
@@ -346,6 +365,18 @@ function handleCollapse() {
   .page-fold-card {
     aspect-ratio: auto;
     min-height: 100%;
+    padding: var(--space-2-5) var(--space-2);
+  }
+
+  .fold-card-sub-actions {
+    flex-direction: row;
+    gap: var(--space-1);
+  }
+
+  .fold-card-sub-actions .btn {
+    flex: 1;
+    min-width: 0;
+    padding: 0 var(--space-1);
   }
 
   .page-sentinel {

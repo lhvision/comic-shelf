@@ -112,4 +112,55 @@ describe('AppTextClamp', () => {
       spy.mockRestore()
     }
   })
+
+  it('activates tooltip when delay is 0', async () => {
+    vi.useFakeTimers()
+    const wrapper = mount(AppTextClamp, {
+      props: {
+        text: '零延迟超长文本提示内容',
+        lines: 1,
+        delay: 0,
+      },
+    })
+
+    const clampEl = wrapper.find('.app-text-clamp')
+    Object.defineProperty(clampEl.element, 'scrollWidth', { value: 300, configurable: true })
+    Object.defineProperty(clampEl.element, 'clientWidth', { value: 100, configurable: true })
+
+    await clampEl.trigger('pointerenter')
+    await wrapper.find('.tooltip-wrapper').trigger('mouseenter')
+    vi.advanceTimersByTime(0)
+    await wrapper.vm.$nextTick()
+
+    const tip = wrapper.find('.tooltip__tip')
+    expect(tip.exists()).toBe(true)
+    expect(tip.text()).toBe('零延迟超长文本提示内容')
+
+    vi.useRealTimers()
+  })
+
+  it('triggers tooltip on touchstart on mobile devices', async () => {
+    vi.useFakeTimers()
+    const wrapper = mount(AppTextClamp, {
+      props: {
+        text: '移动端触碰测试文本内容',
+        lines: 1,
+        delay: 50,
+      },
+    })
+
+    const clampEl = wrapper.find('.app-text-clamp')
+    Object.defineProperty(clampEl.element, 'scrollWidth', { value: 300, configurable: true })
+    Object.defineProperty(clampEl.element, 'clientWidth', { value: 100, configurable: true })
+
+    await clampEl.trigger('touchstart')
+    vi.advanceTimersByTime(50)
+    await wrapper.vm.$nextTick()
+
+    const tip = wrapper.find('.tooltip__tip')
+    expect(tip.exists()).toBe(true)
+    expect(tip.text()).toBe('移动端触碰测试文本内容')
+
+    vi.useRealTimers()
+  })
 })

@@ -443,7 +443,7 @@
   - **不要**在无用户交互的卡片上挂载全局 `useResizeObserver` 去同步读取 `scrollHeight`；
   - **放行/改用**：
     1. **JIT 纯按需测量（Just-In-Time Detection）**：将几何排版测量严格推迟至读者意图触发时刻（光标悬停 `pointerenter`、触控按压 `touchstart`、键盘聚焦 `focusin`），单次测量耗时 < 0.05ms，首屏强制重排降至 0ms；
-    2. **浮层延迟生效评估（Deferred Disabled Evaluation）**：在 Tooltip 唤起延迟（`delay: 120ms~350ms`）计时器触发时二次核验 `props.disabled`，兼顾 JIT 响应式单向流与 0 误弹出；
+    2. **浮层延迟生效评估与触控适配（Deferred Disabled Evaluation & Touch Interaction）**：在 Tooltip 唤起延迟（`delay: 120ms~350ms`）计时器触发时二次核验 `props.disabled`，严禁将 `props.disabled && props.delay === 0` 耦合作为判定短路，确保在动态禁用与 `delay: 0` 时逻辑正交；同时支持移动端设备在 `touchstart` 时显式唤起气泡，弥补移动端缺失 hover 的交互盲区；
     3. **自动化重排防御门禁（`pnpm detect:perf`）**：借助静态 AST / 模式扫描拦截生命周期中的几何读取反模式。
 
 ### 53. 动态图片转码中的惊群效应与 HTTP 内容协商缓存污染陷阱（Thundering Herd & HTTP Content Negotiation Poisoning in Dynamic Image Transcoding）
@@ -451,15 +451,18 @@
 - **本质**：
   1. **未受控的锁外快速转码引发并发惊群（Thundering Herd）**：在实现按需缩放或格式协商（如从 JPEG 生成 WebP）时，若在 API 路由层仅判断 `not target.exists()` 即在互斥锁之外直接启动图像库（如 Pillow）进行解码与压缩转码，当首屏数十张卡片并发加载或多个客户端同时涌入时，会导致数十个工作线程对同一张图片并发重复转码，触发 CPU 负载与磁盘 I/O 尖峰；
   2. **缺漏 `Vary: Accept` 导致的代理/CDN 共享缓存污染（Shared Cache Poisoning）**：在无扩展名 URL（如 `/covers/1/file`）上使用 `Accept: image/webp` 做透明内容协商时，若未在 HTTP 响应头附带 `Vary: Accept`，中间反向代理（如 Cloudflare、Nginx）或局域网共享缓存会将 WebP 二进制文件缓存为统一副本，导致不支持 WebP 的旧版客户端或爬虫随后拉取该 URL 时遭遇图片无法解码损坏；
-  3. **扩展名未清洗导致的非预期文件拼接**：直接从 URL 动态路由参数 `{ext}` 取值并 `lstrip('.')` 作为文件后缀，若未在存储层做白名单截断归一，存在潜在的文件遍历或非法后缀探测风险。
+  3. **扩展名未清洗导致的非预期文件拼接**：直接从 URL 动态路由参数 `{ext}` 取值并 `lstrip('.')` 作为文件后缀，若未在存储层做白名单截断归一，存在潜在的文件遍历或非法后缀探测风险；
+  4. **资源缺失误抛 502 网关错误反模式（HTTP Status Semantic Inversion: 502 vs 404）**：在动态缩略图/封面转码端点中，若将底层源文件缺失（`FileNotFoundError`）或画卷尚未导入/页码越界（`KeyError`）一律捕获为通用异常并粗暴抛出 `502 Bad Gateway`，会导致反向代理与 CDN（如 Cloudflare）判定上游宕机触发错误屏接管、APM 监控报警与重试雪崩；此类由于客户端请求了不存在的实体引起的缺失必须精准映射为 `404 Not Found`，仅在真实的转码故障、内存崩溃等服务端异常时才抛出 500/502。
 - **红线与防误伤**：
   - **不要**在端点层锁外直接执行耗 CPU 的图片格式转码与重采样；
   - **不要**在基于 HTTP 请求头进行内容协商的静态媒体响应中漏发 `Vary: Accept`；
   - **不要**允许未归一化的任意外部扩展名直接参与物理文件路径拼接；
+  - **不要**将底层数据或实体未找到（`FileNotFoundError` / `KeyError`）粗暴映射为 `502 Bad Gateway`；
   - **放行/改用**：
     1. **Double-Checked Locking 互斥收敛**：端点层先做无锁热路径探测（若目标文件已存在直接零等待返回）；未命中时统一进入内部每页粒度互斥锁（`_lock_for_page`），在锁内执行二次存在性核验与快速转码，确保并发请求永远只有单线程执行转码，其余并发线程等锁后直接命中成品；
     2. **响应头标准隔离**：透明内容协商端点统一响应 `Vary: Accept` 与 `Cache-Control: public, max-age=31536000, immutable`；
-    3. **扩展名白名单规整**：存储层显式执行 `clean_ext = "webp" if ext.lower().lstrip(".") == "webp" else "jpg"`，物理层彻底锁死合法后缀。
+    3. **扩展名白名单规整**：存储层显式执行 `clean_ext = "webp" if ext.lower().lstrip(".") == "webp" else "jpg"`，物理层彻底锁死合法后缀；
+    4. **HTTP 状态码严格语义收敛**：在动态封面与转码端点中，显式捕获 `(FileNotFoundError, KeyError)` 并精准响应 `HTTPException(404, "Cover image not found")`，与转码过程中的服务端错误（500/502）严格边界隔离，避免 CDN 边缘误判。
 
 ### 54. 反向代理资产强缓存覆盖与 Cloudflare 边缘 Service Worker 换届死锁陷阱（Reverse Proxy Cache Assets & Edge SW Stale Deadlock）
 

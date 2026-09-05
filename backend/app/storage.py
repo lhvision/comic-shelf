@@ -837,6 +837,7 @@ class ComicStore:
                 self.ensure_page(fetched, index)
                 if index <= min(meta.cover_count, meta.page_count):
                     self.ensure_cover(fetched.meta, fetched, index)
+                    self.ensure_cover(fetched.meta, fetched, index, COVER_THUMB_WIDTH)
                     self.ensure_webp_cover(fetched.meta, fetched, index)
                     self.ensure_webp_cover(fetched.meta, fetched, index, COVER_THUMB_WIDTH)
                 # T-Optimize: Pre-generate thumbnail during prefetch for warm detail-page hits
@@ -879,6 +880,9 @@ class ComicStore:
 
         try:
             self.ensure_chapter_cover(meta, fetched, chapter)
+            self.ensure_chapter_cover(meta, fetched, chapter, COVER_THUMB_WIDTH)
+            self.ensure_webp_chapter_cover(meta, fetched, chapter)
+            self.ensure_webp_chapter_cover(meta, fetched, chapter, COVER_THUMB_WIDTH)
         except Exception:
             pass
 
@@ -997,6 +1001,7 @@ class ComicStore:
                 for idx in range(1, len(meta.cover_paths()) + 1):
                     try:
                         self.ensure_cover(meta, fetched, idx)
+                        self.ensure_cover(meta, fetched, idx, COVER_THUMB_WIDTH)
                         self.ensure_webp_cover(meta, fetched, idx)
                         self.ensure_webp_cover(meta, fetched, idx, COVER_THUMB_WIDTH)
                     except Exception:
@@ -1173,6 +1178,7 @@ class ComicStore:
         for i in range(1, min(meta.cover_count, meta.page_count) + 1):
             try:
                 self.ensure_cover(meta, fetched, i)
+                self.ensure_cover(meta, fetched, i, COVER_THUMB_WIDTH)
                 self.ensure_webp_cover(meta, fetched, i)
                 self.ensure_webp_cover(meta, fetched, i, COVER_THUMB_WIDTH)
             except Exception as e:
@@ -1182,6 +1188,7 @@ class ComicStore:
             for ch in meta.chapters:
                 try:
                     self.ensure_chapter_cover(meta, fetched, ch)
+                    self.ensure_chapter_cover(meta, fetched, ch, COVER_THUMB_WIDTH)
                     self.ensure_webp_chapter_cover(meta, fetched, ch)
                     self.ensure_webp_chapter_cover(meta, fetched, ch, COVER_THUMB_WIDTH)
                 except Exception as e:
@@ -1543,6 +1550,7 @@ class ComicStore:
             for i in range(1, min(5, meta.page_count + 1)):
                 try:
                     self.ensure_cover(meta, fetched, i)
+                    self.ensure_cover(meta, fetched, i, COVER_THUMB_WIDTH)
                     self.ensure_webp_cover(meta, fetched, i)
                     self.ensure_webp_cover(meta, fetched, i, COVER_THUMB_WIDTH)
                 except Exception as e:

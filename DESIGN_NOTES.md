@@ -129,7 +129,7 @@
 - **零开销性能铁律（Zero-DOM & Zero-Listener Overhead）**：
   - 默认状态仅渲染原生语义标签，Tooltip 浮层节点延迟挂载（`lazy: true` 为全局默认），休眠状态 0 额外 DOM；
   - `Tooltip.vue` 的 `window` 滚动与尺寸监听器仅在 `isVisible === true` 时按需挂载，休眠时监听器开销精确为 0，彻底免疫百张卡片滚动卡顿；
-  - **JIT 纯按需测量架构（JIT Layout Measurement & Zero Forced Reflow）**：彻底废除挂载期（`onMounted`/`nextTick`）与无差别 `useResizeObserver` 对全量静态文本的无差别排版测量，实现首屏渲染 0 次 DOM 几何访问与 0 毫秒 Forced Reflow 阻塞；几何尺寸测量严格推迟至读者意图触发时刻（`pointerenter` / `touchstart` / `focusin`）；结合 Tooltip 的延迟生效评估（`Deferred Disabled Evaluation`），在 `delay` 结束时二次核验 `props.disabled`，兼顾 0 掉帧与 0 误弹出；
+  - **JIT 纯按需测量架构（JIT Layout Measurement & Zero Forced Reflow）**：彻底废除挂载期（`onMounted`/`nextTick`）与无差别 `useResizeObserver` 对全量静态文本的无差别排版测量，实现首屏渲染 0 次 DOM 几何访问与 0 毫秒 Forced Reflow 阻塞；几何尺寸测量严格推迟至读者意图触发时刻（`pointerenter` / `touchstart` / `focusin`）；结合 Tooltip 的延迟生效评估（`Deferred Disabled Evaluation`），在 `delay` 结束时二次核验 `props.disabled`，并解耦 `props.disabled` 与 `props.delay === 0` 的逻辑判定，支持触控端 `touchstart` 显式唤起气泡，兼顾 0 掉帧与 0 误弹出；
 - **物理分层与横向翻转对齐（Physical Separation & Dynamic Alignment）**：
   - **装饰与内滚物理分层**：根容器 `.tooltip__tip` 保持 `overflow: visible; padding: 0;`，保护 `::before`（45° 指示小三角）与 `::after`（WCAG 悬停安全桥）自由延伸而不被计入盒模型滚动范围；内部独立内容容器 `.tooltip__content` 承载 `padding` 与 `max-height + overflow-y: auto`，从底层杜绝短文本“幽灵滚动条”；
   - **横向碰撞箭头自适应**：浮层响应式监测几何相对位置（`actualAlign`），当视口边界触发 `flip-inline` 导致浮层向左翻转时，小三角自动从左端（`start`）动态翻转至右端（`end: right 0.85rem`），精准指向触发源；详情页 2 列网格右列天然支持 `:tooltip-align="end"` 默认端对齐。
@@ -232,8 +232,8 @@
   2. **弹性网格优雅降级**：通过 `@supports not (interpolate-size: allow-keywords)` 对旧版内核降级为 `display: grid; grid-template-rows: 0fr -> 1fr;` 零成本平滑适配；
 - **网格动画安全禁令（No Absolute on Grid Leave）**：`<TransitionGroup>` 的 `shelf-card`、`folio-card` 与 `chapter-card` 动效中，**严禁在 `.leave-active` 中定义 `position: absolute;`**，避免 Grid 布局崩塌与卡片在左上角重叠闪烁；
 - **触控靶心底线与防迷航回滚**：
-  1. **移动端 WCAG 2.5.5**：在 `max-width: 640px` 下，所有折叠步进与全量展开按钮强制保底 `min-height: 44px;`；
-  2. **视口锚点自愈**：点击收起时必须通过 `void nextTick(() => scrollIntoView({ behavior: 'smooth', block: 'start' }))` 平滑回退至网格顶部锚点，防止视口瞬间失焦遗失在空白区域。
+  1. **移动端 WCAG 2.5.5 与次级操作并列（Mobile Action Row Layout）**：在 `max-width: 640px` 下，所有折叠步进与全量展开按钮强制保底 `min-height: 44px;`；次级操作（展开全部与收拢归档）收敛于 `.fold-card-sub-actions` 并列容器中横向均分并排呈现，彻底根治移动端纵向堆叠导致的 48px 异常拉伸与画页视野挤占；
+  2. **视口锚点自愈与动效无障碍（Reduced Motion Adaptation）**：点击收起时通过 `window.matchMedia('(prefers-reduced-motion: reduce)').matches` 探测读者系统动效偏好，在开启减少动效时以 `behavior: 'instant'` 瞬间就位，关闭时以 `behavior: 'smooth'` 平滑回退至网格顶部锚点，兼顾防迷航与前庭功能障碍读者的视觉舒适度。
 
 ---
 

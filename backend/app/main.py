@@ -8,7 +8,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 
-from typing import Any
+from pathlib import Path
+from typing import Any, Callable
 
 from .auth import (
     can_read,
@@ -82,6 +83,7 @@ from .models import (
     DiscoveryItem,
     FavoriteRequest,
     FavoriteResponse,
+    FetchedComic,
     GuestPassItem,
     GuestPrivacySettings,
     ImageSearchItem,
@@ -1086,6 +1088,43 @@ def page_thumbnail(source: str, source_id: str, index: int, request: Request, ex
     )
 
 
+def _serve_negotiated_image(
+    *,
+    source: str,
+    source_id: str,
+    wants_webp: bool,
+    get_path: Callable[[str], Path],
+    generate_image: Callable[[FetchedComic | None, str], Path],
+    error_subject: str = "封面",
+) -> FileResponse:
+    ext = "webp" if wants_webp else "jpg"
+    media_type = "image/webp" if wants_webp else "image/jpeg"
+
+    existing = get_path(ext)
+    if existing.exists() and existing.stat().st_size > 0:
+        return FileResponse(
+            existing,
+            media_type=media_type,
+            headers=CACHE_CONTROL_IMMUTABLE_VARY,
+        )
+
+    fetched = store.load_fetched(source, source_id)
+    try:
+        path = generate_image(fetched, ext)
+    except (FileNotFoundError, KeyError) as exc:
+        raise HTTPException(status_code=404, detail=f"{error_subject}不存在或缓存不完整：{exc}") from exc
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"{error_subject}生成失败：{exc}") from exc
+
+    return FileResponse(
+        path,
+        media_type=media_type,
+        headers=CACHE_CONTROL_IMMUTABLE_VARY,
+    )
+
+
 @app.get("/api/library/{source}/{source_id}/covers/{index}/file")
 @app.get("/api/library/{source}/{source_id}/covers/{index}/file.{ext}")
 def cover_file(
@@ -1105,48 +1144,17 @@ def cover_file(
     target_width = COVER_THUMB_WIDTH if (w is not None and w == COVER_THUMB_WIDTH) else None
     wants_webp = _client_accepts_webp(request, ext)
 
-    if wants_webp:
-        webp_path = store.cover_path(meta, index, target_width, ext="webp")
-        if webp_path.exists() and webp_path.stat().st_size > 0:
-            return FileResponse(
-                webp_path,
-                media_type="image/webp",
-                headers=CACHE_CONTROL_IMMUTABLE_VARY,
-            )
-
-        fetched = store.load_fetched(source, source_id)
-        try:
-            path = store.ensure_webp_cover(meta, fetched, index, target_width)
-        except HTTPException:
-            raise
-        except Exception as exc:
-            raise HTTPException(status_code=502, detail=f"封面生成失败：{exc}") from exc
-        return FileResponse(
-            path,
-            media_type="image/webp",
-            headers=CACHE_CONTROL_IMMUTABLE_VARY,
-        )
-
-    # Fallback path for clients not accepting WebP (returns JPEG)
-    cover_path = store.cover_path(meta, index, target_width, ext="jpg")
-    if cover_path.exists() and cover_path.stat().st_size > 0:
-        return FileResponse(
-            cover_path,
-            media_type="image/jpeg",
-            headers=CACHE_CONTROL_IMMUTABLE_VARY,
-        )
-
-    fetched = store.load_fetched(source, source_id)
-    try:
-        path = store.ensure_cover(meta, fetched, index, target_width)
-    except HTTPException:
-        raise
-    except Exception as exc:
-        raise HTTPException(status_code=502, detail=f"封面生成失败：{exc}") from exc
-    return FileResponse(
-        path,
-        media_type="image/jpeg",
-        headers=CACHE_CONTROL_IMMUTABLE_VARY,
+    return _serve_negotiated_image(
+        source=source,
+        source_id=source_id,
+        wants_webp=wants_webp,
+        get_path=lambda target_ext: store.cover_path(meta, index, target_width, ext=target_ext),
+        generate_image=lambda fetched, target_ext: (
+            store.ensure_webp_cover(meta, fetched, index, target_width)
+            if target_ext == "webp"
+            else store.ensure_cover(meta, fetched, index, target_width)
+        ),
+        error_subject=f"封面 {index}",
     )
 
 
@@ -1169,48 +1177,17 @@ def chapter_cover(
     target_width = COVER_THUMB_WIDTH if (w is not None and w == COVER_THUMB_WIDTH) else None
     wants_webp = _client_accepts_webp(request, ext)
 
-    if wants_webp:
-        webp_path = store.chapter_cover_path(meta, chapter, target_width, ext="webp")
-        if webp_path.exists() and webp_path.stat().st_size > 0:
-            return FileResponse(
-                webp_path,
-                media_type="image/webp",
-                headers=CACHE_CONTROL_IMMUTABLE_VARY,
-            )
-
-        fetched = store.load_fetched(source, source_id)
-        try:
-            path = store.ensure_webp_chapter_cover(meta, fetched, chapter, target_width)
-        except HTTPException:
-            raise
-        except Exception as exc:
-            raise HTTPException(status_code=502, detail=f"章节封面生成失败：{exc}") from exc
-        return FileResponse(
-            path,
-            media_type="image/webp",
-            headers=CACHE_CONTROL_IMMUTABLE_VARY,
-        )
-
-    # Fallback path for clients not requesting WebP (returns JPEG)
-    chap_cover_path = store.chapter_cover_path(meta, chapter, target_width, ext="jpg")
-    if chap_cover_path.exists() and chap_cover_path.stat().st_size > 0:
-        return FileResponse(
-            chap_cover_path,
-            media_type="image/jpeg",
-            headers=CACHE_CONTROL_IMMUTABLE_VARY,
-        )
-
-    fetched = store.load_fetched(source, source_id)
-    try:
-        path = store.ensure_chapter_cover(meta, fetched, chapter, target_width)
-    except HTTPException:
-        raise
-    except Exception as exc:
-        raise HTTPException(status_code=502, detail=f"章节封面生成失败：{exc}") from exc
-    return FileResponse(
-        path,
-        media_type="image/jpeg",
-        headers=CACHE_CONTROL_IMMUTABLE_VARY,
+    return _serve_negotiated_image(
+        source=source,
+        source_id=source_id,
+        wants_webp=wants_webp,
+        get_path=lambda target_ext: store.chapter_cover_path(meta, chapter, target_width, ext=target_ext),
+        generate_image=lambda fetched, target_ext: (
+            store.ensure_webp_chapter_cover(meta, fetched, chapter, target_width)
+            if target_ext == "webp"
+            else store.ensure_chapter_cover(meta, fetched, chapter, target_width)
+        ),
+        error_subject=f"章节封面 {chapter_id}",
     )
 
 
