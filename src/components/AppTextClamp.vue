@@ -1,6 +1,5 @@
 <script setup lang="ts">
-import { nextTick, onMounted, ref, watch } from 'vue'
-import { useResizeObserver } from '@vueuse/core'
+import { ref, watch } from 'vue'
 import Tooltip from '@/components/Tooltip.vue'
 
 /**
@@ -9,12 +8,13 @@ import Tooltip from '@/components/Tooltip.vue'
  * 业务职责：
  * - 对单行/多行超长文本进行 CSS line-clamp 截断与优雅打点；
  * - 结合现代浮层体系（HTML Popover API + CSS Anchor Positioning），提供暖纸质感悬停气泡查阅全文；
- * - 性能与鲁棒性架构：
+ * - 性能与鲁棒性架构（JIT 纯按需测量）：
  *   1. 默认仅渲染基础语义标签，绝不挂载多余的 Tooltip DOM 节点；
- *   2. 挂载与 Resize 阶段使用 ResizeObserver 与 capture 事件前置测量，彻底消除首跳失效死锁；
- *   3. 仅当文案真实发生溢出打点（isTruncated）时才动态激活气泡，短文本 0 弹窗、0 误打扰；
- *   4. 离开后即时休眠，全局 window 滚动监听器保持 0 占用；
- *   5. 无障碍：为截断文本注入 tabindex="0" 与 focus-visible 焦点环，键盘用户按 Tab 即可唤起。
+ *   2. 首屏挂载与初始渲染阶段执行 0 次 DOM 尺寸测量，彻底消除微任务队列中的 Forced Reflow 掉帧瓶颈；
+ *   3. 几何探测推迟至读者意图触发时刻（光标进入 pointerenter、触碰 touchstart、键盘聚焦 focusin）；
+ *   4. 文案更新时仅重置截断标记（isTruncated = false），下次交互时自动 JIT 重算；
+ *   5. 仅当文案真实发生溢出打点（isTruncated）时才动态激活气泡，短文本 0 弹窗、0 误打扰；
+ *   6. 离开后即时休眠，全局 window 滚动监听器保持 0 占用。
  */
 
 interface Props {
@@ -64,6 +64,7 @@ const isTruncated = ref(false)
 
 /**
  * 几何尺寸探测：检查容器是否存在纵向高度截断或横向宽度截断
+ * 严格遵循 JIT（Just-In-Time）按需原则，仅在读者交互瞬间执行单次单元素读取
  */
 function checkTruncation() {
   if (props.disabled) {
@@ -79,23 +80,11 @@ function checkTruncation() {
   isTruncated.value = hasVerticalOverflow || hasHorizontalOverflow
 }
 
-onMounted(() => {
-  nextTick(() => {
-    checkTruncation()
-  })
-})
-
-useResizeObserver(textRef, () => {
-  checkTruncation()
-})
-
-// 文案更新时重置截断状态并重新探测
+// 文案更新时重置截断状态，下一次交互时自动按需重新探测，杜绝非交互态下触发布局重排
 watch(
   () => props.text,
   () => {
-    nextTick(() => {
-      checkTruncation()
-    })
+    isTruncated.value = false
   },
 )
 </script>
@@ -114,6 +103,7 @@ watch(
     :hide-delay="hideDelay"
     @pointerenter.capture="checkTruncation"
     @focusin.capture="checkTruncation"
+    @touchstart.passive="checkTruncation"
   >
     <component
       :is="as"
@@ -125,6 +115,7 @@ watch(
       :aria-label="isTruncated ? text : undefined"
       @pointerenter="checkTruncation"
       @focusin="checkTruncation"
+      @touchstart.passive="checkTruncation"
     >
       <slot>{{ text }}</slot>
     </component>

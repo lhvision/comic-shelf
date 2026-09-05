@@ -432,6 +432,35 @@
     2. **键盘焦点显式透传**：为暗室中的各类按钮与辅助图标按钮（如 `.rec-detail-btn`）显式声明 `:focus-visible` 焦点环（`outline: 2px solid var(--accent)`），杜绝在暗室中失去焦点指引；
     3. **遵循微标字阶底线**：徽章与次级状态文字使用 `--text-caption: 0.6875rem` 配合 `font-size-adjust: ch-width 0.48`，严禁在移动端使用 `< 11px` 的硬编码字号。
 
+### 52. 多行文本截断在首屏批量挂载下的强制同步重排死锁（Forced Reflow & Layout Thrashing in Clamped Lists）
+
+- **本质**：
+  1. 在声明了 CSS `-webkit-line-clamp` 的文本元素上，浏览器引擎为了返回 `scrollHeight` 与 `clientHeight`，必须脱离异步合成管线，同步执行完整的多行字形折行与盒模型排版测量；
+  2. 当在长列表或网格（如书架卡片 `ComicCard.vue`）中，组件在 `onMounted` / `nextTick` 或初始化 `useResizeObserver` 中批量读取该属性时，数十个实例在微任务队列中密集交错读写，引发极其严重的 **Forced Reflow / Layout Thrashing**；
+  3. 主线程被排版计算长时间阻塞（单次重排耗时高达 20ms~50ms），导致首屏渲染直接掉帧（单帧长达 266ms），触发 DevTools 红色长任务警告。
+- **红线与防误伤**：
+  - **不要**在组件初始化生命周期（`onMounted` / `nextTick`）中无差别同步读取 DOM 几何排版属性以提前判断打点截断状态；
+  - **不要**在无用户交互的卡片上挂载全局 `useResizeObserver` 去同步读取 `scrollHeight`；
+  - **放行/改用**：
+    1. **JIT 纯按需测量（Just-In-Time Detection）**：将几何排版测量严格推迟至读者意图触发时刻（光标悬停 `pointerenter`、触控按压 `touchstart`、键盘聚焦 `focusin`），单次测量耗时 < 0.05ms，首屏强制重排降至 0ms；
+    2. **浮层延迟生效评估（Deferred Disabled Evaluation）**：在 Tooltip 唤起延迟（`delay: 120ms~350ms`）计时器触发时二次核验 `props.disabled`，兼顾 JIT 响应式单向流与 0 误弹出；
+    3. **自动化重排防御门禁（`pnpm detect:perf`）**：借助静态 AST / 模式扫描拦截生命周期中的几何读取反模式。
+
+### 53. 动态图片转码中的惊群效应与 HTTP 内容协商缓存污染陷阱（Thundering Herd & HTTP Content Negotiation Poisoning in Dynamic Image Transcoding）
+
+- **本质**：
+  1. **未受控的锁外快速转码引发并发惊群（Thundering Herd）**：在实现按需缩放或格式协商（如从 JPEG 生成 WebP）时，若在 API 路由层仅判断 `not target.exists()` 即在互斥锁之外直接启动图像库（如 Pillow）进行解码与压缩转码，当首屏数十张卡片并发加载或多个客户端同时涌入时，会导致数十个工作线程对同一张图片并发重复转码，触发 CPU 负载与磁盘 I/O 尖峰；
+  2. **缺漏 `Vary: Accept` 导致的代理/CDN 共享缓存污染（Shared Cache Poisoning）**：在无扩展名 URL（如 `/covers/1/file`）上使用 `Accept: image/webp` 做透明内容协商时，若未在 HTTP 响应头附带 `Vary: Accept`，中间反向代理（如 Cloudflare、Nginx）或局域网共享缓存会将 WebP 二进制文件缓存为统一副本，导致不支持 WebP 的旧版客户端或爬虫随后拉取该 URL 时遭遇图片无法解码损坏；
+  3. **扩展名未清洗导致的非预期文件拼接**：直接从 URL 动态路由参数 `{ext}` 取值并 `lstrip('.')` 作为文件后缀，若未在存储层做白名单截断归一，存在潜在的文件遍历或非法后缀探测风险。
+- **红线与防误伤**：
+  - **不要**在端点层锁外直接执行耗 CPU 的图片格式转码与重采样；
+  - **不要**在基于 HTTP 请求头进行内容协商的静态媒体响应中漏发 `Vary: Accept`；
+  - **不要**允许未归一化的任意外部扩展名直接参与物理文件路径拼接；
+  - **放行/改用**：
+    1. **Double-Checked Locking 互斥收敛**：端点层先做无锁热路径探测（若目标文件已存在直接零等待返回）；未命中时统一进入内部每页粒度互斥锁（`_lock_for_page`），在锁内执行二次存在性核验与快速转码，确保并发请求永远只有单线程执行转码，其余并发线程等锁后直接命中成品；
+    2. **响应头标准隔离**：透明内容协商端点统一响应 `Vary: Accept` 与 `Cache-Control: public, max-age=31536000, immutable`；
+    3. **扩展名白名单规整**：存储层显式执行 `clean_ext = "webp" if ext.lower().lstrip(".") == "webp" else "jpg"`，物理层彻底锁死合法后缀。
+
 ---
 
 ## 🚦 交付门禁（四步必跑）

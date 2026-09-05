@@ -39,11 +39,13 @@ const activeIndex = computed(() => chapterList.value.findIndex((c) => c.id === p
 watch(activeIndex, async (idx) => {
   if (idx < 0) return
   await nextTick()
-  const el = buttonEls.value[props.activeId ?? '']
-  const container = listEl.value
-  if (!el || !container || container.scrollWidth <= container.clientWidth) return
-  const left = Math.max(0, el.offsetLeft - (container.clientWidth - el.offsetWidth) / 2)
-  x.value = left
+  requestAnimationFrame(() => {
+    const el = buttonEls.value[props.activeId ?? '']
+    const container = listEl.value
+    if (!el || !container || container.scrollWidth <= container.clientWidth) return
+    const left = Math.max(0, el.offsetLeft - (container.clientWidth - el.offsetWidth) / 2)
+    x.value = left
+  })
 })
 
 useEventListener(listEl, 'keydown', (event: KeyboardEvent) => {

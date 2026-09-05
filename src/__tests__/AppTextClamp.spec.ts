@@ -97,4 +97,19 @@ describe('AppTextClamp', () => {
     expect(clampEl.classes()).not.toContain('is-truncated')
     expect(wrapper.find('.tooltip__tip').exists()).toBe(false)
   })
+
+  it('does not access scrollHeight or clientHeight during initial mount (zero forced reflow)', () => {
+    const spy = vi.spyOn(HTMLElement.prototype, 'scrollHeight', 'get').mockReturnValue(50)
+    try {
+      mount(AppTextClamp, {
+        props: {
+          text: '这是一段很长的文本',
+          lines: 1,
+        },
+      })
+      expect(spy).not.toHaveBeenCalled()
+    } finally {
+      spy.mockRestore()
+    }
+  })
 })

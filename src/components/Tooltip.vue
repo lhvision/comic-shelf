@@ -143,12 +143,13 @@ let showTimer: ReturnType<typeof setTimeout> | null = null
 let hideTimer: ReturnType<typeof setTimeout> | null = null
 
 function show() {
-  if (props.disabled) return
+  if (props.disabled && props.delay === 0) return
   if (hideTimer) {
     clearTimeout(hideTimer)
     hideTimer = null
   }
   showTimer = setTimeout(() => {
+    if (props.disabled) return
     isVisible.value = true
     try {
       if (tipElement.value && typeof tipElement.value.showPopover === 'function') {

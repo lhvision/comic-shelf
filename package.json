@@ -17,6 +17,7 @@
     "test:py": "bash scripts/test_py.sh",
     "critique": "node scripts/critique.mjs",
     "detect:slop": "node scripts/detect.mjs --json",
+    "detect:perf": "node scripts/detect-perf.mjs",
     "build-only": "vp build",
     "type-check": "vue-tsc --build",
     "lint": "run-s \"lint:*\"",

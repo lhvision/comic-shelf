@@ -50,8 +50,10 @@ backend/data/library/<source>/<source_id>/
    ├── remote.json          # 图片 URL + scramble_id + decode_version
    ├── pages/00001.webp     # 单章节（扁平）已解密成品页
    ├── pages/<chapter>/00001.webp   # 多章节：页面按章节 id 分目录
-   ├── covers/001.jpg       # 由首页前 N 页（第一章）生成的封面
-   └── thumbs/…            # 360px 缩略图；多章节同样按章节分目录
+   ├── covers/001.jpg       # 双模基准封面（720px JPEG）与 .webp 格式并存
+   ├── covers/001_360.webp  # 360px 缩略图（Accept: image/webp 内容协商，按需生成）
+   ├── covers/chapters/     # 章节独立目录封面（池化按需生成，支持 .webp 与 360 规格）
+   └── thumbs/…            # 360px 索引缩略图；多章节同样按章节分目录
 ```
 
 > 多章节模型：`ComicMeta.pages` 始终是**全书拍平的全局页码表**，每页带
@@ -169,8 +171,8 @@ JmImageTool.decode_and_save(num, source_image, save_path)
 - `GET /api/library/{source}/{id}`（详情含 `chapters`）
 - `GET /api/library/{source}/{id}/pages/{n}/file`（`n` 为全局页号，带防盗链校验，支持 `.{ext}` 静态扩展名别名）
 - `GET /api/library/{source}/{id}/pages/{n}/thumbnail`（同上，支持 `.{ext}` 别名）
-- `GET /api/library/{source}/{id}/covers/{n}/file`（封面取 `cover_indices` 或前 N 页，带防盗链校验，支持 `.{ext}` 别名）
-- `GET /api/library/{source}/{id}/chapters/{chapterId}/cover`（章节封面端点，带防盗链校验，支持 `.{ext}` 别名）
+- `GET /api/library/{source}/{id}/covers/{n}/file`（封面取 `cover_indices` 或前 N 页，带防盗链校验，支持 `Accept: image/webp` 内容协商、360 规格 `?w=360` 与 `.{ext}` 别名，带 `Vary: Accept`）
+- `GET /api/library/{source}/{id}/chapters/{chapterId}/cover`（章节封面端点，带防盗链校验，支持 WebP 内容协商与 360 规格，支持 `.{ext}` 别名）
 - `GET /api/search/image/status`（以图搜图 Sidecar 服务健康探测）
 - `GET /api/curator/passes`（馆长获取访客名册列表）
 - `POST /api/curator/passes` `{username, expires_days, custom_token}`（馆长登记印发专属通行证）

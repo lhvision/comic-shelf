@@ -14,6 +14,9 @@ def test_parse_imsearch_path():
     res = parse_imsearch_path("/app/data/library/jm/1242163/covers/001.jpg")
     assert res == ("jm", "1242163", 1, True)
 
+    res_webp = parse_imsearch_path("/app/data/library/jm/1242163/covers/001.webp")
+    assert res_webp == ("jm", "1242163", 1, True)
+
     # Page image path
     res = parse_imsearch_path("/app/data/library/jm/1242163/pages/00005.webp")
     assert res == ("jm", "1242163", 5, False)

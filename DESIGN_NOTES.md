@@ -129,7 +129,7 @@
 - **零开销性能铁律（Zero-DOM & Zero-Listener Overhead）**：
   - 默认状态仅渲染原生语义标签，Tooltip 浮层节点延迟挂载（`lazy: true` 为全局默认），休眠状态 0 额外 DOM；
   - `Tooltip.vue` 的 `window` 滚动与尺寸监听器仅在 `isVisible === true` 时按需挂载，休眠时监听器开销精确为 0，彻底免疫百张卡片滚动卡顿；
-  - 挂载生命周期与 `useResizeObserver` 前置完成溢出探测（`isTruncated`），消除首次悬停测量死锁，键盘 Tab 巡航自动为截断项提供焦点环；
+  - **JIT 纯按需测量架构（JIT Layout Measurement & Zero Forced Reflow）**：彻底废除挂载期（`onMounted`/`nextTick`）与无差别 `useResizeObserver` 对全量静态文本的无差别排版测量，实现首屏渲染 0 次 DOM 几何访问与 0 毫秒 Forced Reflow 阻塞；几何尺寸测量严格推迟至读者意图触发时刻（`pointerenter` / `touchstart` / `focusin`）；结合 Tooltip 的延迟生效评估（`Deferred Disabled Evaluation`），在 `delay` 结束时二次核验 `props.disabled`，兼顾 0 掉帧与 0 误弹出；
 - **物理分层与横向翻转对齐（Physical Separation & Dynamic Alignment）**：
   - **装饰与内滚物理分层**：根容器 `.tooltip__tip` 保持 `overflow: visible; padding: 0;`，保护 `::before`（45° 指示小三角）与 `::after`（WCAG 悬停安全桥）自由延伸而不被计入盒模型滚动范围；内部独立内容容器 `.tooltip__content` 承载 `padding` 与 `max-height + overflow-y: auto`，从底层杜绝短文本“幽灵滚动条”；
   - **横向碰撞箭头自适应**：浮层响应式监测几何相对位置（`actualAlign`），当视口边界触发 `flip-inline` 导致浮层向左翻转时，小三角自动从左端（`start`）动态翻转至右端（`end: right 0.85rem`），精准指向触发源；详情页 2 列网格右列天然支持 `:tooltip-align="end"` 默认端对齐。

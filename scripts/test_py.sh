@@ -25,6 +25,7 @@ TEST_FILES=(
   "backend/test_replace_pages.py"
   "backend/test_db_and_passes.py"
   "backend/test_events.py"
+  "backend/test_cover_webp.py"
 )
 
 # Support running specific tests (e.g. pnpm test:py auth) or all by default

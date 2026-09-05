@@ -19,6 +19,8 @@
 - **并发上传队列（Concurrent Upload Queue）**：批量上传大量图片（如数百张拆帧图）时的客户端流量阀门。采用受限并发（3~4 路）分批推送到后端，兼顾上传速度与服务器连接稳定性。
 - **封面（Cover）**：作品的预览图，默认取自首页前 4 页，或由馆长自定义指定 4 个全局页码序号（`cover_indices`）；书架卡片与详情页轮播的视觉锚点。
 - **封面序号自定义（Cover Indices）**：允许馆长在自建工坊或编辑资料弹窗中显式指定 4 个全局页码序号（如 `[1, 10, 25, 50]`），书架与详情页轮播卡片将按此顺序展示这 4 张页面作为封面。
+- **双模增量封面（Dual-Format Incremental Cover Cache）**：纸间封面缩略图的持久化缓存策略。书架与章节封面同时支持 `.jpg` 与现代 `.webp` 格式，基于客户端 `Accept` 请求头透明协商；当磁盘缺失 `.webp` 时就地增量生成并物理落盘，后续请求 100% 毫秒级直读。
+- **封面意图预热（Active Cover Pre-warming）**：馆长在自建工坊、阅读器或详情页执行“设为封面”操作时，系统在更新元数据同时即刻物理生成该页对应的 `360px` 与 `720px` WebP/JPEG 缩略图文件，消除后续书架卡片冷启动延迟。
 - **喜欢（Favorite）**：给一本作品打上的"已喜欢"标记，可用来筛选（只看喜欢）。
 - **页面索引（Page index）**：详情页展示所有页码缩略图的区段，点击任意页直接进阅读器；为性能按 24 页分批增量呈现。
 - **画卷折叠架（Collapsed Thumbnail Rack）**：页面索引与书架网格中，将超出视觉行数预算的项进行物理折叠收纳的容器槽位；搭配尾格余量徽印与控制胶囊，实现从容的主动展开体验。
@@ -169,3 +171,6 @@
 - **iOS 桌面引导（iOS PWA Add-to-Home Guidance）**：针对 WebKit 缺少 `beforeinstallprompt` 规范特性的平台交互补偿。在 iOS Safari 视口下以典雅纸面徽印呈现「Safari 分享 ➔ 加到主屏幕」引导，并在 Web Manifest 层面剔除凭据陷阱，保障 Standalone 独立视口无缝唤起。
 - **Service Worker 边缘穿透（PWA Edge Bypass）**：Cloudflare 等 CDN 边缘对 `sw.js` 与 `manifest.webmanifest` 实施的绝对穿透规则（Bypass Cache）。确保客户端版本发现永远直通源站，彻底隔绝因 CDN 缓存旧 SW 引发的旧哈希静态资源 404 连锁崩溃。
 - **统一构建插件架构（Modular Vite Plugins / `plugins/`）**：根目录收敛的自定义构建扩展体系。将文件系统探测、虚拟模块生成（如 `virtual:illustrations`）等非标准逻辑从 `vite.config.ts` 抽离解耦，由 `tsconfig.node.json` 全局类型纳管，保持主配置文件轻巧可读，为未来构建插件提供规范单一源。
+- **按需布局探测（Just-In-Time Layout Measurement / JIT Truncation Detection）**：针对网格卡片与多行截断长列表的极致排版探测机制。彻底废除组件挂载期（`onMounted` / `nextTick`）与无差别观察器（`useResizeObserver`）对全量静态文本的无差别强同步重排，将 `scrollHeight` / `clientWidth` 等几何测量严格推迟至读者意图触发时刻（光标进入 `pointerenter`、触控 `touchstart`、焦点聚集 `focusin`），实现首屏网格 0 次 DOM 尺寸测量与 0 毫秒强制重排阻塞。
+- **强制重排防御门禁（Forced Reflow Detector / Layout Thrashing Gate）**：全仓前端性能自动化扫描机制（`pnpm detect:perf` / `scripts/detect-perf.mjs`）。静态静态扫描 `src/` 中所有在生命周期钩子（`onMounted`/`onUpdated`）、响应式监听（`watch`）中同步读取排版属性、高频滚动未节流以及触控事件缺少 `passive: true` 的代码反模式，筑牢首屏 60fps 防线。
+- **延迟生效气泡评估（Deferred Disabled Evaluation）**：现代浮层与按需探测的协同机制。允许浮层触发源在鼠标移入（`pointerenter`）瞬间异步推导截断状态，气泡组件在唤起延迟（`delay`）计时器触发时刻二次核验 `props.disabled`，兼顾 JIT 响应式单向流与零闪烁弹出。

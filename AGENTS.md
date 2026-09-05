@@ -49,7 +49,7 @@ release. Add a tool name to select part of the graph. For example, run
 | `docs/PITFALLS.md`                 | 错题本与避坑指南（历史故障复盘、高频反模式与避坑红线速查）                           |
 | `docs/CSS_RADAR.md`                | CSS 前瞻技术雷达：已落地特性用法、渐进增强降级方案、实验草案追踪与升级路线图         |
 | `docs/JS_RADAR.md`                 | JavaScript 前瞻技术雷达：已落地特性用法、渐进增强降级方案、实验草案追踪与升级路线图  |
-| `docs/adr/`                        | 架构决策记录集（系统重大权衡与不可逆技术方案全景，ADR 0001 ~ 0011）                  |
+| `docs/adr/`                        | 架构决策记录集（系统重大权衡与不可逆技术方案全景，ADR 0001 ~ 0012）                  |
 | `docs/agents/architecture.md`      | 后端模型、FastAPI 路由、存储布局、Provider 扩展、安全与防盗链                        |
 | `docs/agents/frontend.md`          | 书架/详情/阅读器、页面索引、多章节子路由、HTML-in-Canvas                             |
 | `docs/agents/ui.md`                | 新 UI 组件、核心交互重构、视觉设计（调度 `impeccable`，执行 A/B 双轨评审与物理落盘） |
@@ -109,5 +109,6 @@ pnpm imsearch <action>                   # 识图服务运维 (start/stop/restar
 vp test src/__tests__/<Target>.spec.ts   # 运行目标文件单测（严禁日常全量）
 pnpm critique write <slug> <file>        # 归档 Impeccable 评审快照
 pnpm detect:slop <target>                # 运行 B 轨确定性 Slop 静态扫描
+pnpm detect:perf                         # 运行强制同步重排与性能反模式静态扫描
 vp build                                 # 生产构建
 ```

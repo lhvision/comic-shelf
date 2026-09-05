@@ -16,6 +16,7 @@ from fastapi import HTTPException
 from .config import (
     COVER_QUALITY,
     COVER_THUMB_WIDTH,
+    COVER_WEBP_QUALITY,
     COVER_WIDTH,
     DATA_DIR,
     LIBRARY_DIR,
@@ -151,10 +152,12 @@ class ComicStore:
             return base / self._safe(page.chapter) / f"{page.index:05d}.jpg"
         return base / f"{page.index:05d}.jpg"
 
-    def cover_path(self, meta: ComicMeta, index: int, width: int | None = None) -> Path:
+    def cover_path(self, meta: ComicMeta, index: int, width: int | None = None, ext: str = "jpg") -> Path:
+        clean_ext = "webp" if ext.lower().lstrip(".") == "webp" else "jpg"
+        suffix = f".{clean_ext}"
         if width and 0 < width <= COVER_THUMB_WIDTH:
-            return self.covers_dir(meta.source, meta.source_id) / f"{index:03d}_{width}.jpg"
-        return self.covers_dir(meta.source, meta.source_id) / f"{index:03d}.jpg"
+            return self.covers_dir(meta.source, meta.source_id) / f"{index:03d}_{width}{suffix}"
+        return self.covers_dir(meta.source, meta.source_id) / f"{index:03d}{suffix}"
 
     def thumbs_dir(self, source: str, source_id: str) -> Path:
         return self.comic_dir(source, source_id) / "thumbs"
@@ -519,9 +522,25 @@ class ComicStore:
         return sum(1 for page in meta.pages if page.cached)
 
     @staticmethod
-    def _save_cover(page_path: Path, target: Path, target_width: int = COVER_WIDTH) -> None:
-        """Resize one finished page into a JPEG cover/thumbnail file."""
+    def _save_cover(
+        page_path: Path,
+        target: Path,
+        target_width: int = COVER_WIDTH,
+        fmt: str = "JPEG",
+        quality: int | None = None,
+    ) -> None:
+        """Resize one finished page into a JPEG or WEBP cover/thumbnail file."""
         from PIL import Image, ImageOps
+
+        fmt_upper = fmt.upper()
+        if fmt_upper in ("WEBP", "IMAGE/WEBP") or target.suffix.lower() == ".webp":
+            save_quality = quality or COVER_WEBP_QUALITY
+            save_kwargs = {"format": "WEBP", "quality": save_quality, "method": 4}
+            tmp_suffix = f".tmp.{os.getpid()}.{threading.get_ident()}.webp"
+        else:
+            save_quality = quality or COVER_QUALITY
+            save_kwargs = {"format": "JPEG", "quality": save_quality, "optimize": True, "progressive": True}
+            tmp_suffix = f".tmp.{os.getpid()}.{threading.get_ident()}.jpg"
 
         with Image.open(page_path) as img:
             img = ImageOps.exif_transpose(img)
@@ -534,9 +553,9 @@ class ComicStore:
                 size = (target_width, max(1, round(img.height * ratio)))
                 img = img.resize(size, Image.Resampling.LANCZOS)
             target.parent.mkdir(parents=True, exist_ok=True)
-            tmp = target.with_suffix(f".tmp.{os.getpid()}.{threading.get_ident()}.jpg")
+            tmp = target.with_suffix(tmp_suffix)
             try:
-                img.save(tmp, format="JPEG", quality=COVER_QUALITY, optimize=True, progressive=True)
+                img.save(tmp, **save_kwargs)
                 tmp.replace(target)
             except Exception:
                 try:
@@ -546,15 +565,45 @@ class ComicStore:
                     pass
                 raise
 
-    def scale_cover(self, source_cover: Path, target: Path, target_width: int = COVER_THUMB_WIDTH) -> Path:
+    @staticmethod
+    def _convert_image_to_webp(source_path: Path, target_webp: Path, quality: int | None = None) -> Path:
+        """Fast-path: directly transcode an existing JPEG thumbnail to WEBP without resizing (2~5ms)."""
+        if target_webp.exists() and target_webp.stat().st_size > 0:
+            return target_webp
+        from PIL import Image, ImageOps
+
+        save_quality = quality or COVER_WEBP_QUALITY
+        with Image.open(source_path) as img:
+            img = ImageOps.exif_transpose(img)
+            if getattr(img, "is_animated", False):
+                img.seek(0)
+            if img.mode not in {"RGB", "L"}:
+                img = img.convert("RGB")
+            target_webp.parent.mkdir(parents=True, exist_ok=True)
+            tmp = target_webp.with_suffix(f".tmp.{os.getpid()}.{threading.get_ident()}.webp")
+            try:
+                img.save(tmp, format="WEBP", quality=save_quality, method=4)
+                tmp.replace(target_webp)
+            except Exception:
+                try:
+                    if tmp.exists():
+                        tmp.unlink()
+                except OSError:
+                    pass
+                raise
+        return target_webp
+
+    def scale_cover(
+        self, source_cover: Path, target: Path, target_width: int = COVER_THUMB_WIDTH, fmt: str = "JPEG"
+    ) -> Path:
         """Downscale an existing high-res cover to target_width (e.g. 360px)."""
         if target.exists() and target.stat().st_size > 0:
             return target
-        self._save_cover(source_cover, target, target_width=target_width)
+        self._save_cover(source_cover, target, target_width=target_width, fmt=fmt)
         return target
 
     def ensure_cover(
-        self, meta: ComicMeta, fetched: FetchedComic, index: int, width: int | None = None
+        self, meta: ComicMeta, fetched: FetchedComic | None = None, index: int = 1, width: int | None = None
     ) -> Path:
         target = self.cover_path(meta, index, width)
         if target.exists() and target.stat().st_size > 0:
@@ -567,6 +616,8 @@ class ComicStore:
             if width and 0 < width <= COVER_THUMB_WIDTH:
                 base_cover = self.cover_path(meta, index)
                 if not (base_cover.exists() and base_cover.stat().st_size > 0):
+                    if fetched is None:
+                        raise FileNotFoundError("无法生成封面：本子缓存不完整")
                     if meta.cover_indices and 1 <= index <= len(meta.cover_indices):
                         page_index = meta.cover_indices[index - 1]
                     else:
@@ -577,6 +628,8 @@ class ComicStore:
                 self.scale_cover(base_cover, target, target_width=width)
                 return target
 
+            if fetched is None:
+                raise FileNotFoundError("无法生成封面：本子缓存不完整")
             if meta.cover_indices and 1 <= index <= len(meta.cover_indices):
                 page_index = meta.cover_indices[index - 1]
             else:
@@ -587,22 +640,71 @@ class ComicStore:
             self._save_cover(page_path, target)
             return target
 
+    def ensure_webp_cover(
+        self, meta: ComicMeta, fetched: FetchedComic | None = None, index: int = 1, width: int | None = None
+    ) -> Path:
+        """Ensure a WebP cover/thumbnail exists. Implements fast-path downscaling and caching."""
+        target_webp = self.cover_path(meta, index, width, ext="webp")
+        if target_webp.exists() and target_webp.stat().st_size > 0:
+            return target_webp
+
+        with self._lock_for_page(meta.source, meta.source_id, index):
+            if target_webp.exists() and target_webp.stat().st_size > 0:
+                return target_webp
+
+            # Fast path 1: if same-size JPEG thumbnail exists on disk, transcode directly without resize (2~5ms)
+            target_jpg = self.cover_path(meta, index, width, ext="jpg")
+            if target_jpg.exists() and target_jpg.stat().st_size > 0:
+                return self._convert_image_to_webp(target_jpg, target_webp)
+
+            # Fast path 2: if 360px requested and base 720px WEBP cover exists, downscale from it
+            if width and 0 < width <= COVER_THUMB_WIDTH:
+                base_webp = self.cover_path(meta, index, ext="webp")
+                if base_webp.exists() and base_webp.stat().st_size > 0:
+                    return self.scale_cover(base_webp, target_webp, target_width=width, fmt="WEBP")
+
+                # Fast path 3: if base 720px JPEG cover exists, downscale from it into WEBP
+                base_jpg = self.cover_path(meta, index, ext="jpg")
+                if base_jpg.exists() and base_jpg.stat().st_size > 0:
+                    return self.scale_cover(base_jpg, target_webp, target_width=width, fmt="WEBP")
+
+            # Base path: ensure page is downloaded, then generate WebP
+            if fetched is None:
+                raise FileNotFoundError("无法生成封面：本子缓存不完整，且未找到已有封面或缩略图")
+
+            if meta.cover_indices and 1 <= index <= len(meta.cover_indices):
+                page_index = meta.cover_indices[index - 1]
+            else:
+                page_index = index
+            page_index = max(1, min(page_index, meta.page_count or 1))
+
+            page_path = self.ensure_page(fetched, page_index)
+            target_width = width or COVER_WIDTH
+            self._save_cover(page_path, target_webp, target_width=target_width, fmt="WEBP")
+            return target_webp
+
     def chapter_covers_dir(self, source: str, source_id: str) -> Path:
         return self.covers_dir(source, source_id) / "chapters"
 
-    def chapter_cover_path(self, meta: ComicMeta, chapter: Chapter, width: int | None = None) -> Path:
+    def chapter_cover_path(
+        self, meta: ComicMeta, chapter: Chapter, width: int | None = None, ext: str = "jpg"
+    ) -> Path:
+        clean_ext = "webp" if ext.lower().lstrip(".") == "webp" else "jpg"
+        suffix = f".{clean_ext}"
         if width and 0 < width <= COVER_THUMB_WIDTH:
-            return self.chapter_covers_dir(meta.source, meta.source_id) / f"{self._safe(chapter.id)}_{width}.jpg"
-        return self.chapter_covers_dir(meta.source, meta.source_id) / f"{self._safe(chapter.id)}.jpg"
+            return self.chapter_covers_dir(meta.source, meta.source_id) / f"{self._safe(chapter.id)}_{width}{suffix}"
+        return self.chapter_covers_dir(meta.source, meta.source_id) / f"{self._safe(chapter.id)}{suffix}"
 
     def ensure_chapter_cover(
-        self, meta: ComicMeta, fetched: FetchedComic, chapter: Chapter, width: int | None = None
+        self, meta: ComicMeta, fetched: FetchedComic | None = None, chapter: Chapter | None = None, width: int | None = None
     ) -> Path:
         """JPEG cover for a chapter = its first page, pooled under covers/chapters/.
 
         T17（章节目录封面池化）：目录不再走每话第一页的 thumbnail（那也要下载整页 +
         生成 360px 缩略图），改用章节封面端点一次生成并缓存，失败由前端回落书脊占位。
         """
+        if chapter is None:
+            raise ValueError("chapter 不能为空")
         target = self.chapter_cover_path(meta, chapter, width)
         if target.exists() and target.stat().st_size > 0:
             return target
@@ -614,14 +716,55 @@ class ComicStore:
             if width and 0 < width <= COVER_THUMB_WIDTH:
                 base_cover = self.chapter_cover_path(meta, chapter)
                 if not (base_cover.exists() and base_cover.stat().st_size > 0):
+                    if fetched is None:
+                        raise FileNotFoundError("无法生成章节封面：本子缓存不完整")
                     page_path = self.ensure_page(fetched, chapter.start)
                     self._save_cover(page_path, base_cover)
                 self.scale_cover(base_cover, target, target_width=width)
                 return target
 
+            if fetched is None:
+                raise FileNotFoundError("无法生成章节封面：本子缓存不完整")
             page_path = self.ensure_page(fetched, chapter.start)
             self._save_cover(page_path, target)
             return target
+
+    def ensure_webp_chapter_cover(
+        self, meta: ComicMeta, fetched: FetchedComic | None = None, chapter: Chapter | None = None, width: int | None = None
+    ) -> Path:
+        """Ensure a WebP chapter cover/thumbnail exists."""
+        if chapter is None:
+            raise ValueError("chapter 不能为空")
+        target_webp = self.chapter_cover_path(meta, chapter, width, ext="webp")
+        if target_webp.exists() and target_webp.stat().st_size > 0:
+            return target_webp
+
+        with self._lock_for_page(meta.source, meta.source_id, chapter.start):
+            if target_webp.exists() and target_webp.stat().st_size > 0:
+                return target_webp
+
+            # Fast path 1: if same-size JPEG chapter cover exists, transcode
+            target_jpg = self.chapter_cover_path(meta, chapter, width, ext="jpg")
+            if target_jpg.exists() and target_jpg.stat().st_size > 0:
+                return self._convert_image_to_webp(target_jpg, target_webp)
+
+            # Fast path 2: if 360px requested and base chapter cover exists, downscale
+            if width and 0 < width <= COVER_THUMB_WIDTH:
+                base_webp = self.chapter_cover_path(meta, chapter, ext="webp")
+                if base_webp.exists() and base_webp.stat().st_size > 0:
+                    return self.scale_cover(base_webp, target_webp, target_width=width, fmt="WEBP")
+
+                base_jpg = self.chapter_cover_path(meta, chapter, ext="jpg")
+                if base_jpg.exists() and base_jpg.stat().st_size > 0:
+                    return self.scale_cover(base_jpg, target_webp, target_width=width, fmt="WEBP")
+
+            if fetched is None:
+                raise FileNotFoundError("无法生成章节封面：本子缓存不完整，且未找到已有封面或缩略图")
+
+            page_path = self.ensure_page(fetched, chapter.start)
+            target_width = width or COVER_WIDTH
+            self._save_cover(page_path, target_webp, target_width=target_width, fmt="WEBP")
+            return target_webp
 
     def ensure_page_thumb(self, meta: ComicMeta, fetched: FetchedComic, index: int) -> Path:
         """Small JPEG thumbnail used by the detail-page index grid."""
@@ -694,6 +837,8 @@ class ComicStore:
                 self.ensure_page(fetched, index)
                 if index <= min(meta.cover_count, meta.page_count):
                     self.ensure_cover(fetched.meta, fetched, index)
+                    self.ensure_webp_cover(fetched.meta, fetched, index)
+                    self.ensure_webp_cover(fetched.meta, fetched, index, COVER_THUMB_WIDTH)
                 # T-Optimize: Pre-generate thumbnail during prefetch for warm detail-page hits
                 self.ensure_page_thumb(fetched.meta, fetched, index)
                 done += 1
@@ -844,14 +989,16 @@ class ComicStore:
             covers_dir = self.covers_dir(source, source_id)
             if covers_dir.exists():
                 for f in list(covers_dir.iterdir()):
-                    if f.is_file() and f.suffix.lower() in {".jpg", ".jpeg"}:
+                    if f.is_file() and f.suffix.lower() in {".jpg", ".jpeg", ".webp"}:
                         f.unlink(missing_ok=True)
-            # Regenerate covers
+            # Regenerate covers with active pre-warming (both 720px & 360px WEBP + JPEG)
             fetched = self.load_fetched(source, source_id)
             if fetched is not None:
                 for idx in range(1, len(meta.cover_paths()) + 1):
                     try:
                         self.ensure_cover(meta, fetched, idx)
+                        self.ensure_webp_cover(meta, fetched, idx)
+                        self.ensure_webp_cover(meta, fetched, idx, COVER_THUMB_WIDTH)
                     except Exception:
                         pass
 
@@ -1026,6 +1173,8 @@ class ComicStore:
         for i in range(1, min(meta.cover_count, meta.page_count) + 1):
             try:
                 self.ensure_cover(meta, fetched, i)
+                self.ensure_webp_cover(meta, fetched, i)
+                self.ensure_webp_cover(meta, fetched, i, COVER_THUMB_WIDTH)
             except Exception as e:
                 logger.warning("Failed to generate initial cover %d for %s: %s", i, source_id, e)
 
@@ -1033,8 +1182,10 @@ class ComicStore:
             for ch in meta.chapters:
                 try:
                     self.ensure_chapter_cover(meta, fetched, ch)
+                    self.ensure_webp_chapter_cover(meta, fetched, ch)
+                    self.ensure_webp_chapter_cover(meta, fetched, ch, COVER_THUMB_WIDTH)
                 except Exception as e:
-                    logger.warning("Failed to generate chapter cover for %s (%s): %s", source_id, ch.id, e)
+                    logger.warning("Failed to generate initial chapter cover %s for %s: %s", ch.id, source_id, e)
 
         return meta
 
@@ -1392,6 +1543,8 @@ class ComicStore:
             for i in range(1, min(5, meta.page_count + 1)):
                 try:
                     self.ensure_cover(meta, fetched, i)
+                    self.ensure_webp_cover(meta, fetched, i)
+                    self.ensure_webp_cover(meta, fetched, i, COVER_THUMB_WIDTH)
                 except Exception as e:
                     logger.warning("Failed to regenerate cover %d for %s/%s: %s", i, source, source_id, e)
 

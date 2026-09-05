@@ -1006,6 +1006,17 @@ def page_info(source: str, source_id: str, index: int, request: Request) -> Page
 
 
 CACHE_CONTROL_IMMUTABLE = {"Cache-Control": "public, max-age=2592000, immutable"}
+CACHE_CONTROL_IMMUTABLE_VARY = {
+    "Cache-Control": "public, max-age=2592000, immutable",
+    "Vary": "Accept",
+}
+
+
+def _client_accepts_webp(request: Request, ext: str | None = None) -> bool:
+    if ext and ext.lower() == "webp":
+        return True
+    accept = request.headers.get("accept", "")
+    return "image/webp" in accept
 
 
 @app.get("/api/library/{source}/{source_id}/pages/{index}/file")
@@ -1086,36 +1097,46 @@ def cover_file(
     ext: str | None = None,
     w: int | None = None,
 ) -> FileResponse:
-    # Note: `ext` is bound by route pattern for CDN cache recognition; response is always JPEG.
     meta = _require_meta(source, source_id, request)
     max_covers = len(meta.cover_indices) if meta.cover_indices else meta.cover_count
     if index < 1 or index > max_covers or index > meta.page_count:
         raise HTTPException(status_code=404, detail=f"封面 {index} 不存在")
 
     target_width = COVER_THUMB_WIDTH if (w is not None and w == COVER_THUMB_WIDTH) else None
-    cover_path = store.cover_path(meta, index, target_width)
+    wants_webp = _client_accepts_webp(request, ext)
+
+    if wants_webp:
+        webp_path = store.cover_path(meta, index, target_width, ext="webp")
+        if webp_path.exists() and webp_path.stat().st_size > 0:
+            return FileResponse(
+                webp_path,
+                media_type="image/webp",
+                headers=CACHE_CONTROL_IMMUTABLE_VARY,
+            )
+
+        fetched = store.load_fetched(source, source_id)
+        try:
+            path = store.ensure_webp_cover(meta, fetched, index, target_width)
+        except HTTPException:
+            raise
+        except Exception as exc:
+            raise HTTPException(status_code=502, detail=f"封面生成失败：{exc}") from exc
+        return FileResponse(
+            path,
+            media_type="image/webp",
+            headers=CACHE_CONTROL_IMMUTABLE_VARY,
+        )
+
+    # Fallback path for clients not accepting WebP (returns JPEG)
+    cover_path = store.cover_path(meta, index, target_width, ext="jpg")
     if cover_path.exists() and cover_path.stat().st_size > 0:
         return FileResponse(
             cover_path,
             media_type="image/jpeg",
-            headers=CACHE_CONTROL_IMMUTABLE,
+            headers=CACHE_CONTROL_IMMUTABLE_VARY,
         )
 
-    # Fast path: if requesting stepped 360px cover and base 720px cover exists on disk, downscale directly
-    if target_width:
-        base_cover = store.cover_path(meta, index)
-        if base_cover.exists() and base_cover.stat().st_size > 0:
-            path = store.scale_cover(base_cover, cover_path, target_width)
-            return FileResponse(
-                path,
-                media_type="image/jpeg",
-                headers=CACHE_CONTROL_IMMUTABLE,
-            )
-
     fetched = store.load_fetched(source, source_id)
-    if fetched is None:
-        raise HTTPException(status_code=404, detail="本子缓存不完整，请先刷新导入")
-
     try:
         path = store.ensure_cover(meta, fetched, index, target_width)
     except HTTPException:
@@ -1125,7 +1146,7 @@ def cover_file(
     return FileResponse(
         path,
         media_type="image/jpeg",
-        headers=CACHE_CONTROL_IMMUTABLE,
+        headers=CACHE_CONTROL_IMMUTABLE_VARY,
     )
 
 
@@ -1139,36 +1160,47 @@ def chapter_cover(
     ext: str | None = None,
     w: int | None = None,
 ) -> FileResponse:
-    """T17：章节目录封面（该话第一页），池化在 covers/chapters/ 下，失败前端回落占位（`ext` 供 CDN 缓存识别）。"""
+    """T17：章节目录封面（该话第一页），池化在 covers/chapters/ 下，失败前端回落占位。支持 WebP 内容协商。"""
     meta = _require_meta(source, source_id, request)
     chapter = next((c for c in meta.chapters if c.id == chapter_id), None)
     if chapter is None:
         raise HTTPException(status_code=404, detail="没有这个章节")
 
     target_width = COVER_THUMB_WIDTH if (w is not None and w == COVER_THUMB_WIDTH) else None
-    chap_cover_path = store.chapter_cover_path(meta, chapter, target_width)
+    wants_webp = _client_accepts_webp(request, ext)
+
+    if wants_webp:
+        webp_path = store.chapter_cover_path(meta, chapter, target_width, ext="webp")
+        if webp_path.exists() and webp_path.stat().st_size > 0:
+            return FileResponse(
+                webp_path,
+                media_type="image/webp",
+                headers=CACHE_CONTROL_IMMUTABLE_VARY,
+            )
+
+        fetched = store.load_fetched(source, source_id)
+        try:
+            path = store.ensure_webp_chapter_cover(meta, fetched, chapter, target_width)
+        except HTTPException:
+            raise
+        except Exception as exc:
+            raise HTTPException(status_code=502, detail=f"章节封面生成失败：{exc}") from exc
+        return FileResponse(
+            path,
+            media_type="image/webp",
+            headers=CACHE_CONTROL_IMMUTABLE_VARY,
+        )
+
+    # Fallback path for clients not requesting WebP (returns JPEG)
+    chap_cover_path = store.chapter_cover_path(meta, chapter, target_width, ext="jpg")
     if chap_cover_path.exists() and chap_cover_path.stat().st_size > 0:
         return FileResponse(
             chap_cover_path,
             media_type="image/jpeg",
-            headers=CACHE_CONTROL_IMMUTABLE,
+            headers=CACHE_CONTROL_IMMUTABLE_VARY,
         )
 
-    # Fast path: if requesting stepped 360px chapter cover and base exists on disk, downscale directly
-    if target_width:
-        base_cover = store.chapter_cover_path(meta, chapter)
-        if base_cover.exists() and base_cover.stat().st_size > 0:
-            path = store.scale_cover(base_cover, chap_cover_path, target_width)
-            return FileResponse(
-                path,
-                media_type="image/jpeg",
-                headers=CACHE_CONTROL_IMMUTABLE,
-            )
-
     fetched = store.load_fetched(source, source_id)
-    if fetched is None:
-        raise HTTPException(status_code=404, detail="本子缓存不完整，请先刷新导入")
-
     try:
         path = store.ensure_chapter_cover(meta, fetched, chapter, target_width)
     except HTTPException:
@@ -1178,7 +1210,7 @@ def chapter_cover(
     return FileResponse(
         path,
         media_type="image/jpeg",
-        headers=CACHE_CONTROL_IMMUTABLE,
+        headers=CACHE_CONTROL_IMMUTABLE_VARY,
     )
 
 

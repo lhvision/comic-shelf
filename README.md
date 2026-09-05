@@ -207,8 +207,9 @@ $COMIC_SHELF_DATA/
             ├── remote.json               # 远端 URL + scramble_id + decode_version
             ├── pages/00001.webp          # 单章节：已解密拼好的成品页（扁平）
             ├── pages/<chapter>/00001.webp# 多章节：页面按章节 ID 分落子目录
-            ├── covers/001.jpg            # 展示封面
-            ├── covers/chapters/<cid>.jpg # 章节封面池
+            ├── covers/001.jpg            # 展示封面（720px 基准 JPEG，与 WebP 双模并存）
+            ├── covers/001_360.webp       # 首屏展示缩略图（Accept: image/webp 内容协商，按需生成）
+            ├── covers/chapters/<cid>.jpg # 章节封面池（按需生成，支持 WebP 与 360 缩略规格）
             ├── thumbs/00001.jpg          # 单章节：360px 索引缩略图
             └── thumbs/<chapter>/00001.jpg# 多章节：分章节 360px 缩略图
 ```
@@ -232,7 +233,7 @@ $COMIC_SHELF_DATA/
 | **[docs/agents/architecture.md](docs/agents/architecture.md)** | 后端架构设计、数据存储模型、Provider 扩展体系、安全门禁与 SSE 单向事件流                                              |
 | **[docs/agents/frontend.md](docs/agents/frontend.md)**         | 前端视图与 Composable 地图、阅读器分页与手势、PWA 离线缓存与性能策略                                                  |
 | **[DESIGN_NOTES.md](DESIGN_NOTES.md)**                         | 纸间设计系统规范（Living Design System）、品牌哲学、色彩/组件层级与核心设计定律（历史演进见 `docs/design-archive/`）  |
-| **[docs/adr/](docs/adr/)**                                     | 架构决策记录（Architecture Decision Records，涵盖系统重大架构抉择，ADR 0001 ~ 0011）                                  |
+| **[docs/adr/](docs/adr/)**                                     | 架构决策记录（Architecture Decision Records，涵盖系统重大架构抉择，ADR 0001 ~ 0012）                                  |
 
 ---
 
