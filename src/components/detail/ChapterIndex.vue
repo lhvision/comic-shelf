@@ -1,11 +1,12 @@
 <script setup lang="ts">
-import { computed, nextTick, ref, watch } from 'vue'
+import { computed, ref, watch } from 'vue'
 import ChapterCard from '@/components/detail/ChapterCard.vue'
 import AppIcon from '@/components/AppIcon.vue'
 import {
   getExpandedChapterCount,
   setExpandedChapterCount,
 } from '@/composables/useChapterNavigation'
+import { usePaginationFold } from '@/composables/usePaginationFold'
 import type { Chapter } from '@/types'
 
 const CHAPTER_CHUNK_STEP = 24
@@ -57,38 +58,30 @@ const initialCount = computed(() => {
   return Math.max(CHAPTER_CHUNK_STEP, Math.ceil(needed / CHAPTER_CHUNK_STEP) * CHAPTER_CHUNK_STEP)
 })
 
-const visibleCount = ref(initialCount.value)
+const {
+  visibleItems: visibleChapters,
+  remainingCount,
+  canCollapse,
+  loadMore,
+  loadAll,
+  collapse,
+  reset,
+} = usePaginationFold({
+  items: () => props.chapters,
+  step: CHAPTER_CHUNK_STEP,
+  initialStep: baseStepCount.value,
+  scrollTarget: indexWrapEl,
+  onChange: (count) => setExpandedChapterCount(comicKey.value, count),
+})
+
+reset(initialCount.value)
 
 watch(
   () => [props.chapters.length, comicKey.value],
   () => {
-    visibleCount.value = initialCount.value
+    reset(initialCount.value)
   },
 )
-
-const visibleChapters = computed(() => props.chapters.slice(0, visibleCount.value))
-const remainingCount = computed(() => Math.max(0, props.chapters.length - visibleCount.value))
-const canCollapse = computed(() => visibleCount.value > baseStepCount.value)
-
-function loadMore() {
-  visibleCount.value = Math.min(props.chapters.length, visibleCount.value + CHAPTER_CHUNK_STEP)
-  setExpandedChapterCount(comicKey.value, visibleCount.value)
-}
-
-function loadAll() {
-  visibleCount.value = props.chapters.length
-  setExpandedChapterCount(comicKey.value, visibleCount.value)
-}
-
-function collapse() {
-  visibleCount.value = baseStepCount.value
-  setExpandedChapterCount(comicKey.value, baseStepCount.value)
-  void nextTick(() => {
-    if (indexWrapEl.value && typeof indexWrapEl.value.scrollIntoView === 'function') {
-      indexWrapEl.value.scrollIntoView({ behavior: 'smooth', block: 'start' })
-    }
-  })
-}
 </script>
 
 <template>

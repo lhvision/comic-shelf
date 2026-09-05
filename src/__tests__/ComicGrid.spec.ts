@@ -213,4 +213,71 @@ describe('ComicGrid', () => {
     await archiveSentinel.find('button').trigger('click')
     expect(archiveGrid.findAll('.mock-comic-card').length).toBe(12)
   })
+
+  it('renders archive divider and flat grid when all comics are completed', () => {
+    const completedComics = makeComics(15).map((c, i) => ({
+      ...c,
+      source_id: `completed_${i}`,
+      title: `已读漫画 ${i + 1}`,
+      last_page: 20,
+      page_count: 20,
+    }))
+
+    const wrapper = mount(ComicGrid, {
+      props: {
+        loading: false,
+        items: completedComics,
+        useCanvas: false,
+        hasAnyItems: true,
+        batchStep: 12,
+        isRecentSort: true,
+      },
+    })
+
+    // No drawer in allCompleted mode
+    expect(wrapper.find('.shelf-archive-drawer').exists()).toBe(false)
+
+    // Archive divider banner is displayed
+    const divider = wrapper.find('.shelf-archive-divider')
+    expect(divider.exists()).toBe(true)
+    expect(divider.text()).toContain('典藏归档 · 全部已翻阅（15 本）')
+
+    // Renders single flat grid with chunking
+    expect(wrapper.findAll('.mock-comic-card').length).toBe(12)
+    const foldCard = wrapper.find('.shelf-fold-card')
+    expect(foldCard.exists()).toBe(true)
+    expect(foldCard.text()).toContain('+3 本')
+  })
+
+  it('renders flat single grid without drawer or divider when isRecentSort is false', () => {
+    const unread = makeComics(5).map((c, i) => ({
+      ...c,
+      source_id: `unread_${i}`,
+      last_page: 0,
+      page_count: 20,
+    }))
+    const completed = makeComics(5).map((c, i) => ({
+      ...c,
+      source_id: `completed_${i}`,
+      last_page: 20,
+      page_count: 20,
+    }))
+    const mixed = [...unread, ...completed]
+
+    const wrapper = mount(ComicGrid, {
+      props: {
+        loading: false,
+        items: mixed,
+        useCanvas: false,
+        hasAnyItems: true,
+        batchStep: 12,
+        isRecentSort: false,
+      },
+    })
+
+    // Neither drawer nor divider rendered in non-recent sort (e.g. title or search)
+    expect(wrapper.find('.shelf-archive-drawer').exists()).toBe(false)
+    expect(wrapper.find('.shelf-archive-divider').exists()).toBe(false)
+    expect(wrapper.findAll('.mock-comic-card').length).toBe(10)
+  })
 })

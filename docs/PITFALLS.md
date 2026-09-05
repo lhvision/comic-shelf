@@ -392,6 +392,32 @@
     2. **尾格独立承接**：溢出提示卡片（如 `.shelf-fold-card`、`.page-tile-overflow`）作为独立的网格卡片流式追加在列表末尾，不侵占已有卡片的交互层级；
     3. **双向受控与平滑滚顶**：不仅提供「再展开」与「展开全部」，必须随时提供「收起」出口，并借助 `scrollIntoView({ behavior: 'smooth', block: 'start' })` 平滑回滚至网格顶端，保证读者始终掌控滚动条长度。
 
+### 49. View Transition 异步更新回调跳过引发的 Promise 永久悬空挂起陷阱（ViewTransition Update Callback Skip & Hanging Promise）
+
+- **本质**：
+  1. 根据 W3C View Transitions Level 1 规范与各浏览器内核实现，当文档处于后台非激活状态（如隐藏标签页）、处于离屏预渲染环境，或前一轮过渡未完成即被新过渡强行抢占（Preempted）时，引擎可能直接让 `updateCallbackDone` 与 `finished` 进入 Rejected（`AbortError`）状态，并**直接跳过调用传入的 `updateCallback`**；
+  2. 若在 Composable 或路由钩子（如 `withViewTransition` 或 `router.beforeResolve`）中使用 `Promise.withResolvers()`，且仅依赖 `updateCallback` 内部的回调来触发 `resolve()`，一旦回调被浏览器跳过，外部 Promise 将永久保持在 Pending 状态，导致页面路由导航被永久卡死或调用端 await 无限挂起。
+- **红线与防误伤**：
+  - **不要**假设 `document.startViewTransition(cb)` 传入的 `cb` 在任何异常/抢占场景下都必然会被执行；
+  - **不要**让对外暴露的控制流 Promise 单独死锁在 `updateCallback` 的执行分支上；
+  - **放行/改用**：
+    1. 声明 `let executed = false` 执行标记，在 `updateCallbackDone.catch` 与 `finished.catch` 阶段实施 `ensureExecuted` 拦截；
+    2. 若捕获到过渡被内核抛弃且回调未被调度，立即由 catch 钩子执行同步/降级状态更新并触发 `resolve()`，确保业务调用链与路由生命周期百分之百平稳兑现。
+
+### 50. 阅读器末页完结标记在同路由组件复用下的状态泄漏陷阱（Reader End-of-Book State Leak on Route Component Reuse）
+
+- **本质**：
+  1. Vue Router 在路径参数改变但目标组件相同时（如从 `/comic/jm/A/read/10` 跳转至 `/comic/jm/B/read/1`），默认采用组件实例原地复用策略，不会重新触发根组件及其子组件的 `setup()`；
+  2. 在阅读器末页卡片（`ReaderEndCard.vue`）内部，为了防止读者视口反复微移触发多次网络写入，通常设有防抖布尔标记（`let hasTriggeredCompleted = false`）；
+  3. 若父级容器（`ReaderViewport.vue`）挂载 `<ReaderEndCard>` 时未绑定与当前漫画关联的 `:key`，且漫画为单章节作品（`showEndCard` 始终为 `true`，无法通过 `v-if` 自然销毁），则切书后 `ReaderEndCard` 实例持续常驻，`hasTriggeredCompleted` 永久锁死在 `true`；
+  4. 读者读完第二部作品并滑动至末页时，`IntersectionObserver` 虽然再次命中视口，但由于防抖标记已被前一本书污染，`emit('completed')` 绝不会再次触发，导致后续所有通过末页卡片连续阅读的作品均无法沉底归档或标记完结。
+- **红线与防误伤**：
+  - **不要**在依赖组件内局部闭包状态进行一次性生命周期判断的场景下忽略 `:key` 隔离；
+  - **不要**假设同路由跨参数切页会自动清空内部 DOM 实例与 setup 变量；
+  - **放行/改用**：
+    1. 在阅读器滚动视口内为 `<ReaderEndCard>` 显式绑定 `:key="`${source}/${sourceId}`"`，强制 Vue 在切本时执行完整卸载与重新挂载生命周期；
+    2. 配合父级顶层 `useReaderData` 针对 `[source, sourceId]` 变更的主动监听，确保跨本导航时阅读器全局状态、交互标记与末页感知彻底归零重置。
+
 ---
 
 ## 🚦 交付门禁（四步必跑）

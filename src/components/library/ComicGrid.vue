@@ -8,12 +8,14 @@
  * 起步展示，末尾通过折叠卡（.shelf-fold-card）提示剩余藏书并支持手动步进/全量展开与随时收起，
  * 彻底避免海量 DOM 阻塞与滚动条无节制失控拉长。
  */
-import { ref, computed, watch, nextTick } from 'vue'
+import { ref, computed, watch } from 'vue'
 import type { LibrarySummary } from '@/types'
 import ComicCard from '@/components/ComicCard.vue'
 import HtmlCanvasCard from '@/components/HtmlCanvasCard.vue'
 import AppIcon from '@/components/AppIcon.vue'
 import { liveCacheKey, type LiveCacheState } from '@/stores/library'
+import { isCompletedComic } from '@/composables/useLibraryFilter'
+import { usePaginationFold } from '@/composables/usePaginationFold'
 
 const props = withDefaults(
   defineProps<{
@@ -38,8 +40,7 @@ const props = withDefaults(
   },
 )
 
-const isCompleted = (item: LibrarySummary) =>
-  (item.last_page ?? 0) >= item.page_count && item.page_count > 0
+const isCompleted = isCompletedComic
 
 // 未读/在读藏书与已读完藏书在最近排序下分离
 const activeComics = computed(() =>
@@ -75,114 +76,69 @@ const gridWrapEl = ref<HTMLElement | null>(null)
 const archiveDrawerEl = ref<HTMLElement | null>(null)
 
 // 1. 未读区分批状态
-const visibleActiveCount = ref(props.batchStep)
-const visibleActiveItems = computed(() => activeComics.value.slice(0, visibleActiveCount.value))
-const remainingActiveCount = computed(() =>
-  Math.max(0, activeComics.value.length - visibleActiveCount.value),
-)
-const canCollapseActive = computed(
-  () => !props.useCanvas && visibleActiveCount.value > props.batchStep,
-)
-
-function loadMoreActive() {
-  if (visibleActiveCount.value < activeComics.value.length) {
-    visibleActiveCount.value = Math.min(
-      activeComics.value.length,
-      visibleActiveCount.value + props.batchStep,
-    )
-  }
-}
-
-function loadAllActive() {
-  visibleActiveCount.value = activeComics.value.length
-}
-
-function collapseActive() {
-  visibleActiveCount.value = props.batchStep
-  void nextTick(() => {
-    if (gridWrapEl.value && typeof gridWrapEl.value.scrollIntoView === 'function') {
-      gridWrapEl.value.scrollIntoView({ behavior: 'smooth', block: 'start' })
-    }
-  })
-}
+const {
+  visibleItems: visibleActiveItems,
+  remainingCount: remainingActiveCount,
+  canCollapse: canCollapseActiveRaw,
+  loadMore: loadMoreActive,
+  loadAll: loadAllActive,
+  collapse: collapseActive,
+  reset: resetActive,
+} = usePaginationFold({
+  items: activeComics,
+  step: () => props.batchStep,
+  scrollTarget: gridWrapEl,
+})
+const canCollapseActive = computed(() => !props.useCanvas && canCollapseActiveRaw.value)
 
 // 2. 卷末归档专匣状态
 const archiveOpen = ref(false)
-const visibleArchiveCount = ref(props.batchStep)
-const visibleArchiveItems = computed(() =>
-  completedComics.value.slice(0, visibleArchiveCount.value),
-)
-const remainingArchiveCount = computed(() =>
-  Math.max(0, completedComics.value.length - visibleArchiveCount.value),
-)
-const canCollapseArchive = computed(() => visibleArchiveCount.value > props.batchStep)
-
 function toggleArchive() {
   archiveOpen.value = !archiveOpen.value
 }
-
-function loadMoreArchive() {
-  if (visibleArchiveCount.value < completedComics.value.length) {
-    visibleArchiveCount.value = Math.min(
-      completedComics.value.length,
-      visibleArchiveCount.value + props.batchStep,
-    )
-  }
-}
-
-function loadAllArchive() {
-  visibleArchiveCount.value = completedComics.value.length
-}
-
-function collapseArchive() {
-  visibleArchiveCount.value = props.batchStep
-  void nextTick(() => {
-    if (archiveDrawerEl.value && typeof archiveDrawerEl.value.scrollIntoView === 'function') {
-      archiveDrawerEl.value.scrollIntoView({ behavior: 'smooth', block: 'start' })
-    }
-  })
-}
+const {
+  visibleItems: visibleArchiveItems,
+  remainingCount: remainingArchiveCount,
+  canCollapse: canCollapseArchive,
+  loadMore: loadMoreArchive,
+  loadAll: loadAllArchive,
+  collapse: collapseArchive,
+  reset: resetArchive,
+} = usePaginationFold({
+  items: completedComics,
+  step: () => props.batchStep,
+  scrollTarget: archiveDrawerEl,
+})
 
 // 3. 全局单网格（非 splitMode 时：如全已读、全未读、非最近收录、Canvas 模式）
-const visibleCount = ref(props.batchStep)
+const {
+  visibleItems: rawVisibleItems,
+  remainingCount,
+  canCollapse: canCollapseRaw,
+  loadMore,
+  loadAll,
+  collapse,
+  reset: resetUnified,
+} = usePaginationFold({
+  items: () => props.items,
+  step: () => props.batchStep,
+  scrollTarget: gridWrapEl,
+})
+
+const visibleItems = computed(() => {
+  if (props.useCanvas) return props.items
+  return rawVisibleItems.value
+})
+const canCollapse = computed(() => !props.useCanvas && canCollapseRaw.value)
 
 watch(
   () => props.items,
   () => {
-    visibleActiveCount.value = props.batchStep
-    visibleArchiveCount.value = props.batchStep
-    visibleCount.value = props.batchStep
-    archiveOpen.value = allCompleted.value
+    resetActive()
+    resetArchive()
+    resetUnified()
   },
 )
-
-const visibleItems = computed(() => {
-  if (props.useCanvas) return props.items
-  return props.items.slice(0, visibleCount.value)
-})
-
-const remainingCount = computed(() => Math.max(0, props.items.length - visibleCount.value))
-
-function loadMore() {
-  if (visibleCount.value < props.items.length) {
-    visibleCount.value = Math.min(props.items.length, visibleCount.value + props.batchStep)
-  }
-}
-
-function loadAll() {
-  visibleCount.value = props.items.length
-}
-
-function collapse() {
-  visibleCount.value = props.batchStep
-  void nextTick(() => {
-    if (gridWrapEl.value && typeof gridWrapEl.value.scrollIntoView === 'function') {
-      gridWrapEl.value.scrollIntoView({ behavior: 'smooth', block: 'start' })
-    }
-  })
-}
-
-const canCollapse = computed(() => !props.useCanvas && visibleCount.value > props.batchStep)
 </script>
 
 <template>

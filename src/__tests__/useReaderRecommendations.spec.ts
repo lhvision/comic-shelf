@@ -167,4 +167,44 @@ describe('useReaderRecommendations', () => {
     expect(recs[1]?.source_id).toBe('103')
     expect(recs[2]?.source_id).toBe('104')
   })
+
+  it('filters empty strings and whitespace in metadata to avoid false positive matching', () => {
+    const currentWithEmpty = {
+      source: 'jm',
+      source_id: '999',
+      authors: ['', '   '],
+      works: [''],
+      tags: ['  ', ''],
+    }
+
+    const testLibrary: LibrarySummary[] = [
+      {
+        source: 'jm',
+        source_id: '888',
+        display_id: '888',
+        title: 'Empty Meta Comic',
+        authors: [''],
+        works: ['   '],
+        actors: [],
+        tags: [''],
+        favorite: false,
+        page_count: 20,
+        views: '10',
+        likes: '0',
+        uploaded_at: '',
+        published_at: '',
+        updated_at: '',
+        imported_at: '2026-01-01T00:00:00Z',
+        cover_paths: [],
+        cached_pages: 0,
+        cover_count: 1,
+        last_page: 0,
+      },
+    ]
+
+    const recs = computeRecommendations(currentWithEmpty, testLibrary, 1)
+    expect(recs.length).toBe(1)
+    // Should be returned solely because it is an unread candidate, without receiving false matching score
+    expect(recs[0]?.source_id).toBe('888')
+  })
 })

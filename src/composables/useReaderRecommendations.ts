@@ -35,9 +35,15 @@ export function computeRecommendations(
 ): LibrarySummary[] {
   if (!allItems || allItems.length === 0) return []
 
-  const currentAuthors = new Set((current.authors || []).map((a) => a.trim().toLowerCase()))
-  const currentWorks = new Set((current.works || []).map((w) => w.trim().toLowerCase()))
-  const currentTags = new Set((current.tags || []).map((t) => t.trim().toLowerCase()))
+  const currentAuthors = new Set(
+    (current.authors || []).map((a) => a.trim().toLowerCase()).filter(Boolean),
+  )
+  const currentWorks = new Set(
+    (current.works || []).map((w) => w.trim().toLowerCase()).filter(Boolean),
+  )
+  const currentTags = new Set(
+    (current.tags || []).map((t) => t.trim().toLowerCase()).filter(Boolean),
+  )
 
   // 1. 候选池：排除当前本，排除已读完本
   const candidates = allItems.filter((item) => {
@@ -56,21 +62,24 @@ export function computeRecommendations(
 
     // 作者关联
     for (const a of item.authors || []) {
-      if (currentAuthors.has(a.trim().toLowerCase())) {
+      const clean = a.trim().toLowerCase()
+      if (clean && currentAuthors.has(clean)) {
         score += 10
       }
     }
 
     // 原作/系列关联
     for (const w of item.works || []) {
-      if (currentWorks.has(w.trim().toLowerCase())) {
+      const clean = w.trim().toLowerCase()
+      if (clean && currentWorks.has(clean)) {
         score += 10
       }
     }
 
     // 标签共有重合度
     for (const t of item.tags || []) {
-      if (currentTags.has(t.trim().toLowerCase())) {
+      const clean = t.trim().toLowerCase()
+      if (clean && currentTags.has(clean)) {
         score += 2
       }
     }

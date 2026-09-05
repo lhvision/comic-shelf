@@ -9,8 +9,8 @@ import type { PageRecord } from '@/types'
  *
  * 彻底废除基于长距离 useIntersectionObserver 的贪婪无限滚动（根治长滚动条失控痛点）。
  * 结合 XboxYan 尾格印章哲学，当存在未展开画页时：
- * 1. 当前批次末尾瓦片呈现实质性「+余 N 页」半透明磨砂纸印遮罩，点击就地展开下一批；
- * 2. 底部控制槽位提供「再展开 24 页」、「展开全部」与「收起画卷」，主动掌控权交还读者。
+ * 1. 列表末尾独立追加「余页收纳」折叠卡（.page-tile-overflow），杜绝遮罩覆盖导致的幽灵焦点，点击就地展开下一批；
+ * 2. 底部控制槽位提供「展开全部」与「收起画卷」，主动掌控权交还读者。
  */
 const props = withDefaults(
   defineProps<{
@@ -103,17 +103,17 @@ function handleCollapse() {
         :aria-label="`余 ${remainingPages} 页已折叠，点击再展开 ${Math.min(pageStep, remainingPages)} 页`"
         @click.prevent="emit('loadMore')"
       >
-        <div class="overflow-tile-inner">
-          <div class="overflow-badge-wrap">
+        <span class="overflow-tile-inner">
+          <span class="overflow-badge-wrap">
             <AppIcon name="archive" size="sm" class="overflow-badge-icon" />
             <span class="overflow-badge-stamp">+{{ remainingPages }}</span>
-          </div>
+          </span>
           <span class="overflow-tile-title">余页收纳</span>
           <span class="overflow-tile-action">
             <AppIcon name="chevron-down" size="xs" />
             再展开 {{ Math.min(pageStep, remainingPages) }} 页
           </span>
-        </div>
+        </span>
       </button>
     </TransitionGroup>
 

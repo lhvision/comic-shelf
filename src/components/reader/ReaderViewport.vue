@@ -103,6 +103,7 @@ defineExpose({
   >
     <ReaderEndCard
       v-if="rtlHorizontal && showEndCard"
+      :key="`${source}/${sourceId}`"
       snap
       class="reader-end-rtl"
       :recommendations="recommendations"
@@ -143,6 +144,7 @@ defineExpose({
 
     <ReaderEndCard
       v-if="!rtlHorizontal && showEndCard"
+      :key="`${source}/${sourceId}`"
       :snap="settings.mode === 'horizontal'"
       :recommendations="recommendations"
       @back="$emit('backToDetail')"

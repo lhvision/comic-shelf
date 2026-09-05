@@ -7,6 +7,7 @@ import AppTextClamp from '@/components/AppTextClamp.vue'
 import { api, coverSrcset } from '@/api/client'
 import { useCoverTransition } from '@/composables/useCoverTransition'
 import { useAuth } from '@/composables/useAuth'
+import { isCompletedComic } from '@/composables/useLibraryFilter'
 
 const props = defineProps<{
   comic: LibrarySummary
@@ -46,9 +47,7 @@ const liveCached = computed(() => props.cache?.cached ?? props.comic.cached_page
 const liveTotal = computed(() => props.cache?.total || props.comic.page_count)
 const liveRunning = computed(() => Boolean(props.cache?.running))
 const isTargetCover = computed(() => isCoverActive(props.comic.source, props.comic.source_id))
-const isCompleted = computed(
-  () => (props.comic.last_page ?? 0) >= props.comic.page_count && props.comic.page_count > 0,
-)
+const isCompleted = computed(() => isCompletedComic(props.comic))
 const isInProgress = computed(() => !isCompleted.value && (props.comic.last_page ?? 0) > 0)
 const cardTransitionName = computed(
   () => `card-${props.comic.source}-${props.comic.source_id.replace(/[^a-zA-Z0-9_-]/g, '_')}`,

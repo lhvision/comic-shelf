@@ -96,8 +96,12 @@ router.beforeResolve(async (to, from) => {
       types: [direction],
     })
     transition?.ready?.catch(() => {})
-    transition?.finished?.catch(() => {})
-    transition?.updateCallbackDone?.catch(() => {})
+    transition?.finished?.catch(() => {
+      resolve()
+    })
+    transition?.updateCallbackDone?.catch(() => {
+      resolve()
+    })
   } catch {
     try {
       const transition = document.startViewTransition(performUpdate) as unknown as {
@@ -106,8 +110,12 @@ router.beforeResolve(async (to, from) => {
         updateCallbackDone?: Promise<void>
       }
       transition?.ready?.catch(() => {})
-      transition?.finished?.catch(() => {})
-      transition?.updateCallbackDone?.catch(() => {})
+      transition?.finished?.catch(() => {
+        resolve()
+      })
+      transition?.updateCallbackDone?.catch(() => {
+        resolve()
+      })
     } catch {
       resolve()
     }

@@ -5,6 +5,7 @@ import HtmlCanvasSurface from '@/components/HtmlCanvasSurface.vue'
 import FavoriteButton from '@/components/FavoriteButton.vue'
 import CacheProgress from '@/components/CacheProgress.vue'
 import { useAuth } from '@/composables/useAuth'
+import { isCompletedComic } from '@/composables/useLibraryFilter'
 import { api, coverSrcset } from '@/api/client'
 
 const props = withDefaults(
@@ -29,9 +30,7 @@ const primaryTags = computed(() => props.comic.tags.slice(0, 3))
 const liveCached = computed(() => props.cache?.cached ?? props.comic.cached_pages)
 const liveTotal = computed(() => props.cache?.total || props.comic.page_count)
 const liveRunning = computed(() => Boolean(props.cache?.running))
-const isCompleted = computed(
-  () => (props.comic.last_page ?? 0) >= props.comic.page_count && props.comic.page_count > 0,
-)
+const isCompleted = computed(() => isCompletedComic(props.comic))
 const isInProgress = computed(() => !isCompleted.value && (props.comic.last_page ?? 0) > 0)
 
 // Force the canvas surface to re-paint whenever live progress or read status changes.

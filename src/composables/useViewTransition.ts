@@ -54,18 +54,26 @@ export function useViewTransition() {
       ) {
         try {
           const { promise, resolve, reject } = withResolvers<T>()
+          let executed = false
           const transition = (
             targetEl as unknown as {
               startViewTransition: (cb: () => Promise<void>) => GenericViewTransition
             }
           ).startViewTransition(async () => {
+            executed = true
             const task = promiseTry(callback)
             task.then(resolve, reject)
             await task.catch(() => {})
           })
+          const ensureExecuted = () => {
+            if (!executed) {
+              executed = true
+              promiseTry(callback).then(resolve, reject)
+            }
+          }
           transition?.ready?.catch(() => {})
-          transition?.updateCallbackDone?.catch(() => {})
-          await transition?.finished?.catch(() => {})
+          transition?.updateCallbackDone?.catch(ensureExecuted)
+          await transition?.finished?.catch(ensureExecuted)
           return await promise
         } catch {
           // 局部失败时直接回退执行，绝不激进回退到全局全屏快照
@@ -80,6 +88,7 @@ export function useViewTransition() {
       try {
         if (options?.types && options.types.length > 0) {
           const { promise, resolve, reject } = withResolvers<T>()
+          let executed = false
           const doc = document as unknown as {
             startViewTransition: (opt: {
               update: () => Promise<void>
@@ -88,15 +97,22 @@ export function useViewTransition() {
           }
           const transition = doc.startViewTransition({
             update: async () => {
+              executed = true
               const task = promiseTry(callback)
               task.then(resolve, reject)
               await task.catch(() => {})
             },
             types: options.types,
           })
+          const ensureExecuted = () => {
+            if (!executed) {
+              executed = true
+              promiseTry(callback).then(resolve, reject)
+            }
+          }
           transition?.ready?.catch(() => {})
-          transition?.updateCallbackDone?.catch(() => {})
-          await transition?.finished?.catch(() => {})
+          transition?.updateCallbackDone?.catch(ensureExecuted)
+          await transition?.finished?.catch(ensureExecuted)
           return await promise
         }
       } catch {
@@ -105,18 +121,26 @@ export function useViewTransition() {
 
       try {
         const { promise, resolve, reject } = withResolvers<T>()
+        let executed = false
         const transition = (
           document as unknown as {
             startViewTransition: (cb: () => Promise<void>) => GenericViewTransition
           }
         ).startViewTransition(async () => {
+          executed = true
           const task = promiseTry(callback)
           task.then(resolve, reject)
           await task.catch(() => {})
         })
+        const ensureExecuted = () => {
+          if (!executed) {
+            executed = true
+            promiseTry(callback).then(resolve, reject)
+          }
+        }
         transition?.ready?.catch(() => {})
-        transition?.updateCallbackDone?.catch(() => {})
-        await transition?.finished?.catch(() => {})
+        transition?.updateCallbackDone?.catch(ensureExecuted)
+        await transition?.finished?.catch(ensureExecuted)
         return await promise
       } catch {
         // Fall through
