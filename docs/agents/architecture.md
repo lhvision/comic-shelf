@@ -29,7 +29,7 @@
 
 ```text
 Browser (Vue 3 + PWA Workbox)
-   │  /api/* (NetworkFirst)
+   │  /api/* (Direct HTTP / Pinia In-Memory SWR)
    ▼
 FastAPI (backend/app/main.py)
    │
@@ -62,9 +62,10 @@ backend/data/library/<source>/<source_id>/
 ### 客户端离线缓存与服务端数据边界（正交隔离）
 
 - **端侧 CacheStorage（PWA 离线运行）**：
-  - `workbox-precache`：HTML/JS/CSS/WebP 应用外壳预缓存；
-  - `manga-images-cache`：漫画原图与缩略图 Cache-First（LRU 限制 1000 篇目 / 30 天）；
-  - `api-metadata-cache`：动态 API Network-First；
+  - `workbox-precache`：HTML/JS/CSS/WebP 应用外壳预缓存（严格控制在 ~1MB 预算内）；
+  - `manga-images-cache`：漫画原图与缩略图 Cache-First（LRU 限制 3000 篇目 / 30 天）；
+  - `illustration-pool-cache`：全站看板角色与加载插画运行时懒加载缓存（30 张上限）；
+  - **API 离线缓存红线（PITFALLS #14）**：严禁在 Service Worker 中缓存任何 `/api/` 动态端点（防鉴权劫持与脏状态）；动态元数据统一走前端内存 SWR（`useMemoize`）直连后端；
   - **安全红线**：所有针对缓存的查看与清理（`useOfflineStorage`）**100% 局限于端侧浏览器**，零破坏性服务端 API，绝不触碰服务端持久化目录 `backend/data/`。
 - **服务端 SPAStaticFiles 部署中间件**：
   - 对 `/`、`/index.html`、`/sw.js`、`/registerSW.js`、`/manifest.webmanifest` 强制下发 `Cache-Control: no-cache, no-store, must-revalidate`；
@@ -147,16 +148,21 @@ JmImageTool.decode_and_save(num, source_image, save_path)
 | `backend/app/config.py`             | 数据目录、访问密钥、防盗链开关、封面尺寸、识图服务地址配置                                             |
 
 - `GET /api/auth/status`（查询是否开启鉴权及当前登录态）
-- `POST /api/auth/login`（验证口令并写入 Cookie）
-- `POST /api/auth/logout`（清除登录凭据）
-- `GET /api/settings` / `PUT /api/settings`（获取与修改运行时配置，如并发数）
+- `POST /api/auth/login`（验证馆长口令或通行证并写入 Cookie）
+- `POST /api/auth/claim` `{token, username, pin}`（读者首次认领通行证并自设 PIN 码，建立设备会话）
+- `POST /api/auth/logout`（清除当前设备登录凭据并注销设备席位）
+- `GET /api/settings/download-concurrency` / `PUT /api/settings/download-concurrency`（获取与修改下载并发数）
+- `GET /api/settings/guest-privacy` / `PUT /api/settings/guest-privacy`（获取与修改新藏书访客默认隐藏设置）
+- `GET /api/events/stream`（单向系统事件流 SSE，广播构建版本、书库变动与任务进度）
 - `GET /api/discovery/ranking`（发现页与排行榜数据：周榜/月榜/日榜/总榜，支持 `time_type` 与分类筛选）
-- `GET /api/library`（`q` 也能命中章节标题）
+- `GET /api/library`（`q` 也能命中章节标题，已读藏书可配合前端分桶）
 - `POST /api/library/import` `{id, source, prefetch_covers, prefetch_all, refresh}`（`refresh=true` 走增量，章节未变则复用旧 remote）
 - `POST /api/library/local/create`（自建工坊创建本地图集/多章节元数据骨架）
 - `POST /api/library/local/import-path`（扫描服务器本地目录如 `public/tiya-frames` 秒级收录）
 - `POST /api/library/local/{source_id}/upload-pages`（向本地图集分批上传图片）
 - `POST /api/library/local/{source_id}/append`（增量追加页面或新章节，单章节追加新话时自动升阶）
+- `POST /api/library/{source}/{id}/replace-pages`（网页端批量上传高清画页重新装订全本，原子替换旧页并加盖重新装订保护）
+- `POST /api/library/{source}/{id}/replace-path`（指定服务器本地路径秒级重新装订全本）
 - `PATCH /api/library/{source}/{id}/metadata`（更新标题/作者/标签/叙述/自定义封面页码 `cover_indices`）
 - `PATCH /api/library/{source}/{id}/chapters/{chapterId}`（修改单章节名称）
 - `DELETE /api/library/{source}/{id}/chapters/{chapterId}`（物理删除单个章节并重排全书全局页码）
@@ -170,11 +176,13 @@ JmImageTool.decode_and_save(num, source_image, save_path)
 - `POST /api/curator/passes` `{username, expires_days, custom_token}`（馆长登记印发专属通行证）
 - `PATCH /api/curator/passes/{id}` `{username, is_active, extend_days, reset_token}`（通行证续期、密钥换新、启停）
 - `DELETE /api/curator/passes/{id}`（注销指定通行证）
+- `DELETE /api/curator/passes/{id}/devices/{device_id}`（馆长精准注销踢除指定访客设备会话）
 - `GET /api/library/{source}/{id}/progress`（获取当前用户阅读进度）
 - `PUT /api/library/{source}/{id}/progress` `{last_page}`（保存当前用户阅读进度，防抖上报）
 - `PATCH /api/library/{source}/{id}/favorite` `{favorite: bool}`（独立用户收藏切换）
 - `GET /api/providers`
 - `POST /api/library/{source}/{id}/cache`
+- `GET /api/library/{source}/{id}/cache/job`（查询当前全本或单话正在运行的后台缓存任务状态）
 - `GET /api/library/{source}/{id}/chapters/{chapterId}/cache`（查询单章节离线缓存进度，受 `_require_meta` 隐私保护）
 - `POST /api/library/{source}/{id}/chapters/{chapterId}/cache`（触发单章节后台异步离线下载任务）
 - `DELETE /api/library/{source}/{id}`

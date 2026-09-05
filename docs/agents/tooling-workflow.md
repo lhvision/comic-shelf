@@ -4,7 +4,7 @@
 
 - 项目**已完成 `vp migrate`**：`vite.config.ts` 从 `vite-plus` 导入，
   `vite` 通过 `pnpm-workspace.yaml` 的 catalog 指向 `@voidzero-dev/vite-plus-core`。
-- `package.json` 的 `devEngines` 固定 pnpm 11.22.0；开发机用 `vp` 管理 Node/pnpm。
+- `package.json` 的 `devEngines` 固定 pnpm 11.25.0；开发机用 `vp` 管理 Node/pnpm。
 - 本地 `node_modules/.bin` 有 `vp`，`pnpm run dev/build` 与 `vp dev/build` 等价。
 - 日常命令：`vp install / dev / check / test / build / preview`。
 - 后端环境：提供 `pnpm setup:py` 一键初始化 `.venv`；`pnpm api` 自动探测 Python 虚拟环境并热重载。

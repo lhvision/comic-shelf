@@ -45,6 +45,8 @@
 ## 收藏夹状态
 
 - **书库（Library / Shelf）**：用户的全部收藏集合，书架页展示。
+- **案头藏书（Active Desk Shelf / activeComics）**：书架主网格中陈列的未读与在读作品集合，按收录时间倒序优先排布于视觉核心区，维持读者案头的淘书新鲜感与阅读重心。
+- **卷末归档专匣（Shelf Archive Drawer / completedComics）**：位于主书架底部的折叠收纳专匣，用于归档安置已读完的作品。提供克制的微降权视觉质感与双向受控展开，既保持已读书卷的典雅陈列，又彻底消除已读积压对淘书的干扰；在全架书卷均已读完时智能感知展开。
 - **标签（Tag）**：作品上的分类标签，书架页可筛选；标签数量用于排序展示。
 - **筛选（Filter）**：书架页对收藏的检索手段——标题/车号/作者/标签关键词、标签点选、"只看喜欢"。
 - **以图搜图（Visual search / Image search）**：通过上传/粘贴截图特征比对，快速定位所属本子及具体匹配页码的检索能力。
@@ -136,7 +138,7 @@
 - **回到顶部（Back to top / Scroll-to-top）**：纸间长页面（书架、多章节详情）的标准导航辅助微件。采用 VueUse `useWindowScroll` 监听视口（默认 >400px 阈值浮现），以正圆暖纸印章质感呈现，支持自适应 `prefers-reduced-motion` 与键盘焦点平滑转移，阅读器沉浸模式下自动隐身。
 - **防退化门禁（Regression Safety Net）**：全仓多层自动化防御机制，包含前端 `vp check`（TS/Vue 静态检查）、后端 `pnpm test:py`（AST 符号自检 + 真实中间件链路与多章节单测），杜绝改动引发核心功能断裂。
 - **客户端离线缓存（Client Offline Cache / PWA Cache）**：浏览器 Service Worker 与 CacheStorage 在当前设备上存储的静态资产与阅读图片缓存，受本设备存储配额（`StorageManager`）约束。纯客户端生命周期，区别于后端「本地化持久数据（Library Data）」，可由用户随时一键安全清理且绝不影响服务器书库。
-- **分级离线缓存策略（Tiered Offline Caching）**：App Shell 核心静态资产预缓存（Stale-While-Revalidate）、API 动态元数据优先回源（Network-First）、漫画页面原图与缩略图离线命中（Cache-First）配合 LRU 淘汰配额（如 500MB / 1000 张上限）与手动清理。
+- **分级离线缓存策略（Tiered Offline Caching）**：App Shell 核心静态资产预缓存（Stale-While-Revalidate）、动态 API 直连配合内存态 SWR 复用（严禁 Service Worker 缓存 API 防鉴权脏数据）、漫画页面原图与缩略图离线命中（Cache-First）配合 LRU 淘汰配额（3000 张上限）与手动清理。
 - **阅览室存储与设备卡片（Storage & Device Card）**：基于 `AppPopover` 呈现的客户端离线状态微件，承载 PWA 安装状态、存储占用标尺、分项容量明细与图片缓存安全清理。
 - **独立应用与视口检测（PWA Standalone Mode）**：通过 `display-mode: standalone` 媒体查询及 iOS `navigator.standalone` 探测读者是否以桌面/手机独立窗口形式运行纸间，提供无地址栏与沉浸阅读器全屏联动。
 - **周期性更新检查（Periodic Service Worker Update Check）**：应用在长期待机或回到前台时，在后台以 `cache: 'no-store'` 每小时静默探测远端 `sw.js` 脚本哈希并触发更新，避免读者客户端被旧版本 Service Worker 僵死。

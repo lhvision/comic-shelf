@@ -208,7 +208,7 @@
 - **规则沉淀**：
   - 视图只做纯编排（View Thinness），单文件 `<script setup>` 原则上不超过 150 行；
   - 严格遵守 `DESIGN_NOTES §13` 顶层解构约束；
-  - 规则已同步固化至 `AGENTS.md` 与 [`docs/agents/frontend.md`](./docs/agents/frontend.md)。
+  - 规则已同步固化至 `AGENTS.md` 与 [`docs/agents/frontend.md`](../agents/frontend.md)。
 - **验证**：`vp check`（58 文件 0 error）、`vp test` 单元测试全部通过。
 
 ## 18. 阅读器 Loading 界面重构（WebP 插画 + 纸间呼吸微光质感）
@@ -495,7 +495,7 @@
   1. **规划与发现（Shape）**：
      - 基于张鑫旭 5 篇前沿技术文章与 MDN 最新标准，确认三层正交原子浮层体系：`AppTooltip`（轻量提示）+ `AppPopover`（通用富浮层）+ `AppDropdown`（操作选单/选择器）；
      - 确立「渐进增强（Progressive Enhancement）」原则：优先拥抱 W3C 现代规范，不支持时利用 VueUse 与 CSS `@supports not` 平滑降级，坚决不引入重型第三方定位库；
-     - 沉淀 [ADR 0004](./docs/adr/0004-modern-floating-system.md) 并更新 `CONTEXT.md` 领域术语表。
+     - 沉淀 [ADR 0004](../adr/0004-modern-floating-system.md) 并更新 `CONTEXT.md` 领域术语表。
   2. **方案与基调（Craft）**：
      - **`AppTooltip.vue`**：结合 `popover="hint"` 与 CSS Anchor Positioning，引入 `container-type: anchored` + `@container anchored(fallback: flip-block)` 纯 CSS 感知视口边缘翻转自动对调指示小三角；
      - **`AppPopover.vue`**：基于 `popover="auto"` 原生 Top Layer（杜绝 `z-index` 竞争与父级 `overflow` 裁剪），结合 `anchor-name` / `position-anchor` / `position-try-fallbacks`，原生支持 Light Dismiss；

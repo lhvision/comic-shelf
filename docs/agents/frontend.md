@@ -11,10 +11,13 @@
 | `src/views/CreateComicView.vue`                  | 自建图集工坊：单话/多章节多图拖拽暂存、服务器路径导入、元数据与封面编排                                                                                        |
 | `src/views/ReaderView.vue`                       | 阅读器视图编排：模式切换、DOM 分屏挂载、HUD / 顶栏 / 设置面板接线                                                                                              |
 | `src/composables/useAuth.ts`                     | 访问鉴权与门禁状态机：Cookie/Token 会话、状态探测、401 拦截联动                                                                                                |
+| `src/composables/useGuestPasses.ts`              | 访客通行证名册管理状态机：登记印发、Token 密钥换新、有效期延长、启停与设备踢除联动                                                                             |
 | `src/composables/useDiscovery.ts`                | 发现页排行榜状态机：周榜/月榜/日榜/总榜拉取、分类过滤与收录状态追踪                                                                                            |
 | `src/composables/useUploadQueue.ts`              | 受限并发批量上传队列控制器（3 路 Worker 并发、细粒度进度与取消支持）                                                                                           |
 | `src/composables/useFileStaging.ts`              | 多图与画页暂存：自然文件名数字排序、格式过滤、`useFileDialog` + `useDropZone` 聚合                                                                             |
+| `src/composables/useLocalWorkshop.ts`            | 自建漫画工坊状态机：服务器本地路径扫描、白名单过滤、单话/多章节模式切换与元数据暂存                                                                            |
 | `src/composables/useLibraryFilter.ts`            | 书架检索与筛选：模糊搜索、标签频率统计、多模式排序、只看喜欢与只看已读过滤、已读沉底分桶                                                                       |
+| `src/composables/usePaginationFold.ts`           | 画卷与书架网格分批折叠展开状态机：受控步进铺开（24页/12本）、全量展开、余量徽印计算与平滑滚顶自愈                                                              |
 | `src/composables/useReaderRecommendations.ts`    | 阅读器末页接卷推荐：启发式元数据权重评分（同作者/同原作/共有标签/在读状态）与未读作品遴选                                                                      |
 | `src/composables/useImageSearch.ts`              | 以图搜图状态机：文件上传、剪贴板粘贴、拖拽、置信度与状态管理                                                                                                   |
 | `src/composables/useReaderData.ts`               | 阅读器数据流与路由状态机：元数据拉取、`AbortController` 竞态取消、URL 同步与返回路径                                                                           |
@@ -33,7 +36,12 @@
 | `src/composables/usePwaUpdate.ts`                | PWA Prompt 模式生命周期状态机：更新捕获、装订刷新与视口唤醒自愈探测                                                                                            |
 | `src/composables/useSystemEvents.ts`             | 纸间单向系统事件流（SSE）：新版本广播、藏书变动与未来 AI 任务流式状态机                                                                                        |
 | `src/composables/useIdlePrefetch.ts`             | 闲时意图预热状态机：利用 requestIdleCallback 在主线程空闲时静默预拉取目标路由 chunk                                                                            |
+| `src/composables/useIllustrationPool.ts`         | 全站看板角色与加载插画发现池：虚拟模块挂载、按需加载、缓存感知与随机防抖轮换                                                                                   |
+| `src/composables/useViewTransition.ts`           | 全局与局域视图过渡门面封装：`Promise.withResolvers` + `Promise.try`、异常自动捕获兜底与抢占自愈                                                                |
+| `src/composables/useCoverTransition.ts`          | 书架卡片与详情 Hero 共享封面形变（`comic-cover-active`）动态类名与过渡时机调度                                                                                 |
+| `src/composables/useBrandIcon.ts`                | 品牌与动态多态矢量图标映射与解析器                                                                                                                             |
 | `src/pwa.ts`                                     | PWA 与 SSE 系统事件流统一初始化入口                                                                                                                            |
+| `src/components/curator/GuestModal.vue`          | 馆长专属访客簿全屏模态：名册检视、设备抽屉、印发表单与凭证展示装配外壳                                                                                         |
 | `src/components/curator/guest/`                  | 访客簿模块化组件群：名册卡片、设备抽屉、印发表单、凭据展示与时间格式化                                                                                         |
 | `src/components/storage/`                        | 存储管理模块化组件群：头部卡片、PWA 装订、刻度槽与双级清理危险区                                                                                               |
 | `src/components/import/`                         | 收录面板模块化组件群：车号表单、本地目录扫描与下载并发步进器                                                                                                   |
@@ -46,18 +54,24 @@
 | `src/components/AppIcon.vue`                     | 零分支矢量图标分发器（基于 `<component :is="ICON_MAP[name]">` 动态渲染）                                                                                       |
 | `src/components/icons/`                          | 纸间统一矢量图标集（`BaseIcon.vue` 底座 + 23 个原子 `Icon*.vue` 组件）                                                                                         |
 | `src/components/AppTooltip.vue`                  | 现代声明式轻量气泡提示组件（Popover API + CSS Anchor + 悬停安全桥）                                                                                            |
+| `src/components/AppTextClamp.vue`                | 统一文本多行自适应截断微件：行数预算约束、零开销延时挂载与 WCAG 悬停安全桥纸印气泡                                                                             |
+| `src/components/AppProgressBar.vue`              | 统一典藏进度条微件：track/line/gauge 三态、GPU transform 驱动与心理学先快后慢拟真未定态                                                                        |
 | `src/components/AppPopover.vue`                  | 现代顶层锚定交互浮层（自动碰撞翻转、轻量失焦关闭、Invoker Commands API 声明式触发器与焦点归还）                                                                |
 | `src/components/StoragePopover.vue`              | 阅览室设备与离线存储管理浮层（3px平直刻度槽/分项账单/双级清理/两步确认）                                                                                       |
+| `src/components/ReaderPassPopover.vue`           | 访客借阅证浮层：读者身份印章展开、专属阅读统计与平滑交还凭证退出                                                                                               |
 | `src/components/AppDropdown.vue`                 | 现代操作选单与选择器（无依赖 Top Layer + 键盘导航）                                                                                                            |
 | `src/components/BackToTop.vue`                   | 正圆暖纸印章回到顶部微件（VueUse `useWindowScroll` 视口监听）                                                                                                  |
 | `src/components/CacheProgress.vue`               | 实时缓存进度条与后台任务状态指示                                                                                                                               |
+| `src/components/ToastStack.vue`                  | 全局轻量水墨印章通知堆叠容器（挂载于根视口，自适应多通道 Toast 消息排队）                                                                                      |
 | `src/components/detail/EditMetadataModal.vue`    | 典藏资料与标签编排弹窗（实时修改标题、作者、4 张封面展示页码、标签增删）                                                                                       |
 | `src/components/detail/AppendPagesModal.vue`     | 本地漫画增量追加弹窗（追加至已有话或新建分话、支持网页上传/服务器路径）                                                                                        |
+| `src/components/detail/ReplacePagesModal.vue`    | 全本画页重新装订弹窗：支持网页多图上传与服务器本地目录秒级替换、重新装订保护提示                                                                               |
 | `src/components/discovery/DiscoveryCard.vue`     | 榜单漫画卡片：排名徽章、原站外链、分类胶囊与一键收录/在库直达                                                                                                  |
 | `src/components/form/TagManager.vue`             | 交互式标签管理器（Chip 展示、Enter/空格添加、SVG 居中删除、热门快选推荐）                                                                                      |
 | `src/components/form/CoverIndicesPicker.vue`     | 4 张封面展示页码选定器（4 槽位数值输入、实时越界纠偏与默认值安全回退）                                                                                         |
 | `src/components/detail/ChapterIndex.vue`         | 章节目录整段：head + 分批卡片网格（首屏 24 话增量折叠、受控步进展开/收起、展开记忆）                                                                           |
 | `src/components/detail/PageIndexGrid.vue`        | 画页索引网格：平铺画页卡片流 + 末尾独立 +余 N 纸签卡，受控步进展开与平滑回滚收整                                                                               |
+| `src/components/detail/PageTile.vue`             | 单页索引独立画页瓦片：缩略图渐进呈现、多选/操作插槽与尾格余量徽印解耦                                                                                          |
 | `src/components/detail/ChapterCard.vue`          | 目录单卡：第一页封面缩略图（失败回落书脊）+ 序数/标题/页数 + 独立离线缓存操作按钮                                                                              |
 | `src/components/detail/ChapterSwitcher.vue`      | 章节切换条（用于 ChapterView 内跳话）：横向 chips + 方向键 + `useScroll`                                                                                       |
 | `src/components/FavoriteButton.vue`              | 喜欢标记按钮（书架卡片 / 实验卡片 overlay）                                                                                                                    |
