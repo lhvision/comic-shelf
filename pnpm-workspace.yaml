@@ -21,8 +21,8 @@ peerDependencyRules:
   allowedVersions:
     vite: '*'
 catalog:
-  vite: npm:@voidzero-dev/vite-plus-core@0.2.9
-  vite-plus: 0.2.9
+  vite: npm:@voidzero-dev/vite-plus-core@0.3.0
+  vite-plus: 0.3.0
 allowBuilds:
   '@ffmpeg-installer/linux-x64': true
   puppeteer: true
