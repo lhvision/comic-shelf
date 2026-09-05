@@ -169,7 +169,7 @@
 - **物理存储正向归因（Physical Storage Attribution）**：阅览室设备离线容量的分项统计范式。由浏览器真实物理配额总用量（`usageDetails.caches` 或 `usage`）扣除独立测出的轻量 App Shell 核心资产，将读者翻阅产生的所有漫画画页、封面及插画的真实磁盘开销全额归因于「漫画阅览缓存」，消除首部抽样偏差与核心资产虚假膨胀。
 - **离线插画池（Illustration Pool）**：全站看板角色与加载插画的按需运行时缓存池（`/loading-*.webp`）。通过虚拟模块编译期探测、运行时 `CacheFirst` 懒加载策略，兼顾离线可用性与首屏秒开，杜绝首屏吞吐近 10 MB 媒体的流量黑洞。
 - **iOS 桌面引导（iOS PWA Add-to-Home Guidance）**：针对 WebKit 缺少 `beforeinstallprompt` 规范特性的平台交互补偿。在 iOS Safari 视口下以典雅纸面徽印呈现「Safari 分享 ➔ 加到主屏幕」引导，并在 Web Manifest 层面剔除凭据陷阱，保障 Standalone 独立视口无缝唤起。
-- **Service Worker 边缘穿透（PWA Edge Bypass）**：Cloudflare 等 CDN 边缘对 `sw.js` 与 `manifest.webmanifest` 实施的绝对穿透规则（Bypass Cache）。确保客户端版本发现永远直通源站，彻底隔绝因 CDN 缓存旧 SW 引发的旧哈希静态资源 404 连锁崩溃。
+- **Service Worker 边缘穿透与安全放行（PWA Edge Bypass & WAF Skip）**：Cloudflare 等 CDN 边缘对 `sw.js` 与 `manifest.webmanifest` 实施的绝对穿透（Bypass Cache）与 WAF 人机验证跳过规则（Skip WAF）。确保客户端版本发现永远直通源站且静默探测免遭 403 质询阻断，彻底隔绝因 CDN 缓存旧 SW 或误杀清单引发的静态资源 404 连锁崩溃。
 - **统一构建插件架构（Modular Vite Plugins / `plugins/`）**：根目录收敛的自定义构建扩展体系。将文件系统探测、虚拟模块生成（如 `virtual:illustrations`）等非标准逻辑从 `vite.config.ts` 抽离解耦，由 `tsconfig.node.json` 全局类型纳管，保持主配置文件轻巧可读，为未来构建插件提供规范单一源。
 - **按需布局探测（Just-In-Time Layout Measurement / JIT Truncation Detection）**：针对网格卡片与多行截断长列表的极致排版探测机制。彻底废除组件挂载期（`onMounted` / `nextTick`）与无差别观察器（`useResizeObserver`）对全量静态文本的无差别强同步重排，将 `scrollHeight` / `clientWidth` 等几何测量严格推迟至读者意图触发时刻（光标进入 `pointerenter`、触控 `touchstart`、焦点聚集 `focusin`），实现首屏网格 0 次 DOM 尺寸测量与 0 毫秒强制重排阻塞。
 - **强制重排防御门禁（Forced Reflow Detector / Layout Thrashing Gate）**：全仓前端性能自动化扫描机制（`pnpm detect:perf` / `scripts/detect-perf.mjs`）。静态静态扫描 `src/` 中所有在生命周期钩子（`onMounted`/`onUpdated`）、响应式监听（`watch`）中同步读取排版属性、高频滚动未节流以及触控事件缺少 `passive: true` 的代码反模式，筑牢首屏 60fps 防线。

@@ -166,8 +166,8 @@ NPM 作为单入口反代网关，负责接收来自路由器的流量，完成�
    - **Scheme**：`http`
    - **Forward Hostname / IP**：你的 TrueNAS 内网 IP（如 `192.168.1.100`）
    - **Forward Port**：`8000`（纸间容器前端与后端统一监听端口）
-   - 勾选：
-     - [x] **Cache Assets**
+   - 勾选与注意事项：
+     - [ ] **Cache Assets**（⚠️ **严禁勾选！保持不勾选**。NPM 自带的 Cache Assets 会给所有 `.js` 文件注入 `expires 7d` 强缓存头，从而粗暴覆盖 FastAPI 后端设定的 `no-cache` 防线，导致 Cloudflare 强缓存 `/sw.js` 与 `/manifest.webmanifest`，引发 PWA 无法更新与资源死锁）
      - [x] **Block Common Exploits**
      - [x] **Websockets Support**
 3. **SSL 选项卡**（核心）：
@@ -249,15 +249,41 @@ _原理：Cloudflare 默认会强缓存 JavaScript 等静态资源。如果 `/sw
 2. 填写规则参数：
    - **Rule name**：`paper-room-pwa-bypass`
    - **When incoming requests match...（自定义匹配表达式）**：
-     点击右上角的 `Edit expression（编辑表达式）`，粘贴以下表达式：
+     点击右上角的 `Edit expression（编辑表达式）`，粘贴以下表达式（将 `comic.yourdomain.com` 替换为你的实际子域名）：
      ```text
-     (http.request.uri.path in {"/sw.js" "/manifest.webmanifest" "/registerSW.js"} or starts_with(http.request.uri.path, "/workbox-"))
+     http.host eq "comic.yourdomain.com" and (http.request.uri.path in {"/sw.js" "/manifest.webmanifest" "/registerSW.js"} or starts_with(http.request.uri.path, "/workbox-"))
      ```
    - **Cache eligibility（缓存资格）**：选择 **Bypass cache (绕过缓存)**。
 3. 点击右下角 **Deploy（部署）**。
-4. **规则顺序提示**：在 Cache Rules 列表中，请确保 `paper-room-pwa-bypass` 规则位于 `paper-room-media-cache` 之上（或两者的匹配路径互不相交即可）。
+4. **规则顺序与清除缓存提示**：
+   - 在 Cache Rules 列表中，请确保 `paper-room-pwa-bypass` 规则位于 `paper-room-media-cache` 之上；
+   - 规则首次部署或版本发布后，进入 **Caching ➔ Configuration ➔ Purge Cache**，点击 **Purge Everything**，彻底洗掉边缘节点之前强缓存的旧 `sw.js`。
 
-### 6.5 配置 Cloudflare WAF 边缘防盗链与防探测规则（可选进阶 —— 极致防直链刺探）
+### 6.5 配置 Cloudflare WAF 针对 PWA 入口绿色放行规则（Skip WAF —— 根治 Manifest 403 与安装失败）
+
+_原理：浏览器在后台静默请求 `/manifest.webmanifest` 和注册 Service Worker 时，属于无界面的非交互探测。若 Cloudflare 开启了 Bot Fight 模式或安全挑战，浏览器无法弹出验证码，会直接被阻断为 HTTP 403。为此，必须为前端 PWA 外壳配置一条精准限定域名的绿色放行规则，跳过人机验证。_
+
+1. 左侧菜单点击 **Security（安全性）** ➔ **WAF** ➔ **Custom Rules（自定义规则）** ➔ 点击 **Create rule**。
+2. 填写规则参数：
+   - **Rule name**：`paper-room-pwa-waf-skip`
+   - **When incoming requests match...（自定义匹配表达式）**：
+     点击右上角的 `Edit expression`，粘贴以下表达式（将 `comic.yourdomain.com` 替换为你的实际子域名）：
+     ```text
+     http.host eq "comic.yourdomain.com" and (http.request.uri.path in {"/manifest.webmanifest" "/sw.js" "/registerSW.js"} or starts_with(http.request.uri.path, "/workbox-") or starts_with(http.request.uri.path, "/assets/"))
+     ```
+   - **Choose action（采取的操作）**：选择 **`Skip`（跳过）**；
+   - 勾选跳过的 WAF 组件：
+     - [x] 所有其余自定义规则
+     - [x] 所有速率限制规则
+     - [x] 所有托管规则
+     - [x] 所有 Super Bot Fight 模式规则
+     - 展开“更多要跳过的组件”继续勾选：
+     - [x] 浏览器完整性检查
+     - [x] 安全级别
+3. 点击右下角 **Deploy（部署）**。
+4. **规则优先级红线**：务必将该规则拖拽置于所有自定义规则的**最顶端（第 1 条）**，确保其在下述 6.6 的防盗链拦截规则前优先匹配放行。
+
+### 6.6 配置 Cloudflare WAF 边缘防盗链与防探测规则（可选进阶 —— 极致防直链刺探）
 
 _原理：虽然未鉴权的外部人员绝对无法获取你的书库目录（`/api/library` 受口令 401 保护且不被 CDN 缓存），但如果合法用户读过某本漫画后，该图片在 CDN 边缘已建立缓存。配置此规则后，任何没有携带本站 Referer 的外部爬虫、恶意直链或浏览器地址栏直接探测，将在 Cloudflare Anycast 边缘被**直接阻断（Block）**，连边缘缓存都无法触碰。_
 

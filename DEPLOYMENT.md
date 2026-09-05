@@ -467,11 +467,12 @@ docker push yourname/paper-room:v1.0.0
    - 现代浏览器（Chrome / Safari / Edge / Firefox）规范强制要求：**Service Worker 与 PWA 安装必须在安全上下文（HTTPS 或 `localhost`）下运行**；
    - 本机开发（`localhost:8000` / `localhost:5173`）浏览器默认视为安全上下文，可直接测试安装；
    - 若部署于内网 NAS（如 `http://<NAS_IP>:8000`）或公网 VPS，建议前置反向代理（Nginx / Caddy / NPM / Cloudflare Tunnel）并配置 SSL 证书（HTTPS），方可开启独立应用安装与离线运行能力。
-2. **反向代理 Cache-Control 防死锁准则**：
+2. **反向代理 Cache-Control 防死锁准则（PITFALLS #54）**：
    - 纸间后端的 `SPAStaticFiles` 中间件已对关键入口下发了严格的防死锁标头：
      - `/`、`/index.html`、`/sw.js`、`/registerSW.js`、`/manifest.webmanifest`：强制 `Cache-Control: no-cache, no-store, must-revalidate`；
      - `/assets/*`（带内容指纹静态资源）：下发 `Cache-Control: public, max-age=31536000, immutable`；
-   - **反代配置警告**：若使用自建 Nginx / Caddy 反代，**切勿**对 `/` 或 `sw.js` 覆盖为持久强缓存，否则会导致客户端 Service Worker 永久死锁在旧版本无法自动更新。
+   - **反代配置致命警告（NPM 避坑）**：若使用 Nginx Proxy Manager (NPM)，在 Proxy Host 设置中**切勿勾选 `Cache Assets`**！勾选该项会无差别向所有 `.js`（包括 `/sw.js`）注入长效 `expires 7d` 强缓存头，覆盖后端的防线，导致 Cloudflare 强缓存旧 Service Worker 达数十小时，引发预缓存 404 与换届死锁；
+   - **Cloudflare 边缘防护要求**：在 Cloudflare WAF 中需为 `/manifest.webmanifest`、`/sw.js` 配置 Skip 规则跳过人机质询，避免底层无界面 fetch 因触发 403 挑战而导致 PWA 清单加载失败。
 3. **MIME 类型保障**：
    - 后端已在 Python 层面显式注册 `.webmanifest` 映射为 `application/manifest+json`，保障无论在何种精简 Docker 镜像或宿主机下，浏览器都能正确识别应用清单。
 

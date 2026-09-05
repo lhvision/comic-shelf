@@ -461,6 +461,22 @@
     2. **响应头标准隔离**：透明内容协商端点统一响应 `Vary: Accept` 与 `Cache-Control: public, max-age=31536000, immutable`；
     3. **扩展名白名单规整**：存储层显式执行 `clean_ext = "webp" if ext.lower().lstrip(".") == "webp" else "jpg"`，物理层彻底锁死合法后缀。
 
+### 54. 反向代理资产强缓存覆盖与 Cloudflare 边缘 Service Worker 换届死锁陷阱（Reverse Proxy Cache Assets & Edge SW Stale Deadlock）
+
+- **本质**：
+  1. 在 Nginx Proxy Manager (NPM) 或其他反向代理网关中，若在 Proxy Host 上勾选了 `Cache Assets`，网关会自动注入 `location ~* \.(jpg|jpeg|png|gif|ico|css|js)$ { expires 7d; }` 等规则；
+  2. 此时，反代层粗暴覆盖了应用层（FastAPI `SPAStaticFiles`）针对 `/sw.js` 与 `/manifest.webmanifest` 精心下发的 `Cache-Control: no-cache, no-store, must-revalidate` 核心防死锁防线，向上一级 CDN（Cloudflare）下发了 `max-age=...` 的强缓存头；
+  3. Cloudflare 边缘节点一旦缓存了带 TTL 的 `sw.js`，即使服务端容器已构建并发布了最新版本，公网客户端依然长期获取 20+ 小时前的旧版 `sw.js`；
+  4. 旧版 `sw.js` 内嵌了已删除资源的预缓存清单（如 `/pwa-maskable-512x512.png`），导致浏览器并发拉取 404，且由于旧清单包含重复冗余资产（1.2 MB vs 336 KB），导致新旧版本换届死锁；同时若 Cloudflare 开启了 Bot 挑战且未豁免 Manifest，静默 fetch 还会触发 403 阻断。
+- **红线与防误伤**：
+  - **不要**在 NPM 或反向代理网关中无差别开启全局 `Cache Assets`；
+  - **不要**依赖中间代理粗暴覆盖静态资源响应头，应将缓存语义的控制权归还给后端 SPA 静态中间件；
+  - **放行/改用**：
+    1. **NPM 保持取消勾选 `Cache Assets`**：让源站应用（FastAPI / `SPAStaticFiles`）全权掌控精确到文件级别的 Cache-Control（哈希 assets 强缓存 1 年，入口/SW/Manifest 强制 `no-cache`）；
+    2. **Cloudflare 配置 PWA 绕过缓存规则（Bypass Cache）**：为 `/sw.js`、`/manifest.webmanifest` 等入口显式设置 Bypass Cache；
+    3. **Cloudflare WAF 放行 PWA 关键入口**：配置精准限定域名（`http.host eq "comic.yourdomain.com"`）的 Custom Rule，对 `/manifest.webmanifest`、`/sw.js`、`/registerSW.js` 执行 Skip WAF/Bot 挑战，避免后台静默 fetch 被挑战页（403）阻断；
+    4. **客户端自愈重置**：前端提供一键重置离线存储（`resetAllStorage()`）注销旧版 Service Worker 并清空 CacheStorage，瞬间完成新版本换届。
+
 ---
 
 ## 🚦 交付门禁（四步必跑）

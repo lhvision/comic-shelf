@@ -69,9 +69,10 @@ backend/data/library/<source>/<source_id>/
   - `illustration-pool-cache`：全站看板角色与加载插画运行时懒加载缓存（30 张上限）；
   - **API 离线缓存红线（PITFALLS #14）**：严禁在 Service Worker 中缓存任何 `/api/` 动态端点（防鉴权劫持与脏状态）；动态元数据统一走前端内存 SWR（`useMemoize`）直连后端；
   - **安全红线**：所有针对缓存的查看与清理（`useOfflineStorage`）**100% 局限于端侧浏览器**，零破坏性服务端 API，绝不触碰服务端持久化目录 `backend/data/`。
-- **服务端 SPAStaticFiles 部署中间件**：
+- **服务端 SPAStaticFiles 部署中间件（PITFALLS #54）**：
   - 对 `/`、`/index.html`、`/sw.js`、`/registerSW.js`、`/manifest.webmanifest` 强制下发 `Cache-Control: no-cache, no-store, must-revalidate`；
-  - 显式注册 `application/manifest+json` 对应 `.webmanifest`。
+  - 显式注册 `application/manifest+json` 对应 `.webmanifest`；
+  - **反代与边缘约定**：反向代理（NPM）严禁对静态资源勾选 `Cache Assets`，以防覆盖应用层 `no-cache`；Cloudflare WAF 针对 PWA 入口实施 Skip WAF 人机质询放行与 Cache Rules 边缘穿透。
 
 ### Provider 扩展点
 
