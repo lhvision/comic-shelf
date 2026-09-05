@@ -116,16 +116,15 @@ docker run -d \
 
 ### 2.1 常用启停与容器运维命令速查
 
-| 场景需求                   | 终端执行命令                                | 说明                                                      |
-| :------------------------- | :------------------------------------------ | :-------------------------------------------------------- |
-| **仅启动主容器（免搜图）** | `docker compose up -d --no-deps paper-room` | **加 `--no-deps` 忽略依赖**，不拉起 imsearch，防 132 报错 |
-| **启动全部容器**           | `docker compose up -d`                      | 适用于带 AVX2 机器，同时拉起主程序与以图搜图              |
-| **安全停止全部服务**       | `docker compose down`                       | 停止并移除容器与内部网络，存储卷数据 100% 安全保留        |
-| **暂停容器运行**           | `docker compose stop`                       | 仅暂停容器不删除，后续 `docker compose start` 可秒级恢复  |
-| **单独停掉以图搜图**       | `docker compose stop imsearch`              | 解决由于硬件缺少 AVX2 导致容器反复崩溃报错 132 的问题     |
-| **查看运行状态**           | `docker compose ps`                         | 查看容器状态（`Up` 为正常运行）                           |
-| **查看主程序日志**         | `docker compose logs -f paper-room`         | 追踪排查后端与启动日志，按 `Ctrl+C` 退出                  |
-| **代码更新后重启**         | `docker compose up -d --build paper-room`   | 自动命中缓存，仅需 2~3 秒增量编译平滑重启                 |
+| 场景需求                   | 终端执行命令                                | 说明                                                                                                     |
+| :------------------------- | :------------------------------------------ | :------------------------------------------------------------------------------------------------------- |
+| **仅启动主容器（免搜图）** | `docker compose up -d --no-deps paper-room` | **加 `--no-deps` 忽略依赖**，不拉起 imsearch，防 132 报错                                                |
+| **启动全部容器**           | `docker compose up -d`                      | 适用于带 AVX2 机器，同时拉起主程序与以图搜图                                                             |
+| **安全停止全部服务**       | `docker compose down`                       | 停止并移除容器与内部网络，存储卷数据 100% 安全保留                                                       |
+| **暂停容器运行**           | `docker compose stop`                       | 仅暂停容器不删除，后续 `docker compose start` 可秒级恢复                                                 |
+| **单独停掉以图搜图**       | `docker compose stop imsearch`              | 解决由于硬件缺少 AVX2 导致容器反复崩溃报错 132 的问题                                                    |
+| **查看运行状态**           | `docker compose ps`                         | 查看容器状态（`Up` 为正常运行）                                                                          |
+| **代码更新后重启**         | `docker compose up -d --build paper-room`   | 自动命中缓存，仅需 2~3 秒增量编译平滑重启（内置 BuildKit pnpm/pip 宿主机缓存挂载，依赖变更亦免重复下载） |
 
 ---
 
@@ -311,8 +310,8 @@ backend/data/
 
 纸间采用 **多阶段构建（Multi-stage Build）** 严格控制生产镜像体积：
 
-- **Node.js 编译阶段（打包后完全丢弃）**：使用轻量 `node:22-alpine` 仅执行前端构建（`pnpm build`），**Node.js、pnpm 及庞大的 `node_modules` 均不会打包进最终镜像**；
-- **最终生产镜像**：仅基于官方精简镜像 `python:3.12-slim`，安装纯 Python 运行时依赖，附带约 2MB 的前端静态成品，镜像极小、拉取速度极快。
+- **Node.js 编译阶段（打包后完全丢弃）**：使用轻量 `node:22-alpine` 仅执行前端构建（`pnpm build`），**Node.js、pnpm 及庞大的 `node_modules` 均不会打包进最终镜像**；已内置 BuildKit 物理缓存挂载（`--mount=type=cache,id=paper-room-pnpm`），即使代码更新拉取了新的依赖包，已有依赖 100% 从宿主机磁盘复用，秒级极速装配；
+- **最终生产镜像**：仅基于官方精简镜像 `python:3.12-slim`，安装纯 Python 运行时依赖（同样内置 pip cache 挂载），附带约 2MB 的前端静态成品，镜像极小、拉取速度极快。
 
 ### 6.1 本地打包构建与测试
 

@@ -478,7 +478,19 @@
     1. **NPM 保持取消勾选 `Cache Assets`**：让源站应用（FastAPI / `SPAStaticFiles`）全权掌控精确到文件级别的 Cache-Control（哈希 assets 强缓存 1 年，入口/SW/Manifest 强制 `no-cache`）；
     2. **Cloudflare 配置 PWA 绕过缓存规则（Bypass Cache）**：为 `/sw.js`、`/manifest.webmanifest` 等入口显式设置 Bypass Cache；
     3. **Cloudflare WAF 放行 PWA 关键入口**：配置精准限定域名（`http.host eq "comic.yourdomain.com"`）的 Custom Rule，对 `/manifest.webmanifest`、`/sw.js`、`/registerSW.js` 执行 Skip WAF/Bot 挑战，避免后台静默 fetch 被挑战页（403）阻断；
-    4. **客户端自愈重置**：前端提供一键重置离线存储（`resetAllStorage()`）注销旧版 Service Worker 并清空 CacheStorage，瞬间完成新版本换届。
+
+### 55. Cloudflare 免费版 Vary 忽略与边缘缓存越权穿透陷阱（Cloudflare Free Vary Ignored & Edge Cache Auth Bypass）
+
+- **本质**：
+  1. **Cloudflare 免费版忽略 `Vary: Accept` 导致格式死锁**：Cloudflare Free Anycast 边缘默认不支持基于 `Vary: Accept` 的多版本分片缓存。当后端在同一静态图片 URL 上做 WebP/JPEG 透明内容协商时，若历史或首次请求生成了 JPEG，Cloudflare Anycast 边缘会将其永久缓存在该 URL 下并向所有后续客户端下发，导致前端即使发了 `Accept: image/webp` 依然收到 JPEG；
+  2. **边缘缓存越权穿透源站鉴权（Edge Cache Auth Bypass）**：当为私有媒体资源配置了 Cloudflare Cache Rule（如 Edge TTL 1 个月）后，一旦合法登录用户浏览过某本漫画，Anycast 边缘节点便建立了 200 缓存。此时外部未登录访客（如无痕模式）直接敲入该图片 URL 时，Cloudflare Anycast 边缘节点将直接命中缓存并返回 200 OK，**完全绕过了源站后端的 `auth_and_security_middleware` 与 Token 鉴权**，导致私有图片越权泄露。
+- **红线与防误伤**：
+  - **不要**依赖 `Vary: Accept` 期望公共 CDN 免费层实现透明图片格式协商；
+  - **不要**在开启了边缘媒体缓存的 CDN 上仅依赖源站后端做鉴权校验；
+  - **放行/改用**：
+    1. **显式 WebP URL 收敛**：衍生缩略图与封面在前端 URL 层面显式使用 `.webp` 后缀（如 `/file.webp`、`/cover.webp`、`/thumbnail.webp`），正文页收敛为格式无关端点 `/file`，为 CDN 边缘提供唯一、确定的缓存键并打碎旧缓存；
+    2. **Cloudflare WAF 边缘鉴权门禁（Auth Gate）**：在 CDN Anycast 边缘配置 Custom Rule，检测 `starts_with(http.request.uri.path, "/api/library/") and not (http.cookie contains "comic_shelf_token" or http.cookie contains "comic_shelf_device")`，无登录凭据的请求在 Anycast 边缘直接 `Block 403`，连边缘缓存都无法触碰；
+    3. **正文原图 100% 格式保真**：正文漫画页不转码，保持解密源格式（JM 为 WebP，哔咔等源为 JPEG），仅衍生缩略图收敛为 WebP。
 
 ---
 

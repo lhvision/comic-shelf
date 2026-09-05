@@ -283,20 +283,23 @@ _原理：浏览器在后台静默请求 `/manifest.webmanifest` 和注册 Servi
 3. 点击右下角 **Deploy（部署）**。
 4. **规则优先级红线**：务必将该规则拖拽置于所有自定义规则的**最顶端（第 1 条）**，确保其在下述 6.6 的防盗链拦截规则前优先匹配放行。
 
-### 6.6 配置 Cloudflare WAF 边缘防盗链与防探测规则（可选进阶 —— 极致防直链刺探）
+### 6.6 配置 Cloudflare WAF 边缘鉴权与防盗链规则（封堵无痕/未登录窃取 Edge 缓存）
 
-_原理：虽然未鉴权的外部人员绝对无法获取你的书库目录（`/api/library` 受口令 401 保护且不被 CDN 缓存），但如果合法用户读过某本漫画后，该图片在 CDN 边缘已建立缓存。配置此规则后，任何没有携带本站 Referer 的外部爬虫、恶意直链或浏览器地址栏直接探测，将在 Cloudflare Anycast 边缘被**直接阻断（Block）**，连边缘缓存都无法触碰。_
+_原理：虽然未鉴权的访客无法通过口令进入主界面，但若合法用户在外部浏览过某本漫画，Cloudflare Anycast 边缘缓存节点已驻留了封面与画质切片（Edge TTL: 1 个月）。由于 Cloudflare 边缘缓存命中时默认不向源站回源（Bypass Origin Auth），无痕窗口或未登录访客直接敲入图片直链仍可能命中边缘缓存获取图片。通过配置此 WAF 自定义规则，Cloudflare 在查询边缘缓存前**直接校验用户 Cookie**，无凭证者在 Anycast 边缘被**直接阻断（Block 403）**，彻底实现真正的私有相册级安全。_
 
 1. 左侧菜单点击 **Security（安全性）** ➔ **WAF** ➔ **Custom Rules（自定义规则）** ➔ 点击 **Create rule**。
 2. 填写规则参数：
-   - **Rule name**：`paper-room-media-sniff-block`
+   - **Rule name**：`paper-room-media-auth-gate`
    - **When incoming requests match...（自定义匹配表达式）**：
-     点击右上角的 `Edit expression`，粘贴以下表达式（将 `yourdomain.com` 替换为你的实际主域名）：
+     点击右上角的 `Edit expression`，粘贴以下表达式（将 `comic.yourdomain.com` 替换为你的实际漫画子域名）：
      ```text
-     (http.request.uri.path contains "/api/library/" and (ends_with(http.request.uri.path, "/file") or ends_with(http.request.uri.path, "/thumbnail") or http.request.uri.path.extension in {"webp" "jpg" "jpeg" "png"}) and not (http.referer contains "yourdomain.com"))
+     http.host eq "comic.yourdomain.com" and starts_with(http.request.uri.path, "/api/library/") and not (http.cookie contains "comic_shelf_token" or http.cookie contains "comic_shelf_device")
      ```
    - **Choose action（采取的操作）**：选择 **Block（阻止）**。
 3. 点击右下角 **Deploy（部署）**。
+4. **规则顺序与清理缓存**：
+   - 将该规则拖拽置于**第 2 条**（紧随 `paper-room-pwa-waf-skip` 绿色放行规则之后）；
+   - 规则生效后，进入 **Caching ➔ Configuration ➔ Purge Cache**，点击 **Purge Everything**，清空之前在无鉴权保护状态下缓存的历史图片。
 
 ---
 

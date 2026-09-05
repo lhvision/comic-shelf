@@ -8,6 +8,11 @@ backend/__pycache__/
 .dsh-vision-toolkit/
 .impeccable/
 e2e/
+test-results/
+midscene_run/
 docs/
 *.md
+**/*.py[cod]
+**/.pytest_cache/
+.DS_Store
 

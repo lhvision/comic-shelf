@@ -28,17 +28,19 @@
    - **极速路径（Fast Path，2~5ms）**：若磁盘上已有旧版同规格缩略图（如 `001_360.jpg`），直接通过 Pillow 进行内存格式转存为 `001_360.webp`，跳过耗时的 Lanczos 重采样，极低算力消耗瞬时完成；
    - **基准缩放路径（Scale Path）**：若无 `_360.jpg`，则从 720px 基准封面或第一页原图执行单次重采样缩放并持久化。
 
-4. **双模并存（Dual-Format Coexistence）**：
-   - `.webp` 文件生成在 `covers/` 同级目录下（例如 `001_360.webp` 与 `001_360.jpg` 并存）；
-   - 不主动删除现存 `.jpg` 文件，单张 360px 缩略图仅 20~30KB，保持极佳的存储韧性与向下兼容回滚能力。
+4. **由双模并存演进至显式 WebP URL 收敛（Explicit WebP URL Convergence & Edge CDN Cache Key）**：
+   - **Cloudflare 边缘缓存痛点**：Cloudflare 等主流 CDN 免费层默认忽略 `Vary: Accept` 标头进行缓存分片。若请求 URL 为 `file.jpg`，首次回源若为 JPEG 则 Anycast 边缘节点将永久向所有客户端缓存并下发 JPEG，导致透明内容协商在边缘层失效。
+   - **URL 后缀显式收敛**：衍生缩略图（封面、章节封面、页面缩略图）在客户端 URL 层面全面显式收敛为 `.webp`（如 `/covers/{idx}/file.webp`、`/chapters/{id}/cover.webp`、`/pages/{idx}/thumbnail.webp`），为 CDN 边缘提供确定性唯一的缓存键。
+   - **物理冗余清理（Zero Waste）**：存量历史 `.jpg` 缩略图在被 fast-path 转为 `.webp` 后立即自动 `unlink` 删除，避免双份文件浪费 NAS 存储；
+   - **正文漫画页 100% 原始格式保真（Raw Source Page Fidelity）**：正文内页端点收敛为无后缀格式无关路径 `/pages/{idx}/file`，绝对不进行二次转码（JM 保持 WebP，哔咔等未来源保持 JPEG，本地扫描保持 PNG），兼得极致画质与衍生图轻量化。
 
 5. **全尺寸覆盖（360px 缩略图 + 720px 基准封面）**：
    - `w=360` 缩略图：用于书架卡片网格、章节封面列表、以图搜图微缩芯片，彻底解决首屏卡片网络瀑布流瓶颈；
    - `w=None`（720px 基准封面）：用于详情页顶层 Hero 卡片与高清视网膜屏放大展示，两档尺寸享有完全对称的 WebP 缓存与更新策略。
 
-6. **全生命周期封面主动预热（Comprehensive Lifecycle Cover Pre-warming）**：
-   - 不仅在馆长更新 `cover_indices`（设为封面）时，在作品导入（`import_comic`）、全本重新装订（`rebind_archive`）、后台整本预热（`prefetch_comic`）以及单章节预热（`prefetch_chapter`）等全链路数据写入节点，后端均同步预热生成对应画页的 `360px` 与 `720px` 双模（WebP + JPEG）缩略图，并清理旧封面失效文件；
-   - 彻底避免单规格或单格式遗漏（如仅预热 720px 或仅预热 WebP），确保无论客户端 `Accept` 头协商为 WebP 还是回退至 JPEG，无论书架请求 360px 缩略图还是详情 Hero 请求 720px 基准图，首屏 100% 毫秒级命中磁盘静态缓存。
+6. **全生命周期封面与缩略图 WebP 预热（Comprehensive Lifecycle WebP Pre-warming）**：
+   - 不仅在馆长更新 `cover_indices`（设为封面）时，在作品导入（`import_comic`）、全本重新装订（`rebind_archive`）、后台整本预热（`prefetch_comic`）以及单章节预热（`prefetch_chapter`）等全链路数据写入节点，后端均仅专注预热生成对应画页的 `360px` 与 `720px` 的 WebP 缩略图与封面，彻底移除过时的 JPEG 重复写入；
+   - 首屏 100% 毫秒级命中磁盘与 CDN 静态缓存，减少 50% 的导入磁盘 I/O。
 
 7. **HTTP 状态码严格语义收敛（Strict Error Semantics）**：
    - 封面与章节封面端点严格区分“资源不存在”与“服务端故障”：

@@ -1057,18 +1057,22 @@ def page_file(source: str, source_id: str, index: int, request: Request, ext: st
 @app.get("/api/library/{source}/{source_id}/pages/{index}/thumbnail")
 @app.get("/api/library/{source}/{source_id}/pages/{index}/thumbnail.{ext}")
 def page_thumbnail(source: str, source_id: str, index: int, request: Request, ext: str | None = None) -> FileResponse:
-    """Lightweight JPEG for the detail-page page-index grid (`ext` bound for CDN caching)."""
+    """Lightweight WebP/JPEG for the detail-page page-index grid (`ext` bound for CDN caching)."""
     _require_known_source(source)
     meta = _require_meta(source, source_id, request)
     if index < 1 or index > meta.page_count:
         raise HTTPException(status_code=404, detail=f"页 {index} 不存在")
 
-    thumb_path = store.page_thumb_path(meta, index)
+    wants_webp = _client_accepts_webp(request, ext)
+    target_ext = "webp" if wants_webp else "jpg"
+    media_type = "image/webp" if wants_webp else "image/jpeg"
+
+    thumb_path = store.page_thumb_path(meta, index, ext=target_ext)
     if thumb_path.exists() and thumb_path.stat().st_size > 0:
         return FileResponse(
             thumb_path,
-            media_type="image/jpeg",
-            headers=CACHE_CONTROL_IMMUTABLE,
+            media_type=media_type,
+            headers=CACHE_CONTROL_IMMUTABLE_VARY,
         )
 
     fetched = store.load_fetched(source, source_id)
@@ -1076,15 +1080,15 @@ def page_thumbnail(source: str, source_id: str, index: int, request: Request, ex
         raise HTTPException(status_code=404, detail="本子还没有导入本地书库")
 
     try:
-        path = store.ensure_page_thumb(meta, fetched, index)
+        path = store.ensure_page_thumb(meta, fetched, index, ext=target_ext)
     except HTTPException:
         raise
     except Exception as exc:
         raise HTTPException(status_code=502, detail=f"页面缩略图生成失败：{exc}") from exc
     return FileResponse(
         path,
-        media_type="image/jpeg",
-        headers=CACHE_CONTROL_IMMUTABLE,
+        media_type=media_type,
+        headers=CACHE_CONTROL_IMMUTABLE_VARY,
     )
 
 

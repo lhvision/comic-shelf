@@ -324,9 +324,13 @@ def test_auth_and_security_middleware():
         # 2g. Image binary endpoints with static extension aliases trigger hotlink check
         for img_ext_path in (
             "/api/library/jm/1/covers/1/file.jpg",
+            "/api/library/jm/1/covers/1/file.webp",
+            "/api/library/jm/1/pages/1/file",
             "/api/library/jm/1/pages/1/file.webp",
             "/api/library/jm/1/pages/1/thumbnail.jpg",
+            "/api/library/jm/1/pages/1/thumbnail.webp",
             "/api/library/jm/1/chapters/chap1/cover.jpg",
+            "/api/library/jm/1/chapters/chap1/cover.webp",
         ):
             call_next.reset_mock()
             req_img_cross = make_mock_request(

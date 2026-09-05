@@ -97,7 +97,7 @@ class ComicMeta(BaseModel):
             import hashlib
             v_tag = f"?v={hashlib.md5(self.updated_at.encode()).hexdigest()[:8]}"
         return [
-            f"/api/library/{self.source}/{self.source_id}/covers/{index}/file.jpg{v_tag}"
+            f"/api/library/{self.source}/{self.source_id}/covers/{index}/file.webp{v_tag}"
             for index in range(1, max(1, count) + 1)
         ]
 

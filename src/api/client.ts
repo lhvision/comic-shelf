@@ -509,13 +509,13 @@ export const api = {
 }
 
 export const pageFileUrl = (source: string, sourceId: string, index: number) =>
-  `${BASE}/library/${source}/${sourceId}/pages/${index}/file.webp`
+  `${BASE}/library/${source}/${sourceId}/pages/${index}/file`
 
 export const pageThumbUrl = (source: string, sourceId: string, index: number) =>
-  `${BASE}/library/${source}/${sourceId}/pages/${index}/thumbnail.jpg`
+  `${BASE}/library/${source}/${sourceId}/pages/${index}/thumbnail.webp`
 
 export const coverFileUrl = (source: string, sourceId: string, index: number, width?: number) => {
-  const base = `${BASE}/library/${source}/${sourceId}/covers/${index}/file.jpg`
+  const base = `${BASE}/library/${source}/${sourceId}/covers/${index}/file.webp`
   return width ? `${base}?w=${width}` : base
 }
 
@@ -526,7 +526,7 @@ export const chapterCoverUrl = (
   chapterId: string,
   width?: number,
 ) => {
-  const base = `${BASE}/library/${source}/${sourceId}/chapters/${chapterId}/cover.jpg`
+  const base = `${BASE}/library/${source}/${sourceId}/chapters/${chapterId}/cover.webp`
   return width ? `${base}?w=${width}` : base
 }
 

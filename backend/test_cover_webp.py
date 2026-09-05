@@ -171,6 +171,22 @@ class TestWebPCover(unittest.TestCase):
             self.assertEqual(resp_chap.media_type, "image/webp")
             self.assertTrue(str(resp_chap.path).endswith("_360.webp"))
 
+            # 5b. Page thumbnail WebP & fast-path cleanup
+            from app.main import page_thumbnail
+            # First create a legacy jpg thumbnail manually to test fast-path conversion & cleanup
+            legacy_jpg = self.store.page_thumb_path(meta, 1, ext="jpg")
+            legacy_jpg.parent.mkdir(parents=True, exist_ok=True)
+            legacy_jpg.write_bytes(self._create_sample_img(color="green", size=(360, 500)))
+            self.assertTrue(legacy_jpg.exists())
+
+            req_thumb_webp = make_mock_request(headers={"accept": "image/webp"})
+            resp_thumb = page_thumbnail(source="local", source_id="c4", index=1, request=req_thumb_webp, ext="webp")
+            self.assertEqual(resp_thumb.media_type, "image/webp")
+            self.assertTrue(str(resp_thumb.path).endswith("00001.webp"))
+            self.assertTrue(Path(resp_thumb.path).exists())
+            # Fast-path should have cleaned up the legacy jpg
+            self.assertFalse(legacy_jpg.exists())
+
             # 6. Missing cache raises 404 Not Found (not 502 Bad Gateway)
             covers_dir = self.store.covers_dir("local", "c4")
             if covers_dir.exists():
