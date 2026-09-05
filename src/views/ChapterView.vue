@@ -87,7 +87,10 @@ const {
   remainingPages,
   showingRange,
   pageStep,
+  canCollapse,
   loadMore,
+  loadAll,
+  collapse,
   setChapterById,
 } = useChapterNavigation(detail, lastRead)
 
@@ -456,7 +459,8 @@ async function confirmRemoveChapter() {
 
         <div class="chapter-pager">
           <button class="btn btn-ghost" type="button" :disabled="!prevChapter" @click="goPrev">
-            ← 上一话
+            <AppIcon name="arrow-left" size="xs" />
+            上一话
           </button>
 
           <ChapterSwitcher
@@ -468,7 +472,8 @@ async function confirmRemoveChapter() {
           />
 
           <button class="btn btn-ghost" type="button" :disabled="!nextChapter" @click="goNext">
-            下一话 →
+            下一话
+            <AppIcon name="arrow-right" size="xs" />
           </button>
         </div>
       </section>
@@ -483,7 +488,10 @@ async function confirmRemoveChapter() {
         :remaining-pages="remainingPages"
         :page-step="pageStep"
         :showing-range="showingRange"
+        :can-collapse="canCollapse"
         @load-more="loadMore"
+        @load-all="loadAll"
+        @collapse="collapse"
       />
 
       <!-- 修改章节名称弹窗 -->

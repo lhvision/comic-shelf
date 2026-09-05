@@ -20,6 +20,7 @@
    - [§50 全站弹窗与暗室主题隔离](#sec-50)
    - [§51 阅读器滚动驱动动画双轨架构](#sec-51)
    - [§52 视图轻量化与装配树编排](#sec-52)
+   - [§55 画卷折叠架与尾格余量收纳架构](#sec-55)
 5. [历史演进里程碑归档索引（Historical Milestones Archive）](#5-历史演进里程碑归档索引historical-milestones-archive)
 
 ---
@@ -198,12 +199,14 @@
 
 <a id="sec-53"></a>
 
-### §53. 卷末归档与已读微降权体系（Shelf Archive & Read Deemphasis Architecture）
+### §53. 卷末归档专匣与双分区抽屉架构（Shelf Archive Drawer & Read Deemphasis Architecture）
 
-- **分桶与排序契约**：书架仅在「最近收录（未读优先）」默认排序下执行两层分桶（未读与在读书卷置顶，已读完书籍沉底）；在切换为按标题、页数、本地完整度时保持纯粹字典序；
-- **只看已读快速归档检索**：在书架标签筛选条（`TagFilterBar`）中并列提供 `[只看喜欢]` 与 `[只看已读]` 两大正交快筛 Chip；支持与标签（如 `全彩`）多重叠加，一键直达典藏已读书目而无需冗长滚动；
-- **装订压痕分界**：通过 `grid-column: 1 / -1` 跨越全网格渲染细压痕线（`--line`）与居中徽标（`〔 卷末归档 · 已读完 N 本 〕` / `〔 典藏归档 · 全部已翻阅 〕`）；
-- **微降权质感**：已读卡片仅应用克制的微降权（`opacity: 0.82; filter: grayscale(0.12)`），并在读者悬浮或聚焦时平滑还原为 100% 彩色与不透明度，兼具典雅书脊陈列感与新鲜阅读重心。
+- **分桶与排序契约**：书架仅在「最近收录（未读优先）」默认排序下执行两层分桶（案头未读藏书区 `activeComics` 独占主书架，卷末已读书卷移入底部的归档专匣 `completedComics`）；在切换为按标题、页数、本地完整度时保持纯粹字典序单一网格；
+- **卷末归档专匣（Archive Drawer）**：
+  1. **语义化 Disclosure 按钮**：抽屉标题栏为语义化 `<button type="button" class="archive-drawer-header">`，标配 `:aria-expanded="archiveOpen"` 与焦点环，告别无障碍不可达的 `div` 点击反模式；
+  2. **绝对断绝幽灵焦点（Ghost Focus Elimination）**：抽屉主体容器配置 `:inert="!archiveOpen"` 并在 CSS 中配合 `visibility: hidden; transition: visibility ...`，确保闭合状态下读者键盘 Tab 键或读屏器直接越过收拢抽屉，杜绝在不可见卡片上迷航；
+  3. **智能感应展开**：当书架全部书目均已翻阅完毕（`allCompleted`）时，抽屉默认自动展开，无需读者多余手动拉开；
+- **微降权质感**：归档抽屉内卡片应用克制的微降权（`opacity: 0.88; filter: grayscale(0.08)`），并在读者悬浮或聚焦时平滑还原为 100% 彩色与不透明度，兼具典雅书脊陈列感与新鲜阅读重心。
 
 <a id="sec-54"></a>
 
@@ -212,6 +215,22 @@
 - **视口真实触达感知**：严禁在 `onMounted` 钩子中盲目将作品标记为「已读完」；必须使用 VueUse `useIntersectionObserver` 监听末页卡片容器（`cardEl`），仅当读者真正滚动至书末并进入视口后才触发完成事件；
 - **暗室多端响应**：桌面端采用三联卡片网格，移动端（≤680px）采用垂直图文列表排列（封面在左、书名作者在右、右侧附详情入口），兼顾单手点选便捷性与一屏紧凑呈现；底部统一提供「回到详情」与「返回书架」双向离开出口；
 - **触控安全与双向出口**：详情辅助按钮通过 `::before` 伪元素扩展至 ≥ 44×44px 物理判定热区，与大卡片直接开读解耦；底部统一提供「回到详情」与「返回书架」双向离开出口。
+
+<a id="sec-55"></a>
+
+### §55. 画卷折叠架与尺寸插值动效架构（Collapsed Thumbnail Rack & Size Interpolation Architecture）
+
+- **滚动逃逸根治**：页面索引与书架网格彻底废除长距离 `useIntersectionObserver` 引起的贪婪无节制自动追加，避免读者在浏览时纵向滚动条持续失控伸长；
+- **尾格余量折叠卡与单源焦点**：
+  1. **页面索引（PageIndexGrid）**：超出首屏预算的画页在网格末尾以独立的 `.page-tile-overflow` 纸签卡呈现，严禁以透明蒙层盖死最后一个内容画页，确保所有既有画页 100% 保持可见与可点击，彻底杜绝 DOM `RouterLink` 幽灵焦点与读屏语音冲突；
+  2. **书架网格（ComicGrid）**：未展开藏书在网格末尾以函套收纳卡（`.shelf-fold-card`）呈现，严格采用 `var(--radius-3)` 与 26rem 最小高度，彻底根治单卡成行时的断层塌陷；
+- **现代平滑尺寸插值（interpolate-size: allow-keywords）**：
+  1. **CSS 原生高度插值**：归档抽屉主体声明 `interpolate-size: allow-keywords; height: 0;` 并在展开时通过 `height: auto;` 与 `transition: height var(--duration-3) var(--ease-spring)` 实现 GPU 合成层平滑膨胀与收缩，告别手写 JS 获取 `scrollHeight` 导致的强制同步重排；
+  2. **弹性网格优雅降级**：通过 `@supports not (interpolate-size: allow-keywords)` 对旧版内核降级为 `display: grid; grid-template-rows: 0fr -> 1fr;` 零成本平滑适配；
+- **网格动画安全禁令（No Absolute on Grid Leave）**：`<TransitionGroup>` 的 `shelf-card`、`folio-card` 与 `chapter-card` 动效中，**严禁在 `.leave-active` 中定义 `position: absolute;`**，避免 Grid 布局崩塌与卡片在左上角重叠闪烁；
+- **触控靶心底线与防迷航回滚**：
+  1. **移动端 WCAG 2.5.5**：在 `max-width: 640px` 下，所有折叠步进与全量展开按钮强制保底 `min-height: 44px;`；
+  2. **视口锚点自愈**：点击收起时必须通过 `void nextTick(() => scrollIntoView({ behavior: 'smooth', block: 'start' }))` 平滑回退至网格顶部锚点，防止视口瞬间失焦遗失在空白区域。
 
 ---
 

@@ -84,21 +84,43 @@ describe('ComicGrid', () => {
       },
     })
 
-    // Initially only 12 items rendered
+    // Initially only 12 items rendered, fold card rendered in grid
     expect(wrapper.findAll('.mock-comic-card').length).toBe(12)
+    const foldCard = wrapper.find('.shelf-fold-card')
+    expect(foldCard.exists()).toBe(true)
+    expect(foldCard.text()).toContain('+13 本')
+    expect(wrapper.find('.shelf-sentinel').exists()).toBe(false)
+
+    // Click stepped expand button in fold card to expand next batch
+    await foldCard.find('button.btn-primary').trigger('click')
+    expect(wrapper.findAll('.mock-comic-card').length).toBe(24)
+    expect(wrapper.find('.shelf-fold-card').text()).toContain('+1 本')
+    expect(wrapper.find('.shelf-fold-card').text()).toContain('收整书架')
+
+    // Click stepped expand button in fold card again (all 25 items rendered)
+    await wrapper.find('.shelf-fold-card button.btn-primary').trigger('click')
+    expect(wrapper.findAll('.mock-comic-card').length).toBe(25)
+    // Fold card is gone, sentinel appears with collapse action
+    expect(wrapper.find('.shelf-fold-card').exists()).toBe(false)
     const sentinel = wrapper.find('.shelf-sentinel')
     expect(sentinel.exists()).toBe(true)
-    expect(sentinel.text()).toContain('已呈现 12 / 25 本')
+    expect(sentinel.text()).toContain('全架藏书已展开')
 
-    // Click load more button to expand next batch
+    // Click collapse button to fold back
     await sentinel.find('button').trigger('click')
-    expect(wrapper.findAll('.mock-comic-card').length).toBe(24)
-    expect(wrapper.find('.shelf-sentinel').text()).toContain('已呈现 24 / 25 本')
+    expect(wrapper.findAll('.mock-comic-card').length).toBe(12)
+    expect(wrapper.find('.shelf-fold-card').exists()).toBe(true)
 
-    // Click load more button again
-    await wrapper.find('.shelf-sentinel button').trigger('click')
-    expect(wrapper.findAll('.mock-comic-card').length).toBe(25)
-    expect(wrapper.find('.shelf-sentinel').exists()).toBe(false)
+    // Expand once more, then test collapsing directly from the fold card!
+    await wrapper.find('.shelf-fold-card button.btn-primary').trigger('click')
+    expect(wrapper.findAll('.mock-comic-card').length).toBe(24)
+    const cardCollapseBtn = wrapper
+      .find('.shelf-fold-card')
+      .findAll('button')
+      .find((b) => b.text().includes('收整书架'))
+    expect(cardCollapseBtn).toBeDefined()
+    await cardCollapseBtn!.trigger('click')
+    expect(wrapper.findAll('.mock-comic-card').length).toBe(12)
   })
 
   it('resets visible items when items prop changes', async () => {
@@ -113,8 +135,8 @@ describe('ComicGrid', () => {
       },
     })
 
-    // Click load more
-    await wrapper.find('.shelf-sentinel button').trigger('click')
+    // Click load more in fold card
+    await wrapper.find('.shelf-fold-card button.btn-primary').trigger('click')
     expect(wrapper.findAll('.mock-comic-card').length).toBe(24)
 
     // Items filtered or changed to new list of 20 items
@@ -123,6 +145,72 @@ describe('ComicGrid', () => {
 
     // Should reset back to 12
     expect(wrapper.findAll('.mock-comic-card').length).toBe(12)
-    expect(wrapper.find('.shelf-sentinel').text()).toContain('已呈现 12 / 20 本')
+  })
+
+  it('separates unread comics and completed comics into active shelf and archive drawer in split mode', async () => {
+    // 5 unread comics + 15 completed comics
+    const unreadComics = makeComics(5).map((c, i) => ({
+      ...c,
+      source_id: `unread_${i}`,
+      title: `未读漫画 ${i + 1}`,
+      last_page: 0,
+      page_count: 20,
+    }))
+    const completedComics = makeComics(15).map((c, i) => ({
+      ...c,
+      source_id: `completed_${i}`,
+      title: `已读漫画 ${i + 1}`,
+      last_page: 20,
+      page_count: 20,
+    }))
+    const mixed = [...unreadComics, ...completedComics]
+
+    const wrapper = mount(ComicGrid, {
+      props: {
+        loading: false,
+        items: mixed,
+        useCanvas: false,
+        hasAnyItems: true,
+        batchStep: 12,
+        isRecentSort: true,
+      },
+    })
+
+    // Active shelf should render only the 5 unread comics
+    const activeGrid = wrapper.find('.active-shelf-grid')
+    expect(activeGrid.exists()).toBe(true)
+    expect(activeGrid.findAll('.mock-comic-card').length).toBe(5)
+    // 5 <= 12, so no fold card needed in active shelf
+    expect(activeGrid.find('.shelf-fold-card').exists()).toBe(false)
+
+    // Archive drawer exists
+    const drawer = wrapper.find('.shelf-archive-drawer')
+    expect(drawer.exists()).toBe(true)
+    expect(drawer.text()).toContain('卷末归档 · 已读完 15 本')
+    expect(drawer.classes()).not.toContain('is-open')
+
+    // Click header to open drawer
+    await drawer.find('.archive-drawer-header').trigger('click')
+    expect(drawer.classes()).toContain('is-open')
+
+    // Inside drawer, initial batch is 12 completed cards + fold card
+    const archiveGrid = drawer.find('.archive-shelf-grid')
+    expect(archiveGrid.findAll('.mock-comic-card').length).toBe(12)
+    const archiveFoldCard = archiveGrid.find('.shelf-fold-card--archive')
+    expect(archiveFoldCard.exists()).toBe(true)
+    expect(archiveFoldCard.text()).toContain('+3 本已读')
+
+    // Expand next batch in drawer
+    await archiveFoldCard.find('button.btn-primary').trigger('click')
+    expect(archiveGrid.findAll('.mock-comic-card').length).toBe(15)
+
+    // Archive sentinel is displayed
+    const archiveSentinel = drawer.find('.shelf-sentinel')
+    expect(archiveSentinel.exists()).toBe(true)
+    expect(archiveSentinel.text()).toContain('全归档已展开')
+
+    // Click collapse inside drawer
+    await archiveSentinel.find('button').trigger('click')
+    expect(archiveGrid.findAll('.mock-comic-card').length).toBe(12)
   })
 })

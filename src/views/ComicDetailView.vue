@@ -72,8 +72,11 @@ const {
   lastReadLabel,
   lastReadChapter,
   pageStep,
+  canCollapse,
   chapterForPage,
   loadMore,
+  loadAll,
+  collapse,
 } = useChapterNavigation(detail, lastRead)
 
 const isMulti = computed(() => (chapters.value?.length ?? 0) > 1)
@@ -433,7 +436,10 @@ function startReading(page = progressEl.value || 1) {
         :remaining-pages="remainingPages"
         :page-step="pageStep"
         :showing-range="showingRange"
+        :can-collapse="canCollapse"
         @load-more="loadMore"
+        @load-all="loadAll"
+        @collapse="collapse"
       />
 
       <EditMetadataModal

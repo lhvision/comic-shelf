@@ -259,7 +259,7 @@ watch(searchError, (value) => {
         :has-any-items="store.items.length > 0"
         :live-cache="store.liveCache"
         :search-match-map="imageSearchMatchMap"
-        :is-recent-sort="sortBy === 'recent' && !searchImagePreviewUrl"
+        :is-recent-sort="sortBy === 'recent' && !searchImagePreviewUrl && !search.trim()"
         @favorite-toggled="onFavoriteToggled"
       />
     </section>

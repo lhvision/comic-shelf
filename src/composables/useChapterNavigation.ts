@@ -40,7 +40,7 @@ export function clearNavigationMemory(): void {
  * 数据加载/流程编排，领域逻辑收敛到 composable（与 `useReaderSettings` /
  * `useLastRead` 同一模式）。本函数收纳了：
  * - 按当前章节对全局 `meta.pages` 切片（多章节作品仍是全局页码拍平）；
- * - 章节增量渲染（每章 48 页起步）、章节切换时重置计数；
+ * - 章节增量渲染（每章 24 页分批起步）、章节切换时重置计数；
  * - 上次阅读页 → 默认章节 / “继续阅读”带章节文案。
  */
 export function useChapterNavigation(detail: Ref<ComicDetail | null>, lastRead: Ref<number>) {
@@ -151,6 +151,19 @@ export function useChapterNavigation(detail: Ref<ComicDetail | null>, lastRead: 
     )
   }
 
+  function loadAll() {
+    visiblePageCount.value = activeChapterCount.value
+  }
+
+  function collapse() {
+    visiblePageCount.value = CHAPTER_PAGE_STEP
+  }
+
+  const canCollapse = computed(
+    () =>
+      visiblePageCount.value > CHAPTER_PAGE_STEP && activeChapterCount.value > CHAPTER_PAGE_STEP,
+  )
+
   return {
     activeChapter,
     activeChapterId,
@@ -163,11 +176,14 @@ export function useChapterNavigation(detail: Ref<ComicDetail | null>, lastRead: 
     lastReadLabel,
     lastReadChapter,
     pageStep: CHAPTER_PAGE_STEP,
+    canCollapse,
     chapterForPage,
     switchTo,
     setChapterById,
     setInitialChapter,
     loadMore,
+    loadAll,
+    collapse,
   }
 }
 
