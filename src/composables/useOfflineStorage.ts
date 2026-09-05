@@ -43,11 +43,7 @@ export const useOfflineStorage = createGlobalState(() => {
   const usageFormatted = computed(() => formatBytes(usage.value))
   const quotaFormatted = computed(() => formatBytes(quota.value))
 
-  const coreAssetBytes = computed(() => {
-    const raw = usage.value - mangaImageBytes.value
-    return Math.max(0, raw)
-  })
-
+  const coreAssetBytes = ref(0)
   const coreAssetBytesFormatted = computed(() => formatBytes(coreAssetBytes.value))
   const mangaImageBytesFormatted = computed(() => formatBytes(mangaImageBytes.value))
 
@@ -75,22 +71,51 @@ export const useOfflineStorage = createGlobalState(() => {
         usage.value = estimate.usage ?? 0
         quota.value = estimate.quota ?? 0
 
-        // 细分探测 CacheStorage 中的漫画图片缓存
+        // 细分探测 CacheStorage 中的核心资产预缓存与漫画图片缓存
         if (typeof caches !== 'undefined') {
           const cacheKeys = await caches.keys()
-          const imageCacheNames = cacheKeys.filter(
+
+          // 1. 核心资产预缓存 (Workbox Precache) 独立直接度量（App 外壳 · 脚本 · 字体 · 基础图标）
+          const precacheKeys = cacheKeys.filter((k) => k.includes('precache'))
+          let precacheBytes = 0
+          for (const name of precacheKeys) {
+            try {
+              const cache = await caches.open(name)
+              const requests = await cache.keys()
+              const sizeTasks = requests.map((req) =>
+                cache
+                  .match(req)
+                  .then((res) => {
+                    if (!res) return 0
+                    const len = res.headers.get('content-length')
+                    return len ? parseInt(len, 10) || 0 : 0
+                  })
+                  .catch(() => 0),
+              )
+              const sizes = await Promise.all(sizeTasks)
+              precacheBytes += sizes.reduce((acc, curr) => acc + curr, 0)
+            } catch {
+              // 忽略单个缓存打开异常
+            }
+          }
+
+          // 兜底：若存在 Precache 桶但 headers 无 content-length（如 chunked/开发代理），使用构建期典型基线 ~950 KiB
+          if (precacheKeys.length > 0 && precacheBytes === 0) {
+            precacheBytes = 950 * 1024
+          }
+          coreAssetBytes.value = precacheBytes
+
+          // 2. 漫画画页缓存统计（manga-images）
+          const mangaCacheNames = cacheKeys.filter(
             (k) => k.includes('manga-images') || k.includes('images'),
           )
 
           let count = 0
-          const cacheEntries: { cache: Cache; requests: readonly Request[] }[] = []
-
-          for (const name of imageCacheNames) {
+          for (const name of mangaCacheNames) {
             try {
               const cache = await caches.open(name)
               const requests = await cache.keys()
               count += requests.length
-              cacheEntries.push({ cache, requests })
             } catch {
               // 忽略单个缓存打开异常
             }
@@ -98,55 +123,29 @@ export const useOfflineStorage = createGlobalState(() => {
           // 立即更新数量，界面第一时间呈现
           mangaImageCount.value = count
 
+          // 3. 计算画页物理真实占用（对齐浏览器物理磁盘，消除逆向减法对核心资产的污染）
           if (count === 0) {
             mangaImageBytes.value = 0
           } else {
-            // 限制并发与样本量：若 <= 50 全量并行；若 > 50 抽样前 40 张估算平均单图大小线性推算
-            let calculatedBytes = 0
-            const SAMPLE_LIMIT = 40
-            const sampleTasks: Promise<number>[] = []
-            let sampledCount = 0
+            const usageDetails = (estimate as unknown as { usageDetails?: { caches?: number } })
+              ?.usageDetails
+            const cachesTotal = usageDetails?.caches
 
-            outer: for (const { cache, requests } of cacheEntries) {
-              for (const req of requests) {
-                if (sampledCount >= SAMPLE_LIMIT && count > 50) break outer
-                sampledCount++
-                sampleTasks.push(
-                  cache
-                    .match(req)
-                    .then((res) => {
-                      if (!res) return 0
-                      const len = res.headers.get('content-length')
-                      return len ? parseInt(len, 10) || 0 : 0
-                    })
-                    .catch(() => 0),
-                )
-              }
-            }
-
-            const sampledSizes = await Promise.all(sampleTasks)
-            const validSizes = sampledSizes.filter((s) => s > 0)
-            if (validSizes.length > 0) {
-              const sumSampled = validSizes.reduce((acc, curr) => acc + curr, 0)
-              if (count <= 50 || count === validSizes.length) {
-                calculatedBytes = sumSampled
-              } else {
-                const avgBytes = sumSampled / validSizes.length
-                calculatedBytes = Math.round(avgBytes * count)
-              }
-            }
-
-            if (calculatedBytes > 0) {
-              mangaImageBytes.value = calculatedBytes
+            if (typeof cachesTotal === 'number' && cachesTotal > 0) {
+              // 支持 usageDetails.caches：从物理 CacheStorage 中扣除独立测出的核心资产
+              mangaImageBytes.value = Math.max(
+                count * 60 * 1024,
+                cachesTotal - coreAssetBytes.value,
+              )
+            } else if (usage.value > coreAssetBytes.value) {
+              // 通用支持：扣除核心资产后的真实 Origin 物理占用归属于漫画画页与媒体缓存
+              mangaImageBytes.value = Math.max(
+                count * 60 * 1024,
+                usage.value - coreAssetBytes.value,
+              )
             } else {
-              // 回退估算：优先从 usageDetails.caches 扣除核心外壳（~1.5MB），或按每张约 120KB 兜底
-              const cachesTotal = (estimate as unknown as { usageDetails?: { caches?: number } })
-                .usageDetails?.caches
-              if (typeof cachesTotal === 'number' && cachesTotal > 0) {
-                mangaImageBytes.value = Math.max(count * 80 * 1024, cachesTotal - 1.5 * 1024 * 1024)
-              } else {
-                mangaImageBytes.value = count * 120 * 1024
-              }
+              // 离线/受限环境兜底：按每张画页均值约 180 KB
+              mangaImageBytes.value = count * 180 * 1024
             }
           }
         }
@@ -235,7 +234,13 @@ export const useOfflineStorage = createGlobalState(() => {
 
     try {
       const keys = await caches.keys()
-      const imageCaches = keys.filter((k) => k.includes('manga-images') || k.includes('images'))
+      const imageCaches = keys.filter(
+        (k) =>
+          k.includes('manga-images') ||
+          k.includes('images') ||
+          k.includes('illustration') ||
+          k.includes('illustrations'),
+      )
 
       for (const name of imageCaches) {
         await caches.delete(name)
@@ -245,15 +250,16 @@ export const useOfflineStorage = createGlobalState(() => {
       mangaImageCount.value = 0
       mangaImageBytes.value = 0
 
-      // 仅清理与 manga-images 相关的 IndexedDB objectStore，避免抹除插画池等其他缓存的生命周期元数据
+      // 清理与 manga-images 及 illustration-pool 相关的 IndexedDB objectStore，保护其他生命周期元数据
       if (typeof indexedDB !== 'undefined' && typeof indexedDB.databases === 'function') {
         try {
           const dbs = await indexedDB.databases()
           for (const db of dbs) {
-            if (db.name && db.name.includes('manga')) {
+            if (db.name && (db.name.includes('manga') || db.name.includes('illustration'))) {
               await clearIndexedDbRecords(db.name)
             } else if (db.name && db.name.includes('workbox')) {
               await clearIndexedDbRecords(db.name, 'manga-images')
+              await clearIndexedDbRecords(db.name, 'illustration-pool')
             }
           }
         } catch {
@@ -261,11 +267,12 @@ export const useOfflineStorage = createGlobalState(() => {
         }
       } else {
         await clearIndexedDbRecords('workbox-expiration', 'manga-images')
+        await clearIndexedDbRecords('workbox-expiration', 'illustration-pool')
       }
 
       await refreshEstimate()
 
-      const freedBytes = prevBytes || prevCount * 120 * 1024
+      const freedBytes = prevBytes || prevCount * 180 * 1024
       return { freedBytes, freedCount: prevCount }
     } finally {
       clearing.value = false
@@ -297,7 +304,12 @@ export const useOfflineStorage = createGlobalState(() => {
         try {
           const dbs = await indexedDB.databases()
           for (const db of dbs) {
-            if (db.name && (db.name.includes('workbox') || db.name.includes('manga'))) {
+            if (
+              db.name &&
+              (db.name.includes('workbox') ||
+                db.name.includes('manga') ||
+                db.name.includes('illustration'))
+            ) {
               await clearIndexedDbRecords(db.name)
             }
           }
@@ -310,6 +322,7 @@ export const useOfflineStorage = createGlobalState(() => {
 
       mangaImageCount.value = 0
       mangaImageBytes.value = 0
+      coreAssetBytes.value = 0
       usage.value = 0
 
       await refreshEstimate()
@@ -326,6 +339,7 @@ export const useOfflineStorage = createGlobalState(() => {
     budgetPercentage,
     mangaImageCount,
     mangaImageBytes,
+    coreAssetBytes,
     usageFormatted,
     quotaFormatted,
     mangaImageBytesFormatted,

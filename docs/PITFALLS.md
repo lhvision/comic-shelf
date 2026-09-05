@@ -362,6 +362,21 @@
     2. 信号合成使用 Baseline 2024 原生 `AbortSignal.any([controller.signal, callerSignal])`，免去手写 `addEventListener('abort')` 与 `removeEventListener` 的样板胶水，彻底杜绝闭包泄漏；
     3. 异常提示保持一致：使用自定义 `new DOMException('请求超时，请重试', 'TimeoutError')` 提供一致的人性化报错提示。
 
+### 47. 前端 CacheStorage 存储配额“逆向减法归因”与首部抽样偏差陷阱（CacheStorage Subtraction Attribution & Head Sampling Bias）
+
+- **本质**：
+  1. **首部顺序抽样严重低估（Sequential Head Sampling Bias）**：为了防止在成千上万张画页时因遍历 IPC 阻塞主线程，对 CacheStorage 请求使用固定头部采样（`SAMPLE_LIMIT = 40`，从 index 0 顺次读取）。由于用户浏览生命周期总是先加载缩略图（`thumbnail.jpg`，20~50 KB）与小封面，头部样本平均体积仅 ~60 KB，导致估算体积与真实物理占用产生 50+ MB 的严重低估；
+  2. **逆向减法归因污染核心资产（Subtraction Anti-Pattern）**：在分项账单计算中，使用 `coreAssetBytes = usage - mangaImageBytes` 反求 App Shell。当浏览器真实物理占用为 87 MB，而画页被低估为 31 MB 时，剩余的 56 MB 画页物理占用被全额误标为“纸间核心资产”，使用户误以为 PWA 静态预缓存膨胀失控或图片泄漏进预缓存；
+  3. **非标准 Runtime 缓存桶遗漏（Orphaned Cache Pools）**：动态插画池（如 `illustration-pool-cache`，含 4 MB WebP）缓存名称未匹配 `manga-images` 或 `images` 过滤关键字，在既未算入画页又被减法兜底的情况下，直接落入核心资产。
+- **红线与防误伤**：
+  - **不要**用 `totalUsage - sampledImages` 逆向推导不可变的轻量核心资产；
+  - **不要**在存在多种尺寸分布的非同质缓存数组上使用头部前 N 项顺序抽样；
+  - **不要**在图片缓存扫描中漏掉自定义命名的 Runtime 媒体桶；
+  - **放行/改用**：
+    1. **正向独立直接度量 Precache**：直接打开 `workbox-precache-*` 缓存桶（仅 ~40 项静态文件，毫秒级读取）测量真实的 App Shell 体积（固定在 ~1 MB 上下），与媒体图片实现物理级隔离；
+    2. **物理存储扣减反转（Top-down Physical Attribution）**：优先从 `usageDetails.caches` 或 `usage` 中扣除已测出的极小核心资产，将真实物理磁盘占用全额如实归因于「漫画阅览缓存」；
+    3. **全量媒体缓存统一生命周期管理**：在清理图片缓存与注销 IndexedDB 记录时，覆盖所有媒体桶（`manga-images`、`illustration-pool`），保持视图与物理存储彻底自洽。
+
 ---
 
 ## 🚦 交付门禁（四步必跑）

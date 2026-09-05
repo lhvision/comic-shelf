@@ -47,6 +47,89 @@ describe('useOfflineStorage composable', () => {
     expect(storage.environmentStatus.value).toBe('unsupported')
   })
 
+  it('provides reactive coreAssetBytes and accurate formatted string', () => {
+    const storage = useOfflineStorage()
+    storage.coreAssetBytes.value = 950 * 1024
+    expect(storage.coreAssetBytesFormatted.value).toBe('950 KB')
+
+    storage.coreAssetBytes.value = 1024 * 1024 * 1.2
+    expect(storage.coreAssetBytesFormatted.value).toBe('1.2 MB')
+  })
+
+  it('accurately attributes physical storage to manga images without polluting core assets', async () => {
+    const storage = useOfflineStorage()
+
+    // 模拟真实浏览器 CacheStorage 与 estimate
+    const mockPrecache = {
+      keys: async () => [new Request('http://localhost/assets/app.js')],
+      match: async () => ({
+        headers: new Headers({ 'content-length': String(1024 * 1024) }), // 1 MB
+      }),
+    }
+
+    const mockMangaCache = {
+      keys: async () =>
+        Array.from({ length: 497 }, (_, i) => new Request(`http://localhost/api/pages/${i}`)),
+      match: async () => ({
+        headers: new Headers({ 'content-length': String(200 * 1024) }),
+      }),
+    }
+
+    const originalStorageDescriptor = Object.getOwnPropertyDescriptor(navigator, 'storage')
+    const originalCaches = globalThis.caches
+
+    try {
+      Object.defineProperty(navigator, 'storage', {
+        value: {
+          estimate: () =>
+            Promise.resolve({
+              quota: 10 * 1024 * 1024 * 1024,
+              usage: 87 * 1024 * 1024, // 87 MB
+              usageDetails: {
+                caches: 86 * 1024 * 1024, // 86 MB CacheStorage
+              },
+            }),
+        },
+        configurable: true,
+      })
+
+      const cachesMap = new Map<string, unknown>([
+        ['workbox-precache-v2-http://localhost/', mockPrecache],
+        ['manga-images-cache', mockMangaCache],
+      ])
+
+      Object.defineProperty(globalThis, 'caches', {
+        value: {
+          keys: () => Promise.resolve(Array.from(cachesMap.keys())),
+          open: (name: string) => Promise.resolve(cachesMap.get(name)),
+          delete: (name: string) => Promise.resolve(cachesMap.delete(name)),
+        },
+        configurable: true,
+      })
+
+      await storage.refreshEstimate()
+
+      // 核心资产必须独立且真实反映 Precache (~1 MB)，绝不被画页反向污染膨胀到 56 MB
+      expect(storage.coreAssetBytes.value).toBe(1024 * 1024)
+      expect(storage.coreAssetBytesFormatted.value).toBe('1.0 MB')
+
+      // 漫画画页必须正确统计为 497 张，且真实占用对齐为 86 MB - 1 MB = 85 MB (或根据 usageDetails.caches 对齐)
+      expect(storage.mangaImageCount.value).toBe(497)
+      expect(storage.mangaImageBytes.value).toBe(85 * 1024 * 1024)
+      expect(storage.mangaImageBytesFormatted.value).toBe('85 MB')
+    } finally {
+      if (originalStorageDescriptor) {
+        Object.defineProperty(navigator, 'storage', originalStorageDescriptor)
+      }
+      if (originalCaches) {
+        Object.defineProperty(globalThis, 'caches', {
+          value: originalCaches,
+          configurable: true,
+        })
+      }
+    }
+  })
+
   it('prevents re-entrant clearing operations when clearing is active', async () => {
     const storage = useOfflineStorage()
     storage.clearing.value = true
