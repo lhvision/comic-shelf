@@ -216,7 +216,8 @@
 
 - **视口真实触达感知**：严禁在 `onMounted` 钩子中盲目将作品标记为「已读完」；必须使用 VueUse `useIntersectionObserver` 监听末页卡片容器（`cardEl`），仅当读者真正滚动至书末并进入视口后才触发完成事件；
 - **暗室多端响应**：桌面端采用三联卡片网格，移动端（≤680px）采用垂直图文列表排列（封面在左、书名作者在右、右侧附详情入口），兼顾单手点选便捷性与一屏紧凑呈现；底部统一提供「回到详情」与「返回书架」双向离开出口；
-- **触控安全与双向出口**：详情辅助按钮通过 `::before` 伪元素扩展至 ≥ 44×44px 物理判定热区，与大卡片直接开读解耦；底部统一提供「回到详情」与「返回书架」双向离开出口。
+- **触控安全与双向出口**：详情辅助按钮通过 `::before` 伪元素扩展至 ≥ 44×44px 物理判定热区，与大卡片直接开读解耦；底部统一提供「回到详情」与「返回书架」双向离开出口；
+- **阅览室暗室按钮对比度防御（Reader Dark Room Button Isolation）**：阅读器暗室背景（`--reader-bg`）与全站默认浅色模式隔离。全站通用的 `.btn-ghost`（浅色模式下为近黑墨色文本）在暗室环境下会与纯黑底色混为一体导致完全不可见；必须基于暗室专有 Token 为 `.end-btn.btn-ghost` 提供明确的文本墨色（`var(--reader-ink)`）、暗室垫层（`var(--reader-surface-strong)`）与高对比度边框（`var(--reader-line-strong)`），并补充悬浮与激活态反馈，确保末页操作具备 WCAG AA 级（≥ 4.5:1）无障碍可读性。
 
 <a id="sec-55"></a>
 
@@ -224,8 +225,8 @@
 
 - **滚动逃逸根治**：页面索引与书架网格彻底废除长距离 `useIntersectionObserver` 引起的贪婪无节制自动追加，避免读者在浏览时纵向滚动条持续失控伸长；
 - **尾格余量折叠卡与单源焦点**：
-  1. **页面索引（PageIndexGrid）**：超出首屏预算的画页在网格末尾以独立的 `.page-tile-overflow` 纸签卡呈现，严禁以透明蒙层盖死最后一个内容画页，确保所有既有画页 100% 保持可见与可点击，彻底杜绝 DOM `RouterLink` 幽灵焦点与读屏语音冲突；
-  2. **书架网格（ComicGrid）**：未展开藏书在网格末尾以函套收纳卡（`.shelf-fold-card`）呈现，严格采用 `var(--radius-3)` 与 26rem 最小高度，彻底根治单卡成行时的断层塌陷；
+  1. **页面索引（PageIndexGrid）**：超出首屏预算的画页在网格末尾以独立的 `.page-fold-card`（保留 `.page-tile-overflow` 兼容）收纳卡呈现，视觉与交互完全与书架函套卡对齐（朱砂徽印、标题说明、主步进 `btn-primary`、展开全部 `btn-ghost` 与收拢出口）；折叠态严禁在网格外部同时渲染底部控制条（消除认知混淆与双重控件），仅在全量展开后于底部呈现 `.page-sentinel` 典雅收整条；严禁以透明蒙层盖死最后一个内容画页，彻底杜绝 DOM `RouterLink` 幽灵焦点与读屏语音冲突；
+  2. **书架网格（ComicGrid）**：未展开藏书在网格末尾以函套收纳卡（`.shelf-fold-card`）呈现，严格采用 `var(--radius-3)` 与 26rem 最小高度，彻底根治单卡成行时的断层塌陷；全部展开后底部呈现 `.shelf-sentinel` 单按钮收整书架；
 - **现代平滑尺寸插值（interpolate-size: allow-keywords）**：
   1. **CSS 原生高度插值**：归档抽屉主体声明 `interpolate-size: allow-keywords; height: 0;` 并在展开时通过 `height: auto;` 与 `transition: height var(--duration-3) var(--ease-spring)` 实现 GPU 合成层平滑膨胀与收缩，告别手写 JS 获取 `scrollHeight` 导致的强制同步重排；
   2. **弹性网格优雅降级**：通过 `@supports not (interpolate-size: allow-keywords)` 对旧版内核降级为 `display: grid; grid-template-rows: 0fr -> 1fr;` 零成本平滑适配；

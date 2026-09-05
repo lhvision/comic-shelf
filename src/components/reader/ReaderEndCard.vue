@@ -59,7 +59,7 @@ useIntersectionObserver(
         <p class="end-sub">
           {{
             recommendations && recommendations.length > 0
-              ? '合上书卷，墨香犹在。接下来想读哪一部？'
+              ? '合上书卷，墨香犹在。接下来想读哪一本？'
               : '合上书卷，墨香犹在。当前藏书均已翻阅完毕。'
           }}
         </p>
@@ -300,7 +300,7 @@ useIntersectionObserver(
   place-items: center;
   font-family: var(--font-mono);
   font-size: var(--text-xs);
-  color: var(--ink-2);
+  color: var(--reader-muted);
 }
 
 .rec-status-badge {
@@ -386,6 +386,11 @@ useIntersectionObserver(
   border-color: color-mix(in oklab, var(--paper-0) 30%, transparent);
 }
 
+.rec-detail-btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
 .reader-end-actions {
   display: flex;
   align-items: center;
@@ -401,6 +406,46 @@ useIntersectionObserver(
   min-height: 2.75rem;
   padding: 0 var(--space-5);
   font-size: var(--text-sm);
+  font-weight: 500;
+  border-radius: var(--radius-2);
+  cursor: pointer;
+  transition:
+    background-color var(--duration-1) var(--ease-out),
+    border-color var(--duration-1) var(--ease-out),
+    color var(--duration-1) var(--ease-out),
+    transform var(--duration-1) var(--ease-out);
+}
+
+.end-btn.btn-primary {
+  background: var(--accent);
+  color: var(--paper-0);
+  border: 1px solid transparent;
+}
+
+.end-btn.btn-primary:hover {
+  background: color-mix(in oklab, var(--accent) 85%, black 15%);
+  transform: translateY(-1px);
+}
+
+.end-btn.btn-primary:active {
+  transform: translateY(0);
+}
+
+.end-btn.btn-ghost {
+  color: var(--reader-ink);
+  background: var(--reader-surface-strong);
+  border: 1px solid var(--reader-line-strong);
+}
+
+.end-btn.btn-ghost:hover {
+  color: var(--paper-0);
+  background: var(--reader-surface-hover);
+  border-color: color-mix(in oklab, var(--reader-ink) 35%, transparent);
+  transform: translateY(-1px);
+}
+
+.end-btn.btn-ghost:active {
+  transform: translateY(0);
 }
 
 @media (max-width: 680px) {
@@ -421,7 +466,8 @@ useIntersectionObserver(
   }
 
   .rec-status-badge {
-    font-size: 0.625rem;
+    font-size: var(--text-caption);
+    font-size-adjust: ch-width 0.48;
     padding: 1px var(--space-1);
     left: var(--space-1);
     bottom: var(--space-1);

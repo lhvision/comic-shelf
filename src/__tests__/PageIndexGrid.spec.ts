@@ -30,7 +30,7 @@ function makePages(count: number): PageRecord[] {
 }
 
 describe('PageIndexGrid', () => {
-  it('renders all page tiles and an independent overflow card when remainingPages > 0', async () => {
+  it('renders all page tiles and an independent fold card when remainingPages > 0', async () => {
     const pages = makePages(24)
     const wrapper = mount(PageIndexGrid, {
       props: {
@@ -47,19 +47,30 @@ describe('PageIndexGrid', () => {
     // Renders all 24 page tiles unblocked
     expect(wrapper.findAll('.mock-page-tile').length).toBe(24)
 
-    // Independent overflow card appended to grid
-    const overflowTile = wrapper.find('.page-tile-overflow')
-    expect(overflowTile.exists()).toBe(true)
-    expect(overflowTile.text()).toContain('+50')
-    expect(overflowTile.text()).toContain('再展开 24 页')
+    // Independent fold card appended to grid
+    const foldCard = wrapper.find('.page-fold-card')
+    expect(foldCard.exists()).toBe(true)
+    expect(foldCard.text()).toContain('+50 页已收纳')
+    expect(foldCard.text()).toContain('画卷余页已收纳')
+    expect(foldCard.text()).toContain('再展开 24 页')
+    expect(foldCard.text()).toContain('展开全部')
 
-    // Click overflow tile triggers loadMore emit
-    await overflowTile.trigger('click')
+    // Sentinel bar is hidden while folded to eliminate double controls
+    expect(wrapper.find('.page-sentinel').exists()).toBe(false)
+
+    // Click stepped expand button in fold card triggers loadMore emit
+    await foldCard.find('button.btn-primary').trigger('click')
     expect(wrapper.emitted('loadMore')).toBeTruthy()
     expect(wrapper.emitted('loadMore')?.length).toBe(1)
+
+    // Click expand all in fold card triggers loadAll emit
+    const allBtn = foldCard.findAll('button').find((b) => b.text().includes('展开全部'))
+    expect(allBtn).toBeDefined()
+    await allBtn!.trigger('click')
+    expect(wrapper.emitted('loadAll')).toBeTruthy()
   })
 
-  it('provides expand all and collapse controls in the fold bar without button duplication', async () => {
+  it('provides collapse control in the fold card when canCollapse is true', async () => {
     const pages = makePages(48)
     const wrapper = mount(PageIndexGrid, {
       props: {
@@ -73,25 +84,20 @@ describe('PageIndexGrid', () => {
       },
     })
 
-    const foldBar = wrapper.find('.page-fold-bar')
-    expect(foldBar.exists()).toBe(true)
-    expect(foldBar.text()).toContain('已展现 48 页')
-    expect(foldBar.text()).toContain('余 26 页已折叠')
+    const foldCard = wrapper.find('.page-fold-card')
+    expect(foldCard.exists()).toBe(true)
+    expect(wrapper.find('.page-sentinel').exists()).toBe(false)
 
-    // Buttons: 1: 展开全部, 2: 收起画卷 (stepped expand is in the overflow tile)
-    const buttons = foldBar.findAll('button')
-    expect(buttons.length).toBe(2)
-
-    // Click expand all
-    await buttons[0]!.trigger('click')
-    expect(wrapper.emitted('loadAll')).toBeTruthy()
+    // Buttons in card: 1: 再展开 24 页, 2: 展开全部, 3: 收起画卷
+    const buttons = foldCard.findAll('button')
+    expect(buttons.length).toBe(3)
 
     // Click collapse
-    await buttons[1]!.trigger('click')
+    await buttons[2]!.trigger('click')
     expect(wrapper.emitted('collapse')).toBeTruthy()
   })
 
-  it('hides overflow card and shows fully expanded state when remainingPages is 0', () => {
+  it('hides fold card and shows fully expanded sentinel bar when remainingPages is 0', async () => {
     const pages = makePages(74)
     const wrapper = mount(PageIndexGrid, {
       props: {
@@ -105,13 +111,17 @@ describe('PageIndexGrid', () => {
       },
     })
 
-    // No overflow card
-    expect(wrapper.find('.page-tile-overflow').exists()).toBe(false)
+    // No fold card in grid
+    expect(wrapper.find('.page-fold-card').exists()).toBe(false)
 
-    // Fold bar shows fully expanded text and collapse button
-    const foldBar = wrapper.find('.page-fold-bar')
-    expect(foldBar.exists()).toBe(true)
-    expect(foldBar.text()).toContain('全卷画页已展开')
-    expect(foldBar.findAll('button').length).toBe(1) // only collapse button
+    // Sentinel bar shows fully expanded text and collapse button
+    const sentinel = wrapper.find('.page-sentinel')
+    expect(sentinel.exists()).toBe(true)
+    expect(sentinel.text()).toContain('全卷画页已展开')
+    expect(sentinel.findAll('button').length).toBe(1) // only collapse button
+
+    // Click collapse button in sentinel bar
+    await sentinel.find('button').trigger('click')
+    expect(wrapper.emitted('collapse')).toBeTruthy()
   })
 })

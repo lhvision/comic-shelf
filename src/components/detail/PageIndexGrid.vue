@@ -94,57 +94,61 @@ function handleCollapse() {
         :chapter-id="chapterId"
       />
 
-      <!-- 尾格余量折叠卡：独立排布在网格最后，不遮挡任何既有画页，消除幽灵焦点 -->
-      <button
+      <!-- 画卷余页尾格折叠卡：独立排布在网格最后，结构与首页书架保持高度一致 -->
+      <div
         v-if="remainingPages > 0"
-        key="page-overflow-tile"
-        type="button"
-        class="page-tile-overflow surface"
-        :aria-label="`余 ${remainingPages} 页已折叠，点击再展开 ${Math.min(pageStep, remainingPages)} 页`"
-        @click.prevent="emit('loadMore')"
+        key="page-fold-card"
+        class="page-fold-card page-tile-overflow surface"
+        role="region"
+        aria-label="画卷余页折叠收纳卡"
       >
-        <span class="overflow-tile-inner">
-          <span class="overflow-badge-wrap">
-            <AppIcon name="archive" size="sm" class="overflow-badge-icon" />
-            <span class="overflow-badge-stamp">+{{ remainingPages }}</span>
-          </span>
-          <span class="overflow-tile-title">余页收纳</span>
-          <span class="overflow-tile-action">
-            <AppIcon name="chevron-down" size="xs" />
-            再展开 {{ Math.min(pageStep, remainingPages) }} 页
-          </span>
-        </span>
-      </button>
+        <div class="fold-card-body">
+          <div class="fold-badge-wrap">
+            <AppIcon name="book-open" size="xs" class="fold-badge-icon" />
+            <span class="fold-badge-stamp">+{{ remainingPages }} 页已收纳</span>
+          </div>
+          <h4 class="fold-card-title">画卷余页已收纳</h4>
+          <p class="fold-card-hint">
+            案头展示前 {{ pages.length }} 页，还有 {{ remainingPages }} 页画卷已折叠。
+          </p>
+          <div class="fold-card-actions">
+            <button
+              class="btn btn-primary btn-small"
+              type="button"
+              @click.prevent="emit('loadMore')"
+            >
+              <AppIcon name="chevron-down" size="xs" />
+              再展开 {{ Math.min(pageStep, remainingPages) }} 页
+            </button>
+            <button class="btn btn-ghost btn-small" type="button" @click.prevent="emit('loadAll')">
+              <AppIcon name="book-open" size="xs" />
+              展开全部
+            </button>
+            <button
+              v-if="canCollapse"
+              class="btn btn-ghost btn-small"
+              type="button"
+              @click.prevent="handleCollapse"
+            >
+              <AppIcon name="chevron-up" size="xs" />
+              收起画卷
+            </button>
+          </div>
+        </div>
+      </div>
     </TransitionGroup>
 
-    <!-- 底部展开与折叠控制条 -->
-    <div v-if="remainingPages > 0 || canCollapse" class="page-fold-bar surface">
-      <div class="page-fold-summary">
-        <AppIcon name="book-open" size="sm" class="fold-summary-icon" />
-        <span class="fold-summary-text">
-          已展现 {{ pages.length }} 页
-          <template v-if="remainingPages > 0">（余 {{ remainingPages }} 页已折叠）</template>
-          <template v-else>（全卷画页已展开）</template>
+    <!-- 全卷画页全量展开后的收整条：折叠态收敛至网格卡片内部，全部展开后呈现底部收起条 -->
+    <div v-if="canCollapse && remainingPages === 0" class="page-sentinel page-fold-bar surface">
+      <div class="sentinel-info">
+        <AppIcon name="book-open" size="sm" class="sentinel-icon" />
+        <span class="sentinel-note">
+          已呈现 {{ pages.length }} / {{ pages.length }} 页画卷（全卷画页已展开）
         </span>
       </div>
 
-      <div class="page-fold-actions">
-        <button
-          v-if="remainingPages > 0"
-          class="btn btn-secondary btn-small"
-          type="button"
-          @click.prevent="emit('loadAll')"
-        >
-          <AppIcon name="archive" size="xs" />
-          展开全部
-        </button>
-
-        <button
-          v-if="canCollapse"
-          class="btn btn-ghost btn-small"
-          type="button"
-          @click.prevent="handleCollapse"
-        >
+      <div class="sentinel-actions">
+        <button class="btn btn-ghost btn-small" type="button" @click.prevent="handleCollapse">
           <AppIcon name="chevron-up" size="xs" />
           收起画卷
         </button>
@@ -209,20 +213,20 @@ function handleCollapse() {
   margin-top: var(--space-5);
 }
 
-.page-tile-overflow {
+.page-fold-card {
   display: flex;
   flex-direction: column;
-  align-items: center;
   justify-content: center;
-  aspect-ratio: 3 / 4.15;
-  border-radius: var(--radius-2);
-  border: 2px dashed color-mix(in oklab, var(--accent) 35%, var(--line-strong));
-  background: color-mix(in oklab, var(--paper-1) 85%, transparent);
-  box-shadow: var(--shadow-1);
-  cursor: pointer;
-  padding: var(--space-3);
-  color: var(--ink-0);
+  align-items: center;
+  padding: var(--space-3) var(--space-2);
+  border-radius: var(--radius-3);
+  border: 1px dashed color-mix(in oklab, var(--accent) 35%, var(--line-strong));
+  background: color-mix(in oklab, var(--paper-1) 80%, transparent);
   text-align: center;
+  height: 100%;
+  min-height: 100%;
+  aspect-ratio: 3 / 4.15;
+  box-shadow: var(--shadow-1);
   transition:
     border-color var(--duration-2) var(--ease-out),
     background-color var(--duration-2) var(--ease-out),
@@ -230,28 +234,24 @@ function handleCollapse() {
     box-shadow var(--duration-2) var(--ease-out);
 }
 
-.page-tile-overflow:hover {
+.page-fold-card:hover {
   border-color: var(--accent);
   background: var(--paper-1);
-  transform: translateY(-0.25rem);
+  transform: translateY(-2px);
   box-shadow: var(--shadow-2);
 }
 
-.page-tile-overflow:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 2px;
-}
-
-.overflow-tile-inner {
+.fold-card-body {
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: var(--space-2);
+  gap: var(--space-1-5);
   width: 100%;
+  max-width: 10rem;
 }
 
-.overflow-badge-wrap {
+.fold-badge-wrap {
   display: inline-flex;
   align-items: center;
   gap: var(--space-1);
@@ -261,47 +261,104 @@ function handleCollapse() {
   border: 1px solid color-mix(in oklab, var(--accent) 25%, transparent);
 }
 
-.overflow-badge-icon {
+.fold-badge-icon {
   color: var(--accent);
 }
 
-.overflow-badge-stamp {
+.fold-badge-stamp {
   font-family: var(--font-display);
-  font-size: var(--text-sm);
+  font-size: var(--text-caption);
   font-weight: 700;
   color: var(--accent);
 }
 
-.overflow-tile-title {
-  font-family: var(--font-display);
+.fold-card-title {
   font-size: var(--text-xs);
   font-weight: 600;
-  color: var(--ink-1);
+  color: var(--ink-0);
+  margin: 0;
+  line-height: var(--leading-tight);
 }
 
-.overflow-tile-action {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-1);
+.fold-card-hint {
   font-size: var(--text-caption);
-  color: var(--accent);
-  font-weight: 500;
-  background: color-mix(in oklab, var(--accent) 8%, transparent);
-  padding: var(--space-0-5) var(--space-1-5);
+  color: var(--ink-2);
+  margin: 0;
+  line-height: var(--leading-snug);
+}
+
+.fold-card-actions {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  width: 100%;
+  margin-top: var(--space-1);
+}
+
+.fold-card-actions .btn {
+  width: 100%;
+  min-height: 1.85rem;
+  padding: 0.2rem var(--space-1);
+  font-size: var(--text-caption);
+  gap: var(--space-1);
+  justify-content: center;
   border-radius: var(--radius-1);
+  white-space: nowrap;
+}
+
+.page-sentinel {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  margin-top: var(--space-6);
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-2);
+}
+
+.sentinel-info {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.sentinel-icon {
+  color: var(--accent);
+}
+
+.sentinel-note {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--ink-2);
+  margin: 0;
+}
+
+.sentinel-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
 }
 
 @media (max-width: 640px) {
-  .page-fold-bar {
+  .page-fold-card {
+    aspect-ratio: auto;
+    min-height: 100%;
+  }
+
+  .page-sentinel {
     flex-direction: column;
     align-items: stretch;
   }
 
-  .page-fold-actions {
+  .sentinel-actions {
     justify-content: flex-end;
   }
 
-  .page-fold-actions .btn {
+  .fold-card-actions .btn,
+  .sentinel-actions .btn {
     min-height: 44px;
   }
 }

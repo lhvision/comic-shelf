@@ -90,6 +90,7 @@
   --reader-page-bg: oklch(0.18 0.006 122);
   --reader-ink: #eee7da;
   --reader-ink: oklch(0.93 0.019 83);
+  --reader-text: var(--reader-ink);
   --reader-muted: #938d80;
   --reader-muted: oklch(0.645 0.02 86);
   --reader-line: color-mix(in oklab, var(--reader-ink) 14%, transparent);

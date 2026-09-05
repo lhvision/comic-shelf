@@ -418,6 +418,20 @@
     1. 在阅读器滚动视口内为 `<ReaderEndCard>` 显式绑定 `:key="`${source}/${sourceId}`"`，强制 Vue 在切本时执行完整卸载与重新挂载生命周期；
     2. 配合父级顶层 `useReaderData` 针对 `[source, sourceId]` 变更的主动监听，确保跨本导航时阅读器全局状态、交互标记与末页感知彻底归零重置。
 
+### 51. 阅览室沉浸式暗室背景与浅色全局控件的对比度碰撞陷阱（Reader Dark Room & Light Global Controls Contrast Collision）
+
+- **本质**：
+  1. 纸间默认主题采用典雅暖调纸质底色与墨色文字（如 `var(--ink-0)` 接近黑色 `#1b1917`）。而阅读器采用固定的沉浸式纯黑暗室背景（`--reader-bg: #0d0e0c`）；
+  2. 当在阅读器末页卡片或暗室覆盖层中直接复用全局通用控件样式（如裸用 `.btn-ghost` 或浅色边框徽标）时，未作暗室隔离的样式会继续使用浅色墨色文本 `color: var(--ink-0)` 与透明底色；
+  3. 这种“近黑文字叠加于纯黑背景”的对比度雪崩（对比度接近 1:1，严重击穿 WCAG AA 级 ≥ 4.5:1 无障碍底线）导致幽灵按钮如同隐形，读者无法看清「返回书架」等关键操作。
+- **红线与防误伤**：
+  - **不要**在固定暗室/暗调容器中直接裸用继承自浅色主题的前景文字或边框（如裸用 `.btn-ghost`、`color: var(--ink-0)`）；
+  - **不要**在暗室组件中引入未在 Design Tokens 中声明的硬编码颜色（如裸写 `#333`、`#fff`）；
+  - **放行/改用**：
+    1. **暗室专有 Token 上下文隔离**：文字统一采用 `--reader-ink`（或 `--reader-text` 别名），底板采用 `--reader-surface-strong`，边框采用 `--reader-line-strong`，悬浮高亮切换为 `--reader-surface-hover` 并将文字升为纯白 `--paper-0`；
+    2. **键盘焦点显式透传**：为暗室中的各类按钮与辅助图标按钮（如 `.rec-detail-btn`）显式声明 `:focus-visible` 焦点环（`outline: 2px solid var(--accent)`），杜绝在暗室中失去焦点指引；
+    3. **遵循微标字阶底线**：徽章与次级状态文字使用 `--text-caption: 0.6875rem` 配合 `font-size-adjust: ch-width 0.48`，严禁在移动端使用 `< 11px` 的硬编码字号。
+
 ---
 
 ## 🚦 交付门禁（四步必跑）
