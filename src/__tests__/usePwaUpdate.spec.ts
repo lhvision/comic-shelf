@@ -19,9 +19,8 @@ describe('usePwaUpdate & useSystemEvents composables', () => {
   })
 
   it('manages SSE system events state properly', () => {
-    const { isConnected, lastPing, aiTasks } = useSystemEvents()
+    const { isConnected, isSleeping } = useSystemEvents()
     expect(isConnected.value).toBe(false)
-    expect(lastPing.value).toBeNull()
-    expect(aiTasks.value).toEqual({})
+    expect(isSleeping.value).toBe(false)
   })
 })

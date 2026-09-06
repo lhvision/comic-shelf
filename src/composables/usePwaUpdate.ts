@@ -1,6 +1,6 @@
 import { computed, ref, watch } from 'vue'
 import { registerSW } from 'virtual:pwa-register'
-import { createGlobalState, useDocumentVisibility, useIntervalFn, useNetwork } from '@vueuse/core'
+import { createGlobalState, useDocumentVisibility, useNetwork } from '@vueuse/core'
 
 /**
  * 适配不同宿主环境（浏览器 / jsdom 单测 / SSR）的安全页面重载执行器
@@ -61,16 +61,6 @@ export const usePwaUpdate = createGlobalState(() => {
         void checkForUpdate()
       }
     })
-
-    // 3. 周期性静默探测 Service Worker 版本变更（每 30 分钟一次）
-    useIntervalFn(
-      () => {
-        if (isOnline.value && registration.value) {
-          void checkForUpdate()
-        }
-      },
-      30 * 60 * 1000,
-    )
   }
 
   /**

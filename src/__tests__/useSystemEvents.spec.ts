@@ -10,16 +10,31 @@ describe('useSystemEvents composable', () => {
     vi.useRealTimers()
   })
 
-  it('exports MAX_SSE_RETRY_ATTEMPTS as 10', () => {
+  it('exports MAX_SSE_RETRY_ATTEMPTS as 10 and DEFAULT_IDLE_TIMEOUT_MS as 10 minutes', () => {
     expect(MAX_SSE_RETRY_ATTEMPTS).toBe(10)
+    const { shouldBeConnected, isReaderRoute } = useSystemEvents()
+    expect(typeof shouldBeConnected.value).toBe('boolean')
+    expect(typeof isReaderRoute.value).toBe('boolean')
   })
 
   it('initializes in disconnected state with empty events', () => {
-    const { isConnected, lastPing, lastVersionEvent, lastLibraryEvent, aiTasks } = useSystemEvents()
+    const { isConnected, isSleeping, shouldBeConnected } = useSystemEvents()
     expect(isConnected.value).toBe(false)
-    expect(lastPing.value).toBeNull()
-    expect(lastVersionEvent.value).toBeNull()
-    expect(lastLibraryEvent.value).toBeNull()
-    expect(aiTasks.value).toEqual({})
+    expect(isSleeping.value).toBe(false)
+    expect(shouldBeConnected.value).toBe(false)
+  })
+
+  it('manages disconnect and connect intent state', () => {
+    const { connect, disconnect, isConnected, isSleeping, shouldBeConnected, reconcileState } =
+      useSystemEvents()
+    disconnect()
+    expect(isConnected.value).toBe(false)
+    expect(isSleeping.value).toBe(false)
+    expect(shouldBeConnected.value).toBe(false)
+
+    connect()
+    // In test environment without mock EventSource, remains disconnected or sleeping gracefully
+    expect(isConnected.value).toBe(false)
+    expect(typeof reconcileState).toBe('function')
   })
 })

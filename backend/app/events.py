@@ -13,7 +13,7 @@ router = APIRouter(prefix="/api/events", tags=["events"])
 
 # Concurrency limits for SSE stream protection
 _MAX_TOTAL_LISTENERS = 200
-_MAX_IP_LISTENERS = 10
+_MAX_IP_LISTENERS = 30
 
 # Stores (queue, event_loop) pairs to support thread-safe broadcasting from background threads
 _listeners: set[tuple[asyncio.Queue[str | None], asyncio.AbstractEventLoop]] = set()
@@ -127,12 +127,12 @@ async def sse_event_stream(request: Request) -> StreamingResponse:
                     break
                 try:
                     # Suspend with 0 CPU load until an event is pushed or timeout triggers
-                    msg = await asyncio.wait_for(queue.get(), timeout=25.0)
+                    msg = await asyncio.wait_for(queue.get(), timeout=15.0)
                     if msg is None:
                         break
                     yield msg
                 except asyncio.TimeoutError:
-                    # 25s keepalive heartbeat preventing Cloudflare / Nginx proxy timeouts
+                    # 15s keepalive heartbeat preventing proxy timeouts and speeding up dead connection reclamation
                     yield ": keepalive\n\n"
         except asyncio.CancelledError:
             pass
