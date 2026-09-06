@@ -187,6 +187,11 @@ class TestWebPCover(unittest.TestCase):
             # Fast-path should have cleaned up the legacy jpg
             self.assertFalse(legacy_jpg.exists())
 
+            # 5c. Page info endpoint returns raw format url (no extension per ADR 0012)
+            from app.main import page_info
+            resp_info = page_info(source="local", source_id="c4", index=1, request=req_thumb_webp)
+            self.assertEqual(resp_info.url, "/api/library/local/c4/pages/1/file")
+
             # 6. Missing cache raises 404 Not Found (not 502 Bad Gateway)
             covers_dir = self.store.covers_dir("local", "c4")
             if covers_dir.exists():

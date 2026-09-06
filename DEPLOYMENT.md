@@ -393,8 +393,8 @@ docker push yourname/paper-room:v1.0.0
 1. **为什么直连会慢？**
    - 国内连接 Cloudflare 免费节点常被路由至美国西海岸 Anycast 节点；
    - 若 Cloudflare 判定为动态请求，每次加载都会触发跨太平洋往返回源（家庭宽带上行 + 跨洋晚高峰丢包导致 TCP 重传卡顿）。
-2. **静态扩展名别名（代码层已内置）**：
-   - 纸间已在图片与缩略图接口全面支持语义化静态扩展名（`/file.webp`、`/thumbnail.jpg`、`/covers/{index}/file.jpg`）；
+2. **静态扩展名别名与 WebP 收敛（代码层已内置）**：
+   - 纸间衍生图片与缩略图已全面显式收敛为 WebP（缩略图 `/thumbnail.webp`、封面 `/covers/{index}/file.webp` 与章节封面 `/cover.webp`；正文内页采用格式无关的 `/pages/{index}/file` 100% 保真原始源文件，同时兼容历史 `.{ext}` 静态别名）；
    - Cloudflare 及主流 CDN 看到 `.jpg` / `.webp` 会开箱自动识别为静态资源进行边缘缓存。
 3. **Cloudflare Cache Rule 推荐配置（彻底杜绝跨洋穿透）**：
    - 进入 Cloudflare Dashboard → **Caching** → **Cache Rules** → 点击 **Create rule**：
@@ -405,6 +405,9 @@ docker push yourname/paper-room:v1.0.0
      - **Edge TTL**: `Override origin` → `1 month`（1 个月）
      - **Browser TTL**: `Respect origin headers`（遵循纸间返回的 30 天 immutable 强缓存）
    - **效果**：首位读者翻阅或后台预热完成后，所有页面原图与缩略图直接由距离读者最近的 Cloudflare 边缘节点以 **HTTP/2 或 HTTP/3 (QUIC)** 多路复用毫秒级下发，源站回源流量降至 0。
+
+> 🛡️ **进阶零信任防护（防公网 IP 嗅探直连源站）**：
+> 若担心家庭公网 IP 被网络扫描器探测并直连高位端口绕过 Cloudflare，请参考 [《家庭网络部署指南》第 6.8 节](docs/HOMELAB_NETWORKING_GUIDE.md)，配置 Cloudflare Transform Rules 注入隐秘通信印章并在 NPM 中校验，实现 100% 拦截直连嗅探。
 
 ### 7.2 HTTP/2 与 HTTP/3 架构分工（为什么 Uvicorn 内部打印 HTTP/1.1？）
 

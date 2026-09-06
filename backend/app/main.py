@@ -309,7 +309,7 @@ def auth_login(req: LoginRequest, request: Request, response: Response) -> Login
     if AUTH_SECRET and secrets.compare_digest(secret, AUTH_SECRET):
         clear_ip_login_failures(ip)
         set_auth_cookie(response, AUTH_SECRET, secure=is_sec)
-        clear_device_cookie(response)  # Clean up any lingering guest device session
+        clear_device_cookie(response, secure=is_sec)  # Clean up any lingering guest device session
         return LoginResponse(ok=True, token=AUTH_SECRET, role="admin", username="馆长", user_id="curator")
 
     pass_item = get_guest_pass_by_token(secret)
@@ -446,8 +446,9 @@ def auth_logout(request: Request, response: Response) -> dict[str, bool]:
         dev = get_device_by_token(dev_token)
         if dev:
             delete_guest_device(dev["id"])
-    clear_auth_cookie(response)
-    clear_device_cookie(response)
+    is_sec = is_request_secure(request)
+    clear_auth_cookie(response, secure=is_sec)
+    clear_device_cookie(response, secure=is_sec)
     return {"ok": True}
 
 
@@ -1002,7 +1003,7 @@ def page_info(source: str, source_id: str, index: int, request: Request) -> Page
     page = next((p for p in meta.pages if p.index == index), None)
     return PageResponse(
         index=index,
-        url=f"/api/library/{source}/{source_id}/pages/{index}/file.webp",
+        url=f"/api/library/{source}/{source_id}/pages/{index}/file",
         cached=page.cached if page is not None else False,
     )
 

@@ -804,28 +804,16 @@ class ComicStore:
                 if clean_ext == "webp":
                     legacy_jpg = self.page_thumb_path(meta, index, ext="jpg")
                     if legacy_jpg.exists() and legacy_jpg.stat().st_size > 0:
-                        target.parent.mkdir(parents=True, exist_ok=True)
-                        tmp_target = target.with_name(f"{target.name}.tmp.{os.getpid()}.{threading.get_ident()}.webp")
                         try:
-                            with Image.open(legacy_jpg) as img:
-                                img = ImageOps.exif_transpose(img)
-                                if getattr(img, "is_animated", False):
-                                    img.seek(0)
-                                if img.mode not in {"RGB", "L"}:
-                                    img = img.convert("RGB")
-                                img.save(
-                                    tmp_target,
-                                    format="WEBP",
-                                    quality=COVER_WEBP_QUALITY,
-                                    method=4,
-                                )
-                            os.replace(tmp_target, target)
-                            # Incrementally clean up legacy .jpg
-                            legacy_jpg.unlink(missing_ok=True)
-                            return target
+                            res = self._convert_image_to_webp(legacy_jpg, target)
+                            try:
+                                legacy_jpg.unlink(missing_ok=True)
+                            except OSError:
+                                pass
+                            return res
                         except Exception:
-                            tmp_target.unlink(missing_ok=True)
                             # Fallback to generating from page_path if legacy jpg was corrupted
+                            pass
 
                 # Normal generation from full page
                 page_path = self.ensure_page(fetched, index)
@@ -851,8 +839,11 @@ class ComicStore:
                             )
                             os.replace(tmp_target, target)
                             # Clean up legacy .jpg if it existed
-                            legacy_jpg = self.page_thumb_path(meta, index, ext="jpg")
-                            legacy_jpg.unlink(missing_ok=True)
+                            try:
+                                legacy_jpg = self.page_thumb_path(meta, index, ext="jpg")
+                                legacy_jpg.unlink(missing_ok=True)
+                            except OSError:
+                                pass
                         finally:
                             tmp_target.unlink(missing_ok=True)
                     else:

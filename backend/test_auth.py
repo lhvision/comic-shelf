@@ -426,7 +426,13 @@ def test_stepped_covers():
 
 
 def test_custom_cookie_names():
-    # Verify custom cookie extraction and cookie setting
+    # 1. Verify sanitization in config
+    assert config_mod._sanitize_cookie_name("valid_name-123", "default") == "valid_name-123"
+    assert config_mod._sanitize_cookie_name("invalid name with spaces", "default") == "default"
+    assert config_mod._sanitize_cookie_name("invalid;semi=equal", "default") == "default"
+    assert config_mod._sanitize_cookie_name("", "default") == "default"
+
+    # 2. Verify custom cookie extraction and cookie setting
     orig_cookie = auth_mod.COOKIE_NAME
     orig_dev_cookie = auth_mod.DEVICE_COOKIE_NAME
     try:
@@ -450,6 +456,18 @@ def test_custom_cookie_names():
         auth_mod.set_auth_cookie(resp, "test-token", secure=True)
         set_cookie_header = resp.headers.get("set-cookie", "")
         assert "custom_vault_token=test-token" in set_cookie_header
+
+        # Check response cookie clearing with secure flag
+        resp_clear = Response()
+        auth_mod.clear_auth_cookie(resp_clear, secure=True)
+        auth_mod.clear_device_cookie(resp_clear, secure=True)
+        clear_cookie_raw = resp_clear.raw_headers
+        clear_headers = [v.decode("latin-1") for k, v in clear_cookie_raw if k.lower() == b"set-cookie"]
+        all_clear = " ".join(clear_headers)
+        assert "custom_vault_token=" in all_clear
+        assert "custom_vault_device=" in all_clear
+        assert "secure" in all_clear.lower()
+        assert "httponly" in all_clear.lower()
     finally:
         auth_mod.COOKIE_NAME = orig_cookie
         auth_mod.DEVICE_COOKIE_NAME = orig_dev_cookie

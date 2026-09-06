@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import re
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -60,9 +61,27 @@ ENABLE_DOCS = os.getenv("COMIC_SHELF_ENABLE_DOCS", "false").lower() in ("1", "tr
 # Curator key for full access (blank = open access, non-blank = protected)
 AUTH_SECRET = os.getenv("COMIC_SHELF_SECRET", os.getenv("COMIC_SHELF_AUTH_TOKEN", "")).strip()
 
+_VALID_COOKIE_NAME_RE = re.compile(r"^[a-zA-Z0-9_-]+$")
+
+
+def _sanitize_cookie_name(val: str, default: str) -> str:
+    s = val.strip()
+    if not s or not _VALID_COOKIE_NAME_RE.match(s):
+        return default
+    return s
+
+
 # Cookie names for authentication and device identification (customizable to obfuscate open-source defaults)
-COOKIE_NAME = os.getenv("COMIC_SHELF_COOKIE_NAME", "comic_shelf_token").strip() or "comic_shelf_token"
-DEVICE_COOKIE_NAME = os.getenv("COMIC_SHELF_DEVICE_COOKIE_NAME", "comic_shelf_device").strip() or "comic_shelf_device"
+COOKIE_NAME = _sanitize_cookie_name(
+    os.getenv("COMIC_SHELF_COOKIE_NAME", "comic_shelf_token"),
+    "comic_shelf_token",
+)
+DEVICE_COOKIE_NAME = _sanitize_cookie_name(
+    os.getenv("COMIC_SHELF_DEVICE_COOKIE_NAME", "comic_shelf_device"),
+    "comic_shelf_device",
+)
+if COOKIE_NAME == DEVICE_COOKIE_NAME:
+    DEVICE_COOKIE_NAME = f"{COOKIE_NAME}_dev"
 
 # Anti-hotlinking / storage bucket abuse protection
 ENABLE_HOTLINK_PROTECTION = os.getenv("COMIC_SHELF_ENABLE_HOTLINK_PROTECTION", "true").lower() in ("1", "true", "yes")

@@ -297,15 +297,21 @@ def set_device_cookie(response: Response, device_token: str, secure: bool = Fals
     )
 
 
-def clear_auth_cookie(response: Response) -> None:
+def clear_auth_cookie(response: Response, secure: bool = False) -> None:
     response.delete_cookie(
         key=COOKIE_NAME,
         path="/",
+        secure=secure,
+        httponly=True,
+        samesite="lax",
     )
 
 
-def clear_device_cookie(response: Response) -> None:
+def clear_device_cookie(response: Response, secure: bool = False) -> None:
     response.delete_cookie(
         key=DEVICE_COOKIE_NAME,
         path="/",
+        secure=secure,
+        httponly=True,
+        samesite="lax",
     )

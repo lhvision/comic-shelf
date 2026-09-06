@@ -177,7 +177,9 @@ NPM 作为单入口反代网关，负责接收来自路由器的流量，完成�
      - [x] **HTTP/2 Support**（开启多路复用，极大提升图片并发吞吐）
      - [x] **HSTS Enabled**
      - [ ] _HSTS Sub-domains（保持不勾选，避免未来纯 HTTP 内网测试服务被误锁）_
-4. 点击 **Save** 保存。
+4. **Advanced 选项卡（强烈推荐零信任加固）**：
+   - 参考后文【6.8 节】，在 Custom Nginx Configuration 文本框中粘贴回源印章校验代码，直接将针对家庭公网 IP 高位端口（如 38443）的恶意探测在 NPM 网关层 100% 阻断为 403。
+5. 点击 **Save** 保存。
 
 ---
 
@@ -306,6 +308,7 @@ _原理：若希望在 Cloudflare 开启常态「Under Attack 模式（五秒盾
      - [x] 浏览器完整性检查
      - [x] **安全级别（Security Level —— 跳过 Under Attack 质询的核心）**
 3. 点击右下角 **Deploy（部署）**。
+   > 💡 **重要排序提示**：若在 Cloudflare WAF 中配置了额外的恶意 IP 黑名单（Block）或地区封锁规则，请务必将其拖拽置于规则 6.6 之上（优先级高于 6.6），避免恶意 IP 凭借伪造该 Cookie 绕过基础 IP 防御。
 
 ### 6.7 配置 Cloudflare WAF 边缘鉴权与防盗链规则（封堵无痕/未登录窃取 Edge 缓存）
 
@@ -338,6 +341,59 @@ _原理：虽然未鉴权的访客无法通过口令进入主界面，但若合�
 > 2. **防范 WAF 规则配置界面的「运算符反转与表格展示误导」**：
 >    - 在 Cloudflare 默认的可视化表单生成器中，极易误选 `Cookie 包含 (contains)` 而漏掉 `not`。若配置成 `Cookie 包含 comic_shelf_token ➔ 阻止`，将导致**持有合法口令已登录的用户被自身 Cookie 误杀 403 阻断**！务必点击右上角 `Edit expression` 粘贴 raw expression。
 >    - **控制台展示特性**：Cloudflare 规则列表表格在展示 `and not (...)` 复杂逻辑时，会简写为 `Cookie 包含...`，此为 Cloudflare UI 的缩略展示特性，只要 raw expression 包含 `not` 即可放心使用。
+
+---
+
+### 6.8 配置 Cloudflare 专属源站通信印章与 NPM 准入门禁（彻底封杀公网 IP 嗅探直连，实现零信任闭环）
+
+_原理：虽然公网域名 `comic.yourdomain.com` 受到 Cloudflare 严密保护，但家庭宽带的公网 IP 若曾被网络扫描器（如 Shodan/Censys）记录，攻击者可能尝试直接扫描 `https://<家庭公网IP>:38443` 绕过 Cloudflare WAF。通过利用 Cloudflare Transform Rules 在向源站转发时注入私有请求头（`X-Origin-Secret`），并在 NPM 代理主机的 Advanced 选项卡中进行印章与内网白名单校验，即可实现：**仅放行持合法印章的回源流量与家庭局域网 Wi-Fi 直连，一切外部公网 IP 直连探测在 NPM 网关层直接返回 403 Forbidden 击落**。_
+
+#### 步骤 1：在 Cloudflare 后台配置 Transform Rule 注入专属通信印章
+
+1. 登录 [Cloudflare 控制台](https://dash.cloudflare.com/) ➔ 进入你的域名；
+2. 左侧菜单点击 **Rules（规则）** ➔ **Transform Rules（转换规则）** ➔ 选项卡选择 **Modify Request Header（修改请求头）**；
+3. 点击 **Create rule（创建规则）**：
+   - **Rule name**：`paper-room-origin-auth-secret`
+   - **When incoming requests match...**：选择 **`All incoming requests`（所有传入请求）**（或自定义限定 `http.host eq "comic.yourdomain.com"`）；
+   - **Modify request headers**：
+     - **操作**：选择 **`Set static`（设置静态）**
+     - **Header name**：`X-Origin-Secret`
+     - **Value**：输入生成的随机高强度长密钥（例如在终端执行 `python3 -c "import secrets; print('PR_Sec_' + secrets.token_urlsafe(24))"` 生成）；
+4. 点击右下角 **Deploy（部署）**。
+
+#### 步骤 2：在 NPM Proxy Host 的 Advanced 选项卡中配置准入校验
+
+1. 打开 NPM 管理后台 ➔ 进入 **Hosts ➔ Proxy Hosts** ➔ 编辑 `comic.yourdomain.com`；
+2. 切换到最右侧的 **`Advanced`（高级）** 选项卡；
+3. 在 **`Custom Nginx Configuration`** 多行文本框中粘贴以下配置（将密钥替换为你步骤 1 中填写的密钥）：
+
+```nginx
+# 1. 默认拒绝
+set $origin_auth_ok 0;
+
+# 2. 允许家庭局域网设备直连（内网 Split-Horizon DNS 免检）
+if ($remote_addr ~* "^(192\.168\.|10\.|172\.(1[6-9]|2[0-9]|3[0-1])\.|127\.0\.0\.1|::1|fe80:|fd)") {
+    set $origin_auth_ok 1;
+}
+
+# 3. 校验 Cloudflare 专属暗号（只有经过小黄云 CDN 转发的合法回源才具备此印章）
+if ($http_x_origin_secret = "YOUR_ORIGIN_SECRET_KEY") {
+    set $origin_auth_ok 1;
+}
+
+# 4. 拦截直连嗅探与外部公网 IP 扫描
+if ($origin_auth_ok = 0) {
+    return 403;
+}
+```
+
+4. 点击 **Save** 保存。
+
+> 💡 **架构优势**：
+>
+> 1. **全自动免维护**：无需繁琐录入或维护 Cloudflare 的数十个动态 IPv4/IPv6 CIDR 段；
+> 2. **避开 Nginx Real-IP 变量陷阱**：避免了 `real_ip_header` 将 `$remote_addr` 冲刷为客户端访客 IP 后导致 `allow/deny` 误杀合法用户的问题；
+> 3. **完美兼容内外网分流**：家庭 Wi-Fi 设备通过内网 DNS 直连仍可千兆秒开。
 
 ---
 

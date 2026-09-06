@@ -508,6 +508,17 @@
     4. **PWA / SW 专属绿色通道**：确保第 1 条规则 `paper-room-pwa-waf-skip` 严格置顶并勾选 Skip 安全级别与所有质询；
     5. **延长质询通过期**：在安全性设置中将「质询通过期限 (Challenge Passage)」提升为 `1 month`，消除短期过期闪断。
 
+### 57. Nginx 反代网关源站 IP 白名单与 Real-IP 变量覆盖误杀陷阱（Nginx Real-IP Overwrite & Origin Access Control Trap）
+
+- **本质**：
+  1. **Nginx `$remote_addr` 被 `real_ip_header` 冲刷引发全员 403 误杀**：为了防御恶意扫描器探测家庭公网 IP 高位端口并绕过 Cloudflare WAF，许多架构师习惯在 Nginx / NPM 中配置 `allow <Cloudflare_IP>; deny all;`。但若 Nginx 已经或未来配置了 `real_ip_header CF-Connecting-IP;`，Nginx 的核心变量 `$remote_addr` 会被模块静默重写为**终端真实客户端的公网 IP**（如手机蜂窝网络 IP）。此时 Nginx 的 `allow` 指令拿着客户端的真实 IP 去比对 Cloudflare 节点网段，判定不匹配后**将 100% 的合法正常读者全量阻断为 403 Forbidden**；
+  2. **动态 CDN IP 段维护成本与失效风险**：Cloudflare 虽有公布的 Anycast 节点网段，但在全球范围内会不定期扩容或临时启用新 IP。在反代层硬编码数十个 CIDR 不仅繁琐，一旦命中未及时收录的新节点就会导致突发性回源中断。
+- **红线与防误伤**：
+  - **不要**在配置了 Real-IP 穿透的网关层使用基于 `$remote_addr` 的 `allow/deny` 指令限制 CDN 回源；
+  - **放行/改用**：
+    1. **专属通信暗号（Transform Rules + Custom Header 校验）**：在 Cloudflare Dashboard 配置一条 `Transform Rules ➔ Modify Request Header`，为所有合法回源流量注入专属私有请求头（如 `X-Origin-Secret: <32位强随机密钥>`）；
+    2. **NPM Advanced 选项卡免维护准入**：在 NPM Proxy Host 的 Advanced 文本框中写入校验逻辑，优先放行局域网网段（`192.168.0.0/16` 等，确保内外网分流千兆直连免检），仅对公网流量核验 `$http_x_origin_secret`。任何公网 IP 嗅探直连由于缺失该私有标头，在网关层 100% 击落返回 403，兼得极致安全性与永久免维护。
+
 ---
 
 ## 🚦 交付门禁（四步必跑）
