@@ -69,8 +69,9 @@
   - 每本漫画展示 4 张封面，默认采用 **12 本/批（严格对应 12 × 4 = 48 张封面图）** 的增量呈现步长；
   - 接入 VueUse `useIntersectionObserver` 监听底部哨兵平滑展开；
   - 卡片使用 `contain: layout style` + `container-type: inline-size` 严格隔离，杜绝浮动裁切瑕疵。
-- **统一矢量图标集与现代浮层基建**：
+- **统一矢量图标集、通用胶囊与现代浮层基建**：
   - 全站图标收敛到 `src/components/icons/`（1.8px 细线条描边 / 朱砂质感），零 Unicode 伪字符（`✕`/`✓`）；
+  - **通用微件胶囊体系（`AppChip`）**：单一真相源收敛全站分类标签、筛选切换器（“只看喜欢”/“只看已读”）、计数值与可移除标记，原生支持多态语义（`<span>` ⇄ `<button aria-pressed>`）；
   - 基于 HTML Popover API 与 CSS Anchor Positioning 规范构建现代浮层，包含 `Modal`、`AppPopover`、`AppDropdown` 与带悬停安全桥的 `AppTooltip`。
 - **PWA 独立安装、离线存储与零轮询系统事件流**：
   - **标准 PWA 规范支持**：完整支持桌面/移动端独立窗口安装（Standalone）、离线秒开与后台静默更新，符合 W3C Web App Manifest 与 Service Worker 规范；

@@ -51,6 +51,7 @@
 | `src/components/Modal.vue`                       | 通用顶层模态对话框：基于 HTML5 原生 `<dialog>` Top Layer 与无障碍焦点圈闭，支持声明式关闭指令 (`commandfor`)、焦点记忆自动返还、防穿透微弹反馈与子表单安全防护 |
 | `src/components/SegmentedTabs.vue`               | 典藏分段选项卡：支持泛型 `TabItem<T>`/字符串、左右/Home/End 键导航与多尺寸                                                                                     |
 | `src/components/AppButton.vue`                   | 通用典藏按钮：支持 primary / secondary / soft / ghost / danger 多种变体                                                                                        |
+| `src/components/AppChip.vue`                     | 通用微件胶囊：多态无障碍渲染（`<span>` ⇄ `<button aria-pressed>`）、标签/筛选/计数/删除单一真理源                                                              |
 | `src/components/AppIcon.vue`                     | 零分支矢量图标分发器（基于 `<component :is="ICON_MAP[name]">` 动态渲染）                                                                                       |
 | `src/components/icons/`                          | 纸间统一矢量图标集（`BaseIcon.vue` 底座 + 23 个原子 `Icon*.vue` 组件）                                                                                         |
 | `src/components/AppTooltip.vue`                  | 现代声明式轻量气泡提示组件（Popover API + CSS Anchor + 悬停安全桥）                                                                                            |

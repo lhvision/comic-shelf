@@ -519,6 +519,14 @@
     1. **专属通信暗号（Transform Rules + Custom Header 校验）**：在 Cloudflare Dashboard 配置一条 `Transform Rules ➔ Modify Request Header`，为所有合法回源流量注入专属私有请求头（如 `X-Origin-Secret: <32位强随机密钥>`）；
     2. **NPM Advanced 选项卡免维护准入**：在 NPM Proxy Host 的 Advanced 文本框中写入校验逻辑，优先放行局域网网段（`192.168.0.0/16` 等，确保内外网分流千兆直连免检），仅对公网流量核验 `$http_x_origin_secret`。任何公网 IP 嗅探直连由于缺失该私有标头，在网关层 100% 击落返回 403，兼得极致安全性与永久免维护。
 
+### 58. 微件胶囊散落手写与无障碍按压态断层（Universal Chip & Polymorphic ARIA Trap）
+
+- **本质**：在业务组件中各自手动拼接 `<button class="chip chip-button">` 或 `<span class="tag-chip">`，不仅引发内边距、圆角与字阶漂移，而且极易漏标 `:aria-pressed`、`type="button"` 与事件冒泡拦截（如点击删除标签误穿透触发表单提交或外层路由卡片跳转）。
+- **复现场景**：在筛选栏手写带图标切换按钮未挂载 `aria-pressed`，读屏器无法感知开关状态；在标签管理弹窗内手写删除按钮未调用 `event.stopPropagation()` 触发卡片选中。
+- **红线与防误伤**：
+  - **不要**在业务组件内散落手写原生 `<button class="chip chip-button">`、`.tag-chip` 或带删除按钮的胶囊；
+  - **放行/改用**：统一使用 `AppChip`。纯展示场景自适应输出语义化 `<span>`；筛选与动作场景自动升格为带有焦点环与 `:aria-pressed` 的 `<button type="button">`；可删除场景通过 `removable` 启用内置关闭微按钮并自动在底层阻断冒泡。
+
 ---
 
 ## 🚦 交付门禁（四步必跑）

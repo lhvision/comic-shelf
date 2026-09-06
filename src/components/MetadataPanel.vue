@@ -3,6 +3,7 @@ import { computed } from 'vue'
 import { useToggle } from '@vueuse/core'
 import type { ComicMeta } from '@/types'
 import AppTextClamp from '@/components/AppTextClamp.vue'
+import AppChip from '@/components/AppChip.vue'
 
 const props = defineProps<{
   meta: ComicMeta
@@ -72,7 +73,7 @@ const fieldRows = [
     <div class="meta-block">
       <h3>分类标签</h3>
       <div class="cluster">
-        <span v-for="tag in meta.tags" :key="tag" class="chip">{{ tag }}</span>
+        <AppChip v-for="tag in meta.tags" :key="tag">{{ tag }}</AppChip>
         <span v-if="meta.tags.length === 0" class="muted">无标签</span>
       </div>
     </div>

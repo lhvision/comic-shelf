@@ -4,6 +4,7 @@ import type { LibrarySummary } from '@/types'
 import HtmlCanvasSurface from '@/components/HtmlCanvasSurface.vue'
 import FavoriteButton from '@/components/FavoriteButton.vue'
 import CacheProgress from '@/components/CacheProgress.vue'
+import AppChip from '@/components/AppChip.vue'
 import { useAuth } from '@/composables/useAuth'
 import { isCompletedComic } from '@/composables/useLibraryFilter'
 import { api, coverSrcset } from '@/api/client'
@@ -82,7 +83,7 @@ function prefetch() {
         <h2 class="title line-clamp-2">{{ comic.title }}</h2>
         <p class="meta">{{ comic.authors.join(' / ') || '佚名' }} · {{ comic.page_count }}P</p>
         <div v-if="primaryTags.length" class="tags">
-          <span v-for="tag in primaryTags" :key="tag" class="chip">{{ tag }}</span>
+          <AppChip v-for="tag in primaryTags" :key="tag">{{ tag }}</AppChip>
         </div>
         <div class="foot">
           <span>{{ comic.views }} 次观看</span>

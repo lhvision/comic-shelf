@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import AppIcon from '@/components/AppIcon.vue'
+import AppChip from '@/components/AppChip.vue'
 
 /**
  * 书架标签筛选条 —— 「只看喜欢」+ 标签 chips + 当前筛选提示。
@@ -64,63 +65,50 @@ function clearFilter() {
 <template>
   <div class="filter-toolbar">
     <div class="filter-cluster cluster" aria-label="书库筛选与标签">
-      <button
-        class="chip chip-button favorite-filter"
-        type="button"
-        :aria-pressed="favoritesOnly"
-        @click="emit('toggleFavorites')"
-      >
-        <AppIcon class="heart-icon" :name="favoritesOnly ? 'heart-filled' : 'heart'" size="xs" />
+      <AppChip class="favorite-filter" :pressed="favoritesOnly" @click="emit('toggleFavorites')">
+        <template #prefix>
+          <AppIcon class="heart-icon" :name="favoritesOnly ? 'heart-filled' : 'heart'" size="xs" />
+        </template>
         <span>只看喜欢</span>
-      </button>
+      </AppChip>
 
-      <button
-        class="chip chip-button completed-filter"
-        type="button"
-        :aria-pressed="completedOnly"
-        @click="emit('toggleCompleted')"
-      >
-        <AppIcon class="archive-icon" name="archive" size="xs" />
+      <AppChip class="completed-filter" :pressed="completedOnly" @click="emit('toggleCompleted')">
+        <template #prefix>
+          <AppIcon class="archive-icon" name="archive" size="xs" />
+        </template>
         <span>只看已读</span>
-      </button>
+      </AppChip>
 
       <span v-if="tagCounts.length" class="filter-divider" aria-hidden="true" />
 
       <template v-if="tagCounts.length">
-        <button
-          class="chip chip-button"
-          type="button"
-          :aria-pressed="activeTag === ''"
-          @click="clearFilter"
-        >
-          全部
-        </button>
-        <button
+        <AppChip :pressed="activeTag === ''" @click="clearFilter"> 全部 </AppChip>
+        <AppChip
           v-for="[tag, count] in primaryTags"
           :key="tag"
-          class="chip chip-button"
-          type="button"
-          :aria-pressed="activeTag === tag"
+          :pressed="activeTag === tag"
+          :count="count"
           @click="selectTag(tag)"
         >
-          {{ tag }} <small class="tag-count">{{ count }}</small>
-        </button>
+          {{ tag }}
+        </AppChip>
 
-        <button
+        <AppChip
           v-if="moreCount > 0"
-          class="chip chip-button more-tags"
-          type="button"
+          class="more-tags"
           :aria-expanded="expanded"
           @click="expanded = !expanded"
         >
           <span>{{ expanded ? '收起标签' : `更多 · ${moreCount}` }}</span>
-          <AppIcon
-            name="chevron-down"
-            size="xs"
-            class="more-chevron"
-            :class="{ 'is-rotated': expanded }"
-          />
-        </button>
+          <template #suffix>
+            <AppIcon
+              name="chevron-down"
+              size="xs"
+              class="more-chevron"
+              :class="{ 'is-rotated': expanded }"
+            />
+          </template>
+        </AppChip>
       </template>
     </div>
 
@@ -133,17 +121,16 @@ function clearFilter() {
     >
       <div class="more-tags-inner">
         <div class="overflow-cluster cluster">
-          <button
+          <AppChip
             v-for="[tag, count] in overflowTags"
             :key="tag"
-            class="chip chip-button"
-            type="button"
             :tabindex="expanded ? 0 : -1"
-            :aria-pressed="activeTag === tag"
+            :pressed="activeTag === tag"
+            :count="count"
             @click="selectTag(tag)"
           >
-            {{ tag }} <small class="tag-count">{{ count }}</small>
-          </button>
+            {{ tag }}
+          </AppChip>
         </div>
       </div>
     </div>
@@ -197,12 +184,6 @@ function clearFilter() {
   height: 1.25rem;
   background: var(--line-strong);
   margin-inline: var(--space-1);
-}
-
-.tag-count {
-  font-family: var(--font-mono);
-  font-size: var(--text-caption);
-  opacity: 0.75;
 }
 
 .more-tags {

@@ -11,6 +11,7 @@
 1. [设计哲学与品牌隐喻（Design Philosophy & Metaphor）](#1-设计哲学与品牌隐喻design-philosophy--metaphor)
 2. [设计系统 Token 契约（Design Tokens System）](#2-设计系统-token-契约design-tokens-system)
 3. [核心组件架构与变体规范（Component Architecture）](#3-核心组件架构与变体规范component-architecture)
+   - [3.6 通用微件胶囊体系（Universal Chip & Filter System）](#36-通用微件胶囊体系universal-chip--filter-system)
 4. [核心设计红线与避坑定律（Permanent Laws & Anti-Regression Anchors）](#4-核心设计红线与避坑定律permanent-laws--anti-regression-anchors)
    - [§13 Composable 顶层解构定律](#sec-13)
    - [§12 破坏性操作双重防护定律](#sec-12)
@@ -133,6 +134,19 @@
 - **物理分层与横向翻转对齐（Physical Separation & Dynamic Alignment）**：
   - **装饰与内滚物理分层**：根容器 `.tooltip__tip` 保持 `overflow: visible; padding: 0;`，保护 `::before`（45° 指示小三角）与 `::after`（WCAG 悬停安全桥）自由延伸而不被计入盒模型滚动范围；内部独立内容容器 `.tooltip__content` 承载 `padding` 与 `max-height + overflow-y: auto`，从底层杜绝短文本“幽灵滚动条”；
   - **横向碰撞箭头自适应**：浮层响应式监测几何相对位置（`actualAlign`），当视口边界触发 `flip-inline` 导致浮层向左翻转时，小三角自动从左端（`start`）动态翻转至右端（`end: right 0.85rem`），精准指向触发源；详情页 2 列网格右列天然支持 `:tooltip-align="end"` 默认端对齐。
+
+### 3.6 通用微件胶囊体系（Universal Chip & Filter System）
+
+- **统一原子组件（`AppChip.vue`）**：收敛全站标签、筛选切换器、计数胶囊与可移除微件；
+- **多态无障碍渲染（Polymorphic ARIA Rendering）**：
+  - 纯展示标签（如作品分类标签）默认渲染为极轻量语义 `<span>`；
+  - 绑定交互事件（`@click`）、状态切换（`pressed !== undefined`）或显式声明 `interactive: true` 时，自动升格为 `<button type="button">`；
+  - 状态切换模式下原生绑定 `:aria-pressed="pressed ? 'true' : 'false'"`，支持键盘焦点环与活动水墨态；
+- **契约解耦与槽位优先**：
+  - 支持 `count` 计数字段、`icon` 前置图标快捷声明；
+  - 提供 `#prefix`、`#suffix`、`#count` 与 `#remove-icon` 精准插槽，便于扩展心形收藏态与展开旋转折叠箭头；
+- **可删除胶囊闭环（Removable Chip）**：
+  - `removable: true` 原生挂载无障碍关闭微按钮，点击触发 `emit('remove', event)` 并在底层强制 `event.stopPropagation()`，杜绝点击删除误触父级跳转。
 
 ---
 

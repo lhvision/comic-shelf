@@ -4,6 +4,7 @@ import type { LibrarySummary } from '@/types'
 import FavoriteButton from '@/components/FavoriteButton.vue'
 import CacheProgress from '@/components/CacheProgress.vue'
 import AppTextClamp from '@/components/AppTextClamp.vue'
+import AppChip from '@/components/AppChip.vue'
 import { api, coverSrcset } from '@/api/client'
 import { useCoverTransition } from '@/composables/useCoverTransition'
 import { useAuth } from '@/composables/useAuth'
@@ -157,7 +158,7 @@ const cardTransitionName = computed(
           tooltip-width="24rem"
         />
         <div v-if="primaryTags.length" class="cluster card-tags">
-          <span v-for="tag in primaryTags" :key="tag" class="chip">{{ tag }}</span>
+          <AppChip v-for="tag in primaryTags" :key="tag">{{ tag }}</AppChip>
         </div>
         <div class="card-foot">
           <span class="views">{{ comic.views }} 次观看</span>

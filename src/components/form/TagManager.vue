@@ -2,7 +2,7 @@
 import { computed, ref } from 'vue'
 import { useLibraryStore } from '@/stores/library'
 import AppButton from '@/components/AppButton.vue'
-import AppIcon from '@/components/AppIcon.vue'
+import AppChip from '@/components/AppChip.vue'
 
 const props = withDefaults(
   defineProps<{
@@ -66,17 +66,15 @@ function onTagKeyDown(e: KeyboardEvent) {
 <template>
   <div class="tag-manager">
     <div class="tag-chips">
-      <span v-for="(tag, idx) in currentTags" :key="tag" class="tag-chip">
-        <span class="tag-chip__text">{{ tag }}</span>
-        <button
-          class="tag-chip__del"
-          type="button"
-          :aria-label="`删除标签 ${tag}`"
-          @click="removeTag(idx)"
-        >
-          <AppIcon name="close" size="xs" :stroke-width="2.2" />
-        </button>
-      </span>
+      <AppChip
+        v-for="(tag, idx) in currentTags"
+        :key="tag"
+        removable
+        :remove-aria-label="`删除标签 ${tag}`"
+        @remove="removeTag(idx)"
+      >
+        {{ tag }}
+      </AppChip>
       <span v-if="currentTags.length === 0" class="muted-hint">暂无标签</span>
     </div>
 
@@ -102,15 +100,9 @@ function onTagKeyDown(e: KeyboardEvent) {
     <div v-if="popularTags.length > 0" class="popular-tags-bar">
       <span class="popular-title">💡 热门快选：</span>
       <div class="popular-chips">
-        <button
-          v-for="popTag in popularTags"
-          :key="popTag"
-          class="pop-tag-chip"
-          type="button"
-          @click="addTag(popTag)"
-        >
+        <AppChip v-for="popTag in popularTags" :key="popTag" @click="addTag(popTag)">
           + {{ popTag }}
-        </button>
+        </AppChip>
       </div>
     </div>
   </div>
@@ -132,46 +124,6 @@ function onTagKeyDown(e: KeyboardEvent) {
   gap: var(--space-2);
   min-height: 2rem;
   align-items: center;
-}
-
-.tag-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.25rem;
-  padding: 0.2rem 0.55rem;
-  border: 1px solid var(--line);
-  border-radius: var(--radius-1);
-  background: var(--paper-0);
-  font-size: var(--text-xs);
-  line-height: 1.2;
-  color: var(--ink-0);
-}
-
-.tag-chip__text {
-  display: inline-block;
-}
-
-.tag-chip__del {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 1rem;
-  height: 1rem;
-  margin-left: 0.1rem;
-  padding: 0;
-  border: 0;
-  border-radius: 50%;
-  background: transparent;
-  color: var(--ink-2);
-  cursor: pointer;
-  transition:
-    color var(--duration-1) var(--ease-out),
-    background-color var(--duration-1) var(--ease-out);
-}
-
-.tag-chip__del:hover {
-  background: var(--accent-soft);
-  color: var(--accent-strong);
 }
 
 .tag-input-row {
@@ -203,29 +155,6 @@ function onTagKeyDown(e: KeyboardEvent) {
   flex-wrap: wrap;
   gap: var(--space-2);
   row-gap: var(--space-2);
-}
-
-.pop-tag-chip {
-  display: inline-flex;
-  align-items: center;
-  padding: 0.2rem 0.55rem;
-  border: 1px solid var(--line);
-  border-radius: var(--radius-1);
-  background: var(--paper-0);
-  font-size: var(--text-xs);
-  line-height: 1.2;
-  color: var(--ink-1);
-  cursor: pointer;
-  transition:
-    background-color var(--duration-1) var(--ease-out),
-    border-color var(--duration-1) var(--ease-out),
-    color var(--duration-1) var(--ease-out);
-}
-
-.pop-tag-chip:hover {
-  background: var(--accent-soft);
-  border-color: var(--accent);
-  color: var(--accent-strong);
 }
 
 .muted-hint {

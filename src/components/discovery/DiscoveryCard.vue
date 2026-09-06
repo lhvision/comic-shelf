@@ -3,6 +3,7 @@ import { computed } from 'vue'
 import AppButton from '@/components/AppButton.vue'
 import AppIcon from '@/components/AppIcon.vue'
 import AppTextClamp from '@/components/AppTextClamp.vue'
+import AppChip from '@/components/AppChip.vue'
 import type { DiscoveryItem } from '@/types'
 
 const props = defineProps<{
@@ -33,7 +34,9 @@ const libraryRoute = computed(() => `/comic/${props.item.source}/${props.item.so
       >
         <div class="cover-placeholder">
           <span class="cover-pattern-id">{{ item.id }}</span>
-          <span v-if="item.category" class="cover-category-pill">{{ item.category }}</span>
+          <AppChip v-if="item.category" size="sm" class="cover-category-pill">{{
+            item.category
+          }}</AppChip>
           <span class="cover-hint">
             <span>原站预览</span>
             <AppIcon name="external-link" size="xs" />
@@ -43,7 +46,9 @@ const libraryRoute = computed(() => `/comic/${props.item.source}/${props.item.so
       <div v-else class="cover-visual">
         <div class="cover-placeholder">
           <span class="cover-pattern-id">{{ item.id }}</span>
-          <span v-if="item.category" class="cover-category-pill">{{ item.category }}</span>
+          <AppChip v-if="item.category" size="sm" class="cover-category-pill">{{
+            item.category
+          }}</AppChip>
         </div>
       </div>
 
@@ -200,13 +205,7 @@ const libraryRoute = computed(() => `/comic/${props.item.source}/${props.item.so
 }
 
 .cover-category-pill {
-  display: inline-block;
-  padding: 0.125rem 0.5rem;
-  border-radius: 999px;
   background: var(--paper-0);
-  border: 1px solid var(--line);
-  font-size: var(--text-caption);
-  color: var(--ink-1);
 }
 
 .cover-hint {

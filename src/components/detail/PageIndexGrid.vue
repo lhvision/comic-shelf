@@ -2,6 +2,7 @@
 import { nextTick, ref } from 'vue'
 import PageTile from '@/components/detail/PageTile.vue'
 import AppIcon from '@/components/AppIcon.vue'
+import AppChip from '@/components/AppChip.vue'
 import type { PageRecord } from '@/types'
 
 /**
@@ -83,9 +84,9 @@ function handleCollapse() {
       <span class="page-count-note">
         {{ chapterLabel ? `${chapterLabel} · ` : '' }}{{ showingRange }}
       </span>
-      <span v-if="remainingPages > 0" class="page-remaining-chip">
+      <AppChip v-if="remainingPages > 0" size="sm" tone="accent" class="page-remaining-chip">
         余 {{ remainingPages }} 页已收纳
-      </span>
+      </AppChip>
     </div>
 
     <TransitionGroup tag="div" name="folio-card" class="page-grid">
@@ -207,15 +208,7 @@ function handleCollapse() {
 }
 
 .page-remaining-chip {
-  display: inline-flex;
-  align-items: center;
   font-family: var(--font-mono);
-  font-size: var(--text-caption);
-  color: var(--accent);
-  background: color-mix(in oklab, var(--accent) 10%, transparent);
-  border: 1px solid color-mix(in oklab, var(--accent) 22%, transparent);
-  padding: 0.1rem var(--space-2);
-  border-radius: var(--radius-pill);
 }
 
 .page-grid {
