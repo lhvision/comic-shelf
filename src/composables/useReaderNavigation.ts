@@ -13,6 +13,7 @@
 
 import { getCurrentScope, onScopeDispose, ref, type ComputedRef, type Ref } from 'vue'
 import type { Router } from 'vue-router'
+import { useDebounceFn } from '@vueuse/core'
 import { pageFileUrl } from '@/api/client'
 import type { Chapter } from '@/types'
 import type { ReaderSettings } from '@/composables/useReaderSettings'
@@ -212,8 +213,8 @@ export function useReaderNavigation(options: UseReaderNavigationOptions) {
     resetAutoTurnCountdown()
   }
 
-  /** 预加载当前页前后相邻分组的图片资源到浏览器磁盘/内存缓存 */
-  function preloadAround(page: number) {
+  /** 预加载当前页前后相邻分组的图片资源到浏览器磁盘/内存缓存（防抖 150ms 避免读者高速拖拽滚动条时途经大量页码瞬发海量无效预取） */
+  const preloadAround = useDebounceFn((page: number) => {
     const groupIndex = groupIndexForPage(page)
     const startGroup = Math.max(0, groupIndex - 1)
     const endGroup = Math.min(pageGroups.value.length - 1, groupIndex + 1)
@@ -223,7 +224,7 @@ export function useReaderNavigation(options: UseReaderNavigationOptions) {
         image.src = pageFileUrl(source.value, sourceId.value, targetPage)
       }
     }
-  }
+  }, 150)
 
   /** 切换章节作用域并替换当前路由 URL 查询参数 */
   function setScope(id: string, page: number) {

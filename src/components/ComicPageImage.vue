@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
+import { useTimeoutFn } from '@vueuse/core'
 import ReaderLoadingState from '@/components/reader/ReaderLoadingState.vue'
 
 const props = withDefaults(
@@ -17,6 +18,18 @@ const imageEl = ref<HTMLImageElement | null>(null)
 const loading = ref(true)
 const failed = ref(false)
 const retryKey = ref(0)
+const autoRetryCount = ref(0)
+const maxAutoRetries = 3
+const retryDelay = ref(1200)
+
+const { start: startAutoRetry, stop: stopAutoRetry } = useTimeoutFn(
+  () => {
+    hasEmittedReady = false
+    retryKey.value += 1
+  },
+  retryDelay,
+  { immediate: false },
+)
 
 const displaySrc = computed(() => {
   if (retryKey.value === 0) return props.src
@@ -34,6 +47,8 @@ function checkReadyState() {
   const img = imageEl.value
   if (!img || !img.complete) return
   if (img.naturalWidth > 0) {
+    stopAutoRetry()
+    autoRetryCount.value = 0
     loading.value = false
     failed.value = false
     if (!hasEmittedReady) {
@@ -41,12 +56,13 @@ function checkReadyState() {
       emit('ready')
     }
   } else {
-    loading.value = false
-    failed.value = true
+    handleError()
   }
 }
 
 function onLoad() {
+  stopAutoRetry()
+  autoRetryCount.value = 0
   loading.value = false
   failed.value = false
   if (!hasEmittedReady) {
@@ -55,12 +71,27 @@ function onLoad() {
   }
 }
 
+function handleError() {
+  if (autoRetryCount.value < maxAutoRetries) {
+    autoRetryCount.value += 1
+    // 递增退避延迟：1.2s、2.4s、3.6s（留足后端令牌桶以 3/s 速率回充配额的时间）
+    retryDelay.value = autoRetryCount.value * 1200
+    loading.value = true
+    failed.value = false
+    startAutoRetry()
+  } else {
+    loading.value = false
+    failed.value = true
+  }
+}
+
 function onError() {
-  loading.value = false
-  failed.value = true
+  handleError()
 }
 
 function retry() {
+  stopAutoRetry()
+  autoRetryCount.value = 0
   hasEmittedReady = false
   retryKey.value += 1
   loading.value = true
@@ -72,6 +103,8 @@ onMounted(checkReadyState)
 watch(
   () => props.src,
   () => {
+    stopAutoRetry()
+    autoRetryCount.value = 0
     hasEmittedReady = false
     retryKey.value = 0
     loading.value = true

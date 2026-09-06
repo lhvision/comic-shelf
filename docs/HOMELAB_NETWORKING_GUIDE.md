@@ -183,7 +183,9 @@ NPM 作为单入口反代网关，负责接收来自路由器的流量，完成�
 
 ---
 
-## 🌐 五、第四阶段：家庭主路由器配置端口转发
+## 🌐 五、第四阶段：家庭主路由器配置（端口转发 + 内网 DNS 挟持分流）
+
+### 5.1 路由器配置公网端口转发（WAN Port Forwarding）
 
 登录你的家庭主路由器管理后台（爱快、OpenWrt、华硕、小米、TP-Link 等），进入【端口转发 / 端口映射 / 虚拟服务器】：
 
@@ -196,6 +198,36 @@ NPM 作为单入口反代网关，负责接收来自路由器的流量，完成�
 | **协议类型 (Protocol)**   | **`TCP`**             | 仅需 TCP 协议                                       |
 
 点击保存并应用路由规则。
+
+### 5.2 配置局域网内外网分流与端口重定向（OpenWrt 自定义挟持域名）
+
+> 💡 **为什么需要内网分流**：若未配置内网分流，在家里连 Wi-Fi 访问 `https://comic.yourdomain.com` 时，请求会先跨洋绕到 Cloudflare 海外 Anycast 节点再折返回客厅，导致内网翻页延迟高达 150~300ms。配置分流后，局域网直连跑满千兆带宽，延迟低于 1ms。
+
+以 OpenWrt（或 iStoreOS / ImmortalWrt）为例，全流程仅需 2 步：
+
+#### 步骤 1：OpenWrt 自定义挟持域名（Dnsmasq）
+
+1. 打开 OpenWrt 管理后台 ➔ **网络 (Network)** ➔ **DHCP/DNS**；
+2. 找到 **自定义挟持域名**（或 **主机名映射 / Hostnames**）➔ 点击 **添加**：
+   - **域名**：`comic.yourdomain.com`（若所有项目都在同一 NAS 上，可直接填写主域名 `yourdomain.com` 实现泛域名通配挟持）；
+   - **IP 地址**：填你的 **NAS 内网 IP**（如 `192.168.1.100`）；
+3. 点击 **保存并应用**。
+
+#### 步骤 2：OpenWrt 内网端口重定向（Firewall Port Forward）
+
+由于浏览器访问 `https://` 默认连接标准 **443** 端口，而 NAS 宿主机上的 NPM 运行在 **30022** 端口，必须重定向内网流量：
+
+1. 进入 OpenWrt ➔ **网络 (Network)** ➔ **防火墙 (Firewall)** ➔ **端口转发 (Port Forwarding)**；
+2. 点击 **添加 (Add)**：
+   - **名称**：`comic-lan-443-to-30022`
+   - **协议**：`TCP`
+   - **源区域**：`lan`（局域网）
+   - **外部端口**：`443`
+   - **目标区域**：`lan`（局域网）
+   - **内部 IP 地址**：选择你的 **NAS 内网 IP**
+   - **内部端口**：`30022`
+3. 点击 **保存并应用**。
+   _注：此防火墙重定向针对目标 IP 生效，未来所有新子域名（如 `memo.yourdomain.com`）均无需重复配置，自动享受免端口千兆秒开。_
 
 ---
 
@@ -394,6 +426,18 @@ if ($origin_auth_ok = 0) {
 > 1. **全自动免维护**：无需繁琐录入或维护 Cloudflare 的数十个动态 IPv4/IPv6 CIDR 段；
 > 2. **避开 Nginx Real-IP 变量陷阱**：避免了 `real_ip_header` 将 `$remote_addr` 冲刷为客户端访客 IP 后导致 `allow/deny` 误杀合法用户的问题；
 > 3. **完美兼容内外网分流**：家庭 Wi-Fi 设备通过内网 DNS 直连仍可千兆秒开。
+
+### 6.9 开启 HTTP/3 (QUIC) 与 0-RTT 连接恢复（针对国内移动网络与跨洋延迟深度压榨）
+
+_原理：免费版 Cloudflare Anycast 节点对国内访客的 RTT 通常在 150~250ms 左右。通过开启 HTTP/3 与 0-RTT，客户端二次访问直接免去 TLS 握手（0ms 握手建立连接），且在 4G/5G 弱网或切换基站时利用 QUIC 连接迁移保持不断流，极大改善外出看漫画的翻页流畅度。_
+
+1. 登录 Cloudflare Dashboard ➔ 进入你的域名；
+2. 左侧菜单点击 **Speed（速度）** ➔ **Optimization（优化）** ➔ **Protocol Optimization（协议优化）**（或直接在左侧菜单 **Network（网络）** 中查看）：
+   - **HTTP/3 (with QUIC)**：切换为 **绿色「已启用」**；
+   - **0-RTT 连接恢复 (0-RTT Connection Resumption)**：切换为 **绿色「已启用」**；
+3. **Tiered Cache（分层缓存）拓扑开启**：
+   - 进入 **Caching（缓存）** ➔ **Tiered Cache**；
+   - 勾选打开 **Smart Tiered Cache**（免费版拓扑），让 Cloudflare 动态推导最优上位缓存节点，大幅减少全球多 PoP 穿透家庭宽带上行的频率。
 
 ---
 

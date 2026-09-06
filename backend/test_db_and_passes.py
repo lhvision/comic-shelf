@@ -182,12 +182,12 @@ def test_db_and_passes_crud():
     p_info = db_mod.get_guest_pass_by_id(pid)
     assert p_info["is_cooling_locked"] is False
 
-    # 15. Guest Rate Limiting: 45 burst + refill
+    # 15. Guest Rate Limiting: 100 burst + refill
     assert check_guest_rate_limit(pid) is True
-    # Consume remaining 44 tokens
-    for _ in range(44):
+    # Consume remaining 99 tokens
+    for _ in range(99):
         assert check_guest_rate_limit(pid) is True
-    # 46th request exceeds burst capacity
+    # 101st request exceeds burst capacity
     assert check_guest_rate_limit(pid) is False
     p_info = db_mod.get_guest_pass_by_id(pid)
     assert p_info["is_rate_limited"] is True

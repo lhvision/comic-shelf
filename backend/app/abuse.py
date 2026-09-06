@@ -59,10 +59,10 @@ def clear_cooling_lock(pass_id: int) -> None:
 
 # ----------------------------------------------------------------------
 # 2. 访客令牌桶静态图片请求限流 (Guest Image Rate Limiter)
-# 120 页 / 分钟 (2.0 tokens/s) + 45 页瞬时突发容量
+# 180 页 / 分钟 (3.0 tokens/s) + 100 页瞬时突发容量
 # ----------------------------------------------------------------------
-_RATE_CAPACITY = 45.0
-_RATE_REFILL_PER_SEC = 2.0  # 120 pages / 60 seconds
+_RATE_CAPACITY = 100.0
+_RATE_REFILL_PER_SEC = 3.0  # 180 pages / 60 seconds
 
 
 class _TokenBucket:

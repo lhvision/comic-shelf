@@ -180,7 +180,7 @@ async def auth_and_security_middleware(request: Request, call_next):
         except HTTPException as exc:
             return JSONResponse(status_code=exc.status_code, content={"detail": exc.detail})
 
-        # Rate limiting for guest readers on reading page binary endpoints (120 P/min + 45 P burst)
+        # Rate limiting for guest readers on reading page binary endpoints (180 P/min + 100 P burst)
         # Note: /cover is excluded to prevent bookshelf grid loading from false-positive rate limiting
         if clean_stem.endswith(("/file", "/thumbnail")):
             _uid, _name, role = get_user_context(request)
@@ -190,7 +190,7 @@ async def auth_and_security_middleware(request: Request, call_next):
                     if not check_guest_rate_limit(pass_id_val):
                         return JSONResponse(
                             status_code=429,
-                            content={"detail": "阅读翻页速率异常（超过 120 页/分钟），请稍憩数秒"},
+                            content={"detail": "阅读翻页速率异常（超过 180 页/分钟），请稍憩数秒"},
                             headers={"Retry-After": "5"},
                         )
                 except (ValueError, IndexError):

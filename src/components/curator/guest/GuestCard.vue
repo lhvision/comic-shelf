@@ -160,7 +160,7 @@ function handleRemovePass() {
       </div>
       <div v-else-if="item.is_rate_limited" class="device-abuse-alert rate">
         <AppIcon name="info" size="xs" />
-        <span>检测到高频翻页/下载图片请求（>120页/分钟），已触发轻量限流保护。</span>
+        <span>检测到高频翻页/下载图片请求（>180页/分钟），已触发轻量限流保护。</span>
       </div>
 
       <div class="device-tray-head">
