@@ -492,6 +492,22 @@
     2. **Cloudflare WAF 边缘鉴权门禁（Auth Gate）**：在 CDN Anycast 边缘配置 Custom Rule，检测 `starts_with(http.request.uri.path, "/api/library/") and not (http.cookie contains "comic_shelf_token" or http.cookie contains "comic_shelf_device")`，无登录凭据的请求在 Anycast 边缘直接 `Block 403`，连边缘缓存都无法触碰；
     3. **正文原图 100% 格式保真**：正文漫画页不转码，保持解密源格式（JM 为 WebP，哔咔等源为 JPEG），仅衍生缩略图收敛为 WebP。
 
+### 56. Cloudflare Under Attack 常态化质询与 WAF 鉴权门禁逻辑反转陷阱（Cloudflare IUAM Challenge & WAF Auth Gate Inversion）
+
+- **本质**：
+  1. **Under Attack 模式常态开启导致非交互式探测遭遇 403 挑战**：在 Cloudflare 仪表盘常态开启「Under Attack 模式（五秒盾）」后，Cloudflare 会对全站所有请求强制施加 JS/Turnstile 人机质询。虽然首次在浏览器地址栏打开网页时能顺利通过并获取临时 `cf_clearance` 凭证，但该凭证具有生存期（TTL）。一旦到期，浏览器在后台执行的 Service Worker 更新探测（`/sw.js`）、页面异步数据拉取（`/api/books`）以及画页二进制拉取（`/api/library/.../file`）属于**无 UI 界面的后台非交互式 fetch**，无法渲染并执行 Cloudflare 的 JS 人机验证挑战，Cloudflare Anycast 边缘直接返回包含质询页的 **HTTP 403 Forbidden**，导致应用静默瘫痪；
+  2. **离线重置带来的“假性自愈”误导**：前端通过「重置全部离线环境」注销 SW、清空缓存并触发 `window.location.reload()` 顶层文档导航，重新为浏览器提供了完整的交互渲染视口，偷偷刷新了 `cf_clearance`，造成“离线存储损坏或缓存故障”的假象，但一旦凭证过期又会周期性重现；
+  3. **WAF 自定义规则运算符反转误杀合法用户**：在配置 Cloudflare WAF 边缘鉴权规则（`paper-room-media-auth-gate`）时，若在图形化界面中误选了 `Cookie contains` 搭配 `Block`，规则将退化为“只要 Cookie 包含 `comic_shelf_token` 就予以 403 阻断”，导致已登录的合法读者反而被自身 Cookie 精准误杀。
+- **红线与防误伤**：
+  - **不要**在未配置凭据放行规则前无差别开启「Under Attack 模式」；
+  - **不要**在配置 WAF 边缘门禁时依赖易反转的图形生成器，必须核对 raw expression 的逻辑非（`not`）；
+  - **放行/改用**：
+    1. **已登录读者绿色豁免通道（兼顾 Under Attack 与 0 误杀）**：若需开启 Under Attack 极高防探测模式，必须在 WAF 第 2 顺序部署 `paper-room-auth-bypass-attack` 规则，检测 `http.host eq "comic.yourdomain.com" and (http.cookie contains "comic_shelf_token" or http.cookie contains "comic_shelf_device")` 并在操作中选择 **`Skip` ➔ 勾选跳过「安全级别（Security Level）」**，使已认证读者彻底豁免五秒盾质询；
+    2. **安全级别回归 `Medium`（备选基准方案）**：若不配置凭据 Skip 规则，Cloudflare 全局安全级别必须保持为 `Medium`（中）或 `High`，绝不常态开启「Under Attack 模式」；
+    3. **精准表达式配置媒体 WAF 门禁**：必须点击 `Edit expression`，配置 `http.host eq "comic.yourdomain.com" and starts_with(http.request.uri.path, "/api/library/") and not (http.cookie contains "comic_shelf_token" or http.cookie contains "comic_shelf_device")`，只有**未持有凭证**的外部直接请求才在 Anycast 边缘被 403 阻断；
+    4. **PWA / SW 专属绿色通道**：确保第 1 条规则 `paper-room-pwa-waf-skip` 严格置顶并勾选 Skip 安全级别与所有质询；
+    5. **延长质询通过期**：在安全性设置中将「质询通过期限 (Challenge Passage)」提升为 `1 month`，消除短期过期闪断。
+
 ---
 
 ## 🚦 交付门禁（四步必跑）

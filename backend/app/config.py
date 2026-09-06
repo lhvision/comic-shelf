@@ -60,6 +60,10 @@ ENABLE_DOCS = os.getenv("COMIC_SHELF_ENABLE_DOCS", "false").lower() in ("1", "tr
 # Curator key for full access (blank = open access, non-blank = protected)
 AUTH_SECRET = os.getenv("COMIC_SHELF_SECRET", os.getenv("COMIC_SHELF_AUTH_TOKEN", "")).strip()
 
+# Cookie names for authentication and device identification (customizable to obfuscate open-source defaults)
+COOKIE_NAME = os.getenv("COMIC_SHELF_COOKIE_NAME", "comic_shelf_token").strip() or "comic_shelf_token"
+DEVICE_COOKIE_NAME = os.getenv("COMIC_SHELF_DEVICE_COOKIE_NAME", "comic_shelf_device").strip() or "comic_shelf_device"
+
 # Anti-hotlinking / storage bucket abuse protection
 ENABLE_HOTLINK_PROTECTION = os.getenv("COMIC_SHELF_ENABLE_HOTLINK_PROTECTION", "true").lower() in ("1", "true", "yes")
 

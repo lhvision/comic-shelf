@@ -283,7 +283,31 @@ _原理：浏览器在后台静默请求 `/manifest.webmanifest` 和注册 Servi
 3. 点击右下角 **Deploy（部署）**。
 4. **规则优先级红线**：务必将该规则拖拽置于所有自定义规则的**最顶端（第 1 条）**，确保其在下述 6.6 的防盗链拦截规则前优先匹配放行。
 
-### 6.6 配置 Cloudflare WAF 边缘鉴权与防盗链规则（封堵无痕/未登录窃取 Edge 缓存）
+### 6.6 配置已登录读者绿色通行规则（Skip Security Level —— 完美兼容 Under Attack 极高防御且杜绝 403）
+
+_原理：若希望在 Cloudflare 开启常态「Under Attack 模式（五秒盾）」以获得最强防扫描/防探测能力，必须同时为持有登录凭证的读者开辟免检通道。否则，一旦 `cf_clearance` 凭证过期，浏览器后台静默拉取 API（`/api/books`）或翻页图片切片时无法渲染人机验证网页，直接被判定为 403 阻断。通过配置此规则，Cloudflare 检测到请求带有效登录凭据时**直接跳过安全级别质询**，实现陌生人严加盘查、已登入读者畅行无阻。_
+
+1. 左侧菜单点击 **Security（安全性）** ➔ **WAF** ➔ **Custom Rules（自定义规则）** ➔ 点击 **Create rule**。
+2. 填写规则参数：
+   - **Rule name**：`paper-room-auth-bypass-attack`
+   - **When incoming requests match...（自定义匹配表达式）**：
+     点击右上角的 `Edit expression`，粘贴以下表达式（将 `comic.yourdomain.com` 替换为你的实际子域名）：
+     ```text
+     http.host eq "comic.yourdomain.com" and (http.cookie contains "comic_shelf_token" or http.cookie contains "comic_shelf_device")
+     ```
+     _提示：若在容器环境变量中设置了自定义 Cookie 键名（如 `COMIC_SHELF_COOKIE_NAME="your_custom_cookie"`），请将表达式中的 `comic_shelf_token` 相应替换为你的私有名称，彻底隐匿开源特征。_
+   - **Choose action（采取的操作）**：选择 **`Skip`（跳过）**；
+   - 勾选跳过的 WAF 组件：
+     - [x] 所有其余自定义规则
+     - [x] 所有速率限制规则
+     - [x] 所有托管规则
+     - [x] 所有 Super Bot Fight 模式规则
+     - 展开“更多要跳过的组件”继续勾选：
+     - [x] 浏览器完整性检查
+     - [x] **安全级别（Security Level —— 跳过 Under Attack 质询的核心）**
+3. 点击右下角 **Deploy（部署）**。
+
+### 6.7 配置 Cloudflare WAF 边缘鉴权与防盗链规则（封堵无痕/未登录窃取 Edge 缓存）
 
 _原理：虽然未鉴权的访客无法通过口令进入主界面，但若合法用户在外部浏览过某本漫画，Cloudflare Anycast 边缘缓存节点已驻留了封面与画质切片（Edge TTL: 1 个月）。由于 Cloudflare 边缘缓存命中时默认不向源站回源（Bypass Origin Auth），无痕窗口或未登录访客直接敲入图片直链仍可能命中边缘缓存获取图片。通过配置此 WAF 自定义规则，Cloudflare 在查询边缘缓存前**直接校验用户 Cookie**，无凭证者在 Anycast 边缘被**直接阻断（Block 403）**，彻底实现真正的私有相册级安全。_
 
@@ -295,11 +319,25 @@ _原理：虽然未鉴权的访客无法通过口令进入主界面，但若合�
      ```text
      http.host eq "comic.yourdomain.com" and starts_with(http.request.uri.path, "/api/library/") and not (http.cookie contains "comic_shelf_token" or http.cookie contains "comic_shelf_device")
      ```
+     _提示：若在 6.6 中自定义了 Cookie 键名（如 `your_custom_token`），这里的 `comic_shelf_token` 也需同步替换为对应名称。_
    - **Choose action（采取的操作）**：选择 **Block（阻止）**。
 3. 点击右下角 **Deploy（部署）**。
-4. **规则顺序与清理缓存**：
-   - 将该规则拖拽置于**第 2 条**（紧随 `paper-room-pwa-waf-skip` 绿色放行规则之后）；
+4. **规则顺序与清理缓存（核心红线）**：
+   - 在 WAF 规则列表中，务必确保规则按以下**优先级严格排序**：
+     1. **第 1 条**：`paper-room-pwa-waf-skip`（放行 Service Worker 与前端静态资产）；
+     2. **第 2 条**：`paper-room-auth-bypass-attack`（放行持有 Cookie 的已登录读者跳过安全级别质询）；
+     3. **第 3 条**：`paper-room-media-auth-gate`（阻断无 Cookie 的外部请求触碰媒体缓存）。
    - 规则生效后，进入 **Caching ➔ Configuration ➔ Purge Cache**，点击 **Purge Everything**，清空之前在无鉴权保护状态下缓存的历史图片。
+
+> ⚠️ **高危配置避坑红线（血泪教训）**：
+>
+> 1. **常态开启「Under Attack 模式（五秒盾）」必须搭配 6.6 豁免规则**：
+>    - **故障现象**：若未配置 6.6 规则就开启 Under Attack 模式，部署后刚开始能用，放置或阅读一段时间后突发 **HTTP 403 Forbidden（返回 HTML 人机验证页）**，只有点击「重置全部离线环境」硬刷新后才能短暂恢复。
+>    - **根本机理**：Under Attack 模式会对全站强制下发 JS/Turnstile 人机质询。首次打开网页获取的 `cf_clearance` 凭证具有生存期（TTL）。一旦过期，浏览器后台的 Service Worker 更新探测（`/sw.js`）、异步 API 请求（`/api/books`）以及图片切片拉取属于**无界面的非交互探测**，无法执行人机验证挑战，Cloudflare 边缘直接返回 403 质询页导致应用瘫痪。重置离线环境纯粹是因为最后触发了 `window.location.reload()` 顶层硬刷新重新刷了通行证。
+>    - **解决方案**：若要常态开启 Under Attack 模式，**必须配置上述 6.6 豁免规则**，同时建议进入 **安全性 ➔ 设置 ➔ 质询通过期限 (Challenge Passage)** 将有效期提升至 **`1 month`（1 个月）**。
+> 2. **防范 WAF 规则配置界面的「运算符反转与表格展示误导」**：
+>    - 在 Cloudflare 默认的可视化表单生成器中，极易误选 `Cookie 包含 (contains)` 而漏掉 `not`。若配置成 `Cookie 包含 comic_shelf_token ➔ 阻止`，将导致**持有合法口令已登录的用户被自身 Cookie 误杀 403 阻断**！务必点击右上角 `Edit expression` 粘贴 raw expression。
+>    - **控制台展示特性**：Cloudflare 规则列表表格在展示 `and not (...)` 复杂逻辑时，会简写为 `Cookie 包含...`，此为 Cloudflare UI 的缩略展示特性，只要 raw expression 包含 `not` 即可放心使用。
 
 ---
 

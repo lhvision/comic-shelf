@@ -4,16 +4,18 @@ from urllib.parse import urlparse
 
 from fastapi import HTTPException, Request, Response
 
-from .config import AUTH_SECRET, ENABLE_HOTLINK_PROTECTION
+from .config import (
+    AUTH_SECRET,
+    COOKIE_NAME,
+    DEVICE_COOKIE_NAME,
+    ENABLE_HOTLINK_PROTECTION,
+)
 from .db import (
     get_device_by_token,
     get_guest_pass_by_token,
     register_guest_device,
     touch_device_active,
 )
-
-COOKIE_NAME = "comic_shelf_token"
-DEVICE_COOKIE_NAME = "comic_shelf_device"
 
 
 def is_auth_required() -> bool:

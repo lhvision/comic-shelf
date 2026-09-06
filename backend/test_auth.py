@@ -7,7 +7,7 @@ from unittest.mock import MagicMock
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import tempfile
-from fastapi import HTTPException
+from fastapi import HTTPException, Response
 import app.auth as auth_mod
 import app.config as config_mod
 import app.db as db_mod
@@ -425,6 +425,36 @@ def test_stepped_covers():
             assert simg.height == 500
 
 
+def test_custom_cookie_names():
+    # Verify custom cookie extraction and cookie setting
+    orig_cookie = auth_mod.COOKIE_NAME
+    orig_dev_cookie = auth_mod.DEVICE_COOKIE_NAME
+    try:
+        auth_mod.COOKIE_NAME = "custom_vault_token"
+        auth_mod.DEVICE_COOKIE_NAME = "custom_vault_device"
+
+        req = make_mock_request(
+            "/api/library",
+            cookies={"custom_vault_token": "secret-val-999"},
+        )
+        assert auth_mod.extract_token(req) == "secret-val-999"
+
+        req_dev = make_mock_request(
+            "/api/library",
+            cookies={"custom_vault_device": "dev-token-888"},
+        )
+        assert auth_mod.extract_device_token(req_dev) == "dev-token-888"
+
+        # Check response cookie setting
+        resp = Response()
+        auth_mod.set_auth_cookie(resp, "test-token", secure=True)
+        set_cookie_header = resp.headers.get("set-cookie", "")
+        assert "custom_vault_token=test-token" in set_cookie_header
+    finally:
+        auth_mod.COOKIE_NAME = orig_cookie
+        auth_mod.DEVICE_COOKIE_NAME = orig_dev_cookie
+
+
 if __name__ == "__main__":
     test_auth_logic()
     test_hotlink_protection()
@@ -432,6 +462,7 @@ if __name__ == "__main__":
     test_auth_and_security_middleware()
     test_quiet_access_log_filter()
     test_stepped_covers()
+    test_custom_cookie_names()
     print("All backend auth, middleware & hotlink protection tests passed!")
 
 

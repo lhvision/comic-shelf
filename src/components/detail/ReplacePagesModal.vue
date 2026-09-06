@@ -295,7 +295,7 @@ async function submit() {
           v-model="serverPath"
           class="field-input"
           type="text"
-          placeholder="如：public/tiya-frames 或 /home/miku/lhvision/comic-shelf"
+          placeholder="如：public/tiya-frames 或 /data/comics/import-folder"
           :disabled="submitting"
         />
         <p class="path-hint">
