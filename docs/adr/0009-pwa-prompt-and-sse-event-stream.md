@@ -23,7 +23,7 @@
    - 基于 FastAPI 异步协程与 `asyncio.Queue` 构建多路复用单向广播通道；
    - **0% CPU 挂起**：连接空闲时仅在内存中挂起协程队列，不产生任何计算与磁盘 IO 开销；
    - 承载三类核心事件：
-     - `event: ping`（初始连通握手与 25s keepalive 保活）；
+     - `event: ping`（初始连通握手与 15s keepalive 保活）；
      - `event: system_version`（新构建发布广播，秒级触发前端 `registration.update()`）；
      - `event: library_changed`（后台藏书增删与缓存变动广播）；
      - `event: ai_task_progress`（为后续 AI 流式任务与进度条预留）。
@@ -36,7 +36,7 @@
 
 4. **智能按需生命周期与休眠编排（Smart On-Demand Lifecycle & Deep Sleep）**：
    - **阅读器主动断开避让（Reader Detachment）**：当读者切入全屏阅读器（`/read/...`）沉浸翻阅时，自动斩断 SSE 长连接，将内网 HTTP/1.1 仅有的 6 个 TCP 槽位与全部网络带宽完整倾斜给漫画画页并发加载；
-   - **后台视口即断（Tab Inactive Teardown）**：当标签页离开视口（`document.visibilityState === 'hidden'`）时，立即断开连接，消除后台无意义的 25s keepalive 心跳唤醒与 DevTools 悬挂连接；切回前台时 0 延迟自愈重连；
+   - **后台视口即断（Tab Inactive Teardown）**：当标签页离开视口（`document.visibilityState === 'hidden'`）时，立即断开连接，消除后台无意义的 15s keepalive 心跳唤醒与 DevTools 悬挂连接；切回前台时 0 延迟自愈重连；
    - **深度闲置超时休眠（10-min Idle Sleep）**：借助 VueUse `useIdle(10min)` 探测用户交互。连续 10 分钟无操作自动切断长连接进入深睡，任意触控或键鼠操作瞬时唤醒；
    - **唤醒静默对齐（Reconciliation on Wakeup）**：重连握手成功后，自动且静默地触发书架刷新（`libraryStore.load(true)`）与版本比对（`checkForUpdate()`），彻底消除长连接断开期间可能遗漏的事件盲区。
 

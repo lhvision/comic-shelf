@@ -15,8 +15,8 @@ router = APIRouter(prefix="/api/events", tags=["events"])
 _MAX_TOTAL_LISTENERS = 200
 _MAX_IP_LISTENERS = 30
 
-# Stores (queue, event_loop) pairs to support thread-safe broadcasting from background threads
-_listeners: set[tuple[asyncio.Queue[str | None], asyncio.AbstractEventLoop]] = set()
+# Stores (queue, event_loop, client_ip) tuples to support thread-safe broadcasting and per-IP accounting
+_listeners: set[tuple[asyncio.Queue[str | None], asyncio.AbstractEventLoop, str]] = set()
 _ip_counts: dict[str, int] = {}
 _pool_lock = threading.Lock()
 
@@ -35,7 +35,7 @@ def broadcast_event(event_type: str, data: dict[str, Any] | None = None) -> int:
     payload_data = json.dumps(data or {})
     sse_message = f"event: {event_type}\ndata: {payload_data}\n\n"
 
-    dead_entries: list[tuple[asyncio.Queue[str | None], asyncio.AbstractEventLoop]] = []
+    dead_entries: list[tuple[asyncio.Queue[str | None], asyncio.AbstractEventLoop, str]] = []
     delivered = 0
 
     try:
@@ -44,7 +44,7 @@ def broadcast_event(event_type: str, data: dict[str, Any] | None = None) -> int:
         current_loop = None
 
     for entry in current_listeners:
-        queue, loop = entry
+        queue, loop, _ip = entry
         if loop.is_closed():
             dead_entries.append(entry)
             continue
@@ -60,7 +60,13 @@ def broadcast_event(event_type: str, data: dict[str, Any] | None = None) -> int:
     if dead_entries:
         with _pool_lock:
             for dead in dead_entries:
-                _listeners.discard(dead)
+                if dead in _listeners:
+                    _listeners.discard(dead)
+                    dead_ip = dead[2]
+                    if dead_ip in _ip_counts:
+                        _ip_counts[dead_ip] -= 1
+                        if _ip_counts[dead_ip] <= 0:
+                            del _ip_counts[dead_ip]
 
     return delivered
 
@@ -88,7 +94,7 @@ def shutdown_events() -> None:
             except Exception:
                 pass
 
-    for queue, loop in current_listeners:
+    for queue, loop, _ip in current_listeners:
         if not loop.is_closed():
             try:
                 loop.call_soon_threadsafe(_deliver_poison_pill, queue)
@@ -112,7 +118,7 @@ async def sse_event_stream(request: Request) -> StreamingResponse:
             raise HTTPException(status_code=429, detail="单设备事件流连接数已达上限")
 
         queue: asyncio.Queue[str | None] = asyncio.Queue(maxsize=100)
-        entry = (queue, loop)
+        entry = (queue, loop, client_ip)
         _listeners.add(entry)
         _ip_counts[client_ip] = _ip_counts.get(client_ip, 0) + 1
 
@@ -138,11 +144,12 @@ async def sse_event_stream(request: Request) -> StreamingResponse:
             pass
         finally:
             with _pool_lock:
-                _listeners.discard(entry)
-                if client_ip in _ip_counts:
-                    _ip_counts[client_ip] -= 1
-                    if _ip_counts[client_ip] <= 0:
-                        del _ip_counts[client_ip]
+                if entry in _listeners:
+                    _listeners.discard(entry)
+                    if client_ip in _ip_counts:
+                        _ip_counts[client_ip] -= 1
+                        if _ip_counts[client_ip] <= 0:
+                            del _ip_counts[client_ip]
 
     return StreamingResponse(
         event_generator(),

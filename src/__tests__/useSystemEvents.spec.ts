@@ -37,4 +37,10 @@ describe('useSystemEvents composable', () => {
     expect(isConnected.value).toBe(false)
     expect(typeof reconcileState).toBe('function')
   })
+
+  it('throttles reconcileState within 3000ms window', async () => {
+    const { reconcileState } = useSystemEvents()
+    await expect(reconcileState()).resolves.toBeUndefined()
+    await expect(reconcileState()).resolves.toBeUndefined()
+  })
 })

@@ -159,10 +159,9 @@ export const useSystemEvents = createGlobalState(() => {
    * 显式开启或唤醒系统事件流
    */
   function connect(): void {
+    if (isEnabled.value) return
     isEnabled.value = true
-    if (shouldBeConnected.value) {
-      startEventSource()
-    } else {
+    if (!shouldBeConnected.value) {
       isSleeping.value = true
     }
   }

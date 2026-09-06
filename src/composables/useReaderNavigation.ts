@@ -151,6 +151,7 @@ export function useReaderNavigation(options: UseReaderNavigationOptions) {
         cancelAnimationFrame(scrollRafId)
         scrollRafId = null
       }
+      preloadAround.cancel?.()
     })
   }
 
@@ -215,10 +216,12 @@ export function useReaderNavigation(options: UseReaderNavigationOptions) {
 
   /** 预加载当前页前后相邻分组的图片资源到浏览器磁盘/内存缓存（防抖 150ms 避免读者高速拖拽滚动条时途经大量页码瞬发海量无效预取） */
   const preloadAround = useDebounceFn((page: number) => {
+    if (typeof Image === 'undefined') return
     const groupIndex = groupIndexForPage(page)
     const startGroup = Math.max(0, groupIndex - 1)
     const endGroup = Math.min(pageGroups.value.length - 1, groupIndex + 1)
     for (let group = startGroup; group <= endGroup; group += 1) {
+      if (group === groupIndex) continue
       for (const targetPage of pageGroups.value[group] ?? []) {
         const image = new Image()
         image.src = pageFileUrl(source.value, sourceId.value, targetPage)

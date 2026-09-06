@@ -77,7 +77,7 @@ async def run_events_tests():
     shutdown_events()
     assert get_active_listener_count() == 0
 
-    # Generator should stop immediately (raising StopAsyncIteration) rather than blocking for 25s
+    # Generator should stop immediately (raising StopAsyncIteration) rather than blocking for 15s
     stopped = False
     try:
         await anext(gen2)
