@@ -86,4 +86,11 @@ if COOKIE_NAME == DEVICE_COOKIE_NAME:
 # Anti-hotlinking / storage bucket abuse protection
 ENABLE_HOTLINK_PROTECTION = os.getenv("COMIC_SHELF_ENABLE_HOTLINK_PROTECTION", "true").lower() in ("1", "true", "yes")
 
+# PicAcg (哔咔漫画) provider settings
+PICA_EMAIL = os.getenv("PICA_EMAIL", os.getenv("COMIC_SHELF_PICA_EMAIL", "")).strip()
+PICA_PASSWORD = os.getenv("PICA_PASSWORD", os.getenv("COMIC_SHELF_PICA_PASSWORD", "")).strip()
+PICA_PROXY = os.getenv("PICA_PROXY", os.getenv("COMIC_SHELF_PICA_PROXY", "")).strip()
+PICA_API_URL = os.getenv("PICA_API_URL", "https://picaapi.picacomic.com").rstrip("/")
+PICA_CHANNEL = os.getenv("PICA_CHANNEL", "2").strip()
+
 

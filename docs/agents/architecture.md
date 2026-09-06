@@ -36,6 +36,8 @@ FastAPI (backend/app/main.py)
    ├── providers/           # 站点适配层，唯一知道具体漫画站的地方
    │     base.py            # ComicProvider 抽象
    │     jm.py              # 禁漫实现
+   │     local.py           # 本地自建与视频拆帧实现
+   │     picacg.py          # 哔咔实现（App REST API + 3-CDN 容灾）
    │     registry.py        # 注册表
    │
    ├── gate.py              # 下载并发闸门控制
@@ -108,6 +110,13 @@ num = JmImageTool.get_num_by_url(page.scramble_id, page.url)
 JmImageTool.decode_and_save(num, source_image, save_path)
 ```
 
+### 4.3 PicAcg (哔咔) 认证与多 CDN 容灾
+
+- **认证签名**：官方移动端 HMAC-SHA256 签名算法（基于 URL、时间戳、nonce 与 API Key 密钥哈希计算 signature 请求头），严禁明文裸请求；
+- **JWT 会话保活**：登录成功后下发 long-lived JWT token 并自动存储在内存，会话失效（401）时自动静默重登续期，前端零感知；
+- **3-CDN 容灾分流**：PicAcg 图片分流存储于三大 CDN 节点（`waka / waifu / heaven`），`download_page` 必须自动进行候选节点探测与故障轮换降级；
+- **宽容输入清洗**：输入端兼容 24 位 16 进制 ID 及各类官方/第三方镜像站分享直链（`picawang.com/comic/<id>`），服务端统一清洗归一化为 24 位 ID。
+
 现在 `JMProvider.download_page()` 会：
 下载 raw bytes → `get_num_by_url()` → `decode_and_save()` → 返回成品 bytes。
 `remote.json` 中 `decode_version=2` 表示页面已是成品图。
@@ -146,7 +155,9 @@ JmImageTool.decode_and_save(num, source_image, save_path)
 | `backend/app/storage.py`            | 原子 JSON 写入、页面缓存（章节分目录路由）、封面生成、v1→v2 迁移、书库扫描                             |
 | `backend/app/providers/base.py`     | Provider 接口                                                                                          |
 | `backend/app/providers/jm.py`       | JM HTML 元数据、上传者解析、**多章节 episode 逐话拉取**、图片下载 + 解密                               |
-| `backend/app/providers/registry.py` | `{"jm": JMProvider()}` 注册表                                                                          |
+| `backend/app/providers/local.py`    | 本地自建、外部白名单目录扫描、视频拆帧与多章节追加、重新装订                                           |
+| `backend/app/providers/picacg.py`   | 哔咔 App REST 接口签名（HMAC-SHA256）、车号宽容清洗、多章节分卷映射与 3-CDN 容灾下载                   |
+| `backend/app/providers/registry.py` | `{"jm": JMProvider(), "local": LocalProvider(), "picacg": PicacgProvider()}` 注册表                    |
 | `backend/app/imsearch.py`           | 局部特征识图客户端（ORB 特征匹配、健康探测、路径解析）                                                 |
 | `backend/app/config.py`             | 数据目录、访问密钥、防盗链开关、封面尺寸、识图服务地址配置                                             |
 

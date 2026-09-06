@@ -20,8 +20,17 @@ import { api } from '@/api/client'
 import Tooltip from '@/components/Tooltip.vue'
 import AppIcon from '@/components/AppIcon.vue'
 import ImportJmTab from './import/ImportJmTab.vue'
+import ImportPicacgTab from './import/ImportPicacgTab.vue'
 import ImportLocalTab from './import/ImportLocalTab.vue'
 import ImportConcurrencyStepper from './import/ImportConcurrencyStepper.vue'
+
+const props = defineProps<{
+  /**
+   * 指定当前来源（'jm' | 'picacg' | 'local'）。
+   * 若传入，面板锁定到该来源并隐藏内部二级 Tab；未传入则支持内部自主切换（保持向下兼容）。
+   */
+  source?: string
+}>()
 
 const emit = defineEmits<{
   /** 收录成功事件（向父级传递 source 与 sourceId） */
@@ -52,7 +61,37 @@ const id = ref('')
 const prefetchAll = ref(false)
 const warnings = ref<string[]>([])
 
-const activeTab = ref<'jm' | 'local'>('jm')
+const activeTab = ref<'jm' | 'picacg' | 'local'>(
+  props.source === 'jm' || props.source === 'picacg' || props.source === 'local'
+    ? props.source
+    : 'jm',
+)
+
+watch(
+  () => props.source,
+  (val) => {
+    if (val === 'jm' || val === 'picacg' || val === 'local') {
+      activeTab.value = val
+    }
+  },
+)
+
+const PANEL_TITLES: Record<string, string> = {
+  jm: '收录禁漫车号',
+  picacg: '收录哔咔画卷',
+  local: '收录本地图集',
+}
+
+const PANEL_HINTS: Record<string, string> = {
+  jm: '输入禁漫车号。首次收录会读取元数据并缓存前 4 页做封面；之后永远先读本地，不再打扰远端。',
+  picacg: '输入哔咔 24 位 ID，或直接粘贴网页分享链接（如 picawang.com/comic/5ebe...）。',
+  local: '输入服务器目录（如 public/tiya-frames）一键扫描收录，或进入工坊上传多图与多章节。',
+}
+
+const panelTitle = computed(() => PANEL_TITLES[activeTab.value] ?? '收录作品')
+const panelHint = computed(() => PANEL_HINTS[activeTab.value] ?? '')
+const mobileCollapseTitle = computed(() => PANEL_TITLES[activeTab.value] ?? '收录新作品 / 本地图集')
+
 const localPath = ref('')
 const localImporting = ref(false)
 
@@ -61,17 +100,19 @@ watch([id, localPath, activeTab], () => {
   warnings.value = []
 })
 
-const canSubmit = computed(() => /^(?:JM)?\d{5,8}$/i.test(id.value.trim()))
+const canSubmitJm = computed(() => /^(?:JM)?\d{5,8}$/i.test(id.value.trim()))
+const canSubmitPica = computed(() => /[0-9a-fA-F]{24}/.test(id.value.trim()))
 
-async function submitJm(btnEl: HTMLButtonElement | null) {
-  if (!canSubmit.value) return
+async function submitRemote(source: 'jm' | 'picacg', btnEl: HTMLButtonElement | null) {
+  const isValid = source === 'jm' ? canSubmitJm.value : canSubmitPica.value
+  if (!isValid) return
   warnings.value = []
   try {
     const result = await withViewTransition(
       () =>
         store.importComic({
           id: id.value.trim(),
-          source: 'jm',
+          source,
           prefetch_covers: 4,
           prefetch_all: prefetchAll.value,
         }),
@@ -127,7 +168,10 @@ function incConcurrency(el: HTMLElement | null) {
 <template>
   <section
     class="import-panel"
-    :class="{ 'is-mobile-collapsed': !isMobileExpanded }"
+    :class="{
+      'is-mobile-collapsed': !isMobileExpanded,
+      'is-source-locked': !!source,
+    }"
     aria-labelledby="import-title"
   >
     <button
@@ -139,7 +183,7 @@ function incConcurrency(el: HTMLElement | null) {
     >
       <span class="mobile-collapse-lead">
         <AppIcon name="plus" size="xs" :stroke-width="2" />
-        <span>收录新作品 / 本地图集</span>
+        <span>{{ mobileCollapseTitle }}</span>
       </span>
       <span class="mobile-collapse-action font-mono">
         <span class="action-text">{{ isMobileExpanded ? '收起' : '展开' }}</span>
@@ -152,10 +196,15 @@ function incConcurrency(el: HTMLElement | null) {
       </span>
     </button>
 
-    <div :id="contentId" class="import-animator" :class="{ 'is-expanded': isMobileExpanded }">
+    <div
+      :id="contentId"
+      class="import-animator"
+      :class="{ 'is-expanded': isMobileExpanded }"
+      :inert="!isDesktop && !isMobileExpanded"
+    >
       <div class="import-content">
         <div class="import-info">
-          <div class="panel-tabs">
+          <div v-if="!source" class="panel-tabs">
             <button
               class="panel-tab"
               :class="{ 'is-active': activeTab === 'jm' }"
@@ -163,6 +212,14 @@ function incConcurrency(el: HTMLElement | null) {
               @click="activeTab = 'jm'"
             >
               禁漫车号
+            </button>
+            <button
+              class="panel-tab"
+              :class="{ 'is-active': activeTab === 'picacg' }"
+              type="button"
+              @click="activeTab = 'picacg'"
+            >
+              哔咔漫画
             </button>
             <button
               class="panel-tab"
@@ -174,17 +231,8 @@ function incConcurrency(el: HTMLElement | null) {
             </button>
           </div>
 
-          <p id="import-title" class="eyebrow">
-            {{ activeTab === 'jm' ? 'IMPORT / 收录' : 'LOCAL ARCHIVE / 自建' }}
-          </p>
-          <h2>{{ activeTab === 'jm' ? '放进纸间' : '收录本地图集' }}</h2>
-          <p class="hint">
-            {{
-              activeTab === 'jm'
-                ? '输入禁漫车号。首次收录会读取元数据并缓存前 4 页做封面；之后永远先读本地，不再打扰远端。'
-                : '输入服务器目录（如 public/tiya-frames）一键扫描收录，或进入工坊上传多图与多章节。'
-            }}
-          </p>
+          <h2 id="import-title">{{ panelTitle }}</h2>
+          <p class="hint">{{ panelHint }}</p>
         </div>
 
         <div class="import-controls">
@@ -194,8 +242,18 @@ function incConcurrency(el: HTMLElement | null) {
             v-model:id="id"
             v-model:prefetch-all="prefetchAll"
             :importing="store.importing"
-            :can-submit="canSubmit"
-            @submit="submitJm"
+            :can-submit="canSubmitJm"
+            @submit="(btnEl) => submitRemote('jm', btnEl)"
+          />
+
+          <!-- PicAcg Tab Form -->
+          <ImportPicacgTab
+            v-else-if="activeTab === 'picacg'"
+            v-model:id="id"
+            v-model:prefetch-all="prefetchAll"
+            :importing="store.importing"
+            :can-submit="canSubmitPica"
+            @submit="(btnEl) => submitRemote('picacg', btnEl)"
           />
 
           <!-- Local Tab Form -->
@@ -228,9 +286,9 @@ function incConcurrency(el: HTMLElement | null) {
               </Tooltip>
             </div>
 
-            <!-- Concurrency Stepper (JM tab only) -->
+            <!-- Concurrency Stepper (Remote tabs only) -->
             <ImportConcurrencyStepper
-              v-if="activeTab === 'jm'"
+              v-if="activeTab === 'jm' || activeTab === 'picacg'"
               :concurrency="settings.concurrency"
               :min="settings.min"
               :max="settings.max"
@@ -259,7 +317,7 @@ function incConcurrency(el: HTMLElement | null) {
 <style scoped>
 .import-panel {
   display: grid;
-  grid-template-columns: minmax(16rem, 1fr) minmax(21rem, 1.4fr);
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr);
   gap: var(--space-5) var(--space-6);
   padding: var(--space-6);
   border: 1px solid var(--line);
@@ -272,6 +330,27 @@ function incConcurrency(el: HTMLElement | null) {
     border-radius var(--duration-2) var(--ease-out),
     background-color var(--duration-2) var(--ease-out),
     box-shadow var(--duration-2) var(--ease-out);
+}
+
+/* 专属来源模式下，无内部二级 Tab，采用单列紧凑编排，避免中屏 (961~1180px) 发生列宽挤压与视口溢出 */
+.import-panel.is-source-locked {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  max-width: 32rem;
+  justify-self: end;
+  width: 100%;
+}
+
+.import-panel.is-source-locked .import-info h2 {
+  font-size: var(--text-lg);
+  font-weight: 600;
+}
+
+.import-panel.is-source-locked .import-info .hint {
+  font-size: var(--text-xs);
+  margin-top: var(--space-1);
+  max-width: none;
 }
 
 .import-info {
@@ -314,10 +393,6 @@ function incConcurrency(el: HTMLElement | null) {
   color: var(--accent-strong);
   font-weight: 600;
   box-shadow: var(--shadow-1);
-}
-
-.eyebrow {
-  margin-bottom: var(--space-1);
 }
 
 .import-panel h2 {
@@ -473,11 +548,15 @@ function incConcurrency(el: HTMLElement | null) {
   .import-animator {
     display: grid;
     grid-template-rows: 0fr;
-    transition: grid-template-rows var(--duration-2) var(--ease-out);
+    visibility: hidden;
+    transition:
+      grid-template-rows var(--duration-2) var(--ease-out),
+      visibility var(--duration-2) var(--ease-out);
   }
 
   .import-animator.is-expanded {
     grid-template-rows: 1fr;
+    visibility: visible;
   }
 
   .import-content {

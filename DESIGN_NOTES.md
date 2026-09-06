@@ -24,6 +24,7 @@
    - [§53 卷末归档专匣与双分区抽屉架构](#sec-53)
    - [§54 阅读器末页接卷推荐架构](#sec-54)
    - [§55 画卷折叠架与尾格余量收纳架构](#sec-55)
+   - [§56 来源导航单一真理源与收录工作台解耦架构](#sec-56)
 5. [历史演进里程碑归档索引（Historical Milestones Archive）](#5-历史演进里程碑归档索引historical-milestones-archive)
 
 ---
@@ -248,6 +249,21 @@
 - **触控靶心底线与防迷航回滚**：
   1. **移动端 WCAG 2.5.5 与次级操作并列（Mobile Action Row Layout）**：在 `max-width: 640px` 下，所有折叠步进与全量展开按钮强制保底 `min-height: 44px;`；次级操作（展开全部与收拢归档）收敛于 `.fold-card-sub-actions` 并列容器中横向均分并排呈现，彻底根治移动端纵向堆叠导致的 48px 异常拉伸与画页视野挤占；
   2. **视口锚点自愈与动效无障碍（Reduced Motion Adaptation）**：点击收起时通过 `window.matchMedia('(prefers-reduced-motion: reduce)').matches` 探测读者系统动效偏好，在开启减少动效时以 `behavior: 'instant'` 瞬间就位，关闭时以 `behavior: 'smooth'` 平滑回退至网格顶部锚点，兼顾防迷航与前庭功能障碍读者的视觉舒适度。
+
+<a id="sec-56"></a>
+
+### §56. 来源导航单一真理源与收录工作台解耦架构（Source SSOT & Provider Ingest Decoupling Architecture）
+
+- **双层嵌套 Tab 根治与单一真理源（Single Source of Truth）**：
+  1. 彻底废除 Hero 内部 `ImportPanel` 自主维护的 `.panel-tabs` 与全局 Header 来源导航冲突的“嵌套选项卡”（Tab-in-Tab）反模式；
+  2. 确立 `activeSource = computed(() => route.query.source || '')` 为全局唯一驱动源。各站点 Provider 与通用书架彻底解耦；
+- **全景视图与单源工作台分治**：
+  1. **全部视图（All View, `/?`）**：Hero 回归优雅的单栏典藏大片版式（`hero--single`），不常驻收录输入框，聚焦于书房精神 lede、三项统计指标与阅读氛围；在统计区下方提供轻巧典雅的「录入新卷：`[+ 禁漫] [+ 哔咔] [+ 本地]`」导航胶囊，点击顺滑切入对应源专属工作台；
+  2. **单源视图（Provider View, 如 `/?source=jm`, `/?source=picacg`, `/?source=local`）**：Hero 右侧专精呈现对应站点的收录/扫描面板（`.is-source-locked` 单列紧凑编排），隐藏内部多余 Tab，消除中屏视口（961px~1180px iPad 横屏）的双列轨道冲突（664px 刚性下限溢出）；
+- **操作自由度与逃生通道闭环（Escape Hatch）**：
+  1. 单源模式下在 Hero 左上方显式提供 `〔 ← 返回全部藏书 〕` 面包屑路由锚点，避免用户因过滤后无处退回产生被劫持感；
+  2. 移动端折叠抽屉严格声明 `:inert="!isDesktop && !isMobileExpanded"` 并配合 `visibility: hidden` 过渡，彻底根除不可见隐藏表单与按钮引发的无障碍幽灵焦点（Ghost Focus）；
+  3. 移动端快捷药丸严格遵守 WCAG 2.5.5，保底 `min-height: 44px;` 触控物理判定区。
 
 ---
 

@@ -19,6 +19,10 @@ services:
       # COMIC_SHELF_ACCESS_LOG: 'false'
       # 允许本地直扫导入的外部挂载目录白名单（多个路径用冒号分隔）：
       # COMIC_SHELF_ALLOWED_DIRS: '/external-comics'
+      # 哔咔漫画配置（可选；配置账号密码后自动登录与保活，大陆网络需配置代理）：
+      # PICA_EMAIL: 'your_pica_email'
+      # PICA_PASSWORD: 'your_pica_password'
+      # PICA_PROXY: 'http://host.docker.internal:7890'
       COMIC_SHELF_ENABLE_HOTLINK_PROTECTION: 'true'
       COMIC_SHELF_PAGE_THUMB_WIDTH: '360'
     volumes:

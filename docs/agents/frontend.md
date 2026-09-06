@@ -44,7 +44,7 @@
 | `src/components/curator/GuestModal.vue`          | 馆长专属访客簿全屏模态：名册检视、设备抽屉、印发表单与凭证展示装配外壳                                                                                         |
 | `src/components/curator/guest/`                  | 访客簿模块化组件群：名册卡片、设备抽屉、印发表单、凭据展示与时间格式化                                                                                         |
 | `src/components/storage/`                        | 存储管理模块化组件群：头部卡片、PWA 装订、刻度槽与双级清理危险区                                                                                               |
-| `src/components/import/`                         | 收录面板模块化组件群：车号表单、本地目录扫描与下载并发步进器                                                                                                   |
+| `src/components/import/`                         | 收录面板模块化组件群：禁漫车号（`ImportJmTab`）、哔咔漫画（`ImportPicacgTab`）、本地自建（`ImportLocalTab`）与下载并发步进器                                   |
 | `src/components/UpdateBanner.vue`                | 纸间新卷本装订更新提示横幅（水墨胶囊悬浮卡片、沉浸阅读器自动避让）                                                                                             |
 | `src/components/GateView.vue`                    | 全屏 Zero-DOM 门禁大门视图：反 DevTools 篡改哨兵与三态表单编排外壳                                                                                             |
 | `src/components/gate/`                           | 门禁模块化表单群：初始口令表单、首访认领自设 PIN 表单、已认领 PIN 验证表单                                                                                     |
@@ -110,7 +110,7 @@
       │       页面索引目录        │         │      ComicPageImage       │
       └─────────────┬─────────────┘         └─────────────┬─────────────┘
                     │                                     │
-      • 360px JPEG 缩略图（~15KB）          • 本地磁盘原图 0 远端请求秒开
+      • 360px WEBP 缩略图（~15KB）          • 本地磁盘原图 0 远端请求秒开
       • useIntersectionObserver             • 缇雅 30s 全长动图装订卡片
         (24 页/批增量懒展开)                  • GPU 硬件加速 opacity 交叉淡显
       • content-visibility: auto            • 视口外页面跳过渲染与 Paint
@@ -265,3 +265,36 @@
 - **`useMemoize` 失败自清理与类型签名规范**：
   - 所有使用 `@vueuse/core` 的 `useMemoize` 缓存的异步函数，必须在 catch 中调用 `.delete(key)`，防止因 Abort 或临时网络抖动导致 rejected promise 常驻缓存污染后续访问；
   - 在 `api` 导出对象上必须通过包装函数声明包含 `options?: RequestOptions` 的显式类型签名，杜绝 IDE 参数长度推导偏差。
+
+## 12. 来源导航单一真理源与收录工作台解耦架构（Source SSOT Decoupling）
+
+### 12.1 架构原理图
+
+```mermaid
+graph TD
+  A[顶栏来源导航 AppHeader<br/>全部 / 01 禁漫 / 02 本地 / 03 哔咔] -->|route.query.source| B(路由单一真理源 activeSource)
+  B -->|activeSource == '' 全部视图| C[LibraryHero 单栏典藏版式 hero--single]
+  C --> C1[书房精神 Lede + 三项统计指标]
+  C --> C2[轻量快捷跳转药丸: + 禁漫 / + 哔咔 / + 本地]
+
+  B -->|activeSource == 'jm' / 'picacg' / 'local'| D[LibraryHero 双栏工作台版式]
+  D --> D1[专属来源文案与藏书统计]
+  D --> D2[逃生通道: 〔 ← 返回全部藏书 〕]
+  D --> E[专属收录卡片 ImportPanel :source]
+  E --> E1[is-source-locked 紧凑单列流<br/>彻底隐藏内部二级 Tab]
+  E --> E2[对应站点输入框: 车号 / 链接 / 本地路径]
+  E --> E3[移动端 :inert 键盘防穿透与 visibility 过渡]
+```
+
+### 12.2 核心规范与不变量
+
+1. **单一真理源（SSOT）**：
+   - 彻底废除 Hero 内部 `ImportPanel` 自主维护的 `.panel-tabs` 与全局 Header 来源导航冲突的“嵌套选项卡”（Tab-in-Tab）反模式；
+   - 统一由 `activeSource = computed(() => route.query.source || '')` 驱动全站书架与工作台状态；
+2. **全景视图与单源工作台分治**：
+   - **「全部」视图（All View, `/?`）**：Hero 回归单栏典藏大片版式（`hero--single`），不常驻收录输入框，消除空间抢夺与视觉焦虑；
+   - **「单源」专属视图（Provider View, 如 `/?source=jm`, `/?source=picacg`, `/?source=local`）**：Hero 右侧专精呈现对应站点的收录/扫描面板（`.is-source-locked` 单列紧凑编排），消除中屏视口（961px~1180px iPad 横屏）的双列轨道冲突（664px 刚性下限溢出）；
+3. **操作自由度与逃生通道闭环（Escape Hatch）**：
+   - 单源模式下在 Hero 左上方显式提供 `〔 ← 返回全部藏书 〕` 面包屑路由锚点；
+   - 移动端折叠抽屉严格声明 `:inert="!isDesktop && !isMobileExpanded"` 并配合 `visibility: hidden` 过渡，彻底根除不可见隐藏表单与按钮引发的无障碍幽灵焦点（Ghost Focus）；
+   - 移动端快捷药丸严格遵守 WCAG 2.5.5，保底 `min-height: 44px;` 触控物理判定区。

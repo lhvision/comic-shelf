@@ -191,6 +191,33 @@ const memoizedDetail = useMemoize(
   },
 )
 
+export const DEFAULT_PROVIDERS: ProviderInfo[] = [
+  {
+    key: 'jm',
+    label: '禁漫天堂',
+    short_label: '禁漫',
+    id_pattern: '^(?:JM)?\\d+$',
+    example: '523607',
+    description: '禁漫天堂 (18comic)',
+  },
+  {
+    key: 'picacg',
+    label: '哔咔漫画',
+    short_label: '哔咔',
+    id_pattern: '^[0-9a-fA-F]{24}$',
+    example: '5ebe89bf63918511c2c362a7',
+    description: '哔咔漫画 (PicAcg)',
+  },
+  {
+    key: 'local',
+    label: '本地自建',
+    short_label: '本地',
+    id_pattern: '^[\\w\\.\\-]+$',
+    example: 'my-album-01',
+    description: '本地自建画集',
+  },
+]
+
 const memoizedProviders = useMemoize(async (options?: RequestOptions): Promise<ProviderInfo[]> => {
   try {
     return await request<ProviderInfo[]>('/providers', {

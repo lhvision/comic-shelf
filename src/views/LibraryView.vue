@@ -15,6 +15,8 @@ import { useImageSearch } from '@/composables/useImageSearch'
 import { useToast } from '@/composables/useToast'
 import { useViewTransition } from '@/composables/useViewTransition'
 import { useAuth } from '@/composables/useAuth'
+import { api, DEFAULT_PROVIDERS } from '@/api/client'
+import type { ProviderInfo } from '@/types'
 
 /**
  * 书架首页 —— 纯编排视图。
@@ -28,10 +30,19 @@ const { toast } = useToast()
 const { withViewTransition } = useViewTransition()
 const { canWrite } = useAuth()
 const fileInput = ref<HTMLInputElement | null>(null)
+const providers = ref<ProviderInfo[]>(DEFAULT_PROVIDERS)
 
 const activeSource = computed(() =>
   typeof route.query.source === 'string' ? route.query.source : '',
 )
+
+const SHELF_TITLES: Record<string, string> = {
+  jm: '禁漫天堂藏书',
+  picacg: '哔咔漫画藏书',
+  local: '本地自建图集',
+}
+
+const shelfTitle = computed(() => SHELF_TITLES[activeSource.value] ?? '全部藏书')
 
 const {
   isAvailable,
@@ -67,6 +78,14 @@ onMounted(() => {
   void store.load()
   store.startPollingIfActive()
   window.addEventListener('paste', handlePaste)
+  api
+    .providers()
+    .then((res) => {
+      providers.value = res
+    })
+    .catch(() => {
+      providers.value = DEFAULT_PROVIDERS
+    })
 })
 
 onUnmounted(() => {
@@ -159,17 +178,19 @@ watch(searchError, (value) => {
       :book-count="sourceItems.length"
       :cached-pages="totalCachedPages"
       :total-pages="totalPages"
+      :active-source="activeSource"
+      :can-write="canWrite"
+      :providers="providers"
     >
-      <template #import v-if="canWrite">
-        <ImportPanel class="hero-import" @imported="openComic" />
+      <template #import v-if="canWrite && activeSource">
+        <ImportPanel :source="activeSource" @imported="openComic" />
       </template>
     </LibraryHero>
 
     <section class="shelf container" aria-labelledby="shelf-title">
       <div class="shelf-head">
         <div>
-          <p class="eyebrow">The stacks</p>
-          <h2 id="shelf-title">{{ activeSource ? '来源收藏' : '全部收藏' }}</h2>
+          <h2 id="shelf-title">{{ shelfTitle }}</h2>
         </div>
 
         <div class="search-container">

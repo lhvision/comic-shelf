@@ -2,7 +2,7 @@
 import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useEventListener, useResizeObserver, useScroll } from '@vueuse/core'
-import { api, onAuthSuccess } from '@/api/client'
+import { api, DEFAULT_PROVIDERS, onAuthSuccess } from '@/api/client'
 import { useAuth } from '@/composables/useAuth'
 import { useBrandIcon } from '@/composables/useBrandIcon'
 import AppIcon from '@/components/AppIcon.vue'
@@ -21,7 +21,7 @@ interface NavItem {
 
 const route = useRoute()
 const router = useRouter()
-const providers = ref<ProviderInfo[]>([])
+const providers = ref<ProviderInfo[]>(DEFAULT_PROVIDERS)
 const { authRequired, isGuest, canWrite, logout } = useAuth()
 const { brandIcon } = useBrandIcon()
 const { openModal: openGuestModal } = useGuestPasses()
@@ -74,16 +74,7 @@ async function fetchProviders() {
     providers.value = await api.providers()
   } catch {
     // Fall back to the embedded default so navigation still works offline.
-    providers.value = [
-      {
-        key: 'jm',
-        label: '禁漫天堂 (JMComic)',
-        short_label: '禁漫',
-        id_pattern: '',
-        example: '',
-        description: '',
-      },
-    ]
+    providers.value = DEFAULT_PROVIDERS
   }
 }
 

@@ -15,32 +15,44 @@ const hasLongDescription = computed(() => {
   return desc.length > 90 || desc.includes('\n')
 })
 
-const fieldRows = [
-  { label: '禁漫车', value: props.meta.display_id, mono: true },
-  { label: '作品', value: props.meta.works.join(' / ') || '—' },
-  { label: '登场人物', value: props.meta.actors.join(' / ') || '—' },
-  { label: '作者', value: props.meta.authors.join(' / ') || '佚名' },
-  { label: '上传者', value: props.meta.uploader || '未返回' },
-  { label: '页数', value: props.meta.page_count ? `${props.meta.page_count} P` : '—' },
-  {
-    label: '章节',
-    value: (props.meta.chapters?.length ?? 0) > 1 ? `共 ${props.meta.chapters!.length} 话` : '单话',
-    mono: true,
-  },
-  { label: '上架日期', value: props.meta.published_at || '—', mono: true },
-  { label: '更新日期', value: props.meta.updated_at || '—', mono: true },
-  {
-    label: '观看 / 喜欢',
-    value: `${props.meta.views || '—'} 次观看 · ${props.meta.likes || '—'} 点击喜欢`,
-  },
-]
+const SOURCE_ID_LABELS: Record<string, string> = {
+  jm: '禁漫车号',
+  picacg: '哔咔 ID',
+  local: '自建编号',
+}
+
+const fieldRows = computed(() => {
+  const idLabel = SOURCE_ID_LABELS[props.meta.source] ?? '画卷编号'
+  const rows = [
+    { label: idLabel, value: props.meta.display_id, mono: true },
+    { label: '作品', value: props.meta.works.join(' / ') || '—' },
+    { label: '登场人物', value: props.meta.actors.join(' / ') || '—' },
+    { label: '作者', value: props.meta.authors.join(' / ') || '佚名' },
+    { label: '上传者', value: props.meta.uploader || '未返回' },
+    { label: '页数', value: props.meta.page_count ? `${props.meta.page_count} P` : '—' },
+    {
+      label: '章节',
+      value:
+        (props.meta.chapters?.length ?? 0) > 1 ? `共 ${props.meta.chapters!.length} 话` : '单话',
+      mono: true,
+    },
+    { label: '上架日期', value: props.meta.published_at || '—', mono: true },
+    { label: '更新日期', value: props.meta.updated_at || '—', mono: true },
+  ]
+  if (props.meta.source !== 'local') {
+    rows.push({
+      label: '观看 / 喜欢',
+      value: `${props.meta.views || '—'} 次观看 · ${props.meta.likes || '—'} 点击喜欢`,
+    })
+  }
+  return rows
+})
 </script>
 
 <template>
   <section class="metadata-panel" aria-labelledby="meta-title">
     <div class="meta-head">
       <div class="meta-head-top">
-        <p class="eyebrow">Catalog card</p>
         <span class="meta-id" :title="meta.display_id">{{ meta.display_id }}</span>
       </div>
       <AppTextClamp

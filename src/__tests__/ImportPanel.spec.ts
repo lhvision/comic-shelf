@@ -51,6 +51,8 @@ describe('ImportPanel Component', () => {
     const tabs = wrapper.findAll('.panel-tab')
     expect(tabs[0]?.text()).toBe('禁漫车号')
     expect(tabs[0]?.classes()).toContain('is-active')
+    expect(tabs[1]?.text()).toBe('哔咔漫画')
+    expect(tabs[2]?.text()).toBe('本地自建 / 拆帧')
 
     // JM input form
     expect(wrapper.find('.field-prefix').text()).toBe('JM')
@@ -59,6 +61,25 @@ describe('ImportPanel Component', () => {
     expect(wrapper.text()).toContain('同时缓存全部页面')
     expect(wrapper.text()).toContain('下载并发')
     expect(wrapper.text()).toContain('新入库默认对访客隐藏')
+  })
+
+  it('renders PicAcg tab when clicking 哔咔漫画', async () => {
+    const pinia = createPinia()
+    const wrapper = mount(ImportPanel, {
+      global: {
+        plugins: [pinia],
+      },
+    })
+
+    const tabs = wrapper.findAll('.panel-tab')
+    // Click "哔咔漫画" tab
+    await tabs[1]?.trigger('click')
+    expect(tabs[1]?.classes()).toContain('is-active')
+
+    // PicAcg input form
+    expect(wrapper.find('.field-prefix').text()).toBe('PICA')
+    expect(wrapper.text()).toContain('同时缓存全部页面')
+    expect(wrapper.text()).toContain('下载并发')
   })
 
   it('hides "同时缓存全部页面" and "下载并发" when switching to local tab', async () => {
@@ -71,8 +92,8 @@ describe('ImportPanel Component', () => {
 
     const tabs = wrapper.findAll('.panel-tab')
     // Click "本地自建 / 拆帧" tab
-    await tabs[1]?.trigger('click')
-    expect(tabs[1]?.classes()).toContain('is-active')
+    await tabs[2]?.trigger('click')
+    expect(tabs[2]?.classes()).toContain('is-active')
 
     // Local input form
     expect(wrapper.find('.field-prefix').text()).toBe('PATH')
@@ -84,5 +105,41 @@ describe('ImportPanel Component', () => {
 
     // But library-wide preference "新入库默认对访客隐藏" remains
     expect(wrapper.text()).toContain('新入库默认对访客隐藏')
+  })
+
+  it('hides internal panel-tabs and locks to picacg when source="picacg" prop is provided', () => {
+    const pinia = createPinia()
+    const wrapper = mount(ImportPanel, {
+      props: {
+        source: 'picacg',
+      },
+      global: {
+        plugins: [pinia],
+      },
+    })
+
+    // Panel tabs should NOT be rendered when source prop is provided (decoupled architecture)
+    expect(wrapper.findAll('.panel-tab').length).toBe(0)
+
+    // Displays PicAcg dedicated heading and input
+    expect(wrapper.text()).toContain('收录哔咔画卷')
+    expect(wrapper.find('.field-prefix').text()).toBe('PICA')
+    expect(wrapper.text()).toContain('同时缓存全部页面')
+  })
+
+  it('hides internal panel-tabs and locks to local when source="local" prop is provided', () => {
+    const pinia = createPinia()
+    const wrapper = mount(ImportPanel, {
+      props: {
+        source: 'local',
+      },
+      global: {
+        plugins: [pinia],
+      },
+    })
+
+    expect(wrapper.findAll('.panel-tab').length).toBe(0)
+    expect(wrapper.text()).toContain('收录本地图集')
+    expect(wrapper.find('.field-prefix').text()).toBe('PATH')
   })
 })
