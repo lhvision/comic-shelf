@@ -58,6 +58,8 @@ describe('ComicPageImage.vue', () => {
 
     const updatedImg = wrapper.find('img')
     expect(updatedImg.attributes('src')).toContain('retry=1')
+    expect(updatedImg.attributes('loading')).toBe('eager')
+    expect(updatedImg.attributes('fetchpriority')).toBe('high')
   })
 
   it('displays error card after exhausting 3 auto-retries, and supports manual retry', async () => {
