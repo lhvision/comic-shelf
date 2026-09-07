@@ -50,3 +50,16 @@
 - **注意事项**：
   - iOS WebKit 目前对 PWA 的 `beforeinstallprompt` 事件不提供原生 API 支持，需通过 Safari 原生「分享 → 添加到主屏幕」进行安装；
   - 新版本上线后，Workbox 会在下一次页面空闲时静默完成 SW 激活。
+
+---
+
+## 补充决议（2026-09）：IndexedDB 物理归因与 OPFS 选型边界
+
+1. **IndexedDB 物理占用归因（~1.2 MB）**：
+   - 用户在 DevTools 观测到的 ~1.2 MB IndexedDB（`workbox-expiration/cache-entries`），系 Chromium 底层 LevelDB 引擎在初始化数据库时预分配的最小日志（WAL）、元数据与 B-Tree 磁盘块；
+   - 内部仅存放漫画画页的 `{ url, timestamp }`，不含任何图片二进制数据；该 1.2 MB 是换取 3,000 张上限后台滚动淘汰（LRU）的必要物理底线，无数据膨胀与泄漏；
+   - 在前端界面通过透明化注脚消除用户困惑。
+
+2. **OPFS（Origin Private File System）与 CacheStorage 边界澄清**：
+   - **漫画画页请求流**：坚守 **CacheStorage + Service Worker** 原生管道，由浏览器 C++ 网络栈直接解码渲染 `<img :src="...">`，绝不引入由 JS 读取 OPFS 句柄并反复创建 Blob URL 的高开销反模式；
+   - **OPFS 定位**：作为前瞻技术储备收录于 `docs/JS_RADAR.md`，专用于未来「整本漫画离线导出归档包（`.cbf`/`.zip`）」与「独立典藏中文字体离线落盘（`woff2`）」等非 HTTP 语义的大单体流式写入场景（遵循 YAGNI 原则，暂不编写空置抽象）。

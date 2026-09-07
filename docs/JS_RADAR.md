@@ -21,6 +21,7 @@
    - [3.2 Explicit Resource Management（`using` / `Symbol.dispose`）— 声明式 RAII 作用域资源清理](#32-explicit-resource-managementusing--symboldispose--声明式-raii-作用域资源清理)
    - [3.3 `Temporal API` — 新一代不可变高精度时间与时区系统（Stage 3-4）](#33-temporal-api--新一代不可变高精度时间与时区系统stage-3-4)
    - [3.4 Import Attributes（`with { type: 'json' }`）— 声明式静态模块导入属性（Baseline 2024 / ES2025）](#34-import-attributeswith--type-json--声明式静态模块导入属性baseline-2024--es2025)
+   - [3.5 OPFS（Origin Private File System）— 源私有文件系统与流式高性能本地落盘（Baseline 2023）](#35-opfsorigin-private-file-system--源私有文件系统与流式高性能本地落盘baseline-2023)
 4. [实验草案特性（Experimental / Stage 1-2 Proposals）](#4-实验草案特性experimental--stage-1-2-proposals)
    - [4.1 模式匹配（Pattern Matching: `match / when`）](#41-模式匹配pattern-matching-match--when)
    - [4.2 管道运算符（Pipeline Operator: `\|>` 与 Topic `%`）](#42-管道运算符pipeline-operator--与-topic-)
@@ -36,24 +37,25 @@
 
 > 数据来源：MDN BCD (Browser Compatibility Data) + Can I Use，更新于 2026-09。
 
-| 特性 / API                              | Chrome | Firefox | Safari |   规范状态 / Baseline   |                              本项目落地状态                               |
-| :-------------------------------------- | :----: | :-----: | :----: | :---------------------: | :-----------------------------------------------------------------------: |
-| **`Promise.withResolvers()`**           |  119+  |  121+   | 17.4+  |    ✅ Baseline 2024     |       ✅ 已落地（`useViewTransition` / `router` / IDB 清理 / 单测）       |
-| **`Promise.try()`**                     |  128+  |  134+   | 18.2+  |    ✅ Baseline 2025     |             ✅ 已落地（`useViewTransition.ts` 安全执行门面）              |
-| **`AbortSignal.any()`**                 |  116+  |  124+   | 17.4+  |    ✅ Baseline 2024     |                 ✅ 已落地（`api/client.ts` 复合超时取消）                 |
-| **`AbortSignal.timeout()`**             |  124+  |  100+   |  16+   |    ✅ Baseline 2024     | ⚠️ 架构决策（因无法提前取消定时器，短命 RPC 采用受控定时器 + 原生 `any`） |
-| **`Set` 集合运算 (`intersection` 等)**  |  122+  |  127+   |  17+   |    ✅ Baseline 2024     |             ✅ 已落地（`TagFilterBar` / `useLibraryFilter`）              |
-| **`Map.groupBy` / `Object.groupBy`**    |  117+  |  119+   | 17.4+  |    ✅ Baseline 2024     |                ✅ 已落地（漫画多章节切片与 Provider 分组）                |
-| **`HTMLImageElement.decode()`**         |  65+   |   68+   |  11+   |    ✅ Baseline 2020     |              ✅ 已落地（`HtmlCanvasSurface.vue` / 预载管道）              |
-| **Import Attributes (`with { type }`)** |  125+  |  137+   | 17.2+  |    ✅ Baseline 2024     |                📋 路线图（模块化 JSON 元数据与多语言字典）                |
-| **Iterator Helpers (`.map()/.take()`)** |  122+  |  131+   | 18.4+  |    ✅ Baseline 2025     |                📋 路线图（IndexedDB 游标与分批上传流水线）                |
-| **`using` (Explicit Resource Mgmt)**    |  134+  |  141+   |   TP   | 🔶 Newly Available 2025 |              📋 路线图（Canvas Context / ObjectURL 作用域）               |
-| **`Temporal API`**                      |  144+  |  139+   |   TP   | 🔶 Newly Available 2026 |              ⚠️ 审慎评估（待 iOS 稳定版就绪前暂不全量采用）               |
-| **模式匹配 (`match / when`)**           |   ❌   |   ❌    |   ❌   |       🧪 Stage 1        |                      🚫 严禁引入转译插件，纯草案观测                      |
-| **管道运算符 (`\|>`)**                  |   ❌   |   ❌    |   ❌   |       🧪 Stage 2        |                      🚫 严禁引入转译插件，纯草案观测                      |
-| **`Record & Tuple` (`#{} / #[]`)**      |   ❌   |   ❌    |   ❌   |       🧪 Stage 2        |                      🚫 严禁引入转译插件，纯草案观测                      |
-| **`Decimal` (`0.1m`)**                  |   ❌   |   ❌    |   ❌   |       🧪 Stage 1        |                     🚫 纸间无浮点货币场景，纯草案观测                     |
-| **安全赋值 (`?=`) / Try 表达式**        |   ❌   |   ❌    |   ❌   |       🧪 Stage 1        |                         🚫 语法尚未定稿，暂不采用                         |
+| 特性 / API                              | Chrome | Firefox | Safari |   规范状态 / Baseline   |                               本项目落地状态                               |
+| :-------------------------------------- | :----: | :-----: | :----: | :---------------------: | :------------------------------------------------------------------------: |
+| **`Promise.withResolvers()`**           |  119+  |  121+   | 17.4+  |    ✅ Baseline 2024     |       ✅ 已落地（`useViewTransition` / `router` / IDB 清理 / 单测）        |
+| **`Promise.try()`**                     |  128+  |  134+   | 18.2+  |    ✅ Baseline 2025     |              ✅ 已落地（`useViewTransition.ts` 安全执行门面）              |
+| **`AbortSignal.any()`**                 |  116+  |  124+   | 17.4+  |    ✅ Baseline 2024     |                 ✅ 已落地（`api/client.ts` 复合超时取消）                  |
+| **`AbortSignal.timeout()`**             |  124+  |  100+   |  16+   |    ✅ Baseline 2024     | ⚠️ 架构决策（因无法提前取消定时器，短命 RPC 采用受控定时器 + 原生 `any`）  |
+| **`Set` 集合运算 (`intersection` 等)**  |  122+  |  127+   |  17+   |    ✅ Baseline 2024     |              ✅ 已落地（`TagFilterBar` / `useLibraryFilter`）              |
+| **`Map.groupBy` / `Object.groupBy`**    |  117+  |  119+   | 17.4+  |    ✅ Baseline 2024     |                ✅ 已落地（漫画多章节切片与 Provider 分组）                 |
+| **`HTMLImageElement.decode()`**         |  65+   |   68+   |  11+   |    ✅ Baseline 2020     |              ✅ 已落地（`HtmlCanvasSurface.vue` / 预载管道）               |
+| **Import Attributes (`with { type }`)** |  125+  |  137+   | 17.2+  |    ✅ Baseline 2024     |                📋 路线图（模块化 JSON 元数据与多语言字典）                 |
+| **OPFS (`getDirectory()`)**             |  86+   |  111+   | 15.2+  |    ✅ Baseline 2023     | 📋 储备特性（单体大文件流式落盘/整本离线包/字体；网络图片走 CacheStorage） |
+| **Iterator Helpers (`.map()/.take()`)** |  122+  |  131+   | 18.4+  |    ✅ Baseline 2025     |                📋 路线图（IndexedDB 游标与分批上传流水线）                 |
+| **`using` (Explicit Resource Mgmt)**    |  134+  |  141+   |   TP   | 🔶 Newly Available 2025 |               📋 路线图（Canvas Context / ObjectURL 作用域）               |
+| **`Temporal API`**                      |  144+  |  139+   |   TP   | 🔶 Newly Available 2026 |               ⚠️ 审慎评估（待 iOS 稳定版就绪前暂不全量采用）               |
+| **模式匹配 (`match / when`)**           |   ❌   |   ❌    |   ❌   |       🧪 Stage 1        |                      🚫 严禁引入转译插件，纯草案观测                       |
+| **管道运算符 (`\|>`)**                  |   ❌   |   ❌    |   ❌   |       🧪 Stage 2        |                      🚫 严禁引入转译插件，纯草案观测                       |
+| **`Record & Tuple` (`#{} / #[]`)**      |   ❌   |   ❌    |   ❌   |       🧪 Stage 2        |                      🚫 严禁引入转译插件，纯草案观测                       |
+| **`Decimal` (`0.1m`)**                  |   ❌   |   ❌    |   ❌   |       🧪 Stage 1        |                     🚫 纸间无浮点货币场景，纯草案观测                      |
+| **安全赋值 (`?=`) / Try 表达式**        |   ❌   |   ❌    |   ❌   |       🧪 Stage 1        |                         🚫 语法尚未定稿，暂不采用                          |
 
 **图例**：✅ 已落地 · 🔶 部分/最新可用 · 🧪 实验草案 · ❌ 未原生支持 · 🚫 本项目不采用
 
@@ -427,6 +429,52 @@ const themeConfig = await import(`./themes/${themeName}.json`, {
 ```
 
 **纸间落地决策**：在 Vite+ 工具链与 Node 24+ 环境中完全就绪，后续在引入静态 JSON 元数据或本地多语言字典时作为标准范式采用。
+
+---
+
+### 3.5 OPFS（Origin Private File System）— 源私有文件系统与流式高性能本地落盘（Baseline 2023）
+
+**MDN**：[Origin private file system](https://developer.mozilla.org/en-US/docs/Web/API/File_System_API/Origin_private_file_system)  
+**Baseline**：2023 · Chrome 86+ · Firefox 111+ · Safari 15.2+ · Node.js 20+  
+**参考**：[张鑫旭《别再使用IndexedDB，大文件读写就用OPFS》](https://www.zhangxinxu.com/wordpress/2026/09/indexdb-navigator-storage-getdirectory/)
+
+#### 核心机制与性能优势
+
+传统 Web 前端在持久化存储大体积二进制资源（如数 MB 的字体、音频片段、离线压缩包）时常存在反模式——直接使用 `IndexedDB` 存储 `Blob` 或 `ArrayBuffer`。此举会触发浏览器的结构化克隆（Structured Clone）机制，导致主线程瞬时内存翻倍、GC 卡顿，且无法实现流式追加或随机读取。
+
+**OPFS（源私有文件系统）** 是通过 `navigator.storage.getDirectory()` 暴露的原生沙盒文件系统：
+
+1. **真实沙盒文件句柄**：直接获得 `FileSystemDirectoryHandle` 与 `FileSystemFileHandle`，不暴露宿主 OS 路径，免除弹窗授权；
+2. **流式落盘（`pipeTo`）**：支持将 `fetch()` 的 `ReadableStream` 响应体直连管道写入磁盘（`res.body.pipeTo(await handle.createWritable())`），数据无需全量驻留 JS 堆内存；
+3. **Worker 线程极速同步句柄**：在 Web Worker 内部支持 `createSyncAccessHandle()`，可实施类似 C 语言 `read/write/seek` 的字节级高性能同步读写。
+
+#### 纸间三层端侧存储选型准则（CacheStorage vs OPFS vs IndexedDB）
+
+在纸间客户端架构中，不同存储方案具备严格的领域边界：
+
+| 方案                          | 适用领域                         | 纸间实践与选型依据                                                                                                                                                                                              |
+| :---------------------------- | :------------------------------- | :-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Cache Storage (Cache API)** | **HTTP 网络资源 / 漫画画页流**   | **主力**。由 Service Worker 拦截 `/api/library/.../pages/...` 并在 C++ 网络层零拷贝直连解码，原生完美支持 `<img :src="...">`，零 JS 内存周转。                                                                  |
+| **OPFS (`getDirectory`)**     | **非 HTTP 独立大单体二进制文件** | **技术储备**。未来在支持「整本漫画离线导出归档包（`.cbf`/`.zip`）」或「典藏中文字体离线落盘（`woff2`）」时作为首选；绝不侵入正文画卷 HTTP 请求链（规避反复调用 `createObjectURL` 导致的主线程句柄与内存泄露）。 |
+| **IndexedDB**                 | **结构化键值元数据与查询索引**   | **轻量辅助**。仅由 Workbox Expiration 插件维护漫画画页 LRU 时间戳队列（3,000 张上限）。注：Chromium LevelDB 底层引擎新建数据库会固有预分配 ~1.2 MB 预写日志与 B-Tree 块，属正常底层基准开销。                   |
+
+#### 标准代码样板（流式落盘与读取）
+
+```ts
+// 1. 获取 OPFS 根目录句柄
+const root = await navigator.storage.getDirectory()
+const FILE_KEY = 'offline-package-sample.bin'
+
+// 2. 流式写入（直连管道，零内存膨胀）
+const res = await fetch('/api/export/package.cbf')
+const fileHandle = await root.getFileHandle(FILE_KEY, { create: true })
+const writable = await fileHandle.createWritable()
+await res.body?.pipeTo(writable)
+
+// 3. 读取为 File 对象
+const handle = await root.getFileHandle(FILE_KEY)
+const file = await handle.getFile()
+```
 
 ---
 

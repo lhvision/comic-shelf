@@ -73,7 +73,7 @@ defineProps<{
         <div class="item-text">
           <span class="item-title">漫画阅览缓存</span>
           <small class="item-desc">
-            {{ mangaImageCount }} 张已读页面与封面 · 保留最新
+            {{ mangaImageCount }} 张已读页面与封面（含本地淘汰索引） · 保留最新
             {{ MANGA_IMAGE_MAX_BUDGET.toLocaleString() }} 页面
           </small>
         </div>
