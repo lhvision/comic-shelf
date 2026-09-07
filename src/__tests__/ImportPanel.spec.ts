@@ -142,4 +142,26 @@ describe('ImportPanel Component', () => {
     expect(wrapper.text()).toContain('收录本地图集')
     expect(wrapper.find('.field-prefix').text()).toBe('PATH')
   })
+
+  it('toggles is-mobile-collapsed class when mobile collapse bar is clicked', async () => {
+    const pinia = createPinia()
+    const wrapper = mount(ImportPanel, {
+      global: {
+        plugins: [pinia],
+      },
+    })
+
+    // Initially collapsed on mobile by default
+    expect(wrapper.classes()).toContain('is-mobile-collapsed')
+
+    const bar = wrapper.find('.mobile-collapse-bar')
+    await bar.trigger('click')
+
+    // Expanded
+    expect(wrapper.classes()).not.toContain('is-mobile-collapsed')
+
+    // Click again to collapse
+    await bar.trigger('click')
+    expect(wrapper.classes()).toContain('is-mobile-collapsed')
+  })
 })

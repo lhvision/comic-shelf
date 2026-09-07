@@ -6,6 +6,7 @@ import AppButton from '@/components/AppButton.vue'
 import AppIcon from '@/components/AppIcon.vue'
 import { useAuth } from '@/composables/useAuth'
 import { useToast } from '@/composables/useToast'
+import { formatDirectLink } from '@/utils/url'
 
 const { username, logout, getStoredToken } = useAuth()
 const { toast } = useToast()
@@ -34,10 +35,7 @@ function handleCopyRoamLink() {
     toast('未找到当前借阅口令', 'error')
     return
   }
-  const url = new URL(window.location.href)
-  url.searchParams.set('token', token)
-  url.hash = ''
-  const roamUrl = url.toString()
+  const roamUrl = formatDirectLink(window.location.href, token)
   void copy(roamUrl)
   toast('已复制跨端入馆链接，在新设备打开输入您的 PIN 码即可入座', 'success')
 }

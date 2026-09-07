@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vite-plus/test'
 import { mount } from '@vue/test-utils'
 import ReaderPassPopover from '@/components/ReaderPassPopover.vue'
 import { useAuth } from '@/composables/useAuth'
-import { api } from '@/api/client'
+import { api, getStoredToken } from '@/api/client'
 
 vi.mock('@/api/client', () => ({
   api: {
@@ -90,5 +90,17 @@ describe('ReaderPassPopover component', () => {
     await wrapper.find('.btn-return-pass').trigger('click')
     await wrapper.find('.confirm-actions .btn-danger').trigger('click')
     expect(mockToast).toHaveBeenCalledWith('注销失败，请稍后重试', 'error')
+  })
+
+  it('handles copy roam link successfully', async () => {
+    vi.mocked(getStoredToken).mockReturnValue('test-token-789')
+    const wrapper = mount(ReaderPassPopover)
+    const copyBtn = wrapper.find('.btn-copy-roam')
+    expect(copyBtn.exists()).toBe(true)
+    await copyBtn.trigger('click')
+    expect(mockToast).toHaveBeenCalledWith(
+      '已复制跨端入馆链接，在新设备打开输入您的 PIN 码即可入座',
+      'success',
+    )
   })
 })

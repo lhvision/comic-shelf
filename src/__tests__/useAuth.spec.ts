@@ -203,6 +203,45 @@ describe('useAuth', () => {
     })
   })
 
+  it('automatically logs in when direct link without trailing slash is present', async () => {
+    const origLocation = window.location
+    const mockLocation = new URL('http://localhost:5173?token=clean-share-token-456')
+    Object.defineProperty(window, 'location', {
+      value: mockLocation,
+      writable: true,
+      configurable: true,
+    })
+
+    vi.spyOn(api, 'authStatus').mockResolvedValueOnce({
+      auth_required: true,
+      authenticated: false,
+      can_write: false,
+      role: 'unauthorized',
+    })
+    vi.spyOn(api, 'login').mockResolvedValueOnce({
+      ok: true,
+      token: 'clean-share-token-456',
+      role: 'guest',
+      username: 'CleanUrlUser',
+      user_id: 'guest:6',
+    })
+
+    const { authenticated, isGuest, username, checkStatus } = useAuth()
+    const ok = await checkStatus()
+
+    expect(ok).toBe(true)
+    expect(authenticated.value).toBe(true)
+    expect(isGuest.value).toBe(true)
+    expect(username.value).toBe('CleanUrlUser')
+    expect(getStoredToken()).toBe('clean-share-token-456')
+
+    Object.defineProperty(window, 'location', {
+      value: origLocation,
+      writable: true,
+      configurable: true,
+    })
+  })
+
   it('handles requires_claim state and executes claimPass', async () => {
     vi.spyOn(api, 'login').mockResolvedValueOnce({
       ok: false,

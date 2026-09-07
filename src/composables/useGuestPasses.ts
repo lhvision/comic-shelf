@@ -2,6 +2,7 @@ import { ref } from 'vue'
 import { useClipboard } from '@vueuse/core'
 import { api } from '@/api/client'
 import { useToast } from '@/composables/useToast'
+import { formatDirectLink } from '@/utils/url'
 import type { CreateGuestPassPayload, GuestPass, UpdateGuestPassPayload } from '@/types'
 
 const passes = ref<GuestPass[]>([])
@@ -160,9 +161,9 @@ export function useGuestPasses() {
     const token = typeof target === 'string' ? target : target.token
     const deviceCount = typeof target === 'string' ? 0 : target.device_count || 0
     try {
-      const url = new URL(window.location.origin)
-      url.searchParams.set('token', token)
-      await copy(url.toString())
+      const baseUrl = new URL(import.meta.env.BASE_URL, window.location.origin)
+      const shareUrl = formatDirectLink(baseUrl, token)
+      await copy(shareUrl)
       if (deviceCount > 0) {
         toast(`⚠️ 直达链接已复制。该通行证已有 ${deviceCount} 台设备在使用中，谨防设备互挤`, 'info')
       } else {

@@ -44,7 +44,7 @@
    - 保持对旧版单轮 SHA-256 哈希的双向比对兼容，平滑过渡。
 
 8. **移动端与多标签页重载会话暂存韧性（sessionStorage Pending Token Resilience）**：
-   - 解决直达链接 `/?token=xxx` 在被 `replaceState` 抹平后，读者在待认领或输 PIN 阶段切屏或误触刷新导致 Token 丢失、跌退至最底层馆长口令界面的 UX 摩擦；
+   - 解决直达链接 `?token=xxx` 在被 `replaceState` 抹平后，读者在待认领或输 PIN 阶段切屏或误触刷新导致 Token 丢失、跌退至最底层馆长口令界面的 UX 摩擦；
    - 前端在未完成入馆前将 `pendingToken` 暂存至 `sessionStorage`；一旦验证成功、主动登出或更换口令即刻物理抹除，兼顾极致安全与移动端防丢韧性。
 
 9. **访客自定义昵称全链路安全净化与长度收敛（Username Sanitization & Length Guard）**：

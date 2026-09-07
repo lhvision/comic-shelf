@@ -507,11 +507,26 @@ function incConcurrency(el: HTMLElement | null) {
 }
 
 @media (max-width: 640px) {
-  .import-panel {
+  .import-panel,
+  .import-panel.is-source-locked {
     display: flex;
     flex-direction: column;
     gap: 0;
     padding: 0;
+    max-width: none;
+    justify-self: stretch;
+    border-radius: var(--radius-3);
+    box-shadow: var(--shadow-1);
+    background: var(--paper-0);
+  }
+
+  /* 移动端折叠态：卸下厚重悬浮阴影，收敛为纸质书签式轻量圆角，消除一切幽灵间隙 */
+  .import-panel.is-mobile-collapsed,
+  .import-panel.is-mobile-collapsed.is-source-locked {
+    gap: 0;
+    border-radius: var(--radius-2);
+    box-shadow: none;
+    background: color-mix(in oklab, var(--paper-0) 88%, var(--paper-1));
   }
 
   .mobile-collapse-bar {
@@ -523,9 +538,15 @@ function incConcurrency(el: HTMLElement | null) {
     padding: var(--space-2-5) var(--space-3);
     background: transparent;
     border: 0;
+    border-radius: inherit;
     cursor: pointer;
     font-size: var(--text-xs);
     color: var(--ink-0);
+  }
+
+  .mobile-collapse-bar:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: -2px;
   }
 
   .mobile-collapse-lead {
@@ -555,6 +576,7 @@ function incConcurrency(el: HTMLElement | null) {
     display: grid;
     grid-template-rows: 0fr;
     visibility: hidden;
+    overflow: hidden;
     transition:
       grid-template-rows var(--duration-2) var(--ease-out),
       visibility var(--duration-2) var(--ease-out);

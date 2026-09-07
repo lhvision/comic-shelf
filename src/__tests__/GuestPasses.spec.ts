@@ -190,6 +190,28 @@ describe('useGuestPasses', () => {
     expect(mockToast).toHaveBeenCalledWith(expect.stringContaining('可安心发放给新朋友'), 'success')
   })
 
+  it('copyShareLink formats direct link and triggers toast', async () => {
+    const { copyShareLink } = useGuestPasses()
+    const pass: GuestPass = {
+      id: 99,
+      username: 'DirectFriend',
+      token: 'guest-secret-456',
+      expires_at: null,
+      is_active: true,
+      is_expired: false,
+      max_devices: 2,
+      device_count: 0,
+      devices: [],
+      activation_status: 'pending',
+      created_at: 1700000000,
+      updated_at: 1700000000,
+    }
+
+    const ok = await copyShareLink(pass)
+    expect(ok).toBe(true)
+    expect(mockToast).toHaveBeenCalledWith('专属直达链接已复制，朋友打开即可免密入馆', 'success')
+  })
+
   it('supports passes with is_cooling_locked and is_rate_limited flags', async () => {
     const lockedPass: GuestPass = {
       id: 3,
