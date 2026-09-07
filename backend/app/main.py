@@ -624,9 +624,11 @@ def import_comic(req: ImportRequest) -> ImportResult:
     # Metadata + URL discovery happen on the request thread: fast and necessary
     # for a useful response. Page/cover downloads are the slow part, so they're
     # pushed to a background daemon thread and the UI polls cache_progress.
-    # T12：refresh 时把旧 bundle 传给 provider，章节没变就不重复拉每一话的 photo HTML。
-    cached_bundle = store.load_fetched(req.source, source_id)
-    existing = cached_bundle if (req.refresh and cached_bundle is not None and cached_bundle.meta.page_count > 0) else None
+    existing: FetchedComic | None = None
+    if req.refresh:
+        cached_bundle = store.load_fetched(req.source, source_id)
+        if cached_bundle is not None and cached_bundle.meta.page_count > 0:
+            existing = cached_bundle
     try:
         fetched = provider.fetch(source_id, existing=existing)
     except ValueError as exc:

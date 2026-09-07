@@ -207,6 +207,7 @@ class TestPicacgProvider(unittest.TestCase):
         self.assertIn("纯爱", meta.tags)
         self.assertEqual(meta.page_count, 3)
         self.assertEqual(meta.cover_count, 3)
+        self.assertEqual(meta.cover_indices, [1, 1, 2])
         self.assertEqual(meta.published_at, "2026-08-15")
         self.assertEqual(meta.updated_at, "2026-09-01")
         self.assertEqual(meta.views, "8.9k")
@@ -448,6 +449,40 @@ class TestPicacgProvider(unittest.TestCase):
         self.assertFalse(result.from_cache)
         self.assertEqual(result.meta.page_count, 1260)
         mock_prov.fetch.assert_called_once_with("5ebe89bf63918511c2c362a7", existing=None)
+
+    def test_resolve_cover_page_index(self) -> None:
+        from app.models import ComicMeta
+        from app.storage import ComicStore
+
+        # With dual-source cover_indices (Cover 1 is thumb -> page 1 fallback, Cover 2..4 -> page 1..3)
+        meta = ComicMeta(
+            source="picacg",
+            source_id="abc",
+            display_id="PICA_abc",
+            title="Test",
+            page_count=10,
+            cover_count=4,
+            cover_indices=[1, 1, 2, 3],
+        )
+        self.assertEqual(ComicStore._resolve_cover_page_index(meta, 1), 1)
+        self.assertEqual(ComicStore._resolve_cover_page_index(meta, 2), 1)
+        self.assertEqual(ComicStore._resolve_cover_page_index(meta, 3), 2)
+        self.assertEqual(ComicStore._resolve_cover_page_index(meta, 4), 3)
+        # Out of bounds index falls back to index clamped to page_count
+        self.assertEqual(ComicStore._resolve_cover_page_index(meta, 5), 5)
+        self.assertEqual(ComicStore._resolve_cover_page_index(meta, 15), 10)
+
+        # Standard generic comic without cover_indices
+        meta_generic = ComicMeta(
+            source="jm",
+            source_id="123",
+            display_id="JM123",
+            title="Test",
+            page_count=20,
+        )
+        self.assertEqual(ComicStore._resolve_cover_page_index(meta_generic, 1), 1)
+        self.assertEqual(ComicStore._resolve_cover_page_index(meta_generic, 2), 2)
+        self.assertEqual(ComicStore._resolve_cover_page_index(meta_generic, 3), 3)
 
 
 if __name__ == "__main__":

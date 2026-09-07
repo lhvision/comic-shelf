@@ -158,10 +158,8 @@ function onPageCached(pageIndex: number) {
   const page = detail.value.meta.pages.find((p) => p.index === pageIndex)
   if (page && !page.cached) {
     page.cached = true
-    detail.value.cached_pages = Math.min(
-      detail.value.meta.page_count,
-      detail.value.cached_pages + 1,
-    )
+    const currentCachedCount = detail.value.meta.pages.filter((p) => p.cached).length
+    detail.value.cached_pages = Math.max(detail.value.cached_pages, currentCachedCount)
     detail.value.cache_complete = detail.value.cached_pages >= detail.value.meta.page_count
   }
 }

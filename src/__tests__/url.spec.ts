@@ -39,4 +39,15 @@ describe('formatDirectLink', () => {
       'http://127.0.0.1:8000/shelf/?token=sub-token',
     )
   })
+
+  it('handles relative path string gracefully by falling back to origin', () => {
+    expect(formatDirectLink('/comic/jm/123/read/1', 'tok')).toBe(
+      'http://localhost:3000/comic/jm/123/read/1?token=tok',
+    )
+  })
+
+  it('rejects unsupported protocols to prevent XSS injection', () => {
+    expect(() => formatDirectLink('javascript:alert(1)', 'tok')).toThrow(TypeError)
+    expect(() => formatDirectLink('data:text/html,<script>', 'tok')).toThrow(TypeError)
+  })
 })

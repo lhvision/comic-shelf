@@ -9,7 +9,7 @@ import shutil
 import tempfile
 import threading
 from pathlib import Path
-from typing import Any, Callable, Iterable
+from typing import Any, BinaryIO, Callable, Iterable
 
 from fastapi import HTTPException
 
@@ -301,6 +301,10 @@ class ComicStore:
                     except Exception:
                         pass
 
+        # Auto-heal: If PicAcg comic lacks cover_indices, backfill dual-source cover mapping
+        if meta.source == "picacg" and not meta.cover_indices and meta.page_count:
+            meta.cover_indices = ([1] + list(range(1, meta.cover_count)))[: meta.cover_count]
+
         # Auto-heal: If comic has chapters but first chapter start > 1 (orphaned flat pages 1..start-1 exist)
         if meta.chapters and meta.pages and meta.chapters[0].start > 1:
             orphaned_count = meta.chapters[0].start - 1
@@ -524,13 +528,14 @@ class ComicStore:
 
     @staticmethod
     def _save_cover(
-        page_path: Path,
+        source: Path | bytes | BinaryIO,
         target: Path,
         target_width: int = COVER_WIDTH,
         fmt: str = "JPEG",
         quality: int | None = None,
     ) -> None:
-        """Resize one finished page into a JPEG or WEBP cover/thumbnail file."""
+        """Resize one finished page or raw image bytes into a JPEG or WEBP cover/thumbnail file."""
+        import io
         from PIL import Image, ImageOps
 
         fmt_upper = fmt.upper()
@@ -543,7 +548,8 @@ class ComicStore:
             save_kwargs = {"format": "JPEG", "quality": save_quality, "optimize": True, "progressive": True}
             tmp_suffix = f".tmp.{os.getpid()}.{threading.get_ident()}.jpg"
 
-        with Image.open(page_path) as img:
+        fp = io.BytesIO(source) if isinstance(source, bytes) else source
+        with Image.open(fp) as img:
             img = ImageOps.exif_transpose(img)
             if getattr(img, "is_animated", False):
                 img.seek(0)
@@ -567,49 +573,13 @@ class ComicStore:
                 raise
 
     @staticmethod
-    def _save_cover_bytes(
-        data: bytes,
-        target: Path,
-        target_width: int = COVER_WIDTH,
-        fmt: str = "WEBP",
-        quality: int | None = None,
-    ) -> None:
-        """Resize raw image bytes into a WebP or JPEG cover/thumbnail file."""
-        import io
-        from PIL import Image, ImageOps
-
-        fmt_upper = fmt.upper()
-        if fmt_upper in ("WEBP", "IMAGE/WEBP") or target.suffix.lower() == ".webp":
-            save_quality = quality or COVER_WEBP_QUALITY
-            save_kwargs = {"format": "WEBP", "quality": save_quality, "method": 4}
-            tmp_suffix = f".tmp.{os.getpid()}.{threading.get_ident()}.webp"
+    def _resolve_cover_page_index(meta: ComicMeta, index: int) -> int:
+        """Map a 1-based cover ordinal to the corresponding 1-based page index using meta.cover_indices."""
+        if meta.cover_indices and 1 <= index <= len(meta.cover_indices):
+            page_index = meta.cover_indices[index - 1]
         else:
-            save_quality = quality or COVER_QUALITY
-            save_kwargs = {"format": "JPEG", "quality": save_quality, "optimize": True, "progressive": True}
-            tmp_suffix = f".tmp.{os.getpid()}.{threading.get_ident()}.jpg"
-
-        with Image.open(io.BytesIO(data)) as img:
-            img = ImageOps.exif_transpose(img)
-            if getattr(img, "is_animated", False):
-                img.seek(0)
-            if img.mode not in {"RGB", "L"}:
-                img = img.convert("RGB")
-            ratio = target_width / max(img.width, 1)
-            if ratio < 1:
-                size = (target_width, max(1, round(img.height * ratio)))
-                img = img.resize(size, Image.Resampling.LANCZOS)
-            target.parent.mkdir(parents=True, exist_ok=True)
-            tmp = target.with_suffix(tmp_suffix)
-            try:
-                img.save(tmp, **save_kwargs)
-                tmp.replace(target)
-            except Exception:
-                try:
-                    if tmp.exists():
-                        tmp.unlink()
-                except OSError:
-                    pass
-                raise
+            page_index = index
+        return max(1, min(page_index, meta.page_count or 1))
 
     @staticmethod
     def _convert_image_to_webp(source_path: Path, target_webp: Path, quality: int | None = None) -> Path:
@@ -664,13 +634,7 @@ class ComicStore:
                 if not (base_cover.exists() and base_cover.stat().st_size > 0):
                     if fetched is None:
                         raise FileNotFoundError("无法生成封面：本子缓存不完整")
-                    if meta.cover_indices and 1 <= index <= len(meta.cover_indices):
-                        page_index = meta.cover_indices[index - 1]
-                    elif meta.source == "picacg" and index > 1:
-                        page_index = index - 1
-                    else:
-                        page_index = index
-                    page_index = max(1, min(page_index, meta.page_count or 1))
+                    page_index = self._resolve_cover_page_index(meta, index)
                     page_path = self.ensure_page(fetched, page_index)
                     self._save_cover(page_path, base_cover)
                 self.scale_cover(base_cover, target, target_width=width)
@@ -678,13 +642,7 @@ class ComicStore:
 
             if fetched is None:
                 raise FileNotFoundError("无法生成封面：本子缓存不完整")
-            if meta.cover_indices and 1 <= index <= len(meta.cover_indices):
-                page_index = meta.cover_indices[index - 1]
-            elif meta.source == "picacg" and index > 1:
-                page_index = index - 1
-            else:
-                page_index = index
-            page_index = max(1, min(page_index, meta.page_count or 1))
+            page_index = self._resolve_cover_page_index(meta, index)
 
             page_path = self.ensure_page(fetched, page_index)
             self._save_cover(page_path, target)
@@ -727,13 +685,7 @@ class ComicStore:
             if fetched is None:
                 raise FileNotFoundError("无法生成封面：本子缓存不完整，且未找到已有封面或缩略图")
 
-            if meta.cover_indices and 1 <= index <= len(meta.cover_indices):
-                page_index = meta.cover_indices[index - 1]
-            elif meta.source == "picacg" and index > 1:
-                page_index = index - 1
-            else:
-                page_index = index
-            page_index = max(1, min(page_index, meta.page_count or 1))
+            page_index = self._resolve_cover_page_index(meta, index)
 
             page_path = self.ensure_page(fetched, page_index)
             target_width = width or COVER_WIDTH
@@ -946,8 +898,8 @@ class ComicStore:
                 if official_cover_bytes:
                     base_cover = self.cover_path(meta, 1, ext="webp")
                     thumb_cover = self.cover_path(meta, 1, COVER_THUMB_WIDTH, ext="webp")
-                    self._save_cover_bytes(official_cover_bytes, base_cover, target_width=COVER_WIDTH, fmt="WEBP")
-                    self._save_cover_bytes(official_cover_bytes, thumb_cover, target_width=COVER_THUMB_WIDTH, fmt="WEBP")
+                    self._save_cover(official_cover_bytes, base_cover, target_width=COVER_WIDTH, fmt="WEBP")
+                    self._save_cover(official_cover_bytes, thumb_cover, target_width=COVER_THUMB_WIDTH, fmt="WEBP")
         except Exception as exc:
             logger.warning(f"预热官方封面异常，降级使用画页第一页: {exc}")
 

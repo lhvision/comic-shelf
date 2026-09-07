@@ -599,6 +599,10 @@ class PicacgProvider(ComicProvider):
             )
 
         total_page_count = len(remote_pages)
+        cover_count = min(COVER_COUNT, total_page_count) if total_page_count else COVER_COUNT
+        # Dual-source cover fusion: Cover 1 uses official thumb (fallback to page 1), Cover 2~4 map to pages 1, 2, 3
+        cover_indices = ([1] + list(range(1, cover_count)))[:cover_count] if total_page_count else []
+
         comic_meta = ComicMeta(
             source=self.key,
             source_id=comic_id,
@@ -617,7 +621,8 @@ class PicacgProvider(ComicProvider):
             likes=likes,
             comment_count=int(comic_info.get("commentsCount", comic_info.get("totalComments", 0)) or 0),
             favorite=False,
-            cover_count=min(COVER_COUNT, total_page_count) if total_page_count else COVER_COUNT,
+            cover_count=cover_count,
+            cover_indices=cover_indices,
             source_url=f"https://picawang.com/comic/{comic_id}",
             pages=page_records,
             chapters=chapters if len(chapters) > 1 else [],
@@ -642,6 +647,8 @@ class PicacgProvider(ComicProvider):
 
         candidate_urls: list[str] = [f"{file_server}/static/{path}"]
         parsed = urlparse(candidate_urls[0])
+        if parsed.scheme not in ("http", "https"):
+            return None
         original_host = (parsed.hostname or "").lower()
 
         for fallback_host in PICA_STORAGE_FALLBACKS:
