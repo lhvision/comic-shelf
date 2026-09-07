@@ -8,6 +8,7 @@ vi.mock('@/components/detail/PageTile.vue', () => ({
   default: {
     name: 'PageTile',
     props: ['source', 'sourceId', 'index', 'cached', 'label', 'chapterId'],
+    emits: ['cached'],
     template: '<div class="mock-page-tile" :data-index="index">{{ label || index }}</div>',
   },
 }))
@@ -123,5 +124,23 @@ describe('PageIndexGrid', () => {
     // Click collapse button in sentinel bar
     await sentinel.find('button').trigger('click')
     expect(wrapper.emitted('collapse')).toBeTruthy()
+  })
+
+  it('forwards cached event from PageTile as pageCached emit', () => {
+    const pages = makePages(5)
+    const wrapper = mount(PageIndexGrid, {
+      props: {
+        source: 'jm',
+        sourceId: '123456',
+        pages,
+        remainingPages: 0,
+        pageStep: 24,
+        showingRange: '已显示 5 / 5 页',
+      },
+    })
+    const firstTile = wrapper.findComponent({ name: 'PageTile' })
+    expect(firstTile.exists()).toBe(true)
+    firstTile.vm.$emit('cached', 1)
+    expect(wrapper.emitted('pageCached')).toEqual([[1]])
   })
 })

@@ -60,6 +60,7 @@ export function onAuthSuccess(handler: AuthSuccessHandler): () => void {
 
 export interface RequestOptions {
   signal?: AbortSignal
+  bypassCache?: boolean
 }
 
 export class ApiError extends Error {
@@ -278,8 +279,12 @@ export const api = {
     request<LibrarySummary[]>('/library', {
       signal: options?.signal,
     }),
-  detail: (source: string, sourceId: string, options?: RequestOptions) =>
-    memoizedDetail(source, sourceId, options),
+  detail: (source: string, sourceId: string, options?: RequestOptions) => {
+    if (options?.bypassCache) {
+      memoizedDetail.delete(source, sourceId)
+    }
+    return memoizedDetail(source, sourceId, options)
+  },
   importComic: async (payload: ImportRequest) => {
     memoizedDetail.clear()
     return request<ImportResult>('/library/import', {
@@ -320,13 +325,20 @@ export const api = {
     request<CacheProgress>(`/library/${source}/${sourceId}/chapters/${chapterId}/cache`, {
       signal: options?.signal,
     }),
-  cacheChapter: (source: string, sourceId: string, chapterId: string, options?: RequestOptions) =>
-    request<CacheProgress>(`/library/${source}/${sourceId}/chapters/${chapterId}/cache`, {
+  cacheChapter: async (
+    source: string,
+    sourceId: string,
+    chapterId: string,
+    options?: RequestOptions,
+  ) => {
+    memoizedDetail.delete(source, sourceId)
+    return request<CacheProgress>(`/library/${source}/${sourceId}/chapters/${chapterId}/cache`, {
       method: 'POST',
       signal: options?.signal,
       headers: { 'Content-Type': 'application/json' },
       body: '{}',
-    }),
+    })
+  },
   cacheJob: (source: string, sourceId: string, options?: RequestOptions) =>
     request<CacheJob>(`/library/${source}/${sourceId}/cache/job`, {
       signal: options?.signal,

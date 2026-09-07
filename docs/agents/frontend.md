@@ -176,6 +176,17 @@
   在 `ChapterView` 里必须**解构到 setup 顶层**再传给子组件/模板；直接 `nav.xxx` 不会自动
   unwrap，会触发 `ChapterSwitcher.findIndex is not a function` 且图片不显示（`DESIGN_NOTES §13`）。
 
+## 6.9 章节缓存状态同步与缩略图落盘感知（Thumbnail-Implied Page Caching）
+
+- **缩略图落盘即缓存（Thumbnail-Implied Caching）**：
+  当用户进入章节子路由或浏览画页网格时，`PageTile.vue` 请求 `/thumbnail` 缩略图。在后端实现中，生成缩略图会按需解密并落盘完整画页，将服务端的 `page.cached` 置为 `true`。前端通过 `PageTile` 的 `@load="onThumbLoad"` 监听，当发现 `!props.cached` 时向上触发 `cached(index)`；`PageIndexGrid` 将其转发为 `@page-cached`，由 `ChapterView` 与 `ComicDetailView` 捕获并就地更新内存中对应 `pages[index].cached = true`，同时累加 `cached_pages` 与校验 `cache_complete`，彻底消除“缩略图已渲染但徽标仍为待缓存”的视觉脱节。
+- **单话粒度缓存轮询**：
+  `ChapterView.vue` 内触发章节缓存时，轮询端点必须严格请求 `api.chapterCacheProgress(source, sourceId, chapterId)`，严禁调用全书级别的 `api.cacheProgress`，防止进度百分比与单话状态失真。
+- **客户端内存缓存穿透（Bypass Cache）**：
+  `api.detail` 在底层使用了 `useMemoize` 进行数据复用。在后台缓存任务完成或服务端推送数据变更时，重新拉取详情必须传递 `{ bypassCache: true }`（触发内部 `memoizedDetail.delete` 并回源重新请求），防止前端读到旧的未缓存快照。
+- **SSE 事件驱动对账**：
+  `ChapterView` 与 `ComicDetailView` 均通过 `useSystemEvents` 监听 `lastLibraryEvent`（服务端 `library_changed` SSE 事件流）。当后台异步下载落盘或跨标签页完成操作时，前端接收到匹配当前漫画的事件后自动执行后台静默对账（`load(true, true)`）。
+
 ## 7. 阅读器当前行为
 
 设置保存在 `localStorage['comic-shelf:reader-settings:v1']`。

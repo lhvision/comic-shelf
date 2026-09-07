@@ -8,6 +8,14 @@ import { useLibraryStore } from '@/stores/library'
 export const MAX_SSE_RETRY_ATTEMPTS = 10
 export const DEFAULT_IDLE_TIMEOUT_MS = 10 * 60 * 1000 // 10 minutes
 
+export interface LibraryChangedEvent {
+  action?: string
+  source?: string
+  source_id?: string
+  chapter_id?: string
+  timestamp?: number
+}
+
 /**
  * 纸间全站智能按需单向系统事件流（SSE）
  *
@@ -23,6 +31,7 @@ export const DEFAULT_IDLE_TIMEOUT_MS = 10 * 60 * 1000 // 10 minutes
 export const useSystemEvents = createGlobalState(() => {
   const isConnected = ref(false)
   const isSleeping = ref(false)
+  const lastLibraryEvent = ref<LibraryChangedEvent | null>(null)
 
   // 是否由应用显式激活（由 registerPwa 或视图调用 connect() 时激活）
   const isEnabled = ref(false)
@@ -68,6 +77,7 @@ export const useSystemEvents = createGlobalState(() => {
 
     try {
       clearApiDetailCache()
+      lastLibraryEvent.value = { action: 'reconcile', timestamp: now }
       const libraryStore = useLibraryStore()
       await libraryStore.load(true)
       await checkForUpdate()
@@ -106,12 +116,13 @@ export const useSystemEvents = createGlobalState(() => {
 
       eventSource.addEventListener('library_changed', (e: MessageEvent) => {
         try {
-          const data = JSON.parse(e.data) as { source?: string; source_id?: string }
+          const data = JSON.parse(e.data) as LibraryChangedEvent
           if (data?.source && data?.source_id) {
             clearApiDetailCache(data.source, data.source_id)
           } else {
             clearApiDetailCache()
           }
+          lastLibraryEvent.value = data
           const libraryStore = useLibraryStore()
           void libraryStore.load(true)
         } catch {
@@ -197,6 +208,7 @@ export const useSystemEvents = createGlobalState(() => {
     isSleeping,
     shouldBeConnected,
     isReaderRoute,
+    lastLibraryEvent,
     connect,
     disconnect,
     reconcileState,

@@ -14,6 +14,7 @@ import { useLibraryStore, createPlaceholderDetail } from '@/stores/library'
 import { useToast } from '@/composables/useToast'
 import { useCoverTransition } from '@/composables/useCoverTransition'
 import { useAuth } from '@/composables/useAuth'
+import { useSystemEvents } from '@/composables/useSystemEvents'
 import CoverCarousel from '@/components/CoverCarousel.vue'
 import AppIcon from '@/components/AppIcon.vue'
 
@@ -140,7 +141,32 @@ onBeforeUnmount(() => {
   }
 })
 
-async function load(silent = false) {
+const { lastLibraryEvent } = useSystemEvents()
+
+watch(lastLibraryEvent, (event) => {
+  if (
+    event &&
+    (!event.source || event.source === source.value) &&
+    (!event.source_id || event.source_id === sourceId.value)
+  ) {
+    void load(true, true)
+  }
+})
+
+function onPageCached(pageIndex: number) {
+  if (!detail.value?.meta?.pages) return
+  const page = detail.value.meta.pages.find((p) => p.index === pageIndex)
+  if (page && !page.cached) {
+    page.cached = true
+    detail.value.cached_pages = Math.min(
+      detail.value.meta.page_count,
+      detail.value.cached_pages + 1,
+    )
+    detail.value.cache_complete = detail.value.cached_pages >= detail.value.meta.page_count
+  }
+}
+
+async function load(silent = false, bypassCache = false) {
   if (loadAbortController) {
     loadAbortController.abort()
   }
@@ -150,7 +176,10 @@ async function load(silent = false) {
   // SWR：若已有详情数据且非显式重载，不闪现骨架屏
   if (!silent && !detail.value) loading.value = true
   try {
-    const data = await api.detail(source.value, sourceId.value, { signal: controller.signal })
+    const data = await api.detail(source.value, sourceId.value, {
+      signal: controller.signal,
+      bypassCache,
+    })
     if (controller.signal.aborted) return
     detail.value = data
     store.setDetail(data)
@@ -233,7 +262,7 @@ const { pause: pauseProgressPolling, resume: resumeProgressPolling } = useInterv
         caching.value = false
         runningChapterId.value = null
         pauseProgressPolling()
-        void load(true)
+        void load(true, true)
       }
     } catch {
       /* the long-running request owns the error path */
@@ -269,7 +298,7 @@ async function cacheAll() {
     if (progress.complete) {
       pauseProgressPolling()
       caching.value = false
-      void load(true)
+      void load(true, true)
     } else {
       resumeProgressPolling()
     }
@@ -300,7 +329,7 @@ async function handleCacheChapter(chapterId: string) {
       pauseProgressPolling()
       caching.value = false
       runningChapterId.value = null
-      void load(true)
+      void load(true, true)
     }
   } catch (e) {
     pauseProgressPolling()
@@ -437,6 +466,7 @@ function startReading(page = progressEl.value || 1) {
         :page-step="pageStep"
         :showing-range="showingRange"
         :can-collapse="canCollapse"
+        @page-cached="onPageCached"
         @load-more="loadMore"
         @load-all="loadAll"
         @collapse="collapse"

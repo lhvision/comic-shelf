@@ -32,7 +32,10 @@
 - **章节（Chapter / 話）**：一本多话合集里的一个独立 photo。模型上每章有 `{id,index,title,page_count,start}`，
   `start` 是该章在**全书全局页码**里的起始页。多话作品详情页按「章节目录」摆放（封面 + 章节信息），
   点某话进入「章节子路由」看该话页索引；阅读器页码/继续阅读/封面仍走全局页码。单章节作品 `chapters` 为空。
+- **章节子路由（Chapter Sub-route / ChapterView）**：多话漫画单个话的独立专注页面（`/comic/:source/:sourceId/chapter/:chapterId`）。承载本话的页面索引、章节导航条、单话缓存触发与画页管理，与详情页目录形成层级呼应。
 - **单话按需离线（Chapter-level Caching / Cache by Chapter）**：多章节漫画支持在章节卡片与章节详情页触发针对该单话的后台图片下载任务，弥补“全本预缓存（MAX 600页）”在超长作品（数千页/上百话）下的粗粒度缺陷与反爬风险。
+- **缩略图落盘即缓存（Thumbnail Implied Page Caching）**：页面索引网格请求画页缩略图时，后端解密拉取原图生成缩略图并即刻将该画页标记为本地化（`cached = true`）；前端感知缩略图加载完成即刻乐观翻转「本地」印章并推进单话进度，消除“明明图片已加载却显示待缓存”的认知割裂。
+- **防爬节流与并发阀门（Anti-Scraping Pacing & Concurrency Gate）**：针对远端图源（如哔咔、禁漫）设立的并发保护屏障（`download_gate` 默认 3 路并发）与拟人化随机抖动延迟（`PICA_DOWNLOAD_PACING_MS = 250ms ±20%`），杜绝批量拉取缩略图或画页时触发远端 IP 封禁。
 - **章节相对页码（Chapter-relative Page Index）**：多章节作品中面向读者展示的章内相对页码（`local_page = global_page - chapter.start + 1`，如第 3 话第 2 页，全书第 47 页）。详情页“继续阅读”按钮与阅读器 HUD 统一采用章内相对页码呈现，消除与单话总页数的认知割裂。
 - **长章节目录分批展开（Chapter Index Chunked Rendering）**：面对上百话的超长连载漫画（如 152 话），详情页章节目录采用分批展开（首屏 24 话 + 滚动/按需增量），防止一次性向 DOM 树灌入数百个组件与并发封面网络请求。
 - **详情元数据内存态热复用（Detail In-memory SWR Cache）**：跨章节子路由与父详情页回跳时，直接命中 Pinia 内存已有完整元数据对象，避免几兆字节的巨型 JSON 重复传输与主线程反序列化，实现秒级无感回退。

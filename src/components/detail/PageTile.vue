@@ -24,6 +24,10 @@ const props = withDefaults(
   { label: undefined, chapterId: '' },
 )
 
+const emit = defineEmits<{
+  (e: 'cached', index: number): void
+}>()
+
 function pageLabel(index: number) {
   return String(index).padStart(3, '0')
 }
@@ -36,6 +40,12 @@ function readerLink() {
   const base = `/comic/${props.source}/${props.sourceId}/read/${props.index}`
   return props.chapterId ? `${base}?chapter=${encodeURIComponent(props.chapterId)}` : base
 }
+
+function onThumbLoad() {
+  if (!props.cached) {
+    emit('cached', props.index)
+  }
+}
 </script>
 
 <template>
@@ -46,6 +56,7 @@ function readerLink() {
         :alt="`第 ${displayNumber()} 页`"
         loading="lazy"
         decoding="async"
+        @load="onThumbLoad"
       />
     </div>
     <span class="page-index">{{ pageLabel(displayNumber()) }}</span>

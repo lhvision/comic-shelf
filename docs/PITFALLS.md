@@ -558,7 +558,18 @@
   - **放行/改用**：
     1. **签名与请求路径完全同源**：在 `_request` 中先将 `params` 通过 `urlencode` 完整拼接到 `clean_endpoint`（如 `comics/{id}/eps?page=1`），再将同一字符串透传给 `calc_signature` 计算 Header 签名并作为请求 URL；
     2. **历史坏档读写自愈**：在 `/api/library/import` 处校验 `cached.meta.page_count > 0`，当检测到 `page_count == 0` 坏档时自动穿透缓存触发回源全量重拉；
-    3. **官方 Thumb 与画卷双模融合**：Cover 1 优先下载官方 `thumb`（`{fileServer}/static/{path}`）并转码 720px/360px WebP，Cover 2~~4 取自画卷第 1~~3 页，失败自动降级回落至画页第 1 页。
+
+### 63. 章节子路由缓存脱节与缩略图静默落盘感知失效（Chapter Subroute Cache Disconnect & Thumbnail-Implied Page Caching Trap）
+
+- **本质**：在详情页与章节子路由中，`PageTile` 请求 `/thumbnail` 缩略图时，后端会按需抓取原图、解密并落盘，并在服务端 `album.json` 中将画页标记为 `cached = true`；但前端画页网格由于缺乏对这一“隐含落盘（Implied Caching）”动作的感知，加之客户端 `api.detail` 启用了 `useMemoize` 内存缓存，在子路由内即使调用 `load(true)` 也依然返回陈旧内存快照；此外，`ChapterView` 误用全书粒度的 `api.cacheProgress` 轮询而非单话粒度的 `api.chapterCacheProgress`，导致单话缓存进度与全书混合，造成“画页缩略图已渲染但徽标始终卡在‘待缓存’、且单话缓存结束后状态不自动收敛”的割裂。
+- **红线与防误伤**：
+  - **不要**在章节子路由中调用全书粒度的缓存进度轮询（`api.cacheProgress`）；
+  - **不要**在后台任务完成或主动对账时直接调用未穿透内存缓存的 `api.detail`；
+  - **不要**让画页网格被动等待下一次全量刷新才更新已下载状态；
+  - **放行/改用**：
+    1. **缩略图加载感知向上冒泡**：`PageTile.vue` 在 `@load="onThumbLoad"` 处检测，若当前页未标记为 `cached`，立即派发 `cached(index)`；`PageIndexGrid` 向上转发 `@page-cached`，父级（`ChapterView` / `ComicDetailView`）乐观更新内存中 `page.cached = true` 与 `cached_pages` 计数；
+    2. **精准单话轮询与缓存穿透**：单话缓存精准轮询 `api.chapterCacheProgress`；在任务完成或显式重拉时调用 `load(true, true)`，通过 `bypassCache: true` 主动逐出 `memoizedDetail`；在 `api.cacheChapter` 触发时自动清理对应的 `memoizedDetail`；
+    3. **SSE 全局状态自愈**：通过 `useSystemEvents` 监听 `lastLibraryEvent`，在后端异步落盘广播 `library_changed` SSE 事件时，前端自动触发静默对账。
 
 ---
 

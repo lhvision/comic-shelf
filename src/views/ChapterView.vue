@@ -1,13 +1,14 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { onClickOutside, useIntervalFn } from '@vueuse/core'
+import { useIntervalFn } from '@vueuse/core'
 import { api } from '@/api/client'
 import { useAuth } from '@/composables/useAuth'
 import { useLastRead } from '@/composables/useLastRead'
 import { useChapterNavigation } from '@/composables/useChapterNavigation'
 import { useIdlePrefetch } from '@/composables/useIdlePrefetch'
 import { useToast } from '@/composables/useToast'
+import { useSystemEvents } from '@/composables/useSystemEvents'
 import ChapterSwitcher from '@/components/detail/ChapterSwitcher.vue'
 import PageIndexGrid from '@/components/detail/PageIndexGrid.vue'
 import CacheProgress from '@/components/CacheProgress.vue'
@@ -144,8 +145,11 @@ function startReadingChapter() {
 
 watch(
   chapterId,
-  () => {
+  (newId, oldId) => {
     setChapterById(chapterId.value)
+    if (oldId !== undefined && newId !== oldId) {
+      void load(true)
+    }
   },
   { immediate: true },
 )
@@ -165,7 +169,32 @@ onBeforeUnmount(() => {
   }
 })
 
-async function load(silent = false) {
+const { lastLibraryEvent } = useSystemEvents()
+
+watch(lastLibraryEvent, (event) => {
+  if (
+    event &&
+    (!event.source || event.source === source.value) &&
+    (!event.source_id || event.source_id === sourceId.value)
+  ) {
+    void load(true, true)
+  }
+})
+
+function onPageCached(pageIndex: number) {
+  if (!detail.value?.meta?.pages) return
+  const page = detail.value.meta.pages.find((p) => p.index === pageIndex)
+  if (page && !page.cached) {
+    page.cached = true
+    detail.value.cached_pages = Math.min(
+      detail.value.meta.page_count,
+      detail.value.cached_pages + 1,
+    )
+    detail.value.cache_complete = detail.value.cached_pages >= detail.value.meta.page_count
+  }
+}
+
+async function load(silent = false, bypassCache = false) {
   if (loadAbortController) {
     loadAbortController.abort()
   }
@@ -175,7 +204,10 @@ async function load(silent = false) {
   // SWR：若已有详情数据且非显式重载，不闪现骨架屏
   if (!silent && !detail.value) loading.value = true
   try {
-    const data = await api.detail(source.value, sourceId.value, { signal: controller.signal })
+    const data = await api.detail(source.value, sourceId.value, {
+      signal: controller.signal,
+      bypassCache,
+    })
     if (controller.signal.aborted) return
     detail.value = data
     store.setDetail(data)
@@ -216,46 +248,48 @@ const { pause: pauseProgressPolling, resume: resumeProgressPolling } = useInterv
     if (isPollingProgress) return
     isPollingProgress = true
     try {
-      const [progress, job] = await Promise.all([
-        api.cacheProgress(source.value, sourceId.value),
+      const currentChapterId = activeChapter.value?.id
+      const [chapterProgress, job] = await Promise.all([
+        currentChapterId
+          ? api.chapterCacheProgress(source.value, sourceId.value, currentChapterId)
+          : api.cacheProgress(source.value, sourceId.value),
         api.cacheJob(source.value, sourceId.value),
       ])
       caching.value = job.running
       runningChapterId.value = job.chapter_id ?? null
 
-      if (detail.value) {
-        detail.value.cached_pages = Math.max(detail.value.cached_pages, progress.cached)
-        detail.value.cache_complete = progress.complete
-
-        if (detail.value.meta?.pages) {
-          if (job.chapter_id) {
-            const ch = chapters.value.find((c) => c.id === job.chapter_id)
-            if (ch) {
-              const maxPage = ch.start + job.prefetched - 1
-              for (const p of detail.value.meta.pages) {
-                if (p.chapter === ch.id && (!job.running || p.index <= maxPage)) {
-                  p.cached = true
-                }
-              }
-            }
-          } else if (progress.complete) {
+      if (detail.value?.meta?.pages) {
+        if (job.chapter_id) {
+          const ch = chapters.value.find((c) => c.id === job.chapter_id)
+          if (ch) {
+            const maxPage = ch.start + job.prefetched - 1
             for (const p of detail.value.meta.pages) {
-              p.cached = true
-            }
-          } else if (job.running && !job.chapter_id) {
-            for (const p of detail.value.meta.pages) {
-              if (p.index <= job.prefetched) {
+              if (p.chapter === ch.id && (!job.running || p.index <= maxPage)) {
                 p.cached = true
               }
             }
           }
+        } else if (job.running && !job.chapter_id) {
+          for (const p of detail.value.meta.pages) {
+            if (p.index <= job.prefetched) {
+              p.cached = true
+            }
+          }
+        }
+        if (chapterProgress.complete && currentChapterId) {
+          for (const p of detail.value.meta.pages) {
+            if (p.chapter === currentChapterId) {
+              p.cached = true
+            }
+          }
         }
       }
-      if (!job.running || progress.complete) {
+      const isFinished = !job.running || (currentChapterId ? chapterProgress.complete : false)
+      if (isFinished) {
         caching.value = false
         runningChapterId.value = null
         pauseProgressPolling()
-        void load(true)
+        void load(true, true)
       }
     } catch {
       /* transient */
@@ -292,7 +326,7 @@ async function cacheCurrentChapter() {
       pauseProgressPolling()
       caching.value = false
       runningChapterId.value = null
-      void load(true)
+      void load(true, true)
     }
   } catch (e) {
     pauseProgressPolling()
@@ -489,6 +523,7 @@ async function confirmRemoveChapter() {
         :page-step="pageStep"
         :showing-range="showingRange"
         :can-collapse="canCollapse"
+        @page-cached="onPageCached"
         @load-more="loadMore"
         @load-all="loadAll"
         @collapse="collapse"

@@ -46,6 +46,7 @@ const emit = defineEmits<{
   loadMore: []
   loadAll: []
   collapse: []
+  pageCached: [index: number]
 }>()
 
 const sectionEl = ref<HTMLElement | null>(null)
@@ -99,6 +100,7 @@ function handleCollapse() {
         :cached="page.cached"
         :label="localLabel(page)"
         :chapter-id="chapterId"
+        @cached="(idx) => emit('pageCached', idx)"
       />
 
       <!-- 画卷余页尾格折叠卡：独立排布在网格最后，结构与首页书架保持高度一致 -->
