@@ -4,6 +4,8 @@
  * 统计数字与当前来源由父级传入，本组件负责排版、文案与来源快捷导航。
  */
 import { computed } from 'vue'
+import { DEFAULT_PROVIDERS } from '@/api/client'
+import type { ProviderInfo } from '@/types'
 import AppIcon from '@/components/AppIcon.vue'
 
 const props = withDefaults(
@@ -13,7 +15,7 @@ const props = withDefaults(
     totalPages: number
     activeSource?: string
     canWrite?: boolean
-    providers?: Array<{ key: string; label: string; short_label?: string }>
+    providers?: ProviderInfo[]
   }>(),
   {
     bookCount: 0,
@@ -21,11 +23,7 @@ const props = withDefaults(
     totalPages: 0,
     activeSource: '',
     canWrite: false,
-    providers: () => [
-      { key: 'jm', label: '禁漫', short_label: '禁漫' },
-      { key: 'picacg', label: '哔咔', short_label: '哔咔' },
-      { key: 'local', label: '本地', short_label: '本地' },
-    ],
+    providers: () => DEFAULT_PROVIDERS,
   },
 )
 
@@ -174,7 +172,6 @@ const heroLede = computed(
     padding-block: var(--space-4) var(--space-2);
   }
 
-  .hero .eyebrow,
   .hero-lede {
     display: none;
   }

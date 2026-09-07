@@ -527,6 +527,27 @@
   - **不要**在业务组件内散落手写原生 `<button class="chip chip-button">`、`.tag-chip` 或带删除按钮的胶囊；
   - **放行/改用**：统一使用 `AppChip`。纯展示场景自适应输出语义化 `<span>`；筛选与动作场景自动升格为带有焦点环与 `:aria-pressed` 的 `<button type="button">`；可删除场景通过 `removable` 启用内置关闭微按钮并自动在底层阻断冒泡。
 
+### 59. 代理穿透与出站下载下的 SSRF 预解析与 GFW 超时死锁陷阱（Proxy-Aware SSRF & GFW DNS Deadlock）
+
+- **本质**：在防范出站下载 SSRF 攻击时，直觉做法是在 Python 层调用 `socket.getaddrinfo(host)` 将域名解析为 IP 并核验是否属于私有网段。然而在大陆网络环境下，境外 CDN 域名（如哔咔的分流节点）常被 DNS 污染或阻断，此时若配置了上游代理（`PICA_PROXY`），真正的 DNS 解析本应交由代理端远端执行；如果在本地宿主机执行同步 `getaddrinfo`，会导致每个页面下载阻塞长达 80+ 秒触发系统级 DNS 超时，使并发下载工作池彻底瘫痪死锁。
+- **红线与防误伤**：
+  - **不要**在依赖上游网络代理的场景下对外部 CDN 域名执行本地同步 `socket.getaddrinfo()` 预探测；
+  - **放行/改用**：采用**语法级 IP 过滤 + 官方 CDN 域名白名单/后缀校验 + 重绑定黑名单**三位一体防护。字面量 IP 严格校验私有/回环并阻断直接 IP 访问；域名级拦截 `localhost`、`*.nip.io`、`*.sslip.io` 及 `.local` / `.internal` 等内网后缀；合法下载收敛于官方已验证的 CDN 根域（如 `.bwaa.co`、`.wikawika.xyz`、`.picacomic.com`）或用户通过 `PICA_EXTRA_CDN_HOSTS` 显式声明的内网镜像。
+
+### 60. 上游拦截响应伪装合法图片与文件魔数防御陷阱（Upstream WAF Disguise & Magic Bytes Trap）
+
+- **本质**：依赖 HTTP 状态码与响应体长度（如 `status == 200 and len(content) >= 100`）判断画页是否成功下载极度脆弱。上游 CDN 或反代（如 Cloudflare / 边缘 WAF）在触发人机验证或返回自定义 403 页面时，有时仍会给出 HTTP 200，但载荷是数百字节的 HTML（`<!DOCTYPE html>`）或 JSON 报文。若将其直接命名为 `.jpg` 写入磁盘，不仅在阅读器中产生破图，还会导致以图搜图 Sidecar 或 Pillow 在提取 ORB 特征时因未知格式抛出 `UnidentifiedImageError`，引发批处理崩溃。
+- **红线与防误伤**：
+  - **不要**仅凭 `len >= 100` 假定字节流为合法图像并直接落盘；
+  - **放行/改用**：在写入磁盘或标记完成前，严格检查二进制数据前导魔数（Magic Bytes）：JPEG (`\xff\xd8\xff`)、PNG (`\x89PNG\r\n\x1a\n`)、WebP (`RIFF....WEBP`)、GIF (`GIF87a`/`GIF89a`) 及 AVIF (`....ftypavif`)。非图像数据立即触发多 CDN 候选节点故障转移降级，若全部分流均无效则抛出明确错误并安全回滚。
+
+### 61. 短篇画卷封面越界与动态收敛陷阱（Dynamic Cover Count Convergence Trap）
+
+- **本质**：系统全局配置 `COVER_COUNT=4`（默认抓取前 4 页作为画卷封面与悬浮缩略图）。若收录的漫画为单话短篇或插画集且总页数小于 4（如仅 1~2 页），元数据若盲目写入 `cover_count=COVER_COUNT`，前端和封面生成器在请求第 3、4 张封面时将索引超出实际画页列表范围，造成控制台持续爆出 404/500 噪音与破图。
+- **红线与防误伤**：
+  - **不要**在 Provider 的 `fetch()` 中为 `ComicMeta.cover_count` 赋予未经边界约束的全局常量；
+  - **放行/改用**：统一执行动态收敛 `cover_count = min(COVER_COUNT, total_page_count) if total_page_count else COVER_COUNT`，确保封面请求永远不会超越实际收录页数边界。
+
 ---
 
 ## 🚦 交付门禁（四步必跑）

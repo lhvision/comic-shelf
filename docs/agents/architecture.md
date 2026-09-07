@@ -110,25 +110,31 @@ num = JmImageTool.get_num_by_url(page.scramble_id, page.url)
 JmImageTool.decode_and_save(num, source_image, save_path)
 ```
 
-### 4.3 PicAcg (哔咔) 认证与多 CDN 容灾
-
-- **认证签名**：官方移动端 HMAC-SHA256 签名算法（基于 URL、时间戳、nonce 与 API Key 密钥哈希计算 signature 请求头），严禁明文裸请求；
-- **JWT 会话保活**：登录成功后下发 long-lived JWT token 并自动存储在内存，会话失效（401）时自动静默重登续期，前端零感知；
-- **3-CDN 容灾分流**：PicAcg 图片分流存储于三大 CDN 节点（`waka / waifu / heaven`），`download_page` 必须自动进行候选节点探测与故障轮换降级；
-- **宽容输入清洗**：输入端兼容 24 位 16 进制 ID 及各类官方/第三方镜像站分享直链（`picawang.com/comic/<id>`），服务端统一清洗归一化为 24 位 ID。
-
 现在 `JMProvider.download_page()` 会：
 下载 raw bytes → `get_num_by_url()` → `decode_and_save()` → 返回成品 bytes。
 `remote.json` 中 `decode_version=2` 表示页面已是成品图。
 
-### 4.3 decode_version 迁移
+### 4.3 PicAcg (哔咔) 认证、安全防护与多 CDN 容灾
+
+- **移动端 HMAC 认证签名**：官方移动端 HMAC-SHA256 签名算法（基于 URL、时间戳、nonce 与 API Key 密钥哈希计算 signature 请求头），严禁明文裸请求；
+- **凭据隔离与持久化安全**：登录成功后的 JWT 会话以 `0600` 物理权限写入 `backend/data/picacg_session.json`（原子写入防损坏），并在启动与刷新时校验 `cached_email == PICA_EMAIL` 杜绝串号；借助 DCL 双重检查锁杜绝 401 时的雷鸣雪崩（Thundering Herd）并发重登录；
+- **连接池复用**：通过 `threading.local()` 维持线程级 Keep-Alive 连接池，规避并发下载时的 TCP 握手开销与套接字耗尽；
+- **多 CDN 容灾分流**：画页支持官方多分流轮换（`storage1.bwaa.co`、`storage.wikawika.xyz`、`storage2.bwaa.co`、`storage3.bwaa.co` 及配置的 `PICA_EXTRA_CDN_HOSTS`），`download_page` 自动进行节点探测与故障轮换降级；
+- **零信任网络安全防御**：
+  1. **SSRF 与 DNS 防重绑定**：严格拦截私有网络、保留 IP、直接 IP 访问，阻断 `*.nip.io` / `*.sslip.io` 及 `.local` / `.internal` 域名，实施官方 CDN 白名单域名后缀校验；
+  2. **代理凭据自动脱敏**：`sanitize_proxy_url` 自动在所有错误信息与调试日志中打码 `user:pass`，防止代理密码泄露到 502 JSON；
+  3. **图片魔数强校验**：严格校验 JPEG/PNG/WebP/GIF/AVIF 前导魔数，识别并拦截上游 WAF 返回的伪装 HTML/JSON 报文；
+  4. **封面动态收敛**：`cover_count = min(COVER_COUNT, total_page_count)` 防御短篇画卷越界 404；
+- **宽容输入清洗**：输入端兼容 24 位 16 进制 ID、`PICA:` 前缀及镜像站分享直链，服务端统一正则归一化为 24 位 ID。
+
+### 4.4 decode_version 迁移
 
 - `decode_version=1`：旧缓存，页面是未解密 raw 图。
 - 读取书架时会自动本地迁移：用已有 raw 文件解密替换，**不重新下载**，
   然后删除旧封面，让封面从成品图重建。
 - 不要随便把 `CURRENT_DECODE_VERSION` 改成 2 以上；只有图片管线变更时才加迁移逻辑。
 
-### 4.4 多章节不变量
+### 4.5 多章节不变量
 
 - **全局页码拍平**：`ComicMeta.pages` 按全书拍平（1..`page_count`），每页带 `chapter`。
   阅读器页码、继续阅读、封面、API 路径都建立在全局页号上，**不要**为章节拆分新的

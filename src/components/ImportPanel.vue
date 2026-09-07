@@ -4,7 +4,7 @@
  * @description 纸间作品收录与导入总控面板编排组件。
  *
  * 核心架构：
- * - 选项卡：禁漫车号收录（`ImportJmTab`） vs 本地自建/拆帧（`ImportLocalTab`）；
+ * - 选项卡：远端车号收录（`ImportRemoteTab`） vs 本地自建/拆帧（`ImportLocalTab`）；
  * - 设置项：全站新入库默认对访客隐藏 + 下载并发步进器（`ImportConcurrencyStepper`）；
  * - 响应式折叠：移动端（≤640px）通过 VueUse `useMediaQuery` 驱动网格抽屉折叠与弹性展开过渡。
  */
@@ -19,8 +19,7 @@ import { useViewTransition } from '@/composables/useViewTransition'
 import { api } from '@/api/client'
 import Tooltip from '@/components/Tooltip.vue'
 import AppIcon from '@/components/AppIcon.vue'
-import ImportJmTab from './import/ImportJmTab.vue'
-import ImportPicacgTab from './import/ImportPicacgTab.vue'
+import ImportRemoteTab from './import/ImportRemoteTab.vue'
 import ImportLocalTab from './import/ImportLocalTab.vue'
 import ImportConcurrencyStepper from './import/ImportConcurrencyStepper.vue'
 
@@ -123,9 +122,6 @@ async function submitRemote(source: 'jm' | 'picacg', btnEl: HTMLButtonElement | 
 
     if (!result.from_cache) {
       emit('imported', result.meta.source, result.meta.source_id)
-      if (prefetchAll.value) {
-        router.push(`/comic/${result.meta.source}/${result.meta.source_id}`)
-      }
     }
     id.value = ''
   } catch {
@@ -143,7 +139,6 @@ async function submitLocalPath() {
     await store.load()
     toast(`已收录本地图集《${res.meta.title}》（共 ${res.meta.page_count} 页）`, 'info')
     emit('imported', res.meta.source, res.meta.source_id)
-    router.push(`/comic/${res.meta.source}/${res.meta.source_id}`)
     localPath.value = ''
   } catch (err) {
     toast(err instanceof Error ? err.message : String(err), 'error')
@@ -237,20 +232,31 @@ function incConcurrency(el: HTMLElement | null) {
 
         <div class="import-controls">
           <!-- JM Tab Form -->
-          <ImportJmTab
+          <ImportRemoteTab
             v-if="activeTab === 'jm'"
             v-model:id="id"
             v-model:prefetch-all="prefetchAll"
+            prefix="JM"
+            placeholder="523607"
+            aria-label="禁漫车号"
+            inputmode="numeric"
+            tooltip-id="cache-all-tip"
+            tooltip-text="收录时直接把所有章节与页面下载到本地磁盘（适合整本离线保存）。不勾选则仅缓存前 4 页封面，后续页面在翻阅时按需秒级懒下载。"
             :importing="store.importing"
             :can-submit="canSubmitJm"
             @submit="(btnEl) => submitRemote('jm', btnEl)"
           />
 
           <!-- PicAcg Tab Form -->
-          <ImportPicacgTab
+          <ImportRemoteTab
             v-else-if="activeTab === 'picacg'"
             v-model:id="id"
             v-model:prefetch-all="prefetchAll"
+            prefix="PICA"
+            placeholder="5ebe89bf... 或粘贴网页链接"
+            aria-label="哔咔车号或网页分享链接"
+            tooltip-id="cache-all-pica-tip"
+            tooltip-text="收录时直接把所有分卷与画页下载到本地磁盘（支持多分流自动容灾）。不勾选则仅预热前 4 页封面，后续页面在阅读时按需秒级懒下载。"
             :importing="store.importing"
             :can-submit="canSubmitPica"
             @submit="(btnEl) => submitRemote('picacg', btnEl)"

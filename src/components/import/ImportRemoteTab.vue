@@ -1,29 +1,48 @@
 <script setup lang="ts">
 /**
- * @file ImportJmTab.vue
- * @description 禁漫车号收录表单选项卡面板。
+ * @file ImportRemoteTab.vue
+ * @description 纸间远端数据源（禁漫、哔咔等）通用收录表单选项卡组件。
  *
  * 核心功能：
- * - 禁漫车号输入与格式前缀 `JM`；
+ * - 统一的车号/链接输入框与前缀标识徽标；
  * - 竖排文字提交按钮（支持导入中文字切分动画与禁用态）；
- * - 预取全书画页（`prefetchAll`）复选框与提示说明。
+ * - 预取全书画页（`prefetchAll`）复选框与针对性提示说明；
+ * - 集中收敛全站远端导入表单的响应式网格与动效样式，杜绝机械代码复制。
  */
 
 import { computed, useTemplateRef } from 'vue'
 import Tooltip from '@/components/Tooltip.vue'
 import AppIcon from '@/components/AppIcon.vue'
 
-/** 绑定的车号输入值（v-model:id） */
+/** 绑定的车号/链接输入值（v-model:id） */
 const idModel = defineModel<string>('id', { default: '' })
 /** 绑定的全量缓存选项（v-model:prefetchAll） */
 const prefetchAllModel = defineModel<boolean>('prefetchAll', { default: false })
 
-const props = defineProps<{
-  /** 是否正在执行收录导入请求 */
-  importing: boolean
-  /** 当前车号格式是否合法可提交 */
-  canSubmit: boolean
-}>()
+const props = withDefaults(
+  defineProps<{
+    /** 输入框前缀标识（如 JM、PICA） */
+    prefix: string
+    /** 输入框占位提示文本 */
+    placeholder: string
+    /** 输入框无障碍 aria-label */
+    ariaLabel?: string
+    /** 软键盘输入模式 */
+    inputmode?: 'none' | 'text' | 'decimal' | 'numeric' | 'tel' | 'search' | 'email' | 'url'
+    /** 全量缓存说明 Tooltip ID */
+    tooltipId: string
+    /** 全量缓存说明 Tooltip 提示文本 */
+    tooltipText: string
+    /** 是否正在执行收录导入请求 */
+    importing: boolean
+    /** 当前输入是否合法可提交 */
+    canSubmit: boolean
+  }>(),
+  {
+    ariaLabel: '',
+    inputmode: 'text',
+  },
+)
 
 const emit = defineEmits<{
   /** 触发提交收录（携带按钮元素以便触发 View Transition 扩散动画） */
@@ -33,7 +52,7 @@ const emit = defineEmits<{
 const submitBtnRef = useTemplateRef<HTMLButtonElement>('submitBtnRef')
 
 /** 竖排按钮文字 */
-const jmBtnText = computed(() => (props.importing ? '收录中…' : '收录到纸间'))
+const btnText = computed(() => (props.importing ? '收录中…' : '收录到纸间'))
 
 /** 处理表单提交 */
 function handleSubmit() {
@@ -42,17 +61,17 @@ function handleSubmit() {
 </script>
 
 <template>
-  <div class="jm-tab-controls">
+  <div class="remote-tab-controls">
     <form class="import-form" @submit.prevent="handleSubmit">
       <label class="field import-field">
-        <span class="field-prefix">JM</span>
+        <span class="field-prefix">{{ prefix }}</span>
         <input
           v-model="idModel"
           type="text"
-          inputmode="numeric"
+          :inputmode="inputmode"
           autocomplete="off"
-          placeholder="523607"
-          aria-label="禁漫车号"
+          :placeholder="placeholder"
+          :aria-label="ariaLabel || ($attrs['aria-label'] as string) || placeholder"
         />
       </label>
       <button
@@ -63,7 +82,7 @@ function handleSubmit() {
         aria-label="收录到纸间"
       >
         <span class="vertical-text">
-          <span v-for="(char, idx) in jmBtnText" :key="idx">{{ char }}</span>
+          <span v-for="(char, idx) in btnText" :key="idx">{{ char }}</span>
         </span>
       </button>
     </form>
@@ -73,11 +92,7 @@ function handleSubmit() {
         <input v-model="prefetchAllModel" type="checkbox" />
         <span>同时缓存全部页面</span>
       </label>
-      <Tooltip
-        id="cache-all-tip"
-        tip="收录时直接把所有章节与页面下载到本地磁盘（适合整本离线保存）。不勾选则仅缓存前 4 页封面，后续页面在翻阅时按需秒级懒下载。"
-        side="top"
-      >
+      <Tooltip :id="tooltipId" :tip="tooltipText" side="top">
         <button class="tooltip-icon" type="button" aria-label="关于缓存全部页面">
           <AppIcon name="info" size="xs" />
         </button>
@@ -87,7 +102,7 @@ function handleSubmit() {
 </template>
 
 <style scoped>
-.jm-tab-controls {
+.remote-tab-controls {
   display: flex;
   flex-direction: column;
   gap: var(--space-3);

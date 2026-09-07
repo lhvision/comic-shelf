@@ -169,6 +169,32 @@ class ScopeVisitor(ast.NodeVisitor):
         if node.value:
             self.visit(node.value)
 
+    def _visit_comprehension(
+        self, node: ast.ListComp | ast.SetComp | ast.DictComp | ast.GeneratorExp
+    ) -> None:
+        comp_scope = set()
+        for gen in node.generators:
+            self.visit(gen.iter)
+            for n in ast.walk(gen.target):
+                if isinstance(n, ast.Name):
+                    comp_scope.add(n.id)
+            for if_expr in gen.ifs:
+                self.scopes.append(comp_scope)
+                self.visit(if_expr)
+                self.scopes.pop()
+        self.scopes.append(comp_scope)
+        if isinstance(node, ast.DictComp):
+            self.visit(node.key)
+            self.visit(node.value)
+        else:
+            self.visit(node.elt)
+        self.scopes.pop()
+
+    visit_ListComp = _visit_comprehension
+    visit_SetComp = _visit_comprehension
+    visit_DictComp = _visit_comprehension
+    visit_GeneratorExp = _visit_comprehension
+
     def visit_Name(self, node: ast.Name) -> None:
         if isinstance(node.ctx, ast.Load):
             name = node.id

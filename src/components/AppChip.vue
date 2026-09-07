@@ -47,13 +47,16 @@ const props = withDefaults(defineProps<AppChipProps>(), {
 })
 
 const emit = defineEmits<{
-  click: [event: MouseEvent]
+  click: [event: MouseEvent | KeyboardEvent]
   remove: [event: MouseEvent]
 }>()
 
 const instance = getCurrentInstance()
 
 const hasClickListener = computed(() => {
+  // 注意：在 Vue 3 中，由于 'click' 已在 defineEmits 中显式声明，
+  // useAttrs() 会将已声明的 emit 监听器过滤剔除。
+  // 因此探测调用方是否实际挂载了 @click 监听器必须读取 vnode.props。
   const vnodeProps = instance?.vnode.props
   return Boolean(vnodeProps && ('onClick' in vnodeProps || 'onclick' in vnodeProps))
 })
@@ -94,7 +97,7 @@ function handleClick(event: MouseEvent) {
 
 function handleKeydown(event: KeyboardEvent) {
   if (isInteractive.value || !hasClickListener.value || props.disabled) return
-  emit('click', event as unknown as MouseEvent)
+  emit('click', event)
 }
 
 function handleRemove(event: MouseEvent) {

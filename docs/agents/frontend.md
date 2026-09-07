@@ -44,7 +44,7 @@
 | `src/components/curator/GuestModal.vue`          | 馆长专属访客簿全屏模态：名册检视、设备抽屉、印发表单与凭证展示装配外壳                                                                                         |
 | `src/components/curator/guest/`                  | 访客簿模块化组件群：名册卡片、设备抽屉、印发表单、凭据展示与时间格式化                                                                                         |
 | `src/components/storage/`                        | 存储管理模块化组件群：头部卡片、PWA 装订、刻度槽与双级清理危险区                                                                                               |
-| `src/components/import/`                         | 收录面板模块化组件群：禁漫车号（`ImportJmTab`）、哔咔漫画（`ImportPicacgTab`）、本地自建（`ImportLocalTab`）与下载并发步进器                                   |
+| `src/components/import/`                         | 收录面板模块化组件群：通用远端收录（`ImportRemoteTab`，参数化驱动禁漫/哔咔等）、本地自建（`ImportLocalTab`）与下载并发步进器                                   |
 | `src/components/UpdateBanner.vue`                | 纸间新卷本装订更新提示横幅（水墨胶囊悬浮卡片、沉浸阅读器自动避让）                                                                                             |
 | `src/components/GateView.vue`                    | 全屏 Zero-DOM 门禁大门视图：反 DevTools 篡改哨兵与三态表单编排外壳                                                                                             |
 | `src/components/gate/`                           | 门禁模块化表单群：初始口令表单、首访认领自设 PIN 表单、已认领 PIN 验证表单                                                                                     |

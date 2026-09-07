@@ -6,6 +6,7 @@ import ipaddress
 import json
 import logging
 import os
+import random
 import re
 import threading
 import time
@@ -59,6 +60,104 @@ def calc_signature(path: str, nonce: str, time_str: str, method: str) -> str:
     ).hexdigest()
 
 
+PICA_ALLOWED_CDN_SUFFIXES = (
+    ".bwaa.co",
+    ".wikawika.xyz",
+    ".picacomic.com",
+    ".storage.live.com",
+)
+
+PICA_EXTRA_CDN_HOSTS = [
+    h.strip().lower() for h in os.getenv("PICA_EXTRA_CDN_HOSTS", "").split(",") if h.strip()
+]
+
+# Polite human-like rate limiting / pacing configuration (in milliseconds)
+PICA_DOWNLOAD_PACING_MS = float(os.getenv("PICA_DOWNLOAD_PACING_MS", "250"))
+PICA_API_PACING_MS = float(os.getenv("PICA_API_PACING_MS", "150"))
+
+
+def _apply_pacing(base_ms: float) -> None:
+    """Apply a polite human-like pacing delay with +/-20% random jitter."""
+    if base_ms <= 0:
+        return
+    jitter = random.uniform(0.8, 1.2)
+    time.sleep((base_ms / 1000.0) * jitter)
+
+_PROXY_CRED_RE = re.compile(r"://([^:@\s]+):([^@\s]+)@")
+
+
+def sanitize_proxy_url(text: str) -> str:
+    """Mask credentials (username:password) in proxy URLs or error messages."""
+    return _PROXY_CRED_RE.sub(r"://\1:***@", text)
+
+
+def is_valid_image(data: bytes) -> bool:
+    """Validate that raw bytes start with valid image magic bytes.
+
+    Supports JPEG, PNG, WebP, GIF, and AVIF.
+    """
+    if len(data) < 16:
+        return False
+    # JPEG: FF D8 FF
+    if data.startswith(b"\xff\xd8\xff"):
+        return True
+    # PNG: 89 50 4E 47 0D 0A 1A 0A
+    if data.startswith(b"\x89PNG\r\n\x1a\n"):
+        return True
+    # WebP: RIFF....WEBP
+    if data.startswith(b"RIFF") and len(data) >= 12 and data[8:12] == b"WEBP":
+        return True
+    # GIF: GIF87a / GIF89a
+    if data.startswith((b"GIF87a", b"GIF89a")):
+        return True
+    # AVIF: ....ftypavif / avis
+    if len(data) >= 12 and data[4:8] == b"ftyp" and data[8:12] in (b"avif", b"avis"):
+        return True
+    return False
+
+
+def _validate_download_host(host: str) -> None:
+    """Validate target host for SSRF prevention.
+
+    Rejects localhost, loopback, private networks, direct IP accesses, well-known pseudo-domain
+    rebinding services (*.nip.io, *.sslip.io, localtest.me), and unauthorized non-CDN hosts.
+    """
+    cleaned_host = (host or "").strip().lower()
+    if not cleaned_host or cleaned_host in ("localhost", "localtest.me"):
+        raise ValueError(f"禁止访问敏感或未知的画页下载目标: {host}")
+
+    # Check if host is a literal IP address
+    try:
+        ip = ipaddress.ip_address(cleaned_host)
+        is_ip = True
+    except ValueError:
+        is_ip = False
+
+    if is_ip:
+        if ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_unspecified or ip.is_reserved or ip.is_multicast:
+            raise ValueError(f"禁止下载私有或保留网络地址图片: {host}")
+        raise ValueError(f"禁止使用直接 IP 地址访问画页 CDN: {host}")
+
+    # Block pseudo-DNS rebinding and internal suffixes
+    if cleaned_host.endswith(
+        (".local", ".internal", ".lan", ".home", ".corp", ".onion", ".nip.io", ".sslip.io")
+    ):
+        raise ValueError(f"禁止下载内部网络或重绑定域名图片: {host}")
+
+    # Validate against authorized PicAcg CDN domain suffixes, fallback storage hosts, or custom CDN hosts
+    is_authorized_cdn = (
+        any(
+            cleaned_host == suffix.lstrip(".") or cleaned_host.endswith(suffix)
+            for suffix in PICA_ALLOWED_CDN_SUFFIXES
+        )
+        or (cleaned_host in PICA_STORAGE_FALLBACKS)
+        or (cleaned_host in PICA_EXTRA_CDN_HOSTS)
+    )
+
+    if not is_authorized_cdn:
+        raise ValueError(f"非法的哔咔画页 CDN 域名: {host}")
+
+
 class PicacgProvider(ComicProvider):
     """哔咔漫画 (PicAcg) 数据源 Provider.
 
@@ -72,9 +171,19 @@ class PicacgProvider(ComicProvider):
     id_pattern = r"(?:(?:https?://[^/]+/comic/)|(?:[Pp][Ii][Cc][Aa]:?))?([0-9a-fA-F]{24})"
     example = "5ebe89bf63918511c2c362a7 或 网页链接"
 
+    # Thread-local session pool for Keep-Alive connection reuse across concurrent downloads
+    _tls = threading.local()
+
     def __init__(self) -> None:
         self._lock = threading.Lock()
         self._session_file = DATA_DIR / "picacg_session.json"
+
+    def _session(self) -> curl_requests.Session:
+        session = getattr(self._tls, "session", None)
+        if session is None:
+            session = curl_requests.Session(impersonate="chrome")
+            self._tls.session = session
+        return session
 
     # ------------------------------------------------------------------
     # ID normalization & URL parsing
@@ -85,8 +194,6 @@ class PicacgProvider(ComicProvider):
         """
         cleaned = raw.strip()
         m = re.search(r"(?:(?:comic|comics)/|[Pp][Ii][Cc][Aa]:?|^|\b)([0-9a-fA-F]{24})\b", cleaned)
-        if m is None:
-            m = re.search(r"([0-9a-fA-F]{24})", cleaned)
         if m is None:
             raise ValueError(
                 "哔咔车号格式不正确，支持24位Hex ID或网页分享链接（如 https://picawang.com/comic/5ebe89bf63918511c2c362a7）"
@@ -129,6 +236,10 @@ class PicacgProvider(ComicProvider):
             if self._session_file.exists():
                 data = json.loads(self._session_file.read_text(encoding="utf-8"))
                 token = data.get("token")
+                cached_email = data.get("email")
+                configured_email = (PICA_EMAIL or "").strip()
+                if configured_email and cached_email != configured_email:
+                    return None
                 # Token valid for 7 days (604800 seconds)
                 if token and time.time() - float(data.get("time", 0)) < 7 * 24 * 3600:
                     return str(token)
@@ -137,25 +248,31 @@ class PicacgProvider(ComicProvider):
         return None
 
     def _save_token(self, token: str, email: str) -> None:
+        temp_file = None
         try:
             self._session_file.parent.mkdir(parents=True, exist_ok=True)
-            self._session_file.write_text(
-                json.dumps(
-                    {
-                        "token": token,
-                        "email": email,
-                        "time": time.time(),
-                    },
-                    ensure_ascii=False,
-                ),
-                encoding="utf-8",
+            payload = json.dumps(
+                {
+                    "token": token,
+                    "email": email,
+                    "time": time.time(),
+                },
+                ensure_ascii=False,
             )
-            try:
-                self._session_file.chmod(0o600)
-            except OSError:
-                pass
+            temp_file = self._session_file.with_suffix(f".tmp.{os.getpid()}.{threading.get_ident()}")
+            fd = os.open(temp_file, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+            with open(fd, "w", encoding="utf-8") as f:
+                f.write(payload)
+            os.replace(temp_file, self._session_file)
+            temp_file = None
         except Exception as exc:
             logger.warning(f"写入哔咔本地 Session 失败: {exc}")
+        finally:
+            if temp_file is not None and temp_file.exists():
+                try:
+                    temp_file.unlink()
+                except OSError:
+                    pass
 
     def login(self, email: str | None = None, password: str | None = None) -> str:
         """Authenticates with PicAcg and returns a fresh JWT authorization token."""
@@ -171,7 +288,7 @@ class PicacgProvider(ComicProvider):
         headers = self._create_headers(endpoint, method="POST")
 
         proxies = {"http": PICA_PROXY, "https": PICA_PROXY} if PICA_PROXY else None
-        session = curl_requests.Session(impersonate="chrome")
+        session = self._session()
 
         try:
             resp = session.post(
@@ -182,7 +299,8 @@ class PicacgProvider(ComicProvider):
                 timeout=15,
             )
         except Exception as exc:
-            raise RuntimeError(f"连接哔咔登录服务器失败: {exc}。若在国内网络请确认 PICA_PROXY 是否已开启") from exc
+            safe_err = sanitize_proxy_url(str(exc))
+            raise RuntimeError(f"连接哔咔登录服务器失败: {safe_err}。若在国内网络请确认 PICA_PROXY 是否已开启") from exc
 
         if resp.status_code != 200:
             err_msg = resp.text
@@ -190,7 +308,7 @@ class PicacgProvider(ComicProvider):
                 err_msg = resp.json().get("message", resp.text)
             except Exception:
                 pass
-            raise RuntimeError(f"哔咔登录失败 ({resp.status_code}): {err_msg}")
+            raise RuntimeError(f"哔咔登录失败 ({resp.status_code}): {sanitize_proxy_url(err_msg)}")
 
         body = resp.json()
         token = body.get("data", {}).get("token")
@@ -226,7 +344,7 @@ class PicacgProvider(ComicProvider):
         headers = self._create_headers(endpoint, method=method, token=token)
         url = f"{PICA_API_URL.rstrip('/')}/{endpoint.lstrip('/')}"
         proxies = {"http": PICA_PROXY, "https": PICA_PROXY} if PICA_PROXY else None
-        session = curl_requests.Session(impersonate="chrome")
+        session = self._session()
 
         try:
             if method.upper() == "GET":
@@ -234,12 +352,16 @@ class PicacgProvider(ComicProvider):
             else:
                 resp = session.post(url, json=json_data, headers=headers, proxies=proxies, timeout=15)
         except Exception as exc:
-            raise RuntimeError(f"请求哔咔 API 失败 ({endpoint}): {exc}") from exc
+            safe_err = sanitize_proxy_url(str(exc))
+            raise RuntimeError(f"请求哔咔 API 失败 ({endpoint}): {safe_err}") from exc
 
         if resp.status_code == 401 and retry_auth:
             logger.warning("哔咔 Token 已过期，尝试重新登录...")
             with self._lock:
-                self.login()
+                current_cached = self._load_cached_token()
+                # If another thread has already refreshed the token while we waited on the lock, skip re-login
+                if not current_cached or current_cached == token:
+                    self.login()
             return self._request(method, endpoint, params=params, json_data=json_data, retry_auth=False)
 
         if resp.status_code != 200:
@@ -297,7 +419,7 @@ class PicacgProvider(ComicProvider):
             docs = eps_container.get("docs", [])
             eps.extend(docs)
             total_pages = int(eps_container.get("pages", 1))
-            if page >= total_pages or not docs:
+            if page >= total_pages or not docs or page >= 500:
                 break
             page += 1
 
@@ -308,20 +430,72 @@ class PicacgProvider(ComicProvider):
         if not eps:
             eps = [{"order": 1, "title": "第 1 話", "_id": comic_id}]
 
+        existing_chapter_map = {
+            c.id: c for c in (existing.meta.chapters if existing else [])
+        }
+        existing_pages_by_chap: dict[str, list[RemotePage]] = {}
+        if existing:
+            for p in existing.remote_pages:
+                chap_id = p.chapter or "1"
+                existing_pages_by_chap.setdefault(chap_id, []).append(p)
+
         chapters: list[Chapter] = []
         remote_pages: list[RemotePage] = []
         page_records: list[PageRecord] = []
         global_page_index = 1
 
-        # 3. Fetch pages for each episode
+        # 3. Fetch pages for each episode (reusing existing unchanged chapters)
         for ep_idx, ep in enumerate(eps, start=1):
             ep_order = int(ep.get("order", ep_idx))
+            chap_id = str(ep_order)
             ep_title = (ep.get("title") or f"第 {ep_order} 話").strip()
             ep_start = global_page_index
+
+            cached_pages = existing_pages_by_chap.get(chap_id)
+            cached_chap = existing_chapter_map.get(chap_id)
+
+            # Incremental optimization: if existing has this chapter with matching page count, reuse it
+            if cached_pages and cached_chap and len(cached_pages) == cached_chap.page_count:
+                for cached_p in cached_pages:
+                    file_name = f"{global_page_index:05d}.{cached_p.ext}"
+                    remote_pages.append(
+                        RemotePage(
+                            index=global_page_index,
+                            url=cached_p.url,
+                            file=file_name,
+                            ext=cached_p.ext,
+                            chapter=chap_id,
+                        )
+                    )
+                    page_records.append(
+                        PageRecord(
+                            index=global_page_index,
+                            file=file_name,
+                            ext=cached_p.ext,
+                            cached=False,
+                            chapter=chap_id,
+                        )
+                    )
+                    global_page_index += 1
+                chapters.append(
+                    Chapter(
+                        id=chap_id,
+                        index=ep_idx,
+                        title=ep_title,
+                        page_count=len(cached_pages),
+                        start=ep_start,
+                    )
+                )
+                continue
+
+            if ep_idx > 1 and PICA_API_PACING_MS > 0:
+                _apply_pacing(PICA_API_PACING_MS)
 
             ep_pages: list[dict[str, Any]] = []
             p = 1
             while True:
+                if p > 1 and PICA_API_PACING_MS > 0:
+                    _apply_pacing(PICA_API_PACING_MS)
                 pages_data = self._request(
                     "GET",
                     f"comics/{comic_id}/order/{ep_order}/pages",
@@ -331,7 +505,7 @@ class PicacgProvider(ComicProvider):
                 docs = pages_container.get("docs", [])
                 ep_pages.extend(docs)
                 total_p = int(pages_container.get("pages", 1))
-                if p >= total_p or not docs:
+                if p >= total_p or not docs or p >= 500:
                     break
                 p += 1
 
@@ -396,7 +570,7 @@ class PicacgProvider(ComicProvider):
             likes=likes,
             comment_count=0,
             favorite=False,
-            cover_count=COVER_COUNT,
+            cover_count=min(COVER_COUNT, total_page_count) if total_page_count else COVER_COUNT,
             source_url=f"https://picawang.com/comic/{comic_id}",
             pages=page_records,
             chapters=chapters if len(chapters) > 1 else [],
@@ -412,22 +586,13 @@ class PicacgProvider(ComicProvider):
             raise ValueError(f"非法的画页下载协议: {parsed.scheme}")
 
         original_host = (parsed.hostname or "").lower()
-        if not original_host or original_host == "localhost":
-            raise ValueError(f"禁止访问敏感或未知的画页下载目标: {original_host}")
+        _validate_download_host(original_host)
 
-        try:
-            ip = ipaddress.ip_address(original_host)
-            if ip.is_private or ip.is_loopback or ip.is_link_local:
-                raise ValueError(f"禁止下载私有或回环网络地址图片: {original_host}")
-        except ValueError:
-            if original_host.endswith(".local") or original_host.endswith(".internal"):
-                raise ValueError(f"禁止下载内部网络域名图片: {original_host}")
-
-        # Construct candidate CDN endpoints in priority order
+        # Construct candidate CDN endpoints in priority order using structured URL netloc replacement
         candidate_urls: list[str] = [page.url]
         for fallback_host in PICA_STORAGE_FALLBACKS:
             if fallback_host != original_host:
-                candidate_urls.append(page.url.replace(f"://{original_host}", f"://{fallback_host}"))
+                candidate_urls.append(parsed._replace(netloc=fallback_host).geturl())
 
         headers = {
             "User-Agent": "okhttp/3.8.1",
@@ -436,19 +601,33 @@ class PicacgProvider(ComicProvider):
         }
         proxies = {"http": PICA_PROXY, "https": PICA_PROXY} if PICA_PROXY else None
 
+        session = self._session()
         last_error: Exception | None = None
         with download_gate:
             for url in candidate_urls:
                 try:
-                    session = curl_requests.Session(impersonate="chrome")
                     resp = session.get(url, headers=headers, proxies=proxies, timeout=20)
-                    if resp.status_code == 200 and len(resp.content) > 0:
-                        return bytes(resp.content)
-                    logger.debug(f"分流节点 {url} 返回 HTTP {resp.status_code}，尝试下一个分流...")
+                    if resp.status_code == 200 and len(resp.content) >= 100:
+                        if is_valid_image(resp.content):
+                            if PICA_DOWNLOAD_PACING_MS > 0:
+                                _apply_pacing(PICA_DOWNLOAD_PACING_MS)
+                            return bytes(resp.content)
+                        logger.debug(
+                            f"分流节点 {sanitize_proxy_url(url)} 响应非合法图片格式 "
+                            f"(magic: {resp.content[:8]!r}, len: {len(resp.content)})，尝试下一个分流..."
+                        )
+                    else:
+                        logger.debug(
+                            f"分流节点 {sanitize_proxy_url(url)} 响应无效 "
+                            f"(status: {resp.status_code}, len: {len(resp.content)})，尝试下一个分流..."
+                        )
                 except Exception as exc:
                     last_error = exc
-                    logger.debug(f"分流节点 {url} 异常: {exc}，尝试下一个分流...")
+                    logger.debug(
+                        f"分流节点 {sanitize_proxy_url(url)} 异常: {sanitize_proxy_url(str(exc))}，尝试下一个分流..."
+                    )
 
+        safe_last_error = sanitize_proxy_url(str(last_error)) if last_error else "未知错误"
         raise RuntimeError(
-            f"哔咔画页下载失败 (第 {page.index} 页): 遍历 {len(candidate_urls)} 个分流节点均无法获取。最后异常: {last_error}"
+            f"哔咔画页下载失败 (第 {page.index} 页): 遍历 {len(candidate_urls)} 个分流节点均无法获取。最后异常: {safe_last_error}"
         )
