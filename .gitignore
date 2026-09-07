@@ -55,6 +55,7 @@ backend/data/imsearch/
 backend/data/discovery/
 backend/data/jm_html_domain.json
 backend/data/*.db*
+backend/data/**
 
 # Package-manager caches and local backups
 .pnpm-cache/

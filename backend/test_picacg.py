@@ -18,6 +18,8 @@ from app.providers.registry import get_provider
 class TestPicacgProvider(unittest.TestCase):
     def setUp(self) -> None:
         self.provider = PicacgProvider()
+        if hasattr(self.provider._tls, "session"):
+            delattr(self.provider._tls, "session")
         self.patch_down_pacing = patch("app.providers.picacg.PICA_DOWNLOAD_PACING_MS", 0)
         self.patch_api_pacing = patch("app.providers.picacg.PICA_API_PACING_MS", 0)
         self.patch_down_pacing.start()
@@ -76,9 +78,23 @@ class TestPicacgProvider(unittest.TestCase):
         self.assertTrue(isinstance(sig, str))
         self.assertEqual(len(sig), 64)  # SHA-256 hex digest length
 
-        # Path with query params should be stripped
+        # Path with query params should be preserved in HMAC hash (Ref: wgh136/PicaComic)
         sig_query = calc_signature(f"{path}?page=1&limit=20", nonce, time_str, method)
-        self.assertEqual(sig, sig_query)
+        self.assertNotEqual(sig, sig_query)
+
+    def test_format_count_and_date(self) -> None:
+        from app.providers.picacg import format_count, format_date
+
+        self.assertEqual(format_count(3389119), "3.4M")
+        self.assertEqual(format_count("77951"), "78k")
+        self.assertEqual(format_count(1200), "1.2k")
+        self.assertEqual(format_count(950), "950")
+        self.assertEqual(format_count(0), "0")
+        self.assertEqual(format_count(""), "")
+
+        self.assertEqual(format_date("2020-05-14T17:41:13.983Z"), "2020-05-14")
+        self.assertEqual(format_date("2024-05-18"), "2024-05-18")
+        self.assertEqual(format_date(""), "")
 
     def test_registry_integration(self) -> None:
         provider = get_provider("picacg")
@@ -113,9 +129,14 @@ class TestPicacgProvider(unittest.TestCase):
                             "description": "这是描述",
                             "pagesCount": 3,
                             "epsCount": 2,
+                            "created_at": "2026-08-15T00:00:00.000Z",
                             "updated_at": "2026-09-01T00:00:00.000Z",
                             "likesCount": 999,
                             "viewsCount": 8888,
+                            "thumb": {
+                                "fileServer": "https://storage1.bwaa.co",
+                                "path": "comics/thumb.jpg",
+                            },
                         }
                     },
                 }
@@ -186,6 +207,10 @@ class TestPicacgProvider(unittest.TestCase):
         self.assertIn("纯爱", meta.tags)
         self.assertEqual(meta.page_count, 3)
         self.assertEqual(meta.cover_count, 3)
+        self.assertEqual(meta.published_at, "2026-08-15")
+        self.assertEqual(meta.updated_at, "2026-09-01")
+        self.assertEqual(meta.views, "8.9k")
+        self.assertEqual(meta.likes, "999")
 
         # Verify multi-chapter structure
         self.assertTrue(meta.is_multi_chapter)
@@ -252,6 +277,33 @@ class TestPicacgProvider(unittest.TestCase):
         content = self.provider.download_page(fake_comic, page)
         self.assertEqual(content, valid_webp)
         self.assertGreaterEqual(mock_session.get.call_count, 2)
+
+    @patch("app.providers.picacg.curl_requests.Session")
+    def test_download_cover(self, mock_session_cls: MagicMock) -> None:
+        mock_session = MagicMock()
+        mock_session_cls.return_value = mock_session
+
+        valid_jpeg = b"\xff\xd8\xff\xe0" + (b"\x00" * 200)
+        resp_success = MagicMock()
+        resp_success.status_code = 200
+        resp_success.content = valid_jpeg
+        mock_session.get.return_value = resp_success
+
+        fake_comic = MagicMock()
+        fake_comic.meta.raw = {
+            "thumb": {
+                "fileServer": "https://storage1.bwaa.co",
+                "path": "comics/thumb.jpg",
+            }
+        }
+
+        cover = self.provider.download_cover(fake_comic)
+        self.assertEqual(cover, valid_jpeg)
+
+        # Without thumb object in raw, should return None
+        fake_empty_comic = MagicMock()
+        fake_empty_comic.meta.raw = {}
+        self.assertIsNone(self.provider.download_cover(fake_empty_comic))
 
     def test_download_page_ssrf_and_host_validation(self) -> None:
         # 1. Localhost and private IPs must be rejected
@@ -348,6 +400,54 @@ class TestPicacgProvider(unittest.TestCase):
         slept = mock_sleep.call_args[0][0]
         self.assertGreaterEqual(slept, 0.20)
         self.assertLessEqual(slept, 0.30)
+
+    @patch("app.main.store.load_fetched")
+    @patch("app.main.get_provider")
+    @patch("app.main.store.save_fetched")
+    @patch("app.main.start_job")
+    def test_import_self_healing_zero_pages(
+        self,
+        mock_job: MagicMock,
+        mock_save: MagicMock,
+        mock_get_prov: MagicMock,
+        mock_load: MagicMock,
+    ) -> None:
+        from app.main import import_comic
+        from app.models import ComicMeta, FetchedComic, ImportRequest
+
+        # 1. Simulate cached comic has page_count == 0 (historical broken record)
+        broken_meta = ComicMeta(
+            source="picacg",
+            source_id="5ebe89bf63918511c2c362a7",
+            display_id="PICA_5ebe89bf63918511c2c362a7",
+            title="损坏记录",
+            page_count=0,
+        )
+        broken_comic = FetchedComic(meta=broken_meta, remote_pages=[])
+        mock_load.return_value = broken_comic
+
+        # 2. Mock fresh fetch
+        fresh_meta = ComicMeta(
+            source="picacg",
+            source_id="5ebe89bf63918511c2c362a7",
+            display_id="PICA_5ebe89bf63918511c2c362a7",
+            title="测试自愈",
+            page_count=1260,
+        )
+        fresh_comic = FetchedComic(meta=fresh_meta, remote_pages=[])
+        mock_prov = MagicMock()
+        mock_prov.normalize_id.return_value = "5ebe89bf63918511c2c362a7"
+        mock_prov.fetch.return_value = fresh_comic
+        mock_get_prov.return_value = mock_prov
+        mock_save.return_value = fresh_meta
+
+        req = ImportRequest(source="picacg", id="5ebe89bf63918511c2c362a7", refresh=False)
+        result = import_comic(req)
+
+        # Must not return from cache; must call provider.fetch with existing=None
+        self.assertFalse(result.from_cache)
+        self.assertEqual(result.meta.page_count, 1260)
+        mock_prov.fetch.assert_called_once_with("5ebe89bf63918511c2c362a7", existing=None)
 
 
 if __name__ == "__main__":

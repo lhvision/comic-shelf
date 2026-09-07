@@ -548,6 +548,18 @@
   - **不要**在 Provider 的 `fetch()` 中为 `ComicMeta.cover_count` 赋予未经边界约束的全局常量；
   - **放行/改用**：统一执行动态收敛 `cover_count = min(COVER_COUNT, total_page_count) if total_page_count else COVER_COUNT`，确保封面请求永远不会超越实际收录页数边界。
 
+### 62. 哔咔移动端 REST 接口 Query 参数签名遗漏与假成功静默截断陷阱（PicAcg HMAC Query Stripping & Silent Truncation Trap）
+
+- **本质**：哔咔官方移动端 REST API 的 HMAC-SHA256 签名机制强制要求签名的相对 URI 路径中**必须完整保留 Query 字符串**（如 `comics/{id}/eps?page=1` 与 `comics/{id}/order/{order}/pages?page=1`）。若在计算签名时误将 Query 剥离（如 `.split("?")[0]`）或把 `params` 独立传给 requests，服务端在签名不匹配时**不会**返回 401 或 403 报错，而是静默返回无 `data` 字段的假成功响应（`{"code": 200, "message": "success"}`）。这导致分卷列表与画页列表在第一页就被错误判定为空并跳出循环，最终造成全书 `page_count: 0`、`chapters: []` 坏档且无法预缓存封面。
+- **参考源单一事实源红线**：全仓确立 `wgh136/PicaComic`（[https://github.com/wgh136/PicaComic](https://github.com/wgh136/PicaComic)）为哔咔逆向协议与端点的**唯一事实源**。后续遇到任何端点变动或分页疑难，一律对照该项目实现，严禁在外部泛化搜索引擎搜索不相关或低质的“piacg”关键词。
+- **红线与防误伤**：
+  - **不要**在计算哔咔 HMAC 签名时剥离或丢弃 URL 中的 Query 字符串；
+  - **不要**在 `album.json` 已有但 `page_count == 0` 时放行缓存命中；
+  - **放行/改用**：
+    1. **签名与请求路径完全同源**：在 `_request` 中先将 `params` 通过 `urlencode` 完整拼接到 `clean_endpoint`（如 `comics/{id}/eps?page=1`），再将同一字符串透传给 `calc_signature` 计算 Header 签名并作为请求 URL；
+    2. **历史坏档读写自愈**：在 `/api/library/import` 处校验 `cached.meta.page_count > 0`，当检测到 `page_count == 0` 坏档时自动穿透缓存触发回源全量重拉；
+    3. **官方 Thumb 与画卷双模融合**：Cover 1 优先下载官方 `thumb`（`{fileServer}/static/{path}`）并转码 720px/360px WebP，Cover 2~~4 取自画卷第 1~~3 页，失败自动降级回落至画页第 1 页。
+
 ---
 
 ## 🚦 交付门禁（四步必跑）

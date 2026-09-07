@@ -22,7 +22,16 @@
 
 ### 2. 哔咔数据源接入技术规范 (`PicacgProvider`)
 
-- **移动端 App 逆向 REST API 路径**：在 `backend/app/providers/picacg.py` 实现 `PicacgProvider`（继承 `ComicProvider`），内置 HMAC-SHA256 签名算法与 Header 构造（`api-key`, `signature`, `app-channel`），直接对接官方稳定后端，彻底摒弃不稳定的 Headless 浏览器网页抓取。
+- **权威参考实现收敛（Canonical Reference Source）**：
+  - 团队将开源项目 `wgh136/PicaComic`（[https://github.com/wgh136/PicaComic](https://github.com/wgh136/PicaComic)）确立为纸间对接哔咔漫画逆向协议、端点契约与 HMAC 签名的**唯一事实源（Single Source of Truth）**；
+  - 后续任何接口调用、分页排错与分流变动一律对照该项目，严禁在外部搜索引擎盲目搜索未经验证的散落代码或误搜 "piacg"。
+- **移动端 App 逆向 REST API 与 Query 签名全量约束**：
+  - 在 `backend/app/providers/picacg.py` 实现 `PicacgProvider`（继承 `ComicProvider`），内置 HMAC-SHA256 签名算法与 Header 构造（`api-key`, `signature`, `app-channel`），直接对接官方稳定后端；
+  - **Query 签名必选红线**：官方服务端在校验签名时，要求相对 URI 路径**必须完整保留 Query 字符串**（如 `comics/{id}/eps?page=1` 与 `comics/{id}/order/{order}/pages?page=1`）。若剥离 Query，服务端将静默返回不含 `data` 的空 200 假成功报文；计算签名与发起请求时必须全量包含 Query。
+- **双模封面与官方 Thumb 融合（Dual-Source Cover Fusion）**：
+  - **Cover 1（正房门面）**：预缓存阶段优先通过 Provider 下载哔咔官方 `thumb`（`{fileServer}/static/{path}`），并高质量转码为 720px 与 360px 的 WebP 封面；
+  - **Cover 2~4（内页展开）**：依序由正文画卷第 1、2、3 页生成，保持书架卡片 3D 悬浮 4 叠牌展开的生动层次感；
+  - **安全降级**：若官方 thumb 发生 CDN 异常，自动平滑降级回落至画页第 1 页生成封面，确保书架零破图。
 - **宽容输入与车号规约（Lenient ID Parsing）**：
   - 哔咔原生作品编号为 24 位十六进制 ObjectId（如 `5822a61e0e84b80695d10a26`）；
   - 系统同时支持用户输入纯 24 位 ID、带 `PICA:` 前缀，或直接粘贴哔咔官方/镜像网页端分享 URL，由 `normalize_id()` 自动正则提取规范车号。
@@ -32,6 +41,10 @@
 - **集中凭据与会话保活（Curator Session Management）**：
   - 馆长在环境变量或系统配置中统一配置哔咔账号密码；
   - 后端启动或首次收录时自动登录并换取 JWT，会话持久化于 `backend/data/picacg_session.json`，支持自动刷新与保活。
+- **坏档自愈与字段人性化规约（Self-Healing & Metric Formatting）**：
+  - **上架日期**：`published_at` 严格映射为 `created_at`，格式化为标准 `YYYY-MM-DD`；
+  - **统计指标**：`views` 与 `likes` 采用标准公制缩写（如 `3.4M`、`78k`）；
+  - **坏档自愈**：在 `/api/library/import` 导入阶段，若本地已有缓存但 `page_count == 0`，自动判定为受损坏档，穿透缓存触发回源重拉与预缓存。
 
 ### 3. 多章节模型无缝对齐
 

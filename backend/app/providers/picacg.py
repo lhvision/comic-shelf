@@ -38,6 +38,7 @@ PICA_APP_BUILD_VERSION = "45"
 PICA_APP_PLATFORM = "android"
 
 PICA_STORAGE_FALLBACKS = [
+    "storage1.picacomic.com",
     "storage1.bwaa.co",
     "storage.wikawika.xyz",
     "storage2.bwaa.co",
@@ -47,17 +48,52 @@ PICA_STORAGE_FALLBACKS = [
 
 def calc_signature(path: str, nonce: str, time_str: str, method: str) -> str:
     """Calculates the HMAC-SHA256 signature required by PicAcg mobile REST API.
+    Ref: https://github.com/wgh136/PicaComic (PicaComic by wgh136)
 
-    The path should be the endpoint relative to the base URL (without query strings),
+    The path should be the endpoint relative to the base URL, including query strings if present,
     lowercased along with the timestamp, nonce, method, and the mobile API key.
     """
-    clean_path = path.lstrip("/").split("?")[0]
+    clean_path = path.lstrip("/")
     raw = f"{clean_path}{time_str}{nonce}{method.upper()}{PICA_API_KEY}".lower()
     return hmac.new(
         PICA_SECRET_KEY.encode("utf-8"),
         raw.encode("utf-8"),
         hashlib.sha256,
     ).hexdigest()
+
+
+def format_count(val: Any) -> str:
+    """Format numeric counts into human-readable metric strings like '3.4M' or '78k'."""
+    if val is None or val == "":
+        return ""
+    try:
+        n = int(val)
+    except (ValueError, TypeError):
+        return str(val).strip()
+
+    if n < 0:
+        return str(n)
+    if n >= 1_000_000:
+        val_m = n / 1_000_000
+        formatted = f"{val_m:.1f}M"
+        return formatted.replace(".0M", "M")
+    if n >= 10_000:
+        val_k = round(n / 1_000)
+        return f"{val_k}k"
+    if n >= 1_000:
+        val_k = n / 1_000
+        formatted = f"{val_k:.1f}k"
+        return formatted.replace(".0k", "k")
+    return str(n)
+
+
+def format_date(val: Any) -> str:
+    """Extract YYYY-MM-DD date from ISO 8601 or timestamp strings."""
+    if not val:
+        return ""
+    s = str(val).strip()
+    m = re.match(r"^(\d{4}-\d{2}-\d{2})", s)
+    return m.group(1) if m else s
 
 
 PICA_ALLOWED_CDN_SUFFIXES = (
@@ -339,21 +375,31 @@ class PicacgProvider(ComicProvider):
         json_data: dict[str, Any] | None = None,
         retry_auth: bool = True,
     ) -> dict[str, Any]:
-        """Sends an authenticated request to PicAcg REST API."""
+        """Sends an authenticated request to PicAcg REST API.
+        Ref: https://github.com/wgh136/PicaComic (PicaComic by wgh136)
+        """
+        from urllib.parse import urlencode
+
+        clean_endpoint = endpoint.lstrip("/")
+        if params:
+            query = urlencode(params)
+            sep = "&" if "?" in clean_endpoint else "?"
+            clean_endpoint = f"{clean_endpoint}{sep}{query}"
+
         token = self.ensure_token()
-        headers = self._create_headers(endpoint, method=method, token=token)
-        url = f"{PICA_API_URL.rstrip('/')}/{endpoint.lstrip('/')}"
+        headers = self._create_headers(clean_endpoint, method=method, token=token)
+        url = f"{PICA_API_URL.rstrip('/')}/{clean_endpoint}"
         proxies = {"http": PICA_PROXY, "https": PICA_PROXY} if PICA_PROXY else None
         session = self._session()
 
         try:
             if method.upper() == "GET":
-                resp = session.get(url, params=params, headers=headers, proxies=proxies, timeout=15)
+                resp = session.get(url, headers=headers, proxies=proxies, timeout=20)
             else:
-                resp = session.post(url, json=json_data, headers=headers, proxies=proxies, timeout=15)
+                resp = session.post(url, json=json_data, headers=headers, proxies=proxies, timeout=20)
         except Exception as exc:
             safe_err = sanitize_proxy_url(str(exc))
-            raise RuntimeError(f"请求哔咔 API 失败 ({endpoint}): {safe_err}") from exc
+            raise RuntimeError(f"请求哔咔 API 失败 ({clean_endpoint}): {safe_err}") from exc
 
         if resp.status_code == 401 and retry_auth:
             logger.warning("哔咔 Token 已过期，尝试重新登录...")
@@ -406,9 +452,10 @@ class PicacgProvider(ComicProvider):
         tags = list(dict.fromkeys([t.strip() for t in (raw_tags + raw_cats) if t and t.strip()]))
 
         description = (comic_info.get("description") or "").strip()
-        views = str(comic_info.get("viewsCount", ""))
-        likes = str(comic_info.get("likesCount", ""))
-        updated_at = str(comic_info.get("updated_at") or comic_info.get("created_at") or "")
+        views = format_count(comic_info.get("viewsCount", comic_info.get("totalViews", "")))
+        likes = format_count(comic_info.get("likesCount", comic_info.get("totalLikes", "")))
+        published_at = format_date(comic_info.get("created_at") or "")
+        updated_at = format_date(comic_info.get("updated_at") or comic_info.get("created_at") or "")
 
         # 2. Fetch all episode listings (with pagination)
         eps: list[dict[str, Any]] = []
@@ -564,11 +611,11 @@ class PicacgProvider(ComicProvider):
             description=description,
             uploader=uploader,
             page_count=total_page_count,
-            published_at="",
+            published_at=published_at,
             updated_at=updated_at,
             views=views,
             likes=likes,
-            comment_count=0,
+            comment_count=int(comic_info.get("commentsCount", comic_info.get("totalComments", 0)) or 0),
             favorite=False,
             cover_count=min(COVER_COUNT, total_page_count) if total_page_count else COVER_COUNT,
             source_url=f"https://picawang.com/comic/{comic_id}",
@@ -578,6 +625,47 @@ class PicacgProvider(ComicProvider):
         )
 
         return FetchedComic(meta=comic_meta, remote_pages=remote_pages)
+
+    def download_cover(self, comic: FetchedComic) -> bytes | None:
+        """Downloads the official cover thumbnail for PicAcg comic if available.
+        Ref: https://github.com/wgh136/PicaComic (PicaComic by wgh136)
+        """
+        raw = comic.meta.raw if isinstance(comic.meta.raw, dict) else {}
+        thumb = raw.get("thumb")
+        if not thumb or not isinstance(thumb, dict):
+            return None
+
+        file_server = (thumb.get("fileServer") or "").rstrip("/")
+        path = (thumb.get("path") or "").lstrip("/")
+        if not file_server or not path:
+            return None
+
+        candidate_urls: list[str] = [f"{file_server}/static/{path}"]
+        parsed = urlparse(candidate_urls[0])
+        original_host = (parsed.hostname or "").lower()
+
+        for fallback_host in PICA_STORAGE_FALLBACKS:
+            if fallback_host != original_host:
+                candidate_urls.append(parsed._replace(netloc=fallback_host).geturl())
+
+        headers = {
+            "User-Agent": "okhttp/3.8.1",
+            "Referer": "https://www.picacomic.com/",
+            "Accept": "image/webp,image/apng,image/*,*/*;q=0.8",
+        }
+        proxies = {"http": PICA_PROXY, "https": PICA_PROXY} if PICA_PROXY else None
+        session = self._session()
+
+        for url in candidate_urls:
+            try:
+                _validate_download_host((urlparse(url).hostname or "").lower())
+                resp = session.get(url, headers=headers, proxies=proxies, timeout=15)
+                if resp.status_code == 200 and len(resp.content) >= 100 and is_valid_image(resp.content):
+                    return bytes(resp.content)
+            except Exception as exc:
+                logger.debug(f"下载哔咔官方封面分流节点异常 ({sanitize_proxy_url(url)}): {exc}")
+
+        return None
 
     def download_page(self, comic: FetchedComic, page: RemotePage) -> bytes:
         """Downloads a single page image with multi-CDN failover and concurrency gate control."""

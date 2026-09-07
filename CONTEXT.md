@@ -14,7 +14,7 @@
 - **车号（display_id）**：作品在来源站点的唯一编号（如禁漫 `523607`，本地自建 `LOC_tiya-frames`），是"放进纸间"时用户需要输入或生成的标识。`display_id` 与 `source` 组合才是全局唯一。
 - **来源（Source / Provider）**：作品的远端或本地出处（`jm` 禁漫、`local` 本地自建/本地目录导入、`picacg` 哔咔）。每个来源有独立的 `short_label`、编号格式、数据目录 `library/<source>/<source_id>/`。
 - **本地自建漫画（Local Comic）**：由用户直接上传图片文件或指定服务器已有文件夹（如视频拆帧目录）收录生成的作品。`source = "local"`，无远端依赖，直接持久化于 `library/local/<source_id>/`。
-- **哔咔漫画（PicAcg Comic）**：由哔咔数据源收录的作品。`source = "picacg"`，使用 24 位十六进制 ObjectId 标识，画卷原生为标准 JPEG/PNG 格式，不设切片混淆但需分流鉴权。
+- **哔咔漫画（PicAcg Comic）**：由哔咔数据源收录的作品。`source = "picacg"`，使用 24 位十六进制 ObjectId 标识；逆向协议与端点单一权威参考 `https://github.com/wgh136/PicaComic`；画卷原生为标准 JPEG/PNG 格式，不设切片混淆但需分流鉴权；封面策略首图优先采用官方 `thumb` 并转码 720px/360px WebP，续接正文前 3 页构成书架 4 叠牌展开。
 - **收录（Import）**：把一本作品"放进纸间"的动作。规则：先查本地 `album.json`，命中则 `from_cache=true` 绝不请求远端；首次收录缓存前 4 页做封面。本地自建漫画收录时即时生成封面与缩略图。
 - **本地化（Caching / Cachify）**：把页面图片下载到本地（`cached_pages` / `cache_complete`）。图片必须走解密工具，禁止直接保存下载字节；本地自建漫画页面在导入时即为 100% 本地化。
 - **并发上传队列（Concurrent Upload Queue）**：批量上传大量图片（如数百张拆帧图）时的客户端流量阀门。采用受限并发（3~4 路）分批推送到后端，兼顾上传速度与服务器连接稳定性。

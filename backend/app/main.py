@@ -616,15 +616,17 @@ def import_comic(req: ImportRequest) -> ImportResult:
         raise HTTPException(status_code=400, detail=str(exc))
 
     if not req.refresh:
-        fetched = store.load_fetched(req.source, source_id)
-        if fetched is not None:
-            return ImportResult(meta=fetched.meta, from_cache=True, prefetched=0, warnings=[])
+        cached = store.load_fetched(req.source, source_id)
+        # Self-healing: if cached comic has 0 pages (broken historical record), bypass cache and re-fetch
+        if cached is not None and cached.meta.page_count > 0:
+            return ImportResult(meta=cached.meta, from_cache=True, prefetched=0, warnings=[])
 
     # Metadata + URL discovery happen on the request thread: fast and necessary
     # for a useful response. Page/cover downloads are the slow part, so they're
     # pushed to a background daemon thread and the UI polls cache_progress.
     # T12：refresh 时把旧 bundle 传给 provider，章节没变就不重复拉每一话的 photo HTML。
-    existing = store.load_fetched(req.source, source_id) if req.refresh else None
+    cached_bundle = store.load_fetched(req.source, source_id)
+    existing = cached_bundle if (req.refresh and cached_bundle is not None and cached_bundle.meta.page_count > 0) else None
     try:
         fetched = provider.fetch(source_id, existing=existing)
     except ValueError as exc:
