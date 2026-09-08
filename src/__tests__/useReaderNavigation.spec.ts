@@ -1,0 +1,250 @@
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vite-plus/test'
+import { ref, reactive, computed, type Ref } from 'vue'
+import { useReaderNavigation } from '@/composables/useReaderNavigation'
+import { DEFAULT_SETTINGS, type ReaderSettings } from '@/composables/useReaderSettings'
+import type { Router } from 'vue-router'
+
+describe('useReaderNavigation - Discrete Wheel Stepping & Dual-Axis Discrimination', () => {
+  let settings: ReaderSettings
+  let scrollEl: Ref<HTMLElement | null>
+  let currentPage: Ref<number>
+  let currentGroupIndex: Ref<number>
+  let showChromeTemporarily: () => void
+  let resetAutoTurnCountdown: () => void
+  let mockScrollTo: (_options?: ScrollToOptions | number, _y?: number) => void
+  let mockContainer: HTMLElement
+
+  beforeEach(() => {
+    vi.useFakeTimers()
+    settings = reactive<ReaderSettings>({
+      ...DEFAULT_SETTINGS,
+      mode: 'horizontal',
+      pagesPerView: 2,
+      direction: 'ltr',
+    })
+
+    currentPage = ref<number>(1)
+    currentGroupIndex = ref<number>(0)
+    showChromeTemporarily = vi.fn<() => void>()
+    resetAutoTurnCountdown = vi.fn<() => void>()
+
+    mockScrollTo = vi.fn<(_options?: ScrollToOptions | number, _y?: number) => void>()
+    mockContainer = document.createElement('main')
+    mockContainer.scrollTo = mockScrollTo as unknown as typeof mockContainer.scrollTo
+
+    // Create 3 mock spread sections with data-group-index
+    for (let i = 0; i < 3; i += 1) {
+      const spread = document.createElement('section')
+      spread.dataset.groupIndex = String(i)
+      Object.defineProperty(spread, 'offsetLeft', { value: i * 800, configurable: true })
+      mockContainer.appendChild(spread)
+    }
+
+    scrollEl = ref<HTMLElement | null>(mockContainer)
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  function createNavigation() {
+    const pageGroups = computed(() => [
+      [1, 2],
+      [3, 4],
+      [5, 6],
+    ])
+    const lastGroupIndex = computed(() => 2)
+    const mockRouter = {
+      replace: vi.fn<(_url: string) => Promise<void>>(),
+      push: vi.fn<(_url: string) => Promise<void>>(),
+    } as unknown as Router
+
+    return useReaderNavigation({
+      scrollEl,
+      settings,
+      currentPage,
+      currentGroupIndex,
+      pageGroups,
+      lastGroupIndex,
+      clampToScope: (p: number) => Math.min(Math.max(p, 1), 6),
+      groupIndexForPage: (p: number) => Math.floor((p - 1) / 2),
+      groupFirstPage: (g: number) => g * 2 + 1,
+      showChromeTemporarily,
+      resetAutoTurnCountdown,
+      source: computed(() => 'jm'),
+      sourceId: computed(() => 'test-comic'),
+      nextChapter: computed(() => null),
+      prevChapter: computed(() => null),
+      scopeId: ref(null),
+      router: mockRouter,
+    })
+  }
+
+  it('ignores onWheel when reader is not in horizontal mode', () => {
+    settings.mode = 'vertical-continuous'
+    const nav = createNavigation()
+
+    const preventDefault = vi.fn<() => void>()
+    const event = new WheelEvent('wheel', {
+      deltaY: 100,
+      deltaX: 0,
+      cancelable: true,
+    })
+    Object.defineProperty(event, 'preventDefault', { value: preventDefault })
+
+    nav.onWheel(event)
+
+    expect(preventDefault).not.toHaveBeenCalled()
+    expect(currentGroupIndex.value).toBe(0)
+    expect(mockScrollTo).not.toHaveBeenCalled()
+  })
+
+  it('passes through horizontal gestures (|deltaX| > |deltaY|) for native trackpad smooth scrolling', () => {
+    const nav = createNavigation()
+
+    const preventDefault = vi.fn<() => void>()
+    const event = new WheelEvent('wheel', {
+      deltaX: 50,
+      deltaY: 10,
+      cancelable: true,
+    })
+    Object.defineProperty(event, 'preventDefault', { value: preventDefault })
+
+    nav.onWheel(event)
+
+    expect(preventDefault).not.toHaveBeenCalled()
+    expect(currentGroupIndex.value).toBe(0)
+    expect(mockScrollTo).not.toHaveBeenCalled()
+  })
+
+  it('intercepts vertical wheel (|deltaY| >= 40) and steps to next group with smooth scrollTo', () => {
+    const nav = createNavigation()
+
+    const preventDefault = vi.fn<() => void>()
+    const event = new WheelEvent('wheel', {
+      deltaX: 0,
+      deltaY: 100,
+      cancelable: true,
+    })
+    Object.defineProperty(event, 'preventDefault', { value: preventDefault })
+
+    nav.onWheel(event)
+
+    expect(preventDefault).toHaveBeenCalled()
+    expect(currentGroupIndex.value).toBe(1)
+    expect(currentPage.value).toBe(3) // group 1 starts at page 3
+    expect(mockScrollTo).toHaveBeenCalledWith({ left: 800, top: 0, behavior: 'smooth' })
+    expect(showChromeTemporarily).toHaveBeenCalled()
+    expect(resetAutoTurnCountdown).toHaveBeenCalled()
+  })
+
+  it('intercepts negative vertical wheel and steps to previous group', () => {
+    currentGroupIndex.value = 1
+    currentPage.value = 3
+    const nav = createNavigation()
+
+    const preventDefault = vi.fn<() => void>()
+    const event = new WheelEvent('wheel', {
+      deltaX: 0,
+      deltaY: -100,
+      cancelable: true,
+    })
+    Object.defineProperty(event, 'preventDefault', { value: preventDefault })
+
+    nav.onWheel(event)
+
+    expect(preventDefault).toHaveBeenCalled()
+    expect(currentGroupIndex.value).toBe(0)
+    expect(currentPage.value).toBe(1)
+    expect(mockScrollTo).toHaveBeenCalledWith({ left: 0, top: 0, behavior: 'smooth' })
+  })
+
+  it('throttles rapid consecutive wheel spins within cooldown period', () => {
+    const nav = createNavigation()
+
+    const event1 = new WheelEvent('wheel', { deltaY: 100, cancelable: true })
+    const event2 = new WheelEvent('wheel', { deltaY: 100, cancelable: true })
+    const preventDefault = vi.fn<() => void>()
+    Object.defineProperty(event1, 'preventDefault', { value: preventDefault })
+    Object.defineProperty(event2, 'preventDefault', { value: preventDefault })
+
+    nav.onWheel(event1)
+    expect(currentGroupIndex.value).toBe(1)
+
+    // Rapid second spin during 220ms cooldown
+    nav.onWheel(event2)
+    expect(currentGroupIndex.value).toBe(1) // Still at 1, prevented runaway flips
+
+    // Fast-forward beyond 220ms
+    vi.advanceTimersByTime(230)
+
+    const event3 = new WheelEvent('wheel', { deltaY: 100, cancelable: true })
+    Object.defineProperty(event3, 'preventDefault', { value: preventDefault })
+    nav.onWheel(event3)
+    expect(currentGroupIndex.value).toBe(2)
+  })
+
+  it('accumulates sub-threshold wheel deltas before triggering step', () => {
+    const nav = createNavigation()
+
+    const preventDefault = vi.fn<() => void>()
+    const makeEvent = (dy: number) => {
+      const ev = new WheelEvent('wheel', { deltaY: dy, cancelable: true })
+      Object.defineProperty(ev, 'preventDefault', { value: preventDefault })
+      return ev
+    }
+
+    // Two small 15px micro-scrolls (total 30 < 40)
+    nav.onWheel(makeEvent(15))
+    nav.onWheel(makeEvent(15))
+    expect(currentGroupIndex.value).toBe(0)
+
+    // Third micro-scroll puts total at 45 >= 40
+    nav.onWheel(makeEvent(15))
+    expect(currentGroupIndex.value).toBe(1)
+  })
+
+  it('clears accumulated sub-threshold delta after 150ms inactivity', () => {
+    const nav = createNavigation()
+
+    const preventDefault = vi.fn<() => void>()
+    const makeEvent = (dy: number) => {
+      const ev = new WheelEvent('wheel', { deltaY: dy, cancelable: true })
+      Object.defineProperty(ev, 'preventDefault', { value: preventDefault })
+      return ev
+    }
+
+    nav.onWheel(makeEvent(20))
+    expect(currentGroupIndex.value).toBe(0)
+
+    // Inactivity timeout
+    vi.advanceTimersByTime(160)
+
+    // Another 20 should not trigger because previous 20 was cleared
+    nav.onWheel(makeEvent(20))
+    expect(currentGroupIndex.value).toBe(0)
+  })
+
+  it('steps smoothly in RTL mode when rolling wheel down (nextGroup)', () => {
+    settings.direction = 'rtl'
+    // In RTL, group 0 is on the right (1600px), group 1 is at 800px, group 2 is at 0px
+    mockContainer.innerHTML = ''
+    for (let i = 0; i < 3; i += 1) {
+      const spread = document.createElement('section')
+      spread.dataset.groupIndex = String(i)
+      Object.defineProperty(spread, 'offsetLeft', { value: (2 - i) * 800, configurable: true })
+      mockContainer.appendChild(spread)
+    }
+
+    const nav = createNavigation()
+    const preventDefault = vi.fn<() => void>()
+    const event = new WheelEvent('wheel', { deltaY: 100, cancelable: true })
+    Object.defineProperty(event, 'preventDefault', { value: preventDefault })
+
+    nav.onWheel(event)
+
+    expect(preventDefault).toHaveBeenCalled()
+    expect(currentGroupIndex.value).toBe(1)
+    expect(mockScrollTo).toHaveBeenCalledWith({ left: 800, top: 0, behavior: 'smooth' })
+  })
+})

@@ -6,7 +6,7 @@
  * 1. 物理视口滚动（`scrollToGroup`）：支持横向与竖向、smooth/instant 平滑过渡；
  * 2. 交互式切页跳转（`goToGroup` / `goToPage` / `prevGroup` / `nextGroup`）；
  * 3. 滚动进度换算（`onScroll`）：支持 LTR 与 RTL 反向进度，以及最邻近 Spread 自动吸附探测；
- * 4. 横向滚轮转换（`onWheel`）：将纵向滚轮差量映射为横向滚动；
+ * 4. 横向滚轮分屏步进（`onWheel`）：拦截纵向滚轮转为离散分屏平滑步进，放行触控板水平原生滑动；
  * 5. 前后环视预热（`preloadAround`）：在后台预加载当前页邻近的前后屏图片；
  * 6. 跨章节边界切入（`goNextChapter` / `goPrevChapter`）：自动维护 `?chapter=` 作用域与 URL 替换。
  */
@@ -144,12 +144,27 @@ export function useReaderNavigation(options: UseReaderNavigationOptions) {
   }
 
   let scrollRafId: number | null = null
+  let wheelCooldown = false
+  let wheelCooldownTimer: ReturnType<typeof setTimeout> | null = null
+  let accumulatedWheelDelta = 0
+  let wheelResetTimer: ReturnType<typeof setTimeout> | null = null
+
+  const WHEEL_THRESHOLD = 40
+  const WHEEL_COOLDOWN_MS = 220
 
   if (getCurrentScope()) {
     onScopeDispose(() => {
       if (scrollRafId !== null) {
         cancelAnimationFrame(scrollRafId)
         scrollRafId = null
+      }
+      if (wheelCooldownTimer !== null) {
+        clearTimeout(wheelCooldownTimer)
+        wheelCooldownTimer = null
+      }
+      if (wheelResetTimer !== null) {
+        clearTimeout(wheelResetTimer)
+        wheelResetTimer = null
       }
       preloadAround.cancel?.()
     })
@@ -198,20 +213,53 @@ export function useReaderNavigation(options: UseReaderNavigationOptions) {
     resetAutoTurnCountdown()
   }
 
-  /** 在横向翻页排版下拦截纵向滚轮并转换为横向平滑滚动 */
+  /**
+   * 在横向翻页排版下拦截纵向鼠标滚轮，执行离散分屏平滑步进；
+   * 对水平为主的手势（触控板滑动或倾斜滚轮）放行原生物理滚动。
+   *
+   * @param event 滚轮事件对象
+   */
   function onWheel(event: WheelEvent) {
     if (settings.mode !== 'horizontal') return
     const el = scrollEl.value
     if (!el) return
 
-    if (Math.abs(event.deltaY) <= Math.abs(event.deltaX)) return
+    // 触控板水平手势或倾斜滚轮放行原生滚动
+    if (Math.abs(event.deltaX) > Math.abs(event.deltaY)) return
 
     event.preventDefault()
-    const windowHeight = typeof window !== 'undefined' ? window.innerHeight : 600
-    const factor = event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? windowHeight : 1
-    el.scrollBy({ left: event.deltaY * factor, behavior: 'auto' })
-    if (!settings.autoTurn) showChromeTemporarily()
-    resetAutoTurnCountdown()
+
+    if (wheelResetTimer !== null) {
+      clearTimeout(wheelResetTimer)
+      wheelResetTimer = null
+    }
+
+    if (wheelCooldown) return
+
+    const factor = event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? 100 : 1
+    accumulatedWheelDelta += event.deltaY * factor
+
+    if (Math.abs(accumulatedWheelDelta) >= WHEEL_THRESHOLD) {
+      const isDown = accumulatedWheelDelta > 0
+      accumulatedWheelDelta = 0
+      wheelCooldown = true
+
+      if (isDown) {
+        nextGroup()
+      } else {
+        prevGroup()
+      }
+
+      wheelCooldownTimer = setTimeout(() => {
+        wheelCooldown = false
+        wheelCooldownTimer = null
+      }, WHEEL_COOLDOWN_MS)
+    } else {
+      wheelResetTimer = setTimeout(() => {
+        accumulatedWheelDelta = 0
+        wheelResetTimer = null
+      }, 150)
+    }
   }
 
   /** 预加载当前页前后相邻分组的图片资源到浏览器磁盘/内存缓存（防抖 150ms 避免读者高速拖拽滚动条时途经大量页码瞬发海量无效预取） */
