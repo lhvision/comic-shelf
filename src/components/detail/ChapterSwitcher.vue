@@ -247,41 +247,4 @@ function chapterState(id: string): 'past' | 'active' | 'upcoming' {
     padding-inline: var(--space-4);
   }
 }
-
-/* 原生 CSS Carousel (Chrome 135+ / CSS Overflow 5) 渐进增强：
-   在支持现代 CSS Carousels 的浏览器中，由内核直接生成无 JS 的章节横向滚卷步进按钮 */
-@supports selector(::scroll-button(*)) {
-  .chapter-switcher {
-    scroll-behavior: smooth;
-  }
-
-  .chapter-switcher::scroll-button(inline-start),
-  .chapter-switcher::scroll-button(inline-end) {
-    cursor: pointer;
-    align-self: center;
-    width: 1.75rem;
-    height: 1.75rem;
-    border-radius: var(--radius-full);
-    border: 1px solid var(--line);
-    background: var(--paper-0);
-    color: var(--ink-1);
-    box-shadow: var(--shadow-1);
-    transition: all var(--duration-1) var(--ease-out);
-    flex-shrink: 0;
-  }
-
-  .chapter-switcher::scroll-button(inline-start):hover,
-  .chapter-switcher::scroll-button(inline-end):hover {
-    border-color: var(--accent);
-    color: var(--accent-strong);
-    background: var(--paper-1);
-  }
-
-  .chapter-switcher::scroll-button(inline-start):disabled,
-  .chapter-switcher::scroll-button(inline-end):disabled {
-    opacity: 0.25;
-    cursor: not-allowed;
-    pointer-events: none;
-  }
-}
 </style>

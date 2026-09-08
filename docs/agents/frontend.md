@@ -75,7 +75,7 @@
 | `src/components/detail/PageIndexGrid.vue`        | 画页索引网格：平铺画页卡片流 + 末尾独立 +余 N 纸签卡，受控步进展开与平滑回滚收整                                                                               |
 | `src/components/detail/PageTile.vue`             | 单页索引独立画页瓦片：缩略图渐进呈现、多选/操作插槽与尾格余量徽印解耦                                                                                          |
 | `src/components/detail/ChapterCard.vue`          | 目录单卡：第一页封面缩略图（失败回落书脊）+ 序数/标题/页数 + 独立离线缓存操作按钮                                                                              |
-| `src/components/detail/ChapterSwitcher.vue`      | 章节切换条（用于 ChapterView 内跳话）：横向 chips + 方向键 + `useScroll` + Chrome 135+ `::scroll-button` 渐进增强步进                                          |
+| `src/components/detail/ChapterSwitcher.vue`      | 章节切换条（用于 ChapterView 内跳话）：横向 chips + 方向键 + `useScroll` 智能滚卷导航                                                                          |
 | `src/components/FavoriteButton.vue`              | 喜欢标记按钮（书架卡片 / 实验卡片 overlay）                                                                                                                    |
 | `src/components/ComicPageImage.vue`              | 每页图片 loading / error / retry 兜底                                                                                                                          |
 | `src/components/CoverCarousel.vue`               | 封面轮播：基于物理中心点 JIT 居中计算、直接点击对齐与 Chrome 135+ CSS Carousels (::scroll-marker) 渐进增强                                                     |

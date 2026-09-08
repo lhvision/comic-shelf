@@ -966,7 +966,7 @@ await withViewTransition(
 **规范**：[CSS Overflow Module Level 5 (CSS Carousels)](https://drafts.csswg.org/css-overflow-5/#carousel)  
 **可用**：Chrome 135+ (2025-04 正式支持) · Safari (WebKit Bug #274944 跟踪中) · Firefox (规划中)  
 **参考**：[张鑫旭 CSS ::scroll-button ::scroll-marker伪元素又是干嘛用的？](https://www.zhangxinxu.com/wordpress/2025/06/css-scroll-button-marker/)  
-**本项目落地状态**：✅ **渐进增强落地（`CoverCarousel.vue` 零 JS 纸印指示点与 `:focus-visible` 焦点环；`ChapterSwitcher.vue` 零 JS `::scroll-button` 章节横向滚卷步进）**
+**本项目落地状态**：✅ **渐进增强落地（`CoverCarousel.vue` 零 JS 纸印指示点与 `:focus-visible` 原生焦点环）**
 
 #### 核心机制解构
 
@@ -975,7 +975,7 @@ CSS Overflow Level 5 彻底打破了“写轮播必须引入 JS 监听、状态�
 1. **`::scroll-button(direction)` 伪元素函数**：
    - 方向枚举：`left`、`right`、`up`、`down`、`inline-start`、`inline-end`、`block-start`、`block-end` 或通配符 `*`；
    - 浏览器自动为滚动容器生成原生翻页按钮，零 DOM 节点开销；
-   - **智能步长与吸附联动**：默认滚动步长为容器视口的 85%，在配合 `scroll-snap` 时**由内核底层直达下一个吸附目标（Snap Point）**，彻底免疫手写 JS 计算像素时因 CSS 3D 缩放/旋转导致的几何步长失真与回弹暗礁；
+   - **智能步长与吸附联动**：默认滚动步长为容器视口的 85%，在配合 `scroll-snap` 时**由内核底层直达下一个吸附目标（Snap Point）**；
    - **原生状态驱动**：滚动到达边界时，`::scroll-button(left)` 自动匹配 `:disabled` 状态；支持 `:active`、`:hover` 以及容器级 `:has(::scroll-button(left):disabled)` 边缘光效感知。
 
 2. **`scroll-marker-group` 属性 与 `::scroll-marker-group` 伪元素**：
@@ -1032,6 +1032,15 @@ CSS Overflow Level 5 彻底打破了“写轮播必须引入 JS 监听、状态�
 
 - **基准轨（Baseline Fallback）**：保留语义化 `<button class="carousel-arrow">` 与基于视口中点的即时 DOM `scrollIntoView({ inline: 'center' })`，0 全局滚动监听器，在旧版浏览器中稳健可用；
 - **现代轨（Modern Enhancement）**：在 Chrome 135+ 自动浮现内核驱动的零 JS 纸印指示点（`:target-current`），随卡片吸附丝滑点亮，将 CSS 前瞻能力优雅融入纸间阅读空间。
+
+#### 场景边界与体验反思（Design Boundaries & Slop Elimination）
+
+在系统演进中，我们曾深入实测将 `::scroll-button()` 推广至漫画阅读器（`ReaderViewport.vue`）与章节条（`ChapterSwitcher.vue`），并经真实渲染与用户体验复盘做出明确裁撤决策：
+
+1. **阅读器内容零遮挡红线**：漫画画幅是读者的核心视觉重心。居中上下/左右悬浮按钮不仅直接压在画面正文、对话气泡与页码上，而且内核默认步进跳跃缺乏平滑阻尼动效，破坏了纸间原本精致流畅的物理翻页质感；
+2. **拒绝多头冗余**：阅读器右下角已有成熟精美的浮动 HUD 胶囊（包含页码指示与前后切页）；屏幕额外堆砌方块属于典型的“为用技术而用技术”的过度工程；
+3. **章节条流线纯粹性**：章节切换条依靠滚轮与拖拽已具备极佳横向流线，在「下一话」按钮狭缝中硬塞伪元素按钮严重破坏排版均衡；
+4. **结论**：CSS Carousels 严格收敛于画卷封面轮播等真正的展示型 Carousel 场景，阅读器与目录保持沉浸、通透与纯净。
 
 ---
 
