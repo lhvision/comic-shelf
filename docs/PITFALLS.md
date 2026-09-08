@@ -227,7 +227,7 @@
   - **放行/改用**（统一人格 `useHierarchicalNavigation`）：
     1. **子详情返回父详情（来源感知出栈 + 替换兜底）**：检查 `history.state.back` 是否精确匹配父详情页（`isParentAlbumRoute`）。若是，直接 `router.back()` 优雅出栈（无损还原父详情页离开时的滚动位置与章节展开折叠状态）；否则（如冷启动直达单话、外链接入）使用 `router.replace('/comic/:source/:id')` 替换兜底；
     2. **同级切话视口替换**：章节子路由内部切话（`switchChapter`）采用 `router.replace`，同层视口切换不入栈，消除历史栈爆炸，确保点击「返回本子详情」单次即可出栈回到父详情；
-    3. **父级视图下级路由防卫（Downward Navigation Guard）**：父详情页 `goBack()` 增加纵深防御拦截，当 `history.state.back` 指向当前漫画的子路由（`/chapter/` 或 `/read/`）时，拦截 `router.back()`，兜底回退至书架 `{ name: 'library' }`，彻底阻断向下回弹死循环；
+    3. **父级视图下级路由防卫（Downward Navigation Guard & Meta Rank）**：父详情页 `goBack()` 增加纵深防御拦截，优先依据路由元数据 `meta.rank` 进行声明式推导（拦截 `targetRank > 2`），并严格排除指向当前漫画自身的重复历史条目（避免阅读器 `replace` 退出后需双击返回的假死缺陷）与 `/create` 表单，拦截 `router.back()` 并以 `router.replace({ name: 'library' })` 兜底直达书架，彻底阻断向下回弹死循环与历史卡顿；
     4. **深层沉浸界面退出**：阅读器、全屏浮层退出统一使用 `router.replace` 就地替换历史栈。
 
 ### 35. 长篇未缓存作品的无休止轮询空转（Job-driven Polling Guard）

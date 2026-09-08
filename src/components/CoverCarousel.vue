@@ -120,6 +120,7 @@ function onSlideClick(index: number) {
 }
 
 .cover-track {
+  position: relative;
   display: flex;
   gap: clamp(1rem, 3vw, 2rem);
   overflow-x: auto;
@@ -141,6 +142,12 @@ function onSlideClick(index: number) {
   scroll-snap-stop: always;
   margin: 0;
   cursor: pointer;
+}
+
+.cover-slide:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 4px;
+  border-radius: var(--radius-2);
 }
 
 .cover-slide-inner {

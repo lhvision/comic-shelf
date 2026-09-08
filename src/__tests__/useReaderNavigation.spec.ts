@@ -247,4 +247,20 @@ describe('useReaderNavigation - Discrete Wheel Stepping & Dual-Axis Discriminati
     expect(currentGroupIndex.value).toBe(1)
     expect(mockScrollTo).toHaveBeenCalledWith({ left: 800, top: 0, behavior: 'smooth' })
   })
+
+  it('bypasses wheel interception when Ctrl or Meta key is pressed (browser zoom)', () => {
+    const nav = createNavigation()
+    const preventDefault = vi.fn<() => void>()
+
+    const ctrlEvent = new WheelEvent('wheel', { deltaY: 100, ctrlKey: true, cancelable: true })
+    Object.defineProperty(ctrlEvent, 'preventDefault', { value: preventDefault })
+    nav.onWheel(ctrlEvent)
+
+    const metaEvent = new WheelEvent('wheel', { deltaY: 100, metaKey: true, cancelable: true })
+    Object.defineProperty(metaEvent, 'preventDefault', { value: preventDefault })
+    nav.onWheel(metaEvent)
+
+    expect(preventDefault).not.toHaveBeenCalled()
+    expect(currentGroupIndex.value).toBe(0)
+  })
 })

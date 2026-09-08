@@ -227,6 +227,9 @@ export function useReaderNavigation(options: UseReaderNavigationOptions) {
     // 触控板水平手势或倾斜滚轮放行原生滚动
     if (Math.abs(event.deltaX) > Math.abs(event.deltaY)) return
 
+    // 放行浏览器原生页面缩放手势（Ctrl/Cmd + 滚轮 或 触控板双指捏合）
+    if (event.ctrlKey || event.metaKey) return
+
     event.preventDefault()
 
     if (wheelResetTimer !== null) {

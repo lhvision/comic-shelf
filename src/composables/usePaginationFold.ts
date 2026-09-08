@@ -93,6 +93,7 @@ export function usePaginationFold<T>(
 
   function reset(newCount?: number) {
     visibleCount.value = newCount ?? getBaseCount()
+    onChange?.(visibleCount.value)
   }
 
   return {

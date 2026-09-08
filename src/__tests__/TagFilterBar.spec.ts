@@ -153,4 +153,21 @@ describe('TagFilterBar', () => {
     } as Record<string, unknown>)
     expect(tray.classes()).toContain('is-expanded')
   })
+
+  it('supports two-way binding via trayExpanded model', async () => {
+    const wrapper = mount(TagFilterBar, {
+      props: {
+        favoritesOnly: false,
+        activeTag: '',
+        tagCounts,
+        filteredCount: 10,
+        trayExpanded: false,
+      },
+    })
+
+    const moreBtn = wrapper.find('.more-tags')
+    await moreBtn.trigger('click')
+
+    expect(wrapper.emitted('update:trayExpanded')?.[0]).toEqual([true])
+  })
 })

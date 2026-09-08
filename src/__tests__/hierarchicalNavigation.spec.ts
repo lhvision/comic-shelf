@@ -207,6 +207,15 @@ describe('useHierarchicalNavigation & Downward Navigation Guard', () => {
       expect(mockReplace).toHaveBeenCalledWith({ name: 'library' })
     })
 
+    it('blocks router.back() and replaces with library when back points to the same album (e.g. replaced from reader)', () => {
+      window.history.replaceState({ back: '/comic/jm/518074' }, '', window.location.href)
+
+      navigateUpFromDetail(mockRouter, 'jm', '518074')
+
+      expect(mockBack).not.toHaveBeenCalled()
+      expect(mockReplace).toHaveBeenCalledWith({ name: 'library' })
+    })
+
     it('falls back to router.replace with library when history.state.back is missing', () => {
       window.history.replaceState(null, '', window.location.href)
 
@@ -231,6 +240,13 @@ describe('useHierarchicalNavigation & Downward Navigation Guard', () => {
       expect(isSafeUpstreamRoute(detail, '/comic/jm/999999')).toBe(true)
     })
 
+    it('returns false for the same album detail route (prevents double-back bounce)', () => {
+      expect(isSafeUpstreamRoute(detail, '/comic/jm/518074')).toBe(false)
+      expect(isSafeUpstreamRoute(detail, '/comic/jm/518074/')).toBe(false)
+      expect(isSafeUpstreamRoute(detail, '/comic/jm/518074?tab=chapters')).toBe(false)
+      expect(isSafeUpstreamRoute(detail, '/comic/jm/518074#c1')).toBe(false)
+    })
+
     it('returns false for child chapter and reader routes of this comic', () => {
       expect(isSafeUpstreamRoute(detail, '/comic/jm/518074/chapter/1')).toBe(false)
       expect(isSafeUpstreamRoute(detail, '/comic/jm/518074/read/10')).toBe(false)
@@ -250,9 +266,47 @@ describe('useHierarchicalNavigation & Downward Navigation Guard', () => {
       expect(isSafeUpstreamRoute(detail, '/create#options')).toBe(false)
     })
 
-    it('returns false for null or undefined back state', () => {
+    it('returns false for null, undefined, or empty back state', () => {
       expect(isSafeUpstreamRoute(detail, null)).toBe(false)
       expect(isSafeUpstreamRoute(detail, undefined)).toBe(false)
+      expect(isSafeUpstreamRoute(detail, '')).toBe(false)
+    })
+
+    it('returns false for external, protocol-relative, or non-pathname strings (open-redirect defense)', () => {
+      expect(isSafeUpstreamRoute(detail, '//evil.com')).toBe(false)
+      expect(isSafeUpstreamRoute(detail, 'https://evil.com')).toBe(false)
+      expect(isSafeUpstreamRoute(detail, 'javascript:alert(1)')).toBe(false)
+      expect(isSafeUpstreamRoute(detail, 'data:text/html,test')).toBe(false)
+    })
+
+    it('evaluates meta.rank via router.resolve when router is provided', () => {
+      const mockResolveRouter = {
+        resolve: vi.fn<(path: string) => { name?: string; meta?: { rank?: number } }>(
+          (path: string) => {
+            if (path.startsWith('/custom/deep-reader')) {
+              return { meta: { rank: 4 } }
+            }
+            if (path.startsWith('/custom/deep-chapter')) {
+              return { meta: { rank: 3 } }
+            }
+            if (path === '/custom-workshop') {
+              return { name: 'create-comic', meta: { rank: 2 } }
+            }
+            if (path === '/discovery') {
+              return { meta: { rank: 1 } }
+            }
+            return { meta: { rank: 2 } }
+          },
+        ),
+      } as unknown as Router
+
+      // Rank 4 & Rank 3 are blocked via metadata
+      expect(isSafeUpstreamRoute(detail, '/custom/deep-reader/1', mockResolveRouter)).toBe(false)
+      expect(isSafeUpstreamRoute(detail, '/custom/deep-chapter/1', mockResolveRouter)).toBe(false)
+      // Form name 'create-comic' is blocked via metadata
+      expect(isSafeUpstreamRoute(detail, '/custom-workshop', mockResolveRouter)).toBe(false)
+      // Rank 1 is allowed
+      expect(isSafeUpstreamRoute(detail, '/discovery', mockResolveRouter)).toBe(true)
     })
   })
 
@@ -268,6 +322,24 @@ describe('useHierarchicalNavigation & Downward Navigation Guard', () => {
 
     it('blocks router.back() and replaces with library when back points to a reader', () => {
       window.history.replaceState({ back: '/comic/jm/123/read/1' }, '', window.location.href)
+
+      navigateUpFromCreate(mockRouter)
+
+      expect(mockBack).not.toHaveBeenCalled()
+      expect(mockReplace).toHaveBeenCalledWith({ name: 'library' })
+    })
+
+    it('blocks router.back() and replaces with library when back points to /create itself', () => {
+      window.history.replaceState({ back: '/create' }, '', window.location.href)
+
+      navigateUpFromCreate(mockRouter)
+
+      expect(mockBack).not.toHaveBeenCalled()
+      expect(mockReplace).toHaveBeenCalledWith({ name: 'library' })
+    })
+
+    it('blocks router.back() and replaces with library when back points to /create with query', () => {
+      window.history.replaceState({ back: '/create?step=2' }, '', window.location.href)
 
       navigateUpFromCreate(mockRouter)
 

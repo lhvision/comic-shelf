@@ -302,13 +302,12 @@ watch(searchError, (value) => {
       </div>
 
       <TagFilterBar
+        v-model:tray-expanded="tagTrayExpanded"
         :favorites-only="favoritesOnly"
         :completed-only="completedOnly"
         :active-tag="activeTag"
         :tag-counts="tagCounts"
         :filtered-count="filtered.length"
-        :tray-expanded="tagTrayExpanded"
-        @update:tray-expanded="(val) => (tagTrayExpanded = val)"
         @toggle-favorites="toggleFavorites"
         @toggle-completed="toggleCompleted"
         @select-tag="selectTag"

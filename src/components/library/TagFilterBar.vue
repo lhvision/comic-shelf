@@ -11,6 +11,8 @@ import AppChip from '@/components/AppChip.vue'
  * 「更多标签」展开按钮之下（再点收起），避免 ~20 个 chip 的墙造成
  * 决策点超载，也避免移动端出现无休止换行。
  */
+const trayExpanded = defineModel<boolean>('trayExpanded', { default: false })
+
 const props = withDefaults(
   defineProps<{
     favoritesOnly: boolean
@@ -20,12 +22,9 @@ const props = withDefaults(
     tagCounts: Array<[string, number]>
     /** 当前筛选命中的数量（用于提示文案） */
     filteredCount: number
-    /** 「更多标签」抽屉展开状态（用于跨路由状态记忆） */
-    trayExpanded?: boolean
   }>(),
   {
     completedOnly: false,
-    trayExpanded: false,
   },
 )
 
@@ -34,7 +33,6 @@ const emit = defineEmits<{
   toggleCompleted: []
   selectTag: [tag: string]
   clearTag: []
-  'update:trayExpanded': [expanded: boolean]
 }>()
 
 /** 默认展示的高频标签数（连「全部」一起 ≤9 个 chip） */
@@ -44,29 +42,19 @@ const moreCount = computed(() => Math.max(0, props.tagCounts.length - VISIBLE_TA
 const primaryTags = computed(() => props.tagCounts.slice(0, VISIBLE_TAGS))
 const overflowTags = computed(() => props.tagCounts.slice(VISIBLE_TAGS))
 
-const expanded = ref(
-  props.trayExpanded ||
-    Boolean(props.activeTag && overflowTags.value.some(([t]) => t === props.activeTag)),
-)
-
-watch(
-  () => props.trayExpanded,
-  (val) => {
-    if (val !== undefined && val !== expanded.value) {
-      expanded.value = val
-    }
-  },
-)
-
-watch(expanded, (val) => {
-  emit('update:trayExpanded', val)
-})
+if (
+  !trayExpanded.value &&
+  props.activeTag &&
+  overflowTags.value.some(([t]) => t === props.activeTag)
+) {
+  trayExpanded.value = true
+}
 
 watch(
   () => props.activeTag,
   (newTag) => {
     if (newTag && overflowTags.value.some(([t]) => t === newTag)) {
-      expanded.value = true
+      trayExpanded.value = true
     }
   },
 )
@@ -114,16 +102,16 @@ function clearFilter() {
         <AppChip
           v-if="moreCount > 0"
           class="more-tags"
-          :aria-expanded="expanded"
-          @click="expanded = !expanded"
+          :aria-expanded="trayExpanded"
+          @click="trayExpanded = !trayExpanded"
         >
-          <span>{{ expanded ? '收起标签' : `更多 · ${moreCount}` }}</span>
+          <span>{{ trayExpanded ? '收起标签' : `更多 · ${moreCount}` }}</span>
           <template #suffix>
             <AppIcon
               name="chevron-down"
               size="xs"
               class="more-chevron"
-              :class="{ 'is-rotated': expanded }"
+              :class="{ 'is-rotated': trayExpanded }"
             />
           </template>
         </AppChip>
@@ -134,15 +122,15 @@ function clearFilter() {
     <div
       v-if="moreCount > 0"
       class="more-tags-tray"
-      :class="{ 'is-expanded': expanded }"
-      :aria-hidden="!expanded"
+      :class="{ 'is-expanded': trayExpanded }"
+      :aria-hidden="!trayExpanded"
     >
       <div class="more-tags-inner">
         <div class="overflow-cluster cluster">
           <AppChip
             v-for="[tag, count] in overflowTags"
             :key="tag"
-            :tabindex="expanded ? 0 : -1"
+            :tabindex="trayExpanded ? 0 : -1"
             :pressed="activeTag === tag"
             :count="count"
             @click="selectTag(tag)"

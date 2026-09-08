@@ -84,18 +84,46 @@ export function switchChapter(
 /**
  * 校验指定路径是否为本子详情页（Rank 2）合法的上级来源路径。
  *
- * 判定守则（层级树状防御）：
+ * 判定守则（层级树状防御与路由 Rank 声明式推导）：
  * 1. 绝对禁止回退至任何下级子页面（Rank 3 章节 `/chapter/` 或 Rank 4 阅读器 `/read/`）；
- * 2. 绝对禁止回退至当前本子的任何子路由（`isChildRoute`）；
+ * 2. 绝对禁止回退至当前本子的任何子路由（`isChildRoute`）或本子自身详情（防止阅读器 replace 后二次返回卡顿）；
  * 3. 绝对禁止回退至自建工坊创建表单（`/create`），避免表单重复提交或回显脏状态；
- * 4. 仅当上一页属于合法的上级/平级根视图（如书库 `/`、发现页 `/discovery` 等）时返回 true。
+ * 4. 若传入 Router 实例，优先根据路由元数据 meta.rank 进行声明式推导（targetRank > 2 一律拦截，DIP / OCP 长期演进）；
+ * 5. 仅当上一页属于合法的上级/平级根视图（如书库 `/`、发现页 `/discovery` 等）时返回 true。
  *
  * @param currentDetailPath 当前本子详情页路径
  * @param backState 历史上一页路径
+ * @param router 可选的 Vue Router 实例，用于声明式元数据推导
  */
-export function isSafeUpstreamRoute(currentDetailPath: string, backState?: string | null): boolean {
+export function isSafeUpstreamRoute(
+  currentDetailPath: string,
+  backState?: string | null,
+  router?: Router,
+): boolean {
   if (!backState) return false
+  // 必须为合法站内绝对路径，防御协议逃逸（如 //evil.com 或 javascript:）
+  if (!backState.startsWith('/') || backState.startsWith('//')) return false
   if (isChildRoute(currentDetailPath, backState)) return false
+  const normalizedBack = backState.split(/[?#]/)[0]?.replace(/\/+$/, '')
+  const normalizedCurrent = currentDetailPath.replace(/\/+$/, '')
+  if (normalizedBack === normalizedCurrent) return false
+
+  // 1. 路由元数据声明式推导（OCP / DIP 声明式防护）
+  if (router && typeof router.resolve === 'function') {
+    try {
+      const resolved = router.resolve(backState)
+      const targetRank = Number(resolved.meta?.rank ?? 1)
+      // Rank 1: 书库/发现; Rank 2: 详情/工坊; Rank 3: 章节; Rank 4: 阅读器
+      // 详情页本身为 Rank 2。任何 Rank 3（章节）及以上（阅读器）绝对禁止视为上级来源
+      if (targetRank > 2) return false
+      // 自建工坊为 Rank 2 表单视图，禁止退回表单
+      if (resolved.name === 'create-comic') return false
+    } catch {
+      // router.resolve 异常时安全回落至字面特征检测
+    }
+  }
+
+  // 2. 字面特征兜底防护（防御深层子路由与工坊表单）
   if (backState.includes('/read/')) return false
   if (backState.includes('/chapter/')) return false
   if (
@@ -114,8 +142,8 @@ export function isSafeUpstreamRoute(currentDetailPath: string, backState?: strin
  * 逻辑契约：
  * 1. 本子详情页（Rank 2）返回按钮的语义为「返回书库/来源页」；
  * 2. 纵深防御拦截（Downward Navigation Guard）：若 `history.state.back` 指向当前漫画的
- *    子路由（如 `/chapter/` 或 `/read/`）、或任何阅读器/章节/工坊表单，绝对禁止 `router.back()`，
- *    必须向上安全回退至书架 `{ name: 'library' }`；
+ *    子路由（如 `/chapter/` 或 `/read/`）、当前漫画自身详情条目（避免阅读器 replace 后二次返回卡顿）、
+ *    或任何阅读器/章节/工坊表单，绝对禁止 `router.back()`，必须向上安全回退至书架 `{ name: 'library' }`；
  * 3. 仅当 `back` 指向真正的上级或平级合法来源（如书架 `/`、发现页 `/discovery`、带筛选参路由）时，
  *    才放行 `router.back()`，以无损还原来源页的滚动位置与查询参数。
  *
@@ -130,7 +158,7 @@ export function navigateUpFromDetail(router: Router, source: string, sourceId: s
       ? String(window.history.state.back)
       : undefined
 
-  if (isSafeUpstreamRoute(currentDetailPath, backState)) {
+  if (isSafeUpstreamRoute(currentDetailPath, backState, router)) {
     router.back()
   } else {
     void router.replace({ name: 'library' })
@@ -142,7 +170,7 @@ export function navigateUpFromDetail(router: Router, source: string, sourceId: s
  *
  * 逻辑契约：
  * 1. 若 history.state.back 属于合法的上层/平级页面（如书架、发现），放行 `router.back()`；
- * 2. 避免在表单页回退至阅读器或章节等深层页面；
+ * 2. 避免在表单页回退至阅读器、章节或工坊创建自身；
  * 3. 否则使用 `router.replace({ name: 'library' })` 兜底回退至书架。
  *
  * @param router Vue Router 实例
@@ -153,7 +181,35 @@ export function navigateUpFromCreate(router: Router): void {
       ? String(window.history.state.back)
       : undefined
 
-  if (backState && !backState.includes('/read/') && !backState.includes('/chapter/')) {
+  if (!backState || !backState.startsWith('/') || backState.startsWith('//')) {
+    void router.replace({ name: 'library' })
+    return
+  }
+
+  // 1. 路由元数据声明式推导
+  let isRankSafe = true
+  if (typeof router.resolve === 'function') {
+    try {
+      const resolved = router.resolve(backState)
+      const targetRank = Number(resolved.meta?.rank ?? 1)
+      if (targetRank > 2 || resolved.name === 'create-comic') {
+        isRankSafe = false
+      }
+    } catch {
+      // resolve 异常安全忽略
+    }
+  }
+
+  // 2. 字面特征兜底防御
+  const isCreateRoute =
+    backState === '/create' || backState.startsWith('/create?') || backState.startsWith('/create#')
+
+  if (
+    isRankSafe &&
+    !isCreateRoute &&
+    !backState.includes('/read/') &&
+    !backState.includes('/chapter/')
+  ) {
     router.back()
   } else {
     void router.replace({ name: 'library' })
