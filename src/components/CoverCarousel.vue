@@ -278,6 +278,11 @@ function onSlideClick(index: number) {
     transform: scale(1.25);
   }
 
+  .cover-slide::scroll-marker:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
+
   ::scroll-marker-group {
     display: flex;
     justify-content: center;
