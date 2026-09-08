@@ -1,6 +1,7 @@
 import { ref } from 'vue'
 import { tryOnScopeDispose } from '@vueuse/core'
 import { api } from '@/api/client'
+import { useSystemEvents } from '@/composables/useSystemEvents'
 import { useToast } from '@/composables/useToast'
 import { useLibraryStore } from '@/stores/library'
 import type { DiscoveryFeed, DiscoveryItem, DiscoveryTimeframe } from '@/types'
@@ -15,6 +16,7 @@ export function useDiscovery() {
   let activeAbortController: AbortController | null = null
 
   const { toast } = useToast()
+  const { broadcastLocalChange } = useSystemEvents()
   const libraryStore = useLibraryStore()
 
   tryOnScopeDispose(() => {
@@ -73,6 +75,12 @@ export function useDiscovery() {
       })
       item.in_library = true
       await libraryStore.load()
+      broadcastLocalChange({
+        action: 'import',
+        source: item.source,
+        source_id: item.source_id,
+        timestamp: Date.now(),
+      })
       toast(
         `已收录《${item.title.length > 16 ? item.title.slice(0, 16) + '…' : item.title}》`,
         'info',

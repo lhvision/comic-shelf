@@ -2,6 +2,7 @@ import { computed, ref } from 'vue'
 import { tryOnScopeDispose, useIntervalFn } from '@vueuse/core'
 import { defineStore } from 'pinia'
 import { api, onAuthSuccess } from '@/api/client'
+import { useSystemEvents } from '@/composables/useSystemEvents'
 import type { ComicDetail, ImportRequest, LibrarySummary } from '@/types'
 
 export interface LiveCacheState {
@@ -66,6 +67,8 @@ export function createPlaceholderDetail(s: LibrarySummary): ComicDetail {
 }
 
 export const useLibraryStore = defineStore('library', () => {
+  const { beginTask, endTask, broadcastLocalChange } = useSystemEvents()
+
   const items = ref<LibrarySummary[]>([])
   const loading = ref(false)
   const importing = ref(false)
@@ -167,7 +170,12 @@ export const useLibraryStore = defineStore('library', () => {
 
       liveCache.value = next
 
-      if (running.length === 0) poll.pause()
+      if (running.length > 0) {
+        beginTask('library:live-cache')
+      } else {
+        endTask('library:live-cache')
+        poll.pause()
+      }
     } catch {
       /* transient; keep whatever we had and pause polling to avoid hammering failing backend/WAF */
       poll.pause()
@@ -254,7 +262,14 @@ export const useLibraryStore = defineStore('library', () => {
 
       if (result.background) {
         markCaching(result.meta.source, result.meta.source_id)
+        beginTask(`import:${result.meta.source}/${result.meta.source_id}`)
       }
+      broadcastLocalChange({
+        action: 'import',
+        source: result.meta.source,
+        source_id: result.meta.source_id,
+        timestamp: Date.now(),
+      })
       await load()
       return result
     } catch (e) {
@@ -269,6 +284,12 @@ export const useLibraryStore = defineStore('library', () => {
     await api.deleteComic(source, sourceId)
     removeDetail(source, sourceId)
     await load()
+    broadcastLocalChange({
+      action: 'delete',
+      source,
+      source_id: sourceId,
+      timestamp: Date.now(),
+    })
   }
 
   function byId(source: string, sourceId: string) {

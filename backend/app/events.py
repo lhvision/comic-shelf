@@ -133,12 +133,12 @@ async def sse_event_stream(request: Request) -> StreamingResponse:
                     break
                 try:
                     # Suspend with 0 CPU load until an event is pushed or timeout triggers
-                    msg = await asyncio.wait_for(queue.get(), timeout=15.0)
+                    msg = await asyncio.wait_for(queue.get(), timeout=30.0)
                     if msg is None:
                         break
                     yield msg
                 except asyncio.TimeoutError:
-                    # 15s keepalive heartbeat preventing proxy timeouts and speeding up dead connection reclamation
+                    # 30s keepalive heartbeat preventing proxy timeouts and speeding up dead connection reclamation
                     yield ": keepalive\n\n"
         except asyncio.CancelledError:
             pass

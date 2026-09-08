@@ -593,6 +593,21 @@
     1. 返回按钮优先检测 `window.history.state?.back ? router.back() : router.replace({ name: 'library' })`，无损还原来源路由和筛选参数；
     2. `usePaginationFold` 引入 `initialVisibleCount`（仅控制挂载初态切片），与 `initialStep` / `step`（控制折叠收起基线）彻底解耦，兼顾高度占位防止滚动跳跃与随时收回初始首屏。
 
+### 66. 常驻 SSE 长连接挂起与挂机任务被 `useIdle` 误切断陷阱 (Persistent SSE Idle Hanging & Premature Idle Teardown Trap)
+
+- **本质**：
+  1. 全站 24 小时无差别常驻挂起 `/api/events/stream` 长连接，导致网络面板持续显示 pending 请求，引发后端连接占用与长连接悬挂的心理负担；
+  2. 在引入 `useIdle(10min)` 试图缓解常驻长连接消耗时，未将连接生命周期与异步任务深度解耦。当用户在后台发起耗时较长的批量离线缓存或大图集导入（>10 分钟）时，因缺乏鼠标键盘操作触发 `idle = true`，导致 SSE 长连接被意外掐断，丢失关键进度与完成事件；
+  3. 服务端在 `lifespan` 启动阶段执行 `broadcast_event("system_version", ...)`，由于此时没有任何客户端建立连接，该广播为空跑无用功。
+- **红线与防误伤**：
+  - **不要**在前端启动时默认常开 `/api/events/stream` 长连接；
+  - **不要**在承载后台长耗时任务的长连接状态机中使用盲目超时的 `useIdle`；
+  - **不要**在没有任何握手客户端的后端启动生命周期广播业务事件；
+  - **放行/改用**：
+    1. **任务驱动型按需生命周期**：仅在发起导入、预缓存或检测到后台活跃任务时（`beginTask` / `endTask`）自适应拉起长连接；全部任务归零后经 5 秒平滑防抖冷却自动熔断注销，日常浏览网络面板保持 0 pending 请求；
+    2. **淘汰 `useIdle`**：长连接生命周期严格由活跃任务集合、阅读器避让与视口前台状态裁决，彻底杜绝挂机批量下载被误判闲置切断；
+    3. **本地同源多标签零网络同步**：同源多标签页通信使用 `useBroadcastChannel('paper-room')` 0 流量毫秒级直达；切回前台时触发 3 秒节流的 `reconcileState` 静默对齐。
+
 ---
 
 ## 🚦 交付门禁（四步必跑）

@@ -171,7 +171,7 @@ onBeforeUnmount(() => {
   }
 })
 
-const { lastLibraryEvent } = useSystemEvents()
+const { lastLibraryEvent, beginTask, endTask, broadcastLocalChange } = useSystemEvents()
 
 watch(lastLibraryEvent, (event) => {
   if (
@@ -225,6 +225,11 @@ async function load(silent = false, bypassCache = false) {
     caching.value = job.running
     runningChapterId.value = job.chapter_id ?? null
     if (job.running) {
+      beginTask(
+        job.chapter_id
+          ? `chapter:${source.value}/${sourceId.value}/${job.chapter_id}`
+          : `cache:${source.value}/${sourceId.value}`,
+      )
       startProgressPolling()
     } else {
       pauseProgressPolling()
@@ -289,6 +294,10 @@ const { pause: pauseProgressPolling, resume: resumeProgressPolling } = useInterv
       if (isFinished) {
         caching.value = false
         runningChapterId.value = null
+        if (currentChapterId) {
+          endTask(`chapter:${source.value}/${sourceId.value}/${currentChapterId}`)
+        }
+        endTask(`cache:${source.value}/${sourceId.value}`)
         pauseProgressPolling()
         void load(true, true)
       }
@@ -311,6 +320,8 @@ async function cacheCurrentChapter() {
   if (!activeChapter.value || !detail.value || caching.value) return
   caching.value = true
   runningChapterId.value = activeChapter.value.id
+  const taskId = `chapter:${source.value}/${sourceId.value}/${activeChapter.value.id}`
+  beginTask(taskId)
   startProgressPolling()
   try {
     const progress = await api.cacheChapter(source.value, sourceId.value, activeChapter.value.id)
@@ -324,12 +335,14 @@ async function cacheCurrentChapter() {
     }
     toast(`已开始缓存第 ${activeChapter.value.index} 話，后台进行中`, 'info')
     if (progress.complete) {
+      endTask(taskId)
       pauseProgressPolling()
       caching.value = false
       runningChapterId.value = null
       void load(true, true)
     }
   } catch (e) {
+    endTask(taskId)
     pauseProgressPolling()
     caching.value = false
     runningChapterId.value = null
@@ -372,6 +385,12 @@ async function saveChapterTitle() {
     store.setDetail(updated)
     editOpen.value = false
     toast('章节名称已更新', 'success')
+    broadcastLocalChange({
+      action: 'update_chapter',
+      source: source.value,
+      source_id: sourceId.value,
+      timestamp: Date.now(),
+    })
   } catch (e) {
     toast(e instanceof Error ? e.message : String(e), 'error')
   } finally {
@@ -393,6 +412,12 @@ async function confirmRemoveChapter() {
     store.removeDetail(source.value, sourceId.value)
     removeOpen.value = false
     toast(`已删除「${deletedTitle}」`, 'success')
+    broadcastLocalChange({
+      action: 'delete_chapter',
+      source: source.value,
+      source_id: sourceId.value,
+      timestamp: Date.now(),
+    })
     router.replace(`/comic/${source.value}/${sourceId.value}`)
   } catch (e) {
     toast(e instanceof Error ? e.message : String(e), 'error')

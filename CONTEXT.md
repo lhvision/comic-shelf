@@ -170,7 +170,7 @@
 
 - **探针静音与访问日志门禁（Probe Quiet Filtering & Access Log Gate）**：Uvicorn 访问流水日志过滤机制。对容器健康探针与高频心跳在返回 200 正常时默认静音，仅在异常报错时输出；支持环境变量彻底关闭请求日志，消除控制台刷屏。
 - **内外网分流（Split-Horizon DNS）**：纸间倡导的局域网与公网融合网络拓扑。同一域名在家庭局域网内通过本地 DNS 重写直连 NAS 内网 IP，享受千兆内网零延迟；公网环境下解析至 Cloudflare 命中边缘缓存，兼顾多端单点登录、PWA 离线缓存隔离与极致阅览性能。
-- **单向系统事件流（Unified System Event Stream / SSE）**：基于 FastAPI 异步协程与 `asyncio.Queue` 驱动的零轮询长连接通道（`/api/events/stream`），承载新版本构建广播、后台书库变动与未来 AI 任务流式状态。在无事件时 0 CPU 挂起，断线自动重连，彻底消除前端 HTTP 定时轮询负载。
+- **任务驱动型单向系统事件流（Task-Driven System Event Stream / SSE）**：基于 FastAPI 异步协程与 `asyncio.Queue` 驱动的按需事件通道（`/api/events/stream`）。常态浏览下彻底断开（DevTools 0 pending 连接、零网络悬挂感）；仅在触发后台漫画导入、全量/章节预缓存等异步任务时自适应拉起，任务完成后经 5 秒平滑防抖冷却自动切断。空闲保活采用 30 秒 keepalive 心跳以穿透网关超时；同设备多标签页变动由原生 `BroadcastChannel` 0 流量接管，彻底消除前端 HTTP 定时轮询与常驻长连接负担。
 - **纸印更新气泡与双重提醒（Prompted Update Toast & Dual Notice）**：PWA Service Worker 发现新静态资产构建就绪时激活的轻量交互机制。在屏幕边缘浮现极具纸间水墨质感的非侵入提示胶囊（支持「立即装订 (刷新)」与「稍后」），并在顶栏设备微件保留朱砂徽标，沉浸翻阅时自动避让。
 - **视口与唤醒回源校验（Visibility & Online Wakeup Sync）**：利用 VueUse `useDocumentVisibility` 与 `useNetwork` 在页面重获焦点或网络自愈时触发的轻量 Service Worker 脚本比对（`registration.update()`），以 0 业务接口开销确保长期待机设备自愈回源。
 - **闲时意图预热（Idle & Intent Prefetching）**：跨路由异步视图组件（如阅读器）的加载策略。首屏渲染期间通过 `requestIdleCallback` 在主线程空闲时静默预热，同时在交互按钮上绑定 `pointerenter`/`focusin`/`touchstart` 意图触发，杜绝预热流量混入初始关键请求链（Critical Request Chains）。
@@ -178,7 +178,7 @@
 - **封面渲染预算（Cover Dimension Budget / 720px）**：封面与缩略图的物理像素规格。默认采用 720px 宽度（JPEG/WebP 高画质），完美匹配 360~375px 卡片容器在 Retina 2x 屏幕下的物理细腻度，兼顾视觉质感与网络/解码开销。
 - **服务自愈与优雅退出熔断（Self-Healing Startup & Graceful Shutdown Timeout）**：本地开发环境与单容器部署的服务生命周期保护机制。启动前自动探测 8000 端口，识别并自愈回收历史残留的 Uvicorn/Python 僵尸进程；Uvicorn 配置 3 秒优雅停机超时熔断（`timeout_graceful_shutdown=3`），结合开发脚本（`dev.sh`）的进程树两阶段退出（`SIGTERM` -> 2s 缓冲 -> `SIGKILL` 兜底），彻底消除端口幽灵占用与孤儿进程。
 - **单向系统事件流主动注销（SSE Active Stream Teardown）**：后端优雅停机或热重载时针对 `/api/events/stream` 挂载的长连接实施的主动熔断机制。通过向活跃的 `asyncio.Queue` 投递 `None` 退出哨兵（Poison Pill），唤醒阻塞在 `queue.get()` 上的生成器协程即刻退出并关闭 HTTP 响应流，避免持久长连接阻止 Uvicorn 关停流程。
-- **智能按需系统事件流（Smart On-Demand Event Stream / SSE Sleep Lifecycle）**：单向系统事件流的自适应休眠与生命周期编排机制。利用 VueUse 与 Vue Router 组合推导连接意图（`isOnline && isVisible && !idle && !isReaderRoute`）：当读者切入阅读器沉浸翻阅时主动斩断长连接释放内网 HTTP/1.1 单域名 6 连接槽位，当标签页切入后台（`hidden`）或闲置挂机（`useIdle` ≥ 10min）时主动切断，消除保活唤醒与 DevTools 悬挂连接；当切回前台或退出阅读器时 0 延迟自愈重连，并触发静默对齐机制（`libraryStore.load(true)` 与 `checkForUpdate()`）补齐断线期间的事件盲区，兼顾实时广播能力与极致网络纯净度。
+- **智能按需系统事件流（Smart On-Demand Event Stream / SSE Sleep & Task Lifecycle）**：单向系统事件流的自适应生命周期编排机制。以「任务驱动」为第一原则（`hasActiveTasks || isCoolingDown || isExplicitlyConnected`），在此基础上叠加阅读器避让（`/read/...` 主动切断以释放 HTTP/1.1 槽位给画页）、视口离开即断（`hidden`）与离线自适应熔断。任务结束后经过 5 秒防抖窗口优雅熔断注销，切回前台或从阅读器退出时自愈对齐（`reconcileState`），兼顾长耗时批量下载稳健性与网络面板极致纯净度。
 - **响应式阶梯封面（Responsive Stepped Covers / srcset & sizes）**：基于 HTML5 `srcset`（`w` 物理宽度描述符）与 `sizes` 布局槽位规范的多阶封面分发体系。根据书架卡片槽位（~180px）、详情页 Hero 槽位（~360-480px）与设备像素比（1x/2x/3x DPR），由浏览器自主决策拉取最适宜规格图片（如 360w / 720w），兼顾移动端低内存与高分屏细腻度；严格遵循 `sizes` 显式声明守则，杜绝缺省 `sizes` 导致浏览器默认按 100vw 误拉超大原图；配合现代 `sizes="auto"`（Chrome 126+, Firefox 150+）在懒加载场景实现原生排版尺寸联动。
 - **核心资产预缓存（Core Assets Precache）**：Workbox 在客户端首次加载时静默拉取并写入 CacheStorage 的核心静态代码与界面图标外壳（App Shell）。设计规范要求核心预缓存严格收敛在 1.5 MB 预算内，超大媒体资产严禁入列；客户端存储面板独立测量其所在缓存桶，与动态图片完全物理隔离。
 - **物理存储正向归因（Physical Storage Attribution）**：阅览室设备离线容量的分项统计范式。由浏览器真实物理配额总用量（`usageDetails.caches` 或 `usage`）扣除独立测出的轻量 App Shell 核心资产，将读者翻阅产生的所有漫画画页、封面及插画的真实磁盘开销全额归因于「漫画阅览缓存」，消除首部抽样偏差与核心资产虚假膨胀。

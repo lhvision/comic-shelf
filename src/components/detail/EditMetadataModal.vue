@@ -7,6 +7,7 @@ import CoverIndicesPicker from '@/components/form/CoverIndicesPicker.vue'
 import { useLibraryStore } from '@/stores/library'
 import { api } from '@/api/client'
 import { useToast } from '@/composables/useToast'
+import { useSystemEvents } from '@/composables/useSystemEvents'
 import type { ComicMeta } from '@/types'
 
 const props = defineProps<{
@@ -21,6 +22,7 @@ const emit = defineEmits<{
 
 const store = useLibraryStore()
 const { toast } = useToast()
+const { broadcastLocalChange } = useSystemEvents()
 
 const title = ref('')
 const works = ref('')
@@ -88,6 +90,12 @@ async function save() {
     await store.load()
     toast('资料与设置已更新', 'info')
     emit('saved', updated.meta)
+    broadcastLocalChange({
+      action: 'update_metadata',
+      source: props.meta.source,
+      source_id: props.meta.source_id,
+      timestamp: Date.now(),
+    })
   } catch (err) {
     toast(err instanceof Error ? err.message : String(err), 'error')
   } finally {

@@ -116,8 +116,6 @@ from .providers import get_provider, provider_list
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Broadcast version event on service start so connected clients check for updates
-    broadcast_event("system_version", {"version": "latest", "timestamp": time.time()})
     yield
     shutdown_events()
 
@@ -705,6 +703,10 @@ def update_chapter_title(
 ) -> ComicDetail:
     _require_known_source(source)
     meta = store.update_chapter_title(source, source_id, chapter_id, req.title)
+    broadcast_event(
+        "library_changed",
+        {"action": "update_chapter", "source": source, "source_id": source_id, "chapter_id": chapter_id, "timestamp": time.time()},
+    )
     return store.detail(meta)
 
 
@@ -712,18 +714,30 @@ def update_chapter_title(
 def delete_chapter(source: str, source_id: str, chapter_id: str) -> ComicDetail:
     _require_known_source(source)
     meta = store.delete_chapter(source, source_id, chapter_id)
+    broadcast_event(
+        "library_changed",
+        {"action": "delete_chapter", "source": source, "source_id": source_id, "chapter_id": chapter_id, "timestamp": time.time()},
+    )
     return store.detail(meta)
 
 
 @app.post("/api/library/local/create", response_model=ComicDetail)
 def create_local_comic(req: LocalComicCreateRequest) -> ComicDetail:
     meta = store.create_local_comic(req)
+    broadcast_event(
+        "library_changed",
+        {"action": "import", "source": "local", "source_id": meta.source_id, "timestamp": time.time()},
+    )
     return store.detail(meta)
 
 
 @app.post("/api/library/local/import-path", response_model=ComicDetail)
 def import_local_path(req: LocalPathImportRequest) -> ComicDetail:
     meta = store.import_local_path(req)
+    broadcast_event(
+        "library_changed",
+        {"action": "import", "source": "local", "source_id": meta.source_id, "timestamp": time.time()},
+    )
     return store.detail(meta)
 
 

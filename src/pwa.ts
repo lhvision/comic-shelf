@@ -13,7 +13,6 @@ export function registerPwa(): void {
   // 1. 初始化 PWA 更新状态机与视口探测
   usePwaUpdate()
 
-  // 2. 建立单向系统事件长连接（广播版本更新与 AI 任务）
-  const { connect } = useSystemEvents()
-  connect()
+  // 2. 初始化任务驱动型系统事件流与多标签页广播（常态保持静默，有任务时按需拉起）
+  useSystemEvents()
 }

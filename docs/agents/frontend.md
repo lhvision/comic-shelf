@@ -35,7 +35,7 @@
 | `src/composables/useOfflineStorage.ts`           | 端侧离线物理存储探测与分级清理状态机（StorageManager + CacheStorage 统计）                                                                                     |
 | `src/composables/usePwaInstall.ts`               | PWA 安装与独立应用视口检测状态机（`beforeinstallprompt` + Standalone）                                                                                         |
 | `src/composables/usePwaUpdate.ts`                | PWA Prompt 模式生命周期状态机：更新捕获、装订刷新与视口唤醒自愈探测                                                                                            |
-| `src/composables/useSystemEvents.ts`             | 纸间单向系统事件流（SSE）：新版本广播、藏书变动与未来 AI 任务流式状态机                                                                                        |
+| `src/composables/useSystemEvents.ts`             | 任务驱动型系统事件流（SSE）与多标签广播（BroadcastChannel）：按需长连接编排、藏书变动多端与本地秒级同步                                                        |
 | `src/composables/useIdlePrefetch.ts`             | 闲时意图预热状态机：利用 requestIdleCallback 在主线程空闲时静默预拉取目标路由 chunk                                                                            |
 | `src/composables/useIllustrationPool.ts`         | 全站看板角色与加载插画发现池：虚拟模块挂载、按需加载、缓存感知与随机防抖轮换                                                                                   |
 | `src/composables/useViewTransition.ts`           | 全局与局域视图过渡门面封装：`Promise.withResolvers` + `Promise.try`、异常自动捕获兜底与抢占自愈                                                                |
@@ -185,8 +185,10 @@
   `ChapterView.vue` 内触发章节缓存时，轮询端点必须严格请求 `api.chapterCacheProgress(source, sourceId, chapterId)`，严禁调用全书级别的 `api.cacheProgress`，防止进度百分比与单话状态失真。
 - **客户端内存缓存穿透（Bypass Cache）**：
   `api.detail` 在底层使用了 `useMemoize` 进行数据复用。在后台缓存任务完成或服务端推送数据变更时，重新拉取详情必须传递 `{ bypassCache: true }`（触发内部 `memoizedDetail.delete` 并回源重新请求），防止前端读到旧的未缓存快照。
-- **SSE 事件驱动对账**：
-  `ChapterView` 与 `ComicDetailView` 均通过 `useSystemEvents` 监听 `lastLibraryEvent`（服务端 `library_changed` SSE 事件流）。当后台异步下载落盘或跨标签页完成操作时，前端接收到匹配当前漫画的事件后自动执行后台静默对账（`load(true, true)`）。
+- **任务驱动 SSE 与 BroadcastChannel 双轨同步**：
+  `ChapterView` 与 `ComicDetailView` 均通过 `useSystemEvents` 监听 `lastLibraryEvent`（服务端 `library_changed` SSE 事件流与同源多标签页 `BroadcastChannel` 本地事件通道）。
+  - **按需长连接拉起**：当触发后台缓存或导入时，通过 `beginTask` 动态建立长连接；全部任务完成后延迟 5 秒（`TASK_TEARDOWN_COOLDOWN_MS = 5000`）防抖注销，常态浏览保持 0 pending 请求；
+  - **跨标签页零流量直达**：本标签页完成操作时，调用 `broadcastLocalChange` 向其他同源标签页同步，接收端收到匹配当前漫画的事件后自动执行后台静默对账（`load(true, true)`）。
 
 ## 7. 阅读器当前行为
 

@@ -23,7 +23,7 @@
    - 基于 FastAPI 异步协程与 `asyncio.Queue` 构建多路复用单向广播通道；
    - **0% CPU 挂起**：连接空闲时仅在内存中挂起协程队列，不产生任何计算与磁盘 IO 开销；
    - 承载三类核心事件：
-     - `event: ping`（初始连通握手与 15s keepalive 保活）；
+     - `event: ping`（初始连通握手与 30s keepalive 保活）；
      - `event: system_version`（新构建发布广播，秒级触发前端 `registration.update()`）；
      - `event: library_changed`（后台藏书增删与缓存变动广播）；
      - `event: ai_task_progress`（为后续 AI 流式任务与进度条预留）。
@@ -36,15 +36,24 @@
 
 4. **智能按需生命周期与休眠编排（Smart On-Demand Lifecycle & Deep Sleep）**：
    - **阅读器主动断开避让（Reader Detachment）**：当读者切入全屏阅读器（`/read/...`）沉浸翻阅时，自动斩断 SSE 长连接，将内网 HTTP/1.1 仅有的 6 个 TCP 槽位与全部网络带宽完整倾斜给漫画画页并发加载；
-   - **后台视口即断（Tab Inactive Teardown）**：当标签页离开视口（`document.visibilityState === 'hidden'`）时，立即断开连接，消除后台无意义的 15s keepalive 心跳唤醒与 DevTools 悬挂连接；切回前台时 0 延迟自愈重连；
+   - **后台视口即断（Tab Inactive Teardown）**：当标签页离开视口（`document.visibilityState === 'hidden'`）时，立即断开连接，消除后台无意义的 30s keepalive 心跳唤醒与 DevTools 悬挂连接；切回前台时 0 延迟自愈重连；
    - **深度闲置超时休眠（10-min Idle Sleep）**：借助 VueUse `useIdle(10min)` 探测用户交互。连续 10 分钟无操作自动切断长连接进入深睡，任意触控或键鼠操作瞬时唤醒；
    - **唤醒静默对齐（Reconciliation on Wakeup）**：重连握手成功后，自动且静默地触发书架刷新（`libraryStore.load(true)`）与版本比对（`checkForUpdate()`），彻底消除长连接断开期间可能遗漏的事件盲区。
+
+5. **任务驱动型架构演进与本地多标签广播（Task-Driven Evolution & Local BroadcastChannel, 2026-09-09）**：
+   - **常态零长连接（Zero Idle Hanging）**：全站应用启动默认不建立 `/api/events/stream` 长连接，开发者工具网络面板保持 0 pending 请求，彻底消除常驻长连接心理负担；
+   - **任务自适应动态拉起**：仅当用户发起导入、全量/单话预缓存或检测到后台活跃任务时动态建立长连接；
+   - **5 秒防抖平滑冷却（5s Teardown Cooldown）**：全部活跃任务结束后延迟 5 秒切断，防止连续多任务频繁反复握手；
+   - **心跳保活放宽至 30 秒**：后端 `asyncio.wait_for` 超时从 15s 放宽至 30s，大幅削减无事件保活包，且仍安全低于网关 60s 超时；
+   - **本地 BroadcastChannel 零网络多标签同步**：基于 VueUse `useBroadcastChannel('paper-room')`，同一浏览器多标签页间的藏书增删改 0 流量、0 毫秒直达，无需后端常驻长连接；
+   - **淘汰 `useIdle` 闲置切断**：长连接仅在执行任务时建立，废弃旧版 `useIdle(10min)` 定时器，彻底杜绝用户挂机批量下载超过 10 分钟时被误判闲置切断。
 
 ## 后果
 
 - **正面收益**：
   - 读者拥有对应用装订更新的完整控制权，阅读器内绝不被打扰；
   - 彻底杜绝了前端定时轮询，服务器在待机状态下保持 0 CPU 开销；
+  - 任务驱动型架构让 99% 的日常浏览时间里网络面板彻底清爽（0 pending），仅在必要时动态按需拉起；
   - 智能按需生命周期使阅读器独占全部内网并发连接，解决局域网 HTTP/1.1 下 6 个 TCP 连接被长连接霸占的问题；
   - 后台与闲置自动断开，大幅削减移动端电量唤醒与网络面板长连接挂起心理负担；
   - 统一的 SSE 通道为未来的 AI 任务与流式输出提供了现成的基础设施支撑。

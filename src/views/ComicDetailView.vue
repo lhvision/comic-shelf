@@ -142,7 +142,7 @@ onBeforeUnmount(() => {
   }
 })
 
-const { lastLibraryEvent } = useSystemEvents()
+const { lastLibraryEvent, beginTask, endTask } = useSystemEvents()
 
 watch(lastLibraryEvent, (event) => {
   if (
@@ -198,6 +198,11 @@ async function load(silent = false, bypassCache = false) {
     caching.value = job.running
     runningChapterId.value = job.chapter_id ?? null
     if (job.running) {
+      beginTask(
+        job.chapter_id
+          ? `chapter:${source.value}/${sourceId.value}/${job.chapter_id}`
+          : `cache:${source.value}/${sourceId.value}`,
+      )
       startProgressPolling()
     } else {
       pauseProgressPolling()
@@ -260,6 +265,10 @@ const { pause: pauseProgressPolling, resume: resumeProgressPolling } = useInterv
       if (!job.running || progress.complete) {
         caching.value = false
         runningChapterId.value = null
+        endTask(`cache:${source.value}/${sourceId.value}`)
+        if (job.chapter_id) {
+          endTask(`chapter:${source.value}/${sourceId.value}/${job.chapter_id}`)
+        }
         pauseProgressPolling()
         void load(true, true)
       }
@@ -282,6 +291,8 @@ async function cacheAll() {
   if (!detail.value || caching.value) return
   caching.value = true
   runningChapterId.value = null
+  const taskId = `cache:${source.value}/${sourceId.value}`
+  beginTask(taskId)
   startProgressPolling()
   try {
     const progress = await api.cacheAll(source.value, sourceId.value)
@@ -295,6 +306,7 @@ async function cacheAll() {
     await store.load()
     toast(progress.complete ? '已全部缓存到本地' : '后台缓存进行中，进度会自动更新', 'info')
     if (progress.complete) {
+      endTask(taskId)
       pauseProgressPolling()
       caching.value = false
       void load(true, true)
@@ -302,6 +314,7 @@ async function cacheAll() {
       resumeProgressPolling()
     }
   } catch (e) {
+    endTask(taskId)
     pauseProgressPolling()
     caching.value = false
     toast(e instanceof Error ? e.message : String(e), 'error')
@@ -312,6 +325,8 @@ async function handleCacheChapter(chapterId: string) {
   if (!detail.value || caching.value) return
   caching.value = true
   runningChapterId.value = chapterId
+  const taskId = `chapter:${source.value}/${sourceId.value}/${chapterId}`
+  beginTask(taskId)
   startProgressPolling()
   try {
     const progress = await api.cacheChapter(source.value, sourceId.value, chapterId)
@@ -325,12 +340,14 @@ async function handleCacheChapter(chapterId: string) {
     }
     toast(`已开始缓存第 ${ch?.index ?? ''} 話，进度会自动更新`, 'info')
     if (progress.complete) {
+      endTask(taskId)
       pauseProgressPolling()
       caching.value = false
       runningChapterId.value = null
       void load(true, true)
     }
   } catch (e) {
+    endTask(taskId)
     pauseProgressPolling()
     caching.value = false
     runningChapterId.value = null
