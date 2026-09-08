@@ -966,7 +966,7 @@ await withViewTransition(
 **规范**：[CSS Overflow Module Level 5 (CSS Carousels)](https://drafts.csswg.org/css-overflow-5/#carousel)  
 **可用**：Chrome 135+ (2025-04 正式支持) · Safari (WebKit Bug #274944 跟踪中) · Firefox (规划中)  
 **参考**：[张鑫旭 CSS ::scroll-button ::scroll-marker伪元素又是干嘛用的？](https://www.zhangxinxu.com/wordpress/2025/06/css-scroll-button-marker/)  
-**本项目落地状态**：✅ **渐进增强落地（`CoverCarousel.vue` 零 JS 纸印指示点与双轨融合）**
+**本项目落地状态**：✅ **渐进增强落地（`CoverCarousel.vue` 零 JS 纸印指示点与 `:focus-visible` 焦点环；`ChapterSwitcher.vue` 零 JS `::scroll-button` 章节横向滚卷步进）**
 
 #### 核心机制解构
 
