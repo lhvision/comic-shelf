@@ -10,6 +10,19 @@ export function isCompletedComic(item: LibrarySummary): boolean {
   return (item.last_page ?? 0) >= item.page_count && item.page_count > 0
 }
 
+export interface UseLibraryFilterOptions {
+  /** 外部共享的搜索关键词 Ref（用于跨路由状态记忆） */
+  search?: Ref<string>
+  /** 外部共享的选中标签 Ref */
+  activeTag?: Ref<string>
+  /** 外部共享的只看喜欢 Ref */
+  favoritesOnly?: Ref<boolean>
+  /** 外部共享的只看已读 Ref */
+  completedOnly?: Ref<boolean>
+  /** 外部共享的排序规则 Ref */
+  sortBy?: Ref<SortKey>
+}
+
 /**
  * 书架筛选与检索 Composable：
  * 负责来源过滤、关键词模糊检索、标签过滤、只看喜欢与多模式排序。
@@ -18,12 +31,13 @@ export function useLibraryFilter(
   items: Ref<LibrarySummary[]>,
   activeSource: Ref<string>,
   imageSearchResults?: Ref<ImageSearchResultItem[] | null>,
+  options?: UseLibraryFilterOptions,
 ) {
-  const search = ref('')
-  const activeTag = ref('')
-  const favoritesOnly = ref(false)
-  const completedOnly = ref(false)
-  const sortBy = ref<SortKey>('recent')
+  const search = options?.search ?? ref('')
+  const activeTag = options?.activeTag ?? ref('')
+  const favoritesOnly = options?.favoritesOnly ?? ref(false)
+  const completedOnly = options?.completedOnly ?? ref(false)
+  const sortBy = options?.sortBy ?? ref<SortKey>('recent')
 
   const sourceItems = computed(() =>
     activeSource.value

@@ -569,7 +569,25 @@
   - **放行/改用**：
     1. **缩略图加载感知向上冒泡**：`PageTile.vue` 在 `@load="onThumbLoad"` 处检测，若当前页未标记为 `cached`，立即派发 `cached(index)`；`PageIndexGrid` 向上转发 `@page-cached`，父级（`ChapterView` / `ComicDetailView`）乐观更新内存中 `page.cached = true` 与 `cached_pages` 计数；
     2. **精准单话轮询与缓存穿透**：单话缓存精准轮询 `api.chapterCacheProgress`；在任务完成或显式重拉时调用 `load(true, true)`，通过 `bypassCache: true` 主动逐出 `memoizedDetail`；在 `api.cacheChapter` 触发时自动清理对应的 `memoizedDetail`；
-    3. **SSE 全局状态自愈**：通过 `useSystemEvents` 监听 `lastLibraryEvent`，在后端异步落盘广播 `library_changed` SSE 事件时，前端自动触发静默对账。
+
+### 64. 3D 变换下卡片视口投影尺寸缩放与 Scroll-Snap 吸附回弹陷阱 (3D Transform Bounding Box & Scroll-Snap Spring-back Trap)
+
+- **本质**：在包含 3D 动画透视变换（如 `view-timeline` 驱动的 `scale(0.72) rotateY(-38deg) translateZ(-5rem)`）的封面轮播图中，若在步进计算中使用 `getBoundingClientRect().width` 读取首张卡片的渲染盒模型，读取到的仅是透视压缩后的视口投影宽度（约 136px，而非原本 256px 物理排版宽）；这导致计算出的步进偏移（`step = width + gap ≈ 152px`）远小于实际相邻卡片的中心物理间距；由于位移未能跨过 CSS `scroll-snap-type: x mandatory` 的中位吸附临界点，浏览器会将视口强行吸附回弹至原卡片，导致连续点击时出现“多点一次才切换”的假死假象。
+- **红线与防误伤**：
+  - **不要**在带有 CSS 3D 变换（transform/scale/rotate）的轮播项上使用 `getBoundingClientRect()` 计算滚动步长；
+  - **放行/改用**：基于不受 3D 变换矩阵影响的 DOM 排版坐标（`slide.offsetLeft + slide.offsetWidth / 2`）动态计算物理中心卡片，并调用标准原生 `slide.scrollIntoView({ inline: 'center', behavior: 'smooth' })` 实行绝对几何对齐；同时支持卡片直接点击居中与键盘回车交互。
+
+### 65. 详情页返回参数丢弃与折叠批次基线污染陷阱 (Router Query Stripping & Pagination Baseline Pollution Trap)
+
+- **本质**：
+  1. 详情页顶栏手写返回按钮若硬编码为 `router.replace({ name: 'library' })`，会导致路由查询参数（如来源分馆 `?source=jm` 或搜索关键词）被全量抹除，同时破坏浏览器历史栈，使 Vue Router 的 `scrollBehavior` 无法从 `popstate` 读取 `savedPosition`；
+  2. 在实现跨路由列表展开状态恢复时，若将恢复的临时条数（如 24）直接赋给 `usePaginationFold` 的 `initialStep`，会导致 Composable 将 24 误认为是基础收整基线（Base Step），使得“收整”按钮失效或收整时无法回到初始的 12 条。
+- **红线与防误伤**：
+  - **不要**在详情页等子页面返回按钮中硬写无参 `router.replace({ name: 'library' })`；
+  - **不要**将列表恢复数量与折叠收起基线混为一谈；
+  - **放行/改用**：
+    1. 返回按钮优先检测 `window.history.state?.back ? router.back() : router.replace({ name: 'library' })`，无损还原来源路由和筛选参数；
+    2. `usePaginationFold` 引入 `initialVisibleCount`（仅控制挂载初态切片），与 `initialStep` / `step`（控制折叠收起基线）彻底解耦，兼顾高度占位防止滚动跳跃与随时收回初始首屏。
 
 ---
 

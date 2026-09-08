@@ -17,6 +17,7 @@
 | `src/composables/useFileStaging.ts`              | 多图与画页暂存：自然文件名数字排序、格式过滤、`useFileDialog` + `useDropZone` 聚合                                                                             |
 | `src/composables/useLocalWorkshop.ts`            | 自建漫画工坊状态机：服务器本地路径扫描、白名单过滤、单话/多章节模式切换与元数据暂存                                                                            |
 | `src/composables/useLibraryFilter.ts`            | 书架检索与筛选：模糊搜索、标签频率统计、多模式排序、只看喜欢与只看已读过滤、已读沉底分桶                                                                       |
+| `src/composables/useShelfState.ts`               | 书架会话上下文记忆单例：跨路由纵向视口滚动锚定、展开批次、归档专匣开闭、筛选条件保持与主动置顶重置                                                             |
 | `src/composables/usePaginationFold.ts`           | 画卷与书架网格分批折叠展开状态机：受控步进铺开（24页/12本）、全量展开、余量徽印计算与平滑滚顶自愈                                                              |
 | `src/composables/useReaderRecommendations.ts`    | 阅读器末页接卷推荐：启发式元数据权重评分（同作者/同原作/共有标签/在读状态）与未读作品遴选                                                                      |
 | `src/composables/useImageSearch.ts`              | 以图搜图状态机：文件上传、剪贴板粘贴、拖拽、置信度与状态管理                                                                                                   |
@@ -77,7 +78,7 @@
 | `src/components/detail/ChapterSwitcher.vue`      | 章节切换条（用于 ChapterView 内跳话）：横向 chips + 方向键 + `useScroll`                                                                                       |
 | `src/components/FavoriteButton.vue`              | 喜欢标记按钮（书架卡片 / 实验卡片 overlay）                                                                                                                    |
 | `src/components/ComicPageImage.vue`              | 每页图片 loading / error / retry 兜底                                                                                                                          |
-| `src/components/CoverCarousel.vue`               | scroll-snap + view-timeline 封面流                                                                                                                             |
+| `src/components/CoverCarousel.vue`               | 封面轮播：基于物理中心点 JIT 居中计算、直接点击对齐与 Chrome 135+ CSS Carousels (::scroll-marker) 渐进增强                                                     |
 | `src/components/reader/ReaderViewport.vue`       | 阅读器画卷视口：三种排版模式（连续/竖翻/横翻）与分屏画页 DOM 渲染                                                                                              |
 | `src/components/reader/ReaderChapterBanners.vue` | 阅读器跨话悬浮横幅：话首「← 上一话」与话末「本话完 · 下一话 →」导航交互胶囊                                                                                    |
 | `src/components/reader/ReaderEndCard.vue`        | 阅读器末页结尾卡片：视口真实触达感知（`useIntersectionObserver`）、暗室响应式接卷推荐三联卡与双向离开出口                                                      |

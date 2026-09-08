@@ -84,4 +84,25 @@ describe('usePaginationFold composable', () => {
     expect(canCollapse.value).toBe(false)
     expect(onChangeMock).toHaveBeenCalledWith(20)
   })
+
+  it('allows collapsing back to step when initialized with larger initialVisibleCount', () => {
+    const list = ref(Array.from({ length: 50 }, (_, i) => i))
+    const onChangeMock = vi.fn<(count: number) => void>()
+
+    const { visibleCount, canCollapse, collapse } = usePaginationFold({
+      items: list,
+      step: 12,
+      initialVisibleCount: 36,
+      onChange: onChangeMock,
+    })
+
+    // Restored at 36, can collapse back to baseline 12
+    expect(visibleCount.value).toBe(36)
+    expect(canCollapse.value).toBe(true)
+
+    collapse()
+    expect(visibleCount.value).toBe(12)
+    expect(canCollapse.value).toBe(false)
+    expect(onChangeMock).toHaveBeenCalledWith(12)
+  })
 })

@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, toRef, watch, ref } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
+import { computed, onMounted, onUnmounted, toRef, watch, ref, nextTick } from 'vue'
+import { onBeforeRouteLeave, useRoute, useRouter } from 'vue-router'
 import ImportPanel from '@/components/ImportPanel.vue'
 import LibraryHero from '@/components/library/LibraryHero.vue'
 import TagFilterBar from '@/components/library/TagFilterBar.vue'
@@ -11,6 +11,7 @@ import AppIcon from '@/components/AppIcon.vue'
 import { useLibraryStore } from '@/stores/library'
 import { useExperimentsStore } from '@/stores/experiments'
 import { useLibraryFilter } from '@/composables/useLibraryFilter'
+import { useShelfState } from '@/composables/useShelfState'
 import { useImageSearch } from '@/composables/useImageSearch'
 import { useToast } from '@/composables/useToast'
 import { useViewTransition } from '@/composables/useViewTransition'
@@ -31,6 +32,22 @@ const { withViewTransition } = useViewTransition()
 const { canWrite } = useAuth()
 const fileInput = ref<HTMLInputElement | null>(null)
 const providers = ref<ProviderInfo[]>(DEFAULT_PROVIDERS)
+
+const {
+  shelfScrollY,
+  activeUnfoldCount,
+  archiveOpen,
+  archiveUnfoldCount,
+  unifiedUnfoldCount,
+  search: shelfSearch,
+  activeTag: shelfActiveTag,
+  favoritesOnly: shelfFavoritesOnly,
+  completedOnly: shelfCompletedOnly,
+  sortBy: shelfSortBy,
+  tagTrayExpanded,
+  saveScrollPosition,
+  resetAllShelfState,
+} = useShelfState()
 
 const activeSource = computed(() =>
   typeof route.query.source === 'string' ? route.query.source : '',
@@ -72,9 +89,36 @@ const {
   imageSearchMatchMap,
   filtered,
   setSort,
-} = useLibraryFilter(toRef(store, 'items'), activeSource, searchResults)
+} = useLibraryFilter(toRef(store, 'items'), activeSource, searchResults, {
+  search: shelfSearch,
+  activeTag: shelfActiveTag,
+  favoritesOnly: shelfFavoritesOnly,
+  completedOnly: shelfCompletedOnly,
+  sortBy: shelfSortBy,
+})
+
+function restoreScrollPosition() {
+  const savedY = shelfScrollY.value
+  if (savedY > 0) {
+    nextTick(() => {
+      window.scrollTo({ top: savedY, behavior: 'instant' })
+    })
+  }
+}
+
+watch(activeSource, (newSource, oldSource) => {
+  if (oldSource !== undefined && newSource !== oldSource) {
+    resetAllShelfState()
+    window.scrollTo({ top: 0, behavior: 'instant' })
+  }
+})
+
+onBeforeRouteLeave(() => {
+  saveScrollPosition(window.scrollY)
+})
 
 onMounted(() => {
+  restoreScrollPosition()
   void store.load()
   store.startPollingIfActive()
   window.addEventListener('paste', handlePaste)
@@ -263,6 +307,8 @@ watch(searchError, (value) => {
         :active-tag="activeTag"
         :tag-counts="tagCounts"
         :filtered-count="filtered.length"
+        :tray-expanded="tagTrayExpanded"
+        @update:tray-expanded="(val) => (tagTrayExpanded = val)"
         @toggle-favorites="toggleFavorites"
         @toggle-completed="toggleCompleted"
         @select-tag="selectTag"
@@ -281,6 +327,14 @@ watch(searchError, (value) => {
         :live-cache="store.liveCache"
         :search-match-map="imageSearchMatchMap"
         :is-recent-sort="sortBy === 'recent' && !searchImagePreviewUrl && !search.trim()"
+        :initial-active-count="activeUnfoldCount"
+        :initial-archive-count="archiveUnfoldCount"
+        :initial-unified-count="unifiedUnfoldCount"
+        :initial-archive-open="archiveOpen"
+        @update:active-count="(val) => (activeUnfoldCount = val)"
+        @update:archive-count="(val) => (archiveUnfoldCount = val)"
+        @update:unified-count="(val) => (unifiedUnfoldCount = val)"
+        @update:archive-open="(val) => (archiveOpen = val)"
         @favorite-toggled="onFavoriteToggled"
       />
     </section>

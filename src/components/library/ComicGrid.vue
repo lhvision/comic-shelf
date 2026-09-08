@@ -33,10 +33,22 @@ const props = withDefaults(
     batchStep?: number
     /** 是否为默认的最近收录排序（用于展示卷末归档分割线） */
     isRecentSort?: boolean
+    /** 案头在读藏书初始呈现数量（用于跨路由状态记忆） */
+    initialActiveCount?: number
+    /** 卷末归档专匣初始呈现数量 */
+    initialArchiveCount?: number
+    /** 单网格模式初始呈现数量 */
+    initialUnifiedCount?: number
+    /** 卷末归档专匣初始开闭状态 */
+    initialArchiveOpen?: boolean
   }>(),
   {
     batchStep: 12,
     isRecentSort: true,
+    initialActiveCount: undefined,
+    initialArchiveCount: undefined,
+    initialUnifiedCount: undefined,
+    initialArchiveOpen: undefined,
   },
 )
 
@@ -68,6 +80,10 @@ const isSplitMode = computed(
 
 const emit = defineEmits<{
   favoriteToggled: [source: string, sourceId: string, favorite: boolean]
+  'update:activeCount': [count: number]
+  'update:archiveCount': [count: number]
+  'update:unifiedCount': [count: number]
+  'update:archiveOpen': [open: boolean]
 }>()
 
 const keyOf = (source: string, sourceId: string) => liveCacheKey(source, sourceId)
@@ -80,6 +96,7 @@ const {
   visibleItems: visibleActiveItems,
   remainingCount: remainingActiveCount,
   canCollapse: canCollapseActiveRaw,
+  visibleCount: activeVisibleCount,
   loadMore: loadMoreActive,
   loadAll: loadAllActive,
   collapse: collapseActive,
@@ -87,19 +104,33 @@ const {
 } = usePaginationFold({
   items: activeComics,
   step: () => props.batchStep,
+  initialVisibleCount: () => props.initialActiveCount,
   scrollTarget: gridWrapEl,
+  onChange: (count) => emit('update:activeCount', count),
 })
 const canCollapseActive = computed(() => !props.useCanvas && canCollapseActiveRaw.value)
 
 // 2. 卷末归档专匣状态
-const archiveOpen = ref(false)
+const archiveOpen = ref(props.initialArchiveOpen ?? false)
+watch(
+  () => props.initialArchiveOpen,
+  (val) => {
+    if (val !== undefined && val !== archiveOpen.value) {
+      archiveOpen.value = val
+    }
+  },
+)
+
 function toggleArchive() {
   archiveOpen.value = !archiveOpen.value
+  emit('update:archiveOpen', archiveOpen.value)
 }
+
 const {
   visibleItems: visibleArchiveItems,
   remainingCount: remainingArchiveCount,
   canCollapse: canCollapseArchive,
+  visibleCount: archiveVisibleCount,
   loadMore: loadMoreArchive,
   loadAll: loadAllArchive,
   collapse: collapseArchive,
@@ -107,7 +138,9 @@ const {
 } = usePaginationFold({
   items: completedComics,
   step: () => props.batchStep,
+  initialVisibleCount: () => props.initialArchiveCount,
   scrollTarget: archiveDrawerEl,
+  onChange: (count) => emit('update:archiveCount', count),
 })
 
 // 3. 全局单网格（非 splitMode 时：如全已读、全未读、非最近收录、Canvas 模式）
@@ -115,6 +148,7 @@ const {
   visibleItems: rawVisibleItems,
   remainingCount,
   canCollapse: canCollapseRaw,
+  visibleCount: unifiedVisibleCount,
   loadMore,
   loadAll,
   collapse,
@@ -122,7 +156,9 @@ const {
 } = usePaginationFold({
   items: () => props.items,
   step: () => props.batchStep,
+  initialVisibleCount: () => props.initialUnifiedCount,
   scrollTarget: gridWrapEl,
+  onChange: (count) => emit('update:unifiedCount', count),
 })
 
 const visibleItems = computed(() => {
@@ -132,11 +168,51 @@ const visibleItems = computed(() => {
 const canCollapse = computed(() => !props.useCanvas && canCollapseRaw.value)
 
 watch(
+  () => props.initialActiveCount,
+  (count) => {
+    if (count !== undefined && count !== activeVisibleCount.value) {
+      resetActive(count)
+    }
+  },
+)
+watch(
+  () => props.initialArchiveCount,
+  (count) => {
+    if (count !== undefined && count !== archiveVisibleCount.value) {
+      resetArchive(count)
+    }
+  },
+)
+watch(
+  () => props.initialUnifiedCount,
+  (count) => {
+    if (count !== undefined && count !== unifiedVisibleCount.value) {
+      resetUnified(count)
+    }
+  },
+)
+
+// 当数据源发生变化时：
+// 1. 若未传入 initialActiveCount（非跨路由恢复受控模式），执行常规重置；
+// 2. 若处于状态记忆受控模式，仅在数据源缩减且当前可见数越界时做安全钳制，杜绝 SWR 静默对齐冲掉用户已展开的批次。
+watch(
   () => props.items,
-  () => {
-    resetActive()
-    resetArchive()
-    resetUnified()
+  (newItems) => {
+    if (props.initialActiveCount === undefined) {
+      resetActive()
+      resetArchive()
+      resetUnified()
+    } else {
+      if (activeVisibleCount.value > activeComics.value.length) {
+        resetActive(Math.max(props.batchStep, activeComics.value.length))
+      }
+      if (archiveVisibleCount.value > completedComics.value.length) {
+        resetArchive(Math.max(props.batchStep, completedComics.value.length))
+      }
+      if (unifiedVisibleCount.value > newItems.length) {
+        resetUnified(Math.max(props.batchStep, newItems.length))
+      }
+    }
   },
 )
 </script>

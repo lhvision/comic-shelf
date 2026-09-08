@@ -23,9 +23,11 @@ export interface UsePaginationFoldOptions<T> {
   /** 数据源列表 */
   items: MaybeRefOrGetter<T[]>
   /** 每批增量展示数量（默认 12） */
-  step?: MaybeRefOrGetter<number>
-  /** 初始展示数量（若未指定则默认为 step） */
-  initialStep?: MaybeRefOrGetter<number>
+  step?: MaybeRefOrGetter<number | undefined>
+  /** 基础展示与收起基线数量（若未指定则默认为 step） */
+  initialStep?: MaybeRefOrGetter<number | undefined>
+  /** 初始/恢复可见数量（若未指定则默认为 initialStep 或 step） */
+  initialVisibleCount?: MaybeRefOrGetter<number | undefined>
   /** 滚动容器 DOM 引用（收起时平滑回滚至该元素顶部） */
   scrollTarget?: Ref<HTMLElement | null>
   /** 展开/收起/重置状态变更后的额外回调（如持久化展开数量） */
@@ -57,8 +59,9 @@ export function usePaginationFold<T>(
   const { items, scrollTarget, onChange } = options
   const getStep = () => Math.max(1, toValue(options.step) ?? 12)
   const getBaseCount = () => toValue(options.initialStep) ?? getStep()
+  const getInitialCount = () => toValue(options.initialVisibleCount) ?? getBaseCount()
 
-  const visibleCount = ref(getBaseCount())
+  const visibleCount = ref(getInitialCount())
 
   const totalLength = computed(() => toValue(items).length)
   const visibleItems = computed(() => toValue(items).slice(0, visibleCount.value))

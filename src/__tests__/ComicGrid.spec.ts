@@ -280,4 +280,49 @@ describe('ComicGrid', () => {
     expect(wrapper.find('.shelf-archive-divider').exists()).toBe(false)
     expect(wrapper.findAll('.mock-comic-card').length).toBe(10)
   })
+
+  it('honors initialActiveCount and initialArchiveOpen for shelf state restoration', async () => {
+    const unread = makeComics(30).map((c, i) => ({
+      ...c,
+      source_id: `unread_${i}`,
+      last_page: 0,
+      page_count: 20,
+    }))
+    const completed = makeComics(20).map((c, i) => ({
+      ...c,
+      source_id: `completed_${i}`,
+      last_page: 20,
+      page_count: 20,
+    }))
+    const mixed = [...unread, ...completed]
+
+    const wrapper = mount(ComicGrid, {
+      props: {
+        loading: false,
+        items: mixed,
+        useCanvas: false,
+        hasAnyItems: true,
+        batchStep: 12,
+        initialActiveCount: 24,
+        initialArchiveOpen: true,
+        initialArchiveCount: 15,
+      },
+    })
+
+    // Active shelf should render 24 items immediately
+    const activeGrid = wrapper.find('.active-shelf-grid')
+    expect(activeGrid.findAll('.mock-comic-card').length).toBe(24)
+
+    // Archive drawer should be open and render 15 completed items
+    const drawer = wrapper.find('.shelf-archive-drawer')
+    expect(drawer.exists()).toBe(true)
+    const drawerGrid = wrapper.find('.archive-shelf-grid')
+    expect(drawerGrid.findAll('.mock-comic-card').length).toBe(15)
+
+    // SWR background update should not wipe out restored counts
+    const updatedMixed = [...mixed]
+    await wrapper.setProps({ items: updatedMixed } as Record<string, unknown>)
+    expect(activeGrid.findAll('.mock-comic-card').length).toBe(24)
+    expect(drawerGrid.findAll('.mock-comic-card').length).toBe(15)
+  })
 })

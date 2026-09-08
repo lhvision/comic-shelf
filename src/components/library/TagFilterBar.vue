@@ -20,9 +20,12 @@ const props = withDefaults(
     tagCounts: Array<[string, number]>
     /** 当前筛选命中的数量（用于提示文案） */
     filteredCount: number
+    /** 「更多标签」抽屉展开状态（用于跨路由状态记忆） */
+    trayExpanded?: boolean
   }>(),
   {
     completedOnly: false,
+    trayExpanded: false,
   },
 )
 
@@ -31,6 +34,7 @@ const emit = defineEmits<{
   toggleCompleted: []
   selectTag: [tag: string]
   clearTag: []
+  'update:trayExpanded': [expanded: boolean]
 }>()
 
 /** 默认展示的高频标签数（连「全部」一起 ≤9 个 chip） */
@@ -41,8 +45,22 @@ const primaryTags = computed(() => props.tagCounts.slice(0, VISIBLE_TAGS))
 const overflowTags = computed(() => props.tagCounts.slice(VISIBLE_TAGS))
 
 const expanded = ref(
-  Boolean(props.activeTag && overflowTags.value.some(([t]) => t === props.activeTag)),
+  props.trayExpanded ||
+    Boolean(props.activeTag && overflowTags.value.some(([t]) => t === props.activeTag)),
 )
+
+watch(
+  () => props.trayExpanded,
+  (val) => {
+    if (val !== undefined && val !== expanded.value) {
+      expanded.value = val
+    }
+  },
+)
+
+watch(expanded, (val) => {
+  emit('update:trayExpanded', val)
+})
 
 watch(
   () => props.activeTag,

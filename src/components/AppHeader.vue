@@ -10,6 +10,7 @@ import StoragePopover from '@/components/StoragePopover.vue'
 import ReaderPassPopover from '@/components/ReaderPassPopover.vue'
 import GuestModal from '@/components/curator/GuestModal.vue'
 import { useGuestPasses } from '@/composables/useGuestPasses'
+import { useShelfState } from '@/composables/useShelfState'
 import type { ProviderInfo } from '@/types'
 
 interface NavItem {
@@ -25,6 +26,7 @@ const providers = ref<ProviderInfo[]>(DEFAULT_PROVIDERS)
 const { authRequired, isGuest, canWrite, logout } = useAuth()
 const { brandIcon } = useBrandIcon()
 const { openModal: openGuestModal } = useGuestPasses()
+const { resetAllShelfState } = useShelfState()
 
 const navScrollEl = ref<HTMLElement | null>(null)
 const { arrivedState, measure } = useScroll(navScrollEl)
@@ -66,7 +68,21 @@ function isActive(item: NavItem) {
 }
 
 function goLibrary() {
-  router.push('/')
+  resetAllShelfState()
+  if (route.path === '/' && !route.query.source) {
+    window.scrollTo({ top: 0, behavior: 'smooth' })
+  } else {
+    void router.push('/')
+  }
+}
+
+function onNavClick(item: NavItem) {
+  if (item.to !== '/discovery') {
+    resetAllShelfState()
+    if (isActive(item)) {
+      window.scrollTo({ top: 0, behavior: 'smooth' })
+    }
+  }
 }
 
 async function fetchProviders() {
@@ -107,6 +123,7 @@ onAuthSuccess(fetchProviders)
           :key="item.to"
           :to="item.to"
           :class="{ active: isActive(item) }"
+          @click="onNavClick(item)"
         >
           <span v-if="item.index" class="nav-index">{{ item.index }}</span>
           <span class="nav-label">{{ item.label }}</span>

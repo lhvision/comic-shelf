@@ -382,7 +382,11 @@ const { setActiveCover } = useCoverTransition()
 
 function goBack() {
   setActiveCover(source.value, sourceId.value)
-  router.replace({ name: 'library' })
+  if (typeof window !== 'undefined' && window.history.state?.back) {
+    router.back()
+  } else {
+    router.replace({ name: 'library' })
+  }
 }
 
 function startReading(page = progressEl.value || 1) {

@@ -10,27 +10,54 @@ defineProps<{
 
 const track = ref<HTMLElement | null>(null)
 
-function scrollByCard(direction: number) {
+function scrollToSlide(slide: HTMLElement | null) {
+  if (!slide) return
+  slide.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' })
+}
+
+function scrollByStep(direction: number) {
   const el = track.value
   if (!el) return
-  const first = el.querySelector<HTMLElement>('.cover-slide')
-  const width = first ? first.getBoundingClientRect().width : el.clientWidth * 0.5
-  const gap = first
-    ? Number.parseFloat(getComputedStyle(first.parentElement ?? el).columnGap || '0')
-    : 0
-  el.scrollBy({ left: direction * (width + gap), behavior: 'smooth' })
+  const slides = Array.from(el.querySelectorAll<HTMLElement>('.cover-slide'))
+  if (!slides.length) return
+
+  // 计算视口当前的水平几何中心，找出物理距离中心最近的卡片
+  const trackCenter = el.scrollLeft + el.clientWidth / 2
+  let closestIndex = 0
+  let minDistance = Number.POSITIVE_INFINITY
+
+  for (let i = 0; i < slides.length; i++) {
+    const slide = slides[i]
+    if (!slide) continue
+    const slideCenter = slide.offsetLeft + slide.offsetWidth / 2
+    const dist = Math.abs(slideCenter - trackCenter)
+    if (dist < minDistance) {
+      minDistance = dist
+      closestIndex = i
+    }
+  }
+
+  const targetIndex = Math.max(0, Math.min(slides.length - 1, closestIndex + direction))
+  scrollToSlide(slides[targetIndex] ?? null)
+}
+
+function onSlideClick(index: number) {
+  const el = track.value
+  if (!el) return
+  const slides = el.querySelectorAll<HTMLElement>('.cover-slide')
+  scrollToSlide(slides[index] ?? null)
 }
 </script>
 
 <template>
   <div class="cover-carousel">
-    <div class="carousel-actions">
+    <div v-if="covers.length > 1" class="carousel-actions">
       <button
         class="carousel-arrow icon-btn"
         type="button"
         aria-label="上一张封面"
         title="上一张封面"
-        @click="scrollByCard(-1)"
+        @click="scrollByStep(-1)"
       >
         <AppIcon name="arrow-left" size="sm" />
       </button>
@@ -39,7 +66,7 @@ function scrollByCard(direction: number) {
         type="button"
         aria-label="下一张封面"
         title="下一张封面"
-        @click="scrollByCard(1)"
+        @click="scrollByStep(1)"
       >
         <AppIcon name="arrow-right" size="sm" />
       </button>
@@ -52,7 +79,17 @@ function scrollByCard(direction: number) {
       role="region"
       :aria-label="`${title} 封面预览`"
     >
-      <figure v-for="(cover, index) in covers" :key="cover" class="cover-slide">
+      <figure
+        v-for="(cover, index) in covers"
+        :key="cover"
+        class="cover-slide"
+        role="button"
+        tabindex="0"
+        :aria-label="`居中展示第 ${index + 1} 张封面`"
+        @click="onSlideClick(index)"
+        @keydown.enter.prevent="onSlideClick(index)"
+        @keydown.space.prevent="onSlideClick(index)"
+      >
         <div
           class="cover-slide-inner"
           :style="index === 0 ? { viewTransitionName: 'comic-cover-active' } : undefined"
@@ -103,19 +140,17 @@ function scrollByCard(direction: number) {
   scroll-snap-align: center;
   scroll-snap-stop: always;
   margin: 0;
+  cursor: pointer;
 }
 
 .cover-slide-inner {
+  position: relative;
   aspect-ratio: 3 / 4.15;
   overflow: hidden;
   border-radius: var(--radius-2);
   border: 1px solid color-mix(in oklab, var(--ink-0) 16%, transparent);
   background: var(--paper-2);
   box-shadow: var(--shadow-2);
-}
-
-.cover-slide-inner {
-  position: relative;
 }
 
 .cover-image {
@@ -217,6 +252,37 @@ function scrollByCard(direction: number) {
   }
   100% {
     filter: brightness(0.55);
+  }
+}
+
+/* 原生 CSS Carousel (Chrome 135+ / CSS Overflow 5) 渐进增强：
+   在支持的现代浏览器中，由内核直接生成无 JS 纸印指示标记 */
+@supports (scroll-marker-group: after) {
+  .cover-track {
+    scroll-marker-group: after;
+  }
+
+  .cover-slide::scroll-marker {
+    content: '';
+    display: inline-block;
+    width: 0.5rem;
+    height: 0.5rem;
+    border-radius: var(--radius-full);
+    background: var(--line-strong);
+    cursor: pointer;
+    transition: all var(--duration-2) var(--ease-out);
+  }
+
+  .cover-slide::scroll-marker:target-current {
+    background: var(--accent);
+    transform: scale(1.25);
+  }
+
+  ::scroll-marker-group {
+    display: flex;
+    justify-content: center;
+    gap: var(--space-2);
+    margin-top: var(--space-3);
   }
 }
 
