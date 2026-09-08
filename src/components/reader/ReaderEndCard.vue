@@ -18,10 +18,13 @@ withDefaults(
     snap?: boolean
     /** 接卷推荐藏书列表（至多 3 本） */
     recommendations?: LibrarySummary[]
+    /** 分屏分组虚拟索引（供阅读器统一定位） */
+    groupIndex?: number
   }>(),
   {
     snap: false,
     recommendations: () => [],
+    groupIndex: undefined,
   },
 )
 
@@ -51,7 +54,7 @@ useIntersectionObserver(
 </script>
 
 <template>
-  <div ref="cardEl" class="reader-end" :data-snap="snap">
+  <div ref="cardEl" class="reader-end" :data-snap="snap" :data-group-index="groupIndex">
     <div class="reader-end-container">
       <header class="reader-end-header">
         <span class="end-seal">〔 全卷完 · 归阁 〕</span>
@@ -112,7 +115,7 @@ useIntersectionObserver(
               </div>
 
               <div class="rec-info">
-                <AppTextClamp as="h3" class="rec-title" :lines="1" :text="item.title" />
+                <AppTextClamp as="h3" class="rec-title" :lines="2" :text="item.title" />
                 <AppTextClamp
                   as="p"
                   class="rec-author"
@@ -449,44 +452,133 @@ useIntersectionObserver(
 }
 
 @media (max-width: 680px) {
-  .recommend-grid {
-    display: flex;
-    flex-direction: column;
+  .reader-end {
+    min-height: 100dvh;
+    padding: max(var(--space-4), env(safe-area-inset-top)) var(--space-3)
+      max(var(--space-4), env(safe-area-inset-bottom));
+    place-content: safe center;
+  }
+
+  .reader-end-container {
+    gap: var(--space-4);
+    max-width: 26rem;
+  }
+
+  .end-seal {
+    font-size: var(--text-caption);
+    padding: var(--space-0-5) var(--space-2);
+  }
+
+  .end-title {
+    font-size: var(--text-xl);
+  }
+
+  .end-sub {
+    font-size: var(--text-xs);
+  }
+
+  .recommend-section {
+    width: 100%;
     gap: var(--space-2);
   }
 
-  .rec-card-main {
+  .recommend-header {
+    gap: var(--space-1-5);
+  }
+
+  .recommend-eyebrow {
+    font-size: var(--text-caption);
+  }
+
+  .recommend-grid {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2-5);
+    width: 100%;
+    padding: 0;
+  }
+
+  .rec-card {
+    display: flex;
     flex-direction: row;
     align-items: center;
+    width: 100%;
+    border-radius: var(--radius-2);
+    box-shadow: var(--shadow-1);
+  }
+
+  .rec-card-main {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    flex: 1;
+    min-width: 0;
+    gap: var(--space-3);
   }
 
   .rec-cover-wrap {
-    width: 3.5rem;
+    width: 4.75rem;
+    aspect-ratio: 3 / 4.2;
     flex-shrink: 0;
   }
 
   .rec-status-badge {
     font-size: var(--text-caption);
     font-size-adjust: ch-width 0.48;
-    padding: 1px var(--space-1);
-    left: var(--space-1);
-    bottom: var(--space-1);
+    padding: 2px var(--space-1-5);
+    left: var(--space-1-5);
+    bottom: var(--space-1-5);
+    max-width: calc(100% - var(--space-3));
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   .rec-info {
     flex: 1;
     min-width: 0;
-    padding-right: var(--space-8);
+    padding: var(--space-2-5) 0;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: var(--space-1);
+    background: transparent;
+  }
+
+  .rec-title {
+    font-size: var(--text-sm);
+    font-weight: 500;
+    line-height: 1.4;
+  }
+
+  .rec-author {
+    font-size: var(--text-xs);
+  }
+
+  .rec-detail-btn {
+    position: static;
+    translate: none;
+    flex-shrink: 0;
+    width: 2.25rem;
+    height: 2.25rem;
+    min-width: 2.25rem;
+    min-height: 2.25rem;
+    margin-inline: var(--space-2) var(--space-3);
   }
 
   .reader-end-actions {
-    flex-direction: column;
+    flex-direction: row;
     width: 100%;
+    max-width: 24rem;
+    gap: var(--space-3);
+    margin-top: var(--space-1);
   }
 
   .end-btn {
-    width: 100%;
+    flex: 1;
     justify-content: center;
+    min-height: 2.6rem;
+    padding: 0 var(--space-4);
   }
 }
 </style>

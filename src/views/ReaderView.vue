@@ -364,7 +364,7 @@ function onBackToShelf() {
       :prev-symbol="prevSymbol"
       :next-symbol="nextSymbol"
       :can-prev="currentGroupIndex > 0"
-      :can-next="currentGroupIndex < pageGroups.length - 1"
+      :can-next="currentGroupIndex < lastGroupIndex"
       :hidden="!chromeVisible && !settings.autoTurn"
       @toggle-auto-turn-pause="toggleAutoTurnPause"
       @prev="prevGroup"

@@ -77,7 +77,17 @@ describe('ReaderViewport', () => {
     expect(wrapper.find('.reader-end-rtl').exists()).toBe(false)
   })
 
-  it('renders ReaderEndCard at the start in RTL horizontal mode', () => {
+  it('renders ReaderEndCard with data-group-index matching orderedGroups.length', () => {
+    const wrapper = mount(ReaderViewport, {
+      props: defaultProps,
+    })
+
+    const endCard = wrapper.findComponent(ReaderEndCard)
+    expect(endCard.exists()).toBe(true)
+    expect(endCard.attributes('data-group-index')).toBe('2')
+  })
+
+  it('renders ReaderEndCard at the start in RTL horizontal mode with data-group-index', () => {
     const wrapper = mount(ReaderViewport, {
       props: {
         ...defaultProps,
@@ -88,6 +98,7 @@ describe('ReaderViewport', () => {
 
     const endCardRtl = wrapper.find('.reader-end-rtl')
     expect(endCardRtl.exists()).toBe(true)
+    expect(endCardRtl.attributes('data-group-index')).toBe('2')
   })
 })
 
@@ -254,6 +265,16 @@ describe('ReaderEndCard', () => {
     const homeBtn = wrapper.find('.btn-ghost')
     await homeBtn.trigger('click')
     expect(wrapper.emitted('home')).toBeTruthy()
+  })
+
+  it('renders data-group-index when groupIndex prop is provided', () => {
+    const wrapper = mount(ReaderEndCard, {
+      props: {
+        recommendations: [],
+        groupIndex: 5,
+      },
+    })
+    expect(wrapper.attributes('data-group-index')).toBe('5')
   })
 
   it('renders poetic empty note when recommendations are empty', () => {

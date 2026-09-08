@@ -104,7 +104,8 @@ defineExpose({
     <ReaderEndCard
       v-if="rtlHorizontal && showEndCard"
       :key="`${source}/${sourceId}`"
-      snap
+      :snap="settings.mode !== 'vertical-continuous'"
+      :group-index="showEndCard ? orderedGroups.length : undefined"
       class="reader-end-rtl"
       :recommendations="recommendations"
       @back="$emit('backToDetail')"
@@ -145,7 +146,8 @@ defineExpose({
     <ReaderEndCard
       v-if="!rtlHorizontal && showEndCard"
       :key="`${source}/${sourceId}`"
-      :snap="settings.mode === 'horizontal'"
+      :snap="settings.mode !== 'vertical-continuous'"
+      :group-index="showEndCard ? orderedGroups.length : undefined"
       :recommendations="recommendations"
       @back="$emit('backToDetail')"
       @home="$emit('backToShelf')"

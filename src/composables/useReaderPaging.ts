@@ -82,6 +82,7 @@ export function useReaderPaging(options: UseReaderPagingOptions) {
   })
 
   const showEndCard = computed(() => {
+    if (!detail.value || scopedPages.value.length === 0) return false
     if (scopedChapter.value === null) return true
     return !nextChapter.value
   })
@@ -124,13 +125,21 @@ export function useReaderPaging(options: UseReaderPagingOptions) {
   }
 
   const currentGroupLabel = computed(() => {
+    if (scopedPages.value.length === 0) return '—'
+    if (showEndCard.value && currentGroupIndex.value >= pageGroups.value.length) {
+      return '完'
+    }
     const group = pageGroups.value[currentGroupIndex.value]
     if (!group || group.length === 0) return '—'
     if (group.length === 1) return String(toLocalPage(group[0]!))
     return `${toLocalPage(group[0]!)}–${toLocalPage(group[group.length - 1]!)}`
   })
 
-  const lastGroupIndex = computed(() => Math.max(0, pageGroups.value.length - 1))
+  const lastGroupIndex = computed(() => {
+    const count = pageGroups.value.length
+    if (count === 0) return 0
+    return showEndCard.value ? count : count - 1
+  })
   const atLastGroup = computed(() => currentGroupIndex.value >= lastGroupIndex.value)
 
   function groupIndexForPage(page: number): number {
@@ -142,6 +151,10 @@ export function useReaderPaging(options: UseReaderPagingOptions) {
   }
 
   function groupFirstPage(groupIndex: number): number {
+    if (showEndCard.value && groupIndex >= pageGroups.value.length) {
+      const pages = scopedPages.value
+      return pages[pages.length - 1] ?? 1
+    }
     return pageGroups.value[groupIndex]?.[0] ?? 1
   }
 
