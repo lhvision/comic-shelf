@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { useRouter } from 'vue-router'
 import { useLocalWorkshop } from '@/composables/useLocalWorkshop'
+import { useHierarchicalNavigation } from '@/composables/useHierarchicalNavigation'
 import TagManager from '@/components/form/TagManager.vue'
 import CoverIndicesPicker from '@/components/form/CoverIndicesPicker.vue'
 import SegmentedTabs from '@/components/SegmentedTabs.vue'
@@ -8,7 +8,7 @@ import AppButton from '@/components/AppButton.vue'
 import AppIcon from '@/components/AppIcon.vue'
 import AppProgressBar from '@/components/AppProgressBar.vue'
 
-const router = useRouter()
+const { goUpFromCreate } = useHierarchicalNavigation()
 
 const {
   mode,
@@ -41,16 +41,12 @@ const {
   totalCount,
   submit,
 } = useLocalWorkshop()
-
-function goBack() {
-  router.push('/')
-}
 </script>
 
 <template>
   <div class="create-view container">
     <header class="create-head surface">
-      <button class="back-btn icon-btn" type="button" aria-label="返回书库" @click="goBack">
+      <button class="back-btn icon-btn" type="button" aria-label="返回书库" @click="goUpFromCreate">
         <AppIcon name="arrow-left" size="sm" />
       </button>
       <div>
@@ -282,7 +278,9 @@ function goBack() {
           </div>
 
           <div class="form-actions">
-            <AppButton variant="ghost" size="lg" type="button" @click="goBack"> 取消 </AppButton>
+            <AppButton variant="ghost" size="lg" type="button" @click="goUpFromCreate">
+              取消
+            </AppButton>
             <AppButton
               variant="primary"
               size="lg"

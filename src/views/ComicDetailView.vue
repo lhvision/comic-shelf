@@ -15,6 +15,7 @@ import { useToast } from '@/composables/useToast'
 import { useCoverTransition } from '@/composables/useCoverTransition'
 import { useAuth } from '@/composables/useAuth'
 import { useSystemEvents } from '@/composables/useSystemEvents'
+import { useHierarchicalNavigation } from '@/composables/useHierarchicalNavigation'
 import CoverCarousel from '@/components/CoverCarousel.vue'
 import AppIcon from '@/components/AppIcon.vue'
 
@@ -379,14 +380,11 @@ async function refreshMetadata() {
 }
 
 const { setActiveCover } = useCoverTransition()
+const { goUpFromDetail } = useHierarchicalNavigation()
 
 function goBack() {
   setActiveCover(source.value, sourceId.value)
-  if (typeof window !== 'undefined' && window.history.state?.back) {
-    router.back()
-  } else {
-    router.replace({ name: 'library' })
-  }
+  goUpFromDetail(source.value, sourceId.value)
 }
 
 function startReading(page = progressEl.value || 1) {

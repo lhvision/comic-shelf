@@ -151,7 +151,7 @@ export function useLocalWorkshop() {
         })
         await store.load()
         toast('本地目录已收录', 'info')
-        void router.push(`/comic/${res.meta.source}/${res.meta.source_id}`)
+        void router.replace(`/comic/${res.meta.source}/${res.meta.source_id}`)
       } catch (err) {
         toast(err instanceof Error ? err.message : String(err), 'error')
       } finally {
@@ -201,7 +201,7 @@ export function useLocalWorkshop() {
 
       await store.load()
       toast(`自建图集《${created.meta.title}》已成功收录！`, 'info')
-      void router.push(`/comic/${created.meta.source}/${sourceId}`)
+      void router.replace(`/comic/${created.meta.source}/${sourceId}`)
     } catch (err) {
       toast(err instanceof Error ? err.message : String(err), 'error')
     } finally {

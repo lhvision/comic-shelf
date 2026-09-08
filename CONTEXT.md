@@ -34,6 +34,10 @@
   `start` 是该章在**全书全局页码**里的起始页。多话作品详情页按「章节目录」摆放（封面 + 章节信息），
   点某话进入「章节子路由」看该话页索引；阅读器页码/继续阅读/封面仍走全局页码。单章节作品 `chapters` 为空。
 - **章节子路由（Chapter Sub-route / ChapterView）**：多话漫画单个话的独立专注页面（`/comic/:source/:sourceId/chapter/:chapterId`）。承载本话的页面索引、章节导航条、单话缓存触发与画页管理，与详情页目录形成层级呼应。
+- **层级树状导航与下级路由防卫（Hierarchical Up Navigation & Downward Navigation Guard）**：纸间路由体系基于四级树状面包屑（Rank 1 书库/发现 ⇄ Rank 2 本子详情 ⇄ Rank 3 章节子路由 ⇄ Rank 4 阅读器）建立的确定性导航契约。区分“向上层级导航（Up Navigation）”与“历史时序后退（History Back）”：
+  1. 章节子路由向父详情返回时采用「来源感知出栈 + 替换兜底」，上一页为父详情时出栈还原滚动与折叠，否则就地替换（`router.replace`），严禁 push 污染历史栈；
+  2. 章节子路由内同层切话使用 `router.replace` 维持单话专注视口，杜绝历史栈爆炸；
+  3. 本子详情页对返回按钮挂载下级路由拦截守卫，当历史上一页指向本漫画的下级子路由（章节/阅读器）时禁止 `router.back()`，兜底回退至书架，彻底消除下级回弹死循环。
 - **单话按需离线（Chapter-level Caching / Cache by Chapter）**：多章节漫画支持在章节卡片与章节详情页触发针对该单话的后台图片下载任务，弥补“全本预缓存（MAX 600页）”在超长作品（数千页/上百话）下的粗粒度缺陷与反爬风险。
 - **缩略图落盘即缓存（Thumbnail Implied Page Caching）**：页面索引网格请求画页缩略图时，后端解密拉取原图生成缩略图并即刻将该画页标记为本地化（`cached = true`）；前端感知缩略图加载完成即刻乐观翻转「本地」印章并推进单话进度，消除“明明图片已加载却显示待缓存”的认知割裂。
 - **防爬节流与并发阀门（Anti-Scraping Pacing & Concurrency Gate）**：针对远端图源（如哔咔、禁漫）设立的并发保护屏障（`download_gate` 默认 3 路并发）与拟人化随机抖动延迟（`PICA_DOWNLOAD_PACING_MS = 250ms ±20%`），杜绝批量拉取缩略图或画页时触发远端 IP 封禁。

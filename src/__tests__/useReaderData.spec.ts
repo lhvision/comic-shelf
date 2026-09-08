@@ -142,6 +142,6 @@ describe('useReaderData', () => {
 
     expect(hookResult.backTarget.value).toBe('/comic/jm/999/chapter/ch-5')
     hookResult.backToDetail()
-    expect(mockPush).toHaveBeenCalledWith('/comic/jm/999/chapter/ch-5')
+    expect(mockReplace).toHaveBeenCalledWith('/comic/jm/999/chapter/ch-5')
   })
 })

@@ -9,6 +9,7 @@ import { useChapterNavigation } from '@/composables/useChapterNavigation'
 import { useIdlePrefetch } from '@/composables/useIdlePrefetch'
 import { useToast } from '@/composables/useToast'
 import { useSystemEvents } from '@/composables/useSystemEvents'
+import { useHierarchicalNavigation } from '@/composables/useHierarchicalNavigation'
 import ChapterSwitcher from '@/components/detail/ChapterSwitcher.vue'
 import PageIndexGrid from '@/components/detail/PageIndexGrid.vue'
 import CacheProgress from '@/components/CacheProgress.vue'
@@ -36,6 +37,7 @@ const router = useRouter()
 const store = useLibraryStore()
 const { toast } = useToast()
 const { canWrite } = useAuth()
+const { goUpFromChapter, goToChapter: switchActiveChapter } = useHierarchicalNavigation()
 
 const source = computed(() => (route.params.source as string) || 'jm')
 const sourceId = computed(() => (route.params.sourceId as string) || '')
@@ -336,11 +338,11 @@ async function cacheCurrentChapter() {
 }
 
 function goToAlbum() {
-  router.push(`/comic/${source.value}/${sourceId.value}`)
+  goUpFromChapter(source.value, sourceId.value)
 }
 
 function goToChapter(id: string) {
-  router.push(`/comic/${source.value}/${sourceId.value}/chapter/${id}`)
+  switchActiveChapter(source.value, sourceId.value, id)
 }
 
 function goPrev() {
