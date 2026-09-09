@@ -28,12 +28,14 @@ const props = withDefaults(defineProps<ReaderFloatingPillProps>(), {
 <template>
   <div
     class="reader-floating-pill"
-    :data-visible="props.active && !props.suppressed"
-    :aria-hidden="!props.active || props.suppressed"
+    role="status"
+    :aria-label="`当前阅读进度：第 ${current} 页，共 ${total} 页`"
+    :data-visible="active && !suppressed"
+    :aria-hidden="!active || suppressed"
   >
-    <span class="pill-number current">{{ String(props.current).padStart(3, '0') }}</span>
+    <span class="pill-number current">{{ String(current).padStart(3, '0') }}</span>
     <span class="pill-divider" aria-hidden="true">/</span>
-    <span class="pill-number total">{{ String(props.total).padStart(3, '0') }}</span>
+    <span class="pill-number total">{{ String(total).padStart(3, '0') }}</span>
   </div>
 </template>
 
@@ -49,9 +51,8 @@ const props = withDefaults(defineProps<ReaderFloatingPillProps>(), {
   padding: var(--space-1) var(--space-3);
   border: 1px solid var(--reader-line-strong);
   border-radius: 999px;
-  background: var(--reader-scrim);
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
+  background: color-mix(in oklab, var(--reader-scrim) 94%, transparent);
+  box-shadow: 0 2px 8px rgb(0 0 0 / 30%);
   font-family: var(--font-mono);
   font-size: var(--text-xs);
   color: var(--reader-muted);
@@ -63,6 +64,13 @@ const props = withDefaults(defineProps<ReaderFloatingPillProps>(), {
   transition:
     opacity var(--duration-2) var(--ease-out),
     translate var(--duration-2) var(--ease-out);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .reader-floating-pill {
+    transition: none !important;
+    translate: none !important;
+  }
 }
 
 .reader-floating-pill[data-visible='true'] {

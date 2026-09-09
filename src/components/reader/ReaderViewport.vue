@@ -131,12 +131,7 @@ defineExpose({
         :data-page="page"
         :id="`page-${page}`"
       >
-        <div
-          class="page-frame"
-          :data-fit="
-            settings.mode === 'vertical-continuous' && settings.seamless ? 'width' : settings.fit
-          "
-        >
+        <div class="page-frame" :data-fit="settings.fit">
           <ComicPageImage
             :src="pageFileUrl(source, sourceId, page)"
             :alt="`第 ${toLocalPage(page)} 页`"

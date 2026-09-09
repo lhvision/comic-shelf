@@ -332,6 +332,16 @@ const fieldRows = computed(() => {
   mask-image: none;
 }
 
+@media (prefers-reduced-motion: reduce) {
+  .description-content {
+    transition: none !important;
+  }
+
+  .desc-chevron {
+    transition: none !important;
+  }
+}
+
 .muted {
   color: var(--ink-2);
   font-size: var(--text-sm);

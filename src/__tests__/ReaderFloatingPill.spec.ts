@@ -17,6 +17,8 @@ describe('ReaderFloatingPill component', () => {
     expect(wrapper.text()).toContain('045')
     expect(wrapper.find('.pill-number.current').text()).toBe('021')
     expect(wrapper.find('.pill-number.total').text()).toBe('045')
+    expect(wrapper.attributes('role')).toBe('status')
+    expect(wrapper.attributes('aria-label')).toBe('当前阅读进度：第 21 页，共 45 页')
   })
 
   it('controls visibility via active and suppressed props', async () => {

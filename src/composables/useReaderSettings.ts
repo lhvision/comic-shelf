@@ -32,6 +32,8 @@ export interface ReaderSettings {
 export const SETTINGS_KEY = 'comic-shelf:reader-settings:v1'
 /** 作品级独立阅读偏好持久化 key */
 export const OVERRIDES_KEY = 'comic-shelf:reader-overrides:v1'
+/** 单本作品偏好最大持久化缓存条目（防止 localStorage 无界膨胀） */
+export const MAX_OVERRIDES = 100
 export const AUTO_TURN_INTERVALS = [5, 10, 15, 30] as const
 export const DEFAULT_SETTINGS: Readonly<ReaderSettings> = {
   mode: 'vertical-continuous',
@@ -66,15 +68,10 @@ export const AUTO_TURN_OPTIONS: Array<{ value: number; label: string }> = AUTO_T
  * 归一化设置值：只信任合法枚举，非法/缺失取值回落默认。
  * 空值兼容：旧版本存储里可能没有某些字段（如 autoTurn / autoTurnInterval）。
  */
-function clampSettings(value: Partial<ReaderSettings>, wideViewport: boolean): ReaderSettings {
-  const pagesPerView = value.pagesPerView
-  const allowedPages = wideViewport ? ([1, 2, 4] as const) : ([1, 2] as const)
-  const normalizedPages: 1 | 2 | 4 =
-    pagesPerView === 1 || pagesPerView === 2 || pagesPerView === 4
-      ? allowedPages.some((entry) => entry === pagesPerView)
-        ? pagesPerView
-        : 1
-      : DEFAULT_SETTINGS.pagesPerView
+export function clampSettings(
+  value: Partial<ReaderSettings>,
+  wideViewport: boolean,
+): ReaderSettings {
   const rawInterval = value.autoTurnInterval
   const autoTurnInterval =
     typeof rawInterval === 'number' &&
@@ -84,22 +81,44 @@ function clampSettings(value: Partial<ReaderSettings>, wideViewport: boolean): R
       ? Math.round(rawInterval)
       : DEFAULT_SETTINGS.autoTurnInterval
 
+  const finalMode =
+    value.mode === 'vertical-continuous' ||
+    value.mode === 'vertical-paged' ||
+    value.mode === 'horizontal'
+      ? value.mode
+      : DEFAULT_SETTINGS.mode
+
+  const isSeamless = value.seamless === true
+  const isContinuousSeamless = finalMode === 'vertical-continuous' && isSeamless
+
+  const pagesPerView = value.pagesPerView
+  const allowedPages = wideViewport ? ([1, 2, 4] as const) : ([1, 2] as const)
+  const normalizedPages: 1 | 2 | 4 =
+    pagesPerView === 1 || pagesPerView === 2 || pagesPerView === 4
+      ? allowedPages.some((entry) => entry === pagesPerView)
+        ? pagesPerView
+        : 1
+      : DEFAULT_SETTINGS.pagesPerView
+
+  const finalFit = isContinuousSeamless
+    ? 'width'
+    : value.fit === 'width' || value.fit === 'height'
+      ? value.fit
+      : DEFAULT_SETTINGS.fit
+
+  const finalPages = isContinuousSeamless ? 1 : normalizedPages
+
   return {
-    mode:
-      value.mode === 'vertical-continuous' ||
-      value.mode === 'vertical-paged' ||
-      value.mode === 'horizontal'
-        ? value.mode
-        : DEFAULT_SETTINGS.mode,
-    fit: value.fit === 'width' || value.fit === 'height' ? value.fit : DEFAULT_SETTINGS.fit,
-    pagesPerView: normalizedPages,
+    mode: finalMode,
+    fit: finalFit,
+    pagesPerView: finalPages,
     direction:
       value.direction === 'ltr' || value.direction === 'rtl'
         ? value.direction
         : DEFAULT_SETTINGS.direction,
     autoTurn: value.autoTurn === true,
     autoTurnInterval,
-    seamless: value.seamless === true,
+    seamless: isSeamless,
   }
 }
 
@@ -114,10 +133,32 @@ function clampSettings(value: Partial<ReaderSettings>, wideViewport: boolean): R
  */
 export const useReaderSettings = createGlobalState(() => {
   // 直接以 v1 key 绑定本地存储；parse 失败时 useLocalStorage 会自动回落到 default
-  const stored = useLocalStorage<Partial<ReaderSettings>>(SETTINGS_KEY, {})
-  const overrides = useLocalStorage<Record<string, Partial<ReaderSettings>>>(OVERRIDES_KEY, {})
+  const stored = useLocalStorage<Partial<ReaderSettings>>(
+    SETTINGS_KEY,
+    {},
+    {
+      flush: 'sync',
+      listenToStorageChanges: false,
+      onError: (e) => {
+        console.error('USE_STORAGE_SETTINGS_ERROR:', e)
+      },
+    },
+  )
+  const overrides = useLocalStorage<Record<string, Partial<ReaderSettings>>>(
+    OVERRIDES_KEY,
+    {},
+    {
+      flush: 'sync',
+      listenToStorageChanges: false,
+      onError: (e) => {
+        console.error('USE_STORAGE_OVERRIDES_ERROR:', e)
+      },
+    },
+  )
   const activeComicKey = ref<string | null>(null)
   const isWideViewport = useMediaQuery(WIDE_VIEWPORT_QUERY)
+
+  let isApplyingPreferences = false
 
   const settings = reactive<ReaderSettings>(clampSettings(stored.value, isWideViewport.value))
 
@@ -138,26 +179,41 @@ export const useReaderSettings = createGlobalState(() => {
     { immediate: true, flush: 'sync' },
   )
 
-  // 深度写回：任何子字段变化都同步到 localStorage 与当前作品专属覆盖
+  /** 维护作品偏好的 FIFO / LRU 字典写入，防止 localStorage 无界膨胀 */
+  function setOverride(key: string, patch: Partial<ReaderSettings>) {
+    const current = { ...overrides.value }
+    delete current[key]
+    current[key] = { ...overrides.value[key], ...patch }
+    const keys = Object.keys(current)
+    if (keys.length > MAX_OVERRIDES) {
+      for (let i = 0; i < keys.length - MAX_OVERRIDES; i++) {
+        const evictKey = keys[i]
+        if (evictKey) {
+          delete current[evictKey]
+        }
+      }
+    }
+    overrides.value = current
+  }
+
+  // 深度写回：严格区分全局偏好与单本覆盖，杜绝状态交叉污染
   watch(
     settings,
     (value) => {
-      stored.value = { ...DEFAULT_SETTINGS, ...value }
+      if (isApplyingPreferences) return
       if (activeComicKey.value) {
-        overrides.value = {
-          ...overrides.value,
-          [activeComicKey.value]: {
-            ...overrides.value[activeComicKey.value],
-            mode: value.mode,
-            fit: value.fit,
-            pagesPerView: value.pagesPerView,
-            direction: value.direction,
-            seamless: value.seamless,
-          },
-        }
+        setOverride(activeComicKey.value, {
+          mode: value.mode,
+          fit: value.fit,
+          pagesPerView: value.pagesPerView,
+          direction: value.direction,
+          seamless: value.seamless,
+        })
+      } else {
+        stored.value = { ...DEFAULT_SETTINGS, ...value }
       }
     },
-    { deep: true },
+    { deep: true, flush: 'sync' },
   )
 
   const pagesPerViewOptions = computed((): Array<1 | 2 | 4> =>
@@ -171,35 +227,52 @@ export const useReaderSettings = createGlobalState(() => {
     if (!source || !sourceId) return
     const key = `${source}:${sourceId}`
     activeComicKey.value = key
+
+    isApplyingPreferences = true
+    const baseline = clampSettings(stored.value, isWideViewport.value)
     const custom = overrides.value[key]
+
     if (custom) {
-      Object.assign(settings, custom)
+      Object.assign(settings, clampSettings({ ...baseline, ...custom }, isWideViewport.value))
     } else {
-      const isStrip = tags?.some((tag) => /条漫|條漫|韩漫|韓漫|webtoon/i.test(tag)) ?? false
+      const isStrip =
+        Array.isArray(tags) &&
+        tags.some((tag) => typeof tag === 'string' && /条漫|條漫|韩漫|韓漫|webtoon/i.test(tag))
       if (isStrip) {
-        settings.seamless = true
-        overrides.value = {
-          ...overrides.value,
-          [key]: { seamless: true },
-        }
+        Object.assign(
+          settings,
+          clampSettings({ ...baseline, seamless: true }, isWideViewport.value),
+        )
+        setOverride(key, { seamless: true })
       } else {
-        settings.seamless = stored.value.seamless === true
+        Object.assign(settings, baseline)
       }
     }
+    isApplyingPreferences = false
   }
 
   function clearActiveComic() {
     activeComicKey.value = null
+    isApplyingPreferences = true
+    Object.assign(settings, clampSettings(stored.value, isWideViewport.value))
+    isApplyingPreferences = false
   }
 
   function reset() {
-    Object.assign(settings, DEFAULT_SETTINGS)
-    stored.value = { ...DEFAULT_SETTINGS }
-    if (activeComicKey.value && overrides.value[activeComicKey.value]) {
-      const next = { ...overrides.value }
-      delete next[activeComicKey.value]
-      overrides.value = next
+    isApplyingPreferences = true
+    if (activeComicKey.value) {
+      if (overrides.value[activeComicKey.value]) {
+        const next = { ...overrides.value }
+        delete next[activeComicKey.value]
+        overrides.value = next
+      }
+      Object.assign(settings, clampSettings(stored.value, isWideViewport.value))
+    } else {
+      overrides.value = {}
+      Object.assign(settings, DEFAULT_SETTINGS)
+      stored.value = { ...DEFAULT_SETTINGS }
     }
+    isApplyingPreferences = false
   }
 
   return {

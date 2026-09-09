@@ -190,6 +190,10 @@ watch(currentPage, (page) => {
   preloadAround(page)
 })
 
+watch([source, sourceId], () => {
+  clearActiveComic()
+})
+
 watch(
   () => detail.value,
   (d) => {

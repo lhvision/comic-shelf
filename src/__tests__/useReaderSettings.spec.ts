@@ -1,9 +1,20 @@
 import { describe, it, expect, beforeEach } from 'vite-plus/test'
-import { useReaderSettings, DEFAULT_SETTINGS, SETTINGS_KEY } from '@/composables/useReaderSettings'
+import {
+  useReaderSettings,
+  DEFAULT_SETTINGS,
+  SETTINGS_KEY,
+  OVERRIDES_KEY,
+  MAX_OVERRIDES,
+  clampSettings,
+} from '@/composables/useReaderSettings'
 
 describe('useReaderSettings composable', () => {
   beforeEach(() => {
     localStorage.removeItem(SETTINGS_KEY)
+    localStorage.removeItem(OVERRIDES_KEY)
+    const { clearActiveComic, reset } = useReaderSettings()
+    clearActiveComic()
+    reset()
   })
 
   it('initializes with default settings', () => {
@@ -97,5 +108,109 @@ describe('useReaderSettings composable', () => {
     applyComicPreferences('jm', '518074', [])
     expect(settings.seamless).toBe(true)
     clearActiveComic()
+
+    // 严密回归：退出条漫后再打开普通日漫，绝不应受到条漫 seamless=true 污染
+    applyComicPreferences('jm', '10002', ['同人志'])
+    expect(settings.seamless).toBe(false)
+    expect(settings.fit).toBe(DEFAULT_SETTINGS.fit)
+    expect(settings.pagesPerView).toBe(DEFAULT_SETTINGS.pagesPerView)
+    clearActiveComic()
+  })
+
+  it('strictly isolates custom overrides between different comics', () => {
+    const { settings, reset, applyComicPreferences, clearActiveComic } = useReaderSettings()
+    reset()
+
+    // 全局默认基线
+    expect(settings.direction).toBe('ltr')
+
+    // 漫画 A 设置为从右向左（日漫）
+    applyComicPreferences('jm', 'comicA', [])
+    settings.direction = 'rtl'
+    expect(settings.direction).toBe('rtl')
+    clearActiveComic()
+
+    // 退出后回到全局基线
+    expect(settings.direction).toBe('ltr')
+
+    // 漫画 B 没有自定义过，保持全局基线 ltr
+    applyComicPreferences('jm', 'comicB', [])
+    expect(settings.direction).toBe('ltr')
+    clearActiveComic()
+
+    // 重新进入漫画 A，记忆其独立的 rtl
+    applyComicPreferences('jm', 'comicA', [])
+    expect(settings.direction).toBe('rtl')
+    clearActiveComic()
+  })
+
+  it('resets only current comic overrides without clearing global settings', () => {
+    const { settings, reset, applyComicPreferences, clearActiveComic } = useReaderSettings()
+    reset()
+
+    // 设置全局偏好为 autoTurn = true
+    settings.autoTurn = true
+
+    // 进入漫画 A 并设置其专属 direction
+    applyComicPreferences('jm', 'comicA', [])
+    settings.direction = 'rtl'
+    expect(settings.direction).toBe('rtl')
+
+    // 在漫画内点击重置，仅清除漫画 A 的专属偏好
+    reset()
+    expect(settings.direction).toBe('ltr')
+    // 全局 autoTurn 设置得以保留
+    expect(settings.autoTurn).toBe(true)
+    clearActiveComic()
+
+    // 全局依然保留 autoTurn = true
+    expect(settings.autoTurn).toBe(true)
+  })
+
+  it('enforces MAX_OVERRIDES capacity capping and evicts oldest entries', () => {
+    const { applyComicPreferences, clearActiveComic } = useReaderSettings()
+
+    // 连续写入超过 MAX_OVERRIDES 本漫画偏好
+    for (let i = 0; i < MAX_OVERRIDES + 10; i++) {
+      applyComicPreferences('jm', `comic_${i}`, ['条漫'])
+      clearActiveComic()
+    }
+
+    const storedOverrides = JSON.parse(localStorage.getItem(OVERRIDES_KEY) || '{}')
+    const keys = Object.keys(storedOverrides)
+    expect(keys.length).toBeLessThanOrEqual(MAX_OVERRIDES)
+    // 最早的 key 应当已被驱逐
+    expect(storedOverrides['jm:comic_0']).toBeUndefined()
+    // 最新的 key 应当存在
+    expect(storedOverrides[`jm:comic_${MAX_OVERRIDES + 9}`]).toBeDefined()
+  })
+
+  it('sanitizes and clamps dirty or corrupted settings against schema invariants', () => {
+    // 模拟从外部注入或早期受损的异常脏数据
+    const malformed = {
+      mode: 'unsupported_mode' as unknown as 'vertical-continuous',
+      pagesPerView: 999 as unknown as 1,
+      fit: 'malformed_fit' as unknown as 'width',
+      autoTurnInterval: -50,
+      seamless: true,
+    }
+
+    const sanitized = clampSettings(malformed, false)
+
+    // 非法模式回退到默认
+    expect(sanitized.mode).toBe(DEFAULT_SETTINGS.mode)
+    // seamless 强制锁定 fit='width', ppv=1
+    expect(sanitized.fit).toBe('width')
+    expect(sanitized.pagesPerView).toBe(1)
+    // 异常翻页间隔自动收敛到默认值
+    expect(sanitized.autoTurnInterval).toBe(DEFAULT_SETTINGS.autoTurnInterval)
+
+    // 在窄屏视口下，即使传入 4 连页也会被收敛为 1 页
+    const clampedNarrow = clampSettings({ pagesPerView: 4 }, false)
+    expect(clampedNarrow.pagesPerView).toBe(1)
+
+    // 在宽屏视口下，4 连页允许保留
+    const clampedWide = clampSettings({ pagesPerView: 4 }, true)
+    expect(clampedWide.pagesPerView).toBe(4)
   })
 })

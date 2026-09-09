@@ -701,6 +701,9 @@ overflow: hidden;
 - **旧方案隐患**：`grid-template-rows: 0fr ⇄ 1fr` 会迫使 Chromium/Blink 与 Gecko 内核在过渡动画的每一帧（260ms 持续时间）全量重新计算 Grid 轨道尺寸，推挤下游兄弟容器（如 `ComicGrid`）产生帧级连续重排（Reflow）；一旦下游子节点含有复杂的渲染树（如快照层或滤镜），会导致低端 GPU / CPU 软解设备发生严重掉帧（5~15 FPS）。
 - **现代升级**：现代 Chromium (129+) 原生支持 `interpolate-size: allow-keywords`，在标准流式块级容器上直接驱动 `height: 0 ⇄ auto` 并在内部配合 `overflow: clip` 限制绘制边界，消除了 Grid 轨道的重算开销。
 - **应用演进**：除标签抽屉外，该范式同样落地于漫画详情叙述展开（`MetadataPanel.vue` 的 `3lh ⇄ auto` 水墨渐隐插值）、折叠控制条（`.shelf-sentinel`、`.chapter-load-more-section`）与折叠画卷的渐进出现，彻底避免传统手写 JS 高度测量带来的重排抖动。
+- **展开动效分层降级哲学（Degradation Tiering）**：
+  1. **结构型流式容器（如 `TagFilterBar`）**：在不支持 `interpolate-size` 的旧环境，通过 `@supports not (interpolate-size: allow-keywords)` 降级为 CSS Grid `0fr ⇄ 1fr` 复合轨道过渡，确保托盘平滑舒展；
+  2. **内容型修饰展开（如 `MetadataPanel`）**：采用轻量级纯 CSS 渐进增强策略，在现代浏览器中丝滑插值；在不支持的环境下自然降级为即时硬切展开（Zero JS Overhead & Zero Reflow），杜绝在细粒度文本上引入 Grid 复合轨道带来的二次重排成本。
 
 ---
 

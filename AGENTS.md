@@ -70,7 +70,7 @@ release. Add a tool name to select part of the graph. For example, run
 6. **视觉与样式约束**：不用 SCSS；颜色/间距/动效走 `src/styles/tokens.css`；禁止紫色渐变、玻璃拟态堆叠、第三方轮播。
 7. **精准单测红线**：严禁在日常开发中无差别全量执行 `vp test`；必须只定位改动相关的单测文件（`vp test src/__tests__/<Target>.spec.ts`），防止全量阻塞卡死。
 8. **View Transitions 边界与安全**：全屏路由过渡仅在跨页面跳转（书架 ⇄ 详情 ⇄ 章节 ⇄ 阅读器）触发，**严禁在阅读器内部翻页/切话触发**（防 AbortError 抢占崩溃）；所有 `startViewTransition` 必须对 `ready`/`finished`/`updateCallbackDone` 绑定 catch；弹窗与微交互走 Vue 原生 `<Transition>`，禁止对弹窗根容器滥用快照导致遮罩畸变与文字亚像素模糊。
-9. **VueUse 优先与零胶水代码（VueUse-First & Zero DOM Glue）**：新增组件、交互重构或状态逻辑开发时，必须读取 `vueuse-functions` skill，优先使用 VueUse 标准 composables（如 `useFileDialog`、`useDropZone`、`useScroll`、`useToggle`、`createGlobalState`、`useIntersectionObserver` 等）代替手写隐藏 input、原生事件监听及样板代码，杜绝重复造轮子。
+9. **VueUse 优先与零胶水代码（VueUse-First & Zero DOM Glue）**：新增组件、交互重构或状态逻辑开发时，优先使用 VueUse 标准 composables（如 `useFileDialog`、`useDropZone`、`useScroll`、`useToggle`、`createGlobalState`、`useIntersectionObserver` 等）代替手写隐藏 input、原生事件监听及样板代码，杜绝重复造轮子。**查阅与调研红线**：凡涉及或拟引入 VueUse 函数时，**必须首先读取 `vueuse-functions` skill**，按其速查表与最佳实践查阅标准用法与选项契约，**严禁在终端反复运行 Node 脚本探测试探函数用法与 API 选型**。
 10. **E2E 严禁泛滥触发红线**：不涉及跨页面核心交互流程的纯样式微调、TS 类型修补、单元函数改动，绝对禁止自行启动 E2E 浏览器测试；以精准单测（`vp test <Target>.spec.ts`）与静态类型检查（`vp check`）为准。
 11. **错题本与防退化门禁**：重构或重大修改前必须核对 `docs/PITFALLS.md` 避开历史暗礁；涉及 Python 后端改动时必须运行 `pnpm test:py`，确保 0 语法/导入/未定义符号错误且中间件全链路测试通过。
 12. **零伪图标字符与矢量图标单源收敛（Unified Iconography）**：**严禁**在模板中书写 Unicode 伪图标字符（如 `'✕'`、`'✓'`、`'×'`、`'⋯'`、`'←'`、`'→'`）或手写散落内联 `<svg>`；全站图标统一使用 `src/components/icons/`（静态确定场景直接 `import { IconXxx }`，动态多态场景使用 `<AppIcon :name="..." />`）；新增图标必须基于 `BaseIcon.vue` 扩展原子组件，严禁在单个组件内堆砌巨型 `v-if/v-else-if`。

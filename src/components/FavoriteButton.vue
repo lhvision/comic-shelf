@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import { api } from '@/api/client'
+import { useToast } from '@/composables/useToast'
 import AppIcon from '@/components/AppIcon.vue'
 
 const props = withDefaults(
@@ -18,14 +19,18 @@ const emit = defineEmits<{
 }>()
 
 const busy = ref(false)
+const { toast } = useToast()
 
 async function toggle() {
   if (!props.interactive || busy.value) return
   busy.value = true
   const next = !props.favorite
+  emit('toggled', next)
   try {
-    emit('toggled', next)
     await api.setFavorite(props.source, props.sourceId, next)
+  } catch (error) {
+    emit('toggled', !next)
+    toast(error instanceof Error ? error.message : '更新收藏状态失败，请稍后重试', 'error')
   } finally {
     busy.value = false
   }
