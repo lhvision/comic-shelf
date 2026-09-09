@@ -78,7 +78,7 @@
 | **`srcset` / `sizes` (`w` 描述符)**         |      38+<br>_(34+ srcset)_      |               38+                |         9.1+<br>_(8+ srcset)_         |                   ✅ Baseline 2016                   |           📋 路线图（响应式阶梯封面分阶调度管线）            |
 | **`sizes="auto"` (懒加载原生联动)**         |              126+               |               150+               |                  ⏳                   |               🔶 Newly Available 2026                |         📋 路线图（配合 `loading="lazy"` 自动槽位）          |
 | **局部 Element-Scoped VT**                  |              147+               |                ⏳                |                  ⏳                   |                      🧪 Stage 2                      |     ✅ 渐进增强（`useViewTransition.ts` 元素级门面封装）     |
-| `interpolate-size: allow-keywords`          |              129+               |                ⏳                |                  ⏳                   |               🔶 Limited Availability                |         ✅ 已落地（TagFilterBar / ImportPanel 展开）         |
+| `interpolate-size: allow-keywords`          |              129+               |                ⏳                |                  ⏳                   |               🔶 Limited Availability                | ✅ 已落地（TagFilterBar / MetadataPanel / ImportPanel 展开） |
 | `::details-content`                         |              131+               |               143+               |                 18.4+                 |               🔶 Limited Availability                |          ✅ 渐进增强（main.css 全局 details 动画）           |
 | `scroll-timeline` / `view-timeline`         |              115+               |              111+🚩              |                18.0+⏳                |               🔶 Limited Availability                |             ✅ 已落地（ReaderView 读物双轨渲染）             |
 | `@container scroll-state(...)`              |              133+               |                ❌                |                  ❌                   |                   🧪 Experimental                    |           ⚠️ LightningCSS 解析限制，降级为 VueUse            |
@@ -700,7 +700,7 @@ overflow: hidden;
 
 - **旧方案隐患**：`grid-template-rows: 0fr ⇄ 1fr` 会迫使 Chromium/Blink 与 Gecko 内核在过渡动画的每一帧（260ms 持续时间）全量重新计算 Grid 轨道尺寸，推挤下游兄弟容器（如 `ComicGrid`）产生帧级连续重排（Reflow）；一旦下游子节点含有复杂的渲染树（如快照层或滤镜），会导致低端 GPU / CPU 软解设备发生严重掉帧（5~15 FPS）。
 - **现代升级**：现代 Chromium (129+) 原生支持 `interpolate-size: allow-keywords`，在标准流式块级容器上直接驱动 `height: 0 ⇄ auto` 并在内部配合 `overflow: clip` 限制绘制边界，消除了 Grid 轨道的重算开销。
-- **应用演进**：除标签抽屉外，该范式同样适用于折叠控制条（`.shelf-sentinel`、`.chapter-load-more-section`）与折叠画卷的渐进出现，避免传统手写 JS 高度测量带来的重排抖动。
+- **应用演进**：除标签抽屉外，该范式同样落地于漫画详情叙述展开（`MetadataPanel.vue` 的 `3lh ⇄ auto` 水墨渐隐插值）、折叠控制条（`.shelf-sentinel`、`.chapter-load-more-section`）与折叠画卷的渐进出现，彻底避免传统手写 JS 高度测量带来的重排抖动。
 
 ---
 

@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, watch } from 'vue'
 import { useToggle } from '@vueuse/core'
 import type { ComicMeta } from '@/types'
+import AppIcon from '@/components/AppIcon.vue'
 import AppTextClamp from '@/components/AppTextClamp.vue'
 import AppChip from '@/components/AppChip.vue'
 
@@ -12,8 +13,16 @@ const props = defineProps<{
 const [descExpanded, toggleDesc] = useToggle(false)
 const hasLongDescription = computed(() => {
   const desc = props.meta.description || ''
-  return desc.length > 90 || desc.includes('\n')
+  return desc.split('\n').length > 3 || desc.length > 90
 })
+
+// 跨作品路由复用时自动复位叙述折叠状态
+watch(
+  () => props.meta.display_id,
+  () => {
+    descExpanded.value = false
+  },
+)
 
 const SOURCE_ID_LABELS: Record<string, string> = {
   jm: '禁漫车号',
@@ -97,14 +106,31 @@ const fieldRows = computed(() => {
           v-if="hasLongDescription"
           type="button"
           class="desc-toggle-btn"
+          :aria-expanded="descExpanded"
+          aria-controls="meta-description"
           @click="toggleDesc()"
         >
-          {{ descExpanded ? '收起 ▴' : '展开全文 ▾' }}
+          <span>{{ descExpanded ? '收起' : '展开全文' }}</span>
+          <AppIcon
+            name="chevron-down"
+            size="xs"
+            class="desc-chevron"
+            :class="{ 'is-rotated': descExpanded }"
+          />
         </button>
       </div>
-      <p class="description" :class="{ 'line-clamp-3': !descExpanded && hasLongDescription }">
-        {{ meta.description || '原页面没有填写叙述。' }}
-      </p>
+      <div class="description">
+        <p
+          id="meta-description"
+          class="description-content"
+          :class="{
+            'is-clamped': !descExpanded && hasLongDescription,
+            'is-expanded': descExpanded && hasLongDescription,
+          }"
+        >
+          {{ meta.description || '原页面没有填写叙述。' }}
+        </p>
+      </div>
     </div>
 
     <p v-if="meta.source_url" class="source-link">
@@ -239,6 +265,9 @@ const fieldRows = computed(() => {
 }
 
 .desc-toggle-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
   background: none;
   border: none;
   padding: var(--space-0-5) var(--space-1);
@@ -262,6 +291,14 @@ const fieldRows = computed(() => {
   outline-offset: 1px;
 }
 
+.desc-chevron {
+  transition: transform var(--duration-2) var(--ease-spring);
+}
+
+.desc-chevron.is-rotated {
+  transform: rotate(180deg);
+}
+
 .description,
 :deep(.description) {
   padding: var(--space-3) var(--space-4);
@@ -270,7 +307,29 @@ const fieldRows = computed(() => {
   background: color-mix(in oklab, var(--paper-1) 50%, transparent);
   color: var(--ink-1);
   font-size: var(--text-sm);
+  line-height: var(--leading-body);
+}
+
+.description-content {
+  margin: 0;
+  line-height: var(--leading-body);
   white-space: pre-line;
+  overflow: clip;
+  interpolate-size: allow-keywords;
+  transition: height var(--duration-2) var(--ease-out);
+}
+
+.description-content.is-clamped {
+  height: calc(3 * var(--leading-body, 1.75) * 1em);
+  height: 3lh;
+  -webkit-mask-image: linear-gradient(to bottom, black calc(100% - 1.2lh), transparent 100%);
+  mask-image: linear-gradient(to bottom, black calc(100% - 1.2lh), transparent 100%);
+}
+
+.description-content.is-expanded {
+  height: auto;
+  -webkit-mask-image: none;
+  mask-image: none;
 }
 
 .muted {
