@@ -50,16 +50,12 @@ const liveRunning = computed(() => Boolean(props.cache?.running))
 const isTargetCover = computed(() => isCoverActive(props.comic.source, props.comic.source_id))
 const isCompleted = computed(() => isCompletedComic(props.comic))
 const isInProgress = computed(() => !isCompleted.value && (props.comic.last_page ?? 0) > 0)
-const cardTransitionName = computed(
-  () => `card-${props.comic.source}-${props.comic.source_id.replace(/[^a-zA-Z0-9_-]/g, '_')}`,
-)
 </script>
 
 <template>
   <article
     class="comic-card"
     :data-completed="isCompleted"
-    :style="{ viewTransitionName: cardTransitionName }"
     @pointerenter.once="prefetch"
     @focusin.once="prefetch"
     @touchstart.passive.once="prefetch"
@@ -303,15 +299,15 @@ const cardTransitionName = computed(
   right: var(--space-2);
   bottom: var(--space-2);
   padding: var(--space-0-5) var(--space-2);
-  background: color-mix(in oklab, var(--ink-0) 82%, transparent);
+  background: color-mix(in oklab, var(--ink-0) 88%, transparent);
   color: var(--paper-0);
-  border: 1px solid color-mix(in oklab, var(--paper-0) 22%, transparent);
+  border: 1px solid color-mix(in oklab, var(--paper-0) 24%, transparent);
   border-radius: var(--radius-1);
   font-family: var(--font-mono);
   font-size: var(--text-caption);
   font-size-adjust: ch-width 0.48;
   letter-spacing: 0.08em;
-  backdrop-filter: blur(4px);
+  box-shadow: 0 1px 3px rgb(0 0 0 / 28%);
 }
 
 .match-stamp {
@@ -333,7 +329,6 @@ const cardTransitionName = computed(
   font-weight: 600;
   text-decoration: none;
   box-shadow: var(--shadow-1);
-  backdrop-filter: blur(4px);
   z-index: 2;
   transition: opacity var(--duration-1) var(--ease-out);
 }
@@ -398,7 +393,6 @@ const cardTransitionName = computed(
   font-size-adjust: ch-width 0.48;
   letter-spacing: 0.04em;
   font-weight: 500;
-  backdrop-filter: blur(4px);
   z-index: 2;
   box-shadow: var(--shadow-1);
 }

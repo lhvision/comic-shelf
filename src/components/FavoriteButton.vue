@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import { api } from '@/api/client'
-import { useViewTransition } from '@/composables/useViewTransition'
 import AppIcon from '@/components/AppIcon.vue'
 
 const props = withDefaults(
@@ -18,22 +17,15 @@ const emit = defineEmits<{
   toggled: [favorite: boolean]
 }>()
 
-const btnRef = ref<HTMLButtonElement | null>(null)
 const busy = ref(false)
-const { withViewTransition } = useViewTransition()
 
 async function toggle() {
   if (!props.interactive || busy.value) return
   busy.value = true
   const next = !props.favorite
   try {
-    await withViewTransition(
-      async () => {
-        emit('toggled', next)
-        await api.setFavorite(props.source, props.sourceId, next)
-      },
-      { element: btnRef.value },
-    )
+    emit('toggled', next)
+    await api.setFavorite(props.source, props.sourceId, next)
   } finally {
     busy.value = false
   }
@@ -43,7 +35,6 @@ async function toggle() {
 <template>
   <button
     v-if="interactive"
-    ref="btnRef"
     class="favorite-button"
     type="button"
     :aria-pressed="favorite"
@@ -71,14 +62,13 @@ async function toggle() {
   place-items: center;
   border-radius: 50%;
   color: #fff;
-  backdrop-filter: blur(8px);
 }
 
 .favorite-button {
   width: 2.25rem;
   height: 2.25rem;
-  border: 1px solid rgb(255 255 255 / 22%);
-  background: rgb(8 8 8 / 46%);
+  border: 1px solid rgb(255 255 255 / 26%);
+  background: color-mix(in oklab, var(--ink-0) 78%, transparent);
   box-shadow: 0 2px 8px rgb(0 0 0 / 35%);
   transition:
     transform var(--duration-1) var(--ease-out),

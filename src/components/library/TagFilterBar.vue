@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, watch } from 'vue'
 import AppIcon from '@/components/AppIcon.vue'
 import AppChip from '@/components/AppChip.vue'
 
@@ -207,15 +207,34 @@ function clearFilter() {
   transform: rotate(180deg);
 }
 
-/* 溢出标签托盘：CSS Grid 轨道尺寸插值 */
+/* 溢出标签托盘：基于现代 interpolate-size: allow-keywords 平滑尺寸插值 */
 .more-tags-tray {
-  display: grid;
-  grid-template-rows: 0fr;
-  transition: grid-template-rows var(--duration-2) var(--ease-out);
+  interpolate-size: allow-keywords;
+  height: 0;
+  overflow: clip;
+  transition: height var(--duration-2) var(--ease-out);
 }
 
 .more-tags-tray.is-expanded {
-  grid-template-rows: 1fr;
+  height: auto;
+}
+
+@supports not (interpolate-size: allow-keywords) {
+  .more-tags-tray {
+    display: grid;
+    grid-template-rows: 0fr;
+    transition: grid-template-rows var(--duration-2) var(--ease-out);
+    height: auto;
+  }
+
+  .more-tags-tray.is-expanded {
+    grid-template-rows: 1fr;
+  }
+
+  .more-tags-inner {
+    min-height: 0;
+    overflow: clip;
+  }
 }
 
 .more-tags-inner {
@@ -239,6 +258,21 @@ function clearFilter() {
 .more-tags-tray.is-expanded .overflow-cluster {
   opacity: 1;
   transform: translateY(0);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .more-tags-tray {
+    transition: none !important;
+  }
+
+  .overflow-cluster {
+    transition: none !important;
+    transform: none !important;
+  }
+
+  .more-chevron {
+    transition: none !important;
+  }
 }
 
 .filter-note {

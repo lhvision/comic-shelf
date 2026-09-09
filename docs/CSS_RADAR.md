@@ -394,10 +394,13 @@ background: color-mix(in oklab, var(--paper-1) 50%, transparent);
 1. **共享封面形态插值（Shared Element Morph）**：书架卡片 `view-transition-name: comic-cover-active` 在跳转详情页 Hero 封面时，浏览器自动计算尺寸与坐标插值（神奇移动）；
 2. **批量类名过渡（`view-transition-class`）**：针对网格多卡片批量形变，声明 `view-transition-class: book-card-transition`，使用 `::view-transition-group(.book-card-transition)` 统一定义伪元素动画，避免对每张卡片手写重复规则；
 3. **类型状态机（`types`）**：调用 `document.startViewTransition({ update, types: ['forward'] })`，通过 CSS `:active-view-transition-type(forward)` 区分前后推进动画；
-4. **安全边界红线（Invariant Rule 8）**：
-   - 必须捕获 Promise 异常（`transition?.ready?.catch(() => {})`、`finished?.catch(() => {})`），防止快速切页触发 `AbortError` 崩溃；
-   - **严格禁止在阅读器内部翻页/切话触发全局快照**（防止打断 GPU 滚动与文字亚像素模糊）；
-   - 弹窗与微交互使用 Vue `<Transition>`，杜绝全屏快照。
+4. **安全边界与架构红线（Invariant Rule 8 & 动效分工）**：
+   - **Promise 异常捕获**：必须捕获 Promise 异常（`ready`、`finished`、`updateCallbackDone`），防止快速切页触发 `AbortError` 导致未捕获异常抛出；
+   - **严格禁止在阅读器内部翻页/切话触发全局快照**：防止打断 GPU 虚拟滚动与文字亚像素模糊；
+   - **页内筛选与卡片动效解耦（FLIP 单一真理源）**：严格禁止在页内数据筛选（如标签切换、只看喜欢、排序调整）中调用 `document.startViewTransition`。若页面内无显式跨元素形态映射，全屏快照会导致 `::view-transition-group(root)` 截取整个视口发生突兀的白色闪屏；卡片列表的重排位移全权交由 Vue `<TransitionGroup name="shelf-card">` 的 FLIP 机制处理（在 Compositor 合成器线程执行 `transform: translate`，满帧 120 FPS 且 0 闪屏）；
+   - **长列表零闲置快照图层（Zero Idle Snapshot Layer）**：严格禁止在长列表/书架网格的常驻卡片上声明静态 `view-transition-name`。Blink 对每个命名元素分配独立的快照纹理和合成图层，在上游发生重排（如标签抽屉展开）时会导致栅格化与重绘开销呈指数级激增；卡片封面过渡仅在用户实际点击卡片跳转详情页时由 `useCoverTransition` 瞬时挂载 `comic-cover-active`；
+   - **严禁包裹异步网络请求**：严禁在 `withViewTransition` 回调内部发起或等待外部网络请求（如 API 变更、导入任务等），避免快照保持期间页面冻结、UI 假死及状态竞态覆盖；
+   - **弹窗与微交互规范**：弹窗使用原生 `<dialog>` 或 Vue 原生 `<Transition>`，微交互使用 CSS scale / keyframe，杜绝滥用全局快照。
 
 ---
 
@@ -658,27 +661,46 @@ overflow: hidden;
 
 **作用**：允许浏览器在 `height: 0` 与 `height: auto` 之间进行纯数值插值，彻底消除 JS 测量 `scrollHeight` 的重排开销与异步闪烁。
 
-**范式：标签流式溢出抽屉（`TagFilterBar.vue`）**：
+**范式：标签流式溢出抽屉（`TagFilterBar.vue` 双轨渐进增强）**：
 
 ```css
+/* 现代插值优先：interpolate-size: allow-keywords + 基础盒模型 height 尺寸过渡 */
 .more-tags-tray {
-  display: grid;
-  grid-template-rows: 0fr;
-  transition: grid-template-rows var(--duration-2) var(--ease-out);
+  interpolate-size: allow-keywords;
+  height: 0;
+  overflow: clip;
+  transition: height var(--duration-2) var(--ease-out);
 }
 
 .more-tags-tray.is-expanded {
-  grid-template-rows: 1fr;
+  height: auto;
 }
 
-.more-tags-inner {
-  min-height: 0;
-  overflow: clip;
+/* 优雅降级：不支持 interpolate-size 的旧版环境降级为 CSS Grid 复合轨道 */
+@supports not (interpolate-size: allow-keywords) {
+  .more-tags-tray {
+    display: grid;
+    grid-template-rows: 0fr;
+    transition: grid-template-rows var(--duration-2) var(--ease-out);
+    height: auto;
+  }
+
+  .more-tags-tray.is-expanded {
+    grid-template-rows: 1fr;
+  }
+
+  .more-tags-inner {
+    min-height: 0;
+    overflow: clip;
+  }
 }
 ```
 
-**应用演进**：
-除标签抽屉外，该范式同样适用于折叠控制条（`.shelf-sentinel`、`.chapter-load-more-section`）与折叠画卷的渐进出现，避免传统手写 JS 高度测量带来的重排抖动。
+**性能权衡与重排爆破半径**：
+
+- **旧方案隐患**：`grid-template-rows: 0fr ⇄ 1fr` 会迫使 Chromium/Blink 与 Gecko 内核在过渡动画的每一帧（260ms 持续时间）全量重新计算 Grid 轨道尺寸，推挤下游兄弟容器（如 `ComicGrid`）产生帧级连续重排（Reflow）；一旦下游子节点含有复杂的渲染树（如快照层或滤镜），会导致低端 GPU / CPU 软解设备发生严重掉帧（5~15 FPS）。
+- **现代升级**：现代 Chromium (129+) 原生支持 `interpolate-size: allow-keywords`，在标准流式块级容器上直接驱动 `height: 0 ⇄ auto` 并在内部配合 `overflow: clip` 限制绘制边界，消除了 Grid 轨道的重算开销。
+- **应用演进**：除标签抽屉外，该范式同样适用于折叠控制条（`.shelf-sentinel`、`.chapter-load-more-section`）与折叠画卷的渐进出现，避免传统手写 JS 高度测量带来的重排抖动。
 
 ---
 
@@ -872,10 +894,11 @@ details[open]::details-content {
 **参考**：[张鑫旭 Element.prototype.startViewTransition 与 DOM 局部更新](https://www.zhangxinxu.com/wordpress/2026/07/sethtml-element-startviewtransition/)  
 **本项目落地状态**：✅ 已在 `src/composables/useViewTransition.ts` 落地统一门面
 
-**核心原理与优势**：
+**核心原理与适用边界**：
 
 - `document.startViewTransition` 捕获整屏快照，在并发多个组件状态变更时容易冲突抢占；
-- `element.startViewTransition(callback)` 仅在指定 DOM 子树容器（`transitionRoot`）建立过渡根，局部内容更新（如装订状态切换、红心点赞、单个卡片展开）极为丝滑且不阻塞外部视图。
+- `element.startViewTransition(callback)` 仅在指定 DOM 子树容器（`transitionRoot`）建立过渡根，使局部容器内部的复杂形态重组（如阅读器浮层形态切换、长文折叠排版变形）在局域内平滑过渡且不阻塞外部视图；
+- **微交互反模式警示**：对于单一按钮图标变化（如红心点赞、复选标记、计数器增减），**严禁滥用局域 View Transitions**！捕获快照纹理会引入额外的图层提升与光栅化开销，导致快速点击时出现卡顿甚至抢占。微交互必须优先使用原生 CSS `transform: scale(...)` 物理微弹或 Vue 原生 `<Transition>`。
 
 **纸间使用门面（`useViewTransition.ts`）**：
 
@@ -884,13 +907,13 @@ import { useViewTransition } from '@/composables/useViewTransition'
 
 const { withViewTransition } = useViewTransition()
 
-// 指定局部 element 作用域
+// 针对具有复杂内部结构变形的局域容器启用
 await withViewTransition(
   async () => {
-    isFavorite.value = !isFavorite.value
+    isExpandedPanel.value = !isExpandedPanel.value
     await nextTick()
   },
-  { element: cardRef.value },
+  { element: panelContainerRef.value },
 )
 ```
 

@@ -606,7 +606,23 @@
   - **放行/改用**：
     1. **任务驱动型按需生命周期**：仅在发起导入、预缓存或检测到后台活跃任务时（`beginTask` / `endTask`）自适应拉起长连接；全部任务归零后经 5 秒平滑防抖冷却自动熔断注销，日常浏览网络面板保持 0 pending 请求；
     2. **淘汰 `useIdle`**：长连接生命周期严格由活跃任务集合、阅读器避让与视口前台状态裁决，彻底杜绝挂机批量下载被误判闲置切断；
-    3. **本地同源多标签零网络同步**：同源多标签页通信使用 `useBroadcastChannel('paper-room')` 0 流量毫秒级直达；切回前台时触发 3 秒节流的 `reconcileState` 静默对齐。
+
+### 67. 标签托盘高度重排冲击波与卡片常驻合成图层踩踏陷阱（Tag Tray Reflow Blast Radius & Resident VT Layer Trap）
+
+- **本质**：
+  1. 在流式布局中，展开抽屉使用 `grid-template-rows: 0fr ⇄ 1fr` 动效导致主线程在动画期间每一帧执行几何重排（Forced Reflow）；
+  2. 位于流式抽屉正下方的书架网格含有数十张漫画卡片，卡片内包含常驻的 `:style="{ viewTransitionName }"` 与多处 `backdrop-filter: blur(...)`（毛玻璃滤镜）；
+  3. 当网格卡片在重排过程中被逐帧推移时，Blink 引擎被迫在每一帧重新计算几十个 View Transition 图层几何并对数十个毛玻璃区域重复执行多道高斯模糊着色器。在开启独立硬件加速的机器上能勉强抗住，而在轻薄本核显、高分屏或关闭了硬件加速（CPU 软解）的客户端上会导致帧率跌至 5~15 FPS 产生严重卡顿。
+- **红线与防误伤**：
+  - **不要**使用 CSS Grid 复合轨道 `grid-template-rows` 作为频繁触发的流式展开过渡；
+  - **不要**为网格所有普通卡片常驻声明静态 `view-transition-name`；
+  - **不要**在大面积位移重排的卡片印章与徽标上滥用高频 `backdrop-filter`；
+  - **不要**在组件局部微交互（如红心收藏、步进器）中滥用 `withViewTransition`，严禁将长耗时异步网络请求包裹在 View Transition 回调内；
+  - **放行/改用**：
+    1. 展开抽屉升级为标准无级尺寸插值（`interpolate-size: allow-keywords` + `height: 0 ⇄ auto`），并用 `@supports not` 降级；
+    2. `viewTransitionName` 改为仅在被点击或激活的卡片上动态绑定（如 `comic-cover-active`）；
+    3. 印章与徽标改用高不透明度半透明纯色背景（如 `color-mix(in oklab, var(--ink-0) 88%, transparent)`）加微投影，兼顾锐利质感与零 GPU 模糊着色器消耗；
+    4. 局部微交互统一交由原生 CSS `transition` 或 Vue `<Transition>` 驱动，View Transition 严格收敛于跨页面大路由推进。
 
 ---
 

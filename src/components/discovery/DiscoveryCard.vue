@@ -241,10 +241,10 @@ const libraryRoute = computed(() => `/comic/${props.item.source}/${props.item.so
   font-size: var(--text-caption);
   font-weight: 700;
   letter-spacing: 0.04em;
-  background: color-mix(in oklab, var(--paper-0) 90%, transparent);
+  background: color-mix(in oklab, var(--paper-0) 92%, transparent);
   color: var(--ink-1);
   border: 1px solid var(--line);
-  backdrop-filter: blur(4px);
+  box-shadow: 0 1px 3px rgb(0 0 0 / 18%);
   display: flex;
   align-items: center;
   gap: 0.1rem;

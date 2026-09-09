@@ -38,9 +38,6 @@ const isInProgress = computed(() => !isCompleted.value && (props.comic.last_page
 const redrawKey = computed(
   () => `${liveRunning.value}-${liveCached.value}/${liveTotal.value}-${isCompleted.value}`,
 )
-const cardTransitionName = computed(
-  () => `card-${props.comic.source}-${props.comic.source_id.replace(/[^a-zA-Z0-9_-]/g, '_')}`,
-)
 
 function prefetch() {
   void import('@/views/ComicDetailView.vue').catch(() => {})
@@ -51,7 +48,6 @@ function prefetch() {
 <template>
   <HtmlCanvasSurface
     class="canvas-card"
-    :style="{ viewTransitionName: cardTransitionName }"
     :enabled="enabled"
     :surface="`library-card:${comic.display_id}`"
     :redraw-key="redrawKey"

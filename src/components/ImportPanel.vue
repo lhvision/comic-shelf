@@ -16,7 +16,6 @@ import { useLibraryStore } from '@/stores/library'
 import { useAppSettings } from '@/stores/settings'
 import { useToast } from '@/composables/useToast'
 import { useSystemEvents } from '@/composables/useSystemEvents'
-import { useViewTransition } from '@/composables/useViewTransition'
 import { api } from '@/api/client'
 import Tooltip from '@/components/Tooltip.vue'
 import AppIcon from '@/components/AppIcon.vue'
@@ -42,7 +41,6 @@ const settings = useAppSettings()
 const router = useRouter()
 const { toast } = useToast()
 const { broadcastLocalChange } = useSystemEvents()
-const { withViewTransition } = useViewTransition()
 
 const contentId = useId()
 const isMobileExpanded = ref(false)
@@ -104,21 +102,17 @@ watch([id, localPath, activeTab], () => {
 const canSubmitJm = computed(() => /^(?:JM)?\d{5,8}$/i.test(id.value.trim()))
 const canSubmitPica = computed(() => /[0-9a-fA-F]{24}/.test(id.value.trim()))
 
-async function submitRemote(source: 'jm' | 'picacg', btnEl: HTMLButtonElement | null) {
+async function submitRemote(source: 'jm' | 'picacg') {
   const isValid = source === 'jm' ? canSubmitJm.value : canSubmitPica.value
   if (!isValid) return
   warnings.value = []
   try {
-    const result = await withViewTransition(
-      () =>
-        store.importComic({
-          id: id.value.trim(),
-          source,
-          prefetch_covers: 4,
-          prefetch_all: prefetchAll.value,
-        }),
-      { element: btnEl },
-    )
+    const result = await store.importComic({
+      id: id.value.trim(),
+      source,
+      prefetch_covers: 4,
+      prefetch_all: prefetchAll.value,
+    })
     warnings.value = result.warnings
     toast(store.importMessage, warnings.value.length ? 'error' : 'success')
 
@@ -159,12 +153,12 @@ function goToWorkshop() {
   router.push('/create')
 }
 
-function decConcurrency(el: HTMLElement | null) {
-  void withViewTransition(() => settings.dec(), { element: el })
+function decConcurrency() {
+  settings.dec()
 }
 
-function incConcurrency(el: HTMLElement | null) {
-  void withViewTransition(() => settings.inc(), { element: el })
+function incConcurrency() {
+  settings.inc()
 }
 </script>
 
@@ -252,7 +246,7 @@ function incConcurrency(el: HTMLElement | null) {
             tooltip-text="收录时直接把所有章节与页面下载到本地磁盘（适合整本离线保存）。不勾选则仅缓存前 4 页封面，后续页面在翻阅时按需秒级懒下载。"
             :importing="store.importing"
             :can-submit="canSubmitJm"
-            @submit="(btnEl) => submitRemote('jm', btnEl)"
+            @submit="() => submitRemote('jm')"
           />
 
           <!-- PicAcg Tab Form -->
@@ -267,7 +261,7 @@ function incConcurrency(el: HTMLElement | null) {
             tooltip-text="收录时直接把所有分卷与画页下载到本地磁盘（支持多分流自动容灾）。不勾选则仅预热前 4 页封面，后续页面在阅读时按需秒级懒下载。"
             :importing="store.importing"
             :can-submit="canSubmitPica"
-            @submit="(btnEl) => submitRemote('picacg', btnEl)"
+            @submit="() => submitRemote('picacg')"
           />
 
           <!-- Local Tab Form -->

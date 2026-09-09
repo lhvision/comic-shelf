@@ -14,7 +14,6 @@ import { useLibraryFilter } from '@/composables/useLibraryFilter'
 import { useShelfState } from '@/composables/useShelfState'
 import { useImageSearch } from '@/composables/useImageSearch'
 import { useToast } from '@/composables/useToast'
-import { useViewTransition } from '@/composables/useViewTransition'
 import { useAuth } from '@/composables/useAuth'
 import { useSystemEvents } from '@/composables/useSystemEvents'
 import { api, DEFAULT_PROVIDERS } from '@/api/client'
@@ -29,7 +28,6 @@ const experiments = useExperimentsStore()
 const route = useRoute()
 const router = useRouter()
 const { toast } = useToast()
-const { withViewTransition } = useViewTransition()
 const { canWrite } = useAuth()
 const { broadcastLocalChange } = useSystemEvents()
 const fileInput = ref<HTMLInputElement | null>(null)
@@ -139,13 +137,7 @@ onUnmounted(() => {
 })
 
 function onFavoriteToggled(source: string, sourceId: string, favorite: boolean) {
-  if (favoritesOnly.value) {
-    void withViewTransition(() => {
-      store.setFavoriteLocal(source, sourceId, favorite)
-    })
-  } else {
-    store.setFavoriteLocal(source, sourceId, favorite)
-  }
+  store.setFavoriteLocal(source, sourceId, favorite)
   broadcastLocalChange({
     action: 'favorite_changed',
     source,
@@ -156,33 +148,23 @@ function onFavoriteToggled(source: string, sourceId: string, favorite: boolean) 
 }
 
 function selectTag(tag: string) {
-  void withViewTransition(() => {
-    activeTag.value = tag
-  })
+  activeTag.value = tag
 }
 
 function toggleFavorites() {
-  void withViewTransition(() => {
-    favoritesOnly.value = !favoritesOnly.value
-  })
+  favoritesOnly.value = !favoritesOnly.value
 }
 
 function toggleCompleted() {
-  void withViewTransition(() => {
-    completedOnly.value = !completedOnly.value
-  })
+  completedOnly.value = !completedOnly.value
 }
 
 function onSortChange(value: string) {
-  void withViewTransition(() => {
-    setSort(value)
-  })
+  setSort(value)
 }
 
 function onClearImage() {
-  void withViewTransition(() => {
-    clearImage()
-  })
+  clearImage()
 }
 
 function openComic(source: string, sourceId: string) {
