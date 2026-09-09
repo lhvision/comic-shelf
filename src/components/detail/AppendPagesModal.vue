@@ -9,6 +9,7 @@ import { useUploadQueue } from '@/composables/useUploadQueue'
 import { useFileStaging } from '@/composables/useFileStaging'
 import { api } from '@/api/client'
 import { useToast } from '@/composables/useToast'
+import { useSystemEvents } from '@/composables/useSystemEvents'
 import type { ComicMeta } from '@/types'
 
 const props = defineProps<{
@@ -22,6 +23,7 @@ const emit = defineEmits<{
 }>()
 
 const { toast } = useToast()
+const { broadcastLocalChange } = useSystemEvents()
 const { isUploading, progress, completedCount, totalCount, uploadFiles } = useUploadQueue()
 
 const mode = ref<'upload' | 'path'>('upload')
@@ -83,6 +85,12 @@ async function submit() {
       }
 
       await uploadFiles(props.meta.source_id, selectedFiles.value, targetChap, newTitle)
+      broadcastLocalChange({
+        action: 'update_pages',
+        source: props.meta.source,
+        source_id: props.meta.source_id,
+        timestamp: Date.now(),
+      })
       toast(`已成功追加 ${selectedFiles.value.length} 页`, 'info')
       emit('appended')
     } else {
@@ -96,6 +104,12 @@ async function submit() {
         server_path: serverPath.value.trim(),
         target_chapter: targetChap,
         new_chapter_title: newTitle,
+      })
+      broadcastLocalChange({
+        action: 'update_pages',
+        source: props.meta.source,
+        source_id: props.meta.source_id,
+        timestamp: Date.now(),
       })
       toast('已成功从本地目录增量追加页面', 'info')
       emit('appended')

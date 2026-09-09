@@ -1,7 +1,7 @@
 import { ref } from 'vue'
 import { tryOnScopeDispose } from '@vueuse/core'
 import { api } from '@/api/client'
-import { useSystemEvents } from '@/composables/useSystemEvents'
+import { getTaskId, useSystemEvents } from '@/composables/useSystemEvents'
 import { useToast } from '@/composables/useToast'
 import { useLibraryStore } from '@/stores/library'
 import type { DiscoveryFeed, DiscoveryItem, DiscoveryTimeframe } from '@/types'
@@ -16,7 +16,7 @@ export function useDiscovery() {
   let activeAbortController: AbortController | null = null
 
   const { toast } = useToast()
-  const { broadcastLocalChange } = useSystemEvents()
+  const { beginTask, broadcastLocalChange } = useSystemEvents()
   const libraryStore = useLibraryStore()
 
   tryOnScopeDispose(() => {
@@ -67,12 +67,16 @@ export function useDiscovery() {
 
     ingestingMap.value[item.source_id] = true
     try {
-      await api.importComic({
+      const result = await api.importComic({
         id: item.source_id,
         source: item.source,
         prefetch_covers: 4,
         prefetch_all: false,
       })
+      if (result.background) {
+        libraryStore.markCaching(result.meta.source, result.meta.source_id)
+        beginTask(getTaskId.import(result.meta.source, result.meta.source_id))
+      }
       item.in_library = true
       await libraryStore.load()
       broadcastLocalChange({

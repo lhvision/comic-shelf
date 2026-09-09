@@ -28,6 +28,7 @@
 | `src/composables/useAutoTurn.ts`                 | 阅读器自动翻页：倒计时状态机、节拍器、页面可见性联动与暂停/继续                                                                                                |
 | `src/composables/useReaderChrome.ts`             | 阅读器顶栏/HUD 延时隐藏与交互唤醒控制                                                                                                                          |
 | `src/composables/useChapterNavigation.ts`        | 详情/子路由章节导航：锁定章节、章节切片、48 增量渲染、「继续阅读」文案                                                                                         |
+| `src/composables/useChapterCache.ts`             | 漫画全书与分话后台缓存轮询与进度状态编排：任务驱动按需轮询、页码 cached 就地对齐与任务生命周期收敛                                                             |
 | `src/composables/useReaderSettings.ts`           | 阅读器设置全局状态单例持久化（VueUse `createGlobalState`）                                                                                                     |
 | `src/composables/useLastRead.ts`                 | 每部作品继续阅读页码持久化读写                                                                                                                                 |
 | `src/composables/useToast.ts`                    | 全局轻量印章通知 Toast 状态机（支持 info / error / success 三态提示）                                                                                          |

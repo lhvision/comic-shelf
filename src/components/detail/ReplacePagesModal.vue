@@ -7,6 +7,7 @@ import AppIcon from '@/components/AppIcon.vue'
 import { api } from '@/api/client'
 import { useFileStaging } from '@/composables/useFileStaging'
 import { useToast } from '@/composables/useToast'
+import { useSystemEvents } from '@/composables/useSystemEvents'
 import type { ComicMeta } from '@/types'
 
 const props = defineProps<{
@@ -20,6 +21,7 @@ const emit = defineEmits<{
 }>()
 
 const { toast } = useToast()
+const { broadcastLocalChange } = useSystemEvents()
 
 const mode = ref<'upload' | 'path'>('upload')
 const modeTabs = [
@@ -159,6 +161,12 @@ async function submit() {
       )
       toast('已成功从服务器本地路径扫描并完成重新装订，已开启保护', 'success')
     }
+    broadcastLocalChange({
+      action: 'update_pages',
+      source: props.meta.source,
+      source_id: props.meta.source_id,
+      timestamp: Date.now(),
+    })
     emit('replaced')
   } catch (err) {
     if (controller.signal.aborted) return

@@ -15,6 +15,7 @@ import { useMediaQuery } from '@vueuse/core'
 import { useLibraryStore } from '@/stores/library'
 import { useAppSettings } from '@/stores/settings'
 import { useToast } from '@/composables/useToast'
+import { useSystemEvents } from '@/composables/useSystemEvents'
 import { useViewTransition } from '@/composables/useViewTransition'
 import { api } from '@/api/client'
 import Tooltip from '@/components/Tooltip.vue'
@@ -40,6 +41,7 @@ const store = useLibraryStore()
 const settings = useAppSettings()
 const router = useRouter()
 const { toast } = useToast()
+const { broadcastLocalChange } = useSystemEvents()
 const { withViewTransition } = useViewTransition()
 
 const contentId = useId()
@@ -137,6 +139,12 @@ async function submitLocalPath() {
       path: localPath.value.trim(),
     })
     await store.load()
+    broadcastLocalChange({
+      action: 'import',
+      source: res.meta.source,
+      source_id: res.meta.source_id,
+      timestamp: Date.now(),
+    })
     toast(`已收录本地图集《${res.meta.title}》（共 ${res.meta.page_count} 页）`, 'info')
     emit('imported', res.meta.source, res.meta.source_id)
     localPath.value = ''

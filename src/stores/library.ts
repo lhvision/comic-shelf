@@ -2,7 +2,7 @@ import { computed, ref } from 'vue'
 import { tryOnScopeDispose, useIntervalFn } from '@vueuse/core'
 import { defineStore } from 'pinia'
 import { api, onAuthSuccess } from '@/api/client'
-import { useSystemEvents } from '@/composables/useSystemEvents'
+import { getTaskId, useSystemEvents } from '@/composables/useSystemEvents'
 import type { ComicDetail, ImportRequest, LibrarySummary } from '@/types'
 
 export interface LiveCacheState {
@@ -171,13 +171,14 @@ export const useLibraryStore = defineStore('library', () => {
       liveCache.value = next
 
       if (running.length > 0) {
-        beginTask('library:live-cache')
+        beginTask(getTaskId.liveCache())
       } else {
-        endTask('library:live-cache')
+        endTask(getTaskId.liveCache())
         poll.pause()
       }
     } catch {
       /* transient; keep whatever we had and pause polling to avoid hammering failing backend/WAF */
+      endTask(getTaskId.liveCache())
       poll.pause()
     } finally {
       isRefreshingLiveCache = false
@@ -218,6 +219,7 @@ export const useLibraryStore = defineStore('library', () => {
 
   function stopPolling() {
     poll.pause()
+    endTask(getTaskId.liveCache())
     if (refreshAbortController) {
       refreshAbortController.abort()
       refreshAbortController = null
@@ -262,7 +264,7 @@ export const useLibraryStore = defineStore('library', () => {
 
       if (result.background) {
         markCaching(result.meta.source, result.meta.source_id)
-        beginTask(`import:${result.meta.source}/${result.meta.source_id}`)
+        beginTask(getTaskId.import(result.meta.source, result.meta.source_id))
       }
       broadcastLocalChange({
         action: 'import',
@@ -351,6 +353,7 @@ export const useLibraryStore = defineStore('library', () => {
     getDetail,
     setDetail,
     removeDetail,
+    markCaching,
     setFavoriteLocal,
     setReadingProgressLocal,
     liveFor,

@@ -16,6 +16,7 @@ import { useImageSearch } from '@/composables/useImageSearch'
 import { useToast } from '@/composables/useToast'
 import { useViewTransition } from '@/composables/useViewTransition'
 import { useAuth } from '@/composables/useAuth'
+import { useSystemEvents } from '@/composables/useSystemEvents'
 import { api, DEFAULT_PROVIDERS } from '@/api/client'
 import type { ProviderInfo } from '@/types'
 
@@ -30,6 +31,7 @@ const router = useRouter()
 const { toast } = useToast()
 const { withViewTransition } = useViewTransition()
 const { canWrite } = useAuth()
+const { broadcastLocalChange } = useSystemEvents()
 const fileInput = ref<HTMLInputElement | null>(null)
 const providers = ref<ProviderInfo[]>(DEFAULT_PROVIDERS)
 
@@ -144,6 +146,13 @@ function onFavoriteToggled(source: string, sourceId: string, favorite: boolean) 
   } else {
     store.setFavoriteLocal(source, sourceId, favorite)
   }
+  broadcastLocalChange({
+    action: 'favorite_changed',
+    source,
+    source_id: sourceId,
+    favorite,
+    timestamp: Date.now(),
+  })
 }
 
 function selectTag(tag: string) {

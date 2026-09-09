@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { onBeforeRouteLeave, useRoute, useRouter } from 'vue-router'
-import { useIntervalFn } from '@vueuse/core'
 import { api, pageFileUrl } from '@/api/client'
 import { useLastRead } from '@/composables/useLastRead'
 import {
@@ -15,6 +14,7 @@ import { useToast } from '@/composables/useToast'
 import { useCoverTransition } from '@/composables/useCoverTransition'
 import { useAuth } from '@/composables/useAuth'
 import { useSystemEvents } from '@/composables/useSystemEvents'
+import { useChapterCache } from '@/composables/useChapterCache'
 import { useHierarchicalNavigation } from '@/composables/useHierarchicalNavigation'
 import CoverCarousel from '@/components/CoverCarousel.vue'
 import AppIcon from '@/components/AppIcon.vue'
@@ -57,8 +57,6 @@ const detail = ref<ComicDetail | null>(
   existingDetail ?? (cachedSummary ? createPlaceholderDetail(cachedSummary) : null),
 )
 const loading = ref(!detail.value)
-const caching = ref(false)
-const runningChapterId = ref<string | null>(null)
 const editOpen = ref(false)
 const appendOpen = ref(false)
 const replaceOpen = ref(false)
@@ -80,6 +78,21 @@ const {
   loadAll,
   collapse,
 } = useChapterNavigation(detail, lastRead)
+
+const {
+  caching,
+  runningChapterId,
+  syncJobState,
+  cacheAll,
+  cacheChapter: handleCacheChapter,
+  onPageCached,
+} = useChapterCache({
+  source,
+  sourceId,
+  detail,
+  chapters,
+  onRefresh: () => load(true, true),
+})
 
 const isMulti = computed(() => (chapters.value?.length ?? 0) > 1)
 
@@ -135,35 +148,33 @@ watch(
 )
 
 onBeforeUnmount(() => {
-  pauseProgressPolling()
   if (loadAbortController) {
     loadAbortController.abort()
     loadAbortController = null
   }
 })
 
-const { lastLibraryEvent, beginTask, endTask } = useSystemEvents()
+const { lastLibraryEvent } = useSystemEvents()
 
 watch(lastLibraryEvent, (event) => {
+  if (!event) return
   if (
-    event &&
     (!event.source || event.source === source.value) &&
     (!event.source_id || event.source_id === sourceId.value)
   ) {
+    // 收藏与翻页等轻量状态变动由各模块就地消化，不无谓发起全书大 JSON 重拉取
+    if (event.action === 'favorite_changed') {
+      if (detail.value?.meta && typeof event.favorite === 'boolean') {
+        detail.value.meta.favorite = event.favorite
+      }
+      return
+    }
+    if (event.action === 'reading_progress_changed') {
+      return
+    }
     void load(true, true)
   }
 })
-
-function onPageCached(pageIndex: number) {
-  if (!detail.value?.meta?.pages) return
-  const page = detail.value.meta.pages.find((p) => p.index === pageIndex)
-  if (page && !page.cached) {
-    page.cached = true
-    const currentCachedCount = detail.value.meta.pages.filter((p) => p.cached).length
-    detail.value.cached_pages = Math.max(detail.value.cached_pages, currentCachedCount)
-    detail.value.cache_complete = detail.value.cached_pages >= detail.value.meta.page_count
-  }
-}
 
 async function load(silent = false, bypassCache = false) {
   if (loadAbortController) {
@@ -195,18 +206,7 @@ async function load(silent = false, bypassCache = false) {
     const job = await api.cacheJob(source.value, sourceId.value, { signal: controller.signal })
     if (controller.signal.aborted) return
 
-    caching.value = job.running
-    runningChapterId.value = job.chapter_id ?? null
-    if (job.running) {
-      beginTask(
-        job.chapter_id
-          ? `chapter:${source.value}/${sourceId.value}/${job.chapter_id}`
-          : `cache:${source.value}/${sourceId.value}`,
-      )
-      startProgressPolling()
-    } else {
-      pauseProgressPolling()
-    }
+    syncJobState(job)
   } catch (e) {
     if (controller.signal.aborted) return
     toast(e instanceof Error ? e.message : String(e), 'error')
@@ -216,142 +216,6 @@ async function load(silent = false, bypassCache = false) {
       if (!silent) loading.value = false
       loadAbortController = null
     }
-  }
-}
-
-/* 缓存进度轮询：任务执行时就地更新进度与 cached 标记；任务完成立即停止轮询 */
-let isPollingProgress = false
-const { pause: pauseProgressPolling, resume: resumeProgressPolling } = useIntervalFn(
-  async () => {
-    if (isPollingProgress) return
-    isPollingProgress = true
-    try {
-      const [progress, job] = await Promise.all([
-        api.cacheProgress(source.value, sourceId.value),
-        api.cacheJob(source.value, sourceId.value),
-      ])
-      caching.value = job.running
-      runningChapterId.value = job.chapter_id ?? null
-
-      if (detail.value) {
-        detail.value.cached_pages = Math.max(detail.value.cached_pages, progress.cached)
-        detail.value.cache_complete = progress.complete
-
-        // 精准就地标记已完成的页码：单话任务仅标记本话区间，全书任务标记已下载全局区间
-        if (detail.value.meta?.pages) {
-          if (job.chapter_id) {
-            const ch = chapters.value.find((c) => c.id === job.chapter_id)
-            if (ch) {
-              const maxPage = ch.start + job.prefetched - 1
-              for (const p of detail.value.meta.pages) {
-                if (p.chapter === ch.id && (!job.running || p.index <= maxPage)) {
-                  p.cached = true
-                }
-              }
-            }
-          } else if (progress.complete) {
-            for (const p of detail.value.meta.pages) {
-              p.cached = true
-            }
-          } else if (job.running && !job.chapter_id) {
-            for (const p of detail.value.meta.pages) {
-              if (p.index <= job.prefetched) {
-                p.cached = true
-              }
-            }
-          }
-        }
-      }
-      if (!job.running || progress.complete) {
-        caching.value = false
-        runningChapterId.value = null
-        endTask(`cache:${source.value}/${sourceId.value}`)
-        if (job.chapter_id) {
-          endTask(`chapter:${source.value}/${sourceId.value}/${job.chapter_id}`)
-        }
-        pauseProgressPolling()
-        void load(true, true)
-      }
-    } catch {
-      /* the long-running request owns the error path */
-    } finally {
-      isPollingProgress = false
-    }
-  },
-  1000,
-  { immediate: false },
-)
-
-function startProgressPolling() {
-  pauseProgressPolling()
-  resumeProgressPolling()
-}
-
-async function cacheAll() {
-  if (!detail.value || caching.value) return
-  caching.value = true
-  runningChapterId.value = null
-  const taskId = `cache:${source.value}/${sourceId.value}`
-  beginTask(taskId)
-  startProgressPolling()
-  try {
-    const progress = await api.cacheAll(source.value, sourceId.value)
-    detail.value.cached_pages = progress.cached
-    detail.value.cache_complete = progress.complete
-    if (progress.complete && detail.value.meta?.pages) {
-      for (const p of detail.value.meta.pages) {
-        p.cached = true
-      }
-    }
-    await store.load()
-    toast(progress.complete ? '已全部缓存到本地' : '后台缓存进行中，进度会自动更新', 'info')
-    if (progress.complete) {
-      endTask(taskId)
-      pauseProgressPolling()
-      caching.value = false
-      void load(true, true)
-    } else {
-      resumeProgressPolling()
-    }
-  } catch (e) {
-    endTask(taskId)
-    pauseProgressPolling()
-    caching.value = false
-    toast(e instanceof Error ? e.message : String(e), 'error')
-  }
-}
-
-async function handleCacheChapter(chapterId: string) {
-  if (!detail.value || caching.value) return
-  caching.value = true
-  runningChapterId.value = chapterId
-  const taskId = `chapter:${source.value}/${sourceId.value}/${chapterId}`
-  beginTask(taskId)
-  startProgressPolling()
-  try {
-    const progress = await api.cacheChapter(source.value, sourceId.value, chapterId)
-    const ch = chapters.value.find((c) => c.id === chapterId)
-    if (ch && detail.value.meta?.pages && progress.complete) {
-      for (const p of detail.value.meta.pages) {
-        if (p.chapter === chapterId) {
-          p.cached = true
-        }
-      }
-    }
-    toast(`已开始缓存第 ${ch?.index ?? ''} 話，进度会自动更新`, 'info')
-    if (progress.complete) {
-      endTask(taskId)
-      pauseProgressPolling()
-      caching.value = false
-      runningChapterId.value = null
-      void load(true, true)
-    }
-  } catch (e) {
-    endTask(taskId)
-    pauseProgressPolling()
-    caching.value = false
-    runningChapterId.value = null
-    toast(e instanceof Error ? e.message : String(e), 'error')
   }
 }
 

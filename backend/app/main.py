@@ -761,6 +761,10 @@ async def upload_local_pages(
         target_chapter=chapter_id,
         new_chapter_title=new_chapter_title,
     )
+    broadcast_event(
+        "library_changed",
+        {"action": "update_pages", "source": "local", "source_id": source_id, "timestamp": time.time()},
+    )
     return store.detail(meta)
 
 
@@ -771,6 +775,10 @@ def append_local_comic(source_id: str, req: LocalAppendRequest) -> ComicDetail:
         server_path=req.server_path,
         target_chapter=req.target_chapter,
         new_chapter_title=req.new_chapter_title,
+    )
+    broadcast_event(
+        "library_changed",
+        {"action": "update_pages", "source": "local", "source_id": source_id, "timestamp": time.time()},
     )
     return store.detail(meta)
 
@@ -796,6 +804,10 @@ async def replace_comic_pages(
         files=file_tuples,
         target_chapter=chapter_id,
     )
+    broadcast_event(
+        "library_changed",
+        {"action": "update_pages", "source": source, "source_id": source_id, "timestamp": time.time()},
+    )
     return store.detail(meta)
 
 
@@ -811,6 +823,10 @@ def replace_comic_pages_from_path(
         source_id=source_id,
         server_path=req.server_path,
         target_chapter=req.target_chapter,
+    )
+    broadcast_event(
+        "library_changed",
+        {"action": "update_pages", "source": source, "source_id": source_id, "timestamp": time.time()},
     )
     return store.detail(meta)
 

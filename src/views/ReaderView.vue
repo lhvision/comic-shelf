@@ -14,7 +14,7 @@
 
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { usePreferredReducedMotion, useToggle } from '@vueuse/core'
+import { useDebounceFn, usePreferredReducedMotion, useToggle } from '@vueuse/core'
 import { useReaderSettings } from '@/composables/useReaderSettings'
 import { useReaderPaging } from '@/composables/useReaderPaging'
 import { useReaderChrome } from '@/composables/useReaderChrome'
@@ -22,6 +22,7 @@ import { useAutoTurn } from '@/composables/useAutoTurn'
 import { useReaderNavigation } from '@/composables/useReaderNavigation'
 import { useReaderKeyboard } from '@/composables/useReaderKeyboard'
 import { useReaderData } from '@/composables/useReaderData'
+import { useSystemEvents } from '@/composables/useSystemEvents'
 import { api } from '@/api/client'
 import { useLibraryStore } from '@/stores/library'
 import { useReaderRecommendations } from '@/composables/useReaderRecommendations'
@@ -166,14 +167,38 @@ const { autoTurnRemaining, autoTurnPaused, resetAutoTurnCountdown, toggleAutoTur
   })
 
 /* ---------------- 页面响应式联动与历史同步 ---------------- */
+const { broadcastLocalChange } = useSystemEvents()
+
+const broadcastReadingProgress = useDebounceFn((page: number) => {
+  if (page > 0 && source.value && sourceId.value) {
+    broadcastLocalChange({
+      action: 'reading_progress_changed',
+      source: source.value,
+      source_id: sourceId.value,
+      last_page: page,
+      timestamp: Date.now(),
+    })
+  }
+}, 800)
+
 watch(currentPage, (page) => {
   lastRead.value = page
   libraryStore.setReadingProgressLocal(source.value, sourceId.value, page)
+  broadcastReadingProgress(page)
   preloadAround(page)
 })
 
 onBeforeUnmount(() => {
   lastRead.value = currentPage.value
+  if (currentPage.value > 0 && source.value && sourceId.value) {
+    broadcastLocalChange({
+      action: 'reading_progress_changed',
+      source: source.value,
+      source_id: sourceId.value,
+      last_page: currentPage.value,
+      timestamp: Date.now(),
+    })
+  }
 })
 
 watch(
@@ -278,6 +303,13 @@ function onReaderCompleted() {
     lastRead.value = finalPage
     libraryStore.setReadingProgressLocal(source.value, sourceId.value, finalPage)
     void api.saveReadingProgress(source.value, sourceId.value, finalPage).catch(() => {})
+    broadcastLocalChange({
+      action: 'reading_progress_changed',
+      source: source.value,
+      source_id: sourceId.value,
+      last_page: finalPage,
+      timestamp: Date.now(),
+    })
   }
 }
 

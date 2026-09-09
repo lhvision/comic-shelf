@@ -5,7 +5,7 @@ import {
   useDocumentVisibility,
   useNetwork,
 } from '@vueuse/core'
-import { clearApiDetailCache } from '@/api/client'
+import { api, clearApiDetailCache } from '@/api/client'
 import { usePwaUpdate } from '@/composables/usePwaUpdate'
 import router from '@/router'
 import { useLibraryStore } from '@/stores/library'
@@ -14,11 +14,24 @@ export const MAX_SSE_RETRY_ATTEMPTS = 10
 export const TASK_TEARDOWN_COOLDOWN_MS = 5000 // 5 seconds graceful teardown cooldown
 export const BROADCAST_CHANNEL_NAME = 'paper-room'
 
+/**
+ * 统一的后台异步任务标识构造工厂，约束跨组件任务 ID 契约
+ */
+export const getTaskId = {
+  import: (source: string, sourceId: string) => `import:${source}/${sourceId}`,
+  cache: (source: string, sourceId: string) => `cache:${source}/${sourceId}`,
+  chapter: (source: string, sourceId: string, chapterId: string) =>
+    `chapter:${source}/${sourceId}/${chapterId}`,
+  liveCache: () => 'library:live-cache',
+} as const
+
 export interface LibraryChangedEvent {
   action?: string
   source?: string
   source_id?: string
   chapter_id?: string
+  favorite?: boolean
+  last_page?: number
   timestamp?: number
 }
 
@@ -43,9 +56,6 @@ export const useSystemEvents = createGlobalState(() => {
   // 5 秒平滑防抖冷却状态
   const isCoolingDown = ref(false)
   let teardownCooldownTimer: ReturnType<typeof setTimeout> | null = null
-
-  // 是否由应用显式激活（用于单测或显式常开场景）
-  const isExplicitlyConnected = ref(false)
 
   const visibility = useDocumentVisibility()
   const { isOnline } = useNetwork()
@@ -77,10 +87,9 @@ export const useSystemEvents = createGlobalState(() => {
   const activeTaskCount = computed(() => activeTasks.value.size)
   const hasActiveTasks = computed(() => activeTasks.value.size > 0)
 
-  // 动态派生当前是否应该保持 SSE 物理连接
+  // 动态派生当前是否应该保持 SSE 物理连接（100% 任务驱动与平滑冷却）
   const shouldBeConnected = computed(() => {
-    const hasActiveIntent =
-      hasActiveTasks.value || isCoolingDown.value || isExplicitlyConnected.value
+    const hasActiveIntent = hasActiveTasks.value || isCoolingDown.value
     return (
       hasActiveIntent && isOnline.value && visibility.value === 'visible' && !isReaderRoute.value
     )
@@ -108,6 +117,11 @@ export const useSystemEvents = createGlobalState(() => {
       next.add(taskId)
       activeTasks.value = next
     }
+    // 防死锁自愈：若当前满足连接意图，但此前重试耗尽导致 eventSource 已经为 null 且无重试定时器，主动自愈拉起
+    if (shouldBeConnected.value && !eventSource && !reconnectTimer) {
+      retryAttempts = 0
+      startEventSource()
+    }
   }
 
   /**
@@ -120,7 +134,7 @@ export const useSystemEvents = createGlobalState(() => {
       next.delete(taskId)
       activeTasks.value = next
     }
-    if (activeTasks.value.size === 0 && !isExplicitlyConnected.value && isConnected.value) {
+    if (activeTasks.value.size === 0 && (isConnected.value || eventSource !== null)) {
       clearTeardownCooldown()
       isCoolingDown.value = true
       teardownCooldownTimer = setTimeout(() => {
@@ -136,19 +150,45 @@ export const useSystemEvents = createGlobalState(() => {
   function handleLibraryChanged(data: LibraryChangedEvent): void {
     if (!data) return
     try {
+      const libraryStore = useLibraryStore()
+
+      // 同源多标签页收藏状态秒级原地同步（0 流量、免整表重绘）
+      if (
+        data.action === 'favorite_changed' &&
+        data.source &&
+        data.source_id &&
+        typeof data.favorite === 'boolean'
+      ) {
+        libraryStore.setFavoriteLocal(data.source, data.source_id, data.favorite)
+        lastLibraryEvent.value = data
+        return
+      }
+
+      // 同源多标签页阅读进度秒级原地同步（0 流量、免整表重绘）
+      if (
+        data.action === 'reading_progress_changed' &&
+        data.source &&
+        data.source_id &&
+        typeof data.last_page === 'number'
+      ) {
+        libraryStore.setReadingProgressLocal(data.source, data.source_id, data.last_page)
+        lastLibraryEvent.value = data
+        return
+      }
+
       if (data.source && data.source_id) {
         clearApiDetailCache(data.source, data.source_id)
+        libraryStore.removeDetail(data.source, data.source_id)
       } else {
         clearApiDetailCache()
       }
       lastLibraryEvent.value = data
-      const libraryStore = useLibraryStore()
       void libraryStore.load(true)
 
       // 任务完成事件自动对齐并解除对应任务
       if (data.action === 'cache_complete' && data.source && data.source_id) {
-        endTask(`cache:${data.source}/${data.source_id}`)
-        endTask(`import:${data.source}/${data.source_id}`)
+        endTask(getTaskId.cache(data.source, data.source_id))
+        endTask(getTaskId.import(data.source, data.source_id))
       }
       if (
         data.action === 'chapter_cache_complete' &&
@@ -156,7 +196,7 @@ export const useSystemEvents = createGlobalState(() => {
         data.source_id &&
         data.chapter_id
       ) {
-        endTask(`chapter:${data.source}/${data.source_id}/${data.chapter_id}`)
+        endTask(getTaskId.chapter(data.source, data.source_id, data.chapter_id))
       }
     } catch {
       // 静默容错
@@ -185,6 +225,46 @@ export const useSystemEvents = createGlobalState(() => {
   }
 
   /**
+   * 与后端 /api/cache/jobs 真实运行任务对齐，清理因离线/阅读器避让期间丢失完成事件导致的僵尸任务
+   */
+  async function reconcileActiveTasks(): Promise<void> {
+    if (activeTasks.value.size === 0) return
+    try {
+      const jobs = await api.cacheJobs()
+      const running = jobs.filter((j) => j.running)
+      const runningMap = new Set<string>()
+      for (const job of running) {
+        if (job.chapter_id) {
+          runningMap.add(getTaskId.chapter(job.source, job.source_id, job.chapter_id))
+        } else {
+          runningMap.add(getTaskId.cache(job.source, job.source_id))
+          runningMap.add(getTaskId.import(job.source, job.source_id))
+        }
+      }
+
+      for (const taskId of activeTasks.value) {
+        if (taskId === getTaskId.liveCache()) {
+          if (running.length === 0) {
+            endTask(taskId)
+          }
+          continue
+        }
+        if (
+          taskId.startsWith('cache:') ||
+          taskId.startsWith('import:') ||
+          taskId.startsWith('chapter:')
+        ) {
+          if (!runningMap.has(taskId)) {
+            endTask(taskId)
+          }
+        }
+      }
+    } catch {
+      // 容错降级
+    }
+  }
+
+  /**
    * 休眠或重连建立成功后，执行静默对齐补齐期间可能遗漏的事件（3s 防抖节流）
    */
   async function reconcileState(): Promise<void> {
@@ -196,16 +276,22 @@ export const useSystemEvents = createGlobalState(() => {
 
     try {
       clearApiDetailCache()
+      await reconcileActiveTasks()
       lastLibraryEvent.value = { action: 'reconcile', timestamp: now }
       const libraryStore = useLibraryStore()
       await libraryStore.load(true)
-      await checkForUpdate()
+
+      // 若对齐后仍应连接但此前由于离线/重试耗尽处于断开状态，自愈拉起
+      if (shouldBeConnected.value && !eventSource && !reconnectTimer) {
+        retryAttempts = 0
+        startEventSource()
+      }
     } catch {
       // 对齐失败静默降级
     }
   }
 
-  // 视口激活回源校验：当从其他应用/标签页切回纸间且处于活跃前台时，静默对齐书架与版本（受 3s 节流保护）
+  // 视口激活回源校验：当从其他应用/标签页切回纸间且处于活跃前台时，静默对齐书架与活跃任务（受 3s 节流保护）
   watch(visibility, (state) => {
     if (state === 'visible' && isOnline.value) {
       void reconcileState()
@@ -286,22 +372,9 @@ export const useSystemEvents = createGlobalState(() => {
   }
 
   /**
-   * 显式开启或唤醒系统事件流
-   */
-  function connect(): void {
-    if (isExplicitlyConnected.value) return
-    isExplicitlyConnected.value = true
-    clearTeardownCooldown()
-    if (!shouldBeConnected.value) {
-      isSleeping.value = true
-    }
-  }
-
-  /**
-   * 显式切断系统事件流
+   * 显式注销并切断系统事件流（重置活跃任务与冷却定时器）
    */
   function disconnect(): void {
-    isExplicitlyConnected.value = false
     clearTeardownCooldown()
     activeTasks.value = new Set()
     retryAttempts = 0
@@ -315,8 +388,8 @@ export const useSystemEvents = createGlobalState(() => {
       if (shouldConnect) {
         retryAttempts = 0
         startEventSource()
-      } else if (hasActiveTasks.value || isExplicitlyConnected.value) {
-        // 仍处于活跃意图，但进入了避让条件（阅读器/隐藏/闲置/离线）
+      } else if (hasActiveTasks.value) {
+        // 仍处于活跃意图，但进入了避让条件（阅读器/隐藏/离线）
         teardownEventSource(true)
       } else {
         teardownEventSource(false)
@@ -337,8 +410,8 @@ export const useSystemEvents = createGlobalState(() => {
     beginTask,
     endTask,
     broadcastLocalChange,
-    connect,
     disconnect,
     reconcileState,
+    reconcileActiveTasks,
   }
 })

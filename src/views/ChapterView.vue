@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { useIntervalFn } from '@vueuse/core'
 import { api } from '@/api/client'
 import { useAuth } from '@/composables/useAuth'
 import { useLastRead } from '@/composables/useLastRead'
@@ -9,6 +8,7 @@ import { useChapterNavigation } from '@/composables/useChapterNavigation'
 import { useIdlePrefetch } from '@/composables/useIdlePrefetch'
 import { useToast } from '@/composables/useToast'
 import { useSystemEvents } from '@/composables/useSystemEvents'
+import { useChapterCache } from '@/composables/useChapterCache'
 import { useHierarchicalNavigation } from '@/composables/useHierarchicalNavigation'
 import ChapterSwitcher from '@/components/detail/ChapterSwitcher.vue'
 import PageIndexGrid from '@/components/detail/PageIndexGrid.vue'
@@ -49,14 +49,7 @@ const detail = ref<ComicDetail | null>(
   existingDetail ?? (cachedSummary ? createPlaceholderDetail(cachedSummary) : null),
 )
 const loading = ref(!detail.value)
-const caching = ref(false)
-const runningChapterId = ref<string | null>(null)
 let loadAbortController: AbortController | null = null
-
-const isCurrentChapterCaching = computed(() => {
-  if (!caching.value) return false
-  return !runningChapterId.value || runningChapterId.value === activeChapter.value?.id
-})
 
 const editOpen = ref(false)
 const chapterTitleInput = ref('')
@@ -101,6 +94,20 @@ const activeChapter = computed(() => chapters.value.find((c) => c.id === chapter
 const activeIndex = computed(() => chapters.value.findIndex((c) => c.id === chapterId.value))
 const prevChapter = computed(() => chapters.value[activeIndex.value - 1] ?? null)
 const nextChapter = computed(() => chapters.value[activeIndex.value + 1] ?? null)
+
+const { caching, runningChapterId, syncJobState, cacheChapter, onPageCached } = useChapterCache({
+  source,
+  sourceId,
+  detail,
+  chapters,
+  activeChapterId: computed(() => activeChapter.value?.id),
+  onRefresh: () => load(true, true),
+})
+
+const isCurrentChapterCaching = computed(() => {
+  if (!caching.value) return false
+  return !runningChapterId.value || runningChapterId.value === activeChapter.value?.id
+})
 
 const activeChapterCached = computed(() => {
   if (!detail.value || !activeChapter.value) return 0
@@ -164,35 +171,27 @@ onMounted(() => {
 })
 
 onBeforeUnmount(() => {
-  pauseProgressPolling()
   if (loadAbortController) {
     loadAbortController.abort()
     loadAbortController = null
   }
 })
 
-const { lastLibraryEvent, beginTask, endTask, broadcastLocalChange } = useSystemEvents()
+const { lastLibraryEvent, broadcastLocalChange } = useSystemEvents()
 
 watch(lastLibraryEvent, (event) => {
+  if (!event) return
   if (
-    event &&
     (!event.source || event.source === source.value) &&
     (!event.source_id || event.source_id === sourceId.value)
   ) {
+    // 收藏与翻页等轻量状态变动由各模块就地消化，不无谓发起全书大 JSON 重拉取
+    if (event.action === 'favorite_changed' || event.action === 'reading_progress_changed') {
+      return
+    }
     void load(true, true)
   }
 })
-
-function onPageCached(pageIndex: number) {
-  if (!detail.value?.meta?.pages) return
-  const page = detail.value.meta.pages.find((p) => p.index === pageIndex)
-  if (page && !page.cached) {
-    page.cached = true
-    const currentCachedCount = detail.value.meta.pages.filter((p) => p.cached).length
-    detail.value.cached_pages = Math.max(detail.value.cached_pages, currentCachedCount)
-    detail.value.cache_complete = detail.value.cached_pages >= detail.value.meta.page_count
-  }
-}
 
 async function load(silent = false, bypassCache = false) {
   if (loadAbortController) {
@@ -222,18 +221,7 @@ async function load(silent = false, bypassCache = false) {
     const job = await api.cacheJob(source.value, sourceId.value, { signal: controller.signal })
     if (controller.signal.aborted) return
 
-    caching.value = job.running
-    runningChapterId.value = job.chapter_id ?? null
-    if (job.running) {
-      beginTask(
-        job.chapter_id
-          ? `chapter:${source.value}/${sourceId.value}/${job.chapter_id}`
-          : `cache:${source.value}/${sourceId.value}`,
-      )
-      startProgressPolling()
-    } else {
-      pauseProgressPolling()
-    }
+    syncJobState(job)
   } catch (e) {
     if (controller.signal.aborted) return
     toast(e instanceof Error ? e.message : String(e), 'error')
@@ -246,108 +234,9 @@ async function load(silent = false, bypassCache = false) {
   }
 }
 
-/* 缓存进度轮询：若后台在预缓存/全量缓存，就地更新当前章节每页 cached 状态 */
-let isPollingProgress = false
-const { pause: pauseProgressPolling, resume: resumeProgressPolling } = useIntervalFn(
-  async () => {
-    if (isPollingProgress) return
-    isPollingProgress = true
-    try {
-      const currentChapterId = activeChapter.value?.id
-      const [chapterProgress, job] = await Promise.all([
-        currentChapterId
-          ? api.chapterCacheProgress(source.value, sourceId.value, currentChapterId)
-          : api.cacheProgress(source.value, sourceId.value),
-        api.cacheJob(source.value, sourceId.value),
-      ])
-      caching.value = job.running
-      runningChapterId.value = job.chapter_id ?? null
-
-      if (detail.value?.meta?.pages) {
-        if (job.chapter_id) {
-          const ch = chapters.value.find((c) => c.id === job.chapter_id)
-          if (ch) {
-            const maxPage = ch.start + job.prefetched - 1
-            for (const p of detail.value.meta.pages) {
-              if (p.chapter === ch.id && (!job.running || p.index <= maxPage)) {
-                p.cached = true
-              }
-            }
-          }
-        } else if (job.running && !job.chapter_id) {
-          for (const p of detail.value.meta.pages) {
-            if (p.index <= job.prefetched) {
-              p.cached = true
-            }
-          }
-        }
-        if (chapterProgress.complete && currentChapterId) {
-          for (const p of detail.value.meta.pages) {
-            if (p.chapter === currentChapterId) {
-              p.cached = true
-            }
-          }
-        }
-      }
-      const isFinished =
-        !job.running || (job.chapter_id === currentChapterId && chapterProgress.complete)
-      if (isFinished) {
-        caching.value = false
-        runningChapterId.value = null
-        if (currentChapterId) {
-          endTask(`chapter:${source.value}/${sourceId.value}/${currentChapterId}`)
-        }
-        endTask(`cache:${source.value}/${sourceId.value}`)
-        pauseProgressPolling()
-        void load(true, true)
-      }
-    } catch {
-      /* transient */
-    } finally {
-      isPollingProgress = false
-    }
-  },
-  1000,
-  { immediate: false },
-)
-
-function startProgressPolling() {
-  pauseProgressPolling()
-  resumeProgressPolling()
-}
-
 async function cacheCurrentChapter() {
-  if (!activeChapter.value || !detail.value || caching.value) return
-  caching.value = true
-  runningChapterId.value = activeChapter.value.id
-  const taskId = `chapter:${source.value}/${sourceId.value}/${activeChapter.value.id}`
-  beginTask(taskId)
-  startProgressPolling()
-  try {
-    const progress = await api.cacheChapter(source.value, sourceId.value, activeChapter.value.id)
-    if (detail.value.meta?.pages && progress.complete) {
-      const ch = activeChapter.value
-      for (const p of detail.value.meta.pages) {
-        if (p.chapter === ch.id) {
-          p.cached = true
-        }
-      }
-    }
-    toast(`已开始缓存第 ${activeChapter.value.index} 話，后台进行中`, 'info')
-    if (progress.complete) {
-      endTask(taskId)
-      pauseProgressPolling()
-      caching.value = false
-      runningChapterId.value = null
-      void load(true, true)
-    }
-  } catch (e) {
-    endTask(taskId)
-    pauseProgressPolling()
-    caching.value = false
-    runningChapterId.value = null
-    toast(e instanceof Error ? e.message : String(e), 'error')
-  }
+  if (!activeChapter.value) return
+  await cacheChapter(activeChapter.value.id)
 }
 
 function goToAlbum() {
@@ -389,6 +278,7 @@ async function saveChapterTitle() {
       action: 'update_chapter',
       source: source.value,
       source_id: sourceId.value,
+      chapter_id: activeChapter.value.id,
       timestamp: Date.now(),
     })
   } catch (e) {
@@ -406,9 +296,10 @@ function requestRemoveChapter() {
 async function confirmRemoveChapter() {
   if (!activeChapter.value) return
   removing.value = true
+  const deletedId = activeChapter.value.id
   const deletedTitle = activeChapter.value.title || `第 ${activeChapter.value.index} 话`
   try {
-    await api.deleteChapter(source.value, sourceId.value, activeChapter.value.id)
+    await api.deleteChapter(source.value, sourceId.value, deletedId)
     store.removeDetail(source.value, sourceId.value)
     removeOpen.value = false
     toast(`已删除「${deletedTitle}」`, 'success')
@@ -416,6 +307,7 @@ async function confirmRemoveChapter() {
       action: 'delete_chapter',
       source: source.value,
       source_id: sourceId.value,
+      chapter_id: deletedId,
       timestamp: Date.now(),
     })
     router.replace(`/comic/${source.value}/${sourceId.value}`)

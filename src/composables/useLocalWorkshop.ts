@@ -5,6 +5,7 @@ import { api } from '@/api/client'
 import { useLibraryStore } from '@/stores/library'
 import { useAuth } from '@/composables/useAuth'
 import { useToast } from '@/composables/useToast'
+import { useSystemEvents } from '@/composables/useSystemEvents'
 import { useUploadQueue } from '@/composables/useUploadQueue'
 import { filterImageFiles, naturalSortFiles } from '@/composables/useFileStaging'
 import type { LocalChapterInput } from '@/types'
@@ -20,6 +21,7 @@ export function useLocalWorkshop() {
   const store = useLibraryStore()
   const { canWrite } = useAuth()
   const { toast } = useToast()
+  const { broadcastLocalChange } = useSystemEvents()
   const { isUploading, progress, completedCount, totalCount, uploadFiles } = useUploadQueue()
 
   onMounted(() => {
@@ -150,6 +152,12 @@ export function useLocalWorkshop() {
           cover_indices: coverIndices.value,
         })
         await store.load()
+        broadcastLocalChange({
+          action: 'import',
+          source: res.meta.source,
+          source_id: res.meta.source_id,
+          timestamp: Date.now(),
+        })
         toast('本地目录已收录', 'info')
         void router.replace(`/comic/${res.meta.source}/${res.meta.source_id}`)
       } catch (err) {
@@ -200,6 +208,12 @@ export function useLocalWorkshop() {
       }
 
       await store.load()
+      broadcastLocalChange({
+        action: 'import',
+        source: created.meta.source,
+        source_id: sourceId,
+        timestamp: Date.now(),
+      })
       toast(`自建图集《${created.meta.title}》已成功收录！`, 'info')
       void router.replace(`/comic/${created.meta.source}/${sourceId}`)
     } catch (err) {
