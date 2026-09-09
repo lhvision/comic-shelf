@@ -93,6 +93,9 @@ defineExpose({
     class="reader-scroll"
     :data-mode="settings.mode"
     :data-pages="settings.pagesPerView"
+    :data-seamless="
+      settings.mode === 'vertical-continuous' && settings.seamless ? 'true' : undefined
+    "
     tabindex="0"
     @scroll.passive="$emit('scroll', $event)"
     @wheel="$emit('wheel', $event)"
@@ -128,7 +131,12 @@ defineExpose({
         :data-page="page"
         :id="`page-${page}`"
       >
-        <div class="page-frame" :data-fit="settings.fit">
+        <div
+          class="page-frame"
+          :data-fit="
+            settings.mode === 'vertical-continuous' && settings.seamless ? 'width' : settings.fit
+          "
+        >
           <ComicPageImage
             :src="pageFileUrl(source, sourceId, page)"
             :alt="`第 ${toLocalPage(page)} 页`"
@@ -137,7 +145,10 @@ defineExpose({
             @ready="$emit('pageReady', page)"
           />
         </div>
-        <footer class="page-footer">
+        <footer
+          v-if="!settings.seamless || settings.mode !== 'vertical-continuous'"
+          class="page-footer"
+        >
           <span>{{ String(toLocalPage(page)).padStart(3, '0') }}</span>
         </footer>
       </article>
@@ -233,6 +244,33 @@ defineExpose({
 
 .reader-scroll[data-mode='vertical-continuous'] .reader-spread:last-of-type {
   padding-bottom: max(var(--space-6), env(safe-area-inset-bottom, 0px));
+}
+
+/* ---------------- 条漫无缝长卷模式（Webtoon Seamless） ---------------- */
+.reader-scroll[data-mode='vertical-continuous'][data-seamless='true'] .reader-spread {
+  gap: 0;
+  padding-left: 0;
+  padding-right: 0;
+}
+
+.reader-scroll[data-mode='vertical-continuous'][data-seamless='true']
+  .reader-spread:not(:first-child) {
+  padding-top: 0;
+  margin-top: -1px; /* 亚像素微咬合，消除高 DPR 屏与浏览器缩放下的微缝漏光 */
+}
+
+.reader-scroll[data-mode='vertical-continuous'][data-seamless='true']
+  .page-frame
+  :deep(.comic-page-img) {
+  box-shadow: none;
+  background: transparent;
+  vertical-align: bottom;
+}
+
+.reader-scroll[data-mode='vertical-continuous'][data-seamless='true']
+  .page-frame
+  :deep(.comic-page-image) {
+  vertical-align: bottom;
 }
 
 .reader-scroll[data-mode='vertical-continuous'] .reader-page {
@@ -405,7 +443,7 @@ defineExpose({
    并在 prefers-reduced-motion: reduce 下秒级静默禁用。 */
 @supports (animation-timeline: view()) {
   @media (prefers-reduced-motion: no-preference) {
-    .reader-scroll[data-mode='vertical-continuous'] .reader-page {
+    .reader-scroll[data-mode='vertical-continuous']:not([data-seamless='true']) .reader-page {
       animation: reader-page-appear 1ms var(--ease-out) both;
       animation-timeline: view();
       animation-range: entry 0% entry 100%;

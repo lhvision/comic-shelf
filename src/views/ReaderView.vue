@@ -32,11 +32,12 @@ import ReaderViewport from '@/components/reader/ReaderViewport.vue'
 import ReaderProgress from '@/components/reader/ReaderProgress.vue'
 import ReaderChapterBanners from '@/components/reader/ReaderChapterBanners.vue'
 import ReaderHud from '@/components/reader/ReaderHud.vue'
+import ReaderFloatingPill from '@/components/reader/ReaderFloatingPill.vue'
 import ReaderSettingsPanel from '@/components/reader/ReaderSettingsPanel.vue'
 
 const route = useRoute()
 const router = useRouter()
-const { settings } = useReaderSettings()
+const { settings, applyComicPreferences, clearActiveComic } = useReaderSettings()
 const currentPage = ref(1)
 const currentGroupIndex = ref(0)
 const [settingsOpen] = useToggle(false)
@@ -107,6 +108,7 @@ const { chromeVisible, showChromeTemporarily, scheduleChromeHide, toggleChrome }
 
 const {
   progressValue,
+  pillActive,
   scrollToGroup,
   recalibrateTargetOffset,
   goToPage,
@@ -188,7 +190,18 @@ watch(currentPage, (page) => {
   preloadAround(page)
 })
 
+watch(
+  () => detail.value,
+  (d) => {
+    if (d && source.value && sourceId.value) {
+      applyComicPreferences(source.value, sourceId.value, d.meta.tags)
+    }
+  },
+  { immediate: true },
+)
+
 onBeforeUnmount(() => {
+  clearActiveComic()
   lastRead.value = currentPage.value
   if (currentPage.value > 0 && source.value && sourceId.value) {
     broadcastLocalChange({
@@ -401,6 +414,14 @@ function onBackToShelf() {
       @toggle-auto-turn-pause="toggleAutoTurnPause"
       @prev="prevGroup"
       @next="nextGroup"
+    />
+
+    <ReaderFloatingPill
+      v-if="!loading && settings.mode === 'vertical-continuous' && settings.seamless"
+      :current="toLocalPage(currentPage)"
+      :total="total"
+      :active="pillActive"
+      :suppressed="chromeVisible || settingsOpen"
     />
 
     <ReaderSettingsPanel :open="settingsOpen" @close="settingsOpen = false" />

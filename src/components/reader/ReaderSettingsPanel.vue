@@ -29,6 +29,8 @@ const emit = defineEmits<{ close: [] }>()
 
 const { settings, pagesPerViewOptions, reset } = useReaderSettings()
 
+const isSeamlessStrip = computed(() => settings.mode === 'vertical-continuous' && settings.seamless)
+
 const isCustomInterval = computed(
   () => !AUTO_TURN_INTERVALS.some((val) => val === settings.autoTurnInterval),
 )
@@ -100,13 +102,40 @@ function onCustomBlur() {
         </div>
       </div>
 
-      <div class="setting-group">
-        <h3>每屏页数</h3>
+      <div v-if="settings.mode === 'vertical-continuous'" class="setting-group">
+        <div class="setting-row">
+          <div class="setting-copy">
+            <h3>无缝长卷拼接</h3>
+            <p>
+              {{
+                settings.seamless
+                  ? '已消除页间黑缝与阴影，自动将切片画卷咬合为连续条漫'
+                  : '保留页面间距、底色与行内页码指示'
+              }}
+            </p>
+          </div>
+          <button
+            class="switch"
+            type="button"
+            role="switch"
+            :aria-checked="settings.seamless"
+            :aria-label="settings.seamless ? '关闭无缝长卷拼接' : '开启无缝长卷拼接'"
+            @click="settings.seamless = !settings.seamless"
+          />
+        </div>
+      </div>
+
+      <div class="setting-group" :class="{ 'is-disabled-group': isSeamlessStrip }">
+        <div class="setting-header-with-badge">
+          <h3>每屏页数</h3>
+          <span v-if="isSeamlessStrip" class="constraint-badge">条漫已锁定单页</span>
+        </div>
         <div class="segmented">
           <button
             v-for="count in pagesPerViewOptions"
             :key="count"
             type="button"
+            :disabled="isSeamlessStrip"
             :aria-pressed="settings.pagesPerView === count"
             @click="settings.pagesPerView = count"
           >
@@ -195,13 +224,21 @@ function onCustomBlur() {
         </div>
       </div>
 
-      <div class="setting-group">
-        <h3>竖向连续模式图片适配</h3>
+      <div
+        v-if="settings.mode === 'vertical-continuous'"
+        class="setting-group"
+        :class="{ 'is-disabled-group': isSeamlessStrip }"
+      >
+        <div class="setting-header-with-badge">
+          <h3>竖向连续模式图片适配</h3>
+          <span v-if="isSeamlessStrip" class="constraint-badge">条漫已锁定适应宽度</span>
+        </div>
         <div class="segmented">
           <button
             v-for="option in FIT_OPTIONS"
             :key="option.value"
             type="button"
+            :disabled="isSeamlessStrip"
             :aria-pressed="settings.fit === option.value"
             @click="settings.fit = option.value"
           >
@@ -247,6 +284,33 @@ function onCustomBlur() {
   letter-spacing: 0.08em;
   color: var(--reader-muted);
   margin-bottom: var(--space-3);
+}
+
+.setting-header-with-badge {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  margin-bottom: var(--space-3);
+}
+
+.setting-header-with-badge h3 {
+  margin-bottom: 0;
+}
+
+.constraint-badge {
+  font-family: var(--font-mono);
+  font-size: var(--text-caption, 11px);
+  color: var(--accent);
+  background: var(--accent-soft);
+  padding: 0.15rem 0.5rem;
+  border-radius: var(--radius-sm, 4px);
+  letter-spacing: 0.04em;
+}
+
+.is-disabled-group .segmented button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
 }
 
 .setting-row {

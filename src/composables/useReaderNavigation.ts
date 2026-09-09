@@ -13,7 +13,7 @@
 
 import { getCurrentScope, onScopeDispose, ref, type ComputedRef, type Ref } from 'vue'
 import type { Router } from 'vue-router'
-import { useDebounceFn } from '@vueuse/core'
+import { useDebounceFn, useTimeoutFn } from '@vueuse/core'
 import { pageFileUrl } from '@/api/client'
 import type { Chapter } from '@/types'
 import type { ReaderSettings } from '@/composables/useReaderSettings'
@@ -85,6 +85,22 @@ export function useReaderNavigation(options: UseReaderNavigationOptions) {
 
   /** 归一化滚动进度（0.0 ~ 1.0），在 RTL 模式下自动取反以贴合阅读习惯 */
   const progressValue = ref(0)
+
+  /** 条漫无缝模式下右下角浮动页标活跃状态（滚动时感应唤醒，静止 1.5 秒后淡出） */
+  const pillActive = ref(false)
+  const { start: startPillHide, stop: stopPillHide } = useTimeoutFn(
+    () => {
+      pillActive.value = false
+    },
+    1500,
+    { immediate: false },
+  )
+
+  function triggerPill() {
+    pillActive.value = true
+    stopPillHide()
+    startPillHide()
+  }
 
   /**
    * 将阅读器滚动视口物理定位到指定的分屏容器
@@ -167,6 +183,7 @@ export function useReaderNavigation(options: UseReaderNavigationOptions) {
         wheelResetTimer = null
       }
       preloadAround.cancel?.()
+      stopPillHide()
     })
   }
 
@@ -209,6 +226,9 @@ export function useReaderNavigation(options: UseReaderNavigationOptions) {
 
     if (!settings.autoTurn && settings.mode !== 'vertical-continuous') {
       showChromeTemporarily()
+    }
+    if (settings.mode === 'vertical-continuous' && settings.seamless) {
+      triggerPill()
     }
     resetAutoTurnCountdown()
   }
@@ -319,6 +339,7 @@ export function useReaderNavigation(options: UseReaderNavigationOptions) {
 
   return {
     progressValue,
+    pillActive,
     scrollToGroup,
     recalibrateTargetOffset,
     goToGroup,

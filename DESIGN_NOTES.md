@@ -25,6 +25,7 @@
    - [§54 阅读器末页接卷推荐架构](#sec-54)
    - [§55 画卷折叠架与尾格余量收纳架构](#sec-55)
    - [§56 来源导航单一真理源与收录工作台解耦架构](#sec-56)
+   - [§57 条漫无缝拼接与自适应画卷架构](#sec-57)
 5. [历史演进里程碑归档索引（Historical Milestones Archive）](#5-历史演进里程碑归档索引historical-milestones-archive)
 
 ---
@@ -265,6 +266,23 @@
   1. 单源模式下在 Hero 左上方显式提供 `〔 ← 返回全部藏书 〕` 面包屑路由锚点，避免用户因过滤后无处退回产生被劫持感；
   2. 移动端折叠抽屉严格声明 `:inert="!isDesktop && !isMobileExpanded"` 并配合 `visibility: hidden` 过渡，彻底根除不可见隐藏表单与按钮引发的无障碍幽灵焦点（Ghost Focus）；
   3. 移动端快捷药丸严格遵守 WCAG 2.5.5，保底 `min-height: 44px;` 触控物理判定区。
+
+### <a id="sec-57"></a>§57 条漫无缝拼接与自适应画卷架构（Webtoon Seamless Stitched View & Floating Pill Architecture）
+
+- **业务背景与物理割裂根治**：
+  条漫（韩漫/国漫/Webtoon）在创作源头为单一连续垂直长卷，但在分发与收录时被切片成离散图片（如 3200px + 1912px）。若沿用普通分页漫画的行内装订页脚（`<footer class="page-footer"><span>021</span></footer>`）、页间外边距（`padding-top: var(--reader-gap)`）与单页阴影（`box-shadow`），原本连续的画格、衣服折痕与对白气泡会被硬生生腰斩截断。
+- **排版硬约束防撕裂（Constraint Guard）**：
+  1. 切片高度往往极不规律，若按「适应高度（fit: height）」缩放会导致相邻切片宽度失配并产生横向错位。系统在开启无缝模式（`seamless === true`）时强制锁定为「适应全宽（`fit: 'width'`）」且「单列呈现（`pagesPerView = 1`）」；
+  2. 设置面板中相应互斥项呈现为禁用态并挂载朱砂微标（`〔 条漫已锁定单页全宽 〕`），避免冲突。
+- **亚像素微咬合与零缝咬合（Micro-Overlap）**：
+  1. 对非首图施加 `margin-top: -1px` 微咬合，彻底消除高 DPR 视网膜屏与浏览器缩放（125%/150%）下的浮点舍入背景漏缝；
+  2. 物理拔除行内占位页脚，剥离阴影并去除进场位移动画，确保滚动平滑顺畅。
+- **浮动画卷页标（Floating Page Pill）**：
+  1. 替代行内页码，采用视口右下角半透明水墨毛玻璃胶囊（`var(--reader-scrim)` + 单源等宽字体 `021 / 045`）；
+  2. 滚动时感应淡入（`opacity: 0.92`），停止滚动 1.5 秒后静默淡出；呼出全局 HUD 时主动隐退，杜绝视觉冲突。
+- **单本偏好记忆与智能启发感知（Per-Comic Overrides & Heuristics）**：
+  1. 本地持久化单本阅读偏好（`comic-shelf:reader-overrides:v1`），实现日漫与条漫各自记忆、互不干扰；
+  2. 首次进入尚未配置偏好的漫画时，若标签命中 `条漫` / `韩漫` / `Webtoon`，自动默认启用无缝拼接，读者开箱即享沉浸长卷。
 
 ---
 

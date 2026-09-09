@@ -1,4 +1,4 @@
-import { computed, reactive, watch } from 'vue'
+import { computed, reactive, ref, watch } from 'vue'
 import { createGlobalState, useLocalStorage, useMediaQuery } from '@vueuse/core'
 
 /**
@@ -25,10 +25,13 @@ export interface ReaderSettings {
   direction: SpreadDirection
   autoTurn: boolean
   autoTurnInterval: AutoTurnInterval
+  seamless: boolean
 }
 
 /** 兼容旧版本设置用的 localStorage key，禁止随意改名 */
 export const SETTINGS_KEY = 'comic-shelf:reader-settings:v1'
+/** 作品级独立阅读偏好持久化 key */
+export const OVERRIDES_KEY = 'comic-shelf:reader-overrides:v1'
 export const AUTO_TURN_INTERVALS = [5, 10, 15, 30] as const
 export const DEFAULT_SETTINGS: Readonly<ReaderSettings> = {
   mode: 'vertical-continuous',
@@ -37,6 +40,7 @@ export const DEFAULT_SETTINGS: Readonly<ReaderSettings> = {
   direction: 'ltr',
   autoTurn: false,
   autoTurnInterval: 10,
+  seamless: false,
 }
 
 /** 桌面端判定断点：>680px 才允许 4 连页 */
@@ -95,6 +99,7 @@ function clampSettings(value: Partial<ReaderSettings>, wideViewport: boolean): R
         : DEFAULT_SETTINGS.direction,
     autoTurn: value.autoTurn === true,
     autoTurnInterval,
+    seamless: value.seamless === true,
   }
 }
 
@@ -104,10 +109,14 @@ function clampSettings(value: Partial<ReaderSettings>, wideViewport: boolean): R
  * - isWideViewport：响应式视口判断
  * - pagesPerViewOptions：随视口变化的可选页数（窄屏只有 1/2）
  * - reset：恢复默认
+ * - applyComicPreferences：根据漫画来源、ID 与标签应用单本偏好或自适应启用条漫无缝模式
+ * - clearActiveComic：退出阅读时清理活跃漫画上下文
  */
 export const useReaderSettings = createGlobalState(() => {
   // 直接以 v1 key 绑定本地存储；parse 失败时 useLocalStorage 会自动回落到 default
   const stored = useLocalStorage<Partial<ReaderSettings>>(SETTINGS_KEY, {})
+  const overrides = useLocalStorage<Record<string, Partial<ReaderSettings>>>(OVERRIDES_KEY, {})
+  const activeComicKey = ref<string | null>(null)
   const isWideViewport = useMediaQuery(WIDE_VIEWPORT_QUERY)
 
   const settings = reactive<ReaderSettings>(clampSettings(stored.value, isWideViewport.value))
@@ -117,11 +126,36 @@ export const useReaderSettings = createGlobalState(() => {
     if (!wide && settings.pagesPerView === 4) settings.pagesPerView = 1
   })
 
-  // 深度写回：任何子字段变化都同步到 localStorage（与 useStorage 的深 watch 行为一致）
+  // 当处于竖向连续模式且开启无缝拼接时，强制锁定为单页且适应全宽（排版硬约束防撕裂）
+  watch(
+    () => [settings.mode, settings.seamless, settings.fit, settings.pagesPerView] as const,
+    ([mode, seamless, fit, ppv]) => {
+      if (mode === 'vertical-continuous' && seamless) {
+        if (ppv !== 1) settings.pagesPerView = 1
+        if (fit !== 'width') settings.fit = 'width'
+      }
+    },
+    { immediate: true, flush: 'sync' },
+  )
+
+  // 深度写回：任何子字段变化都同步到 localStorage 与当前作品专属覆盖
   watch(
     settings,
     (value) => {
       stored.value = { ...DEFAULT_SETTINGS, ...value }
+      if (activeComicKey.value) {
+        overrides.value = {
+          ...overrides.value,
+          [activeComicKey.value]: {
+            ...overrides.value[activeComicKey.value],
+            mode: value.mode,
+            fit: value.fit,
+            pagesPerView: value.pagesPerView,
+            direction: value.direction,
+            seamless: value.seamless,
+          },
+        }
+      }
     },
     { deep: true },
   )
@@ -130,9 +164,50 @@ export const useReaderSettings = createGlobalState(() => {
     isWideViewport.value ? [1, 2, 4] : [1, 2],
   )
 
-  function reset() {
-    Object.assign(settings, DEFAULT_SETTINGS)
+  /**
+   * 应用单本漫画阅读偏好（若首次打开且标签命中条漫/韩漫/Webtoon 特征，则智能默认启用无缝拼接）
+   */
+  function applyComicPreferences(source: string, sourceId: string, tags?: string[]) {
+    if (!source || !sourceId) return
+    const key = `${source}:${sourceId}`
+    activeComicKey.value = key
+    const custom = overrides.value[key]
+    if (custom) {
+      Object.assign(settings, custom)
+    } else {
+      const isStrip = tags?.some((tag) => /条漫|條漫|韩漫|韓漫|webtoon/i.test(tag)) ?? false
+      if (isStrip) {
+        settings.seamless = true
+        overrides.value = {
+          ...overrides.value,
+          [key]: { seamless: true },
+        }
+      } else {
+        settings.seamless = stored.value.seamless === true
+      }
+    }
   }
 
-  return { settings, isWideViewport, pagesPerViewOptions, reset }
+  function clearActiveComic() {
+    activeComicKey.value = null
+  }
+
+  function reset() {
+    Object.assign(settings, DEFAULT_SETTINGS)
+    stored.value = { ...DEFAULT_SETTINGS }
+    if (activeComicKey.value && overrides.value[activeComicKey.value]) {
+      const next = { ...overrides.value }
+      delete next[activeComicKey.value]
+      overrides.value = next
+    }
+  }
+
+  return {
+    settings,
+    isWideViewport,
+    pagesPerViewOptions,
+    reset,
+    applyComicPreferences,
+    clearActiveComic,
+  }
 })
