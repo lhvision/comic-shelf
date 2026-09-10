@@ -1,39 +1,82 @@
 <script setup lang="ts">
+/**
+ * TagFilterBar.vue — 书架多维状态与分类标签筛选工具栏
+ *
+ * @description
+ * 提供藏书多维筛选能力：
+ * 1. 「只看喜欢」微件开关（独立正交维度）
+ * 2. 「全部 / 在读 / 已读」分段选择器（SegmentedTabs，互斥单选，同步 URL ?status=）
+ * 3. 分类标签 Chips 与高频/溢出折叠抽屉（前 8 个默认外露，其余折叠入抽屉）
+ *
+ * @prop {boolean} favoritesOnly - 是否仅筛选已加入喜欢的藏书
+ * @prop {ReadingStatus} [readingStatus='all'] - 当前选中的阅读状态（'all' | 'reading' | 'completed'）
+ * @prop {boolean} [completedOnly=false] - 兼容历史布尔属性（当未显式传 readingStatus 时派生）
+ * @prop {string} activeTag - 当前激活的分类标签名称（空表示全部标签）
+ * @prop {Array<[string, number]>} tagCounts - 全库或当前来源前 18/30 高频标签及其计数
+ * @prop {number} filteredCount - 当前筛选命中的条目数
+ *
+ * @emit toggleFavorites - 切换喜欢状态
+ * @emit toggleCompleted - 切换已读状态（兼容事件）
+ * @emit update:readingStatus - 阅读状态变更事件（'all' | 'reading' | 'completed'）
+ * @emit selectTag - 选中指定标签（传空表示取消标签筛选）
+ * @emit clearTag - 清空标签筛选
+ */
 import { computed, watch } from 'vue'
 import AppIcon from '@/components/AppIcon.vue'
 import AppChip from '@/components/AppChip.vue'
+import SegmentedTabs, { type TabItem } from '@/components/SegmentedTabs.vue'
+import type { ReadingStatus } from '@/types'
 
-/**
- * 书架标签筛选条 —— 「只看喜欢」+ 标签 chips + 当前筛选提示。
- * 选中状态 (activeTag / favoritesOnly) 由父级持有，本组件只回发事件。
- *
- * 漏斗式禁止（票据 03）：默认只渲染高频的前 8 个标签，其余收进
- * 「更多标签」展开按钮之下（再点收起），避免 ~20 个 chip 的墙造成
- * 决策点超载，也避免移动端出现无休止换行。
- */
 const trayExpanded = defineModel<boolean>('trayExpanded', { default: false })
 
-const props = withDefaults(
-  defineProps<{
-    favoritesOnly: boolean
-    completedOnly?: boolean
-    activeTag: string
-    /** [标签, 数量] 有序列表，按出现次数降序 */
-    tagCounts: Array<[string, number]>
-    /** 当前筛选命中的数量（用于提示文案） */
-    filteredCount: number
-  }>(),
-  {
-    completedOnly: false,
-  },
-)
+export interface TagFilterBarProps {
+  favoritesOnly: boolean
+  readingStatus?: ReadingStatus
+  completedOnly?: boolean
+  activeTag: string
+  /** [标签, 数量] 有序列表，按出现次数降序 */
+  tagCounts: Array<[string, number]>
+  /** 当前筛选命中的数量（用于提示文案） */
+  filteredCount: number
+}
+
+const props = withDefaults(defineProps<TagFilterBarProps>(), {
+  readingStatus: 'all',
+  completedOnly: false,
+})
 
 const emit = defineEmits<{
   toggleFavorites: []
   toggleCompleted: []
+  'update:readingStatus': [status: ReadingStatus]
   selectTag: [tag: string]
   clearTag: []
 }>()
+
+const readingStatusTabs: TabItem<ReadingStatus>[] = [
+  { key: 'all', label: '全部' },
+  { key: 'reading', label: '在读' },
+  { key: 'completed', label: '已读' },
+]
+
+const effectiveReadingStatus = computed<ReadingStatus>(() => {
+  if (props.readingStatus && props.readingStatus !== 'all') {
+    return props.readingStatus
+  }
+  if (props.completedOnly) {
+    return 'completed'
+  }
+  return props.readingStatus ?? 'all'
+})
+
+function onReadingStatusChange(status: ReadingStatus) {
+  emit('update:readingStatus', status)
+  if (status === 'completed' && !props.completedOnly) {
+    emit('toggleCompleted')
+  } else if (status !== 'completed' && props.completedOnly) {
+    emit('toggleCompleted')
+  }
+}
 
 /** 默认展示的高频标签数（连「全部」一起 ≤9 个 chip） */
 const VISIBLE_TAGS = 8
@@ -65,6 +108,7 @@ function selectTag(tag: string) {
 
 function clearFilter() {
   emit('selectTag', '')
+  emit('clearTag')
 }
 </script>
 
@@ -78,12 +122,16 @@ function clearFilter() {
         <span>只看喜欢</span>
       </AppChip>
 
-      <AppChip class="completed-filter" :pressed="completedOnly" @click="emit('toggleCompleted')">
-        <template #prefix>
-          <AppIcon class="archive-icon" name="archive" size="xs" />
-        </template>
-        <span>只看已读</span>
-      </AppChip>
+      <span class="filter-divider" aria-hidden="true" />
+
+      <SegmentedTabs
+        class="reading-status-tabs"
+        :model-value="effectiveReadingStatus"
+        :items="readingStatusTabs"
+        size="sm"
+        aria-label="阅读状态筛选"
+        @update:model-value="onReadingStatusChange"
+      />
 
       <span v-if="tagCounts.length" class="filter-divider" aria-hidden="true" />
 
@@ -160,16 +208,14 @@ function clearFilter() {
   gap: var(--space-2);
 }
 
-.favorite-filter,
-.completed-filter {
+.favorite-filter {
   display: inline-flex;
   align-items: center;
   gap: var(--space-1);
 }
 
-.completed-filter .archive-icon {
-  width: 0.85rem;
-  height: 0.85rem;
+.reading-status-tabs {
+  margin-inline: 0;
 }
 
 .favorite-filter .heart-icon {
@@ -207,34 +253,16 @@ function clearFilter() {
   transform: rotate(180deg);
 }
 
-/* 溢出标签托盘：基于现代 interpolate-size: allow-keywords 平滑尺寸插值 */
+/* 溢出标签托盘：CSS Grid 0fr ⇄ 1fr 平滑尺寸插值 */
 .more-tags-tray {
-  interpolate-size: allow-keywords;
-  height: 0;
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows var(--duration-2) var(--ease-out);
   overflow: clip;
-  transition: height var(--duration-2) var(--ease-out);
 }
 
 .more-tags-tray.is-expanded {
-  height: auto;
-}
-
-@supports not (interpolate-size: allow-keywords) {
-  .more-tags-tray {
-    display: grid;
-    grid-template-rows: 0fr;
-    transition: grid-template-rows var(--duration-2) var(--ease-out);
-    height: auto;
-  }
-
-  .more-tags-tray.is-expanded {
-    grid-template-rows: 1fr;
-  }
-
-  .more-tags-inner {
-    min-height: 0;
-    overflow: clip;
-  }
+  grid-template-rows: 1fr;
 }
 
 .more-tags-inner {

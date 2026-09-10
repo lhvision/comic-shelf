@@ -412,7 +412,164 @@ def test_db_and_passes_crud():
     db_mod.delete_guest_pass(p_brute["id"])
 
 
+def test_comics_index_and_pagination():
+    temp_dir = tempfile.mkdtemp()
+    temp_db = Path(temp_dir) / "test_comics_index.db"
+    db_mod.init_db(temp_db)
+
+    # 1. Upsert 3 comics
+    db_mod.upsert_comic_index({
+        "source": "local",
+        "source_id": "c1",
+        "display_id": "LOC_c1",
+        "title": "Alpha Comic",
+        "authors_json": '["Author A"]',
+        "works_json": '[]',
+        "actors_json": '[]',
+        "tags_json": '["同人", "全彩"]',
+        "chapter_titles_json": '["第 1 话"]',
+        "page_count": 20,
+        "cached_pages": 20,
+        "cover_count": 4,
+        "cover_indices_json": '[]',
+        "views": "100",
+        "likes": "50",
+        "uploaded_at": "2026-01-01",
+        "published_at": "2026-01-01",
+        "updated_at": "2026-01-01",
+        "imported_at": "2026-01-01T10:00:00",
+        "hidden_from_guest": 0,
+        "mtime": 100.0,
+    })
+
+    db_mod.upsert_comic_index({
+        "source": "local",
+        "source_id": "c2",
+        "display_id": "LOC_c2",
+        "title": "Beta Comic",
+        "authors_json": '["Author B"]',
+        "works_json": '[]',
+        "actors_json": '[]',
+        "tags_json": '["同人"]',
+        "chapter_titles_json": '[]',
+        "page_count": 30,
+        "cached_pages": 30,
+        "cover_count": 4,
+        "cover_indices_json": '[]',
+        "views": "200",
+        "likes": "60",
+        "uploaded_at": "2026-01-02",
+        "published_at": "2026-01-02",
+        "updated_at": "2026-01-02",
+        "imported_at": "2026-01-02T10:00:00",
+        "hidden_from_guest": 0,
+        "mtime": 200.0,
+    })
+
+    db_mod.upsert_comic_index({
+        "source": "local",
+        "source_id": "c3",
+        "display_id": "LOC_c3",
+        "title": "Gamma Secret",
+        "authors_json": '["Author C"]',
+        "works_json": '[]',
+        "actors_json": '[]',
+        "tags_json": '["短篇"]',
+        "chapter_titles_json": '[]',
+        "page_count": 15,
+        "cached_pages": 15,
+        "cover_count": 4,
+        "cover_indices_json": '[]',
+        "views": "50",
+        "likes": "10",
+        "uploaded_at": "2026-01-03",
+        "published_at": "2026-01-03",
+        "updated_at": "2026-01-03",
+        "imported_at": "2026-01-03T10:00:00",
+        "hidden_from_guest": 1,
+        "mtime": 300.0,
+    })
+
+    # Set reading progress: c2 is reading (page 10 / 30), c3 is completed (page 15 / 15)
+    db_mod.set_user_progress("u1", "local", "c2", last_page=10, total_pages=30)
+    db_mod.set_user_progress("u1", "local", "c3", last_page=15, total_pages=15)
+    db_mod.set_user_favorite("u1", "local", "c1", favorite=True)
+
+    # 2. Query as curator
+    items, total = db_mod.query_library_index("u1", is_curator=True, page=1, page_size=10, status="all")
+    assert total == 3
+    assert len(items) == 3
+
+    # Guest query (c3 is hidden_from_guest)
+    items_guest, total_guest = db_mod.query_library_index("u1", is_curator=False, page=1, page_size=10)
+    assert total_guest == 2
+    assert all(it["source_id"] in ("c1", "c2") for it in items_guest)
+
+    # Status: reading -> only c2
+    items_reading, total_reading = db_mod.query_library_index("u1", is_curator=True, status="reading")
+    assert total_reading == 1
+    assert items_reading[0]["source_id"] == "c2"
+
+    # Status: completed -> only c3
+    items_comp, total_comp = db_mod.query_library_index("u1", is_curator=True, status="completed")
+    assert total_comp == 1
+    assert items_comp[0]["source_id"] == "c3"
+
+    # Status: unread -> only c1
+    items_unread, total_unread = db_mod.query_library_index("u1", is_curator=True, status="unread")
+    assert total_unread == 1
+    assert items_unread[0]["source_id"] == "c1"
+
+    # Tag filter
+    items_tag, total_tag = db_mod.query_library_index("u1", is_curator=True, tag="全彩")
+    assert total_tag == 1
+    assert items_tag[0]["source_id"] == "c1"
+
+    # Keyword search
+    items_search, total_search = db_mod.query_library_index("u1", is_curator=True, q="Beta")
+    assert total_search == 1
+    assert items_search[0]["source_id"] == "c2"
+
+    # Chapter title search
+    items_chap, total_chap = db_mod.query_library_index("u1", is_curator=True, q="第 1 话")
+    assert total_chap == 1
+    assert items_chap[0]["source_id"] == "c1"
+
+    # Favorite filter
+    items_fav, total_fav = db_mod.query_library_index("u1", is_curator=True, favorite=True)
+    assert total_fav == 1
+    assert items_fav[0]["source_id"] == "c1"
+
+    # Sorting recent: c2 (in-progress) and c1 (unread) come first, c3 (completed) sinks to bottom
+    items_sort, _ = db_mod.query_library_index("u1", is_curator=True, sort="recent")
+    assert items_sort[-1]["source_id"] == "c3"
+
+    # Pagination: page 1 (size 2) -> 2 items, page 2 (size 2) -> 1 item
+    p1_items, p1_total = db_mod.query_library_index("u1", is_curator=True, page=1, page_size=2)
+    assert p1_total == 3
+    assert len(p1_items) == 2
+    p2_items, p2_total = db_mod.query_library_index("u1", is_curator=True, page=2, page_size=2)
+    assert p2_total == 3
+    assert len(p2_items) == 1
+
+    # Facets
+    facets = db_mod.get_library_facets(is_curator=True)
+    assert facets["stats"]["total_books"] == 3
+    assert facets["stats"]["total_pages"] == 65
+    assert facets["stats"]["cached_pages"] == 65
+    tags_dict = dict(facets["top_tags"])
+    assert tags_dict["同人"] == 2
+    assert tags_dict["全彩"] == 1
+    assert tags_dict["短篇"] == 1
+
+    # Delete
+    db_mod.delete_comic_index("local", "c3")
+    assert db_mod.get_comic_index_count() == 2
+
+
 if __name__ == "__main__":
     test_db_and_passes_crud()
+    test_comics_index_and_pagination()
     print("Database and passes unit tests passed!")
+
 

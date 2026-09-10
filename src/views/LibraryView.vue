@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, toRef, watch, ref, nextTick } from 'vue'
+/** LibraryView.vue — 书架主视图，检索、排序、状态与流式分页下沉至 Composables 与 Stores */
+import { computed, nextTick, onMounted, onUnmounted, ref, toRef, watch } from 'vue'
 import { onBeforeRouteLeave, useRoute, useRouter } from 'vue-router'
 import ImportPanel from '@/components/ImportPanel.vue'
 import LibraryHero from '@/components/library/LibraryHero.vue'
@@ -11,6 +12,7 @@ import AppIcon from '@/components/AppIcon.vue'
 import { useLibraryStore } from '@/stores/library'
 import { useExperimentsStore } from '@/stores/experiments'
 import { useLibraryFilter } from '@/composables/useLibraryFilter'
+import { useLibrarySync } from '@/composables/useLibrarySync'
 import { useShelfState } from '@/composables/useShelfState'
 import { useImageSearch } from '@/composables/useImageSearch'
 import { useToast } from '@/composables/useToast'
@@ -19,10 +21,6 @@ import { useSystemEvents } from '@/composables/useSystemEvents'
 import { api, DEFAULT_PROVIDERS } from '@/api/client'
 import type { ProviderInfo } from '@/types'
 
-/**
- * 书架首页 —— 纯编排视图。
- * 检索/排序/过滤下沉至 useLibraryFilter，子区段下沉至 components/library/。
- */
 const store = useLibraryStore()
 const experiments = useExperimentsStore()
 const route = useRoute()
@@ -33,108 +31,100 @@ const { broadcastLocalChange } = useSystemEvents()
 const fileInput = ref<HTMLInputElement | null>(null)
 const providers = ref<ProviderInfo[]>(DEFAULT_PROVIDERS)
 
-const {
-  shelfScrollY,
-  activeUnfoldCount,
-  archiveOpen,
-  archiveUnfoldCount,
-  unifiedUnfoldCount,
-  search: shelfSearch,
-  activeTag: shelfActiveTag,
-  favoritesOnly: shelfFavoritesOnly,
-  completedOnly: shelfCompletedOnly,
-  sortBy: shelfSortBy,
-  tagTrayExpanded,
-  saveScrollPosition,
-  resetAllShelfState,
-} = useShelfState()
+const shelf = useShelfState()
+const { activeUnfoldCount, archiveOpen, archiveUnfoldCount, unifiedUnfoldCount, tagTrayExpanded } =
+  shelf
 
 const activeSource = computed(() =>
   typeof route.query.source === 'string' ? route.query.source : '',
 )
+const shelfTitle = computed(
+  () =>
+    ({ jm: '禁漫天堂藏书', picacg: '哔咔漫画藏书', local: '本地自建图集' })[activeSource.value] ??
+    '全部藏书',
+)
 
-const SHELF_TITLES: Record<string, string> = {
-  jm: '禁漫天堂藏书',
-  picacg: '哔咔漫画藏书',
-  local: '本地自建图集',
+const imageSearch = useImageSearch()
+const cameraBtnTooltip = computed(() =>
+  imageSearch.isChecking.value
+    ? '正在探测识图服务...'
+    : imageSearch.isAvailable.value
+      ? '上传图片以图搜图'
+      : '识图服务未连接，点击重新探测',
+)
+
+async function onCameraClick() {
+  if (imageSearch.isChecking.value) return
+  if (imageSearch.isAvailable.value || (await imageSearch.checkStatus(true))) {
+    fileInput.value?.click()
+  } else {
+    toast('识图服务未启动或无法连接，请确认后台服务已开启', 'error')
+  }
 }
 
-const shelfTitle = computed(() => SHELF_TITLES[activeSource.value] ?? '全部藏书')
+function onFileSelected(e: Event) {
+  const input = e.target as HTMLInputElement
+  if (input.files?.[0]) void imageSearch.searchWithFile(input.files[0])
+  input.value = ''
+}
 
-const {
-  isAvailable,
-  isChecking,
-  isSearching,
-  error: searchError,
-  searchImagePreviewUrl,
-  searchResults,
-  searchWithFile,
-  clearImage,
-  checkStatus,
-  handlePaste,
-  handleDrop,
-} = useImageSearch()
-
-// 遵守 DESIGN_NOTES §13 约束：Composable 返回值在 setup 顶层解构
 const {
   search,
   activeTag,
   favoritesOnly,
-  completedOnly,
+  readingStatus,
   sortBy,
-  sourceItems,
+  totalBooks,
   totalPages,
   totalCachedPages,
   tagCounts,
   imageSearchMatchMap,
   filtered,
   setSort,
-} = useLibraryFilter(toRef(store, 'items'), activeSource, searchResults, {
-  search: shelfSearch,
-  activeTag: shelfActiveTag,
-  favoritesOnly: shelfFavoritesOnly,
-  completedOnly: shelfCompletedOnly,
-  sortBy: shelfSortBy,
+} = useLibraryFilter(toRef(store, 'items'), activeSource, imageSearch.searchResults, {
+  search: shelf.search,
+  activeTag: shelf.activeTag,
+  favoritesOnly: shelf.favoritesOnly,
+  readingStatus: shelf.readingStatus,
+  sortBy: shelf.sortBy,
+  facets: toRef(store, 'facets'),
 })
 
-function restoreScrollPosition() {
-  const savedY = shelfScrollY.value
-  if (savedY > 0) {
-    nextTick(() => {
-      window.scrollTo({ top: savedY, behavior: 'instant' })
-    })
-  }
-}
+const { fetchLibrary } = useLibrarySync({
+  route,
+  router,
+  activeSource,
+  search,
+  activeTag,
+  favoritesOnly,
+  readingStatus,
+  sortBy,
+  imageSearchResults: imageSearch.searchResults,
+})
+
+onBeforeRouteLeave(() => shelf.saveScrollPosition(window.scrollY))
 
 watch(activeSource, (newSource, oldSource) => {
   if (oldSource !== undefined && newSource !== oldSource) {
-    resetAllShelfState()
+    shelf.resetAllShelfState()
     window.scrollTo({ top: 0, behavior: 'instant' })
   }
 })
 
-onBeforeRouteLeave(() => {
-  saveScrollPosition(window.scrollY)
-})
-
 onMounted(() => {
-  restoreScrollPosition()
-  void store.load()
+  if (shelf.shelfScrollY.value > 0) {
+    nextTick(() => window.scrollTo({ top: shelf.shelfScrollY.value, behavior: 'instant' }))
+  }
+  void fetchLibrary(true, true)
   store.startPollingIfActive()
-  window.addEventListener('paste', handlePaste)
+  window.addEventListener('paste', imageSearch.handlePaste)
   api
     .providers()
-    .then((res) => {
-      providers.value = res
-    })
-    .catch(() => {
-      providers.value = DEFAULT_PROVIDERS
-    })
+    .then((res) => (providers.value = res))
+    .catch(() => {})
 })
 
-onUnmounted(() => {
-  window.removeEventListener('paste', handlePaste)
-})
+onUnmounted(() => window.removeEventListener('paste', imageSearch.handlePaste))
 
 function onFavoriteToggled(source: string, sourceId: string, favorite: boolean) {
   store.setFavoriteLocal(source, sourceId, favorite)
@@ -147,70 +137,18 @@ function onFavoriteToggled(source: string, sourceId: string, favorite: boolean) 
   })
 }
 
-function selectTag(tag: string) {
-  activeTag.value = tag
-}
+const openComic = (s: string, id: string) => router.push(`/comic/${s}/${id}`)
 
-function toggleFavorites() {
-  favoritesOnly.value = !favoritesOnly.value
-}
-
-function toggleCompleted() {
-  completedOnly.value = !completedOnly.value
-}
-
-function onSortChange(value: string) {
-  setSort(value)
-}
-
-function onClearImage() {
-  clearImage()
-}
-
-function openComic(source: string, sourceId: string) {
-  router.push(`/comic/${source}/${sourceId}`)
-}
-
-function onFileSelected(event: Event) {
-  const target = event.target as HTMLInputElement
-  const file = target.files?.[0]
-  if (file) {
-    void searchWithFile(file)
-    target.value = '' // Reset
-  }
-}
-
-const cameraBtnTooltip = computed(() => {
-  if (isChecking.value) return '正在探测识图服务...'
-  if (isAvailable.value) return '上传图片以图搜图'
-  return '识图服务未连接，点击重新探测'
-})
-
-async function onCameraClick() {
-  if (isChecking.value) return
-  if (isAvailable.value || (await checkStatus(true))) {
-    fileInput.value?.click()
-  } else {
-    toast('识图服务未启动或无法连接，请确认后台服务已开启', 'error')
-  }
-}
-
-watch(
-  () => store.error,
-  (value) => {
-    if (value) toast(value, 'error')
-  },
-)
-
-watch(searchError, (value) => {
-  if (value) toast(value, 'error')
+watch([() => store.error, imageSearch.error], ([err1, err2]) => {
+  const err = err1 || err2
+  if (err) toast(err, 'error')
 })
 </script>
 
 <template>
-  <div class="library-view" @drop.prevent="handleDrop" @dragover.prevent>
+  <div class="library-view" @drop.prevent="imageSearch.handleDrop" @dragover.prevent>
     <LibraryHero
-      :book-count="sourceItems.length"
+      :book-count="totalBooks"
       :cached-pages="totalCachedPages"
       :total-pages="totalPages"
       :active-source="activeSource"
@@ -232,20 +170,23 @@ watch(searchError, (value) => {
           <label class="search-field field">
             <span aria-hidden="true">⌕</span>
             <ImageSearchChip
-              v-if="searchImagePreviewUrl"
-              :preview-url="searchImagePreviewUrl"
-              :is-searching="isSearching"
-              @clear="onClearImage"
+              v-if="imageSearch.searchImagePreviewUrl.value"
+              :preview-url="imageSearch.searchImagePreviewUrl.value"
+              :is-searching="imageSearch.isSearching.value"
+              @clear="imageSearch.clearImage"
               class="search-lens-pill"
             />
             <input v-model="search" type="search" placeholder="标题 / 车号 / 作者 / 标签" />
             <button
               class="camera-btn icon-btn"
               type="button"
-              :class="{ 'is-muted': !isAvailable, 'is-loading': isChecking }"
+              :class="{
+                'is-muted': !imageSearch.isAvailable.value,
+                'is-loading': imageSearch.isChecking.value,
+              }"
               :title="cameraBtnTooltip"
               :aria-label="cameraBtnTooltip"
-              :aria-busy="isChecking"
+              :aria-busy="imageSearch.isChecking.value"
               @click="onCameraClick"
             >
               <AppIcon name="camera" size="md" />
@@ -271,7 +212,7 @@ watch(searchError, (value) => {
               { value: 'pages', label: '页数' },
               { value: 'cached', label: '本地完整度' },
             ]"
-            @update:model-value="onSortChange"
+            @update:model-value="setSort"
           />
         </div>
       </div>
@@ -295,13 +236,13 @@ watch(searchError, (value) => {
       <TagFilterBar
         v-model:tray-expanded="tagTrayExpanded"
         :favorites-only="favoritesOnly"
-        :completed-only="completedOnly"
+        :reading-status="readingStatus"
         :active-tag="activeTag"
         :tag-counts="tagCounts"
         :filtered-count="filtered.length"
-        @toggle-favorites="toggleFavorites"
-        @toggle-completed="toggleCompleted"
-        @select-tag="selectTag"
+        @toggle-favorites="favoritesOnly = !favoritesOnly"
+        @update:reading-status="readingStatus = $event"
+        @select-tag="activeTag = $event"
       />
 
       <p v-if="store.activeCachingCount" class="cache-active-note" role="status">
@@ -313,19 +254,26 @@ watch(searchError, (value) => {
         :loading="store.loading"
         :items="filtered"
         :use-canvas="experiments.htmlCanvasCards"
-        :has-any-items="store.items.length > 0"
+        :has-any-items="totalBooks > 0 || store.items.length > 0"
         :live-cache="store.liveCache"
         :search-match-map="imageSearchMatchMap"
-        :is-recent-sort="sortBy === 'recent' && !searchImagePreviewUrl && !search.trim()"
+        :is-recent-sort="
+          sortBy === 'recent' && !imageSearch.searchImagePreviewUrl.value && !search.trim()
+        "
         :initial-active-count="activeUnfoldCount"
         :initial-archive-count="archiveUnfoldCount"
         :initial-unified-count="unifiedUnfoldCount"
         :initial-archive-open="archiveOpen"
-        @update:active-count="(val) => (activeUnfoldCount = val)"
-        @update:archive-count="(val) => (archiveUnfoldCount = val)"
-        @update:unified-count="(val) => (unifiedUnfoldCount = val)"
-        @update:archive-open="(val) => (archiveOpen = val)"
+        :has-more="store.hasMore"
+        :loading-more="store.loadingMore"
+        :total-count="store.total"
+        @update:active-count="activeUnfoldCount = $event"
+        @update:archive-count="archiveUnfoldCount = $event"
+        @update:unified-count="unifiedUnfoldCount = $event"
+        @update:archive-open="archiveOpen = $event"
         @favorite-toggled="onFavoriteToggled"
+        @load-more="store.loadMore()"
+        @load-all="store.loadAll()"
       />
     </section>
 

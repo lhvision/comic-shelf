@@ -657,6 +657,39 @@
     3. 引入 `MAX_OVERRIDES = 100` 实施 FIFO / LRU 驱逐策略；
     4. 凡使用 VueUse 必须读取 `vueuse-functions` skill 获取权威选项与最佳实践。
 
+### 70. 万级分页偏移跳跃、以图搜图历史断层与全量展开虚假触底陷阱 (Paginated Library Offset-Mismatch, Visual Search Amnesia & Pseudo-Unfold Trap)
+
+- **本质**：
+  1. **分页偏移断层**：在流式无限滚动或批量追加时，若服务端仅依靠 `(page - 1) * page_size` 计算 SQL 偏移量，当客户端因展开全部调整单次拉取批次（如从 24 调整为 120），SQL `OFFSET` 会因基数突变产生大幅跳跃，导致中间藏书被无故跳过；
+  2. **识图检索历史断层**：在服务端分页后，前端内存仅持有首屏切片（如前 24 本）。若读者使用以图搜图，Milvus / OpenCV 向量特征库命中了数月前收录的深层历史藏书（如第 500 本），前端由于内存无该条目，过滤计算后直接显示“暂无匹配藏书”，造成识图可用却不可见的严重断层；
+  3. **全量展开虚假触底与双卡冲突**：`usePaginationFold` 若将 `remainingCount` 按 `totalLength - visibleCount` 计算，并在用户点击「展开全部」时直接将 `visibleCount` 拔高至服务端 `totalCount`（如 500），会导致前端在仅下载了 48 本时 `remainingCount` 便提前归零，底部的「全架藏书已展开」完成条与尾格折叠卡（因 `hasMore === true`）同时发生矛盾并发渲染；
+  4. **全库全量无节制展开导致显存崩溃**：若在万级藏书规模下真正把上万张卡片（4万张封面图片）挂载进单页 DOM，会导致移动端标签页直接 OOM 崩溃闪退。
+- **红线与防误伤**：
+  - **不要**在流式追加或批次变化场景仅依赖 `page * page_size` 计算分页偏移；
+  - **不要**让客户端内存过滤接管服务端分页下的向量识图匹配；
+  - **不要**基于未就绪的推测数量（`visibleCount`）断言剩余未呈现项（`remainingCount`），必须基于实际已挂载的 DOM 列表长度（`visibleItems.length`）与 `!hasMore` 守卫进行判定；
+  - **不要**允许展开全部操作无上限追加，必须设置设备显存安全上限（如 240 本）；
+  - **放行/改用**：
+    1. 服务端接口支持显式 `offset` 参数，与 `page` 解耦，确保平滑流式追加与批次自适应伸缩；
+    2. `/api/library` 支持 `ids`（`source:source_id` 列表）定向检索，以图搜图结果直通 SQLite 影子索引精准拉取全貌；
+    3. `remainingCount = computed(() => Math.max(0, totalLength.value - visibleItems.value.length))`，且底部展开完成条强制附加 `!hasMore` 守卫；
+    4. 60 本触发安全刹车暂停无感滚动，`store.loadAll(maxCap = 240)` 实施安全封顶并防范 OOM。
+
+### 71. TransitionGroup 无 Key 侦测桩、同路由 Query 强制滚顶与流式分页失步假死陷阱 (Unkeyed Sentinel in TransitionGroup, Same-Path Scroll Reset & Frozen Stream Append Trap)
+
+- **本质**：
+  1. **TransitionGroup 子节点无 Key 警告**：在 `<TransitionGroup>` 网格容器内放置 IntersectionObserver 侦测桩元素（如 `<div ref="activeSentinelEl" class="stream-sentinel" />`）时，若未绑定显式 `key`，Vue 会在运行时抛出 `<TransitionGroup> children must be keyed.` 警告；
+  2. **同页面 Query 变更粗暴滚顶**：Vue Router 的 `scrollBehavior` 默认对非历史后退的所有导航无条件返回 `{ top: 0 }`。当用户在书架内点击「全部 / 在读 / 已读」分段胶囊或切换筛选排序时，URL 触发 `router.replace({ query })`，导致页面视口瞬间被暴力拉至最顶部（Hero 横幅之上），打断用户的浏览心流；
+  3. **流式增量追加与折叠切片失步假死**：当流式滚动或点击「再展开」触发 `loadMore` 从服务端拉取第 2 页（例如 items 从 24 扩充至 48）时，若 `ComicGrid` 内的 `watch(() => props.items)` 未识别增量追加（`isAppend`）并主动将 `visibleCount` 顺延展开一批（+12），已抵达上一页末尾的读者会发现第二页网络数据已拉取成功，但 DOM 展现切片被死死卡在第 24 本，触底侦测桩未发生位移也无法再次触发 IntersectionObserver，造成“明明拉了第二页却死活不显示”的假死 Bug。
+- **红线与防误伤**：
+  - **不要**在 `<TransitionGroup>` 内部包含任何缺少唯一 `:key` 的直接子节点（包括不可见的侦测桩与折叠卡）；
+  - **不要**在同路由仅 query/hash 变更（`to.path === from.path`）时强制滚回顶部 `{ top: 0 }`；
+  - **不要**在数据源增量扩展时（`newItems.length > oldItems.length` 且首项匹配）保持 `visibleCount` 不动导致新数据被压抑在折叠卡之后；
+  - **放行/改用**：
+    1. 为侦测桩绑定静态唯一键（如 `key="active-stream-sentinel"` 与 `key="unified-stream-sentinel"`）；
+    2. 在 `scrollBehavior` 中显式拦截：`if (to.path === from.path) return false`，保留当前视口绝对坐标；
+    3. `ComicGrid` 针对 `isAppend` 增量追加自动计算新展开切片：`activeVisibleCount.value = Math.min(activeComics.value.length, activeVisibleCount.value + props.batchStep)`，并在流式拉取结束时通过 `nextTick` 探测超高分辨率视口是否仍需补充触发，实现真正无缝丝滑的无限滚动。
+
 ---
 
 ## 🚦 交付门禁（四步必跑）

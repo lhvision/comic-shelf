@@ -191,6 +191,25 @@ class LibrarySummary(BaseModel):
     )
 
 
+class LibraryPageResponse(BaseModel):
+    items: list[LibrarySummary]
+    total: int
+    page: int
+    page_size: int
+    has_more: bool
+
+
+class LibraryStats(BaseModel):
+    total_books: int
+    total_pages: int
+    cached_pages: int
+
+
+class LibraryFacetsResponse(BaseModel):
+    stats: LibraryStats
+    top_tags: list[tuple[str, int]]
+
+
 class ComicDetail(BaseModel):
     meta: ComicMeta
     cached_pages: int

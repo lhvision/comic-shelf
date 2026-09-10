@@ -1,7 +1,11 @@
 import asyncio
+import json
+import logging
 import secrets
 import time
 from datetime import datetime
+
+logger = logging.getLogger(__name__)
 
 from fastapi import FastAPI, File, HTTPException, Query, Request, Response, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
@@ -51,6 +55,11 @@ from .db import (
     touch_device_active,
     update_guest_pass,
     verify_guest_pass_pin,
+    delete_comic_index,
+    get_all_indexed_mtimes,
+    get_library_facets,
+    query_library_index,
+    upsert_comic_index,
 )
 from .abuse import (
     clear_cooling_lock,
@@ -92,6 +101,9 @@ from .models import (
     ImportRequest,
     ImportResult,
     JobInfo,
+    LibraryFacetsResponse,
+    LibraryPageResponse,
+    LibraryStats,
     LibrarySummary,
     LocalAppendRequest,
     LocalComicCreateRequest,
@@ -255,6 +267,71 @@ def _migrate_existing_favorites_to_db() -> None:
 
 
 _migrate_existing_favorites_to_db()
+
+
+def sync_library_index(store: ComicStore) -> None:
+    """Syncs existing album.json files on disk into comics_index if missing or modified."""
+    try:
+        if not store.root.exists():
+            return
+        existing_mtimes = get_all_indexed_mtimes()
+        disk_keys: set[tuple[str, str]] = set()
+
+        for source_dir in store.root.iterdir():
+            if not source_dir.is_dir():
+                continue
+            for comic_dir in source_dir.iterdir():
+                if not comic_dir.is_dir():
+                    continue
+                source, source_id = source_dir.name, comic_dir.name
+                disk_keys.add((source, source_id))
+                album_path = store.album_path(source, source_id)
+                if not album_path.exists():
+                    continue
+                try:
+                    mtime = album_path.stat().st_mtime
+                except Exception:
+                    mtime = 0.0
+
+                if (source, source_id) in existing_mtimes and existing_mtimes[(source, source_id)] == mtime:
+                    continue
+
+                meta = store.load_meta(source, source_id)
+                if meta is None:
+                    continue
+
+                cached_pages = store.cached_page_count(meta)
+                upsert_comic_index({
+                    "source": meta.source,
+                    "source_id": meta.source_id,
+                    "display_id": meta.display_id,
+                    "title": meta.title,
+                    "authors_json": json.dumps(meta.authors, ensure_ascii=False),
+                    "works_json": json.dumps(meta.works, ensure_ascii=False),
+                    "actors_json": json.dumps(meta.actors, ensure_ascii=False),
+                    "tags_json": json.dumps(meta.tags, ensure_ascii=False),
+                    "chapter_titles_json": json.dumps([c.title for c in meta.chapters], ensure_ascii=False),
+                    "page_count": meta.page_count,
+                    "cached_pages": cached_pages,
+                    "cover_count": meta.cover_count,
+                    "cover_indices_json": json.dumps(meta.cover_indices, ensure_ascii=False),
+                    "views": str(meta.views),
+                    "likes": str(meta.likes),
+                    "uploaded_at": meta.published_at,
+                    "published_at": meta.published_at,
+                    "updated_at": meta.updated_at,
+                    "imported_at": meta.imported_at,
+                    "hidden_from_guest": 1 if getattr(meta, "hidden_from_guest", False) else 0,
+                    "mtime": mtime,
+                })
+
+        for source, source_id in set(existing_mtimes.keys()) - disk_keys:
+            delete_comic_index(source, source_id)
+    except Exception as exc:
+        logger.warning("sync_library_index error: %s", exc)
+
+
+sync_library_index(store)
 
 
 @app.get("/api/auth/status", response_model=AuthStatusResponse)
@@ -506,35 +583,128 @@ def guest_privacy_put(req: GuestPrivacySettings, request: Request) -> GuestPriva
 
 
 
-@app.get("/api/library", response_model=list[LibrarySummary])
+def _row_to_library_summary(row: dict[str, Any]) -> LibrarySummary:
+    source = row["source"]
+    source_id = row["source_id"]
+    page_count = int(row["page_count"])
+    cover_count = int(row["cover_count"])
+    try:
+        cover_indices = json.loads(row.get("cover_indices_json") or "[]")
+    except Exception:
+        cover_indices = []
+    updated_at = row.get("updated_at") or ""
+
+    count = len(cover_indices) if cover_indices else min(cover_count, page_count)
+    v_tag = ""
+    if updated_at:
+        import hashlib
+        v_tag = f"?v={hashlib.md5(updated_at.encode()).hexdigest()[:8]}"
+    cover_paths = [
+        f"/api/library/{source}/{source_id}/covers/{index}/file.webp{v_tag}"
+        for index in range(1, max(1, count) + 1)
+    ] if page_count > 0 else []
+
+    try:
+        authors = json.loads(row["authors_json"])
+    except Exception:
+        authors = []
+    try:
+        works = json.loads(row["works_json"])
+    except Exception:
+        works = []
+    try:
+        actors = json.loads(row["actors_json"])
+    except Exception:
+        actors = []
+    try:
+        tags = json.loads(row["tags_json"])
+    except Exception:
+        tags = []
+    try:
+        chapter_titles = json.loads(row["chapter_titles_json"])
+    except Exception:
+        chapter_titles = []
+
+    return LibrarySummary(
+        source=source,
+        source_id=source_id,
+        display_id=row["display_id"],
+        title=row["title"],
+        authors=authors,
+        works=works,
+        actors=actors,
+        tags=tags,
+        chapter_titles=chapter_titles,
+        page_count=page_count,
+        cached_pages=int(row["cached_pages"]),
+        cover_count=cover_count,
+        views=str(row["views"]),
+        likes=str(row["likes"]),
+        uploaded_at=str(row.get("uploaded_at") or ""),
+        published_at=str(row.get("published_at") or ""),
+        updated_at=updated_at,
+        imported_at=str(row.get("imported_at") or ""),
+        hidden_from_guest=bool(row["hidden_from_guest"]),
+        favorite=bool(row["is_favorite"]),
+        last_page=int(row["last_page"]),
+        cover_paths=cover_paths,
+    )
+
+
+@app.get("/api/library", response_model=LibraryPageResponse)
 def library(
     request: Request,
+    page: int = Query(default=1, ge=1, description="当前页码"),
+    page_size: int = Query(default=24, ge=1, le=120, description="每页条数"),
+    status: str = Query(default="all", pattern="^(all|reading|completed|unread)$", description="阅读状态"),
+    favorite: bool = Query(default=False, description="只看喜欢"),
+    source: str | None = Query(default=None, description="来源过滤 (jm, picacg, local)"),
     q: str | None = Query(default=None, description="标题/作者/标签过滤"),
-) -> list[LibrarySummary]:
+    tag: str | None = Query(default=None, description="单标签过滤"),
+    sort: str = Query(default="recent", pattern="^(recent|title|pages|cached)$", description="排序方式"),
+    ids: str | None = Query(default=None, description="指定逗号分隔的 source:source_id 列表，精准获取目标漫画"),
+    offset: int | None = Query(default=None, ge=0, description="显式偏移量（支持平滑流式追加）"),
+) -> LibraryPageResponse:
     user_id = get_current_user_id(request)
-    user_favs = get_user_favorites(user_id)
-    user_prog = get_user_all_progress(user_id)
-    items = store.list_library()
-    for item in items:
-        item.favorite = (item.source, item.source_id) in user_favs
-        item.last_page = user_prog.get((item.source, item.source_id), 0)
+    is_cur = is_curator(request)
+    rows, total = query_library_index(
+        user_id=user_id,
+        is_curator=is_cur,
+        page=page,
+        page_size=page_size,
+        status=status,
+        favorite=favorite,
+        source=source,
+        q=q,
+        tag=tag,
+        sort=sort,
+        ids=ids,
+        offset=offset,
+    )
+    items = [_row_to_library_summary(r) for r in rows]
+    actual_offset = offset if offset is not None else (page - 1) * page_size
+    has_more = (actual_offset + len(items)) < total
+    return LibraryPageResponse(
+        items=items,
+        total=total,
+        page=page,
+        page_size=page_size,
+        has_more=has_more,
+    )
 
-    if not is_curator(request):
-        items = [item for item in items if not item.hidden_from_guest]
 
-    if q is None or not q.strip():
-        return items
+@app.get("/api/library/facets", response_model=LibraryFacetsResponse)
+def library_facets(
+    request: Request,
+    source: str | None = Query(default=None, description="来源过滤"),
+) -> LibraryFacetsResponse:
+    is_cur = is_curator(request)
+    data = get_library_facets(is_curator=is_cur, source=source)
+    return LibraryFacetsResponse(
+        stats=LibraryStats(**data["stats"]),
+        top_tags=data["top_tags"],
+    )
 
-    needle = q.strip().casefold()
-    return [
-        item
-        for item in items
-        if needle in item.title.casefold()
-        or needle in item.display_id.casefold()
-        or any(needle in value.casefold() for value in [*item.authors, *item.works, *item.actors, *item.tags])
-        # T11：让「第 5 话」等章节标题也能命中书架搜索
-        or any(needle in title.casefold() for title in item.chapter_titles)
-    ]
 
 
 @app.get("/api/search/image/status", response_model=ImageSearchStatusResponse)

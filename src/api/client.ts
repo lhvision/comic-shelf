@@ -8,7 +8,9 @@ import type {
   DownloadConcurrency,
   ImportRequest,
   ImportResult,
-  LibrarySummary,
+  LibraryFacetsResponse,
+  LibraryPageResponse,
+  LibraryQueryParams,
   LoginResult,
   ProviderInfo,
 } from '@/types'
@@ -275,10 +277,30 @@ export const api = {
       method: 'POST',
     }),
   providers: (options?: RequestOptions) => memoizedProviders(options),
-  library: (options?: RequestOptions) =>
-    request<LibrarySummary[]>('/library', {
+  library: (params?: LibraryQueryParams, options?: RequestOptions) => {
+    const query = new URLSearchParams()
+    if (params?.page) query.set('page', String(params.page))
+    if (params?.page_size) query.set('page_size', String(params.page_size))
+    if (params?.offset !== undefined) query.set('offset', String(params.offset))
+    if (params?.ids && params.ids.trim()) query.set('ids', params.ids.trim())
+    if (params?.status && params.status !== 'all') query.set('status', params.status)
+    if (params?.favorite) query.set('favorite', 'true')
+    if (params?.source) query.set('source', params.source)
+    const q = params?.q ?? params?.search
+    if (q && q.trim()) query.set('q', q.trim())
+    if (params?.tag && params.tag.trim()) query.set('tag', params.tag.trim())
+    if (params?.sort && params.sort !== 'recent') query.set('sort', params.sort)
+    const qs = query.toString()
+    return request<LibraryPageResponse>(`/library${qs ? `?${qs}` : ''}`, {
       signal: options?.signal,
-    }),
+    })
+  },
+  libraryFacets: (source?: string, options?: RequestOptions) => {
+    const qs = source ? `?source=${encodeURIComponent(source)}` : ''
+    return request<LibraryFacetsResponse>(`/library/facets${qs}`, {
+      signal: options?.signal,
+    })
+  },
   detail: (source: string, sourceId: string, options?: RequestOptions) => {
     if (options?.bypassCache) {
       memoizedDetail.delete(source, sourceId)

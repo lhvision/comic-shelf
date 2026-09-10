@@ -1,5 +1,10 @@
 import { computed, ref, type Ref } from 'vue'
-import type { LibrarySummary, ImageSearchResultItem } from '@/types'
+import type {
+  LibrarySummary,
+  ImageSearchResultItem,
+  ReadingStatus,
+  LibraryFacetsResponse,
+} from '@/types'
 
 export type SortKey = 'recent' | 'title' | 'pages' | 'cached'
 
@@ -8,6 +13,13 @@ export type SortKey = 'recent' | 'title' | 'pages' | 'cached'
  */
 export function isCompletedComic(item: LibrarySummary): boolean {
   return (item.last_page ?? 0) >= item.page_count && item.page_count > 0
+}
+
+/**
+ * 判定一本藏书是否处于在读状态（翻阅过但未完全读完）
+ */
+export function isInProgressComic(item: LibrarySummary): boolean {
+  return (item.last_page ?? 0) > 0 && (item.last_page ?? 0) < item.page_count && item.page_count > 0
 }
 
 export interface UseLibraryFilterOptions {
@@ -19,6 +31,10 @@ export interface UseLibraryFilterOptions {
   favoritesOnly?: Ref<boolean>
   /** 外部共享的只看已读 Ref */
   completedOnly?: Ref<boolean>
+  /** 外部共享的阅读状态单选维度 Ref */
+  readingStatus?: Ref<ReadingStatus>
+  /** 外部共享的全局 Facets 统计数据 Ref */
+  facets?: Ref<LibraryFacetsResponse | null>
   /** 外部共享的排序规则 Ref */
   sortBy?: Ref<SortKey>
 }
@@ -37,6 +53,7 @@ export function useLibraryFilter(
   const activeTag = options?.activeTag ?? ref('')
   const favoritesOnly = options?.favoritesOnly ?? ref(false)
   const completedOnly = options?.completedOnly ?? ref(false)
+  const readingStatus = options?.readingStatus ?? ref<ReadingStatus>('all')
   const sortBy = options?.sortBy ?? ref<SortKey>('recent')
 
   const sourceItems = computed(() =>
@@ -45,15 +62,26 @@ export function useLibraryFilter(
       : items.value,
   )
 
-  const totalPages = computed(() =>
-    sourceItems.value.reduce((sum, item) => sum + item.page_count, 0),
+  const totalBooks = computed(
+    () => options?.facets?.value?.stats.total_books ?? sourceItems.value.length,
   )
 
-  const totalCachedPages = computed(() =>
-    sourceItems.value.reduce((sum, item) => sum + item.cached_pages, 0),
+  const totalPages = computed(
+    () =>
+      options?.facets?.value?.stats.total_pages ??
+      sourceItems.value.reduce((sum, item) => sum + item.page_count, 0),
+  )
+
+  const totalCachedPages = computed(
+    () =>
+      options?.facets?.value?.stats.cached_pages ??
+      sourceItems.value.reduce((sum, item) => sum + item.cached_pages, 0),
   )
 
   const tagCounts = computed<Array<[string, number]>>(() => {
+    if (options?.facets?.value?.top_tags && options.facets.value.top_tags.length > 0) {
+      return options.facets.value.top_tags.slice(0, 18)
+    }
     const counts = new Map<string, number>()
     for (const item of sourceItems.value) {
       for (const tag of item.tags) {
@@ -81,7 +109,7 @@ export function useLibraryFilter(
   const filtered = computed(() => {
     const needle = search.value.trim().toLocaleLowerCase()
 
-    // First, base filter by search text, tag, favorite
+    // First, base filter by search text, tag, favorite, reading status
     let list = sourceItems.value.filter((item) => {
       const matchSearch =
         needle.length === 0 ||
@@ -95,6 +123,14 @@ export function useLibraryFilter(
       const matchTag = activeTag.value === '' || item.tags.includes(activeTag.value)
       const matchFavorite = !favoritesOnly.value || item.favorite
       const matchCompleted = !completedOnly.value || isCompletedComic(item)
+      const matchStatus =
+        readingStatus.value === 'all'
+          ? true
+          : readingStatus.value === 'reading'
+            ? isInProgressComic(item)
+            : readingStatus.value === 'completed'
+              ? isCompletedComic(item)
+              : (item.last_page ?? 0) === 0
 
       // If we have image search results, it must also be in the matches
       let matchImageSearch = true
@@ -103,7 +139,14 @@ export function useLibraryFilter(
         matchImageSearch = imageSearchMatchMap.value.has(key)
       }
 
-      return matchSearch && matchTag && matchFavorite && matchCompleted && matchImageSearch
+      return (
+        matchSearch &&
+        matchTag &&
+        matchFavorite &&
+        matchCompleted &&
+        matchStatus &&
+        matchImageSearch
+      )
     })
 
     list = [...list]
@@ -153,9 +196,11 @@ export function useLibraryFilter(
     search,
     activeTag,
     favoritesOnly,
+    readingStatus,
     completedOnly,
     sortBy,
     sourceItems,
+    totalBooks,
     totalPages,
     totalCachedPages,
     tagCounts,

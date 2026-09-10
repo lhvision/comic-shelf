@@ -153,6 +153,34 @@ def init_db(db_path: Path | None = None) -> None:
                 PRIMARY KEY (user_id, source, source_id)
             );
             CREATE INDEX IF NOT EXISTS idx_user_progress_user ON user_reading_progress(user_id);
+
+            CREATE TABLE IF NOT EXISTS comics_index (
+                source TEXT NOT NULL,
+                source_id TEXT NOT NULL,
+                display_id TEXT NOT NULL,
+                title TEXT NOT NULL,
+                authors_json TEXT NOT NULL DEFAULT '[]',
+                works_json TEXT NOT NULL DEFAULT '[]',
+                actors_json TEXT NOT NULL DEFAULT '[]',
+                tags_json TEXT NOT NULL DEFAULT '[]',
+                chapter_titles_json TEXT NOT NULL DEFAULT '[]',
+                page_count INTEGER NOT NULL DEFAULT 0,
+                cached_pages INTEGER NOT NULL DEFAULT 0,
+                cover_count INTEGER NOT NULL DEFAULT 4,
+                cover_indices_json TEXT NOT NULL DEFAULT '[]',
+                views TEXT NOT NULL DEFAULT '',
+                likes TEXT NOT NULL DEFAULT '',
+                uploaded_at TEXT NOT NULL DEFAULT '',
+                published_at TEXT NOT NULL DEFAULT '',
+                updated_at TEXT NOT NULL DEFAULT '',
+                imported_at TEXT NOT NULL DEFAULT '',
+                hidden_from_guest INTEGER NOT NULL DEFAULT 0,
+                mtime REAL NOT NULL DEFAULT 0.0,
+                PRIMARY KEY (source, source_id)
+            );
+            CREATE INDEX IF NOT EXISTS idx_comics_index_imported ON comics_index(imported_at DESC);
+            CREATE INDEX IF NOT EXISTS idx_comics_index_source ON comics_index(source);
+            CREATE INDEX IF NOT EXISTS idx_comics_index_title ON comics_index(title);
             """
         )
         # Migrations: ensure max_devices, pin_hash, pin_salt columns exist for existing DB
@@ -702,3 +730,264 @@ def set_user_progress(
         "total_pages": total_pages,
         "updated_at": now,
     }
+
+
+# ----------------------------------------------------------------------
+# 藏书影子索引（comics_index）操作与查询
+# ----------------------------------------------------------------------
+
+def upsert_comic_index(item: dict[str, Any]) -> None:
+    """插入或更新漫画影子索引记录。"""
+    with get_db() as conn:
+        conn.execute(
+            """
+            INSERT INTO comics_index (
+                source, source_id, display_id, title,
+                authors_json, works_json, actors_json, tags_json, chapter_titles_json,
+                page_count, cached_pages, cover_count, cover_indices_json,
+                views, likes, uploaded_at, published_at, updated_at, imported_at,
+                hidden_from_guest, mtime
+            ) VALUES (
+                :source, :source_id, :display_id, :title,
+                :authors_json, :works_json, :actors_json, :tags_json, :chapter_titles_json,
+                :page_count, :cached_pages, :cover_count, :cover_indices_json,
+                :views, :likes, :uploaded_at, :published_at, :updated_at, :imported_at,
+                :hidden_from_guest, :mtime
+            ) ON CONFLICT(source, source_id) DO UPDATE SET
+                display_id = excluded.display_id,
+                title = excluded.title,
+                authors_json = excluded.authors_json,
+                works_json = excluded.works_json,
+                actors_json = excluded.actors_json,
+                tags_json = excluded.tags_json,
+                chapter_titles_json = excluded.chapter_titles_json,
+                page_count = excluded.page_count,
+                cached_pages = excluded.cached_pages,
+                cover_count = excluded.cover_count,
+                cover_indices_json = excluded.cover_indices_json,
+                views = excluded.views,
+                likes = excluded.likes,
+                uploaded_at = excluded.uploaded_at,
+                published_at = excluded.published_at,
+                updated_at = excluded.updated_at,
+                imported_at = excluded.imported_at,
+                hidden_from_guest = excluded.hidden_from_guest,
+                mtime = excluded.mtime
+            """,
+            item,
+        )
+        conn.commit()
+
+
+def delete_comic_index(source: str, source_id: str) -> None:
+    """删除指定漫画的影子索引。"""
+    with get_db() as conn:
+        conn.execute(
+            "DELETE FROM comics_index WHERE source = ? AND source_id = ?",
+            (source, source_id),
+        )
+        conn.commit()
+
+
+def get_all_indexed_mtimes() -> dict[tuple[str, str], float]:
+    """获取索引库中所有已记录条目的 (source, source_id) -> mtime 映射。"""
+    with get_db() as conn:
+        rows = conn.execute("SELECT source, source_id, mtime FROM comics_index").fetchall()
+        return {(r["source"], r["source_id"]): float(r["mtime"]) for r in rows}
+
+
+def get_comic_index_count() -> int:
+    """获取当前已建立影子索引的漫画总数。"""
+    with get_db() as conn:
+        row = conn.execute("SELECT COUNT(*) as cnt FROM comics_index").fetchone()
+        return int(row["cnt"]) if row else 0
+
+
+def update_comic_cached_pages(source: str, source_id: str, cached_pages: int) -> None:
+    """当后台单页缓存推进时，快速更新影子索引中的 cached_pages 计数值。"""
+    with get_db() as conn:
+        conn.execute(
+            "UPDATE comics_index SET cached_pages = ? WHERE source = ? AND source_id = ?",
+            (cached_pages, source, source_id),
+        )
+        conn.commit()
+
+
+def query_library_index(
+    user_id: str,
+    is_curator: bool,
+    page: int = 1,
+    page_size: int = 24,
+    status: str = "all",
+    favorite: bool = False,
+    source: str | None = None,
+    q: str | None = None,
+    tag: str | None = None,
+    sort: str = "recent",
+    ids: str | None = None,
+    offset: int | None = None,
+) -> tuple[list[dict[str, Any]], int]:
+    """支持万级藏书的毫秒级 SQL 分页、模糊过滤、状态关联与多模式排序。"""
+    conditions: list[str] = []
+    params: dict[str, Any] = {"user_id": user_id}
+
+    if not is_curator:
+        conditions.append("ci.hidden_from_guest = 0")
+
+    if source:
+        conditions.append("ci.source = :source")
+        params["source"] = source
+
+    if favorite:
+        conditions.append("uf.user_id IS NOT NULL")
+
+    if status == "reading":
+        conditions.append("COALESCE(urp.last_page, 0) > 0 AND COALESCE(urp.last_page, 0) < ci.page_count AND ci.page_count > 0")
+    elif status == "completed":
+        conditions.append("COALESCE(urp.last_page, 0) >= ci.page_count AND ci.page_count > 0")
+    elif status == "unread":
+        conditions.append("COALESCE(urp.last_page, 0) = 0")
+
+    if tag and tag.strip():
+        conditions.append("EXISTS (SELECT 1 FROM json_each(ci.tags_json) WHERE value = :tag)")
+        params["tag"] = tag.strip()
+
+    if q and q.strip():
+        needle = f"%{q.strip()}%"
+        params["needle"] = needle
+        conditions.append(
+            """(
+                ci.title LIKE :needle
+                OR ci.display_id LIKE :needle
+                OR ci.authors_json LIKE :needle
+                OR ci.works_json LIKE :needle
+                OR ci.actors_json LIKE :needle
+                OR ci.tags_json LIKE :needle
+                OR ci.chapter_titles_json LIKE :needle
+            )"""
+        )
+
+    if ids and ids.strip():
+        id_list = [item.strip() for item in ids.split(",") if item.strip()][:120]
+        if id_list:
+            placeholders = []
+            for i, val in enumerate(id_list):
+                p_key = f"target_id_{i}"
+                placeholders.append(f":{p_key}")
+                params[p_key] = val
+            conditions.append(f"(ci.source || ':' || ci.source_id) IN ({', '.join(placeholders)})")
+
+    where_sql = ("WHERE " + " AND ".join(conditions)) if conditions else ""
+
+    order_sql = "ORDER BY ci.imported_at DESC"
+    if sort == "recent":
+        order_sql = """ORDER BY
+            CASE
+                WHEN COALESCE(urp.last_page, 0) >= ci.page_count AND ci.page_count > 0 THEN 1
+                ELSE 0
+            END ASC,
+            ci.imported_at DESC"""
+    elif sort == "title":
+        order_sql = "ORDER BY ci.title COLLATE NOCASE ASC"
+    elif sort == "pages":
+        order_sql = "ORDER BY ci.page_count DESC"
+    elif sort == "cached":
+        order_sql = "ORDER BY (CAST(ci.cached_pages AS REAL) / MAX(ci.page_count, 1)) DESC"
+
+    count_sql = f"""
+        SELECT COUNT(*) as cnt
+        FROM comics_index ci
+        LEFT JOIN user_favorites uf
+            ON uf.source = ci.source AND uf.source_id = ci.source_id AND uf.user_id = :user_id
+        LEFT JOIN user_reading_progress urp
+            ON urp.source = ci.source AND urp.source_id = ci.source_id AND urp.user_id = :user_id
+        {where_sql}
+    """
+
+    actual_offset = max(0, offset) if offset is not None else max(0, (page - 1) * page_size)
+    params["limit"] = page_size
+    params["offset"] = actual_offset
+
+    data_sql = f"""
+        SELECT
+            ci.source,
+            ci.source_id,
+            ci.display_id,
+            ci.title,
+            ci.authors_json,
+            ci.works_json,
+            ci.actors_json,
+            ci.tags_json,
+            ci.chapter_titles_json,
+            ci.page_count,
+            ci.cached_pages,
+            ci.cover_count,
+            ci.cover_indices_json,
+            ci.views,
+            ci.likes,
+            ci.uploaded_at,
+            ci.published_at,
+            ci.updated_at,
+            ci.imported_at,
+            ci.hidden_from_guest,
+            COALESCE(uf.user_id IS NOT NULL, 0) as is_favorite,
+            COALESCE(urp.last_page, 0) as last_page
+        FROM comics_index ci
+        LEFT JOIN user_favorites uf
+            ON uf.source = ci.source AND uf.source_id = ci.source_id AND uf.user_id = :user_id
+        LEFT JOIN user_reading_progress urp
+            ON urp.source = ci.source AND urp.source_id = ci.source_id AND urp.user_id = :user_id
+        {where_sql}
+        {order_sql}
+        LIMIT :limit OFFSET :offset
+    """
+
+    with get_db() as conn:
+        total_row = conn.execute(count_sql, params).fetchone()
+        total = int(total_row["cnt"]) if total_row else 0
+        rows = conn.execute(data_sql, params).fetchall()
+        return [dict(r) for r in rows], total
+
+
+def get_library_facets(is_curator: bool, source: str | None = None) -> dict[str, Any]:
+    """聚合全站藏书本数、总页数、缓存页数与高频前 30 个标签。"""
+    conditions: list[str] = []
+    params: dict[str, Any] = {}
+    if not is_curator:
+        conditions.append("ci.hidden_from_guest = 0")
+    if source:
+        conditions.append("ci.source = :source")
+        params["source"] = source
+
+    where_sql = ("WHERE " + " AND ".join(conditions)) if conditions else ""
+
+    stats_sql = f"""
+        SELECT
+            COUNT(*) as total_books,
+            COALESCE(SUM(page_count), 0) as total_pages,
+            COALESCE(SUM(cached_pages), 0) as cached_pages
+        FROM comics_index ci
+        {where_sql}
+    """
+
+    tags_sql = f"""
+        SELECT value as tag, COUNT(*) as cnt
+        FROM comics_index ci, json_each(ci.tags_json)
+        {where_sql}
+        GROUP BY value
+        ORDER BY cnt DESC
+        LIMIT 30
+    """
+
+    with get_db() as conn:
+        stats_row = conn.execute(stats_sql, params).fetchone()
+        tag_rows = conn.execute(tags_sql, params).fetchall()
+        return {
+            "stats": {
+                "total_books": int(stats_row["total_books"] or 0) if stats_row else 0,
+                "total_pages": int(stats_row["total_pages"] or 0) if stats_row else 0,
+                "cached_pages": int(stats_row["cached_pages"] or 0) if stats_row else 0,
+            },
+            "top_tags": [(str(r["tag"]), int(r["cnt"])) for r in tag_rows],
+        }
+

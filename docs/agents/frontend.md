@@ -16,9 +16,10 @@
 | `src/composables/useUploadQueue.ts`              | 受限并发批量上传队列控制器（3 路 Worker 并发、细粒度进度与取消支持）                                                                                           |
 | `src/composables/useFileStaging.ts`              | 多图与画页暂存：自然文件名数字排序、格式过滤、`useFileDialog` + `useDropZone` 聚合                                                                             |
 | `src/composables/useLocalWorkshop.ts`            | 自建漫画工坊状态机：服务器本地路径扫描、白名单过滤、单话/多章节模式切换与元数据暂存                                                                            |
-| `src/composables/useLibraryFilter.ts`            | 书架检索与筛选：模糊搜索、标签频率统计、多模式排序、只看喜欢与只看已读过滤、已读沉底分桶                                                                       |
+| `src/composables/useLibrarySync.ts`              | 书架筛选与流式分页协同：URL Query 双向同步、防抖拉取服务端分页、全貌统计联动与 SSE 跨端变动感知                                                                |
+| `src/composables/useLibraryFilter.ts`            | 书架检索与多维筛选：模糊搜索、标签频率统计、多模式排序、阅读状态单选三态（全部/在读/已读/未读）、喜欢过滤与以图搜图映射                                        |
 | `src/composables/useShelfState.ts`               | 书架会话上下文记忆单例：跨路由纵向视口滚动锚定、展开批次、归档专匣开闭、筛选条件保持与主动置顶重置                                                             |
-| `src/composables/usePaginationFold.ts`           | 画卷与书架网格分批折叠展开状态机：受控步进铺开（24页/12本）、全量展开、余量徽印计算与平滑滚顶自愈                                                              |
+| `src/composables/usePaginationFold.ts`           | 画卷与书架分批折叠展开状态机：受控步进铺开（24页/12本）、60本安全刹车、显式余量徽印计算与平滑滚顶自愈                                                          |
 | `src/composables/useReaderRecommendations.ts`    | 阅读器末页接卷推荐：启发式元数据权重评分（同作者/同原作/共有标签/在读状态）与未读作品遴选                                                                      |
 | `src/composables/useImageSearch.ts`              | 以图搜图状态机：文件上传、剪贴板粘贴、拖拽、置信度与状态管理                                                                                                   |
 | `src/composables/useReaderData.ts`               | 阅读器数据流与路由状态机：元数据拉取、`AbortController` 竞态取消、URL 同步与返回路径                                                                           |

@@ -8,7 +8,8 @@
  * 起步展示，末尾通过折叠卡（.shelf-fold-card）提示剩余藏书并支持手动步进/全量展开与随时收起，
  * 彻底避免海量 DOM 阻塞与滚动条无节制失控拉长。
  */
-import { ref, computed, watch } from 'vue'
+import { ref, computed, watch, nextTick } from 'vue'
+import { useIntersectionObserver } from '@vueuse/core'
 import type { LibrarySummary } from '@/types'
 import ComicCard from '@/components/ComicCard.vue'
 import HtmlCanvasCard from '@/components/HtmlCanvasCard.vue'
@@ -41,6 +42,14 @@ const props = withDefaults(
     initialUnifiedCount?: number
     /** 卷末归档专匣初始开闭状态 */
     initialArchiveOpen?: boolean
+    /** 服务端是否仍有更多页数据可流式拉取 */
+    hasMore?: boolean
+    /** 服务端是否正在加载更多 */
+    loadingMore?: boolean
+    /** 服务端总条目数（用于精确剩余计算） */
+    totalCount?: number
+    /** 安全刹车阈值（默认 60） */
+    brakeThreshold?: number
   }>(),
   {
     batchStep: 12,
@@ -49,6 +58,10 @@ const props = withDefaults(
     initialArchiveCount: undefined,
     initialUnifiedCount: undefined,
     initialArchiveOpen: undefined,
+    hasMore: false,
+    loadingMore: false,
+    totalCount: undefined,
+    brakeThreshold: 60,
   },
 )
 
@@ -84,12 +97,16 @@ const emit = defineEmits<{
   'update:archiveCount': [count: number]
   'update:unifiedCount': [count: number]
   'update:archiveOpen': [open: boolean]
+  loadMore: []
+  loadAll: []
 }>()
 
 const keyOf = (source: string, sourceId: string) => liveCacheKey(source, sourceId)
 
 const gridWrapEl = ref<HTMLElement | null>(null)
 const archiveDrawerEl = ref<HTMLElement | null>(null)
+const activeSentinelEl = ref<HTMLElement | null>(null)
+const unifiedSentinelEl = ref<HTMLElement | null>(null)
 
 // 1. 未读区分批状态
 const {
@@ -97,14 +114,18 @@ const {
   remainingCount: remainingActiveCount,
   canCollapse: canCollapseActiveRaw,
   visibleCount: activeVisibleCount,
+  isBraked: isBrakedActive,
   loadMore: loadMoreActive,
   loadAll: loadAllActive,
+  releaseBrake: releaseBrakeActive,
   collapse: collapseActive,
   reset: resetActive,
 } = usePaginationFold({
   items: activeComics,
   step: () => props.batchStep,
   initialVisibleCount: () => props.initialActiveCount,
+  brakeThreshold: () => props.brakeThreshold,
+  totalCount: () => (isSplitMode.value ? undefined : props.totalCount),
   scrollTarget: gridWrapEl,
   onChange: (count) => emit('update:activeCount', count),
 })
@@ -139,6 +160,7 @@ const {
   items: completedComics,
   step: () => props.batchStep,
   initialVisibleCount: () => props.initialArchiveCount,
+  brakeThreshold: () => props.brakeThreshold,
   scrollTarget: archiveDrawerEl,
   onChange: (count) => emit('update:archiveCount', count),
 })
@@ -149,17 +171,112 @@ const {
   remainingCount,
   canCollapse: canCollapseRaw,
   visibleCount: unifiedVisibleCount,
+  isBraked: isBrakedUnified,
   loadMore,
   loadAll,
+  releaseBrake: releaseBrakeUnified,
   collapse,
   reset: resetUnified,
 } = usePaginationFold({
   items: () => props.items,
   step: () => props.batchStep,
   initialVisibleCount: () => props.initialUnifiedCount,
+  brakeThreshold: () => props.brakeThreshold,
+  totalCount: () => props.totalCount,
   scrollTarget: gridWrapEl,
   onChange: (count) => emit('update:unifiedCount', count),
 })
+
+useIntersectionObserver(
+  activeSentinelEl,
+  ([entry]) => {
+    if (entry?.isIntersecting && !props.loading && !props.loadingMore) {
+      triggerActiveStreamLoad()
+    }
+  },
+  { rootMargin: '300px 0px' },
+)
+
+useIntersectionObserver(
+  unifiedSentinelEl,
+  ([entry]) => {
+    if (entry?.isIntersecting && !props.loading && !props.loadingMore) {
+      triggerUnifiedStreamLoad()
+    }
+  },
+  { rootMargin: '300px 0px' },
+)
+
+function triggerActiveStreamLoad() {
+  if (isBrakedActive.value) return
+
+  if (visibleActiveItems.value.length < activeComics.value.length) {
+    loadMoreActive()
+  } else if (props.hasMore) {
+    emit('loadMore')
+  }
+}
+
+function triggerUnifiedStreamLoad() {
+  if (isBrakedUnified.value) return
+
+  if (visibleItems.value.length < props.items.length) {
+    loadMore()
+  } else if (props.hasMore) {
+    emit('loadMore')
+  }
+}
+
+const isExpandingAllActive = ref(false)
+const isExpandingAllUnified = ref(false)
+
+function onCollapseActive() {
+  isExpandingAllActive.value = false
+  collapseActive()
+}
+
+function onCollapseUnified() {
+  isExpandingAllUnified.value = false
+  collapse()
+}
+
+function handleContinueActive() {
+  if (isBrakedActive.value) {
+    releaseBrakeActive(props.batchStep * 2)
+  } else {
+    loadMoreActive()
+  }
+  if (visibleActiveItems.value.length >= activeComics.value.length && props.hasMore) {
+    emit('loadMore')
+  }
+}
+
+function handleLoadAllActive() {
+  isExpandingAllActive.value = true
+  loadAllActive()
+  if (props.hasMore) {
+    emit('loadAll')
+  }
+}
+
+function handleContinueUnified() {
+  if (isBrakedUnified.value) {
+    releaseBrakeUnified(props.batchStep * 2)
+  } else {
+    loadMore()
+  }
+  if (visibleItems.value.length >= props.items.length && props.hasMore) {
+    emit('loadMore')
+  }
+}
+
+function handleLoadAllUnified() {
+  isExpandingAllUnified.value = true
+  loadAll()
+  if (props.hasMore) {
+    emit('loadAll')
+  }
+}
 
 const visibleItems = computed(() => {
   if (props.useCanvas) return props.items
@@ -193,25 +310,85 @@ watch(
 )
 
 // 当数据源发生变化时：
-// 1. 若未传入 initialActiveCount（非跨路由恢复受控模式），执行常规重置；
-// 2. 若处于状态记忆受控模式，仅在数据源缩减且当前可见数越界时做安全钳制，杜绝 SWR 静默对齐冲掉用户已展开的批次。
+// 1. 若为增量分页加载（append），自动向外顺延展现新拉取的批次，解决第二页加载后仍不渲染问题；
+// 2. 若为全新查询/筛选变更，收拢全量展开态并重置可见数；
+// 3. 若为原地状态更新且当前可见数越界，进行安全钳制。
 watch(
   () => props.items,
-  (newItems) => {
-    if (props.initialActiveCount === undefined) {
-      resetActive()
-      resetArchive()
-      resetUnified()
+  (newItems, oldItems = []) => {
+    const isAppend =
+      oldItems.length > 0 &&
+      newItems.length > oldItems.length &&
+      newItems[0]?.source === oldItems[0]?.source &&
+      newItems[0]?.source_id === oldItems[0]?.source_id
+
+    if (isAppend) {
+      const oldActiveCount = oldItems.filter((i) => !isCompleted(i)).length
+      if (isExpandingAllActive.value) {
+        loadAllActive()
+      } else if (activeVisibleCount.value >= oldActiveCount) {
+        // 用户此前已滚动至未读藏书末尾，新一页到达后自动向外展开下一批
+        activeVisibleCount.value = Math.min(
+          activeComics.value.length,
+          activeVisibleCount.value + props.batchStep,
+        )
+        emit('update:activeCount', activeVisibleCount.value)
+      }
+
+      if (isExpandingAllUnified.value) {
+        loadAll()
+      } else if (unifiedVisibleCount.value >= oldItems.length) {
+        // 单网格模式下同理
+        unifiedVisibleCount.value = Math.min(
+          newItems.length,
+          unifiedVisibleCount.value + props.batchStep,
+        )
+        emit('update:unifiedCount', unifiedVisibleCount.value)
+      }
     } else {
-      if (activeVisibleCount.value > activeComics.value.length) {
-        resetActive(Math.max(props.batchStep, activeComics.value.length))
+      isExpandingAllActive.value = false
+      isExpandingAllUnified.value = false
+      if (props.initialActiveCount === undefined) {
+        resetActive()
+        resetArchive()
+        resetUnified()
+      } else {
+        if (activeVisibleCount.value > activeComics.value.length) {
+          resetActive(Math.max(props.batchStep, activeComics.value.length))
+        }
+        if (archiveVisibleCount.value > completedComics.value.length) {
+          resetArchive(Math.max(props.batchStep, completedComics.value.length))
+        }
+        if (unifiedVisibleCount.value > newItems.length) {
+          resetUnified(Math.max(props.batchStep, newItems.length))
+        }
       }
-      if (archiveVisibleCount.value > completedComics.value.length) {
-        resetArchive(Math.max(props.batchStep, completedComics.value.length))
+    }
+  },
+)
+
+watch(
+  () => props.loadingMore,
+  (loadingMore, prevLoadingMore) => {
+    if (prevLoadingMore && !loadingMore) {
+      if (!props.hasMore) {
+        isExpandingAllActive.value = false
+        isExpandingAllUnified.value = false
       }
-      if (unifiedVisibleCount.value > newItems.length) {
-        resetUnified(Math.max(props.batchStep, newItems.length))
-      }
+      // 流式加载结束后若触底桩仍位于可视区域内，自动触发下一波次
+      void nextTick(() => {
+        if (isSplitMode.value && activeSentinelEl.value) {
+          const rect = activeSentinelEl.value.getBoundingClientRect()
+          if (rect.top <= window.innerHeight + 300 && rect.bottom >= 0) {
+            triggerActiveStreamLoad()
+          }
+        } else if (!isSplitMode.value && unifiedSentinelEl.value) {
+          const rect = unifiedSentinelEl.value.getBoundingClientRect()
+          if (rect.top <= window.innerHeight + 300 && rect.bottom >= 0) {
+            triggerUnifiedStreamLoad()
+          }
+        }
+      })
     }
   },
 )
@@ -242,34 +419,60 @@ watch(
           "
         />
 
+        <!-- 流式加载触底侦测桩 -->
+        <div
+          ref="activeSentinelEl"
+          key="active-stream-sentinel"
+          class="stream-sentinel"
+          aria-hidden="true"
+        />
+
         <!-- 未读尾格折叠卡 -->
         <div
-          v-if="remainingActiveCount > 0"
+          v-if="remainingActiveCount > 0 || hasMore"
           key="active-fold-card"
           class="shelf-fold-card surface"
+          :class="{ 'is-braked': isBrakedActive }"
           role="region"
           aria-label="未读藏书折叠收纳卡"
         >
           <div class="fold-card-body">
             <div class="fold-badge-wrap">
               <AppIcon name="book-open" size="sm" class="fold-badge-icon" />
-              <span class="fold-badge-stamp">+{{ remainingActiveCount }} 本未读</span>
+              <span class="fold-badge-stamp">
+                {{ remainingActiveCount > 0 ? `+${remainingActiveCount} 本未读` : '后续藏书' }}
+              </span>
             </div>
-            <h4 class="fold-card-title">未读藏书已收纳</h4>
+            <h4 class="fold-card-title">
+              {{ isBrakedActive ? '流式加载已触发安全刹车' : '未读藏书已收纳' }}
+            </h4>
             <p class="fold-card-hint">
-              案头展示前 {{ visibleActiveItems.length }} 本，还有
-              {{ remainingActiveCount }} 本未读已折叠。
+              {{
+                isBrakedActive
+                  ? `案头已连续呈现 ${visibleActiveItems.length} 本，已达 60 本安全阈值，暂停自动滚动加载以节约设备内存。`
+                  : remainingActiveCount > 0
+                    ? `案头展示前 ${visibleActiveItems.length} 本，还有 ${remainingActiveCount} 本未读已折叠。`
+                    : `案头展示前 ${visibleActiveItems.length} 本，滚动或点击继续加载后续藏书。`
+              }}
             </p>
             <div class="fold-card-actions">
               <button
                 class="btn btn-primary btn-small"
                 type="button"
-                @click.prevent="loadMoreActive"
+                @click.prevent="handleContinueActive"
               >
                 <AppIcon name="chevron-down" size="xs" />
-                再展开 {{ Math.min(batchStep, remainingActiveCount) }} 本
+                {{
+                  isBrakedActive
+                    ? '继续向下探索 24 本'
+                    : `再展开 ${Math.min(batchStep, remainingActiveCount || batchStep)} 本`
+                }}
               </button>
-              <button class="btn btn-ghost btn-small" type="button" @click.prevent="loadAllActive">
+              <button
+                class="btn btn-ghost btn-small"
+                type="button"
+                @click.prevent="handleLoadAllActive"
+              >
                 <AppIcon name="book-open" size="xs" />
                 展开全部未读
               </button>
@@ -277,7 +480,7 @@ watch(
                 v-if="canCollapseActive"
                 class="btn btn-ghost btn-small"
                 type="button"
-                @click.prevent="collapseActive"
+                @click.prevent="onCollapseActive"
               >
                 <AppIcon name="chevron-up" size="xs" />
                 收整未读
@@ -287,8 +490,16 @@ watch(
         </div>
       </TransitionGroup>
 
+      <div v-if="loadingMore" class="stream-loading-bar" role="status">
+        <AppIcon name="refresh" size="xs" class="stream-loading-spinner" />
+        <span>正在载入后续藏书...</span>
+      </div>
+
       <!-- 未读全量展开后的收整条 -->
-      <div v-if="canCollapseActive && remainingActiveCount === 0" class="shelf-sentinel surface">
+      <div
+        v-if="canCollapseActive && remainingActiveCount === 0 && !hasMore"
+        class="shelf-sentinel surface"
+      >
         <div class="sentinel-info">
           <AppIcon name="book-open" size="sm" class="sentinel-icon" />
           <span class="sentinel-note">
@@ -297,7 +508,7 @@ watch(
           </span>
         </div>
         <div class="sentinel-actions">
-          <button class="btn btn-ghost btn-small" type="button" @click.prevent="collapseActive">
+          <button class="btn btn-ghost btn-small" type="button" @click.prevent="onCollapseActive">
             <AppIcon name="chevron-up" size="xs" />
             收整未读
           </button>
@@ -459,29 +670,60 @@ watch(
           "
         />
 
+        <!-- 流式加载触底侦测桩 -->
+        <div
+          ref="unifiedSentinelEl"
+          key="unified-stream-sentinel"
+          class="stream-sentinel"
+          aria-hidden="true"
+        />
+
         <!-- 尾格折叠卡 -->
         <div
-          v-if="remainingCount > 0"
+          v-if="remainingCount > 0 || hasMore"
           key="unified-fold-card"
           class="shelf-fold-card surface"
+          :class="{ 'is-braked': isBrakedUnified }"
           role="region"
           aria-label="藏书折叠收纳卡"
         >
           <div class="fold-card-body">
             <div class="fold-badge-wrap">
               <AppIcon name="archive" size="sm" class="fold-badge-icon" />
-              <span class="fold-badge-stamp">+{{ remainingCount }} 本</span>
+              <span class="fold-badge-stamp">
+                {{ remainingCount > 0 ? `+${remainingCount} 本` : '后续藏书' }}
+              </span>
             </div>
-            <h4 class="fold-card-title">后续藏书已收纳</h4>
+            <h4 class="fold-card-title">
+              {{ isBrakedUnified ? '流式加载已触发安全刹车' : '后续藏书已收纳' }}
+            </h4>
             <p class="fold-card-hint">
-              当前展示前 {{ visibleItems.length }} 本，还有 {{ remainingCount }} 本已折叠。
+              {{
+                isBrakedUnified
+                  ? `当前已连续呈现 ${visibleItems.length} 本，已达 60 本安全阈值，暂停自动滚动加载以节约设备内存。`
+                  : remainingCount > 0
+                    ? `当前展示前 ${visibleItems.length} 本，还有 ${remainingCount} 本已折叠。`
+                    : `当前展示前 ${visibleItems.length} 本，滚动或点击继续加载后续藏书。`
+              }}
             </p>
             <div class="fold-card-actions">
-              <button class="btn btn-primary btn-small" type="button" @click.prevent="loadMore">
+              <button
+                class="btn btn-primary btn-small"
+                type="button"
+                @click.prevent="handleContinueUnified"
+              >
                 <AppIcon name="chevron-down" size="xs" />
-                再展开 {{ Math.min(batchStep, remainingCount) }} 本
+                {{
+                  isBrakedUnified
+                    ? '继续向下探索 24 本'
+                    : `再展开 ${Math.min(batchStep, remainingCount || batchStep)} 本`
+                }}
               </button>
-              <button class="btn btn-ghost btn-small" type="button" @click.prevent="loadAll">
+              <button
+                class="btn btn-ghost btn-small"
+                type="button"
+                @click.prevent="handleLoadAllUnified"
+              >
                 <AppIcon name="book-open" size="xs" />
                 展开全部
               </button>
@@ -489,7 +731,7 @@ watch(
                 v-if="canCollapse"
                 class="btn btn-ghost btn-small"
                 type="button"
-                @click.prevent="collapse"
+                @click.prevent="onCollapseUnified"
               >
                 <AppIcon name="chevron-up" size="xs" />
                 收整书架
@@ -499,8 +741,16 @@ watch(
         </div>
       </TransitionGroup>
 
+      <div v-if="loadingMore" class="stream-loading-bar" role="status">
+        <AppIcon name="refresh" size="xs" class="stream-loading-spinner" />
+        <span>正在载入后续藏书...</span>
+      </div>
+
       <!-- 底部收整控制条 -->
-      <div v-if="!useCanvas && canCollapse && remainingCount === 0" class="shelf-sentinel surface">
+      <div
+        v-if="!useCanvas && canCollapse && remainingCount === 0 && !hasMore"
+        class="shelf-sentinel surface"
+      >
         <div class="sentinel-info">
           <AppIcon name="archive" size="sm" class="sentinel-icon" />
           <span class="sentinel-note">
@@ -508,7 +758,7 @@ watch(
           </span>
         </div>
         <div class="sentinel-actions">
-          <button class="btn btn-ghost btn-small" type="button" @click.prevent="collapse">
+          <button class="btn btn-ghost btn-small" type="button" @click.prevent="onCollapseUnified">
             <AppIcon name="chevron-up" size="xs" />
             收整书架
           </button>
@@ -908,12 +1158,53 @@ watch(
   transition: transform var(--duration-2) var(--ease-out);
 }
 
+/* 流式加载触底侦测桩与加载指示条 */
+.stream-sentinel {
+  width: 100%;
+  height: 1px;
+  pointer-events: none;
+  opacity: 0;
+  grid-column: 1 / -1;
+}
+
+.stream-loading-bar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  padding: var(--space-3) 0 var(--space-4);
+  color: var(--ink-2);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  grid-column: 1 / -1;
+}
+
+.stream-loading-spinner {
+  animation: stream-spin 1.2s linear infinite;
+}
+
+@keyframes stream-spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.shelf-fold-card.is-braked {
+  border-color: color-mix(in oklab, var(--accent) 35%, var(--line));
+  box-shadow: var(--shadow-1);
+}
+
 @media (prefers-reduced-motion: reduce) {
   .shelf-card-enter-active,
   .shelf-card-leave-active,
   .shelf-card-move,
-  .archive-drawer-body {
+  .archive-drawer-body,
+  .stream-loading-spinner {
     transition: none !important;
+    animation: none !important;
   }
 }
 </style>

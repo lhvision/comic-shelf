@@ -47,9 +47,13 @@ const router = createRouter({
       redirect: '/',
     },
   ],
-  scrollBehavior(_to, _from, savedPosition) {
+  scrollBehavior(to, from, savedPosition) {
     if (savedPosition) {
       return savedPosition
+    }
+    // 同页面仅 query 或 hash 变更（如书架分类胶囊、筛选或排序切换），保持视口坐标，禁止粗暴滚顶
+    if (to.path === from.path) {
+      return false
     }
     return { top: 0 }
   },

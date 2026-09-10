@@ -282,4 +282,94 @@ describe('useLibraryFilter', () => {
     completedOnly.value = false
     expect(filtered.value.map((b) => b.source_id)).toEqual(['1', '2'])
   })
+
+  it('filters by readingStatus dimension correctly', () => {
+    const list: LibrarySummary[] = [
+      {
+        source: 'jm',
+        source_id: '1',
+        display_id: '1',
+        title: 'Unread Book',
+        authors: [],
+        works: [],
+        actors: [],
+        tags: [],
+        favorite: false,
+        page_count: 10,
+        views: '0',
+        likes: '0',
+        uploaded_at: '',
+        published_at: '',
+        updated_at: '',
+        imported_at: '2026-01-01T00:00:00Z',
+        cover_paths: [],
+        cached_pages: 0,
+        cover_count: 1,
+        last_page: 0,
+      },
+      {
+        source: 'jm',
+        source_id: '2',
+        display_id: '2',
+        title: 'In-Progress Book',
+        authors: [],
+        works: [],
+        actors: [],
+        tags: [],
+        favorite: false,
+        page_count: 20,
+        views: '0',
+        likes: '0',
+        uploaded_at: '',
+        published_at: '',
+        updated_at: '',
+        imported_at: '2026-02-01T00:00:00Z',
+        cover_paths: [],
+        cached_pages: 10,
+        cover_count: 1,
+        last_page: 5,
+      },
+      {
+        source: 'jm',
+        source_id: '3',
+        display_id: '3',
+        title: 'Completed Book',
+        authors: [],
+        works: [],
+        actors: [],
+        tags: [],
+        favorite: false,
+        page_count: 30,
+        views: '0',
+        likes: '0',
+        uploaded_at: '',
+        published_at: '',
+        updated_at: '',
+        imported_at: '2026-03-01T00:00:00Z',
+        cover_paths: [],
+        cached_pages: 30,
+        cover_count: 1,
+        last_page: 30,
+      },
+    ]
+
+    const itemsRef = ref(list)
+    const activeSourceRef = ref('')
+    const { filtered, readingStatus } = useLibraryFilter(itemsRef, activeSourceRef)
+
+    // Default 'all'
+    expect(filtered.value.length).toBe(3)
+
+    // Filter 'reading' (in-progress only)
+    readingStatus.value = 'reading'
+    expect(filtered.value.map((b) => b.source_id)).toEqual(['2'])
+
+    // Filter 'completed'
+    readingStatus.value = 'completed'
+    expect(filtered.value.map((b) => b.source_id)).toEqual(['3'])
+
+    // Back to 'all'
+    readingStatus.value = 'all'
+    expect(filtered.value.length).toBe(3)
+  })
 })

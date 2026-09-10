@@ -175,7 +175,8 @@ JmImageTool.decode_and_save(num, source_image, save_path)
 - `GET /api/settings/guest-privacy` / `PUT /api/settings/guest-privacy`（获取与修改新藏书访客默认隐藏设置）
 - `GET /api/events/stream`（单向系统事件流 SSE，广播构建版本、书库变动与任务进度）
 - `GET /api/discovery/ranking`（发现页与排行榜数据：周榜/月榜/日榜/总榜，支持 `time_type` 与分类筛选）
-- `GET /api/library`（`q` 也能命中章节标题，已读藏书可配合前端分桶）
+- `GET /api/library`（基于 SQLite `comics_index` 影子索引的毫秒级受控分页与多维筛选，参数支持 `page`, `page_size`, `status`, `favorite`, `source`, `q`, `tag`, `sort`, `ids`, `offset`；动态 JOIN 各用户独立阅读进度与喜欢）
+- `GET /api/library/facets`（藏书全貌聚合统计与高频前 30 标签，返回 `total_books`, `total_pages`, `cached_pages` 与高频标签元组）
 - `POST /api/library/import` `{id, source, prefetch_covers, prefetch_all, refresh}`（`refresh=true` 走增量，章节未变则复用旧 remote）
 - `POST /api/library/local/create`（自建工坊创建本地图集/多章节元数据骨架）
 - `POST /api/library/local/import-path`（扫描服务器本地目录如 `public/tiya-frames` 秒级收录）

@@ -77,6 +77,41 @@ export interface LibrarySummary {
   last_page?: number
 }
 
+export type ReadingStatus = 'all' | 'reading' | 'completed' | 'unread'
+
+export interface LibraryQueryParams {
+  page?: number
+  page_size?: number
+  offset?: number
+  ids?: string
+  status?: ReadingStatus
+  favorite?: boolean
+  source?: string
+  q?: string
+  search?: string
+  tag?: string
+  sort?: string
+}
+
+export interface LibraryPageResponse {
+  items: LibrarySummary[]
+  total: number
+  page: number
+  page_size: number
+  has_more: boolean
+}
+
+export interface LibraryStats {
+  total_books: number
+  total_pages: number
+  cached_pages: number
+}
+
+export interface LibraryFacetsResponse {
+  stats: LibraryStats
+  top_tags: Array<[string, number]>
+}
+
 export interface ComicDetail {
   meta: ComicMeta
   cached_pages: number

@@ -181,6 +181,45 @@ class ComicStore:
         with self._cache_guard:
             self._meta_cache.pop((source, source_id), None)
             self._fetched_cache.pop((source, source_id), None)
+        try:
+            album_path = self.album_path(source, source_id)
+            if album_path.exists():
+                meta = self.load_meta(source, source_id)
+                if meta:
+                    from .db import upsert_comic_index
+                    import json
+                    try:
+                        mtime = album_path.stat().st_mtime
+                    except Exception:
+                        mtime = 0.0
+                    upsert_comic_index({
+                        "source": meta.source,
+                        "source_id": meta.source_id,
+                        "display_id": meta.display_id,
+                        "title": meta.title,
+                        "authors_json": json.dumps(meta.authors, ensure_ascii=False),
+                        "works_json": json.dumps(meta.works, ensure_ascii=False),
+                        "actors_json": json.dumps(meta.actors, ensure_ascii=False),
+                        "tags_json": json.dumps(meta.tags, ensure_ascii=False),
+                        "chapter_titles_json": json.dumps([c.title for c in meta.chapters], ensure_ascii=False),
+                        "page_count": meta.page_count,
+                        "cached_pages": self.cached_page_count(meta),
+                        "cover_count": meta.cover_count,
+                        "cover_indices_json": json.dumps(meta.cover_indices, ensure_ascii=False),
+                        "views": str(meta.views),
+                        "likes": str(meta.likes),
+                        "uploaded_at": meta.published_at,
+                        "published_at": meta.published_at,
+                        "updated_at": meta.updated_at,
+                        "imported_at": meta.imported_at,
+                        "hidden_from_guest": 1 if getattr(meta, "hidden_from_guest", False) else 0,
+                        "mtime": mtime,
+                    })
+            else:
+                from .db import delete_comic_index
+                delete_comic_index(source, source_id)
+        except Exception:
+            pass
 
     # ------------------------------------------------------------------
     # persistence
@@ -485,6 +524,11 @@ class ComicStore:
         with self._cache_guard:
             self._meta_cache[(meta.source, meta.source_id)] = (mtime, meta)
             self._fetched_cache.pop((meta.source, meta.source_id), None)
+        try:
+            from .db import update_comic_cached_pages
+            update_comic_cached_pages(meta.source, meta.source_id, self.cached_page_count(meta))
+        except Exception:
+            pass
 
     # ------------------------------------------------------------------
     # pages and covers
@@ -957,25 +1001,8 @@ class ComicStore:
 
 
     # ------------------------------------------------------------------
-    # library queries
+    # library queries & summary helpers
     # ------------------------------------------------------------------
-    def list_library(self) -> list[LibrarySummary]:
-        items: list[LibrarySummary] = []
-        if not self.root.exists():
-            return items
-
-        for source_dir in sorted(self.root.iterdir()):
-            if not source_dir.is_dir():
-                continue
-            for comic_dir in sorted(source_dir.iterdir()):
-                if not comic_dir.is_dir():
-                    continue
-                fetched = self.load_fetched(source_dir.name, comic_dir.name)
-                if fetched is None:
-                    continue
-                items.append(self.summary(fetched.meta))
-        return items
-
     def summary(self, meta: ComicMeta) -> LibrarySummary:
         return LibrarySummary(
             source=meta.source,

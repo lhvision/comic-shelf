@@ -27,9 +27,16 @@ describe('TagFilterBar', () => {
     })
 
     const primaryButtons = wrapper.find('.filter-cluster').findAll('.chip-button')
-    // favorite (1) + completed (1) + all (1) + 8 primary + more button (1) = 12 buttons
-    expect(primaryButtons.length).toBe(12)
+    // favorite (1) + all (1) + 8 primary + more button (1) = 11 chip buttons
+    expect(primaryButtons.length).toBe(11)
     expect(wrapper.find('.more-tags').text()).toContain('更多 · 2')
+
+    // Reading status tabs
+    const statusTabs = wrapper.findAll('.segmented-tab')
+    expect(statusTabs.length).toBe(3)
+    expect(statusTabs[0]?.text()).toBe('全部')
+    expect(statusTabs[1]?.text()).toBe('在读')
+    expect(statusTabs[2]?.text()).toBe('已读')
 
     // Tray exists in DOM but collapsed
     const tray = wrapper.find('.more-tags-tray')
@@ -98,25 +105,32 @@ describe('TagFilterBar', () => {
     expect(wrapper.emitted('toggleFavorites')).toBeTruthy()
   })
 
-  it('emits toggleCompleted when completed button is clicked', async () => {
+  it('emits update:readingStatus when segmented tabs are clicked', async () => {
     const wrapper = mount(TagFilterBar, {
       props: {
         favoritesOnly: false,
-        completedOnly: false,
+        readingStatus: 'all',
         activeTag: '',
         tagCounts,
         filteredCount: 10,
       },
     })
 
-    const completedBtn = wrapper.find('.completed-filter')
-    expect(completedBtn.attributes('aria-pressed')).toBe('false')
-    await completedBtn.trigger('click')
+    const tabs = wrapper.findAll('.segmented-tab')
+    expect(tabs[0]?.classes()).toContain('is-active')
 
+    // Click "在读"
+    await tabs[1]?.trigger('click')
+    expect(wrapper.emitted('update:readingStatus')?.[0]).toEqual(['reading'])
+
+    // Click "已读"
+    await tabs[2]?.trigger('click')
+    expect(wrapper.emitted('update:readingStatus')?.[1]).toEqual(['completed'])
     expect(wrapper.emitted('toggleCompleted')).toBeTruthy()
 
-    await wrapper.setProps({ completedOnly: true } as Record<string, unknown>)
-    expect(completedBtn.attributes('aria-pressed')).toBe('true')
+    // Controlled prop update
+    await wrapper.setProps({ readingStatus: 'completed' } as Record<string, unknown>)
+    expect(tabs[2]?.classes()).toContain('is-active')
   })
 
   it('auto-expands tray when initialized with activeTag in overflow tags', () => {

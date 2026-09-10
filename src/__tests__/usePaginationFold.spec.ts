@@ -124,4 +124,53 @@ describe('usePaginationFold composable', () => {
     expect(visibleCount.value).toBe(12)
     expect(onChangeMock).toHaveBeenCalledWith(12)
   })
+
+  it('triggers safety brake at brakeThreshold and allows releasing brake', () => {
+    const list = ref(Array.from({ length: 100 }, (_, i) => i))
+    const { visibleCount, isBraked, loadMore, releaseBrake, collapse } = usePaginationFold({
+      items: list,
+      step: 12,
+      brakeThreshold: 36,
+    })
+
+    expect(visibleCount.value).toBe(12)
+    expect(isBraked.value).toBe(false)
+
+    loadMore() // 24
+    expect(isBraked.value).toBe(false)
+
+    loadMore() // 36 - hits threshold
+    expect(visibleCount.value).toBe(36)
+    expect(isBraked.value).toBe(true)
+
+    // Release brake with additional 24
+    releaseBrake(24) // visibleCount goes to 48, threshold becomes 36 + 24 = 60
+    expect(visibleCount.value).toBe(48)
+    expect(isBraked.value).toBe(false)
+
+    loadMore() // 60 - hits new threshold
+    expect(visibleCount.value).toBe(60)
+    expect(isBraked.value).toBe(true)
+
+    // Collapse resets threshold back to 36
+    collapse()
+    expect(visibleCount.value).toBe(12)
+    expect(isBraked.value).toBe(false)
+  })
+
+  it('respects external totalCount for server-side pagination remaining calculation', () => {
+    const list = ref(Array.from({ length: 24 }, (_, i) => i))
+    const { remainingCount, visibleCount, loadMore } = usePaginationFold({
+      items: list,
+      step: 12,
+      totalCount: 1000,
+    })
+
+    expect(visibleCount.value).toBe(12)
+    expect(remainingCount.value).toBe(988)
+
+    loadMore()
+    expect(visibleCount.value).toBe(24)
+    expect(remainingCount.value).toBe(976)
+  })
 })

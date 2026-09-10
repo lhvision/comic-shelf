@@ -325,4 +325,118 @@ describe('ComicGrid', () => {
     expect(activeGrid.findAll('.mock-comic-card').length).toBe(24)
     expect(drawerGrid.findAll('.mock-comic-card').length).toBe(15)
   })
+
+  it('triggers safety brake at brakeThreshold and allows continuation in ComicGrid', async () => {
+    const comics = makeComics(80)
+    const wrapper = mount(ComicGrid, {
+      props: {
+        loading: false,
+        items: comics,
+        useCanvas: false,
+        hasAnyItems: true,
+        batchStep: 20,
+        brakeThreshold: 40,
+        isRecentSort: false, // Unified grid mode
+      },
+    })
+
+    // Starts at 20
+    expect(wrapper.findAll('.mock-comic-card').length).toBe(20)
+    let foldCard = wrapper.find('.shelf-fold-card')
+    expect(foldCard.classes()).not.toContain('is-braked')
+
+    // Expand to 40 (hits 40 brakeThreshold)
+    await foldCard.find('button.btn-primary').trigger('click')
+    expect(wrapper.findAll('.mock-comic-card').length).toBe(40)
+    foldCard = wrapper.find('.shelf-fold-card')
+    expect(foldCard.classes()).toContain('is-braked')
+    expect(foldCard.text()).toContain('流式加载已触发安全刹车')
+    expect(foldCard.find('button.btn-primary').text()).toContain('继续向下探索')
+
+    // Click continue exploration
+    await foldCard.find('button.btn-primary').trigger('click')
+    expect(wrapper.findAll('.mock-comic-card').length).toBe(60)
+  })
+
+  it('renders stream loading indicator when loadingMore is true', () => {
+    const wrapper = mount(ComicGrid, {
+      props: {
+        loading: false,
+        loadingMore: true,
+        items: makeComics(10),
+        useCanvas: false,
+        hasAnyItems: true,
+      },
+    })
+
+    const loadingBar = wrapper.find('.stream-loading-bar')
+    expect(loadingBar.exists()).toBe(true)
+    expect(loadingBar.text()).toContain('正在载入后续藏书')
+  })
+
+  it('automatically reveals newly appended items when new page arrives after reaching end of previous page', async () => {
+    // Page 1 has 24 comics
+    const page1 = makeComics(24)
+    const wrapper = mount(ComicGrid, {
+      props: {
+        loading: false,
+        items: page1,
+        useCanvas: false,
+        hasAnyItems: true,
+        batchStep: 12,
+        isRecentSort: false, // Unified grid mode
+        initialUnifiedCount: 24, // User has scrolled to the end of page 1
+        hasMore: true,
+      },
+    })
+
+    // 24 comics currently rendered
+    expect(wrapper.findAll('.mock-comic-card').length).toBe(24)
+
+    // Page 2 arrives (24 more items appended, total 48)
+    const page2 = makeComics(48)
+    await wrapper.setProps({ items: page2 } as Record<string, unknown>)
+
+    // Newly appended page should automatically expand next batch (+12, total 36)
+    expect(wrapper.findAll('.mock-comic-card').length).toBe(36)
+  })
+
+  it('automatically reveals newly appended active items in split mode', async () => {
+    const page1 = makeComics(24).map((c, i) => ({
+      ...c,
+      source_id: `unread_${i}`,
+      last_page: 0,
+    }))
+    const completed = makeComics(5).map((c, i) => ({
+      ...c,
+      source_id: `completed_${i}`,
+      last_page: 20,
+    }))
+    const wrapper = mount(ComicGrid, {
+      props: {
+        loading: false,
+        items: [...page1, ...completed],
+        useCanvas: false,
+        hasAnyItems: true,
+        batchStep: 12,
+        isRecentSort: true,
+        initialActiveCount: 24,
+        hasMore: true,
+      },
+    })
+
+    const activeGrid = wrapper.find('.active-shelf-grid')
+    expect(activeGrid.findAll('.mock-comic-card').length).toBe(24)
+
+    // Page 2 arrives with 24 more unread items
+    const page2 = makeComics(24).map((c, i) => ({
+      ...c,
+      source_id: `unread_p2_${i}`,
+      last_page: 0,
+    }))
+    await wrapper.setProps({ items: [...page1, ...page2, ...completed] } as Record<string, unknown>)
+
+    // Newly appended page should automatically expand active batch (+12, total 36)
+    expect(activeGrid.findAll('.mock-comic-card').length).toBe(36)
+  })
 })
