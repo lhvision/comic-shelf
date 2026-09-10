@@ -218,7 +218,7 @@ const heroLede = computed(
 
   .hero-source-pill {
     padding: 0.5rem 0.85rem;
-    min-height: 44px;
+    min-height: 28px;
     box-sizing: border-box;
   }
 }
