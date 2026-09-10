@@ -23,7 +23,7 @@ import { useReaderNavigation } from '@/composables/useReaderNavigation'
 import { useReaderKeyboard } from '@/composables/useReaderKeyboard'
 import { useReaderData } from '@/composables/useReaderData'
 import { useSystemEvents } from '@/composables/useSystemEvents'
-import { api } from '@/api/client'
+import { useAuth } from '@/composables/useAuth'
 import { useLibraryStore } from '@/stores/library'
 import { useReaderRecommendations } from '@/composables/useReaderRecommendations'
 import ReaderTopBar from '@/components/reader/ReaderTopBar.vue'
@@ -170,6 +170,7 @@ const { autoTurnRemaining, autoTurnPaused, resetAutoTurnCountdown, toggleAutoTur
 
 /* ---------------- 页面响应式联动与历史同步 ---------------- */
 const { broadcastLocalChange } = useSystemEvents()
+const { userId } = useAuth()
 
 const broadcastReadingProgress = useDebounceFn((page: number) => {
   if (page > 0 && source.value && sourceId.value) {
@@ -185,7 +186,7 @@ const broadcastReadingProgress = useDebounceFn((page: number) => {
 
 watch(currentPage, (page) => {
   lastRead.value = page
-  libraryStore.setReadingProgressLocal(source.value, sourceId.value, page)
+  libraryStore.setReadingProgressLocal(source.value, sourceId.value, page, userId.value)
   broadcastReadingProgress(page)
   preloadAround(page)
 })
@@ -318,8 +319,7 @@ function onReaderCompleted() {
   const finalPage = detail.value?.meta.page_count ?? total.value
   if (finalPage > 0) {
     lastRead.value = finalPage
-    libraryStore.setReadingProgressLocal(source.value, sourceId.value, finalPage)
-    void api.saveReadingProgress(source.value, sourceId.value, finalPage).catch(() => {})
+    libraryStore.setReadingProgressLocal(source.value, sourceId.value, finalPage, userId.value)
     broadcastLocalChange({
       action: 'reading_progress_changed',
       source: source.value,

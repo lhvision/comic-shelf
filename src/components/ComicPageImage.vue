@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
 import { useTimeoutFn } from '@vueuse/core'
+import { useOfflineSync } from '@/composables/useOfflineSync'
 import ReaderLoadingState from '@/components/reader/ReaderLoadingState.vue'
 
 const props = withDefaults(
@@ -20,6 +21,8 @@ const retryKey = ref(0)
 const autoRetryCount = ref(0)
 const maxAutoRetries = 3
 const retryDelay = ref(1200)
+
+const { isOnline } = useOfflineSync()
 
 const { start: startAutoRetry, stop: stopAutoRetry } = useTimeoutFn(
   () => {
@@ -71,6 +74,14 @@ function onLoad() {
 }
 
 function handleError() {
+  // 离线断网时快速失败，不作无谓退避重试，直接展示缺页纸印
+  if (!isOnline.value) {
+    stopAutoRetry()
+    loading.value = false
+    failed.value = true
+    return
+  }
+
   if (autoRetryCount.value < maxAutoRetries) {
     autoRetryCount.value += 1
     // 递增退避延迟：1.2s、2.4s、3.6s（留足后端令牌桶以 3/s 速率回充配额的时间）
@@ -133,9 +144,15 @@ watch(
       full-frame
     />
 
-    <div v-else-if="failed" class="page-error" role="alert">
-      <span>图片加载失败</span>
-      <button type="button" @click="retry">重试</button>
+    <div v-else-if="failed" class="page-error" :class="{ 'is-offline': !isOnline }" role="alert">
+      <template v-if="!isOnline">
+        <span class="offline-stamp">〔 📴 画页未离线缓存 〕</span>
+        <span class="offline-sub">联网后将自动载入</span>
+      </template>
+      <template v-else>
+        <span>图片加载失败</span>
+        <button type="button" @click="retry">重试</button>
+      </template>
     </div>
   </div>
 </template>
@@ -188,6 +205,26 @@ watch(
   color: var(--reader-muted, #938d80);
   font-family: var(--font-mono);
   font-size: var(--text-xs);
+  text-align: center;
+  padding: var(--space-4);
+  border-radius: var(--radius-2);
+  background: color-mix(in oklab, var(--reader-bg, #0d0c0a) 85%, transparent);
+}
+
+.page-error.is-offline {
+  border: 1px dashed rgb(255 255 255 / 15%);
+  padding: var(--space-6) var(--space-8);
+}
+
+.offline-stamp {
+  color: var(--accent, #b34a36);
+  font-weight: 600;
+  letter-spacing: 0.05em;
+}
+
+.offline-sub {
+  color: var(--reader-muted, #938d80);
+  font-size: 0.75rem;
 }
 
 .page-error button {

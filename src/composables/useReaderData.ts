@@ -16,6 +16,8 @@ import { api } from '@/api/client'
 import { useToast } from '@/composables/useToast'
 import { useLastRead } from '@/composables/useLastRead'
 import { useIllustrationPool } from '@/composables/useIllustrationPool'
+import { useLibraryStore, createPlaceholderDetail } from '@/stores/library'
+import { useAuth } from '@/composables/useAuth'
 import type { ComicDetail } from '@/types'
 
 /**
@@ -97,6 +99,9 @@ export function useReaderData(options: UseReaderDataOptions = {}): UseReaderData
     void router.replace(backTarget.value)
   }
 
+  const store = useLibraryStore()
+  const { userId } = useAuth()
+
   /* ---------------- 数据加载与生命周期 ---------------- */
   let readerAbortController: AbortController | null = null
 
@@ -114,12 +119,32 @@ export function useReaderData(options: UseReaderDataOptions = {}): UseReaderData
       const data = await api.detail(source.value, sourceId.value, { signal: controller.signal })
       if (controller.signal.aborted) return
       detail.value = data
+      store.setDetail(data, userId.value)
       loading.value = false
       if (onLoaded) {
         await onLoaded(data)
       }
     } catch (e) {
       if (controller.signal.aborted) return
+
+      // 离线容错降级：优先命中本地 IndexedDB 或书架概要占位
+      const offlineDetail = await store.getOrFetchOfflineDetail(
+        source.value,
+        sourceId.value,
+        userId.value,
+      )
+      const summary = store.byId(source.value, sourceId.value)
+      const fallback = offlineDetail || (summary ? createPlaceholderDetail(summary) : null)
+
+      if (fallback) {
+        detail.value = fallback
+        loading.value = false
+        if (onLoaded) {
+          await onLoaded(fallback)
+        }
+        return
+      }
+
       loading.value = false
       toast(e instanceof Error ? e.message : String(e), 'error')
       void router.replace(`/comic/${source.value}/${sourceId.value}`)

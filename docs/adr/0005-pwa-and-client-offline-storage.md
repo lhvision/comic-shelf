@@ -63,3 +63,9 @@
 2. **OPFS（Origin Private File System）与 CacheStorage 边界澄清**：
    - **漫画画页请求流**：坚守 **CacheStorage + Service Worker** 原生管道，由浏览器 C++ 网络栈直接解码渲染 `<img :src="...">`，绝不引入由 JS 读取 OPFS 句柄并反复创建 Blob URL 的高开销反模式；
    - **OPFS 定位**：作为前瞻技术储备收录于 `docs/JS_RADAR.md`，专用于未来「整本漫画离线导出归档包（`.cbf`/`.zip`）」与「独立典藏中文字体离线落盘（`woff2`）」等非 HTTP 语义的大单体流式写入场景（遵循 YAGNI 原则，暂不编写空置抽象）。
+
+3. **端侧元数据持久化与离线模式韧性架构（Client Metadata IndexedDB Cache & Offline Mode）**：
+   - **API 缓存安全边界**：坚守 Service Worker **不裸缓存** 动态 API（`/api/library`、`/api/library/*`）的原则，杜绝跨用户身份（馆长 vs 访客）或登出后的权限污染与隐私泄露；
+   - **端侧 IndexedDB 快照镜像**：在前端 Pinia Store 与 Composable 层基于轻量 IndexedDB（`comic-shelf-meta`）建立元数据镜像，按当前用户身份（`userId` / `curator`）隔离存储书架列表、全貌统计与漫画详情（LRU 200 本）；冷启动与离线断网 0ms 秒开，联网时后台静默 SWR 对齐；
+   - **纸室离线模式与无缝容错**：断网自适应激活离线模式，书架全景陈列并提供「只看离线」快捷胶囊；详情页与阅读器断网时不强退首页，未缓存画页以降级水墨纸印骨架占位呈现；
+   - **离线记账与联网自愈对齐**：离线翻页进度与喜欢标记写入本地持久化事务队列，待网络自愈时静默回写服务端，管理操作在离线时安全置灰。

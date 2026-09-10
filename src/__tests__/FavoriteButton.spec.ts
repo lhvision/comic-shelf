@@ -18,6 +18,14 @@ vi.mock('@/composables/useToast', () => ({
   }),
 }))
 
+const mockRecordOfflineAction =
+  vi.fn<(type: string, payload: Record<string, unknown>) => Promise<void>>()
+vi.mock('@/composables/useOfflineSync', () => ({
+  useOfflineSync: () => ({
+    recordOfflineAction: mockRecordOfflineAction,
+  }),
+}))
+
 describe('FavoriteButton component', () => {
   beforeEach(() => {
     vi.clearAllMocks()
@@ -75,6 +83,36 @@ describe('FavoriteButton component', () => {
     // 第二次回滚
     expect(emitted?.[1]).toEqual([false])
     expect(mockToast).toHaveBeenCalledWith('Network error', 'error')
+  })
+
+  it('records offline action and does not roll back when navigator is offline', async () => {
+    mockSetFavorite.mockRejectedValue(new TypeError('Failed to fetch'))
+    const originalOnLine = navigator.onLine
+    Object.defineProperty(navigator, 'onLine', { value: false, configurable: true })
+
+    try {
+      const wrapper = mount(FavoriteButton, {
+        props: {
+          source: 'jm',
+          sourceId: '123456',
+          favorite: false,
+        },
+      })
+
+      await wrapper.find('.favorite-button').trigger('click')
+
+      const emitted = wrapper.emitted('toggled')
+      expect(emitted).toHaveLength(1)
+      expect(emitted?.[0]).toEqual([true])
+      expect(mockRecordOfflineAction).toHaveBeenCalledWith('favorite', {
+        source: 'jm',
+        sourceId: '123456',
+        favorite: true,
+      })
+      expect(mockToast).toHaveBeenCalledWith('离线已记录，联网后自动同步', 'info')
+    } finally {
+      Object.defineProperty(navigator, 'onLine', { value: originalOnLine, configurable: true })
+    }
   })
 
   it('does not render when interactive is false', () => {

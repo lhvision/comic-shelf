@@ -18,6 +18,7 @@ import { useImageSearch } from '@/composables/useImageSearch'
 import { useToast } from '@/composables/useToast'
 import { useAuth } from '@/composables/useAuth'
 import { useSystemEvents } from '@/composables/useSystemEvents'
+import { useOfflineSync } from '@/composables/useOfflineSync'
 import { api, DEFAULT_PROVIDERS } from '@/api/client'
 import type { ProviderInfo } from '@/types'
 
@@ -26,8 +27,9 @@ const experiments = useExperimentsStore()
 const route = useRoute()
 const router = useRouter()
 const { toast } = useToast()
-const { canWrite } = useAuth()
+const { canWrite, userId } = useAuth()
 const { broadcastLocalChange } = useSystemEvents()
+const { isOnline } = useOfflineSync()
 const fileInput = ref<HTMLInputElement | null>(null)
 const providers = ref<ProviderInfo[]>(DEFAULT_PROVIDERS)
 
@@ -81,14 +83,19 @@ const {
   imageSearchMatchMap,
   filtered,
   setSort,
-} = useLibraryFilter(toRef(store, 'items'), activeSource, imageSearch.searchResults, {
-  search: shelf.search,
-  activeTag: shelf.activeTag,
-  favoritesOnly: shelf.favoritesOnly,
-  readingStatus: shelf.readingStatus,
-  sortBy: shelf.sortBy,
-  facets: toRef(store, 'facets'),
-})
+} = useLibraryFilter(
+  computed(() => store.items || []),
+  activeSource,
+  imageSearch.searchResults,
+  {
+    search: shelf.search,
+    activeTag: shelf.activeTag,
+    favoritesOnly: shelf.favoritesOnly,
+    readingStatus: shelf.readingStatus,
+    sortBy: shelf.sortBy,
+    facets: computed(() => store.facets),
+  },
+)
 
 const { fetchLibrary } = useLibrarySync({
   route,
@@ -127,7 +134,7 @@ onMounted(() => {
 onUnmounted(() => window.removeEventListener('paste', imageSearch.handlePaste))
 
 function onFavoriteToggled(source: string, sourceId: string, favorite: boolean) {
-  store.setFavoriteLocal(source, sourceId, favorite)
+  store.setFavoriteLocal(source, sourceId, favorite, userId.value)
   broadcastLocalChange({
     action: 'favorite_changed',
     source,
@@ -152,10 +159,10 @@ watch([() => store.error, imageSearch.error], ([err1, err2]) => {
       :cached-pages="totalCachedPages"
       :total-pages="totalPages"
       :active-source="activeSource"
-      :can-write="canWrite"
+      :can-write="canWrite && isOnline && !store.isOffline"
       :providers="providers"
     >
-      <template #import v-if="canWrite && activeSource">
+      <template #import v-if="canWrite && isOnline && !store.isOffline && activeSource">
         <ImportPanel :source="activeSource" @imported="openComic" />
       </template>
     </LibraryHero>
@@ -244,6 +251,11 @@ watch([() => store.error, imageSearch.error], ([err1, err2]) => {
         @update:reading-status="readingStatus = $event"
         @select-tag="activeTag = $event"
       />
+
+      <p v-if="store.isOffline || !isOnline" class="offline-active-note" role="status">
+        <span class="offline-active-note__badge">〔 📴 纸室离线模式 〕</span>
+        <span>当前展示本地快照与离线藏书</span>
+      </p>
 
       <p v-if="store.activeCachingCount" class="cache-active-note" role="status">
         <span class="cache-active-note__dot" aria-hidden="true" />
@@ -419,6 +431,25 @@ watch([() => store.error, imageSearch.error], ([err1, err2]) => {
 .experiment-toggle small {
   color: var(--ink-2);
   font-size: 0.7rem;
+}
+
+.offline-active-note {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-top: var(--space-4);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--accent-subtle, var(--line-strong));
+  border-radius: var(--radius-2);
+  background: color-mix(in oklab, var(--paper-0) 85%, var(--accent-subtle, var(--paper-1)));
+  color: var(--ink-1);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+}
+
+.offline-active-note__badge {
+  color: var(--accent);
+  font-weight: 600;
 }
 
 .cache-active-note {

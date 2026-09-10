@@ -309,6 +309,15 @@ watch(
   },
 )
 
+watch(isSplitMode, (isSplit, wasSplit) => {
+  if (isSplit && !wasSplit) {
+    if (activeVisibleCount.value < unifiedVisibleCount.value) {
+      activeVisibleCount.value = Math.min(activeComics.value.length, unifiedVisibleCount.value)
+      emit('update:activeCount', activeVisibleCount.value)
+    }
+  }
+})
+
 // 当数据源发生变化时：
 // 1. 若为增量分页加载（append），自动向外顺延展现新拉取的批次，解决第二页加载后仍不渲染问题；
 // 2. 若为全新查询/筛选变更，收拢全量展开态并重置可见数；
@@ -319,29 +328,35 @@ watch(
     const isAppend =
       oldItems.length > 0 &&
       newItems.length > oldItems.length &&
-      newItems[0]?.source === oldItems[0]?.source &&
-      newItems[0]?.source_id === oldItems[0]?.source_id
+      (props.loadingMore ||
+        (newItems[0]?.source === oldItems[0]?.source &&
+          newItems[0]?.source_id === oldItems[0]?.source_id) ||
+        oldItems.some((old) =>
+          newItems.some((n) => n.source === old.source && n.source_id === old.source_id),
+        ))
 
     if (isAppend) {
       const oldActiveCount = oldItems.filter((i) => !isCompleted(i)).length
       if (isExpandingAllActive.value) {
         loadAllActive()
-      } else if (activeVisibleCount.value >= oldActiveCount) {
-        // 用户此前已滚动至未读藏书末尾，新一页到达后自动向外展开下一批
+      } else {
+        // 用户滚动触发新一页加载到达后，自动向外展开新拉取的整批条目
+        const addedActive = Math.max(props.batchStep, activeComics.value.length - oldActiveCount)
         activeVisibleCount.value = Math.min(
           activeComics.value.length,
-          activeVisibleCount.value + props.batchStep,
+          activeVisibleCount.value + addedActive,
         )
         emit('update:activeCount', activeVisibleCount.value)
       }
 
       if (isExpandingAllUnified.value) {
         loadAll()
-      } else if (unifiedVisibleCount.value >= oldItems.length) {
+      } else {
         // 单网格模式下同理
+        const addedUnified = Math.max(props.batchStep, newItems.length - oldItems.length)
         unifiedVisibleCount.value = Math.min(
           newItems.length,
-          unifiedVisibleCount.value + props.batchStep,
+          unifiedVisibleCount.value + addedUnified,
         )
         emit('update:unifiedCount', unifiedVisibleCount.value)
       }
@@ -379,12 +394,12 @@ watch(
       void nextTick(() => {
         if (isSplitMode.value && activeSentinelEl.value) {
           const rect = activeSentinelEl.value.getBoundingClientRect()
-          if (rect.top <= window.innerHeight + 300 && rect.bottom >= 0) {
+          if (rect.top <= window.innerHeight + 600) {
             triggerActiveStreamLoad()
           }
         } else if (!isSplitMode.value && unifiedSentinelEl.value) {
           const rect = unifiedSentinelEl.value.getBoundingClientRect()
-          if (rect.top <= window.innerHeight + 300 && rect.bottom >= 0) {
+          if (rect.top <= window.innerHeight + 600) {
             triggerUnifiedStreamLoad()
           }
         }

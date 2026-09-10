@@ -10,11 +10,13 @@ import BackToTop from '@/components/BackToTop.vue'
 import { useAuth } from '@/composables/useAuth'
 import { useHtmlCanvas } from '@/composables/useHtmlCanvas'
 import { useBrandIcon } from '@/composables/useBrandIcon'
+import { useOfflineSync } from '@/composables/useOfflineSync'
 
 const route = useRoute()
 const { supported, publishStatus } = useHtmlCanvas()
 const { authRequired, authenticated, checkStatus } = useAuth()
 const { syncFavicon } = useBrandIcon()
+useOfflineSync()
 
 onMounted(async () => {
   syncFavicon()

@@ -199,3 +199,7 @@
 - **延迟生效气泡评估（Deferred Disabled Evaluation）**：现代浮层与按需探测的协同机制。允许浮层触发源在鼠标移入（`pointerenter`）瞬间异步推导截断状态，气泡组件在唤起延迟（`delay`）计时器触发时刻二次核验 `props.disabled`，兼顾 JIT 响应式单向流与零闪烁弹出。
 - **凭据边缘免检与安全级别跳过（Auth Cookie Edge Bypass & Security Level Skip）**：Cloudflare Anycast 边缘根据客户端携带的认证 Cookie（默认 `comic_shelf_token` 与 `comic_shelf_device`，支持自定义）实施的精细化质询豁免机制。在全域开启「Under Attack 模式」极高防扫描防护的前提下，自动跳过针对合法读者的安全级别（五秒盾）挑战，消除后台非交互式 API 与漫画原图加载因 `cf_clearance` 失效引发的 403 质询阻断。
 - **源站私有印章防线（Origin Auth Secret & Gateway Gate）**：由 Cloudflare Transform Rules 在回源请求中静默注入私有请求头（`X-Origin-Secret`），配合反向代理网关（Nginx Proxy Manager）实施的源站级准入控制。既保障了家庭局域网（Split-Horizon DNS）千兆直连免检，又在家庭公网高位端口（如 38443）遭到全网探测与 IP 嗅探时直接下发 403 阻断，实现非 Cloudflare 边缘回源流量零穿透。
+- **端侧元数据离线持久化（Client Metadata IndexedDB Cache / SWR Mirror）**：前端 Pinia Store 与数据层在客户端基于 IndexedDB 构建的结构化元数据快照镜像（包含书架摘要列表、全貌统计与漫画详情）。在冷启动与离线断网时实现 0ms 秒开呈现，联网时静默 SWR（Stale-While-Revalidate）向服务端同步；严格按用户身份隔离，彻底杜绝 Service Worker 裸缓存 API 导致的权限混淆与数据泄露。
+- **纸室离线模式（Offline Shelf Snapshot & Offline Mode）**：PWA 在无网络连接时自适应激活的典雅阅览状态。书架完整保留全貌快照并打上「〔 📴 纸室离线模式 〕」朱砂暗印；提供一键「只看离线」快捷胶囊，卡片精准标注端侧本地就绪状态，使读者在通勤与飞机等断网环境下依然拥有从容的淘书与阅读体验。
+- **缺页纸印骨架（Offline Missing-Page Paper Stamp）**：阅读器在离线状态翻阅未缓存画页时的优雅降级呈现。以纸间暖纸水墨质感的「〔 📴 画页未离线缓存 · 联网后自动载入 〕」占位骨架替代浏览器原生破损图标与粗暴弹退，阅读器 HUD 与其他已缓存画页保持平滑导航。
+- **端侧离线记账与联网对齐队列（Offline Action Log & Reconciliation Queue）**：离线模式下读者产生的翻页进度（`last_page`）与喜欢（`favorite`）状态变更的端侧持久化事务队列。状态即时乐观生效于本地视图与 IndexedDB；待设备重获网络连接（`online` 事件或网络自愈）后，由后台静默对齐管道批量回写至后端 SQLite 数据库。

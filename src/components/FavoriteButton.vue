@@ -2,6 +2,7 @@
 import { ref } from 'vue'
 import { api } from '@/api/client'
 import { useToast } from '@/composables/useToast'
+import { useOfflineSync } from '@/composables/useOfflineSync'
 import AppIcon from '@/components/AppIcon.vue'
 
 const props = withDefaults(
@@ -20,6 +21,7 @@ const emit = defineEmits<{
 
 const busy = ref(false)
 const { toast } = useToast()
+const { recordOfflineAction } = useOfflineSync()
 
 async function toggle() {
   if (!props.interactive || busy.value) return
@@ -29,8 +31,17 @@ async function toggle() {
   try {
     await api.setFavorite(props.source, props.sourceId, next)
   } catch (error) {
-    emit('toggled', !next)
-    toast(error instanceof Error ? error.message : '更新收藏状态失败，请稍后重试', 'error')
+    if (typeof navigator !== 'undefined' && !navigator.onLine) {
+      await recordOfflineAction('favorite', {
+        source: props.source,
+        sourceId: props.sourceId,
+        favorite: next,
+      })
+      toast('离线已记录，联网后自动同步', 'info')
+    } else {
+      emit('toggled', !next)
+      toast(error instanceof Error ? error.message : '更新收藏状态失败，请稍后重试', 'error')
+    }
   } finally {
     busy.value = false
   }

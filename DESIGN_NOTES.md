@@ -26,6 +26,8 @@
    - [§55 画卷折叠架与尾格余量收纳架构](#sec-55)
    - [§56 来源导航单一真理源与收录工作台解耦架构](#sec-56)
    - [§57 条漫无缝拼接与自适应画卷架构](#sec-57)
+   - [§58 万级书库流式分页、阅读状态分段胶囊与安全刹车系统](#sec-58)
+   - [§59 纸室离线模式与端侧自愈流水线架构](#sec-59)
 5. [历史演进里程碑归档索引（Historical Milestones Archive）](#5-历史演进里程碑归档索引historical-milestones-archive)
 
 ---
@@ -300,6 +302,23 @@
 - **识图穿透与跨端同步闭环**：
   1. 以图搜图命中历史藏书时，通过 `/api/library?ids=...` 精准定向拉齐，杜绝分页导致的“搜得出但看不见”历史断层；
   2. 跨端 SSE 事件（增删本子、重装订）联动刷新首屏切片与全貌统计（Facets），保持多端一致。
+
+### <a id="sec-59"></a>§59 纸室离线模式与端侧自愈流水线架构（Offline-First Resilience & Reconciliation Pipeline）
+
+- **业务背景与架构升级（承接 ADR 0005 决议 3）**：
+  传统 PWA 缓存静态资源后，由于书架首屏和详情页强依赖 `/api/library` 远端接口，一旦断网便陷入白屏空架或强退首页；粗暴在 Service Worker 缓存 API 又会因缺乏鉴权头隔离导致多租户数据泄露与权限穿透。
+- **端侧元数据持久化与 0ms 水合（IndexedDB SWR）**：
+  1. 建立轻量 `comic-shelf-meta` IndexedDB 引擎，书架快照（`shelf_${userId}`）与漫画详情（`${userId}:${source}:${sourceId}`）按用户身份物理分区；
+  2. 漫画详情内置 200 本 LRU 淘汰机制，杜绝端侧存储无限膨胀；
+  3. 冷启动或断网时 0ms 水合 IndexedDB 快照，网络请求失败时不破坏已有 DOM，平滑展示「〔 📴 纸室离线模式 〕」暗印状态；
+  4. 筛选工具栏提供「只看离线」`AppChip`，联动 `offlineOnly` 响应式过滤本地已有画页的藏书。
+- **全链路离线漫游与水墨缺页骨架**：
+  1. 详情页与章节页在离线断网时自动降级读取 IndexedDB 详情或概要占位（`createPlaceholderDetail`），彻底拔除 `router.replace('/')` 强退首页逻辑；
+  2. 阅读器未下载画页展示典雅的「〔 📴 画页未离线缓存 〕」水墨纸印骨架（`.page-error.is-offline`），拒绝原生破图图标。
+- **离线记账与联网自愈回写流水线（Reconciliation Pipeline）**：
+  1. 离线翻页进度（`useLastRead`）与喜欢变动（`FavoriteButton`）打上当前 `userId` 签名并自动暂存至本地 `offline_actions` 事务队列，UI 保持瞬时乐观响应；
+  2. 由 `App.vue` 顶层统一挂载的 [`useOfflineSync`](src/composables/useOfflineSync.ts) 监听 VueUse `useNetwork().isOnline`；
+  3. 网络重连时执行身份校验（`item.userId === currentUid`），安全批量回写后端 SQLite 并触发 SWR 后台静默刷新。
 
 ---
 

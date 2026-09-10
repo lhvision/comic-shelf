@@ -1,6 +1,7 @@
 import { computed, ref } from 'vue'
 import { createGlobalState } from '@vueuse/core'
 import { withResolvers } from '@/utils/promise'
+import { clearAllMetadataDb } from '@/utils/offlineDb'
 
 export function formatBytes(bytes: number): string {
   if (!Number.isFinite(bytes) || bytes <= 0) return '0 B'
@@ -319,6 +320,8 @@ export const useOfflineStorage = createGlobalState(() => {
       } else {
         await clearIndexedDbRecords('workbox-expiration')
       }
+
+      await clearAllMetadataDb()
 
       mangaImageCount.value = 0
       mangaImageBytes.value = 0

@@ -372,4 +372,19 @@ describe('useLibraryFilter', () => {
     readingStatus.value = 'all'
     expect(filtered.value.length).toBe(3)
   })
+
+  it('calculates offlineCount and filters by offlineOnly correctly', () => {
+    const itemsRef = ref(items) // Book A (cached 10), Book B (cached 0), Book C (cached 15)
+    const activeSourceRef = ref('')
+    const { filtered, offlineOnly, offlineCount } = useLibraryFilter(itemsRef, activeSourceRef)
+
+    // offlineCount should count items with cached_pages > 0 (Book A & Book C = 2)
+    expect(offlineCount.value).toBe(2)
+    expect(filtered.value.length).toBe(3)
+
+    // Enable offlineOnly filter
+    offlineOnly.value = true
+    expect(filtered.value.length).toBe(2)
+    expect(filtered.value.map((b) => b.source_id)).toEqual(['1', '3'])
+  })
 })

@@ -35,6 +35,8 @@
 | `src/composables/useToast.ts`                    | 全局轻量印章通知 Toast 状态机（支持 info / error / success 三态提示）                                                                                          |
 | `src/composables/useHtmlCanvas.ts`               | HTML-in-Canvas 实验特性检测与支持度判定                                                                                                                        |
 | `src/composables/useOfflineStorage.ts`           | 端侧离线物理存储探测与分级清理状态机（StorageManager + CacheStorage 统计）                                                                                     |
+| `src/composables/useOfflineSync.ts`              | 客户端离线网络感知与记账对齐流水线：断网记账、联网自愈自动回写与 SWR 书架刷新调度                                                                              |
+| `src/utils/offlineDb.ts`                         | 端侧轻量 IndexedDB 引擎（comic-shelf-meta）：书架快照/Facets 分区存储、200 本 LRU 漫画详情淘汰与带 userId 签名的离线操作事务队列                               |
 | `src/composables/usePwaInstall.ts`               | PWA 安装与独立应用视口检测状态机（`beforeinstallprompt` + Standalone）                                                                                         |
 | `src/composables/usePwaUpdate.ts`                | PWA Prompt 模式生命周期状态机：更新捕获、装订刷新与视口唤醒自愈探测                                                                                            |
 | `src/composables/useSystemEvents.ts`             | 任务驱动型系统事件流（SSE）与多标签广播（BroadcastChannel）：按需长连接编排、藏书变动多端与本地秒级同步                                                        |

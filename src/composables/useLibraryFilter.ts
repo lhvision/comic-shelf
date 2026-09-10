@@ -29,6 +29,8 @@ export interface UseLibraryFilterOptions {
   activeTag?: Ref<string>
   /** 外部共享的只看喜欢 Ref */
   favoritesOnly?: Ref<boolean>
+  /** 外部共享的只看已离线 Ref */
+  offlineOnly?: Ref<boolean>
   /** 外部共享的只看已读 Ref */
   completedOnly?: Ref<boolean>
   /** 外部共享的阅读状态单选维度 Ref */
@@ -52,30 +54,41 @@ export function useLibraryFilter(
   const search = options?.search ?? ref('')
   const activeTag = options?.activeTag ?? ref('')
   const favoritesOnly = options?.favoritesOnly ?? ref(false)
+  const offlineOnly = options?.offlineOnly ?? ref(false)
   const completedOnly = options?.completedOnly ?? ref(false)
   const readingStatus = options?.readingStatus ?? ref<ReadingStatus>('all')
   const sortBy = options?.sortBy ?? ref<SortKey>('recent')
 
-  const sourceItems = computed(() =>
-    activeSource.value
-      ? items.value.filter((item) => item.source === activeSource.value)
-      : items.value,
-  )
+  const sourceItems = computed(() => {
+    const list = Array.isArray(items?.value) ? items.value : []
+    return activeSource.value
+      ? list.filter((item) => item && item.source === activeSource.value)
+      : list
+  })
 
   const totalBooks = computed(
-    () => options?.facets?.value?.stats.total_books ?? sourceItems.value.length,
+    () => options?.facets?.value?.stats?.total_books ?? sourceItems.value.length,
   )
 
   const totalPages = computed(
     () =>
-      options?.facets?.value?.stats.total_pages ??
-      sourceItems.value.reduce((sum, item) => sum + item.page_count, 0),
+      options?.facets?.value?.stats?.total_pages ??
+      sourceItems.value.reduce((sum, item) => sum + (item?.page_count ?? 0), 0),
   )
 
   const totalCachedPages = computed(
     () =>
-      options?.facets?.value?.stats.cached_pages ??
-      sourceItems.value.reduce((sum, item) => sum + item.cached_pages, 0),
+      options?.facets?.value?.stats?.cached_pages ??
+      sourceItems.value.reduce((sum, item) => sum + (item?.cached_pages ?? 0), 0),
+  )
+
+  const offlineCount = computed(
+    () =>
+      sourceItems.value.filter(
+        (item) =>
+          (item.cached_pages ?? 0) > 0 ||
+          ((item.page_count ?? 0) > 0 && (item.cached_pages ?? 0) >= item.page_count),
+      ).length,
   )
 
   const tagCounts = computed<Array<[string, number]>>(() => {
@@ -84,6 +97,7 @@ export function useLibraryFilter(
     }
     const counts = new Map<string, number>()
     for (const item of sourceItems.value) {
+      if (!item || !Array.isArray(item.tags)) continue
       for (const tag of item.tags) {
         counts.set(tag, (counts.get(tag) ?? 0) + 1)
       }
@@ -97,6 +111,7 @@ export function useLibraryFilter(
     if (!imageSearchResults?.value) return map
 
     for (const res of imageSearchResults.value) {
+      if (!res) continue
       const key = `${res.source}_${res.source_id}`
       const existing = map.get(key)
       if (!existing || res.score > existing.bestScore) {
@@ -122,6 +137,10 @@ export function useLibraryFilter(
 
       const matchTag = activeTag.value === '' || item.tags.includes(activeTag.value)
       const matchFavorite = !favoritesOnly.value || item.favorite
+      const matchOffline =
+        !offlineOnly.value ||
+        (item.cached_pages ?? 0) > 0 ||
+        ((item.page_count ?? 0) > 0 && (item.cached_pages ?? 0) >= item.page_count)
       const matchCompleted = !completedOnly.value || isCompletedComic(item)
       const matchStatus =
         readingStatus.value === 'all'
@@ -143,6 +162,7 @@ export function useLibraryFilter(
         matchSearch &&
         matchTag &&
         matchFavorite &&
+        matchOffline &&
         matchCompleted &&
         matchStatus &&
         matchImageSearch
@@ -196,6 +216,7 @@ export function useLibraryFilter(
     search,
     activeTag,
     favoritesOnly,
+    offlineOnly,
     readingStatus,
     completedOnly,
     sortBy,
@@ -203,6 +224,7 @@ export function useLibraryFilter(
     totalBooks,
     totalPages,
     totalCachedPages,
+    offlineCount,
     tagCounts,
     imageSearchMatchMap,
     filtered,

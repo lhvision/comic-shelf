@@ -13,6 +13,7 @@ import { useLibraryStore, createPlaceholderDetail } from '@/stores/library'
 import { useToast } from '@/composables/useToast'
 import { useCoverTransition } from '@/composables/useCoverTransition'
 import { useAuth } from '@/composables/useAuth'
+import { useOfflineSync } from '@/composables/useOfflineSync'
 import { useSystemEvents } from '@/composables/useSystemEvents'
 import { useChapterCache } from '@/composables/useChapterCache'
 import { useHierarchicalNavigation } from '@/composables/useHierarchicalNavigation'
@@ -43,7 +44,8 @@ const route = useRoute()
 const router = useRouter()
 const store = useLibraryStore()
 const { toast } = useToast()
-const { canWrite } = useAuth()
+const { canWrite, userId } = useAuth()
+const { isOnline } = useOfflineSync()
 
 const source = computed(() => String(route.params.source))
 
@@ -192,7 +194,7 @@ async function load(silent = false, bypassCache = false) {
     })
     if (controller.signal.aborted) return
     detail.value = data
-    store.setDetail(data)
+    store.setDetail(data, userId.value)
 
     // 预热目标阅读页的原图资源（浏览器内存/磁盘缓存），读者点击「继续阅读」时秒出
     const pageCount = detail.value.meta.page_count ?? 0
@@ -209,6 +211,21 @@ async function load(silent = false, bypassCache = false) {
     syncJobState(job)
   } catch (e) {
     if (controller.signal.aborted) return
+
+    // 离线容错降级：优先命中本地 IndexedDB 或书架概要占位
+    const offlineDetail = await store.getOrFetchOfflineDetail(
+      source.value,
+      sourceId.value,
+      userId.value,
+    )
+    const summary = store.byId(source.value, sourceId.value)
+    const fallback = offlineDetail || (summary ? createPlaceholderDetail(summary) : null)
+
+    if (fallback) {
+      detail.value = fallback
+      return
+    }
+
     toast(e instanceof Error ? e.message : String(e), 'error')
     router.replace('/')
   } finally {
@@ -314,7 +331,7 @@ function startReading(page = progressEl.value || 1) {
         :cache-complete="detail.cache_complete"
         :cached-pages="detail.cached_pages"
         :page-count="detail.meta.page_count"
-        :can-write="canWrite"
+        :can-write="canWrite && isOnline && !store.isOffline"
         :source="source"
         :custom-pages="detail.meta.custom_pages"
         @start-reading="startReading"

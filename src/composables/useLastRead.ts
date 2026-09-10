@@ -4,6 +4,7 @@ import type { MaybeRefOrGetter } from 'vue'
 import { toValue } from 'vue'
 import { api } from '@/api/client'
 import { useAuth } from '@/composables/useAuth'
+import { useOfflineSync } from '@/composables/useOfflineSync'
 
 /**
  * 「上次读到哪里」的持久化与多端同步。
@@ -15,6 +16,7 @@ import { useAuth } from '@/composables/useAuth'
 
 export function useLastRead(source: MaybeRefOrGetter<string>, sourceId: MaybeRefOrGetter<string>) {
   const { userId } = useAuth()
+  const { recordOfflineAction } = useOfflineSync()
   const s = computed(() => toValue(source))
   const sid = computed(() => toValue(sourceId))
   const uid = computed(() => userId.value || 'default')
@@ -38,10 +40,16 @@ export function useLastRead(source: MaybeRefOrGetter<string>, sourceId: MaybeRef
     { immediate: true },
   )
 
-  // 2. 翻页时 800ms 防抖上报到后端用户进度表
+  // 2. 翻页时 800ms 防抖上报到后端用户进度表，网络异常时落盘至离线事务队列
   const reportProgress = useDebounceFn((page: number) => {
     if (page > 0 && s.value && sid.value) {
-      api.saveReadingProgress(s.value, sid.value, page).catch(() => {})
+      api.saveReadingProgress(s.value, sid.value, page).catch(() => {
+        void recordOfflineAction('reading_progress', {
+          source: s.value,
+          sourceId: sid.value,
+          page,
+        })
+      })
     }
   }, 800)
 

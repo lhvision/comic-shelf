@@ -397,8 +397,8 @@ describe('ComicGrid', () => {
     const page2 = makeComics(48)
     await wrapper.setProps({ items: page2 } as Record<string, unknown>)
 
-    // Newly appended page should automatically expand next batch (+12, total 36)
-    expect(wrapper.findAll('.mock-comic-card').length).toBe(36)
+    // Newly appended page should automatically expand newly arrived batch (total 48)
+    expect(wrapper.findAll('.mock-comic-card').length).toBe(48)
   })
 
   it('automatically reveals newly appended active items in split mode', async () => {
@@ -436,7 +436,7 @@ describe('ComicGrid', () => {
     }))
     await wrapper.setProps({ items: [...page1, ...page2, ...completed] } as Record<string, unknown>)
 
-    // Newly appended page should automatically expand active batch (+12, total 36)
-    expect(activeGrid.findAll('.mock-comic-card').length).toBe(36)
+    // Newly appended page should automatically expand active batch (total 48)
+    expect(activeGrid.findAll('.mock-comic-card').length).toBe(48)
   })
 })

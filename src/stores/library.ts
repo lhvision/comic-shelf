@@ -3,6 +3,13 @@ import { tryOnScopeDispose, useIntervalFn } from '@vueuse/core'
 import { defineStore } from 'pinia'
 import { api, onAuthSuccess } from '@/api/client'
 import { getTaskId, useSystemEvents } from '@/composables/useSystemEvents'
+import { useAuth } from '@/composables/useAuth'
+import {
+  getShelfSnapshot,
+  saveShelfSnapshot,
+  getComicDetail as getOfflineComicDetail,
+  saveComicDetail as saveOfflineComicDetail,
+} from '@/utils/offlineDb'
 import type {
   ComicDetail,
   ImportRequest,
@@ -74,12 +81,16 @@ export function createPlaceholderDetail(s: LibrarySummary): ComicDetail {
 
 export const useLibraryStore = defineStore('library', () => {
   const { beginTask, endTask, broadcastLocalChange } = useSystemEvents()
+  const { userId } = useAuth()
 
   const items = ref<LibrarySummary[]>([])
   const loading = ref(false)
   const importing = ref(false)
   const error = ref('')
   const importMessage = ref('')
+  const isOffline = ref(false)
+  const hydratedFromOffline = ref(false)
+
   /** Live cache progress for comics with a running background prefetch job. */
   const liveCache = ref<Record<string, LiveCacheState>>({})
   /** In-memory cache for full ComicDetail to prevent re-fetching/re-parsing huge JSONs on view navigation */
@@ -94,9 +105,30 @@ export const useLibraryStore = defineStore('library', () => {
   const currentParams = ref<LibraryQueryParams>({})
 
   const displayItems = computed(() => items.value)
-
   const activeCachingCount = computed(() => Object.keys(liveCache.value).length)
   let libraryAbortController: AbortController | null = null
+
+  /**
+   * 从端侧 IndexedDB 离线镜像中秒级还原书架数据
+   */
+  async function hydrateFromOfflineSnapshot(targetUserId?: string): Promise<boolean> {
+    try {
+      const uid = targetUserId ?? userId.value ?? ''
+      const snapshot = await getShelfSnapshot(uid)
+      if (snapshot && Array.isArray(snapshot.items) && snapshot.items.length > 0) {
+        if (items.value.length === 0) {
+          items.value = snapshot.items
+          facets.value = snapshot.facets ?? null
+          total.value = snapshot.items.length
+        }
+        hydratedFromOffline.value = true
+        return true
+      }
+    } catch {
+      // ignore IndexedDB error
+    }
+    return false
+  }
 
   async function loadFacets(source?: string) {
     try {
@@ -106,7 +138,12 @@ export const useLibraryStore = defineStore('library', () => {
     }
   }
 
-  async function loadItems(silent = false, append = false, params?: LibraryQueryParams) {
+  async function loadItems(
+    silent = false,
+    append = false,
+    params?: LibraryQueryParams,
+    targetUserId?: string,
+  ) {
     if (!append && libraryAbortController) {
       libraryAbortController.abort()
     }
@@ -128,10 +165,16 @@ export const useLibraryStore = defineStore('library', () => {
       offset: params?.offset ?? (append ? items.value.length : undefined),
     }
 
+    const uid = targetUserId ?? userId.value ?? ''
+
     if (append) {
       loadingMore.value = true
     } else if (!silent && items.value.length === 0) {
-      loading.value = true
+      // 若内存尚无数据，先尝试从端侧快照 0ms 呈现
+      void hydrateFromOfflineSnapshot(uid)
+      if (items.value.length === 0) {
+        loading.value = true
+      }
     }
 
     try {
@@ -140,22 +183,55 @@ export const useLibraryStore = defineStore('library', () => {
 
       if (append) {
         const existingKeys = new Set(items.value.map((i) => `${i.source}:${i.source_id}`))
-        const uniqueIncoming = data.items.filter(
+        const incoming = Array.isArray(data?.items) ? data.items : []
+        const uniqueIncoming = incoming.filter(
           (i) => !existingKeys.has(`${i.source}:${i.source_id}`),
         )
         items.value = [...items.value, ...uniqueIncoming]
       } else {
-        items.value = data.items
+        items.value = Array.isArray(data?.items) ? data.items : []
       }
       page.value = data.page
       total.value = data.total
       hasMore.value = data.has_more
       error.value = ''
+      isOffline.value = false
+
+      // 默认全量首页刷新时（非临时关键词搜索/标签细分），异步更新端侧 IndexedDB 快照镜像
+      const isFilteredQuery = Boolean(
+        params?.search ||
+        params?.tag ||
+        (params?.status && params.status !== 'all') ||
+        params?.favorite ||
+        params?.ids,
+      )
+      if (!append && !isFilteredQuery && Array.isArray(items.value) && items.value.length > 0) {
+        void saveShelfSnapshot(uid, {
+          items: items.value,
+          facets: facets.value,
+        })
+      }
     } catch (e) {
       if (controller.signal.aborted) return
       const msg = e instanceof Error ? e.message : String(e)
-      // When unauthenticated, the auth modal guides the user; don't trigger loud error toast
-      if (!msg.includes('401') && !msg.includes('未授权')) {
+
+      // 探测是否属于断网或离线故障
+      const isNetworkError =
+        msg.includes('Failed to fetch') ||
+        msg.includes('NetworkError') ||
+        msg.includes('Load failed') ||
+        msg.includes('请求超时') ||
+        (typeof navigator !== 'undefined' && !navigator.onLine)
+
+      if (isNetworkError) {
+        isOffline.value = true
+        if (items.value.length === 0) {
+          await hydrateFromOfflineSnapshot(uid)
+        }
+      }
+
+      // 仅在非未授权且当前界面完全空屏时暴露错误，有离线缓存时保持从容
+      if (!msg.includes('401') && !msg.includes('未授权') && items.value.length === 0) {
         error.value = msg
       }
     } finally {
@@ -194,7 +270,7 @@ export const useLibraryStore = defineStore('library', () => {
   let refreshAbortController: AbortController | null = null
 
   async function refreshLiveCache() {
-    if (isRefreshingLiveCache) return
+    if (isRefreshingLiveCache || isOffline.value) return
     isRefreshingLiveCache = true
     refreshAbortController = new AbortController()
     const signal = refreshAbortController.signal
@@ -280,6 +356,7 @@ export const useLibraryStore = defineStore('library', () => {
   const poll = useIntervalFn(refreshLiveCache, 2000, { immediate: false })
 
   function startPollingIfActive() {
+    if (isOffline.value) return
     poll.resume()
     void refreshLiveCache()
   }
@@ -308,10 +385,11 @@ export const useLibraryStore = defineStore('library', () => {
     return liveCache.value[liveCacheKey(item.source, item.source_id)]
   }
 
-  async function load(silent = false, params?: LibraryQueryParams) {
-    await Promise.all([loadItems(silent, false, params), loadFacets(params?.source)])
-    // A page reload shouldn't lose the live "缓存中" state on the shelf.
-    await refreshLiveCache()
+  async function load(silent = false, params?: LibraryQueryParams, userId?: string) {
+    await Promise.all([loadItems(silent, false, params, userId), loadFacets(params?.source)])
+    if (!isOffline.value) {
+      await refreshLiveCache()
+    }
   }
 
   async function importComic(payload: ImportRequest) {
@@ -366,21 +444,32 @@ export const useLibraryStore = defineStore('library', () => {
   }
 
   /**
-   * 本地乐观更新「喜欢」标记：书架卡片的 FavoriteButton 已经完成了 API 调用，
+   * 本地乐观更新「喜欢」标记：书架卡片的 FavoriteButton 已经完成了 API 调用或离线入队，
    * 这里只原地改内存里的那一项，不整表刷新，避免列表全部重绘闪屏。
    */
-  function setFavoriteLocal(source: string, sourceId: string, favorite: boolean) {
+  function setFavoriteLocal(source: string, sourceId: string, favorite: boolean, userId?: string) {
     const item = byId(source, sourceId)
-    if (item) item.favorite = favorite
+    if (item) {
+      item.favorite = favorite
+      void saveShelfSnapshot(userId ?? '', { items: items.value, facets: facets.value })
+    }
   }
 
   /**
    * 本地乐观更新「阅读进度」标记：读者在阅读器翻页或读完时，
    * 原地改内存里的 last_page，不整表刷新，保证书架排序与状态印章即时响应。
    */
-  function setReadingProgressLocal(source: string, sourceId: string, page: number) {
+  function setReadingProgressLocal(
+    source: string,
+    sourceId: string,
+    page: number,
+    userId?: string,
+  ) {
     const item = byId(source, sourceId)
-    if (item) item.last_page = page
+    if (item) {
+      item.last_page = page
+      void saveShelfSnapshot(userId ?? '', { items: items.value, facets: facets.value })
+    }
   }
 
   const MAX_DETAIL_CACHE = 20
@@ -389,7 +478,23 @@ export const useLibraryStore = defineStore('library', () => {
     return detailCache.value[`${source}/${sourceId}`]
   }
 
-  function setDetail(detail: ComicDetail) {
+  async function getOrFetchOfflineDetail(
+    source: string,
+    sourceId: string,
+    userId?: string,
+  ): Promise<ComicDetail | null> {
+    const memory = getDetail(source, sourceId)
+    if (memory) return memory
+
+    const offlineRecord = await getOfflineComicDetail(userId ?? '', source, sourceId)
+    if (offlineRecord) {
+      setDetail(offlineRecord)
+      return offlineRecord
+    }
+    return null
+  }
+
+  function setDetail(detail: ComicDetail, userId?: string) {
     const key = `${detail.meta.source}/${detail.meta.source_id}`
     delete detailCache.value[key]
     detailCache.value[key] = detail
@@ -398,6 +503,9 @@ export const useLibraryStore = defineStore('library', () => {
       const oldest = keys[0]
       if (oldest) delete detailCache.value[oldest]
     }
+
+    // 异步同步到端侧 IndexedDB 镜像
+    void saveOfflineComicDetail(userId ?? '', detail)
   }
 
   function removeDetail(source: string, sourceId: string) {
@@ -411,6 +519,8 @@ export const useLibraryStore = defineStore('library', () => {
     importing,
     error,
     importMessage,
+    isOffline,
+    hydratedFromOffline,
     liveCache,
     activeCachingCount,
     facets,
@@ -420,6 +530,7 @@ export const useLibraryStore = defineStore('library', () => {
     hasMore,
     loadingMore,
     currentParams,
+    hydrateFromOfflineSnapshot,
     load,
     loadItems,
     loadFacets,
@@ -429,6 +540,7 @@ export const useLibraryStore = defineStore('library', () => {
     remove,
     byId,
     getDetail,
+    getOrFetchOfflineDetail,
     setDetail,
     removeDetail,
     markCaching,

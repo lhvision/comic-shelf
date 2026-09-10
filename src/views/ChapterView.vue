@@ -3,6 +3,7 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { api } from '@/api/client'
 import { useAuth } from '@/composables/useAuth'
+import { useOfflineSync } from '@/composables/useOfflineSync'
 import { useLastRead } from '@/composables/useLastRead'
 import { useChapterNavigation } from '@/composables/useChapterNavigation'
 import { useIdlePrefetch } from '@/composables/useIdlePrefetch'
@@ -36,7 +37,8 @@ const route = useRoute()
 const router = useRouter()
 const store = useLibraryStore()
 const { toast } = useToast()
-const { canWrite } = useAuth()
+const { canWrite, userId } = useAuth()
+const { isOnline } = useOfflineSync()
 const { goUpFromChapter, goToChapter: switchActiveChapter } = useHierarchicalNavigation()
 
 const source = computed(() => (route.params.source as string) || 'jm')
@@ -209,7 +211,7 @@ async function load(silent = false, bypassCache = false) {
     })
     if (controller.signal.aborted) return
     detail.value = data
-    store.setDetail(data)
+    store.setDetail(data, userId.value)
     setChapterById(chapterId.value)
     // 单章节或无此章节时回落详情页
     if (!activeChapter.value) {
@@ -224,6 +226,22 @@ async function load(silent = false, bypassCache = false) {
     syncJobState(job)
   } catch (e) {
     if (controller.signal.aborted) return
+
+    // 离线容错降级：优先命中本地 IndexedDB 或书架概要占位
+    const offlineDetail = await store.getOrFetchOfflineDetail(
+      source.value,
+      sourceId.value,
+      userId.value,
+    )
+    const summary = store.byId(source.value, sourceId.value)
+    const fallback = offlineDetail || (summary ? createPlaceholderDetail(summary) : null)
+
+    if (fallback) {
+      detail.value = fallback
+      setChapterById(chapterId.value)
+      if (activeChapter.value) return
+    }
+
     toast(e instanceof Error ? e.message : String(e), 'error')
     router.replace(`/comic/${source.value}/${sourceId.value}`)
   } finally {
@@ -375,7 +393,7 @@ async function confirmRemoveChapter() {
               {{ isCurrentChapterCaching ? '缓存中…' : caching ? '排队中…' : '缓存本话' }}
             </button>
 
-            <div v-if="canWrite" class="chapter-mgmt-group">
+            <div v-if="canWrite && isOnline && !store.isOffline" class="chapter-mgmt-group">
               <button
                 class="btn btn-ghost btn-xs"
                 type="button"
