@@ -690,6 +690,17 @@
     2. 在 `scrollBehavior` 中显式拦截：`if (to.path === from.path) return false`，保留当前视口绝对坐标；
     3. `ComicGrid` 针对 `isAppend` 增量追加自动计算新展开切片：`activeVisibleCount.value = Math.min(activeComics.value.length, activeVisibleCount.value + props.batchStep)`，并在流式拉取结束时通过 `nextTick` 探测超高分辨率视口是否仍需补充触发，实现真正无缝丝滑的无限滚动。
 
+### 72. DOM 属性子串匹配误伤与 iOS PWA 桌面图标漂移陷阱 (Attribute Substring Selector Collisions & Apple Touch Icon Mutation Trap)
+
+- **本质**：使用 `link[rel*='icon']` 模糊子串匹配（`*=`）去更新浏览器标签页的 Favicon 时，由于 `'apple-touch-icon'` 包含 `'icon'` 子串，导致 iOS 专用的 `<link rel="apple-touch-icon">` 被动态覆写为 WebP 格式的随机看板头像。这不仅导致用户在刷新页面后唤起「添加到主屏幕」时捕获的图标随会话随机漂移，更因 iOS SpringBoard 桌面渲染器对 WebP 格式的兼容性缺陷，引发桌面图标变白块或退化为网页截图。
+- **复现场景**：`useBrandIcon` 在客户端挂载后调用 `syncFavicon()` 执行 `document.querySelectorAll("link[rel*='icon']")`，用户在 iPhone Safari 中将网页添加到主屏幕时，图标每次刷新都随 `public/brand-icons/` 随机变化。
+- **红线与防误伤**：
+  - **不要**使用 `link[rel*='icon']` 通配子串选择器去操作 Favicon；
+  - **不要**在运行时动态篡改系统级的 `<link rel="apple-touch-icon">` 或 PWA Manifest 主图标；
+  - **放行/改用**：
+    1. 动态 Favicon 严格限定精准选择器：`link[rel='icon']:not([sizes]), link[rel='shortcut icon']`，确保动态轮换仅作用于网页标签页与应用顶栏（`AppHeader` / `GateView`）；
+    2. 坚守 `apple-touch-icon.png` 绝对静态、180×180 / 192×192 PNG 规范，与桌面入口的确定性身份永久绑定。
+
 ---
 
 ## 🚦 交付门禁（四步必跑）

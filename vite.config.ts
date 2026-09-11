@@ -155,11 +155,6 @@ export default defineConfig({
             type: 'image/png',
             purpose: 'maskable',
           },
-          {
-            src: '/brand-icon.webp',
-            sizes: '512x512',
-            type: 'image/webp',
-          },
         ],
       },
       workbox: {

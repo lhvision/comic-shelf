@@ -7,6 +7,8 @@
 
 - **纸间（Paper Room）**：产品名。定位是"本地优先的个人漫画收藏夹"，不是公开站点，也不是泛化爬虫。
 - **私人阅览室 / 卡片目录（Reading room / Card catalog）**：产品视觉语言的隐喻——暖纸色、墨色、朱砂色，像图书馆卡片与旧书脊；明确禁止紫色渐变、玻璃拟态堆叠、霓虹、emoji 当图标。
+- **动态看板头像（Dynamic Brand Icon）**：浏览器标签页 Favicon 与应用顶栏（`AppHeader` / `GateView`）的随机形象轮换机制。每次刷新页面时从预设头像池挑选，仅作用于活跃网页会话内部装饰，严禁篡改系统级桌面图标。
+- **PWA 桌面图标（PWA App Icon / Apple Touch Icon）**：读者将纸间添加到操作系统主屏幕时的系统级独立应用门面。由静态 180×180 / 192×192 PNG（`apple-touch-icon.png` 与 `pwa-*.png`）与 Web App Manifest 固化定义，具有跨会话的绝对确定性，严禁随网页刷新而动态漂移。
 
 ## 核心概念
 
