@@ -32,6 +32,8 @@ export interface ReaderSettings {
 export const SETTINGS_KEY = 'comic-shelf:reader-settings:v1'
 /** 作品级独立阅读偏好持久化 key */
 export const OVERRIDES_KEY = 'comic-shelf:reader-overrides:v1'
+/** 历史受污设备全局基线自愈标记 key */
+export const HEALED_KEY = 'comic-shelf:baseline-healed:v1'
 /** 单本作品偏好最大持久化缓存条目（防止 localStorage 无界膨胀） */
 export const MAX_OVERRIDES = 100
 export const AUTO_TURN_INTERVALS = [5, 10, 15, 30] as const
@@ -123,11 +125,17 @@ export function clampSettings(
 }
 
 /**
- * 全局单例的阅读器设置。任何组件调用返回同一个对象：
- * - settings：reactive 的设置对象（直接改、自动持久化）
+ * 全局单例的阅读器设置（双轨制架构：全局基线 + 单本覆盖）。任何组件调用返回同一个对象：
+ * - settings：当前阅读器活跃生效的设置对象（直接供阅读器视口消费）
+ * - globalSettings：全站通用基线设置对象（修改即时同步至新收录漫画及继承中的漫画）
+ * - hasActiveOverride：当前作品是否已建立独立专属偏好
+ * - isInheritingGlobal：当前作品是否处于完全继承全局默认基线状态
+ * - activeComicIsStrip：当前作品是否命中条漫自适应无缝拼接
+ * - revertToGlobal：清除当前作品独立偏好，恢复跟随全局基线
+ * - resetGlobalBaseline：将全站通用基线重置为出厂初始值
  * - isWideViewport：响应式视口判断
  * - pagesPerViewOptions：随视口变化的可选页数（窄屏只有 1/2）
- * - reset：恢复默认
+ * - reset：上下文敏感的恢复默认（作品有覆盖则恢复跟随，否则恢复基线）
  * - applyComicPreferences：根据漫画来源、ID 与标签应用单本偏好或自适应启用条漫无缝模式
  * - clearActiveComic：退出阅读时清理活跃漫画上下文
  */
@@ -155,16 +163,40 @@ export const useReaderSettings = createGlobalState(() => {
       },
     },
   )
+  const healed = useLocalStorage<boolean>(HEALED_KEY, false)
+
+  // 历史受污设备全局基线一次性静默自愈：若全局基线存有 fit='width' 且非条漫无缝，自动纠正回默认 height
+  if (!healed.value) {
+    if (stored.value.fit === 'width' && stored.value.seamless !== true) {
+      stored.value = { ...stored.value, fit: 'height' }
+    }
+    healed.value = true
+  }
+
   const activeComicKey = ref<string | null>(null)
   const isWideViewport = useMediaQuery(WIDE_VIEWPORT_QUERY)
 
   let isApplyingPreferences = false
 
+  const globalSettings = reactive<ReaderSettings>(clampSettings(stored.value, isWideViewport.value))
   const settings = reactive<ReaderSettings>(clampSettings(stored.value, isWideViewport.value))
+
+  const hasActiveOverride = computed(() =>
+    Boolean(activeComicKey.value && overrides.value[activeComicKey.value]),
+  )
+  const isInheritingGlobal = computed(() =>
+    Boolean(!activeComicKey.value || !overrides.value[activeComicKey.value]),
+  )
+  const activeComicIsStrip = computed(() =>
+    Boolean(activeComicKey.value && overrides.value[activeComicKey.value]?.seamless === true),
+  )
 
   // 视口收窄时把 4 连页强制收敛到 1 连页（窄屏默认单页阅读）
   watch(isWideViewport, (wide) => {
-    if (!wide && settings.pagesPerView === 4) settings.pagesPerView = 1
+    if (!wide) {
+      if (settings.pagesPerView === 4) settings.pagesPerView = 1
+      if (globalSettings.pagesPerView === 4) globalSettings.pagesPerView = 1
+    }
   })
 
   // 当处于竖向连续模式且开启无缝拼接时，强制锁定为单页且适应全宽（排版硬约束防撕裂）
@@ -174,6 +206,23 @@ export const useReaderSettings = createGlobalState(() => {
       if (mode === 'vertical-continuous' && seamless) {
         if (ppv !== 1) settings.pagesPerView = 1
         if (fit !== 'width') settings.fit = 'width'
+      }
+    },
+    { immediate: true, flush: 'sync' },
+  )
+
+  watch(
+    () =>
+      [
+        globalSettings.mode,
+        globalSettings.seamless,
+        globalSettings.fit,
+        globalSettings.pagesPerView,
+      ] as const,
+    ([mode, seamless, fit, ppv]) => {
+      if (mode === 'vertical-continuous' && seamless) {
+        if (ppv !== 1) globalSettings.pagesPerView = 1
+        if (fit !== 'width') globalSettings.fit = 'width'
       }
     },
     { immediate: true, flush: 'sync' },
@@ -196,7 +245,22 @@ export const useReaderSettings = createGlobalState(() => {
     overrides.value = current
   }
 
-  // 深度写回：严格区分全局偏好与单本覆盖，杜绝状态交叉污染
+  // 全局基线写回：同步写入 stored.value；若当前作品处于继承全局状态，实时同步刷新视口 settings
+  watch(
+    globalSettings,
+    (value) => {
+      if (isApplyingPreferences) return
+      stored.value = { ...DEFAULT_SETTINGS, ...value }
+      if (isInheritingGlobal.value) {
+        isApplyingPreferences = true
+        Object.assign(settings, clampSettings(value, isWideViewport.value))
+        isApplyingPreferences = false
+      }
+    },
+    { deep: true, flush: 'sync' },
+  )
+
+  // 活跃设置写回：有活跃作品上下文时记入 overrides（即改即分离）；无作品时同步写回全局基线
   watch(
     settings,
     (value) => {
@@ -211,6 +275,7 @@ export const useReaderSettings = createGlobalState(() => {
         })
       } else {
         stored.value = { ...DEFAULT_SETTINGS, ...value }
+        Object.assign(globalSettings, clampSettings(value, isWideViewport.value))
       }
     },
     { deep: true, flush: 'sync' },
@@ -230,6 +295,7 @@ export const useReaderSettings = createGlobalState(() => {
 
     isApplyingPreferences = true
     const baseline = clampSettings(stored.value, isWideViewport.value)
+    Object.assign(globalSettings, baseline)
     const custom = overrides.value[key]
 
     if (custom) {
@@ -254,29 +320,52 @@ export const useReaderSettings = createGlobalState(() => {
   function clearActiveComic() {
     activeComicKey.value = null
     isApplyingPreferences = true
-    Object.assign(settings, clampSettings(stored.value, isWideViewport.value))
+    const baseline = clampSettings(stored.value, isWideViewport.value)
+    Object.assign(globalSettings, baseline)
+    Object.assign(settings, baseline)
     isApplyingPreferences = false
   }
 
-  function reset() {
+  /** 清除当前活跃漫画独立偏好，恢复跟随全局基线 */
+  function revertToGlobal() {
+    if (!activeComicKey.value) return
     isApplyingPreferences = true
-    if (activeComicKey.value) {
-      if (overrides.value[activeComicKey.value]) {
-        const next = { ...overrides.value }
-        delete next[activeComicKey.value]
-        overrides.value = next
-      }
-      Object.assign(settings, clampSettings(stored.value, isWideViewport.value))
-    } else {
-      overrides.value = {}
-      Object.assign(settings, DEFAULT_SETTINGS)
-      stored.value = { ...DEFAULT_SETTINGS }
+    if (overrides.value[activeComicKey.value]) {
+      const next = { ...overrides.value }
+      delete next[activeComicKey.value]
+      overrides.value = next
+    }
+    Object.assign(settings, clampSettings(globalSettings, isWideViewport.value))
+    isApplyingPreferences = false
+  }
+
+  /** 将全站全局基线重置为出厂标准配置 */
+  function resetGlobalBaseline() {
+    isApplyingPreferences = true
+    Object.assign(globalSettings, DEFAULT_SETTINGS)
+    stored.value = { ...DEFAULT_SETTINGS }
+    if (isInheritingGlobal.value) {
+      Object.assign(settings, clampSettings(DEFAULT_SETTINGS, isWideViewport.value))
     }
     isApplyingPreferences = false
   }
 
+  function reset() {
+    if (activeComicKey.value && overrides.value[activeComicKey.value]) {
+      revertToGlobal()
+    } else {
+      resetGlobalBaseline()
+    }
+  }
+
   return {
     settings,
+    globalSettings,
+    hasActiveOverride,
+    isInheritingGlobal,
+    activeComicIsStrip,
+    revertToGlobal,
+    resetGlobalBaseline,
     isWideViewport,
     pagesPerViewOptions,
     reset,

@@ -321,6 +321,18 @@
   2. 由 `App.vue` 顶层统一挂载的 [`useOfflineSync`](src/composables/useOfflineSync.ts) 监听 VueUse `useNetwork().isOnline`；
   3. 网络重连时执行身份校验（`item.userId === currentUid`），安全批量回写后端 SQLite 并触发 SWR 后台静默刷新。
 
+### <a id="sec-60"></a>§60 排版作用域双轨制、存量基线静默自愈与透明化设置架构（Dual-Scope Reader Preference, Stale Baseline Healing & Transparent Settings Architecture）
+
+- **业务背景与痛点根因**：
+  为防范条漫（Webtoon）反向污染日漫基线引入单本独立偏好（`overrides`）后，因阅读器设置面板仅在阅读时唤起，`activeComicKey` 恒为真，导致用户在此所做的任何调节只能落入单本字典，全局基线 `stored` 在 UI 上沦为死锁黑盒。存量设备若因历史漏洞写入了 `fit: 'width'`，后续所有新开的普通日漫均会被强制以宽度适配展示，用户误以为“设置不生效”，产生强烈的割裂感与不透明感。
+- **作用域双轨制交互规范（Dual-Scope UI Model）**：
+  1. 阅读设置面板顶部设立分段切换胶囊：`[ 📖 本作偏好 ]` 与 `[ 🌐 全局默认 ]`（集成原子矢量图标 `IconGlobe.vue`）；
+  2. **智能感知与状态指示**：本作偏好胶囊动态标注当前状态（`条漫` / `已自定义` / `跟随全局`），并搭配上下文感知提示条说明修改所影响的范围；
+  3. **即改即分离（Detached on Edit）**：本作处于继承态时，修改任意排版项立即为本作生成专属偏好，底部常驻「恢复跟随全局」操作通道，随时可一键撤销；
+  4. **所见即所得实时联动（Live Viewport Sync）**：读者在「全局默认」标签下修改配置时，若当前漫画处于继承状态，视口画卷立即实时响应，实现所见即所得；
+- **存量设备一次性静默自愈（Baseline Healing Pipeline）**：
+  在 [`useReaderSettings.ts`](src/composables/useReaderSettings.ts) 中引入 `HEALED_KEY`（`comic-shelf:baseline-healed:v1`），在客户端初始化时探测：若全局基线留存有非条漫模式的 `fit: 'width'` 历史脏数据，自动纠正回标准规范值 `fit: 'height'`，彻底免除读者清空浏览器缓存的沉重负担。
+
 ---
 
 ## 5. 历史演进里程碑归档索引（Historical Milestones Archive）

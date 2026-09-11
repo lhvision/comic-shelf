@@ -197,7 +197,13 @@
 
 ## 7. 阅读器当前行为
 
-设置保存在 `localStorage['comic-shelf:reader-settings:v1']`。
+阅读设置采用**双轨制架构（Dual-Scope Architecture）**：
+
+- **全局基线（Global Baseline）**：保存在 `localStorage['comic-shelf:reader-settings:v1']`；
+- **单本专属偏好（Per-Comic Overrides）**：保存在 `localStorage['comic-shelf:reader-overrides:v1']`（以 `source:source_id` 为键，FIFO 封顶 100 条）；
+- **历史脏基线自愈标记**：`localStorage['comic-shelf:baseline-healed:v1']`。
+
+设置面板通过顶部双轨胶囊 `[ 📖 本作偏好 ]` 与 `[ 🌐 全局默认 ]` 透明呈现，支持即改即分离、实时视口联动（Live Sync）与一键「恢复跟随全局」。
 
 ```ts
 {
@@ -206,7 +212,8 @@
   pagesPerView: 1 | 2 | 4,
   direction: 'ltr' | 'rtl',   // 横向模式：左→右 或 日漫右→左
   autoTurn: boolean,
-  autoTurnInterval: 5 | 10 | 15 | 30   // 单位：秒
+  autoTurnInterval: number,   // 1~300 秒，预设 5 | 10 | 15 | 30 秒
+  seamless: boolean,          // 仅 vertical-continuous 下有效，条漫无缝拼接
 }
 ```
 

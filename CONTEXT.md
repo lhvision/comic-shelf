@@ -91,7 +91,10 @@
 - **阅览室暗色环境（Reader room）**：阅读器固定的深色环境（`--reader-*` tokens），不随系统亮/暗主题切换，与书房（书架首页）的亮色纸面刻意区分。
 - **条漫无缝拼接（Webtoon Seamless Stitched View / Gapless Scroll）**：在竖向连续阅读模式下，通过彻底剥离行内占位页脚、外边距（gap/padding）与页面阴影（box-shadow），并将画卷视口强制约束为适应全宽（Fit Width），使图源切片的上下边缘以 0 像素物理咬合，还原韩漫/条漫原本浑然一体的垂直连续长卷。
 - **浮动画卷页标（Floating Page Pill）**：条漫无缝模式下替代行内装订页脚的浮动微件。位于视口边缘，在滚动时感应浮现，停顿后静默淡出，完全不侵入长条漫画的正文文档流。
-- **阅读偏好单本记忆（Per-Comic Reader Overrides）**：读者对特定漫画（如日漫 vs 条漫）个性化定制的阅读排版偏好（如无缝开关、阅读方向），优先于全局默认设置生效。
+- **全局基线阅读设置（Global Baseline Reader Settings）**：全站所有未单独设定偏好的漫画所共同继承的基础排版规范，持久化于本机 `comic-shelf:reader-settings:v1`。
+- **单本专属偏好（Per-Comic Overrides）**：读者针对特定作品独立调整并记忆的排版配置（`comic-shelf:reader-overrides:v1`），优先级高于全局基线；支持条漫自适应识别并允许一键清除恢复跟随全局。
+- **排版作用域双轨制（Dual-Scope Reader Preference / Tabbed Scopes）**：阅读设置面板中向读者明确开放的「🌐 全局默认」与「📖 本作偏好」双轨配置体系。读者可自由决定调整是影响全站新书还是仅作用于当前作品，彻底消除隐式黑盒选择。
+- **条漫排版硬约束（Seamless Webtoon Layout Constraint）**：长卷无缝拼接模式下对「适应全宽（Fit Width）」与「单屏单页（PagesPerView=1）」的排版硬约束，防范切片高 DPR 错位与横向宽度撕裂。
 
 ## 基础设施
 

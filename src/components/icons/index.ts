@@ -27,6 +27,7 @@ import IconBookOpen from './IconBookOpen.vue'
 import IconEye from './IconEye.vue'
 import IconEyeOff from './IconEyeOff.vue'
 import IconArchive from './IconArchive.vue'
+import IconGlobe from './IconGlobe.vue'
 import IconTrash from './IconTrash.vue'
 import IconUsers from './IconUsers.vue'
 import IconCopy from './IconCopy.vue'
@@ -64,6 +65,7 @@ export {
   IconEye,
   IconEyeOff,
   IconArchive,
+  IconGlobe,
   IconTrash,
   IconUsers,
   IconCopy,
@@ -101,6 +103,7 @@ export const ICON_MAP: Record<IconName, Component> = {
   eye: IconEye,
   'eye-off': IconEyeOff,
   archive: IconArchive,
+  globe: IconGlobe,
   trash: IconTrash,
   users: IconUsers,
   copy: IconCopy,

@@ -213,4 +213,68 @@ describe('useReaderSettings composable', () => {
     const clampedWide = clampSettings({ pagesPerView: 4 }, true)
     expect(clampedWide.pagesPerView).toBe(4)
   })
+
+  it('supports dual scope: editing globalSettings updates global baseline and live-syncs to inheriting comics', async () => {
+    const {
+      settings,
+      globalSettings,
+      hasActiveOverride,
+      isInheritingGlobal,
+      applyComicPreferences,
+      clearActiveComic,
+    } = useReaderSettings()
+
+    // 进入一本普通漫画，处于完全继承全局状态
+    applyComicPreferences('jm', 'comic_inherit', ['同人'])
+    expect(hasActiveOverride.value).toBe(false)
+    expect(isInheritingGlobal.value).toBe(true)
+    expect(settings.fit).toBe('height')
+
+    // 修改全局基准为 fit='width'
+    globalSettings.fit = 'width'
+    await new Promise((resolve) => setTimeout(resolve, 0))
+
+    // 继承态漫画视口必须实时同步
+    expect(settings.fit).toBe('width')
+
+    // 退出当前漫画，打开一本全新漫画，也必须继承最新的全局基线
+    clearActiveComic()
+    applyComicPreferences('jm', 'comic_new', [])
+    expect(settings.fit).toBe('width')
+  })
+
+  it('supports reverting per-comic overrides to follow global baseline', async () => {
+    const {
+      settings,
+      globalSettings,
+      hasActiveOverride,
+      isInheritingGlobal,
+      applyComicPreferences,
+      revertToGlobal,
+      clearActiveComic,
+    } = useReaderSettings()
+
+    // 确保全局基线为 fit='height'
+    globalSettings.fit = 'height'
+
+    // 进入漫画并设置独立覆盖为 fit='width'
+    applyComicPreferences('jm', 'comic_custom', [])
+    settings.fit = 'width'
+    await new Promise((resolve) => setTimeout(resolve, 0))
+
+    expect(hasActiveOverride.value).toBe(true)
+    expect(isInheritingGlobal.value).toBe(false)
+    expect(settings.fit).toBe('width')
+    expect(globalSettings.fit).toBe('height') // 全局不被污染
+
+    // 恢复跟随全局
+    revertToGlobal()
+    await new Promise((resolve) => setTimeout(resolve, 0))
+
+    expect(hasActiveOverride.value).toBe(false)
+    expect(isInheritingGlobal.value).toBe(true)
+    expect(settings.fit).toBe('height')
+
+    clearActiveComic()
+  })
 })

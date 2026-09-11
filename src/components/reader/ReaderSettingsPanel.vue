@@ -28,26 +28,57 @@ const props = withDefaults(
 
 const emit = defineEmits<{ close: [] }>()
 
-const { settings, pagesPerViewOptions, reset } = useReaderSettings()
+const {
+  settings,
+  globalSettings,
+  hasActiveOverride,
+  isInheritingGlobal,
+  activeComicIsStrip,
+  revertToGlobal,
+  resetGlobalBaseline,
+  pagesPerViewOptions,
+} = useReaderSettings()
 
-const isSeamlessStrip = computed(() => settings.mode === 'vertical-continuous' && settings.seamless)
+const activeScopeTab = ref<'comic' | 'global'>('comic')
+const currentTargetSettings = computed(() =>
+  activeScopeTab.value === 'comic' ? settings : globalSettings,
+)
+
+const isCurrentSeamlessStrip = computed(
+  () =>
+    currentTargetSettings.value.mode === 'vertical-continuous' &&
+    currentTargetSettings.value.seamless,
+)
 
 const isCustomInterval = computed(
-  () => !AUTO_TURN_INTERVALS.some((val) => val === settings.autoTurnInterval),
+  () => !AUTO_TURN_INTERVALS.some((val) => val === currentTargetSettings.value.autoTurnInterval),
 )
 
 const customInputRef = ref<HTMLInputElement | null>(null)
-const customValue = ref(settings.autoTurnInterval)
+const customValue = ref(currentTargetSettings.value.autoTurnInterval)
 
 watch(
-  () => settings.autoTurnInterval,
+  () => currentTargetSettings.value.autoTurnInterval,
   (val) => {
     customValue.value = val
   },
 )
 
+watch(activeScopeTab, () => {
+  customValue.value = currentTargetSettings.value.autoTurnInterval
+})
+
+watch(
+  () => props.open,
+  (open) => {
+    if (open) {
+      activeScopeTab.value = 'comic'
+    }
+  },
+)
+
 function selectPreset(val: number) {
-  settings.autoTurnInterval = val
+  currentTargetSettings.value.autoTurnInterval = val
   customValue.value = val
 }
 
@@ -56,7 +87,7 @@ function enableCustom() {
     if ((AUTO_TURN_INTERVALS as readonly number[]).includes(customValue.value)) {
       customValue.value = 20
     }
-    settings.autoTurnInterval = customValue.value
+    currentTargetSettings.value.autoTurnInterval = customValue.value
   }
   nextTick(() => {
     customInputRef.value?.focus()
@@ -68,7 +99,7 @@ function onCustomInput(event: Event) {
   const target = event.target as HTMLInputElement
   const num = parseInt(target.value, 10)
   if (!Number.isNaN(num) && num >= 1 && num <= 300) {
-    settings.autoTurnInterval = num
+    currentTargetSettings.value.autoTurnInterval = num
     customValue.value = num
   }
 }
@@ -79,13 +110,82 @@ function onCustomBlur() {
   } else if (customValue.value > 300) {
     customValue.value = 300
   }
-  settings.autoTurnInterval = customValue.value
+  currentTargetSettings.value.autoTurnInterval = customValue.value
 }
 </script>
 
 <template>
   <Modal :open="props.open" title="阅读设置" variant="reader" size="lg" @cancel="emit('close')">
     <div class="settings-content">
+      <!-- 作用域分段切换胶囊 -->
+      <div class="scope-tabs-bar" role="tablist" aria-label="排版生效范围">
+        <button
+          type="button"
+          role="tab"
+          class="scope-tab-btn"
+          :class="{ 'is-active': activeScopeTab === 'comic' }"
+          :aria-selected="activeScopeTab === 'comic'"
+          @click="activeScopeTab = 'comic'"
+        >
+          <AppIcon name="book-open" size="xs" />
+          <span>本作偏好</span>
+          <span v-if="activeComicIsStrip" class="scope-status-tag is-strip">条漫</span>
+          <span v-else-if="hasActiveOverride" class="scope-status-tag is-override">已自定义</span>
+          <span v-else class="scope-status-tag is-inherited">跟随全局</span>
+        </button>
+
+        <button
+          type="button"
+          role="tab"
+          class="scope-tab-btn"
+          :class="{ 'is-active': activeScopeTab === 'global' }"
+          :aria-selected="activeScopeTab === 'global'"
+          @click="activeScopeTab = 'global'"
+        >
+          <AppIcon name="globe" size="xs" />
+          <span>全局默认</span>
+        </button>
+      </div>
+
+      <!-- 作用域上下文提示横幅 -->
+      <div
+        v-if="activeScopeTab === 'comic'"
+        class="scope-hint-banner"
+        :class="{ 'is-override': hasActiveOverride }"
+      >
+        <div class="scope-hint-content">
+          <strong v-if="activeComicIsStrip">〔 条漫专属长卷 〕</strong>
+          <strong v-else-if="hasActiveOverride">〔 本作专属偏好 〕</strong>
+          <strong v-else>〔 继承全局默认 〕</strong>
+          <span class="scope-hint-desc">
+            {{
+              activeComicIsStrip
+                ? '已智能应用条漫无缝拼接与宽度适配，不改变全局默认。'
+                : hasActiveOverride
+                  ? '当前正在使用针对本作单独定制的排版，不影响其他漫画。'
+                  : '本作尚未保存独立设置。在此调节将立即为本书创建专属偏好。'
+            }}
+          </span>
+        </div>
+        <button
+          v-if="isInheritingGlobal"
+          type="button"
+          class="scope-jump-link"
+          @click="activeScopeTab = 'global'"
+        >
+          去改全站默认 ➔
+        </button>
+      </div>
+
+      <div v-else class="scope-hint-banner is-global">
+        <div class="scope-hint-content">
+          <strong>〔 全局默认基线 〕</strong>
+          <span class="scope-hint-desc">
+            此处设置将作为所有未单独自定义漫画的默认排版（新收录漫画自动继承）。
+          </span>
+        </div>
+      </div>
+
       <div class="setting-group setting-group--first">
         <h3>阅读模式</h3>
         <div class="mode-cards">
@@ -94,8 +194,8 @@ function onCustomBlur() {
             :key="option.value"
             class="mode-card"
             type="button"
-            :aria-pressed="settings.mode === option.value"
-            @click="settings.mode = option.value"
+            :aria-pressed="currentTargetSettings.mode === option.value"
+            @click="currentTargetSettings.mode = option.value"
           >
             <strong>{{ option.label }}</strong>
             <small>{{ option.hint }}</small>
@@ -103,13 +203,13 @@ function onCustomBlur() {
         </div>
       </div>
 
-      <div v-if="settings.mode === 'vertical-continuous'" class="setting-group">
+      <div v-if="currentTargetSettings.mode === 'vertical-continuous'" class="setting-group">
         <div class="setting-row">
           <div class="setting-copy">
             <h3>无缝长卷拼接</h3>
             <p>
               {{
-                settings.seamless
+                currentTargetSettings.seamless
                   ? '已消除页间黑缝与阴影，自动将切片画卷咬合为连续条漫'
                   : '保留页面间距、底色与行内页码指示'
               }}
@@ -119,26 +219,26 @@ function onCustomBlur() {
             class="switch"
             type="button"
             role="switch"
-            :aria-checked="settings.seamless"
-            :aria-label="settings.seamless ? '关闭无缝长卷拼接' : '开启无缝长卷拼接'"
-            @click="settings.seamless = !settings.seamless"
+            :aria-checked="currentTargetSettings.seamless"
+            :aria-label="currentTargetSettings.seamless ? '关闭无缝长卷拼接' : '开启无缝长卷拼接'"
+            @click="currentTargetSettings.seamless = !currentTargetSettings.seamless"
           />
         </div>
       </div>
 
-      <div class="setting-group" :class="{ 'is-disabled-group': isSeamlessStrip }">
+      <div class="setting-group" :class="{ 'is-disabled-group': isCurrentSeamlessStrip }">
         <div class="setting-header-with-badge">
           <h3>每屏页数</h3>
-          <span v-if="isSeamlessStrip" class="constraint-badge">条漫已锁定单页</span>
+          <span v-if="isCurrentSeamlessStrip" class="constraint-badge">条漫已锁定单页</span>
         </div>
         <div class="segmented">
           <button
             v-for="count in pagesPerViewOptions"
             :key="count"
             type="button"
-            :disabled="isSeamlessStrip"
-            :aria-pressed="settings.pagesPerView === count"
-            @click="settings.pagesPerView = count"
+            :disabled="isCurrentSeamlessStrip"
+            :aria-pressed="currentTargetSettings.pagesPerView === count"
+            @click="currentTargetSettings.pagesPerView = count"
           >
             {{ count }} 页
           </button>
@@ -151,8 +251,8 @@ function onCustomBlur() {
             <h3>自动切换</h3>
             <p>
               {{
-                settings.autoTurn
-                  ? `每 ${settings.autoTurnInterval} 秒切到下一屏`
+                currentTargetSettings.autoTurn
+                  ? `每 ${currentTargetSettings.autoTurnInterval} 秒切到下一屏`
                   : '开启后按设定间隔自动翻到下一屏'
               }}
             </p>
@@ -161,17 +261,19 @@ function onCustomBlur() {
             class="switch"
             type="button"
             role="switch"
-            :aria-checked="settings.autoTurn"
-            :aria-label="settings.autoTurn ? '关闭自动切换' : '开启自动切换'"
-            @click="settings.autoTurn = !settings.autoTurn"
+            :aria-checked="currentTargetSettings.autoTurn"
+            :aria-label="currentTargetSettings.autoTurn ? '关闭自动切换' : '开启自动切换'"
+            @click="currentTargetSettings.autoTurn = !currentTargetSettings.autoTurn"
           />
         </div>
-        <div v-if="settings.autoTurn" class="segmented auto-turn-options">
+        <div v-if="currentTargetSettings.autoTurn" class="segmented auto-turn-options">
           <button
             v-for="option in AUTO_TURN_OPTIONS"
             :key="option.value"
             type="button"
-            :aria-pressed="!isCustomInterval && settings.autoTurnInterval === option.value"
+            :aria-pressed="
+              !isCustomInterval && currentTargetSettings.autoTurnInterval === option.value
+            "
             @click="selectPreset(option.value)"
           >
             {{ option.label }}
@@ -194,8 +296,9 @@ function onCustomBlur() {
               type="number"
               min="1"
               max="300"
+              step="1"
               class="custom-interval-input"
-              aria-label="自定义自动切换秒数（1至300秒）"
+              aria-label="自定义翻页间隔秒数"
               @input="onCustomInput"
               @blur="onCustomBlur"
               @keydown.enter="onCustomBlur"
@@ -210,8 +313,8 @@ function onCustomBlur() {
         <div class="segmented">
           <button
             type="button"
-            :aria-pressed="settings.direction === 'ltr'"
-            @click="settings.direction = 'ltr'"
+            :aria-pressed="currentTargetSettings.direction === 'ltr'"
+            @click="currentTargetSettings.direction = 'ltr'"
           >
             <span>左</span>
             <AppIcon name="arrow-right" size="xs" />
@@ -219,8 +322,8 @@ function onCustomBlur() {
           </button>
           <button
             type="button"
-            :aria-pressed="settings.direction === 'rtl'"
-            @click="settings.direction = 'rtl'"
+            :aria-pressed="currentTargetSettings.direction === 'rtl'"
+            @click="currentTargetSettings.direction = 'rtl'"
           >
             <span>右</span>
             <AppIcon name="arrow-left" size="xs" />
@@ -230,22 +333,22 @@ function onCustomBlur() {
       </div>
 
       <div
-        v-if="settings.mode === 'vertical-continuous'"
+        v-if="currentTargetSettings.mode === 'vertical-continuous'"
         class="setting-group"
-        :class="{ 'is-disabled-group': isSeamlessStrip }"
+        :class="{ 'is-disabled-group': isCurrentSeamlessStrip }"
       >
         <div class="setting-header-with-badge">
           <h3>竖向连续模式图片适配</h3>
-          <span v-if="isSeamlessStrip" class="constraint-badge">条漫已锁定适应宽度</span>
+          <span v-if="isCurrentSeamlessStrip" class="constraint-badge">条漫已锁定适应宽度</span>
         </div>
         <div class="segmented">
           <button
             v-for="option in FIT_OPTIONS"
             :key="option.value"
             type="button"
-            :disabled="isSeamlessStrip"
-            :aria-pressed="settings.fit === option.value"
-            @click="settings.fit = option.value"
+            :disabled="isCurrentSeamlessStrip"
+            :aria-pressed="currentTargetSettings.fit === option.value"
+            @click="currentTargetSettings.fit = option.value"
           >
             {{ option.label }}
           </button>
@@ -255,12 +358,32 @@ function onCustomBlur() {
 
     <template #footer>
       <div class="settings-foot-inner">
-        <p class="settings-save-note">设置会自动保存到本机</p>
+        <p class="settings-save-note">
+          {{
+            activeScopeTab === 'comic'
+              ? isInheritingGlobal
+                ? '修改将为本作创建专属设置'
+                : '修改已自动保存至本作'
+              : '修改将实时更新全站默认'
+          }}
+        </p>
         <div class="settings-actions">
-          <AppButton variant="ghost" size="sm" type="button" @click="reset">恢复默认</AppButton>
-          <AppButton variant="primary" size="sm" type="button" @click="emit('close')"
-            >完成</AppButton
+          <AppButton
+            v-if="activeScopeTab === 'comic'"
+            variant="ghost"
+            size="sm"
+            type="button"
+            :disabled="isInheritingGlobal"
+            @click="revertToGlobal"
           >
+            恢复跟随全局
+          </AppButton>
+          <AppButton v-else variant="ghost" size="sm" type="button" @click="resetGlobalBaseline">
+            恢复出厂默认
+          </AppButton>
+          <AppButton variant="primary" size="sm" type="button" @click="emit('close')">
+            完成
+          </AppButton>
         </div>
       </div>
     </template>
@@ -273,14 +396,147 @@ function onCustomBlur() {
   flex-direction: column;
 }
 
+/* ---------------- 作用域分段切换胶囊 ---------------- */
+.scope-tabs-bar {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-2);
+  margin-bottom: var(--space-3);
+  padding: var(--space-1);
+  background: var(--reader-surface-strong);
+  border-radius: var(--radius-2);
+  border: 1px solid var(--reader-line);
+}
+
+.scope-tab-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  min-height: var(--control-sm);
+  padding: var(--space-1-5) var(--space-3);
+  border-radius: var(--radius-1);
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--reader-muted);
+  font-family: var(--font-body);
+  font-size: var(--text-sm);
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 160ms cubic-bezier(0.2, 0, 0, 1);
+}
+
+.scope-tab-btn:hover {
+  color: var(--reader-ink);
+  background: color-mix(in oklab, var(--reader-ink) 6%, transparent);
+}
+
+.scope-tab-btn.is-active {
+  color: var(--reader-ink);
+  background: var(--reader-bg);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.45);
+  border-color: var(--reader-line-strong);
+}
+
+.scope-status-tag {
+  font-family: var(--font-mono);
+  font-size: var(--text-caption);
+  padding: 0.1rem 0.45rem;
+  border-radius: var(--radius-1);
+  line-height: 1.2;
+}
+
+.scope-status-tag.is-strip {
+  background: color-mix(in oklab, var(--accent) 18%, transparent);
+  color: var(--accent);
+  border: 1px solid color-mix(in oklab, var(--accent) 35%, transparent);
+}
+
+.scope-status-tag.is-override {
+  background: color-mix(in oklab, var(--warning) 18%, transparent);
+  color: var(--warning);
+  border: 1px solid color-mix(in oklab, var(--warning) 35%, transparent);
+}
+
+.scope-status-tag.is-inherited {
+  background: var(--reader-surface);
+  color: var(--reader-muted);
+  border: 1px solid var(--reader-line-soft);
+}
+
+/* ---------------- 作用域上下文提示横幅 ---------------- */
+.scope-hint-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-2-5) var(--space-3-5);
+  border-radius: var(--radius-2);
+  background: var(--reader-surface);
+  border: 1px solid var(--reader-line-soft);
+  font-size: var(--text-xs);
+  color: var(--reader-muted);
+  margin-bottom: var(--space-3);
+}
+
+.scope-hint-banner.is-override {
+  border-color: color-mix(in oklab, var(--warning) 30%, transparent);
+}
+
+.scope-hint-banner.is-global {
+  border-color: color-mix(in oklab, var(--accent) 30%, transparent);
+}
+
+.scope-hint-content {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.scope-hint-content strong {
+  color: var(--reader-ink);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.scope-hint-desc {
+  color: var(--reader-muted);
+  line-height: 1.4;
+}
+
+.scope-jump-link {
+  background: transparent;
+  border: none;
+  color: var(--accent);
+  font-size: var(--text-xs);
+  cursor: pointer;
+  padding: 0;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.scope-jump-link:hover {
+  color: var(--accent-strong);
+}
+
+@media (max-width: 480px) {
+  .scope-hint-banner {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+}
+
 .setting-group {
   padding: var(--space-4) 0;
   border-top: 1px solid var(--reader-line-soft);
 }
 
 .setting-group.setting-group--first {
-  padding-top: 0;
-  border-top: none;
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--reader-line-soft);
 }
 
 .setting-group h3 {
