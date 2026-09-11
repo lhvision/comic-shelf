@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref } from 'vue'
+import AppButton from '@/components/AppButton.vue'
 import Modal from '@/components/Modal.vue'
-import AppIcon from '@/components/AppIcon.vue'
 
 const props = defineProps<{
   previewUrl: string
@@ -23,9 +23,15 @@ const isModalOpen = ref(false)
         <span class="chip-spinner"></span>
       </div>
     </button>
-    <button class="chip-clear-btn" @click="emit('clear')" aria-label="清除图片">
-      <AppIcon name="close" size="xs" :stroke-width="2.2" />
-    </button>
+    <AppButton
+      shape="circle"
+      variant="ghost"
+      size="xs"
+      icon="close"
+      class="chip-clear-btn"
+      aria-label="清除图片"
+      @click="emit('clear')"
+    />
 
     <Modal :open="isModalOpen" title="搜索图片" @cancel="isModalOpen = false">
       <div class="modal-img-container">

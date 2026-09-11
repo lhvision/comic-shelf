@@ -123,16 +123,20 @@ async function handleConfirmReturn() {
             <span class="note-text">专属书架已就绪 · 个人收藏与阅读进度已独立绑定</span>
           </div>
 
-          <button
-            type="button"
+          <AppButton
+            variant="ghost"
+            size="sm"
+            block
             class="btn-copy-roam"
             :class="{ copied }"
             title="复制专属直达链接，发给自己在新设备打开输入 PIN 码入座"
             @click="handleCopyRoamLink"
           >
-            <AppIcon :name="copied ? 'check' : 'external-link'" size="xs" />
+            <template #prefix>
+              <AppIcon :name="copied ? 'check' : 'external-link'" size="xs" />
+            </template>
             <span>{{ copied ? '已复制跨端链接' : '复制入馆链接（换设备看）' }}</span>
-          </button>
+          </AppButton>
         </div>
 
         <!-- 底部交还操作 -->
@@ -170,10 +174,10 @@ async function handleConfirmReturn() {
             ref="promptBtnRef"
             variant="secondary"
             size="sm"
+            icon="logout"
             class="btn-return-pass"
             @click="handlePromptReturn"
           >
-            <AppIcon name="logout" size="xs" />
             <span>交还借阅凭证</span>
           </AppButton>
         </footer>

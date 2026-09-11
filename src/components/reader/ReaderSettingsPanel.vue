@@ -167,14 +167,19 @@ function onCustomBlur() {
             }}
           </span>
         </div>
-        <button
+        <AppButton
           v-if="isInheritingGlobal"
-          type="button"
+          variant="ghost"
+          size="xs"
+          theme="reader"
           class="scope-jump-link"
           @click="activeScopeTab = 'global'"
         >
-          去改全站默认 ➔
-        </button>
+          <span>去改全站默认</span>
+          <template #suffix>
+            <AppIcon name="arrow-right" size="xs" />
+          </template>
+        </AppButton>
       </div>
 
       <div v-else class="scope-hint-banner is-global">

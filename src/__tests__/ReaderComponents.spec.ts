@@ -257,12 +257,12 @@ describe('ReaderEndCard', () => {
     expect(wrapper.emitted('detail')![0]).toEqual(['jm', '101'])
 
     // Click back to detail
-    const backBtn = wrapper.find('.btn-primary')
+    const backBtn = wrapper.find('.reader-end-actions .btn-primary')
     await backBtn.trigger('click')
     expect(wrapper.emitted('back')).toBeTruthy()
 
     // Click back to shelf
-    const homeBtn = wrapper.find('.btn-ghost')
+    const homeBtn = wrapper.find('.reader-end-actions .btn-ghost')
     await homeBtn.trigger('click')
     expect(wrapper.emitted('home')).toBeTruthy()
   })

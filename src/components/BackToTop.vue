@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { useWindowScroll } from '@vueuse/core'
+import AppButton from '@/components/AppButton.vue'
 import AppIcon from '@/components/AppIcon.vue'
 import AppTooltip from '@/components/AppTooltip.vue'
 
@@ -44,9 +45,16 @@ function scrollToTop() {
     <!-- 纯容器包裹，避免 role="region" 滥用 Landmark 列表 -->
     <div v-if="visible" class="back-to-top">
       <AppTooltip tip="回到顶部" side="top" align="center">
-        <button type="button" class="back-to-top-btn" aria-label="回到顶部" @click="scrollToTop">
+        <AppButton
+          shape="circle"
+          variant="ghost"
+          size="md"
+          class="back-to-top-btn"
+          aria-label="回到顶部"
+          @click="scrollToTop"
+        >
           <AppIcon name="arrow-up" size="lg" :stroke-width="2.2" />
-        </button>
+        </AppButton>
       </AppTooltip>
     </div>
   </Transition>

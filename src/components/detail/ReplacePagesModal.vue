@@ -286,14 +286,15 @@ async function submit() {
             }}
             ~ {{ selectedFiles[selectedFiles.length - 1]?.name }}）
           </span>
-          <button
-            class="btn btn-ghost btn-xs"
+          <AppButton
+            variant="ghost"
+            size="xs"
             type="button"
             :disabled="submitting"
             @click.stop="selectedFiles = []"
           >
             清空
-          </button>
+          </AppButton>
         </div>
       </div>
 

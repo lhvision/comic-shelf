@@ -12,6 +12,7 @@
 2. [设计系统 Token 契约（Design Tokens System）](#2-设计系统-token-契约design-tokens-system)
 3. [核心组件架构与变体规范（Component Architecture）](#3-核心组件架构与变体规范component-architecture)
    - [3.6 通用微件胶囊体系（Universal Chip & Filter System）](#36-通用微件胶囊体系universal-chip--filter-system)
+   - [3.7 统一按钮体系（Unified Button Architecture & AppButton）](#37-统一按钮体系unified-button-architecture--appbutton)
 4. [核心设计红线与避坑定律（Permanent Laws & Anti-Regression Anchors）](#4-核心设计红线与避坑定律permanent-laws--anti-regression-anchors)
    - [§13 Composable 顶层解构定律](#sec-13)
    - [§12 破坏性操作双重防护定律](#sec-12)
@@ -151,6 +152,23 @@
   - 提供 `#prefix`、`#suffix`、`#count` 与 `#remove-icon` 精准插槽，便于扩展心形收藏态与展开旋转折叠箭头；
 - **可删除胶囊闭环（Removable Chip）**：
   - `removable: true` 原生挂载无障碍关闭微按钮，点击触发 `emit('remove', event)` 并在底层强制 `event.stopPropagation()`，杜绝点击删除误触父级跳转。
+
+### 3.7 统一按钮体系（Unified Button Architecture & AppButton）
+
+- **单一真相源（`AppButton.vue`）**：全站通用操作、状态提交、二次确认与独立功能图标按钮的统一入口，严禁在业务组件中裸写原生 `<button class="btn btn-*">` 或手写 class 模拟按钮（ADR 0016）；
+- **标准变体与尺寸契约**：
+  - 六色变体：`variant="primary" | "secondary" | "ghost" | "soft" | "danger" | "success"`（严格映射 `tokens.css` 主色、墨色与状态色，支持 `block` 占满宽度）；
+  - 规范四阶尺寸：`size="xs"` (28px) | `"sm"` (32px) | `"md"` (40px, 默认) | `"lg"` (48px)，触控区域结合移动端自适应收缩；
+- **多态渲染与跳转安全（Polymorphic ARIA Navigation）**：
+  - 传入 `to` 时自动以 `<RouterLink>` 渲染；传入 `href` 时自动以 `<a>` 渲染（支持 `target="_blank"` 自动补齐 `rel="noopener noreferrer"`）；未提供时渲染原生 `<button>`；
+  - **链接禁用态拦截铁律**：当处于 `disabled` 或 `loading` 状态时，多态链接自动挂载 `aria-disabled="true"`、`tabindex="-1"`，并在底层强制 `event.preventDefault()` + `event.stopPropagation()`，保持 DOM 节点稳定的同时彻底杜绝链接误触跳转；
+- **单源图标与独立图标按钮（Icon Button Mode & Dead Import Elimination）**：
+  - 支持 `shape="default" | "circle" | "square"`，结合 `icon="<IconName>"` 与 `iconPosition="left" | "right"`（默认 `'left'`）实现属性与插槽双轨制；
+  - 纯图标模式下自动收敛为 1:1 宽高比与居中排布，开发环境运行时强校验 `aria-label` / `title`，杜绝读屏盲区（WCAG 4.1.2）；
+  - **图标单源收敛定律**：通用按钮的前置/后置图标优先通过 `icon` 与 `iconPosition` 声明，禁止在组件层为了单一按钮图标冗余引入 `import AppIcon`，推动业务层消除无用导入（Dead Imports）；
+- **阅览室暗室高对比度防御（Reader Dark Room Token Defense）**：
+  - 支持 `theme="reader"`，在阅读器暗室背景（`--reader-bg`）下自动激活专属暗室 Token：
+    `--reader-surface-strong`（暗室垫层）、`--reader-ink`（防刺眼高对比柔白文字）、`--reader-line-strong`（高对比边框）与 `--reader-surface-hover`（悬浮反馈），确保暗室幽灵按钮达到 WCAG AA 级（≥ 4.5:1）对比度标准，杜绝业务视图手写局部 CSS 补丁。
 
 ---
 

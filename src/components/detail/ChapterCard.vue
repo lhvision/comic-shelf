@@ -3,7 +3,7 @@ import { computed, ref, watch } from 'vue'
 import { chapterCoverUrl, coverSrcset } from '@/api/client'
 import CacheProgress from '@/components/CacheProgress.vue'
 import AppTextClamp from '@/components/AppTextClamp.vue'
-import AppIcon from '@/components/AppIcon.vue'
+import AppButton from '@/components/AppButton.vue'
 import type { Chapter } from '@/types'
 
 /**
@@ -80,10 +80,13 @@ function onCoverError() {
         <span class="chapter-meta">{{ chapter.page_count }} 页</span>
         <div class="chapter-cache-action">
           <CacheProgress :cached="cachedPages" :total="chapter.page_count" :running="running" />
-          <button
+          <AppButton
             v-if="cachedPages < chapter.page_count"
+            shape="circle"
+            variant="ghost"
+            size="xs"
+            icon="download"
             class="chapter-cache-btn"
-            type="button"
             :disabled="running || busy"
             :title="
               running ? '本话正在缓存中…' : busy ? '已有后台缓存任务在进行中' : '离线缓存本话'
@@ -92,9 +95,7 @@ function onCoverError() {
               running ? '本话正在缓存中' : busy ? '已有后台缓存任务在进行中' : '离线缓存本话'
             "
             @click.prevent.stop="emit('cache', chapter.id)"
-          >
-            <AppIcon name="download" size="xs" />
-          </button>
+          />
         </div>
       </div>
     </div>

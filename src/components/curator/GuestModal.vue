@@ -13,7 +13,7 @@ import { computed, nextTick, ref, useTemplateRef, watch } from 'vue'
 import Modal from '@/components/Modal.vue'
 import SegmentedTabs from '@/components/SegmentedTabs.vue'
 import Tooltip from '@/components/Tooltip.vue'
-import AppIcon from '@/components/AppIcon.vue'
+import AppButton from '@/components/AppButton.vue'
 import GuestRosterTab from './guest/GuestRosterTab.vue'
 import GuestIssueTab from './guest/GuestIssueTab.vue'
 import { useGuestPasses } from '@/composables/useGuestPasses'
@@ -69,9 +69,15 @@ watch(activeTab, async (tab) => {
           align="center"
           width="16rem"
         >
-          <button type="button" class="title-info-btn" aria-label="查看权限隔离说明">
-            <AppIcon name="info" size="xs" />
-          </button>
+          <AppButton
+            type="button"
+            shape="square"
+            variant="ghost"
+            size="xs"
+            icon="info"
+            class="title-info-btn"
+            aria-label="查看权限隔离说明"
+          />
         </Tooltip>
       </div>
     </template>
@@ -132,6 +138,8 @@ watch(activeTab, async (tab) => {
   justify-content: center;
   width: 22px;
   height: 22px;
+  min-width: 22px;
+  min-height: 22px;
   padding: 0;
   border-radius: var(--radius-1);
   border: 1px solid var(--line);

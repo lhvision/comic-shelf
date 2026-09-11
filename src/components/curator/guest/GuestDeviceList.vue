@@ -9,7 +9,7 @@
  */
 
 import { refAutoReset } from '@vueuse/core'
-import AppIcon from '@/components/AppIcon.vue'
+import AppButton from '@/components/AppButton.vue'
 import { formatRelativeTime } from './guestUtils'
 import type { GuestDevice } from '@/types'
 
@@ -60,29 +60,36 @@ function confirmKick(deviceId: number) {
       <div class="device-kick-wrapper">
         <template v-if="confirmKickDeviceId === dev.id">
           <span class="device-kick-confirm-text">下线？</span>
-          <button
-            type="button"
+          <AppButton
+            variant="danger"
+            size="xs"
             class="device-kick-action confirm-yes"
             :disabled="operatingId !== null"
             @click="confirmKick(dev.id)"
           >
             踢出
-          </button>
-          <button type="button" class="device-kick-action confirm-no" @click="cancelKick">
+          </AppButton>
+          <AppButton
+            variant="ghost"
+            size="xs"
+            class="device-kick-action confirm-no"
+            @click="cancelKick"
+          >
             取消
-          </button>
+          </AppButton>
         </template>
-        <button
+        <AppButton
           v-else
-          type="button"
+          shape="circle"
+          variant="ghost"
+          size="xs"
+          icon="close"
           class="device-kick-btn"
           :title="`将设备「${dev.device_name}」踢下线`"
           :aria-label="`将设备「${dev.device_name}」踢下线`"
           :disabled="operatingId !== null"
           @click="requestKick(dev.id)"
-        >
-          <AppIcon name="close" size="xs" />
-        </button>
+        />
       </div>
     </li>
   </ul>

@@ -4,6 +4,7 @@
  * @description 存储管理浮层头部组件（展示标题与 PWA 独立桌面应用安装入口）。
  */
 
+import AppButton from '@/components/AppButton.vue'
 import AppIcon from '@/components/AppIcon.vue'
 
 defineProps<{
@@ -29,16 +30,17 @@ const emit = defineEmits<{
     </div>
 
     <div class="header-action">
-      <button
+      <AppButton
         v-if="canInstall"
-        type="button"
+        variant="soft"
+        size="xs"
+        icon="download"
         class="pwa-install-btn"
         title="将纸间添加至主屏幕或桌面独立运行"
         @click="emit('install')"
       >
-        <AppIcon name="download" size="xs" :stroke-width="1.8" />
-        <span>安装至桌面</span>
-      </button>
+        安装至桌面
+      </AppButton>
       <span
         v-else-if="showIosGuide"
         class="pwa-ios-guide-pill"

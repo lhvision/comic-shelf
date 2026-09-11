@@ -2,6 +2,7 @@
 import { computed } from 'vue'
 import { useRoute } from 'vue-router'
 import { usePwaUpdate } from '@/composables/usePwaUpdate'
+import AppButton from '@/components/AppButton.vue'
 import AppIcon from '@/components/AppIcon.vue'
 
 const route = useRoute()
@@ -32,29 +33,28 @@ const isVisible = computed(() => showPrompt.value && !isReaderView.value)
         </div>
 
         <div class="banner-actions">
-          <button
-            type="button"
+          <AppButton
+            variant="soft"
+            size="xs"
             class="banner-btn apply-btn"
-            :disabled="isUpdating"
+            :loading="isUpdating"
             @click="applyUpdate"
           >
-            <AppIcon
-              name="refresh"
-              size="xs"
-              :stroke-width="1.8"
-              :class="{ 'is-spinning': isUpdating }"
-            />
+            <template #prefix>
+              <AppIcon v-if="!isUpdating" name="refresh" size="xs" :stroke-width="1.8" />
+            </template>
             <span>{{ isUpdating ? '装订中…' : '立即装订' }}</span>
-          </button>
-          <button
-            type="button"
+          </AppButton>
+          <AppButton
+            variant="ghost"
+            size="xs"
             class="banner-btn dismiss-btn"
             title="稍后装订（收起至顶栏设备卡片）"
             aria-label="稍后装订，收起提示"
             @click="dismissPrompt"
           >
             <span>稍后</span>
-          </button>
+          </AppButton>
         </div>
       </div>
     </aside>

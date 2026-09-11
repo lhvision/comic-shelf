@@ -205,9 +205,9 @@ async function submit() {
           <span
             >已选择 <strong>{{ selectedFiles.length }}</strong> 张图片</span
           >
-          <button class="btn btn-ghost btn-xs" type="button" @click="selectedFiles = []">
+          <AppButton variant="ghost" size="xs" type="button" @click="selectedFiles = []">
             清空
-          </button>
+          </AppButton>
         </div>
       </div>
 

@@ -46,9 +46,16 @@ const {
 <template>
   <div class="create-view container">
     <header class="create-head surface">
-      <button class="back-btn icon-btn" type="button" aria-label="返回书库" @click="goUpFromCreate">
-        <AppIcon name="arrow-left" size="sm" />
-      </button>
+      <AppButton
+        class="back-btn"
+        shape="circle"
+        variant="ghost"
+        size="md"
+        icon="arrow-left"
+        aria-label="返回书库"
+        title="返回书库"
+        @click="goUpFromCreate"
+      />
       <div>
         <p class="eyebrow">Local Workshop / 自建工坊</p>
         <h1>收录自建图集与本地拆帧</h1>
@@ -81,19 +88,21 @@ const {
               >
                 <input v-model="ch.title" class="chap-title-input" type="text" @click.stop />
                 <span class="chap-badge">{{ ch.files.length }}P</span>
-                <button
+                <AppButton
                   v-if="chapters.length > 1"
                   class="chap-del-btn"
-                  type="button"
+                  shape="circle"
+                  variant="ghost"
+                  size="xs"
+                  icon="close"
                   title="删除本话"
+                  aria-label="删除本话"
                   @click.stop="removeChapter(idx)"
-                >
-                  <AppIcon name="close" size="xs" :stroke-width="2.2" />
-                </button>
+                />
               </div>
             </div>
-            <AppButton variant="ghost" size="xs" type="button" @click="addChapter">
-              ＋ 新增话
+            <AppButton variant="ghost" size="xs" icon="plus" @click="addChapter">
+              新增话
             </AppButton>
           </div>
 
@@ -123,14 +132,15 @@ const {
               已暂存：<strong>{{ totalStagedFilesCount }}</strong> 张画面
               <template v-if="isMulti">（共 {{ chapters.length }} 话）</template>
             </span>
-            <button
+            <AppButton
               v-if="totalStagedFilesCount > 0"
-              class="btn btn-ghost btn-sm"
+              variant="ghost"
+              size="sm"
               type="button"
               @click="clearCurrentStaged"
             >
               清空当前
-            </button>
+            </AppButton>
           </div>
 
           <!-- Upload Progress -->

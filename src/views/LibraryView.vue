@@ -8,6 +8,7 @@ import TagFilterBar from '@/components/library/TagFilterBar.vue'
 import ComicGrid from '@/components/library/ComicGrid.vue'
 import ImageSearchChip from '@/components/library/ImageSearchChip.vue'
 import ThemeSelect from '@/components/ThemeSelect.vue'
+import AppButton from '@/components/AppButton.vue'
 import AppIcon from '@/components/AppIcon.vue'
 import { useLibraryStore } from '@/stores/library'
 import { useExperimentsStore } from '@/stores/experiments'
@@ -175,7 +176,7 @@ watch([() => store.error, imageSearch.error], ([err1, err2]) => {
 
         <div class="search-container">
           <label class="search-field field">
-            <span aria-hidden="true">⌕</span>
+            <AppIcon name="search" size="xs" aria-hidden="true" />
             <ImageSearchChip
               v-if="imageSearch.searchImagePreviewUrl.value"
               :preview-url="imageSearch.searchImagePreviewUrl.value"
@@ -184,20 +185,20 @@ watch([() => store.error, imageSearch.error], ([err1, err2]) => {
               class="search-lens-pill"
             />
             <input v-model="search" type="search" placeholder="标题 / 车号 / 作者 / 标签" />
-            <button
-              class="camera-btn icon-btn"
-              type="button"
+            <AppButton
+              class="camera-btn"
+              shape="circle"
+              variant="ghost"
+              size="md"
+              icon="camera"
               :class="{
                 'is-muted': !imageSearch.isAvailable.value,
-                'is-loading': imageSearch.isChecking.value,
               }"
+              :loading="imageSearch.isChecking.value"
               :title="cameraBtnTooltip"
               :aria-label="cameraBtnTooltip"
-              :aria-busy="imageSearch.isChecking.value"
               @click="onCameraClick"
-            >
-              <AppIcon name="camera" size="md" />
-            </button>
+            />
             <input
               ref="fileInput"
               type="file"

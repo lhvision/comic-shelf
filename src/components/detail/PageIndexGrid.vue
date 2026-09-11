@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { nextTick, ref } from 'vue'
 import PageTile from '@/components/detail/PageTile.vue'
+import AppButton from '@/components/AppButton.vue'
 import AppIcon from '@/components/AppIcon.vue'
 import AppChip from '@/components/AppChip.vue'
 import type { PageRecord } from '@/types'
@@ -121,32 +122,35 @@ function handleCollapse() {
             案头展示前 {{ pages.length }} 页，还有 {{ remainingPages }} 页画卷已折叠。
           </p>
           <div class="fold-card-actions">
-            <button
-              class="btn btn-primary btn-small"
+            <AppButton
+              variant="primary"
+              size="sm"
+              icon="chevron-down"
               type="button"
               @click.prevent="emit('loadMore')"
             >
-              <AppIcon name="chevron-down" size="xs" />
               再展开 {{ Math.min(pageStep, remainingPages) }} 页
-            </button>
+            </AppButton>
             <div class="fold-card-sub-actions">
-              <button
-                class="btn btn-ghost btn-small"
+              <AppButton
+                variant="ghost"
+                size="sm"
+                icon="book-open"
                 type="button"
                 @click.prevent="emit('loadAll')"
               >
-                <AppIcon name="book-open" size="xs" />
                 展开全部
-              </button>
-              <button
+              </AppButton>
+              <AppButton
                 v-if="canCollapse"
-                class="btn btn-ghost btn-small"
+                variant="ghost"
+                size="sm"
+                icon="chevron-up"
                 type="button"
                 @click.prevent="handleCollapse"
               >
-                <AppIcon name="chevron-up" size="xs" />
                 收起画卷
-              </button>
+              </AppButton>
             </div>
           </div>
         </div>
@@ -163,10 +167,15 @@ function handleCollapse() {
       </div>
 
       <div class="sentinel-actions">
-        <button class="btn btn-ghost btn-small" type="button" @click.prevent="handleCollapse">
-          <AppIcon name="chevron-up" size="xs" />
+        <AppButton
+          variant="ghost"
+          size="sm"
+          icon="chevron-up"
+          type="button"
+          @click.prevent="handleCollapse"
+        >
           收起画卷
-        </button>
+        </AppButton>
       </div>
     </div>
   </section>

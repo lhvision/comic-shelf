@@ -18,7 +18,7 @@ import { useSystemEvents } from '@/composables/useSystemEvents'
 import { useChapterCache } from '@/composables/useChapterCache'
 import { useHierarchicalNavigation } from '@/composables/useHierarchicalNavigation'
 import CoverCarousel from '@/components/CoverCarousel.vue'
-import AppIcon from '@/components/AppIcon.vue'
+import AppButton from '@/components/AppButton.vue'
 
 import DetailActionBar from '@/components/detail/DetailActionBar.vue'
 import ChapterIndex from '@/components/detail/ChapterIndex.vue'
@@ -305,15 +305,16 @@ function startReading(page = progressEl.value || 1) {
 
     <template v-else-if="detail">
       <div class="detail-hero surface">
-        <button
-          class="detail-back icon-btn"
-          type="button"
+        <AppButton
+          class="detail-back"
+          shape="circle"
+          variant="ghost"
+          size="md"
+          icon="arrow-left"
           aria-label="返回书库"
           title="返回书库"
           @click="goBack"
-        >
-          <AppIcon name="arrow-left" size="sm" />
-        </button>
+        />
         <CoverCarousel
           class="detail-carousel"
           :covers="detail.cover_paths"

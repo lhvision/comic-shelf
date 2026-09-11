@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import Modal from '@/components/Modal.vue'
 import AppButton from '@/components/AppButton.vue'
-import AppIcon from '@/components/AppIcon.vue'
 import AppDropdown, { type DropdownOption } from '@/components/AppDropdown.vue'
 import AppProgressBar from '@/components/AppProgressBar.vue'
 import { computed, ref } from 'vue'
@@ -104,8 +103,9 @@ function prefetchReader() {
 <template>
   <div class="detail-actions">
     <div class="action-bar surface">
-      <button
-        class="btn btn-primary btn-read"
+      <AppButton
+        variant="primary"
+        class="btn-read"
         type="button"
         :title="
           lastReadLabel && lastRead
@@ -120,10 +120,10 @@ function prefetchReader() {
         @click="emit('startReading')"
       >
         {{ lastReadLabel || (lastRead ? `继续阅读 · 第 ${lastRead} 页` : '开始阅读') }}
-      </button>
+      </AppButton>
 
-      <button
-        class="btn btn-ghost"
+      <AppButton
+        variant="ghost"
         type="button"
         title="从第 1 页开始阅读"
         @pointerenter.once="prefetchReader"
@@ -132,31 +132,31 @@ function prefetchReader() {
         @click="emit('startReading', 1)"
       >
         从第 1 页开始
-      </button>
+      </AppButton>
 
-      <button
+      <AppButton
         v-if="canWrite"
-        class="btn btn-ghost"
+        variant="ghost"
         type="button"
         title="编辑作品标题、作者、标签与元数据"
         @click="emit('editMetadata')"
       >
         编辑资料
-      </button>
+      </AppButton>
 
-      <button
+      <AppButton
         v-if="canWrite && source === 'local'"
-        class="btn btn-ghost"
+        variant="ghost"
         type="button"
         title="增量追加新页面或新章节到本地作品"
         @click="emit('appendPages')"
       >
         增量追加…
-      </button>
+      </AppButton>
 
-      <button
+      <AppButton
         v-if="canWrite && source !== 'local'"
-        class="btn btn-ghost"
+        variant="ghost"
         type="button"
         :disabled="caching || cacheComplete || customPages"
         :title="
@@ -179,17 +179,17 @@ function prefetchReader() {
                 ? `缓存中 ${cachePercent}%`
                 : `缓存全部（已缓存 ${cachedPages}/${pageCount}）`
         }}
-      </button>
+      </AppButton>
 
-      <button
+      <AppButton
         v-if="canWrite && source !== 'local'"
-        class="btn btn-ghost"
+        variant="ghost"
         type="button"
         title="从远端重新同步作品章节与最新元数据"
         @click="emit('refreshMetadata')"
       >
         刷新资料
-      </button>
+      </AppButton>
 
       <AppDropdown
         v-if="canWrite"
@@ -199,15 +199,16 @@ function prefetchReader() {
         @select="onMoreSelect"
       >
         <template #trigger="{ open }">
-          <button
-            class="btn btn-ghost more-trigger"
+          <AppButton
+            variant="ghost"
+            class="more-trigger"
             :class="{ 'is-open': open }"
             type="button"
+            icon="more"
             title="更多操作选项"
           >
-            <AppIcon name="more" size="xs" />
             <span>更多</span>
-          </button>
+          </AppButton>
         </template>
       </AppDropdown>
     </div>

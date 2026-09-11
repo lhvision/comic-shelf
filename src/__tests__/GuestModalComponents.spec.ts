@@ -107,7 +107,7 @@ describe('Guest Modal Components', () => {
       expect(wrapper.text()).toContain('通行凭据已印发')
       expect(wrapper.text()).toContain('TestUser')
 
-      const navBtns = wrapper.findAllComponents({ name: 'AppButton' })
+      const navBtns = wrapper.findAllComponents('.voucher-nav-btn')
       expect(navBtns.length).toBe(2)
       await navBtns[0]!.trigger('click')
       expect(wrapper.emitted('issueNext')).toBeTruthy()

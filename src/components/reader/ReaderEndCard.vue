@@ -9,6 +9,7 @@ import { ref } from 'vue'
 import { useIntersectionObserver } from '@vueuse/core'
 import type { LibrarySummary } from '@/types'
 import AppTextClamp from '@/components/AppTextClamp.vue'
+import AppButton from '@/components/AppButton.vue'
 import AppIcon from '@/components/AppIcon.vue'
 import { coverSrcset } from '@/api/client'
 
@@ -125,28 +126,44 @@ useIntersectionObserver(
               </div>
             </div>
 
-            <button
-              class="rec-detail-btn icon-btn"
-              type="button"
+            <AppButton
+              class="rec-detail-btn"
+              shape="circle"
+              variant="ghost"
+              size="md"
+              icon="info"
+              theme="reader"
               title="查看作品详情"
               aria-label="查看作品详情"
               @click.stop="$emit('detail', item.source, item.source_id)"
-            >
-              <AppIcon name="info" size="sm" />
-            </button>
+            />
           </article>
         </div>
       </section>
 
       <footer class="reader-end-actions">
-        <button class="btn btn-primary end-btn" type="button" @click="$emit('back')">
-          <AppIcon name="arrow-left" size="sm" />
+        <AppButton
+          variant="primary"
+          theme="reader"
+          size="md"
+          icon="arrow-left"
+          class="end-btn"
+          type="button"
+          @click="$emit('back')"
+        >
           <span>回到详情</span>
-        </button>
-        <button class="btn btn-ghost end-btn" type="button" @click="$emit('home')">
-          <AppIcon name="archive" size="sm" />
+        </AppButton>
+        <AppButton
+          variant="ghost"
+          theme="reader"
+          size="md"
+          icon="archive"
+          class="end-btn"
+          type="button"
+          @click="$emit('home')"
+        >
           <span>返回书架</span>
-        </button>
+        </AppButton>
       </footer>
     </div>
   </div>

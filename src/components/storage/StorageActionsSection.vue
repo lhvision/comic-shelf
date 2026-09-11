@@ -11,7 +11,6 @@
 
 import { refAutoReset } from '@vueuse/core'
 import AppButton from '@/components/AppButton.vue'
-import AppIcon from '@/components/AppIcon.vue'
 
 defineProps<{
   /** 是否正在执行清理异步操作中 */
@@ -64,36 +63,43 @@ defineExpose({
     <AppButton
       variant="secondary"
       size="sm"
+      icon="trash"
       block
       :loading="clearing"
       :disabled="mangaImageCount === 0 && mangaImageBytes === 0"
       @click="emit('clearImages')"
     >
-      <template #prefix>
-        <AppIcon name="trash" size="xs" :stroke-width="1.8" />
-      </template>
       清理阅览图片缓存 (释放 {{ mangaImageBytesFormatted }})
     </AppButton>
 
     <div class="reset-wrapper" :class="{ 'is-confirming': isConfirmingReset }">
       <template v-if="!isConfirmingReset">
-        <button type="button" class="reset-btn" :disabled="clearing" @click="handleResetClick">
+        <AppButton
+          variant="ghost"
+          size="xs"
+          class="reset-btn"
+          :disabled="clearing"
+          @click="handleResetClick"
+        >
           重置全部离线环境
-        </button>
+        </AppButton>
       </template>
       <template v-else>
         <div class="confirm-box">
           <span class="confirm-warning">清空所有离线资源并注销 Service Worker</span>
           <div class="confirm-actions">
-            <button
-              type="button"
+            <AppButton
+              variant="danger"
+              size="xs"
               class="confirm-btn danger"
-              :disabled="clearing"
+              :loading="clearing"
               @click="handleResetClick"
             >
               确认彻底重置
-            </button>
-            <button type="button" class="confirm-btn cancel" @click="cancelReset">取消</button>
+            </AppButton>
+            <AppButton variant="ghost" size="xs" class="confirm-btn cancel" @click="cancelReset">
+              取消
+            </AppButton>
           </div>
         </div>
       </template>

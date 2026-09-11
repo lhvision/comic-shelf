@@ -11,6 +11,7 @@
  */
 
 import { refAutoReset } from '@vueuse/core'
+import AppButton from '@/components/AppButton.vue'
 import AppIcon from '@/components/AppIcon.vue'
 import GuestDeviceList from './GuestDeviceList.vue'
 import { formatTimestamp, maskToken } from './guestUtils'
@@ -137,27 +138,33 @@ function handleRemovePass() {
 
     <!-- 核心高频动作区（主次分明，带就地微反馈） -->
     <div class="hero-actions">
-      <button
-        type="button"
+      <AppButton
+        variant="soft"
+        size="sm"
         class="hero-btn primary"
         :class="{ copied: copiedLink }"
         :title="`复制「${item.username}」免密直达专属链接`"
         @click="handleCopyLink"
       >
-        <AppIcon :name="copiedLink ? 'check' : 'external-link'" size="sm" />
+        <template #prefix>
+          <AppIcon :name="copiedLink ? 'check' : 'external-link'" size="sm" />
+        </template>
         <span>{{ copiedLink ? '已复制专属直达链接' : '复制专属直达链接' }}</span>
-      </button>
+      </AppButton>
 
-      <button
-        type="button"
+      <AppButton
+        variant="ghost"
+        size="sm"
         class="hero-btn secondary"
         :class="{ copied: copiedToken }"
         :title="`复制通行口令：${item.token}`"
         @click="handleCopyToken"
       >
-        <AppIcon :name="copiedToken ? 'check' : 'copy'" size="sm" />
+        <template #prefix>
+          <AppIcon :name="copiedToken ? 'check' : 'copy'" size="sm" />
+        </template>
         <span>{{ copiedToken ? '已复制口令' : `口令：${maskToken(item.token)}` }}</span>
-      </button>
+      </AppButton>
     </div>
 
     <!-- 物理设备与会话托盘 -->
@@ -237,79 +244,91 @@ function handleRemovePass() {
           </button>
         </div>
 
-        <button
-          type="button"
+        <AppButton
+          variant="ghost"
+          size="xs"
           class="sub-tool-btn"
           title="顺延续期 30 天"
           :disabled="operatingId !== null"
           @click="renewPass(item.id, 30)"
         >
           <span>+30天</span>
-        </button>
+        </AppButton>
 
         <!-- 重置密钥 -->
         <div class="confirm-wrapper">
-          <button
+          <AppButton
             v-if="!isConfirmingReset"
-            type="button"
+            variant="ghost"
+            size="xs"
             class="sub-tool-btn"
             title="换新密钥（旧口令即刻失效）"
             :disabled="operatingId !== null"
             @click="isConfirmingReset = true"
           >
             <span>重置</span>
-          </button>
+          </AppButton>
           <div v-else class="confirm-pop">
             <span class="confirm-text">换新密钥？</span>
-            <button
-              type="button"
+            <AppButton
+              variant="danger"
+              size="xs"
               class="confirm-act confirm-yes"
               :disabled="operatingId !== null"
               @click="handleResetToken"
             >
               确定
-            </button>
-            <button type="button" class="confirm-act confirm-no" @click="isConfirmingReset = false">
+            </AppButton>
+            <AppButton
+              variant="ghost"
+              size="xs"
+              class="confirm-act confirm-no"
+              @click="isConfirmingReset = false"
+            >
               取消
-            </button>
+            </AppButton>
           </div>
         </div>
 
         <!-- 清空 PIN 码 -->
         <div v-if="item.is_claimed" class="confirm-wrapper">
-          <button
+          <AppButton
             v-if="!isConfirmingResetPin"
-            type="button"
+            variant="ghost"
+            size="xs"
             class="sub-tool-btn"
             title="清空读者自设 PIN 码并恢复为待认领"
             :disabled="operatingId !== null"
             @click="isConfirmingResetPin = true"
           >
             <span>清空PIN</span>
-          </button>
+          </AppButton>
           <div v-else class="confirm-pop">
             <span class="confirm-text">清空PIN？</span>
-            <button
-              type="button"
+            <AppButton
+              variant="danger"
+              size="xs"
               class="confirm-act confirm-yes"
               :disabled="operatingId !== null"
               @click="handleResetPin"
             >
               确定
-            </button>
-            <button
-              type="button"
+            </AppButton>
+            <AppButton
+              variant="ghost"
+              size="xs"
               class="confirm-act confirm-no"
               @click="isConfirmingResetPin = false"
             >
               取消
-            </button>
+            </AppButton>
           </div>
         </div>
 
         <!-- 停用/启用 -->
-        <button
-          type="button"
+        <AppButton
+          variant="ghost"
+          size="xs"
           class="sub-tool-btn"
           :class="{ warning: item.is_active }"
           :title="item.is_active ? '暂时停用该访客通行权限' : '恢复该访客通行权限'"
@@ -317,37 +336,40 @@ function handleRemovePass() {
           @click="toggleActive(item.id, !item.is_active)"
         >
           <span>{{ item.is_active ? '停用' : '启用' }}</span>
-        </button>
+        </AppButton>
 
         <!-- 注销 -->
         <div class="confirm-wrapper">
-          <button
+          <AppButton
             v-if="!isConfirmingDelete"
-            type="button"
+            variant="danger"
+            size="xs"
             class="sub-tool-btn danger"
             title="从名册中彻底注销该访客"
             :disabled="operatingId !== null"
             @click="isConfirmingDelete = true"
           >
             <span>注销</span>
-          </button>
+          </AppButton>
           <div v-else class="confirm-pop">
             <span class="confirm-text">彻底注销？</span>
-            <button
-              type="button"
+            <AppButton
+              variant="danger"
+              size="xs"
               class="confirm-act confirm-yes danger"
               :disabled="operatingId !== null"
               @click="handleRemovePass"
             >
               删除
-            </button>
-            <button
-              type="button"
+            </AppButton>
+            <AppButton
+              variant="ghost"
+              size="xs"
               class="confirm-act confirm-no"
               @click="isConfirmingDelete = false"
             >
               取消
-            </button>
+            </AppButton>
           </div>
         </div>
       </div>

@@ -103,24 +103,30 @@ const libraryRoute = computed(() => `/comic/${props.item.source}/${props.item.so
       />
 
       <div class="card-action-bar">
-        <RouterLink
+        <AppButton
           v-if="item.in_library"
           :to="libraryRoute"
-          class="btn btn-success btn-sm btn-block in-library-btn"
+          variant="success"
+          size="sm"
+          block
+          class="in-library-btn"
         >
-          <span class="status-dot"></span>
+          <template #prefix>
+            <span class="status-dot"></span>
+          </template>
           已在书架 · 详情
-        </RouterLink>
+        </AppButton>
 
         <AppButton
           v-else
           variant="soft"
           size="sm"
           block
+          icon="plus"
           :loading="ingesting"
           @click="emit('ingest', item)"
         >
-          + 一键收录
+          一键收录
         </AppButton>
       </div>
     </div>

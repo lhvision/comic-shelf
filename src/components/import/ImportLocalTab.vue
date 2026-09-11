@@ -10,7 +10,7 @@
  */
 
 import { computed } from 'vue'
-import AppIcon from '@/components/AppIcon.vue'
+import AppButton from '@/components/AppButton.vue'
 
 /** 绑定的本地路径输入值（v-model:localPath） */
 const localPathModel = defineModel<string>('localPath', { default: '' })
@@ -58,10 +58,16 @@ const localBtnText = computed(() => (props.localImporting ? '扫描中…' : '�
 
     <div class="workshop-card">
       <span class="workshop-hint">需要上传多图或编排多章节？</span>
-      <button class="workshop-btn" type="button" @click="emit('workshop')">
-        <span>进入自建图集工坊</span>
-        <AppIcon name="arrow-right" size="xs" />
-      </button>
+      <AppButton
+        variant="ghost"
+        size="xs"
+        icon="arrow-right"
+        icon-position="right"
+        class="workshop-btn"
+        @click="emit('workshop')"
+      >
+        进入自建图集工坊
+      </AppButton>
     </div>
   </div>
 </template>
@@ -175,22 +181,11 @@ const localBtnText = computed(() => (props.localImporting ? '扫描中…' : '�
 }
 
 .workshop-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-1);
-  border: none;
-  background: transparent;
   color: var(--accent);
-  font-size: var(--text-xs);
   font-weight: 600;
-  cursor: pointer;
-  padding: 0;
-  white-space: nowrap;
-  transition: color var(--duration-1) var(--ease-out);
 }
 
 .workshop-btn:hover {
   color: var(--accent-strong);
-  text-decoration: underline;
 }
 </style>

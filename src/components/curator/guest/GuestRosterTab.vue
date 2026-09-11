@@ -112,16 +112,17 @@ function resetFilters() {
             aria-label="搜索访客名称"
           />
         </div>
-        <button
-          type="button"
+        <AppButton
+          variant="ghost"
+          size="sm"
+          icon="refresh"
           class="refresh-btn"
           title="重新获取最新名册数据"
-          :disabled="loading"
+          :loading="loading"
           @click="emit('refresh')"
         >
-          <AppIcon name="refresh" size="xs" :class="{ 'spin-icon': loading }" />
-          <span>刷新</span>
-        </button>
+          刷新
+        </AppButton>
       </div>
     </div>
 
@@ -157,15 +158,14 @@ function resetFilters() {
     <div v-else-if="fetchError && passes.length === 0" class="state-panel error">
       <AppIcon name="info" size="lg" />
       <p class="state-msg">{{ fetchError }}</p>
-      <button type="button" class="retry-btn" @click="emit('refresh')">重新翻阅名册</button>
+      <AppButton variant="soft" size="md" @click="emit('refresh')">重新翻阅名册</AppButton>
     </div>
 
     <!-- 暂无名册（无数据） -->
     <div v-else-if="passes.length === 0" class="state-panel empty">
       <div class="empty-seal">暂无访客</div>
       <p class="empty-hint">尚未印发任何通行证，点击下方按钮即可派发。</p>
-      <AppButton variant="primary" size="md" @click="emit('issueFirst')">
-        <AppIcon name="plus" size="sm" />
+      <AppButton variant="primary" size="md" icon="plus" @click="emit('issueFirst')">
         <span>登记第一张通行证</span>
       </AppButton>
     </div>

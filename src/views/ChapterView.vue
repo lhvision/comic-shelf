@@ -16,7 +16,6 @@ import PageIndexGrid from '@/components/detail/PageIndexGrid.vue'
 import CacheProgress from '@/components/CacheProgress.vue'
 import Modal from '@/components/Modal.vue'
 import AppButton from '@/components/AppButton.vue'
-import AppIcon from '@/components/AppIcon.vue'
 import AppDropdown, { type DropdownOption } from '@/components/AppDropdown.vue'
 import { useLibraryStore, createPlaceholderDetail } from '@/stores/library'
 import type { ComicDetail } from '@/types'
@@ -348,15 +347,16 @@ async function confirmRemoveChapter() {
       <section class="chapter-head surface">
         <div class="chapter-head-top">
           <div class="chapter-head-title-row">
-            <button
-              class="chapter-back icon-btn"
-              type="button"
+            <AppButton
+              class="chapter-back"
+              shape="circle"
+              variant="ghost"
+              size="md"
+              icon="arrow-left"
               aria-label="返回本子详情"
               title="返回本子详情"
               @click="goToAlbum"
-            >
-              <AppIcon name="arrow-left" size="sm" />
-            </button>
+            />
             <p class="eyebrow">第 {{ activeChapter.index }} 話</p>
           </div>
 
@@ -367,18 +367,20 @@ async function confirmRemoveChapter() {
               :running="isCurrentChapterCaching"
             />
 
-            <button
-              class="btn btn-primary btn-xs"
+            <AppButton
+              variant="primary"
+              size="xs"
               type="button"
               :title="readChapterLabel"
               @click="startReadingChapter"
             >
               {{ readChapterLabel }}
-            </button>
+            </AppButton>
 
-            <button
+            <AppButton
               v-if="activeChapterCached < activeChapterTotal"
-              class="btn btn-secondary btn-xs"
+              variant="secondary"
+              size="xs"
               type="button"
               :disabled="caching"
               :title="
@@ -391,28 +393,32 @@ async function confirmRemoveChapter() {
               @click="cacheCurrentChapter"
             >
               {{ isCurrentChapterCaching ? '缓存中…' : caching ? '排队中…' : '缓存本话' }}
-            </button>
+            </AppButton>
 
             <div v-if="canWrite && isOnline && !store.isOffline" class="chapter-mgmt-group">
-              <button
-                class="btn btn-ghost btn-xs"
+              <AppButton
+                variant="ghost"
+                size="xs"
                 type="button"
                 title="修改本话名称"
                 @click="openEditModal"
               >
                 编辑章节
-              </button>
+              </AppButton>
 
               <AppDropdown :options="chapterMoreOptions" align="end" @select="onChapterMoreSelect">
                 <template #trigger="{ open }">
-                  <button
-                    class="btn btn-ghost btn-xs more-trigger"
+                  <AppButton
+                    variant="ghost"
+                    size="xs"
+                    shape="square"
+                    class="more-trigger"
                     :class="{ 'is-open': open }"
                     type="button"
+                    icon="more"
+                    aria-label="更多章节操作"
                     title="更多章节操作"
-                  >
-                    <AppIcon name="more" size="xs" />
-                  </button>
+                  />
                 </template>
               </AppDropdown>
             </div>
@@ -428,10 +434,16 @@ async function confirmRemoveChapter() {
         </p>
 
         <div class="chapter-pager">
-          <button class="btn btn-ghost" type="button" :disabled="!prevChapter" @click="goPrev">
-            <AppIcon name="arrow-left" size="xs" />
+          <AppButton
+            variant="ghost"
+            size="sm"
+            type="button"
+            icon="arrow-left"
+            :disabled="!prevChapter"
+            @click="goPrev"
+          >
             上一话
-          </button>
+          </AppButton>
 
           <ChapterSwitcher
             class="pager-tabs"
@@ -441,10 +453,17 @@ async function confirmRemoveChapter() {
             @change="goToChapter"
           />
 
-          <button class="btn btn-ghost" type="button" :disabled="!nextChapter" @click="goNext">
+          <AppButton
+            variant="ghost"
+            size="sm"
+            type="button"
+            icon="arrow-right"
+            icon-position="right"
+            :disabled="!nextChapter"
+            @click="goNext"
+          >
             下一话
-            <AppIcon name="arrow-right" size="xs" />
-          </button>
+          </AppButton>
         </div>
       </section>
 

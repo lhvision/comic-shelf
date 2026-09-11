@@ -13,6 +13,7 @@ import { useIntersectionObserver } from '@vueuse/core'
 import type { LibrarySummary } from '@/types'
 import ComicCard from '@/components/ComicCard.vue'
 import HtmlCanvasCard from '@/components/HtmlCanvasCard.vue'
+import AppButton from '@/components/AppButton.vue'
 import AppIcon from '@/components/AppIcon.vue'
 import { liveCacheKey, type LiveCacheState } from '@/stores/library'
 import { isCompletedComic } from '@/composables/useLibraryFilter'
@@ -471,35 +472,38 @@ watch(
               }}
             </p>
             <div class="fold-card-actions">
-              <button
-                class="btn btn-primary btn-small"
+              <AppButton
+                variant="primary"
+                size="sm"
+                icon="chevron-down"
                 type="button"
                 @click.prevent="handleContinueActive"
               >
-                <AppIcon name="chevron-down" size="xs" />
                 {{
                   isBrakedActive
                     ? '继续向下探索 24 本'
                     : `再展开 ${Math.min(batchStep, remainingActiveCount || batchStep)} 本`
                 }}
-              </button>
-              <button
-                class="btn btn-ghost btn-small"
+              </AppButton>
+              <AppButton
+                variant="ghost"
+                size="sm"
+                icon="book-open"
                 type="button"
                 @click.prevent="handleLoadAllActive"
               >
-                <AppIcon name="book-open" size="xs" />
                 展开全部未读
-              </button>
-              <button
+              </AppButton>
+              <AppButton
                 v-if="canCollapseActive"
-                class="btn btn-ghost btn-small"
+                variant="ghost"
+                size="sm"
+                icon="chevron-up"
                 type="button"
                 @click.prevent="onCollapseActive"
               >
-                <AppIcon name="chevron-up" size="xs" />
                 收整未读
-              </button>
+              </AppButton>
             </div>
           </div>
         </div>
@@ -523,10 +527,15 @@ watch(
           </span>
         </div>
         <div class="sentinel-actions">
-          <button class="btn btn-ghost btn-small" type="button" @click.prevent="onCollapseActive">
-            <AppIcon name="chevron-up" size="xs" />
+          <AppButton
+            variant="ghost"
+            size="sm"
+            icon="chevron-up"
+            type="button"
+            @click.prevent="onCollapseActive"
+          >
             收整未读
-          </button>
+          </AppButton>
         </div>
       </div>
 
@@ -591,31 +600,34 @@ watch(
                     {{ remainingArchiveCount }} 本已读已折叠。
                   </p>
                   <div class="fold-card-actions">
-                    <button
-                      class="btn btn-primary btn-small"
+                    <AppButton
+                      variant="primary"
+                      size="sm"
+                      icon="chevron-down"
                       type="button"
                       @click.prevent="loadMoreArchive"
                     >
-                      <AppIcon name="chevron-down" size="xs" />
                       再展开 {{ Math.min(batchStep, remainingArchiveCount) }} 本
-                    </button>
-                    <button
-                      class="btn btn-ghost btn-small"
+                    </AppButton>
+                    <AppButton
+                      variant="ghost"
+                      size="sm"
+                      icon="book-open"
                       type="button"
                       @click.prevent="loadAllArchive"
                     >
-                      <AppIcon name="book-open" size="xs" />
                       展开全部已读
-                    </button>
-                    <button
+                    </AppButton>
+                    <AppButton
                       v-if="canCollapseArchive"
-                      class="btn btn-ghost btn-small"
+                      variant="ghost"
+                      size="sm"
+                      icon="chevron-up"
                       type="button"
                       @click.prevent="collapseArchive"
                     >
-                      <AppIcon name="chevron-up" size="xs" />
                       收整已读
-                    </button>
+                    </AppButton>
                   </div>
                 </div>
               </div>
@@ -634,14 +646,15 @@ watch(
                 </span>
               </div>
               <div class="sentinel-actions">
-                <button
-                  class="btn btn-ghost btn-small"
+                <AppButton
+                  variant="ghost"
+                  size="sm"
+                  icon="chevron-up"
                   type="button"
                   @click.prevent="collapseArchive"
                 >
-                  <AppIcon name="chevron-up" size="xs" />
                   收整已读
-                </button>
+                </AppButton>
               </div>
             </div>
           </div>
@@ -722,35 +735,38 @@ watch(
               }}
             </p>
             <div class="fold-card-actions">
-              <button
-                class="btn btn-primary btn-small"
+              <AppButton
+                variant="primary"
+                size="sm"
+                icon="chevron-down"
                 type="button"
                 @click.prevent="handleContinueUnified"
               >
-                <AppIcon name="chevron-down" size="xs" />
                 {{
                   isBrakedUnified
                     ? '继续向下探索 24 本'
                     : `再展开 ${Math.min(batchStep, remainingCount || batchStep)} 本`
                 }}
-              </button>
-              <button
-                class="btn btn-ghost btn-small"
+              </AppButton>
+              <AppButton
+                variant="ghost"
+                size="sm"
+                icon="book-open"
                 type="button"
                 @click.prevent="handleLoadAllUnified"
               >
-                <AppIcon name="book-open" size="xs" />
                 展开全部
-              </button>
-              <button
+              </AppButton>
+              <AppButton
                 v-if="canCollapse"
-                class="btn btn-ghost btn-small"
+                variant="ghost"
+                size="sm"
+                icon="chevron-up"
                 type="button"
                 @click.prevent="onCollapseUnified"
               >
-                <AppIcon name="chevron-up" size="xs" />
                 收整书架
-              </button>
+              </AppButton>
             </div>
           </div>
         </div>
@@ -773,10 +789,15 @@ watch(
           </span>
         </div>
         <div class="sentinel-actions">
-          <button class="btn btn-ghost btn-small" type="button" @click.prevent="onCollapseUnified">
-            <AppIcon name="chevron-up" size="xs" />
+          <AppButton
+            variant="ghost"
+            size="sm"
+            icon="chevron-up"
+            type="button"
+            @click.prevent="onCollapseUnified"
+          >
             收整书架
-          </button>
+          </AppButton>
         </div>
       </div>
     </template>

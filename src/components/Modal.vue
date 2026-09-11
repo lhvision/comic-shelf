@@ -2,7 +2,7 @@
 import { computed, nextTick, onUnmounted, ref, useId, watch } from 'vue'
 import { useEventListener, useScrollLock } from '@vueuse/core'
 import AmbientWatermark from '@/components/AmbientWatermark.vue'
-import AppIcon from '@/components/AppIcon.vue'
+import AppButton from '@/components/AppButton.vue'
 
 /**
  * 通用对话框（Impeccable & HTML5 原生 <dialog> 顶层架构版）。
@@ -300,17 +300,19 @@ useEventListener(window, 'keydown', (event: KeyboardEvent) => {
             <h2 :id="titleId">
               <slot name="title">{{ title }}</slot>
             </h2>
-            <button
+            <AppButton
               v-if="shouldShowCloseButton"
-              class="modal-close icon-btn"
-              type="button"
+              class="modal-close"
+              shape="circle"
+              variant="ghost"
+              size="md"
+              icon="close"
               aria-label="关闭"
+              title="关闭"
               :commandfor="dialogId"
               command="close"
               @click="requestClose"
-            >
-              <AppIcon name="close" size="sm" />
-            </button>
+            />
           </header>
 
           <div class="modal-body">

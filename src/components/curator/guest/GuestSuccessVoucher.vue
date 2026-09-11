@@ -11,7 +11,6 @@
 
 import { refAutoReset } from '@vueuse/core'
 import AppButton from '@/components/AppButton.vue'
-import AppIcon from '@/components/AppIcon.vue'
 import { formatTimestamp, maskToken } from './guestUtils'
 import { useGuestPasses } from '@/composables/useGuestPasses'
 import type { GuestPass } from '@/types'
@@ -61,30 +60,39 @@ async function handleCopyToken() {
     </div>
 
     <div class="voucher-actions">
-      <button
-        type="button"
+      <AppButton
+        variant="soft"
+        size="md"
+        block
         class="hero-btn primary voucher-hero-btn"
         :class="{ copied: copiedLink }"
+        :icon="copiedLink ? 'check' : 'external-link'"
         @click="handleCopyLink"
       >
-        <AppIcon :name="copiedLink ? 'check' : 'external-link'" size="md" />
         <span>{{ copiedLink ? '已复制免密直达链接' : '复制专属免密直达链接' }}</span>
-      </button>
+      </AppButton>
 
-      <button
-        type="button"
+      <AppButton
+        variant="ghost"
+        size="md"
+        block
         class="hero-btn secondary voucher-hero-btn"
         :class="{ copied: copiedToken }"
+        :icon="copiedToken ? 'check' : 'copy'"
         @click="handleCopyToken"
       >
-        <AppIcon :name="copiedToken ? 'check' : 'copy'" size="sm" />
         <span>{{ copiedToken ? '已复制口令' : `口令：${maskToken(pass.token)}` }}</span>
-      </button>
+      </AppButton>
     </div>
 
     <div class="voucher-foot">
-      <AppButton variant="secondary" size="md" class="voucher-nav-btn" @click="emit('issueNext')">
-        <AppIcon name="plus" size="sm" />
+      <AppButton
+        variant="secondary"
+        size="md"
+        icon="plus"
+        class="voucher-nav-btn"
+        @click="emit('issueNext')"
+      >
         <span>继续登记下一张</span>
       </AppButton>
       <AppButton variant="ghost" size="md" class="voucher-nav-btn" @click="emit('viewRoster')">

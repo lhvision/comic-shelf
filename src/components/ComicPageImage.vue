@@ -3,6 +3,7 @@ import { computed, onMounted, ref, watch } from 'vue'
 import { useTimeoutFn } from '@vueuse/core'
 import { useOfflineSync } from '@/composables/useOfflineSync'
 import ReaderLoadingState from '@/components/reader/ReaderLoadingState.vue'
+import AppButton from '@/components/AppButton.vue'
 import AppIcon from '@/components/AppIcon.vue'
 
 const props = withDefaults(
@@ -161,8 +162,9 @@ watch(isOnline, (online, wasOnline) => {
         <span class="offline-sub">联网后将自动载入</span>
       </template>
       <template v-else>
-        <span>图片加载失败</span>
-        <button type="button" @click="retry">重试</button>
+        <AppButton variant="ghost" theme="reader" size="xs" type="button" @click="retry">
+          重试
+        </AppButton>
       </template>
     </div>
   </div>

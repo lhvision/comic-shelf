@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import ChapterCard from '@/components/detail/ChapterCard.vue'
+import AppButton from '@/components/AppButton.vue'
 import AppIcon from '@/components/AppIcon.vue'
 import {
   getExpandedChapterCount,
@@ -120,28 +121,36 @@ watch(
       </div>
 
       <div class="chapter-more-actions">
-        <button
+        <AppButton
           v-if="remainingCount > 0"
-          class="btn btn-primary btn-sm"
+          variant="primary"
+          size="sm"
+          icon="chevron-down"
           type="button"
           @click="loadMore"
         >
-          <AppIcon name="chevron-down" size="xs" />
           再展开 {{ Math.min(CHAPTER_CHUNK_STEP, remainingCount) }} 话
-        </button>
-        <button
+        </AppButton>
+        <AppButton
           v-if="remainingCount > 0"
-          class="btn btn-ghost btn-sm"
+          variant="ghost"
+          size="sm"
+          icon="book-open"
           type="button"
           @click="loadAll"
         >
-          <AppIcon name="book-open" size="xs" />
           展开全部
-        </button>
-        <button v-if="canCollapse" class="btn btn-ghost btn-sm" type="button" @click="collapse">
-          <AppIcon name="chevron-up" size="xs" />
+        </AppButton>
+        <AppButton
+          v-if="canCollapse"
+          variant="ghost"
+          size="sm"
+          icon="chevron-up"
+          type="button"
+          @click="collapse"
+        >
           收起目录
-        </button>
+        </AppButton>
       </div>
     </div>
   </section>

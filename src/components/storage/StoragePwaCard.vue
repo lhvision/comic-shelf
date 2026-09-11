@@ -4,7 +4,7 @@
  * @description PWA Prompt 模式新版本卷本装订就绪提示卡片。
  */
 
-import AppIcon from '@/components/AppIcon.vue'
+import AppButton from '@/components/AppButton.vue'
 
 defineProps<{
   /** 是否检测到新版本 Service Worker 等待激活 */
@@ -28,15 +28,16 @@ const emit = defineEmits<{
         <small class="update-card-sub">应用最新功能与静态补丁</small>
       </div>
     </div>
-    <button type="button" class="update-card-btn" :disabled="isUpdating" @click="emit('update')">
-      <AppIcon
-        name="refresh"
-        size="xs"
-        :stroke-width="1.8"
-        :class="{ 'is-spinning': isUpdating }"
-      />
-      <span>{{ isUpdating ? '装订中…' : '立即装订' }}</span>
-    </button>
+    <AppButton
+      variant="primary"
+      size="xs"
+      icon="refresh"
+      class="update-card-btn"
+      :loading="isUpdating"
+      @click="emit('update')"
+    >
+      {{ isUpdating ? '装订中…' : '立即装订' }}
+    </AppButton>
   </section>
 </template>
 

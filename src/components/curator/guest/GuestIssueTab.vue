@@ -13,7 +13,6 @@
 
 import { nextTick, ref, useTemplateRef } from 'vue'
 import AppButton from '@/components/AppButton.vue'
-import AppIcon from '@/components/AppIcon.vue'
 import GuestSuccessVoucher from './GuestSuccessVoucher.vue'
 import { useGuestPasses } from '@/composables/useGuestPasses'
 import type { GuestPass } from '@/types'
@@ -176,11 +175,11 @@ defineExpose({
         type="submit"
         variant="primary"
         size="md"
+        icon="plus"
         class="issue-submit-btn"
         :loading="creating"
         :disabled="!newUsername.trim()"
       >
-        <AppIcon name="plus" size="sm" />
         <span>登记并印发通行证</span>
       </AppButton>
     </form>

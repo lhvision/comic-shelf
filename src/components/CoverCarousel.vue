@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref } from 'vue'
-import AppIcon from '@/components/AppIcon.vue'
+import AppButton from '@/components/AppButton.vue'
 import { coverSrcset } from '@/api/client'
 
 defineProps<{
@@ -52,24 +52,26 @@ function onSlideClick(index: number) {
 <template>
   <div class="cover-carousel">
     <div v-if="covers.length > 1" class="carousel-actions">
-      <button
-        class="carousel-arrow icon-btn"
-        type="button"
+      <AppButton
+        class="carousel-arrow"
+        shape="circle"
+        variant="ghost"
+        size="md"
+        icon="arrow-left"
         aria-label="上一张封面"
         title="上一张封面"
         @click="scrollByStep(-1)"
-      >
-        <AppIcon name="arrow-left" size="sm" />
-      </button>
-      <button
-        class="carousel-arrow icon-btn"
-        type="button"
+      />
+      <AppButton
+        class="carousel-arrow"
+        shape="circle"
+        variant="ghost"
+        size="md"
+        icon="arrow-right"
         aria-label="下一张封面"
         title="下一张封面"
         @click="scrollByStep(1)"
-      >
-        <AppIcon name="arrow-right" size="sm" />
-      </button>
+      />
     </div>
 
     <div
