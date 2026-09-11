@@ -377,6 +377,7 @@ function clearFilter() {
   overflow-y: auto;
   overscroll-behavior: contain;
   padding-right: var(--space-1);
+  padding-block: 2px;
 }
 
 @media (prefers-reduced-motion: reduce) {
