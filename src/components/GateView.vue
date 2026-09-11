@@ -5,7 +5,7 @@
  *
  * 核心架构：
  * 1. 作为 App.vue 的根级 v-else 视图，未通过验证前整个 App 骨架（顶栏、书架、阅读器）物理级 0 DOM 挂载；
- * 2. 编排门禁三态表单（GateSecretForm ➔ GateClaimForm ➔ GatePinForm）。
+ * 2. 编排门禁三态表单（GateSecretForm -> GateClaimForm -> GatePinForm）。
  */
 
 import { useAuth } from '@/composables/useAuth'

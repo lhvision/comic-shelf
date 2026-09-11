@@ -3,6 +3,7 @@ import { computed, ref } from 'vue'
 import { useLibraryStore } from '@/stores/library'
 import AppButton from '@/components/AppButton.vue'
 import AppChip from '@/components/AppChip.vue'
+import AppIcon from '@/components/AppIcon.vue'
 
 const props = withDefaults(
   defineProps<{
@@ -98,7 +99,10 @@ function onTagKeyDown(e: KeyboardEvent) {
     </div>
 
     <div v-if="popularTags.length > 0" class="popular-tags-bar">
-      <span class="popular-title">💡 热门快选：</span>
+      <span class="popular-title">
+        <AppIcon name="search" size="xs" />
+        <span>热门快选：</span>
+      </span>
       <div class="popular-chips">
         <AppChip v-for="popTag in popularTags" :key="popTag" @click="addTag(popTag)">
           + {{ popTag }}
@@ -145,6 +149,9 @@ function onTagKeyDown(e: KeyboardEvent) {
 }
 
 .popular-title {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
   font-size: var(--text-xs);
   color: var(--ink-2);
   font-weight: 500;

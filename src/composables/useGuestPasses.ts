@@ -146,7 +146,7 @@ export function useGuestPasses() {
     try {
       await copy(token)
       if (deviceCount > 0) {
-        toast(`⚠️ 口令已复制。该通行证已有 ${deviceCount} 台设备在使用中，谨防设备互挤`, 'info')
+        toast(`口令已复制。该通行证已有 ${deviceCount} 台设备在使用中，谨防设备互挤`, 'info')
       } else {
         toast('通行口令已复制，可安心发放给新朋友', 'success')
       }
@@ -165,7 +165,7 @@ export function useGuestPasses() {
       const shareUrl = formatDirectLink(baseUrl, token)
       await copy(shareUrl)
       if (deviceCount > 0) {
-        toast(`⚠️ 直达链接已复制。该通行证已有 ${deviceCount} 台设备在使用中，谨防设备互挤`, 'info')
+        toast(`直达链接已复制。该通行证已有 ${deviceCount} 台设备在使用中，谨防设备互挤`, 'info')
       } else {
         toast('专属直达链接已复制，朋友打开即可免密入馆', 'success')
       }

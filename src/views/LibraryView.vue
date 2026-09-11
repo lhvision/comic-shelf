@@ -34,14 +34,8 @@ const fileInput = ref<HTMLInputElement | null>(null)
 const providers = ref<ProviderInfo[]>(DEFAULT_PROVIDERS)
 
 const shelf = useShelfState()
-const {
-  activeUnfoldCount,
-  archiveOpen,
-  archiveUnfoldCount,
-  unifiedUnfoldCount,
-  tagTrayExpanded,
-  offlineOnly,
-} = shelf
+const { activeUnfoldCount, archiveOpen, archiveUnfoldCount, unifiedUnfoldCount, tagTrayExpanded } =
+  shelf
 
 const activeSource = computed(() =>
   typeof route.query.source === 'string' ? route.query.source : '',
@@ -85,7 +79,6 @@ const {
   totalBooks,
   totalPages,
   totalCachedPages,
-  offlineCount,
   tagCounts,
   imageSearchMatchMap,
   filtered,
@@ -98,7 +91,6 @@ const {
     search: shelf.search,
     activeTag: shelf.activeTag,
     favoritesOnly: shelf.favoritesOnly,
-    offlineOnly: shelf.offlineOnly,
     readingStatus: shelf.readingStatus,
     sortBy: shelf.sortBy,
     facets: computed(() => store.facets),
@@ -251,20 +243,20 @@ watch([() => store.error, imageSearch.error], ([err1, err2]) => {
       <TagFilterBar
         v-model:tray-expanded="tagTrayExpanded"
         :favorites-only="favoritesOnly"
-        :offline-only="offlineOnly"
-        :offline-count="offlineCount"
         :reading-status="readingStatus"
         :active-tag="activeTag"
         :tag-counts="tagCounts"
         :filtered-count="filtered.length"
         @toggle-favorites="favoritesOnly = !favoritesOnly"
-        @toggle-offline="offlineOnly = !offlineOnly"
         @update:reading-status="readingStatus = $event"
         @select-tag="activeTag = $event"
       />
 
       <p v-if="store.isOffline || !isOnline" class="offline-active-note" role="status">
-        <span class="offline-active-note__badge">〔 📴 纸室离线模式 〕</span>
+        <span class="offline-active-note__badge">
+          <AppIcon name="archive" size="xs" />
+          <span>〔 纸室离线模式 〕</span>
+        </span>
         <span>当前展示本地快照与离线藏书</span>
       </p>
 
@@ -459,6 +451,9 @@ watch([() => store.error, imageSearch.error], ([err1, err2]) => {
 }
 
 .offline-active-note__badge {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
   color: var(--accent);
   font-weight: 600;
 }

@@ -84,6 +84,7 @@ describe('StoragePopover component', () => {
       },
     })
     expect(wrapper.find('.pwa-ios-guide-pill').exists()).toBe(true)
-    expect(wrapper.find('.pwa-ios-guide-pill').text()).toContain('Safari 分享 ➔ 加到主屏幕')
+    expect(wrapper.find('.pwa-ios-guide-pill').text()).toContain('Safari 分享')
+    expect(wrapper.find('.pwa-ios-guide-pill').text()).toContain('加到主屏幕')
   })
 })

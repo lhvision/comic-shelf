@@ -111,15 +111,27 @@ function handleRemovePass() {
                 : item.activation_status,
         ]"
       >
-        <span v-if="item.is_cooling_locked">〔 ⚠️ 争抢锁定 〕</span>
-        <span v-else-if="item.is_rate_limited">〔 ⚠️ 速率受限 〕</span>
+        <span v-if="item.is_cooling_locked" class="seal-content">
+          <AppIcon name="lock" size="xs" />
+          <span>〔 争抢锁定 〕</span>
+        </span>
+        <span v-else-if="item.is_rate_limited" class="seal-content">
+          <AppIcon name="info" size="xs" />
+          <span>〔 速率受限 〕</span>
+        </span>
         <span v-else-if="item.activation_status === 'disabled'">〔 已停用 〕</span>
         <span v-else-if="item.activation_status === 'expired'">〔 已过期 〕</span>
-        <span v-else-if="!item.is_claimed">〔 🌿 待认领 (未设 PIN) 〕</span>
+        <span v-else-if="!item.is_claimed" class="seal-content">
+          <AppIcon name="lock" size="xs" />
+          <span>〔 待认领 (未设 PIN) 〕</span>
+        </span>
         <span v-else-if="item.activation_status === 'full'">
           〔 满额 · {{ item.device_count }}/{{ item.max_devices }}台 〕
         </span>
-        <span v-else>〔 🍃 活跃 · {{ item.device_count }}/{{ item.max_devices }}台 〕</span>
+        <span v-else class="seal-content">
+          <AppIcon name="users" size="xs" />
+          <span>〔 活跃 · {{ item.device_count }}/{{ item.max_devices }}台 〕</span>
+        </span>
       </div>
     </div>
 
@@ -400,12 +412,20 @@ function handleRemovePass() {
 
 /* 典藏印章（四态流转） */
 .status-seal {
+  display: inline-flex;
+  align-items: center;
   font-family: var(--font-mono);
   font-size: var(--text-caption);
   font-weight: 600;
   padding: 2px 8px;
   border-radius: var(--radius-1);
   border: 1px solid transparent;
+}
+
+.seal-content {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
 }
 
 .status-seal.pending {

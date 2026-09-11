@@ -34,8 +34,6 @@ export const useShelfState = createGlobalState(() => {
   const activeTag = ref('')
   /** 是否只看已加入喜欢的藏书 */
   const favoritesOnly = ref(false)
-  /** 是否只看本地已就绪离线画页的藏书 */
-  const offlineOnly = ref(false)
   /** 阅读状态单选维度（all | reading | completed） */
   const readingStatus = ref<ReadingStatus>('all')
   /** 当前选中的排序规则 */
@@ -66,7 +64,6 @@ export const useShelfState = createGlobalState(() => {
     search.value = ''
     activeTag.value = ''
     favoritesOnly.value = false
-    offlineOnly.value = false
     readingStatus.value = 'all'
     sortBy.value = 'recent'
     tagTrayExpanded.value = false
@@ -88,7 +85,6 @@ export const useShelfState = createGlobalState(() => {
     search,
     activeTag,
     favoritesOnly,
-    offlineOnly,
     readingStatus,
     sortBy,
     tagTrayExpanded,

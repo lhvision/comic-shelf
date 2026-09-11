@@ -15,6 +15,7 @@ import {
 } from '@/composables/useReaderSettings'
 import Modal from '@/components/Modal.vue'
 import AppButton from '@/components/AppButton.vue'
+import AppIcon from '@/components/AppIcon.vue'
 
 const props = withDefaults(
   defineProps<{
@@ -212,14 +213,18 @@ function onCustomBlur() {
             :aria-pressed="settings.direction === 'ltr'"
             @click="settings.direction = 'ltr'"
           >
-            左 → 右
+            <span>左</span>
+            <AppIcon name="arrow-right" size="xs" />
+            <span>右</span>
           </button>
           <button
             type="button"
             :aria-pressed="settings.direction === 'rtl'"
             @click="settings.direction = 'rtl'"
           >
-            右 → 左（日漫）
+            <span>右</span>
+            <AppIcon name="arrow-left" size="xs" />
+            <span>左（日漫）</span>
           </button>
         </div>
       </div>
@@ -439,6 +444,10 @@ function onCustomBlur() {
 }
 
 .segmented button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-1);
   min-height: var(--control-md);
   padding: var(--space-1) var(--space-3);
   border: 1px solid var(--reader-line);

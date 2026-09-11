@@ -36,7 +36,10 @@ function handleBackToSecret() {
 <template>
   <form class="gate-form" @submit.prevent="handlePinSubmit">
     <div class="claim-info-card active">
-      <div class="claim-badge active">🍃 读者借书证</div>
+      <div class="claim-badge active">
+        <AppIcon name="book-open" size="xs" />
+        <span>读者借书证</span>
+      </div>
       <div class="claim-meta">
         读者：<strong>{{ username || '已认领访客' }}</strong>
       </div>
@@ -77,12 +80,16 @@ function handleBackToSecret() {
     </p>
 
     <p class="pin-forgot-hint">
-      <span>💡 提示：PIN 码为首次认领时自设；如遗忘可联系馆长在访客簿「清空 PIN」重新设置。</span>
+      <AppIcon name="info" size="xs" class="hint-icon" />
+      <span>提示：PIN 码为首次认领时自设；如遗忘可联系馆长在访客簿「清空 PIN」重新设置。</span>
     </p>
 
     <div class="gate-actions between">
       <AppButton type="button" variant="ghost" size="md" @click="handleBackToSecret">
-        ← 更换口令
+        <template #prefix>
+          <AppIcon name="arrow-left" size="xs" />
+        </template>
+        <span>更换口令</span>
       </AppButton>
 
       <AppButton
@@ -119,6 +126,9 @@ function handleBackToSecret() {
 }
 
 .claim-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
   font-family: var(--font-mono);
   font-size: var(--text-caption);
   color: var(--ink-2);
@@ -229,6 +239,9 @@ function handleBackToSecret() {
 }
 
 .pin-forgot-hint {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
   font-size: var(--text-xs);
   color: var(--ink-2);
   margin: 0;
@@ -237,6 +250,11 @@ function handleBackToSecret() {
   background: var(--paper-0);
   border-radius: var(--radius-1);
   border-left: 2px solid var(--line-strong);
+}
+
+.pin-forgot-hint .hint-icon {
+  flex-shrink: 0;
+  margin-top: 2px;
 }
 
 .gate-actions {

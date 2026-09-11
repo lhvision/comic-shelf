@@ -10,6 +10,7 @@
  */
 
 import { computed } from 'vue'
+import AppIcon from '@/components/AppIcon.vue'
 
 /** 绑定的本地路径输入值（v-model:localPath） */
 const localPathModel = defineModel<string>('localPath', { default: '' })
@@ -58,7 +59,8 @@ const localBtnText = computed(() => (props.localImporting ? '扫描中…' : '�
     <div class="workshop-card">
       <span class="workshop-hint">需要上传多图或编排多章节？</span>
       <button class="workshop-btn" type="button" @click="emit('workshop')">
-        进入自建图集工坊 →
+        <span>进入自建图集工坊</span>
+        <AppIcon name="arrow-right" size="xs" />
       </button>
     </div>
   </div>
@@ -173,6 +175,9 @@ const localBtnText = computed(() => (props.localImporting ? '扫描中…' : '�
 }
 
 .workshop-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
   border: none;
   background: transparent;
   color: var(--accent);

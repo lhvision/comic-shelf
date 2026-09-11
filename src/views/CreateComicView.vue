@@ -162,7 +162,10 @@ const {
             />
           </div>
           <div class="path-guide">
-            <h3>📖 目录识别规则：</h3>
+            <h3>
+              <AppIcon name="book-open" size="xs" />
+              <span>目录识别规则：</span>
+            </h3>
             <ul>
               <li>
                 <strong>单话图集</strong>：目录下直接平铺图片文件（如
@@ -507,6 +510,9 @@ const {
 }
 
 .path-guide h3 {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
   font-size: var(--text-xs);
   margin-bottom: var(--space-1);
 }

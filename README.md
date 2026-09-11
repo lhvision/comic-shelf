@@ -83,7 +83,7 @@
   - 基于 HTML Popover API 与 CSS Anchor Positioning 规范构建现代浮层，包含 `Modal`、`AppPopover`、`AppDropdown` 与带悬停安全桥的 `AppTooltip`。
 - **PWA 独立安装、纸室离线模式与端侧自愈流水线（ADR 0005）**：
   - **标准 PWA 规范支持**：完整支持桌面/移动端独立窗口安装（Standalone）、离线秒开与后台静默更新，符合 W3C Web App Manifest 与 Service Worker 规范；
-  - **端侧元数据持久化与 0ms 离线水合（IndexedDB SWR）**：建立 `comic-shelf-meta` 本地轻量数据库，断网冷启动秒级展示上次书架快照与离线藏书；多维检索与标签筛选在离线状态下 100% 可用，支持一键切换「只看离线」；
+  - **端侧元数据持久化与 0ms 离线水合（IndexedDB SWR）**：建立 `comic-shelf-meta` 本地轻量数据库，断网冷启动秒级展示上次书架快照与离线藏书；多维检索与标签筛选在离线状态下 100% 可用，断网时自动无感触发静默离线接管；
   - **全链路离线漫游韧性**：离线进入详情页、章节页或阅读器自动降级读取 IndexedDB 详情或书架概要占位，**绝对不强退首页**；未离线画页展示水墨纸印缺页骨架；
   - **端侧离线记账与联网对齐队列（Offline Reconciliation Pipeline）**：断网翻页阅读进度与喜欢变动自动打上用户身份签名写入本地事务队列；网络自愈时按用户隔离自动批量回写后端 SQLite 并触发 SWR 静默刷新；
   - **优雅装订提醒（Prompt 模式）**：前端采用非侵入式悬浮装订横幅（`UpdateBanner`），阅读器沉浸模式下自动隐退避让，新版本随时在顶栏设备卡片内就绪装订；

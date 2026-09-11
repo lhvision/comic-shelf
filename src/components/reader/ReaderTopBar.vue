@@ -5,6 +5,7 @@
  * 按钮复用 ReaderButton（票据 05：与设置面板共用同一套控件样式）。
  */
 import ReaderButton from '@/components/reader/ReaderButton.vue'
+import AppIcon from '@/components/AppIcon.vue'
 
 defineProps<{
   title: string
@@ -24,7 +25,10 @@ defineEmits<{
 <template>
   <div class="reader-chrome" :data-hidden="hidden" :inert="hidden">
     <div class="reader-topbar">
-      <ReaderButton @click="$emit('back')">← 返回</ReaderButton>
+      <ReaderButton @click="$emit('back')">
+        <AppIcon name="arrow-left" size="xs" />
+        <span>返回</span>
+      </ReaderButton>
       <div class="reader-title" :title="`${title} (${displayId}${chapter ? ' · ' + chapter : ''})`">
         <strong :title="title">{{ title }}</strong>
         <span>{{ displayId }}</span>

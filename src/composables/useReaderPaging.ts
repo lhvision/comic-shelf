@@ -1,6 +1,7 @@
 import { computed, toValue, type MaybeRefOrGetter, type Ref } from 'vue'
 import type { ComicDetail, Chapter } from '@/types'
 import type { ReaderSettings } from '@/composables/useReaderSettings'
+import type { IconName } from '@/components/icons'
 
 export interface UseReaderPagingOptions {
   detail: Ref<ComicDetail | null>
@@ -109,14 +110,14 @@ export function useReaderPaging(options: UseReaderPagingOptions) {
     () => currentSettings.value.mode === 'horizontal' && currentSettings.value.direction === 'rtl',
   )
 
-  const prevSymbol = computed(() => {
-    if (currentSettings.value.mode !== 'horizontal') return '↑'
-    return currentSettings.value.direction === 'rtl' ? '→' : '←'
+  const prevIcon = computed<IconName>(() => {
+    if (currentSettings.value.mode !== 'horizontal') return 'arrow-up'
+    return currentSettings.value.direction === 'rtl' ? 'arrow-right' : 'arrow-left'
   })
 
-  const nextSymbol = computed(() => {
-    if (currentSettings.value.mode !== 'horizontal') return '↓'
-    return currentSettings.value.direction === 'rtl' ? '←' : '→'
+  const nextIcon = computed<IconName>(() => {
+    if (currentSettings.value.mode !== 'horizontal') return 'arrow-down'
+    return currentSettings.value.direction === 'rtl' ? 'arrow-left' : 'arrow-right'
   })
 
   function toLocalPage(page: number): number {
@@ -181,8 +182,8 @@ export function useReaderPaging(options: UseReaderPagingOptions) {
     orderedGroups,
     isVertical,
     rtlHorizontal,
-    prevSymbol,
-    nextSymbol,
+    prevIcon,
+    nextIcon,
     toLocalPage,
     currentGroupLabel,
     lastGroupIndex,

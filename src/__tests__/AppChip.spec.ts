@@ -124,11 +124,11 @@ describe('AppChip', () => {
 
     const wrapperWithSlot = mount(AppChip, {
       slots: {
-        prefix: '<span class="test-prefix">★</span>',
+        prefix: '<span class="test-prefix">icon</span>',
         default: '收藏',
       },
     })
-    expect(wrapperWithSlot.find('.test-prefix').text()).toBe('★')
+    expect(wrapperWithSlot.find('.test-prefix').text()).toBe('icon')
   })
 
   it('renders suffix slot when provided', () => {

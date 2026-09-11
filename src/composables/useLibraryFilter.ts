@@ -29,8 +29,6 @@ export interface UseLibraryFilterOptions {
   activeTag?: Ref<string>
   /** 外部共享的只看喜欢 Ref */
   favoritesOnly?: Ref<boolean>
-  /** 外部共享的只看已离线 Ref */
-  offlineOnly?: Ref<boolean>
   /** 外部共享的阅读状态单选维度 Ref */
   readingStatus?: Ref<ReadingStatus>
   /** 外部共享的全局 Facets 统计数据 Ref */
@@ -52,7 +50,6 @@ export function useLibraryFilter(
   const search = options?.search ?? ref('')
   const activeTag = options?.activeTag ?? ref('')
   const favoritesOnly = options?.favoritesOnly ?? ref(false)
-  const offlineOnly = options?.offlineOnly ?? ref(false)
   const readingStatus = options?.readingStatus ?? ref<ReadingStatus>('all')
   const sortBy = options?.sortBy ?? ref<SortKey>('recent')
 
@@ -77,15 +74,6 @@ export function useLibraryFilter(
     () =>
       options?.facets?.value?.stats?.cached_pages ??
       sourceItems.value.reduce((sum, item) => sum + (item?.cached_pages ?? 0), 0),
-  )
-
-  const offlineCount = computed(
-    () =>
-      sourceItems.value.filter(
-        (item) =>
-          (item.cached_pages ?? 0) > 0 ||
-          ((item.page_count ?? 0) > 0 && (item.cached_pages ?? 0) >= item.page_count),
-      ).length,
   )
 
   const tagCounts = computed<Array<[string, number]>>(() => {
@@ -136,10 +124,6 @@ export function useLibraryFilter(
 
       const matchTag = activeTag.value === '' || item.tags.includes(activeTag.value)
       const matchFavorite = !favoritesOnly.value || item.favorite
-      const matchOffline =
-        !offlineOnly.value ||
-        (item.cached_pages ?? 0) > 0 ||
-        ((item.page_count ?? 0) > 0 && (item.cached_pages ?? 0) >= item.page_count)
       const matchStatus =
         readingStatus.value === 'all'
           ? true
@@ -156,9 +140,7 @@ export function useLibraryFilter(
         matchImageSearch = imageSearchMatchMap.value.has(key)
       }
 
-      return (
-        matchSearch && matchTag && matchFavorite && matchOffline && matchStatus && matchImageSearch
-      )
+      return matchSearch && matchTag && matchFavorite && matchStatus && matchImageSearch
     })
 
     list = [...list]
@@ -208,14 +190,12 @@ export function useLibraryFilter(
     search,
     activeTag,
     favoritesOnly,
-    offlineOnly,
     readingStatus,
     sortBy,
     sourceItems,
     totalBooks,
     totalPages,
     totalCachedPages,
-    offlineCount,
     tagCounts,
     imageSearchMatchMap,
     filtered,

@@ -18,7 +18,7 @@
 - **本地自建漫画（Local Comic）**：由用户直接上传图片文件或指定服务器已有文件夹（如视频拆帧目录）收录生成的作品。`source = "local"`，无远端依赖，直接持久化于 `library/local/<source_id>/`。
 - **哔咔漫画（PicAcg Comic）**：由哔咔数据源收录的作品。`source = "picacg"`，使用 24 位十六进制 ObjectId 标识；逆向协议与端点单一权威参考 `https://github.com/wgh136/PicaComic`；画卷原生为标准 JPEG/PNG 格式，不设切片混淆但需分流鉴权；封面策略首图优先采用官方 `thumb` 并转码 720px/360px WebP，续接正文前 3 页构成书架 4 叠牌展开。
 - **收录（Import）**：把一本作品"放进纸间"的动作。规则：先查本地 `album.json`，命中则 `from_cache=true` 绝不请求远端；首次收录缓存前 4 页做封面。本地自建漫画收录时即时生成封面与缩略图。
-- **本地化（Caching / Cachify）**：把页面图片下载到本地（`cached_pages` / `cache_complete`）。图片必须走解密工具，禁止直接保存下载字节；本地自建漫画页面在导入时即为 100% 本地化。
+- **服务端本地化（Server-side Caching / Cachify）**：把页面图片下载到服务器本地磁盘（`backend/data/library/`，对应 `cached_pages` / `cache_complete`）。图片必须走解密工具，禁止直接保存下载字节；本地自建漫画页面在导入时即为 100% 本地化。此概念属于后端存储范畴，严格区别于移动/浏览器端的离线运行状态。
 - **并发上传队列（Concurrent Upload Queue）**：批量上传大量图片（如数百张拆帧图）时的客户端流量阀门。采用受限并发（3~4 路）分批推送到后端，兼顾上传速度与服务器连接稳定性。
 - **封面（Cover）**：作品的预览图，默认取自首页前 4 页，或由馆长自定义指定 4 个全局页码序号（`cover_indices`）；书架卡片与详情页轮播的视觉锚点。
 - **自适应封面轮播与直达居中（Snap-aligned Coverflow with Direct Centering）**：详情页顶部多封面浏览微件。保持原生 CSS `scroll-snap` 物理吸附特性的同时，以显式索引跟踪替代模糊步长猜测；支持点击侧边露出卡片就地直达居中，箭头按钮按序步进并在端点自适应禁用，彻底消除 3D 透视缩放导致的步长失真与多点一次故障。
@@ -121,7 +121,7 @@
 - **置换频次熔断锁（Eviction Cooling Lock）**：针对脚本高频切 UA 刷设备恶性挤人的防御机制。当单张通行证在 5 分钟内连续发生置换超过 3 次，系统判定为设备争抢异常并启动 10 分钟置换冷却锁：当前已在线设备正常使用，新设备尝试置换时被 HTTP 429 拦截。
 - **访客阅览速率限流（Guest Rate Limiting / Token Bucket）**：针对持有有效凭证的爬虫多线程拖图攻击的中间件级防护。针对 `guest` 角色分配每分钟 180 页 + 100 页瞬时突发容量的内存令牌桶，超额触发 HTTP 429，在保障人类高速翻阅、大跨度拖拽与预加载的同时秒级阻断批量爬虫。
 - **新藏书默认隐身策略（Default Hide for New Imports）**：全局安全性偏好配置（`guest_hide_new_comics`）。开启后新收录或导入的藏书元数据默认打上 `hidden_from_guest: true`，须由馆长核验并确认适合借阅后主动解除隐藏，杜绝私人藏书漏标外泄。
-- **通行证异常态预警（Abnormal Pass Alert）**：馆长访客名册中对遭遇设备高频争抢或爬虫速率受限的通行证呈现的告警印章（`〔 ⚠️ 设备频繁争抢锁定中 〕`）与提示，辅助馆长一秒识别异常并一键重置密钥清场。
+- **通行证异常态预警（Abnormal Pass Alert）**：馆长访客名册中对遭遇设备高频争抢或爬虫速率受限的通行证呈现的告警印章（`〔 设备频繁争抢锁定中 〕`）与提示，辅助馆长一秒识别异常并一键重置密钥清场。
 - **用户专属状态（User-Isolated State）**：以用户身份（馆长 `curator` 或具体访客通行证）为隔离维度的个性化数据，包含「喜欢（Favorite）」与「继续阅读进度（Last-read Progress）」，在后端 SQLite 持久化并支持多设备无缝同步，不同访客与馆长之间互不污染。
 - **轻量状态数据库（Lightweight State Database / SQLite）**：后端基于 Python 内置 `sqlite3` 的单文件持久化数据库（`backend/data/comic_shelf.db`），专门承载通行证、用户行为高频状态以及藏书元数据影子索引；与文件系统自包含的本子元数据（`album.json`）正交解耦。
 - **藏书影子索引表（Comics Shadow Index / `comics_index`）**：在 `comic_shelf.db` 中维护的元数据查询影子表。保持文件系统 `album.json` 本地单一真理源的前提下，接管万级藏书的分页切片、多字段排序、关键词模糊检索与用户专属状态的动态 SQL JOIN，使万本规模响应保持在毫秒级。
@@ -162,6 +162,7 @@
 - **回到顶部（Back to top / Scroll-to-top）**：纸间长页面（书架、多章节详情）的标准导航辅助微件。采用 VueUse `useWindowScroll` 监听视口（默认 >400px 阈值浮现），以正圆暖纸印章质感呈现，支持自适应 `prefers-reduced-motion` 与键盘焦点平滑转移，阅读器沉浸模式下自动隐身。
 - **防退化门禁（Regression Safety Net）**：全仓多层自动化防御机制，包含前端 `vp check`（TS/Vue 静态检查）、后端 `pnpm test:py`（AST 符号自检 + 真实中间件链路与多章节单测），杜绝改动引发核心功能断裂。
 - **客户端离线缓存（Client Offline Cache / PWA Cache）**：浏览器 Service Worker 与 CacheStorage 在当前设备上存储的静态资产与阅读图片缓存，受本设备存储配额（`StorageManager`）约束。纯客户端生命周期，区别于后端「本地化持久数据（Library Data）」，可由用户随时一键安全清理且绝不影响服务器书库。
+- **静默离线接管（Silent Offline Takeover / Zero-Toggle Offline Resilience）**：客户端全自动网络容灾与离线回退机制。在浏览器断网（`!isOnline`）或服务器连接熔断（`isOffline`）时，系统自动在后台直接从 IndexedDB 镜像（`shelf_snapshots` 与 `comic_details`）恢复书架与藏书案头，呈现典雅的离线状态纸印，无需也不允许用户手动点选任何「只看离线」开关；网络重获连接时静默上报离线阅读事务队列，实现真正的零割裂本地优先体验。
 - **分级离线缓存策略（Tiered Offline Caching）**：App Shell 核心静态资产预缓存（Stale-While-Revalidate）、动态 API 直连配合内存态 SWR 复用（严禁 Service Worker 缓存 API 防鉴权脏数据）、漫画页面原图与缩略图离线命中（Cache-First）配合 LRU 淘汰配额（3000 张上限）与手动清理。
 - **源私有文件系统（Origin Private File System / OPFS）**：基于 `navigator.storage.getDirectory()` 的浏览器端侧私有沙盒文件系统。作为纸间技术雷达的前瞻储备能力，专用于非 HTTP 语义的单体大文件（如未来的整本漫画离线导出归档包 `.cbf` 或典藏中文字体）的流式落盘，区别于承载网络画卷的 CacheStorage。
 - **淘汰索引元数据开销（LRU Expiration Metadata / LevelDB Baseline）**：Workbox Expiration 在 IndexedDB 中维护漫画画页 LRU 淘汰队列时产生的底层磁盘开销（~1.2 MB）。系 Chromium LevelDB 预写日志与数据块预分配的固有物理占位，确保 3,000 张图片上限自动滚动淘汰，非数据泄漏。
@@ -202,6 +203,6 @@
 - **凭据边缘免检与安全级别跳过（Auth Cookie Edge Bypass & Security Level Skip）**：Cloudflare Anycast 边缘根据客户端携带的认证 Cookie（默认 `comic_shelf_token` 与 `comic_shelf_device`，支持自定义）实施的精细化质询豁免机制。在全域开启「Under Attack 模式」极高防扫描防护的前提下，自动跳过针对合法读者的安全级别（五秒盾）挑战，消除后台非交互式 API 与漫画原图加载因 `cf_clearance` 失效引发的 403 质询阻断。
 - **源站私有印章防线（Origin Auth Secret & Gateway Gate）**：由 Cloudflare Transform Rules 在回源请求中静默注入私有请求头（`X-Origin-Secret`），配合反向代理网关（Nginx Proxy Manager）实施的源站级准入控制。既保障了家庭局域网（Split-Horizon DNS）千兆直连免检，又在家庭公网高位端口（如 38443）遭到全网探测与 IP 嗅探时直接下发 403 阻断，实现非 Cloudflare 边缘回源流量零穿透。
 - **端侧元数据离线持久化（Client Metadata IndexedDB Cache / SWR Mirror）**：前端 Pinia Store 与数据层在客户端基于 IndexedDB 构建的结构化元数据快照镜像（包含书架摘要列表、全貌统计与漫画详情）。在冷启动与离线断网时实现 0ms 秒开呈现，联网时静默 SWR（Stale-While-Revalidate）向服务端同步；严格按用户身份隔离，彻底杜绝 Service Worker 裸缓存 API 导致的权限混淆与数据泄露。
-- **纸室离线模式（Offline Shelf Snapshot & Offline Mode）**：PWA 在无网络连接时自适应激活的典雅阅览状态。书架完整保留全貌快照并打上「〔 📴 纸室离线模式 〕」朱砂暗印；提供一键「只看离线」快捷胶囊，卡片精准标注端侧本地就绪状态，使读者在通勤与飞机等断网环境下依然拥有从容的淘书与阅读体验。
-- **缺页纸印骨架（Offline Missing-Page Paper Stamp）**：阅读器在离线状态翻阅未缓存画页时的优雅降级呈现。以纸间暖纸水墨质感的「〔 📴 画页未离线缓存 · 联网后自动载入 〕」占位骨架替代浏览器原生破损图标与粗暴弹退，阅读器 HUD 与其他已缓存画页保持平滑导航。
+- **纸室离线模式（Offline Shelf Snapshot & Offline Mode）**：PWA 在无网络连接时自适应激活的典雅阅览状态。系统在后台静默自动接管，书架完整保留全貌快照并打上「〔 纸室离线模式 〕」暗印状态；卡片维持端侧本地就绪状态，使读者在通勤与飞机等断网环境下依然拥有从容的淘书与阅读体验。
+- **缺页纸印骨架（Offline Missing-Page Paper Stamp）**：阅读器在离线状态翻阅未缓存画页时的优雅降级呈现。以纸间暖纸水墨质感的「〔 画页未离线缓存 · 联网后自动载入 〕」占位骨架替代浏览器原生破损图标与粗暴弹退，阅读器 HUD 与其他已缓存画页保持平滑导航。
 - **端侧离线记账与联网对齐队列（Offline Action Log & Reconciliation Queue）**：离线模式下读者产生的翻页进度（`last_page`）与喜欢（`favorite`）状态变更的端侧持久化事务队列。状态即时乐观生效于本地视图与 IndexedDB；待设备重获网络连接（`online` 事件或网络自愈）后，由后台静默对齐管道批量回写至后端 SQLite 数据库。

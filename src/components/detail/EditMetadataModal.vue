@@ -2,6 +2,7 @@
 import { ref, watch } from 'vue'
 import Modal from '@/components/Modal.vue'
 import AppButton from '@/components/AppButton.vue'
+import AppIcon from '@/components/AppIcon.vue'
 import TagManager from '@/components/form/TagManager.vue'
 import CoverIndicesPicker from '@/components/form/CoverIndicesPicker.vue'
 import { useLibraryStore } from '@/stores/library'
@@ -199,11 +200,12 @@ async function save() {
           />
           <div class="privacy-info">
             <span class="privacy-title">
-              {{
-                hiddenFromGuest
-                  ? '🔒 仅馆长可见（已对访客隐藏）'
-                  : '🌐 公开阅览（访客与馆长均可见）'
-              }}
+              <AppIcon :name="hiddenFromGuest ? 'eye-off' : 'eye'" size="xs" />
+              <span>
+                {{
+                  hiddenFromGuest ? '仅馆长可见（已对访客隐藏）' : '公开阅览（访客与馆长均可见）'
+                }}
+              </span>
             </span>
             <span class="privacy-desc">
               {{
@@ -274,6 +276,9 @@ async function save() {
 }
 
 .privacy-title {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1-5);
   font-size: var(--text-sm);
   font-weight: 600;
   color: var(--ink-0);

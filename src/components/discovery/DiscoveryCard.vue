@@ -64,7 +64,8 @@ const libraryRoute = computed(() => `/comic/${props.item.source}/${props.item.so
         class="source-stamp"
         title="在禁漫原站打开"
       >
-        <span>JM ↗</span>
+        <span>JM</span>
+        <AppIcon name="external-link" size="xs" />
       </a>
       <span v-else class="id-stamp">{{ item.id }}</span>
     </div>
@@ -267,6 +268,9 @@ const libraryRoute = computed(() => `/comic/${props.item.source}/${props.item.so
   position: absolute;
   bottom: var(--space-2);
   right: var(--space-2);
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2rem;
   padding: 0.125rem 0.375rem;
   border-radius: var(--radius-1);
   font-family: var(--font-mono);

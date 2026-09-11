@@ -5,6 +5,7 @@
  * 交互统一以 emit 上抛（切换暂停 / 翻页）。
  */
 import AppIcon from '@/components/AppIcon.vue'
+import type { IconName } from '@/components/icons'
 
 const props = defineProps<{
   /** 自动切换是否已启用（启用时 HUD 常驻不隐藏） */
@@ -21,8 +22,8 @@ const props = defineProps<{
   currentGroupLabel: string
   /** 总页数 */
   total: number
-  prevSymbol: string
-  nextSymbol: string
+  prevIcon: IconName
+  nextIcon: IconName
   /** 上一屏/下一屏是否被禁用（边界情况） */
   canPrev: boolean
   canNext: boolean
@@ -70,11 +71,11 @@ const autoTurnActionLabel = () => (props.autoTurnPaused || props.settingsOpen ? 
 
     <div class="reader-page-indicator">
       <button type="button" aria-label="上一屏" @click="emit('prev')" :disabled="!canPrev">
-        {{ prevSymbol }}
+        <AppIcon :name="prevIcon" size="xs" />
       </button>
       <span>{{ currentGroupLabel }} / {{ total }}</span>
       <button type="button" aria-label="下一屏" @click="emit('next')" :disabled="!canNext">
-        {{ nextSymbol }}
+        <AppIcon :name="nextIcon" size="xs" />
       </button>
     </div>
   </div>

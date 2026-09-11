@@ -3,6 +3,7 @@ import { computed, onMounted, ref, watch } from 'vue'
 import { useTimeoutFn } from '@vueuse/core'
 import { useOfflineSync } from '@/composables/useOfflineSync'
 import ReaderLoadingState from '@/components/reader/ReaderLoadingState.vue'
+import AppIcon from '@/components/AppIcon.vue'
 
 const props = withDefaults(
   defineProps<{
@@ -153,7 +154,10 @@ watch(isOnline, (online, wasOnline) => {
 
     <div v-else-if="failed" class="page-error" :class="{ 'is-offline': !isOnline }" role="alert">
       <template v-if="!isOnline">
-        <span class="offline-stamp">〔 📴 画页未离线缓存 〕</span>
+        <span class="offline-stamp">
+          <AppIcon name="archive" size="xs" />
+          <span>〔 画页未离线缓存 〕</span>
+        </span>
         <span class="offline-sub">联网后将自动载入</span>
       </template>
       <template v-else>
@@ -224,6 +228,9 @@ watch(isOnline, (online, wasOnline) => {
 }
 
 .offline-stamp {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
   color: var(--accent, #b34a36);
   font-weight: 600;
   letter-spacing: 0.05em;

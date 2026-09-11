@@ -13,6 +13,10 @@ defineOptions({ inheritAttrs: false })
 
 <style scoped>
 .reader-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-1);
   min-height: var(--control-md);
   padding: var(--space-2) var(--space-3);
   border: 1px solid var(--reader-line-strong);

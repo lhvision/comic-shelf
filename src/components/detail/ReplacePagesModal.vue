@@ -252,7 +252,9 @@ async function submit() {
         <div class="field-header">
           <label class="form-label">装入新画页图片（纯图片，按文件名排序）</label>
           <div v-if="selectedFiles.length" class="page-diff-badge">
-            现有 {{ existingPageCount }} 页 ➔ 新装订 {{ selectedFiles.length }} 页
+            <span>现有 {{ existingPageCount }} 页</span>
+            <AppIcon name="arrow-right" size="xs" />
+            <span>新装订 {{ selectedFiles.length }} 页</span>
             <span class="page-delta">({{ deltaLabel }})</span>
           </div>
         </div>
@@ -409,6 +411,9 @@ async function submit() {
 }
 
 .page-diff-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
   font-family: var(--font-mono);
   font-size: var(--text-xs);
   color: var(--ink-1);

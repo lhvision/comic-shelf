@@ -37,7 +37,10 @@ function handleBackToSecret() {
 <template>
   <form class="gate-form" @submit.prevent="handleClaimSubmit">
     <div class="claim-info-card">
-      <div class="claim-badge">🌿 待认领凭证</div>
+      <div class="claim-badge">
+        <AppIcon name="lock" size="xs" />
+        <span>待认领凭证</span>
+      </div>
       <div class="claim-meta">
         读者初始称呼：<strong>{{ username || '访客读者' }}</strong>
       </div>
@@ -97,7 +100,10 @@ function handleBackToSecret() {
 
     <div class="gate-actions between">
       <AppButton type="button" variant="ghost" size="md" @click="handleBackToSecret">
-        ← 更换口令
+        <template #prefix>
+          <AppIcon name="arrow-left" size="xs" />
+        </template>
+        <span>更换口令</span>
       </AppButton>
 
       <AppButton
@@ -134,6 +140,9 @@ function handleBackToSecret() {
 }
 
 .claim-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
   font-family: var(--font-mono);
   font-size: var(--text-caption);
   color: var(--ink-2);

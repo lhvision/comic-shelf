@@ -311,11 +311,11 @@
 - **端侧元数据持久化与 0ms 水合（IndexedDB SWR）**：
   1. 建立轻量 `comic-shelf-meta` IndexedDB 引擎，书架快照（`shelf_${userId}`）与漫画详情（`${userId}:${source}:${sourceId}`）按用户身份物理分区；
   2. 漫画详情内置 200 本 LRU 淘汰机制，杜绝端侧存储无限膨胀；
-  3. 冷启动或断网时 0ms 水合 IndexedDB 快照，网络请求失败时不破坏已有 DOM，平滑展示「〔 📴 纸室离线模式 〕」暗印状态；
-  4. 筛选工具栏提供「只看离线」`AppChip`，联动 `offlineOnly` 响应式过滤本地已有画页的藏书。
+  3. 冷启动或断网时 0ms 水合 IndexedDB 快照，网络请求失败时不破坏已有 DOM，平滑展示「〔 纸室离线模式 〕」暗印状态；
+  4. 彻底废弃常态工具栏的「只看离线」手动开关，全面收敛为静默离线接管（Zero-Toggle Offline Resilience）：断网时由后台自动触发快照呈现与离线模式提示，消弭在线状态下的交互割裂。
 - **全链路离线漫游与水墨缺页骨架**：
   1. 详情页与章节页在离线断网时自动降级读取 IndexedDB 详情或概要占位（`createPlaceholderDetail`），彻底拔除 `router.replace('/')` 强退首页逻辑；
-  2. 阅读器未下载画页展示典雅的「〔 📴 画页未离线缓存 〕」水墨纸印骨架（`.page-error.is-offline`），拒绝原生破图图标。
+  2. 阅读器未下载画页展示典雅的「〔 画页未离线缓存 〕」水墨纸印骨架（`.page-error.is-offline`），拒绝原生破图图标。
 - **离线记账与联网自愈回写流水线（Reconciliation Pipeline）**：
   1. 离线翻页进度（`useLastRead`）与喜欢变动（`FavoriteButton`）打上当前 `userId` 签名并自动暂存至本地 `offline_actions` 事务队列，UI 保持瞬时乐观响应；
   2. 由 `App.vue` 顶层统一挂载的 [`useOfflineSync`](src/composables/useOfflineSync.ts) 监听 VueUse `useNetwork().isOnline`；

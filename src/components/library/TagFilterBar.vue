@@ -15,15 +15,12 @@
  * - 补齐无障碍焦点归还（Focus Restoration，WCAG 2.1 2.4.3）与溢出标签双向清除闭环（Header Clear / Pinned Active Tag / Close Restoration）。
  *
  * @prop {boolean} favoritesOnly - 是否仅筛选已加入喜欢的藏书
- * @prop {boolean} [offlineOnly=false] - 是否仅筛选已离线下载的藏书
- * @prop {number} [offlineCount=0] - 当前书库中已离线本数
  * @prop {ReadingStatus} [readingStatus='all'] - 当前选中的阅读状态（'all' | 'reading' | 'completed'）
  * @prop {string} activeTag - 当前激活的分类标签名称（空表示全部标签）
  * @prop {Array<[string, number]>} tagCounts - 全库或当前来源前 18/30 高频标签及其计数
  * @prop {number} filteredCount - 当前筛选命中的条目数
  *
  * @emit toggleFavorites - 切换喜欢状态
- * @emit toggleOffline - 切换只看离线状态
  * @emit update:readingStatus - 阅读状态变更事件（'all' | 'reading' | 'completed'）
  * @emit selectTag - 选中指定标签（传空表示取消标签筛选）
  * @emit clearTag - 清空标签筛选
@@ -39,8 +36,6 @@ const trayExpanded = defineModel<boolean>('trayExpanded', { default: false })
 
 export interface TagFilterBarProps {
   favoritesOnly: boolean
-  offlineOnly?: boolean
-  offlineCount?: number
   readingStatus?: ReadingStatus
   activeTag: string
   /** [标签, 数量] 有序列表，按出现次数降序 */
@@ -50,14 +45,11 @@ export interface TagFilterBarProps {
 }
 
 const props = withDefaults(defineProps<TagFilterBarProps>(), {
-  offlineOnly: false,
-  offlineCount: 0,
   readingStatus: 'all',
 })
 
 const emit = defineEmits<{
   toggleFavorites: []
-  toggleOffline: []
   'update:readingStatus': [status: ReadingStatus]
   selectTag: [tag: string]
   clearTag: []
@@ -130,19 +122,6 @@ function clearFilter() {
           <AppIcon class="heart-icon" :name="favoritesOnly ? 'heart-filled' : 'heart'" size="xs" />
         </template>
         <span>只看喜欢</span>
-      </AppChip>
-
-      <AppChip
-        v-if="offlineCount !== undefined && offlineCount > 0"
-        class="offline-filter"
-        :pressed="offlineOnly"
-        :count="offlineCount"
-        @click="emit('toggleOffline')"
-      >
-        <template #prefix>
-          <AppIcon class="download-icon" name="download" size="xs" />
-        </template>
-        <span>只看离线</span>
       </AppChip>
 
       <span class="filter-divider" aria-hidden="true" />
@@ -273,16 +252,10 @@ function clearFilter() {
   gap: var(--space-2);
 }
 
-.favorite-filter,
-.offline-filter {
+.favorite-filter {
   display: inline-flex;
   align-items: center;
   gap: var(--space-1);
-}
-
-.offline-filter .download-icon {
-  width: 0.85rem;
-  height: 0.85rem;
 }
 
 .reading-status-tabs {

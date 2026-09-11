@@ -189,25 +189,17 @@ describe('TagFilterBar', () => {
     expect(wrapper.emitted('update:trayExpanded')?.[0]).toEqual([true])
   })
 
-  it('renders offline chip when offlineCount > 0 and emits toggleOffline on click', async () => {
+  it('does not render manual offline filter chip in toolbar (zero-toggle resilience)', () => {
     const wrapper = mount(TagFilterBar, {
       props: {
         favoritesOnly: false,
-        offlineOnly: false,
-        offlineCount: 5,
         activeTag: '',
         tagCounts,
         filteredCount: 10,
       },
     })
 
-    const offlineBtn = wrapper.find('.offline-filter')
-    expect(offlineBtn.exists()).toBe(true)
-    expect(offlineBtn.text()).toContain('只看离线')
-    expect(offlineBtn.text()).toContain('5')
-
-    await offlineBtn.trigger('click')
-    expect(wrapper.emitted('toggleOffline')).toHaveLength(1)
+    expect(wrapper.find('.offline-filter').exists()).toBe(false)
   })
 
   it('renders pinned active tag and clear button inside popover when overflow tag is active', () => {

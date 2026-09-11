@@ -85,8 +85,8 @@ const {
   orderedGroups,
   isVertical,
   rtlHorizontal,
-  prevSymbol,
-  nextSymbol,
+  prevIcon,
+  nextIcon,
   toLocalPage,
   currentGroupLabel,
   lastGroupIndex,
@@ -410,8 +410,8 @@ function onBackToShelf() {
       :auto-turn-remaining="autoTurnRemaining"
       :current-group-label="currentGroupLabel"
       :total="total"
-      :prev-symbol="prevSymbol"
-      :next-symbol="nextSymbol"
+      :prev-icon="prevIcon"
+      :next-icon="nextIcon"
       :can-prev="currentGroupIndex > 0"
       :can-next="currentGroupIndex < lastGroupIndex"
       :hidden="!chromeVisible && !settings.autoTurn"

@@ -42,10 +42,12 @@ const emit = defineEmits<{
       <span
         v-else-if="showIosGuide"
         class="pwa-ios-guide-pill"
-        title="在 iOS Safari 点击底栏分享按钮 ➔ 选择「添加到主屏幕」即可作为独立应用全屏运行"
+        title="在 iOS Safari 点击底栏分享按钮，选择「添加到主屏幕」即可作为独立应用全屏运行"
       >
         <AppIcon name="upload" size="xs" :stroke-width="1.8" />
-        <span>Safari 分享 ➔ 加到主屏幕</span>
+        <span>Safari 分享</span>
+        <AppIcon name="arrow-right" size="xs" />
+        <span>加到主屏幕</span>
       </span>
       <span v-else-if="isStandalone" class="pwa-standalone-pill"> 〔 独立应用 〕 </span>
     </div>
