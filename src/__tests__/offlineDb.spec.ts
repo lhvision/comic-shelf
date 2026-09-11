@@ -4,6 +4,7 @@ import {
   getShelfSnapshot,
   saveComicDetail,
   getComicDetail,
+  getAllCachedComicDetails,
   enqueueOfflineAction,
   getOfflineActions,
   removeOfflineAction,
@@ -290,13 +291,70 @@ describe('offlineDb utils', () => {
     expect(retrieved?.items[0]?.title).toBe('Title 123')
   })
 
-  it('saves and retrieves comic details with LRU tracking', async () => {
-    const detail = makeMockDetail('comic-999')
-    await saveComicDetail('user-1', detail)
+  it('falls back to latest snapshot if requested userKey does not match', async () => {
+    const mockItems: LibrarySummary[] = [
+      {
+        source: 'jm',
+        source_id: '123',
+        display_id: '123',
+        title: 'Title 123',
+        authors: [],
+        works: [],
+        actors: [],
+        tags: [],
+        page_count: 20,
+        cover_count: 1,
+        cover_paths: ['/cover.jpg'],
+        cached_pages: 20,
+        views: '100',
+        likes: '10',
+        favorite: true,
+        hidden_from_guest: false,
+        uploaded_at: '2026-01-01',
+        published_at: '2026-01-01',
+        updated_at: '2026-01-01',
+        imported_at: '2026-01-01',
+      },
+    ]
 
-    const retrieved = await getComicDetail('user-1', 'jm', 'comic-999')
+    await saveShelfSnapshot('curator', {
+      items: mockItems,
+      facets: null,
+    })
+
+    // Querying with empty or unknown userId falls back to curator's snapshot
+    const retrieved = await getShelfSnapshot('')
+    expect(retrieved).not.toBeNull()
+    expect(retrieved?.items).toHaveLength(1)
+    expect(retrieved?.items[0]?.title).toBe('Title 123')
+  })
+
+  it('retrieves all cached comic details', async () => {
+    const detail1 = makeMockDetail('comic-1')
+    const detail2 = makeMockDetail('comic-2')
+    await saveComicDetail('curator', detail1)
+    await saveComicDetail('curator', detail2)
+
+    const all = await getAllCachedComicDetails('curator')
+    expect(all).toHaveLength(2)
+
+    // Fallback when no userId is passed
+    const allFallback = await getAllCachedComicDetails('')
+    expect(allFallback).toHaveLength(2)
+  })
+
+  it('saves and retrieves comic details with LRU tracking and fallback', async () => {
+    const detail = makeMockDetail('comic-999')
+    await saveComicDetail('curator', detail)
+
+    const retrieved = await getComicDetail('curator', 'jm', 'comic-999')
     expect(retrieved).not.toBeNull()
     expect(retrieved?.meta.title).toBe('Comic comic-999')
+
+    // Fallback when querying with different or empty userId
+    const fallbackRetrieved = await getComicDetail('', 'jm', 'comic-999')
+    expect(fallbackRetrieved).not.toBeNull()
+    expect(fallbackRetrieved?.meta.title).toBe('Comic comic-999')
   })
 
   it('enqueues, reads, and deletes offline action records', async () => {
@@ -334,5 +392,83 @@ describe('offlineDb utils', () => {
     await clearOfflineActions()
     const cleared = await getOfflineActions()
     expect(cleared.length).toBe(0)
+  })
+
+  it('prevents guest users from accessing hidden_from_guest comics and falling back to curator shelf', async () => {
+    // 1. Curator has a snapshot with normal and hidden comics
+    const curatorItems: LibrarySummary[] = [
+      {
+        source: 'jm',
+        source_id: 'comic-public',
+        title: 'Public Comic',
+        display_id: 'comic-public',
+        authors: [],
+        works: [],
+        actors: [],
+        tags: [],
+        page_count: 10,
+        cached_pages: 10,
+        cover_count: 1,
+        cover_paths: [],
+        views: '0',
+        likes: '0',
+        favorite: false,
+        hidden_from_guest: false,
+        uploaded_at: '',
+        published_at: '',
+        updated_at: '',
+        imported_at: '',
+      },
+      {
+        source: 'jm',
+        source_id: 'comic-hidden',
+        title: 'Hidden Comic',
+        display_id: 'comic-hidden',
+        authors: [],
+        works: [],
+        actors: [],
+        tags: [],
+        page_count: 10,
+        cached_pages: 10,
+        cover_count: 1,
+        cover_paths: [],
+        views: '0',
+        likes: '0',
+        favorite: false,
+        hidden_from_guest: true,
+        uploaded_at: '',
+        published_at: '',
+        updated_at: '',
+        imported_at: '',
+      },
+    ]
+    await saveShelfSnapshot('curator', { items: curatorItems, facets: null })
+
+    // Guest should NOT fall back to curator snapshot
+    const guestEmptySnapshot = await getShelfSnapshot('guest:user-123')
+    expect(guestEmptySnapshot).toBeNull()
+
+    // 2. If guest has a snapshot, hidden_from_guest items are filtered out
+    await saveShelfSnapshot('guest:user-123', { items: curatorItems, facets: null })
+    const guestSnapshot = await getShelfSnapshot('guest:user-123')
+    expect(guestSnapshot).not.toBeNull()
+    expect(guestSnapshot?.items).toHaveLength(1)
+    expect(guestSnapshot?.items[0]?.source_id).toBe('comic-public')
+
+    // 3. Guest cannot fetch hidden comic detail directly or via fallback
+    const hiddenDetail = makeMockDetail('comic-hidden')
+    hiddenDetail.meta.hidden_from_guest = true
+    await saveComicDetail('curator', hiddenDetail)
+
+    const guestFetchHidden = await getComicDetail('guest:user-123', 'jm', 'comic-hidden')
+    expect(guestFetchHidden).toBeNull()
+
+    // Guest also cannot fallback to curator public comic if not cached for guest
+    const guestFetchPublic = await getComicDetail('guest:user-123', 'jm', 'comic-public')
+    expect(guestFetchPublic).toBeNull()
+
+    // 4. getAllCachedComicDetails for guest excludes hidden comics and does not cross-tenant fallback
+    const guestAll = await getAllCachedComicDetails('guest:user-123')
+    expect(guestAll).toHaveLength(0)
   })
 })

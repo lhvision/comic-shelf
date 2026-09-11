@@ -1,7 +1,7 @@
 import { computed, ref } from 'vue'
 import { tryOnScopeDispose, useIntervalFn } from '@vueuse/core'
 import { defineStore } from 'pinia'
-import { api, onAuthSuccess } from '@/api/client'
+import { api, onAuthSuccess, onUnauthorized } from '@/api/client'
 import { getTaskId, useSystemEvents } from '@/composables/useSystemEvents'
 import { useAuth } from '@/composables/useAuth'
 import {
@@ -9,6 +9,7 @@ import {
   saveShelfSnapshot,
   getComicDetail as getOfflineComicDetail,
   saveComicDetail as saveOfflineComicDetail,
+  getAllCachedComicDetails,
 } from '@/utils/offlineDb'
 import type {
   ComicDetail,
@@ -25,6 +26,40 @@ export interface LiveCacheState {
 }
 
 export const liveCacheKey = (source: string, sourceId: string) => `${source}/${sourceId}`
+
+/**
+ * 基于 ComicDetail 构造 LibrarySummary 概要结构。
+ * 用于离线兜底时直接从本地缓存的单本漫画详情逆向恢复书架条目。
+ */
+export function createSummaryFromDetail(detail: ComicDetail): LibrarySummary {
+  const meta = detail.meta
+  const pageCount = meta.page_count || meta.pages?.length || 0
+  const cachedPages = detail.cached_pages || 0
+  return {
+    source: meta.source,
+    source_id: meta.source_id,
+    display_id: meta.display_id || meta.source_id,
+    title: meta.title || '',
+    page_count: pageCount,
+    authors: meta.authors || [],
+    works: meta.works || [],
+    actors: meta.actors || [],
+    tags: meta.tags || [],
+    favorite: Boolean(meta.favorite),
+    hidden_from_guest: meta.hidden_from_guest,
+    views: meta.views || '0',
+    likes: meta.likes || '0',
+    uploaded_at: meta.published_at || '',
+    published_at: meta.published_at || '',
+    updated_at: meta.updated_at || '',
+    imported_at: meta.imported_at || '',
+    cover_paths: detail.cover_paths || [],
+    cached_pages: cachedPages,
+    cover_count: detail.cover_paths?.length || meta.cover_count || 1,
+    chapter_titles: meta.chapters?.map((c) => c.title) || [],
+    last_page: 0,
+  }
+}
 
 /**
  * 基于书架概要数据构造初始 ComicDetail 占位结构。
@@ -81,7 +116,7 @@ export function createPlaceholderDetail(s: LibrarySummary): ComicDetail {
 
 export const useLibraryStore = defineStore('library', () => {
   const { beginTask, endTask, broadcastLocalChange } = useSystemEvents()
-  const { userId } = useAuth()
+  const { userId, isGuest } = useAuth()
 
   const items = ref<LibrarySummary[]>([])
   const loading = ref(false)
@@ -104,7 +139,6 @@ export const useLibraryStore = defineStore('library', () => {
   const loadingMore = ref(false)
   const currentParams = ref<LibraryQueryParams>({})
 
-  const displayItems = computed(() => items.value)
   const activeCachingCount = computed(() => Object.keys(liveCache.value).length)
   let libraryAbortController: AbortController | null = null
 
@@ -114,12 +148,47 @@ export const useLibraryStore = defineStore('library', () => {
   async function hydrateFromOfflineSnapshot(targetUserId?: string): Promise<boolean> {
     try {
       const uid = targetUserId ?? userId.value ?? ''
+      const isGuestUser = isGuest.value || uid.startsWith('guest:')
       const snapshot = await getShelfSnapshot(uid)
+      let candidateItems: LibrarySummary[] = []
+      let snapshotFacets: LibraryFacetsResponse | null = null
+
       if (snapshot && Array.isArray(snapshot.items) && snapshot.items.length > 0) {
+        candidateItems = isGuestUser
+          ? snapshot.items.filter((i) => !i.hidden_from_guest)
+          : [...snapshot.items]
+        snapshotFacets = snapshot.facets ?? null
+      }
+
+      // 无论全量书架快照是否存在，均尝试合入 comic_details 中缓存但快照中遗漏的离线阅读漫画
+      try {
+        const cachedDetails = await getAllCachedComicDetails(uid)
+        if (cachedDetails.length > 0) {
+          const existingKeys = new Set(candidateItems.map((i) => `${i.source}:${i.source_id}`))
+          for (const detail of cachedDetails) {
+            if (isGuestUser && detail.meta?.hidden_from_guest) {
+              continue
+            }
+            const key = `${detail.meta.source}:${detail.meta.source_id}`
+            if (!existingKeys.has(key)) {
+              candidateItems.push(createSummaryFromDetail(detail))
+              existingKeys.add(key)
+            }
+          }
+        }
+      } catch {
+        // 忽略单本详情读取异常
+      }
+
+      if (isGuestUser) {
+        candidateItems = candidateItems.filter((i) => !i.hidden_from_guest)
+      }
+
+      if (candidateItems.length > 0) {
         if (items.value.length === 0) {
-          items.value = snapshot.items
-          facets.value = snapshot.facets ?? null
-          total.value = snapshot.items.length
+          items.value = candidateItems
+          facets.value = snapshotFacets
+          total.value = candidateItems.length
         }
         hydratedFromOffline.value = true
         return true
@@ -263,7 +332,14 @@ export const useLibraryStore = defineStore('library', () => {
   // Reload data automatically as soon as auth succeeds
   onAuthSuccess(() => {
     error.value = ''
+    detailCache.value = {}
     void load()
+  })
+
+  // Clear in-memory library and detail cache when session expires or unauthorized
+  onUnauthorized(() => {
+    items.value = []
+    detailCache.value = {}
   })
 
   let isRefreshingLiveCache = false
@@ -447,11 +523,17 @@ export const useLibraryStore = defineStore('library', () => {
    * 本地乐观更新「喜欢」标记：书架卡片的 FavoriteButton 已经完成了 API 调用或离线入队，
    * 这里只原地改内存里的那一项，不整表刷新，避免列表全部重绘闪屏。
    */
-  function setFavoriteLocal(source: string, sourceId: string, favorite: boolean, userId?: string) {
+  function setFavoriteLocal(
+    source: string,
+    sourceId: string,
+    favorite: boolean,
+    targetUserId?: string,
+  ) {
     const item = byId(source, sourceId)
     if (item) {
       item.favorite = favorite
-      void saveShelfSnapshot(userId ?? '', { items: items.value, facets: facets.value })
+      const uid = targetUserId ?? userId.value ?? ''
+      void saveShelfSnapshot(uid, { items: items.value, facets: facets.value })
     }
   }
 
@@ -463,12 +545,13 @@ export const useLibraryStore = defineStore('library', () => {
     source: string,
     sourceId: string,
     page: number,
-    userId?: string,
+    targetUserId?: string,
   ) {
     const item = byId(source, sourceId)
     if (item) {
       item.last_page = page
-      void saveShelfSnapshot(userId ?? '', { items: items.value, facets: facets.value })
+      const uid = targetUserId ?? userId.value ?? ''
+      void saveShelfSnapshot(uid, { items: items.value, facets: facets.value })
     }
   }
 
@@ -481,20 +564,21 @@ export const useLibraryStore = defineStore('library', () => {
   async function getOrFetchOfflineDetail(
     source: string,
     sourceId: string,
-    userId?: string,
+    targetUserId?: string,
   ): Promise<ComicDetail | null> {
     const memory = getDetail(source, sourceId)
     if (memory) return memory
 
-    const offlineRecord = await getOfflineComicDetail(userId ?? '', source, sourceId)
+    const uid = targetUserId ?? userId.value ?? ''
+    const offlineRecord = await getOfflineComicDetail(uid, source, sourceId)
     if (offlineRecord) {
-      setDetail(offlineRecord)
+      setDetail(offlineRecord, uid)
       return offlineRecord
     }
     return null
   }
 
-  function setDetail(detail: ComicDetail, userId?: string) {
+  function setDetail(detail: ComicDetail, targetUserId?: string) {
     const key = `${detail.meta.source}/${detail.meta.source_id}`
     delete detailCache.value[key]
     detailCache.value[key] = detail
@@ -505,7 +589,14 @@ export const useLibraryStore = defineStore('library', () => {
     }
 
     // 异步同步到端侧 IndexedDB 镜像
-    void saveOfflineComicDetail(userId ?? '', detail)
+    const uid = targetUserId ?? userId.value ?? ''
+    void saveOfflineComicDetail(uid, detail)
+
+    // 若当前书架条目中已存在该漫画，原地同步其缓存进度
+    const existing = byId(detail.meta.source, detail.meta.source_id)
+    if (existing) {
+      existing.cached_pages = detail.cached_pages
+    }
   }
 
   function removeDetail(source: string, sourceId: string) {
@@ -514,7 +605,6 @@ export const useLibraryStore = defineStore('library', () => {
 
   return {
     items,
-    displayItems,
     loading,
     importing,
     error,

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vite-plus/test'
-import { ref, nextTick } from 'vue'
+import { ref, reactive, nextTick } from 'vue'
 import { setActivePinia, createPinia } from 'pinia'
 import { useLibrarySync } from '@/composables/useLibrarySync'
 import { useLibraryStore } from '@/stores/library'
@@ -216,5 +216,36 @@ describe('useLibrarySync composable', () => {
       page_size: 48,
       ids: undefined,
     })
+  })
+
+  it('syncs readingStatus and favoritesOnly when route.query changes (back/forward navigation)', async () => {
+    const route = reactive({
+      query: {} as Record<string, string>,
+    }) as unknown as Parameters<typeof useLibrarySync>[0]['route']
+    const router = {
+      replace: vi.fn<() => Promise<void>>().mockResolvedValue(undefined),
+    } as unknown as Parameters<typeof useLibrarySync>[0]['router']
+
+    const readingStatus = ref<ReadingStatus>('all')
+    const favoritesOnly = ref(false)
+
+    useLibrarySync({
+      route,
+      router,
+      activeSource: ref(''),
+      search: ref(''),
+      activeTag: ref(''),
+      favoritesOnly,
+      readingStatus,
+      sortBy: ref<SortKey>('recent'),
+      debounceMs: 10,
+    })
+
+    // Simulate browser history navigation (back/forward) updating route.query
+    route.query = { status: 'reading', favorite: 'true' }
+    await nextTick()
+
+    expect(readingStatus.value).toBe('reading')
+    expect(favoritesOnly.value).toBe(true)
   })
 })

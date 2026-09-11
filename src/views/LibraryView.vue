@@ -34,8 +34,14 @@ const fileInput = ref<HTMLInputElement | null>(null)
 const providers = ref<ProviderInfo[]>(DEFAULT_PROVIDERS)
 
 const shelf = useShelfState()
-const { activeUnfoldCount, archiveOpen, archiveUnfoldCount, unifiedUnfoldCount, tagTrayExpanded } =
-  shelf
+const {
+  activeUnfoldCount,
+  archiveOpen,
+  archiveUnfoldCount,
+  unifiedUnfoldCount,
+  tagTrayExpanded,
+  offlineOnly,
+} = shelf
 
 const activeSource = computed(() =>
   typeof route.query.source === 'string' ? route.query.source : '',
@@ -79,6 +85,7 @@ const {
   totalBooks,
   totalPages,
   totalCachedPages,
+  offlineCount,
   tagCounts,
   imageSearchMatchMap,
   filtered,
@@ -91,6 +98,7 @@ const {
     search: shelf.search,
     activeTag: shelf.activeTag,
     favoritesOnly: shelf.favoritesOnly,
+    offlineOnly: shelf.offlineOnly,
     readingStatus: shelf.readingStatus,
     sortBy: shelf.sortBy,
     facets: computed(() => store.facets),
@@ -243,11 +251,14 @@ watch([() => store.error, imageSearch.error], ([err1, err2]) => {
       <TagFilterBar
         v-model:tray-expanded="tagTrayExpanded"
         :favorites-only="favoritesOnly"
+        :offline-only="offlineOnly"
+        :offline-count="offlineCount"
         :reading-status="readingStatus"
         :active-tag="activeTag"
         :tag-counts="tagCounts"
         :filtered-count="filtered.length"
         @toggle-favorites="favoritesOnly = !favoritesOnly"
+        @toggle-offline="offlineOnly = !offlineOnly"
         @update:reading-status="readingStatus = $event"
         @select-tag="activeTag = $event"
       />

@@ -12,7 +12,7 @@
 
 import { ref, watch } from 'vue'
 import { createGlobalState, useNetwork } from '@vueuse/core'
-import { api } from '@/api/client'
+import { api, ApiError } from '@/api/client'
 import {
   enqueueOfflineAction,
   getOfflineActions,
@@ -89,8 +89,19 @@ export const useOfflineSync = createGlobalState(() => {
             }
           }
           await removeOfflineAction(item.id)
-        } catch {
-          // 单个操作因网络中断失败则中断本轮消费，留待下一轮重试
+        } catch (error) {
+          // 若为客户端不可重试错误（如 400 非法参数、404 漫画已从服务端删除、403 访客权限失效），
+          // 剔除该问题记录以防止离线队列死锁；仅在网络中断或服务端临时不可用时中断本轮留待重试
+          if (
+            error instanceof ApiError &&
+            error.status >= 400 &&
+            error.status < 500 &&
+            error.status !== 408 &&
+            error.status !== 429
+          ) {
+            await removeOfflineAction(item.id)
+            continue
+          }
           break
         }
       }

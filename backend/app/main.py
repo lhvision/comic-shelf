@@ -1,4 +1,5 @@
 import asyncio
+import hashlib
 import json
 import logging
 import secrets
@@ -597,7 +598,6 @@ def _row_to_library_summary(row: dict[str, Any]) -> LibrarySummary:
     count = len(cover_indices) if cover_indices else min(cover_count, page_count)
     v_tag = ""
     if updated_at:
-        import hashlib
         v_tag = f"?v={hashlib.md5(updated_at.encode()).hexdigest()[:8]}"
     cover_paths = [
         f"/api/library/{source}/{source_id}/covers/{index}/file.webp{v_tag}"

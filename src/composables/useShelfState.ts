@@ -9,7 +9,7 @@
  * 3. 顶栏显式点击 Logo 或切换来源时支持主动重置书架记忆，回归初态。
  */
 
-import { ref, watch } from 'vue'
+import { ref } from 'vue'
 import { createGlobalState } from '@vueuse/core'
 import type { SortKey } from '@/composables/useLibraryFilter'
 import type { ReadingStatus } from '@/types'
@@ -38,20 +38,6 @@ export const useShelfState = createGlobalState(() => {
   const offlineOnly = ref(false)
   /** 阅读状态单选维度（all | reading | completed） */
   const readingStatus = ref<ReadingStatus>('all')
-  /** 是否只看已完整读完的藏书（向后兼容） */
-  const completedOnly = ref(false)
-
-  // 状态与旧布尔字段保持双向联动
-  watch(readingStatus, (val) => {
-    completedOnly.value = val === 'completed'
-  })
-  watch(completedOnly, (val) => {
-    if (val && readingStatus.value !== 'completed') {
-      readingStatus.value = 'completed'
-    } else if (!val && readingStatus.value === 'completed') {
-      readingStatus.value = 'all'
-    }
-  })
   /** 当前选中的排序规则 */
   const sortBy = ref<SortKey>('recent')
   /** 标签筛选条中的「更多标签」抽屉是否处于展开状态 */
@@ -82,7 +68,6 @@ export const useShelfState = createGlobalState(() => {
     favoritesOnly.value = false
     offlineOnly.value = false
     readingStatus.value = 'all'
-    completedOnly.value = false
     sortBy.value = 'recent'
     tagTrayExpanded.value = false
   }
@@ -105,7 +90,6 @@ export const useShelfState = createGlobalState(() => {
     favoritesOnly,
     offlineOnly,
     readingStatus,
-    completedOnly,
     sortBy,
     tagTrayExpanded,
     saveScrollPosition,

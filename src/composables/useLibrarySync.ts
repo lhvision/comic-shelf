@@ -111,6 +111,29 @@ export function useLibrarySync(options: UseLibrarySyncOptions): UseLibrarySyncRe
     },
   )
 
+  // 监听浏览器前进/后退（PopState）导航，反向对齐 URL 状态与内部筛选 Ref
+  watch(
+    () => route.query,
+    (query) => {
+      const qStatus: ReadingStatus =
+        query.status === 'reading' || query.status === 'completed' ? query.status : 'all'
+      const qFav = query.favorite === 'true'
+
+      let changed = false
+      if (readingStatus.value !== qStatus) {
+        readingStatus.value = qStatus
+        changed = true
+      }
+      if (favoritesOnly.value !== qFav) {
+        favoritesOnly.value = qFav
+        changed = true
+      }
+      if (changed) {
+        void fetchLibrary(true)
+      }
+    },
+  )
+
   if (imageSearchResults) {
     watch(imageSearchResults, () => {
       void fetchLibrary(true)

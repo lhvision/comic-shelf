@@ -853,17 +853,19 @@ def query_library_index(
         params["tag"] = tag.strip()
 
     if q and q.strip():
-        needle = f"%{q.strip()}%"
+        raw_q = q.strip()
+        escaped_q = raw_q.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+        needle = f"%{escaped_q}%"
         params["needle"] = needle
         conditions.append(
             """(
-                ci.title LIKE :needle
-                OR ci.display_id LIKE :needle
-                OR ci.authors_json LIKE :needle
-                OR ci.works_json LIKE :needle
-                OR ci.actors_json LIKE :needle
-                OR ci.tags_json LIKE :needle
-                OR ci.chapter_titles_json LIKE :needle
+                ci.title LIKE :needle ESCAPE '\\'
+                OR ci.display_id LIKE :needle ESCAPE '\\'
+                OR ci.authors_json LIKE :needle ESCAPE '\\'
+                OR ci.works_json LIKE :needle ESCAPE '\\'
+                OR ci.actors_json LIKE :needle ESCAPE '\\'
+                OR ci.tags_json LIKE :needle ESCAPE '\\'
+                OR ci.chapter_titles_json LIKE :needle ESCAPE '\\'
             )"""
         )
 
@@ -879,20 +881,22 @@ def query_library_index(
 
     where_sql = ("WHERE " + " AND ".join(conditions)) if conditions else ""
 
-    order_sql = "ORDER BY ci.imported_at DESC"
+    order_sql = "ORDER BY ci.imported_at DESC, ci.source ASC, ci.source_id ASC"
     if sort == "recent":
         order_sql = """ORDER BY
             CASE
                 WHEN COALESCE(urp.last_page, 0) >= ci.page_count AND ci.page_count > 0 THEN 1
                 ELSE 0
             END ASC,
-            ci.imported_at DESC"""
+            ci.imported_at DESC,
+            ci.source ASC,
+            ci.source_id ASC"""
     elif sort == "title":
-        order_sql = "ORDER BY ci.title COLLATE NOCASE ASC"
+        order_sql = "ORDER BY ci.title COLLATE NOCASE ASC, ci.imported_at DESC, ci.source ASC, ci.source_id ASC"
     elif sort == "pages":
-        order_sql = "ORDER BY ci.page_count DESC"
+        order_sql = "ORDER BY ci.page_count DESC, ci.imported_at DESC, ci.source ASC, ci.source_id ASC"
     elif sort == "cached":
-        order_sql = "ORDER BY (CAST(ci.cached_pages AS REAL) / MAX(ci.page_count, 1)) DESC"
+        order_sql = "ORDER BY (CAST(ci.cached_pages AS REAL) / MAX(ci.page_count, 1)) DESC, ci.imported_at DESC, ci.source ASC, ci.source_id ASC"
 
     count_sql = f"""
         SELECT COUNT(*) as cnt

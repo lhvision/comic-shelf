@@ -5,7 +5,7 @@ import FavoriteButton from '@/components/FavoriteButton.vue'
 import CacheProgress from '@/components/CacheProgress.vue'
 import AppTextClamp from '@/components/AppTextClamp.vue'
 import AppChip from '@/components/AppChip.vue'
-import { api, coverSrcset } from '@/api/client'
+import { api, coverSrcset, pageFileUrl } from '@/api/client'
 import { useCoverTransition } from '@/composables/useCoverTransition'
 import { useAuth } from '@/composables/useAuth'
 import { isCompletedComic } from '@/composables/useLibraryFilter'
@@ -50,6 +50,19 @@ const liveRunning = computed(() => Boolean(props.cache?.running))
 const isTargetCover = computed(() => isCoverActive(props.comic.source, props.comic.source_id))
 const isCompleted = computed(() => isCompletedComic(props.comic))
 const isInProgress = computed(() => !isCompleted.value && (props.comic.last_page ?? 0) > 0)
+
+const coverFailed = ref(false)
+function onCoverError() {
+  if (!coverFailed.value) {
+    coverFailed.value = true
+  }
+}
+const effectiveCover = computed(() => {
+  if (coverFailed.value) {
+    return pageFileUrl(props.comic.source, props.comic.source_id, 1)
+  }
+  return props.comic.cover_paths[0] || pageFileUrl(props.comic.source, props.comic.source_id, 1)
+})
 </script>
 
 <template>
@@ -97,14 +110,15 @@ const isInProgress = computed(() => !isCompleted.value && (props.comic.last_page
           :style="isTargetCover ? { viewTransitionName: 'comic-cover-active' } : undefined"
         >
           <img
-            v-if="comic.cover_paths[0]"
+            v-if="effectiveCover"
             class="cover-image"
-            :src="comic.cover_paths[0]"
-            :srcset="coverSrcset(comic.cover_paths[0])"
+            :src="effectiveCover"
+            :srcset="coverFailed ? undefined : coverSrcset(effectiveCover)"
             sizes="(max-width: 680px) calc(50vw - 1.5rem), (max-width: 1200px) 25vw, 240px"
             :alt="`${comic.title} 封面`"
             loading="lazy"
             decoding="async"
+            @error="onCoverError"
           />
           <div v-else class="cover-placeholder">
             <span>{{ comic.display_id }}</span>

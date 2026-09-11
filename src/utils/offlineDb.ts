@@ -170,6 +170,7 @@ export async function getShelfSnapshot(userId?: string): Promise<ShelfSnapshotDa
   if (!db) return null
 
   const userKey = getEffectiveUserKey(userId)
+  const isGuestUser = userKey.startsWith('guest:')
   const snapshotKey = `shelf_${userKey}`
 
   const { promise, resolve } = withResolvers<ShelfSnapshotData | null>()
@@ -179,7 +180,38 @@ export async function getShelfSnapshot(userId?: string): Promise<ShelfSnapshotDa
     const req = store.get(snapshotKey)
 
     req.onsuccess = () => {
-      resolve((req.result as ShelfSnapshotData) || null)
+      const res = req.result as ShelfSnapshotData | undefined
+      if (res) {
+        if (isGuestUser && Array.isArray(res.items)) {
+          resolve({
+            ...res,
+            items: res.items.filter((item) => !item.hidden_from_guest),
+          })
+          return
+        }
+        resolve(res)
+        return
+      }
+
+      // 访客安全防御：若为访客，严禁跨租户降级回退至馆长快照
+      if (isGuestUser) {
+        resolve(null)
+        return
+      }
+
+      // 容错托底：若指定用户键未命中（例如离线初次加载丢失精确 userId 或 default 查无记录），
+      // 遍历 STORE_SHELF 中保存的全部快照，回退使用时间戳最新的有效书架快照
+      const allReq = store.getAll()
+      allReq.onsuccess = () => {
+        const all = (allReq.result as ShelfSnapshotData[]) || []
+        if (all.length > 0) {
+          all.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0))
+          resolve(all[0] || null)
+        } else {
+          resolve(null)
+        }
+      }
+      allReq.onerror = () => resolve(null)
     }
     req.onerror = () => resolve(null)
     tx.onerror = () => resolve(null)
@@ -253,6 +285,7 @@ export async function getComicDetail(
   if (!db || !source || !sourceId) return null
 
   const userKey = getEffectiveUserKey(userId)
+  const isGuestUser = userKey.startsWith('guest:')
   const key = `${userKey}/${source}/${sourceId}`
 
   const { promise, resolve } = withResolvers<ComicDetail | null>()
@@ -264,18 +297,79 @@ export async function getComicDetail(
     req.onsuccess = () => {
       const res = req.result as CachedComicDetailRecord | undefined
       if (res?.detail) {
+        // 访客安全防御：禁止离线读取对访客隐藏的漫画
+        if (isGuestUser && res.detail.meta?.hidden_from_guest) {
+          resolve(null)
+          return
+        }
         // 更新访问时间戳，延长 LRU 寿命
         res.timestamp = Date.now()
         store.put(res)
         resolve(res.detail)
       } else {
-        resolve(null)
+        // 访客安全防御：若为访客且未直接命中自有缓存，严禁越权兜底检索馆长或其他用户的全量缓存记录
+        if (isGuestUser) {
+          resolve(null)
+          return
+        }
+        // 容错降级：若特定 userKey 未命中，检索 STORE_DETAILS 中匹配该漫画源与 ID 的最新有效记录
+        const allReq = store.getAll()
+        allReq.onsuccess = () => {
+          const records = (allReq.result as CachedComicDetailRecord[]) || []
+          const match = records
+            .filter((r) => r.source === source && r.sourceId === sourceId && r.detail)
+            .sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0))[0]
+          if (match?.detail) {
+            match.timestamp = Date.now()
+            store.put(match)
+            resolve(match.detail)
+          } else {
+            resolve(null)
+          }
+        }
+        allReq.onerror = () => resolve(null)
       }
     }
     req.onerror = () => resolve(null)
     tx.onerror = () => resolve(null)
   } catch {
     resolve(null)
+  }
+  return promise
+}
+
+/**
+ * 获取 IndexedDB 中缓存的全部漫画详情（支持按用户键过滤或作为全局离线托底）
+ */
+export async function getAllCachedComicDetails(userId?: string): Promise<ComicDetail[]> {
+  const db = await openOfflineDb()
+  if (!db) return []
+
+  const userKey = userId && userId.trim() ? userId.trim() : undefined
+  const isGuestUser = userKey ? userKey.startsWith('guest:') : false
+  const { promise, resolve } = withResolvers<ComicDetail[]>()
+  try {
+    const tx = db.transaction(STORE_DETAILS, 'readonly')
+    const store = tx.objectStore(STORE_DETAILS)
+    const req = store.getAll()
+
+    req.onsuccess = () => {
+      const records = (req.result as CachedComicDetailRecord[]) || []
+      let matched = userKey ? records.filter((r) => r.key.startsWith(`${userKey}/`)) : records
+      // 访客安全防御：若为访客，未匹配到专属记录时不回退至全量库
+      if (matched.length === 0 && !isGuestUser) {
+        matched = records
+      }
+      let details = matched.map((r) => r.detail).filter(Boolean)
+      if (isGuestUser) {
+        details = details.filter((d) => !d.meta?.hidden_from_guest)
+      }
+      resolve(details)
+    }
+    req.onerror = () => resolve([])
+    tx.onerror = () => resolve([])
+  } catch {
+    resolve([])
   }
   return promise
 }

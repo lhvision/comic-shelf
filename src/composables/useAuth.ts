@@ -9,17 +9,63 @@ import {
 } from '@/api/client'
 import { useToast } from '@/composables/useToast'
 
-const authRequired = ref(false)
-const authenticated = ref(true)
-const role = ref<'admin' | 'guest' | 'unauthorized'>('admin')
-const username = ref('')
-const userId = ref('')
+const AUTH_PROFILE_STORAGE_KEY = 'comic-shelf:last-auth-profile'
+
+export interface StoredAuthProfile {
+  authRequired: boolean
+  authenticated: boolean
+  role: 'admin' | 'guest' | 'unauthorized'
+  username: string
+  userId: string
+}
+
+export function getStoredAuthProfile(): StoredAuthProfile | null {
+  try {
+    if (typeof window === 'undefined') return null
+    const raw = window.localStorage.getItem(AUTH_PROFILE_STORAGE_KEY)
+    if (!raw) return null
+    return JSON.parse(raw) as StoredAuthProfile
+  } catch {
+    return null
+  }
+}
+
+export function setStoredAuthProfile(profile: StoredAuthProfile | null): void {
+  try {
+    if (typeof window === 'undefined') return
+    if (profile) {
+      window.localStorage.setItem(AUTH_PROFILE_STORAGE_KEY, JSON.stringify(profile))
+    } else {
+      window.localStorage.removeItem(AUTH_PROFILE_STORAGE_KEY)
+    }
+  } catch {
+    // Ignore storage quota or security errors
+  }
+}
+
+const initialProfile = getStoredAuthProfile()
+
+const authRequired = ref(initialProfile?.authRequired ?? false)
+const authenticated = ref(initialProfile?.authenticated ?? true)
+const role = ref<'admin' | 'guest' | 'unauthorized'>(initialProfile?.role ?? 'admin')
+const username = ref(initialProfile?.username ?? '')
+const userId = ref(initialProfile?.userId ?? '')
 const checking = ref(false)
 const submitting = ref(false)
 const errorMessage = ref('')
 const requiresClaim = ref(false)
 const requiresPin = ref(false)
 const pendingToken = ref('')
+
+function persistCurrentProfile(): void {
+  setStoredAuthProfile({
+    authRequired: authRequired.value,
+    authenticated: authenticated.value,
+    role: role.value,
+    username: username.value,
+    userId: userId.value,
+  })
+}
 
 const PENDING_TOKEN_SESSION_KEY = 'comic-shelf:pending-token'
 
@@ -71,6 +117,7 @@ onUnauthorized(async () => {
         pendingToken.value = ''
         setSessionPendingToken('')
         notifyAuthSuccess()
+        persistCurrentProfile()
         return
       } else if (res.requires_pin) {
         pendingToken.value = stored
@@ -80,6 +127,7 @@ onUnauthorized(async () => {
         username.value = res.username || ''
         authenticated.value = false
         role.value = 'unauthorized'
+        persistCurrentProfile()
         return
       } else if (res.requires_claim) {
         pendingToken.value = stored
@@ -89,6 +137,7 @@ onUnauthorized(async () => {
         username.value = res.username || ''
         authenticated.value = false
         role.value = 'unauthorized'
+        persistCurrentProfile()
         return
       }
     } catch {
@@ -100,6 +149,7 @@ onUnauthorized(async () => {
 
   authenticated.value = false
   role.value = 'unauthorized'
+  persistCurrentProfile()
 })
 
 export function useAuth() {
@@ -114,6 +164,7 @@ export function useAuth() {
       role.value = status.role
       username.value = status.username || (status.role === 'admin' ? '馆长' : '')
       userId.value = status.user_id || ''
+      persistCurrentProfile()
 
       // 0. 支持链接免密直达：若 URL Query 携带 ?token=...，自动验证入馆
       let urlToken: string | null = null
@@ -135,6 +186,7 @@ export function useAuth() {
             requiresPin.value = false
             pendingToken.value = ''
             notifyAuthSuccess()
+            persistCurrentProfile()
           } else if (res.requires_claim) {
             pendingToken.value = urlToken
             setSessionPendingToken(urlToken)
@@ -179,6 +231,7 @@ export function useAuth() {
               pendingToken.value = ''
               setSessionPendingToken('')
               notifyAuthSuccess()
+              persistCurrentProfile()
               return true
             } else if (res.requires_claim) {
               pendingToken.value = stored
@@ -206,6 +259,7 @@ export function useAuth() {
               setStoredToken('')
               username.value = ''
               userId.value = ''
+              persistCurrentProfile()
             }
           }
         }
@@ -226,6 +280,7 @@ export function useAuth() {
               pendingToken.value = ''
               setSessionPendingToken('')
               notifyAuthSuccess()
+              persistCurrentProfile()
               return true
             } else if (res.requires_claim) {
               pendingToken.value = sessionPending
@@ -247,6 +302,7 @@ export function useAuth() {
       }
     } catch {
       /* network or server offline */
+      // 离线环境保持由 localStorage 还原的上次登录身份与本地权限
     } finally {
       checking.value = false
     }
@@ -273,6 +329,7 @@ export function useAuth() {
         pendingToken.value = ''
         setSessionPendingToken('')
         notifyAuthSuccess()
+        persistCurrentProfile()
         return true
       } else if (res.requires_claim) {
         pendingToken.value = secret.trim()
@@ -332,6 +389,7 @@ export function useAuth() {
         pendingToken.value = ''
         setSessionPendingToken('')
         notifyAuthSuccess()
+        persistCurrentProfile()
         toast('借阅通行证认领成功！欢迎入馆', 'success')
         return true
       }
@@ -363,6 +421,8 @@ export function useAuth() {
       username.value = ''
       userId.value = ''
       resetAuthFormState()
+      persistCurrentProfile()
+      toast('已退出入馆状态', 'info')
     }
   }
 

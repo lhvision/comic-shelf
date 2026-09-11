@@ -121,6 +121,13 @@ watch(
     failed.value = false
   },
 )
+
+// 网络重获连接时，自动对先前因离线加载失败的图片执行重载，兑现「联网后将自动载入」体验承诺
+watch(isOnline, (online, wasOnline) => {
+  if (online && wasOnline === false && failed.value) {
+    retry()
+  }
+})
 </script>
 
 <template>

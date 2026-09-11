@@ -191,6 +191,9 @@ export default defineConfig({
             handler: 'CacheFirst',
             options: {
               cacheName: 'manga-images-covers-cache',
+              matchOptions: {
+                ignoreSearch: true,
+              },
               expiration: {
                 maxEntries: 1000,
                 maxAgeSeconds: 30 * 24 * 60 * 60,

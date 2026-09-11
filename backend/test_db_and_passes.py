@@ -535,6 +535,11 @@ def test_comics_index_and_pagination():
     assert total_chap == 1
     assert items_chap[0]["source_id"] == "c1"
 
+    # Wildcard search with literal % and _: should not act as arbitrary match-all
+    items_wildcard, total_wildcard = db_mod.query_library_index("u1", is_curator=True, q="%nonexistent%")
+    assert total_wildcard == 0
+    assert len(items_wildcard) == 0
+
     # Favorite filter
     items_fav, total_fav = db_mod.query_library_index("u1", is_curator=True, favorite=True)
     assert total_fav == 1

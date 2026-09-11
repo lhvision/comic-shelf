@@ -31,8 +31,6 @@ export interface UseLibraryFilterOptions {
   favoritesOnly?: Ref<boolean>
   /** 外部共享的只看已离线 Ref */
   offlineOnly?: Ref<boolean>
-  /** 外部共享的只看已读 Ref */
-  completedOnly?: Ref<boolean>
   /** 外部共享的阅读状态单选维度 Ref */
   readingStatus?: Ref<ReadingStatus>
   /** 外部共享的全局 Facets 统计数据 Ref */
@@ -55,7 +53,6 @@ export function useLibraryFilter(
   const activeTag = options?.activeTag ?? ref('')
   const favoritesOnly = options?.favoritesOnly ?? ref(false)
   const offlineOnly = options?.offlineOnly ?? ref(false)
-  const completedOnly = options?.completedOnly ?? ref(false)
   const readingStatus = options?.readingStatus ?? ref<ReadingStatus>('all')
   const sortBy = options?.sortBy ?? ref<SortKey>('recent')
 
@@ -133,7 +130,9 @@ export function useLibraryFilter(
         item.authors.some((value) => value.toLocaleLowerCase().includes(needle)) ||
         item.works.some((value) => value.toLocaleLowerCase().includes(needle)) ||
         item.actors.some((value) => value.toLocaleLowerCase().includes(needle)) ||
-        item.tags.some((value) => value.toLocaleLowerCase().includes(needle))
+        item.tags.some((value) => value.toLocaleLowerCase().includes(needle)) ||
+        // T11 规范：让「第 5 话」等章节标题也能命中前端书架搜索，与服务端 SQL LIKE 对齐
+        Boolean(item.chapter_titles?.some((value) => value.toLocaleLowerCase().includes(needle)))
 
       const matchTag = activeTag.value === '' || item.tags.includes(activeTag.value)
       const matchFavorite = !favoritesOnly.value || item.favorite
@@ -141,7 +140,6 @@ export function useLibraryFilter(
         !offlineOnly.value ||
         (item.cached_pages ?? 0) > 0 ||
         ((item.page_count ?? 0) > 0 && (item.cached_pages ?? 0) >= item.page_count)
-      const matchCompleted = !completedOnly.value || isCompletedComic(item)
       const matchStatus =
         readingStatus.value === 'all'
           ? true
@@ -159,13 +157,7 @@ export function useLibraryFilter(
       }
 
       return (
-        matchSearch &&
-        matchTag &&
-        matchFavorite &&
-        matchOffline &&
-        matchCompleted &&
-        matchStatus &&
-        matchImageSearch
+        matchSearch && matchTag && matchFavorite && matchOffline && matchStatus && matchImageSearch
       )
     })
 
@@ -218,7 +210,6 @@ export function useLibraryFilter(
     favoritesOnly,
     offlineOnly,
     readingStatus,
-    completedOnly,
     sortBy,
     sourceItems,
     totalBooks,

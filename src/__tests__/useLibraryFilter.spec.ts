@@ -193,7 +193,7 @@ describe('useLibraryFilter', () => {
     expect(filtered.value.map((b) => b.source_id)).toEqual(['3', '1', '2'])
   })
 
-  it('filters by completedOnly correctly', () => {
+  it('filters by readingStatus completed combined with favorites correctly', () => {
     const list: LibrarySummary[] = [
       {
         source: 'jm',
@@ -265,21 +265,21 @@ describe('useLibraryFilter', () => {
 
     const itemsRef = ref(list)
     const activeSourceRef = ref('')
-    const { filtered, completedOnly, favoritesOnly } = useLibraryFilter(itemsRef, activeSourceRef)
+    const { filtered, readingStatus, favoritesOnly } = useLibraryFilter(itemsRef, activeSourceRef)
 
     // Initially all 3
     expect(filtered.value.length).toBe(3)
 
-    // Toggle completed only
-    completedOnly.value = true
+    // Filter by completed status
+    readingStatus.value = 'completed'
     expect(filtered.value.map((b) => b.source_id)).toEqual(['3', '2'])
 
     // Combine completed and favorite
     favoritesOnly.value = true
     expect(filtered.value.map((b) => b.source_id)).toEqual(['2'])
 
-    // Toggle off completed only: Book 1 (unread active) comes before Book 2 (completed)
-    completedOnly.value = false
+    // Reset readingStatus: Book 1 (unread active) comes before Book 2 (completed)
+    readingStatus.value = 'all'
     expect(filtered.value.map((b) => b.source_id)).toEqual(['1', '2'])
   })
 
@@ -386,5 +386,67 @@ describe('useLibraryFilter', () => {
     offlineOnly.value = true
     expect(filtered.value.length).toBe(2)
     expect(filtered.value.map((b) => b.source_id)).toEqual(['1', '3'])
+  })
+
+  it('matches chapter titles in search query (T11 specification)', () => {
+    const list = [
+      {
+        source: 'jm',
+        source_id: '1',
+        display_id: '1',
+        title: '长篇冒险故事',
+        authors: ['作者A'],
+        works: [],
+        actors: [],
+        tags: ['冒险'],
+        favorite: false,
+        page_count: 100,
+        views: '0',
+        likes: '0',
+        uploaded_at: '',
+        published_at: '',
+        updated_at: '',
+        imported_at: '',
+        cover_paths: [],
+        cached_pages: 50,
+        cover_count: 1,
+        chapter_titles: ['第 1 话 起源', '第 2 话 启程', '第 5 话 迷宫探索'],
+      },
+      {
+        source: 'jm',
+        source_id: '2',
+        display_id: '2',
+        title: '都市日常',
+        authors: ['作者B'],
+        works: [],
+        actors: [],
+        tags: ['日常'],
+        favorite: false,
+        page_count: 50,
+        views: '0',
+        likes: '0',
+        uploaded_at: '',
+        published_at: '',
+        updated_at: '',
+        imported_at: '',
+        cover_paths: [],
+        cached_pages: 20,
+        cover_count: 1,
+        chapter_titles: ['第 1 话 相遇'],
+      },
+    ]
+
+    const itemsRef = ref(list)
+    const activeSourceRef = ref('')
+    const { filtered, search } = useLibraryFilter(itemsRef, activeSourceRef)
+
+    // Searching '第 5 话' should match Book 1 via chapter_titles
+    search.value = '第 5 话'
+    expect(filtered.value.length).toBe(1)
+    expect(filtered.value[0]?.source_id).toBe('1')
+
+    // Searching non-existent chapter
+    search.value = '第 99 话'
+    expect(filtered.value.length).toBe(0)
   })
 })

@@ -1,11 +1,17 @@
 import { describe, it, expect, vi, beforeEach } from 'vite-plus/test'
-import { useAuth, setSessionPendingToken } from '@/composables/useAuth'
+import {
+  useAuth,
+  setSessionPendingToken,
+  getStoredAuthProfile,
+  setStoredAuthProfile,
+} from '@/composables/useAuth'
 import { api, ApiError, getStoredToken, notifyUnauthorized, setStoredToken } from '@/api/client'
 
 describe('useAuth', () => {
   beforeEach(() => {
     setStoredToken('')
     setSessionPendingToken('')
+    setStoredAuthProfile(null)
     useAuth().resetAuthFormState()
     vi.restoreAllMocks()
   })
@@ -25,6 +31,27 @@ describe('useAuth', () => {
     expect(authenticated.value).toBe(true)
     expect(canWrite.value).toBe(true)
     expect(isGuest.value).toBe(false)
+  })
+
+  it('persists and restores auth profile across offline sessions', async () => {
+    vi.spyOn(api, 'authStatus').mockResolvedValueOnce({
+      auth_required: false,
+      authenticated: true,
+      can_write: true,
+      role: 'admin',
+      user_id: 'curator',
+      username: '馆长',
+    })
+
+    const { checkStatus, userId, role } = useAuth()
+    await checkStatus()
+
+    expect(userId.value).toBe('curator')
+    expect(role.value).toBe('admin')
+
+    const saved = getStoredAuthProfile()
+    expect(saved?.userId).toBe('curator')
+    expect(saved?.role).toBe('admin')
   })
 
   it('updates auth state when auth is required and not authenticated', async () => {
@@ -88,6 +115,9 @@ describe('useAuth', () => {
     expect(authenticated.value).toBe(false)
     expect(canWrite.value).toBe(false)
     expect(getStoredToken()).toBe('')
+    const saved = getStoredAuthProfile()
+    expect(saved?.authenticated).toBe(false)
+    expect(saved?.role).toBe('unauthorized')
   })
 
   it('restores curator privileges when status returns guest but valid curator token exists', async () => {

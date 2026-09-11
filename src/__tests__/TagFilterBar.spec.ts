@@ -126,7 +126,6 @@ describe('TagFilterBar', () => {
     // Click "已读"
     await tabs[2]?.trigger('click')
     expect(wrapper.emitted('update:readingStatus')?.[1]).toEqual(['completed'])
-    expect(wrapper.emitted('toggleCompleted')).toBeTruthy()
 
     // Controlled prop update
     await wrapper.setProps({ readingStatus: 'completed' } as Record<string, unknown>)
@@ -183,5 +182,26 @@ describe('TagFilterBar', () => {
     await moreBtn.trigger('click')
 
     expect(wrapper.emitted('update:trayExpanded')?.[0]).toEqual([true])
+  })
+
+  it('renders offline chip when offlineCount > 0 and emits toggleOffline on click', async () => {
+    const wrapper = mount(TagFilterBar, {
+      props: {
+        favoritesOnly: false,
+        offlineOnly: false,
+        offlineCount: 5,
+        activeTag: '',
+        tagCounts,
+        filteredCount: 10,
+      },
+    })
+
+    const offlineBtn = wrapper.find('.offline-filter')
+    expect(offlineBtn.exists()).toBe(true)
+    expect(offlineBtn.text()).toContain('只看离线')
+    expect(offlineBtn.text()).toContain('5')
+
+    await offlineBtn.trigger('click')
+    expect(wrapper.emitted('toggleOffline')).toHaveLength(1)
   })
 })

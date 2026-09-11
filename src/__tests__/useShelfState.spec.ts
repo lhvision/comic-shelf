@@ -17,7 +17,7 @@ describe('useShelfState', () => {
     expect(state.search.value).toBe('')
     expect(state.activeTag.value).toBe('')
     expect(state.favoritesOnly.value).toBe(false)
-    expect(state.completedOnly.value).toBe(false)
+    expect(state.readingStatus.value).toBe('all')
     expect(state.sortBy.value).toBe('recent')
     expect(state.tagTrayExpanded.value).toBe(false)
   })
@@ -58,7 +58,7 @@ describe('useShelfState', () => {
     state.search.value = '夏日'
     state.activeTag.value = '同人'
     state.favoritesOnly.value = true
-    state.completedOnly.value = true
+    state.readingStatus.value = 'completed'
     state.sortBy.value = 'pages'
     state.tagTrayExpanded.value = true
     state.saveScrollPosition(1200)
@@ -71,7 +71,7 @@ describe('useShelfState', () => {
     expect(state.search.value).toBe('')
     expect(state.activeTag.value).toBe('')
     expect(state.favoritesOnly.value).toBe(false)
-    expect(state.completedOnly.value).toBe(false)
+    expect(state.readingStatus.value).toBe('all')
     expect(state.sortBy.value).toBe('recent')
     expect(state.tagTrayExpanded.value).toBe(false)
   })

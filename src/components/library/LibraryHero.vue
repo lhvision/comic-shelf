@@ -220,6 +220,15 @@ const heroLede = computed(
     padding: 0.5rem 0.85rem;
     min-height: 28px;
     box-sizing: border-box;
+    position: relative;
+  }
+
+  /* 移动端无障碍触控靶心扩展（在保持 28px 精致紧凑视觉的同时提供 ≥44px 点击判定热区） */
+  .hero-source-pill::after {
+    content: '';
+    position: absolute;
+    inset: -8px 0;
+    pointer-events: auto;
   }
 }
 
