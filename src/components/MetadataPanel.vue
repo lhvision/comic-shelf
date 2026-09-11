@@ -225,6 +225,26 @@ const fieldRows = computed(() => {
   border-bottom: 0;
 }
 
+/* 现代渐进增强轨：CSS Gap Decorations (Chrome 149+) 原生网格装饰线体系 */
+@supports (row-rule: 1px solid red) {
+  .meta-grid {
+    column-gap: var(--space-8);
+    column-rule: 1px solid var(--line);
+    row-rule: 1px solid var(--line);
+    column-rule-visibility-items: between;
+  }
+
+  .meta-row {
+    border-bottom: 0;
+  }
+
+  .meta-row:nth-child(odd),
+  .meta-row:nth-child(even) {
+    padding-inline: 0;
+    border-left: 0;
+  }
+}
+
 .meta-row dt {
   color: var(--ink-2);
   font-size: var(--text-xs);
