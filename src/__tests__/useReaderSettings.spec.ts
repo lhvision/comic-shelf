@@ -277,4 +277,46 @@ describe('useReaderSettings composable', () => {
 
     clearActiveComic()
   })
+
+  it('correctly persists autoTurn and autoTurnInterval in per-comic overrides', async () => {
+    const {
+      settings,
+      globalSettings,
+      hasActiveOverride,
+      applyComicPreferences,
+      revertToGlobal,
+      clearActiveComic,
+    } = useReaderSettings()
+
+    // 全局基线 autoTurnInterval 为默认值 10，autoTurn 为 false
+    expect(globalSettings.autoTurnInterval).toBe(10)
+    expect(globalSettings.autoTurn).toBe(false)
+
+    // 进入漫画并在单本偏好中修改自动翻页与秒数
+    applyComicPreferences('jm', 'comic_turn_test', [])
+    settings.autoTurn = true
+    settings.autoTurnInterval = 25
+    await new Promise((resolve) => setTimeout(resolve, 0))
+
+    expect(hasActiveOverride.value).toBe(true)
+    expect(settings.autoTurn).toBe(true)
+    expect(settings.autoTurnInterval).toBe(25)
+    expect(globalSettings.autoTurn).toBe(false) // 全局未被污染
+    expect(globalSettings.autoTurnInterval).toBe(10)
+
+    // 退出后重新打开该漫画，专属偏好必须正确复原
+    clearActiveComic()
+    applyComicPreferences('jm', 'comic_turn_test', [])
+    expect(hasActiveOverride.value).toBe(true)
+    expect(settings.autoTurn).toBe(true)
+    expect(settings.autoTurnInterval).toBe(25)
+
+    // 恢复跟随全局后，退回全局基线
+    revertToGlobal()
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    expect(settings.autoTurn).toBe(false)
+    expect(settings.autoTurnInterval).toBe(10)
+
+    clearActiveComic()
+  })
 })

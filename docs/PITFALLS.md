@@ -756,6 +756,20 @@
     2. **Lazy 3D Elevation**：仅在 `:hover` 与 `:focus-visible` 时按需激活 `perspective`，静态空闲状态保持纯 2D 平面，避免弱显卡常驻 3D 合成开销；
     3. **实测收益**：标签过滤重排导致的 Forced Reflow 从 168ms 骤降至 8ms（降幅 95.2%），平稳收敛进单帧时间预算。
 
+### 77. 多态按钮覆盖 role="button" 引发的无障碍与 Space 键滚动冲突，及微型哨兵污染弹性布局间距陷阱 (Polymorphic Link ARIA Mismatch, Space Key Conflict & Flex Gap Contamination)
+
+- **本质**：
+  1. **多态组件语义污染**：在通用按钮（如 `AppButton`）实现多态跳转渲染（`<RouterLink>` 或 `<a>`）时，若强加 `role="button"`，破坏了原生链接（Link）的无障碍树语义；读屏器会将跳页链接误报为原地操作按钮，且由于原生 `<a>` 获得焦点时不响应 Space 键，用户按空格无法跳转反而会引发页面意外滚动；
+  2. **微型哨兵污染弹性间距**：为消除重排而在 Flex 滚动容器内放置 1px 滚动检测哨兵（如 `sentinelStartEl`）时，Flex 引擎会自动在哨兵与首尾元素之间注入容器级的 `gap`（如 16px），无形中破坏了导航栏或工具条的边界对齐；
+  3. **双轨偏好字段遗漏**：在实现「单本覆盖 vs 全局基准」双轨制时，局部覆盖持久化序列化时若遗漏 `autoTurn` 或 `autoTurnInterval` 等子字段，会导致设置面板界面声称已保存，但刷新或切话后静默丢失。
+- **红线与防误伤**：
+  - **不要**对底层用于跨页面导航的 `<RouterLink>` 或 `<a>` 强行赋予 `role="button"`；
+  - **不要**让无界面的微型哨兵无抵消地直接参与 Flex 容器的 `gap` 间距计算；
+  - **放行/改用**：
+    1. **原生链接语义优先**：多态链接仅保留视觉样式 `.btn`，无障碍树保持隐式 `role="link"`，键盘 Enter 键直达且读屏器语义自解释；
+    2. **哨兵布局负边距中和**：哨兵元素保留 1px 实体以满足 `IntersectionObserver` 的 `threshold`，同时通过 `margin-right/margin-left: calc(-1 * var(--space-4) - 1px)` 完全抵消 Flex gap；
+    3. **双轨模型严格对称**：单本覆盖与全局基线在序列化字段与状态互斥锁（`isApplyingPreferences`）上保持 100% 结构对称。
+
 ---
 
 ## 🚦 交付门禁（四步必跑）

@@ -272,10 +272,14 @@ export const useReaderSettings = createGlobalState(() => {
           pagesPerView: value.pagesPerView,
           direction: value.direction,
           seamless: value.seamless,
+          autoTurn: value.autoTurn,
+          autoTurnInterval: value.autoTurnInterval,
         })
       } else {
         stored.value = { ...DEFAULT_SETTINGS, ...value }
+        isApplyingPreferences = true
         Object.assign(globalSettings, clampSettings(value, isWideViewport.value))
+        isApplyingPreferences = false
       }
     },
     { deep: true, flush: 'sync' },

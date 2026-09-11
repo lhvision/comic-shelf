@@ -315,6 +315,16 @@ onAuthSuccess(fetchProviders)
   opacity: 0;
 }
 
+.nav-scroll-sentinel--start {
+  /* 抵消 flex gap 与自身 1px 宽度，确保首个导航链接与内边距边缘完全精准贴合 */
+  margin-right: calc(-1 * var(--space-4) - 1px);
+}
+
+.nav-scroll-sentinel--end {
+  /* 抵消 flex gap 与自身 1px 宽度，确保末尾导航链接与内边距边缘完全精准贴合 */
+  margin-left: calc(-1 * var(--space-4) - 1px);
+}
+
 .site-nav a {
   position: relative;
   display: inline-flex;

@@ -4,6 +4,13 @@ import { useCoverTransition } from '@/composables/useCoverTransition'
 import { withResolvers } from '@/utils/promise'
 
 let hasPreScrolled = false
+let isPopStateNavigation = false
+
+if (typeof window !== 'undefined') {
+  window.addEventListener('popstate', () => {
+    isPopStateNavigation = true
+  })
+}
 
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
@@ -96,7 +103,7 @@ router.beforeResolve(async (to, from) => {
     // 1. 旧页面冻结快照遮挡住视口变动，读者视觉无跳动；
     // 2. 新视图直接挂载在 (0, 0)，View Transition 截取 ::view-transition-new(root) 处于真实顶端；
     // 3. 彻底根除 Vue Router 在微任务中调用 scrollToPosition 强排新视图（消除 134~209ms 阻塞）。
-    if (direction === 'forward') {
+    if (direction === 'forward' && !isPopStateNavigation) {
       hasPreScrolled = true
       if (typeof window !== 'undefined') {
         window.scrollTo({ top: 0, behavior: 'instant' })
@@ -152,6 +159,7 @@ const { clearActiveCover } = useCoverTransition()
 router.afterEach((to) => {
   // 确保单次推进生命周期结束后重置标记，杜绝状态跨路由泄露
   hasPreScrolled = false
+  isPopStateNavigation = false
 
   const title = typeof to.meta.title === 'string' ? to.meta.title : ''
   document.title = title ? `${title} · 纸间` : '纸间 · Paper Room'
@@ -164,6 +172,7 @@ router.afterEach((to) => {
 
 router.onError(() => {
   hasPreScrolled = false
+  isPopStateNavigation = false
 })
 
 export default router

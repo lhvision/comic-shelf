@@ -88,7 +88,8 @@ describe('AppButton', () => {
     expect(wrapper.attributes('href')).toBe('https://example.com')
     expect(wrapper.attributes('target')).toBe('_blank')
     expect(wrapper.attributes('rel')).toBe('noopener noreferrer')
-    expect(wrapper.attributes('role')).toBe('button')
+    // 保持原生链接无障碍语义，禁止强覆写 role="button" 导致屏幕阅读器误报及 Space 键失效
+    expect(wrapper.attributes('role')).toBeUndefined()
 
     await wrapper.trigger('click')
     expect(wrapper.emitted('click')?.length).toBe(1)
@@ -219,5 +220,22 @@ describe('AppButton', () => {
     expect(wrapper.find('.btn-prefix').exists()).toBe(false)
     expect(wrapper.find('.btn-suffix').exists()).toBe(true)
     expect(wrapper.find('.btn-content').text()).toBe('下一话')
+  })
+
+  it('renders both icon and text slot without suppression when shape is specified with text', () => {
+    const wrapper = mount(AppButton, {
+      props: {
+        shape: 'square',
+        icon: 'plus',
+      },
+      slots: {
+        default: '新增话',
+      },
+    })
+
+    expect(wrapper.classes()).toContain('btn-shape-square')
+    expect(wrapper.classes()).not.toContain('is-icon-only')
+    expect(wrapper.find('.btn-prefix').exists()).toBe(true)
+    expect(wrapper.find('.btn-content').text()).toBe('新增话')
   })
 })

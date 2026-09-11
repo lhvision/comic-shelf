@@ -54,38 +54,39 @@ const emit = defineEmits<{
 const slots = useSlots()
 const attrs = useAttrs()
 
-/** 判定是否为纯图标按钮模式 */
-const isIconOnly = computed(() => {
-  if (props.shape !== 'default') return true
-  return Boolean(props.icon) && !slots.default && !slots.prefix && !slots.suffix
+const ICON_ONLY_SIZES: Record<'xs' | 'sm' | 'md' | 'lg', 'xs' | 'sm' | 'md' | 'lg'> = {
+  xs: 'xs',
+  sm: 'sm',
+  md: 'sm',
+  lg: 'lg',
+}
+
+const BUTTON_WITH_TEXT_ICON_SIZES: Record<'xs' | 'sm' | 'md' | 'lg', 'xs' | 'sm' | 'md' | 'lg'> = {
+  xs: 'xs',
+  sm: 'xs',
+  md: 'xs',
+  lg: 'sm',
+}
+
+/** 判定是否为纯图标按钮模式（解耦外观形状与内容插槽，支持自定义图标插槽与图文并存） */
+const hasCustomSlotContent = computed(() => {
+  return Boolean(slots.default || slots.prefix || slots.suffix)
 })
 
-/** 图标根据按钮尺寸与形态自适应尺寸 */
+const isIconOnly = computed(() => {
+  if (!hasCustomSlotContent.value) {
+    return props.shape !== 'default' || Boolean(props.icon)
+  }
+  // 若传入默认插槽但未声明 icon 属性，且指定了正圆/方块形状（如 BackToTop 自定义插槽图标）
+  if (props.shape !== 'default' && !props.icon) {
+    return true
+  }
+  return false
+})
+
+/** 图标根据按钮尺寸与形态自适应尺寸（常量字典映射驱动） */
 const iconSize = computed(() => {
-  if (isIconOnly.value) {
-    switch (props.size) {
-      case 'xs':
-        return 'xs'
-      case 'sm':
-        return 'sm'
-      case 'lg':
-        return 'lg'
-      case 'md':
-      default:
-        return 'sm'
-    }
-  }
-  // 带文字按钮的前缀/后缀图标
-  switch (props.size) {
-    case 'xs':
-    case 'sm':
-      return 'xs'
-    case 'lg':
-      return 'sm'
-    case 'md':
-    default:
-      return 'xs'
-  }
+  return isIconOnly.value ? ICON_ONLY_SIZES[props.size] : BUTTON_WITH_TEXT_ICON_SIZES[props.size]
 })
 
 /** 多态渲染底层组件感知 */
@@ -149,7 +150,6 @@ if (import.meta.env.DEV) {
     :href="isDisabled ? undefined : href"
     :target="target"
     :rel="computedRel"
-    :role="isLink ? 'button' : undefined"
     :class="btnClasses"
     :disabled="tag === 'button' ? isDisabled : undefined"
     :aria-disabled="isLink && isDisabled ? 'true' : undefined"

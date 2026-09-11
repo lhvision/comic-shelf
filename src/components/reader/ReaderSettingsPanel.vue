@@ -111,6 +111,9 @@ function onCustomBlur() {
     customValue.value = 300
   }
   currentTargetSettings.value.autoTurnInterval = customValue.value
+  if (customInputRef.value) {
+    customInputRef.value.value = String(customValue.value)
+  }
 }
 </script>
 

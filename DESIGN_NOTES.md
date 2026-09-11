@@ -162,8 +162,10 @@
 - **多态渲染与跳转安全（Polymorphic ARIA Navigation）**：
   - 传入 `to` 时自动以 `<RouterLink>` 渲染；传入 `href` 时自动以 `<a>` 渲染（支持 `target="_blank"` 自动补齐 `rel="noopener noreferrer"`）；未提供时渲染原生 `<button>`；
   - **链接禁用态拦截铁律**：当处于 `disabled` 或 `loading` 状态时，多态链接自动挂载 `aria-disabled="true"`、`tabindex="-1"`，并在底层强制 `event.preventDefault()` + `event.stopPropagation()`，保持 DOM 节点稳定的同时彻底杜绝链接误触跳转；
+  - **原生链接语义纯净律（Semantic Link Purity）**：多态链接严禁滥用 `role="button"` 覆写无障碍树语义，必须保持原生 `link` 语义，杜绝屏幕阅读器误报及缺乏 Space 键拦截引发的视口破坏性滚动（WCAG 2.1.1）；
 - **单源图标与独立图标按钮（Icon Button Mode & Dead Import Elimination）**：
   - 支持 `shape="default" | "circle" | "square"`，结合 `icon="<IconName>"` 与 `iconPosition="left" | "right"`（默认 `'left'`）实现属性与插槽双轨制；
+  - **形状与内容解耦律**：`shape` 仅控制几何轮廓（圆形/方块），内容模式由插槽与图标共同裁决，支持方块按钮携带自定义文本插槽的标准图文并存；
   - 纯图标模式下自动收敛为 1:1 宽高比与居中排布，开发环境运行时强校验 `aria-label` / `title`，杜绝读屏盲区（WCAG 4.1.2）；
   - **图标单源收敛定律**：通用按钮的前置/后置图标优先通过 `icon` 与 `iconPosition` 声明，禁止在组件层为了单一按钮图标冗余引入 `import AppIcon`，推动业务层消除无用导入（Dead Imports）；
 - **阅览室暗室高对比度防御（Reader Dark Room Token Defense）**：
