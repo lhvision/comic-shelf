@@ -11,7 +11,6 @@ import ThemeSelect from '@/components/ThemeSelect.vue'
 import AppButton from '@/components/AppButton.vue'
 import AppIcon from '@/components/AppIcon.vue'
 import { useLibraryStore } from '@/stores/library'
-import { useExperimentsStore } from '@/stores/experiments'
 import { useLibraryFilter } from '@/composables/useLibraryFilter'
 import { useLibrarySync } from '@/composables/useLibrarySync'
 import { useShelfState } from '@/composables/useShelfState'
@@ -24,7 +23,6 @@ import { api, DEFAULT_PROVIDERS } from '@/api/client'
 import type { ProviderInfo } from '@/types'
 
 const store = useLibraryStore()
-const experiments = useExperimentsStore()
 const route = useRoute()
 const router = useRouter()
 const { toast } = useToast()
@@ -225,22 +223,6 @@ watch([() => store.error, imageSearch.error], ([err1, err2]) => {
         </div>
       </div>
 
-      <div v-if="experiments.htmlCanvasSupported" class="experiment-bar surface">
-        <div>
-          <span class="eyebrow">Experiment</span>
-          <p>
-            HTML-in-Canvas 卡片：把整张书架卡片的
-            <strong>封面 + 标题 + 标签 + 缓存进度</strong>
-            等多个 DOM 节点绘制进一个 canvas。
-          </p>
-        </div>
-        <label class="experiment-toggle">
-          <input v-model="experiments.htmlCanvasCards" type="checkbox" />
-          <span>启用 Canvas 卡片</span>
-          <small>启用后书架卡片会显示 CANVAS 徽标</small>
-        </label>
-      </div>
-
       <TagFilterBar
         v-model:tray-expanded="tagTrayExpanded"
         :favorites-only="favoritesOnly"
@@ -269,7 +251,6 @@ watch([() => store.error, imageSearch.error], ([err1, err2]) => {
       <ComicGrid
         :loading="store.loading"
         :items="filtered"
-        :use-canvas="experiments.htmlCanvasCards"
         :has-any-items="totalBooks > 0 || store.items.length > 0"
         :live-cache="store.liveCache"
         :search-match-map="imageSearchMatchMap"
@@ -405,38 +386,6 @@ watch([() => store.error, imageSearch.error], ([err1, err2]) => {
   color: var(--ink-2);
 }
 
-.experiment-bar {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: var(--space-4);
-  margin-top: var(--space-4);
-  padding: var(--space-3) var(--space-4);
-  font-size: var(--text-xs);
-  color: var(--ink-1);
-}
-
-.experiment-bar p {
-  margin: 0;
-  line-height: 1.6;
-}
-
-.experiment-toggle {
-  display: grid;
-  justify-items: start;
-  gap: 0.25rem;
-  white-space: nowrap;
-}
-
-.experiment-toggle input {
-  accent-color: var(--accent);
-}
-
-.experiment-toggle small {
-  color: var(--ink-2);
-  font-size: 0.7rem;
-}
-
 .offline-active-note {
   display: inline-flex;
   align-items: center;
@@ -514,17 +463,6 @@ watch([() => store.error, imageSearch.error], ([err1, err2]) => {
   .search-container {
     grid-column: 1 / -1;
     grid-row: 2;
-  }
-}
-
-@media (max-width: 760px) {
-  .experiment-bar {
-    align-items: flex-start;
-    flex-direction: column;
-  }
-
-  .experiment-toggle {
-    white-space: normal;
   }
 }
 

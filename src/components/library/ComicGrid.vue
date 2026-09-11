@@ -12,7 +12,6 @@ import { ref, computed, watch, nextTick } from 'vue'
 import { useIntersectionObserver } from '@vueuse/core'
 import type { LibrarySummary } from '@/types'
 import ComicCard from '@/components/ComicCard.vue'
-import HtmlCanvasCard from '@/components/HtmlCanvasCard.vue'
 import AppButton from '@/components/AppButton.vue'
 import AppIcon from '@/components/AppIcon.vue'
 import { liveCacheKey, type LiveCacheState } from '@/stores/library'
@@ -23,8 +22,6 @@ const props = withDefaults(
   defineProps<{
     loading: boolean
     items: LibrarySummary[]
-    /** 是否启用 HTML-in-Canvas 实验卡片 */
-    useCanvas: boolean
     /** 书库是否非空（用于空状态区分"没收录"与"没匹配"） */
     hasAnyItems: boolean
     /** 后台缓存任务的实时进度，key 为 `source/source_id` */
@@ -83,13 +80,9 @@ const allCompleted = computed(
   () => props.isRecentSort && props.items.length > 0 && props.items.every(isCompleted),
 )
 
-// 双分区模式：在最近收录且非 Canvas 模式下，同时存在未读和已读书籍时启用
+// 双分区模式：在最近收录排序下，同时存在未读和已读书籍时启用
 const isSplitMode = computed(
-  () =>
-    props.isRecentSort &&
-    !props.useCanvas &&
-    activeComics.value.length > 0 &&
-    completedComics.value.length > 0,
+  () => props.isRecentSort && activeComics.value.length > 0 && completedComics.value.length > 0,
 )
 
 const emit = defineEmits<{
@@ -130,7 +123,7 @@ const {
   scrollTarget: gridWrapEl,
   onChange: (count) => emit('update:activeCount', count),
 })
-const canCollapseActive = computed(() => !props.useCanvas && canCollapseActiveRaw.value)
+const canCollapseActive = computed(() => canCollapseActiveRaw.value)
 
 // 2. 卷末归档专匣状态
 const archiveOpen = ref(props.initialArchiveOpen ?? false)
@@ -279,11 +272,8 @@ function handleLoadAllUnified() {
   }
 }
 
-const visibleItems = computed(() => {
-  if (props.useCanvas) return props.items
-  return rawVisibleItems.value
-})
-const canCollapse = computed(() => !props.useCanvas && canCollapseRaw.value)
+const visibleItems = computed(() => rawVisibleItems.value)
+const canCollapse = computed(() => canCollapseRaw.value)
 
 watch(
   () => props.initialActiveCount,
@@ -673,20 +663,7 @@ watch(
         <span class="archive-divider-line" />
       </div>
 
-      <div v-if="useCanvas" class="comic-grid">
-        <HtmlCanvasCard
-          v-for="item in visibleItems"
-          :key="`canvas-${item.source}/${item.source_id}`"
-          :comic="item"
-          :enabled="true"
-          :cache="liveCache?.[keyOf(item.source, item.source_id)]"
-          @favorite-toggled="
-            (source, sourceId, value) => emit('favoriteToggled', source, sourceId, value)
-          "
-        />
-      </div>
-
-      <TransitionGroup v-else tag="div" name="shelf-card" class="comic-grid">
+      <TransitionGroup tag="div" name="shelf-card" class="comic-grid">
         <ComicCard
           v-for="item in visibleItems"
           :key="`item-${item.source}/${item.source_id}`"
@@ -778,10 +755,7 @@ watch(
       </div>
 
       <!-- 底部收整控制条 -->
-      <div
-        v-if="!useCanvas && canCollapse && remainingCount === 0 && !hasMore"
-        class="shelf-sentinel surface"
-      >
+      <div v-if="canCollapse && remainingCount === 0 && !hasMore" class="shelf-sentinel surface">
         <div class="sentinel-info">
           <AppIcon name="archive" size="sm" class="sentinel-icon" />
           <span class="sentinel-note">

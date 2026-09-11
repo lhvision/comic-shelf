@@ -437,9 +437,9 @@ overflow: hidden;
 1. **Vue 视图层优先使用 `<AppTextClamp>`**：
    - 业务组件（如卡片标题、作者、简介）一律使用 `<AppTextClamp :lines="2" :text="item.title">`；
    - 优势：不仅自动处理跨浏览器 line-clamp，还结合了 `ResizeObserver` 仅在**真实发生截断**时才激活原生 HTML Popover + CSS Anchor Positioning 浮层，鼠标悬浮或 Tab 聚焦即可阅读全文，短文本 0 DOM 冗余；
-2. **纯样式/静态 Canvas 视图使用全局实用类**：
+2. **纯静态 HTML 片段使用全局实用类**：
    - 在 `src/styles/main.css` 提供了 `.line-clamp-1`、`.line-clamp-2`、`.line-clamp-3` 实用类（包含在 `@layer utilities` 中）；
-   - 如 `HtmlCanvasCard.vue` 或纯静态 HTML 片段直接复用该实用类，严禁在业务组件 `<style scoped>` 中重复手写样板代码；
+   - 如纯静态 HTML 骨架或片段直接复用该实用类，严禁在业务组件 `<style scoped>` 中重复手写样板代码；
 3. **属性级联顺序与过时前缀清理**：
    - **级联顺序**：当同一规则中前缀与标准属性并存时，严格遵循“前缀在前、标准在后”（如 `-webkit-backdrop-filter` 在前，`backdrop-filter` 在后；`-webkit-mask-image` 在前，`mask-image` 在后），确保现代标准引擎不会被私有前缀逆向覆盖；
    - **过时前缀清理**：彻底剔除 2011 年 iOS 5 遗留的 `-webkit-overflow-scrolling: touch`，自 iOS 13 起该属性已被官方移除并默认为原生惯性平滑滚动，全仓已作为死代码清理。

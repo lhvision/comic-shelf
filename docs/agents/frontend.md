@@ -33,7 +33,6 @@
 | `src/composables/useReaderSettings.ts`           | 阅读器设置全局状态单例持久化（VueUse `createGlobalState`）                                                                                                     |
 | `src/composables/useLastRead.ts`                 | 每部作品继续阅读页码持久化读写                                                                                                                                 |
 | `src/composables/useToast.ts`                    | 全局轻量印章通知 Toast 状态机（支持 info / error / success 三态提示）                                                                                          |
-| `src/composables/useHtmlCanvas.ts`               | HTML-in-Canvas 实验特性检测与支持度判定                                                                                                                        |
 | `src/composables/useOfflineStorage.ts`           | 端侧离线物理存储探测与分级清理状态机（StorageManager + CacheStorage 统计）                                                                                     |
 | `src/composables/useOfflineSync.ts`              | 客户端离线网络感知与记账对齐流水线：断网记账、联网自愈自动回写与 SWR 书架刷新调度                                                                              |
 | `src/utils/offlineDb.ts`                         | 端侧轻量 IndexedDB 引擎（comic-shelf-meta）：书架快照/Facets 分区存储、200 本 LRU 漫画详情淘汰与带 userId 签名的离线操作事务队列                               |
@@ -87,13 +86,10 @@
 | `src/components/reader/ReaderChapterBanners.vue` | 阅读器跨话悬浮横幅：话首「← 上一话」与话末「本话完 · 下一话 →」导航交互胶囊                                                                                    |
 | `src/components/reader/ReaderEndCard.vue`        | 阅读器末页结尾卡片：视口真实触达感知（`useIntersectionObserver`）、暗室响应式接卷推荐三联卡与双向离开出口                                                      |
 | `src/components/reader/ReaderFloatingPill.vue`   | 阅读器浮动画卷页标：条漫无缝拼接模式下的非侵入式页码浮标，滚动感应淡入淡出与 HUD 互斥避让                                                                      |
-| `src/components/HtmlCanvasSurface.vue`           | 实验性 DOM→canvas 绘制原语，default slot 是完整 DOM 子树                                                                                                       |
-| `src/components/HtmlCanvasCard.vue`              | 实验性书架卡片：整卡 DOM（封面+标题+标签+进度）合成 canvas                                                                                                     |
 | `src/components/reader/ReaderLoadingState.vue`   | 典藏 WebP 呼吸微光加载组件（整本首屏与单页渐进式加载）                                                                                                         |
 | `src/styles/tokens.css`                          | 设计 token 与原生 CSS 样式体系                                                                                                                                 |
 | `src/stores/library.ts`                          | 书库 Pinia store（SWR 保持、静默回源、后台缓存轮询与自动清理收录提示）                                                                                         |
 | `src/stores/settings.ts`                         | 下载并发与运行时设置 store                                                                                                                                     |
-| `src/stores/experiments.ts`                      | 实验开关：HTML-in-Canvas 卡片                                                                                                                                  |
 
 ## 6.5 页面索引性能策略与全链路图片流水线闭环
 
@@ -130,11 +126,10 @@
   - 页面索引 tile、章节卡片与 reader spread 节点众多，使用 `content-visibility: auto`；
   - 书架卡片（`ComicCard`）：3D 扇形副封面采用交互延迟加载（`@pointerenter.once` / `@focusin.once`），初始仅请求主封面（12 本 = 12 个请求，降低 75% 初始并发）；**严禁使用 `content-visibility: auto`**（防 `contain: paint` 剪切 Hover 浮动与柔和阴影），改用 `contain: layout style` + `container-type: inline-size` 配合 **12 本/批增量渲染**。
   - 所有存在文本截断的按钮、下拉框（`select`/`option`）、章节标题与元数据必须 100% 绑定原生 `:title` 属性，确保 a11y 与信息可读性。
-- HTML-in-Canvas 不适合做页面索引虚拟化：为每个 tile 建 canvas 会比图片更耗内存。
-  它只用于 DOM 合成（封面卡），性能优化仍以 thumbnail + 增量 DOM 为主。
+- 页面索引虚拟化与渲染：性能优化坚守 thumbnail + 增量 DOM（`CHAPTER_PAGE_STEP = 24` + sentinel 按需加载），禁止为 tile 引入 Canvas 渲染层以防显存暴涨与无法复用原生图片解码缓存。
 - **预热机制（Pre-warming）**：后台预缓存任务在拉取原图的同时自动生成 360px 缩略图，详情页访问 100% 命中暖缓存；后端同时配备 `COMIC_SHELF_THUMB_CONCURRENCY` 门禁，防止多用户并发动态生成导致 CPU 击穿。进入阅读器可 100% 本地秒开。禁止在阅读器大图使用 LQIP（模糊马赛克底图）以防破坏纸质质感。
 - **意图预热与即时元数据占位（Prefetch on Intent & SWR Hero Placeholder）**：
-  - **意图预热（卡片与按钮）**：`ComicCard` 与 `HtmlCanvasCard` 在 `@pointerenter.once` / `@focusin.once` / `@touchstart.passive.once` 时静默预热 `ComicDetailView.vue` 路由 chunk 与 `api.detail` 接口（写入 `useMemoize` 内存）；`DetailActionBar` 在悬停阅读按钮时同步预热 `ReaderView.vue`；
+  - **意图预热（卡片与按钮）**：`ComicCard` 在 `@pointerenter.once` / `@focusin.once` / `@touchstart.passive.once` 时静默预热 `ComicDetailView.vue` 路由 chunk 与 `api.detail` 接口（写入 `useMemoize` 内存）；`DetailActionBar` 在悬停阅读按钮时同步预热 `ReaderView.vue`；
   - **SWR Hero 占位（消灭白屏/闪烁）**：从书架跳入详情页时，初始直接调用 `createPlaceholderDetail(store.byId(source, sourceId))` 渲染 Hero 头部（真实标题、封面轮播与元数据），使浏览器 View Transition 精准捕获到真正的 `comic-cover-active` 并连贯执行共享封面形变（Shared Cover Morph），彻底杜绝捕获纯灰骨架屏导致的二次闪烁。
 
 ## 6.6 多来源导航
@@ -251,16 +246,14 @@
   统一用于整本首屏加载与单页渐进式加载（`compact` 模式）；动效在 `prefers-reduced-motion` 下自动关闭。
 - `ComicPageImage.vue` 给普通 `<img>` 页面提供：居中动态 loading、加载后淡入渐显与失败重试。
 
-## 8. HTML-in-Canvas 实验
+## 8. 淘汰反模式：HTML-in-Canvas 列表渲染（Deprecated & Rejected）
 
-- Chrome 148–150 Origin Trial；本地可用 Canary 149+ 打开 `chrome://flags/#canvas-draw-element` 测试。
-- 生产域名需在 Origin Trials 控制台申请 token 并在 `index.html` 填入：
-  `<meta http-equiv="origin-trial" content="TOKEN">`。
-- 实验开关位于 `localStorage['comic-shelf:experiments:v1']`：`{ htmlCanvasCards: true }`。
-- `HtmlCanvasSurface.vue` 只在 `canvas.getContext('html')` 可用且实验开启时启用；
-  否则 default slot 作为普通 DOM 渲染，保留 fallback 路径。
-- 它绘制的是**完整卡片 DOM 子树**（封面 + 标题 + 作者 + 标签 + 缓存进度），
-  交互由透明 overlay slot 保留；控制台可通过 `window.__COMIC_SHELF_HTML_CANVAS__` 调试。
+- **技术评估与实机复盘**：曾探索基于 WICG HTML-in-Canvas 规范（Chromium 155+ 实验特性 `chrome://flags/#canvas-draw-element`，`drawElementImage` 与 `<canvas layoutsubtree>`）将书架卡片绘制进 Canvas。实机验证证实其不适合列表/卡片型 UI，已于主干全量拔除，严禁后续再次引入：
+  1. **GPU 显存暴涨与上下文丢失风险**：Retina 屏（2x~~3x DPR）下单张卡片 Canvas 需分配独立 GPU Backing Store 离屏位图，书架 50 本漫画即额外占用 70MB~~120MB 未压缩显存，导致移动端与集成显卡面临 WebGL/Canvas 上下文丢失（Context Loss）风险；
+  2. **ResizeObserver 自激震荡（无限增长死循环）**：`<canvas>` 为固有尺寸可替换元素（Replaced Element），在 CSS Grid 下其 `canvas.height` 设置会撑开 Grid 轨道高度，进而再次触发 `ResizeObserver` 回调，形成严重的无限尺寸膨胀恶性循环；
+  3. **交互语义与无障碍完全退化**：Canvas 丢失文本可选性、键盘 Tab 导航与原生辅助功能树（Accessibility Tree），必须在上方叠加透明的 DOM Hitbox 遮罩，违背本地优先与轻量化架构初衷；
+  4. **规范设计初衷错位**：WICG 设计 `drawElementImage` 主要面向 3D WebGL 游戏 HUD 覆层、Canvas 图表富文本标注与视频位图导出，而非长列表内容承载；
+- **书架性能基准定性**：书架坚守原生 DOM + CSS Grid + 48 图增量预算，由合成器线程处理滚动，帧率稳定在 120 FPS+，无需任何 Canvas 代理层。
 
 ## 9. View Transitions API 行为规范与边界
 

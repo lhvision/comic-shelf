@@ -770,6 +770,20 @@
     2. **哨兵布局负边距中和**：哨兵元素保留 1px 实体以满足 `IntersectionObserver` 的 `threshold`，同时通过 `margin-right/margin-left: calc(-1 * var(--space-4) - 1px)` 完全抵消 Flex gap；
     3. **双轨模型严格对称**：单本覆盖与全局基线在序列化字段与状态互斥锁（`isApplyingPreferences`）上保持 100% 结构对称。
 
+### 78. HTML-in-Canvas 列表卡片反模式与 ResizeObserver 诱发 Grid 轨道无限自激震荡（HTML-in-Canvas Replaced Element Sizing & ResizeObserver Runaway Loop）
+
+- **本质**：
+  1. 试图使用 WICG 前瞻性草案 HTML-in-Canvas（Chromium 155+ 实验特性 `#canvas-draw-element` 的 `drawElementImage` 与 `<canvas layoutsubtree>`）接管书架长列表卡片的渲染；
+  2. `<canvas>` 在浏览器排版体系中属于可替换元素（Replaced Element），具有内部固有比例与尺寸（Intrinsic Size & Aspect Ratio）。当组件通过 `ResizeObserver` 监听 DOM 容器尺寸并把像素回写至 `canvas.width / canvas.height` 时，改变了可替换元素的固有物理尺寸；
+  3. 在 CSS Grid 动态网格容器（`grid-template-columns: repeat(auto-fill, ...)`）中，Grid 轨道（Track）高度默认根据单元格内容自动拉伸。写回 `canvas.height` 立即导致 Grid 重新排版并撑大轨道高度，而轨道高度扩大又再次触发子元素的 `ResizeObserver`，引发正反馈恶性死循环（Runaway Expansion Loop），导致卡片高度以每秒数千像素的速度无限膨胀，迅速引发页面假死并打崩 Blink 渲染进程；
+  4. 此外，Retina 高清屏（2x~~3x DPR）下长列表若为每个卡片实例化独立 `<canvas>`，50+ 卡片需维持数十个独立 GPU Backing Store 离屏位图，额外吞噬 70MB~~120MB 未压缩显存，极易触发 GPU Context Loss 上下文崩溃；且 Canvas 位图完全丢失原生文本选择、键盘 Tab 焦点与无障碍树（Accessibility Tree），必须在其上层堆砌透明 DOM Hitbox 遮罩，架构臃肿畸形。
+- **红线与防误伤**：
+  - **不要**将 HTML-in-Canvas、`<canvas layoutsubtree>` 或任何基于 Canvas 的位图代理层引入文档流长列表、网格卡片等基础排版容器；
+  - **不要**在 `ResizeObserver` 回调中将测量得到的元素尺寸反向写回该元素自身的固有尺寸属性（如 `canvas.width/height`、`svg.width/height`）；
+  - **放行/改用**：
+    1. **长列表坚守原生 DOM**：书架卡片一律坚守原生 DOM + CSS Grid 弹性网格，利用 `contain: layout style` + `container-type: inline-size` 配合 48 图增量预算，由 GPU 合成器线程直接调度滚动，维持 120 FPS 丝滑帧率且 0 额外显存开销；
+    2. **精准场景定位**：HTML-in-Canvas 仅适合 3D WebGL 游戏 HUD 覆层、Canvas 复杂图表局部富文本图例或离屏海报位图导出等单体/离线场景，严禁作为通用 UI 列表基础设施。
+
 ---
 
 ## 🚦 交付门禁（四步必跑）

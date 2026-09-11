@@ -11,7 +11,7 @@
 ```text
 ┌─────────────────────────────────────────────────────────────┐
 │ 阶段一：数据沉淀与接口开放 (Data Foundation & Open API)      │
-│  - 哔咔 (PicAcg) 数据源落地 (当前正在实施)                   │
+│  - 哔咔 (PicAcg) 数据源已完美落地（确立多源扩展标准蓝图）    │
 │  - 纸间 MCP Server 端点开发 (/mcp/sse)                      │
 │  - 定向临时直达票据 (One-Time Direct Pass)                   │
 └──────────────────────────────┬──────────────────────────────┘
@@ -92,19 +92,55 @@
 
 ---
 
-## 三、 AI 漫画生成工坊（AI Comic Generation Pipeline）
+## 三、 AI 漫画生成工坊与手稿回放（AI Comic Generation & Making-of Pipeline）
 
-### 1. 契约复用原则
+### 1. 双平台架构边界（Paper Studio 独立创作台 vs Paper Room 纯净展馆）
 
-纸间现有的 `LocalProvider`（`source = "local"`）已高度成熟，原生支持多章节、拆帧导入、封面重新装订与双模 WebP 缩略图预热。
-**AI 生成的作品天然属于本地自建漫画，无需新建专有 Provider。**
+为防止将庞大的生图库（PyTorch、Diffusers、OpenCV、ComfyUI 依赖）与复杂创作交互侵入纸间核心读者端，系统确立 **“创作与消费松耦合”** 双平台架构：
 
-### 2. 外部 Agent 自动化流程
+- **纸间展馆（Paper Room / comic-shelf 本仓库）**：
+  - **角色**：**读者端与轻量展览馆**。
+  - **边界**：坚守纯净的本地优先阅读、书架管理与以图搜图；仅提供一个极轻量（≤150 行代码）的「手稿分层回放台（Making-of Player）」模态窗，通过原生 `new Path2D(d)` 零 DOM 消耗播放外部传入的矢量层；
+  - **接口契约**：复用成熟的 `LocalProvider`（`POST /api/library/local/create`）一键收录已装订好的成品与伴生手稿资产（`.layers.json`）。
+- **外部创作工坊（Paper Studio 独立平台 / Agent）**：
+  - **角色**：**重型生产力工作台**（独立仓库或微服务）。
+  - **边界**：承载剧本大模型生成、分镜 Prompt 编排、ComfyUI 图像批量去噪、修脸修手、以及 **VTracer 矢量化分层压制**；生成完毕后通过 API 向纸间一键推送入库。
 
-1. **剧本与分镜编排**：由外部大模型（如 Claude / GPT-4o / Qwen）构思故事情节，输出包含页数、场景描述、分镜构图与提示词（Prompts）的结构化 JSON；
-2. **画页图像生成**：Agent 批量调用生图 API（Flux / Midjourney / 本地 ComfyUI），生成 `00001.webp` ~ `0000N.webp`；
-3. **一键收录上架**：Agent 调用纸间标准 API（`POST /api/library/local/create`）推送画页与元数据；
-4. **元数据归档**：将生图使用的 Prompt、种子、底模等信息直接存入 `album.json` 的 `extra.ai_generation` 字段中，实现资产全生命周期可溯源。
+### 2. VTracer 智能矢量化分层管线（Raster-to-Vector Pipeline）
+
+在 Paper Studio 后端利用 [visioncortex/vtracer](https://github.com/visioncortex/vtracer) 原生引擎对生图成品进行拓扑矢量化提取：
+
+1. **色彩指纹探测与双预设路由**：
+   - **黑白线稿（Manga Line Art）**：启用 `--preset bw --adaptive`，自适应二值化过滤网点噪点，生成极简锐利的单色骨架与墨线层（呈现“草稿 ➔ 勾线 ➔ 涂黑”）；
+   - **全彩插画（Color Illustration）**：启用 `--clustering color-cluster --hierarchical stacked --filter-speckle 4`，多层次区域聚类堆叠（呈现“大块铺底色 ➔ 明暗阴影 ➔ 细节高光”）。
+2. **伴生资产打包（`00001.layers.json`）**：
+   - 将 VTracer 产出的分层贝塞尔曲线提炼为紧凑 JSON 格式（`[{ id: 1, type: "base", fill: "#f5f5f5", path: "M..." }, ...]`）；
+   - 与原图 `00001.webp` 平级存放于 `backend/data/library/local/{id}/` 目录，体积比原始 XML SVG 减少 40%，且前端 0 解析损耗。
+
+### 3. 纸间手稿回放台（Making-of Player）流式呈现
+
+- **零 DOM 压力硬件加速**：前端直接利用 Canvas 2D 原生 `new Path2D(layer.path)` 与 WebGL 流式绘制，全过程跳过 DOM 树与 CSS 重排，稳定维持 120 FPS 丝滑动画；
+- **沉浸式花絮交互**：作为详情页与阅读器的“制作过程 / 手稿生长”独立模态窗，提供时间轴进度条、分层独立显隐控制与运笔速度调节，完全不干扰主阅读心流。
+
+### 4. 训练原料清洗：分镜裁切与对白脱敏（Panel & Dialogue Inpainting）
+
+整页漫画直接喂入 LoRA 训练会导致模型强行记忆多格边框与破碎文字。在外部 Studio 洗料管线中引入自动化脱敏：
+
+- **分镜切割（Panel Segmentation）**：利用轻量目标检测（YOLO/SAM）将整页自动裁切为单格独立分镜画面；
+- **对白气泡抹除（Bubble Inpainting）**：检测气泡位置，以 LaMa / SD Inpaint 自动消除文字与气泡，生成纯净无字的原始角色/场景训练对。
+
+### 5. 多模态伴生资产契约（Sidecar Asset Protocol）
+
+`backend/data/library/local/{id}/pages/` 目录下统一收敛标准伴生文件命名空间：
+
+- `{index}.layers.json`：VTracer 矢量分层生长路径；
+- `{index}.panels.json`：分镜格子几何坐标 `[{ id, x, y, w, h }]`；
+- `{index}.ocr.json`：分镜台词对白结构化转录；
+- `{index}.caption.txt`：用于模型微调的 Booru / 自然语言标注提示词。
+
+### 6. 服务间认证凭据与推送 Webhook（Machine-to-Machine Auth）
+
+外部 Paper Studio 完成整本编排后，携带专用 `Machine API Token` 调用 `POST /api/library/local/create` 推送画页与伴生资产；纸间后端完成校验后自动触发缩略图预热并广播 `library_changed` 事件，前台书架即时无缝呈现。
 
 ---
 
@@ -131,6 +167,20 @@
 - **统一内存（Unified Memory）优势**：CPU 与 GPU 共享内存（如 32GB/64GB/128GB）。结合苹果 **MLX** 框架或 **llama.cpp**，可以在内存中高效加载运行 14B~32B 参数的开源大模型，完全打破传统显卡显存瓶颈；
 - **全天候静音与低功耗**：整机待机仅数瓦，满负荷 30~50 瓦，无刺耳风扇噪音，适合作为 24 小时开机的家庭书房核心；
 - **一体化架构**：单台设备同时跑 Docker（FastAPI 后端 + Vue 前端 + imsearch 搜图）与本地大模型推理端点。
+
+### 2. 外接大容量硬盘柜（DAS）冷热分层存储拓扑
+
+Mac mini 内置 SSD 加装成本高昂（通常为 512GB/1TB），面对海量漫画库与多模态模型文件需建立物理分层：
+
+- **外接雷电 4 / USB-C 多盘位硬盘柜（DAS / RAID 阵列）**：格式化为 APFS 挂载至 `/Volumes/ComicStorage/data`，专供 `library/` 原图海量仓库、离线画页与训练冷数据，彻底解放内置容量；
+- **内置极速 SSD**：专供 macOS 系统、Docker 运行时、SQLite 数据库、以图搜图向量索引与 MLX 大模型热权重。
+
+### 3. 端侧 100% 离线隐私 VLM（Apple Silicon MLX）
+
+利用 Mac mini 的统一内存，在本地常驻运行开源视觉多模态大模型（如 `Qwen2.5-VL-7B/14B`）：
+
+- **全天候自动打标**：对入库本子自动执行打标（Captioning）与剧情分镜理解，0 API 调用成本；
+- **100% 隐私闭环**：私密漫画资产全生命周期不流出家庭局域网，彻底免除第三方云端 API 审查与封号风险。
 
 ---
 

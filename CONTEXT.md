@@ -102,7 +102,11 @@
 - **常青设计系统规范（Living Design System）**：`DESIGN_NOTES.md` 所承载的纸间全站设计规范与单一真理源。包含品牌哲学、禁止清单、Token 契约、组件架构与核心设计红线（如 §13 顶层解构定律）。
 - **设计演进里程碑归档（Design Milestones Archive）**：`docs/design-archive/` 下收录的纸间历史演进推演、挑刺与重构记录，供历史溯源，与常青设计规范物理解耦。
 - **设计令牌（Design tokens）**：`src/styles/tokens.css` 中的颜色/间距/字号/圆角/动效体系，UI 改动必须收敛到 token，禁止硬编码漂移。
-- **实验开关（Experiment）**：`HTML-in-Canvas 卡片`——把书架卡片整块 DOM 绘制进 canvas 的实验性渲染路径，由实验 store 控制开关。
+- **淘汰特性：HTML-in-Canvas 列表实验（Deprecated: HTML-in-Canvas List Experiment）**：曾作为探索将书架卡片 DOM 绘制进 Canvas 的试验，经实机评估，因 GPU 显存膨胀（每卡独立 Canvas 纹理暴涨）、CSS Grid 下 ResizeObserver 自激震荡（无限增长死循环）以及交互语义退化，已被作为反模式彻底从主干废弃移除；书架坚守原生 DOM + 48 图增量预算的高性能纯净架构。
+- **前瞻能力探针（Experimental Capability Probe）**：位于 `src/utils/canvasProbe.ts` 的零依赖纯函数探测工具，用于安全侦测浏览器对 WICG `HTML-in-Canvas`（`drawElementImage` 与 `<canvas layoutsubtree>`）的原生支持度。仅供未来富排版图文合成实验室与 2D 互动游戏探索使用，与主干书架生产视图物理隔离。
+- **双平台架构边界（Dual-Platform Architecture: Paper Studio vs Paper Room）**：明确纸间（Paper Room / comic-shelf）作为**读者端与成品展馆**的轻量定位（只负责作品收录、离线阅读、以图搜图与手稿回放）；而重型的 AI 生图调试（ComfyUI / Midjourney / Flux）、分镜修版与 VTracer 批量矢量压制交由独立的**创作者工作台平台（Paper Studio）**，两端通过标准 API（`POST /api/library/local/create` 与静态资源管道）松耦合协作，避免向阅读器仓库引入重型依赖与算力争抢。
+- **手稿分层资产（Making-of Layer Asset / `.layers.json`）**：由外部 AI 创作工坊（Paper Studio）通过 VTracer 矢量化引擎从光栅画页中提炼的高精矢量图层数据，与原图平级存储（如 `00001.layers.json`）。采用按拓扑层级（底层大面积底色 ➔ 阴影明暗过渡 ➔ 表层勾线与网点 ➔ 高光）排序的紧凑贝塞尔路径数组，体积比 XML SVG 减少 40%，且无需前端进行昂贵 DOM 解析。
+- **手稿分层回放台（Making-of Layer Player）**：漫画详情页与阅读器中的轻量暗室弹窗微件。通过 Canvas 2D 原生 `new Path2D(d)` / WebGL 硬件加速在 120 FPS 下流式重绘矢量图层，向读者展示画作的分层生长与运笔制作过程，全过程 0 DOM 节点负担、0 显卡算力争抢。
 - **插画资产池（Illustration Pool）**：全站看板角色与加载插画的统一发现与随机轮换池（`/loading-*.webp`），支持零配置自动感知新资产。
 - **环境暗印水印（Ambient Watermark）**：页面与弹窗底层的极浅角色暗纹，以纸质水印质感呈现，亮色与暗色模式下均保持极低对比度，绝不干扰前景内容与文字可读性。
 - **全幅加载占位（Full-frame Page Loading）**：阅读器单页加载时与漫画页面等比撑满的骨架占位，大画幅展示装订插画并彻底消除排版跳动。

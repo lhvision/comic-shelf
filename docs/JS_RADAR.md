@@ -45,12 +45,13 @@
 | **`AbortSignal.timeout()`**             |  124+  |  100+   |  16+   |    ✅ Baseline 2024     | ⚠️ 架构决策（因无法提前取消定时器，短命 RPC 采用受控定时器 + 原生 `any`）  |
 | **`Set` 集合运算 (`intersection` 等)**  |  122+  |  127+   |  17+   |    ✅ Baseline 2024     |              ✅ 已落地（`TagFilterBar` / `useLibraryFilter`）              |
 | **`Map.groupBy` / `Object.groupBy`**    |  117+  |  119+   | 17.4+  |    ✅ Baseline 2024     |                ✅ 已落地（漫画多章节切片与 Provider 分组）                 |
-| **`HTMLImageElement.decode()`**         |  65+   |   68+   |  11+   |    ✅ Baseline 2020     |              ✅ 已落地（`HtmlCanvasSurface.vue` / 预载管道）               |
+| **`HTMLImageElement.decode()`**         |  65+   |   68+   |  11+   |    ✅ Baseline 2020     |               ✅ 已落地（阅读器大图预载管道 / 离线画页解码）               |
 | **Import Attributes (`with { type }`)** |  125+  |  137+   | 17.2+  |    ✅ Baseline 2024     |                📋 路线图（模块化 JSON 元数据与多语言字典）                 |
 | **OPFS (`getDirectory()`)**             |  86+   |  111+   | 15.2+  |    ✅ Baseline 2023     | 📋 储备特性（单体大文件流式落盘/整本离线包/字体；网络图片走 CacheStorage） |
 | **Iterator Helpers (`.map()/.take()`)** |  122+  |  131+   | 18.4+  |    ✅ Baseline 2025     |                📋 路线图（IndexedDB 游标与分批上传流水线）                 |
 | **`using` (Explicit Resource Mgmt)**    |  134+  |  141+   |   TP   | 🔶 Newly Available 2025 |               📋 路线图（Canvas Context / ObjectURL 作用域）               |
 | **`Temporal API`**                      |  144+  |  139+   |   TP   | 🔶 Newly Available 2026 |               ⚠️ 审慎评估（待 iOS 稳定版就绪前暂不全量采用）               |
+| **WICG HTML-in-Canvas (`drawElement`)** |  155+  |   ❌    |   ❌   |      🧪 WICG Draft      |        ⚠️ 前瞻雷达（严禁用于长列表；储备于未来富排版气泡/AVG合图）         |
 | **模式匹配 (`match / when`)**           |   ❌   |   ❌    |   ❌   |       🧪 Stage 1        |                      🚫 严禁引入转译插件，纯草案观测                       |
 | **管道运算符 (`\|>`)**                  |   ❌   |   ❌    |   ❌   |       🧪 Stage 2        |                      🚫 严禁引入转译插件，纯草案观测                       |
 | **`Record & Tuple` (`#{} / #[]`)**      |   ❌   |   ❌    |   ❌   |       🧪 Stage 2        |                      🚫 严禁引入转译插件，纯草案观测                       |
@@ -74,7 +75,6 @@
 - `src/composables/useViewTransition.ts`（过渡生命周期与返回值解耦）
 - `src/router/index.ts`（路由级 View Transition 异步推进契约）
 - `src/composables/useOfflineStorage.ts`（IndexedDB 批量清理与 1.5s 兜底定时器）
-- `src/components/HtmlCanvasSurface.vue`（子树图片加载完成与离屏解码协调）
 - `src/__tests__/useImageSearch.spec.ts`（单测请求插桩与按需完成控制）
 
 #### 核心原理与解决的反模式
@@ -261,16 +261,16 @@ function combineSignals(
 
 **MDN**：[HTMLImageElement.decode()](https://developer.mozilla.org/en-US/docs/Web/API/HTMLImageElement/decode)  
 **Baseline**：2020 · 全主流浏览器通用  
-**本项目落地位置**：`src/components/HtmlCanvasSurface.vue` 与漫画预载逻辑
+**本项目落地位置**：漫画阅读器大图预载管道与离线画页解码
 
 #### 核心痛点与优化
 
-在漫画阅读器渲染超大分辨率跨页或 HTML Canvas 进行节点栅格化绘制时，如果直接把已下载的 `<img>` 塞入 DOM 或 Canvas，浏览器主线程会在栅格化（Rasterization）帧同步阶段执行昂贵的图片解码计算，导致 16ms 丢帧卡死。
+在漫画阅读器渲染超大分辨率画页时，如果直接把已下载的 `<img>` 挂载入 DOM，浏览器主线程会在栅格化（Rasterization）帧同步阶段执行昂贵的图片解码计算，导致 16ms 丢帧卡顿。
 
 `img.decode()` 将图像解码调度到后台合成线程：
 
 ```ts
-// 等待子树所有图片解码就绪，彻底杜绝 Canvas 绘制白屏与主线程卡顿
+// 等待关键大图离屏异步解码就绪，彻底杜绝主线程阻塞与白屏硬闪
 await Promise.all(
   images.map(async (img) => {
     if (img.complete) return
@@ -475,6 +475,32 @@ await res.body?.pipeTo(writable)
 const handle = await root.getFileHandle(FILE_KEY)
 const file = await handle.getFile()
 ```
+
+---
+
+### 3.6 WICG HTML-in-Canvas（`drawElementImage` & `<canvas layoutsubtree>`）— DOM 子树 Canvas 栅格化（WICG 2026 草案）
+
+**规范**：[WICG HTML-in-Canvas](https://github.com/WICG/html-in-canvas)  
+**实验支持**：Chromium 155+（需在 `chrome://flags/#canvas-draw-element` 开启）  
+**本项目探测工具**：`src/utils/canvasProbe.ts`（`isDrawElementSupported()` / `isLayoutSubtreeSupported()`）
+
+#### 核心机制与规范原语
+
+WICG HTML-in-Canvas 旨在允许 Web 开发者直接将 HTML DOM 子树的排版结果作为纹理栅格化绘制进 `<canvas>` 2D 上下文或 WebGL：
+
+1. **`<canvas layoutsubtree>` 属性**：声明该 canvas 容器接管并维护其子 DOM 元素的布局树；
+2. **`<div drawable>` 子元素**：必须作为 canvas 的直接子节点，声明其内部的 HTML/CSS 排版为可绘制源；
+3. **`CanvasRenderingContext2D.prototype.drawElementImage(element, x, y)`**：执行位图绘制快照；
+4. **`canvas.requestPaint()` 与 `onpaint` 事件**：驱动受控的异步重绘生命周期。
+
+#### 纸间架构约束与避坑红线
+
+- **🚫 严禁用于文档流长列表 / 卡片网格（PITFALLS §78）**：
+  `<canvas>` 为固有尺寸可替换元素，在 CSS Grid 弹性容器中，`ResizeObserver` 将尺寸写回 `canvas.height` 会诱发轨道高度自激震荡并导致页面无限膨胀假死；且 50+ 独立 Canvas Backing Store 在 Retina 屏下吞噬 100MB+ 显存，极易触发 Context Loss。
+- **✅ 适用场景前瞻储备**：
+  1. **2D 互动 AVG 对话框与画卷混合**：富排版 HTML 样式气泡、复杂 CSS 描边文字与 Canvas 游戏画面的动态合成；
+  2. **海报 / 长图本地流式导出**：包含排版印章、元数据排版框的单体离线画卷导出；
+  3. **注意**：对于纯 SVG 矢量路径回放（如 VTracer 矢量图层），必须优先采用 Canvas 2D 原生 `new Path2D(d)` 硬件加速流式绘制，跳过 DOM 树以获得 120 FPS 极限性能。
 
 ---
 

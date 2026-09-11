@@ -12,14 +12,6 @@ vi.mock('@/components/ComicCard.vue', () => ({
   },
 }))
 
-vi.mock('@/components/HtmlCanvasCard.vue', () => ({
-  default: {
-    name: 'HtmlCanvasCard',
-    props: ['comic', 'enabled', 'cache'],
-    template: '<div class="mock-canvas-card">{{ comic.title }}</div>',
-  },
-}))
-
 function makeComics(count: number): LibrarySummary[] {
   return Array.from({ length: count }, (_, i) => ({
     source: 'jm',
@@ -50,7 +42,6 @@ describe('ComicGrid', () => {
       props: {
         loading: true,
         items: [],
-        useCanvas: false,
         hasAnyItems: false,
       },
     })
@@ -63,7 +54,6 @@ describe('ComicGrid', () => {
       props: {
         loading: false,
         items: [],
-        useCanvas: false,
         hasAnyItems: false,
       },
     })
@@ -78,7 +68,6 @@ describe('ComicGrid', () => {
       props: {
         loading: false,
         items: comics,
-        useCanvas: false,
         hasAnyItems: true,
         batchStep: 12,
       },
@@ -129,7 +118,6 @@ describe('ComicGrid', () => {
       props: {
         loading: false,
         items: comics1,
-        useCanvas: false,
         hasAnyItems: true,
         batchStep: 12,
       },
@@ -169,7 +157,6 @@ describe('ComicGrid', () => {
       props: {
         loading: false,
         items: mixed,
-        useCanvas: false,
         hasAnyItems: true,
         batchStep: 12,
         isRecentSort: true,
@@ -227,7 +214,6 @@ describe('ComicGrid', () => {
       props: {
         loading: false,
         items: completedComics,
-        useCanvas: false,
         hasAnyItems: true,
         batchStep: 12,
         isRecentSort: true,
@@ -268,7 +254,6 @@ describe('ComicGrid', () => {
       props: {
         loading: false,
         items: mixed,
-        useCanvas: false,
         hasAnyItems: true,
         batchStep: 12,
         isRecentSort: false,
@@ -300,7 +285,6 @@ describe('ComicGrid', () => {
       props: {
         loading: false,
         items: mixed,
-        useCanvas: false,
         hasAnyItems: true,
         batchStep: 12,
         initialActiveCount: 24,
@@ -332,7 +316,6 @@ describe('ComicGrid', () => {
       props: {
         loading: false,
         items: comics,
-        useCanvas: false,
         hasAnyItems: true,
         batchStep: 20,
         brakeThreshold: 40,
@@ -364,7 +347,6 @@ describe('ComicGrid', () => {
         loading: false,
         loadingMore: true,
         items: makeComics(10),
-        useCanvas: false,
         hasAnyItems: true,
       },
     })
@@ -381,7 +363,6 @@ describe('ComicGrid', () => {
       props: {
         loading: false,
         items: page1,
-        useCanvas: false,
         hasAnyItems: true,
         batchStep: 12,
         isRecentSort: false, // Unified grid mode
@@ -416,7 +397,6 @@ describe('ComicGrid', () => {
       props: {
         loading: false,
         items: [...page1, ...completed],
-        useCanvas: false,
         hasAnyItems: true,
         batchStep: 12,
         isRecentSort: true,

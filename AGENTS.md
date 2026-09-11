@@ -52,7 +52,7 @@ release. Add a tool name to select part of the graph. For example, run
 | `docs/adr/`                        | 架构决策记录集（系统重大权衡与不可逆技术方案全景，ADR 0001 ~ 0014）                              |
 | `docs/AI_ECOSYSTEM_ROADMAP.md`     | 扩展生态与 AI 演进路线图（MCP 服务、飞书 Bot、AI 漫画创作、Mac mini 本地微调与 2D 互动游戏规划） |
 | `docs/agents/architecture.md`      | 后端模型、FastAPI 路由、存储布局、Provider 扩展、安全与防盗链                                    |
-| `docs/agents/frontend.md`          | 书架/详情/阅读器、页面索引、多章节子路由、HTML-in-Canvas                                         |
+| `docs/agents/frontend.md`          | 书架/详情/阅读器、页面索引、多章节子路由、View Transitions                                       |
 | `docs/agents/ui.md`                | 新 UI 组件、核心交互重构、视觉设计（调度 `impeccable`，执行 A/B 双轨评审与物理落盘）             |
 | `docs/agents/tooling-workflow.md`  | Vite+ 工具链、Docker 单容器部署、排错建议                                                        |
 | `docs/HOMELAB_NETWORKING_GUIDE.md` | 家庭公网 IP + Cloudflare 边缘加速、Origin Rules 端口重写与 Mac mini 迁移指南                     |
