@@ -184,6 +184,16 @@ const effectiveCover = computed(() => {
   container-type: inline-size;
   contain: layout style;
   height: 100%;
+  transition:
+    opacity var(--duration-2) var(--ease-out),
+    transform var(--duration-2) var(--ease-spring);
+}
+
+@starting-style {
+  .comic-card {
+    opacity: 0;
+    transform: translateY(14px) scale(0.98);
+  }
 }
 
 .card-link {
@@ -212,6 +222,10 @@ const effectiveCover = computed(() => {
   width: 100%;
   aspect-ratio: 3 / 4.15;
   flex-shrink: 0;
+}
+
+.card-link:hover .cover-deck,
+.card-link:focus-visible .cover-deck {
   perspective: 60rem;
 }
 
@@ -219,12 +233,11 @@ const effectiveCover = computed(() => {
   position: absolute;
   inset: 7% 16% 0;
   border-radius: var(--radius-2);
-  background-color: var(--paper-2);
+  background-color: color-mix(in oklab, var(--paper-2) 88%, var(--ink-2) 12%);
   overflow: hidden;
   border: 1px solid color-mix(in oklab, var(--ink-0) 12%, transparent);
   transform-origin: center bottom;
   opacity: 0.48;
-  filter: saturate(0.6) brightness(0.92);
   transition: transform var(--duration-3) var(--ease-out);
 }
 

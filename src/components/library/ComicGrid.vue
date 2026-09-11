@@ -1169,9 +1169,12 @@ watch(
   transform: scale(0.96);
 }
 
-.shelf-card-move {
-  transition: transform var(--duration-2) var(--ease-out);
-}
+/* 
+ * 性能优化（Trace-20260911）：
+ * 废除 .shelf-card-move 类，彻底切断 Vue 内置 TransitionGroup FLIP 在 30+ 张卡片上
+ * 密集轮询 getBoundingClientRect、getComputedStyle 与 forceReflow 的 168ms 严重重排阻塞；
+ * 卡片入场完全交由现代 CSS @starting-style 原生合成器补间，出场由 .shelf-card-leave-active 平滑淡出。
+ */
 
 /* 流式加载触底侦测桩与加载指示条 */
 .stream-sentinel {

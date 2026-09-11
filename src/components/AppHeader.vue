@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { useEventListener, useResizeObserver, useScroll } from '@vueuse/core'
+import { useIntersectionObserver } from '@vueuse/core'
 import { api, DEFAULT_PROVIDERS, onAuthSuccess } from '@/api/client'
 import { useAuth } from '@/composables/useAuth'
 import { useBrandIcon } from '@/composables/useBrandIcon'
@@ -28,15 +28,33 @@ const { brandIcon } = useBrandIcon()
 const { openModal: openGuestModal } = useGuestPasses()
 const { resetAllShelfState } = useShelfState()
 
+// 零重排（Zero-Reflow）滚动边缘感知：基于原生 IntersectionObserver 哨兵架构
+// 彻底废除 useScroll 引起的初始几何重排（消除 57ms Forced Reflow）
 const navScrollEl = ref<HTMLElement | null>(null)
-const { arrivedState, measure } = useScroll(navScrollEl)
+const sentinelStartEl = ref<HTMLElement | null>(null)
+const sentinelEndEl = ref<HTMLElement | null>(null)
 
-useResizeObserver(navScrollEl, () => {
-  measure()
-})
-useEventListener('resize', () => {
-  measure()
-})
+const isStartVisible = ref(true)
+const isEndVisible = ref(true)
+
+useIntersectionObserver(
+  sentinelStartEl,
+  ([entry]) => {
+    isStartVisible.value = Boolean(entry?.isIntersecting)
+  },
+  { root: navScrollEl, threshold: 0.1 },
+)
+
+useIntersectionObserver(
+  sentinelEndEl,
+  ([entry]) => {
+    isEndVisible.value = Boolean(entry?.isIntersecting)
+  },
+  { root: navScrollEl, threshold: 0.1 },
+)
+
+const hasScrollLeft = computed(() => !isStartVisible.value)
+const hasScrollRight = computed(() => !isEndVisible.value)
 
 const navItems = computed<NavItem[]>(() => {
   const items: NavItem[] = [
@@ -113,11 +131,16 @@ onAuthSuccess(fetchProviders)
         ref="navScrollEl"
         class="site-nav"
         :class="{
-          'has-scroll-left': !arrivedState.left,
-          'has-scroll-right': !arrivedState.right,
+          'has-scroll-left': hasScrollLeft,
+          'has-scroll-right': hasScrollRight,
         }"
         aria-label="来源导航"
       >
+        <span
+          ref="sentinelStartEl"
+          class="nav-scroll-sentinel nav-scroll-sentinel--start"
+          aria-hidden="true"
+        />
         <RouterLink
           v-for="item in navItems"
           :key="item.to"
@@ -128,6 +151,11 @@ onAuthSuccess(fetchProviders)
           <span v-if="item.index" class="nav-index">{{ item.index }}</span>
           <span class="nav-label">{{ item.label }}</span>
         </RouterLink>
+        <span
+          ref="sentinelEndEl"
+          class="nav-scroll-sentinel nav-scroll-sentinel--end"
+          aria-hidden="true"
+        />
       </nav>
     </div>
 
@@ -275,6 +303,16 @@ onAuthSuccess(fetchProviders)
 
 .site-nav::-webkit-scrollbar {
   display: none;
+}
+
+.nav-scroll-sentinel {
+  display: inline-block;
+  width: 1px;
+  min-width: 1px;
+  height: 1px;
+  flex-shrink: 0;
+  pointer-events: none;
+  opacity: 0;
 }
 
 .site-nav a {

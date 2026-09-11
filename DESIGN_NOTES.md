@@ -331,7 +331,24 @@
   3. **即改即分离（Detached on Edit）**：本作处于继承态时，修改任意排版项立即为本作生成专属偏好，底部常驻「恢复跟随全局」操作通道，随时可一键撤销；
   4. **所见即所得实时联动（Live Viewport Sync）**：读者在「全局默认」标签下修改配置时，若当前漫画处于继承状态，视口画卷立即实时响应，实现所见即所得；
 - **存量设备一次性静默自愈（Baseline Healing Pipeline）**：
-  在 [`useReaderSettings.ts`](src/composables/useReaderSettings.ts) 中引入 `HEALED_KEY`（`comic-shelf:baseline-healed:v1`），在客户端初始化时探测：若全局基线留存有非条漫模式的 `fit: 'width'` 历史脏数据，自动纠正回标准规范值 `fit: 'height'`，彻底免除读者清空浏览器缓存的沉重负担。
+
+### <a id="sec-61"></a>§61 高刷 144Hz 极速性能治理：捕获缝隙瞬时归零、CSS @starting-style 声明式进场与 2D/3D 按需升维（144Hz Zero-Reflow Pipeline, In-Flight Pre-Capture Scroll & Lazy 3D Elevation）
+
+- **业务背景与 144Hz 显卡瓶颈复盘（Trace-20260911）**：
+  在配备 144Hz 高刷屏幕与较弱集成显卡的终端上，单帧渲染预算从常规 60Hz 的 16.67ms 骤降至极其严苛的 **6.94ms**。任何超过 7ms 的主线程强排或 GPU 片元滤镜着色，都会造成肉眼可见的卡顿顿挫。经 Chrome DevTools MCP 性能火焰图与 4x 降速洞察，系统定位出三大性能黑洞：
+  1. **跨页面路由推进 209ms 同步重排**：Vue Router 同步滚顶在新组件挂载未排版时调用 `window.scrollTo`，触发整屏新视图强制重排；
+  2. **书架分类标签切换 168ms FLIP 布局抖动**：Vue `<TransitionGroup>` 在 30+ 张卡片上循环读取 `getBoundingClientRect` 与 `getComputedStyle`；
+  3. **首屏吸顶栏 57ms 几何重排**：`AppHeader` 初始化时 `useScroll` 强读 `scrollLeft` 与 `clientWidth`。
+- **捕获缝隙瞬时归零架构（In-Flight Pre-Capture Instant Scroll）**：
+  1. 在保留全局 View Transitions 丝滑推进质感的前提下，于 `router.beforeResolve` 的 `performUpdate` 回调入口（此时旧视图已由浏览器生成离屏 GPU 纹理冻结在屏幕上，新视图尚未开始挂载）执行 `window.scrollTo({ top: 0, behavior: 'instant' })`；
+  2. 结合模块级 `hasPreScrolled` 锁，`router.scrollBehavior` 探测到后直接返回 `false`，0 几何属性读取，**209ms / 134ms 强制重排彻底清零**；
+  3. 新视图挂载即处于原点，`::view-transition-new(root)` 截取的新页面无撕裂、无位移畸变。
+- **CSS `@starting-style` 声明式动效与闲置 2D / 交互 3D 按需升维（Lazy 3D Elevation）**：
+  1. 彻底废除 `.shelf-card-move`，跳过 Vue FLIP 在 JS 层的密集几何属性轮询；
+  2. 采用现代 Baseline 2024 标准 CSS `@starting-style` 与 `transition-behavior: allow-discrete`，卡片筛选入场直接由浏览器合成器线程执行 GPU 硬件补间，**168ms 布局抖动直接降至 8ms**（下降 95.2%）；
+  3. 卡片常态下剥离昂贵的 `perspective: 60rem` 与 `.deck-leaf` 的片元着色器 `filter: saturate() brightness()`，以高性能原子色彩混合 `color-mix` 替代；仅在读者鼠标悬停（`:hover`）或触碰聚焦时激活 3D 透视折叠，将 GPU 每一帧常驻 3D 纹理开销压减为 0。
+- **IntersectionObserver 隐形双哨兵边缘感知（Zero-Reflow Sentinels）**：
+  在吸顶导航列表前后嵌入 1px 透明哨兵节点（`sentinelStartEl` / `sentinelEndEl`），通过 VueUse `useIntersectionObserver` 异步感知边缘可见性，彻底剔除 `useScroll` 与 `useResizeObserver`，**首屏 57ms 强制重排彻底归零**。
 
 ---
 

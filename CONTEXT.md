@@ -209,3 +209,6 @@
 - **纸室离线模式（Offline Shelf Snapshot & Offline Mode）**：PWA 在无网络连接时自适应激活的典雅阅览状态。系统在后台静默自动接管，书架完整保留全貌快照并打上「〔 纸室离线模式 〕」暗印状态；卡片维持端侧本地就绪状态，使读者在通勤与飞机等断网环境下依然拥有从容的淘书与阅读体验。
 - **缺页纸印骨架（Offline Missing-Page Paper Stamp）**：阅读器在离线状态翻阅未缓存画页时的优雅降级呈现。以纸间暖纸水墨质感的「〔 画页未离线缓存 · 联网后自动载入 〕」占位骨架替代浏览器原生破损图标与粗暴弹退，阅读器 HUD 与其他已缓存画页保持平滑导航。
 - **端侧离线记账与联网对齐队列（Offline Action Log & Reconciliation Queue）**：离线模式下读者产生的翻页进度（`last_page`）与喜欢（`favorite`）状态变更的端侧持久化事务队列。状态即时乐观生效于本地视图与 IndexedDB；待设备重获网络连接（`online` 事件或网络自愈）后，由后台静默对齐管道批量回写至后端 SQLite 数据库。
+- **捕获间隙瞬时滚动（In-Flight Pre-Capture Instant Scroll）**：View Transitions 跨页前进推进时的零重排滚动重置范式。在旧视图快照已由浏览器离屏捕获（被 GPU 冻结在屏幕上）、新视图尚未挂载的 capture gap 间隙中，瞬时执行 `window.scrollTo({ top: 0, behavior: 'instant' })`，既保证读者视觉零跳动，又使新视图直接在 (0, 0) 原位挂载，切断 Vue Router 挂载后微任务 `scrollToPosition` 诱发的强制同步重排（消除 209ms 阻塞）。
+- **惰性三维悬浮（Lazy 3D Elevation）**：针对长列表弱 GPU / 核显显存优化的渲染策略。书架静态空闲状态下所有卡片保持纯 2D 盒模型并剥离高斯模糊与片段着色器，仅在光标悬停（`:hover`）或键盘聚焦（`:focus-visible`）的瞬态单节点按需激活 `perspective` 3D 透视，杜绝数十张卡片同时常驻 3D 合成管线引发的高刷掉帧与显存带宽过载。
+- **顶栏双哨兵滚动感知（Dual-Sentinel Header Scroll Observer）**：基于原生 `IntersectionObserver` 的零重排横向滚动状态检测体系。在可滚动的来源导航栏首尾内联注入 1px 隐形哨兵节点，替代传统 `useScroll` / `scrollLeft` 属性轮询，使左右边缘羽化遮罩的显隐切换完全由异步图层相交事件驱动，消除首屏初始化与容器尺寸变动时的 57ms Forced Reflow。

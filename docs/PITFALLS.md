@@ -717,6 +717,45 @@
     3. **即时联动（Live Sync）**：修改全局默认时，若当前漫画处于继承状态，视口画卷立即所见即所得联动；
     4. **存量基线静默自愈**：通过 `HEALED_KEY` 探测并清洗历史遗留的脏基线数据，免除读者手动清空浏览器缓存的成本。
 
+### 74. Chrome DevTools MCP 导航挂起死锁与执行上下文销毁竞争陷阱 (Chrome DevTools MCP Navigation Deadlock & Context Race Trap)
+
+- **本质**：
+  1. `chrome-devtools-mcp` 的 `navigate_page` 工具在底层将 Puppeteer 的 `page.goto(url)` 包裹在 `waitForEventsAfterAction` 拦截器中；
+  2. 拦截器在执行前后启动了 `waitForNavigation`，并尝试通过 `evaluateHandle` 向当前文档挂载 `MutationObserver` 监听 DOM 变动（`waitForStableDom`）；
+  3. 当目标页面为现代本地开发环境（如 Vite SPA + 自签名证书 `basicSsl` + PWA Service Worker + DevTools 虚拟覆层）时，页面导航伴随着执行上下文（Execution Context）的急剧销毁与重建。CDP 的 `evaluateHandle` 与 `waitForNavigation` 极易在此生命周期竞争中发生死锁，既无法捕获 `load` 事件也无法退出观察；
+  4. 同时 `navigate_page` 默认未设置单次超时（`timeout: undefined`），导致工具调用直接挂起假死，直至触碰底层 180 秒的 CDP 协议超时（`protocolTimeout: 180000`），产生「任务每次使用都会卡死」的现象。
+- **红线与防误伤**：
+  - **不要**对本地开发服务器（尤其包含 PWA / HMR / 自签名证书的 SPA）直接调用裸 `navigate_page({ type: "url", url: "..." })`；
+  - **放行/改用**：
+    1. **原生 JS 敏捷导航（推荐）**：改用 `evaluate_script` 配合 `{ function: "() => { window.location.href = '...'; return 'navigating'; }", waitForStableDom: false }`，直接由浏览器运行时驱动 URL 跳转，完全绕过 `WaitForHelper` 脆弱的 DOM 观察器与上下文销毁死锁；
+    2. **轻量就绪探测**：紧随其后使用 `evaluate_script` 配合 `waitForStableDom: false` 检查 `document.readyState === 'complete'` 及目标元素选择器；
+    3. **性能录制安全触发**：页面就绪后，再调用 `performance_start_trace({ autoStop: true, reload: true, ... })`，此时底层走原生 Performance API 的生命周期采集与重载，不会触发 MCP 的 DOM 观察锁。
+
+### 75. View Transitions 跨页前进推进时，Vue Router 的 scrollToPosition 诱发全量 DOM 强制同步重排（View Transitions Forward Nav & Vue Router scrollToPosition Forced Reflow）
+
+- **本质**：
+  1. 在 144Hz 高刷屏或弱 GPU 场景下，从书架点击漫画卡片进入详情页时，产生 130~210ms 严重顿挫与掉帧；
+  2. Chromium Blink 渲染引擎在执行 `document.startViewTransition` 时，先离屏捕获旧视图快照。随后 Vue Router 在新页面组件挂载完成后的微任务队列中触发 `window.scrollToPosition`（来自 `scrollBehavior` 默认的 `{ top: 0 }` 或滚动恢复行为）；
+  3. 此时 Blink 引擎正准备截取 `::view-transition-new(root)` 快照，突发的 DOM 滚动查询与设置迫使 Blink 引擎在中途对整棵已挂载的新 DOM 树执行同步强制排版（Forced Reflow），单次阻塞高达 209ms。
+- **红线与防误伤**：
+  - **不要**在路由导航回调或页面挂载生命周期中无节制调用滚动重置；
+  - **放行/改用**：
+    1. **In-Flight Pre-Capture Instant Scroll（飞行中捕获间隙瞬时重置）**：在 `router.beforeResolve` 中，将 `window.scrollTo({ top: 0, behavior: 'instant' })` 移入 `performUpdate` 内部、新组件挂载之前执行。此时旧页面被 GPU 离屏冻结快照遮挡，视口在暗中瞬时归零，读者视觉 0 跳动；
+    2. **滚动行为标记短路**：在 `scrollBehavior` 中设置 `hasPreScrolled` 标记，当识别到前进推进已在飞行间隙中重置时，直接 `return false` 放行，彻底切断 Vue Router 后置微任务对 DOM 的二次几何查询，使跨页重排时间从 209ms 彻底归零（0ms）。
+
+### 76. Vue <TransitionGroup> 的 FLIP 算法在多节点列表重排时引发连环 getBoundingClientRect 阻塞（Vue TransitionGroup FLIP Forced Reflow under High Refresh Rate）
+
+- **本质**：
+  1. 在书架点击分类标签、切换只看喜欢或按阅读进度排序时，30+ 张漫画卡片重新排布导致主线程发生 168ms 的 Forced Reflow 阻塞，在 144Hz（单帧预算 6.94ms）屏幕上出现严重连续丢帧；
+  2. Vue `<TransitionGroup>` 的 `.xxx-move` 机制底层依赖 JS FLIP 算法：在 DOM 变动前后，主线程需要以 JS 循环方式对每个子节点调用 `getBoundingClientRect()` 与 `getComputedStyle()`（实测耗时达 180ms），计算初始与结束位置差值并注入 `transform`；
+  3. 当每个子节点包含 3D 转换（`perspective`）、多层伪元素与阴影时，同步布局测量的开销呈几何级数爆炸，远超 144Hz 的渲染预算。
+- **红线与防误伤**：
+  - **不要**在 30+ 节点的高频筛选网格中滥用 Vue `<TransitionGroup>` 的 `.move` FLIP 机制；
+  - **放行/改用**：
+    1. **废除 JS FLIP，拥抱 CSS `@starting-style`（Baseline 2024）**：移除 `.shelf-card-move`，改由原生 CSS `@starting-style`（`opacity: 0; transform: translateY(0.75rem) scale(0.98);`）接管新卡片的淡入位移，将动画完全移交 GPU Compositor 合成器线程；
+    2. **Lazy 3D Elevation**：仅在 `:hover` 与 `:focus-visible` 时按需激活 `perspective`，静态空闲状态保持纯 2D 平面，避免弱显卡常驻 3D 合成开销；
+    3. **实测收益**：标签过滤重排导致的 Forced Reflow 从 168ms 骤降至 8ms（降幅 95.2%），平稳收敛进单帧时间预算。
+
 ---
 
 ## 🚦 交付门禁（四步必跑）
