@@ -1,11 +1,11 @@
 # 纸间 · Paper Room
 
 一个本地优先的个人漫画书架。
-支持 JMComic 禁漫收录与图片反混淆解密，同时提供本地图集与视频拆帧自建工坊。第一次收录后元数据和高清图片全部落在本机；之后浏览、重读、封面都走本地持久化缓存，**0 外部网络冗余请求**。
+支持 JMComic 禁漫收录与反混淆解密、哔咔漫画（PicAcg）原生集成与容灾分流，同时提供本地图集与视频拆帧自建工坊。第一次收录后元数据和高清图片全部落在本机；之后浏览、重读、封面都走本地持久化缓存，**0 外部网络冗余请求**。
 
 - **前端**：Vite+（`vp` 工具链 / Vite 8 / Rolldown / Vitest 4 / Oxlint / Oxfmt）+ Vue 3 + TypeScript + Vue Router + Pinia + VueUse
 - **样式**：现代原生 CSS（`@layer`、Nesting、`color-mix()`、`oklch()`、`clamp()`，无 SCSS 依赖）
-- **后端**：FastAPI + Pillow + jmcomic（基于 Provider 抽象，可轻松接入其他漫画源）
+- **后端**：FastAPI + Pillow + jmcomic + curl_cffi（基于 Provider 抽象，内置禁漫、哔咔与本地图集多源支持）
 - **搜图**：`imsearch`（独立 Docker Sidecar，基于 OpenCV ORB 局部特征点 + Faiss 倒排索引）
 
 ---
@@ -209,10 +209,11 @@ bash scripts/reindex.sh --full
 ```text
 $COMIC_SHELF_DATA/
 ├── jm_html_domain.json                  # 禁漫网页域名 6 小时缓存
+├── picacg_session.json                  # 哔咔会话凭据与 JWT 缓存
 ├── imsearch/                            # 识图索引与特征库（centroids.bin / invlists.bin / imsearch.db）
 └── library/
-    └── <source>/                         # provider key：jm / local
-        └── <source_id>/                  # 禁漫车号或自建 ID（如 523607 / LOC_tiya-frames）
+    └── <source>/                         # provider key：jm / pica / local
+        └── <source_id>/                  # 禁漫车号、哔咔 ID 或自建 ID（如 523607 / 5822... / LOC_tiya-frames）
             ├── album.json                # 元数据 + favorite + pages[].cached + chapters[] + cover_indices[]
             ├── remote.json               # 远端 URL + scramble_id + decode_version
             ├── pages/00001.webp          # 单章节：已解密拼好的成品页（扁平）
@@ -243,7 +244,7 @@ $COMIC_SHELF_DATA/
 | **[docs/agents/architecture.md](docs/agents/architecture.md)** | 后端架构设计、数据存储模型、Provider 扩展体系、安全门禁与 SSE 单向事件流                                              |
 | **[docs/agents/frontend.md](docs/agents/frontend.md)**         | 前端视图与 Composable 地图、阅读器分页与手势、PWA 离线缓存与性能策略                                                  |
 | **[DESIGN_NOTES.md](DESIGN_NOTES.md)**                         | 纸间设计系统规范（Living Design System）、品牌哲学、色彩/组件层级与核心设计定律（历史演进见 `docs/design-archive/`）  |
-| **[docs/adr/](docs/adr/)**                                     | 架构决策记录（Architecture Decision Records，涵盖系统重大架构抉择，ADR 0001 ~ 0012）                                  |
+| **[docs/adr/](docs/adr/)**                                     | 架构决策记录（Architecture Decision Records，涵盖系统重大架构抉择，ADR 0001 ~ 0015）                                  |
 
 ---
 
@@ -262,6 +263,8 @@ $COMIC_SHELF_DATA/
 本项目基于 **MIT License** 开源。感谢以下优秀的开源项目与社区生态：
 
 - [JMComic-Crawler-Python](https://github.com/hect0x7/JMComic-Crawler-Python) (MIT License) — 提供了可靠的禁漫元数据解析与图片反混淆解密算法。
+- [PicaComic](https://github.com/wgh136/PicaComic) (MIT License) by @wgh136 — 为哔咔移动端 REST 接口规范、HMAC-SHA256 签名机制与分流端点提供了宝贵且权威的开源参考。
+- [curl_cffi](https://github.com/lexiforest/curl_cffi) (MIT License) — 提供底层现代 TLS 指纹模拟与高性能 HTTP 客户端能力。
 - [imsearch](https://github.com/lolishinshi/imsearch) (GPL-3.0 License) by @aloxaf — 高性能二次元局部特征点图片搜索引擎（本项目通过独立容器 HTTP API 网络隔离调用，严格保障纸间项目的 MIT 开源合规性）。
 - [FastAPI](https://fastapi.tiangolo.com/) & [Uvicorn](https://www.uvicorn.org/) — 高性能 Python 异步后端。
 - [Vue.js](https://vuejs.org/) / [VueUse](https://vueuse.org/) / [Pinia](https://pinia.vuejs.org/) — 优雅轻盈的前端生态。
