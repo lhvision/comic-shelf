@@ -6,9 +6,17 @@
  * 提供藏书多维筛选能力：
  * 1. 「只看喜欢」微件开关（独立正交维度）
  * 2. 「全部 / 在读 / 已读」分段选择器（SegmentedTabs，互斥单选，同步 URL ?status=）
- * 3. 分类标签 Chips 与高频/溢出折叠抽屉（前 8 个默认外露，其余折叠入抽屉）
+ * 3. 分类标签 Chips 与高频/溢出收纳浮层（前 8 个默认外露，其余收纳至基于 HTML Popover API 的顶层气泡浮层）
+ *
+ * 架构重构（ADR 0014 演进、Trace-20260910 性能落地与 Impeccable A 轨评审）：
+ * - 彻底废弃在文档流中推挤书架卡片的 grid-template-rows 尺寸插值；
+ * - 溢出标签全面收敛至基于 HTML Popover API + CSS Anchor Positioning 的 AppPopover 顶层浮层；
+ * - 页面高度保持严格静止，0 页面推挤，0 几何重排，彻底消除 144Hz 屏幕与集成显卡下的连续掉帧；
+ * - 补齐无障碍焦点归还（Focus Restoration，WCAG 2.1 2.4.3）与溢出标签双向清除闭环（Header Clear / Pinned Active Tag / Close Restoration）。
  *
  * @prop {boolean} favoritesOnly - 是否仅筛选已加入喜欢的藏书
+ * @prop {boolean} [offlineOnly=false] - 是否仅筛选已离线下载的藏书
+ * @prop {number} [offlineCount=0] - 当前书库中已离线本数
  * @prop {ReadingStatus} [readingStatus='all'] - 当前选中的阅读状态（'all' | 'reading' | 'completed'）
  * @prop {string} activeTag - 当前激活的分类标签名称（空表示全部标签）
  * @prop {Array<[string, number]>} tagCounts - 全库或当前来源前 18/30 高频标签及其计数
@@ -20,9 +28,10 @@
  * @emit selectTag - 选中指定标签（传空表示取消标签筛选）
  * @emit clearTag - 清空标签筛选
  */
-import { computed, watch } from 'vue'
+import { computed, nextTick, ref } from 'vue'
 import AppIcon from '@/components/AppIcon.vue'
 import AppChip from '@/components/AppChip.vue'
+import AppPopover from '@/components/AppPopover.vue'
 import SegmentedTabs, { type TabItem } from '@/components/SegmentedTabs.vue'
 import type { ReadingStatus } from '@/types'
 
@@ -71,22 +80,37 @@ const moreCount = computed(() => Math.max(0, props.tagCounts.length - VISIBLE_TA
 const primaryTags = computed(() => props.tagCounts.slice(0, VISIBLE_TAGS))
 const overflowTags = computed(() => props.tagCounts.slice(VISIBLE_TAGS))
 
-if (
-  !trayExpanded.value &&
-  props.activeTag &&
-  overflowTags.value.some(([t]) => t === props.activeTag)
-) {
-  trayExpanded.value = true
-}
-
-watch(
-  () => props.activeTag,
-  (newTag) => {
-    if (newTag && overflowTags.value.some(([t]) => t === newTag)) {
-      trayExpanded.value = true
-    }
-  },
+/** 当前激活标签是否位于溢出标签列表中 */
+const isOverflowActive = computed(() =>
+  Boolean(props.activeTag && overflowTags.value.some(([t]) => t === props.activeTag)),
 )
+
+/** 当前激活标签对应的数量统计 */
+const activeTagCount = computed(() => {
+  if (!props.activeTag) return undefined
+  const match = props.tagCounts.find(([t]) => t === props.activeTag)
+  return match ? match[1] : undefined
+})
+
+/** 「更多标签」按钮文案动态计算 */
+const moreButtonLabel = computed(() => {
+  if (trayExpanded.value) return '收起标签'
+  if (isOverflowActive.value) return `标签：${props.activeTag}`
+  return `更多 · ${moreCount.value}`
+})
+
+/** 触发器元素引用（用于浮层关闭后的焦点归还） */
+const triggerChipRef = ref<InstanceType<typeof AppChip> | null>(null)
+
+function focusTrigger() {
+  nextTick(() => {
+    const raw = triggerChipRef.value
+    const el = raw && typeof raw === 'object' && '$el' in raw ? (raw as { $el: unknown }).$el : raw
+    if (el instanceof HTMLElement) {
+      el.focus()
+    }
+  })
+}
 
 function selectTag(tag: string) {
   emit('selectTag', tag === props.activeTag ? '' : tag)
@@ -146,46 +170,88 @@ function clearFilter() {
           {{ tag }}
         </AppChip>
 
-        <AppChip
+        <!-- 溢出次级标签：基于 HTML Popover API + CSS Anchor Positioning 的顶层气泡浮层 -->
+        <AppPopover
           v-if="moreCount > 0"
-          class="more-tags"
-          :aria-expanded="trayExpanded"
-          @click="trayExpanded = !trayExpanded"
+          v-model:open="trayExpanded"
+          side="bottom"
+          align="start"
+          arrow
+          width="min(30rem, calc(100vw - 2rem))"
+          aria-label="更多分类标签"
+          role="dialog"
+          @close="focusTrigger"
         >
-          <span>{{ trayExpanded ? '收起标签' : `更多 · ${moreCount}` }}</span>
-          <template #suffix>
-            <AppIcon
-              name="chevron-down"
-              size="xs"
-              class="more-chevron"
-              :class="{ 'is-rotated': trayExpanded }"
-            />
+          <template #default="{ open, targetId }">
+            <AppChip
+              ref="triggerChipRef"
+              class="more-tags"
+              :class="{ 'is-active-filter': isOverflowActive }"
+              :pressed="isOverflowActive"
+              :aria-expanded="open"
+              :aria-controls="targetId"
+              :commandfor="targetId"
+              command="toggle-popover"
+            >
+              <span>{{ moreButtonLabel }}</span>
+              <template #suffix>
+                <AppIcon
+                  name="chevron-down"
+                  size="xs"
+                  class="more-chevron"
+                  :class="{ 'is-rotated': open }"
+                />
+              </template>
+            </AppChip>
           </template>
-        </AppChip>
-      </template>
-    </div>
 
-    <!-- 溢出标签平滑展开抽屉（CSS Grid 0fr ⇄ 1fr 尺寸插值） -->
-    <div
-      v-if="moreCount > 0"
-      class="more-tags-tray"
-      :class="{ 'is-expanded': trayExpanded }"
-      :aria-hidden="!trayExpanded"
-    >
-      <div class="more-tags-inner">
-        <div class="overflow-cluster cluster">
-          <AppChip
-            v-for="[tag, count] in overflowTags"
-            :key="tag"
-            :tabindex="trayExpanded ? 0 : -1"
-            :pressed="activeTag === tag"
-            :count="count"
-            @click="selectTag(tag)"
-          >
-            {{ tag }}
-          </AppChip>
-        </div>
-      </div>
+          <template #content>
+            <div class="overflow-popover-panel">
+              <div class="overflow-popover-header">
+                <div class="overflow-title-group">
+                  <span class="overflow-title">更多分类标签</span>
+                  <span class="overflow-meta">{{ moreCount }} 个次级标签</span>
+                </div>
+                <button
+                  v-if="isOverflowActive"
+                  type="button"
+                  class="overflow-clear-btn"
+                  @click="clearFilter"
+                >
+                  清除筛选
+                </button>
+              </div>
+
+              <!-- 置顶当前已激活的次级标签 -->
+              <div v-if="isOverflowActive" class="overflow-active-row">
+                <span class="overflow-active-label">当前在看：</span>
+                <AppChip
+                  pressed
+                  removable
+                  remove-aria-label="清除当前次级标签筛选"
+                  :count="activeTagCount"
+                  @remove="clearFilter"
+                  @click="clearFilter"
+                >
+                  {{ activeTag }}
+                </AppChip>
+              </div>
+
+              <div class="overflow-cluster cluster">
+                <AppChip
+                  v-for="[tag, count] in overflowTags"
+                  :key="tag"
+                  :pressed="activeTag === tag"
+                  :count="count"
+                  @click="selectTag(tag)"
+                >
+                  {{ tag }}
+                </AppChip>
+              </div>
+            </div>
+          </template>
+        </AppPopover>
+      </template>
     </div>
 
     <p v-if="activeTag" class="filter-note">
@@ -250,6 +316,10 @@ function clearFilter() {
   font-family: var(--font-mono);
 }
 
+.more-tags.is-active-filter {
+  font-weight: 600;
+}
+
 .more-chevron {
   transition: transform var(--duration-2) var(--ease-spring);
 }
@@ -258,21 +328,71 @@ function clearFilter() {
   transform: rotate(180deg);
 }
 
-/* 溢出标签托盘：CSS Grid 0fr ⇄ 1fr 平滑尺寸插值 */
-.more-tags-tray {
-  display: grid;
-  grid-template-rows: 0fr;
-  transition: grid-template-rows var(--duration-2) var(--ease-out);
-  overflow: clip;
+/* 溢出标签顶层浮层内容区 */
+.overflow-popover-panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4) var(--space-4);
 }
 
-.more-tags-tray.is-expanded {
-  grid-template-rows: 1fr;
+.overflow-popover-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  padding-bottom: var(--space-2);
+  border-bottom: 1px solid var(--line);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--ink-2);
 }
 
-.more-tags-inner {
-  min-height: 0;
-  overflow: clip;
+.overflow-title-group {
+  display: inline-flex;
+  align-items: baseline;
+  gap: var(--space-2);
+}
+
+.overflow-title {
+  font-weight: 600;
+  color: var(--ink-1);
+}
+
+.overflow-meta {
+  font-size: var(--text-caption);
+  color: var(--ink-2);
+}
+
+.overflow-clear-btn {
+  background: transparent;
+  border: none;
+  color: var(--accent-strong);
+  font-family: var(--font-mono);
+  font-size: var(--text-caption);
+  cursor: pointer;
+  padding: 0;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.overflow-clear-btn:hover {
+  color: var(--accent);
+}
+
+.overflow-active-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-1-5) var(--space-2);
+  background: color-mix(in oklab, var(--paper-1) 70%, transparent);
+  border-radius: var(--radius-1);
+}
+
+.overflow-active-label {
+  font-family: var(--font-mono);
+  font-size: var(--text-caption);
+  color: var(--ink-2);
 }
 
 .overflow-cluster {
@@ -280,29 +400,13 @@ function clearFilter() {
   align-items: center;
   flex-wrap: wrap;
   gap: var(--space-2);
-  padding-top: var(--space-2);
-  opacity: 0;
-  transform: translateY(-4px);
-  transition:
-    opacity var(--duration-2) var(--ease-out),
-    transform var(--duration-2) var(--ease-out);
-}
-
-.more-tags-tray.is-expanded .overflow-cluster {
-  opacity: 1;
-  transform: translateY(0);
+  max-height: min(50vh, 22rem);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding-right: var(--space-1);
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .more-tags-tray {
-    transition: none !important;
-  }
-
-  .overflow-cluster {
-    transition: none !important;
-    transform: none !important;
-  }
-
   .more-chevron {
     transition: none !important;
   }

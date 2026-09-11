@@ -54,11 +54,11 @@
 - **长列表零闲置快照图层（Zero Idle VT Footprint）**：常驻卡片、非激活卡片绝对禁止挂载任何 `viewTransitionName`，保持合成器图层树极度扁平；
 - **阅读器内禁绝**：同在阅读器内部翻页、切话与滚动时严格禁止触发 View Transition。
 
-### 3. 升级抽屉尺寸插值为现代 CSS `interpolate-size: allow-keywords`
+### 3. 次级标签收纳升维为顶层气泡浮层（Top Layer Popover）与局部尺寸插值收敛
 
-- `TagFilterBar.vue` 废弃 `grid-template-rows: 0fr ⇄ 1fr` 方案，采用现代 CSS `interpolate-size: allow-keywords` + `height: 0 ⇄ auto`，配合 `overflow: clip`；
-- 在不支持该特性的旧版浏览器中通过 `@supports not (interpolate-size: allow-keywords)` 优雅降级为 Grid 轨道，实现对现代 Blink 渲染管线 0 额外重算开销的平滑过渡；
-- 遵循 `@media (prefers-reduced-motion: reduce)`，在减弱动态偏好下将过渡时间清零。
+- `TagFilterBar.vue` 次级溢出标签彻底放弃在文档流中推挤书架卡片的尺寸过渡方案，升维为基于 HTML Popover API + CSS Anchor Positioning 的**顶层气泡浮层（Overflow Tag Popover / `AppPopover`）**；
+- 页面高度与下游数十张卡片保持绝对静止（0 像素推挤、0 几何重排），从根本上切断了推挤卡片穿过吸顶毛玻璃引发的 GPU 高斯模糊连环雪崩，同时补齐无障碍焦点归还（WCAG 2.4.3）与操作闭环；
+- `interpolate-size: allow-keywords` 规范精准定位于**下游无复杂推挤**的场景：书架卷末归档专匣（`ComicGrid.vue`）与详情页叙述折叠（`MetadataPanel.vue`），在不支持的环境下通过 `@supports not` 降级。
 
 ### 4. 消除高频列表卡片高斯模糊着色器（De-blurred Stamps）
 

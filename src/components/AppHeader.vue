@@ -179,6 +179,8 @@ onAuthSuccess(fetchProviders)
   background: color-mix(in oklab, var(--paper-0) 82%, transparent);
   -webkit-backdrop-filter: blur(14px);
   backdrop-filter: blur(14px);
+  contain: layout style;
+  isolation: isolate;
   transform: translateZ(0);
 }
 

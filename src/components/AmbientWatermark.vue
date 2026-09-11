@@ -57,6 +57,9 @@ const watermarkUrl = computed(() => `url("${illustrationSrc.value}")`)
     rgb(0 0 0 / 70%) 75%,
     transparent 100%
   );
+  contain: strict;
+  transform: translateZ(0);
+  will-change: opacity;
 }
 
 /* 弹窗级别背景：撑满整个弹窗卡片 100% 区域，全幅舒展铺满 */

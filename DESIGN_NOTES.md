@@ -245,10 +245,11 @@
 - **尾格余量折叠卡与单源焦点**：
   1. **页面索引（PageIndexGrid）**：超出首屏预算的画页在网格末尾以独立的 `.page-fold-card`（保留 `.page-tile-overflow` 兼容）收纳卡呈现，视觉与交互完全与书架函套卡对齐（朱砂徽印、标题说明、主步进 `btn-primary`、展开全部 `btn-ghost` 与收拢出口）；折叠态严禁在网格外部同时渲染底部控制条（消除认知混淆与双重控件），仅在全量展开后于底部呈现 `.page-sentinel` 典雅收整条；严禁以透明蒙层盖死最后一个内容画页，彻底杜绝 DOM `RouterLink` 幽灵焦点与读屏语音冲突；
   2. **书架网格（ComicGrid）**：未展开藏书在网格末尾以函套收纳卡（`.shelf-fold-card`）呈现，严格采用 `var(--radius-3)` 与 26rem 最小高度，彻底根治单卡成行时的断层塌陷；全部展开后底部呈现 `.shelf-sentinel` 单按钮收整书架；
-- **现代平滑尺寸插值与全景托盘（interpolate-size: allow-keywords）**：
-  1. **CSS 原生高度插值**：归档抽屉主体与标签溢出抽屉（`.more-tags-tray`）声明 `interpolate-size: allow-keywords; height: 0;` 并在展开时通过 `height: auto;` 与 `transition: height var(--duration-2) var(--ease-out)` 实现 GPU 合成层平滑膨胀与收缩，告别手写 JS 获取 `scrollHeight` 或 CSS Grid 多轨道计算导致的强制同步重排；
-  2. **弹性网格优雅降级**：通过 `@supports not (interpolate-size: allow-keywords)` 对旧版内核降级为 `display: grid; grid-template-rows: 0fr -> 1fr;` 零成本平滑适配；
-  3. **常驻合成层与滤镜瘦身铁律（Zero Idle VT Footprint & De-blurred Stamps）**：网格卡片禁止常驻绑定静态 `viewTransitionName`（仅在激活/点击目标上动态挂载 `comic-cover-active`），避免 Blink 为全架数十张卡片在位移时维护独立合成快照图层；大面积位移重排的微标印章（`.id-stamp`、`.match-stamp`、`.reading-stamp`）严禁滥用 `backdrop-filter: blur(...)`，改用高感知半透明墨色背景（`color-mix(in oklab, var(--ink-0) 88%, transparent)`）配合微阴影，彻底消除低配核显与软解模式下的每秒数千次高斯模糊重采样卡顿；
+- **尺寸插值与溢出标签顶层浮层演进（interpolate-size & Overflow Tag Popover）**：
+  1. **尾部归档抽屉插值**：位于书架尾部、不推挤复杂图形卡片的归档专匣（`.archive-drawer-body`）采用 `interpolate-size: allow-keywords; height: 0 ⇄ auto;` 实现平滑展开，并通过 `@supports not` 降级；
+  2. **溢出标签顶层浮层升维（Zero-Reflow Popover）**：标签栏次级溢出标签彻底拔除在主干流中推挤整架卡片的尺寸插值机制，全面收敛为基于 HTML Popover API 与 CSS Anchor Positioning 的 `AppPopover` 顶层浮层；视口高度与下游网格保持绝对静止（0 像素推移、0 几何重排），从根源杜绝 144Hz 高刷屏与核显上的 GPU 合成器卡顿；
+  3. **无障碍焦点归还与操作闭环（WCAG 2.4.3 Focus Restoration & Loop Closure）**：次级浮层关闭后自动通过 `nextTick` 归还焦点至触发胶囊；当激活次级标签时，外露触发胶囊显式呈现 `:pressed="true"`，浮层头部提供置顶清除入口与「当前在看」微标，彻底消解“选择墙”找回成本；
+  4. **常驻合成层与滤镜瘦身铁律（Zero Idle VT Footprint & De-blurred Stamps）**：网格卡片禁止常驻绑定静态 `viewTransitionName`（仅在激活/点击目标上动态挂载 `comic-cover-active`），避免 Blink 为全架数十张卡片在位移时维护独立合成快照图层；大面积位移重排的微标印章（`.id-stamp`、`.match-stamp`、`.reading-stamp`）严禁滥用 `backdrop-filter: blur(...)`，改用高感知半透明墨色背景（`color-mix(in oklab, var(--ink-0) 88%, transparent)`）配合微阴影，彻底消除低配核显与软解模式下的每秒数千次高斯模糊重采样卡顿；吸顶栏增加 `contain: layout style; isolation: isolate;`，全屏水印增加 `contain: strict; will-change: opacity;`；
 - **网格动画安全禁令（No Absolute on Grid Leave）**：`<TransitionGroup>` 的 `shelf-card`、`folio-card` 与 `chapter-card` 动效中，**严禁在 `.leave-active` 中定义 `position: absolute;`**，避免 Grid 布局崩塌与卡片在左上角重叠闪烁；
 - **触控靶心底线与防迷航回滚**：
   1. **移动端 WCAG 2.5.5 与次级操作并列（Mobile Action Row Layout）**：在 `max-width: 640px` 下，所有折叠步进与全量展开按钮强制保底 `min-height: 44px;`；次级操作（展开全部与收拢归档）收敛于 `.fold-card-sub-actions` 并列容器中横向均分并排呈现，彻底根治移动端纵向堆叠导致的 48px 异常拉伸与画页视野挤占；

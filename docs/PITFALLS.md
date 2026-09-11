@@ -609,20 +609,20 @@
 
 ### 67. 标签托盘高度重排冲击波与卡片常驻合成图层踩踏陷阱（Tag Tray Reflow Blast Radius & Resident VT Layer Trap）
 
-- **本质**：
-  1. 在流式布局中，展开抽屉使用 `grid-template-rows: 0fr ⇄ 1fr` 动效导致主线程在动画期间每一帧执行几何重排（Forced Reflow）；
-  2. 位于流式抽屉正下方的书架网格含有数十张漫画卡片，卡片内包含常驻的 `:style="{ viewTransitionName }"` 与多处 `backdrop-filter: blur(...)`（毛玻璃滤镜）；
-  3. 当网格卡片在重排过程中被逐帧推移时，Blink 引擎被迫在每一帧重新计算几十个 View Transition 图层几何并对数十个毛玻璃区域重复执行多道高斯模糊着色器。在开启独立硬件加速的机器上能勉强抗住，而在轻薄本核显、高分屏或关闭了硬件加速（CPU 软解）的客户端上会导致帧率跌至 5~15 FPS 产生严重卡顿。
+- **本质（Trace-20260910 真实故障复盘）**：
+  1. 在流式布局中，展开抽屉使用 `grid-template-rows: 0fr ⇄ 1fr` 动效导致主线程在 260ms 内每一帧执行几何重排（Forced Reflow）；
+  2. 位于流式抽屉正下方的书架网格含有数十张漫画卡片（总文档高度达 4850px+），卡片内包含 3D 旋转叠牌封面、滤镜、圆角与阴影；
+  3. **协同杀手叠加**：吸顶栏 `.site-header` 带有 `position: sticky; top: 0; backdrop-filter: blur(14px)`，且全局铺满了带有 `mix-blend-mode: multiply; filter: contrast/grayscale; mask-image: radial-gradient` 的固定背景 `<AmbientWatermark>`。当用户在已滚动（y ≈ 300px）的状态下点击展开标签抽屉时，下游移动的整屏卡片穿过吸顶栏，Blink 引擎在每一帧（在 144Hz 屏幕下单帧仅 6.94ms 预算）被迫执行 33 次 `UpdateLayer` 并重算双通高斯模糊与全屏正片叠底，`CrGpuMain` 单帧耗时直接飙升到 60ms ~ 160ms，导致瞬间丢弃 11~~23 帧，帧率暴跌至 6~~12 FPS 严重停顿假死。
 - **红线与防误伤**：
-  - **不要**使用 CSS Grid 复合轨道 `grid-template-rows` 作为频繁触发的流式展开过渡；
+  - **不要**在推挤海量复杂卡片的主干文档流中使用任何 CSS 高度过渡动画（无论是 `grid-template-rows` 还是 `interpolate-size: allow-keywords`，改变几何尺寸必然引起下游卡片在视口内连续移动，无法根除重排与 GPU 合成雪崩）；
   - **不要**为网格所有普通卡片常驻声明静态 `view-transition-name`；
-  - **不要**在大面积位移重排的卡片印章与徽标上滥用高频 `backdrop-filter`；
-  - **不要**在组件局部微交互（如红心收藏、步进器）中滥用 `withViewTransition`，严禁将长耗时异步网络请求包裹在 View Transition 回调内；
+  - **不要**让吸顶毛玻璃与全屏复合滤镜水印裸露在非隔离图层树中；
   - **放行/改用**：
-    1. 展开抽屉升级为标准无级尺寸插值（`interpolate-size: allow-keywords` + `height: 0 ⇄ auto`），并用 `@supports not` 降级；
-    2. `viewTransitionName` 改为仅在被点击或激活的卡片上动态绑定（如 `comic-cover-active`）；
-    3. 印章与徽标改用高不透明度半透明纯色背景（如 `color-mix(in oklab, var(--ink-0) 88%, transparent)`）加微投影，兼顾锐利质感与零 GPU 模糊着色器消耗；
-    4. 局部微交互统一交由原生 CSS `transition` 或 Vue `<Transition>` 驱动，View Transition 严格收敛于跨页面大路由推进。
+    1. **交互范式升维**：次级筛选标签收纳全面收敛为基于 HTML Popover API + CSS Anchor Positioning 的**顶层气泡浮层（Overflow Tag Popover）**（`AppPopover`），页面高度 0 变动，下游卡片 0 位移，几何重排为 0，GPU 模糊重算为 0，144 FPS 满帧丝滑；
+    2. 吸顶栏 `.site-header` 增加 `contain: layout style; isolation: isolate;` 图层隔离；
+    3. 全屏水印 `.ambient-watermark.is-page` 增加 `contain: strict; transform: translateZ(0); will-change: opacity;`，隔绝合成器频繁无效重绘；
+    4. 印章与徽标改用高不透明度半透明纯色背景（如 `color-mix(in oklab, var(--ink-0) 88%, transparent)`）加微投影，兼顾锐利质感与零 GPU 模糊着色器消耗；
+    5. 局部微交互统一交由原生 CSS `transition` 或 Vue `<Transition>` 驱动，View Transition 严格收敛于跨页面大路由推进。
 
 ### 68. 条漫切片腰斩与阅读器行内装订页脚冲突（Inlined Page Footer vs Webtoon Slices）
 

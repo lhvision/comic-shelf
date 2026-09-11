@@ -661,49 +661,58 @@ overflow: hidden;
 
 **作用**：允许浏览器在 `height: 0` 与 `height: auto` 之间进行纯数值插值，彻底消除 JS 测量 `scrollHeight` 的重排开销与异步闪烁。
 
-**范式：标签流式溢出抽屉（`TagFilterBar.vue` 双轨渐进增强）**：
+**范式：书架归档专匣与局部折叠（`ComicGrid.vue` 优雅降级）**：
 
 ```css
 /* 现代插值优先：interpolate-size: allow-keywords + 基础盒模型 height 尺寸过渡 */
-.more-tags-tray {
+.archive-drawer-body {
   interpolate-size: allow-keywords;
   height: 0;
   overflow: clip;
-  transition: height var(--duration-2) var(--ease-out);
+  opacity: 0;
+  visibility: hidden;
+  transition:
+    height var(--duration-3) var(--ease-spring),
+    opacity var(--duration-2) var(--ease-out),
+    visibility var(--duration-2) var(--ease-out);
 }
 
-.more-tags-tray.is-expanded {
+.shelf-archive-drawer.is-open .archive-drawer-body {
   height: auto;
+  opacity: 1;
+  visibility: visible;
 }
 
 /* 优雅降级：不支持 interpolate-size 的旧版环境降级为 CSS Grid 复合轨道 */
 @supports not (interpolate-size: allow-keywords) {
-  .more-tags-tray {
+  .archive-drawer-body {
     display: grid;
     grid-template-rows: 0fr;
-    transition: grid-template-rows var(--duration-2) var(--ease-out);
+    transition:
+      grid-template-rows var(--duration-3) var(--ease-spring),
+      opacity var(--duration-2) var(--ease-out),
+      visibility var(--duration-2) var(--ease-out);
     height: auto;
   }
 
-  .more-tags-tray.is-expanded {
+  .shelf-archive-drawer.is-open .archive-drawer-body {
     grid-template-rows: 1fr;
   }
 
-  .more-tags-inner {
+  .archive-drawer-inner {
     min-height: 0;
     overflow: clip;
   }
 }
 ```
 
-**性能权衡与重排爆破半径**：
+**性能权衡与重排爆破半径（Trace-20260910 真实复盘与架构升维）**：
 
-- **旧方案隐患**：`grid-template-rows: 0fr ⇄ 1fr` 会迫使 Chromium/Blink 与 Gecko 内核在过渡动画的每一帧（260ms 持续时间）全量重新计算 Grid 轨道尺寸，推挤下游兄弟容器（如 `ComicGrid`）产生帧级连续重排（Reflow）；一旦下游子节点含有复杂的渲染树（如快照层或滤镜），会导致低端 GPU / CPU 软解设备发生严重掉帧（5~15 FPS）。
-- **现代升级**：现代 Chromium (129+) 原生支持 `interpolate-size: allow-keywords`，在标准流式块级容器上直接驱动 `height: 0 ⇄ auto` 并在内部配合 `overflow: clip` 限制绘制边界，消除了 Grid 轨道的重算开销。
-- **应用演进**：除标签抽屉外，该范式同样落地于漫画详情叙述展开（`MetadataPanel.vue` 的 `3lh ⇄ auto` 水墨渐隐插值）、折叠控制条（`.shelf-sentinel`、`.chapter-load-more-section`）与折叠画卷的渐进出现，彻底避免传统手写 JS 高度测量带来的重排抖动。
-- **展开动效分层降级哲学（Degradation Tiering）**：
-  1. **结构型流式容器（如 `TagFilterBar`）**：在不支持 `interpolate-size` 的旧环境，通过 `@supports not (interpolate-size: allow-keywords)` 降级为 CSS Grid `0fr ⇄ 1fr` 复合轨道过渡，确保托盘平滑舒展；
-  2. **内容型修饰展开（如 `MetadataPanel`）**：采用轻量级纯 CSS 渐进增强策略，在现代浏览器中丝滑插值；在不支持的环境下自然降级为即时硬切展开（Zero JS Overhead & Zero Reflow），杜绝在细粒度文本上引入 Grid 复合轨道带来的二次重排成本。
+- **流式高度过渡的隐形陷阱**：在推挤海量卡片长列表的主干流中，无论是旧版 `grid-template-rows: 0fr ⇄ 1fr` 还是现代 `interpolate-size: allow-keywords`，在动画全程的每一帧都会改变元素高度。当下游存在 4800px+ 的复杂卡片网格、吸顶毛玻璃（`backdrop-filter: blur(14px)`）与全屏正片叠底水印时，下游卡片的连续几何推挤会导致 GPU 每秒重算数十次高斯模糊与混合模式，在 144Hz 屏或核显设备上导致帧率暴跌至 6~12 FPS；
+- **标签栏全面升维至顶层浮层**：`TagFilterBar.vue` 次级溢出标签彻底放弃文档流推挤，升维为基于 HTML Popover API + CSS Anchor Positioning 的**顶层气泡浮层（Top Layer Popover / `AppPopover`）**。页面高度与下游网格保持绝对静止（0 像素位移、0 几何重排），满帧稳定 144 FPS；
+- **`interpolate-size` 适用边界收敛**：现代尺寸插值专用于**下游无复杂推挤或位于页面尾部**的场景：
+  1. **页面尾部专匣（如 `ComicGrid.vue` 卷末归档）**：位于书架最末端，下方无任何被推挤的复杂卡片树；
+  2. **局部内联展开（如 `MetadataPanel.vue` 叙述简介）**：仅在详情页卡片内部进行 `3lh ⇄ auto` 水墨渐隐展开，封闭在单一受限容器内。
 
 ---
 

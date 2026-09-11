@@ -26,9 +26,9 @@ describe('TagFilterBar', () => {
       },
     })
 
-    const primaryButtons = wrapper.find('.filter-cluster').findAll('.chip-button')
-    // favorite (1) + all (1) + 8 primary + more button (1) = 11 chip buttons
-    expect(primaryButtons.length).toBe(11)
+    const directButtons = wrapper.findAll('.filter-cluster > .chip-button')
+    // favorite (1) + all (1) + 8 primary = 10 direct chip buttons
+    expect(directButtons.length).toBe(10)
     expect(wrapper.find('.more-tags').text()).toContain('更多 · 2')
 
     // Reading status tabs
@@ -38,55 +38,56 @@ describe('TagFilterBar', () => {
     expect(statusTabs[1]?.text()).toBe('在读')
     expect(statusTabs[2]?.text()).toBe('已读')
 
-    // Tray exists in DOM but collapsed
-    const tray = wrapper.find('.more-tags-tray')
-    expect(tray.exists()).toBe(true)
-    expect(tray.classes()).not.toContain('is-expanded')
-    expect(tray.findAll('.chip-button').length).toBe(2)
+    // Overflow popover exists in DOM
+    const overflowCluster = wrapper.find('.overflow-cluster')
+    expect(overflowCluster.exists()).toBe(true)
+    expect(overflowCluster.findAll('.chip-button').length).toBe(2)
   })
 
-  it('expands tray and reveals overflow tags on more button click', async () => {
+  it('toggles trayExpanded on more button click and updates label', async () => {
     const wrapper = mount(TagFilterBar, {
       props: {
         favoritesOnly: false,
         activeTag: '',
         tagCounts,
         filteredCount: 10,
+        trayExpanded: false,
       },
     })
 
     const moreBtn = wrapper.find('.more-tags')
+    expect(moreBtn.text()).toContain('更多 · 2')
     await moreBtn.trigger('click')
 
-    const tray = wrapper.find('.more-tags-tray')
-    expect(tray.classes()).toContain('is-expanded')
-    expect(moreBtn.text()).toContain('收起标签')
+    expect(wrapper.emitted('update:trayExpanded')?.[0]).toEqual([true])
+
+    await wrapper.setProps({ trayExpanded: true } as Record<string, unknown>)
+    expect(wrapper.find('.more-tags').text()).toContain('收起标签')
 
     // Check overflow tags
-    const overflowTags = tray.findAll('.chip-button')
+    const overflowTags = wrapper.find('.overflow-cluster').findAll('.chip-button')
     expect(overflowTags.length).toBe(2)
     expect(overflowTags[0]?.text()).toContain('tag9')
     expect(overflowTags[1]?.text()).toContain('tag10')
   })
 
-  it('emits selectTag when an overflow tag is clicked', async () => {
+  it('emits selectTag when an overflow tag is clicked without closing popover', async () => {
     const wrapper = mount(TagFilterBar, {
       props: {
         favoritesOnly: false,
         activeTag: '',
         tagCounts,
         filteredCount: 10,
+        trayExpanded: true,
       },
     })
 
-    const moreBtn = wrapper.find('.more-tags')
-    await moreBtn.trigger('click')
-
-    const tray = wrapper.find('.more-tags-tray')
-    const overflowTag = tray.findAll('.chip-button')[0]
+    const overflowTag = wrapper.find('.overflow-cluster').findAll('.chip-button')[0]
     await overflowTag?.trigger('click')
 
     expect(wrapper.emitted('selectTag')?.[0]).toEqual(['tag9'])
+    // Popover stays open for consecutive tag selection
+    expect(wrapper.emitted('update:trayExpanded')).toBeUndefined()
   })
 
   it('emits toggleFavorites when favorite button is clicked', async () => {
@@ -132,7 +133,7 @@ describe('TagFilterBar', () => {
     expect(tabs[2]?.classes()).toContain('is-active')
   })
 
-  it('auto-expands tray when initialized with activeTag in overflow tags', () => {
+  it('indicates active state on more button when activeTag is in overflow tags', () => {
     const wrapper = mount(TagFilterBar, {
       props: {
         favoritesOnly: false,
@@ -142,12 +143,13 @@ describe('TagFilterBar', () => {
       },
     })
 
-    const tray = wrapper.find('.more-tags-tray')
-    expect(tray.classes()).toContain('is-expanded')
-    expect(wrapper.find('.more-tags').text()).toContain('收起标签')
+    const moreBtn = wrapper.find('.more-tags')
+    expect(moreBtn.classes()).toContain('is-active-filter')
+    expect(moreBtn.attributes('aria-pressed')).toBe('true')
+    expect(moreBtn.text()).toContain('标签：tag9')
   })
 
-  it('auto-expands tray when activeTag prop changes to an overflow tag', async () => {
+  it('updates active state on more button when activeTag changes to an overflow tag', async () => {
     const wrapper = mount(TagFilterBar, {
       props: {
         favoritesOnly: false,
@@ -157,14 +159,17 @@ describe('TagFilterBar', () => {
       },
     })
 
-    const tray = wrapper.find('.more-tags-tray')
-    expect(tray.classes()).not.toContain('is-expanded')
+    expect(wrapper.find('.more-tags').classes()).not.toContain('is-active-filter')
 
     await wrapper.setProps({
       activeTag: 'tag10',
       filteredCount: 1,
     } as Record<string, unknown>)
-    expect(tray.classes()).toContain('is-expanded')
+
+    const updatedMoreBtn = wrapper.find('.more-tags')
+    expect(updatedMoreBtn.classes()).toContain('is-active-filter')
+    expect(updatedMoreBtn.attributes('aria-pressed')).toBe('true')
+    expect(updatedMoreBtn.text()).toContain('标签：tag10')
   })
 
   it('supports two-way binding via trayExpanded model', async () => {
@@ -203,5 +208,45 @@ describe('TagFilterBar', () => {
 
     await offlineBtn.trigger('click')
     expect(wrapper.emitted('toggleOffline')).toHaveLength(1)
+  })
+
+  it('renders pinned active tag and clear button inside popover when overflow tag is active', () => {
+    const wrapper = mount(TagFilterBar, {
+      props: {
+        favoritesOnly: false,
+        activeTag: 'tag9',
+        tagCounts,
+        filteredCount: 2,
+      },
+    })
+
+    const activeRow = wrapper.find('.overflow-active-row')
+    expect(activeRow.exists()).toBe(true)
+    expect(activeRow.text()).toContain('tag9')
+    expect(activeRow.text()).toContain('当前在看：')
+
+    const clearBtn = wrapper.find('.overflow-clear-btn')
+    expect(clearBtn.exists()).toBe(true)
+    expect(clearBtn.text()).toContain('清除筛选')
+  })
+
+  it('clears overflow filter when clear button inside popover is clicked without closing popover', async () => {
+    const wrapper = mount(TagFilterBar, {
+      props: {
+        favoritesOnly: false,
+        activeTag: 'tag9',
+        tagCounts,
+        filteredCount: 2,
+        trayExpanded: true,
+      },
+    })
+
+    const clearBtn = wrapper.find('.overflow-clear-btn')
+    await clearBtn.trigger('click')
+
+    expect(wrapper.emitted('selectTag')).toContainEqual([''])
+    expect(wrapper.emitted('clearTag')).toHaveLength(1)
+    // Popover remains open so user can pick another tag
+    expect(wrapper.emitted('update:trayExpanded')).toBeUndefined()
   })
 })
