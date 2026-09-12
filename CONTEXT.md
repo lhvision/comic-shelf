@@ -42,6 +42,8 @@
   3. 本子详情页对返回按钮挂载下级路由拦截守卫，当历史上一页指向本漫画的下级子路由（章节/阅读器）时禁止 `router.back()`，兜底回退至书架，彻底消除下级回弹死循环。
 - **单话按需离线（Chapter-level Caching / Cache by Chapter）**：多章节漫画支持在章节卡片与章节详情页触发针对该单话的后台图片下载任务，弥补“全本预缓存（MAX 600页）”在超长作品（数千页/上百话）下的粗粒度缺陷与反爬风险。
 - **缩略图落盘即缓存（Thumbnail Implied Page Caching）**：页面索引网格请求画页缩略图时，后端解密拉取原图生成缩略图并即刻将该画页标记为本地化（`cached = true`）；前端感知缩略图加载完成即刻乐观翻转「本地」印章并推进单话进度，消除“明明图片已加载却显示待缓存”的认知割裂。
+- **未达终态不进位法则（Non-terminal Floor Clamp / 99% 封顶律）**：全站所有缓存进度条与百分比计算（`AppProgressBar`、`CacheProgress`、`DetailActionBar`）遵循的确定性语义契约。只要当前任务尚未达到完全就绪终态（`cached < total` 或 `complete === false`），百分比显示严格封顶为 99%（向下取整 `Math.min(99, Math.floor(...))`），当且仅当全部就绪（`cached >= total`）时才允许显示 100%，彻底根除“数字显示 100% 却提示差一页未入库”的认知断层。
+- **本地落盘自愈对齐（Local Cache Reconciliation）**：在拉取本子详情（`/api/library/{source}/{source_id}`）或请求缓存进度时，后端执行轻量自愈检测：针对 `page.cached === false` 的画页探查磁盘对应图片文件是否已完整存在，若已落盘则即刻修正元数据与数据库并翻转为本地化，彻底消除因阅读器直读或网络抖动导致的磁盘与元数据失步。
 - **防爬节流与并发阀门（Anti-Scraping Pacing & Concurrency Gate）**：针对远端图源（如哔咔、禁漫）设立的并发保护屏障（`download_gate` 默认 3 路并发）与拟人化随机抖动延迟（`PICA_DOWNLOAD_PACING_MS = 250ms ±20%`），杜绝批量拉取缩略图或画页时触发远端 IP 封禁。
 - **章节相对页码（Chapter-relative Page Index）**：多章节作品中面向读者展示的章内相对页码（`local_page = global_page - chapter.start + 1`，如第 3 话第 2 页，全书第 47 页）。详情页“继续阅读”按钮与阅读器 HUD 统一采用章内相对页码呈现，消除与单话总页数的认知割裂。
 - **长章节目录分批展开（Chapter Index Chunked Rendering）**：面对上百话的超长连载漫画（如 152 话），详情页章节目录采用分批展开（首屏 24 话 + 滚动/按需增量），防止一次性向 DOM 树灌入数百个组件与并发封面网络请求。
@@ -174,6 +176,7 @@
 - **请求中止与竞态隔离（Request Abort & Race Cancellation）**：利用 `AbortController` 与组件生命周期绑定，在瞬时进出页面或并发触发检索（如以图搜图重选、排行榜切档）时主动取消上一轮未完成的网络请求，避免无效流量与状态覆盖。
 - **字阶底线与自适应排版（Typography Floor & Fitting）**：纸间对单行文字自适应（如阅读器顶栏标题、车号徽章）设立的排版保护原则。在采用现代弹性缩放防溢出的同时，强制受限于离散字阶底线（≥ `--text-xs` / 12px），极小徽标（`--text-caption` / 11px）优先借助 `font-size-adjust` 渐进增强突破 12px 限制并保持盒模型稳定，杜绝 `transform: scale()` 模糊与偏移；单行容器长文本防折行压缩（未来 `text-fit: shrink per-line`）严格限定于阅读器 HUD 与工具栏等单体上下文，严禁侵入书架网格阵列，坚守卡片阵列固定字阶与多行截断，杜绝卡片间字号忽大忽小破坏视觉节律。
 - **纸间统一图标集（Unified Archive Iconography）**：全站矢量图标单源字典体系。统一步调为暖纸细线条描边与朱砂印章质感（1.8px 细描边 / 24px 网格），彻底杜绝跨平台字符（`✕`/`✓`/`×`）渲染字重撕裂与重复内联 SVG 碎片。
+- **高精亚像素截断（Subpixel Truncation / 4 位精度规约）**：原子进度条组件（`AppProgressBar`）向 CSS 变量（`--progress`）与 GPU 硬件加速层（`scaleX`）注入浮点数时统一保留 4 位有效小数（精度 0.0001 / 0.01%）。在 4K 宽屏（3840px）下亚像素误差低于 0.38px，杜绝 16 位 IEEE 754 浮点噪点污染 DOM 属性与 CSS 样式。
 - **通用微件胶囊（Chip / AppChip）**：纸间设计系统的底层无障碍交互与展示胶囊组件。区别于业务实体「标签（Tag）」，微件胶囊是通用 UI 原子基建，支持只读文本（`<span>`）、状态按压切换（`<button aria-pressed>`，如“只看喜欢”/“只看已读”）、计数值徽印、前后置矢量图标与可删除标记（Removable），单源收敛全站 `.chip` 与 `.chip-button` 视觉表现。
 - **标准操作与多态按钮（Action Button / AppButton）**：纸间设计系统的单一入口按钮基建。支持多态渲染（`<button>`、`<RouterLink>` 与 `<a>`）、标准六色变体（`primary` / `secondary` / `ghost` / `soft` / `danger` / `success`）、正圆/方形独立图标形态（`shape="circle" | "square"`）及阅读器暗室主题防护（`theme="reader"`），单源收敛全站操作控件与无障碍焦点环。
 - **现代浮层体系（Modern Floating System）**：基于 HTML Popover API 与 CSS Anchor Positioning 规范构建的无依赖顶层浮动交互基建，包含 `Modal`（强中断模态对话框）、`AppPopover`（富交互锚定浮层）、`AppDropdown`（操作选单与选择器）与 `AppTooltip`（`popover="hint"` 轻量气泡提示），彻底消除散落的绝对定位胶水代码与 z-index 冲突。

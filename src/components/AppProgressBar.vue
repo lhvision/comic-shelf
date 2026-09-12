@@ -14,6 +14,11 @@
  */
 
 import { computed } from 'vue'
+import {
+  calculateProgressPercent,
+  calculateFloatPercent,
+  truncateProgressFloat,
+} from '@/utils/progress'
 
 const props = withDefaults(
   defineProps<{
@@ -54,20 +59,30 @@ const props = withDefaults(
 
 const fraction = computed(() => {
   if (props.indeterminate) return 0
+  let raw = 0
   if (typeof props.progress === 'number') {
     if (Number.isNaN(props.progress)) return 0
-    return Math.min(1, Math.max(0, props.progress))
+    raw = Math.min(1, Math.max(0, props.progress))
+  } else {
+    const rawMax = typeof props.max === 'number' && !Number.isNaN(props.max) ? props.max : 100
+    const safeMax = Math.max(rawMax, 0.0001)
+    const rawVal = typeof props.value === 'number' && !Number.isNaN(props.value) ? props.value : 0
+    const safeValue = Math.max(0, rawVal)
+    raw = Math.min(1, safeValue / safeMax)
   }
-  const rawMax = typeof props.max === 'number' && !Number.isNaN(props.max) ? props.max : 100
-  const safeMax = Math.max(rawMax, 0.0001)
-  const rawVal = typeof props.value === 'number' && !Number.isNaN(props.value) ? props.value : 0
-  const safeValue = Math.max(0, rawVal)
-  return Math.min(1, safeValue / safeMax)
+  // 高精亚像素截断（4 位精度规约）：避免 16 位浮点噪点污染 DOM 属性与 CSS 样式，在 4K 屏下亚像素精度仍达 0.38px
+  return truncateProgressFloat(raw)
 })
 
-const percent = computed(() =>
-  Number.isNaN(fraction.value) ? 0 : Math.round(fraction.value * 100),
-)
+const percent = computed(() => {
+  if (props.indeterminate) return 0
+  if (typeof props.progress === 'number' && !Number.isNaN(props.progress)) {
+    return calculateFloatPercent(props.progress)
+  }
+  const rawMax = typeof props.max === 'number' && !Number.isNaN(props.max) ? props.max : 100
+  const rawVal = typeof props.value === 'number' && !Number.isNaN(props.value) ? props.value : 0
+  return calculateProgressPercent(rawVal, rawMax)
+})
 
 // 动态通过 CSS v-bind 响应式注入，零内联 DOM 胶水代码，零 !important
 const scaleTransform = computed(() =>
@@ -78,10 +93,11 @@ const transformOrigin = computed(() => (props.invert ? '100% 50%' : '0 50%'))
 const progressStyle = computed(() => {
   const rawMax = typeof props.max === 'number' && !Number.isNaN(props.max) ? props.max : 100
   const safeMax = Math.max(rawMax, 0.0001)
+  const rawVal = typeof props.value === 'number' && !Number.isNaN(props.value) ? props.value : 0
   const safeValue =
     typeof props.progress === 'number' && !Number.isNaN(props.progress)
-      ? fraction.value * safeMax
-      : Math.max(0, typeof props.value === 'number' && !Number.isNaN(props.value) ? props.value : 0)
+      ? Math.round(fraction.value * safeMax * 10000) / 10000
+      : Math.max(0, rawVal)
   return {
     '--progress': fraction.value,
     '--percent': `${percent.value}%`,

@@ -111,4 +111,49 @@ describe('AppProgressBar.vue', () => {
     expect(wrapper.attributes('aria-valuenow')).toBe('0')
     expect(wrapper.attributes('style')).toContain('--progress: 0')
   })
+
+  it('truncates CSS variable --progress to 4 decimal places avoiding IEEE 754 float noise', () => {
+    const wrapper = mount(AppProgressBar, {
+      props: {
+        value: 44,
+        max: 208,
+      },
+    })
+
+    // 44 / 208 = 0.21153846153846154 -> 0.2115
+    expect(wrapper.attributes('style')).toContain('--progress: 0.2115')
+    expect(wrapper.attributes('style')).not.toContain('0.21153846153846154')
+  })
+
+  it('enforces non-terminal clamp (max 99%) when value < max, never falsely shows 100%', () => {
+    const nearComplete = mount(AppProgressBar, {
+      props: {
+        value: 207,
+        max: 208,
+      },
+    })
+
+    // 207 / 208 = 0.99519... Must be 99%, NOT 100%
+    expect(nearComplete.attributes('aria-valuenow')).toBe('99')
+    expect(nearComplete.attributes('style')).toContain('--percent: 99%')
+    expect(nearComplete.attributes('style')).toContain('--progress: 0.9952')
+
+    const complete = mount(AppProgressBar, {
+      props: {
+        value: 208,
+        max: 208,
+      },
+    })
+    expect(complete.attributes('aria-valuenow')).toBe('100')
+    expect(complete.attributes('style')).toContain('--percent: 100%')
+    expect(complete.attributes('style')).toContain('--progress: 1')
+
+    const nearCompleteFloat = mount(AppProgressBar, {
+      props: {
+        progress: 0.999,
+      },
+    })
+    expect(nearCompleteFloat.attributes('aria-valuenow')).toBe('99')
+    expect(nearCompleteFloat.attributes('style')).toContain('--percent: 99%')
+  })
 })

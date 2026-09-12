@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import AppProgressBar from '@/components/AppProgressBar.vue'
+import { calculateProgressPercent } from '@/utils/progress'
 
 /**
  * 书架卡片/章节卡片上的缓存进度条：三种状态一次讲清
@@ -18,11 +19,7 @@ const props = defineProps<{
 }>()
 
 const safeTotal = computed(() => Math.max(props.total, 0))
-const percent = computed(() => {
-  if (safeTotal.value === 0) return 0
-  const clampedCached = Math.max(0, props.cached)
-  return Math.min(100, Math.round((clampedCached / safeTotal.value) * 100))
-})
+const percent = computed(() => calculateProgressPercent(props.cached, safeTotal.value))
 
 const complete = computed(() => safeTotal.value > 0 && props.cached >= safeTotal.value)
 

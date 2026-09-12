@@ -113,6 +113,7 @@ export function useChapterCache(options: UseChapterCacheOptions) {
           ? !job.running || (job.chapter_id === currentChapterId && progress.complete)
           : !job.running || progress.complete
 
+        const wasCaching = caching.value
         if (isFinished) {
           caching.value = false
           runningChapterId.value = null
@@ -124,6 +125,9 @@ export function useChapterCache(options: UseChapterCacheOptions) {
             endTask(getTaskId.chapter(source.value, sourceId.value, currentChapterId))
           }
           pauseProgressPolling()
+          if (wasCaching && !progress.complete && job.warnings && job.warnings.length > 0) {
+            toast(`有 ${job.warnings.length} 页下载中断，点击“缓存全部”可继续重试`, 'info')
+          }
           if (onRefresh) {
             void onRefresh()
           }

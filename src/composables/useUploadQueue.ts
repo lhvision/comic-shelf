@@ -1,6 +1,7 @@
 import { ref } from 'vue'
 import { api } from '@/api/client'
 import type { ComicDetail } from '@/types'
+import { calculateProgressPercent } from '@/utils/progress'
 
 export interface UploadQueueOptions {
   batchSize?: number
@@ -70,7 +71,7 @@ export function useUploadQueue() {
         const res = await api.uploadLocalPages(sourceId, chunk, targetChap, titleParam)
         latestDetail = res
         completedCount.value = Math.min(totalCount.value, completedCount.value + chunk.length)
-        progress.value = Math.round((completedCount.value / totalCount.value) * 100)
+        progress.value = calculateProgressPercent(completedCount.value, totalCount.value)
         options.onProgress?.(completedCount.value, totalCount.value)
       }
 

@@ -19,6 +19,7 @@ import { useChapterCache } from '@/composables/useChapterCache'
 import { useHierarchicalNavigation } from '@/composables/useHierarchicalNavigation'
 import CoverCarousel from '@/components/CoverCarousel.vue'
 import AppButton from '@/components/AppButton.vue'
+import { calculateProgressPercent } from '@/utils/progress'
 
 import DetailActionBar from '@/components/detail/DetailActionBar.vue'
 import ChapterIndex from '@/components/detail/ChapterIndex.vue'
@@ -99,8 +100,8 @@ const {
 const isMulti = computed(() => (chapters.value?.length ?? 0) > 1)
 
 const cachePercent = computed(() => {
-  if (!detail.value || detail.value.meta.page_count === 0) return 0
-  return Math.round((detail.value.cached_pages / detail.value.meta.page_count) * 100)
+  if (!detail.value) return 0
+  return calculateProgressPercent(detail.value.cached_pages, detail.value.meta.page_count)
 })
 
 /** T10：每话已本地缓存的页数（chapterId -> cachedPages），喂给章节目录卡片。 */

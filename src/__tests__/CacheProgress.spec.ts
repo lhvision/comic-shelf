@@ -69,4 +69,17 @@ describe('CacheProgress component', () => {
     expect(overflowTrack.attributes('aria-valuenow')).toBe('100')
     expect(overflowTrack.attributes('aria-label')).toBe('本地 100%')
   })
+
+  it('enforces non-terminal clamp: clamps 207/208 to 99% instead of 100%', () => {
+    const wrapper = mount(CacheProgress, {
+      props: {
+        cached: 207,
+        total: 208,
+      },
+    })
+    const track = wrapper.find('[role="progressbar"]')
+    expect(track.attributes('aria-valuenow')).toBe('99')
+    expect(track.attributes('aria-label')).toBe('本地 99%')
+    expect(wrapper.classes()).not.toContain('is-complete')
+  })
 })

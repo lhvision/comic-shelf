@@ -8,6 +8,7 @@ import re
 import shutil
 import tempfile
 import threading
+import time
 from pathlib import Path
 from typing import Any, BinaryIO, Callable, Iterable
 
@@ -571,6 +572,35 @@ class ComicStore:
     def cached_page_count(self, meta: ComicMeta) -> int:
         return sum(1 for page in meta.pages if page.cached)
 
+    def reconcile_cached_pages(self, meta: ComicMeta) -> int:
+        """Self-heal page.cached against disk files for any un-marked pages."""
+        changed = False
+        for page in meta.pages:
+            if not page.cached:
+                target = self._chapter_page_path(meta, page)
+                try:
+                    if target.exists() and target.stat().st_size > 0:
+                        page.cached = True
+                        changed = True
+                except OSError:
+                    pass
+        if changed:
+            album_path = self.album_path(meta.source, meta.source_id)
+            _write_json_atomic(album_path, meta.model_dump())
+            try:
+                mtime = album_path.stat().st_mtime
+            except Exception:
+                mtime = 0.0
+            with self._cache_guard:
+                self._meta_cache[(meta.source, meta.source_id)] = (mtime, meta)
+                self._fetched_cache.pop((meta.source, meta.source_id), None)
+            try:
+                from .db import update_comic_cached_pages
+                update_comic_cached_pages(meta.source, meta.source_id, self.cached_page_count(meta))
+            except Exception:
+                pass
+        return self.cached_page_count(meta)
+
     @staticmethod
     def _save_cover(
         source: Path | bytes | BinaryIO,
@@ -949,21 +979,29 @@ class ComicStore:
             logger.warning(f"预热官方封面异常，降级使用画页第一页: {exc}")
 
         for index in indexes:
-            try:
-                self.ensure_page(fetched, index)
-                if index <= min(meta.cover_count, meta.page_count):
-                    self.ensure_webp_cover(fetched.meta, fetched, index)
-                    self.ensure_webp_cover(fetched.meta, fetched, index, COVER_THUMB_WIDTH)
-                # T-Optimize: Pre-generate thumbnail during prefetch for warm detail-page hits
-                self.ensure_page_thumb(fetched.meta, fetched, index)
-                done += 1
-            except Exception as exc:  # keep import usable even if one page fails
-                warnings.append(f"第 {index} 页缓存失败：{exc}")
-                if index == 1:
-                    raise
-            finally:
-                if on_progress is not None:
-                    on_progress(done, total)
+            success = False
+            last_exc = None
+            for attempt in range(2):
+                try:
+                    self.ensure_page(fetched, index)
+                    if index <= min(meta.cover_count, meta.page_count):
+                        self.ensure_webp_cover(fetched.meta, fetched, index)
+                        self.ensure_webp_cover(fetched.meta, fetched, index, COVER_THUMB_WIDTH)
+                    # T-Optimize: Pre-generate thumbnail during prefetch for warm detail-page hits
+                    self.ensure_page_thumb(fetched.meta, fetched, index)
+                    done += 1
+                    success = True
+                    break
+                except Exception as exc:
+                    last_exc = exc
+                    if attempt == 0:
+                        time.sleep(0.3)
+            if not success:
+                warnings.append(f"第 {index} 页缓存失败：{last_exc}")
+                if index == 1 and last_exc is not None:
+                    raise last_exc
+            if on_progress is not None:
+                on_progress(done, total)
 
         return done, warnings
 
@@ -982,15 +1020,23 @@ class ComicStore:
         total = len(indexes)
 
         for index in indexes:
-            try:
-                self.ensure_page(fetched, index)
-                self.ensure_page_thumb(fetched.meta, fetched, index)
-                done += 1
-            except Exception as exc:
-                warnings.append(f"第 {index} 页缓存失败：{exc}")
-            finally:
-                if on_progress is not None:
-                    on_progress(done, total)
+            success = False
+            last_exc = None
+            for attempt in range(2):
+                try:
+                    self.ensure_page(fetched, index)
+                    self.ensure_page_thumb(fetched.meta, fetched, index)
+                    done += 1
+                    success = True
+                    break
+                except Exception as exc:
+                    last_exc = exc
+                    if attempt == 0:
+                        time.sleep(0.3)
+            if not success:
+                warnings.append(f"第 {index} 页缓存失败：{last_exc}")
+            if on_progress is not None:
+                on_progress(done, total)
 
         try:
             self.ensure_webp_chapter_cover(meta, fetched, chapter)
@@ -1030,7 +1076,7 @@ class ComicStore:
         )
 
     def detail(self, meta: ComicMeta) -> ComicDetail:
-        cached = self.cached_page_count(meta)
+        cached = self.reconcile_cached_pages(meta)
         return ComicDetail(
             meta=meta,
             cached_pages=cached,

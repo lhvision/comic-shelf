@@ -856,6 +856,23 @@
     1. **模板级精确短路门禁**：在 `ReaderViewport.vue` 模板中强制使用 `v-if="targetBubble && targetBubble.page === page"`。非台词检索进入时整本漫画 0 个组件实例化；台词检索进入时全书仅命中单页挂载 1 个实例；
     2. **超时与翻页静默擦除**：气泡呼吸高亮淡出后（2.8 秒）或读者翻离当前画页时，自动调用 `dismissBubble()` 卸载组件，并通过 `router.replace` 原地静默擦除 `bubble_box`、`bubble_text` 等参数，保持 URL 纯净。
 
+### 84. 进度条四舍五入虚假满额、浮点噪点污染与单页重试缺失陷阱 (Progress Bar Rounding Distortion, IEEE 754 Float Noise & Transient Prefetch Failure Trap)
+
+- **本质**：
+  1. **四舍五入语义失真（Rounding Distortion）**：直接使用 `Math.round((cached / total) * 100)` 计算百分比。当 208 页中完成 207 页时，`207 / 208 = 0.99519...` 被四舍五入强行进位为 `100%`，但底层 `cached < total` 且 `cache_complete = false`。导致界面显示“100%”却同时显示“207/208”，按钮仍为可操作的“缓存全部”而非“已全部本地化”，产生严重的认知割裂；
+  2. **16 位浮点噪点污染 DOM**：未对计算比率做精度截断，直接将 `0.21153846153846154` 等原始 JS 除法结果注入 `--progress` 和 `scaleX()` 内联样式中；
+  3. **单页网络抖动导致预缓存中断且失真**：后端在拉取数百页图片时，若遇到 1 页网络超时或远端限流，捕获异常后直接跳过退出，未做任何就地瞬态重试，前端误判为完全完成；
+  4. **磁盘与元数据失步**：画页实际已在磁盘落盘（如阅读器直读），但 `album.json` 中 `page.cached` 滞后。
+- **红线与防误伤**：
+  - **不要**对任务进度使用无限制的 `Math.round` 进位至 100%；
+  - **不要**将未截断的高位浮点数直接注入 DOM style 与 CSS 变量；
+  - **不要**在后台长任务下载中对单页网络超时完全不做重试就直接标记结束；
+  - **放行/改用**：
+    1. **未达终态不进位法则（Non-terminal Floor Clamp）**：全站进度百分比统一走 `calculateProgressPercent`（`@/utils/progress`）。只要 `current < total`，一律封顶 99%（向下取整 `Math.min(99, Math.floor(...))`），当且仅当全部就绪时才返回 100%；
+    2. **高精亚像素截断（4 位精度规约）**：`truncateProgressFloat` 统一截断保留 4 位小数（0.0001 / 0.01% 精度，4K 屏下误差仅 0.38px），杜绝 DOM 浮点噪点；
+    3. **瞬态网络重试与漏页通知**：后端 `prefetch` 循环内注入单次 300ms 退避重试，平滑绝大部分网络抖动；若仍未完成则广播 `cache_partial`，前端 Toast 友好提示；
+    4. **本地轻量自愈（Local Cache Reconciliation）**：在查询详情与进度时自动探查磁盘已存在的文件，自愈修正 `page.cached = true`。
+
 ---
 
 ## 🚦 交付门禁（四步必跑）

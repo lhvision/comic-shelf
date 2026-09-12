@@ -1157,7 +1157,7 @@ def curator_delete_pass_device(pass_id: int, device_id: int, request: Request) -
 @app.get("/api/library/{source}/{source_id}/cache", response_model=CacheProgress)
 def cache_progress(source: str, source_id: str, request: Request) -> CacheProgress:
     meta = _require_meta(source, source_id, request)
-    cached = store.cached_page_count(meta)
+    cached = store.reconcile_cached_pages(meta)
     return CacheProgress(
         cached=cached,
         total=meta.page_count,
@@ -1230,7 +1230,7 @@ def cache_chapter(source: str, source_id: str, chapter_id: str, request: Request
         broadcast_event(
             "library_changed",
             {
-                "action": "chapter_cache_complete",
+                "action": "chapter_cache_complete" if done >= chapter.page_count else "chapter_cache_partial",
                 "source": source,
                 "source_id": source_id,
                 "chapter_id": chapter_id,
@@ -1480,7 +1480,12 @@ def _prefetch_worker(
     job["warnings"] = warnings
     broadcast_event(
         "library_changed",
-        {"action": "cache_complete", "source": fetched.meta.source, "source_id": fetched.meta.source_id, "timestamp": time.time()},
+        {
+            "action": "cache_complete" if done >= meta.page_count else "cache_partial",
+            "source": fetched.meta.source,
+            "source_id": fetched.meta.source_id,
+            "timestamp": time.time(),
+        },
     )
 
 

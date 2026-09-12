@@ -130,6 +130,8 @@
 
 - **统一原子组件（`AppProgressBar.vue`）**：收敛全站进度条形态（`track` 3px 药丸槽 / `line` 3px 贴边细线 / `gauge` 6px 标尺槽）；
 - **双轨渲染架构**：以 CSS Custom Property `--progress: 0~1` 与 `--value / --max` 驱动 GPU 合成层 `transform: scaleX(...)`，并在现代浏览器中渐进增强为原生 CSS `progress()` 数学函数，实现零 Reflow 开销；
+- **高精亚像素截断（Subpixel Truncation）**：向 `--progress` 与 `scaleX()` 注入浮点数时统一截断保留至 4 位小数（0.0001 精度），在 4K 宽屏下亚像素误差低于 0.38px，彻底消除 16 位 IEEE 754 浮点噪点对 DOM 与 CSS 变量的污染；
+- **未达终态不进位法则（Non-terminal Floor Clamp）**：全站进度百分比计算严格收敛于 `@/utils/progress`；当且仅当任务实际就绪（`current >= total`）时才允许返回 100%，进行中（`current < total`）一律封顶 99%，杜绝“显示 100% 却少一页未完成”的认知撕裂；
 - **拟真未定态（Indeterminate Mode）**：结合 `--ease-progress`（`cubic-bezier(.08, .81, .29, .99)`）与关键帧实现先快后慢的心理学非线性进度模拟，彻底替代 JS 定时器伪刷新。
 
 ### 3.5 文本多行自适应截断与纸印气泡体系（Text Clamping & Paper Tooltip Architecture）
