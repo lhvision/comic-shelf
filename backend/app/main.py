@@ -56,10 +56,13 @@ from .db import (
     touch_device_active,
     update_guest_pass,
     verify_guest_pass_pin,
+    delete_comic_dialogues,
     delete_comic_index,
     get_all_indexed_mtimes,
     get_library_facets,
     query_library_index,
+    search_dialogues,
+    sync_comic_dialogues,
     upsert_comic_index,
 )
 from .abuse import (
@@ -89,6 +92,7 @@ from .models import (
     ConcurrencyRequest,
     CreateGuestPassRequest,
     DeleteResponse,
+    DialogueSearchResponse,
     DiscoveryFeed,
     DiscoveryItem,
     FavoriteRequest,
@@ -112,6 +116,7 @@ from .models import (
     LoginRequest,
     LoginResponse,
     MetadataUpdateRequest,
+    OcrSyncResponse,
     PageResponse,
     ProviderInfo,
     ReadingProgressRequest,
@@ -731,6 +736,24 @@ async def image_search(request: Request, file: UploadFile = File(...)) -> list[I
     return results
 
 
+@app.get("/api/search/dialogue", response_model=DialogueSearchResponse)
+def search_dialogue_endpoint(
+    request: Request,
+    q: str = Query(default="", max_length=200, description="搜索对白台词关键词"),
+    source: str | None = Query(default=None, description="来源过滤 (jm, picacg, local)"),
+    limit: int = Query(default=20, ge=1, le=100, description="返回结果上限"),
+) -> DialogueSearchResponse:
+    """基于 SQLite FTS5 对白全文检索漫画，支持简繁双向互通归一化与气泡坐标投影。"""
+    if not can_read(request):
+        raise HTTPException(status_code=401, detail="未授权访问，需要提供有效的通行口令")
+    is_guest_user = not is_curator(request)
+    limit_val = limit if isinstance(limit, int) else 20
+    source_val = source if isinstance(source, str) else None
+    q_val = q if isinstance(q, str) else ""
+    results = search_dialogues(query=q_val, source=source_val, limit=limit_val, is_guest=is_guest_user)
+    return DialogueSearchResponse(results=results, total=len(results))
+
+
 @app.get("/api/discovery/ranking", response_model=DiscoveryFeed)
 def discovery_ranking(
     request: Request,
@@ -843,6 +866,7 @@ def comic_detail(source: str, source_id: str, request: Request) -> ComicDetail:
 @app.delete("/api/library/{source}/{source_id}", response_model=DeleteResponse)
 def delete_comic(source: str, source_id: str) -> DeleteResponse:
     _require_known_source(source)
+    delete_comic_dialogues(source, source_id)
     ok = store.delete(source, source_id)
     if ok:
         broadcast_event(
@@ -961,6 +985,7 @@ async def replace_comic_pages(
     files: list[UploadFile] = File(...),
 ) -> ComicDetail:
     _require_known_source(source)
+    delete_comic_dialogues(source, source_id)
     file_tuples: list[tuple[str, bytes]] = []
     for f in files:
         content = await f.read()
@@ -974,6 +999,7 @@ async def replace_comic_pages(
         files=file_tuples,
         target_chapter=chapter_id,
     )
+    sync_comic_dialogues(source, source_id)
     broadcast_event(
         "library_changed",
         {"action": "update_pages", "source": source, "source_id": source_id, "timestamp": time.time()},
@@ -988,17 +1014,39 @@ def replace_comic_pages_from_path(
     req: ReplacePathRequest,
 ) -> ComicDetail:
     _require_known_source(source)
+    delete_comic_dialogues(source, source_id)
     meta = store.replace_pages(
         source=source,
         source_id=source_id,
         server_path=req.server_path,
         target_chapter=req.target_chapter,
     )
+    sync_comic_dialogues(source, source_id)
     broadcast_event(
         "library_changed",
         {"action": "update_pages", "source": source, "source_id": source_id, "timestamp": time.time()},
     )
     return store.detail(meta)
+
+
+@app.post("/api/library/{source}/{source_id}/ocr/sync", response_model=OcrSyncResponse)
+def sync_ocr_endpoint(
+    source: str,
+    source_id: str,
+    request: Request,
+) -> OcrSyncResponse:
+    """增量同步漫画伴生 OCR 识别台词至 SQLite FTS5 全文索引。支持馆长口令或外部流水线专用 Machine Token。"""
+    _require_known_source(source)
+    if not is_curator(request):
+        x_machine = request.headers.get("x-machine-token", "").strip()
+        bearer = request.headers.get("authorization", "").strip()
+        cand = x_machine or (bearer[7:].strip() if bearer.lower().startswith("bearer ") else "") or request.query_params.get("token", "").strip()
+        from .config import MACHINE_TOKEN
+        if not (MACHINE_TOKEN and cand and secrets.compare_digest(cand, MACHINE_TOKEN)):
+            require_curator(request)
+
+    count = sync_comic_dialogues(source, source_id)
+    return OcrSyncResponse(ok=True, count=count)
 
 
 @app.patch("/api/library/{source}/{source_id}/favorite", response_model=FavoriteResponse)

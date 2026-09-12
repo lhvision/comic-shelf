@@ -7,6 +7,7 @@ import LibraryHero from '@/components/library/LibraryHero.vue'
 import TagFilterBar from '@/components/library/TagFilterBar.vue'
 import ComicGrid from '@/components/library/ComicGrid.vue'
 import ImageSearchChip from '@/components/library/ImageSearchChip.vue'
+import DialogueSearchPopover from '@/components/library/DialogueSearchPopover.vue'
 import ThemeSelect from '@/components/ThemeSelect.vue'
 import AppButton from '@/components/AppButton.vue'
 import AppIcon from '@/components/AppIcon.vue'
@@ -15,10 +16,12 @@ import { useLibraryFilter } from '@/composables/useLibraryFilter'
 import { useLibrarySync } from '@/composables/useLibrarySync'
 import { useShelfState } from '@/composables/useShelfState'
 import { useImageSearch } from '@/composables/useImageSearch'
+import { useDialogueSearch } from '@/composables/useDialogueSearch'
 import { useToast } from '@/composables/useToast'
 import { useAuth } from '@/composables/useAuth'
 import { useSystemEvents } from '@/composables/useSystemEvents'
 import { useOfflineSync } from '@/composables/useOfflineSync'
+import { onClickOutside } from '@vueuse/core'
 import { api, DEFAULT_PROVIDERS } from '@/api/client'
 import type { ProviderInfo } from '@/types'
 
@@ -108,6 +111,61 @@ const { fetchLibrary } = useLibrarySync({
   imageSearchResults: imageSearch.searchResults,
 })
 
+const searchContainerRef = ref<HTMLElement | null>(null)
+
+const {
+  query: dialogueQuery,
+  results: dialogueResults,
+  total: dialogueTotal,
+  isSearching: isDialogueSearching,
+  error: dialogueError,
+  isOpen: isDialogueOpen,
+  focusedIndex: dialogueFocusedIndex,
+  open: openDialogueSearch,
+  close: closeDialogueSearch,
+  navigateNext: nextDialogueResult,
+  navigatePrev: prevDialogueResult,
+  navigateToResult,
+} = useDialogueSearch({ source: activeSource })
+
+watch(search, (val) => {
+  dialogueQuery.value = val
+})
+
+onClickOutside(searchContainerRef, () => {
+  closeDialogueSearch()
+})
+
+function onSearchKeydown(e: KeyboardEvent) {
+  if (!isDialogueOpen.value) {
+    if (e.key === 'ArrowDown' && dialogueQuery.value.trim()) {
+      openDialogueSearch()
+      e.preventDefault()
+    }
+    return
+  }
+
+  if (e.key === 'ArrowDown') {
+    e.preventDefault()
+    nextDialogueResult()
+  } else if (e.key === 'ArrowUp') {
+    e.preventDefault()
+    prevDialogueResult()
+  } else if (e.key === 'Enter') {
+    if (isDialogueOpen.value && dialogueResults.value.length > 0) {
+      const targetIndex = dialogueFocusedIndex.value >= 0 ? dialogueFocusedIndex.value : 0
+      const targetItem = dialogueResults.value[targetIndex]
+      if (targetItem) {
+        e.preventDefault()
+        navigateToResult(targetItem, router)
+      }
+    }
+  } else if (e.key === 'Escape') {
+    e.preventDefault()
+    closeDialogueSearch()
+  }
+}
+
 onBeforeRouteLeave(() => shelf.saveScrollPosition(window.scrollY))
 
 watch(activeSource, (newSource, oldSource) => {
@@ -172,7 +230,7 @@ watch([() => store.error, imageSearch.error], ([err1, err2]) => {
           <h2 id="shelf-title">{{ shelfTitle }}</h2>
         </div>
 
-        <div class="search-container">
+        <div ref="searchContainerRef" class="search-container">
           <label class="search-field field">
             <AppIcon name="search" size="xs" aria-hidden="true" />
             <ImageSearchChip
@@ -182,7 +240,21 @@ watch([() => store.error, imageSearch.error], ([err1, err2]) => {
               @clear="imageSearch.clearImage"
               class="search-lens-pill"
             />
-            <input v-model="search" type="search" placeholder="标题 / 车号 / 作者 / 标签" />
+            <input
+              v-model="search"
+              type="search"
+              role="combobox"
+              aria-autocomplete="list"
+              :aria-expanded="isDialogueOpen"
+              aria-haspopup="listbox"
+              aria-controls="dialogue-search-popover"
+              :aria-activedescendant="
+                dialogueFocusedIndex >= 0 ? `dialogue-opt-${dialogueFocusedIndex}` : undefined
+              "
+              placeholder="标题 / 车号 / 作者 / 标签 / 台词"
+              @focus="openDialogueSearch"
+              @keydown="onSearchKeydown"
+            />
             <AppButton
               class="camera-btn"
               shape="circle"
@@ -205,6 +277,19 @@ watch([() => store.error, imageSearch.error], ([err1, err2]) => {
               @change="onFileSelected"
             />
           </label>
+
+          <DialogueSearchPopover
+            :open="isDialogueOpen"
+            :results="dialogueResults"
+            :total="dialogueTotal"
+            :is-searching="isDialogueSearching"
+            :error="dialogueError"
+            :query="dialogueQuery"
+            :focused-index="dialogueFocusedIndex"
+            @select="(item) => navigateToResult(item, router)"
+            @close="closeDialogueSearch"
+            @update:focused-index="(val) => (dialogueFocusedIndex = val)"
+          />
         </div>
 
         <div class="sort-field">
@@ -313,6 +398,7 @@ watch([() => store.error, imageSearch.error], ([err1, err2]) => {
 }
 
 .search-container {
+  position: relative;
   display: flex;
   align-items: center;
   width: 100%;
@@ -341,8 +427,10 @@ watch([() => store.error, imageSearch.error], ([err1, err2]) => {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 2rem;
-  height: 2rem;
+  min-width: 44px;
+  min-height: 44px;
+  width: 2.25rem;
+  height: 2.25rem;
   color: var(--ink-2);
   transition:
     color var(--duration-2) var(--ease-out),

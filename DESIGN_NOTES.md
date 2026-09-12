@@ -29,6 +29,9 @@
    - [§57 条漫无缝拼接与自适应画卷架构](#sec-57)
    - [§58 万级书库流式分页、阅读状态分段胶囊与安全刹车系统](#sec-58)
    - [§59 纸室离线模式与端侧自愈流水线架构](#sec-59)
+   - [§60 排版作用域双轨制、存量基线静默自愈与透明化设置架构](#sec-60)
+   - [§61 高刷 144Hz 极速性能治理](#sec-61)
+   - [§62 阅读器台词对白气泡呼吸高亮与直达定位架构](#sec-62)
 5. [历史演进里程碑归档索引（Historical Milestones Archive）](#5-历史演进里程碑归档索引historical-milestones-archive)
 
 ---
@@ -369,6 +372,49 @@
   3. 卡片常态下剥离昂贵的 `perspective: 60rem` 与 `.deck-leaf` 的片元着色器 `filter: saturate() brightness()`，以高性能原子色彩混合 `color-mix` 替代；仅在读者鼠标悬停（`:hover`）或触碰聚焦时激活 3D 透视折叠，将 GPU 每一帧常驻 3D 纹理开销压减为 0。
 - **IntersectionObserver 隐形双哨兵边缘感知（Zero-Reflow Sentinels）**：
   在吸顶导航列表前后嵌入 1px 透明哨兵节点（`sentinelStartEl` / `sentinelEndEl`），通过 VueUse `useIntersectionObserver` 异步感知边缘可见性，彻底剔除 `useScroll` 与 `useResizeObserver`，**首屏 57ms 强制重排彻底归零**。
+
+### <a id="sec-62"></a>§62 阅读器台词对白气泡呼吸高亮与直达定位架构（Breathing Bubble Overlay & Dialogue Direct-Jump Architecture）
+
+- **业务背景与设计隐喻**：
+  读者在全站通过台词全文检索（SQLite FTS5 + Trigram）定位经典台词时，需要从命中结果直达阅读器具体页码（`?page=42&bubble_box=0.1,0.2,0.3,0.4` 或 `?page=42&highlight_bubble=1`）。系统在此对白分镜位置呈现纸间专属的**朱砂金墨呼吸高亮气泡**（`ReaderBubbleOverlay.vue`），重现传统书房典籍批注中“朱砂圈点”的温润墨印质感。
+- **排版几何锚点与零黑边偏移（Aspect-Ratio Lock Frame & Zero Letterbox Drift）**：
+  1. 气泡归一化坐标 `[ymin, xmin, ymax, xmax]` ∈ [0, 1] 以漫画原图实际像素为基准；
+  2. 在 `ComicPageImage.vue` 底图解码后，动态注入真实物理宽高比 `:style="{ aspectRatio: naturalRatio }"` 并设为 `display: block; width: auto; height: auto; max-width: 100%; max-height: 100%`；
+  3. `ReaderViewport.vue` 中 `vertical-paged` 与 `horizontal` 模式将底层 `img` 设为 `width: 100%; height: 100%`，确保外层 `.comic-page-img-frame` 与 `img` 边界绝对贴紧，百分比定位彻底与外层视口 Letterbox / Pillarbox 留白解耦，在任何模式与屏幕高宽比下实现 0 像素误差咬合。
+- **时序同步与加载期防夭折门禁（Image Ready Gate）**：
+  1. 通过 `ComicPageImage` 的插槽向外透传 `:ready="!loading && !failed"` 状态；
+  2. 仅当大图完成网络下载与 `@load` 解码渲染上屏后，才触发 2.2 秒 `@keyframes breathing-pulse` 动效，彻底杜绝大图加载期将高亮动画在骨架屏背后消耗殆尽的体验断层。
+- **无障碍与边界防碰撞防护**：
+  1. 全链路声明 `pointer-events: none`，翻页触控、双击缩放与滚动交互零感穿透；
+  2. 顶部分镜（`ymin < 0.12`）微标胶囊自适应翻转至气泡框下方，右侧分镜（`xmin > 0.65`）自适应靠右对齐；
+  3. 原生挂载 `role="status"` 与 `aria-live="polite"`，保障辅助技术屏幕阅读器对命中文本的即时感知。
+
+### <a id="sec-63"></a>§63 阅读器全模式图片适配约束与刚性吸附体系（Reader Modes Fit Constraints & Rigid Snap Architecture）
+
+- **业务背景与交互心智**：
+  读者在切换阅读模式（纵向连续 / 纵向翻页 / 横向翻页）时，曾出现翻页模式下“图片适配选项消失”与“翻页变连续滑移”的认知困惑。排版系统据此建立离散翻页与连续长卷的正交设计约束。
+- **翻页模式整屏锁定（Full-Frame Discrete Constraint）**：
+  1. **离散翻页视野确定性**：翻页模式（`vertical-paged` / `horizontal`）以“一次一屏”为核心契约，排版强制锁定为「整屏完整入目（适应高度）」，杜绝在单屏内产生二次纵向滚动甚至手势撕裂；
+  2. **设置面板约束显式透出**：设置面板（`ReaderSettingsPanel.vue`）对图片适配选项全模式常驻，在翻页模式下呈置灰锁定态，展示胶囊徽标 `〔 翻页已锁定整页入目 〕` 并辅以自解释说明，根除选项丢失疑惑；
+  3. **条漫长卷自适应锁定**：在条漫无缝拼接（`seamless`）模式下，同样以徽标 `〔 条漫已锁定适应宽度 〕` 显式明示全宽长卷约束。
+- **刚性翻页吸附（Rigid Mandatory Snap）**：
+  1. 竖向翻页（`vertical-paged`）废除松散的 `y proximity`，全面升级为刚性强吸附 `scroll-snap-type: y mandatory`；
+  2. 与横向翻页（`x mandatory`）保持绝对一致的物理翻页手感，无论滚轮或滑动手势快慢，停手后必严格吸附对齐至单页边界，消除停滞在两页缝隙间的伪连续假象。
+
+### <a id="sec-64"></a>§64 前台台词全文检索与联想浮层体系（Dialogue FTS5 Search & Popover System）
+
+- **业务背景与双重搜索意图解耦（Dual Intent Quiet Coexistence）**：
+  书架搜索栏承担「本地藏书书名/作者/标签过滤」与「全书 OCR 台词分镜全文检索」双重意图。为避免通用搜索联想破坏本地书架心智，确立静默伴生原则：
+  1. **零打扰静默门禁**：输入关键词时，后台 300ms 防抖执行 FTS5 异步检索；若台词返回 0 条，浮层**严格保持静默隐藏**，绝不弹出侵入性空状态弹窗遮挡书架已命中的漫画列表；
+  2. **命中显式唤醒**：仅当台词检索命中实际分镜对白，或用户主动下按方向键（`ArrowDown`）探寻台词时，才在搜索栏正下方展开水墨纸本联想浮层。
+- **纯声明式分镜高亮与零 XSS（Tokenized Declarative Highlight）**：
+  1. 废除 `v-html` 潜在漏洞，构建专属 `parseSnippetTokens` 结构化切分器，将后端 `<mark>` 标签安全解析为 `{ text: string, isMark: boolean }[]`；
+  2. 命中字词采用朱砂印泥金墨质感微标（`background: color-mix(in oklab, var(--accent) 22%, transparent); color: var(--accent-strong)`），行内优雅高亮。
+- **WAI-ARIA Combobox 标准与键盘无障碍视口对齐（Accessible Viewport Tracking）**：
+  1. 宿主输入框完整声明 `role="combobox"`、`aria-autocomplete="list"`、`aria-controls` 与 `aria-activedescendant`；浮层声明 `role="listbox"` 与带唯一 ID 的 `role="option"`；
+  2. 键盘上下方向键导航时，监听 `focusedIndex` 并执行 `scrollIntoView({ block: 'nearest', behavior: 'smooth' })`，彻底消除长列表盲人摸象式盲航；
+  3. 回车键支持智能首项兜底（未手动选中时默认直达最佳匹配项），兑现“输入回车即达分镜”交互承诺；
+  4. 移动端防护：限制浮层高度在软键盘呼出时不挤压遮挡（`max-height: min(16rem, 38dvh)`），触控按钮判定热区统一满足 `≥ 44×44px`。
 
 ---
 

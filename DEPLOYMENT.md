@@ -300,7 +300,10 @@ docker compose up -d paper-room
 
 ```text
 backend/data/
+├── comic_shelf.db              # SQLite 核心状态库（访客通行证、阅读进度、台词 FTS5 倒排索引）
 ├── jm_html_domain.json          # 禁漫可用域名缓存
+├── corpus/                     # 领域语料库
+│   └── galgame/                # Galgame 双语剧本资产 (*.jsonl)
 ├── imsearch/                   # 以图搜图特征库与倒排索引
 │   ├── centroids.bin           # 聚类量化器模型
 │   ├── invlists.bin            # 倒排索引
@@ -309,14 +312,55 @@ backend/data/
     ├── jm/523607/              # 禁漫作品目录
     │   ├── album.json          # 元数据与全局页码映射
     │   ├── remote.json         # 远端分块与解密状态
-    │   ├── covers/             # 封面 JPEG
-    │   ├── pages/              # 已解密的高清成品页面 (WebP)
+    │   ├── covers/             # 封面 JPEG / WebP
+    │   ├── pages/              # 已解密的高清成品页面 (WebP) 与伴生资产 (*.ocr.json)
     │   └── thumbs/             # 360px 索引缩略图
     └── local/                  # 本地自建图集 / 视频拆帧
 ```
 
-- **零依赖单点备份**：备份或迁移时，**只需复制整个 `backend/data/` 目录**。
-- **跨平台兼容**：元数据采用向前兼容的 JSON 结构，无外部重型数据库锁，直接复制粘贴即可在其他设备完美还原。
+- **零依赖单点备份**：备份或迁移时，**只需复制整个 `backend/data/` 目录**（在 NAS 环境下对应挂载卷 `/mnt/nas_manga`）。
+- **跨平台兼容**：元数据采用向前兼容的 JSON 与单文件 SQLite WAL 架构，直接复制粘贴或 NAS 快照即可在其他设备完美还原。
+
+### 5.1 漫画台词全文索引与 OCR 提取流水线（`scripts/ocr.sh` & `scripts/sync_ocr.py`）
+
+纸间支持 **“高性能算力机提取 OCR + 低功耗 NAS 存储与服务”** 的算存分离架构（Compute-Storage Decoupling）。
+高性能电脑（带 GPU/多核 CPU）通过挂载 `/mnt/nas_manga` 跑 OCR 并生成伴生文件 `{index}.ocr.json`，处理完成后通知 NAS 更新 SQLite FTS5 索引：
+
+1. **高性能机一键状态巡检与依赖安装**：
+
+   ```bash
+   # 查看当前书库 OCR 伴生覆盖率、GPU 加速状态与 FTS5 索引条目：
+   pnpm ocr status
+   # 或
+   bash scripts/ocr.sh status
+
+   # 首次运行一键安装 OCR 算力依赖（仅算力机需安装，NAS 读者端无需安装）：
+   bash scripts/ocr.sh install
+   ```
+
+2. **高性能机批量提取 OCR 伴生文件并通知 NAS**：
+
+   ```bash
+   # 批量对指定漫画跑 OCR，并在完成后自动通过 API 通知远程 NAS 入库：
+   bash scripts/ocr.sh run --source jm --id 1059521 --api-url http://192.168.31.233:8000 --token "你的MachineToken"
+
+   # 全库扫描处理（自动跳过已有伴生文件的画页，支持 --limit 限定册数）：
+   bash scripts/ocr.sh run --limit 10 --api-url http://192.168.31.233:8000 --token "你的MachineToken"
+   ```
+
+3. **宿主机 / NAS 终端一键增量同步已存在的伴生文件**：
+
+   ```bash
+   # 全库增量同步（智能感知 /mnt/nas_manga 或 COMIC_SHELF_DATA）：
+   pnpm ocr:sync
+   # 或指定单本：
+   python3 scripts/sync_ocr.py --source jm --id 1059521
+   ```
+
+4. **单张画页快速测试与气泡聚类预览**：
+   ```bash
+   bash scripts/ocr.sh test /path/to/page.webp
+   ```
 
 ---
 

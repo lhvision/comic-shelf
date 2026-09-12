@@ -72,6 +72,11 @@
 - **识图增量追加（Incremental Feature Indexing）**：识图引擎默认的工作流。仅对新缓存图片提取 ORB 特征并直接追加未索引向量至倒排索引；原有特征与聚类中心 100% 保留，秒级完成，零重复计算。
 - **全量重置重训（Full Quantizer Retraining）**：重新运行 K-Means 聚类（512 聚类中心）并重建全量倒排索引的高开销维护行为（`--full` 参数），仅在首次初始化或模型重构时使用。
 - **特征倒排索引同步（Quantizer-Invlists Alignment）**：量化聚类中心（`quantizer.bin`）与特征倒排列表（`invlists.bin`）必须基于同一次训练产生的聚类中心构建。若量化器被重新训练而倒排列表未同步重置重建，将产生**索引失步（Index Desynchronization）**，导致特征向量落入错误聚类桶，使真实匹配退化为低分噪点。发生失步时必须重置已索引标记并重建倒排索引。
+- **台词全文检索（Dialogue Full-Text Search / FTS5）**：通过在搜索栏输入作品对白、名台词或汉化吐槽，在毫秒级内直接定位所属漫画、具体画页与气泡坐标的深度内容检索能力；由 SQLite FTS5 倒排索引支撑，与以图搜图（`imsearch`）互为图文双翼。
+- **简繁双向检索（Simplified/Traditional Bidirectional Search）**：台词检索中消除海峡两岸汉化组字符差异的透明映射机制。输入简体自动覆盖港台繁体译文，输入繁体亦能命中大陆简体文本，杜绝精准匹配下的假性漏搜。
+- **图文双模联合检索（Multimodal Hybrid Search）**：将局部特征以图搜图（`imsearch`）与台词全文检索（FTS5）有机结合的复合检索能力。支持在指定漫画或作者范围内限定台词搜索，亦在识图命中页码时即时带出对应对白摘要供读者校验。
+- **台词联想浮层（Dialogue Search Popover）**：书架搜索栏键入关键词时按需展开的水墨纸本下拉分镜面板。采用静默伴生原则（检索无结果时保持隐身，不打扰本地书架常规检索），展示命中文本、朱砂金墨 `<mark>` 高亮、微缩封面与页码气泡元信息，支持 WAI-ARIA Combobox 无障碍键盘视口跟随与回车直达。
+- **声明式分镜高亮切分（Tokenized Declarative Highlight）**：为杜绝 XSS 注入风险，将后端 FTS5 返回的带 `<mark>` 标签的台词片段纯函数解析为结构化 Token 数组（`{ text: string, isMark: boolean }[]`），在 Vue 模板中声明式渲染，不使用任何 `v-html`。
 
 ## 阅读器
 
@@ -95,6 +100,10 @@
 - **单本专属偏好（Per-Comic Overrides）**：读者针对特定作品独立调整并记忆的排版配置（`comic-shelf:reader-overrides:v1`），优先级高于全局基线；支持条漫自适应识别并允许一键清除恢复跟随全局。
 - **排版作用域双轨制（Dual-Scope Reader Preference / Tabbed Scopes）**：阅读设置面板中向读者明确开放的「🌐 全局默认」与「📖 本作偏好」双轨配置体系。读者可自由决定调整是影响全站新书还是仅作用于当前作品，彻底消除隐式黑盒选择。
 - **条漫排版硬约束（Seamless Webtoon Layout Constraint）**：长卷无缝拼接模式下对「适应全宽（Fit Width）」与「单屏单页（PagesPerView=1）」的排版硬约束，防范切片高 DPR 错位与横向宽度撕裂。
+- **翻页锁定整屏入目（Paged Discrete Full-Frame Constraint）**：竖向翻页与横向翻页模式下“一次一屏”的离散视野契约。强制锁定为整屏完整入目，禁止在翻页模式下产生屏内二次纵向滚动，确保每一次翻页动作均呈现完整分镜画幅。
+- **宽高比锁定帧（Aspect-Ratio Lock Frame）**：阅读器画页包裹容器与底层图片绝对 1:1 贴紧的几何契约。画页解码后将其真实物理宽高比注入外层包裹帧，消灭容器内部的留白与溢出，确保台词气泡覆盖层与物理画面在任何视口比例下以零像素误差精确咬合。
+- **刚性翻页吸附（Rigid Page Snap）**：竖向与横向翻页模式下的确定性翻页物理约束。读者滑动停手后必严格对齐至单页起始边界，杜绝悬停在两页交界处的伪连续漂移。
+- **气泡呼吸高亮（Breathing Bubble Overlay）**：阅读器接收到台词检索直达意图时（`?page=42&bubble=1`），在目标画页对应的归一化气泡矩形（`[ymin, xmin, ymax, xmax]`）上浮现暖纸朱砂金色半透明覆盖层，呼吸闪烁 2 秒后自然平滑淡出，零 DOM 重排且不打扰后续连续阅读心流。
 
 ## 基础设施
 
@@ -107,6 +116,12 @@
 - **双平台架构边界（Dual-Platform Architecture: Paper Studio vs Paper Room）**：明确纸间（Paper Room / comic-shelf）作为**读者端与成品展馆**的轻量定位（只负责作品收录、离线阅读、以图搜图与手稿回放）；而重型的 AI 生图调试（ComfyUI / Midjourney / Flux）、分镜修版与 VTracer 批量矢量压制交由独立的**创作者工作台平台（Paper Studio）**，两端通过标准 API（`POST /api/library/local/create` 与静态资源管道）松耦合协作，避免向阅读器仓库引入重型依赖与算力争抢。
 - **手稿分层资产（Making-of Layer Asset / `.layers.json`）**：由外部 AI 创作工坊（Paper Studio）通过 VTracer 矢量化引擎从光栅画页中提炼的高精矢量图层数据，与原图平级存储（如 `00001.layers.json`）。采用按拓扑层级（底层大面积底色 ➔ 阴影明暗过渡 ➔ 表层勾线与网点 ➔ 高光）排序的紧凑贝塞尔路径数组，体积比 XML SVG 减少 40%，且无需前端进行昂贵 DOM 解析。
 - **手稿分层回放台（Making-of Layer Player）**：漫画详情页与阅读器中的轻量暗室弹窗微件。通过 Canvas 2D 原生 `new Path2D(d)` / WebGL 硬件加速在 120 FPS 下流式重绘矢量图层，向读者展示画作的分层生长与运笔制作过程，全过程 0 DOM 节点负担、0 显卡算力争抢。
+- **台词伴生资产（Sidecar OCR Asset / `{index}.ocr.json`）**：画页的结构化文字与气泡坐标伴生数据。记录单页分镜气泡的归一化相对坐标 `[ymin, xmin, ymax, xmax]`、对白文本、语种（zh/ja）与识别置信度。与原图平级存储于 `pages/` 目录，与原图二进制解耦。
+- **分轨异构语料库（Decoupled Heterogeneous Corpus）**：纸间生态中对漫画分镜（视觉-空间多模态）与 Galgame 剧本（时间-分支文本流）所采取的分流存储架构。漫画保留分镜几何气泡契约（`{index}.ocr.json`），Galgame 保持标准剧本事件流（`JSONL`），在下游特定任务（如翻译微调、剧本生成）时通过投影算子按需组合汇流。
+- **二次元专精平行语料与翻译微调（Anime Parallel Corpus & Translation Fine-Tuning）**：通过汉化漫画中日对齐台词与 Galgame 双语剧本提炼的高质量双语对照语料，专用于二次元垂直风格翻译模型微调与生肉本子本地即时汉化。
+- **气泡级文本聚类（Bubble-level Line Clustering）**：OCR 伴生数据处理流水线中的空间几何合并规范。将单张画页中散落的多行文本框基于空间欧氏距离与排版流向聚类为完整气泡，提取覆盖完整对白的单一归一化包围盒，避免单行截断搜索与破碎高亮框。
+- **幽灵索引清理（Ghost Index Cleanup）**：在漫画删除、画页重新装订（Re-binding）或伴生数据更新时，联动 SQLite FTS5 虚拟表原子删除历史过期台词记录的自愈保障机制，彻底根除“搜得出台词但打开画页不存在或不对版”的索引撕裂。
+- **MCP + Skill 双子星架构（MCP & Skill Dual-Layer Agent Architecture）**：纸间面向外部自主 AI 智能体确立的分层协作标准。MCP（Model Context Protocol）充当“设备驱动与原子能力工具箱（Hands & Eyes）”，输出标准 Tool Schema；配套 Agent Skill（`SKILL.md`）充当“业务指南与心智工作流（Brain & Playbook）”，规范调用顺序、权限边界、错误重试与结果包装，杜绝盲目试错调用。
 - **插画资产池（Illustration Pool）**：全站看板角色与加载插画的统一发现与随机轮换池（`/loading-*.webp`），支持零配置自动感知新资产。
 - **环境暗印水印（Ambient Watermark）**：页面与弹窗底层的极浅角色暗纹，以纸质水印质感呈现，亮色与暗色模式下均保持极低对比度，绝不干扰前景内容与文字可读性。
 - **全幅加载占位（Full-frame Page Loading）**：阅读器单页加载时与漫画页面等比撑满的骨架占位，大画幅展示装订插画并彻底消除排版跳动。
@@ -132,6 +147,9 @@
 - **用户专属状态（User-Isolated State）**：以用户身份（馆长 `curator` 或具体访客通行证）为隔离维度的个性化数据，包含「喜欢（Favorite）」与「继续阅读进度（Last-read Progress）」，在后端 SQLite 持久化并支持多设备无缝同步，不同访客与馆长之间互不污染。
 - **轻量状态数据库（Lightweight State Database / SQLite）**：后端基于 Python 内置 `sqlite3` 的单文件持久化数据库（`backend/data/comic_shelf.db`），专门承载通行证、用户行为高频状态以及藏书元数据影子索引；与文件系统自包含的本子元数据（`album.json`）正交解耦。
 - **藏书影子索引表（Comics Shadow Index / `comics_index`）**：在 `comic_shelf.db` 中维护的元数据查询影子表。保持文件系统 `album.json` 本地单一真理源的前提下，接管万级藏书的分页切片、多字段排序、关键词模糊检索与用户专属状态的动态 SQL JOIN，使万本规模响应保持在毫秒级。
+- **台词全文索引表（Comic Dialogues FTS / `comic_dialogues_fts`）**：在 `comic_shelf.db` 中维护的 SQLite FTS5 虚拟全文检索表（基于 Trigram 分词）。将 `{index}.ocr.json` 中的对白文本以倒排索引建表，支持读者在书架搜索栏通过模糊台词快速定位目标漫画、具体页码与气泡坐标。
+- **Trigram 全文检索分词（Trigram FTS Tokenizer）**：SQLite FTS5 内置的高性能 3-Gram 倒排分词模式。无需外部 Python/C 中文或日文分词扩展，原生支撑中日文无空格文本的任意 3 字以上子串模糊检索。
+- **Galgame 剧本语料库（Galgame Script Corpus）**：统一收纳于 `backend/data/corpus/galgame/` 的纯文本剧本资产（JSON Lines 格式）。解耦于漫画画卷，记录场景 ID、发言人、对白、旁白与中日双语对照，作为二次元专精翻译微调与 AVG 分支编译的黄金数据源。
 - **全貌统计与列表端点解耦（Decoupled Facet & Paginated List Endpoints）**：将全站总本数、总页数、缓存页数与高频标签池等重量级聚合计算收敛至 `/api/library/facets`（单次或变动驱动），与高频轻量的分页列表 `/api/library` 解耦。
 - **本子全局隐藏（Global Guest-Hidden / `hidden_from_guest`）**：本子维度的全局元数据属性。打上此标记的漫画仅馆长可见，对所有访客通行证一律隐藏（API 统一响应 404），从根源杜绝敏感或私人收藏向访客泄露。
 - **双口令门禁（Dual-Secret Gate）**：单输入框智能识别。未授权者在门禁处被 100% 拦截（HTTP 401），支持馆长密钥或有效访客通行证验证进入，零元数据与图片泄露。

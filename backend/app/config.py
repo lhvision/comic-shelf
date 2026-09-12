@@ -61,6 +61,9 @@ ENABLE_DOCS = os.getenv("COMIC_SHELF_ENABLE_DOCS", "false").lower() in ("1", "tr
 # Curator key for full access (blank = open access, non-blank = protected)
 AUTH_SECRET = os.getenv("COMIC_SHELF_SECRET", os.getenv("COMIC_SHELF_AUTH_TOKEN", "")).strip()
 
+# Machine API token for external pipeline / Paper Studio synchronization
+MACHINE_TOKEN = os.getenv("COMIC_SHELF_MACHINE_TOKEN", os.getenv("MACHINE_API_TOKEN", "")).strip()
+
 _VALID_COOKIE_NAME_RE = re.compile(r"^[a-zA-Z0-9_-]+$")
 
 

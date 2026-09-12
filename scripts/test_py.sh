@@ -26,6 +26,8 @@ TEST_FILES=(
   "backend/test_db_and_passes.py"
   "backend/test_events.py"
   "backend/test_cover_webp.py"
+  "backend/test_dialogue_fts.py"
+  "backend/test_ocr_worker.py"
   "backend/test_picacg.py"
 )
 

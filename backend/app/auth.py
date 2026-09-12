@@ -9,6 +9,7 @@ from .config import (
     COOKIE_NAME,
     DEVICE_COOKIE_NAME,
     ENABLE_HOTLINK_PROTECTION,
+    MACHINE_TOKEN,
 )
 from .db import (
     get_device_by_token,
@@ -84,9 +85,15 @@ def get_user_context(request: Request) -> tuple[str, str, str]:
     token = extract_token(request)
     device_token = extract_device_token(request)
 
-    # 1. Curator token check
+    # 1. Curator or Machine token check
+    x_machine = request.headers.get("x-machine-token", "").strip()
     if token and AUTH_SECRET and secrets.compare_digest(token, AUTH_SECRET):
         ctx = ("curator", "馆长", "admin")
+        request.state.user_context = ctx
+        return ctx
+
+    if MACHINE_TOKEN and ((token and secrets.compare_digest(token, MACHINE_TOKEN)) or (x_machine and secrets.compare_digest(x_machine, MACHINE_TOKEN))):
+        ctx = ("machine", "Paper Studio", "admin")
         request.state.user_context = ctx
         return ctx
 

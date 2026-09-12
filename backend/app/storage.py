@@ -216,8 +216,9 @@ class ComicStore:
                         "mtime": mtime,
                     })
             else:
-                from .db import delete_comic_index
+                from .db import delete_comic_dialogues, delete_comic_index
                 delete_comic_index(source, source_id)
+                delete_comic_dialogues(source, source_id)
         except Exception:
             pass
 

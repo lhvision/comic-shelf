@@ -1,0 +1,3 @@
+# 纸间 · 高性能机 OCR 伴生提取依赖（仅在执行 OCR Worker 的算力机上安装，读者端无需安装）
+rapidocr_onnxruntime>=1.2.3
+pillow>=10.0.0

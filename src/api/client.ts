@@ -518,6 +518,18 @@ export const api = {
       signal: options?.signal,
     })
   },
+  searchDialogue: (q: string, source?: string, limit: number = 20, options?: RequestOptions) => {
+    const params = new URLSearchParams()
+    if (q) params.set('q', q)
+    if (source) params.set('source', source)
+    if (limit) params.set('limit', String(limit))
+    return request<import('@/types').DialogueSearchResponse>(
+      `/search/dialogue?${params.toString()}`,
+      {
+        signal: options?.signal,
+      },
+    )
+  },
   getReadingProgress: (source: string, sourceId: string, options?: RequestOptions) =>
     request<import('@/types').ReadingProgressInfo>(`/library/${source}/${sourceId}/progress`, {
       signal: options?.signal,

@@ -14,6 +14,7 @@
 import { ref } from 'vue'
 import { pageFileUrl } from '@/api/client'
 import ComicPageImage from '@/components/ComicPageImage.vue'
+import ReaderBubbleOverlay, { type TargetBubble } from '@/components/ReaderBubbleOverlay.vue'
 import ReaderEndCard from '@/components/reader/ReaderEndCard.vue'
 import type { ReaderSettings } from '@/composables/useReaderSettings'
 import type { LibrarySummary } from '@/types'
@@ -50,6 +51,8 @@ export interface ReaderViewportProps {
   toLocalPage: (page: number) => number
   /** 卷末接卷推荐藏书列表 */
   recommendations?: LibrarySummary[]
+  /** 待高亮呈现的目标气泡（来自台词检索等直接定位） */
+  targetBubble?: TargetBubble | null
 }
 
 defineProps<ReaderViewportProps>()
@@ -138,7 +141,14 @@ defineExpose({
             :eager="toLocalPage(page) <= settings.pagesPerView * 3"
             :loading-variant="loadingVariant"
             @ready="$emit('pageReady', page)"
-          />
+            v-slot="{ ready: imageReady }"
+          >
+            <ReaderBubbleOverlay
+              :page-index="page"
+              :target-bubble="targetBubble"
+              :image-ready="imageReady"
+            />
+          </ComicPageImage>
         </div>
         <footer
           v-if="!settings.seamless || settings.mode !== 'vertical-continuous'"
@@ -194,6 +204,7 @@ defineExpose({
 }
 
 .page-frame {
+  position: relative;
   width: 100%;
   min-height: 0;
   min-width: 0;
@@ -280,7 +291,10 @@ defineExpose({
 /* 连续模式 适应宽度：全宽纵向下流 */
 .reader-scroll[data-mode='vertical-continuous']
   .page-frame[data-fit='width']
-  :deep(.comic-page-image) {
+  :deep(.comic-page-image),
+.reader-scroll[data-mode='vertical-continuous']
+  .page-frame[data-fit='width']
+  :deep(.comic-page-img-frame) {
   width: 100%;
   height: auto;
 }
@@ -307,10 +321,19 @@ defineExpose({
 
 .reader-scroll[data-mode='vertical-continuous']
   .page-frame[data-fit='height']
-  :deep(.comic-page-img) {
+  :deep(.comic-page-img-frame) {
   width: auto;
-  max-width: 100%;
   height: auto;
+  max-width: 100%;
+  max-height: calc(100dvh - var(--reader-chrome-h) - var(--reader-frame-pad-v));
+}
+
+.reader-scroll[data-mode='vertical-continuous']
+  .page-frame[data-fit='height']
+  :deep(.comic-page-img) {
+  width: 100%;
+  height: 100%;
+  max-width: 100%;
   max-height: calc(100dvh - var(--reader-chrome-h) - var(--reader-frame-pad-v));
   object-fit: contain;
 }
@@ -318,7 +341,7 @@ defineExpose({
 /* ------------------------------ 竖向翻页 ------------------------------ */
 .reader-scroll[data-mode='vertical-paged'] {
   display: block;
-  scroll-snap-type: y proximity;
+  scroll-snap-type: y mandatory;
 }
 
 .reader-scroll[data-mode='vertical-paged'] .reader-spread {
@@ -355,9 +378,16 @@ defineExpose({
   align-items: center;
 }
 
-.reader-scroll[data-mode='vertical-paged'] .page-frame :deep(.comic-page-img) {
+.reader-scroll[data-mode='vertical-paged'] .page-frame :deep(.comic-page-img-frame) {
   width: auto;
   height: auto;
+  max-width: 100%;
+  max-height: 100%;
+}
+
+.reader-scroll[data-mode='vertical-paged'] .page-frame :deep(.comic-page-img) {
+  width: 100%;
+  height: 100%;
   max-width: 100%;
   max-height: 100%;
   object-fit: contain;
@@ -414,9 +444,16 @@ defineExpose({
   align-items: center;
 }
 
-.reader-scroll[data-mode='horizontal'] .page-frame :deep(.comic-page-img) {
+.reader-scroll[data-mode='horizontal'] .page-frame :deep(.comic-page-img-frame) {
   width: auto;
   height: auto;
+  max-width: 100%;
+  max-height: 100%;
+}
+
+.reader-scroll[data-mode='horizontal'] .page-frame :deep(.comic-page-img) {
+  width: 100%;
+  height: 100%;
   max-width: 100%;
   max-height: 100%;
   object-fit: contain;

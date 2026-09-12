@@ -784,6 +784,51 @@
     1. **长列表坚守原生 DOM**：书架卡片一律坚守原生 DOM + CSS Grid 弹性网格，利用 `contain: layout style` + `container-type: inline-size` 配合 48 图增量预算，由 GPU 合成器线程直接调度滚动，维持 120 FPS 丝滑帧率且 0 额外显存开销；
     2. **精准场景定位**：HTML-in-Canvas 仅适合 3D WebGL 游戏 HUD 覆层、Canvas 复杂图表局部富文本图例或离屏海报位图导出等单体/离线场景，严禁作为通用 UI 列表基础设施。
 
+### 79. SQLite FTS5 台词全文检索幽灵索引、访客隐藏漫画泄漏与多章节页码偏移陷阱 (FTS5 Ghost Index, Guest Data Leakage & Multi-Chapter Monotonic Page Mapping)
+
+- **本质**：
+  1. **幽灵索引残留**：漫画在删除、重新装订（Re-binding）或画页更新时，若未在事务级同步清理 `comic_dialogues_fts` 虚拟表，会导致读者搜得出台词但点击进入阅读器后画页已失效或内容错位；
+  2. **访客权限条件漏洞**：在 FTS5 多表联合查询中若仅使用 `COALESCE(ci.hidden_from_guest, 0) = 0`，当某本漫画尚未在 `comics_index` 中正式入库索引（`ci.source IS NULL`）时，`COALESCE` 默认回退至 0，导致未公开的私密藏书对白被访客意外搜出并泄露；
+  3. **多章节相对页码偏移**：多章节合集漫画的分卷画页伴生文件（如 `chap2/00003.ocr.json`）通常按该章内相对序号编码。若直接将局部序号存入 FTS5，读者点击跳转阅读器时会产生章内序号与全书拍平物理页码的严重错位。
+- **红线与防误伤**：
+  - **不要**在漫画画页发生重写或删除时漏掉 FTS5 虚拟表的原子清理；
+  - **不要**在 FTS5 访客过滤中假定 `ci` 行一定存在；
+  - **放行/改用**：
+    1. **删除与重绑自愈闭环**：在 `delete_comic`、`replace_comic_pages` 中级联执行 `DELETE FROM comic_dialogues_fts WHERE source = ? AND source_id = ?`，重绑成功后自动触发重新扫描对齐；
+    2. **访客安全双重断言**：访客过滤条件严格写为 `AND (:is_not_guest OR (ci.source IS NOT NULL AND COALESCE(ci.hidden_from_guest, 0) = 0))`，未索引与隐藏藏书 100% 阻断；
+    3. **多章节全局映射**：`sync_comic_dialogues` 读取 `album.json` 自动将章内相对页码折算为全书全局单调递增页号（`1..page_count`）。
+
+### 80. 漫画画页气泡高亮定位的 Letterbox 黑边漂移、Flex 高度传递失效与坐标自适应归一化陷阱 (Bubble Overlay Letterbox Drift, Flex Height Resolution & Adaptive Box Clamping)
+
+- **本质**：
+  1. **外层容器 Letterbox 黑边位移**：在阅读器横向翻页或适应高度模式下，外层 Flexbox 容器为了居中通常会在图片上下或左右产生大面积空白黑边（Letterbox / Pillarbox）。若高亮覆盖层直接绝对定位在外层 Flex 容器（`top: ymin*100%`），百分比基准是包含黑边的整个容器，导致高亮框相对图片物理内容严重偏移；
+  2. **Flex 嵌套容器百分比高度传递失效（纵向翻页与横向翻页错位核心根因）**：在竖向翻页（`vertical-paged`）与横向翻页（`horizontal`）模式下，容器受限于视口高（`100dvh`）；若仅给中间层 `.comic-page-img-frame` 设置 `max-height: 100%` 而未指定明确高或纵横比，CSS 规范中子元素 `<img>` 的 `max-height: 100%` 因包含块高度不定而退化为 `none`，图片被原始分辨率彻底撑大（如 1071px）并在 Flex 居中下向上下各溢出 295px，而挂载在 frame 的覆盖层仅有 480px，导致高亮框相对画面向下暴跌 25%~30%，文字与高亮框严重错位；
+  3. **底图加载期动效夭折**：若在底图网络加载期间直接触发 2 秒呼吸淡出动画，慢网下等图片真正解码呈现时动画早已播完淡出，读者完全看不见高亮；
+  4. **坐标多标度与越界溢出**：若 OCR 伴生数据的包围盒坐标为 0..1000 标度（RapidOCR/Qwen2-VL 输出）或百分比 0..100，未缩放前直接被 clamp 钳制在 1.0；或顶部边缘分镜（`ymin < 0.12`）提示徽标向上展开被视口截断。
+- **红线与防误伤**：
+  - **不要**将画卷覆盖层直接挂载在外层包含 Letterbox 黑边的自适应容器上；
+  - **不要**在翻页模式下允许 `.comic-page-img-frame` 与 `<img>` 脱节自生黑边或发生 Flex 溢出；
+  - **不要**在底图加载未完成（`!imageReady`）时提前激活呼吸脉冲动效；
+  - **放行/改用**：
+    1. **动态注入图片宽高比锁定帧（Aspect-Ratio Lock）**：在 `ComicPageImage.vue` 解码就绪瞬间读取 `naturalWidth / naturalHeight` 并绑定 `:style="{ aspectRatio: naturalRatio }"`，frame 设为 `display: block; width: auto; height: auto; max-width: 100%; max-height: 100%`，在 `vertical-paged` / `horizontal` 下 `img` 设为 `width: 100%; height: 100%`，使容器与底图在任何屏幕尺寸和多页拼图下以 0 像素误差绝对咬合贴紧；
+    2. **底图就绪门禁**：高亮计算严格绑定 `imageReady` 指示，底图就绪瞬间才点燃 2.2 秒呼吸脉冲；
+    3. **坐标自适应归一化严格防溢出**：`parseBubbleBox` 智能探测 `maxVal > 2` 并按 1000 或 100 自适应降阶为 [0, 1]，通过 `Math.max(0, Math.min(1, v))` 严格钳位，顶部分镜提示徽标自适应翻转至下方（`is-placement-bottom`），右侧分镜自适应靠右对齐。
+
+### 81. 前台搜索栏双重意图冲突、破坏性空状态劫持与 Combobox 视口盲航陷阱 (Dual Search Intent Conflict, Empty State Hijacking & Combobox Viewport Tracking)
+
+- **本质**：
+  1. **双重搜索意图冲突与破坏性空状态劫持**：书架搜索栏承担「本地藏书过滤」与「全书台词全文检索」双重意图。若台词检索未命中（0 条）时无差别将联想浮层置为展开态（`isOpen = true`），会导致用户在书架搜索书名或作者时，台词浮层突然大字弹出空状态警告（如「未在已索引分镜中找到台词」），严重遮挡书架已过滤出的漫画卡片，造成“书库无此书”的虚假心理恐慌；
+  2. **Combobox 键盘导航视口盲航**：在具有固定高度与 `overflow-y: auto` 的联想列表中，若仅更新键盘焦点索引（`focusedIndex`）而未联动 DOM 的 `scrollIntoView`，当选项超出首屏可视区（如第 4~20 条）时，高亮项跌出折叠线，键盘用户失去视觉反馈（盲人摸象），敲击回车容易误跳不可见结果；
+  3. **全文检索片段标签注入风险**：后端 FTS5 的 `snippet()` 通常带有 `<mark>` 高亮标签。若前端直接使用 `v-html` 渲染，极易引入 XSS 注入风险。
+- **红线与防误伤**：
+  - **不要**在后台台词自动检索返回 0 条时自动展开浮层；
+  - **不要**在联想面板长列表中允许键盘焦点在视口之外盲目移动；
+  - **不要**在渲染搜索结果与高亮片段时使用原始 `v-html`；
+  - **放行/改用**：
+    1. **静默伴生原则**：后台自动防抖检索仅当 `results.length > 0` 时才展开浮层；若为 0 条则保持静默隐藏，仅当用户主动按下 `ArrowDown` 显式探寻分镜时才展开空状态；
+    2. **视口跟随对齐**：在组件中 `watch(focusedIndex)`，利用 `activeEl.scrollIntoView({ block: 'nearest', behavior: 'smooth' })` 确保键盘选区永远平滑居于可视区；
+    3. **纯声明式 Token 解析**：手写 `parseSnippetTokens` 纯函数，将带 `<mark>` 的文本安全切分为 `{ text: string, isMark: boolean }[]`，在模板中用 `<mark>` 与 `<span>` 声明式渲染，杜绝任何 XSS。
+
 ---
 
 ## 🚦 交付门禁（四步必跑）

@@ -50,6 +50,10 @@ const isCurrentSeamlessStrip = computed(
     currentTargetSettings.value.seamless,
 )
 
+const isPagedMode = computed(() => currentTargetSettings.value.mode !== 'vertical-continuous')
+
+const isFitDisabled = computed(() => isPagedMode.value || isCurrentSeamlessStrip.value)
+
 const isCustomInterval = computed(
   () => !AUTO_TURN_INTERVALS.some((val) => val === currentTargetSettings.value.autoTurnInterval),
 )
@@ -340,22 +344,33 @@ function onCustomBlur() {
         </div>
       </div>
 
-      <div
-        v-if="currentTargetSettings.mode === 'vertical-continuous'"
-        class="setting-group"
-        :class="{ 'is-disabled-group': isCurrentSeamlessStrip }"
-      >
+      <div class="setting-group" :class="{ 'is-disabled-group': isFitDisabled }">
         <div class="setting-header-with-badge">
-          <h3>竖向连续模式图片适配</h3>
-          <span v-if="isCurrentSeamlessStrip" class="constraint-badge">条漫已锁定适应宽度</span>
+          <h3>图片适配</h3>
+          <span v-if="isPagedMode" class="constraint-badge">翻页已锁定整页入目</span>
+          <span v-else-if="isCurrentSeamlessStrip" class="constraint-badge"
+            >条漫已锁定适应宽度</span
+          >
         </div>
+        <p v-if="isPagedMode" class="setting-desc">
+          翻页模式自动保持整页完整入目，避免产生单屏内垂直滚动。
+        </p>
+        <p v-else-if="isCurrentSeamlessStrip" class="setting-desc">
+          条漫长卷已锁定适应宽度，消除横向黑边。
+        </p>
         <div class="segmented">
           <button
             v-for="option in FIT_OPTIONS"
             :key="option.value"
             type="button"
-            :disabled="isCurrentSeamlessStrip"
-            :aria-pressed="currentTargetSettings.fit === option.value"
+            :disabled="isFitDisabled"
+            :aria-pressed="
+              isPagedMode
+                ? option.value === 'height'
+                : isCurrentSeamlessStrip
+                  ? option.value === 'width'
+                  : currentTargetSettings.fit === option.value
+            "
             @click="currentTargetSettings.fit = option.value"
           >
             {{ option.label }}
@@ -575,6 +590,13 @@ function onCustomBlur() {
   padding: 0.15rem 0.5rem;
   border-radius: var(--radius-sm, 4px);
   letter-spacing: 0.04em;
+}
+
+.setting-desc {
+  color: var(--reader-muted);
+  font-size: var(--text-xs);
+  line-height: 1.5;
+  margin-bottom: var(--space-2);
 }
 
 .is-disabled-group .segmented button:disabled {

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import logging
 import re
 import secrets
@@ -181,6 +182,26 @@ def init_db(db_path: Path | None = None) -> None:
             CREATE INDEX IF NOT EXISTS idx_comics_index_imported ON comics_index(imported_at DESC);
             CREATE INDEX IF NOT EXISTS idx_comics_index_source ON comics_index(source);
             CREATE INDEX IF NOT EXISTS idx_comics_index_title ON comics_index(title);
+
+            CREATE VIRTUAL TABLE IF NOT EXISTS comic_dialogues_fts USING fts5(
+                source UNINDEXED,
+                source_id UNINDEXED,
+                page_index UNINDEXED,
+                bubble_id UNINDEXED,
+                text,
+                lang UNINDEXED,
+                box_json UNINDEXED,
+                tokenize='trigram'
+            );
+
+            CREATE TABLE IF NOT EXISTS comic_ocr_sync_meta (
+                source TEXT NOT NULL,
+                source_id TEXT NOT NULL,
+                last_synced_mtime REAL NOT NULL DEFAULT 0.0,
+                dialogue_count INTEGER NOT NULL DEFAULT 0,
+                updated_at INTEGER NOT NULL DEFAULT 0,
+                PRIMARY KEY (source, source_id)
+            );
             """
         )
         # Migrations: ensure max_devices, pin_hash, pin_salt columns exist for existing DB
@@ -994,4 +1015,387 @@ def get_library_facets(is_curator: bool, source: str | None = None) -> dict[str,
             },
             "top_tags": [(str(r["tag"]), int(r["cnt"])) for r in tag_rows],
         }
+
+
+# ----------------------------------------------------------------------
+# 台词全文索引（comic_dialogues_fts）同步与检索
+# ----------------------------------------------------------------------
+
+def _make_snippet(text: str, terms: list[str], max_chars: int = 60) -> str:
+    """为检索命中文本生成呼吸高亮标记与摘要片段，严格进行 HTML 转义以彻底免疫 XSS。"""
+    if not text:
+        return ""
+    import html
+    escaped_text = html.escape(text)
+    if not terms:
+        return escaped_text[:max_chars] + ("..." if len(escaped_text) > max_chars else "")
+    valid_terms = [re.escape(html.escape(t.strip())) for t in terms if t.strip()]
+    if not valid_terms:
+        return escaped_text[:max_chars] + ("..." if len(escaped_text) > max_chars else "")
+    pattern = "(" + "|".join(valid_terms) + ")"
+    m = re.search(pattern, escaped_text, re.IGNORECASE)
+    if not m:
+        return escaped_text[:max_chars] + ("..." if len(escaped_text) > max_chars else "")
+    start = max(0, m.start() - 15)
+    end = min(len(escaped_text), m.end() + 35)
+    sub = escaped_text[start:end]
+    highlighted = re.sub(pattern, r"<mark>\1</mark>", sub, flags=re.IGNORECASE)
+    prefix = "..." if start > 0 else ""
+    suffix = "..." if end < len(escaped_text) else ""
+    return f"{prefix}{highlighted}{suffix}"
+
+
+def sync_comic_dialogues(source: str, source_id: str, force: bool = False) -> int:
+    """从画页伴生 OCR 数据（*.ocr.json）同步台词至 comic_dialogues_fts。
+
+    安全沙箱与原子性保证：
+    1. 严格过滤路径穿越符号并校验 DATA_DIR 边界，禁止任意目录探测；
+    2. 先清空当前 (source, source_id) 的旧索引，再全量写入新气泡记录，杜绝幽灵索引。
+    """
+    safe_source = re.sub(r"[^a-zA-Z0-9_\-\.]+", "_", source).strip("._") or "_"
+    safe_id = re.sub(r"[^a-zA-Z0-9_\-\.]+", "_", source_id).strip("._") or "_"
+    while ".." in safe_id:
+        safe_id = safe_id.replace("..", "_")
+    while ".." in safe_source:
+        safe_source = safe_source.replace("..", "_")
+
+    data_resolved = DATA_DIR.resolve()
+    candidates = [
+        DATA_DIR / "library" / safe_source / safe_id / "pages",
+        DATA_DIR / safe_source / safe_id / "pages",
+        DATA_DIR / "library" / safe_source / safe_id,
+    ]
+    target_dir: Path | None = None
+    for cand in candidates:
+        try:
+            cand_resolved = cand.resolve()
+            if cand_resolved.is_relative_to(data_resolved) and cand_resolved.is_dir():
+                target_dir = cand_resolved
+                break
+        except Exception:
+            continue
+
+    ocr_files: list[Path] = []
+    if target_dir is not None:
+        if target_dir.name == "pages":
+            ocr_files = sorted(target_dir.glob("**/*.ocr.json"))
+        else:
+            pages_sub = target_dir / "pages"
+            if pages_sub.is_dir():
+                ocr_files = sorted(pages_sub.glob("**/*.ocr.json"))
+            else:
+                ocr_files = sorted(target_dir.glob("*.ocr.json"))
+
+    # 读取 album.json 以便建立多章节全局页号映射
+    page_map: dict[str, int] = {}
+    album_candidates = []
+    if target_dir is not None:
+        if target_dir.name == "pages":
+            album_candidates.append(target_dir.parent / "album.json")
+        else:
+            album_candidates.append(target_dir / "album.json")
+    album_candidates.append(DATA_DIR / "library" / safe_source / safe_id / "album.json")
+    for ac in album_candidates:
+        try:
+            ac_resolved = ac.resolve()
+            if not ac_resolved.is_relative_to(data_resolved):
+                continue
+            if ac_resolved.is_file():
+                meta_dict = json.loads(ac_resolved.read_text(encoding="utf-8"))
+                for p in meta_dict.get("pages", []):
+                    idx_val = p.get("index")
+                    f_val = p.get("file", "")
+                    chap_val = p.get("chapter", "")
+                    if idx_val is not None:
+                        s = Path(f_val).stem
+                        page_map[s] = int(idx_val)
+                        if chap_val:
+                            page_map[f"{chap_val}/{s}"] = int(idx_val)
+                break
+        except Exception:
+            pass
+
+    records: list[tuple[str, str, int, int | str, str, str, str]] = []
+    for f in ocr_files:
+        try:
+            payload = json.loads(f.read_text(encoding="utf-8"))
+        except Exception:
+            continue
+        if not isinstance(payload, dict):
+            continue
+
+        page_idx: int | None = None
+        if payload.get("page_index") is not None:
+            try:
+                page_idx = int(payload["page_index"])
+            except (ValueError, TypeError):
+                pass
+        elif payload.get("page") is not None:
+            try:
+                page_idx = int(payload["page"])
+            except (ValueError, TypeError):
+                pass
+
+        if page_idx is None:
+            stem = f.name[:-9] if f.name.endswith(".ocr.json") else f.stem
+            chap_stem = f"{f.parent.name}/{stem}"
+            if chap_stem in page_map:
+                page_idx = page_map[chap_stem]
+            elif stem in page_map:
+                page_idx = page_map[stem]
+            elif stem.isdigit():
+                page_idx = int(stem)
+            else:
+                m = re.search(r"\d+", stem)
+                page_idx = int(m.group(0)) if m else 1
+
+        top_lang = payload.get("lang") or "zh"
+        bubbles = payload.get("bubbles", [])
+        if not isinstance(bubbles, list):
+            continue
+
+        for b_idx, b in enumerate(bubbles, start=1):
+            if not isinstance(b, dict):
+                continue
+            text = str(b.get("text", "")).strip()
+            if not text:
+                continue
+            bubble_id = b.get("id", b_idx)
+            lang = b.get("lang") or top_lang
+            box = b.get("box", [])
+            box_json = json.dumps(box, ensure_ascii=False)
+            records.append((source, source_id, page_idx, bubble_id, text, str(lang), box_json))
+
+    latest_mtime: float = 0.0
+    for f in ocr_files:
+        try:
+            mt = f.stat().st_mtime
+            if mt > latest_mtime:
+                latest_mtime = mt
+        except OSError:
+            pass
+
+    # 增量检查：若非 force 模式，比对元数据表；若 OCR 文件自上次入库以来未发生任何变动，直接返回已有计数（0 毫秒跳过）
+    if not force:
+        with get_db() as conn:
+            row = conn.execute(
+                "SELECT last_synced_mtime, dialogue_count FROM comic_ocr_sync_meta WHERE source = ? AND source_id = ?",
+                (source, source_id),
+            ).fetchone()
+            if row:
+                stored_mtime = float(row["last_synced_mtime"])
+                stored_count = int(row["dialogue_count"])
+                # 当 OCR 文件未变动（或原本就无 OCR 文件且已同步记录为 0）时直接命中增量缓存
+                if stored_mtime >= latest_mtime and (latest_mtime > 0 or stored_count == 0):
+                    return stored_count
+
+    with get_db() as conn:
+        with conn:
+            conn.execute(
+                "DELETE FROM comic_dialogues_fts WHERE source = ? AND source_id = ?",
+                (source, source_id),
+            )
+            if records:
+                conn.executemany(
+                    """
+                    INSERT INTO comic_dialogues_fts (
+                        source, source_id, page_index, bubble_id, text, lang, box_json
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    records,
+                )
+            conn.execute(
+                """
+                INSERT OR REPLACE INTO comic_ocr_sync_meta (
+                    source, source_id, last_synced_mtime, dialogue_count, updated_at
+                ) VALUES (?, ?, ?, ?, ?)
+                """,
+                (source, source_id, latest_mtime, len(records), int(time.time())),
+            )
+        return len(records)
+
+
+def delete_comic_dialogues(source: str, source_id: str) -> None:
+    """删除指定漫画的所有台词全文索引与增量元数据。"""
+    with get_db() as conn:
+        with conn:
+            conn.execute(
+                "DELETE FROM comic_dialogues_fts WHERE source = ? AND source_id = ?",
+                (source, source_id),
+            )
+            conn.execute(
+                "DELETE FROM comic_ocr_sync_meta WHERE source = ? AND source_id = ?",
+                (source, source_id),
+            )
+
+
+def cleanup_orphan_comic_dialogues(data_dir: Path | None = None) -> int:
+    """清理已从磁盘物理删除但仍残留在 FTS5 与元数据中的孤儿对白索引。"""
+    if data_dir is None:
+        data_dir = DATA_DIR
+    data_resolved = data_dir.resolve()
+    cleaned = 0
+    with get_db() as conn:
+        rows = conn.execute("SELECT DISTINCT source, source_id FROM comic_dialogues_fts").fetchall()
+        for r in rows:
+            src, sid = r["source"], r["source_id"]
+            comic_dir = data_resolved / "library" / src / sid
+            if not comic_dir.is_dir():
+                with conn:
+                    conn.execute("DELETE FROM comic_dialogues_fts WHERE source = ? AND source_id = ?", (src, sid))
+                    conn.execute("DELETE FROM comic_ocr_sync_meta WHERE source = ? AND source_id = ?", (src, sid))
+                cleaned += 1
+                logger.info(f"Cleaned orphan dialogue index for deleted comic {src}/{sid}")
+    return cleaned
+
+
+def search_dialogues(
+    query: str,
+    source: str | None = None,
+    limit: int = 20,
+    is_guest: bool = False,
+) -> list[dict[str, Any]]:
+    """检索台词全文索引，支持简繁双向展开、模糊分词与访客权限过滤。"""
+    clean_query = query.strip()
+    if not clean_query:
+        return []
+
+    from .zh_conv import expand_search_variants
+
+    variants = expand_search_variants(clean_query)
+    is_not_guest = 0 if is_guest else 1
+    if not isinstance(limit, int):
+        try:
+            limit = int(limit)
+        except Exception:
+            limit = 20
+    limit = max(1, min(limit, 100))
+
+    match_variants = [v for v in variants if len(v) >= 3]
+    rows: list[sqlite3.Row] = []
+
+    with get_db() as conn:
+        if match_variants:
+            match_terms = ['"' + v.replace('"', '""') + '"' for v in match_variants]
+            match_expr = " OR ".join(match_terms)
+            sql_match = """
+                SELECT
+                    f.source,
+                    f.source_id,
+                    f.page_index,
+                    f.bubble_id,
+                    f.text,
+                    f.lang,
+                    f.box_json,
+                    snippet(comic_dialogues_fts, 4, '<mark>', '</mark>', '...', 20) as snippet_text,
+                    ci.display_id,
+                    ci.title,
+                    ci.cover_indices_json,
+                    ci.authors_json,
+                    ci.hidden_from_guest
+                FROM comic_dialogues_fts f
+                LEFT JOIN comics_index ci
+                    ON ci.source = f.source AND ci.source_id = f.source_id
+                WHERE comic_dialogues_fts MATCH :match_expr
+                  AND (:source IS NULL OR f.source = :source)
+                  AND (:is_not_guest OR (ci.source IS NOT NULL AND COALESCE(ci.hidden_from_guest, 0) = 0))
+                LIMIT :limit
+            """
+            try:
+                rows = conn.execute(
+                    sql_match,
+                    {
+                        "match_expr": match_expr,
+                        "source": source,
+                        "is_not_guest": is_not_guest,
+                        "limit": limit,
+                    },
+                ).fetchall()
+            except sqlite3.OperationalError:
+                rows = []
+
+        if not rows:
+            like_clauses = []
+            params: dict[str, Any] = {
+                "source": source,
+                "is_not_guest": is_not_guest,
+                "limit": limit,
+            }
+            for i, v in enumerate(variants):
+                param_name = f"like_{i}"
+                like_clauses.append(f"f.text LIKE :{param_name}")
+                params[param_name] = f"%{v}%"
+
+            where_text = " OR ".join(like_clauses)
+            sql_like = f"""
+                SELECT
+                    f.source,
+                    f.source_id,
+                    f.page_index,
+                    f.bubble_id,
+                    f.text,
+                    f.lang,
+                    f.box_json,
+                    '' as snippet_text,
+                    ci.display_id,
+                    ci.title,
+                    ci.cover_indices_json,
+                    ci.authors_json,
+                    ci.hidden_from_guest
+                FROM comic_dialogues_fts f
+                LEFT JOIN comics_index ci
+                    ON ci.source = f.source AND ci.source_id = f.source_id
+                WHERE ({where_text})
+                  AND (:source IS NULL OR f.source = :source)
+                  AND (:is_not_guest OR (ci.source IS NOT NULL AND COALESCE(ci.hidden_from_guest, 0) = 0))
+                LIMIT :limit
+            """
+            rows = conn.execute(sql_like, params).fetchall()
+
+        results: list[dict[str, Any]] = []
+        for r in rows:
+            box = []
+            if r["box_json"]:
+                try:
+                    box = json.loads(r["box_json"])
+                except Exception:
+                    box = []
+
+            cover_indices = []
+            if r["cover_indices_json"]:
+                try:
+                    cover_indices = json.loads(r["cover_indices_json"])
+                except Exception:
+                    cover_indices = []
+            first_idx = cover_indices[0] if cover_indices else 0
+            cover = f"/api/library/{r['source']}/{r['source_id']}/covers/{first_idx}/file"
+
+            authors = []
+            if r["authors_json"]:
+                try:
+                    authors = json.loads(r["authors_json"])
+                except Exception:
+                    authors = []
+
+            raw_text = r["text"] or ""
+            snip = r["snippet_text"] if "snippet_text" in r.keys() and r["snippet_text"] else ""
+            if not snip or "<mark>" not in snip:
+                snip = _make_snippet(raw_text, variants)
+
+            results.append({
+                "source": r["source"],
+                "source_id": r["source_id"],
+                "display_id": r["display_id"] or r["source_id"],
+                "title": r["title"] or r["source_id"],
+                "page_index": int(r["page_index"]),
+                "bubble_id": r["bubble_id"],
+                "text": raw_text,
+                "snippet": snip,
+                "box": box,
+                "lang": r["lang"] or "zh",
+                "cover": cover,
+                "authors": authors,
+            })
+        return results
+
 

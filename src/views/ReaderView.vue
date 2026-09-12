@@ -26,6 +26,7 @@ import { useSystemEvents } from '@/composables/useSystemEvents'
 import { useAuth } from '@/composables/useAuth'
 import { useLibraryStore } from '@/stores/library'
 import { useReaderRecommendations } from '@/composables/useReaderRecommendations'
+import { useReaderBubble } from '@/composables/useReaderBubble'
 import ReaderTopBar from '@/components/reader/ReaderTopBar.vue'
 import ReaderLoadingState from '@/components/reader/ReaderLoadingState.vue'
 import ReaderViewport from '@/components/reader/ReaderViewport.vue'
@@ -38,6 +39,7 @@ import ReaderSettingsPanel from '@/components/reader/ReaderSettingsPanel.vue'
 const route = useRoute()
 const router = useRouter()
 const { settings, applyComicPreferences, clearActiveComic } = useReaderSettings()
+const { targetBubble, targetPage } = useReaderBubble()
 const currentPage = ref(1)
 const currentGroupIndex = ref(0)
 const [settingsOpen] = useToggle(false)
@@ -51,15 +53,10 @@ const { detail, loading, loadingVariant, source, sourceId, scopeId, backToDetail
   useReaderData({
     onLoaded: async () => {
       userInteracted.value = false
-      const rawParam = route.params.page
-      const rawNum =
-        typeof rawParam === 'string'
-          ? Number(rawParam)
-          : Array.isArray(rawParam)
-            ? Number(rawParam[0])
-            : Number.NaN
       const initial =
-        Number.isFinite(rawNum) && rawNum > 0 ? rawNum : lastRead.value || scopedPages.value[0] || 1
+        targetPage.value && targetPage.value > 0
+          ? targetPage.value
+          : lastRead.value || scopedPages.value[0] || 1
       currentPage.value = clampToScope(initial)
       currentGroupIndex.value = groupIndexForPage(currentPage.value)
 
@@ -220,17 +217,10 @@ onBeforeUnmount(() => {
 })
 
 watch(
-  () => route.params.page,
-  (value) => {
+  () => [route.params.page, route.query.page],
+  () => {
     if (loading.value) return
-    const rawNum =
-      typeof value === 'string'
-        ? Number(value)
-        : Array.isArray(value)
-          ? Number(value[0])
-          : Number.NaN
-    const page =
-      Number.isFinite(rawNum) && rawNum > 0 ? rawNum : lastRead.value || scopedPages.value[0] || 1
+    const page = targetPage.value ?? lastRead.value ?? scopedPages.value[0] ?? 1
     const pages = scopedPages.value
     if (!Number.isFinite(page) || pages.length === 0) return
     if (page < pages[0]! || page > pages[pages.length - 1]!) return
@@ -374,6 +364,7 @@ function onBackToShelf() {
       :loading-variant="loadingVariant"
       :to-local-page="toLocalPage"
       :recommendations="recommendations"
+      :target-bubble="targetBubble"
       @scroll="onScroll"
       @wheel="onViewportWheel"
       @user-interact="userInteracted = true"

@@ -14,6 +14,7 @@
 │  - 哔咔 (PicAcg) 数据源已完美落地（确立多源扩展标准蓝图）    │
 │  - 纸间 MCP Server 端点开发 (/mcp/sse)                      │
 │  - 定向临时直达票据 (One-Time Direct Pass)                   │
+│  - 漫画台词全文检索 (SQLite FTS5 + Trigram) 与气泡呼吸高亮  │
 └──────────────────────────────┬──────────────────────────────┘
                                │
                                ▼
@@ -34,25 +35,34 @@
                                ▼
 ┌─────────────────────────────────────────────────────────────┐
 │ 阶段四：私有垂直模型微调 (Domain Multimodal Fine-Tuning)     │
-│  - 基于纸间沉淀的高清漫画分镜与对白语料                      │
-│  - 云端租算力进行 LoRA 微调 ➔ 本地 Mac mini (MLX) 高速推理   │
+│  - Galgame 双语脚本 + 漫画 OCR 台词汇流为二次元平行语料库    │
+│  - 云端租算力进行二次元翻译/剧情微调 ➔ Mac mini (MLX) 推理   │
 └──────────────────────────────┬──────────────────────────────┘
                                │
                                ▼
 ┌─────────────────────────────────────────────────────────────┐
 │ 阶段五：2D 互动分支游戏 / 视觉小说 (Interactive AVG Engine)  │
-│  - 分镜气泡智能切片 (Panel Segmentation) + OCR 角色台词提取 │
+│  - 分镜气泡智能切片 (Panel Segmentation) + 剧本分支选项汇流  │
 │  - 剧情决策分支树编译 ➔ 轻量 Web Canvas 互动 AVG 游戏        │
 └─────────────────────────────────────────────────────────────┘
 ```
 
 ---
 
-## 一、 纸间 MCP 服务端（Paper Room Model Context Protocol Server）
+## 一、 纸间 MCP 服务端与配套 Agent Skill（MCP Tools + Skill SOP Dual-Layer Architecture）
 
-### 1. 定位与场景
+### 1. 定位与“双子星”架构设计（Why MCP + Skill?）
 
-为外部 AI Agent（无论是在本地运行的 Claude Desktop、Cursor、Cline，还是部署在云端的 Agent、飞书 Bot）提供一套标准化的**具身工具操作界面**，无需每次手写脆弱的 HTTP 请求。
+在现代 AI Agent 生态中，工具与智能体协作必须建立 **“能力层 + 心智层”** 双子星架构：
+
+- **MCP（能力层 / Device Driver & Hands）**：
+  - 提供原子化的标准 API（如 `search_by_image`、`search_by_dialogue`、`create_direct_pass`）；
+  - 强制输入参数校验（JSON Schema），输出标准结构化响应。
+- **Agent Skill（心智与工作流层 / Playbook & SOP）**：
+  - 为 LLM 提供专属的《纸间领域业务说明书（`SKILL.md`）》；
+  - **明确执行顺序与决策树**：如“当用户发图求出处时，优先调用 `search_by_image`；若用户补充了台词碎片，联动调用 `search_by_dialogue` 交叉验证；命中后严禁直接返回公开库链接，必须调用 `create_direct_pass` 签发临时阅读凭证并套用典雅的二次元回复模板”；
+  - **规避反模式**：杜绝 Agent 盲目并发爬取全站目录，杜绝绕过访客门禁向群聊泄露管理员接口；
+  - **结论**：**Skill 提供了明确的工作说明书，MCP 提供了实际执行的工具能力**。两者结对才是生产级 Agent 的标准范式。
 
 ### 2. 传输协议选型
 
@@ -63,6 +73,8 @@
 
 - `search_by_image(image_bytes | image_base64)`：
   调用内部 `imsearch` 引擎比对局部特征，输出命中的漫画 `source`、`source_id`、具体页码及置信度。
+- `search_by_dialogue(text, source?, limit=5)`：
+  基于 SQLite FTS5（Trigram 分词）模糊检索台词与名对白，返回匹配漫画、具体画页、气泡归一化坐标与上下文。
 - `query_shelf(keyword?, tag?, source?, limit?)`：
   多维检索书架藏书，返回符合条件的本子元数据与封面。
 - `get_comic_detail(source, source_id)`：
@@ -138,25 +150,76 @@
 - `{index}.ocr.json`：分镜台词对白结构化转录；
 - `{index}.caption.txt`：用于模型微调的 Booru / 自然语言标注提示词。
 
+#### 契约细则：`{index}.ocr.json` 标准 Schema 与检索联动
+
+```json
+{
+  "version": 1,
+  "lang": "zh",
+  "bubbles": [
+    {
+      "id": 1,
+      "box": [0.12, 0.45, 0.28, 0.68],
+      "text": "这就是最后的波纹吗……",
+      "confidence": 0.98,
+      "orientation": "vertical",
+      "type": "dialogue"
+    }
+  ]
+}
+```
+
+- **归一化百分比坐标**：`box` 统一采用 `[ymin, xmin, ymax, xmax]` ∈ [0.0, 1.0]，与原图分辨率解耦，纯 CSS 原生百分比自适应，杜绝缩略图与原图尺寸换算开销；
+- **台词全文索引表（`comic_dialogues_fts`）**：纸间后端基于 SQLite FTS5 原生 `tokenize='trigram'` 构建倒排索引，0 依赖秒级模糊匹配中日文无空格文本；
+- **气泡呼吸高亮（Breathing Bubble Overlay）**：读者从搜索下拉点击台词命中直达阅读器对应页码（`?page=42&bubble=1`），画卷视口在该气泡坐标浮现朱砂金色半透明高亮框呼吸 2 秒淡出，零 DOM 重排且不扰乱主阅读流。
+
 ### 6. 服务间认证凭据与推送 Webhook（Machine-to-Machine Auth）
 
 外部 Paper Studio 完成整本编排后，携带专用 `Machine API Token` 调用 `POST /api/library/local/create` 推送画页与伴生资产；纸间后端完成校验后自动触发缩略图预热并广播 `library_changed` 事件，前台书架即时无缝呈现。
 
+### 7. 数据质量保障与关键暗礁防御（Critical Safeguards & Edge Cases）
+
+在将 OCR 与剧本语料引入生产环境时，必须筑牢五道质量防线：
+
+1. **伴生文件被动感知与幽灵索引清理（Sidecar Ingestion Sync & Ghost Index Mitigation）**：
+   - 外部 Studio 产出 `{index}.ocr.json` 后，通过 `POST /api/library/:source/:source_id/ocr/sync` 或 CLI `pnpm ocr:sync` 增量同步进 SQLite FTS5，避免每次重启全盘轮询卡死；
+   - 漫画被删除或重新装订（Re-binding）时，联动事务原子清空该作品所有 FTS5 记录，彻底杜绝“搜得出台词但画页不存在或页码错位”的幽灵索引。
+2. **简繁双向互通归一化（Simplified/Traditional Bidirectional Search）**：
+   - 汉化组多为港台或民间繁体，读者常输入简体；在检索层对关键词进行双向展开匹配，确保无论输繁搜简还是输简搜繁均 100% 召回。
+3. **气泡级多行文本几何聚类（Bubble-level Line Clustering）**：
+   - 严禁把原始 OCR 吐出的碎片行直接存为独立气泡；外部管线必须按几何欧氏距离与排版流向聚类为完整对白句子，输出包围整个气泡的单个 `box`。
+4. **主流引擎聚焦与开源语料冷启动（Engine Diversity Fallback & Open Corpus Cold Start）**：
+   - Galgame 解包脚本聚焦成熟开放生态（KiriKiri / Ren'Py），杜绝从零发明通用解包器；优先引入开源社区已整理的中日双语平行语料库（JSONL）进行冷启动。
+5. **图文双模联合检索（Multimodal Hybrid Search）**：
+   - 搜索端点原生支持限定作品/作者下的台词搜索，识图结果页亦可带出命中页码的对白预览，形成图文双重校验。
+
 ---
 
-## 四、 领域多模态模型微调（Domain Multimodal Fine-Tuning）
+## 四、 领域多模态模型微调与二次元专精翻译（Domain Multimodal Fine-Tuning & Anime Translation）
 
-### 1. 数据资产价值
+### 1. 数据资产价值：漫画分镜与 Galgame 剧本双轨汇流
 
-漫画具备极其紧凑的多模态叙事属性。随着纸间收录的高清本子增多，沉淀出的图文资产是极佳的私有训练语料：
+漫画具备极强的视觉-空间张力，而 Galgame 具备高度结构化的文学叙事与对白树。两者分轨沉淀，并在下游任务中按需投影：
 
-- **对话与叙事语料**：提取台词与情境描述，微调出专攻二次元漫画剧本与分镜 Prompt 的垂直大模型；
-- **画风与角色样本**：收集统一画风的高清图，微调专有 Style LoRA 与 Character LoRA。
+- **黄金中日平行语料（Galgame Gold Parallel Corpus）**：
+  - 存放于 `backend/data/corpus/galgame/{game_id}.jsonl`；
+  - 每一行收录场景 ID、说话人（Speaker）、日文原文（`text_ja`）、中文译文（`text_zh`）与分支选项；
+  - 官方双语与优质民间汉化文本按行天然 100% 严格对齐，信噪比极高，是微调**二次元专精翻译模型**的黄金级原材料。
+- **漫画单语对话与分镜语料**：
+  - 通过 `{index}.ocr.json` 沉淀海量漫画对白与语气助词，作为领域风格适配（Domain Adaptation）的无监督语料；
+- **画风与角色视觉样本**：
+  - 收集去字（Bubble Inpainting）后的纯净高清分镜，微调专属 Character / Style LoRA。
 
-### 2. 算力拓扑：训练与推理分离
+### 2. 二次元专精翻译模型落地路线（Anime Translation SFT Pipeline）
 
-- **训练在云端（低成本按需）**：利用 AutoDL、RunPod 等廉价算力平台，按小时租赁单张 RTX 4090 或 A100，跑 LoRA 微调（仅需几元人民币），生成数百兆的轻量权重文件；
-- **本地常驻推理**：训练完成后将 LoRA 权重拉回本地。
+1. **语料抽取与清洗**：通过外部工坊脚本从主流引擎（Kirikiri/XP3、Siglus、CatSystem 等）解包提取中日双语对白，过滤乱码与系统控制符，沉淀标准 JSONL 平行对；
+2. **云端租算力 SFT 微调**：利用 AutoDL 等算力平台，按小时租赁 RTX 4090，基于高质量开源底座（如 Qwen2.5-7B/14B、Gemma-2-9B）进行 LoRA 指令微调，专精二次元人称、口癖（如「〜のだ」「〜わ」「先輩」）、梗文化与本子特定语境；
+3. **本地 Mac mini (Apple Silicon MLX) 高速推理**：训练完成的 LoRA 权重拉回本地，由 Mac mini 利用统一内存全天候低功耗常驻运行，为纸间未来收录的「日文生肉本子」提供本地 100% 离线、0 审查的即时汉化机翻。
+
+### 3. 算力拓扑：训练与推理分离
+
+- **训练在云端（低成本按需）**：租赁算力跑批量 LoRA 微调（仅需几元人民币），生成数百兆的轻量权重文件；
+- **本地常驻推理**：Mac mini (Apple Silicon) 通过 MLX 或 llama.cpp 极低功耗常驻提供 HTTP/OpenAI 兼容推理端点。
 
 ---
 
@@ -191,18 +254,22 @@ Mac mini 内置 SSD 加装成本高昂（通常为 512GB/1TB），面对海量�
 - **3D WebGL / Blender MCP 的局限**：漫画本质是高度风格化的手绘 2D 艺术。当前 Image-to-3D 模型生成的 3D 资产拓扑杂乱、骨骼动作绑定困难，极易造成画风严重失真，投入产出比极低；
 - **2D 互动视觉小说（AVG）的优势**：完美契合漫画资产特性，100% 保留原作细腻作画。
 
-### 2. 演化管线
+### 2. 演化管线：漫画分镜与 Galgame 剧本深度融合
 
-1. **分镜切片与对白抽取**：利用轻量模型分割漫画分镜格子（Panel），OCR 抽取气泡对白；
-2. **分支剧本编译**：LLM 解析分镜故事线，生成玩家可参与的选择支（Choice Points）与好感度逻辑；
-3. **Web 端轻量引擎**：利用 Web Canvas / Pixi.js 编译为可在浏览器即点即玩的分支互动视觉小说。
+1. **分镜切片与台词抽取**：利用轻量模型分割漫画分镜格子（Panel），OCR 抽取气泡对白生成 `{index}.ocr.json` 与 `{index}.panels.json`；
+2. **多源剧本融合编译（Comic Panels + Galgame Scripts）**：
+   - 将漫画的高清视觉分镜作为立绘/CG 演出舞台；
+   - 将 `backend/data/corpus/galgame/` 提取的典型选择支、好感度分支与心理描写作为模板；
+   - 由 LLM（通过本地 Mac mini MLX 或云端）解析剧情主线，自动生成玩家可参与的二选一/三选一抉择点，编译为紧凑的 AVG 决策状态机；
+3. **Web 端轻量引擎**：利用 Web Canvas / Pixi.js 在纸间展馆中编译为零依赖、可在现代浏览器即点即玩的沉浸式 2D 互动分支视觉小说。
 
 ---
 
-## 📌 下一步决策建议
+## 📌 下一步落地实施路径建议
 
-当完成第一步（哔咔 PicAcg 来源收录）后，下一阶段的启动优先级建议：
+在哔咔 (PicAcg) 数据源已顺利落地的前提下，AI 生态落地推荐的阶梯路径：
 
-1. 优先实施 **“纸间 MCP 服务端”** 与 **“定向临时直达票据”**，为你的外部 TS Agent 和飞书搜图 Bot 打通标准通道；
-2. 随后搭建外部 TS 生态项目，接入飞书群聊实战验证；
-3. 待资源丰富后，开启 AI 本子生成与 Mac mini 迁移演化。
+1. **第一步（通道就绪）**：优先实施 **“纸间 MCP 服务端”** 与 **“定向临时直达票据”**，打通外部 Agent 与飞书搜图 Bot；
+2. **第二步（即时价值与索引双翼）**：在纸间主干落地 **“漫画台词全文检索（SQLite FTS5 + Trigram）”**，确立 `{index}.ocr.json` 伴生契约与气泡呼吸高亮，瞬间解决“记得台词找不到本子”的痛点，并打通图文双模检索；
+3. **第三步（平行语料汇流与翻译专精）**：在外部 Studio 启动 **Galgame 中日双语脚本解包与清洗**，在 `backend/data/corpus/galgame/` 沉淀黄金平行语料，微调二次元翻译模型并在 Mac mini 本地常驻，赋能生肉本子即时阅读；
+4. **第四步（游戏化与创作工坊）**：待图文与对白资产充实后，推进 2D 互动 AVG 游戏引擎演进与 AI 漫画工坊装订入馆。

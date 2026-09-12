@@ -23,6 +23,7 @@ const retryKey = ref(0)
 const autoRetryCount = ref(0)
 const maxAutoRetries = 3
 const retryDelay = ref(1200)
+const naturalRatio = ref<string | null>(null)
 
 const { isOnline } = useOfflineSync()
 
@@ -47,10 +48,18 @@ const emit = defineEmits<{
 
 let hasEmittedReady = false
 
+function updateImageRatio() {
+  const img = imageEl.value
+  if (img && img.naturalWidth > 0 && img.naturalHeight > 0) {
+    naturalRatio.value = `${img.naturalWidth} / ${img.naturalHeight}`
+  }
+}
+
 function checkReadyState() {
   const img = imageEl.value
   if (!img || !img.complete) return
   if (img.naturalWidth > 0) {
+    updateImageRatio()
     stopAutoRetry()
     autoRetryCount.value = 0
     loading.value = false
@@ -65,6 +74,7 @@ function checkReadyState() {
 }
 
 function onLoad() {
+  updateImageRatio()
   stopAutoRetry()
   autoRetryCount.value = 0
   loading.value = false
@@ -115,6 +125,7 @@ onMounted(checkReadyState)
 watch(
   () => props.src,
   () => {
+    naturalRatio.value = null
     stopAutoRetry()
     autoRetryCount.value = 0
     hasEmittedReady = false
@@ -134,17 +145,24 @@ watch(isOnline, (online, wasOnline) => {
 
 <template>
   <div class="comic-page-image" :data-state="loading ? 'loading' : failed ? 'error' : 'ready'">
-    <img
-      ref="imageEl"
-      class="comic-page-img"
-      :src="displaySrc"
-      :alt="alt"
-      :loading="eager || retryKey > 0 ? 'eager' : 'lazy'"
-      :fetchpriority="retryKey > 0 ? 'high' : undefined"
-      decoding="async"
-      @load="onLoad"
-      @error="onError"
-    />
+    <div
+      class="comic-page-img-frame"
+      :style="naturalRatio ? { aspectRatio: naturalRatio } : undefined"
+    >
+      <img
+        ref="imageEl"
+        class="comic-page-img"
+        :src="displaySrc"
+        :alt="alt"
+        :loading="eager || retryKey > 0 ? 'eager' : 'lazy'"
+        :fetchpriority="retryKey > 0 ? 'high' : undefined"
+        decoding="async"
+        @load="onLoad"
+        @error="onError"
+      />
+
+      <slot :ready="!loading && !failed" />
+    </div>
 
     <ReaderLoadingState
       v-if="loading"
@@ -162,6 +180,7 @@ watch(isOnline, (online, wasOnline) => {
         <span class="offline-sub">联网后将自动载入</span>
       </template>
       <template v-else>
+        <span>图片加载失败</span>
         <AppButton variant="ghost" theme="reader" size="xs" type="button" @click="retry">
           重试
         </AppButton>
@@ -182,6 +201,15 @@ watch(isOnline, (online, wasOnline) => {
   min-height: 0;
 }
 
+.comic-page-img-frame {
+  position: relative;
+  display: block;
+  max-width: 100%;
+  max-height: 100%;
+  width: auto;
+  height: auto;
+}
+
 .comic-page-image[data-state='loading'] {
   width: 100%;
   min-height: clamp(16rem, 55vh, 48rem);
@@ -190,6 +218,8 @@ watch(isOnline, (online, wasOnline) => {
 
 .comic-page-img {
   display: block;
+  width: 100%;
+  height: 100%;
   max-width: 100%;
   max-height: 100%;
   opacity: 0;

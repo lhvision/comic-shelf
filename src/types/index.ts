@@ -360,3 +360,23 @@ export interface ReadingProgressInfo {
   total_pages: number
   updated_at: number
 }
+
+export interface DialogueSearchItem {
+  source: string
+  source_id: string
+  display_id?: string
+  title: string
+  page_index: number
+  bubble_id?: number | string
+  text: string
+  snippet?: string
+  box: number[]
+  lang?: string
+  cover?: string
+  authors?: string[]
+}
+
+export interface DialogueSearchResponse {
+  results: DialogueSearchItem[]
+  total: number
+}

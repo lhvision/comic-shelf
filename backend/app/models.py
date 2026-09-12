@@ -451,4 +451,29 @@ class DiscoveryFeed(BaseModel):
     items: list[DiscoveryItem] = Field(default_factory=list)
 
 
+class DialogueSearchItem(BaseModel):
+    source: str
+    source_id: str
+    display_id: str = ""
+    title: str = ""
+    page_index: int
+    bubble_id: int | str = 0
+    text: str
+    snippet: str = ""
+    box: list[float] = Field(default_factory=list)
+    lang: str = "zh"
+    cover: str = ""
+    authors: list[str] = Field(default_factory=list)
+
+
+class DialogueSearchResponse(BaseModel):
+    results: list[DialogueSearchItem] = Field(default_factory=list)
+    total: int = 0
+
+
+class OcrSyncResponse(BaseModel):
+    ok: bool = True
+    count: int = 0
+
+
 
