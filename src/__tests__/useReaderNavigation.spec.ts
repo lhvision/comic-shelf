@@ -263,4 +263,71 @@ describe('useReaderNavigation - Discrete Wheel Stepping & Dual-Axis Discriminati
     expect(preventDefault).not.toHaveBeenCalled()
     expect(currentGroupIndex.value).toBe(0)
   })
+
+  it('clamps to lastGroupIndex and final page when scrolled near bottom in vertical-continuous mode', () => {
+    settings.mode = 'vertical-continuous'
+    const nav = createNavigation()
+
+    // Mock container layout: clientHeight=800, scrollHeight=2400 (max=1600)
+    Object.defineProperty(mockContainer, 'clientHeight', { value: 800, configurable: true })
+    Object.defineProperty(mockContainer, 'scrollHeight', { value: 2400, configurable: true })
+    Object.defineProperty(mockContainer, 'scrollTop', { value: 1590, configurable: true }) // max - 10
+
+    // Mock spreads with vertical offsetTop and offsetHeight
+    const spreads = mockContainer.querySelectorAll('section')
+    spreads.forEach((spread, idx) => {
+      Object.defineProperty(spread, 'offsetTop', { value: idx * 800, configurable: true })
+      Object.defineProperty(spread, 'offsetHeight', { value: 800, configurable: true })
+    })
+
+    nav.onScroll()
+    // Trigger requestAnimationFrame
+    vi.runAllTimers()
+
+    expect(currentGroupIndex.value).toBe(2)
+    expect(currentPage.value).toBe(5) // groupFirstPage(2) is 2*2+1 = 5
+  })
+
+  it('detects spread via readLine (40% viewport) in vertical-continuous mode', () => {
+    settings.mode = 'vertical-continuous'
+    const nav = createNavigation()
+
+    Object.defineProperty(mockContainer, 'clientHeight', { value: 1000, configurable: true })
+    Object.defineProperty(mockContainer, 'scrollHeight', { value: 3000, configurable: true })
+    Object.defineProperty(mockContainer, 'scrollTop', { value: 650, configurable: true })
+    // readLine = 650 + 1000 * 0.4 = 1050
+
+    const spreads = mockContainer.querySelectorAll('section')
+    spreads.forEach((spread, idx) => {
+      Object.defineProperty(spread, 'offsetTop', { value: idx * 900, configurable: true })
+      Object.defineProperty(spread, 'offsetHeight', { value: 900, configurable: true })
+    })
+    // Group 0: 0..900, Group 1: 900..1800 (contains 1050!), Group 2: 1800..2700
+
+    nav.onScroll()
+    vi.runAllTimers()
+
+    expect(currentGroupIndex.value).toBe(1)
+    expect(currentPage.value).toBe(3)
+  })
+
+  it('does not invoke resetAutoTurnCountdown on scroll in vertical-continuous mode', () => {
+    settings.mode = 'vertical-continuous'
+    const nav = createNavigation()
+
+    nav.onScroll()
+    vi.runAllTimers()
+
+    expect(resetAutoTurnCountdown).not.toHaveBeenCalled()
+  })
+
+  it('invokes resetAutoTurnCountdown on scroll in paged mode', () => {
+    settings.mode = 'vertical-paged'
+    const nav = createNavigation()
+
+    nav.onScroll()
+    vi.runAllTimers()
+
+    expect(resetAutoTurnCountdown).toHaveBeenCalled()
+  })
 })

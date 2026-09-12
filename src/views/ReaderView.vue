@@ -144,7 +144,13 @@ function onPageReady(_page: number) {
 
 function onViewportWheel(event: WheelEvent) {
   userInteracted.value = true
+  yieldAutoScroll()
   onWheel(event)
+}
+
+function onUserInteract() {
+  userInteracted.value = true
+  yieldAutoScroll()
 }
 
 function advanceAutoTurn() {
@@ -155,15 +161,23 @@ function advanceAutoTurn() {
   scrollToGroup(nextIndex, behavior)
 }
 
-const { autoTurnRemaining, autoTurnPaused, resetAutoTurnCountdown, toggleAutoTurnPause } =
-  useAutoTurn({
-    settings,
-    currentGroupIndex,
-    lastGroupIndex,
-    settingsOpen,
-    onAdvance: advanceAutoTurn,
-    onScheduleChromeHide: scheduleChromeHide,
-  })
+const {
+  autoTurnRemaining,
+  autoTurnPaused,
+  isDockedAtEnd,
+  resetAutoTurnCountdown,
+  toggleAutoTurnPause,
+  yieldAutoScroll,
+} = useAutoTurn({
+  settings,
+  currentGroupIndex,
+  lastGroupIndex,
+  settingsOpen,
+  chromeVisible,
+  onAdvance: advanceAutoTurn,
+  onScheduleChromeHide: scheduleChromeHide,
+  scrollEl,
+})
 
 /* ---------------- 页面响应式联动与历史同步 ---------------- */
 const { broadcastLocalChange } = useSystemEvents()
@@ -283,6 +297,7 @@ const { toggleFullscreen } = useReaderKeyboard({
   backToDetail,
   onUserInteract: () => {
     userInteracted.value = true
+    yieldAutoScroll()
   },
 })
 
@@ -371,12 +386,15 @@ function onBackToShelf() {
       :to-local-page="toLocalPage"
       :recommendations="recommendations"
       :target-bubble="targetBubble"
+      :next-chapter="nextChapter"
+      :chapter-short-label="chapterShortLabel"
       @scroll="onScroll"
       @wheel="onViewportWheel"
-      @user-interact="userInteracted = true"
+      @user-interact="onUserInteract"
       @page-ready="onPageReady"
       @mousemove="showChromeTemporarily"
       @reader-click="onReaderClick"
+      @next-chapter="goNextChapter"
       @back-to-detail="backToDetail"
       @back-to-shelf="onBackToShelf"
       @select-comic="onSelectComic"
@@ -402,9 +420,12 @@ function onBackToShelf() {
       v-if="!loading"
       :auto-turn="settings.autoTurn"
       :at-last-group="atLastGroup"
+      :is-docked-at-end="isDockedAtEnd"
       :auto-turn-paused="autoTurnPaused"
       :settings-open="settingsOpen"
       :auto-turn-remaining="autoTurnRemaining"
+      :mode="settings.mode"
+      :auto-scroll-speed="settings.autoScrollSpeed"
       :current-group-label="currentGroupLabel"
       :total="total"
       :prev-icon="prevIcon"

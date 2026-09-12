@@ -7,6 +7,8 @@
  */
 import { computed, nextTick, ref, watch } from 'vue'
 import {
+  AUTO_SCROLL_SPEED_OPTIONS,
+  AUTO_SCROLL_SPEED_PRESETS,
   AUTO_TURN_INTERVALS,
   AUTO_TURN_OPTIONS,
   FIT_OPTIONS,
@@ -117,6 +119,62 @@ function onCustomBlur() {
   currentTargetSettings.value.autoTurnInterval = customValue.value
   if (customInputRef.value) {
     customInputRef.value.value = String(customValue.value)
+  }
+}
+
+const isCustomSpeed = computed(
+  () =>
+    !(AUTO_SCROLL_SPEED_PRESETS as readonly number[]).includes(
+      currentTargetSettings.value.autoScrollSpeed,
+    ),
+)
+
+const customSpeedInputRef = ref<HTMLInputElement | null>(null)
+const customSpeedValue = ref(currentTargetSettings.value.autoScrollSpeed)
+
+watch(
+  () => currentTargetSettings.value.autoScrollSpeed,
+  (val) => {
+    customSpeedValue.value = val
+  },
+)
+
+function selectSpeedPreset(val: number) {
+  currentTargetSettings.value.autoScrollSpeed = val
+  customSpeedValue.value = val
+}
+
+function enableCustomSpeed() {
+  if (!isCustomSpeed.value) {
+    if ((AUTO_SCROLL_SPEED_PRESETS as readonly number[]).includes(customSpeedValue.value)) {
+      customSpeedValue.value = 100
+    }
+    currentTargetSettings.value.autoScrollSpeed = customSpeedValue.value
+  }
+  nextTick(() => {
+    customSpeedInputRef.value?.focus()
+    customSpeedInputRef.value?.select()
+  })
+}
+
+function onCustomSpeedInput(event: Event) {
+  const target = event.target as HTMLInputElement
+  const num = parseInt(target.value, 10)
+  if (!Number.isNaN(num) && num >= 20 && num <= 400) {
+    currentTargetSettings.value.autoScrollSpeed = num
+    customSpeedValue.value = num
+  }
+}
+
+function onCustomSpeedBlur() {
+  if (!customSpeedValue.value || customSpeedValue.value < 20) {
+    customSpeedValue.value = 20
+  } else if (customSpeedValue.value > 400) {
+    customSpeedValue.value = 400
+  }
+  currentTargetSettings.value.autoScrollSpeed = customSpeedValue.value
+  if (customSpeedInputRef.value) {
+    customSpeedInputRef.value.value = String(customSpeedValue.value)
   }
 }
 </script>
@@ -260,8 +318,17 @@ function onCustomBlur() {
       <div class="setting-group">
         <div class="setting-row">
           <div class="setting-copy">
-            <h3>自动切换</h3>
-            <p>
+            <h3>
+              {{ currentTargetSettings.mode === 'vertical-continuous' ? '自动流卷' : '自动切换' }}
+            </h3>
+            <p v-if="currentTargetSettings.mode === 'vertical-continuous'">
+              {{
+                currentTargetSettings.autoTurn
+                  ? `以每秒 ${currentTargetSettings.autoScrollSpeed} 像素平滑匀速向下滚动`
+                  : '开启后以设定速率匀速漫游，无需手动翻滚'
+              }}
+            </p>
+            <p v-else>
               {{
                 currentTargetSettings.autoTurn
                   ? `每 ${currentTargetSettings.autoTurnInterval} 秒切到下一屏`
@@ -274,11 +341,66 @@ function onCustomBlur() {
             type="button"
             role="switch"
             :aria-checked="currentTargetSettings.autoTurn"
-            :aria-label="currentTargetSettings.autoTurn ? '关闭自动切换' : '开启自动切换'"
+            :aria-label="
+              currentTargetSettings.autoTurn
+                ? currentTargetSettings.mode === 'vertical-continuous'
+                  ? '关闭自动流卷'
+                  : '关闭自动切换'
+                : currentTargetSettings.mode === 'vertical-continuous'
+                  ? '开启自动流卷'
+                  : '开启自动切换'
+            "
             @click="currentTargetSettings.autoTurn = !currentTargetSettings.autoTurn"
           />
         </div>
-        <div v-if="currentTargetSettings.autoTurn" class="segmented auto-turn-options">
+
+        <!-- 连续模式：速率预设与自定义 (px/s) -->
+        <div
+          v-if="
+            currentTargetSettings.autoTurn && currentTargetSettings.mode === 'vertical-continuous'
+          "
+          class="segmented auto-turn-options"
+        >
+          <button
+            v-for="option in AUTO_SCROLL_SPEED_OPTIONS"
+            :key="option.value"
+            type="button"
+            :aria-pressed="!isCustomSpeed && currentTargetSettings.autoScrollSpeed === option.value"
+            @click="selectSpeedPreset(option.value)"
+          >
+            {{ option.label }}
+          </button>
+
+          <button
+            v-if="!isCustomSpeed"
+            type="button"
+            class="custom-chip-btn"
+            aria-label="自定义自动流卷速度"
+            @click="enableCustomSpeed"
+          >
+            自定义…
+          </button>
+
+          <div v-else class="custom-interval-pill" :class="{ 'is-active': isCustomSpeed }">
+            <input
+              ref="customSpeedInputRef"
+              v-model.number="customSpeedValue"
+              type="number"
+              min="20"
+              max="400"
+              step="10"
+              class="custom-interval-input"
+              aria-label="自定义流卷速度"
+              @input="onCustomSpeedInput"
+              @blur="onCustomSpeedBlur"
+              @keydown.enter="onCustomSpeedBlur"
+            />
+            <span class="custom-unit">px/s</span>
+          </div>
+        </div>
+
+        <!-- 翻页模式：离散秒数预设与自定义 (秒) -->
+        <div v-else-if="currentTargetSettings.autoTurn" class="segmented auto-turn-options">
           <button
             v-for="option in AUTO_TURN_OPTIONS"
             :key="option.value"

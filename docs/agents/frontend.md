@@ -28,7 +28,7 @@
 | `src/composables/useReaderPaging.ts`               | 阅读器分页与作用域：分组切片、全局/本地页码映射、跨话首尾探测与边界计算                                                                                        |
 | `src/composables/useReaderNavigation.ts`           | 阅读器导航与定位：多屏滚动定位、进度计算、横向滚轮适配、跨话切换                                                                                               |
 | `src/composables/useReaderKeyboard.ts`             | 阅读器键盘与全屏：按键映射（翻页/切话/首末页）、`useFullscreen` 与 ESC 退出                                                                                    |
-| `src/composables/useAutoTurn.ts`                   | 阅读器自动翻页：倒计时状态机、节拍器、页面可见性联动与暂停/继续                                                                                                |
+| `src/composables/useAutoTurn.ts`                   | 阅读器自动阅读状态机：双轨架构（翻页模式离散倒计时 + 条漫连续 rAF 匀速流卷、Soft Yield 软避让与章末停靠）                                                      |
 | `src/composables/useReaderChrome.ts`               | 阅读器顶栏/HUD 延时隐藏与交互唤醒控制                                                                                                                          |
 | `src/composables/useChapterNavigation.ts`          | 详情/子路由章节导航：锁定章节、章节切片、48 增量渲染、「继续阅读」文案                                                                                         |
 | `src/composables/useChapterCache.ts`               | 漫画全书与分话后台缓存轮询与进度状态编排：任务驱动按需轮询、页码 cached 就地对齐与任务生命周期收敛                                                             |
@@ -212,7 +212,8 @@
   pagesPerView: 1 | 2 | 4,
   direction: 'ltr' | 'rtl',   // 横向模式：左→右 或 日漫右→左
   autoTurn: boolean,
-  autoTurnInterval: number,   // 1~300 秒，预设 5 | 10 | 15 | 30 秒
+  autoTurnInterval: number,   // 离散翻页模式（竖翻/横翻）：1~300 秒，预设 5 | 10 | 15 | 30 秒
+  autoScrollSpeed: number,    // 连续流卷模式（竖向连续）：20~400 px/s，预设 40 | 80 | 140 px/s
   seamless: boolean,          // 仅 vertical-continuous 下有效，条漫无缝拼接
 }
 ```
@@ -224,6 +225,12 @@
 - 移动端沉浸交互：彻底废除顶部中央悬浮遮挡画面的折叠按钮，统一由画面点击/轻触（Tap/Click-to-Toggle）唤醒与收起顶栏及 HUD；连续滚动模式下滚动不反复弹顶栏，无操作 2.6s 自动淡出。
 - 移动端安全区全覆盖：顶栏与底栏 HUD 均计算 `env(safe-area-inset-top/bottom/left/right)`，移动端跨话悬浮横幅自动垫高避让 HUD。
 - 点击详情页/章节页进入阅读器后，精准定位到目标页（`useReaderData` 先执行 `loading=false` 确保 DOM 视口挂载，`onLoaded` 在 `await nextTick()` 后执行 `scrollToGroup('instant')` 物理定位；缺省 `:page` 时优先回落至 `lastRead.value` 进度；纵向连续模式下由 `recalibrateTargetOffset` 在图片异步加载时微调位移）。
+- **视口有效阅读线相交与绝对触底夹紧（40% Read-Line & Bottom Clamping）**：
+  - 针对条漫切片分幅高度不一、终页高度不足（如终页 584px 矮于视口 900px）导致无法触及顶端的痛点，当滚动容器触底 `position >= max - 24` 时，绝对夹紧至最后一页并激活末话状态；
+  - 非极端边界下，以视口上方 40% 处阅读线与画页几何相交探测激活当前页码，消除短切片识别死角。
+- **条漫流式行内章末过渡卡片（In-flow Chapter Transition）**：
+  - 竖向连续模式下废除遮挡漫画分镜画面的悬浮下一话横幅，改在画卷尾部以文档流自然内嵌行内过渡卡片（`.reader-webtoon-chapter-end`）；
+  - 卡片下方自带充足呼吸留白，读者流卷到底即可完整入目，点击一键切换下一话。
 - `.reader-view` 必须保留 `timeline-scope: --reader-scroll`：进度条是 `.reader-scroll` 的兄弟节点，
   scroll timeline 只有提升作用域后才能跨子树引用；
 - **全场景 CSS 滚动驱动双轨架构**：
@@ -232,12 +239,12 @@
   - 竖向连续模式在非无缝状态下应用 `animation-timeline: view()` 与 `animation-range: entry 0% entry 100%`，提供纸质微显入场动效（`opacity: 0.15 → 1`、`translateY: 6px → 0`），并在 `prefers-reduced-motion: reduce` 下自动静默降级；无缝长卷模式通过 `:not([data-seamless='true'])` 排除进场位移，杜绝滚动接缝抖动；
   - JS 轨通过 `useReaderNavigation` 引入 `requestAnimationFrame` 调度节流，杜绝主线程 Layout Thrashing。
 - 竖向连续模式的 `.reader-spread` 不要加 `min-height: 100dvh`，否则移动端每页后会留整屏空白；标准模式下页间间隔由后续 spread 的 `padding-top` 控制，无缝模式下间距归零并施加 `-1px` 亚像素微咬合与浮动页标（`ReaderFloatingPill`）。
-- 自动切换按“屏”计时：默认关闭，间隔 5/10/15/30 秒（支持 1~300 秒自定义）。开启后右下角倒计时 HUD 常驻，
-  手动翻页/滚动会重置倒计时；设置面板打开或页面切后台时暂停，最后一屏自动停止。
-- 倒计时 pill 默认只显示数字，宽度与页码指示器一致；桌面 hover / 键盘 focus 时原位显示“暂停”，
-  点击切换暂停/继续。移动端没有 hover，直接点击倒计时小圆暂停，暂停后显示“继续”。
-- 移动端和矮视口下 HUD 改为横向：左侧 32px 倒计时小圆，右侧横向页码指示器
-  （上一屏 / 页码 / 下一屏，按钮同为 32px），避免右下角 HUD 遮挡漫画画面。
+- **自动阅读双轨架构（Auto-reading Dual Track: Paged Discrete vs Webtoon Stream）**：
+  - **离散翻页模式（竖翻/横翻）**：按固定间隔（5/10/15/30 秒，支持 1~300 秒自定义）定时步进分屏；手动翻页/滚动重置倒计时；最后一屏停止；
+  - **连续条漫模式（竖向连续）**：基于 `requestAnimationFrame` 以设定像素速度（40/80/140 px/s，支持 20~400 px/s 自定义）匀速向下流卷推进；
+  - **交互软避让（Soft Yield）**：读者介入操作（鼠标滚轮、触屏拖拽、原生滚动条拖动、快捷键）时，自动流卷即刻避让挂起 1.5 秒，读者停手静止后平滑自愈恢复；若读者从底端回滚离开（`scrollTop < max - 40`），自动释放驻留锁继续流卷；
+  - **话末平缓停靠（Dock & Hold）**：流卷触达全话底端时自动驻留刹车（`isDockedAtEnd = true`），停止 rAF 耗电；点击“进入下一话”跳转后在新章节自动开跑；
+  - **HUD 状态联动与解耦**：翻页模式显示秒数倒计时；连续模式在流卷时显示速度微标（如 `80px`），暂停时显示播放图标；末页读卷过程中保持可见，物理停靠话末卡片后平滑收整；顶栏菜单唤出或切后台时即刻安全暂停。
 - `onKeydown` 必须在 `settingsOpen` 时提前返回（除 Escape），否则方向键/Space 会翻动面板背后的页面，
   且会劫持 switch 等原生 button 的 Space 激活。
 - 自动切换的滚动行为需尊重 `prefers-reduced-motion: reduce`，此时用 `behavior: 'auto'`。

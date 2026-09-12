@@ -873,6 +873,24 @@
     3. **瞬态网络重试与漏页通知**：后端 `prefetch` 循环内注入单次 300ms 退避重试，平滑绝大部分网络抖动；若仍未完成则广播 `cache_partial`，前端 Toast 友好提示；
     4. **本地轻量自愈（Local Cache Reconciliation）**：在查询详情与进度时自动探查磁盘已存在的文件，自愈修正 `page.cached = true`。
 
+### 85. 条漫连续模式终页高度不足致物理触底失效、流卷停靠态竞态循环与手势避让死锁陷阱 (Webtoon Short Last-Page Clamping Failure, Continuous Auto-Scroll Race Condition & Docking Lockup Trap)
+
+- **本质**：
+  1. **短终页几何对齐落空（Short Last-Page Distance Trap）**：在竖向连续（条漫）模式下，原分屏吸附算法通过计算 `Math.abs(spread.offsetTop - scrollTop)` 确定最临近画页。当整话最后一页物理高度小于浏览器视口高度时（例如终页高度 584px，视口高度 900px），滚动容器在完全触底（`scrollTop === scrollHeight - clientHeight`）时，最后一页顶边仍处于视口中下部，`scrollTop` 永远无法触达该页的 `offsetTop`。算法在距离判定上始终将倒数第二页判定为“最近页”，导致页码永远卡在 `N-1 / N`（例如 `160 / 161`），底层 `atChapterEnd` 永远无法激活，下一话跳转横幅彻底丢失；
+  2. **流卷停靠态与滚动事件竞态循环（Auto-Scroll Docking Race Condition）**：在条漫基于 `requestAnimationFrame` 匀速自动流卷推进中，每帧物理更新 `el.scrollTop` 均会触发原生 `scroll` 事件。若在 `handleScroll` 中无差别调用翻页倒计时重置 `resetAutoTurnCountdown()`，当流卷触底触发 `isDockedAtEnd = true` 并停止 rAF 时，触底最后一帧派发的异步 `scroll` 事件会立即调用 `resetAutoTurnCountdown()` 将 `isDockedAtEnd` 冲刷置回 `false` 并重新唤醒 rAF，引发底端无意义空转与状态撕裂；
+  3. **驻留锁死与回滚死锁（Docking Freeze Trap）**：读者抵达话末触发 `isDockedAtEnd` 驻留刹车后，若向上滑动回看前文，若底层仅在用户主动点击播放/暂停时才释放驻留锁，会导致软避让（Soft Yield）1.5 秒后由于 `isDockedAtEnd === true` 而永久无法恢复自动流卷，造成读者困惑；
+  4. **末页读阅中 HUD 速度控制提前退场**：若仅根据 `atLastGroup`（`currentGroupIndex >= lastGroupIndex`）作为 HUD 自动翻页按钮的隐藏门禁，当读者阅读线刚接触最后一页顶部时，由于当前组索引变为末组，右下角流卷速度控制胶囊（如 `80px`）突兀消失，导致读者在阅读整张末页长图时彻底丧失随时暂停控制的能力。
+- **红线与防误伤**：
+  - **不要**在连续滚动模式下仅依赖页面顶边到视口顶端的绝对距离判定当前页；
+  - **不要**在连续流卷模式下的物理滚动事件监听中无条件重置离散倒计时；
+  - **不要**在读者已经回滚离开话末后依然强制锁死话末停靠状态；
+  - **不要**在条漫模式下将离散末屏判断作为连续流卷 HUD 的收起依据；
+  - **放行/改用**：
+    1. **绝对触底夹紧与 40% 视口阅读线几何相交（Bottom Clamping & Read-Line Intersection）**：当滚动容器距离底端 `position >= max - 24` 时，确定性将当前组索引钳制为 `lastGroupIndex`，彻底根治短终页无法翻至最后一页与无下一话按钮问题；非极端边界采用视口高度上方 40% 有效阅读线与画页几何相交探测；
+    2. **翻页排版模式分流守卫（Paging Mode Guard）**：`useReaderNavigation` 仅在离散翻页模式（`settings.mode !== 'vertical-continuous'`）下在滚动时触发 `resetAutoTurnCountdown()`，条漫模式完全交由 rAF 流卷状态机接管，杜绝竞态死循环；
+    3. **回滚自愈解绑（Scroll-Away Un-docking）**：读者主动通过滚轮、触控或滚动条向上滑动离开底端（`el.scrollTop < max - 40`）时，即刻释放 `isDockedAtEnd` 驻留锁，静止 1.5 秒后平滑恢复自动流卷；
+    4. **停靠态解耦与行内章末过渡卡片（In-flow Chapter Transition & Decoupled Docking）**：条漫模式下废除遮挡分镜画面的悬浮下一话横幅，改在画卷尾部自然内嵌流式章末卡片（`.reader-webtoon-chapter-end`）；HUD 控制按钮以 `isContinuous() ? !isDockedAtEnd : !atLastGroup` 进行解耦，末页整张画卷阅读过程中速度胶囊全程常驻可用，直至滚动完全抵达底端停靠卡片时才平滑收整。
+
 ---
 
 ## 🚦 交付门禁（四步必跑）

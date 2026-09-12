@@ -17,6 +17,7 @@ export type ReaderMode = 'vertical-continuous' | 'vertical-paged' | 'horizontal'
 export type FitMode = 'width' | 'height'
 export type SpreadDirection = 'ltr' | 'rtl'
 export type AutoTurnInterval = number
+export type AutoScrollSpeed = number
 
 export interface ReaderSettings {
   mode: ReaderMode
@@ -25,6 +26,7 @@ export interface ReaderSettings {
   direction: SpreadDirection
   autoTurn: boolean
   autoTurnInterval: AutoTurnInterval
+  autoScrollSpeed: AutoScrollSpeed
   seamless: boolean
 }
 
@@ -37,6 +39,7 @@ export const HEALED_KEY = 'comic-shelf:baseline-healed:v1'
 /** 单本作品偏好最大持久化缓存条目（防止 localStorage 无界膨胀） */
 export const MAX_OVERRIDES = 100
 export const AUTO_TURN_INTERVALS = [5, 10, 15, 30] as const
+export const AUTO_SCROLL_SPEED_PRESETS = [40, 80, 140] as const
 export const DEFAULT_SETTINGS: Readonly<ReaderSettings> = {
   mode: 'vertical-continuous',
   fit: 'height',
@@ -44,6 +47,7 @@ export const DEFAULT_SETTINGS: Readonly<ReaderSettings> = {
   direction: 'ltr',
   autoTurn: false,
   autoTurnInterval: 10,
+  autoScrollSpeed: 80,
   seamless: false,
 }
 
@@ -66,9 +70,15 @@ export const AUTO_TURN_OPTIONS: Array<{ value: number; label: string }> = AUTO_T
   (seconds) => ({ value: seconds, label: `${seconds} 秒` }),
 )
 
+export const AUTO_SCROLL_SPEED_OPTIONS: Array<{ value: number; label: string; hint: string }> = [
+  { value: 40, label: '40 px/s', hint: '慢速' },
+  { value: 80, label: '80 px/s', hint: '适中' },
+  { value: 140, label: '140 px/s', hint: '快速' },
+]
+
 /**
  * 归一化设置值：只信任合法枚举，非法/缺失取值回落默认。
- * 空值兼容：旧版本存储里可能没有某些字段（如 autoTurn / autoTurnInterval）。
+ * 空值兼容：旧版本存储里可能没有某些字段（如 autoTurn / autoTurnInterval / autoScrollSpeed）。
  */
 export function clampSettings(
   value: Partial<ReaderSettings>,
@@ -82,6 +92,12 @@ export function clampSettings(
     rawInterval <= 300
       ? Math.round(rawInterval)
       : DEFAULT_SETTINGS.autoTurnInterval
+
+  const rawSpeed = value.autoScrollSpeed
+  const autoScrollSpeed =
+    typeof rawSpeed === 'number' && Number.isFinite(rawSpeed) && rawSpeed >= 20 && rawSpeed <= 400
+      ? Math.round(rawSpeed)
+      : DEFAULT_SETTINGS.autoScrollSpeed
 
   const finalMode =
     value.mode === 'vertical-continuous' ||
@@ -120,6 +136,7 @@ export function clampSettings(
         : DEFAULT_SETTINGS.direction,
     autoTurn: value.autoTurn === true,
     autoTurnInterval,
+    autoScrollSpeed,
     seamless: isSeamless,
   }
 }
@@ -274,6 +291,7 @@ export const useReaderSettings = createGlobalState(() => {
           seamless: value.seamless,
           autoTurn: value.autoTurn,
           autoTurnInterval: value.autoTurnInterval,
+          autoScrollSpeed: value.autoScrollSpeed,
         })
       } else {
         stored.value = { ...DEFAULT_SETTINGS, ...value }

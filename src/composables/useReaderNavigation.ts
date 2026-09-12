@@ -209,13 +209,63 @@ export function useReaderNavigation(options: UseReaderNavigationOptions) {
 
     const spreads = [...el.querySelectorAll<HTMLElement>('[data-group-index]')]
     let nearest = currentGroupIndex.value
-    let bestDistance = Number.POSITIVE_INFINITY
-    for (const spread of spreads) {
-      const spreadPosition = horizontal ? spread.offsetLeft : spread.offsetTop
-      const distance = Math.abs(spreadPosition - position)
-      if (distance < bestDistance) {
-        bestDistance = distance
-        nearest = Number(spread.dataset.groupIndex)
+
+    // 1. 绝对边界钳制：若已抵达物理底端/顶端安全区，确定性夹紧至首末分屏
+    if (rtl) {
+      if (position <= 24) {
+        nearest = Math.max(0, lastGroupIndex.value)
+      } else if (max > 0 && position >= max - 24) {
+        nearest = 0
+      }
+    } else {
+      if (max > 0 && position >= max - 24) {
+        nearest = Math.max(0, lastGroupIndex.value)
+      } else if (position <= 16) {
+        nearest = 0
+      }
+    }
+
+    // 2. 非极端边界时：根据排版模式进行高精度几何相交探测
+    const isAtBoundary = rtl
+      ? position <= 24 || (max > 0 && position >= max - 24)
+      : position <= 16 || (max > 0 && position >= max - 24)
+
+    if (!isAtBoundary && spreads.length > 0) {
+      if (settings.mode === 'vertical-continuous') {
+        // 竖向连续条漫模式：以视口有效阅读线（视口上方 40% 处）与画页几何相交探测
+        const readLine = position + el.clientHeight * 0.4
+        let matched = false
+        for (const spread of spreads) {
+          const top = spread.offsetTop
+          const bottom = top + spread.offsetHeight
+          if (readLine >= top && readLine <= bottom) {
+            nearest = Number(spread.dataset.groupIndex)
+            matched = true
+            break
+          }
+        }
+        if (!matched) {
+          let bestDistance = Number.POSITIVE_INFINITY
+          for (const spread of spreads) {
+            const mid = spread.offsetTop + spread.offsetHeight / 2
+            const distance = Math.abs(mid - readLine)
+            if (distance < bestDistance) {
+              bestDistance = distance
+              nearest = Number(spread.dataset.groupIndex)
+            }
+          }
+        }
+      } else {
+        // 翻页模式（竖向翻页 / 横向翻页）：最临近分屏顶边/左边对齐
+        let bestDistance = Number.POSITIVE_INFINITY
+        for (const spread of spreads) {
+          const spreadPosition = horizontal ? spread.offsetLeft : spread.offsetTop
+          const distance = Math.abs(spreadPosition - position)
+          if (distance < bestDistance) {
+            bestDistance = distance
+            nearest = Number(spread.dataset.groupIndex)
+          }
+        }
       }
     }
 
@@ -230,7 +280,9 @@ export function useReaderNavigation(options: UseReaderNavigationOptions) {
     if (settings.mode === 'vertical-continuous' && settings.seamless) {
       triggerPill()
     }
-    resetAutoTurnCountdown()
+    if (settings.mode !== 'vertical-continuous') {
+      resetAutoTurnCountdown()
+    }
   }
 
   /**

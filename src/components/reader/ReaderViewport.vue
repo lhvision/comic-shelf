@@ -16,8 +16,10 @@ import { pageFileUrl } from '@/api/client'
 import ComicPageImage from '@/components/ComicPageImage.vue'
 import ReaderBubbleOverlay, { type TargetBubble } from '@/components/ReaderBubbleOverlay.vue'
 import ReaderEndCard from '@/components/reader/ReaderEndCard.vue'
+import AppButton from '@/components/AppButton.vue'
+import AppIcon from '@/components/AppIcon.vue'
 import type { ReaderSettings } from '@/composables/useReaderSettings'
-import type { LibrarySummary } from '@/types'
+import type { LibrarySummary, Chapter } from '@/types'
 
 /**
  * 分屏页码分组定义
@@ -53,6 +55,10 @@ export interface ReaderViewportProps {
   recommendations?: LibrarySummary[]
   /** 待高亮呈现的目标气泡（来自台词检索等直接定位） */
   targetBubble?: TargetBubble | null
+  /** 下一话章节元数据（若有下一话） */
+  nextChapter?: Chapter | null
+  /** 章节简写标题格式化函数 */
+  chapterShortLabel?: (chapter: Chapter) => string
 }
 
 defineProps<ReaderViewportProps>()
@@ -80,6 +86,8 @@ defineEmits<{
   openComicDetail: [source: string, sourceId: string]
   /** 触达末页完成阅读事件 */
   completed: []
+  /** 点击行内卡片进入下一话 */
+  nextChapter: []
 }>()
 
 const scrollEl = ref<HTMLElement | null>(null)
@@ -103,6 +111,7 @@ defineExpose({
     @scroll.passive="$emit('scroll', $event)"
     @wheel="$emit('wheel', $event)"
     @touchstart.passive="$emit('userInteract')"
+    @touchmove.passive="$emit('userInteract')"
     @pointerdown.passive="$emit('userInteract')"
     @mousemove="$emit('mousemove', $event)"
     @click="$emit('readerClick', $event)"
@@ -159,6 +168,37 @@ defineExpose({
         </footer>
       </article>
     </section>
+
+    <!-- 竖向连续条漫模式：流式行内章末过渡卡片（In-flow Chapter Transition） -->
+    <div
+      v-if="settings.mode === 'vertical-continuous' && nextChapter"
+      class="reader-webtoon-chapter-end"
+      :data-group-index="orderedGroups.length"
+    >
+      <div class="webtoon-chapter-end-card">
+        <span class="webtoon-end-badge">本话完</span>
+        <p class="webtoon-next-title">
+          下一话：{{
+            chapterShortLabel
+              ? chapterShortLabel(nextChapter)
+              : nextChapter.title || `第 ${nextChapter.index} 話`
+          }}
+        </p>
+        <AppButton
+          variant="primary"
+          theme="reader"
+          size="sm"
+          type="button"
+          class="webtoon-next-btn"
+          @click="$emit('nextChapter')"
+        >
+          <span>进入下一话</span>
+          <template #suffix>
+            <AppIcon name="arrow-right" size="xs" />
+          </template>
+        </AppButton>
+      </div>
+    </div>
 
     <ReaderEndCard
       v-if="!rtlHorizontal && showEndCard"
@@ -493,5 +533,55 @@ defineExpose({
       }
     }
   }
+}
+
+/* ---------------- 连续条漫模式流式行内收尾卡片 ---------------- */
+.reader-webtoon-chapter-end {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: var(--space-8) var(--reader-gutter) clamp(6rem, 25vh, 16rem);
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.webtoon-chapter-end-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: var(--space-3);
+  padding: var(--space-6) var(--space-8);
+  border: 1px solid var(--reader-line-strong);
+  border-radius: var(--radius-3);
+  background: var(--reader-surface);
+  box-shadow: var(--shadow-3);
+  max-width: min(calc(100vw - var(--space-6) * 2), 26rem);
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.webtoon-end-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: var(--space-1) var(--space-3);
+  border-radius: 999px;
+  background: color-mix(in oklab, var(--accent) 18%, transparent);
+  color: var(--accent);
+  border: 1px solid color-mix(in oklab, var(--accent) 35%, transparent);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  letter-spacing: 0.1em;
+}
+
+.webtoon-next-title {
+  color: var(--reader-ink);
+  font-family: var(--font-body);
+  font-size: var(--text-sm);
+  font-weight: 500;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 </style>

@@ -57,7 +57,7 @@ defineEmits<{
   </button>
 
   <button
-    v-if="nextChapter && atChapterEnd"
+    v-if="nextChapter && atChapterEnd && mode !== 'vertical-continuous'"
     class="reader-chapter-banner reader-chapter-next"
     :data-mode="mode"
     type="button"
@@ -141,28 +141,6 @@ defineEmits<{
 
   .reader-chapter-title {
     max-width: clamp(4rem, 42vw, 11rem);
-  }
-}
-
-@supports (animation-timeline: scroll()) {
-  @media (prefers-reduced-motion: no-preference) {
-    /* 话末到达横幅浮入微动效：直接使用 translate 属性，与基类 translate: -50% 0 协调，避免 transform 叠加 */
-    .reader-chapter-next[data-mode='vertical-continuous'] {
-      animation: reader-banner-appear 1ms var(--ease-out) both;
-      animation-timeline: --reader-scroll;
-      animation-range: calc(100% - 180px) 100%;
-    }
-
-    @keyframes reader-banner-appear {
-      from {
-        opacity: 0;
-        translate: -50% 8px;
-      }
-      to {
-        opacity: 1;
-        translate: -50% 0;
-      }
-    }
   }
 }
 </style>

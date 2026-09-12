@@ -100,6 +100,30 @@ describe('ReaderViewport', () => {
     expect(endCardRtl.exists()).toBe(true)
     expect(endCardRtl.attributes('data-group-index')).toBe('2')
   })
+
+  it('renders in-flow chapter transition card in vertical-continuous mode when nextChapter exists', async () => {
+    const nextCh: Chapter = { id: 'c2', index: 2, title: '第 2 话', page_count: 20, start: 21 }
+    const wrapper = mount(ReaderViewport, {
+      props: {
+        ...defaultProps,
+        settings: {
+          ...defaultProps.settings,
+          mode: 'vertical-continuous',
+        },
+        nextChapter: nextCh,
+        chapterShortLabel: (c: Chapter) => c.title || `第 ${c.index} 话`,
+      },
+    })
+
+    const inFlowEnd = wrapper.find('.reader-webtoon-chapter-end')
+    expect(inFlowEnd.exists()).toBe(true)
+    expect(inFlowEnd.text()).toContain('本话完')
+    expect(inFlowEnd.text()).toContain('下一话：第 2 话')
+
+    const nextBtn = inFlowEnd.find('button')
+    await nextBtn.trigger('click')
+    expect(wrapper.emitted('nextChapter')).toBeTruthy()
+  })
 })
 
 describe('ReaderChapterBanners', () => {
@@ -147,7 +171,7 @@ describe('ReaderChapterBanners', () => {
     expect(wrapper.emitted('prevChapter')).toBeTruthy()
   })
 
-  it('renders next banner with IconArrowRight when at chapter end and nextChapter exists', async () => {
+  it('renders next banner with IconArrowRight when at chapter end and nextChapter exists in paged mode', async () => {
     const wrapper = mount(ReaderChapterBanners, {
       props: {
         prevChapter: null,
@@ -155,7 +179,7 @@ describe('ReaderChapterBanners', () => {
         atChapterStart: false,
         atChapterEnd: true,
         chapterShortLabel,
-        mode: 'vertical-continuous',
+        mode: 'vertical-paged',
       },
     })
 
@@ -169,6 +193,21 @@ describe('ReaderChapterBanners', () => {
 
     await nextBtn.trigger('click')
     expect(wrapper.emitted('nextChapter')).toBeTruthy()
+  })
+
+  it('suppresses floating next banner in vertical-continuous mode (handled by in-flow card)', async () => {
+    const wrapper = mount(ReaderChapterBanners, {
+      props: {
+        prevChapter: null,
+        nextChapter,
+        atChapterStart: false,
+        atChapterEnd: true,
+        chapterShortLabel,
+        mode: 'vertical-continuous',
+      },
+    })
+
+    expect(wrapper.find('.reader-chapter-next').exists()).toBe(false)
   })
 })
 
