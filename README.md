@@ -89,8 +89,10 @@
   - **端侧离线记账与联网对齐队列（Offline Reconciliation Pipeline）**：断网翻页阅读进度与喜欢变动自动打上用户身份签名写入本地事务队列；网络自愈时按用户隔离自动批量回写后端 SQLite 并触发 SWR 静默刷新；
   - **优雅装订提醒（Prompt 模式）**：前端采用非侵入式悬浮装订横幅（`UpdateBanner`），阅读器沉浸模式下自动隐退避让，新版本随时在顶栏设备卡片内就绪装订；
   - **任务驱动型系统事件流与多标签广播（Task-Driven SSE & BroadcastChannel）**：常态浏览 0 pending 长连接悬挂；仅在导入或下载预缓存等活跃任务时自适应拉起 SSE 并在 5 秒平滑防抖后注销；同设备多标签页通过原生 `BroadcastChannel` 0 流量毫秒级互通；0 CPU 轮询开销；
-- **漫画台词全文检索、书架联想浮层与阅读器气泡呼吸高亮（Dialogue Full-Text Search & Popover System）**：
-  - **原生 Trigram 倒排全文检索**：基于 SQLite 3.34+ 原生 `tokenize='trigram'` 构建 `comic_dialogues_fts` 虚拟表，零第三方 C 库依赖，秒级模糊命中中日文无空格对白；
+- **漫画台词全文检索、快捷指令中枢与阅读器气泡呼吸高亮（Dialogue Search, Slash Commands & Dedicated DB）**：
+  - **台词专库垂直解耦（`comic_dialogues.db`）**：在万级与十万级规模下，将 FTS5 Trigram 倒排索引虚拟表及增量同步元数据从主库物理隔离为 `comic_dialogues.db`，海量离线 OCR 批量写入通道与用户核心状态（翻页打点/收藏）零写锁争抢（Zero Lock Contention），彻底杜绝 `SQLITE_BUSY` 锁异常；
+  - **原生 Trigram 倒排全文检索与短词防爆守卫**：基于 SQLite 3.34+ 原生 `tokenize='trigram'` 构建 `comic_dialogues_fts` 虚拟表，零第三方 C 库依赖，秒级模糊命中中日文无空格对白；前后端硬性门禁 `< 2` 字符阻断，彻底消除 Trigram 在极短词下全表 `LIKE` 扫描导致的 100% CPU 锁死；
+  - **快捷指令中枢与命令胶囊（Slash Commands & Command Chip）**：搜索栏支持 `/` 快捷指令唤醒菜单（`/台词`、`/车号`、`/作者`、`/随机`），激活台词检索后提取为朱砂印章样式的命令胶囊（`〔 💬 台词 × 〕`），同时将书架卡片过滤严格冻结置空，杜绝“一搜台词列表就空”的体验断层；
   - **简繁双向互通归一化**：内置 3,881 对标准简繁映射词表，输入简体自动召回港台繁体本子，输入繁体亦能命中大陆简体翻译；
   - **书架搜索栏水墨联想浮层（`DialogueSearchPopover`）**：输入文字时防抖 300ms 异步全文检索，在搜索栏正下方展开纸本浮层；实行**静默伴生原则**（0 条结果时静默隐藏，不遮挡书架已过滤作品）；纯声明式解析分镜高亮（零 `v-html` 杜绝 XSS）；支持 WAI-ARIA Combobox 无障碍键盘视口跟随（`scrollIntoView`）与智能回车直达首项；
   - **多模态伴生协议解耦**：画页伴生数据 `{index}.ocr.json` 采用归一化百分比坐标 `[ymin, xmin, ymax, xmax]` ∈ [0, 1]，与图片原始物理分辨率彻底解耦；

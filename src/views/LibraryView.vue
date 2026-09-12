@@ -8,6 +8,8 @@ import TagFilterBar from '@/components/library/TagFilterBar.vue'
 import ComicGrid from '@/components/library/ComicGrid.vue'
 import ImageSearchChip from '@/components/library/ImageSearchChip.vue'
 import DialogueSearchPopover from '@/components/library/DialogueSearchPopover.vue'
+import SearchCommandChip from '@/components/library/SearchCommandChip.vue'
+import SearchCommandMenu from '@/components/library/SearchCommandMenu.vue'
 import ThemeSelect from '@/components/ThemeSelect.vue'
 import AppButton from '@/components/AppButton.vue'
 import AppIcon from '@/components/AppIcon.vue'
@@ -17,6 +19,11 @@ import { useLibrarySync } from '@/composables/useLibrarySync'
 import { useShelfState } from '@/composables/useShelfState'
 import { useImageSearch } from '@/composables/useImageSearch'
 import { useDialogueSearch } from '@/composables/useDialogueSearch'
+import {
+  useSearchCommands,
+  AVAILABLE_COMMANDS,
+  type SearchCommandDef,
+} from '@/composables/useSearchCommands'
 import { useToast } from '@/composables/useToast'
 import { useAuth } from '@/composables/useAuth'
 import { useSystemEvents } from '@/composables/useSystemEvents'
@@ -112,6 +119,7 @@ const { fetchLibrary } = useLibrarySync({
 })
 
 const searchContainerRef = ref<HTMLElement | null>(null)
+const searchInputRef = ref<HTMLInputElement | null>(null)
 
 const {
   query: dialogueQuery,
@@ -128,41 +136,120 @@ const {
   navigateToResult,
 } = useDialogueSearch({ source: activeSource })
 
-watch(search, (val) => {
-  dialogueQuery.value = val
+const {
+  rawInput: searchInput,
+  activeCommand: searchActiveCommand,
+  isMenuOpen: isCommandMenuOpen,
+  menuFocusedIndex: commandMenuFocusedIndex,
+  filteredCommands: commandFilteredCommands,
+  currentPlaceholder: searchPlaceholder,
+  selectCommand,
+  clearCommand,
+  openMenu: openCommandMenu,
+  closeMenu: closeCommandMenu,
+  handleKeydown: handleCommandKeydown,
+} = useSearchCommands({
+  isDropdownOpen: isDialogueOpen,
+  onRandom: () => {
+    const list = filtered.value.length > 0 ? filtered.value : store.items || []
+    if (list.length === 0) {
+      toast('书架暂无藏书可供抽取', 'info')
+      return
+    }
+    const picked = list[Math.floor(Math.random() * list.length)]
+    if (picked) {
+      toast(`随手翻得一卷：《${picked.title}》`, 'success')
+      void router.push(
+        `/comic/${encodeURIComponent(picked.source)}/${encodeURIComponent(picked.source_id)}`,
+      )
+    }
+  },
 })
+
+// 意图分流与状态解耦：
+// 1. 台词专注模式：dialogueQuery 接收输入，书架常规 search 强制置空（保持书架网格 100% 冻结，不影响列表）；
+// 2. 键入 '/' 且未成命令：书架 search 保持空（防误过滤）；
+// 3. 常规搜索模式：search 接收 searchInput 驱动书架过滤，dialogueQuery 强制置空（避免多余 FTS 检索）。
+watch(
+  [searchInput, searchActiveCommand],
+  ([inputVal, cmdVal]) => {
+    if (cmdVal === 'dialogue') {
+      dialogueQuery.value = inputVal
+      search.value = ''
+      if (inputVal.trim()) {
+        openDialogueSearch()
+      } else {
+        closeDialogueSearch()
+      }
+    } else {
+      dialogueQuery.value = ''
+      closeDialogueSearch()
+      if (inputVal.startsWith('/')) {
+        search.value = ''
+        openCommandMenu()
+      } else {
+        closeCommandMenu()
+        search.value = inputVal
+      }
+    }
+  },
+  { immediate: true },
+)
+
+function handleSelectCommand(cmd: SearchCommandDef) {
+  selectCommand(cmd)
+  nextTick(() => {
+    searchInputRef.value?.focus()
+  })
+}
+
+function handleClearCommand() {
+  clearCommand()
+  nextTick(() => {
+    searchInputRef.value?.focus()
+  })
+}
+
+function onSearchFocus() {
+  if (searchActiveCommand.value === 'dialogue') {
+    if (dialogueQuery.value.trim()) {
+      openDialogueSearch()
+    }
+  } else if (searchInput.value.startsWith('/')) {
+    openCommandMenu()
+  }
+}
 
 onClickOutside(searchContainerRef, () => {
   closeDialogueSearch()
+  closeCommandMenu()
 })
 
 function onSearchKeydown(e: KeyboardEvent) {
-  if (!isDialogueOpen.value) {
-    if (e.key === 'ArrowDown' && dialogueQuery.value.trim()) {
-      openDialogueSearch()
-      e.preventDefault()
-    }
+  if (handleCommandKeydown(e)) {
     return
   }
 
-  if (e.key === 'ArrowDown') {
-    e.preventDefault()
-    nextDialogueResult()
-  } else if (e.key === 'ArrowUp') {
-    e.preventDefault()
-    prevDialogueResult()
-  } else if (e.key === 'Enter') {
-    if (isDialogueOpen.value && dialogueResults.value.length > 0) {
-      const targetIndex = dialogueFocusedIndex.value >= 0 ? dialogueFocusedIndex.value : 0
-      const targetItem = dialogueResults.value[targetIndex]
-      if (targetItem) {
-        e.preventDefault()
-        navigateToResult(targetItem, router)
+  if (searchActiveCommand.value === 'dialogue' && isDialogueOpen.value) {
+    if (e.key === 'ArrowDown') {
+      e.preventDefault()
+      nextDialogueResult()
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault()
+      prevDialogueResult()
+    } else if (e.key === 'Enter') {
+      if (dialogueResults.value.length > 0) {
+        const targetIndex = dialogueFocusedIndex.value >= 0 ? dialogueFocusedIndex.value : 0
+        const targetItem = dialogueResults.value[targetIndex]
+        if (targetItem) {
+          e.preventDefault()
+          navigateToResult(targetItem, router)
+        }
       }
+    } else if (e.key === 'Escape') {
+      e.preventDefault()
+      closeDialogueSearch()
     }
-  } else if (e.key === 'Escape') {
-    e.preventDefault()
-    closeDialogueSearch()
   }
 }
 
@@ -178,6 +265,9 @@ watch(activeSource, (newSource, oldSource) => {
 onMounted(() => {
   if (shelf.shelfScrollY.value > 0) {
     nextTick(() => window.scrollTo({ top: shelf.shelfScrollY.value, behavior: 'instant' }))
+  }
+  if (shelf.search.value && !searchInput.value) {
+    searchInput.value = shelf.search.value
   }
   void fetchLibrary(true, true)
   store.startPollingIfActive()
@@ -231,8 +321,14 @@ watch([() => store.error, imageSearch.error], ([err1, err2]) => {
         </div>
 
         <div ref="searchContainerRef" class="search-container">
-          <label class="search-field field">
+          <div class="search-field field" role="search">
             <AppIcon name="search" size="xs" aria-hidden="true" />
+            <SearchCommandChip
+              v-if="searchActiveCommand"
+              :command="searchActiveCommand"
+              :label="AVAILABLE_COMMANDS.find((c) => c.id === searchActiveCommand)?.label || ''"
+              @clear="handleClearCommand"
+            />
             <ImageSearchChip
               v-if="imageSearch.searchImagePreviewUrl.value"
               :preview-url="imageSearch.searchImagePreviewUrl.value"
@@ -241,18 +337,30 @@ watch([() => store.error, imageSearch.error], ([err1, err2]) => {
               class="search-lens-pill"
             />
             <input
-              v-model="search"
+              ref="searchInputRef"
+              v-model="searchInput"
               type="search"
               role="combobox"
+              aria-label="搜索书架藏书或输入 / 唤出快捷命令"
               aria-autocomplete="list"
-              :aria-expanded="isDialogueOpen"
+              :aria-expanded="isCommandMenuOpen || isDialogueOpen"
               aria-haspopup="listbox"
-              aria-controls="dialogue-search-popover"
-              :aria-activedescendant="
-                dialogueFocusedIndex >= 0 ? `dialogue-opt-${dialogueFocusedIndex}` : undefined
+              :aria-controls="
+                isCommandMenuOpen
+                  ? 'search-command-menu'
+                  : isDialogueOpen
+                    ? 'dialogue-search-popover'
+                    : undefined
               "
-              placeholder="标题 / 车号 / 作者 / 标签 / 台词"
-              @focus="openDialogueSearch"
+              :aria-activedescendant="
+                isCommandMenuOpen && commandFilteredCommands.length > 0
+                  ? `cmd-opt-${commandMenuFocusedIndex}`
+                  : isDialogueOpen && dialogueResults.length > 0 && dialogueFocusedIndex >= 0
+                    ? `dialogue-opt-${dialogueFocusedIndex}`
+                    : undefined
+              "
+              :placeholder="searchPlaceholder"
+              @focus="onSearchFocus"
               @keydown="onSearchKeydown"
             />
             <AppButton
@@ -276,9 +384,21 @@ watch([() => store.error, imageSearch.error], ([err1, err2]) => {
               class="visually-hidden"
               @change="onFileSelected"
             />
-          </label>
+          </div>
 
+          <!-- 快捷指令选单浮层 -->
+          <SearchCommandMenu
+            :open="isCommandMenuOpen"
+            :commands="commandFilteredCommands"
+            :focused-index="commandMenuFocusedIndex"
+            @select="handleSelectCommand"
+            @close="closeCommandMenu"
+            @update:focused-index="(val) => (commandMenuFocusedIndex = val)"
+          />
+
+          <!-- 分镜台词检索浮层（专注台词模式呈现） -->
           <DialogueSearchPopover
+            v-if="searchActiveCommand === 'dialogue'"
             :open="isDialogueOpen"
             :results="dialogueResults"
             :total="dialogueTotal"

@@ -36,3 +36,4 @@ export type IconName =
   | 'logout'
   | 'pause'
   | 'play'
+  | 'message-square'

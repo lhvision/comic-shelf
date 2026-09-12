@@ -34,6 +34,7 @@ import IconCopy from './IconCopy.vue'
 import IconLogOut from './IconLogOut.vue'
 import IconPause from './IconPause.vue'
 import IconPlay from './IconPlay.vue'
+import IconMessageSquare from './IconMessageSquare.vue'
 import type { IconName, IconSize } from './types'
 
 export {
@@ -72,6 +73,7 @@ export {
   IconLogOut,
   IconPause,
   IconPlay,
+  IconMessageSquare,
 }
 export type { IconSize, IconName }
 
@@ -110,4 +112,5 @@ export const ICON_MAP: Record<IconName, Component> = {
   logout: IconLogOut,
   pause: IconPause,
   play: IconPlay,
+  'message-square': IconMessageSquare,
 }

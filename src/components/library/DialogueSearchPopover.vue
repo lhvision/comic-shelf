@@ -229,6 +229,15 @@ function onMouseEnterItem(index: number) {
         </div>
       </div>
 
+      <!-- 短词提示状态（少于 2 字） -->
+      <div v-else-if="query.trim().length < 2" class="popover-empty">
+        <AppIcon name="info" size="sm" class="empty-icon" />
+        <div class="empty-content">
+          <p class="empty-title">请输入至少 2 个字以检索台词</p>
+          <p class="empty-hint">分镜台词倒排索引加速检索，支持简繁中文互通</p>
+        </div>
+      </div>
+
       <!-- 搜索空状态 -->
       <div v-else class="popover-empty">
         <AppIcon name="info" size="sm" class="empty-icon" />
@@ -253,7 +262,7 @@ function onMouseEnterItem(index: number) {
   left: 0;
   right: 0;
   width: 100%;
-  max-width: clamp(26rem, 100%, 36rem);
+  max-width: min(36rem, 100%);
   background: var(--paper-0);
   border: 1px solid var(--line-strong);
   border-radius: var(--radius-2);

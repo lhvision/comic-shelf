@@ -387,8 +387,9 @@ def get_library_stats(data_dir: Path) -> Dict[str, Any]:
                 if comic_has_ocr:
                     stats["ocr_comics"] += 1
 
-    # 检查 SQLite 数据库条目数
-    db_path = data_dir / "comic_shelf.db"
+    # 检查 SQLite 数据库条目数（优先检查独立的 comic_dialogues.db，兼容旧版 comic_shelf.db）
+    diag_db_path = data_dir / "comic_dialogues.db"
+    db_path = diag_db_path if diag_db_path.is_file() else (data_dir / "comic_shelf.db")
     if db_path.is_file():
         try:
             import sqlite3

@@ -144,10 +144,14 @@
 - **访客阅览速率限流（Guest Rate Limiting / Token Bucket）**：针对持有有效凭证的爬虫多线程拖图攻击的中间件级防护。针对 `guest` 角色分配每分钟 180 页 + 100 页瞬时突发容量的内存令牌桶，超额触发 HTTP 429，在保障人类高速翻阅、大跨度拖拽与预加载的同时秒级阻断批量爬虫。
 - **新藏书默认隐身策略（Default Hide for New Imports）**：全局安全性偏好配置（`guest_hide_new_comics`）。开启后新收录或导入的藏书元数据默认打上 `hidden_from_guest: true`，须由馆长核验并确认适合借阅后主动解除隐藏，杜绝私人藏书漏标外泄。
 - **通行证异常态预警（Abnormal Pass Alert）**：馆长访客名册中对遭遇设备高频争抢或爬虫速率受限的通行证呈现的告警印章（`〔 设备频繁争抢锁定中 〕`）与提示，辅助馆长一秒识别异常并一键重置密钥清场。
+- **快捷指令中枢（Slash Command Palette）**：书架搜索栏键入 `/` 呼出的纸间快捷指令选单（`/台词`、`/车号`、`/作者`、`/随机`）。支持键盘上下导航、Tab / Enter 快速补全与简写别名（`/d`、`/id`、`/a`、`/r`），统一案头检索与模式切换。
+- **命令胶囊（Command Chip）**：搜索输入框选定指令后在左侧呈现的朱砂印章微件（如 `〔 💬 台词 × 〕`）。在胶囊模式下，输入内容与书架网格 100% 物理解耦（冻结书架过滤），彻底消除“一打台词列表全空”的体验割裂；光标位于行首按退格键（Backspace）或点击关闭图标秒级退出模式。
+- **短词全表扫描防爆守卫（Short-Query Defense Guard）**：台词全文检索中少于 2 个有效字符时强制阻断 FTS5 与数据库检索，杜绝十万级数据规模下因 Trigram 分词截断导致的无索引 `LIKE %xx%` 全表扫描，保障服务器低功耗稳定运行。
 - **用户专属状态（User-Isolated State）**：以用户身份（馆长 `curator` 或具体访客通行证）为隔离维度的个性化数据，包含「喜欢（Favorite）」与「继续阅读进度（Last-read Progress）」，在后端 SQLite 持久化并支持多设备无缝同步，不同访客与馆长之间互不污染。
-- **轻量状态数据库（Lightweight State Database / SQLite）**：后端基于 Python 内置 `sqlite3` 的单文件持久化数据库（`backend/data/comic_shelf.db`），专门承载通行证、用户行为高频状态以及藏书元数据影子索引；与文件系统自包含的本子元数据（`album.json`）正交解耦。
+- **轻量状态数据库（Lightweight State Database / SQLite）**：后端基于 Python 内置 `sqlite3` 的单文件持久化数据库（`backend/data/comic_shelf.db`，约 5MB 级），专门承载通行证、用户行为高频状态以及藏书元数据影子索引；与文件系统自包含的本子元数据（`album.json`）正交解耦，并与台词全文专库物理分离。
+- **台词全文专库（Dialogue Dedicated Database / `comic_dialogues.db`）**：后端独立的 SQLite 数据库文件（`backend/data/comic_dialogues.db`），专门承载 `comic_dialogues_fts`（FTS5 Trigram 全文倒排索引）与伴生同步元数据 `comic_ocr_sync_meta`。在万级与十万级（数百万至千万条台词）规模下，将高频耗时批量写入与用户端核心状态完全物理隔离，彻底消除写锁争抢与备份膨胀。
 - **藏书影子索引表（Comics Shadow Index / `comics_index`）**：在 `comic_shelf.db` 中维护的元数据查询影子表。保持文件系统 `album.json` 本地单一真理源的前提下，接管万级藏书的分页切片、多字段排序、关键词模糊检索与用户专属状态的动态 SQL JOIN，使万本规模响应保持在毫秒级。
-- **台词全文索引表（Comic Dialogues FTS / `comic_dialogues_fts`）**：在 `comic_shelf.db` 中维护的 SQLite FTS5 虚拟全文检索表（基于 Trigram 分词）。将 `{index}.ocr.json` 中的对白文本以倒排索引建表，支持读者在书架搜索栏通过模糊台词快速定位目标漫画、具体页码与气泡坐标。
+- **台词全文索引表（Comic Dialogues FTS / `comic_dialogues_fts`）**：在独立专库 `comic_dialogues.db` 中维护的 SQLite FTS5 虚拟全文检索表（基于 Trigram 分词）。将 `{index}.ocr.json` 中的对白文本以倒排索引建表，支持读者在书架搜索栏通过模糊台词快速定位目标漫画、具体页码与气泡坐标。
 - **Trigram 全文检索分词（Trigram FTS Tokenizer）**：SQLite FTS5 内置的高性能 3-Gram 倒排分词模式。无需外部 Python/C 中文或日文分词扩展，原生支撑中日文无空格文本的任意 3 字以上子串模糊检索。
 - **Galgame 剧本语料库（Galgame Script Corpus）**：统一收纳于 `backend/data/corpus/galgame/` 的纯文本剧本资产（JSON Lines 格式）。解耦于漫画画卷，记录场景 ID、发言人、对白、旁白与中日双语对照，作为二次元专精翻译微调与 AVG 分支编译的黄金数据源。
 - **全貌统计与列表端点解耦（Decoupled Facet & Paginated List Endpoints）**：将全站总本数、总页数、缓存页数与高频标签池等重量级聚合计算收敛至 `/api/library/facets`（单次或变动驱动），与高频轻量的分页列表 `/api/library` 解耦。

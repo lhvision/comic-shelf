@@ -27,14 +27,44 @@ logger = logging.getLogger(__name__)
 DEFAULT_DB_PATH = DATA_DIR / "comic_shelf.db"
 _DB_PATH: Path = DEFAULT_DB_PATH
 
+DEFAULT_DIALOGUE_DB_PATH = DATA_DIR / "comic_dialogues.db"
+_DIALOGUE_DB_PATH: Path = DEFAULT_DIALOGUE_DB_PATH
+
 
 def set_db_path(path: Path) -> None:
-    global _DB_PATH
+    global _DB_PATH, _DIALOGUE_DB_PATH
     _DB_PATH = path
+    if "comic_shelf" in path.name:
+        _DIALOGUE_DB_PATH = path.parent / path.name.replace("comic_shelf", "comic_dialogues")
+    else:
+        _DIALOGUE_DB_PATH = path.parent / f"{path.stem}_dialogues.db"
 
 
 def get_db_path() -> Path:
     return _DB_PATH
+
+
+def set_dialogue_db_path(path: Path) -> None:
+    global _DIALOGUE_DB_PATH
+    _DIALOGUE_DB_PATH = path
+
+
+def get_dialogue_db_path() -> Path:
+    return _DIALOGUE_DB_PATH
+
+
+@contextmanager
+def get_dialogue_db() -> Iterator[sqlite3.Connection]:
+    _DIALOGUE_DB_PATH.parent.mkdir(parents=True, exist_ok=True)
+    conn = sqlite3.connect(_DIALOGUE_DB_PATH, timeout=15.0)
+    conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA journal_mode = WAL")
+    conn.execute("PRAGMA busy_timeout = 5000")
+    try:
+        with conn:
+            yield conn
+    finally:
+        conn.close()
 
 
 @contextmanager
@@ -182,7 +212,31 @@ def init_db(db_path: Path | None = None) -> None:
             CREATE INDEX IF NOT EXISTS idx_comics_index_imported ON comics_index(imported_at DESC);
             CREATE INDEX IF NOT EXISTS idx_comics_index_source ON comics_index(source);
             CREATE INDEX IF NOT EXISTS idx_comics_index_title ON comics_index(title);
+            """
+        )
+        # Migrations: ensure max_devices, pin_hash, pin_salt columns exist for existing DB
+        cols = [r["name"] for r in conn.execute("PRAGMA table_info(guest_passes)").fetchall()]
+        if "max_devices" not in cols:
+            conn.execute("ALTER TABLE guest_passes ADD COLUMN max_devices INTEGER NOT NULL DEFAULT 2")
+        if "pin_hash" not in cols:
+            conn.execute("ALTER TABLE guest_passes ADD COLUMN pin_hash TEXT NOT NULL DEFAULT ''")
+        if "pin_salt" not in cols:
+            conn.execute("ALTER TABLE guest_passes ADD COLUMN pin_salt TEXT NOT NULL DEFAULT ''")
+        conn.commit()
 
+    # 初始化并确保独立的台词专库 (comic_dialogues.db) 就绪
+    init_dialogue_db(_DIALOGUE_DB_PATH)
+
+
+def init_dialogue_db(dialogue_db_path: Path | None = None) -> None:
+    """初始化独立的台词全文检索专库 (comic_dialogues.db) 并自动迁移旧单库数据。"""
+    if dialogue_db_path is not None:
+        set_dialogue_db_path(dialogue_db_path)
+
+    _DIALOGUE_DB_PATH.parent.mkdir(parents=True, exist_ok=True)
+    with get_dialogue_db() as conn:
+        conn.executescript(
+            """
             CREATE VIRTUAL TABLE IF NOT EXISTS comic_dialogues_fts USING fts5(
                 source UNINDEXED,
                 source_id UNINDEXED,
@@ -204,15 +258,43 @@ def init_db(db_path: Path | None = None) -> None:
             );
             """
         )
-        # Migrations: ensure max_devices, pin_hash, pin_salt columns exist for existing DB
-        cols = [r["name"] for r in conn.execute("PRAGMA table_info(guest_passes)").fetchall()]
-        if "max_devices" not in cols:
-            conn.execute("ALTER TABLE guest_passes ADD COLUMN max_devices INTEGER NOT NULL DEFAULT 2")
-        if "pin_hash" not in cols:
-            conn.execute("ALTER TABLE guest_passes ADD COLUMN pin_hash TEXT NOT NULL DEFAULT ''")
-        if "pin_salt" not in cols:
-            conn.execute("ALTER TABLE guest_passes ADD COLUMN pin_salt TEXT NOT NULL DEFAULT ''")
         conn.commit()
+
+    # 平滑迁移：若旧版 comic_shelf.db 中仍残留 comic_dialogues_fts，自动迁移并原子清除
+    if _DB_PATH.is_file():
+        try:
+            with sqlite3.connect(_DB_PATH, timeout=5.0) as shelf_conn:
+                shelf_conn.row_factory = sqlite3.Row
+                has_fts = shelf_conn.execute(
+                    "SELECT 1 FROM sqlite_master WHERE type='table' AND name='comic_dialogues_fts'"
+                ).fetchone()
+                if has_fts:
+                    with get_dialogue_db() as diag_conn:
+                        target_cnt = diag_conn.execute("SELECT count(*) FROM comic_dialogues_fts").fetchone()[0]
+                        if target_cnt == 0:
+                            old_rows = shelf_conn.execute(
+                                "SELECT source, source_id, page_index, bubble_id, text, lang, box_json FROM comic_dialogues_fts"
+                            ).fetchall()
+                            if old_rows:
+                                diag_conn.executemany(
+                                    "INSERT INTO comic_dialogues_fts (source, source_id, page_index, bubble_id, text, lang, box_json) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                                    [tuple(r) for r in old_rows],
+                                )
+                            old_meta = shelf_conn.execute(
+                                "SELECT source, source_id, last_synced_mtime, dialogue_count, updated_at FROM comic_ocr_sync_meta"
+                            ).fetchall()
+                            if old_meta:
+                                diag_conn.executemany(
+                                    "INSERT OR REPLACE INTO comic_ocr_sync_meta (source, source_id, last_synced_mtime, dialogue_count, updated_at) VALUES (?, ?, ?, ?, ?)",
+                                    [tuple(r) for r in old_meta],
+                                )
+                    shelf_conn.execute("DROP TABLE IF EXISTS comic_dialogues_fts")
+                    shelf_conn.execute("DROP TABLE IF EXISTS comic_ocr_sync_meta")
+                    shelf_conn.commit()
+                    logger.info("Successfully migrated dialogue FTS tables to independent comic_dialogues.db")
+        except Exception as e:
+            logger.warning(f"Note: dialogue db migration check skipped or encountered non-fatal error: {e}")
+
 
 
 # ----------------------------------------------------------------------
@@ -1177,7 +1259,7 @@ def sync_comic_dialogues(source: str, source_id: str, force: bool = False) -> in
 
     # 增量检查：若非 force 模式，比对元数据表；若 OCR 文件自上次入库以来未发生任何变动，直接返回已有计数（0 毫秒跳过）
     if not force:
-        with get_db() as conn:
+        with get_dialogue_db() as conn:
             row = conn.execute(
                 "SELECT last_synced_mtime, dialogue_count FROM comic_ocr_sync_meta WHERE source = ? AND source_id = ?",
                 (source, source_id),
@@ -1189,7 +1271,7 @@ def sync_comic_dialogues(source: str, source_id: str, force: bool = False) -> in
                 if stored_mtime >= latest_mtime and (latest_mtime > 0 or stored_count == 0):
                     return stored_count
 
-    with get_db() as conn:
+    with get_dialogue_db() as conn:
         with conn:
             conn.execute(
                 "DELETE FROM comic_dialogues_fts WHERE source = ? AND source_id = ?",
@@ -1217,7 +1299,7 @@ def sync_comic_dialogues(source: str, source_id: str, force: bool = False) -> in
 
 def delete_comic_dialogues(source: str, source_id: str) -> None:
     """删除指定漫画的所有台词全文索引与增量元数据。"""
-    with get_db() as conn:
+    with get_dialogue_db() as conn:
         with conn:
             conn.execute(
                 "DELETE FROM comic_dialogues_fts WHERE source = ? AND source_id = ?",
@@ -1235,7 +1317,7 @@ def cleanup_orphan_comic_dialogues(data_dir: Path | None = None) -> int:
         data_dir = DATA_DIR
     data_resolved = data_dir.resolve()
     cleaned = 0
-    with get_db() as conn:
+    with get_dialogue_db() as conn:
         rows = conn.execute("SELECT DISTINCT source, source_id FROM comic_dialogues_fts").fetchall()
         for r in rows:
             src, sid = r["source"], r["source_id"]
@@ -1257,13 +1339,13 @@ def search_dialogues(
 ) -> list[dict[str, Any]]:
     """检索台词全文索引，支持简繁双向展开、模糊分词与访客权限过滤。"""
     clean_query = query.strip()
-    if not clean_query:
+    # 短词全表扫描防爆守卫：少于 2 个字符直接阻断，杜绝无索引全表扫描
+    if len(clean_query) < 2:
         return []
 
     from .zh_conv import expand_search_variants
 
     variants = expand_search_variants(clean_query)
-    is_not_guest = 0 if is_guest else 1
     if not isinstance(limit, int):
         try:
             limit = int(limit)
@@ -1272,9 +1354,10 @@ def search_dialogues(
     limit = max(1, min(limit, 100))
 
     match_variants = [v for v in variants if len(v) >= 3]
-    rows: list[sqlite3.Row] = []
+    diag_rows: list[sqlite3.Row] = []
+    fetch_limit = min(limit * 3, 150)
 
-    with get_db() as conn:
+    with get_dialogue_db() as conn:
         if match_variants:
             match_terms = ['"' + v.replace('"', '""') + '"' for v in match_variants]
             match_expr = " OR ".join(match_terms)
@@ -1287,39 +1370,29 @@ def search_dialogues(
                     f.text,
                     f.lang,
                     f.box_json,
-                    snippet(comic_dialogues_fts, 4, '<mark>', '</mark>', '...', 20) as snippet_text,
-                    ci.display_id,
-                    ci.title,
-                    ci.cover_indices_json,
-                    ci.authors_json,
-                    ci.hidden_from_guest
+                    snippet(comic_dialogues_fts, 4, '<mark>', '</mark>', '...', 20) as snippet_text
                 FROM comic_dialogues_fts f
-                LEFT JOIN comics_index ci
-                    ON ci.source = f.source AND ci.source_id = f.source_id
                 WHERE comic_dialogues_fts MATCH :match_expr
                   AND (:source IS NULL OR f.source = :source)
-                  AND (:is_not_guest OR (ci.source IS NOT NULL AND COALESCE(ci.hidden_from_guest, 0) = 0))
-                LIMIT :limit
+                LIMIT :fetch_limit
             """
             try:
-                rows = conn.execute(
+                diag_rows = conn.execute(
                     sql_match,
                     {
                         "match_expr": match_expr,
                         "source": source,
-                        "is_not_guest": is_not_guest,
-                        "limit": limit,
+                        "fetch_limit": fetch_limit,
                     },
                 ).fetchall()
             except sqlite3.OperationalError:
-                rows = []
+                diag_rows = []
 
-        if not rows:
+        if not diag_rows and len(clean_query) >= 2:
             like_clauses = []
             params: dict[str, Any] = {
                 "source": source,
-                "is_not_guest": is_not_guest,
-                "limit": limit,
+                "fetch_limit": fetch_limit,
             }
             for i, v in enumerate(variants):
                 param_name = f"like_{i}"
@@ -1336,66 +1409,100 @@ def search_dialogues(
                     f.text,
                     f.lang,
                     f.box_json,
-                    '' as snippet_text,
-                    ci.display_id,
-                    ci.title,
-                    ci.cover_indices_json,
-                    ci.authors_json,
-                    ci.hidden_from_guest
+                    '' as snippet_text
                 FROM comic_dialogues_fts f
-                LEFT JOIN comics_index ci
-                    ON ci.source = f.source AND ci.source_id = f.source_id
                 WHERE ({where_text})
                   AND (:source IS NULL OR f.source = :source)
-                  AND (:is_not_guest OR (ci.source IS NOT NULL AND COALESCE(ci.hidden_from_guest, 0) = 0))
-                LIMIT :limit
+                LIMIT :fetch_limit
             """
-            rows = conn.execute(sql_like, params).fetchall()
+            diag_rows = conn.execute(sql_like, params).fetchall()
 
-        results: list[dict[str, Any]] = []
-        for r in rows:
-            box = []
-            if r["box_json"]:
-                try:
-                    box = json.loads(r["box_json"])
-                except Exception:
-                    box = []
+    if not diag_rows:
+        return []
 
-            cover_indices = []
-            if r["cover_indices_json"]:
-                try:
-                    cover_indices = json.loads(r["cover_indices_json"])
-                except Exception:
-                    cover_indices = []
-            first_idx = cover_indices[0] if cover_indices else 0
-            cover = f"/api/library/{r['source']}/{r['source_id']}/covers/{first_idx}/file"
+    # 跨库轻量关联：从 comic_shelf.db 查询对应漫画的元数据与访客隐藏标记
+    unique_keys = list({(r["source"], r["source_id"]) for r in diag_rows})
+    comics_map: dict[tuple[str, str], sqlite3.Row] = {}
 
-            authors = []
-            if r["authors_json"]:
-                try:
-                    authors = json.loads(r["authors_json"])
-                except Exception:
-                    authors = []
+    with get_db() as shelf_conn:
+        if len(unique_keys) == 1:
+            k_src, k_sid = unique_keys[0]
+            row = shelf_conn.execute(
+                "SELECT source, source_id, display_id, title, cover_indices_json, authors_json, hidden_from_guest FROM comics_index WHERE source = ? AND source_id = ?",
+                (k_src, k_sid),
+            ).fetchone()
+            if row:
+                comics_map[(k_src, k_sid)] = row
+        elif len(unique_keys) > 1:
+            where_or = " OR ".join(["(source = ? AND source_id = ?)"] * len(unique_keys))
+            flat_params: list[str] = []
+            for k_src, k_sid in unique_keys:
+                flat_params.extend([k_src, k_sid])
+            sql_ci = f"""
+                SELECT source, source_id, display_id, title, cover_indices_json, authors_json, hidden_from_guest
+                FROM comics_index
+                WHERE {where_or}
+            """
+            for row in shelf_conn.execute(sql_ci, flat_params).fetchall():
+                comics_map[(row["source"], row["source_id"])] = row
 
-            raw_text = r["text"] or ""
-            snip = r["snippet_text"] if "snippet_text" in r.keys() and r["snippet_text"] else ""
-            if not snip or "<mark>" not in snip:
-                snip = _make_snippet(raw_text, variants)
+    results: list[dict[str, Any]] = []
+    for r in diag_rows:
+        src, sid = r["source"], r["source_id"]
+        ci = comics_map.get((src, sid))
+        if is_guest and ci and ci["hidden_from_guest"]:
+            continue
+        if is_guest and not ci:
+            continue
 
-            results.append({
-                "source": r["source"],
-                "source_id": r["source_id"],
-                "display_id": r["display_id"] or r["source_id"],
-                "title": r["title"] or r["source_id"],
-                "page_index": int(r["page_index"]),
-                "bubble_id": r["bubble_id"],
-                "text": raw_text,
-                "snippet": snip,
-                "box": box,
-                "lang": r["lang"] or "zh",
-                "cover": cover,
-                "authors": authors,
-            })
-        return results
+        box = []
+        if r["box_json"]:
+            try:
+                box = json.loads(r["box_json"])
+            except Exception:
+                box = []
+
+        cover_indices = []
+        if ci and ci["cover_indices_json"]:
+            try:
+                cover_indices = json.loads(ci["cover_indices_json"])
+            except Exception:
+                cover_indices = []
+        first_idx = cover_indices[0] if cover_indices else 0
+        cover = f"/api/library/{src}/{sid}/covers/{first_idx}/file"
+
+        authors = []
+        if ci and ci["authors_json"]:
+            try:
+                authors = json.loads(ci["authors_json"])
+            except Exception:
+                authors = []
+
+        raw_text = r["text"] or ""
+        snip = r["snippet_text"] if "snippet_text" in r.keys() and r["snippet_text"] else ""
+        if not snip or "<mark>" not in snip:
+            snip = _make_snippet(raw_text, variants)
+
+        display_id = ci["display_id"] if ci and ci["display_id"] else sid
+        title = ci["title"] if ci and ci["title"] else sid
+
+        results.append({
+            "source": src,
+            "source_id": sid,
+            "display_id": display_id,
+            "title": title,
+            "page_index": int(r["page_index"]),
+            "bubble_id": r["bubble_id"],
+            "text": raw_text,
+            "snippet": snip,
+            "box": box,
+            "lang": r["lang"] or "zh",
+            "cover": cover,
+            "authors": authors,
+        })
+        if len(results) >= limit:
+            break
+
+    return results
 
 

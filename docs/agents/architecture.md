@@ -40,6 +40,10 @@ FastAPI (backend/app/main.py)
    │     picacg.py          # 哔咔实现（App REST API + 3-CDN 容灾）
    │     registry.py        # 注册表
    │
+   ├── db.py                # 双轨 SQLite 存储分库（读写事务完全物理隔离）
+   │     ├── comic_shelf.db       # 核心用户状态、通行证、阅读进度、藏书影子索引 (~5MB)
+   │     └── comic_dialogues.db   # 台词全文检索专库（FTS5 Trigram 倒排索引，独立写事务，~500MB+）
+   │
    ├── gate.py              # 下载并发闸门控制
    ├── jobs.py              # 后台批量缓存任务管理
    ├── events.py            # 单向系统事件流（SSE，广播版本更新/书库变动/AI进度）
@@ -228,7 +232,8 @@ JmImageTool.decode_and_save(num, source_image, save_path)
 ### 7.1 当前存储机制（本地优先 + 零依赖）
 
 - **核心书库**：采用 **文件系统分片 + 原子 JSON（`album.json` / `remote.json`）+ 内存二级缓存（`_meta_cache`）**，保持本地优先与自包含，脱离数据库亦可独立迁移与阅读。
-- **状态与通行证**：采用 **轻量 SQLite WAL（`comic_shelf.db`）**，管理动态访客通行证（`guest_passes`）、按用户红心收藏（`user_favorites`）与跨端阅读进度（`user_reading_progress`），彻底实现个性化数据隔离。
+- **状态与通行证**：采用 **轻量 SQLite WAL（`comic_shelf.db`）**，管理动态访客通行证（`guest_passes`）、按用户红心收藏（`user_favorites`）、跨端阅读进度（`user_reading_progress`）以及藏书元数据影子索引（`comics_index`），体积小巧（~5MB），备份极速。
+- **台词全文检索专库**：采用 **独立 SQLite WAL 专库（`comic_dialogues.db`）**，管理 `comic_dialogues_fts`（Trigram FTS5 倒排索引）与伴生同步元数据（`comic_ocr_sync_meta`）。与主库实现写事务与存储容量的双重物理隔离，彻底根治万级十万级下批量建索引导致的写锁冲突。
 - **识图模块**：采用 **SQLite（`imsearch.db`）+ 二进制倒排索引（`invlists.bin`）**。
 
 ### 7.2 性能表现与规模分层评估
@@ -236,9 +241,11 @@ JmImageTool.decode_and_save(num, source_image, save_path)
 - **千本~~万本级（1,000 ~ 10,000 本，数万~~数十万页，个人收藏基线）**：
   - **核心书库**：内存占用约 20~80MB，单本详情与图片读取直接走文件系统 O(1) 路径命中，延迟 <5ms；书架列表全内存秒级过滤。
   - **以图搜图**：特征库体积约数百 MB，检索延迟 10~50ms，单机极速运行。
+  - **台词全文检索**：伴生 JSON 分层按册收敛，FTS5 数据库约 300~~500MB，Trigram 倒排检索延迟 5~~15ms；短词防爆守卫（< 2 字符拦截）消灭无索引全表扫描。
 - **十万本级（100,000 本，数百万页，大型 NAS / 私人资料库）**：
   - **核心书库**：冷启动全量扫描耗时 ~~1-2 秒，内存占用约 300~~600MB；详情与阅读完全不受总书量影响（直接路径查找）。
   - **以图搜图**：SQLite 与倒排索引膨胀至数 GB，内存占用约 1~~2GB，单次检索约 50~~150ms。
+  - **台词全文检索**：FTS5 数据库约 3~~5GB，倒排求交检索 20~~60ms；双库物理解耦保证海量 OCR 数据同步期间读者端翻页与喜欢写入零等待（零 `SQLITE_BUSY` 冲突）。
 - **千万本级（10,000,000 本，数亿页，超大规模极端场景）**：
   - **文件系统瓶颈**：单一目录（如 `library/jm/`）下数千万个子文件夹会导致 ext4/ZFS 目录项遍历变慢，需引入哈希二级分桶（如 `library/jm/ab/cd/<id>/`）；
   - **元数据检索瓶颈**：全量 JSON 无法全驻留内存（需数以十 GB），必须引入 **嵌入式 B-Tree 索引（SQLite / DuckDB / RocksDB）**，书架列表改为 SQL 分页游标；

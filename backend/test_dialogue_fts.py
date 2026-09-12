@@ -75,12 +75,12 @@ def test_dialogue_fts_lifecycle():
         db_mod.set_db_path(temp_db)
         db_mod.init_db(temp_db)
 
-        # 1. Verify FTS5 virtual table exists
-        with db_mod.get_db() as conn:
+        # 1. Verify FTS5 virtual table exists in dedicated dialogue DB
+        with db_mod.get_dialogue_db() as conn:
             row = conn.execute(
                 "SELECT name FROM sqlite_master WHERE type='table' AND name='comic_dialogues_fts'"
             ).fetchone()
-            assert row is not None, "comic_dialogues_fts table must exist"
+            assert row is not None, "comic_dialogues_fts table must exist in dialogue db"
 
         # 2. Setup mock comic files
         library_dir = temp_dir / "library" / "local" / "c_jojo"
@@ -151,7 +151,8 @@ def test_dialogue_fts_lifecycle():
         assert len(res_trad) == 2, f"Expected 2 matches for traditional '最後的波紋', got {len(res_trad)}"
         assert "<mark>" in res_trad[0]["snippet"]
 
-        # 6. Search with short 2-character word (LIKE fallback test)
+        # 6. Search with short 2-character word (LIKE fallback test) & <2 chars guard
+        assert db_mod.search_dialogues(query="波", source=None, limit=10, is_guest=False) == [], "Query < 2 chars must be blocked"
         res_short = db_mod.search_dialogues(query="波纹", source=None, limit=10, is_guest=False)
         assert len(res_short) == 2, f"Expected 2 matches for '波纹', got {len(res_short)}"
         assert "<mark>波纹</mark>" in res_short[0]["snippet"]

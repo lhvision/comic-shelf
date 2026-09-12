@@ -92,14 +92,16 @@ export function useDialogueSearch(options: UseDialogueSearchOptions = {}): UseDi
     const rawQ = overrideQuery !== undefined ? overrideQuery : query.value
     const trimmed = rawQ.trim()
 
-    // 关键词少于 1 个有效字符时重置并关闭
-    if (!trimmed) {
+    // 关键词少于 2 个有效字符时重置（短词全表扫描防爆守卫）
+    if (trimmed.length < 2) {
       abortCurrentRequest()
       results.value = []
       total.value = 0
       isSearching.value = false
       error.value = ''
-      isOpen.value = false
+      if (!trimmed) {
+        isOpen.value = false
+      }
       focusedIndex.value = -1
       return
     }
@@ -182,7 +184,7 @@ export function useDialogueSearch(options: UseDialogueSearchOptions = {}): UseDi
   const open = () => {
     if (query.value.trim()) {
       isOpen.value = true
-      if (results.value.length === 0 && !isSearching.value) {
+      if (results.value.length === 0 && !isSearching.value && query.value.trim().length >= 2) {
         void executeSearch()
       }
     }

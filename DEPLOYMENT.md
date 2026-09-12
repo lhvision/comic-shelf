@@ -300,7 +300,8 @@ docker compose up -d paper-room
 
 ```text
 backend/data/
-├── comic_shelf.db              # SQLite 核心状态库（访客通行证、阅读进度、台词 FTS5 倒排索引）
+├── comic_shelf.db              # SQLite 核心状态库（访客通行证、阅读进度、藏书影子索引，~5MB）
+├── comic_dialogues.db          # 台词全文检索专库（FTS5 Trigram 倒排索引、OCR 增量元数据，独立物理隔离，~500MB+）
 ├── jm_html_domain.json          # 禁漫可用域名缓存
 ├── corpus/                     # 领域语料库
 │   └── galgame/                # Galgame 双语剧本资产 (*.jsonl)
@@ -318,13 +319,14 @@ backend/data/
     └── local/                  # 本地自建图集 / 视频拆帧
 ```
 
-- **零依赖单点备份**：备份或迁移时，**只需复制整个 `backend/data/` 目录**（在 NAS 环境下对应挂载卷 `/mnt/nas_manga`）。
+- **零依赖单点备份**：备份或迁移时，**只需复制整个 `backend/data/` 目录**（在 NAS 环境下对应挂载卷 `/mnt/nas_manga`）；核心用户状态库 `comic_shelf.db` 仅几兆字节，极速快照。
+- **专库垂直解耦（Zero Lock Contention）**：台词全文检索与 OCR 写入独立收敛于 `comic_dialogues.db`，万级与十万级规模下数百万行台词的批量插入完全不占用主库写锁，彻底避免访客翻页或收藏时的锁冲突。
 - **跨平台兼容**：元数据采用向前兼容的 JSON 与单文件 SQLite WAL 架构，直接复制粘贴或 NAS 快照即可在其他设备完美还原。
 
 ### 5.1 漫画台词全文索引与 OCR 提取流水线（`scripts/ocr.sh` & `scripts/sync_ocr.py`）
 
 纸间支持 **“高性能算力机提取 OCR + 低功耗 NAS 存储与服务”** 的算存分离架构（Compute-Storage Decoupling）。
-高性能电脑（带 GPU/多核 CPU）通过挂载 `/mnt/nas_manga` 跑 OCR 并生成伴生文件 `{index}.ocr.json`，处理完成后通知 NAS 更新 SQLite FTS5 索引：
+高性能电脑（带 GPU/多核 CPU）通过挂载 `/mnt/nas_manga` 跑 OCR 并生成伴生文件 `{index}.ocr.json`，处理完成后通知 NAS 更新 `comic_dialogues.db` 中的 SQLite FTS5 索引：
 
 1. **高性能机一键状态巡检与依赖安装**：
 

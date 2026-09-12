@@ -51,7 +51,14 @@ def main() -> None:
 
     # Set DB path and initialize
     os.environ["COMIC_SHELF_DATA"] = str(data_dir)
-    from app.db import cleanup_orphan_comic_dialogues, get_db, init_db, set_db_path, sync_comic_dialogues
+    from app.db import (
+        cleanup_orphan_comic_dialogues,
+        get_db,
+        get_dialogue_db,
+        init_db,
+        set_db_path,
+        sync_comic_dialogues,
+    )
 
     db_file = data_dir / "comic_shelf.db"
     set_db_path(db_file)
@@ -92,7 +99,7 @@ def main() -> None:
     fresh_indexed_count = 0
 
     # 预加载已有增量元数据
-    with get_db() as conn:
+    with get_dialogue_db() as conn:
         meta_rows = {
             (r["source"], r["source_id"]): (float(r["last_synced_mtime"]), int(r["dialogue_count"]))
             for r in conn.execute("SELECT source, source_id, last_synced_mtime, dialogue_count FROM comic_ocr_sync_meta")
