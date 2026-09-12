@@ -16,6 +16,8 @@
    - [2.4 `HTMLImageElement.prototype.decode()` — 异步离屏图片解码管线（Baseline 2020）](#24-htmlimageelementprototypedecode--异步离屏图片解码管线baseline-2020)
    - [2.5 `Set.prototype` 原生集合运算 — 零分配标签过滤体系（Baseline 2024）](#25-setprototype-原生集合运算--零分配标签过滤体系baseline-2024)
    - [2.6 `Map.groupBy` / `Object.groupBy` — 声明式多维数据聚合（Baseline 2024）](#26-mapgroupby--objectgroupby--声明式多维数据聚合baseline-2024)
+   - [2.7 `Intl.Collator` — 高性能本地化文本排序与拼音对齐（Baseline 2020）](#27-intlcollator--高性能本地化文本排序与拼音对齐baseline-2020)
+   - [2.8 `WeakMap` 弱引用缓存 — 高频列表检索与多维度元数据无泄漏记忆（Baseline）](#28-weakmap-弱引用缓存--高频列表检索与多维度元数据无泄漏记忆baseline)
 3. [渐进增强特性（Progressive Enhancement & Newly Available）](#3-渐进增强特性progressive-enhancement--newly-available)
    - [3.1 Iterator Helpers — 生成器流式管道与惰性求值（Baseline 2025）](#31-iterator-helpers--生成器流式管道与惰性求值baseline-2025)
    - [3.2 Explicit Resource Management（`using` / `Symbol.dispose`）— 声明式 RAII 作用域资源清理](#32-explicit-resource-managementusing--symboldispose--声明式-raii-作用域资源清理)
@@ -46,6 +48,8 @@
 | **`Set` 集合运算 (`intersection` 等)**  |  122+  |  127+   |  17+   |    ✅ Baseline 2024     |              ✅ 已落地（`TagFilterBar` / `useLibraryFilter`）              |
 | **`Map.groupBy` / `Object.groupBy`**    |  117+  |  119+   | 17.4+  |    ✅ Baseline 2024     |                ✅ 已落地（漫画多章节切片与 Provider 分组）                 |
 | **`HTMLImageElement.decode()`**         |  65+   |   68+   |  11+   |    ✅ Baseline 2020     |               ✅ 已落地（阅读器大图预载管道 / 离线画页解码）               |
+| **`Intl.Collator`**                     |  24+   |   29+   |  10+   |    ✅ Baseline 2020     |          ✅ 已落地（`useLibraryFilter.ts` 中文拼音极速排序引擎）           |
+| **`WeakMap` 弱引用缓存模式**            |  36+   |   6+    |   8+   |       ✅ Baseline       |      ✅ 已落地（`useLibraryFilter.ts` 藏书全文字段小写搜索索引缓存）       |
 | **Import Attributes (`with { type }`)** |  125+  |  137+   | 17.2+  |    ✅ Baseline 2024     |                📋 路线图（模块化 JSON 元数据与多语言字典）                 |
 | **OPFS (`getDirectory()`)**             |  86+   |  111+   | 15.2+  |    ✅ Baseline 2023     | 📋 储备特性（单体大文件流式落盘/整本离线包/字体；网络图片走 CacheStorage） |
 | **Iterator Helpers (`.map()/.take()`)** |  122+  |  131+   | 18.4+  |    ✅ Baseline 2025     |                📋 路线图（IndexedDB 游标与分批上传流水线）                 |
@@ -326,6 +330,66 @@ const byChapter = pages.reduce<Record<string, Page[]>>((acc, p) => {
 
 // ✅ 现代标准写法：语义清晰，单次扫描完成分组
 const pagesByChapter = Map.groupBy(pages, (page) => page.chapterId)
+```
+
+---
+
+### 2.7 `Intl.Collator` — 高性能本地化文本排序与拼音对齐（Baseline 2020）
+
+**MDN**：[Intl.Collator](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Intl/Collator)  
+**Baseline**：2020 · Chrome 24+ · Firefox 29+ · Safari 10+ · Node.js 0.12+
+
+#### 解决的痛点
+
+在书架成千上万本藏书按拼音名称排序时，传统代码常在 `sort()` 比较器内部直接调用 `a.title.localeCompare(b.title, 'zh-CN')`。由于每次比较都会重新创建或查找底层 C++ 国际化校对配置，导致排序变慢 10~30 倍。
+
+单例化复用 `Intl.Collator` 后，比较器直接调用预初始化的 `zhCollator.compare`：
+
+```ts
+// ❌ 传统低效写法：sort 循环内部重复初始化校对器
+list.sort((a, b) => a.title.localeCompare(b.title, 'zh-CN'))
+
+// ✅ 纸间落地范式（src/composables/useLibraryFilter.ts）：模块级单例化复用，V8 引擎下提速数十倍
+const zhCollator = new Intl.Collator('zh-CN')
+list.sort((a, b) => zhCollator.compare(a.title, b.title))
+```
+
+---
+
+### 2.8 `WeakMap` 弱引用缓存 — 高频列表检索与多维度元数据无泄漏记忆（Baseline）
+
+**MDN**：[WeakMap](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/WeakMap)  
+**Baseline**：全平台原生支持
+
+#### 解决的痛点
+
+书架搜索过滤需要在每次击键时比对标题、作品、作者、角色、标签以及章节标题等多维字段。如果每次过滤都把这些数组项重新小写化并遍历，单次按键在千本藏书下会瞬间产生上万个临时小写字符串，造成严重的 GC 掉帧。
+
+通过 `WeakMap` 绑定数据对象生命周期，在首次检索时一次性提取拼接文本并缓存。当藏书被移除或重载时，弱引用缓存自动垃圾回收，杜绝内存泄漏：
+
+```ts
+// ✅ 纸间落地范式（src/composables/useLibraryFilter.ts）：零内存泄漏的击键级搜索极速缓存
+const itemSearchTextCache = new WeakMap<LibrarySummary, string>()
+
+function getSearchText(item: LibrarySummary): string {
+  if (!item) return ''
+  let cached = itemSearchTextCache.get(item)
+  if (cached !== undefined) return cached
+
+  const parts = [
+    item.title || '',
+    item.display_id || '',
+    ...(item.authors || []),
+    ...(item.works || []),
+    ...(item.actors || []),
+    ...(item.tags || []),
+    ...(item.chapter_titles || []),
+  ]
+  // 采用换行符分隔，杜绝跨字段词语意外粘连，并转换为小写
+  cached = parts.join('\n').toLocaleLowerCase()
+  itemSearchTextCache.set(item, cached)
+  return cached
+}
 ```
 
 ---

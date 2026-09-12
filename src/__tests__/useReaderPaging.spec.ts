@@ -164,4 +164,38 @@ describe('useReaderPaging - End Card Navigation Integration', () => {
     expect(paging.currentGroupLabel.value).toBe('—')
     expect(paging.groupFirstPage(0)).toBe(1)
   })
+
+  it('calculates groupIndexForPage accurately in O(1) for single and multi-page layouts', () => {
+    const detail = ref<ComicDetail | null>(createMockDetail(10))
+    const scopeId = ref<string | null>(null)
+    const settings = ref<ReaderSettings>({ ...DEFAULT_SETTINGS, pagesPerView: 2 })
+    const currentPage = ref(1)
+    const currentGroupIndex = ref(0)
+
+    const paging = useReaderPaging({
+      detail,
+      scopeId,
+      settings,
+      currentPage,
+      currentGroupIndex,
+    })
+
+    // 10 pages, ppv = 2 -> 5 groups: [1,2], [3,4], [5,6], [7,8], [9,10]
+    expect(paging.groupIndexForPage(1)).toBe(0)
+    expect(paging.groupIndexForPage(2)).toBe(0)
+    expect(paging.groupIndexForPage(3)).toBe(1)
+    expect(paging.groupIndexForPage(4)).toBe(1)
+    expect(paging.groupIndexForPage(5)).toBe(2)
+    expect(paging.groupIndexForPage(9)).toBe(4)
+    expect(paging.groupIndexForPage(10)).toBe(4)
+    // Out of bounds clamping
+    expect(paging.groupIndexForPage(0)).toBe(0)
+    expect(paging.groupIndexForPage(99)).toBe(4)
+
+    // Switch to single-page mode (ppv = 1)
+    settings.value = { ...DEFAULT_SETTINGS, pagesPerView: 1 }
+    expect(paging.groupIndexForPage(1)).toBe(0)
+    expect(paging.groupIndexForPage(5)).toBe(4)
+    expect(paging.groupIndexForPage(10)).toBe(9)
+  })
 })

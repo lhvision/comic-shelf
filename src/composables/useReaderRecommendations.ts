@@ -89,15 +89,16 @@ export function computeRecommendations(
       score += 1
     }
 
-    return { item, score }
+    const importedTime = item.imported_at ? Date.parse(item.imported_at) || 0 : 0
+    return { item, score, importedTime }
   })
 
-  // 3. 排序：得分从高到低，得分相同时按最新收录时间倒序
+  // 3. 排序：得分从高到低，得分相同时按最新收录时间倒序（纯数字比较，杜绝排序循环中成千上万次 new Date 解析）
   scored.sort((a, b) => {
     if (b.score !== a.score) {
       return b.score - a.score
     }
-    return new Date(b.item.imported_at || 0).getTime() - new Date(a.item.imported_at || 0).getTime()
+    return b.importedTime - a.importedTime
   })
 
   return scored.slice(0, count).map((s) => s.item)

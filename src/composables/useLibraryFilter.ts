@@ -41,6 +41,34 @@ export interface UseLibraryFilterOptions {
  * 书架筛选与检索 Composable：
  * 负责来源过滤、关键词模糊检索、标签过滤、只看喜欢与多模式排序。
  */
+const zhCollator = new Intl.Collator('zh-CN')
+
+/**
+ * 缓存每本漫画的小写搜索文本组合（WeakMap 随藏书对象生命周期自愈回收），
+ * 彻底消除每次按键对 tags / authors / works / chapter_titles 的万次重复数组遍历与字符串转换。
+ */
+const itemSearchTextCache = new WeakMap<LibrarySummary, string>()
+
+function getSearchText(item: LibrarySummary): string {
+  if (!item) return ''
+  let cached = itemSearchTextCache.get(item)
+  if (cached !== undefined) return cached
+
+  const parts = [
+    item.title || '',
+    item.display_id || '',
+    ...(item.authors || []),
+    ...(item.works || []),
+    ...(item.actors || []),
+    ...(item.tags || []),
+    ...(item.chapter_titles || []),
+  ]
+  // 采用换行符作为分隔符，杜绝关键词跨字段边界意外连词匹配
+  cached = parts.join('\n').toLocaleLowerCase()
+  itemSearchTextCache.set(item, cached)
+  return cached
+}
+
 export function useLibraryFilter(
   items: Ref<LibrarySummary[]>,
   activeSource: Ref<string>,
@@ -111,16 +139,7 @@ export function useLibraryFilter(
 
     // First, base filter by search text, tag, favorite, reading status
     let list = sourceItems.value.filter((item) => {
-      const matchSearch =
-        needle.length === 0 ||
-        item.title.toLocaleLowerCase().includes(needle) ||
-        item.display_id.toLocaleLowerCase().includes(needle) ||
-        item.authors.some((value) => value.toLocaleLowerCase().includes(needle)) ||
-        item.works.some((value) => value.toLocaleLowerCase().includes(needle)) ||
-        item.actors.some((value) => value.toLocaleLowerCase().includes(needle)) ||
-        item.tags.some((value) => value.toLocaleLowerCase().includes(needle)) ||
-        // T11 规范：让「第 5 话」等章节标题也能命中前端书架搜索，与服务端 SQL LIKE 对齐
-        Boolean(item.chapter_titles?.some((value) => value.toLocaleLowerCase().includes(needle)))
+      const matchSearch = needle.length === 0 || getSearchText(item).includes(needle)
 
       const matchTag = activeTag.value === '' || item.tags.includes(activeTag.value)
       const matchFavorite = !favoritesOnly.value || item.favorite
@@ -155,7 +174,7 @@ export function useLibraryFilter(
     } else {
       switch (sortBy.value) {
         case 'title':
-          list.sort((a, b) => a.title.localeCompare(b.title, 'zh-CN'))
+          list.sort((a, b) => zhCollator.compare(a.title, b.title))
           break
         case 'pages':
           list.sort((a, b) => b.page_count - a.page_count)
@@ -168,10 +187,22 @@ export function useLibraryFilter(
           )
           break
         default: {
-          const activeList = list.filter((item) => !isCompletedComic(item))
-          const completedList = list.filter((item) => isCompletedComic(item))
+          const activeList: LibrarySummary[] = []
+          const completedList: LibrarySummary[] = []
+          const timeMap = new Map<LibrarySummary, number>()
+
+          for (const item of list) {
+            if (isCompletedComic(item)) {
+              completedList.push(item)
+            } else {
+              activeList.push(item)
+            }
+            timeMap.set(item, item.imported_at ? Date.parse(item.imported_at) || 0 : 0)
+          }
+
           const sortByImportedDesc = (a: LibrarySummary, b: LibrarySummary) =>
-            new Date(b.imported_at || 0).getTime() - new Date(a.imported_at || 0).getTime()
+            (timeMap.get(b) ?? 0) - (timeMap.get(a) ?? 0)
+
           activeList.sort(sortByImportedDesc)
           completedList.sort(sortByImportedDesc)
           list = [...activeList, ...completedList]

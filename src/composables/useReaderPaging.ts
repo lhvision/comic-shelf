@@ -144,11 +144,18 @@ export function useReaderPaging(options: UseReaderPagingOptions) {
   const atLastGroup = computed(() => currentGroupIndex.value >= lastGroupIndex.value)
 
   function groupIndexForPage(page: number): number {
-    const groups = pageGroups.value
-    for (let index = 0; index < groups.length; index += 1) {
-      if (groups[index]!.includes(page)) return index
-    }
-    return 0
+    const pages = scopedPages.value
+    if (pages.length === 0) return 0
+    const first = pages[0]!
+    const last = pages[pages.length - 1]!
+    const ppv = currentSettings.value.pagesPerView || 1
+    const totalGroups = Math.max(0, Math.ceil(pages.length / ppv) - 1)
+
+    if (page <= first) return 0
+    if (page >= last) return totalGroups
+
+    const idx = Math.floor((page - first) / ppv)
+    return Math.min(idx, totalGroups)
   }
 
   function groupFirstPage(groupIndex: number): number {

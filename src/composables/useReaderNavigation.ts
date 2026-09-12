@@ -11,7 +11,7 @@
  * 6. 跨章节边界切入（`goNextChapter` / `goPrevChapter`）：自动维护 `?chapter=` 作用域与 URL 替换。
  */
 
-import { getCurrentScope, onScopeDispose, ref, type ComputedRef, type Ref } from 'vue'
+import { getCurrentScope, onScopeDispose, ref, watch, type ComputedRef, type Ref } from 'vue'
 import type { Router } from 'vue-router'
 import { useDebounceFn, useTimeoutFn } from '@vueuse/core'
 import { pageFileUrl } from '@/api/client'
@@ -56,6 +56,136 @@ export interface UseReaderNavigationOptions {
   scopeId: Ref<string | null>
   /** 路由实例 */
   router: Router
+}
+
+/**
+ * 局部邻域探测 + 二分查找收敛：定位当前视口最临近的分屏分组索引。
+ * 彻底消除 querySelectorAll 全表扫描与 900+ 节点 offsetTop 强制同步重排 (PITFALLS #86)。
+ *
+ * @param el 滚动容器 DOM
+ * @param position 当前滚动距离（scrollTop 或 scrollLeft）
+ * @param max 最大可滚动距离
+ * @param horizontal 是否为横向排版
+ * @param currentIdx 当前活跃分组索引
+ * @param lastIdx 最后一组分组索引
+ * @param isContinuous 是否为竖向连续条漫模式
+ */
+function resolveNearestGroupIndex(
+  el: HTMLElement,
+  position: number,
+  max: number,
+  horizontal: boolean,
+  currentIdx: number,
+  lastIdx: number,
+  isContinuous: boolean,
+  rtl = false,
+): number {
+  if (isContinuous) {
+    const readLine = position + el.clientHeight * 0.4
+
+    // 1. 局部邻域极速探测（针对平滑连续滚动，99% 命中当前页或前后 2 页，仅需 1~3 次轻量查询）
+    const probeCandidates = [
+      currentIdx,
+      currentIdx + 1,
+      currentIdx - 1,
+      currentIdx + 2,
+      currentIdx - 2,
+    ]
+    for (const idx of probeCandidates) {
+      if (idx < 0 || idx > lastIdx) continue
+      const spread = el.querySelector<HTMLElement>(`[data-group-index="${idx}"]`)
+      if (!spread) continue
+      const top = spread.offsetTop
+      const bottom = top + spread.offsetHeight
+      if (readLine >= top && readLine <= bottom) {
+        return idx
+      }
+    }
+
+    // 2. 大跨度跳转（拖拽滚动条滑块）：先以滚动百分比插值估算基准
+    if (max > 0) {
+      const ratio = rtl ? 1 - position / max : position / max
+      const estimated = Math.max(0, Math.min(lastIdx, Math.round(ratio * lastIdx)))
+      const estimatedCandidates = [
+        estimated,
+        estimated - 1,
+        estimated + 1,
+        estimated - 2,
+        estimated + 2,
+      ]
+      for (const idx of estimatedCandidates) {
+        if (idx < 0 || idx > lastIdx) continue
+        const spread = el.querySelector<HTMLElement>(`[data-group-index="${idx}"]`)
+        if (!spread) continue
+        const top = spread.offsetTop
+        const bottom = top + spread.offsetHeight
+        if (readLine >= top && readLine <= bottom) {
+          return idx
+        }
+      }
+    }
+
+    // 3. 二分查找终极收敛（千页规模下最多仅探测 log2(N) ≈ 10 次，绝无全量 O(N) 重排）
+    let low = 0
+    let high = lastIdx
+    let bestIdx = currentIdx
+    let bestDist = Number.POSITIVE_INFINITY
+
+    while (low <= high) {
+      const mid = Math.floor((low + high) / 2)
+      const spread = el.querySelector<HTMLElement>(`[data-group-index="${mid}"]`)
+      if (!spread) {
+        break
+      }
+      const top = spread.offsetTop
+      const bottom = top + spread.offsetHeight
+      if (readLine >= top && readLine <= bottom) {
+        return mid
+      }
+      const midCenter = top + spread.offsetHeight / 2
+      const dist = Math.abs(midCenter - readLine)
+      if (dist < bestDist) {
+        bestDist = dist
+        bestIdx = mid
+      }
+      if (readLine < top) {
+        high = mid - 1
+      } else {
+        low = mid + 1
+      }
+    }
+    return bestIdx
+  }
+
+  // 翻页模式（竖向翻页 / 横向翻页）：最临近单屏吸附
+  const probeCandidates = [currentIdx, currentIdx + 1, currentIdx - 1]
+  let bestDist = Number.POSITIVE_INFINITY
+  let bestIdx = currentIdx
+
+  for (const idx of probeCandidates) {
+    if (idx < 0 || idx > lastIdx) continue
+    const spread = el.querySelector<HTMLElement>(`[data-group-index="${idx}"]`)
+    if (!spread) continue
+    const spreadPos = horizontal ? spread.offsetLeft : spread.offsetTop
+    const dist = Math.abs(spreadPos - position)
+    if (dist < bestDist) {
+      bestDist = dist
+      bestIdx = idx
+    }
+  }
+
+  // 大跨度跳转（拖动滚动条）兜底：直接根据位置估算
+  const pageSize = horizontal ? el.clientWidth : el.clientHeight
+  if (bestDist > pageSize * 1.5 && max > 0) {
+    const ratio = rtl ? 1 - position / max : position / max
+    const estimated = Math.max(0, Math.min(lastIdx, Math.round(ratio * lastIdx)))
+    const spread = el.querySelector<HTMLElement>(`[data-group-index="${estimated}"]`)
+    if (spread) {
+      return estimated
+    }
+  }
+
+  return bestIdx
 }
 
 /**
@@ -207,66 +337,40 @@ export function useReaderNavigation(options: UseReaderNavigationOptions) {
     const rawProgress = max <= 0 ? 1 : Math.min(1, Math.max(0, position / max))
     progressValue.value = rtl ? 1 - rawProgress : rawProgress
 
-    const spreads = [...el.querySelectorAll<HTMLElement>('[data-group-index]')]
     let nearest = currentGroupIndex.value
+    const lastIdx = Math.max(0, lastGroupIndex.value)
 
     // 1. 绝对边界钳制：若已抵达物理底端/顶端安全区，确定性夹紧至首末分屏
     if (rtl) {
       if (position <= 24) {
-        nearest = Math.max(0, lastGroupIndex.value)
+        nearest = lastIdx
       } else if (max > 0 && position >= max - 24) {
         nearest = 0
       }
     } else {
       if (max > 0 && position >= max - 24) {
-        nearest = Math.max(0, lastGroupIndex.value)
+        nearest = lastIdx
       } else if (position <= 16) {
         nearest = 0
       }
     }
 
-    // 2. 非极端边界时：根据排版模式进行高精度几何相交探测
+    // 2. 非极端边界时：局部邻域探测 + 二分查找收敛（彻底消灭 900+ 节点每帧 O(N) 重排循环，PITFALLS #86）
     const isAtBoundary = rtl
       ? position <= 24 || (max > 0 && position >= max - 24)
       : position <= 16 || (max > 0 && position >= max - 24)
 
-    if (!isAtBoundary && spreads.length > 0) {
-      if (settings.mode === 'vertical-continuous') {
-        // 竖向连续条漫模式：以视口有效阅读线（视口上方 40% 处）与画页几何相交探测
-        const readLine = position + el.clientHeight * 0.4
-        let matched = false
-        for (const spread of spreads) {
-          const top = spread.offsetTop
-          const bottom = top + spread.offsetHeight
-          if (readLine >= top && readLine <= bottom) {
-            nearest = Number(spread.dataset.groupIndex)
-            matched = true
-            break
-          }
-        }
-        if (!matched) {
-          let bestDistance = Number.POSITIVE_INFINITY
-          for (const spread of spreads) {
-            const mid = spread.offsetTop + spread.offsetHeight / 2
-            const distance = Math.abs(mid - readLine)
-            if (distance < bestDistance) {
-              bestDistance = distance
-              nearest = Number(spread.dataset.groupIndex)
-            }
-          }
-        }
-      } else {
-        // 翻页模式（竖向翻页 / 横向翻页）：最临近分屏顶边/左边对齐
-        let bestDistance = Number.POSITIVE_INFINITY
-        for (const spread of spreads) {
-          const spreadPosition = horizontal ? spread.offsetLeft : spread.offsetTop
-          const distance = Math.abs(spreadPosition - position)
-          if (distance < bestDistance) {
-            bestDistance = distance
-            nearest = Number(spread.dataset.groupIndex)
-          }
-        }
-      }
+    if (!isAtBoundary && lastIdx > 0) {
+      nearest = resolveNearestGroupIndex(
+        el,
+        position,
+        max,
+        horizontal,
+        currentGroupIndex.value,
+        lastIdx,
+        settings.mode === 'vertical-continuous',
+        rtl,
+      )
     }
 
     if (Number.isFinite(nearest) && nearest !== currentGroupIndex.value) {
@@ -337,6 +441,11 @@ export function useReaderNavigation(options: UseReaderNavigationOptions) {
     }
   }
 
+  const preloadedPages = new Set<number>()
+  watch([source, sourceId], () => {
+    preloadedPages.clear()
+  })
+
   /** 预加载当前页前后相邻分组的图片资源到浏览器磁盘/内存缓存（防抖 150ms 避免读者高速拖拽滚动条时途经大量页码瞬发海量无效预取） */
   const preloadAround = useDebounceFn((page: number) => {
     if (typeof Image === 'undefined') return
@@ -346,6 +455,8 @@ export function useReaderNavigation(options: UseReaderNavigationOptions) {
     for (let group = startGroup; group <= endGroup; group += 1) {
       if (group === groupIndex) continue
       for (const targetPage of pageGroups.value[group] ?? []) {
+        if (preloadedPages.has(targetPage)) continue
+        preloadedPages.add(targetPage)
         const image = new Image()
         image.src = pageFileUrl(source.value, sourceId.value, targetPage)
       }

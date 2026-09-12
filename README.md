@@ -4,7 +4,7 @@
 支持 JMComic 禁漫收录与反混淆解密、哔咔漫画（PicAcg）原生集成与容灾分流，同时提供本地图集与视频拆帧自建工坊。第一次收录后元数据和高清图片全部落在本机；之后浏览、重读、封面都走本地持久化缓存，**0 外部网络冗余请求**。
 
 - **前端**：Vite+（`vp` 工具链 / Vite 8 / Rolldown / Vitest 4 / Oxlint / Oxfmt）+ Vue 3 + TypeScript + Vue Router + Pinia + VueUse
-- **样式**：现代原生 CSS（`@layer`、Nesting、`color-mix()`、`oklch()`、`clamp()`，无 SCSS 依赖）
+- **样式**：现代原生 CSS（`@layer`、Nesting、`color-mix()`、`oklch()`、`clamp()`）
 - **后端**：FastAPI + Pillow + jmcomic + curl_cffi（基于 Provider 抽象，内置禁漫、哔咔与本地图集多源支持）
 - **搜图**：`imsearch`（独立 Docker Sidecar，基于 OpenCV ORB 局部特征点 + Faiss 倒排索引）
 

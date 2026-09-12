@@ -330,4 +330,60 @@ describe('useReaderNavigation - Discrete Wheel Stepping & Dual-Axis Discriminati
 
     expect(resetAutoTurnCountdown).toHaveBeenCalled()
   })
+
+  it('efficiently resolves group index on large scale (100+ groups) without full scanning', () => {
+    settings.mode = 'vertical-continuous'
+    mockContainer.innerHTML = ''
+    const totalGroups = 120
+    const groupHeight = 800
+
+    for (let i = 0; i < totalGroups; i += 1) {
+      const spread = document.createElement('section')
+      spread.dataset.groupIndex = String(i)
+      Object.defineProperty(spread, 'offsetTop', { value: i * groupHeight, configurable: true })
+      Object.defineProperty(spread, 'offsetHeight', { value: groupHeight, configurable: true })
+      mockContainer.appendChild(spread)
+    }
+
+    Object.defineProperty(mockContainer, 'clientHeight', { value: 1000, configurable: true })
+    Object.defineProperty(mockContainer, 'scrollHeight', {
+      value: totalGroups * groupHeight,
+      configurable: true,
+    })
+    // Jump to group 75: scrollTop such that readLine is within group 75 (75 * 800 = 60000)
+    // readLine = position + 1000 * 0.4 = position + 400. Let position = 60200 -> readLine = 60600 (in [60000, 60800])
+    Object.defineProperty(mockContainer, 'scrollTop', { value: 60200, configurable: true })
+
+    const pageGroups = computed(() => Array.from({ length: totalGroups }, (_, i) => [i + 1]))
+    const lastGroupIndex = computed(() => totalGroups - 1)
+
+    const nav = useReaderNavigation({
+      scrollEl,
+      settings,
+      currentPage,
+      currentGroupIndex,
+      pageGroups,
+      lastGroupIndex,
+      clampToScope: (p: number) => p,
+      groupIndexForPage: (p: number) => p - 1,
+      groupFirstPage: (g: number) => g + 1,
+      showChromeTemporarily,
+      resetAutoTurnCountdown,
+      source: computed(() => 'jm'),
+      sourceId: computed(() => 'test-large'),
+      nextChapter: computed(() => null),
+      prevChapter: computed(() => null),
+      scopeId: ref(null),
+      router: {
+        replace: vi.fn<(_url: string) => Promise<void>>(),
+        push: vi.fn<(_url: string) => Promise<void>>(),
+      } as unknown as Router,
+    })
+
+    nav.onScroll()
+    vi.runAllTimers()
+
+    expect(currentGroupIndex.value).toBe(75)
+    expect(currentPage.value).toBe(76)
+  })
 })
