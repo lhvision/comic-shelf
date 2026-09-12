@@ -348,7 +348,8 @@ def notify_nas_sync(api_url: str, source: str, source_id: str, token: Optional[s
         with urllib.request.urlopen(req, timeout=10) as resp:
             if resp.status == 200:
                 data = json.loads(resp.read().decode("utf-8"))
-                print(f"  📡 NAS 索引同步响应: 成功入库 {data.get('indexed_count', 0)} 条对白")
+                indexed_count = data.get("count", data.get("indexed_count", 0))
+                print(f"  📡 NAS 索引同步响应: 成功入库 {indexed_count} 条对白")
                 return True
     except urllib.error.HTTPError as e:
         print(f"  ❌ 通知 NAS 同步失败 (HTTP {e.code}): {e.reason}", file=sys.stderr)
@@ -387,13 +388,12 @@ def get_library_stats(data_dir: Path) -> Dict[str, Any]:
                 if comic_has_ocr:
                     stats["ocr_comics"] += 1
 
-    # 检查 SQLite 数据库条目数（优先检查独立的 comic_dialogues.db，兼容旧版 comic_shelf.db）
+    # 检查独立的 comic_dialogues.db 数据库条目数
     diag_db_path = data_dir / "comic_dialogues.db"
-    db_path = diag_db_path if diag_db_path.is_file() else (data_dir / "comic_shelf.db")
-    if db_path.is_file():
+    if diag_db_path.is_file():
         try:
             import sqlite3
-            conn = sqlite3.connect(db_path)
+            conn = sqlite3.connect(diag_db_path)
             cur = conn.cursor()
             cur.execute("SELECT count(*) FROM sqlite_master WHERE type='table' AND name='comic_dialogues_fts'")
             if cur.fetchone()[0]:

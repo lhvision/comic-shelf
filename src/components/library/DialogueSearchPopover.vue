@@ -11,7 +11,7 @@
  * 5. 封面自适应防崩退化与典藏朱砂金墨分镜导引指示。
  */
 
-import { computed, nextTick, ref, watch } from 'vue'
+import { nextTick, ref, watch } from 'vue'
 import AppIcon from '@/components/AppIcon.vue'
 import type { DialogueSearchItem } from '@/types'
 import { coverFileUrl } from '@/api/client'
@@ -66,11 +66,16 @@ watch(
   },
 )
 
+const snippetTokensCache = new Map<string, Array<{ text: string; isMark: boolean }>>()
+
 /**
- * 安全解析台词高亮片段，将 `<mark>` 标签转换为安全的结构化 Token 数组
+ * 安全解析台词高亮片段，将 `<mark>` 标签转换为安全的结构化 Token 数组（带有限容量缓存加速）
  */
 function parseSnippetTokens(raw: string): Array<{ text: string; isMark: boolean }> {
   if (!raw) return []
+  const cached = snippetTokensCache.get(raw)
+  if (cached) return cached
+
   const tokens: Array<{ text: string; isMark: boolean }> = []
   const regex = /<mark>(.*?)<\/mark>/gi
   let lastIndex = 0
@@ -97,6 +102,10 @@ function parseSnippetTokens(raw: string): Array<{ text: string; isMark: boolean 
     })
   }
 
+  if (snippetTokensCache.size >= 500) {
+    snippetTokensCache.clear()
+  }
+  snippetTokensCache.set(raw, tokens)
   return tokens
 }
 

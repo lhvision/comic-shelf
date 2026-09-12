@@ -1,7 +1,8 @@
 <script setup lang="ts">
 /** LibraryView.vue — 书架主视图，检索、排序、状态与流式分页下沉至 Composables 与 Stores */
-import { computed, nextTick, onMounted, onUnmounted, ref, toRef, watch } from 'vue'
+import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import { onBeforeRouteLeave, useRoute, useRouter } from 'vue-router'
+import { useEventListener, useFileDialog } from '@vueuse/core'
 import ImportPanel from '@/components/ImportPanel.vue'
 import LibraryHero from '@/components/library/LibraryHero.vue'
 import TagFilterBar from '@/components/library/TagFilterBar.vue'
@@ -18,17 +19,12 @@ import { useLibraryFilter } from '@/composables/useLibraryFilter'
 import { useLibrarySync } from '@/composables/useLibrarySync'
 import { useShelfState } from '@/composables/useShelfState'
 import { useImageSearch } from '@/composables/useImageSearch'
-import { useDialogueSearch } from '@/composables/useDialogueSearch'
-import {
-  useSearchCommands,
-  AVAILABLE_COMMANDS,
-  type SearchCommandDef,
-} from '@/composables/useSearchCommands'
+import { useShelfSearch } from '@/composables/useShelfSearch'
+import { AVAILABLE_COMMANDS } from '@/composables/useSearchCommands'
 import { useToast } from '@/composables/useToast'
 import { useAuth } from '@/composables/useAuth'
 import { useSystemEvents } from '@/composables/useSystemEvents'
 import { useOfflineSync } from '@/composables/useOfflineSync'
-import { onClickOutside } from '@vueuse/core'
 import { api, DEFAULT_PROVIDERS } from '@/api/client'
 import type { ProviderInfo } from '@/types'
 
@@ -39,7 +35,6 @@ const { toast } = useToast()
 const { canWrite, userId } = useAuth()
 const { broadcastLocalChange } = useSystemEvents()
 const { isOnline } = useOfflineSync()
-const fileInput = ref<HTMLInputElement | null>(null)
 const providers = ref<ProviderInfo[]>(DEFAULT_PROVIDERS)
 
 const shelf = useShelfState()
@@ -64,20 +59,24 @@ const cameraBtnTooltip = computed(() =>
       : '识图服务未连接，点击重新探测',
 )
 
+const { open: openFileDialog, onChange: onFileDialogChange } = useFileDialog({
+  accept: 'image/*',
+  multiple: false,
+})
+onFileDialogChange((files) => {
+  if (files?.[0]) void imageSearch.searchWithFile(files[0])
+})
+
 async function onCameraClick() {
   if (imageSearch.isChecking.value) return
   if (imageSearch.isAvailable.value || (await imageSearch.checkStatus(true))) {
-    fileInput.value?.click()
+    openFileDialog()
   } else {
     toast('识图服务未启动或无法连接，请确认后台服务已开启', 'error')
   }
 }
 
-function onFileSelected(e: Event) {
-  const input = e.target as HTMLInputElement
-  if (input.files?.[0]) void imageSearch.searchWithFile(input.files[0])
-  input.value = ''
-}
+useEventListener(window, 'paste', imageSearch.handlePaste)
 
 const {
   search,
@@ -118,140 +117,36 @@ const { fetchLibrary } = useLibrarySync({
   imageSearchResults: imageSearch.searchResults,
 })
 
-const searchContainerRef = ref<HTMLElement | null>(null)
-const searchInputRef = ref<HTMLInputElement | null>(null)
-
 const {
-  query: dialogueQuery,
-  results: dialogueResults,
-  total: dialogueTotal,
-  isSearching: isDialogueSearching,
-  error: dialogueError,
-  isOpen: isDialogueOpen,
-  focusedIndex: dialogueFocusedIndex,
-  open: openDialogueSearch,
-  close: closeDialogueSearch,
-  navigateNext: nextDialogueResult,
-  navigatePrev: prevDialogueResult,
+  searchContainerRef,
+  searchInputRef,
+  searchInput,
+  searchActiveCommand,
+  searchPlaceholder,
+  isCommandMenuOpen,
+  commandMenuFocusedIndex,
+  commandFilteredCommands,
+  isDialogueOpen,
+  dialogueResults,
+  dialogueTotal,
+  isDialogueSearching,
+  dialogueError,
+  dialogueQuery,
+  dialogueFocusedIndex,
+  handleSelectCommand,
+  handleClearCommand,
+  closeDialogueSearch,
+  onSearchFocus,
+  onSearchKeydown,
   navigateToResult,
-} = useDialogueSearch({ source: activeSource })
-
-const {
-  rawInput: searchInput,
-  activeCommand: searchActiveCommand,
-  isMenuOpen: isCommandMenuOpen,
-  menuFocusedIndex: commandMenuFocusedIndex,
-  filteredCommands: commandFilteredCommands,
-  currentPlaceholder: searchPlaceholder,
-  selectCommand,
-  clearCommand,
-  openMenu: openCommandMenu,
-  closeMenu: closeCommandMenu,
-  handleKeydown: handleCommandKeydown,
-} = useSearchCommands({
-  isDropdownOpen: isDialogueOpen,
-  onRandom: () => {
-    const list = filtered.value.length > 0 ? filtered.value : store.items || []
-    if (list.length === 0) {
-      toast('书架暂无藏书可供抽取', 'info')
-      return
-    }
-    const picked = list[Math.floor(Math.random() * list.length)]
-    if (picked) {
-      toast(`随手翻得一卷：《${picked.title}》`, 'success')
-      void router.push(
-        `/comic/${encodeURIComponent(picked.source)}/${encodeURIComponent(picked.source_id)}`,
-      )
-    }
-  },
+} = useShelfSearch({
+  activeSource,
+  shelfSearch: search,
+  filteredItems: filtered,
+  allItems: computed(() => store.items || []),
+  router,
+  toast,
 })
-
-// 意图分流与状态解耦：
-// 1. 台词专注模式：dialogueQuery 接收输入，书架常规 search 强制置空（保持书架网格 100% 冻结，不影响列表）；
-// 2. 键入 '/' 且未成命令：书架 search 保持空（防误过滤）；
-// 3. 常规搜索模式：search 接收 searchInput 驱动书架过滤，dialogueQuery 强制置空（避免多余 FTS 检索）。
-watch(
-  [searchInput, searchActiveCommand],
-  ([inputVal, cmdVal]) => {
-    if (cmdVal === 'dialogue') {
-      dialogueQuery.value = inputVal
-      search.value = ''
-      if (inputVal.trim()) {
-        openDialogueSearch()
-      } else {
-        closeDialogueSearch()
-      }
-    } else {
-      dialogueQuery.value = ''
-      closeDialogueSearch()
-      if (inputVal.startsWith('/')) {
-        search.value = ''
-        openCommandMenu()
-      } else {
-        closeCommandMenu()
-        search.value = inputVal
-      }
-    }
-  },
-  { immediate: true },
-)
-
-function handleSelectCommand(cmd: SearchCommandDef) {
-  selectCommand(cmd)
-  nextTick(() => {
-    searchInputRef.value?.focus()
-  })
-}
-
-function handleClearCommand() {
-  clearCommand()
-  nextTick(() => {
-    searchInputRef.value?.focus()
-  })
-}
-
-function onSearchFocus() {
-  if (searchActiveCommand.value === 'dialogue') {
-    if (dialogueQuery.value.trim()) {
-      openDialogueSearch()
-    }
-  } else if (searchInput.value.startsWith('/')) {
-    openCommandMenu()
-  }
-}
-
-onClickOutside(searchContainerRef, () => {
-  closeDialogueSearch()
-  closeCommandMenu()
-})
-
-function onSearchKeydown(e: KeyboardEvent) {
-  if (handleCommandKeydown(e)) {
-    return
-  }
-
-  if (searchActiveCommand.value === 'dialogue' && isDialogueOpen.value) {
-    if (e.key === 'ArrowDown') {
-      e.preventDefault()
-      nextDialogueResult()
-    } else if (e.key === 'ArrowUp') {
-      e.preventDefault()
-      prevDialogueResult()
-    } else if (e.key === 'Enter') {
-      if (dialogueResults.value.length > 0) {
-        const targetIndex = dialogueFocusedIndex.value >= 0 ? dialogueFocusedIndex.value : 0
-        const targetItem = dialogueResults.value[targetIndex]
-        if (targetItem) {
-          e.preventDefault()
-          navigateToResult(targetItem, router)
-        }
-      }
-    } else if (e.key === 'Escape') {
-      e.preventDefault()
-      closeDialogueSearch()
-    }
-  }
-}
 
 onBeforeRouteLeave(() => shelf.saveScrollPosition(window.scrollY))
 
@@ -271,14 +166,11 @@ onMounted(() => {
   }
   void fetchLibrary(true, true)
   store.startPollingIfActive()
-  window.addEventListener('paste', imageSearch.handlePaste)
   api
     .providers()
     .then((res) => (providers.value = res))
     .catch(() => {})
 })
-
-onUnmounted(() => window.removeEventListener('paste', imageSearch.handlePaste))
 
 function onFavoriteToggled(source: string, sourceId: string, favorite: boolean) {
   store.setFavoriteLocal(source, sourceId, favorite, userId.value)
@@ -377,13 +269,6 @@ watch([() => store.error, imageSearch.error], ([err1, err2]) => {
               :aria-label="cameraBtnTooltip"
               @click="onCameraClick"
             />
-            <input
-              ref="fileInput"
-              type="file"
-              accept="image/*"
-              class="visually-hidden"
-              @change="onFileSelected"
-            />
           </div>
 
           <!-- 快捷指令选单浮层 -->
@@ -392,7 +277,6 @@ watch([() => store.error, imageSearch.error], ([err1, err2]) => {
             :commands="commandFilteredCommands"
             :focused-index="commandMenuFocusedIndex"
             @select="handleSelectCommand"
-            @close="closeCommandMenu"
             @update:focused-index="(val) => (commandMenuFocusedIndex = val)"
           />
 
@@ -406,7 +290,7 @@ watch([() => store.error, imageSearch.error], ([err1, err2]) => {
             :error="dialogueError"
             :query="dialogueQuery"
             :focused-index="dialogueFocusedIndex"
-            @select="(item) => navigateToResult(item, router)"
+            @select="navigateToResult"
             @close="closeDialogueSearch"
             @update:focused-index="(val) => (dialogueFocusedIndex = val)"
           />
@@ -573,17 +457,6 @@ watch([() => store.error, imageSearch.error], ([err1, err2]) => {
 .camera-btn.is-loading {
   opacity: 0.35;
   cursor: wait;
-}
-
-.visually-hidden {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  padding: 0;
-  margin: -1px;
-  overflow: hidden;
-  clip: rect(0, 0, 0, 0);
-  border: 0;
 }
 
 .sort-field {

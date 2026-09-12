@@ -9,7 +9,7 @@
  * 4. 严密键盘契约：支持 ↑/↓ 导航、Enter/Tab 快捷补全、退格秒级退出胶囊模式。
  */
 
-import { computed, ref, type Ref } from 'vue'
+import { computed, ref, watch, type Ref } from 'vue'
 
 export type SearchCommandType = 'dialogue' | 'id' | 'author' | 'random'
 
@@ -110,6 +110,15 @@ export function useSearchCommands(options: UseSearchCommandsOptions = {}): UseSe
       if (cmd.label.toLowerCase().includes(token)) return true
       return cmd.aliases.some((alias) => alias.toLowerCase().includes(token))
     })
+  })
+
+  // 当指令过滤列表收缩时，自动收敛高亮聚焦索引，避免越界导致回车补全失效
+  watch(filteredCommands, (newCommands) => {
+    if (newCommands.length === 0) {
+      menuFocusedIndex.value = 0
+    } else if (menuFocusedIndex.value >= newCommands.length) {
+      menuFocusedIndex.value = Math.max(0, newCommands.length - 1)
+    }
   })
 
   const currentPlaceholder = computed(() => {

@@ -229,7 +229,7 @@ def init_db(db_path: Path | None = None) -> None:
 
 
 def init_dialogue_db(dialogue_db_path: Path | None = None) -> None:
-    """初始化独立的台词全文检索专库 (comic_dialogues.db) 并自动迁移旧单库数据。"""
+    """初始化独立的台词全文检索专库 (comic_dialogues.db)。"""
     if dialogue_db_path is not None:
         set_dialogue_db_path(dialogue_db_path)
 
@@ -259,42 +259,6 @@ def init_dialogue_db(dialogue_db_path: Path | None = None) -> None:
             """
         )
         conn.commit()
-
-    # 平滑迁移：若旧版 comic_shelf.db 中仍残留 comic_dialogues_fts，自动迁移并原子清除
-    if _DB_PATH.is_file():
-        try:
-            with sqlite3.connect(_DB_PATH, timeout=5.0) as shelf_conn:
-                shelf_conn.row_factory = sqlite3.Row
-                has_fts = shelf_conn.execute(
-                    "SELECT 1 FROM sqlite_master WHERE type='table' AND name='comic_dialogues_fts'"
-                ).fetchone()
-                if has_fts:
-                    with get_dialogue_db() as diag_conn:
-                        target_cnt = diag_conn.execute("SELECT count(*) FROM comic_dialogues_fts").fetchone()[0]
-                        if target_cnt == 0:
-                            old_rows = shelf_conn.execute(
-                                "SELECT source, source_id, page_index, bubble_id, text, lang, box_json FROM comic_dialogues_fts"
-                            ).fetchall()
-                            if old_rows:
-                                diag_conn.executemany(
-                                    "INSERT INTO comic_dialogues_fts (source, source_id, page_index, bubble_id, text, lang, box_json) VALUES (?, ?, ?, ?, ?, ?, ?)",
-                                    [tuple(r) for r in old_rows],
-                                )
-                            old_meta = shelf_conn.execute(
-                                "SELECT source, source_id, last_synced_mtime, dialogue_count, updated_at FROM comic_ocr_sync_meta"
-                            ).fetchall()
-                            if old_meta:
-                                diag_conn.executemany(
-                                    "INSERT OR REPLACE INTO comic_ocr_sync_meta (source, source_id, last_synced_mtime, dialogue_count, updated_at) VALUES (?, ?, ?, ?, ?)",
-                                    [tuple(r) for r in old_meta],
-                                )
-                    shelf_conn.execute("DROP TABLE IF EXISTS comic_dialogues_fts")
-                    shelf_conn.execute("DROP TABLE IF EXISTS comic_ocr_sync_meta")
-                    shelf_conn.commit()
-                    logger.info("Successfully migrated dialogue FTS tables to independent comic_dialogues.db")
-        except Exception as e:
-            logger.warning(f"Note: dialogue db migration check skipped or encountered non-fatal error: {e}")
-
 
 
 # ----------------------------------------------------------------------
@@ -1104,26 +1068,24 @@ def get_library_facets(is_curator: bool, source: str | None = None) -> dict[str,
 # ----------------------------------------------------------------------
 
 def _make_snippet(text: str, terms: list[str], max_chars: int = 60) -> str:
-    """为检索命中文本生成呼吸高亮标记与摘要片段，严格进行 HTML 转义以彻底免疫 XSS。"""
+    """为检索命中文本生成高亮标记与摘要片段。保持纯文本切片并包裹 <mark> 标签，由前台安全声明式解析。"""
     if not text:
         return ""
-    import html
-    escaped_text = html.escape(text)
     if not terms:
-        return escaped_text[:max_chars] + ("..." if len(escaped_text) > max_chars else "")
-    valid_terms = [re.escape(html.escape(t.strip())) for t in terms if t.strip()]
+        return text[:max_chars] + ("..." if len(text) > max_chars else "")
+    valid_terms = [re.escape(t.strip()) for t in terms if t.strip()]
     if not valid_terms:
-        return escaped_text[:max_chars] + ("..." if len(escaped_text) > max_chars else "")
+        return text[:max_chars] + ("..." if len(text) > max_chars else "")
     pattern = "(" + "|".join(valid_terms) + ")"
-    m = re.search(pattern, escaped_text, re.IGNORECASE)
+    m = re.search(pattern, text, re.IGNORECASE)
     if not m:
-        return escaped_text[:max_chars] + ("..." if len(escaped_text) > max_chars else "")
+        return text[:max_chars] + ("..." if len(text) > max_chars else "")
     start = max(0, m.start() - 15)
-    end = min(len(escaped_text), m.end() + 35)
-    sub = escaped_text[start:end]
+    end = min(len(text), m.end() + 35)
+    sub = text[start:end]
     highlighted = re.sub(pattern, r"<mark>\1</mark>", sub, flags=re.IGNORECASE)
     prefix = "..." if start > 0 else ""
-    suffix = "..." if end < len(escaped_text) else ""
+    suffix = "..." if end < len(text) else ""
     return f"{prefix}{highlighted}{suffix}"
 
 
@@ -1272,43 +1234,41 @@ def sync_comic_dialogues(source: str, source_id: str, force: bool = False) -> in
                     return stored_count
 
     with get_dialogue_db() as conn:
-        with conn:
-            conn.execute(
-                "DELETE FROM comic_dialogues_fts WHERE source = ? AND source_id = ?",
-                (source, source_id),
-            )
-            if records:
-                conn.executemany(
-                    """
-                    INSERT INTO comic_dialogues_fts (
-                        source, source_id, page_index, bubble_id, text, lang, box_json
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?)
-                    """,
-                    records,
-                )
-            conn.execute(
+        conn.execute(
+            "DELETE FROM comic_dialogues_fts WHERE source = ? AND source_id = ?",
+            (source, source_id),
+        )
+        if records:
+            conn.executemany(
                 """
-                INSERT OR REPLACE INTO comic_ocr_sync_meta (
-                    source, source_id, last_synced_mtime, dialogue_count, updated_at
-                ) VALUES (?, ?, ?, ?, ?)
+                INSERT INTO comic_dialogues_fts (
+                    source, source_id, page_index, bubble_id, text, lang, box_json
+                ) VALUES (?, ?, ?, ?, ?, ?, ?)
                 """,
-                (source, source_id, latest_mtime, len(records), int(time.time())),
+                records,
             )
+        conn.execute(
+            """
+            INSERT OR REPLACE INTO comic_ocr_sync_meta (
+                source, source_id, last_synced_mtime, dialogue_count, updated_at
+            ) VALUES (?, ?, ?, ?, ?)
+            """,
+            (source, source_id, latest_mtime, len(records), int(time.time())),
+        )
         return len(records)
 
 
 def delete_comic_dialogues(source: str, source_id: str) -> None:
     """删除指定漫画的所有台词全文索引与增量元数据。"""
     with get_dialogue_db() as conn:
-        with conn:
-            conn.execute(
-                "DELETE FROM comic_dialogues_fts WHERE source = ? AND source_id = ?",
-                (source, source_id),
-            )
-            conn.execute(
-                "DELETE FROM comic_ocr_sync_meta WHERE source = ? AND source_id = ?",
-                (source, source_id),
-            )
+        conn.execute(
+            "DELETE FROM comic_dialogues_fts WHERE source = ? AND source_id = ?",
+            (source, source_id),
+        )
+        conn.execute(
+            "DELETE FROM comic_ocr_sync_meta WHERE source = ? AND source_id = ?",
+            (source, source_id),
+        )
 
 
 def cleanup_orphan_comic_dialogues(data_dir: Path | None = None) -> int:
@@ -1321,14 +1281,21 @@ def cleanup_orphan_comic_dialogues(data_dir: Path | None = None) -> int:
         rows = conn.execute("SELECT DISTINCT source, source_id FROM comic_dialogues_fts").fetchall()
         for r in rows:
             src, sid = r["source"], r["source_id"]
-            comic_dir = data_resolved / "library" / src / sid
-            if not comic_dir.is_dir():
-                with conn:
-                    conn.execute("DELETE FROM comic_dialogues_fts WHERE source = ? AND source_id = ?", (src, sid))
-                    conn.execute("DELETE FROM comic_ocr_sync_meta WHERE source = ? AND source_id = ?", (src, sid))
+            candidates = [
+                data_resolved / "library" / src / sid,
+                data_resolved / src / sid,
+            ]
+            if not any(c.is_dir() for c in candidates):
+                conn.execute("DELETE FROM comic_dialogues_fts WHERE source = ? AND source_id = ?", (src, sid))
+                conn.execute("DELETE FROM comic_ocr_sync_meta WHERE source = ? AND source_id = ?", (src, sid))
                 cleaned += 1
                 logger.info(f"Cleaned orphan dialogue index for deleted comic {src}/{sid}")
     return cleaned
+
+
+def _escape_like(text: str) -> str:
+    """转义 SQLite LIKE 查询中的特殊通配符 %、_ 与转义符自身。"""
+    return text.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
 
 
 def search_dialogues(
@@ -1355,7 +1322,7 @@ def search_dialogues(
 
     match_variants = [v for v in variants if len(v) >= 3]
     diag_rows: list[sqlite3.Row] = []
-    fetch_limit = min(limit * 3, 150)
+    fetch_limit = min(max(limit * 5, 50), 200) if is_guest else min(limit * 3, 150)
 
     with get_dialogue_db() as conn:
         if match_variants:
@@ -1396,8 +1363,8 @@ def search_dialogues(
             }
             for i, v in enumerate(variants):
                 param_name = f"like_{i}"
-                like_clauses.append(f"f.text LIKE :{param_name}")
-                params[param_name] = f"%{v}%"
+                like_clauses.append(f"f.text LIKE :{param_name} ESCAPE '\\'")
+                params[param_name] = f"%{_escape_like(v)}%"
 
             where_text = " OR ".join(like_clauses)
             sql_like = f"""
@@ -1424,25 +1391,15 @@ def search_dialogues(
     unique_keys = list({(r["source"], r["source_id"]) for r in diag_rows})
     comics_map: dict[tuple[str, str], sqlite3.Row] = {}
 
-    with get_db() as shelf_conn:
-        if len(unique_keys) == 1:
-            k_src, k_sid = unique_keys[0]
-            row = shelf_conn.execute(
-                "SELECT source, source_id, display_id, title, cover_indices_json, authors_json, hidden_from_guest FROM comics_index WHERE source = ? AND source_id = ?",
-                (k_src, k_sid),
-            ).fetchone()
-            if row:
-                comics_map[(k_src, k_sid)] = row
-        elif len(unique_keys) > 1:
-            where_or = " OR ".join(["(source = ? AND source_id = ?)"] * len(unique_keys))
-            flat_params: list[str] = []
-            for k_src, k_sid in unique_keys:
-                flat_params.extend([k_src, k_sid])
-            sql_ci = f"""
-                SELECT source, source_id, display_id, title, cover_indices_json, authors_json, hidden_from_guest
-                FROM comics_index
-                WHERE {where_or}
-            """
+    if unique_keys:
+        where_or = " OR ".join(["(source = ? AND source_id = ?)"] * len(unique_keys))
+        flat_params: list[str] = [p for k in unique_keys for p in k]
+        sql_ci = f"""
+            SELECT source, source_id, display_id, title, cover_indices_json, authors_json, hidden_from_guest
+            FROM comics_index
+            WHERE {where_or}
+        """
+        with get_db() as shelf_conn:
             for row in shelf_conn.execute(sql_ci, flat_params).fetchall():
                 comics_map[(row["source"], row["source_id"])] = row
 

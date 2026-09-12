@@ -27,7 +27,6 @@ const props = withDefaults(
 
 const emit = defineEmits<{
   select: [cmd: SearchCommandDef]
-  close: []
   'update:focusedIndex': [index: number]
 }>()
 

@@ -391,6 +391,9 @@
   1. 全链路声明 `pointer-events: none`，翻页触控、双击缩放与滚动交互零感穿透；
   2. 顶部分镜（`ymin < 0.12`）微标胶囊自适应翻转至气泡框下方，右侧分镜（`xmin > 0.65`）自适应靠右对齐；
   3. 原生挂载 `role="status"` 与 `aria-live="polite"`，保障辅助技术屏幕阅读器对命中文本的即时感知。
+- **常规阅读 0 开销物理隔离与参数原地静默擦除（Zero-Overhead Isolation & Silent Param Erasure）**：
+  1. `ReaderViewport.vue` 挂载 `<ReaderBubbleOverlay>` 必须严格由 `v-if="targetBubble && targetBubble.page === page"` 设卡。常规淘书或非搜索进入时 `targetBubble` 为 `null`，Vue 编译为注释占位，全书数百页 0 组件实例化、0 计算属性、0 VNode 调度，100% 保持原生阅读器极简性能；
+  2. 气泡高亮完成 2.2 秒水墨呼吸脉冲后（2.8 秒）或读者主动翻离当前画页时，自动调用 `dismissBubble()` 物理卸载组件，并借由 `router.replace` 原地静默擦除 URL 中的 `bubble_box` 与 `bubble_text` 查询参数，保持读者书签与分享链接纯净。
 
 ### <a id="sec-63"></a>§63 阅读器全模式图片适配约束与刚性吸附体系（Reader Modes Fit Constraints & Rigid Snap Architecture）
 

@@ -39,7 +39,7 @@ import ReaderSettingsPanel from '@/components/reader/ReaderSettingsPanel.vue'
 const route = useRoute()
 const router = useRouter()
 const { settings, applyComicPreferences, clearActiveComic } = useReaderSettings()
-const { targetBubble, targetPage } = useReaderBubble()
+const { targetBubble, targetPage, dismissBubble } = useReaderBubble(route, router)
 const currentPage = ref(1)
 const currentGroupIndex = ref(0)
 const [settingsOpen] = useToggle(false)
@@ -253,6 +253,12 @@ watch(
     resetAutoTurnCountdown()
   },
 )
+
+watch(currentPage, (page) => {
+  if (targetBubble.value && targetBubble.value.page !== page) {
+    dismissBubble()
+  }
+})
 
 function onReaderClick(event: MouseEvent) {
   const target = event.target as HTMLElement | null

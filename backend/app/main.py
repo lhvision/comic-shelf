@@ -748,7 +748,7 @@ def search_dialogue_endpoint(
         raise HTTPException(status_code=401, detail="未授权访问，需要提供有效的通行口令")
     is_guest_user = not is_curator(request)
     limit_val = limit if isinstance(limit, int) else 20
-    source_val = source if isinstance(source, str) else None
+    source_val = source.strip() if isinstance(source, str) and source.strip() else None
     q_val = q if isinstance(q, str) else ""
     results = search_dialogues(query=q_val, source=source_val, limit=limit_val, is_guest=is_guest_user)
     return DialogueSearchResponse(results=results, total=len(results))

@@ -11,8 +11,9 @@
  * 2. 暴露 `targetBubble` 与 `targetPage`，无缝驱动视口滚动与气泡呼吸高亮覆盖层。
  */
 
-import { computed, type ComputedRef } from 'vue'
-import { useRoute, type RouteLocationNormalizedLoaded } from 'vue-router'
+import { computed, ref, watch, type ComputedRef } from 'vue'
+import { useRoute, useRouter, type RouteLocationNormalizedLoaded, type Router } from 'vue-router'
+import { useTimeoutFn } from '@vueuse/core'
 
 /**
  * 目标气泡高亮数据结构
@@ -30,10 +31,12 @@ export interface TargetBubble {
  * `useReaderBubble` 返回值契约
  */
 export interface UseReaderBubbleReturn {
-  /** 目标气泡数据（若无则为 null） */
+  /** 目标气泡数据（若无或已淡出抹除则为 null） */
   targetBubble: ComputedRef<TargetBubble | null>
   /** URL 中指定的直接跳转目标页码（若无有效页码则为 null） */
   targetPage: ComputedRef<number | null>
+  /** 手动或自动消除气泡高亮并原地静默擦除 URL 中的气泡参数 */
+  dismissBubble: () => void
 }
 
 /**
@@ -80,11 +83,64 @@ export function parseBubbleBox(raw: unknown): [number, number, number, number] |
 /**
  * 阅读器气泡定位 Hook
  * @param customRoute 可选自定义路由实例（便于单测与隔离测试）
+ * @param customRouter 可选自定义路由导航实例
  */
 export function useReaderBubble(
   customRoute?: RouteLocationNormalizedLoaded,
+  customRouter?: Router,
 ): UseReaderBubbleReturn {
   const route = customRoute ?? useRoute()
+  let router: Router | undefined = customRouter
+  if (!router && !customRoute) {
+    try {
+      router = useRouter()
+    } catch {
+      // 兼容在非组件上下文中测试
+    }
+  }
+
+  const isDismissed = ref(false)
+
+  const dismissBubble = () => {
+    if (isDismissed.value) return
+    isDismissed.value = true
+
+    if (
+      router &&
+      (route.query.bubble_box !== undefined ||
+        route.query.bubble_text !== undefined ||
+        route.query.highlight_bubble !== undefined ||
+        route.query.bubble !== undefined)
+    ) {
+      const nextQuery = { ...route.query }
+      delete nextQuery.bubble_box
+      delete nextQuery.bubble_text
+      delete nextQuery.highlight_bubble
+      delete nextQuery.bubble
+      void router.replace({ query: nextQuery })
+    }
+  }
+
+  const { start: scheduleDismiss, stop: cancelDismiss } = useTimeoutFn(dismissBubble, 2800, {
+    immediate: false,
+  })
+
+  watch(
+    () => [
+      route.query.bubble_box,
+      route.query.bubble,
+      route.query.highlight_bubble,
+      route.query.page,
+    ],
+    ([box, b1, b2]) => {
+      if (box || b1 || b2) {
+        isDismissed.value = false
+        cancelDismiss()
+        scheduleDismiss()
+      }
+    },
+    { immediate: true },
+  )
 
   const targetPage = computed<number | null>(() => {
     const qPage = route.query.page
@@ -106,6 +162,7 @@ export function useReaderBubble(
   })
 
   const targetBubble = computed<TargetBubble | null>(() => {
+    if (isDismissed.value) return null
     const page = targetPage.value
     if (!page) return null
 
@@ -144,5 +201,6 @@ export function useReaderBubble(
   return {
     targetBubble,
     targetPage,
+    dismissBubble,
   }
 }

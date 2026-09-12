@@ -53,7 +53,6 @@ def main() -> None:
     os.environ["COMIC_SHELF_DATA"] = str(data_dir)
     from app.db import (
         cleanup_orphan_comic_dialogues,
-        get_db,
         get_dialogue_db,
         init_db,
         set_db_path,

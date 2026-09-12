@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vite-plus/test'
-import { effectScope, ref } from 'vue'
+import { effectScope, nextTick, ref } from 'vue'
 import { useSearchCommands, AVAILABLE_COMMANDS } from '@/composables/useSearchCommands'
 
 describe('useSearchCommands', () => {
@@ -165,6 +165,30 @@ describe('useSearchCommands', () => {
       } as unknown as KeyboardEvent)
       expect(res3).toBe(true)
       expect(activeCommand.value).toBeNull()
+    })
+    scope.stop()
+  })
+
+  it('clamps menuFocusedIndex when filtered commands list shrinks', async () => {
+    const scope = effectScope()
+    await scope.run(async () => {
+      const { rawInput, menuFocusedIndex, filteredCommands, navigateNext } = useSearchCommands()
+
+      rawInput.value = '/'
+      expect(filteredCommands.value.length).toBe(4)
+
+      // 连续导航至最后一项 (索引 3)
+      navigateNext()
+      navigateNext()
+      navigateNext()
+      expect(menuFocusedIndex.value).toBe(3)
+
+      // 继续键入 'dia'，候选命令缩减至 1 项 (索引上限变为 0)
+      rawInput.value = '/dia'
+      await nextTick()
+
+      expect(filteredCommands.value.length).toBe(1)
+      expect(menuFocusedIndex.value).toBe(0)
     })
     scope.stop()
   })

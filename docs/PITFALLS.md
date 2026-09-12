@@ -844,6 +844,18 @@
     2. **台词专库垂直解耦（Zero Lock Contention）**：将台词全文倒排索引虚拟表 `comic_dialogues_fts` 及增量更新元数据 `comic_ocr_sync_meta` 从主库物理剥离为独立的 `backend/data/comic_dialogues.db`。读写完全独立连接池，后台海量 OCR 同步拥有专属写入通道，与前台读者翻页与收藏写入零写锁争抢；检索时在专库完成 FTS5 匹配后，仅通过主键批量回填主库封面与标题元数据；
     3. **斜杠快捷指令中枢与命令胶囊（Command Chip & Freeze Flow）**：在搜索栏引入 `/` 快捷指令唤醒菜单（`/台词`、`/车号`、`/作者`、`/随机`）。激活台词检索后，搜索框视觉前缀提取为朱砂印章样式的命令胶囊（`〔 💬 台词 × 〕`），同时将供给书架列表过滤的 `effectiveShelfSearch` 严格冻结为空，书架背景卡片安然不动，输入流专供台词检索 Popover 消费；按 Backspace 或点击移除胶囊时平滑恢复常规搜索。
 
+### 83. 阅读器无条件挂载分镜覆盖层导致长篇画卷性能退化与气泡 URL 状态残留陷阱 (Unconditional Reader Bubble Overlay Mounting & Lingering Bubble URL Trap)
+
+- **本质**：
+  1. **长篇画卷全量无条件实例化**：在阅读器核心视口（`ReaderViewport.vue`）中，若在遍历 `group.pages` 循环中无条件渲染 `<ReaderBubbleOverlay>`，即使用户是从书架正常点入（`targetBubble === null`），整本漫画的每一页（动辄 100~200+ 页）也会全量实例化 Overlay 组件并计算内部属性，造成昂贵的 VNode 与响应式订阅开销，在长篇连续滚动或切页时诱发主线程卡顿；
+  2. **URL 查询参数残留**：当用户通过台词搜索直达进入（携带 `bubble_box`、`bubble_text`）后，若在呼吸高亮结束或翻到后续页面时未擦除该查询参数，用户向后翻阅多页后若执行复制分享或刷新，旧页面的气泡高亮参数仍会挂在 URL 上产生脏状态。
+- **红线与防误伤**：
+  - **不要**在阅读器画页循环中无条件挂载覆盖层组件；
+  - **不要**在气泡高亮使命完成后将临时的分镜坐标参数永久残留在 URL 中；
+  - **放行/改用**：
+    1. **模板级精确短路门禁**：在 `ReaderViewport.vue` 模板中强制使用 `v-if="targetBubble && targetBubble.page === page"`。非台词检索进入时整本漫画 0 个组件实例化；台词检索进入时全书仅命中单页挂载 1 个实例；
+    2. **超时与翻页静默擦除**：气泡呼吸高亮淡出后（2.8 秒）或读者翻离当前画页时，自动调用 `dismissBubble()` 卸载组件，并通过 `router.replace` 原地静默擦除 `bubble_box`、`bubble_text` 等参数，保持 URL 纯净。
+
 ---
 
 ## 🚦 交付门禁（四步必跑）

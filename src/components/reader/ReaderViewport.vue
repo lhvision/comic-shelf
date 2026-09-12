@@ -144,6 +144,7 @@ defineExpose({
             v-slot="{ ready: imageReady }"
           >
             <ReaderBubbleOverlay
+              v-if="targetBubble && targetBubble.page === page"
               :page-index="page"
               :target-bubble="targetBubble"
               :image-ready="imageReady"

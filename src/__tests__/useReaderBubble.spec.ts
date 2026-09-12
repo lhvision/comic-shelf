@@ -106,5 +106,28 @@ describe('useReaderBubble', () => {
       expect(targetBubble.value?.page).toBe(8)
       expect(targetBubble.value?.box).toEqual([0.2, 0.3, 0.5, 0.7])
     })
+
+    it('dismisses bubble and silently erases query params via router.replace', () => {
+      const route = createMockRoute({
+        page: '12',
+        bubble_box: '0.1,0.2,0.3,0.4',
+        bubble_text: '荒木庄',
+        highlight_bubble: '1',
+      })
+      let replacedQuery: Record<string, unknown> | null = null
+      const mockRouter = {
+        replace: (loc: { query: Record<string, unknown> }) => {
+          replacedQuery = loc.query
+          return Promise.resolve()
+        },
+      } as unknown as import('vue-router').Router
+
+      const { targetBubble, dismissBubble } = useReaderBubble(route, mockRouter)
+      expect(targetBubble.value).not.toBeNull()
+
+      dismissBubble()
+      expect(targetBubble.value).toBeNull()
+      expect(replacedQuery).toEqual({ page: '12' })
+    })
   })
 })

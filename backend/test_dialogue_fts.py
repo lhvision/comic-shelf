@@ -157,6 +157,10 @@ def test_dialogue_fts_lifecycle():
         assert len(res_short) == 2, f"Expected 2 matches for '波纹', got {len(res_short)}"
         assert "<mark>波纹</mark>" in res_short[0]["snippet"]
 
+        # 6.5. Wildcard escaping: pure SQL LIKE wildcards must not cause full-table scan match
+        assert db_mod.search_dialogues(query="__", source=None, limit=10, is_guest=False) == []
+        assert db_mod.search_dialogues(query="%%", source=None, limit=10, is_guest=False) == []
+
         # 7. Search page 2 dialogue
         res_p2 = db_mod.search_dialogues(query="西撒", source=None, limit=10, is_guest=False)
         assert len(res_p2) == 1
