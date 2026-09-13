@@ -173,7 +173,7 @@ defineExpose({
     <div
       v-if="settings.mode === 'vertical-continuous' && nextChapter"
       class="reader-webtoon-chapter-end"
-      :data-group-index="orderedGroups.length"
+      data-chapter-end-card="true"
     >
       <div class="webtoon-chapter-end-card">
         <span class="webtoon-end-badge">本话完</span>

@@ -1,6 +1,9 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vite-plus/test'
 import { ref, reactive, computed, type Ref } from 'vue'
-import { useReaderNavigation } from '@/composables/useReaderNavigation'
+import {
+  useReaderNavigation,
+  type UseReaderNavigationOptions,
+} from '@/composables/useReaderNavigation'
 import { DEFAULT_SETTINGS, type ReaderSettings } from '@/composables/useReaderSettings'
 import type { Router } from 'vue-router'
 
@@ -47,7 +50,7 @@ describe('useReaderNavigation - Discrete Wheel Stepping & Dual-Axis Discriminati
     vi.useRealTimers()
   })
 
-  function createNavigation() {
+  function createNavigation(overrides?: Partial<UseReaderNavigationOptions>) {
     const pageGroups = computed(() => [
       [1, 2],
       [3, 4],
@@ -77,6 +80,7 @@ describe('useReaderNavigation - Discrete Wheel Stepping & Dual-Axis Discriminati
       prevChapter: computed(() => null),
       scopeId: ref(null),
       router: mockRouter,
+      ...overrides,
     })
   }
 
@@ -385,5 +389,51 @@ describe('useReaderNavigation - Discrete Wheel Stepping & Dual-Axis Discriminati
 
     expect(currentGroupIndex.value).toBe(75)
     expect(currentPage.value).toBe(76)
+  })
+
+  it('accurately resolves group index when jumping 2 groups in flip mode', () => {
+    settings.mode = 'horizontal'
+    const nav = createNavigation()
+
+    // Container width 800. Group 0 at 0, Group 1 at 800, Group 2 at 1600.
+    // User rapidly scrolls to group 2 (position 1600).
+    mockContainer.scrollLeft = 1600
+    nav.onScroll()
+    vi.runAllTimers()
+
+    expect(currentGroupIndex.value).toBe(2)
+    expect(currentPage.value).toBe(5)
+  })
+
+  it('pre-warms the first pages of nextChapter when reaching chapter end', () => {
+    const createdImages: string[] = []
+    const OriginalImage = globalThis.Image
+    class MockImage {
+      set src(val: string) {
+        createdImages.push(val)
+      }
+    }
+    globalThis.Image = MockImage as unknown as typeof Image
+
+    try {
+      const nextChapterRef = computed(() => ({
+        id: 'ch2',
+        index: 2,
+        title: '第 2 话',
+        page_count: 10,
+        start: 7,
+      }))
+      const nav = createNavigation({ nextChapter: nextChapterRef })
+
+      // Preload around group 2 (pages 5-6, the last group in a 6-page chapter)
+      void nav.preloadAround(5)
+      vi.runAllTimers()
+
+      // Should have preloaded pages including nextChapter's start pages (7, 8)
+      expect(createdImages.some((url) => url.includes('/pages/7/file'))).toBe(true)
+      expect(createdImages.some((url) => url.includes('/pages/8/file'))).toBe(true)
+    } finally {
+      globalThis.Image = OriginalImage
+    }
   })
 })

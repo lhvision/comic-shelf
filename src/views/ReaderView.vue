@@ -168,6 +168,7 @@ const {
   resetAutoTurnCountdown,
   toggleAutoTurnPause,
   yieldAutoScroll,
+  onAutoTurnScroll,
 } = useAutoTurn({
   settings,
   currentGroupIndex,
@@ -178,6 +179,11 @@ const {
   onScheduleChromeHide: scheduleChromeHide,
   scrollEl,
 })
+
+function onContainerScroll() {
+  onScroll()
+  onAutoTurnScroll()
+}
 
 /* ---------------- 页面响应式联动与历史同步 ---------------- */
 const { broadcastLocalChange } = useSystemEvents()
@@ -388,7 +394,7 @@ function onBackToShelf() {
       :target-bubble="targetBubble"
       :next-chapter="nextChapter"
       :chapter-short-label="chapterShortLabel"
-      @scroll="onScroll"
+      @scroll="onContainerScroll"
       @wheel="onViewportWheel"
       @user-interact="onUserInteract"
       @page-ready="onPageReady"

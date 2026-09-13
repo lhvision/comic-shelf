@@ -1157,7 +1157,7 @@ def curator_delete_pass_device(pass_id: int, device_id: int, request: Request) -
 @app.get("/api/library/{source}/{source_id}/cache", response_model=CacheProgress)
 def cache_progress(source: str, source_id: str, request: Request) -> CacheProgress:
     meta = _require_meta(source, source_id, request)
-    cached = store.reconcile_cached_pages(meta)
+    cached = store.cached_page_count(meta)
     return CacheProgress(
         cached=cached,
         total=meta.page_count,
@@ -1175,6 +1175,7 @@ def cache_all(source: str, source_id: str, request: Request) -> CacheProgress:
     if fetched.meta.custom_pages:
         raise HTTPException(status_code=400, detail="该漫画画页已由馆长重新装订保护，禁止远端自动覆盖。")
 
+    store.reconcile_cached_pages(fetched.meta)
     start_job(source, source_id, lambda job: _prefetch_worker(job, fetched, fetched.meta.cover_count, True))
 
     cached = store.cached_page_count(fetched.meta)

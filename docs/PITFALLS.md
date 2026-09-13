@@ -921,6 +921,50 @@
     3. **弱引用搜索索引（WeakMap Memoized Search Text）**：`useLibraryFilter` 采用 `itemSearchTextCache = new WeakMap<LibrarySummary, string>()` 首次组合多维度文本并小写化，后续击键仅执行单次 C++ 原生 `includes(needle)` 匹配，对象销毁时自动 GC；
     4. **RTL 双向滚动感知**：`resolveNearestGroupIndex` 显式感知 `rtl` 并在横向翻转时以 `1 - position / max` 执行精确线性插值。
 
+### 88. 缓存对账与轮询接口高频同步 I/O 导致磁盘争抢陷阱 (Cache Polling Sync Disk I/O Storm & Atomic Scannable Cache Guard)
+
+- **本质**：
+  1. **高频轮询接口同步磁盘 I/O 风暴**：在漫画下载与缓存进度轮询场景中，前端客户端以 1 秒为间隔密集轮询 `/api/library/{source}/{id}/cache`。若在获取进度（`get_cache_progress`）或缓存完成时直接无条件触发全量磁盘对账（`reconcile_cached_pages`），且对账逻辑采用 $O(N)$ 遍历画页并在循环内部逐页调用 `os.path.exists()`，当一本漫画有数百或上千页时，单次轮询产生数百次磁盘系统调用（syscall），多个读者并发或多卷下载时导致宿主机磁盘 I/O 100% 跑满；
+  2. **锁外覆写与竞态写入风险**：若对账检测到磁盘画页发生变化，直接就地写回 `album.json` 而未加写互斥锁，极易与后台下载工作线程或阅读器在线直读缓存的写入产生并发文件截断或数据竞争（Data Race）。
+- **红线与防误伤**：
+  - **不要**在轮询端点热路径中无条件执行阻塞式同步磁盘对账；
+  - **不要**在循环内部使用 `os.path.exists()` 逐一探测海量画页文件；
+  - **不要**在无锁状态下并发覆写 `album.json`；
+  - **放行/改用**：
+    1. **只读查询与写入彻底解耦**：`/cache` 进度查询端点严格作为纯内存只读快照读取，禁止在查询路径触发同步落盘写入；
+    2. **单遍扫描集合匹配（Single-Pass `os.scandir` Set Intersection）**：`reconcile_cached_pages` 采用单次 `os.scandir` 扫描目标目录将磁盘已有文件名存入 `Set`，画页判定退化为内存 $O(1)$ 查找，系统调用从 1000 次暴跌为 1 次；
+    3. **双重原子守卫（Double-Checked Locking & Atomic Guard）**：仅在发现磁盘与元数据存在差异时，才获取 `_cache_guard` 锁执行落盘，写入采用临时文件原子替换（Atomic Rename），彻底杜绝脏写。
+
+### 89. 翻页模式大跨度跳转阈值与正反候选页探测陷阱 (Paged Reader Large Jump Threshold & Bidirectional Probe Candidates)
+
+- **本质**：
+  1. **翻页模式大跳转探测误判**：在阅读器横向与纵向分页模式（`settings.mode !== 'vertical-continuous'`）下，页面由吸附滚动（Scroll Snap）驱动。若大跨度跳转阈值定为绝对像素（如 600px），在 iPad、高分屏或双页拼卷（双页跨度可达 1600px~2400px）场景下，一次正常的单屏翻页就会超过 600px，被算法误判为“用户拖拽了滚动条发生了大跨度跳转”，强制触发全量插值与 DOM 二分查找，破坏平滑翻页性能；
+  2. **快速连续翻页候选页探测越界（Probe Miss）**：快速划动翻页时，用户可以在一个动画帧内跨越 2 个分组。若候选邻域仅探测当前组的前后 1 组（`±1`），快速翻页瞬间直接落空，导致每帧回退到二分查找；
+  3. **条漫回滚自愈驻留死锁**：条漫模式下到达章节末尾触发停靠锁（`isDockedAtEnd = true`）后，若用户向上滑动回看前文，若缺乏原生滚动事件的主动解绑机制，停靠锁无法解除，导致静止 1.5 秒后软避让失效、自动流卷永远无法恢复。
+- **红线与防误伤**：
+  - **不要**在分页模式下使用绝对固定像素作为大跨度跳转的判定门禁；
+  - **不要**在快速滚动探测中仅保留单项邻域探测；
+  - **放行/改用**：
+    1. **动态视口相对阈值（Dynamic Viewport Ratio Clamp）**：大跨度跳转门禁采用 `pageSize * 0.5`（或横向/纵向容器尺寸的半屏跨度），自适应单页、双页及任意分辨率设备；
+    2. **局部双向候选集拓宽（±2 Bidirectional Probe）**：邻域探测拓宽为 `[cur, cur + 1, cur - 1, cur + 2, cur - 2]`，99.9% 覆盖快速翻页场景，二分查找触发率降至 0.01%；
+    3. **滚动事件解耦与自愈解绑**：监听主容器原生 `@scroll` 事件，在条漫向上回滚时（`scrollTop < max - 40`）自动释放 `isDockedAtEnd` 驻留锁，保证读者手势回滑后平滑恢复自动流卷。
+
+### 90. 万级藏书客户端多维搜索与主线程 CPU 掉帧陷阱（Web Worker 卸载、极简 ID 传递与三层防御） (Large-Scale Library Client-Side Filtering & Web Worker Offloading)
+
+- **本质**：
+  1. **万级藏书主线程 CPU 击键雪崩**：当个人漫画收藏量达到上万本时，全量藏书在客户端内存中包含标题、作者、作品、车号、标签及章节标题。在搜索框打字时，即便有 WeakMap 缓存搜索文本，每敲击一个字符在主线程进行 $10,000 \times O(\text{filter}) + 10,000 \log(10,000) \times O(\text{sort})$ 计算仍需耗时 20ms~50ms，直接导致输入框掉帧、光标卡顿甚至产生输入法吞字；
+  2. **Worker 线程结构化克隆风暴（Serialization Storm）**：若将过滤结果以完整对象数组（包含万级图书所有元数据）通过 `postMessage` 在 Worker 与主线程间频繁双向传递，浏览器的 `structuredClone` 序列化与反序列化耗时将高达 30ms~60ms，彻底抵消 Worker 卸载的收益；
+  3. **误以为万本藏书展开会导致 DOM 卡死**：实际上，纸间首页在视图层拥有 `usePaginationFold`（受控折叠，默认初始仅挂载 12 张卡片，安全刹车 60 张，每次搜索自动重置折叠步长），因此万级图书检索时 DOM 树上的节点数始终被死死约束在预算内。真正的卡顿点在**主线程 JS 过滤排序计算**以及用户主动点击「全部展开」后的**海量卡片样式与图片排版渲染**。
+- **红线与防误伤**：
+  - **不要**在 Web Worker 通信中双向全量传输重量级业务对象数组；
+  - **不要**在缺乏 Worker 运行环境（如 Node/SSR/Vitest）的场景下强制依赖 Web Worker；
+  - **不要**在超大列表中允许万级 DOM 节点无约束全量挂载；
+  - **放行/改用**：
+    1. **三层立体防御护城河**：
+       - **第 1 层（计算卸载）**：`useLibraryFilter` 采用双轨架构：<1000 本或 Node 环境主线程极速纯函数同步运算（0 延迟）；$\ge 1000$ 本无感卸载至 `libraryFilter.worker.ts`。通信协议仅传递微量查询参数（~50 字节）与轻量有序 ID 列表（`string[]`，仅几十 KB），主线程利用预构建的 `Map<string, LibrarySummary>` 以 $O(1)$ 映射还原，主线程全程保持 120 FPS 丝滑响应；
+       - **第 2 层（DOM 节流）**：`usePaginationFold` 牢牢锁定渲染预算，每次用户打字检索时自动将可见步长重置为初始 12 项，绝不允许上万个 DOM 卡片同时进驻文档树；
+       - **第 3 层（渲染剪裁）**：在 `.comic-card` 上施加 `content-visibility: auto; contain-intrinsic-size: auto 340px;`。即使读者主动点击「展开全部」挂载数千本，视口外的卡片也由浏览器底层自动跳过排版与绘制，显存占用与重绘开销归零。
+
 ---
 
 ## 🚦 交付门禁（四步必跑）

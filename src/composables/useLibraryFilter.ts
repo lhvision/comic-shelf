@@ -1,26 +1,28 @@
-import { computed, ref, type Ref } from 'vue'
+import { computed, ref, watch, getCurrentScope, onScopeDispose, type Ref } from 'vue'
 import type {
   LibrarySummary,
   ImageSearchResultItem,
   ReadingStatus,
   LibraryFacetsResponse,
 } from '@/types'
+import {
+  isCompletedComic,
+  isInProgressComic,
+  filterAndSortLibrary,
+  type FilterParams,
+} from '@/utils/libraryFilterCore'
+import type { WorkerInMessage, WorkerOutMessage } from '@/workers/libraryFilter.worker'
+
+export { isCompletedComic, isInProgressComic }
 
 export type SortKey = 'recent' | 'title' | 'pages' | 'cached'
 
 /**
- * 判定一本藏书是否已被当前用户完全翻阅读完
+ * 触发 Web Worker 卸载计算的藏书规模阈值。
+ * 藏书少于 1000 本时，主线程 O(N) 过滤耗时 < 1ms，直接同步计算以换取极致响应；
+ * 藏书达到或超过 1000 本且环境支持 Worker 时，自动切入 Worker 线程避免掉帧。
  */
-export function isCompletedComic(item: LibrarySummary): boolean {
-  return (item.last_page ?? 0) >= item.page_count && item.page_count > 0
-}
-
-/**
- * 判定一本藏书是否处于在读状态（翻阅过但未完全读完）
- */
-export function isInProgressComic(item: LibrarySummary): boolean {
-  return (item.last_page ?? 0) > 0 && (item.last_page ?? 0) < item.page_count && item.page_count > 0
-}
+export const WORKER_THRESHOLD = 1000
 
 export interface UseLibraryFilterOptions {
   /** 外部共享的搜索关键词 Ref（用于跨路由状态记忆） */
@@ -39,36 +41,18 @@ export interface UseLibraryFilterOptions {
 
 /**
  * 书架筛选与检索 Composable：
- * 负责来源过滤、关键词模糊检索、标签过滤、只看喜欢与多模式排序。
+ * 负责来源过滤、关键词模糊检索、标签过滤、只看喜欢、阅读状态筛选与多模式排序。
+ *
+ * 核心架构特性：
+ * 1. 采用纯函数双轨架构：小规模藏书主线程纯函数同步运行，万级藏书无感卸载至 Web Worker；
+ * 2. 线程通信极简收敛：仅单向同步轻量 ID 数组（string[]），主线程 O(1) 映射还原，杜绝结构化克隆风暴；
+ * 3. 完美兼容 SSR 与 Vitest 无 DOM/Worker 纯 Node 环境。
+ *
+ * @param items 藏书全量汇总列表 Ref
+ * @param activeSource 当前选中的漫画源过滤 Ref（空字符串表示全部源）
+ * @param imageSearchResults 以图搜图检索结果 Ref（可选）
+ * @param options 外部状态注入选项
  */
-const zhCollator = new Intl.Collator('zh-CN')
-
-/**
- * 缓存每本漫画的小写搜索文本组合（WeakMap 随藏书对象生命周期自愈回收），
- * 彻底消除每次按键对 tags / authors / works / chapter_titles 的万次重复数组遍历与字符串转换。
- */
-const itemSearchTextCache = new WeakMap<LibrarySummary, string>()
-
-function getSearchText(item: LibrarySummary): string {
-  if (!item) return ''
-  let cached = itemSearchTextCache.get(item)
-  if (cached !== undefined) return cached
-
-  const parts = [
-    item.title || '',
-    item.display_id || '',
-    ...(item.authors || []),
-    ...(item.works || []),
-    ...(item.actors || []),
-    ...(item.tags || []),
-    ...(item.chapter_titles || []),
-  ]
-  // 采用换行符作为分隔符，杜绝关键词跨字段边界意外连词匹配
-  cached = parts.join('\n').toLocaleLowerCase()
-  itemSearchTextCache.set(item, cached)
-  return cached
-}
-
 export function useLibraryFilter(
   items: Ref<LibrarySummary[]>,
   activeSource: Ref<string>,
@@ -82,10 +66,8 @@ export function useLibraryFilter(
   const sortBy = options?.sortBy ?? ref<SortKey>('recent')
 
   const sourceItems = computed(() => {
-    const list = Array.isArray(items?.value) ? items.value : []
-    return activeSource.value
-      ? list.filter((item) => item && item.source === activeSource.value)
-      : list
+    const list = Array.isArray(items?.value) ? items.value.filter(Boolean) : []
+    return activeSource.value ? list.filter((item) => item.source === activeSource.value) : list
   })
 
   const totalBooks = computed(
@@ -134,83 +116,130 @@ export function useLibraryFilter(
     return map
   })
 
-  const filtered = computed(() => {
-    const needle = search.value.trim().toLocaleLowerCase()
-
-    // First, base filter by search text, tag, favorite, reading status
-    let list = sourceItems.value.filter((item) => {
-      const matchSearch = needle.length === 0 || getSearchText(item).includes(needle)
-
-      const matchTag = activeTag.value === '' || item.tags.includes(activeTag.value)
-      const matchFavorite = !favoritesOnly.value || item.favorite
-      const matchStatus =
-        readingStatus.value === 'all'
-          ? true
-          : readingStatus.value === 'reading'
-            ? isInProgressComic(item)
-            : readingStatus.value === 'completed'
-              ? isCompletedComic(item)
-              : (item.last_page ?? 0) === 0
-
-      // If we have image search results, it must also be in the matches
-      let matchImageSearch = true
-      if (imageSearchResults?.value) {
-        const key = `${item.source}_${item.source_id}`
-        matchImageSearch = imageSearchMatchMap.value.has(key)
+  // 以图搜图轻量化结构（供 Worker / 纯函数过滤）
+  const imageSearchMatchesRecord = computed<Record<string, number> | undefined>(() => {
+    if (!imageSearchResults?.value || imageSearchResults.value.length === 0) return undefined
+    const record: Record<string, number> = {}
+    for (const res of imageSearchResults.value) {
+      if (!res) continue
+      const key = `${res.source}_${res.source_id}`
+      if (res.score > (record[key] ?? -1)) {
+        record[key] = res.score
       }
+    }
+    return record
+  })
 
-      return matchSearch && matchTag && matchFavorite && matchStatus && matchImageSearch
-    })
+  // 聚合筛选参数对象
+  const filterParams = computed<FilterParams>(() => ({
+    activeSource: activeSource.value,
+    search: search.value,
+    activeTag: activeTag.value,
+    favoritesOnly: favoritesOnly.value,
+    readingStatus: readingStatus.value,
+    sortBy: sortBy.value,
+    imageSearchMatches: imageSearchMatchesRecord.value,
+  }))
 
-    list = [...list]
+  // 藏书快速 O(1) ID 查找表
+  const itemMap = computed(() => {
+    const map = new Map<string, LibrarySummary>()
+    const list = Array.isArray(items?.value) ? items.value : []
+    for (const item of list) {
+      if (item) {
+        map.set(`${item.source}:${item.source_id}`, item)
+      }
+    }
+    return map
+  })
 
-    // If image search results exist, override sorting to sort by score descending
-    if (imageSearchResults?.value) {
-      list.sort((a, b) => {
-        const scoreA = imageSearchMatchMap.value.get(`${a.source}_${a.source_id}`)?.bestScore || 0
-        const scoreB = imageSearchMatchMap.value.get(`${b.source}_${b.source_id}`)?.bestScore || 0
-        return scoreB - scoreA
+  const isWorkerSupported = typeof Worker !== 'undefined'
+  const isLargeLibrary = computed(
+    () => isWorkerSupported && (items.value?.length ?? 0) >= WORKER_THRESHOLD,
+  )
+
+  // Worker 异步检索出的结果
+  const workerFiltered = ref<LibrarySummary[]>([])
+  let workerInstance: Worker | null = null
+  let currentRequestId = 0
+
+  function ensureWorker(): Worker | null {
+    if (!isWorkerSupported) return null
+    if (!workerInstance) {
+      workerInstance = new Worker(new URL('@/workers/libraryFilter.worker.ts', import.meta.url), {
+        type: 'module',
       })
-    } else {
-      switch (sortBy.value) {
-        case 'title':
-          list.sort((a, b) => zhCollator.compare(a.title, b.title))
-          break
-        case 'pages':
-          list.sort((a, b) => b.page_count - a.page_count)
-          break
-        case 'cached':
-          list.sort(
-            (a, b) =>
-              b.cached_pages / Math.max(b.page_count, 1) -
-              a.cached_pages / Math.max(a.page_count, 1),
-          )
-          break
-        default: {
-          const activeList: LibrarySummary[] = []
-          const completedList: LibrarySummary[] = []
-          const timeMap = new Map<LibrarySummary, number>()
-
-          for (const item of list) {
-            if (isCompletedComic(item)) {
-              completedList.push(item)
-            } else {
-              activeList.push(item)
-            }
-            timeMap.set(item, item.imported_at ? Date.parse(item.imported_at) || 0 : 0)
-          }
-
-          const sortByImportedDesc = (a: LibrarySummary, b: LibrarySummary) =>
-            (timeMap.get(b) ?? 0) - (timeMap.get(a) ?? 0)
-
-          activeList.sort(sortByImportedDesc)
-          completedList.sort(sortByImportedDesc)
-          list = [...activeList, ...completedList]
-          break
+      workerInstance.onmessage = (event: MessageEvent<WorkerOutMessage>) => {
+        const data = event.data
+        if (data?.type === 'result' && data.requestId === currentRequestId) {
+          const map = itemMap.value
+          workerFiltered.value = data.idList
+            .map((id) => map.get(id))
+            .filter((x): x is LibrarySummary => Boolean(x))
         }
       }
     }
-    return list
+    return workerInstance
+  }
+
+  function triggerWorkerFilter() {
+    if (!isLargeLibrary.value) return
+    const worker = ensureWorker()
+    if (worker) {
+      const reqId = ++currentRequestId
+      const filterMsg: WorkerInMessage = {
+        type: 'filter',
+        params: filterParams.value,
+        requestId: reqId,
+      }
+      worker.postMessage(filterMsg)
+    }
+  }
+
+  // 万级藏书场景下监听 items 变化，全量同步至 Worker 内存并即刻触发初次/更新过滤
+  watch(
+    () => items.value,
+    (newItems) => {
+      if (!isLargeLibrary.value) return
+      const worker = ensureWorker()
+      if (worker) {
+        const syncMsg: WorkerInMessage = {
+          type: 'sync',
+          items: newItems,
+        }
+        worker.postMessage(syncMsg)
+        triggerWorkerFilter()
+      }
+    },
+    { immediate: true },
+  )
+
+  // 万级藏书场景下监听过滤条件变化，向 Worker 发起检索请求
+  watch(filterParams, () => {
+    triggerWorkerFilter()
+  })
+
+  if (getCurrentScope()) {
+    onScopeDispose(() => {
+      if (workerInstance) {
+        workerInstance.terminate()
+        workerInstance = null
+      }
+    })
+  }
+
+  const filtered = computed(() => {
+    // 超过阈值时消费 Worker 异步排序结果
+    if (isLargeLibrary.value) {
+      // 若 Worker 尚未回传第一帧（如初始挂载瞬时），先回退到前 60 本轻量切片保障首屏瞬开不闪烁
+      if (workerFiltered.value.length === 0 && (items.value?.length ?? 0) > 0) {
+        return filterAndSortLibrary(items.value.slice(0, 60), filterParams.value)
+      }
+      return workerFiltered.value
+    }
+
+    // <1000 本或 Node/Vitest 环境：主线程极速纯函数同步运算
+    return filterAndSortLibrary(items.value || [], filterParams.value)
   })
 
   function setSort(value: string) {

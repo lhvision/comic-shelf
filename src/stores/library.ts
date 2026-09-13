@@ -532,6 +532,7 @@ export const useLibraryStore = defineStore('library', () => {
     const item = byId(source, sourceId)
     if (item) {
       item.favorite = favorite
+      items.value = [...items.value]
       const uid = targetUserId ?? userId.value ?? ''
       void saveShelfSnapshot(uid, { items: items.value, facets: facets.value })
     }
@@ -550,6 +551,7 @@ export const useLibraryStore = defineStore('library', () => {
     const item = byId(source, sourceId)
     if (item) {
       item.last_page = page
+      items.value = [...items.value]
       const uid = targetUserId ?? userId.value ?? ''
       void saveShelfSnapshot(uid, { items: items.value, facets: facets.value })
     }

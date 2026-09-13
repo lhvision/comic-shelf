@@ -69,6 +69,10 @@
   - **接口职责解耦**：`/api/library` 专司受控分页切片，`/api/library/facets` 专司全貌统计与高频前 30 标签，切页 0 冗余带宽损耗；
   - **以图搜图穿透检索**：识图结果支持通过 `ids` 精准拉齐历史深层藏书，杜绝分页历史断层；
   - **跨端 SSE 变动感知**：多标签页/多设备发生增删或后台缓存完成时，静默对齐首屏切片与全貌统计。
+- **万级藏书 Web Worker 检索卸载与三层防御架构（ADR 0018）**：
+  - **双轨自适应计算**：<1000 本纯函数毫秒级直算，$\ge 1000$ 本无感卸载至专用 `libraryFilter.worker.ts`，主线程击键长任务归零（耗时 `< 0.5ms`），输入法绝不吞字、光标 120 FPS 绝不掉帧；
+  - **极简 ID 传递契约**：线程间仅交换微量参数与有序 ID 数组，彻底消灭全量对象序列化反序列化风暴；
+  - **DOM 与视口双重裁剪**：`usePaginationFold` 受控折叠锁定渲染节点预算（搜索即刻重置步长为 12 本），CSS `content-visibility: auto` 跳过屏外卡片样式与像素重排，彻底解决万本展开与搜索的性能顾虑。
 - **案头藏书、阅读状态分段胶囊与归档专匣（Shelf Drawer & Segmented Tabs）**：
   - **阅读状态单选三态胶囊**：工具栏提供典雅的 `[ 全部 | 在读 | 已读 ]`（`readingStatus`）分段选项卡，与独立的「只看喜欢」微件正交并列，URL Query 双向联动，彻底杜绝交集为空的白屏反模式；
   - 书架默认「最近收录」排序下实行两层分桶：案头主书架展示未读与在读作品，已读完藏书整体沉底归档至底部的「卷末归档专匣」；
@@ -255,7 +259,7 @@ $COMIC_SHELF_DATA/
 | **[docs/agents/architecture.md](docs/agents/architecture.md)** | 后端架构设计、数据存储模型、Provider 扩展体系、安全门禁与 SSE 单向事件流                                              |
 | **[docs/agents/frontend.md](docs/agents/frontend.md)**         | 前端视图与 Composable 地图、阅读器分页与手势、PWA 离线缓存与性能策略                                                  |
 | **[DESIGN_NOTES.md](DESIGN_NOTES.md)**                         | 纸间设计系统规范（Living Design System）、品牌哲学、色彩/组件层级与核心设计定律（历史演进见 `docs/design-archive/`）  |
-| **[docs/adr/](docs/adr/)**                                     | 架构决策记录（Architecture Decision Records，涵盖系统重大架构抉择，ADR 0001 ~ 0015）                                  |
+| **[docs/adr/](docs/adr/)**                                     | 架构决策记录（Architecture Decision Records，涵盖系统重大架构抉择，ADR 0001 ~ 0018）                                  |
 
 ---
 

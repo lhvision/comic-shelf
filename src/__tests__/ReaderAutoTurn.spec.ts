@@ -272,4 +272,41 @@ describe('useAutoTurn Composable - Continuous Mode & Soft Yield', () => {
     expect(auto.isDockedAtEnd.value).toBe(false)
     expect(auto.isYielding.value).toBe(true)
   })
+
+  it('un-docks on container scroll events when user scrolls away from bottom', async () => {
+    const { useAutoTurn } = await import('@/composables/useAutoTurn')
+    const { ref, reactive, computed } = await import('vue')
+
+    const mockContainer = document.createElement('main')
+    Object.defineProperty(mockContainer, 'clientHeight', { value: 800, configurable: true })
+    Object.defineProperty(mockContainer, 'scrollHeight', { value: 2000, configurable: true })
+    mockContainer.scrollTop = 1200
+
+    const scrollEl = ref<HTMLElement | null>(mockContainer)
+    const settings = reactive({
+      ...DEFAULT_SETTINGS,
+      mode: 'vertical-continuous' as const,
+      autoTurn: true,
+      autoScrollSpeed: 80,
+    })
+
+    const auto = useAutoTurn({
+      settings,
+      currentGroupIndex: ref(5),
+      lastGroupIndex: computed(() => 5),
+      settingsOpen: ref(false),
+      onAdvance: () => {},
+      scrollEl,
+    })
+
+    auto.isDockedAtEnd.value = true
+    expect(auto.isDockedAtEnd.value).toBe(true)
+
+    // User drags native scrollbar up to 600px
+    mockContainer.scrollTop = 600
+    auto.onAutoTurnScroll()
+
+    expect(auto.isDockedAtEnd.value).toBe(false)
+    expect(auto.isYielding.value).toBe(true)
+  })
 })

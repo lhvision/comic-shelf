@@ -444,4 +444,122 @@ describe('useLibraryFilter', () => {
     search.value = '第 99 话'
     expect(filtered.value.length).toBe(0)
   })
+
+  it('sorts titles naturally with numeric awareness (e.g. 2 before 10)', () => {
+    const list: LibrarySummary[] = [
+      { ...items[0]!, source_id: '10', title: '第 10 卷' },
+      { ...items[0]!, source_id: '2', title: '第 2 卷' },
+      { ...items[0]!, source_id: '1', title: '第 1 卷' },
+    ]
+    const itemsRef = ref(list)
+    const activeSourceRef = ref('')
+    const { filtered, setSort } = useLibraryFilter(itemsRef, activeSourceRef)
+
+    setSort('title')
+    expect(filtered.value.map((b) => b.source_id)).toEqual(['1', '2', '10'])
+  })
+
+  it('correctly maps filtered items to lightweight ID array via filterAndSortLibraryIds', async () => {
+    const { filterAndSortLibraryIds } = await import('@/utils/libraryFilterCore')
+    const ids = filterAndSortLibraryIds(items, {
+      activeSource: '',
+      search: '',
+      activeTag: 'tag2',
+      favoritesOnly: false,
+      readingStatus: 'all',
+      sortBy: 'recent',
+    })
+    expect(ids).toEqual(['jm:2'])
+  })
+
+  it('handles large collections (>1000 items) gracefully in node/vitest environment via synchronous fallback', () => {
+    // Generate 1200 items
+    const largeList: LibrarySummary[] = Array.from({ length: 1200 }, (_, i) => ({
+      source: 'jm',
+      source_id: String(i + 1),
+      display_id: String(i + 1),
+      title: `Book ${i + 1}`,
+      authors: [`Author ${i % 5}`],
+      works: [],
+      actors: [],
+      tags: [i % 2 === 0 ? 'even' : 'odd'],
+      favorite: i % 10 === 0,
+      page_count: 20,
+      views: '0',
+      likes: '0',
+      uploaded_at: '',
+      published_at: '',
+      updated_at: '',
+      imported_at: '2026-01-01T00:00:00Z',
+      cover_paths: [],
+      cached_pages: 0,
+      cover_count: 1,
+      last_page: 0,
+    }))
+
+    const itemsRef = ref(largeList)
+    const activeSourceRef = ref('')
+    const { filtered, search, activeTag } = useLibraryFilter(itemsRef, activeSourceRef)
+
+    // Initially all 1200 items in Node environment without Worker support
+    expect(filtered.value.length).toBe(1200)
+
+    // Tag filter
+    activeTag.value = 'odd'
+    expect(filtered.value.length).toBe(600)
+
+    // Search filter
+    search.value = 'Book 12'
+    // Matches Book 12, Book 121, Book 123, Book 125, Book 127, Book 129, etc.
+    expect(filtered.value.length).toBeGreaterThan(0)
+    for (const book of filtered.value) {
+      expect(book.title).toContain('Book 12')
+      expect(book.tags).toContain('odd')
+    }
+  })
+
+  it('safely handles special regex characters and symbols in search needle without crashing', () => {
+    const list: LibrarySummary[] = [
+      {
+        ...items[0]!,
+        source_id: 'special-1',
+        title: 'Book [Special] (Vol. 1) + Extras *',
+        tags: ['c++'],
+      },
+      { ...items[1]!, source_id: 'special-2', title: 'Normal Book' },
+    ]
+    const itemsRef = ref(list)
+    const activeSourceRef = ref('')
+    const { filtered, search } = useLibraryFilter(itemsRef, activeSourceRef)
+
+    // Regex chars: [ ] ( ) + * ? \
+    search.value = '[special]'
+    expect(filtered.value.length).toBe(1)
+    expect(filtered.value[0]?.source_id).toBe('special-1')
+
+    search.value = '(vol. 1) +'
+    expect(filtered.value.length).toBe(1)
+
+    search.value = '*'
+    expect(filtered.value.length).toBe(1)
+
+    search.value = 'c++'
+    expect(filtered.value.length).toBe(1)
+  })
+
+  it('safely ignores null or undefined items in library array without throwing', () => {
+    const corruptedList = [
+      items[0]!,
+      null as unknown as LibrarySummary,
+      undefined as unknown as LibrarySummary,
+      items[1]!,
+    ]
+    const itemsRef = ref(corruptedList)
+    const activeSourceRef = ref('')
+    const { filtered, totalBooks } = useLibraryFilter(itemsRef, activeSourceRef)
+
+    expect(totalBooks.value).toBe(2)
+    expect(filtered.value.length).toBe(2)
+    expect(filtered.value.map((b) => b.source_id)).toEqual(['1', '2'])
+  })
 })

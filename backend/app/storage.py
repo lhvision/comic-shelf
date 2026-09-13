@@ -573,25 +573,47 @@ class ComicStore:
         return sum(1 for page in meta.pages if page.cached)
 
     def reconcile_cached_pages(self, meta: ComicMeta) -> int:
-        """Self-heal page.cached against disk files for any un-marked pages."""
+        """Self-heal page.cached against disk files for any un-marked pages via batch directory scanning."""
+        if not meta.pages or self.cached_page_count(meta) >= meta.page_count:
+            return self.cached_page_count(meta)
+
+        pages_base = self.pages_dir(meta.source, meta.source_id)
+        if not pages_base.exists():
+            return self.cached_page_count(meta)
+
+        # Batch discover existing non-empty files by directory via scandir (O(1) syscall per chapter)
+        existing_by_dir: dict[Path, set[str]] = {}
         changed = False
+
         for page in meta.pages:
-            if not page.cached:
-                target = self._chapter_page_path(meta, page)
+            if page.cached:
+                continue
+            parent_dir = pages_base / self._safe(page.chapter) if page.chapter else pages_base
+            if parent_dir not in existing_by_dir:
                 try:
-                    if target.exists() and target.stat().st_size > 0:
-                        page.cached = True
-                        changed = True
+                    if parent_dir.is_dir():
+                        existing_by_dir[parent_dir] = {
+                            entry.name
+                            for entry in os.scandir(parent_dir)
+                            if entry.is_file() and entry.stat().st_size > 0
+                        }
+                    else:
+                        existing_by_dir[parent_dir] = set()
                 except OSError:
-                    pass
+                    existing_by_dir[parent_dir] = set()
+
+            if page.file in existing_by_dir[parent_dir]:
+                page.cached = True
+                changed = True
+
         if changed:
             album_path = self.album_path(meta.source, meta.source_id)
-            _write_json_atomic(album_path, meta.model_dump())
-            try:
-                mtime = album_path.stat().st_mtime
-            except Exception:
-                mtime = 0.0
             with self._cache_guard:
+                _write_json_atomic(album_path, meta.model_dump())
+                try:
+                    mtime = album_path.stat().st_mtime
+                except Exception:
+                    mtime = 0.0
                 self._meta_cache[(meta.source, meta.source_id)] = (mtime, meta)
                 self._fetched_cache.pop((meta.source, meta.source_id), None)
             try:

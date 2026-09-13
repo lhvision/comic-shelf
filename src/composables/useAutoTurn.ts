@@ -164,6 +164,7 @@ export function useAutoTurn(options: UseAutoTurnOptions) {
       // 读者通过原生滚动条拖拽或大幅手势发生了外部位移，触发软避让
       lastExpectedScrollTop = el.scrollTop
       yieldAutoScroll()
+      return
     }
 
     if (canAutoScrollRun()) {
@@ -189,6 +190,7 @@ export function useAutoTurn(options: UseAutoTurnOptions) {
       currentSettings.value.autoTurn &&
       !autoTurnPaused.value &&
       !isDockedAtEnd.value &&
+      !isYielding.value &&
       Boolean(scrollEl?.value)
     ) {
       rafId = requestAnimationFrame(tickScroll)
@@ -200,7 +202,12 @@ export function useAutoTurn(options: UseAutoTurnOptions) {
 
   function startAutoScroll() {
     if (rafId !== null) return
-    if (!currentSettings.value.autoTurn || autoTurnPaused.value || isDockedAtEnd.value) {
+    if (
+      !currentSettings.value.autoTurn ||
+      autoTurnPaused.value ||
+      isDockedAtEnd.value ||
+      isYielding.value
+    ) {
       return
     }
     lastTimestamp = 0
@@ -222,7 +229,8 @@ export function useAutoTurn(options: UseAutoTurnOptions) {
       if (
         currentSettings.value.mode === 'vertical-continuous' &&
         currentSettings.value.autoTurn &&
-        !autoTurnPaused.value
+        !autoTurnPaused.value &&
+        !isDockedAtEnd.value
       ) {
         startAutoScroll()
       }
@@ -245,8 +253,30 @@ export function useAutoTurn(options: UseAutoTurnOptions) {
       }
     }
     isYielding.value = true
+    stopAutoScroll()
     stopYieldTimer()
     startYieldTimer()
+  }
+
+  /** 供视图层在容器滚动（包含原生滚动条拖拽）时调用，探测外部位移与停靠自愈 */
+  function onAutoTurnScroll() {
+    if (currentSettings.value.mode !== 'vertical-continuous' || !currentSettings.value.autoTurn) {
+      return
+    }
+    const el = scrollEl?.value
+    if (!el) return
+
+    const max = el.scrollHeight - el.clientHeight
+    if (max > 0 && isDockedAtEnd.value && el.scrollTop < max - 40) {
+      isDockedAtEnd.value = false
+      yieldAutoScroll()
+      return
+    }
+
+    if (lastExpectedScrollTop >= 0 && Math.abs(el.scrollTop - lastExpectedScrollTop) > 28) {
+      lastExpectedScrollTop = el.scrollTop
+      yieldAutoScroll()
+    }
   }
 
   // ---------------- 3. 控制与状态切换 ----------------
@@ -386,6 +416,7 @@ export function useAutoTurn(options: UseAutoTurnOptions) {
     startAutoScroll,
     stopAutoScroll,
     yieldAutoScroll,
+    onAutoTurnScroll,
     toggleAutoTurnPause,
   }
 }

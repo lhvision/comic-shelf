@@ -158,7 +158,13 @@ function resolveNearestGroupIndex(
   }
 
   // 翻页模式（竖向翻页 / 横向翻页）：最临近单屏吸附
-  const probeCandidates = [currentIdx, currentIdx + 1, currentIdx - 1]
+  const probeCandidates = [
+    currentIdx,
+    currentIdx + 1,
+    currentIdx - 1,
+    currentIdx + 2,
+    currentIdx - 2,
+  ]
   let bestDist = Number.POSITIVE_INFINITY
   let bestIdx = currentIdx
 
@@ -174,14 +180,22 @@ function resolveNearestGroupIndex(
     }
   }
 
-  // 大跨度跳转（拖动滚动条）兜底：直接根据位置估算
+  // 大跨度跳转（拖动滚动条或大幅滑跃）兜底：偏移越出半屏时根据位置估算
   const pageSize = horizontal ? el.clientWidth : el.clientHeight
-  if (bestDist > pageSize * 1.5 && max > 0) {
+  if (bestDist > pageSize * 0.5 && max > 0) {
     const ratio = rtl ? 1 - position / max : position / max
     const estimated = Math.max(0, Math.min(lastIdx, Math.round(ratio * lastIdx)))
-    const spread = el.querySelector<HTMLElement>(`[data-group-index="${estimated}"]`)
-    if (spread) {
-      return estimated
+    const estimatedCandidates = [estimated, estimated - 1, estimated + 1]
+    for (const idx of estimatedCandidates) {
+      if (idx < 0 || idx > lastIdx) continue
+      const spread = el.querySelector<HTMLElement>(`[data-group-index="${idx}"]`)
+      if (!spread) continue
+      const spreadPos = horizontal ? spread.offsetLeft : spread.offsetTop
+      const dist = Math.abs(spreadPos - position)
+      if (dist < bestDist) {
+        bestDist = dist
+        bestIdx = idx
+      }
     }
   }
 
@@ -455,6 +469,20 @@ export function useReaderNavigation(options: UseReaderNavigationOptions) {
     for (let group = startGroup; group <= endGroup; group += 1) {
       if (group === groupIndex) continue
       for (const targetPage of pageGroups.value[group] ?? []) {
+        if (preloadedPages.has(targetPage)) continue
+        preloadedPages.add(targetPage)
+        const image = new Image()
+        image.src = pageFileUrl(source.value, sourceId.value, targetPage)
+      }
+    }
+
+    // 体验优化（Suggestion 4）：当读者抵达当前话后段（倒数 2 屏以内）且存在下一话时，静默预热下一话首屏画页
+    const lastIdx = pageGroups.value.length - 1
+    if (nextChapter.value && lastIdx >= 0 && groupIndex >= lastIdx - 1) {
+      const nextStart = nextChapter.value.start
+      const nextCount = nextChapter.value.page_count
+      const warmupPages = [nextStart, nextStart + 1].filter((p) => p < nextStart + nextCount)
+      for (const targetPage of warmupPages) {
         if (preloadedPages.has(targetPage)) continue
         preloadedPages.add(targetPage)
         const image = new Image()

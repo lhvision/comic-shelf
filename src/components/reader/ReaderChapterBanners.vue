@@ -6,7 +6,7 @@
  * 核心职责：
  * 1. 处于当前话首（`atChapterStart`）且存在上一话时渲染「上一话」按钮；
  * 2. 处于当前话末（`atChapterEnd`）且存在下一话时渲染「本话完 · 下一话」按钮；
- * 3. 纵向连续条漫模式下接入 CSS Scroll-Driven 滚动驱动浮入动画；
+ * 3. 离散翻页排版模式（横向/竖向翻页）下跨话悬浮导航；条漫连续模式改由行内章末过渡卡片接管；
  * 4. 严格收敛单行文本与文字溢出省略（ellipsis），防止移动端长标题折行撑开胶囊；
  * 5. 统一物理定位（`left: 50%; translate: -50% 0;`），杜绝 transform 叠加导致的偏位。
  */
@@ -30,7 +30,7 @@ export interface ReaderChapterBannersProps {
   atChapterEnd: boolean
   /** 章节简写标题格式化函数 */
   chapterShortLabel: (chapter: Chapter) => string
-  /** 当前阅读器排版模式（用于激活纵向连续模式下的滚动驱动动效） */
+  /** 当前阅读器排版模式（条漫连续模式下隐藏下一话悬浮横幅） */
   mode: ReaderSettings['mode']
 }
 
@@ -59,7 +59,6 @@ defineEmits<{
   <button
     v-if="nextChapter && atChapterEnd && mode !== 'vertical-continuous'"
     class="reader-chapter-banner reader-chapter-next"
-    :data-mode="mode"
     type="button"
     @click="$emit('nextChapter')"
   >
