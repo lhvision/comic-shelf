@@ -32,7 +32,14 @@
 | `src/composables/useReaderKeyboard.ts`             | 阅读器键盘与全屏：按键映射（翻页/切话/首末页）、`useFullscreen` 与 ESC 退出                                                                                    |
 | `src/composables/useAutoTurn.ts`                   | 阅读器自动阅读状态机：双轨架构（翻页模式离散倒计时 + 条漫连续 rAF 匀速流卷、Soft Yield 软避让与章末停靠）                                                      |
 | `src/composables/useReaderChrome.ts`               | 阅读器顶栏/HUD 延时隐藏与交互唤醒控制                                                                                                                          |
+| `src/composables/useReaderInteraction.ts`          | 阅读器交互状态机调度：聚合快捷键（`useReaderKeyboard`）、进度上报（`useReaderSync`）、滚轮映射与自动翻页步进                                                   |
+| `src/composables/useReaderSync.ts`                 | 阅读进度防抖持久化（800ms）、跨标签广播与单本阅读排版偏好记忆                                                                                                  |
+| `src/composables/useReaderCompletion.ts`           | 阅读器末页完读感知、接卷推荐算法计算与直达离开路由                                                                                                             |
 | `src/composables/useChapterNavigation.ts`          | 详情/子路由章节导航：锁定章节、章节切片、48 增量渲染、「继续阅读」文案                                                                                         |
+| `src/composables/useChapterPageInfo.ts`            | 章节相对页码换算、跨话首尾探测与切话跳转状态机                                                                                                                 |
+| `src/composables/useChapterManagement.ts`          | 章节重命名弹窗、删除章节二次确认与菜单编排状态机                                                                                                               |
+| `src/composables/useComicDetail.ts`                | 漫画详情生命周期、SWR 内存态占位、离线容错降级与后台任务对齐                                                                                                   |
+| `src/composables/useComicDetailActions.ts`         | 漫画详情操作编排：元数据刷新、漫画移除、阅读直达、返回书架与滚动记忆                                                                                           |
 | `src/composables/useChapterCache.ts`               | 漫画全书与分话后台缓存轮询与进度状态编排：任务驱动按需轮询、页码 cached 就地对齐与任务生命周期收敛                                                             |
 | `src/composables/useReaderSettings.ts`             | 阅读器设置全局状态单例持久化（VueUse `createGlobalState`）                                                                                                     |
 | `src/composables/useLastRead.ts`                   | 每部作品继续阅读页码持久化读写                                                                                                                                 |
@@ -56,6 +63,8 @@
 | `src/components/UpdateBanner.vue`                  | 纸间新卷本装订更新提示横幅（水墨胶囊悬浮卡片、沉浸阅读器自动避让）                                                                                             |
 | `src/components/GateView.vue`                      | 全屏 Zero-DOM 门禁大门视图：反 DevTools 篡改哨兵与三态表单编排外壳                                                                                             |
 | `src/components/gate/`                             | 门禁模块化表单群：初始口令表单、首访认领自设 PIN 表单、已认领 PIN 验证表单                                                                                     |
+| `src/components/gate/GatePasswordInput.vue`        | 门禁口令输入分子：自动聚焦、密码显隐切换与回车提交契约单一真理源                                                                                               |
+| `src/components/FileStagingDropZone.vue`           | 画卷文件暂存区：自建漫画/追加/重装订拖拽投放与服务器路径扫描双模暂存                                                                                           |
 | `src/components/Modal.vue`                         | 通用顶层模态对话框：基于 HTML5 原生 `<dialog>` Top Layer 与无障碍焦点圈闭，支持声明式关闭指令 (`commandfor`)、焦点记忆自动返还、防穿透微弹反馈与子表单安全防护 |
 | `src/components/SegmentedTabs.vue`                 | 典藏分段选项卡：支持泛型 `TabItem<T>`/字符串、左右/Home/End 键导航与多尺寸                                                                                     |
 | `src/components/AppButton.vue`                     | 通用典藏按钮：支持 primary / secondary / soft / ghost / danger 多种变体                                                                                        |
@@ -353,3 +362,42 @@ graph TD
 1. **第 1 层：计算卸载（Web Worker）**：$O(N)$ 模糊检索与 $O(N \log N)$ 中文自然拼音排序转移至独立后台线程，主线程击键开销降至 `< 0.5ms`，光标 120 FPS 绝不掉帧；
 2. **第 2 层：DOM 截流（usePaginationFold）**：视图层强制锁定在 12 本/批（安全刹车 60 本）的渲染预算内。用户在搜索框键入字符的一瞬间，折叠逻辑自动将渲染切片重置为首批 12 张卡片，DOM 树上绝不会同时进驻上万个节点；
 3. **第 3 层：渲染剪裁（CSS `content-visibility: auto`）**：在 `.comic-card` 上施加 `content-visibility: auto; contain-intrinsic-size: auto 340px;`。即使读者主动点击「展开全部」挂载数千本，视口外的卡片由浏览器底层自动跳过样式计算与像素绘制，显存占用保持在极低水位，杜绝白屏与崩溃。
+
+## 14. 视图轻量化（View Thinness）与高阶 Composable 聚合规范
+
+### 14.1 核心指标与实机达标基线
+
+为彻底告别 Vue 视图组件动辄 300~500 行的“巨型神组件（God Component）”反模式，纸间前端架构确立**视图轻量化（View Thinness）**硬性门禁：`src/views/*.vue` 的 `<script setup>` 行数必须严格控制在 **≤ 150 行**，只负责路由参数捕获、装配树编排与顶层生命周期调度。
+
+经系统性代码治理，核心视图指标全线达标：
+
+- `src/views/ComicDetailView.vue`：**142 行**（原 297 行，下沉 `useComicDetail` 与 `useComicDetailActions`）；
+- `src/views/ChapterView.vue`：**150 行**（原 336 行，下沉 `useChapterManagement` 与 `useChapterPageInfo`）；
+- `src/views/ReaderView.vue`：**146 行**（原 363 行，下沉 `useReaderInteraction`、`useReaderSync` 与 `useReaderCompletion`）；
+- `src/views/CreateComicView.vue`：**45 行**（原 86 行，公共分子 `FileStagingDropZone` 抽离）。
+
+### 14.2 跨层对象聚合契约（Sub-State Aggregation Pattern）
+
+在重构如 `ReaderView` 这种超大型交互状态机时，若将 10 个 Composable 的 30+ 个离散 Ref 与函数作为平面参数逐一传给高阶交互调度器，会导致视图层出现上百行形如 `param1, param2, ...` 的参数样板代码，极易因形参错位发生静默类型漂移。
+
+**标准解法**：
+
+1. **子状态机整包传递**：高阶 Composable（如 `useReaderInteraction`）直接接收子状态机实例对象：
+   ```ts
+   useReaderInteraction({
+     userInteracted,
+     currentPage,
+     currentGroupIndex,
+     settingsOpen,
+     reducedMotion,
+     route,
+     settings, // useReaderSettings 实例
+     bubble, // useReaderBubble 实例
+     data, // useReaderData 实例
+     paging, // useReaderPaging 实例
+     chrome, // useReaderChrome 实例
+     navigation, // useReaderNavigation 实例
+     autoTurn, // useAutoTurn 实例
+   })
+   ```
+2. **内部按需解构**：在高阶 Composable 函数体头部根据业务调度需要就地精准解构，彻底消除视图层的胶水样板代码。

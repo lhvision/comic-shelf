@@ -1,4 +1,5 @@
 import { computed, ref } from 'vue'
+import { useLocalStorage, StorageSerializers } from '@vueuse/core'
 import {
   api,
   ApiError,
@@ -19,28 +20,20 @@ export interface StoredAuthProfile {
   userId: string
 }
 
+export const storedAuthProfile = useLocalStorage<StoredAuthProfile | null>(
+  AUTH_PROFILE_STORAGE_KEY,
+  null,
+  {
+    serializer: StorageSerializers.object,
+  },
+)
+
 export function getStoredAuthProfile(): StoredAuthProfile | null {
-  try {
-    if (typeof window === 'undefined') return null
-    const raw = window.localStorage.getItem(AUTH_PROFILE_STORAGE_KEY)
-    if (!raw) return null
-    return JSON.parse(raw) as StoredAuthProfile
-  } catch {
-    return null
-  }
+  return storedAuthProfile.value
 }
 
 export function setStoredAuthProfile(profile: StoredAuthProfile | null): void {
-  try {
-    if (typeof window === 'undefined') return
-    if (profile) {
-      window.localStorage.setItem(AUTH_PROFILE_STORAGE_KEY, JSON.stringify(profile))
-    } else {
-      window.localStorage.removeItem(AUTH_PROFILE_STORAGE_KEY)
-    }
-  } catch {
-    // Ignore storage quota or security errors
-  }
+  storedAuthProfile.value = profile
 }
 
 const initialProfile = getStoredAuthProfile()

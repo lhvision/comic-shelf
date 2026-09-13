@@ -2,9 +2,9 @@
 /**
  * 阅读器顶栏 —— 返回按钮 + 书名 + 设置/全屏工具。
  * 纯展示组件：所有动作通过 emit 交给 ReaderView 处理，自身不感知路由。
- * 按钮复用 ReaderButton（票据 05：与设置面板共用同一套控件样式）。
+ * 按钮统一接入 AppButton（theme="reader"，暗室高对比度 Token 驱动）。
  */
-import ReaderButton from '@/components/reader/ReaderButton.vue'
+import AppButton from '@/components/AppButton.vue'
 import AppIcon from '@/components/AppIcon.vue'
 
 defineProps<{
@@ -25,18 +25,21 @@ defineEmits<{
 <template>
   <div class="reader-chrome" :data-hidden="hidden" :inert="hidden">
     <div class="reader-topbar">
-      <ReaderButton @click="$emit('back')">
-        <AppIcon name="arrow-left" size="xs" />
+      <AppButton theme="reader" variant="ghost" size="sm" icon="arrow-left" @click="$emit('back')">
         <span>返回</span>
-      </ReaderButton>
+      </AppButton>
       <div class="reader-title" :title="`${title} (${displayId}${chapter ? ' · ' + chapter : ''})`">
         <strong :title="title">{{ title }}</strong>
         <span>{{ displayId }}</span>
         <span v-if="chapter" class="reader-chapter" :title="chapter">{{ chapter }}</span>
       </div>
       <div class="reader-tools">
-        <ReaderButton @click="$emit('openSettings')">设置</ReaderButton>
-        <ReaderButton @click="$emit('toggleFullscreen')">全屏</ReaderButton>
+        <AppButton theme="reader" variant="ghost" size="sm" @click="$emit('openSettings')">
+          设置
+        </AppButton>
+        <AppButton theme="reader" variant="ghost" size="sm" @click="$emit('toggleFullscreen')">
+          全屏
+        </AppButton>
       </div>
     </div>
   </div>

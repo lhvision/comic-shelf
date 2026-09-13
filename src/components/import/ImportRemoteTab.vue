@@ -11,7 +11,7 @@
  */
 
 import { computed, useTemplateRef } from 'vue'
-import Tooltip from '@/components/Tooltip.vue'
+import AppTooltip from '@/components/AppTooltip.vue'
 import AppIcon from '@/components/AppIcon.vue'
 
 /** 绑定的车号/链接输入值（v-model:id） */
@@ -92,11 +92,11 @@ function handleSubmit() {
         <input v-model="prefetchAllModel" type="checkbox" />
         <span>同时缓存全部页面</span>
       </label>
-      <Tooltip :id="tooltipId" :tip="tooltipText" side="top">
+      <AppTooltip :id="tooltipId" :tip="tooltipText" side="top">
         <button class="tooltip-icon" type="button" aria-label="关于缓存全部页面">
           <AppIcon name="info" size="xs" />
         </button>
-      </Tooltip>
+      </AppTooltip>
     </div>
   </div>
 </template>

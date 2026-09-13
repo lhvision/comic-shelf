@@ -12,7 +12,7 @@
 import { computed, nextTick, ref, useTemplateRef, watch } from 'vue'
 import Modal from '@/components/Modal.vue'
 import SegmentedTabs from '@/components/SegmentedTabs.vue'
-import Tooltip from '@/components/Tooltip.vue'
+import AppTooltip from '@/components/AppTooltip.vue'
 import AppButton from '@/components/AppButton.vue'
 import GuestRosterTab from './guest/GuestRosterTab.vue'
 import GuestIssueTab from './guest/GuestIssueTab.vue'
@@ -63,7 +63,7 @@ watch(activeTab, async (tab) => {
     <template #title>
       <div class="guest-modal-title">
         <span>纸间 · 访客簿</span>
-        <Tooltip
+        <AppTooltip
           tip="派发专属访问通行证，阅读进度与收藏红心相互隔离。"
           side="right"
           align="center"
@@ -78,7 +78,7 @@ watch(activeTab, async (tab) => {
             class="title-info-btn"
             aria-label="查看权限隔离说明"
           />
-        </Tooltip>
+        </AppTooltip>
       </div>
     </template>
 

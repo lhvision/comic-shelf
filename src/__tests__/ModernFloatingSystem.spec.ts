@@ -1,6 +1,5 @@
 import { describe, it, expect, vi } from 'vite-plus/test'
 import { mount } from '@vue/test-utils'
-import Tooltip from '@/components/Tooltip.vue'
 import AppTooltip from '@/components/AppTooltip.vue'
 import AppPopover from '@/components/AppPopover.vue'
 import AppDropdown from '@/components/AppDropdown.vue'
@@ -12,7 +11,7 @@ describe('Modern Floating System', () => {
   describe('Tooltip & AppTooltip', () => {
     it('defaults to lazy: true (zero-DOM) and mounts popover=hint tip element on hover', async () => {
       vi.useFakeTimers()
-      const wrapper = mount(Tooltip, {
+      const wrapper = mount(AppTooltip, {
         props: {
           tip: '提示信息说明',
           side: 'top',
@@ -48,7 +47,7 @@ describe('Modern Floating System', () => {
     })
 
     it('applies side and align classes for dynamic arrow targeting when lazy=false', () => {
-      const wrapper = mount(Tooltip, {
+      const wrapper = mount(AppTooltip, {
         props: {
           tip: '说明',
           side: 'top',
@@ -84,7 +83,7 @@ describe('Modern Floating System', () => {
 
     it('keeps tooltip open when cursor moves onto the tip element (WCAG 1.4.13 hoverable)', async () => {
       vi.useFakeTimers()
-      const wrapper = mount(Tooltip, {
+      const wrapper = mount(AppTooltip, {
         props: {
           tip: '说明文本',
           delay: 50,
@@ -130,7 +129,7 @@ describe('Modern Floating System', () => {
 
     it('dynamically flips actualSide class and data-side when collision causes vertical inversion', async () => {
       vi.useFakeTimers()
-      const wrapper = mount(Tooltip, {
+      const wrapper = mount(AppTooltip, {
         props: {
           tip: '顶部提示',
           side: 'top',

@@ -10,7 +10,7 @@
  */
 
 import { useTemplateRef } from 'vue'
-import Tooltip from '@/components/Tooltip.vue'
+import AppTooltip from '@/components/AppTooltip.vue'
 import AppIcon from '@/components/AppIcon.vue'
 
 const props = defineProps<{
@@ -50,7 +50,7 @@ function handleInc() {
   <div class="concurrency-wrapper">
     <div class="download-settings__row">
       <span class="download-settings__title">下载并发</span>
-      <Tooltip
+      <AppTooltip
         id="concurrency-tip"
         tip="同时下载的页数：调大缓存更快，太高容易被 CDN 限流拖慢服务。"
         side="top"
@@ -58,7 +58,7 @@ function handleInc() {
         <button class="tooltip-icon" type="button" aria-label="关于下载并发">
           <AppIcon name="info" size="xs" />
         </button>
-      </Tooltip>
+      </AppTooltip>
 
       <div
         v-if="!envControlled"

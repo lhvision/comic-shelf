@@ -965,6 +965,30 @@
        - **第 2 层（DOM 节流）**：`usePaginationFold` 牢牢锁定渲染预算，每次用户打字检索时自动将可见步长重置为初始 12 项，绝不允许上万个 DOM 卡片同时进驻文档树；
        - **第 3 层（渲染剪裁）**：在 `.comic-card` 上施加 `content-visibility: auto; contain-intrinsic-size: auto 340px;`。即使读者主动点击「展开全部」挂载数千本，视口外的卡片也由浏览器底层自动跳过排版与绘制，显存占用与重绘开销归零。
 
+### 91. Composable 传参膨胀与跨层对象聚合反模式（Composable Parameter Explosion & Sub-State Object Aggregation）
+
+- **本质**：
+  1. **参数爆炸与形参错位风险**：当大型复合视图（如 `ReaderView`、`ComicDetailView`）向下沉淀高阶编排 Composable 时，若简单将所有子状态机展开为扁平参数列表（例如展开传入 30+ 离散的 `Ref` 与普通回调函数），视图调用处将充斥数十行冗长参数样板代码，参数顺序极易错位导致静默类型漂移与难以排查的 Bug；
+  2. **过度解构与领域生命周期撕裂**：将底层状态机彻底解构为孤立变量后，各变量丢失了所属的领域聚合边界，跨模块协同（如翻页状态机与自动阅读状态机的联动）演变为混乱的离散变量乱飞，严重破坏了代码的可维护性与自解释性。
+- **红线与防误伤**：
+  - **不要**在封装高阶编排 Composable 时设计接收 10 个以上平铺离散参数的巨型签名；
+  - **不要**在视图层无脑将所有子状态机全量扁平解构后再拼装传出；
+  - **放行/改用**：
+    1. **子状态机对象整包聚合（Sub-State Aggregation Pattern）**：保持子状态机实例的领域完整性，高阶调度器直接接收子状态机命名对象（如 `{ settings, bubble, data, paging, chrome, navigation, autoTurn }`）；
+    2. **内部精准就地解构**：在高阶 Composable 函数体头部根据业务调度需要就地解构，视图层仅需一行干净的调用传参，将组件脚本行数彻底压低至 150 行以内，杜绝类型漂移。
+
+### 92. Vue 模板增量 TS 检查与 Composable 解构漏绑陷阱（Vue Template Incremental Type Checking & Destructuring Leakage）
+
+- **本质**：
+  1. **Vue 模板 TS 检查盲区（vue-tsc 绕过陷阱）**：标准 `vp check` 或 `tsc` 仅对 `.ts` 脚本和 `<script lang="ts">` 内部代码进行类型校验，默认无法深入检测 `.vue` 模板 `<template>` 内部的表达式与属性绑定错误；
+  2. **Composable 抽取后顶层解构遗漏（Template Property Unbound）**：在执行「视图轻量化」将大量逻辑从 Vue 组件下沉到 Composable 期间，若开发者在 `<script setup>` 中将逻辑抽取后忘记显式解构模板实际引用的 Ref 或方法（如 `isOffline`、`showingRange`、`loadAll`、`goToChapter`），模板在运行时会访问未定义属性或因深层嵌套 Ref 未在顶层解包而导致逻辑静默失效（产生 TS2339 / TS2551 错误）。
+- **红线与防误伤**：
+  - **不要**在重构或新建 `.vue` 组件后仅依赖 `vp check` 就宣称类型检查通过；
+  - **不要**在 Composable 内部隐藏模板强依赖的变量而不向外解构导出；
+  - **放行/改用**：
+    1. **改动组件必跑 `pnpm type-check`**：任何涉及 `.vue` 文件的变更，交付前必须运行 `pnpm type-check`（基于 `vue-tsc --build` 增量模式，只验证改动文件，毫秒级通过），彻底排查模板绑定的类型错误；
+    2. **契约自解释与精准解构门禁**：Composable 必须清晰声明返回类型契约与 JSDoc，视图消费层在 setup 顶层精准解构模板实际绑定的 Ref 与函数，杜绝因深层对象传给模板而引发的响应式断裂与 TS 类型盲区。
+
 ---
 
 ## 🚦 交付门禁（四步必跑）

@@ -119,6 +119,19 @@ export function useLocalWorkshop() {
     return chapters.value.reduce((acc, ch) => acc + ch.files.length, 0)
   })
 
+  const currentChapterFiles = computed<File[]>({
+    get: () =>
+      isMulti.value ? (chapters.value[activeChapterIdx.value]?.files ?? []) : singleFiles.value,
+    set: (val) => {
+      if (isMulti.value) {
+        const ch = chapters.value[activeChapterIdx.value]
+        if (ch) ch.files = val
+      } else {
+        singleFiles.value = val
+      }
+    },
+  })
+
   function parseList(str: string): string[] {
     return str
       .split(/[/,，、]/)
@@ -241,6 +254,7 @@ export function useLocalWorkshop() {
     activeChapterIdx,
     chapters,
     singleFiles,
+    currentChapterFiles,
     dropAreaRef,
     isOverDropZone,
     openFileDialog,

@@ -63,16 +63,16 @@
 | CSS Nesting (`&`)                                    |              120+               |               117+               |                 17.2+                 |                   ✅ Baseline 2024                   |                ✅ 已落地（全站 SFC 样式规范）                |
 | `@property`                                          |               85+               |               128+               |                 16.4+                 |                   ✅ Baseline 2024                   |           ✅ 已落地（tokens.css 渐变遮罩变量插值）           |
 | **HTML Popover (`auto`/`manual`)**                   |              114+               |               125+               |                  17+                  |                   ✅ Baseline 2024                   | ✅ 已落地（`AppPopover` / `AppDropdown` / `StoragePopover`） |
-| **HTML Popover (`hint`)**                            |              151+               |               153+               |                  ⏳                   |               🔶 Newly Available 2026                |          ✅ 渐进增强（`Tooltip.vue` 轻量气泡提示）           |
+| **HTML Popover (`hint`)**                            |              151+               |               153+               |                  ⏳                   |               🔶 Newly Available 2026                |         ✅ 渐进增强（`AppTooltip.vue` 轻量气泡提示）         |
 | **CSS Carousel (`::scroll-marker/button`)**          |              135+               |                ⏳                |                  ⏳                   |               🔶 Newly Available 2025                |     ✅ 渐进增强（`CoverCarousel.vue` 零 JS 标记与切换）      |
 | **CSS Gap Decorations (`row-rule` / `column-rule`)** |              149+               |                ⏳                |                  ⏳                   |               🔶 Newly Available 2026                |      ✅ 渐进增强（`MetadataPanel.vue` 双列网格装饰线）       |
 | **HTML5 `<dialog>` (Top Layer)**                     |               37+               |               98+                |                 15.4+                 |                   ✅ Baseline 2022                   |            ✅ 已落地（`Modal.vue` 核心弹窗基建）             |
 | **`<dialog closedby="any">`**                        |              134+               |               141+               |                  ⏳                   |               🔶 Newly Available 2025                |      ✅ 渐进增强（`Modal.vue` 原生属性 + 蒙层点击兜底）      |
 | **Invoker Commands (`commandfor`)**                  |              135+               |               144+               |                 26.2+                 |                ✅ Baseline 2025/2026                 |     ✅ 渐进增强（支持原生调用，由 ToggleEvent 联动同步）     |
 | **`ToggleEvent` (`beforetoggle/toggle`)**            | 114+ (popover)<br>132+ (dialog) | 125+ (popover)<br>133+ (dialog)  |     17+ (popover)<br>26+ (dialog)     |                ✅ Baseline 2025/2026                 |      ✅ 已落地（`Modal.vue` / `AppPopover.vue` 状态机）      |
-| **Interest Invokers (`interestfor`)**                |             130+🚩              |                ⏳                |                  ⏳                   |                   🧪 Experimental                    |   ✅ 渐进增强（`Tooltip.vue` 声明式属性 + JS 定时器兜底）    |
-| **CSS Anchor Positioning API**                       |              125+               |               147+               |                  26+                  |                ✅ Baseline 2025/2026                 |   ✅ 已落地（`AppPopover` / `Tooltip` / `SegmentedTabs`）    |
-| **`@container anchored(fallback)`**                  |              135+               |                ⏳                |                  ⏳                   |                   🧪 Experimental                    |   ✅ 渐进增强（`AppPopover` / `Tooltip` 小三角自适应翻转）   |
+| **Interest Invokers (`interestfor`)**                |             130+🚩              |                ⏳                |                  ⏳                   |                   🧪 Experimental                    |  ✅ 渐进增强（`AppTooltip.vue` 声明式属性 + JS 定时器兜底）  |
+| **CSS Anchor Positioning API**                       |              125+               |               147+               |                  26+                  |                ✅ Baseline 2025/2026                 |  ✅ 已落地（`AppPopover` / `AppTooltip` / `SegmentedTabs`）  |
+| **`@container anchored(fallback)`**                  |              135+               |                ⏳                |                  ⏳                   |                   🧪 Experimental                    | ✅ 渐进增强（`AppPopover` / `AppTooltip` 小三角自适应翻转）  |
 | **全局 View Transitions API**                        |     111+<br>_(125+ types)_      |      144+<br>_(147+ types)_      |        18+<br>_(18.2+ types)_         |                ✅ Baseline 2024/2025                 |     ✅ 已落地（`useViewTransition.ts` / 跨页面路由推进）     |
 | **`-webkit-line-clamp` / `line-clamp`**              | 6+ (前缀)<br>_(Preview 无前缀)_ | 68+ (前缀)<br>_(Preview 无前缀)_ | 5+ (前缀)<br>_(18.2-18.3 误开已回退)_ | ✅ W3C 兼容事实标准（前缀）<br>⏳ 规范草案（无前缀） |     ✅ 已落地（`AppTextClamp.vue` / `main.css` 实用类）      |
 | **`font-size-adjust`**                               |              127+               |     3+<br>_(92+ two-values)_     |      16.4+<br>_(17+ two-values)_      |                   ✅ Baseline 2024                   |    ✅ 渐进增强（微标 `--text-caption` 与多语言字形排版）     |
@@ -321,7 +321,7 @@ background: color-mix(in oklab, var(--paper-1) 50%, transparent);
 **MDN**：[CSS Anchor Positioning](https://developer.mozilla.org/en-US/docs/Web/CSS/Guides/Anchor_positioning)  
 **Baseline**：2025/2026 · Chrome 125+, Firefox 147+, Safari 26+  
 **参考**：[张鑫旭 CSS 锚点定位 API 深入浅出](https://www.zhangxinxu.com/wordpress/2024/06/css-anchor-positioning-api/)  
-**本项目落地状态**：✅ 已在 `AppPopover.vue` / `Tooltip.vue` / `SegmentedTabs.vue` 落地
+**本项目落地状态**：✅ 已在 `AppPopover.vue` / `AppTooltip.vue` / `SegmentedTabs.vue` 落地
 
 **核心原理与优势**：
 
@@ -830,15 +830,15 @@ details[open]::details-content {
 **MDN**：[popover="hint"](https://developer.mozilla.org/en-US/docs/Web/HTML/Reference/Global_attributes/popover#hint)  
 **可用**：Chrome 151+ (133+ partial), Firefox 153+ (149+ partial), Safari TP  
 **参考**：[张鑫旭 HTML popover=hint 提示类型](https://www.zhangxinxu.com/wordpress/2025/07/html-popover-hint/)  
-**本项目落地状态**：✅ 已在 `src/components/Tooltip.vue` 落地
+**本项目落地状态**：✅ 已在 `src/components/AppTooltip.vue` 落地
 
-**核心优势**：
+核心优势：
 
 - `popover="auto"` 在打开新浮层时会关闭先前的 auto 浮层（互斥）；
 - `popover="hint"` 专为气泡提示设计，**可以在保持下拉菜单或对话框处于打开状态的同时叠加浮现**，绝不破坏前台已有的交互上下文。
 
 ```html
-<!-- Tooltip 采用 popover="hint" -->
+<!-- AppTooltip 采用 popover="hint" -->
 <span id="tip-1" popover="hint" role="tooltip" class="tooltip__tip"> 提示内容 </span>
 ```
 
@@ -849,12 +849,12 @@ details[open]::details-content {
 **规范阶段**：CSS Anchor Positioning Level 2 · Experimental  
 **可用**：Chrome 135+  
 **参考**：[张鑫旭 CSS Anchor + Container Query 容器查询](https://www.zhangxinxu.com/wordpress/2025/12/css-anchor-container-query/)  
-**本项目落地状态**：✅ 已在 `src/components/AppPopover.vue` 与 `src/components/Tooltip.vue` 落地
+**本项目落地状态**：✅ 已在 `src/components/AppPopover.vue` 与 `src/components/AppTooltip.vue` 落地
 
 **解决的痛点**：
 当锚定浮层声明了 `position-try-fallbacks: flip-block`（空间不足向上翻转）时，浮层本身位置倒转，但传统的 `::before` 伪元素小三角依然指向下方空气。通过把浮层声明为 `container-type: anchored`，CSS 引擎可在触发 fallback 时自动重置小三角边框与方位，**0 JS 监听**。
 
-**生产标准写法（`Tooltip.vue` / `AppPopover.vue`）**：
+**生产标准写法（`AppTooltip.vue` / `AppPopover.vue`）**：
 
 ```css
 .tooltip__tip {
@@ -980,7 +980,7 @@ await withViewTransition(
 **规范阶段**：HTML / OpenUI Standard Track · Stage 2  
 **可用**：Chrome 130+🚩 (Origin Trial) · Firefox / Safari 规划中  
 **参考**：[张鑫旭 CSS interestfor 与 Invoker Target/Source 机制](https://www.zhangxinxu.com/wordpress/2026/03/css-interestfor-invoker-target-source/)  
-**本项目落地状态**：✅ 渐进增强声明（`Tooltip.vue` 中声明 `interestfor` + `interest-delay`，旧环境由 Vue 事件定时器无缝兜底）
+**本项目落地状态**：✅ 渐进增强声明（`AppTooltip.vue` 中声明 `interestfor` + `interest-delay`，旧环境由 Vue 事件定时器无缝兜底）
 
 **核心机制**：
 
@@ -1321,15 +1321,16 @@ text-fit: <fit-type> <fit-target>;
 
 - [x] **`@property` 整合到 `tokens.css`**：已为 `--mask-left`、`--mask-right` 声明 `<length>` 类型，支持渐变遮罩的纯 CSS 平滑数值插值；
 - [x] **HTML Popover API 与现代浮层基础设施（ADR 0004）**：全站下拉选单与卡片收敛至 `AppPopover.vue` / `AppDropdown.vue`，享受原生 Top Layer 与 Light Dismiss；
-- [x] **CSS Anchor Positioning 九宫格与动态滑动指示器**：在 `AppPopover`、`Tooltip` 与 `SegmentedTabs` 落地纯 CSS 锚定与胶囊滑动动效；
-- [x] **`@container anchored(fallback)` 箭头自适应反转**：`AppPopover` 与 `Tooltip` 补齐容器查询翻转规则，视口越界时小三角纯 CSS 倒转；
-- [x] **`popover="hint"` 与 Interest Invokers 渐进增强**：`Tooltip.vue` 落地非互斥浮层规范与 `interest-delay` 延迟声明；
+- [x] **CSS Anchor Positioning 九宫格与动态滑动指示器**：在 `AppPopover`、`AppTooltip` 与 `SegmentedTabs` 落地纯 CSS 锚定与胶囊滑动动效；
+- [x] **`@container anchored(fallback)` 箭头自适应反转**：`AppPopover` 与 `AppTooltip` 补齐容器查询翻转规则，视口越界时小三角纯 CSS 倒转；
+- [x] **`popover="hint"` 与 Interest Invokers 渐进增强**：`AppTooltip.vue` 落地非互斥浮层规范与 `interest-delay` 延迟声明；
 - [x] **全局与局域双轨 View Transitions (`useViewTransition.ts`)**：封装 `document` 与 `Element.prototype.startViewTransition` 门面，完善 Promise 异常拦截与 Rule 8 边界防护；
 - [x] **CSS Grid 复合轨道无级折叠动效**：已在 `TagFilterBar.vue` 与 `ImportPanel.vue` 落地；
 - [x] **色彩双层回退基线固化**：坚持 `#hex` + `oklch()` 双层声明；
 - [x] **`AppProgressBar.vue` 统一 CSS 进度条架构**：全站进度条收敛为 CSS 变量 `--progress` + GPU 合成层驱动；
 - [x] **`font-size-adjust` 字形度量规范确立**：确立在 `--text-caption` (11px) 微标与多语言混排中取代 `transform: scale()` 盒模型副作用的渐进增强方案；
-- [x] **`CSS Gap Decorations` 双轨渐进增强**：已在详情页 `MetadataPanel.vue` 双列网格落地 `column-rule` / `row-rule` 与 `rule-visibility-items: between`，彻底消灭奇偶伪类边框修补代码。
+- [x] **`CSS Gap Decorations` 双轨渐进增强**：已在详情页 `MetadataPanel.vue` 双列网格落地 `column-rule` / `row-rule` 与 `rule-visibility-items: between`，彻底消灭奇偶伪类边框修补代码；
+- [x] **`@layer` 顶层级联架构深化**：在 `main.css` 中将高频表单类（`.form-label`, `.field-group`, `.form-item`）与暂存容器（`.drop-zone`）收敛至 `@layer components`，响应式双列栅格（`.grid-2`）收敛至 `@layer utilities`，消除数百行重复 scoped CSS 且不干扰 Vue 组件特异性。
 
 ### 短期（预计 2026 Q4，等浏览器 Baseline 达标）
 

@@ -4,6 +4,7 @@ import { useHierarchicalNavigation } from '@/composables/useHierarchicalNavigati
 import TagManager from '@/components/form/TagManager.vue'
 import CoverIndicesPicker from '@/components/form/CoverIndicesPicker.vue'
 import SegmentedTabs from '@/components/SegmentedTabs.vue'
+import FileStagingDropZone from '@/components/form/FileStagingDropZone.vue'
 import AppButton from '@/components/AppButton.vue'
 import AppIcon from '@/components/AppIcon.vue'
 import AppProgressBar from '@/components/AppProgressBar.vue'
@@ -27,7 +28,7 @@ const {
   submitting,
   activeChapterIdx,
   chapters,
-  singleFiles,
+  currentChapterFiles,
   dropAreaRef,
   isOverDropZone,
   openFileDialog,
@@ -106,41 +107,41 @@ const {
             </AppButton>
           </div>
 
-          <!-- Dropzone -->
-          <div
-            ref="dropAreaRef"
-            class="drop-area"
-            :class="{ 'is-dragover': isOverDropZone }"
-            @click="() => openFileDialog()"
-          >
-            <div class="drop-content">
-              <AppIcon name="upload" size="3xl" />
-              <p class="drop-lead">
-                {{
-                  isMulti
-                    ? `点击或拖入图片至【${chapters[activeChapterIdx]?.title}】`
-                    : '点击或批量拖入图片至此'
-                }}
-              </p>
-              <span class="drop-sub">支持 JPG, PNG, WebP, GIF, AVIF（自动按文件名自然排序）</span>
-            </div>
-          </div>
-
-          <!-- File summary -->
-          <div class="staged-summary">
-            <span>
-              已暂存：<strong>{{ totalStagedFilesCount }}</strong> 张画面
-              <template v-if="isMulti">（共 {{ chapters.length }} 话）</template>
-            </span>
-            <AppButton
-              v-if="totalStagedFilesCount > 0"
-              variant="ghost"
-              size="sm"
-              type="button"
-              @click="clearCurrentStaged"
+          <!-- Staging Drop Zone -->
+          <div ref="dropAreaRef">
+            <FileStagingDropZone
+              v-model:mode="mode"
+              v-model:files="currentChapterFiles"
+              v-model:server-path="serverPath"
+              :show-tabs="false"
+              :is-over-drop-zone="isOverDropZone"
+              :open-file-dialog="openFileDialog"
+              :disabled="submitting"
+              :prompt="
+                isMulti
+                  ? `点击或拖入图片至【${chapters[activeChapterIdx]?.title}】`
+                  : '点击或批量拖入图片至此'
+              "
+              @clear="clearCurrentStaged"
             >
-              清空当前
-            </AppButton>
+              <template #summary>
+                <div class="staged-summary">
+                  <span>
+                    已暂存：<strong>{{ totalStagedFilesCount }}</strong> 张画面
+                    <template v-if="isMulti">（共 {{ chapters.length }} 话）</template>
+                  </span>
+                  <AppButton
+                    v-if="totalStagedFilesCount > 0"
+                    variant="ghost"
+                    size="sm"
+                    type="button"
+                    @click="clearCurrentStaged"
+                  >
+                    清空当前
+                  </AppButton>
+                </div>
+              </template>
+            </FileStagingDropZone>
           </div>
 
           <!-- Upload Progress -->
@@ -161,32 +162,33 @@ const {
         </div>
 
         <div v-else class="path-flow">
-          <div class="field-group">
-            <label class="form-label" for="local-path">服务器本地目录路径 *</label>
-            <input
-              id="local-path"
-              v-model="serverPath"
-              class="field-input"
-              type="text"
-              placeholder="如：public/tiya-frames 或 /data/comics/tiya"
-            />
-          </div>
-          <div class="path-guide">
-            <h3>
-              <AppIcon name="book-open" size="xs" />
-              <span>目录识别规则：</span>
-            </h3>
-            <ul>
-              <li>
-                <strong>单话图集</strong>：目录下直接平铺图片文件（如
-                <code>tiya-frames/frame_0001.webp</code>），自动收录为单话。
-              </li>
-              <li>
-                <strong>多话合集</strong>：目录下包含子文件夹（如 <code>01_第一话/</code>,
-                <code>02_第二话/</code>），自动按子文件夹拆分为多章节。
-              </li>
-            </ul>
-          </div>
+          <FileStagingDropZone
+            v-model:mode="mode"
+            v-model:server-path="serverPath"
+            :show-tabs="false"
+            :disabled="submitting"
+            path-label="服务器本地目录路径 *"
+            path-placeholder="如：public/tiya-frames 或 /data/comics/tiya"
+          >
+            <template #path-guide>
+              <div class="path-guide">
+                <h3>
+                  <AppIcon name="book-open" size="xs" />
+                  <span>目录识别规则：</span>
+                </h3>
+                <ul>
+                  <li>
+                    <strong>单话图集</strong>：目录下直接平铺图片文件（如
+                    <code>tiya-frames/frame_0001.webp</code>），自动收录为单话。
+                  </li>
+                  <li>
+                    <strong>多话合集</strong>：目录下包含子文件夹（如 <code>01_第一话/</code>,
+                    <code>02_第二话/</code>），自动按子文件夹拆分为多章节。
+                  </li>
+                </ul>
+              </div>
+            </template>
+          </FileStagingDropZone>
         </div>
       </section>
 
@@ -443,41 +445,6 @@ const {
   color: var(--accent-strong);
 }
 
-.drop-area {
-  padding: var(--space-8) var(--space-4);
-  border: 2px dashed var(--line-strong);
-  border-radius: var(--radius-2);
-  background: color-mix(in oklab, var(--paper-1) 50%, transparent);
-  text-align: center;
-  cursor: pointer;
-  transition:
-    border-color var(--duration-1) var(--ease-out),
-    background-color var(--duration-1) var(--ease-out);
-}
-
-.drop-area:hover,
-.drop-area.is-dragover {
-  border-color: var(--accent);
-  background: var(--accent-soft);
-}
-
-.drop-content {
-  display: grid;
-  place-items: center;
-  gap: var(--space-2);
-}
-
-.drop-lead {
-  font-size: var(--text-sm);
-  color: var(--ink-0);
-  font-weight: 500;
-}
-
-.drop-sub {
-  font-size: var(--text-xs);
-  color: var(--ink-2);
-}
-
 .staged-summary {
   display: flex;
   justify-content: space-between;
@@ -541,17 +508,6 @@ const {
 .meta-form {
   display: grid;
   gap: var(--space-4);
-}
-
-.field-group {
-  display: grid;
-  gap: var(--space-1-5);
-}
-
-.grid-2 {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: var(--space-3);
 }
 
 .slug-field {

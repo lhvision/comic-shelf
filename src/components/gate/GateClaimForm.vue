@@ -4,23 +4,16 @@
  * @description 门禁第二阶段：待认领借阅证首次自设 PIN 码与读者称呼认领表单。
  */
 
-import { nextTick, onMounted, ref } from 'vue'
+import { ref } from 'vue'
 import { useAuth } from '@/composables/useAuth'
 import AppButton from '@/components/AppButton.vue'
 import AppIcon from '@/components/AppIcon.vue'
+import GatePasswordInput from '@/components/gate/GatePasswordInput.vue'
 
 const { submitting, errorMessage, username, claimPass, resetAuthFormState } = useAuth()
 
 const inputNickname = ref('')
 const inputPin = ref('')
-const showPassword = ref(false)
-const pinInputRef = ref<HTMLInputElement | null>(null)
-
-onMounted(() => {
-  nextTick(() => {
-    pinInputRef.value?.focus()
-  })
-})
 
 async function handleClaimSubmit() {
   if (submitting.value) return
@@ -66,32 +59,18 @@ function handleBackToSecret() {
 
     <div class="form-item">
       <label for="claim-pin" class="form-label">自设数字 PIN 码（4~6 位纯数字）</label>
-      <div class="input-wrap" :class="{ error: !!errorMessage }">
-        <span class="input-icon" aria-hidden="true">
-          <AppIcon name="lock" size="md" />
-        </span>
-        <input
-          id="claim-pin"
-          ref="pinInputRef"
-          v-model="inputPin"
-          :type="showPassword ? 'text' : 'password'"
-          inputmode="numeric"
-          pattern="[0-9]*"
-          maxlength="6"
-          class="gate-input pin-input"
-          placeholder="如 2026"
-          autocomplete="new-password"
-          :disabled="submitting"
-        />
-        <button
-          type="button"
-          class="btn-toggle-eye"
-          :aria-label="showPassword ? '隐藏 PIN 码' : '显示 PIN 码'"
-          @click="showPassword = !showPassword"
-        >
-          <AppIcon :name="showPassword ? 'eye-off' : 'eye'" size="18" />
-        </button>
-      </div>
+      <GatePasswordInput
+        id="claim-pin"
+        v-model="inputPin"
+        placeholder="如 2026"
+        autocomplete="new-password"
+        inputmode="numeric"
+        pattern="[0-9]*"
+        :maxlength="6"
+        :disabled="submitting"
+        :error="!!errorMessage"
+        :autofocus="true"
+      />
     </div>
 
     <p v-if="errorMessage" class="error-text" role="alert">
@@ -99,11 +78,14 @@ function handleBackToSecret() {
     </p>
 
     <div class="gate-actions between">
-      <AppButton type="button" variant="ghost" size="md" @click="handleBackToSecret">
-        <template #prefix>
-          <AppIcon name="arrow-left" size="xs" />
-        </template>
-        <span>更换口令</span>
+      <AppButton
+        type="button"
+        variant="ghost"
+        size="md"
+        icon="arrow-left"
+        @click="handleBackToSecret"
+      >
+        更换口令
       </AppButton>
 
       <AppButton
@@ -130,13 +112,11 @@ function handleBackToSecret() {
 .claim-info-card {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  gap: var(--space-3);
   padding: var(--space-3) var(--space-4);
-  background: var(--paper-0);
-  border: 1px dashed var(--line);
+  background: var(--paper-1);
+  border: 1px solid var(--line);
   border-radius: var(--radius-2);
-  font-size: var(--text-xs);
-  color: var(--ink-1);
 }
 
 .claim-badge {
@@ -163,18 +143,6 @@ function handleBackToSecret() {
 .claim-meta strong {
   color: var(--ink-0);
   font-weight: 600;
-}
-
-.form-item {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
-}
-
-.form-label {
-  font-size: var(--text-xs);
-  color: var(--ink-2);
-  font-weight: 500;
 }
 
 .input-wrap {
@@ -205,10 +173,6 @@ function handleBackToSecret() {
   color: var(--accent);
 }
 
-.input-wrap.error {
-  border-color: var(--accent-strong);
-}
-
 .gate-input {
   flex: 1;
   border: none;
@@ -220,32 +184,11 @@ function handleBackToSecret() {
   outline: none;
 }
 
-.gate-input.pin-input {
-  font-family: var(--font-mono);
-  letter-spacing: 0.15em;
-}
-
 .gate-input::placeholder {
   color: var(--ink-2);
   opacity: 0.7;
   font-family: var(--font-body);
   letter-spacing: normal;
-}
-
-.btn-toggle-eye {
-  display: grid;
-  place-items: center;
-  padding: var(--space-2) var(--space-3);
-  background: transparent;
-  border: none;
-  color: var(--ink-2);
-  cursor: pointer;
-  border-radius: var(--radius-1);
-  transition: color var(--duration-1) var(--ease-out);
-}
-
-.btn-toggle-eye:hover {
-  color: var(--ink-0);
 }
 
 .error-text {

@@ -110,7 +110,7 @@
    - 声明式指令：关闭按钮原生挂载 `:commandfor="dialogId" command="close"`，并监听原生 `command` 事件；
 2. **系统安全门禁（`GateView.vue` & `src/components/gate/`）**：
    - 根级 Zero-DOM 物理隔离大门（未鉴权时应用骨架与阅读器物理 0 挂载），三态表单（口令/首次认领设 PIN/已认领输 PIN）模块化收敛；会话凭据 `sessionStorage` 暂存自愈，移动端切屏误刷 0 掉态；
-3. **轻量浮层与 Popover（`AppPopover.vue` / `Tooltip.vue`）**：
+3. **轻量浮层与 Popover（`AppPopover.vue` / `AppTooltip.vue`）**：
    - 基于 HTML Popover API + CSS Anchor Positioning（`anchor-name` / `position-anchor`）构建；
    - 触发器原生扩展 `commandfor` 与 `command="toggle-popover"`，具备 `@supports not (anchor-name: ...)` 绝对定位回退与 WCAG 1.4.13 悬停安全桥（Hover Bridge）保护。
 
@@ -143,7 +143,7 @@
   - **详情页卡片**：大标题 2 行、元数据网格（作品/登场人物/作者等）2 行截断，超长文案悬停显示气泡；长篇叙述（`description`）升级为内联手风琴折叠（`Inline Disclosure`，3 行折叠 +「展开全文 ▾ / 收起 ▴」），绝不使用半空浮层破坏书籍呼吸感；
 - **零开销性能铁律（Zero-DOM & Zero-Listener Overhead）**：
   - 默认状态仅渲染原生语义标签，Tooltip 浮层节点延迟挂载（`lazy: true` 为全局默认），休眠状态 0 额外 DOM；
-  - `Tooltip.vue` 的 `window` 滚动与尺寸监听器仅在 `isVisible === true` 时按需挂载，休眠时监听器开销精确为 0，彻底免疫百张卡片滚动卡顿；
+  - `AppTooltip.vue` 的 `window` 滚动与尺寸监听器仅在 `isVisible === true` 时按需挂载，休眠时监听器开销精确为 0，彻底免疫百张卡片滚动卡顿；
   - **JIT 纯按需测量架构（JIT Layout Measurement & Zero Forced Reflow）**：彻底废除挂载期（`onMounted`/`nextTick`）与无差别 `useResizeObserver` 对全量静态文本的无差别排版测量，实现首屏渲染 0 次 DOM 几何访问与 0 毫秒 Forced Reflow 阻塞；几何尺寸测量严格推迟至读者意图触发时刻（`pointerenter` / `touchstart` / `focusin`）；结合 Tooltip 的延迟生效评估（`Deferred Disabled Evaluation`），在 `delay` 结束时二次核验 `props.disabled`，并解耦 `props.disabled` 与 `props.delay === 0` 的逻辑判定，支持触控端 `touchstart` 显式唤起气泡，兼顾 0 掉帧与 0 误弹出；
 - **物理分层与横向翻转对齐（Physical Separation & Dynamic Alignment）**：
   - **装饰与内滚物理分层**：根容器 `.tooltip__tip` 保持 `overflow: visible; padding: 0;`，保护 `::before`（45° 指示小三角）与 `::after`（WCAG 悬停安全桥）自由延伸而不被计入盒模型滚动范围；内部独立内容容器 `.tooltip__content` 承载 `padding` 与 `max-height + overflow-y: auto`，从底层杜绝短文本“幽灵滚动条”；
@@ -179,7 +179,32 @@
   - **图标单源收敛定律**：通用按钮的前置/后置图标优先通过 `icon` 与 `iconPosition` 声明，禁止在组件层为了单一按钮图标冗余引入 `import AppIcon`，推动业务层消除无用导入（Dead Imports）；
 - **阅览室暗室高对比度防御（Reader Dark Room Token Defense）**：
   - 支持 `theme="reader"`，在阅读器暗室背景（`--reader-bg`）下自动激活专属暗室 Token：
-    `--reader-surface-strong`（暗室垫层）、`--reader-ink`（防刺眼高对比柔白文字）、`--reader-line-strong`（高对比边框）与 `--reader-surface-hover`（悬浮反馈），确保暗室幽灵按钮达到 WCAG AA 级（≥ 4.5:1）对比度标准，杜绝业务视图手写局部 CSS 补丁。
+    `--reader-surface-strong`（暗室垫层）、`--reader-ink`（防刺眼高对比柔白文字）、`--reader-line-strong`（高对比边框）与 `--reader-surface-hover`（悬浮反馈），确保暗室幽灵按钮达到 WCAG AA 级（≥ 4.5:1）对比度标准，杜绝业务视图手写局部 CSS 补丁；
+  - **特化组件最终收敛**：历史特化微件 `ReaderButton.vue`（沉浸阅读工具栏磨砂按钮）已物理删除，全面统一并入 `<AppButton theme="reader">`，实现全站操作按钮单一真相源（SSOT）。
+
+### 3.8 核心输入与暂存分子组件（Molecule Components）
+
+1. **门禁口令与凭据输入分子（`GatePasswordInput.vue`）**：
+   - 收敛 `GateSecretForm.vue`、`GatePinForm.vue`、`GateClaimForm.vue` 三态门禁口令输入的单一真理源；
+   - 内部封装 VueUse `useFocus` 实现自动对焦与移动端唤起；
+   - 统一密码明文/密文切换小眼睛按钮（`IconEye` / `IconEyeOff`）与无障碍 `aria-label`；
+   - 支持回车提交（`@submit`），杜绝各表单反复手写显隐状态机与 input 容器布局。
+2. **画卷文件暂存区（`FileStagingDropZone.vue`）**：
+   - 统一自建漫画（`CreateComicView`）、追加页面（`AppendPagesModal`）与全本重订（`ReplacePagesModal`）的画页暂存容器；
+   - 双模输入：支持网页多图拖拽暂存与服务器本地目录就地扫描；
+   - 集成 VueUse `useDropZone` 与 `useFileDialog`，内部内聚拖拽高亮态（`isOverDropZone`）；
+   - 展示暂存总数、自然序号排序、首尾页码概要校验与批量一键清空。
+
+### 3.9 顶层样式层级与 `@layer` 架构规范（Top-Layer `@layer` Architecture）
+
+- **层级声明**：`src/styles/main.css` 顶层确立 `@layer reset, base, components, utilities;` 级联顺序；
+- **组件样式上浮（`@layer components`）**：
+  - 将跨弹窗和页面高频复用的表单控件样式（`.form-label`, `.field-group`, `.form-item`）与画卷投放容器（`.drop-zone`）收敛至 `@layer components`；
+  - 彻底拔除各业务组件中近 200 行重复编写的 scoped CSS 样板；
+- **实用类上浮（`@layer utilities`）**：
+  - 将常用的响应式双列栅格（`.grid-2`，桌面 2 列、移动端 ≤640px 自动单列）收敛至 `@layer utilities`；
+- **Scoped 样式安全保证**：
+  - CSS `@layer` 规范中，未分层的样式优先级天然高于任何 `@layer` 声明。因此，各 Vue 组件中编写的特化 `<style scoped>` 规则在需要微调时可随时无侵入覆写 `@layer` 基线，无需借助 `!important`，兼具代码极简与特异性纯净。
 
 ---
 
@@ -457,6 +482,24 @@
   2. **毫秒级 Soft Yield 软避让**：读者介入滚轮微调、触屏长按拖拽或拖动原生滚动条时，流卷状态机即刻避让挂起 1.5 秒，手势停止后平滑自愈续卷；读者若从话末向上回滚离开（`scrollTop < max - 40`），自动解冻停靠锁继续流卷；
   3. **话末平缓停靠（Dock & Hold）**：流卷到达末页卡片底端时平缓刹车停靠，停止 rAF 耗电；点击下一话后无缝直达下一话顶部并自动继续开跑；
   4. **HUD 双轨解耦**：HUD 按钮在连续模式下流卷时展示实时速率（如 `80px`），暂停时展示播放图标；在全本末页阅读过程中全程保持可见与可控，到达物理底端后才优雅收整。
+
+### <a id="sec-67"></a>§67 视图轻量化全量达标、状态机细粒度拆分与高阶 Composable 聚合架构（View Thinness 150-Line Limit & Sub-State Aggregation Architecture）
+
+- **业务背景与架构痛点**：
+  随着纸间功能不断演进，核心视图逐渐膨胀为 300~500 行的“巨型神组件（God Component）”，其中混杂了大量的 API 轮询、IndexedDB 降级、弹窗状态、键盘监听与历史偏好序列化代码，严重违反单一职责原则（SRP）。
+- **视图轻量化（View Thinness ≤150 行）硬门禁**：
+  1. `views/*.vue` 严格仅负责顶层生命周期编排与装配树挂载，脚本行数必须 ≤ 150 行；
+  2. 经过系统性治理，四大核心视图 100% 达标：
+     - `src/views/ComicDetailView.vue`（142 行）：下沉 `useComicDetail` 与 `useComicDetailActions`；
+     - `src/views/ChapterView.vue`（150 行）：下沉 `useChapterManagement` 与 `useChapterPageInfo`；
+     - `src/views/ReaderView.vue`（146 行）：下沉 `useReaderInteraction`、`useReaderSync` 与 `useReaderCompletion`；
+     - `src/views/CreateComicView.vue`（45 行）：抽离公共暂存区分子 `FileStagingDropZone`；
+- **子状态机对象整包聚合契约（Sub-State Aggregation Pattern）**：
+  1. 杜绝向高阶编排 Composable 平铺传入 30+ 离散参数的参数爆炸反模式；
+  2. 统一按照子状态机整包传递（`{ settings, bubble, data, paging, chrome, navigation, autoTurn }`），并在高阶 Composable 内部就地精准解构，彻底消除视图层胶水代码；
+- **VueUse 优先与顶层解构终验**：
+  1. 深度使用 VueUse 标准函数（`useTimeoutFn`、`useLocalStorage`、`StorageSerializers.object`、`useFocus`、`useDropZone`）；
+  2. 严格执行 `pnpm type-check` 验证模板解构绑定的完整性，彻底杜绝 TS2339 / TS2551 盲区。
 
 ---
 

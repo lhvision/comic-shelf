@@ -17,7 +17,7 @@ import { useAppSettings } from '@/stores/settings'
 import { useToast } from '@/composables/useToast'
 import { useSystemEvents } from '@/composables/useSystemEvents'
 import { api } from '@/api/client'
-import Tooltip from '@/components/Tooltip.vue'
+import AppTooltip from '@/components/AppTooltip.vue'
 import AppIcon from '@/components/AppIcon.vue'
 import ImportRemoteTab from './import/ImportRemoteTab.vue'
 import ImportLocalTab from './import/ImportLocalTab.vue'
@@ -283,7 +283,7 @@ function incConcurrency() {
                 />
                 <span>新入库默认对访客隐藏</span>
               </label>
-              <Tooltip
+              <AppTooltip
                 id="guest-hide-tip"
                 tip="开启后，新收录或导入的漫画初始状态将对访客隐身，防止私人敏感藏书误暴露。馆长审核后可在卡片底部手动公开借阅。"
                 side="top"
@@ -291,7 +291,7 @@ function incConcurrency() {
                 <button class="tooltip-icon" type="button" aria-label="关于新入库默认对访客隐藏">
                   <AppIcon name="info" size="xs" />
                 </button>
-              </Tooltip>
+              </AppTooltip>
             </div>
 
             <!-- Concurrency Stepper (Remote tabs only) -->

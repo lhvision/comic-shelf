@@ -1,81 +1,47 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { api } from '@/api/client'
 import { useAuth } from '@/composables/useAuth'
 import { useOfflineSync } from '@/composables/useOfflineSync'
 import { useLastRead } from '@/composables/useLastRead'
 import { useChapterNavigation } from '@/composables/useChapterNavigation'
+import { useChapterPageInfo } from '@/composables/useChapterPageInfo'
+import { useChapterManagement } from '@/composables/useChapterManagement'
 import { useIdlePrefetch } from '@/composables/useIdlePrefetch'
 import { useToast } from '@/composables/useToast'
-import { useSystemEvents } from '@/composables/useSystemEvents'
 import { useChapterCache } from '@/composables/useChapterCache'
-import { useHierarchicalNavigation } from '@/composables/useHierarchicalNavigation'
+import { useComicDetail } from '@/composables/useComicDetail'
 import ChapterSwitcher from '@/components/detail/ChapterSwitcher.vue'
 import PageIndexGrid from '@/components/detail/PageIndexGrid.vue'
 import CacheProgress from '@/components/CacheProgress.vue'
 import Modal from '@/components/Modal.vue'
 import AppButton from '@/components/AppButton.vue'
-import AppDropdown, { type DropdownOption } from '@/components/AppDropdown.vue'
-import { useLibraryStore, createPlaceholderDetail } from '@/stores/library'
+import AppDropdown from '@/components/AppDropdown.vue'
+import { useLibraryStore } from '@/stores/library'
 import type { ComicDetail } from '@/types'
 
 /**
  * 章节子路由详情 —— 一本多话作品的「单个话」页面索引。
  *
- * 设计（对应 docs/agents/ui.md + Impeccable 234 步）：
- * 多章节作品在详情页只摆「章节目录」（ChapterIndex），不铺开几千页；
- * 点某话进入本子路由，只渲染这一话的页面索引 + 章节头（标题/页数/上一话/下一话/本话缓存进度/章节管理）。
- * 阅读器沿用全局页码，因此本页 PageTile 仍链接全局页号。
- *
- * 遵守 docs/agents/frontend.md 规范：
- * - Composable（useChapterNavigation）解构至 setup 顶层，Ref 直接绑定模板；
- * - 视图只做编排，状态下沉。
+ * 遵循 docs/agents/frontend.md 规范：
+ * - 视图轻量化（View Thinness ≤150 行）；
+ * - 页面只做编排，状态与计算下沉至 composables；
+ * - 契约自解释与顶层精准解构。
  */
 const route = useRoute()
 const router = useRouter()
 const store = useLibraryStore()
 const { toast } = useToast()
-const { canWrite, userId } = useAuth()
+const { canWrite } = useAuth()
 const { isOnline } = useOfflineSync()
-const { goUpFromChapter, goToChapter: switchActiveChapter } = useHierarchicalNavigation()
 
 const source = computed(() => (route.params.source as string) || 'jm')
 const sourceId = computed(() => (route.params.sourceId as string) || '')
 const chapterId = computed(() => (route.params.chapterId as string) || '')
 
-const cachedSummary = store.byId(source.value, sourceId.value)
-const existingDetail = store.getDetail(source.value, sourceId.value)
-const detail = ref<ComicDetail | null>(
-  existingDetail ?? (cachedSummary ? createPlaceholderDetail(cachedSummary) : null),
-)
-const loading = ref(!detail.value)
-let loadAbortController: AbortController | null = null
-
-const editOpen = ref(false)
-const chapterTitleInput = ref('')
-const savingTitle = ref(false)
-
-const removeOpen = ref(false)
-const ackRemove = ref(false)
-const removing = ref(false)
-
-const chapterMoreOptions = computed<DropdownOption[]>(() => [
-  {
-    key: 'remove',
-    label: '删除本话…',
-    danger: true,
-    hint: '不可撤销',
-  },
-])
-
-function onChapterMoreSelect(option: DropdownOption) {
-  if (option.key === 'remove') {
-    requestRemoveChapter()
-  }
-}
-
+const detailRef = ref<ComicDetail | null>(null)
 const lastRead = useLastRead(source, sourceId)
+
 const {
   chapters,
   progressEl,
@@ -89,69 +55,97 @@ const {
   loadAll,
   collapse,
   setChapterById,
-} = useChapterNavigation(detail, lastRead)
+} = useChapterNavigation(detailRef, lastRead)
 
-const activeChapter = computed(() => chapters.value.find((c) => c.id === chapterId.value) ?? null)
-const activeIndex = computed(() => chapters.value.findIndex((c) => c.id === chapterId.value))
-const prevChapter = computed(() => chapters.value[activeIndex.value - 1] ?? null)
-const nextChapter = computed(() => chapters.value[activeIndex.value + 1] ?? null)
+const activeChapterRef = computed(
+  () => chapters.value.find((c) => c.id === chapterId.value) ?? null,
+)
 
 const { caching, runningChapterId, syncJobState, cacheChapter, onPageCached } = useChapterCache({
   source,
   sourceId,
-  detail,
+  detail: detailRef,
   chapters,
-  activeChapterId: computed(() => activeChapter.value?.id),
+  activeChapterId: computed(() => activeChapterRef.value?.id),
   onRefresh: () => load(true, true),
 })
 
-const isCurrentChapterCaching = computed(() => {
-  if (!caching.value) return false
-  return !runningChapterId.value || runningChapterId.value === activeChapter.value?.id
+const {
+  activeChapter,
+  activeIndex,
+  prevChapter,
+  nextChapter,
+  activeChapterCached,
+  activeChapterTotal,
+  chapterRange,
+  isCurrentChapterCaching,
+  readChapterLabel,
+  cacheCurrentChapter,
+  goToAlbum,
+  goToChapter,
+  startReadingChapter,
+  goPrev,
+  goNext,
+} = useChapterPageInfo({
+  source,
+  sourceId,
+  chapterId,
+  chapters,
+  detail: detailRef,
+  progressEl,
+  caching,
+  runningChapterId,
+  cacheChapter,
 })
 
-const activeChapterCached = computed(() => {
-  if (!detail.value || !activeChapter.value) return 0
-  const ch = activeChapter.value
-  let cached = 0
-  for (const p of detail.value.meta?.pages ?? []) {
-    if (p.chapter === ch.id || (p.index >= ch.start && p.index < ch.start + ch.page_count)) {
-      if (p.cached) cached++
+const {
+  editOpen,
+  chapterTitleInput,
+  savingTitle,
+  removeOpen,
+  ackRemove,
+  removing,
+  chapterMoreOptions,
+  onChapterMoreSelect,
+  openEditModal,
+  saveChapterTitle,
+  confirmRemoveChapter,
+} = useChapterManagement({
+  source,
+  sourceId,
+  activeChapter,
+  onDetailUpdated: (updated) => {
+    detail.value = updated
+  },
+})
+
+const { detail, loading, load } = useComicDetail({
+  source,
+  sourceId,
+  onLoaded: () => {
+    setChapterById(chapterId.value)
+    if (!activeChapter.value) {
+      router.replace(`/comic/${source.value}/${sourceId.value}`)
     }
-  }
-  return cached
+  },
+  onFallback: () => {
+    setChapterById(chapterId.value)
+  },
+  onSyncJobState: syncJobState,
+  onError: (e) => {
+    toast(e instanceof Error ? e.message : String(e), 'error')
+    router.replace(`/comic/${source.value}/${sourceId.value}`)
+  },
 })
 
-const activeChapterTotal = computed(() => activeChapter.value?.page_count ?? 0)
-
-const chapterRange = computed(() => {
-  const c = activeChapter.value
-  if (!c) return ''
-  const end = c.start + c.page_count - 1
-  return `第 ${c.start}–${end} 全局页`
-})
-
-const isCurrentChapterLastRead = computed(() => {
-  if (!activeChapter.value || progressEl.value < 1) return false
-  const ch = activeChapter.value
-  return progressEl.value >= ch.start && progressEl.value < ch.start + ch.page_count
-})
-
-const readChapterLabel = computed(() => {
-  if (isCurrentChapterLastRead.value && activeChapter.value) {
-    const localPage = progressEl.value - activeChapter.value.start + 1
-    return `继续阅读 · 第 ${localPage} 页`
-  }
-  return '开始阅读本话'
-})
-
-function startReadingChapter() {
-  if (!activeChapter.value) return
-  const targetPage = isCurrentChapterLastRead.value ? progressEl.value : activeChapter.value.start
-  router.push(
-    `/comic/${source.value}/${sourceId.value}/read/${targetPage}?chapter=${encodeURIComponent(activeChapter.value.id)}`,
-  )
-}
+watch(
+  detail,
+  (val) => {
+    detailRef.value = val
+    if (val) setChapterById(chapterId.value)
+  },
+  { immediate: true },
+)
 
 watch(
   chapterId,
@@ -164,176 +158,11 @@ watch(
   { immediate: true },
 )
 
-// 在主线程与首屏关键资产加载空闲时后台预热阅读器视图组件，避免混入初始关键请求链
 useIdlePrefetch(() => import('@/views/ReaderView.vue'))
 
 onMounted(() => {
   void load()
 })
-
-onBeforeUnmount(() => {
-  if (loadAbortController) {
-    loadAbortController.abort()
-    loadAbortController = null
-  }
-})
-
-const { lastLibraryEvent, broadcastLocalChange } = useSystemEvents()
-
-watch(lastLibraryEvent, (event) => {
-  if (!event) return
-  if (
-    (!event.source || event.source === source.value) &&
-    (!event.source_id || event.source_id === sourceId.value)
-  ) {
-    // 收藏与翻页等轻量状态变动由各模块就地消化，不无谓发起全书大 JSON 重拉取
-    if (event.action === 'favorite_changed' || event.action === 'reading_progress_changed') {
-      return
-    }
-    void load(true, true)
-  }
-})
-
-async function load(silent = false, bypassCache = false) {
-  if (loadAbortController) {
-    loadAbortController.abort()
-  }
-  const controller = new AbortController()
-  loadAbortController = controller
-
-  // SWR：若已有详情数据且非显式重载，不闪现骨架屏
-  if (!silent && !detail.value) loading.value = true
-  try {
-    const data = await api.detail(source.value, sourceId.value, {
-      signal: controller.signal,
-      bypassCache,
-    })
-    if (controller.signal.aborted) return
-    detail.value = data
-    store.setDetail(data, userId.value)
-    setChapterById(chapterId.value)
-    // 单章节或无此章节时回落详情页
-    if (!activeChapter.value) {
-      router.replace(`/comic/${source.value}/${sourceId.value}`)
-      return
-    }
-
-    // 严格任务驱动轮询（ADR 0010）：仅在后台有任务在运行时才开启轮询，静默状态绝不空转
-    const job = await api.cacheJob(source.value, sourceId.value, { signal: controller.signal })
-    if (controller.signal.aborted) return
-
-    syncJobState(job)
-  } catch (e) {
-    if (controller.signal.aborted) return
-
-    // 离线容错降级：优先命中本地 IndexedDB 或书架概要占位
-    const offlineDetail = await store.getOrFetchOfflineDetail(
-      source.value,
-      sourceId.value,
-      userId.value,
-    )
-    const summary = store.byId(source.value, sourceId.value)
-    const fallback = offlineDetail || (summary ? createPlaceholderDetail(summary) : null)
-
-    if (fallback) {
-      detail.value = fallback
-      setChapterById(chapterId.value)
-      if (activeChapter.value) return
-    }
-
-    toast(e instanceof Error ? e.message : String(e), 'error')
-    router.replace(`/comic/${source.value}/${sourceId.value}`)
-  } finally {
-    if (loadAbortController === controller) {
-      if (!silent) loading.value = false
-      loadAbortController = null
-    }
-  }
-}
-
-async function cacheCurrentChapter() {
-  if (!activeChapter.value) return
-  await cacheChapter(activeChapter.value.id)
-}
-
-function goToAlbum() {
-  goUpFromChapter(source.value, sourceId.value)
-}
-
-function goToChapter(id: string) {
-  switchActiveChapter(source.value, sourceId.value, id)
-}
-
-function goPrev() {
-  if (prevChapter.value) goToChapter(prevChapter.value.id)
-}
-
-function goNext() {
-  if (nextChapter.value) goToChapter(nextChapter.value.id)
-}
-
-function openEditModal() {
-  chapterTitleInput.value = activeChapter.value?.title || ''
-  editOpen.value = true
-}
-
-async function saveChapterTitle() {
-  if (!activeChapter.value) return
-  savingTitle.value = true
-  try {
-    const updated = await api.updateChapter(
-      source.value,
-      sourceId.value,
-      activeChapter.value.id,
-      chapterTitleInput.value,
-    )
-    detail.value = updated
-    store.setDetail(updated)
-    editOpen.value = false
-    toast('章节名称已更新', 'success')
-    broadcastLocalChange({
-      action: 'update_chapter',
-      source: source.value,
-      source_id: sourceId.value,
-      chapter_id: activeChapter.value.id,
-      timestamp: Date.now(),
-    })
-  } catch (e) {
-    toast(e instanceof Error ? e.message : String(e), 'error')
-  } finally {
-    savingTitle.value = false
-  }
-}
-
-function requestRemoveChapter() {
-  ackRemove.value = false
-  removeOpen.value = true
-}
-
-async function confirmRemoveChapter() {
-  if (!activeChapter.value) return
-  removing.value = true
-  const deletedId = activeChapter.value.id
-  const deletedTitle = activeChapter.value.title || `第 ${activeChapter.value.index} 话`
-  try {
-    await api.deleteChapter(source.value, sourceId.value, deletedId)
-    store.removeDetail(source.value, sourceId.value)
-    removeOpen.value = false
-    toast(`已删除「${deletedTitle}」`, 'success')
-    broadcastLocalChange({
-      action: 'delete_chapter',
-      source: source.value,
-      source_id: sourceId.value,
-      chapter_id: deletedId,
-      timestamp: Date.now(),
-    })
-    router.replace(`/comic/${source.value}/${sourceId.value}`)
-  } catch (e) {
-    toast(e instanceof Error ? e.message : String(e), 'error')
-  } finally {
-    removing.value = false
-  }
-}
 </script>
 
 <template>

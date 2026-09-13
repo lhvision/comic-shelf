@@ -4,6 +4,7 @@ import {
   useBroadcastChannel,
   useDocumentVisibility,
   useNetwork,
+  useTimeoutFn,
 } from '@vueuse/core'
 import { api, clearApiDetailCache } from '@/api/client'
 import { usePwaUpdate } from '@/composables/usePwaUpdate'
@@ -55,7 +56,14 @@ export const useSystemEvents = createGlobalState(() => {
   const activeTasks = ref<Set<string>>(new Set())
   // 5 秒平滑防抖冷却状态
   const isCoolingDown = ref(false)
-  let teardownCooldownTimer: ReturnType<typeof setTimeout> | null = null
+
+  const { start: startTeardownCooldown, stop: stopTeardownCooldown } = useTimeoutFn(
+    () => {
+      isCoolingDown.value = false
+    },
+    TASK_TEARDOWN_COOLDOWN_MS,
+    { immediate: false },
+  )
 
   const visibility = useDocumentVisibility()
   const { isOnline } = useNetwork()
@@ -99,10 +107,7 @@ export const useSystemEvents = createGlobalState(() => {
    * 清除平滑防抖冷却定时器
    */
   function clearTeardownCooldown(): void {
-    if (teardownCooldownTimer) {
-      clearTimeout(teardownCooldownTimer)
-      teardownCooldownTimer = null
-    }
+    stopTeardownCooldown()
     isCoolingDown.value = false
   }
 
@@ -137,10 +142,7 @@ export const useSystemEvents = createGlobalState(() => {
     if (activeTasks.value.size === 0 && (isConnected.value || eventSource !== null)) {
       clearTeardownCooldown()
       isCoolingDown.value = true
-      teardownCooldownTimer = setTimeout(() => {
-        teardownCooldownTimer = null
-        isCoolingDown.value = false
-      }, TASK_TEARDOWN_COOLDOWN_MS)
+      startTeardownCooldown()
     }
   }
 

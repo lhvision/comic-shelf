@@ -1,9 +1,9 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import Modal from '@/components/Modal.vue'
-import SegmentedTabs from '@/components/SegmentedTabs.vue'
 import AppButton from '@/components/AppButton.vue'
 import AppIcon from '@/components/AppIcon.vue'
+import FileStagingDropZone from '@/components/form/FileStagingDropZone.vue'
 import { api } from '@/api/client'
 import { useFileStaging } from '@/composables/useFileStaging'
 import { useToast } from '@/composables/useToast'
@@ -24,10 +24,6 @@ const { toast } = useToast()
 const { broadcastLocalChange } = useSystemEvents()
 
 const mode = ref<'upload' | 'path'>('upload')
-const modeTabs = [
-  { key: 'upload' as const, label: '网页多图上传' },
-  { key: 'path' as const, label: '服务器本地路径扫描' },
-]
 
 const replaceScope = ref<'full' | 'chapter'>('full')
 const selectedChapterId = ref('')
@@ -243,13 +239,8 @@ async function submit() {
         </select>
       </div>
 
-      <div class="mode-tabs-wrapper">
-        <SegmentedTabs v-model="mode" :items="modeTabs" size="sm" />
-      </div>
-
-      <!-- 模式一：网页多图上传 -->
-      <div v-if="mode === 'upload'" class="upload-zone">
-        <div class="field-header">
+      <div ref="dropZoneRef">
+        <div v-if="mode === 'upload'" class="field-header">
           <label class="form-label">装入新画页图片（纯图片，按文件名排序）</label>
           <div v-if="selectedFiles.length" class="page-diff-badge">
             <span>现有 {{ existingPageCount }} 页</span>
@@ -259,59 +250,21 @@ async function submit() {
           </div>
         </div>
 
-        <div
-          ref="dropZoneRef"
-          class="upload-zone__inner"
-          role="button"
-          tabindex="0"
-          aria-label="点击选择画页，或将图片批量拖拽到此处"
-          :aria-dropeffect="isOverDropZone ? 'copy' : 'none'"
-          :class="{ 'is-dragover': isOverDropZone, 'is-disabled': submitting }"
-          @click="onDropzoneTrigger"
-          @keydown.enter.prevent="onDropzoneTrigger"
-          @keydown.space.prevent="onDropzoneTrigger"
-        >
-          <AppIcon name="upload" size="2xl" />
-          <p>点击选择画页，或将图片批量拖拽到此处</p>
-          <span class="upload-hint">支持 JPG, PNG, WebP, GIF, AVIF（自动按文件名自然排序）</span>
-        </div>
-
-        <div v-if="selectedFiles.length > 0" class="file-summary">
-          <span
-            class="staged-names"
-            :title="`${selectedFiles[0]?.name} ~ ${selectedFiles[selectedFiles.length - 1]?.name}`"
-          >
-            已就绪 <strong>{{ selectedFiles.length }}</strong> 张画页（首尾：{{
-              selectedFiles[0]?.name
-            }}
-            ~ {{ selectedFiles[selectedFiles.length - 1]?.name }}）
-          </span>
-          <AppButton
-            variant="ghost"
-            size="xs"
-            type="button"
-            :disabled="submitting"
-            @click.stop="selectedFiles = []"
-          >
-            清空
-          </AppButton>
-        </div>
-      </div>
-
-      <!-- 模式二：服务器本地路径扫描 -->
-      <div v-else class="path-zone">
-        <label class="form-label" for="replace-path">服务器目录相对/绝对路径</label>
-        <input
-          id="replace-path"
-          v-model="serverPath"
-          class="field-input"
-          type="text"
-          placeholder="如：public/tiya-frames 或 /data/comics/import-folder"
+        <FileStagingDropZone
+          v-model:mode="mode"
+          v-model:files="selectedFiles"
+          v-model:server-path="serverPath"
+          :is-over-drop-zone="isOverDropZone"
+          :open-file-dialog="onDropzoneTrigger"
           :disabled="submitting"
-        />
-        <p class="path-hint">
-          指定服务器上包含画页的文件夹或图片路径，系统将就地扫描并按文件名自然序号重新装订。
-        </p>
+          path-placeholder="如：public/tiya-frames 或 /data/comics/import-folder"
+        >
+          <template #path-guide>
+            <p class="path-hint">
+              指定服务器上包含画页的文件夹或图片路径，系统将就地扫描并按文件名自然序号重新装订。
+            </p>
+          </template>
+        </FileStagingDropZone>
       </div>
 
       <label class="replace-ack" :class="{ 'is-disabled': submitting }">
@@ -389,20 +342,6 @@ async function submit() {
   font-weight: 500;
 }
 
-.form-label {
-  display: block;
-  font-family: var(--font-body);
-  font-size: var(--text-xs);
-  font-weight: 600;
-  color: var(--ink-1);
-  margin-bottom: var(--space-2);
-}
-
-.field-group {
-  display: flex;
-  flex-direction: column;
-}
-
 .field-header {
   display: flex;
   justify-content: space-between;
@@ -444,11 +383,6 @@ async function submit() {
   border-color: var(--accent);
   outline: 2px solid var(--accent);
   outline-offset: 1px;
-}
-
-.mode-tabs-wrapper {
-  display: flex;
-  align-items: center;
 }
 
 .radio-cards {
@@ -507,70 +441,6 @@ async function submit() {
   border-radius: var(--radius-1);
   color: var(--danger);
   font-size: var(--text-xs);
-}
-
-.upload-zone {
-  display: grid;
-  gap: var(--space-2);
-}
-
-.upload-zone__inner {
-  display: grid;
-  place-items: center;
-  gap: var(--space-2);
-  padding: var(--space-6) var(--space-4);
-  border: 2px dashed var(--line-strong);
-  border-radius: var(--radius-2);
-  background: color-mix(in oklab, var(--paper-1) 50%, transparent);
-  color: var(--ink-1);
-  text-align: center;
-  cursor: pointer;
-  transition:
-    border-color var(--duration-1) var(--ease-out),
-    background-color var(--duration-1) var(--ease-out);
-}
-
-.upload-zone__inner:hover:not(.is-disabled),
-.upload-zone__inner.is-dragover {
-  border-color: var(--accent);
-  background: var(--accent-soft);
-}
-
-.upload-zone__inner:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 2px;
-}
-
-.upload-hint {
-  font-size: var(--text-xs);
-  color: var(--ink-2);
-}
-
-.file-summary {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: var(--space-2) var(--space-3);
-  border-radius: var(--radius-1);
-  background: var(--paper-1);
-  font-size: var(--text-xs);
-  color: var(--ink-1);
-}
-
-.file-summary strong {
-  color: var(--ink-0);
-}
-
-.staged-names {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.path-zone {
-  display: grid;
-  gap: var(--space-2);
 }
 
 .path-hint {

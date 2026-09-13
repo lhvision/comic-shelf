@@ -1,10 +1,9 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import Modal from '@/components/Modal.vue'
-import SegmentedTabs from '@/components/SegmentedTabs.vue'
 import AppButton from '@/components/AppButton.vue'
-import AppIcon from '@/components/AppIcon.vue'
 import AppProgressBar from '@/components/AppProgressBar.vue'
+import FileStagingDropZone from '@/components/form/FileStagingDropZone.vue'
 import { useUploadQueue } from '@/composables/useUploadQueue'
 import { useFileStaging } from '@/composables/useFileStaging'
 import { api } from '@/api/client'
@@ -27,10 +26,6 @@ const { broadcastLocalChange } = useSystemEvents()
 const { isUploading, progress, completedCount, totalCount, uploadFiles } = useUploadQueue()
 
 const mode = ref<'upload' | 'path'>('upload')
-const modeTabs = [
-  { key: 'upload' as const, label: '网页多图上传' },
-  { key: 'path' as const, label: '服务器本地路径扫描' },
-]
 const appendType = ref<'current' | 'new'>('current')
 const selectedChapterId = ref('')
 const newChapterTitle = ref('')
@@ -185,42 +180,20 @@ async function submit() {
         />
       </div>
 
-      <div>
-        <SegmentedTabs v-model="mode" :items="modeTabs" size="sm" />
-      </div>
-
-      <div v-if="mode === 'upload'" class="upload-zone">
-        <div
-          ref="dropZoneRef"
-          class="upload-zone__inner"
-          :class="{ 'is-dragover': isOverDropZone }"
-          @click="() => openFileDialog()"
+      <div ref="dropZoneRef">
+        <FileStagingDropZone
+          v-model:mode="mode"
+          v-model:files="selectedFiles"
+          v-model:server-path="serverPath"
+          :is-over-drop-zone="isOverDropZone"
+          :open-file-dialog="() => openFileDialog()"
+          :disabled="submitting || isUploading"
+          path-placeholder="如：public/tiya-frames 或 /data/manga/vol2"
         >
-          <AppIcon name="upload" size="2xl" />
-          <p>点击选择图片，或将图片批量拖拽到此处</p>
-          <span class="upload-hint">支持 JPG, PNG, WebP, GIF, AVIF</span>
-        </div>
-
-        <div v-if="selectedFiles.length > 0" class="file-summary">
-          <span
-            >已选择 <strong>{{ selectedFiles.length }}</strong> 张图片</span
-          >
-          <AppButton variant="ghost" size="xs" type="button" @click="selectedFiles = []">
-            清空
-          </AppButton>
-        </div>
-      </div>
-
-      <div v-else class="path-zone">
-        <label class="form-label" for="append-path">服务器目录相对/绝对路径</label>
-        <input
-          id="append-path"
-          v-model="serverPath"
-          class="field-input"
-          type="text"
-          placeholder="如：public/tiya-frames 或 /data/manga/vol2"
-        />
-        <p class="path-hint">指定包含图片的文件夹，系统将就地扫描并按文件名自然序号追加。</p>
+          <template #path-guide>
+            <p class="path-hint">指定包含图片的文件夹，系统将就地扫描并按文件名自然序号追加。</p>
+          </template>
+        </FileStagingDropZone>
       </div>
 
       <div v-if="isUploading" class="upload-progress-card">
@@ -275,13 +248,6 @@ async function submit() {
   gap: var(--space-2);
 }
 
-.form-label {
-  font-family: var(--font-body);
-  font-size: var(--text-xs);
-  font-weight: 600;
-  color: var(--ink-1);
-}
-
 .radio-cards {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -325,48 +291,6 @@ async function submit() {
   font-size: var(--text-xs);
   color: var(--ink-2);
   line-height: 1.4;
-}
-
-.upload-zone {
-  display: grid;
-  gap: var(--space-2);
-}
-
-.upload-zone__inner {
-  display: grid;
-  place-items: center;
-  gap: var(--space-2);
-  padding: var(--space-6) var(--space-4);
-  border: 2px dashed var(--line-strong);
-  border-radius: var(--radius-2);
-  background: color-mix(in oklab, var(--paper-1) 50%, transparent);
-  color: var(--ink-1);
-  text-align: center;
-  cursor: pointer;
-  transition:
-    border-color var(--duration-1) var(--ease-out),
-    background-color var(--duration-1) var(--ease-out);
-}
-
-.upload-zone__inner:hover,
-.upload-zone__inner.is-dragover {
-  border-color: var(--accent);
-  background: var(--accent-soft);
-}
-
-.upload-hint {
-  font-size: var(--text-xs);
-  color: var(--ink-2);
-}
-
-.file-summary {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: var(--space-2) var(--space-3);
-  border-radius: var(--radius-1);
-  background: var(--paper-1);
-  font-size: var(--text-xs);
 }
 
 .path-hint {

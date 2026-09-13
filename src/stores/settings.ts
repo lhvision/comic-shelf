@@ -1,5 +1,6 @@
 import { ref } from 'vue'
 import { defineStore } from 'pinia'
+import { useLocalStorage } from '@vueuse/core'
 import { api } from '@/api/client'
 
 const STORAGE_KEY = 'comic-shelf:download-concurrency:v1'
@@ -8,7 +9,8 @@ const MAX = 16
 
 /** 下载并发设置：localStorage 记忆，后端 env(COMIC_SHELF_MAX_CONCURRENT_DOWNLOADS) 锁定优先。 */
 export const useAppSettings = defineStore('appSettings', () => {
-  const concurrency = ref(3)
+  const savedConcurrency = useLocalStorage<number>(STORAGE_KEY, 3)
+  const concurrency = ref(savedConcurrency.value || 3)
   const envControlled = ref(false)
   const loading = ref(false)
   const guestHideNewComics = ref(false)
@@ -21,7 +23,7 @@ export const useAppSettings = defineStore('appSettings', () => {
       envControlled.value = info.env_controlled
 
       // 后端重启过但前端 localStorage 还记得选择 → 把选择推回后端（env 未锁定时）。
-      const saved = Number(localStorage.getItem(STORAGE_KEY))
+      const saved = savedConcurrency.value
       if (
         !envControlled.value &&
         Number.isFinite(saved) &&
@@ -65,7 +67,7 @@ export const useAppSettings = defineStore('appSettings', () => {
     if (envControlled.value) return false
     const next = Math.min(MAX, Math.max(MIN, Math.round(value)))
     concurrency.value = next
-    localStorage.setItem(STORAGE_KEY, String(next))
+    savedConcurrency.value = next
     try {
       const info = await api.setDownloadConcurrency(next)
       concurrency.value = info.limit

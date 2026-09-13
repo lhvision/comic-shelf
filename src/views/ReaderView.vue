@@ -3,30 +3,24 @@
  * @file ReaderView.vue
  * @description 沉浸式阅读器主视图（纯编排视图，脚本严格 ≤150 行）。
  *
- * 状态机分层架构：
- * 1. 数据流与生命周期：`useReaderData`（元数据加载、竞态隔离、URL 参数同步与返回路径）；
- * 2. 分页与作用域：`useReaderPaging`（多屏切片、全局/本地页码转换、跨话首尾探测）；
- * 3. 顶栏与 HUD 调度：`useReaderChrome`（延时隐藏与交互唤醒）；
- * 4. 导航与定位：`useReaderNavigation`（物理滚动、进度换算、滚轮映射、预加载）；
- * 5. 键盘与全屏：`useReaderKeyboard`（方向键/翻页键/切话键/全屏 F / ESC 返回）；
- * 6. 自动翻页状态机：`useAutoTurn`（倒计时、节拍器、页面可见性联动与暂停/继续）。
+ * 遵循 docs/agents/frontend.md 规范：
+ * - 视图轻量化（View Thinness ≤150 行）；
+ * - 状态机分层下沉至 composables；
+ * - 契约自解释与顶层精准解构。
  */
 
-import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { useDebounceFn, usePreferredReducedMotion, useToggle } from '@vueuse/core'
+import { usePreferredReducedMotion, useToggle } from '@vueuse/core'
 import { useReaderSettings } from '@/composables/useReaderSettings'
 import { useReaderPaging } from '@/composables/useReaderPaging'
 import { useReaderChrome } from '@/composables/useReaderChrome'
 import { useAutoTurn } from '@/composables/useAutoTurn'
 import { useReaderNavigation } from '@/composables/useReaderNavigation'
-import { useReaderKeyboard } from '@/composables/useReaderKeyboard'
 import { useReaderData } from '@/composables/useReaderData'
-import { useSystemEvents } from '@/composables/useSystemEvents'
-import { useAuth } from '@/composables/useAuth'
-import { useLibraryStore } from '@/stores/library'
-import { useReaderRecommendations } from '@/composables/useReaderRecommendations'
 import { useReaderBubble } from '@/composables/useReaderBubble'
+import { useReaderCompletion } from '@/composables/useReaderCompletion'
+import { useReaderInteraction } from '@/composables/useReaderInteraction'
 import ReaderTopBar from '@/components/reader/ReaderTopBar.vue'
 import ReaderLoadingState from '@/components/reader/ReaderLoadingState.vue'
 import ReaderViewport from '@/components/reader/ReaderViewport.vue'
@@ -38,8 +32,11 @@ import ReaderSettingsPanel from '@/components/reader/ReaderSettingsPanel.vue'
 
 const route = useRoute()
 const router = useRouter()
-const { settings, applyComicPreferences, clearActiveComic } = useReaderSettings()
-const { targetBubble, targetPage, dismissBubble } = useReaderBubble(route, router)
+const readerSettings = useReaderSettings()
+const { settings } = readerSettings
+
+const readerBubble = useReaderBubble(route, router)
+const { targetBubble } = readerBubble
 const currentPage = ref(1)
 const currentGroupIndex = ref(0)
 const [settingsOpen] = useToggle(false)
@@ -49,29 +46,19 @@ const viewportRef = ref<{ scrollEl: HTMLElement | null } | null>(null)
 const scrollEl = computed(() => viewportRef.value?.scrollEl ?? null)
 const userInteracted = ref(false)
 
+const readerData = useReaderData({ onLoaded: () => initReaderView() })
 const { detail, loading, loadingVariant, source, sourceId, scopeId, backToDetail, lastRead } =
-  useReaderData({
-    onLoaded: async () => {
-      userInteracted.value = false
-      const initial =
-        targetPage.value && targetPage.value > 0
-          ? targetPage.value
-          : lastRead.value || scopedPages.value[0] || 1
-      currentPage.value = clampToScope(initial)
-      currentGroupIndex.value = groupIndexForPage(currentPage.value)
+  readerData
 
-      await nextTick()
-      scrollToGroup(currentGroupIndex.value, 'instant')
-      scheduleChromeHide()
-      preloadAround(currentPage.value)
-      resetAutoTurnCountdown()
-    },
-  })
-
+const readerPaging = useReaderPaging({
+  detail,
+  scopeId,
+  settings,
+  currentPage,
+  currentGroupIndex,
+})
 const {
-  scopedPages,
   total,
-  clampToScope,
   chapterLabel,
   chapterShortLabel,
   nextChapter,
@@ -88,46 +75,23 @@ const {
   currentGroupLabel,
   lastGroupIndex,
   atLastGroup,
-  groupIndexForPage,
-  groupFirstPage,
-  pageGroups,
-} = useReaderPaging({
-  detail,
-  scopeId,
-  settings,
-  currentPage,
-  currentGroupIndex,
-})
+} = readerPaging
 
-const { chromeVisible, showChromeTemporarily, scheduleChromeHide, toggleChrome } = useReaderChrome({
-  settingsOpen,
-})
+const readerChrome = useReaderChrome({ settingsOpen })
+const { chromeVisible, showChromeTemporarily } = readerChrome
 
-const {
-  progressValue,
-  pillActive,
-  scrollToGroup,
-  recalibrateTargetOffset,
-  goToPage,
-  prevGroup,
-  nextGroup,
-  onScroll,
-  onWheel,
-  preloadAround,
-  goNextChapter,
-  goPrevChapter,
-} = useReaderNavigation({
+const readerNavigation = useReaderNavigation({
   scrollEl,
   settings,
   currentPage,
   currentGroupIndex,
-  pageGroups,
-  lastGroupIndex,
-  clampToScope,
-  groupIndexForPage,
-  groupFirstPage,
+  pageGroups: readerPaging.pageGroups,
+  lastGroupIndex: readerPaging.lastGroupIndex,
+  clampToScope: readerPaging.clampToScope,
+  groupIndexForPage: readerPaging.groupIndexForPage,
+  groupFirstPage: readerPaging.groupFirstPage,
   showChromeTemporarily,
-  resetAutoTurnCountdown: () => resetAutoTurnCountdown(),
+  resetAutoTurnCountdown: () => readerAutoTurn.resetAutoTurnCountdown(),
   source,
   sourceId,
   nextChapter,
@@ -135,232 +99,48 @@ const {
   scopeId,
   router,
 })
+const { progressValue, pillActive, goToPage, prevGroup, nextGroup, goNextChapter, goPrevChapter } =
+  readerNavigation
 
-function onPageReady(_page: number) {
-  if (!userInteracted.value && settings.mode === 'vertical-continuous') {
-    recalibrateTargetOffset(currentGroupIndex.value)
-  }
-}
-
-function onViewportWheel(event: WheelEvent) {
-  userInteracted.value = true
-  yieldAutoScroll()
-  onWheel(event)
-}
-
-function onUserInteract() {
-  userInteracted.value = true
-  yieldAutoScroll()
-}
-
-function advanceAutoTurn() {
-  const nextIndex = Math.min(currentGroupIndex.value + 1, lastGroupIndex.value)
-  currentGroupIndex.value = nextIndex
-  currentPage.value = groupFirstPage(nextIndex)
-  const behavior = reducedMotion.value ? 'auto' : 'smooth'
-  scrollToGroup(nextIndex, behavior)
-}
-
-const {
-  autoTurnRemaining,
-  autoTurnPaused,
-  isDockedAtEnd,
-  resetAutoTurnCountdown,
-  toggleAutoTurnPause,
-  yieldAutoScroll,
-  onAutoTurnScroll,
-} = useAutoTurn({
+const readerAutoTurn = useAutoTurn({
   settings,
   currentGroupIndex,
-  lastGroupIndex,
+  lastGroupIndex: readerPaging.lastGroupIndex,
   settingsOpen,
   chromeVisible,
-  onAdvance: advanceAutoTurn,
-  onScheduleChromeHide: scheduleChromeHide,
+  onAdvance: () => advanceAutoTurn(),
+  onScheduleChromeHide: readerChrome.scheduleChromeHide,
   scrollEl,
 })
+const { autoTurnRemaining, autoTurnPaused, isDockedAtEnd, toggleAutoTurnPause } = readerAutoTurn
 
-function onContainerScroll() {
-  onScroll()
-  onAutoTurnScroll()
-}
-
-/* ---------------- 页面响应式联动与历史同步 ---------------- */
-const { broadcastLocalChange } = useSystemEvents()
-const { userId } = useAuth()
-
-const broadcastReadingProgress = useDebounceFn((page: number) => {
-  if (page > 0 && source.value && sourceId.value) {
-    broadcastLocalChange({
-      action: 'reading_progress_changed',
-      source: source.value,
-      source_id: sourceId.value,
-      last_page: page,
-      timestamp: Date.now(),
-    })
-  }
-}, 800)
-
-watch(currentPage, (page) => {
-  lastRead.value = page
-  libraryStore.setReadingProgressLocal(source.value, sourceId.value, page, userId.value)
-  broadcastReadingProgress(page)
-  preloadAround(page)
-})
-
-watch([source, sourceId], () => {
-  clearActiveComic()
-})
-
-watch(
-  () => detail.value,
-  (d) => {
-    if (d && source.value && sourceId.value) {
-      applyComicPreferences(source.value, sourceId.value, d.meta.tags)
-    }
-  },
-  { immediate: true },
-)
-
-onBeforeUnmount(() => {
-  clearActiveComic()
-  lastRead.value = currentPage.value
-  if (currentPage.value > 0 && source.value && sourceId.value) {
-    broadcastLocalChange({
-      action: 'reading_progress_changed',
-      source: source.value,
-      source_id: sourceId.value,
-      last_page: currentPage.value,
-      timestamp: Date.now(),
-    })
-  }
-})
-
-watch(
-  () => [route.params.page, route.query.page],
-  () => {
-    if (loading.value) return
-    const page = targetPage.value ?? lastRead.value ?? scopedPages.value[0] ?? 1
-    const pages = scopedPages.value
-    if (!Number.isFinite(page) || pages.length === 0) return
-    if (page < pages[0]! || page > pages[pages.length - 1]!) return
-    if (page === currentPage.value) return
-    goToPage(page, 'smooth')
-  },
-)
-
-watch(
-  () => `${settings.mode}|${settings.pagesPerView}|${settings.direction}`,
-  async () => {
-    currentGroupIndex.value = groupIndexForPage(currentPage.value)
-    await nextTick()
-    scrollToGroup(currentGroupIndex.value, 'instant')
-    showChromeTemporarily()
-    resetAutoTurnCountdown()
-  },
-)
-
-watch(
-  () => scopeId.value,
-  async () => {
-    if (!detail.value) return
-    const clamped = clampToScope(currentPage.value)
-    if (clamped !== currentPage.value) currentPage.value = clamped
-    currentGroupIndex.value = groupIndexForPage(currentPage.value)
-    await nextTick()
-    scrollToGroup(currentGroupIndex.value, 'instant')
-    showChromeTemporarily()
-    resetAutoTurnCountdown()
-  },
-)
-
-watch(currentPage, (page) => {
-  if (targetBubble.value && targetBubble.value.page !== page) {
-    dismissBubble()
-  }
-})
-
-function onReaderClick(event: MouseEvent) {
-  const target = event.target as HTMLElement | null
-  if (target?.closest('button, a, input, select, textarea, [role="button"]')) {
-    return
-  }
-  if (window.getSelection()?.toString()) {
-    return
-  }
-  toggleChrome()
-}
-
-const { toggleFullscreen } = useReaderKeyboard({
+const {
+  initReaderView,
+  advanceAutoTurn,
+  onPageReady,
+  onViewportWheel,
+  onUserInteract,
+  onContainerScroll,
+  onReaderClick,
+  toggleFullscreen,
+} = useReaderInteraction({
+  userInteracted,
+  currentPage,
+  currentGroupIndex,
   settingsOpen,
-  settings,
-  total,
-  goToPage,
-  prevGroup,
-  nextGroup,
-  goNextChapter,
-  goPrevChapter,
-  backToDetail,
-  onUserInteract: () => {
-    userInteracted.value = true
-    yieldAutoScroll()
-  },
+  reducedMotion: computed(() => Boolean(reducedMotion.value)),
+  route,
+  settings: readerSettings,
+  bubble: readerBubble,
+  data: readerData,
+  paging: readerPaging,
+  chrome: readerChrome,
+  navigation: readerNavigation,
+  autoTurn: readerAutoTurn,
 })
 
-const libraryStore = useLibraryStore()
-
-onMounted(() => {
-  if (libraryStore.items.length === 0) {
-    void libraryStore.load()
-  }
-})
-
-const recommendTarget = computed(() => {
-  if (!detail.value?.meta) return null
-  return {
-    source: source.value,
-    source_id: sourceId.value,
-    authors: detail.value.meta.authors,
-    works: detail.value.meta.works,
-    tags: detail.value.meta.tags,
-  }
-})
-
-const { recommendations } = useReaderRecommendations(
-  recommendTarget,
-  computed(() => libraryStore.items),
-  3,
-)
-
-function onReaderCompleted() {
-  const finalPage = detail.value?.meta.page_count ?? total.value
-  if (finalPage > 0) {
-    lastRead.value = finalPage
-    libraryStore.setReadingProgressLocal(source.value, sourceId.value, finalPage, userId.value)
-    broadcastLocalChange({
-      action: 'reading_progress_changed',
-      source: source.value,
-      source_id: sourceId.value,
-      last_page: finalPage,
-      timestamp: Date.now(),
-    })
-  }
-}
-
-function onSelectComic(nextSource: string, nextSourceId: string) {
-  const item = libraryStore.byId(nextSource, nextSourceId)
-  const targetPage =
-    item?.last_page && item.last_page > 0 && item.last_page < item.page_count ? item.last_page : 1
-  void router.push(`/comic/${nextSource}/${nextSourceId}/read/${targetPage}`)
-}
-
-function onOpenComicDetail(nextSource: string, nextSourceId: string) {
-  void router.push(`/comic/${nextSource}/${nextSourceId}`)
-}
-
-function onBackToShelf() {
-  void router.push('/')
-}
+const { recommendations, onReaderCompleted, onSelectComic, onOpenComicDetail, onBackToShelf } =
+  useReaderCompletion({ source, sourceId, detail, total, lastRead })
 </script>
 
 <template>

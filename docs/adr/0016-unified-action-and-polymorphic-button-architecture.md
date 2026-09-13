@@ -24,7 +24,7 @@
   - _否决理由_：全站 7 处核心图标按钮（返回、关闭、轮播箭头、相机）仍处于无统筹状态，未能解决图标组件尺寸、动效与无障碍统一的问题。
 - **路线 B（标准按钮 + 图标按钮双轨收敛，推荐）**：
   - _实现原理_：在 `AppButton` 中增加 `shape?: 'default' | 'circle' | 'square'` 与 `icon?: IconName` 属性；标准操作按钮与独立正圆/方形图标按钮统一通过 `AppButton` 消费；
-  - _特化微件边界_：严格区分通用按钮与特化领域控件：`ReaderButton.vue`（沉浸阅读工具栏专用磨砂按钮）、`AppChip.vue`（多态状态药丸）、`archive-drawer-header`（具备 `aria-expanded` 的 Disclosure 折叠标头）维持独立职责，避免过度抽象破坏专有盒模型。
+  - _特化微件边界与最终收敛_：严格区分通用按钮与特化领域控件：`AppChip.vue`（多态状态药丸）、`archive-drawer-header`（具备 `aria-expanded` 的 Disclosure 折叠标头）维持独立职责；而历史上的特化沉浸阅读工具栏按钮 `ReaderButton.vue` 已在后续治理中全面收敛并物理删除，由 `<AppButton theme="reader">` 原生统一承担。
 
 ### 2. 多态渲染与禁用态拦截
 

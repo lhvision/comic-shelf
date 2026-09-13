@@ -1,14 +1,628 @@
 <script setup lang="ts">
-import Tooltip from '@/components/Tooltip.vue'
+import { computed, nextTick, onBeforeUnmount, ref, useId, watch } from 'vue'
+import { useEventListener } from '@vueuse/core'
+
+/**
+ * 现代轻量气泡提示组件（Modern AppTooltip）。
+ * - 结合 HTML Popover API (popover="hint") 与 CSS Anchor Positioning
+ * - 智能检测视口碰撞自适应纠正实际展示方位（actualSide）与箭头指向
+ * - 支持 top / right / bottom / left 与 start / center / end 对齐
+ * - 支持 hover / focus-within 唤起与无障碍 aria-describedby
+ * - 非现代浏览器优雅降级为绝对定位与 Vue 状态控制
+ */
+const props = withDefaults(
+  defineProps<{
+    tip?: string
+    /** 浮动方位：top / right / bottom / left（默认 top） */
+    side?: 'top' | 'right' | 'bottom' | 'left'
+    /** 对齐方式：start / center / end（相对触发元素，默认 center） */
+    align?: 'start' | 'center' | 'end'
+    /** 浮层宽度 */
+    width?: string
+    /** 最大高度限制（如超长文本支持内部滚动，默认 16rem） */
+    maxHeight?: string
+    /** 显式禁用 */
+    disabled?: boolean
+    /** 是否显示指示小三角（默认 true） */
+    arrow?: boolean
+    /** 唤起延迟 (ms) */
+    delay?: number
+    /** 离开关闭缓冲延迟 (ms，默认 150ms) */
+    hideDelay?: number
+    /** 延迟挂载：仅在激活时挂载 DOM，彻底消除页面大量 Tooltip 时的 DOM 节点开销（默认 true） */
+    lazy?: boolean
+  }>(),
+  {
+    tip: '',
+    side: 'top',
+    align: 'center',
+    width: '15rem',
+    maxHeight: '16rem',
+    disabled: false,
+    arrow: true,
+    delay: 100,
+    hideDelay: 150,
+    lazy: true,
+  },
+)
+
+const uid = useId().replace(/[^a-zA-Z0-9_-]+/g, '')
+const anchorName = computed(() => `--tip-${uid}`)
+const tipId = `tip-${uid}`
+
+const areaMap: Record<string, string> = {
+  'top start': 'top span-right',
+  'top center': 'top',
+  'top end': 'top span-left',
+  'bottom start': 'bottom span-right',
+  'bottom center': 'bottom',
+  'bottom end': 'bottom span-left',
+  'left start': 'left span-bottom',
+  'left center': 'left',
+  'left end': 'left span-top',
+  'right start': 'right span-bottom',
+  'right center': 'right',
+  'right end': 'right span-top',
+}
+
+const positionArea = computed(() => areaMap[`${props.side} ${props.align}`] ?? 'top')
+
+const justifySelf = computed(() => {
+  if (props.side === 'left' || props.side === 'right') return undefined
+  if (props.align === 'start') return 'start'
+  if (props.align === 'end') return 'end'
+  return 'anchor-center'
+})
+
+const alignSelf = computed(() => {
+  if (props.side === 'top' || props.side === 'bottom') return undefined
+  if (props.align === 'start') return 'start'
+  if (props.align === 'end') return 'end'
+  return 'anchor-center'
+})
+
+const isVisible = ref(false)
+const tipElement = ref<HTMLElement | null>(null)
+const triggerElement = ref<HTMLElement | null>(null)
+const actualSide = ref<'top' | 'right' | 'bottom' | 'left'>(props.side)
+const actualAlign = ref<'start' | 'center' | 'end'>(props.align)
+
+watch(
+  () => props.side,
+  (val) => {
+    actualSide.value = val
+  },
+)
+
+watch(
+  () => props.align,
+  (val) => {
+    actualAlign.value = val
+  },
+)
+
+function updateActualSide() {
+  const trigger = triggerElement.value
+  const tip = tipElement.value
+  if (!trigger || !tip) return
+  const triggerRect = trigger.getBoundingClientRect()
+  const tipRect = tip.getBoundingClientRect()
+
+  if (tipRect.width === 0 && tipRect.height === 0) return
+
+  if (props.side === 'top' || props.side === 'bottom') {
+    if (tipRect.top >= triggerRect.top) {
+      actualSide.value = 'bottom'
+    } else {
+      actualSide.value = 'top'
+    }
+
+    // 横向对齐碰撞自适应：当浮层在视口边缘发生水平翻转（flip-inline）时，
+    // 动态调整箭头方位（start/end），确保指示小三角始终精准对齐触发源！
+    const triggerMidX = triggerRect.left + triggerRect.width / 2
+    const tipMidX = tipRect.left + tipRect.width / 2
+    const threshold = Math.max(16, tipRect.width * 0.15)
+
+    if (triggerMidX > tipMidX + threshold) {
+      actualAlign.value = 'end'
+    } else if (triggerMidX < tipMidX - threshold) {
+      actualAlign.value = 'start'
+    } else {
+      actualAlign.value = 'center'
+    }
+  } else if (props.side === 'left' || props.side === 'right') {
+    if (tipRect.left >= triggerRect.left) {
+      actualSide.value = 'right'
+    } else {
+      actualSide.value = 'left'
+    }
+  }
+}
+
+let showTimer: ReturnType<typeof setTimeout> | null = null
+let hideTimer: ReturnType<typeof setTimeout> | null = null
+
+function show() {
+  if (hideTimer) {
+    clearTimeout(hideTimer)
+    hideTimer = null
+  }
+  showTimer = setTimeout(() => {
+    if (props.disabled) return
+    isVisible.value = true
+    try {
+      if (tipElement.value && typeof tipElement.value.showPopover === 'function') {
+        if (!tipElement.value.matches(':popover-open')) {
+          tipElement.value.showPopover()
+        }
+      }
+    } catch {
+      // 忽略不支持或已展开情况
+    }
+
+    updateActualSide()
+    nextTick(() => {
+      if (props.lazy && tipElement.value && typeof tipElement.value.showPopover === 'function') {
+        try {
+          if (!tipElement.value.matches(':popover-open')) {
+            tipElement.value.showPopover()
+          }
+        } catch {
+          // 忽略不支持或已展开情况
+        }
+      }
+      updateActualSide()
+    })
+  }, props.delay)
+}
+
+function onTipEnter() {
+  if (props.disabled) return
+  if (hideTimer) {
+    clearTimeout(hideTimer)
+    hideTimer = null
+  }
+}
+
+function onTipLeave() {
+  hide()
+}
+
+function hide() {
+  if (showTimer) {
+    clearTimeout(showTimer)
+    showTimer = null
+  }
+  if (hideTimer) {
+    clearTimeout(hideTimer)
+  }
+  hideTimer = setTimeout(() => {
+    isVisible.value = false
+    try {
+      if (tipElement.value && typeof tipElement.value.hidePopover === 'function') {
+        if (tipElement.value.matches(':popover-open')) {
+          tipElement.value.hidePopover()
+        }
+      }
+    } catch {
+      // 忽略不支持或已收起情况
+    }
+  }, props.hideDelay)
+}
+
+/* 性能铁律：仅在气泡真正可见时动态挂载 window 监听器，气泡休眠时为 0 监听器开销 */
+let stopScroll: (() => void) | null = null
+let stopResize: (() => void) | null = null
+
+function attachWindowListeners() {
+  if (!stopScroll) {
+    stopScroll = useEventListener(
+      window,
+      'scroll',
+      () => {
+        if (isVisible.value) updateActualSide()
+      },
+      { passive: true },
+    )
+  }
+  if (!stopResize) {
+    stopResize = useEventListener(
+      window,
+      'resize',
+      () => {
+        if (isVisible.value) updateActualSide()
+      },
+      { passive: true },
+    )
+  }
+}
+
+function detachWindowListeners() {
+  stopScroll?.()
+  stopScroll = null
+  stopResize?.()
+  stopResize = null
+}
+
+watch(isVisible, (val) => {
+  if (val) attachWindowListeners()
+  else detachWindowListeners()
+})
+
+onBeforeUnmount(() => {
+  detachWindowListeners()
+  if (showTimer) clearTimeout(showTimer)
+  if (hideTimer) clearTimeout(hideTimer)
+})
+
+defineExpose({
+  show,
+  hide,
+  isVisible,
+})
 </script>
 
 <template>
-  <Tooltip>
-    <template #default>
+  <span
+    class="tooltip-wrapper"
+    @mouseenter="show"
+    @mouseleave="hide"
+    @focusin="show"
+    @focusout="hide"
+  >
+    <span
+      ref="triggerElement"
+      class="tooltip__trigger"
+      :aria-describedby="disabled ? undefined : tipId"
+      :data-tip-anchor="anchorName"
+      :interestfor="disabled ? undefined : tipId"
+    >
       <slot />
-    </template>
-    <template v-if="$slots.content" #content>
-      <slot name="content" />
-    </template>
-  </Tooltip>
+    </span>
+
+    <span
+      v-if="!lazy || isVisible"
+      :id="tipId"
+      ref="tipElement"
+      popover="hint"
+      role="tooltip"
+      class="tooltip__tip"
+      :class="{
+        'is-visible': isVisible,
+        'has-arrow': arrow,
+        [`side-${actualSide}`]: true,
+        [`align-${actualAlign}`]: true,
+      }"
+      :data-side="actualSide"
+      :data-align="actualAlign"
+      @mouseenter="onTipEnter"
+      @mouseleave="onTipLeave"
+      @click.stop
+    >
+      <div class="tooltip__content">
+        <slot name="content">
+          {{ tip }}
+        </slot>
+      </div>
+    </span>
+  </span>
 </template>
+
+<style scoped>
+.tooltip-wrapper {
+  display: inline-flex;
+  position: relative;
+  vertical-align: middle;
+}
+
+.tooltip__trigger {
+  display: inline-flex;
+  align-items: center;
+  anchor-name: v-bind(anchorName);
+  interest-delay: 100ms 150ms;
+}
+
+.tooltip__tip {
+  /* 原生 Popover 样式重置与防幽灵滚动条 */
+  margin: 0;
+  inset: auto;
+  overflow: visible;
+  box-sizing: border-box;
+  border: 1px solid var(--line-strong);
+  padding: 0;
+  border-radius: var(--radius-2);
+  background: var(--paper-0);
+  color: var(--ink-1);
+  box-shadow: var(--shadow-2);
+  font-size: var(--text-xs);
+  font-family: var(--font-body);
+  line-height: 1.6;
+  text-align: left;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  pointer-events: auto;
+  user-select: text;
+  cursor: default;
+  width: max-content;
+  max-width: min(calc(100vw - 2rem), v-bind('props.width'));
+
+  /* CSS Anchor 定位与顶层 */
+  position: fixed;
+  position-anchor: v-bind(anchorName);
+  position-area: v-bind(positionArea);
+  justify-self: v-bind(justifySelf);
+  align-self: v-bind(alignSelf);
+  position-try-fallbacks: flip-block, flip-inline;
+  container-type: anchored;
+
+  /* 进退场与离散动画 */
+  opacity: 0;
+  visibility: hidden;
+  translate: 0 4px;
+  transition:
+    opacity var(--duration-1) var(--ease-out),
+    translate var(--duration-1) var(--ease-out),
+    visibility var(--duration-1) step-end,
+    overlay var(--duration-1) var(--ease-out) allow-discrete,
+    display var(--duration-1) var(--ease-out) allow-discrete;
+}
+
+.tooltip__content {
+  box-sizing: border-box;
+  padding: var(--space-2) var(--space-3);
+  max-height: v-bind('props.maxHeight');
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: var(--line-strong) transparent;
+  border-radius: calc(var(--radius-2) - 1px);
+}
+
+/* 各方位默认位移动效 */
+.tooltip__tip[data-side='top'] {
+  translate: 0 -4px;
+  margin-bottom: var(--space-1-5);
+}
+.tooltip__tip[data-side='bottom'] {
+  translate: 0 4px;
+  margin-top: var(--space-1-5);
+}
+.tooltip__tip[data-side='left'] {
+  translate: -4px 0;
+  margin-right: var(--space-1-5);
+}
+.tooltip__tip[data-side='right'] {
+  translate: 4px 0;
+  margin-left: var(--space-1-5);
+}
+
+/* 激活态（结合 JS is-visible、:popover-open 或原生 :interest-target） */
+.tooltip__tip.is-visible,
+.tooltip__tip:popover-open,
+.tooltip-wrapper:hover .tooltip__tip,
+.tooltip-wrapper:focus-within .tooltip__tip {
+  opacity: 1;
+  visibility: visible;
+  translate: 0 0;
+  transition:
+    opacity var(--duration-1) var(--ease-out),
+    translate var(--duration-1) var(--ease-out),
+    visibility var(--duration-1) step-start;
+}
+
+/* 小三角指示器 */
+.tooltip__tip.has-arrow::before {
+  content: '';
+  position: absolute;
+  width: 0.5rem;
+  height: 0.5rem;
+  background: var(--paper-0);
+  border: 1px solid var(--line-strong);
+  transform: rotate(45deg);
+  pointer-events: none;
+}
+
+/* 方位基准偏移（Side） */
+.tooltip__tip.side-top::before {
+  bottom: -0.3rem;
+  border-top: none;
+  border-left: none;
+}
+
+.tooltip__tip.side-bottom::before {
+  top: -0.3rem;
+  border-bottom: none;
+  border-right: none;
+}
+
+.tooltip__tip.side-left::before {
+  right: -0.3rem;
+  border-bottom: none;
+  border-left: none;
+}
+
+.tooltip__tip.side-right::before {
+  left: -0.3rem;
+  border-top: none;
+  border-right: none;
+}
+
+/* 对齐基准偏移（Align）：保证指示小三角永远精准对齐触发源图标 */
+.tooltip__tip.side-top.align-center::before,
+.tooltip__tip.side-bottom.align-center::before {
+  left: 50%;
+  right: auto;
+  translate: -50% 0;
+}
+
+.tooltip__tip.side-top.align-start::before,
+.tooltip__tip.side-bottom.align-start::before {
+  left: 0.85rem;
+  right: auto;
+  translate: 0 0;
+}
+
+.tooltip__tip.side-top.align-end::before,
+.tooltip__tip.side-bottom.align-end::before {
+  left: auto;
+  right: 0.85rem;
+  translate: 0 0;
+}
+
+.tooltip__tip.side-left.align-center::before,
+.tooltip__tip.side-right.align-center::before {
+  top: 50%;
+  bottom: auto;
+  translate: 0 -50%;
+}
+
+.tooltip__tip.side-left.align-start::before,
+.tooltip__tip.side-right.align-start::before {
+  top: 0.85rem;
+  bottom: auto;
+  translate: 0 0;
+}
+
+.tooltip__tip.side-left.align-end::before,
+.tooltip__tip.side-right.align-end::before {
+  top: auto;
+  bottom: 0.85rem;
+  translate: 0 0;
+}
+
+/* 锚点容器查询：视口碰撞翻转时自适应反转小三角指示器与悬停安全桥 */
+@container anchored (fallback: flip-block) {
+  .tooltip__tip.side-top::before {
+    bottom: auto;
+    top: -0.3rem;
+    border-bottom: none;
+    border-right: none;
+    border-top: 1px solid var(--line-strong);
+    border-left: 1px solid var(--line-strong);
+  }
+
+  .tooltip__tip.side-bottom::before {
+    top: auto;
+    bottom: -0.3rem;
+    border-top: none;
+    border-left: none;
+    border-bottom: 1px solid var(--line-strong);
+    border-right: 1px solid var(--line-strong);
+  }
+
+  .tooltip__tip[data-side='top']::after {
+    bottom: auto;
+    top: calc(-1 * var(--space-2));
+  }
+
+  .tooltip__tip[data-side='bottom']::after {
+    top: auto;
+    bottom: calc(-1 * var(--space-2));
+  }
+}
+
+@container anchored (fallback: flip-inline) {
+  .tooltip__tip.side-left::before {
+    right: auto;
+    left: -0.3rem;
+    border-top: none;
+    border-right: none;
+    border-bottom: 1px solid var(--line-strong);
+    border-left: 1px solid var(--line-strong);
+  }
+
+  .tooltip__tip.side-right::before {
+    left: auto;
+    right: -0.3rem;
+    border-bottom: none;
+    border-left: none;
+    border-top: 1px solid var(--line-strong);
+    border-right: 1px solid var(--line-strong);
+  }
+
+  .tooltip__tip[data-side='left']::after {
+    right: auto;
+    left: calc(-1 * var(--space-2));
+  }
+
+  .tooltip__tip[data-side='right']::after {
+    left: auto;
+    right: calc(-1 * var(--space-2));
+  }
+}
+
+/* 悬停安全桥（Hover Bridge）：透明扩展触控区，连接触发元素与气泡，防止跨空隙时失焦 */
+.tooltip__tip::after {
+  content: '';
+  position: absolute;
+  pointer-events: auto;
+}
+
+.tooltip__tip[data-side='top']::after {
+  left: 0;
+  right: 0;
+  bottom: calc(-1 * var(--space-2));
+  height: var(--space-2);
+}
+
+.tooltip__tip[data-side='bottom']::after {
+  left: 0;
+  right: 0;
+  top: calc(-1 * var(--space-2));
+  height: var(--space-2);
+}
+
+.tooltip__tip[data-side='left']::after {
+  top: 0;
+  bottom: 0;
+  right: calc(-1 * var(--space-2));
+  width: var(--space-2);
+}
+
+.tooltip__tip[data-side='right']::after {
+  top: 0;
+  bottom: 0;
+  left: calc(-1 * var(--space-2));
+  width: var(--space-2);
+}
+
+/* 锚点定位不可用时的优雅降级（传统 absolute 定位） */
+@supports not (anchor-name: --tooltip-anchor-test) {
+  .tooltip__tip {
+    position: absolute;
+    z-index: 50;
+  }
+
+  .tooltip__tip.side-top {
+    bottom: calc(100% + var(--space-1-5));
+    left: 50%;
+    translate: -50% -4px;
+  }
+
+  .tooltip__tip.side-bottom {
+    top: calc(100% + var(--space-1-5));
+    left: 50%;
+    translate: -50% 4px;
+  }
+
+  .tooltip__tip.is-visible.side-top,
+  .tooltip-wrapper:hover .tooltip__tip.side-top,
+  .tooltip-wrapper:focus-within .tooltip__tip.side-top {
+    translate: -50% 0;
+  }
+
+  .tooltip__tip.is-visible.side-bottom,
+  .tooltip-wrapper:hover .tooltip__tip.side-bottom,
+  .tooltip-wrapper:focus-within .tooltip__tip.side-bottom {
+    translate: -50% 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tooltip__tip {
+    transition: none;
+    translate: 0 0 !important;
+  }
+}
+</style>

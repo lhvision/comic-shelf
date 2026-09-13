@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, watch } from 'vue'
-import Tooltip from '@/components/Tooltip.vue'
+import AppTooltip from '@/components/AppTooltip.vue'
 
 /**
  * 文本多行自适应截断组件（AppTextClamp）。
@@ -59,7 +59,7 @@ const props = withDefaults(defineProps<Props>(), {
   disabled: false,
 })
 
-const tooltipRef = ref<InstanceType<typeof Tooltip> | null>(null)
+const tooltipRef = ref<InstanceType<typeof AppTooltip> | null>(null)
 const textRef = ref<HTMLElement | null>(null)
 const isTruncated = ref(false)
 
@@ -103,7 +103,7 @@ watch(
 </script>
 
 <template>
-  <Tooltip
+  <AppTooltip
     ref="tooltipRef"
     class="app-text-clamp-wrapper"
     :class="{ 'is-block': block }"
@@ -136,7 +136,7 @@ watch(
     <template v-if="$slots.tooltip" #content>
       <slot name="tooltip" />
     </template>
-  </Tooltip>
+  </AppTooltip>
 </template>
 
 <style scoped>

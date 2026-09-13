@@ -164,11 +164,22 @@ export function useChapterNavigation(detail: Ref<ComicDetail | null>, lastRead: 
       visiblePageCount.value > CHAPTER_PAGE_STEP && activeChapterCount.value > CHAPTER_PAGE_STEP,
   )
 
+  /** 每话已本地缓存的页数（chapterId -> cachedPages）映射 */
+  const chapterCache = computed(() => {
+    const cache: Record<string, number> = {}
+    for (const page of detail.value?.meta.pages ?? []) {
+      if (!page.chapter) continue
+      cache[page.chapter] = (cache[page.chapter] ?? 0) + (page.cached ? 1 : 0)
+    }
+    return cache
+  })
+
   return {
     activeChapter,
     activeChapterId,
     activeChapterLabel,
     chapters,
+    chapterCache,
     progressEl,
     visiblePages,
     remainingPages,
