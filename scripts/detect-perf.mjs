@@ -10,6 +10,7 @@
  * 3. [unthrottled-scroll-layout] 滚动/轮盘/触控监听中未通过 requestAnimationFrame 节流即读取排版属性
  * 4. [missing-passive-listener] touchstart / touchmove / wheel 事件缺少 { passive: true }
  * 5. [layout-read-in-loop] 循环体内执行 DOM 布局读取导致高阶 Layout Thrashing
+ * 6. [transition-group-in-dynamic-lists] 严禁在海量卡片网格使用 TransitionGroup 引发连环 Layout Thrashing (PITFALLS #76)
  */
 
 import fs from 'node:fs'
@@ -233,6 +234,34 @@ function analyzeFile(filePath) {
           snippet: line.trim(),
         })
       }
+    }
+
+    // 4. 检查是否在卡片网格/长列表上滥用 <TransitionGroup> (PITFALLS #76)
+    const trimmed = line.trim()
+    const isComment =
+      trimmed.startsWith('//') ||
+      trimmed.startsWith('/*') ||
+      trimmed.startsWith('*') ||
+      trimmed.startsWith('<!--')
+    if (
+      !isComment &&
+      line.includes('<TransitionGroup') &&
+      (line.includes('comic-grid') ||
+        line.includes('shelf-card') ||
+        line.includes('page-grid') ||
+        line.includes('chapter-grid') ||
+        line.includes('folio-card') ||
+        line.includes('chapter-card'))
+    ) {
+      findings.push({
+        rule: 'transition-group-in-dynamic-lists',
+        severity: 'error',
+        file: relativePath,
+        line: lineNum,
+        message:
+          '严禁在海量卡片网格或长列表上使用 <TransitionGroup>。Vue 内部在 render 函数中无条件对所有子节点读取 getBoundingClientRect() 并对离开节点读取 getComputedStyle()，引发连环 Forced Reflow。请改用原生容器与 CSS @starting-style 合成器补间。',
+        snippet: line.trim(),
+      })
     }
   }
 

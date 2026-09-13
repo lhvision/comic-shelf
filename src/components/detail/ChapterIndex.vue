@@ -95,7 +95,7 @@ watch(
       <p>共 {{ chapters.length }} 话 · 点击进入对应话的页面索引</p>
     </div>
 
-    <TransitionGroup tag="div" name="chapter-card" class="chapter-grid">
+    <div class="chapter-grid">
       <ChapterCard
         v-for="chapter in visibleChapters"
         :key="chapter.id"
@@ -107,7 +107,7 @@ watch(
         :busy="running"
         @cache="emit('cacheChapter', $event)"
       />
-    </TransitionGroup>
+    </div>
 
     <!-- 底部章节展开/收整控制条 -->
     <div v-if="remainingCount > 0 || canCollapse" class="chapter-load-more-section surface">
@@ -257,26 +257,10 @@ watch(
   }
 }
 
-/* 章节卡片微动与进场动画 */
-.chapter-card-enter-active {
-  transition:
-    opacity var(--duration-2) var(--ease-out),
-    transform var(--duration-2) var(--ease-spring);
-}
-
-.chapter-card-enter-from {
-  opacity: 0;
-  transform: translateY(12px) scale(0.98);
-}
-
-.chapter-card-move {
-  transition: transform var(--duration-2) var(--ease-out);
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .chapter-card-enter-active,
-  .chapter-card-move {
-    transition: none !important;
-  }
-}
+/* 
+ * 性能优化（PITFALLS #76 深度根治）：
+ * 废除 <TransitionGroup name="chapter-card"> 包装，改用原生标准 <div class="chapter-grid">。
+ * 章节卡片入场完全由 ChapterCard.vue 内部现代 CSS @starting-style 原生合成器补间接管，
+ * 消除长篇漫画展开目录时的 FLIP 循环与 getBoundingClientRect 连环重排。
+ */
 </style>

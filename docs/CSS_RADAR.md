@@ -400,7 +400,7 @@ background: color-mix(in oklab, var(--paper-1) 50%, transparent);
 4. **安全边界与架构红线（Invariant Rule 8 & 动效分工）**：
    - **Promise 异常捕获**：必须捕获 Promise 异常（`ready`、`finished`、`updateCallbackDone`），防止快速切页触发 `AbortError` 导致未捕获异常抛出；
    - **严格禁止在阅读器内部翻页/切话触发全局快照**：防止打断 GPU 虚拟滚动与文字亚像素模糊；
-   - **页内筛选与卡片动效解耦（FLIP 单一真理源）**：严格禁止在页内数据筛选（如标签切换、只看喜欢、排序调整）中调用 `document.startViewTransition`。若页面内无显式跨元素形态映射，全屏快照会导致 `::view-transition-group(root)` 截取整个视口发生突兀的白色闪屏；卡片列表的重排位移全权交由 Vue `<TransitionGroup name="shelf-card">` 的 FLIP 机制处理（在 Compositor 合成器线程执行 `transform: translate`，满帧 120 FPS 且 0 闪屏）；
+   - **页内筛选与卡片动效解耦（Compositor 离散动效与零 JS 重排）**：严格禁止在页内数据筛选（如标签切换、只看喜欢、排序调整）中调用 `document.startViewTransition`。若页面内无显式跨元素形态映射，全屏快照会导致 `::view-transition-group(root)` 截取整个视口发生突兀的白色闪屏；同时严禁使用 Vue `<TransitionGroup>` 包装海量卡片网格（防范 render 阶段 `getBoundingClientRect` 与离场样式的连环强制重排），新卡片入场由现代 CSS `@starting-style` 在 Compositor 合成器线程硬件补间，实现 0ms 主线程重排阻塞与 120 FPS 满帧呈现；
    - **长列表零闲置快照图层（Zero Idle Snapshot Layer）**：严格禁止在长列表/书架网格的常驻卡片上声明静态 `view-transition-name`。Blink 对每个命名元素分配独立的快照纹理和合成图层，在上游发生重排（如标签抽屉展开）时会导致栅格化与重绘开销呈指数级激增；卡片封面过渡仅在用户实际点击卡片跳转详情页时由 `useCoverTransition` 瞬时挂载 `comic-cover-active`；
    - **严禁包裹异步网络请求**：严禁在 `withViewTransition` 回调内部发起或等待外部网络请求（如 API 变更、导入任务等），避免快照保持期间页面冻结、UI 假死及状态竞态覆盖；
    - **弹窗与微交互规范**：弹窗使用原生 `<dialog>` 或 Vue 原生 `<Transition>`，微交互使用 CSS scale / keyframe，杜绝滥用全局快照。
@@ -658,11 +658,11 @@ overflow: hidden;
 
 **MDN**：[@starting-style](https://developer.mozilla.org/en-US/docs/Web/CSS/@starting-style)  
 **Baseline**：2024 · Chrome 117+, Firefox 129+, Safari 17.5+  
-**本项目落地状态**：✅ 已在 `ComicCard.vue`（网格卡片入场）与 `AppPopover.vue` / `<dialog>` 落地
+**本项目落地状态**：✅ 已在 `ComicCard.vue`（书架卡片）、`PageTile.vue`（画卷余页）、`ChapterCard.vue`（章节目录）与 `AppPopover.vue` / `<dialog>` 落地
 
 **核心原理与优势**：
 
-1. **废除 JS FLIP 循环，0 主线程重排**：传统 `<TransitionGroup>` 的 `.move` 动画依赖 JS 在主线程反复读取 `getBoundingClientRect()` 与 `getComputedStyle()`（实测 30+ 节点耗时达 180ms，引发 168ms Forced Reflow），严重挤爆 144Hz 的 6.94ms 帧预算。废除 `.shelf-card-move` 后，将新卡片入场动画交由原生 `@starting-style`，动画完全由 GPU Compositor 合成器线程接管，主线程计算降为 0；
+1. **彻底废除 `<TransitionGroup>` 包装与 JS FLIP 循环，0 主线程重排**：Vue 官方运行时不仅在 `.move` 中执行 JS FLIP，在 render 阶段更是无条件循环读取所有子节点的 `getBoundingClientRect()`，并在离场时密集调用 `getComputedStyle()`，引发连环 Forced Reflow（实测 30~168ms）。全面废除 `<TransitionGroup>` 并回归原生 `<div>` 容器后，新卡片入场交由原生 `@starting-style`，动画完全由 GPU Compositor 合成器线程接管，主线程重排耗时直接归零（0ms）；
 2. **首次渲染初始帧定义**：通过 `@starting-style` 宣告元素挂载到 DOM 树但尚未完成首帧渲染时的初始视觉状态（如 `opacity: 0; transform: translateY(0.75rem) scale(0.98)`），浏览器自动从该初始状态平滑过渡到常规 CSS 状态，无需任何 JS `requestAnimationFrame` 或双重 `nextTick` 欺骗；
 3. **结合 Lazy 3D Elevation 减轻弱 GPU 负荷**：静态状态下保持纯 2D 平面并移除重度片段着色器，仅在 `:hover` 与 `:focus-visible` 时激活 `perspective: 60rem`，彻底杜绝数十个卡片同时驻留 GPU 3D 渲染通道引发的显存带宽瓶颈。
 

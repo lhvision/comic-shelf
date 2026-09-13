@@ -86,3 +86,13 @@
 1. **Vue FLIP 的 168ms 布局瓶颈**：当标签切换导致 30+ 张卡片重新排布时，Vue `<TransitionGroup>` 的 `.shelf-card-move` 会在主线程以同步循环方式反复读取所有子节点的 `getBoundingClientRect()` 与 `getComputedStyle()`（测量耗时高达 180ms），严重挤爆 6.94ms 时间预算，在 144Hz 屏幕上引发肉眼可见的连环丢帧；
 2. **跃迁至 CSS `@starting-style`（Compositor 离散动画）**：废除 `.shelf-card-move` 的 JS FLIP 位移计算，将卡片入场动画升级为现代浏览器原生标准 **CSS `@starting-style`**（`opacity: 0; transform: translateY(0.75rem) scale(0.98);`），动画完全移交 GPU Compositor 合成器线程托管；
 3. **治理实测收益**：标签过滤重排导致的 Forced Reflow 阻塞从 **168ms 骤降至 8ms**（下降 **95.2%**），顺利收敛进高刷单帧安全区间。
+
+---
+
+## 演进增补（2026-09-14 · Vue TransitionGroup 彻底废除与长列表纯原生化）
+
+在更深度的 48~120 本书架与长列表实测中（Chrome DevTools MCP Trace 分析），定位到 Vue 3 官方 `<TransitionGroupImpl>` 的底层实现硬编码缺陷：
+
+1. **Render 阶段无条件测量**：即使废除了 `.shelf-card-move`，Vue `<TransitionGroup>` 的 render 函数在每次响应式更新时，仍会无条件遍历所有可见子节点执行 `positionMap.set(child, getPosition(child.el))`（即 `el.getBoundingClientRect()`）；同时在卡片批量离场时对每个节点执行 `getTransitionInfo(el)` 强读计算样式，产生楼梯状连环 Layout Thrashing；
+2. **全网格全面原生化**：彻底将 `ComicGrid.vue`（`comic-grid`）、`PageIndexGrid.vue`（`page-grid`）与 `ChapterIndex.vue`（`chapter-grid`）中的 `<TransitionGroup>` 替换为原生标准 `<div>`，退场直接随 VDOM 卸载，入场由子卡片（`ComicCard.vue`、`PageTile.vue`、`ChapterCard.vue`）的原生 CSS `@starting-style` 在 Compositor 线程独立驱动；
+3. **彻底归零实测收益**：筛选重排与展开目录时的 Forced Reflow 时间从 30~168ms 彻底降低至 **0ms**，消除所有 DevTools 掉帧警告，并在 `scripts/detect-perf.mjs` 中落地永久静态拦截门禁。

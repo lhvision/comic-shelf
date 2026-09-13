@@ -304,7 +304,7 @@
   2. **溢出标签顶层浮层升维（Zero-Reflow Popover）**：标签栏次级溢出标签彻底拔除在主干流中推挤整架卡片的尺寸插值机制，全面收敛为基于 HTML Popover API 与 CSS Anchor Positioning 的 `AppPopover` 顶层浮层；视口高度与下游网格保持绝对静止（0 像素推移、0 几何重排），从根源杜绝 144Hz 高刷屏与核显上的 GPU 合成器卡顿；
   3. **无障碍焦点归还与操作闭环（WCAG 2.4.3 Focus Restoration & Loop Closure）**：次级浮层关闭后自动通过 `nextTick` 归还焦点至触发胶囊；当激活次级标签时，外露触发胶囊显式呈现 `:pressed="true"`，浮层头部提供置顶清除入口与「当前在看」微标，彻底消解“选择墙”找回成本；
   4. **常驻合成层与滤镜瘦身铁律（Zero Idle VT Footprint & De-blurred Stamps）**：网格卡片禁止常驻绑定静态 `viewTransitionName`（仅在激活/点击目标上动态挂载 `comic-cover-active`），避免 Blink 为全架数十张卡片在位移时维护独立合成快照图层；大面积位移重排的微标印章（`.id-stamp`、`.match-stamp`、`.reading-stamp`）严禁滥用 `backdrop-filter: blur(...)`，改用高感知半透明墨色背景（`color-mix(in oklab, var(--ink-0) 88%, transparent)`）配合微阴影，彻底消除低配核显与软解模式下的每秒数千次高斯模糊重采样卡顿；吸顶栏增加 `contain: layout style; isolation: isolate;`，全屏水印增加 `contain: strict; will-change: opacity;`；
-- **网格动画安全禁令（No Absolute on Grid Leave）**：`<TransitionGroup>` 的 `shelf-card`、`folio-card` 与 `chapter-card` 动效中，**严禁在 `.leave-active` 中定义 `position: absolute;`**，避免 Grid 布局崩塌与卡片在左上角重叠闪烁；
+- **网格长列表禁绝 `<TransitionGroup>`（No TransitionGroup on Mass Grids）**：书架（`comic-grid`）、画页（`page-grid`）与章节目录（`chapter-grid`）等大容量动态网格全面废除 `<TransitionGroup>`（及其遗留的 `.leave-active` 绝对定位反模式），统一采用原生标准 `<div>` 容器 + 现代 CSS `@starting-style` 合成器补间，彻底杜绝 FLIP 算法与 render 阶段子节点连环 `getBoundingClientRect` 测量的强制同步重排；
 - **触控靶心底线与防迷航回滚**：
   1. **移动端 WCAG 2.5.5 与次级操作并列（Mobile Action Row Layout）**：在 `max-width: 640px` 下，所有折叠步进与全量展开按钮强制保底 `min-height: 44px;`；次级操作（展开全部与收拢归档）收敛于 `.fold-card-sub-actions` 并列容器中横向均分并排呈现，彻底根治移动端纵向堆叠导致的 48px 异常拉伸与画页视野挤占；
   2. **视口锚点自愈与动效无障碍（Reduced Motion Adaptation）**：点击收起时通过 `window.matchMedia('(prefers-reduced-motion: reduce)').matches` 探测读者系统动效偏好，在开启减少动效时以 `behavior: 'instant'` 瞬间就位，关闭时以 `behavior: 'smooth'` 平滑回退至网格顶部锚点，兼顾防迷航与前庭功能障碍读者的视觉舒适度。
@@ -398,8 +398,8 @@
   2. 结合模块级 `hasPreScrolled` 锁，`router.scrollBehavior` 探测到后直接返回 `false`，0 几何属性读取，**209ms / 134ms 强制重排彻底清零**；
   3. 新视图挂载即处于原点，`::view-transition-new(root)` 截取的新页面无撕裂、无位移畸变。
 - **CSS `@starting-style` 声明式动效与闲置 2D / 交互 3D 按需升维（Lazy 3D Elevation）**：
-  1. 彻底废除 `.shelf-card-move`，跳过 Vue FLIP 在 JS 层的密集几何属性轮询；
-  2. 采用现代 Baseline 2024 标准 CSS `@starting-style` 与 `transition-behavior: allow-discrete`，卡片筛选入场直接由浏览器合成器线程执行 GPU 硬件补间，**168ms 布局抖动直接降至 8ms**（下降 95.2%）；
+  1. 彻底废除 `<TransitionGroup>` 包装，回归原生标准 `<div class="comic-grid">`，切断 Vue 运行时在 render 阶段无条件轮询 `getBoundingClientRect` 与离场 `getComputedStyle` 的隐式重排机制；
+  2. 采用现代 Baseline 2024 标准 CSS `@starting-style` 与 `transition-behavior: allow-discrete`，卡片筛选入场直接由浏览器合成器线程执行 GPU 硬件补间，离场直接剔除，**筛选切换 Forced Reflow 彻底归零（0ms）**，消除 DevTools 中所有掉帧警告；
   3. 卡片常态下剥离昂贵的 `perspective: 60rem` 与 `.deck-leaf` 的片元着色器 `filter: saturate() brightness()`，以高性能原子色彩混合 `color-mix` 替代；仅在读者鼠标悬停（`:hover`）或触碰聚焦时激活 3D 透视折叠，将 GPU 每一帧常驻 3D 纹理开销压减为 0。
 - **IntersectionObserver 隐形双哨兵边缘感知（Zero-Reflow Sentinels）**：
   在吸顶导航列表前后嵌入 1px 透明哨兵节点（`sentinelStartEl` / `sentinelEndEl`），通过 VueUse `useIntersectionObserver` 异步感知边缘可见性，彻底剔除 `useScroll` 与 `useResizeObserver`，**首屏 57ms 强制重排彻底归零**。

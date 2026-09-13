@@ -743,18 +743,19 @@
     1. **In-Flight Pre-Capture Instant Scroll（飞行中捕获间隙瞬时重置）**：在 `router.beforeResolve` 中，将 `window.scrollTo({ top: 0, behavior: 'instant' })` 移入 `performUpdate` 内部、新组件挂载之前执行。此时旧页面被 GPU 离屏冻结快照遮挡，视口在暗中瞬时归零，读者视觉 0 跳动；
     2. **滚动行为标记短路**：在 `scrollBehavior` 中设置 `hasPreScrolled` 标记，当识别到前进推进已在飞行间隙中重置时，直接 `return false` 放行，彻底切断 Vue Router 后置微任务对 DOM 的二次几何查询，使跨页重排时间从 209ms 彻底归零（0ms）。
 
-### 76. Vue <TransitionGroup> 的 FLIP 算法在多节点列表重排时引发连环 getBoundingClientRect 阻塞（Vue TransitionGroup FLIP Forced Reflow under High Refresh Rate）
+### 76. Vue <TransitionGroup> 的 FLIP 算法与内部 Render 测量在多节点列表重排时引发连环 Forced Reflow（Vue TransitionGroup FLIP & Render-Level Forced Reflow under Dynamic Grids）
 
 - **本质**：
-  1. 在书架点击分类标签、切换只看喜欢或按阅读进度排序时，30+ 张漫画卡片重新排布导致主线程发生 168ms 的 Forced Reflow 阻塞，在 144Hz（单帧预算 6.94ms）屏幕上出现严重连续丢帧；
-  2. Vue `<TransitionGroup>` 的 `.xxx-move` 机制底层依赖 JS FLIP 算法：在 DOM 变动前后，主线程需要以 JS 循环方式对每个子节点调用 `getBoundingClientRect()` 与 `getComputedStyle()`（实测耗时达 180ms），计算初始与结束位置差值并注入 `transform`；
-  3. 当每个子节点包含 3D 转换（`perspective`）、多层伪元素与阴影时，同步布局测量的开销呈几何级数爆炸，远超 144Hz 的渲染预算。
+  1. 在书架滚动加载 48~~120 本漫画后，回到顶部切换分类标签或筛选条件，主线程出现 30~~168ms 的 Forced Reflow 阻塞，在 144Hz 屏幕上出现楼梯状连环丢帧；
+  2. **致命深层机制（Vue 官方运行时源码层面）**：单纯从 CSS 中移除 `.shelf-card-move` 类并不能阻止重排！Vue `<TransitionGroupImpl>` 的 render 函数在每次更新时，**无条件遍历所有子节点**直接执行 `positionMap.set(child, getPosition(child.el))`（内部直接调用 `el.getBoundingClientRect()`）；同时在大量卡片离场（如 48 本过滤为 7 本，41 本离场）时，对每个离场卡片执行 `onLeave` 钩子读取 `window.getComputedStyle(el).transitionDuration`（`getTransitionInfo`）。DOM 变动与同步样式查询交错，必然导致密集 N 次的连环 Forced Reflow（Layout Thrashing）；
+  3. 当每个子节点包含容器查询（`container-type`）、多层伪元素与阴影时，同步布局测量的开销呈几何级数爆炸。
 - **红线与防误伤**：
-  - **不要**在 30+ 节点的高频筛选网格中滥用 Vue `<TransitionGroup>` 的 `.move` FLIP 机制；
+  - **不要**在海量卡片网格或高频重排长列表（如 `comic-grid`、`page-grid`、`chapter-grid`）使用 Vue `<TransitionGroup>` 包装；单纯移除 `-move` CSS 类属于治标不治本；
   - **放行/改用**：
-    1. **废除 JS FLIP，拥抱 CSS `@starting-style`（Baseline 2024）**：移除 `.shelf-card-move`，改由原生 CSS `@starting-style`（`opacity: 0; transform: translateY(0.75rem) scale(0.98);`）接管新卡片的淡入位移，将动画完全移交 GPU Compositor 合成器线程；
-    2. **Lazy 3D Elevation**：仅在 `:hover` 与 `:focus-visible` 时按需激活 `perspective`，静态空闲状态保持纯 2D 平面，避免弱显卡常驻 3D 合成开销；
-    3. **实测收益**：标签过滤重排导致的 Forced Reflow 从 168ms 骤降至 8ms（降幅 95.2%），平稳收敛进单帧时间预算。
+    1. **彻底废除 `<TransitionGroup>`，回归原生 `<div>`**：将 `ComicGrid.vue`（`comic-grid`）、`PageIndexGrid.vue`（`page-grid`）与 `ChapterIndex.vue`（`chapter-grid`）等长列表的 `<TransitionGroup>` 彻底替换为标准 `<div>`，切断 Vue 运行时对所有子节点的 `getBoundingClientRect` 与 `getComputedStyle` 密集轮询，主线程 JS 阻塞直接彻底归零（0ms）；
+    2. **纯现代 CSS `@starting-style`（Baseline 2024）接管入场**：卡片与画页挂载补间分别由 `ComicCard.vue`、`PageTile.vue` 与 `ChapterCard.vue` 内部的原生 CSS `@starting-style` 接管，动画由浏览器 GPU 合成器线程处理；离场节点直接随 VDOM 卸载即时重排，利落无拖沓；
+    3. **性能门禁全域守护**：在 `scripts/detect-perf.mjs` 中接入 `[transition-group-in-dynamic-lists]` 静态拦截规则，杜绝向书架网格、画页列表及章节目录重新引入 `<TransitionGroup>`；
+    4. **实测收益（Chrome DevTools MCP 验证）**：切换筛选与展开长列表时的 `ForcedReflow` 耗时从 30~168ms 彻底降为 0ms，Performance Insights 面板中 Forced Reflow 警告彻底消除，全站列表达成满帧 120 FPS 原生丝滑。
 
 ### 77. 多态按钮覆盖 role="button" 引发的无障碍与 Space 键滚动冲突，及微型哨兵污染弹性布局间距陷阱 (Polymorphic Link ARIA Mismatch, Space Key Conflict & Flex Gap Contamination)
 

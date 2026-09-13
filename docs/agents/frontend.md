@@ -285,7 +285,7 @@
 - **阅读器内严禁过渡**：同在阅读器内部翻页、切话或滚动时（`to.name === 'reader' && from.name === 'reader'`），**严格禁止触发路由 View Transition**，防止快速翻页时与阅读器内部虚拟滚动冲突产生 `AbortError`。
 - **Promise 全生命周期安全兜底**：任何 `startViewTransition` 调用必须为 `ready`、`finished`、`updateCallbackDone` 绑定 `.catch(() => {})`，防止动画被抢占时向控制台泄漏未捕获异常。
 - **共享封面形变（神奇移动）**：由 `useCoverTransition` 管理 `comic-cover-active` 赋名，仅在用户点击卡片进入详情页瞬间赋名，并在 `router.afterEach` 延时 400ms 自动清理，防止书架出现重名冲突。
-- **页内筛选与卡片动效解耦（FLIP 单一真理源）**：页内标签筛选、喜欢切换、排序变化全权交由 Vue `<TransitionGroup name="shelf-card">` 的 FLIP 变换（`transform: translate` 在合成器线程执行），**严禁在页内状态变动时调用 `document.startViewTransition`**（避免整屏白闪）。
+- **页内筛选与卡片动效解耦（Compositor 离散动画与零 JS 重排）**：页内标签筛选、喜欢切换、排序变化全权由现代 CSS `@starting-style` 原生合成器补间接管，**严禁在页内状态变动时调用 `document.startViewTransition`**（避免整屏白闪），**同时海量卡片长列表严禁使用 Vue `<TransitionGroup>` 包装**（切断 render 阶段 `getBoundingClientRect` 连环强制重排）。
 - **长列表零闲置快照图层（Zero Idle VT Footprint）**：严禁在常驻书架卡片上声明静态 `view-transition-name`，杜绝常驻离屏快照纹理和合成图层在上游容器重排时引发 GPU/CPU 软解雪崩掉帧。
 - **异步网络请求防裹入**：严禁在 `withViewTransition` 回调内部发起或等待网络请求（如 API 修改），更新回调必须为纯净的本地状态与 DOM 同步。
 - **弹窗动效分工**：弹窗（`Modal.vue` 及内部子弹窗）必须走 Vue 原生 `<Transition>`，利用组件内 Scoped CSS 分离遮罩（沉降）与面板（微弹），严禁将整个弹窗根容器包装进 View Transition 快照，防止全屏遮罩空间畸变与文字亚像素插值模糊。

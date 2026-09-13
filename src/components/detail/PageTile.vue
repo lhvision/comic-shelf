@@ -75,9 +75,18 @@ function onThumbLoad() {
   content-visibility: auto;
   contain-intrinsic-size: auto 11rem;
   transition:
+    opacity var(--duration-2) var(--ease-out),
+    transform var(--duration-2) var(--ease-spring),
     translate var(--duration-2) var(--ease-out),
     box-shadow var(--duration-2) var(--ease-out),
     border-color var(--duration-2) var(--ease-out);
+}
+
+@starting-style {
+  .page-tile {
+    opacity: 0;
+    transform: translateY(10px) scale(0.98);
+  }
 }
 
 .page-tile:hover {

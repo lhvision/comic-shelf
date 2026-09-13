@@ -91,7 +91,7 @@ function handleCollapse() {
       </AppChip>
     </div>
 
-    <TransitionGroup tag="div" name="folio-card" class="page-grid">
+    <div class="page-grid">
       <PageTile
         v-for="page in pages"
         :key="page.index"
@@ -155,7 +155,7 @@ function handleCollapse() {
           </div>
         </div>
       </div>
-    </TransitionGroup>
+    </div>
 
     <!-- 全卷画页全量展开后的收整条：折叠态收敛至网格卡片内部，全部展开后呈现底部收起条 -->
     <div v-if="canCollapse && remainingPages === 0" class="page-sentinel page-fold-bar surface">
@@ -398,26 +398,10 @@ function handleCollapse() {
   }
 }
 
-/* 画页微动与进场动画 */
-.folio-card-enter-active {
-  transition:
-    opacity var(--duration-2) var(--ease-out),
-    transform var(--duration-2) var(--ease-spring);
-}
-
-.folio-card-enter-from {
-  opacity: 0;
-  transform: translateY(10px) scale(0.98);
-}
-
-.folio-card-move {
-  transition: transform var(--duration-2) var(--ease-out);
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .folio-card-enter-active,
-  .folio-card-move {
-    transition: none !important;
-  }
-}
+/* 
+ * 性能优化（PITFALLS #76 深度根治）：
+ * 废除 <TransitionGroup name="folio-card"> 包装，改用原生标准 <div class="page-grid">。
+ * 画页入场完全由 PageTile.vue 内部现代 CSS @starting-style 原生合成器补间接管，
+ * 消除 60~120 页画卷展开与切换时的 FLIP 循环与 getBoundingClientRect 连环重排。
+ */
 </style>

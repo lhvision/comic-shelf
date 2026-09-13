@@ -417,7 +417,7 @@ watch(
     <!-- 1. 双分区架构：未读在读书架 + 卷末典藏抽屉 -->
     <template v-if="isSplitMode">
       <!-- 案头在读区 -->
-      <TransitionGroup tag="div" name="shelf-card" class="comic-grid active-shelf-grid">
+      <div class="comic-grid active-shelf-grid">
         <ComicCard
           v-for="item in visibleActiveItems"
           :key="`item-${item.source}/${item.source_id}`"
@@ -501,7 +501,7 @@ watch(
             </div>
           </div>
         </div>
-      </TransitionGroup>
+      </div>
 
       <div v-if="loadingMore" class="stream-loading-bar" role="status">
         <AppIcon name="refresh" size="xs" class="stream-loading-spinner" />
@@ -564,7 +564,7 @@ watch(
 
         <div class="archive-drawer-body" :inert="!archiveOpen">
           <div class="archive-drawer-inner">
-            <TransitionGroup tag="div" name="shelf-card" class="comic-grid archive-shelf-grid">
+            <div class="comic-grid archive-shelf-grid">
               <ComicCard
                 v-for="item in visibleArchiveItems"
                 :key="`archive-${item.source}/${item.source_id}`"
@@ -625,7 +625,7 @@ watch(
                   </div>
                 </div>
               </div>
-            </TransitionGroup>
+            </div>
 
             <!-- 归档全量展开后的收整条 -->
             <div
@@ -667,7 +667,7 @@ watch(
         <span class="archive-divider-line" />
       </div>
 
-      <TransitionGroup tag="div" name="shelf-card" class="comic-grid">
+      <div class="comic-grid">
         <ComicCard
           v-for="item in visibleItems"
           :key="`item-${item.source}/${item.source_id}`"
@@ -751,7 +751,7 @@ watch(
             </div>
           </div>
         </div>
-      </TransitionGroup>
+      </div>
 
       <div v-if="loadingMore" class="stream-loading-bar" role="status">
         <AppIcon name="refresh" size="xs" class="stream-loading-spinner" />
@@ -1145,34 +1145,13 @@ watch(
   filter: none;
 }
 
-/* 卡片微动与进场动画 */
-.shelf-card-enter-active {
-  transition:
-    opacity var(--duration-2) var(--ease-out),
-    transform var(--duration-2) var(--ease-spring);
-}
-
-.shelf-card-enter-from {
-  opacity: 0;
-  transform: translateY(14px) scale(0.98);
-}
-
-.shelf-card-leave-active {
-  transition:
-    opacity var(--duration-1) var(--ease-out),
-    transform var(--duration-1) var(--ease-out);
-}
-
-.shelf-card-leave-to {
-  opacity: 0;
-  transform: scale(0.96);
-}
-
 /* 
- * 性能优化（Trace-20260911）：
- * 废除 .shelf-card-move 类，彻底切断 Vue 内置 TransitionGroup FLIP 在 30+ 张卡片上
- * 密集轮询 getBoundingClientRect、getComputedStyle 与 forceReflow 的 168ms 严重重排阻塞；
- * 卡片入场完全交由现代 CSS @starting-style 原生合成器补间，出场由 .shelf-card-leave-active 平滑淡出。
+ * 性能优化（Trace-20260914，PITFALLS #76 深度根治）：
+ * 彻底废除 <TransitionGroup name="shelf-card"> 包装，改用原生标准 <div class="comic-grid">。
+ * 根因：Vue 3 官方 <TransitionGroup> 在 render 阶段无条件遍历所有子节点调用 getBoundingClientRect()，
+ * 并在大量节点离场时对每个节点执行 getTransitionInfo / getComputedStyle()，引发连环 Layout Thrashing。
+ * 现卡片入场完全交由 ComicCard.vue 内的现代 CSS @starting-style 原生合成器补间（Compositor 线程），
+ * 筛选切换时主线程 0 次 DOM 测量与 0 次强制重排阻塞。
  */
 
 /* 流式加载触底侦测桩与加载指示条 */
@@ -1215,9 +1194,6 @@ watch(
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .shelf-card-enter-active,
-  .shelf-card-leave-active,
-  .shelf-card-move,
   .archive-drawer-body,
   .stream-loading-spinner {
     transition: none !important;

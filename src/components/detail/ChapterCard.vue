@@ -116,9 +116,18 @@ function onCoverError() {
   content-visibility: auto;
   contain-intrinsic-size: auto 6rem;
   transition:
+    opacity var(--duration-2) var(--ease-out),
+    transform var(--duration-2) var(--ease-spring),
     translate var(--duration-2) var(--ease-out),
     box-shadow var(--duration-2) var(--ease-out),
     border-color var(--duration-2) var(--ease-out);
+}
+
+@starting-style {
+  .chapter-card {
+    opacity: 0;
+    transform: translateY(12px) scale(0.98);
+  }
 }
 
 .chapter-card:hover {
