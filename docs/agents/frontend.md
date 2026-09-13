@@ -361,7 +361,7 @@ graph TD
 
 1. **第 1 层：计算卸载（Web Worker）**：$O(N)$ 模糊检索与 $O(N \log N)$ 中文自然拼音排序转移至独立后台线程，主线程击键开销降至 `< 0.5ms`，光标 120 FPS 绝不掉帧；
 2. **第 2 层：DOM 截流（usePaginationFold）**：视图层强制锁定在 12 本/批（安全刹车 60 本）的渲染预算内。用户在搜索框键入字符的一瞬间，折叠逻辑自动将渲染切片重置为首批 12 张卡片，DOM 树上绝不会同时进驻上万个节点；
-3. **第 3 层：渲染剪裁（CSS `content-visibility: auto`）**：在 `.comic-card` 上施加 `content-visibility: auto; contain-intrinsic-size: auto 340px;`。即使读者主动点击「展开全部」挂载数千本，视口外的卡片由浏览器底层自动跳过样式计算与像素绘制，显存占用保持在极低水位，杜绝白屏与崩溃。
+3. **第 3 层：展开软封顶与局部隔离（Capped Unfolding & Local Containment）**：在 `usePaginationFold` 的 `loadAll` 中设置 120 本软封顶（按需递进展开），在 `.comic-card` 上施加 `contain: layout style` + `container-type: inline-size` 严格隔离布局重排。严禁使用 `content-visibility: auto`，杜绝其隐式激发的 `contain: paint` 剪切卡片 `-0.35rem` 悬浮浮动与弥散阴影（`--shadow-2`）。
 
 ## 14. 视图轻量化（View Thinness）与高阶 Composable 聚合规范
 

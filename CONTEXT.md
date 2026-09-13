@@ -19,6 +19,7 @@
 - **哔咔漫画（PicAcg Comic）**：由哔咔数据源收录的作品。`source = "picacg"`，使用 24 位十六进制 ObjectId 标识；逆向协议与端点单一权威参考 `https://github.com/wgh136/PicaComic`；画卷原生为标准 JPEG/PNG 格式，不设切片混淆但需分流鉴权；封面策略首图优先采用官方 `thumb` 并转码 720px/360px WebP，续接正文前 3 页构成书架 4 叠牌展开。
 - **收录（Import）**：把一本作品"放进纸间"的动作。规则：先查本地 `album.json`，命中则 `from_cache=true` 绝不请求远端；首次收录缓存前 4 页做封面。本地自建漫画收录时即时生成封面与缩略图。
 - **服务端本地化（Server-side Caching / Cachify）**：把页面图片下载到服务器本地磁盘（`backend/data/library/`，对应 `cached_pages` / `cache_complete`）。图片必须走解密工具，禁止直接保存下载字节；本地自建漫画页面在导入时即为 100% 本地化。此概念属于后端存储范畴，严格区别于移动/浏览器端的离线运行状态。
+- **批次增量预缓存（Paged Batch Prefetch / Stepped Server-side Caching）**：针对单本总页数超出单次下载配额上限（`MAX_PREFETCH`，默认 600 页）的超长连载漫画，在触发全本本地化时建立的步进式顺延调度机制。系统通过探查磁盘与元数据，按全局页码从小到大提取未缓存（`cached === false`）画页切片取前 N 页执行下载；单批完成后全书若尚未全部就绪，维持未终态并支持馆长在详情页再次点击“缓存全部”顺延下一批，直至全本 100% 本地化。与远端发布新章节时的「增量更新（Incremental Refresh）」严格解耦。
 - **并发上传队列（Concurrent Upload Queue）**：批量上传大量图片（如数百张拆帧图）时的客户端流量阀门。采用受限并发（3~4 路）分批推送到后端，兼顾上传速度与服务器连接稳定性。
 - **画卷文件暂存区（Staged File Rack / File Staging Drop Zone）**：在自建工坊（`CreateComicView`）、重新装订（`ReplacePagesModal`）与追加页面（`AppendPagesModal`）中用于批量暂存新画页的双模输入容器。支持网页多图拖拽暂存与服务器本地目录就地扫描；对暂存图片执行基于文件名自然序号的排序、首尾页码概要校验与批量清空，并将拖拽悬停与点击唤起文件选择对话框统一封装收敛。
 - **封面（Cover）**：作品的预览图，默认取自首页前 4 页，或由馆长自定义指定 4 个全局页码序号（`cover_indices`）；书架卡片与详情页轮播的视觉锚点。
@@ -66,7 +67,7 @@
 - **标签（Tag）**：作品上的分类标签，书架页可筛选；标签数量用于排序展示。
 - **筛选（Filter）**：书架页对收藏的检索手段——标题/车号/作者/标签关键词、标签点选、"只看喜欢"、阅读状态（全部/在读/已读）。
 - **书架检索 Web Worker 卸载（Shelf Search Web Worker Offloading / Dual-track Filtering）**：面对万级藏书构建的双轨计算卸载契约。藏书少于 1000 本或处于 Node/Vitest 环境时，直接在主线程执行纯函数，耗时 < 0.5ms 且保障环境平稳；藏书达到或超过 1000 本时无感切入专用后台工作线程，通信仅单向传递微量查询参数与几十 KB 的有序 ID 数组，主线程利用预构建 Map 进行 $O(1)$ 指针还原，彻底消除深拷贝反序列化风暴与主线程击键掉帧。
-- **万级藏书三层防御架构（Three-tier Defense Architecture for Large-Scale Shelf）**：面对上万本海量藏书展开与检索建立的从计算、DOM 到像素渲染的立体防御护城河。第 1 层通过 Web Worker 卸载多维过滤与拼音排序 CPU 运算；第 2 层通过 `usePaginationFold` 受控折叠（搜索时立即重置切片为初始 12 本）死锁 DOM 节点预算；第 3 层通过 CSS `content-visibility: auto` 与 `contain-intrinsic-size: auto 340px` 自动跳过视口外卡片的样式与像素重绘，即使主动展开上万本依然保持极低显存与 120 FPS 丝滑滑动。
+- **万级藏书三层防御架构（Three-tier Defense Architecture for Large-Scale Shelf）**：面对上万本海量藏书展开与检索建立的从计算、DOM 到像素渲染的立体防御护城河。第 1 层通过 Web Worker 卸载多维过滤与拼音排序 CPU 运算；第 2 层通过 `usePaginationFold` 受控折叠（搜索时立即重置切片为初始 12 本）死锁 DOM 节点预算；第 3 层通过展开软封顶（120 本）与 CSS `contain: layout style` 约束局部重排，结合原生图片 `loading="lazy"` 与 3D 副封面交互后延时解码，既杜绝海量展开瞬间 DOM 爆炸，又彻底消除 `content-visibility: auto`（`contain: paint`）对卡片 `-0.35rem` 悬浮浮动与弥散外阴影（`--shadow-2`）的死黑硬件裁切。
 - **阅读状态分段筛选（Reading Status Segmented Filter）**：读者作品阅读进度的单选互斥维度（`全部` / `在读` / `已读完`），与正交的个人偏好（`只看喜欢`）解耦，并通过 URL Query 双向持久化。
 - **阈值流式展开与安全刹车（Threshold Stream Loading & Safety Brake）**：书架网格的自适应流式加载机制。在维持「48 图预算」与「滚动逃逸根治」底线的前提下，前 N 批（默认 5 批 / 60 本）支持触底无感平滑自动追加；达到安全阈值后主动挂起自动追加并唤起折叠函套卡，防止无限滚动冲垮浏览器显存并阻断底部「卷末归档专匣」的可触达性。
 - **标签溢出抽屉（Overflow Tag Tray / 标签托盘）**：书架标签筛选条中承载高频 8 个标签之外溢出标签的平滑折叠展开容器。采用现代无级尺寸插值（`interpolate-size`）实现文档流内的原位平滑推展，配合纯 CSS 硬件层级隔离，在克制视觉决策超载的同时根除逐帧重排掉帧。

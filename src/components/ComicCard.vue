@@ -183,8 +183,6 @@ const effectiveCover = computed(() => {
 .comic-card {
   container-type: inline-size;
   contain: layout style;
-  content-visibility: auto;
-  contain-intrinsic-size: auto 340px;
   height: 100%;
   transition:
     opacity var(--duration-2) var(--ease-out),

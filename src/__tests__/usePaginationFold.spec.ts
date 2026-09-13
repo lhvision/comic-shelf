@@ -173,4 +173,29 @@ describe('usePaginationFold composable', () => {
     expect(visibleCount.value).toBe(24)
     expect(remainingCount.value).toBe(976)
   })
+
+  it('supports maxCap in loadAll with soft cap and tiered unfolding', () => {
+    const list = ref(Array.from({ length: 250 }, (_, i) => i))
+    const { visibleCount, remainingCount, loadAll } = usePaginationFold({
+      items: list,
+      step: 12,
+    })
+
+    expect(visibleCount.value).toBe(12)
+
+    // First loadAll with cap 120
+    loadAll(120)
+    expect(visibleCount.value).toBe(120)
+    expect(remainingCount.value).toBe(130)
+
+    // Second loadAll with cap 120 steps forward by 120 (to 240)
+    loadAll(120)
+    expect(visibleCount.value).toBe(240)
+    expect(remainingCount.value).toBe(10)
+
+    // Third loadAll finishes remaining items
+    loadAll(120)
+    expect(visibleCount.value).toBe(250)
+    expect(remainingCount.value).toBe(0)
+  })
 })

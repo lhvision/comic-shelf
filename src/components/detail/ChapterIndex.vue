@@ -137,7 +137,7 @@ watch(
           size="sm"
           icon="book-open"
           type="button"
-          @click="loadAll"
+          @click="loadAll()"
         >
           展开全部
         </AppButton>

@@ -20,6 +20,7 @@ import {
 } from 'vue'
 
 export const DEFAULT_BRAKE_THRESHOLD = 60
+export const DEFAULT_LOAD_ALL_CAP = 120
 
 export interface UsePaginationFoldOptions<T> {
   /** 数据源列表 */
@@ -55,8 +56,11 @@ export interface UsePaginationFoldReturn<T> {
   currentBrakeThreshold: Ref<number>
   /** 再展开一批 */
   loadMore: () => void
-  /** 展开全部条目 */
-  loadAll: () => void
+  /**
+   * 展开全部条目。
+   * @param maxCap 可选软封顶数量（默认可选 120）。若总数超量且当前小于封顶，优先铺开至封顶；若已达封顶则递进展开，杜绝极端海量 DOM 卡死。
+   */
+  loadAll: (maxCap?: number) => void
   /** 释放刹车保护并继续展开 */
   releaseBrake: (additionalCount?: number) => void
   /** 收整回初始批次并平滑滚顶 */
@@ -100,9 +104,17 @@ export function usePaginationFold<T>(
     }
   }
 
-  function loadAll() {
-    visibleCount.value = totalLength.value
-    currentBrakeThreshold.value = Math.max(currentBrakeThreshold.value, totalLength.value)
+  function loadAll(maxCap?: number) {
+    let target = totalLength.value
+    if (typeof maxCap === 'number' && maxCap > 0 && totalLength.value > maxCap) {
+      if (visibleCount.value < maxCap) {
+        target = maxCap
+      } else {
+        target = Math.min(totalLength.value, visibleCount.value + maxCap)
+      }
+    }
+    visibleCount.value = target
+    currentBrakeThreshold.value = Math.max(currentBrakeThreshold.value, target)
     onChange?.(visibleCount.value)
   }
 

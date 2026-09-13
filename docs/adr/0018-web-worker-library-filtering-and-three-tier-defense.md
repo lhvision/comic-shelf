@@ -42,9 +42,9 @@
 2. **第 2 层：DOM 截流（usePaginationFold Slicing）**
    - 视图层始终由 `usePaginationFold`（受控折叠，默认初始步长 12 本，安全刹车 60 本）锁定；
    - 无论书架实际藏书有一万本还是十万本，用户在搜索框打字的一瞬间，折叠逻辑会自动将可见渲染步长重置为初始 12 本，DOM 树上永远不会同时进驻上万个节点；
-3. **第 3 层：渲染剪裁（CSS `content-visibility: auto`）**
-   - 针对用户主动点击「展开全部」挂载数千本的极限场景，在 `.comic-card` 上施加 `content-visibility: auto; contain-intrinsic-size: auto 340px;`；
-   - 浏览器底层跳过屏幕可视区外数千张卡片的样式计算、容器查询、文本折行与像素绘制，GPU 显存占用保持在极低水位，快速滑动杜绝白屏与内存溢出。
+3. **第 3 层：展开软封顶与局部隔离（Capped Unfolding & Local Containment）**
+   - 针对用户主动点击「展开全部」可能挂载数千本的极限场景，在 `usePaginationFold` 的 `loadAll` 中施加 120 本软封顶（按需递进），杜绝瞬间巨型 DOM 爆发；
+   - 在 `.comic-card` 上保留 `contain: layout style` + `container-type: inline-size`，严格隔离卡片重排；彻底剔除 `content-visibility: auto`（及其隐式激活的 `contain: paint`），避免 `-0.35rem` 悬浮浮动与弥散投影（`--shadow-2`）边缘被硬件图层生硬裁切（对齐 PITFALLS #7 与 MILESTONES #25）。
 
 ## 收益与影响
 

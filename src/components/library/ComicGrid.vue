@@ -16,7 +16,7 @@ import AppButton from '@/components/AppButton.vue'
 import AppIcon from '@/components/AppIcon.vue'
 import { liveCacheKey, type LiveCacheState } from '@/stores/library'
 import { isCompletedComic } from '@/composables/useLibraryFilter'
-import { usePaginationFold } from '@/composables/usePaginationFold'
+import { usePaginationFold, DEFAULT_LOAD_ALL_CAP } from '@/composables/usePaginationFold'
 
 const props = withDefaults(
   defineProps<{
@@ -247,7 +247,7 @@ function handleContinueActive() {
 
 function handleLoadAllActive() {
   isExpandingAllActive.value = true
-  loadAllActive()
+  loadAllActive(DEFAULT_LOAD_ALL_CAP)
   if (props.hasMore) {
     emit('loadAll')
   }
@@ -266,10 +266,14 @@ function handleContinueUnified() {
 
 function handleLoadAllUnified() {
   isExpandingAllUnified.value = true
-  loadAll()
+  loadAll(DEFAULT_LOAD_ALL_CAP)
   if (props.hasMore) {
     emit('loadAll')
   }
+}
+
+function handleLoadAllArchive() {
+  loadAllArchive(DEFAULT_LOAD_ALL_CAP)
 }
 
 const visibleItems = computed(() => rawVisibleItems.value)
@@ -329,7 +333,7 @@ watch(
     if (isAppend) {
       const oldActiveCount = oldItems.filter((i) => !isCompleted(i)).length
       if (isExpandingAllActive.value) {
-        loadAllActive()
+        loadAllActive(DEFAULT_LOAD_ALL_CAP)
       } else {
         // 用户滚动触发新一页加载到达后，自动向外展开新拉取的整批条目
         const addedActive = Math.max(props.batchStep, activeComics.value.length - oldActiveCount)
@@ -341,7 +345,7 @@ watch(
       }
 
       if (isExpandingAllUnified.value) {
-        loadAll()
+        loadAll(DEFAULT_LOAD_ALL_CAP)
       } else {
         // 单网格模式下同理
         const addedUnified = Math.max(props.batchStep, newItems.length - oldItems.length)
@@ -604,7 +608,7 @@ watch(
                       size="sm"
                       icon="book-open"
                       type="button"
-                      @click.prevent="loadAllArchive"
+                      @click.prevent="handleLoadAllArchive"
                     >
                       展开全部已读
                     </AppButton>

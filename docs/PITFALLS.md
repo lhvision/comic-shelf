@@ -963,7 +963,7 @@
     1. **三层立体防御护城河**：
        - **第 1 层（计算卸载）**：`useLibraryFilter` 采用双轨架构：<1000 本或 Node 环境主线程极速纯函数同步运算（0 延迟）；$\ge 1000$ 本无感卸载至 `libraryFilter.worker.ts`。通信协议仅传递微量查询参数（~50 字节）与轻量有序 ID 列表（`string[]`，仅几十 KB），主线程利用预构建的 `Map<string, LibrarySummary>` 以 $O(1)$ 映射还原，主线程全程保持 120 FPS 丝滑响应；
        - **第 2 层（DOM 节流）**：`usePaginationFold` 牢牢锁定渲染预算，每次用户打字检索时自动将可见步长重置为初始 12 项，绝不允许上万个 DOM 卡片同时进驻文档树；
-       - **第 3 层（渲染剪裁）**：在 `.comic-card` 上施加 `content-visibility: auto; contain-intrinsic-size: auto 340px;`。即使读者主动点击「展开全部」挂载数千本，视口外的卡片也由浏览器底层自动跳过排版与绘制，显存占用与重绘开销归零。
+       - **第 3 层（展开软封顶与局部隔离）**：在 `usePaginationFold` 的 `loadAll` 中施加 120 本软封顶（支持按需阶梯递进），卡片保留 `contain: layout style` + `container-type: inline-size` 严格隔离重排；彻底移除 `content-visibility: auto`，杜绝其隐式激发的 `contain: paint` 对卡片 `-0.35rem` 悬浮浮动与弥散阴影（`--shadow-2`）的死黑硬件裁切（严格遵守本指南第 7 条避坑铁律）。
 
 ### 91. Composable 传参膨胀与跨层对象聚合反模式（Composable Parameter Explosion & Sub-State Object Aggregation）
 
