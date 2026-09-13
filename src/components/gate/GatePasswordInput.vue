@@ -29,6 +29,7 @@ const props = withDefaults(
     error?: boolean
     autofocus?: boolean
     icon?: IconName
+    monospace?: boolean
   }>(),
   {
     id: undefined,
@@ -41,6 +42,7 @@ const props = withDefaults(
     error: false,
     autofocus: false,
     icon: 'lock',
+    monospace: false,
   },
 )
 
@@ -68,6 +70,7 @@ defineExpose({
       v-model="modelValue"
       :type="showPassword ? 'text' : 'password'"
       class="gate-input"
+      :class="{ 'is-monospace': monospace || inputmode === 'numeric' }"
       :placeholder="placeholder"
       :autocomplete="autocomplete"
       :inputmode="inputmode"
@@ -130,6 +133,11 @@ defineExpose({
   font-size: var(--text-sm);
   color: var(--ink-0);
   outline: none;
+}
+
+.gate-input.is-monospace {
+  font-family: var(--font-mono);
+  letter-spacing: 0.15em;
 }
 
 .gate-input::placeholder {

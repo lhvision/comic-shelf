@@ -5,8 +5,9 @@ import { useSystemEvents } from '@/composables/useSystemEvents'
 import { api } from '@/api/client'
 import type { CacheJob, Chapter, ComicDetail } from '@/types'
 
+const mockToast = vi.fn<(msg: string, type?: string) => void>()
 vi.mock('@/composables/useToast', () => ({
-  useToast: () => ({ toast: vi.fn<() => void>() }),
+  useToast: () => ({ toast: mockToast }),
 }))
 
 vi.mock('@/stores/library', () => ({
@@ -17,6 +18,7 @@ vi.mock('@/stores/library', () => ({
 
 describe('useChapterCache composable', () => {
   beforeEach(() => {
+    mockToast.mockClear()
     vi.useFakeTimers()
   })
 
@@ -219,6 +221,54 @@ describe('useChapterCache composable', () => {
     expect(caching.value).toBe(true)
     expect(detail.value!.cache_complete).toBe(false)
     expect(detail.value!.cached_pages).toBe(3)
+  })
+
+  it('triggers batch prefetch completion toast when batch prefetch finishes with incomplete comic', async () => {
+    const source = ref('jm')
+    const sourceId = ref('12345')
+    const detail = ref<ComicDetail | null>(createMockDetail())
+    const chapters = ref<Chapter[]>(mockChapters)
+
+    vi.spyOn(api, 'cacheAll').mockResolvedValueOnce({
+      cached: 3,
+      total: 6,
+      complete: false,
+    })
+
+    vi.spyOn(api, 'cacheProgress').mockResolvedValueOnce({
+      cached: 3,
+      total: 6,
+      complete: false,
+    })
+    vi.spyOn(api, 'cacheJob').mockResolvedValueOnce({
+      source: 'jm',
+      source_id: '12345',
+      chapter_id: null,
+      running: false,
+      done: true,
+      total: 6,
+      prefetched: 3,
+      warnings: [],
+      error: '',
+      started_at: 0,
+      finished_at: 0,
+    })
+
+    const { cacheAll } = useChapterCache({
+      source,
+      sourceId,
+      detail,
+      chapters,
+    })
+
+    await cacheAll()
+
+    await vi.advanceTimersByTimeAsync(1100)
+
+    expect(mockToast).toHaveBeenCalledWith(
+      expect.stringContaining('已完成当前批次（已本地化 3/6 页）'),
+      'info',
+    )
   })
 
   it('orchestrates cacheChapter lifecycle successfully', async () => {

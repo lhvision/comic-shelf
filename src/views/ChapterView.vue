@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, onMounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useAuth } from '@/composables/useAuth'
 import { useOfflineSync } from '@/composables/useOfflineSync'
@@ -18,7 +18,7 @@ import Modal from '@/components/Modal.vue'
 import AppButton from '@/components/AppButton.vue'
 import AppDropdown from '@/components/AppDropdown.vue'
 import { useLibraryStore } from '@/stores/library'
-import type { ComicDetail } from '@/types'
+import type { CacheJob } from '@/types'
 
 /**
  * 章节子路由详情 —— 一本多话作品的「单个话」页面索引。
@@ -38,9 +38,25 @@ const { isOnline } = useOfflineSync()
 const source = computed(() => (route.params.source as string) || 'jm')
 const sourceId = computed(() => (route.params.sourceId as string) || '')
 const chapterId = computed(() => (route.params.chapterId as string) || '')
-
-const detailRef = ref<ComicDetail | null>(null)
 const lastRead = useLastRead(source, sourceId)
+
+// 声明 syncJobState 委托，解耦 useComicDetail 与 useChapterCache 的初始化依赖
+let syncJobStateDelegate: ((job: CacheJob) => void) | undefined
+
+const { detail, loading, load } = useComicDetail({
+  source,
+  sourceId,
+  onLoaded: () => {
+    setChapterById(chapterId.value)
+    if (!activeChapter.value) router.replace(`/comic/${source.value}/${sourceId.value}`)
+  },
+  onFallback: () => setChapterById(chapterId.value),
+  onSyncJobState: (job) => syncJobStateDelegate?.(job),
+  onError: (e) => {
+    toast(e instanceof Error ? e.message : String(e), 'error')
+    router.replace(`/comic/${source.value}/${sourceId.value}`)
+  },
+})
 
 const {
   chapters,
@@ -55,7 +71,7 @@ const {
   loadAll,
   collapse,
   setChapterById,
-} = useChapterNavigation(detailRef, lastRead)
+} = useChapterNavigation(detail, lastRead)
 
 const activeChapterRef = computed(
   () => chapters.value.find((c) => c.id === chapterId.value) ?? null,
@@ -64,15 +80,15 @@ const activeChapterRef = computed(
 const { caching, runningChapterId, syncJobState, cacheChapter, onPageCached } = useChapterCache({
   source,
   sourceId,
-  detail: detailRef,
+  detail,
   chapters,
   activeChapterId: computed(() => activeChapterRef.value?.id),
   onRefresh: () => load(true, true),
 })
+syncJobStateDelegate = syncJobState
 
 const {
   activeChapter,
-  activeIndex,
   prevChapter,
   nextChapter,
   activeChapterCached,
@@ -91,7 +107,7 @@ const {
   sourceId,
   chapterId,
   chapters,
-  detail: detailRef,
+  detail,
   progressEl,
   caching,
   runningChapterId,
@@ -114,46 +130,14 @@ const {
   source,
   sourceId,
   activeChapter,
-  onDetailUpdated: (updated) => {
-    detail.value = updated
-  },
+  onDetailUpdated: (updated) => (detail.value = updated),
 })
-
-const { detail, loading, load } = useComicDetail({
-  source,
-  sourceId,
-  onLoaded: () => {
-    setChapterById(chapterId.value)
-    if (!activeChapter.value) {
-      router.replace(`/comic/${source.value}/${sourceId.value}`)
-    }
-  },
-  onFallback: () => {
-    setChapterById(chapterId.value)
-  },
-  onSyncJobState: syncJobState,
-  onError: (e) => {
-    toast(e instanceof Error ? e.message : String(e), 'error')
-    router.replace(`/comic/${source.value}/${sourceId.value}`)
-  },
-})
-
-watch(
-  detail,
-  (val) => {
-    detailRef.value = val
-    if (val) setChapterById(chapterId.value)
-  },
-  { immediate: true },
-)
 
 watch(
   chapterId,
   (newId, oldId) => {
     setChapterById(chapterId.value)
-    if (oldId !== undefined && newId !== oldId) {
-      void load(true)
-    }
+    if (oldId !== undefined && newId !== oldId) void load(true)
   },
   { immediate: true },
 )

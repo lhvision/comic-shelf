@@ -99,7 +99,7 @@ const readerNavigation = useReaderNavigation({
   scopeId,
   router,
 })
-const { progressValue, pillActive, goToPage, prevGroup, nextGroup, goNextChapter, goPrevChapter } =
+const { progressValue, pillActive, prevGroup, nextGroup, goNextChapter, goPrevChapter } =
   readerNavigation
 
 const readerAutoTurn = useAutoTurn({

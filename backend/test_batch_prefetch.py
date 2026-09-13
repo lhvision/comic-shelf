@@ -145,7 +145,38 @@ def test_prefetch_worker_macro_progress():
         shutil.rmtree(tmp_dir, ignore_errors=True)
 
 
+def test_prefetch_worker_exception_safety():
+    print("Testing _prefetch_worker exception safety and finally broadcast...")
+    tmp_dir = Path(tempfile.mkdtemp(prefix="paper_room_test_safety_"))
+    try:
+        from app import main as app_main
+        fetched = create_test_comic(page_count=10)
+        broadcast_events = []
+        def mock_broadcast(event_name, payload):
+            broadcast_events.append((event_name, payload))
+
+        with patch.object(app_main.store, "prefetch", side_effect=RuntimeError("simulated network failure")), \
+             patch.object(app_main, "broadcast_event", side_effect=mock_broadcast), \
+             patch.object(app_main.store, "reconcile_cached_pages"), \
+             patch.object(app_main.store, "cached_page_count", side_effect=[0, 2]):
+
+            job = {"running": True, "done": False, "prefetched": 0, "total": 0}
+            try:
+                app_main._prefetch_worker(job, fetched, cover_count=4, prefetch_all=True)
+                assert False, "Expected RuntimeError from prefetch"
+            except RuntimeError:
+                pass
+
+            assert job["prefetched"] == 2
+            assert len(broadcast_events) == 1
+            assert broadcast_events[0][1]["action"] == "cache_partial"
+            print("  ✓ Worker successfully emitted broadcast event despite prefetch exception")
+    finally:
+        shutil.rmtree(tmp_dir, ignore_errors=True)
+
+
 if __name__ == "__main__":
     test_batch_prefetch_flow()
     test_prefetch_worker_macro_progress()
+    test_prefetch_worker_exception_safety()
     print("All batch prefetch tests passed successfully!")

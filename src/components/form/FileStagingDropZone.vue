@@ -21,8 +21,6 @@ const props = withDefaults(
   defineProps<{
     /** 是否处于提交/上传禁用状态 */
     disabled?: boolean
-    /** 拖拽区 DOM 挂载 Ref */
-    dropZoneRef?: HTMLElement | null
     /** 是否正处于文件拖拽悬停中 */
     isOverDropZone?: boolean
     /** 打开文件选择对话框回调 */
@@ -40,7 +38,6 @@ const props = withDefaults(
   }>(),
   {
     disabled: false,
-    dropZoneRef: null,
     isOverDropZone: false,
     openFileDialog: undefined,
     prompt: '点击选择画页，或将图片批量拖拽到此处',

@@ -77,4 +77,19 @@ describe('GatePasswordInput.vue', () => {
     expect(wrapper.find('input').attributes('disabled')).toBeDefined()
     expect(wrapper.find('.btn-toggle-eye').attributes('disabled')).toBeDefined()
   })
+
+  it('设置 monospace 或 inputmode="numeric" 时自动挂载 is-monospace 样式类', () => {
+    const wrapperNumeric = mount(GatePasswordInput, {
+      props: { inputmode: 'numeric' },
+    })
+    expect(wrapperNumeric.find('input').classes()).toContain('is-monospace')
+
+    const wrapperMono = mount(GatePasswordInput, {
+      props: { monospace: true },
+    })
+    expect(wrapperMono.find('input').classes()).toContain('is-monospace')
+
+    const wrapperDefault = mount(GatePasswordInput)
+    expect(wrapperDefault.find('input').classes()).not.toContain('is-monospace')
+  })
 })

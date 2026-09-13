@@ -98,6 +98,7 @@ export function useChapterCache(options: UseChapterCacheOptions) {
           api.cacheJob(source.value, sourceId.value),
         ])
 
+        const wasCaching = caching.value
         caching.value = job.running
         runningChapterId.value = job.chapter_id ?? null
 
@@ -113,7 +114,6 @@ export function useChapterCache(options: UseChapterCacheOptions) {
           ? !job.running || (job.chapter_id === currentChapterId && progress.complete)
           : !job.running || progress.complete
 
-        const wasCaching = caching.value
         if (isFinished) {
           caching.value = false
           runningChapterId.value = null

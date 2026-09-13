@@ -1478,27 +1478,30 @@ def _prefetch_worker(
         job["prefetched"] = min(initial_cached + batch_done, meta.page_count)
         job["total"] = meta.page_count
 
-    done, warnings = store.prefetch(
-        fetched,
-        cover_count=cover_count,
-        prefetch_all=prefetch_all,
-        on_progress=_on_progress,
-    )
-    store.reconcile_cached_pages(meta)
-    final_cached = store.cached_page_count(meta)
-    job["prefetched"] = final_cached
-    job["total"] = meta.page_count
-    job["warnings"] = warnings
-    is_complete = final_cached >= meta.page_count
-    broadcast_event(
-        "library_changed",
-        {
-            "action": "cache_complete" if is_complete else "cache_partial",
-            "source": fetched.meta.source,
-            "source_id": fetched.meta.source_id,
-            "timestamp": time.time(),
-        },
-    )
+    warnings: list[str] = []
+    try:
+        done, warnings = store.prefetch(
+            fetched,
+            cover_count=cover_count,
+            prefetch_all=prefetch_all,
+            on_progress=_on_progress,
+        )
+    finally:
+        store.reconcile_cached_pages(meta)
+        final_cached = store.cached_page_count(meta)
+        job["prefetched"] = final_cached
+        job["total"] = meta.page_count
+        job["warnings"] = warnings
+        is_complete = final_cached >= meta.page_count
+        broadcast_event(
+            "library_changed",
+            {
+                "action": "cache_complete" if is_complete else "cache_partial",
+                "source": fetched.meta.source,
+                "source_id": fetched.meta.source_id,
+                "timestamp": time.time(),
+            },
+        )
 
 
 def _require_known_source(source: str) -> None:

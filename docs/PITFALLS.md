@@ -989,6 +989,24 @@
     1. **改动组件必跑 `pnpm type-check`**：任何涉及 `.vue` 文件的变更，交付前必须运行 `pnpm type-check`（基于 `vue-tsc --build` 增量模式，只验证改动文件，毫秒级通过），彻底排查模板绑定的类型错误；
     2. **契约自解释与精准解构门禁**：Composable 必须清晰声明返回类型契约与 JSDoc，视图消费层在 setup 顶层精准解构模板实际绑定的 Ref 与函数，杜绝因深层对象传给模板而引发的响应式断裂与 TS 类型盲区。
 
+### 93. 轮询状态提前覆写与任务终止反馈静默吞没陷阱（Polling State Premature Overwrite & Toast Swallowing Trap）
+
+- **本质**：
+  在基于定时器的长任务轮询器（如画页预缓存、后台下载）中，需要在任务自然终止瞬间（`job.running === false`）触发用户感知 Toast 或完成回调。若在轮询回调顶部过早执行 `caching.value = job.running` 覆盖自身响应式状态，随后在计算终止分支时去读取 `const wasCaching = caching.value`，此时读到的已是被提前覆写的 `false`；导致 `if (wasCaching)` 分支永远无法进入，使得原本精心设计的「单批次就绪/重试引导/错误告警」Toast 提示全线失效，造成静默中断与认知断层。
+- **红线与防误伤**：
+  - **不要**在判断任务终态前提前将服务端 `job.running` 赋值给本地记录上一次状态的 Ref；
+  - **放行/改用**：
+    在更新本地 `caching.value = job.running` 之前，先捕获上一刻的状态快照 `const wasCaching = caching.value`；或者由状态机明确记录状态迁移事件（`RUNNING -> IDLE`），确保完成反馈可靠投递。
+
+### 94. 组合式函数双向依赖与临时 Ref 拆分身份陷阱（Circular Composable Dependency & Split Identity Trap）
+
+- **本质**：
+  在视图层编排多个业务 Composable（如 `useComicDetail` 与 `useChapterCache`）时，若 Composable A 需要 Composable B 产生的状态（如 `detail`），而 Composable B 初始化参数又需要 Composable A 的回调（如 `syncJobState`），容易诱使开发者在视图中先声明一个临时的 `const detailRef = ref(null)` 传入 A，随后调用 B，再通过 `watch(detail, val => { detailRef.value = val })` 反向同步。这造成单一实体分裂为两个 Ref 镜像（Split Identity），在组件内产生竞态双写开销，并可能在回调中触发 TDZ 引用错误（在 `const` 声明前引用变量），同时严重膨胀视图代码突破 ≤150 行门禁。
+- **红线与防误伤**：
+  - **不要**在 `<script setup>` 中为了避让组合式函数的初始化次序而创建桥接用的中间 Ref 和同步 watch；
+  - **放行/改用**：
+    优先按单向数据流拓扑序初始化数据源 Composable（如 `useComicDetail`），并将返回的原生 Ref 直接传参给消费方；对于相互依赖的回调方法，采用轻量局部委托函数（如 `let syncJobStateDelegate: ((job) => void) | undefined`）在下方延迟挂接，彻底消除冗余状态与响应式双写。
+
 ---
 
 ## 🚦 交付门禁（四步必跑）

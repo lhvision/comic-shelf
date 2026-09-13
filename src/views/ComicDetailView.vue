@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { pageFileUrl } from '@/api/client'
 import { useLastRead } from '@/composables/useLastRead'
@@ -23,7 +23,7 @@ import PageIndexGrid from '@/components/detail/PageIndexGrid.vue'
 import EditMetadataModal from '@/components/detail/EditMetadataModal.vue'
 import AppendPagesModal from '@/components/detail/AppendPagesModal.vue'
 import ReplacePagesModal from '@/components/detail/ReplacePagesModal.vue'
-import type { ComicDetail } from '@/types'
+import type { CacheJob } from '@/types'
 
 /**
  * 本子详情页 —— 编排封面轮播 / 元数据 / 操作栏 / 章节目录 / 页面索引。
@@ -37,14 +37,34 @@ const route = useRoute()
 const router = useRouter()
 const store = useLibraryStore()
 const { toast } = useToast()
-const { canWrite, userId } = useAuth()
+const { canWrite } = useAuth()
 const { isOnline } = useOfflineSync()
 
 const source = computed(() => String(route.params.source))
 const sourceId = computed(() => String(route.params.sourceId))
 
 const lastRead = useLastRead(source, sourceId)
-const detailRef = ref<ComicDetail | null>(null)
+
+// 声明 syncJobState 委托，解耦 useComicDetail 与 useChapterCache 的初始化依赖
+let syncJobStateDelegate: ((job: CacheJob) => void) | undefined
+
+const { detail, loading, load } = useComicDetail({
+  source,
+  sourceId,
+  onLoaded: (data) => {
+    const pageCount = data.meta.page_count ?? 0
+    if (pageCount > 0) {
+      const targetPage = progressEl.value || 1
+      const preloadImg = new Image()
+      preloadImg.src = pageFileUrl(source.value, sourceId.value, targetPage)
+    }
+  },
+  onSyncJobState: (job) => syncJobStateDelegate?.(job),
+  onError: (err) => {
+    toast(err instanceof Error ? err.message : String(err), 'error')
+    router.replace('/')
+  },
+})
 
 const {
   chapters,
@@ -61,7 +81,7 @@ const {
   loadMore,
   loadAll,
   collapse,
-} = useChapterNavigation(detailRef, lastRead)
+} = useChapterNavigation(detail, lastRead)
 
 const {
   caching,
@@ -73,36 +93,11 @@ const {
 } = useChapterCache({
   source,
   sourceId,
-  detail: detailRef,
+  detail,
   chapters,
   onRefresh: () => load(true, true),
 })
-
-const { detail, loading, load } = useComicDetail({
-  source,
-  sourceId,
-  onLoaded: (data) => {
-    const pageCount = data.meta.page_count ?? 0
-    if (pageCount > 0) {
-      const targetPage = progressEl.value || 1
-      const preloadImg = new Image()
-      preloadImg.src = pageFileUrl(source.value, sourceId.value, targetPage)
-    }
-  },
-  onSyncJobState: syncJobState,
-  onError: (err) => {
-    toast(err instanceof Error ? err.message : String(err), 'error')
-    router.replace('/')
-  },
-})
-
-watch(
-  detail,
-  (val) => {
-    detailRef.value = val
-  },
-  { immediate: true },
-)
+syncJobStateDelegate = syncJobState
 
 const {
   editOpen,
@@ -116,7 +111,7 @@ const {
 } = useComicDetailActions({
   source,
   sourceId,
-  detail: detailRef,
+  detail,
   chapters,
   progressEl,
   chapterForPage,
