@@ -151,6 +151,25 @@ export const useSystemEvents = createGlobalState(() => {
    */
   function handleLibraryChanged(data: LibraryChangedEvent): void {
     if (!data) return
+
+    // 任务完成或单批结束事件优先对齐并解除对应任务（确保任务生命周期解耦于 store 刷新）
+    if (
+      (data.action === 'cache_complete' || data.action === 'cache_partial') &&
+      data.source &&
+      data.source_id
+    ) {
+      endTask(getTaskId.cache(data.source, data.source_id))
+      endTask(getTaskId.import(data.source, data.source_id))
+    }
+    if (
+      data.action === 'chapter_cache_complete' &&
+      data.source &&
+      data.source_id &&
+      data.chapter_id
+    ) {
+      endTask(getTaskId.chapter(data.source, data.source_id, data.chapter_id))
+    }
+
     try {
       const libraryStore = useLibraryStore()
 
@@ -186,20 +205,6 @@ export const useSystemEvents = createGlobalState(() => {
       }
       lastLibraryEvent.value = data
       void libraryStore.load(true)
-
-      // 任务完成事件自动对齐并解除对应任务
-      if (data.action === 'cache_complete' && data.source && data.source_id) {
-        endTask(getTaskId.cache(data.source, data.source_id))
-        endTask(getTaskId.import(data.source, data.source_id))
-      }
-      if (
-        data.action === 'chapter_cache_complete' &&
-        data.source &&
-        data.source_id &&
-        data.chapter_id
-      ) {
-        endTask(getTaskId.chapter(data.source, data.source_id, data.chapter_id))
-      }
     } catch {
       // 静默容错
     }
@@ -412,6 +417,7 @@ export const useSystemEvents = createGlobalState(() => {
     beginTask,
     endTask,
     broadcastLocalChange,
+    handleLibraryChanged,
     disconnect,
     reconcileState,
     reconcileActiveTasks,

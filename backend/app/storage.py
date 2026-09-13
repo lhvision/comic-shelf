@@ -974,12 +974,18 @@ class ComicStore:
         if cover_count == 0 and meta.page_count > 0:
             cover_count = min(4, meta.page_count)
 
-        indexes: Iterable[int]
+        indexes: list[int]
         if prefetch_all:
-            indexes = list(range(1, min(meta.page_count, MAX_PREFETCH) + 1))
-            if meta.page_count > MAX_PREFETCH:
+            self.reconcile_cached_pages(meta)
+            if meta.pages:
+                uncached = [p.index for p in meta.pages if not p.cached]
+            else:
+                uncached = list(range(1, (meta.page_count or 0) + 1))
+            indexes = uncached[:MAX_PREFETCH]
+            remaining = len(uncached) - len(indexes)
+            if remaining > 0:
                 warnings.append(
-                    f"单次预缓存上限为 {MAX_PREFETCH} 页，剩余页面将在阅读时自动缓存"
+                    f"已达单批次预缓存上限（{MAX_PREFETCH} 页），全书尚余 {remaining} 页待缓存，可再次点击“缓存全部”继续顺延"
                 )
         else:
             indexes = list(range(1, cover_count + 1))

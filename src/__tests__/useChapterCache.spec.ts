@@ -193,6 +193,34 @@ describe('useChapterCache composable', () => {
     expect(onRefresh).toHaveBeenCalledTimes(1)
   })
 
+  it('handles partial batch prefetch and maintains active polling when incomplete', async () => {
+    const source = ref('jm')
+    const sourceId = ref('12345')
+    const detail = ref<ComicDetail | null>(createMockDetail())
+    const chapters = ref<Chapter[]>(mockChapters)
+    const onRefresh = vi.fn<() => void>()
+
+    vi.spyOn(api, 'cacheAll').mockResolvedValueOnce({
+      cached: 3,
+      total: 6,
+      complete: false,
+    })
+
+    const { cacheAll, caching } = useChapterCache({
+      source,
+      sourceId,
+      detail,
+      chapters,
+      onRefresh,
+    })
+
+    await cacheAll()
+
+    expect(caching.value).toBe(true)
+    expect(detail.value!.cache_complete).toBe(false)
+    expect(detail.value!.cached_pages).toBe(3)
+  })
+
   it('orchestrates cacheChapter lifecycle successfully', async () => {
     const source = ref('jm')
     const sourceId = ref('12345')

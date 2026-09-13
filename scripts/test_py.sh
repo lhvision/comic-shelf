@@ -29,6 +29,7 @@ TEST_FILES=(
   "backend/test_dialogue_fts.py"
   "backend/test_ocr_worker.py"
   "backend/test_picacg.py"
+  "backend/test_batch_prefetch.py"
 )
 
 # Support running specific tests (e.g. pnpm test:py auth) or all by default

@@ -1176,10 +1176,13 @@ def cache_all(source: str, source_id: str, request: Request) -> CacheProgress:
         raise HTTPException(status_code=400, detail="该漫画画页已由馆长重新装订保护，禁止远端自动覆盖。")
 
     store.reconcile_cached_pages(fetched.meta)
+    cached = store.cached_page_count(fetched.meta)
+    if cached >= fetched.meta.page_count:
+        return CacheProgress(cached=cached, total=fetched.meta.page_count, complete=True)
+
     start_job(source, source_id, lambda job: _prefetch_worker(job, fetched, fetched.meta.cover_count, True))
 
-    cached = store.cached_page_count(fetched.meta)
-    return CacheProgress(cached=cached, total=fetched.meta.page_count, complete=cached >= fetched.meta.page_count)
+    return CacheProgress(cached=cached, total=fetched.meta.page_count, complete=False)
 
 
 @app.get("/api/library/{source}/{source_id}/cache/job", response_model=JobInfo)
@@ -1466,9 +1469,14 @@ def _prefetch_worker(
         job["total"] = meta.page_count
         return
 
-    def _on_progress(done: int, total: int) -> None:
-        job["prefetched"] = done
-        job["total"] = total
+    store.reconcile_cached_pages(meta)
+    initial_cached = store.cached_page_count(meta)
+    job["total"] = meta.page_count
+    job["prefetched"] = initial_cached
+
+    def _on_progress(batch_done: int, batch_total: int) -> None:
+        job["prefetched"] = min(initial_cached + batch_done, meta.page_count)
+        job["total"] = meta.page_count
 
     done, warnings = store.prefetch(
         fetched,
@@ -1476,13 +1484,16 @@ def _prefetch_worker(
         prefetch_all=prefetch_all,
         on_progress=_on_progress,
     )
-    job["prefetched"] = done
+    store.reconcile_cached_pages(meta)
+    final_cached = store.cached_page_count(meta)
+    job["prefetched"] = final_cached
     job["total"] = meta.page_count
     job["warnings"] = warnings
+    is_complete = final_cached >= meta.page_count
     broadcast_event(
         "library_changed",
         {
-            "action": "cache_complete" if done >= meta.page_count else "cache_partial",
+            "action": "cache_complete" if is_complete else "cache_partial",
             "source": fetched.meta.source,
             "source_id": fetched.meta.source_id,
             "timestamp": time.time(),

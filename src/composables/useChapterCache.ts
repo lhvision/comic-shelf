@@ -125,8 +125,22 @@ export function useChapterCache(options: UseChapterCacheOptions) {
             endTask(getTaskId.chapter(source.value, sourceId.value, currentChapterId))
           }
           pauseProgressPolling()
-          if (wasCaching && !progress.complete && job.warnings && job.warnings.length > 0) {
-            toast(`有 ${job.warnings.length} 页下载中断，点击“缓存全部”可继续重试`, 'info')
+          if (wasCaching) {
+            if (progress.complete) {
+              toast(
+                currentChapterId
+                  ? '章节已全部缓存到本地'
+                  : `已全部缓存到本地（共 ${progress.total} 页）`,
+                'info',
+              )
+            } else if (!currentChapterId) {
+              toast(
+                `已完成当前批次（已本地化 ${progress.cached}/${progress.total} 页），可再次点击“缓存全部”继续下一批`,
+                'info',
+              )
+            } else if (job.warnings && job.warnings.length > 0) {
+              toast(`有 ${job.warnings.length} 页下载中断，点击重试`, 'info')
+            }
           }
           if (onRefresh) {
             void onRefresh()

@@ -120,6 +120,26 @@ describe('useSystemEvents composable', () => {
     }).not.toThrow()
   })
 
+  it('releases active cache task on cache_partial via handleLibraryChanged', () => {
+    const { beginTask, hasActiveTasks, activeTaskCount, handleLibraryChanged, disconnect } =
+      useSystemEvents()
+    disconnect()
+
+    beginTask(getTaskId.cache('jm', '55555'))
+    expect(hasActiveTasks.value).toBe(true)
+
+    handleLibraryChanged({
+      action: 'cache_partial',
+      source: 'jm',
+      source_id: '55555',
+      timestamp: Date.now(),
+    })
+
+    expect(hasActiveTasks.value).toBe(false)
+    expect(activeTaskCount.value).toBe(0)
+    disconnect()
+  })
+
   it('throttles reconcileState within 3000ms window', async () => {
     const { reconcileState } = useSystemEvents()
     await expect(reconcileState()).resolves.toBeUndefined()
