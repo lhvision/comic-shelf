@@ -32,19 +32,21 @@
 
 ### 3. `@property` 现代特性落地（Baseline 2024）
 
-MDN 数据显示 `@property` 在 Chrome 85+、Firefox 128+、Safari 16.4+ 均已全面就绪。在纸间“私人阅览室 / 图书馆卡片目录”克制典雅的美学框架下，落地三个关键场景：
+MDN 数据显示 `@property` 在 Chrome 85+、Firefox 128+、Safari 16.4+ 均已全面就绪。在纸间“私人阅览室 / 图书馆卡片目录”克制典雅的美学框架下，落地关键场景：
 
-- **`--progress-ratio` (`<percentage>`)**：用于纯 CSS 扇形与环形进度条（`conic-gradient`）平滑过渡；
-- **`--shimmer-pos` (`<percentage>`)**：用于 120Hz GPU 硬件加速的纸质骨架屏平滑微光，废除昂贵的主线程重排；
+- **`--progress-ratio` (`<percentage>`)**：用于纯 CSS 扇形与环形进度条（`conic-gradient` / `.progress-ring`）平滑过渡，为离线缓存与阅读器加载提供 GPU 级百分比插值能力；
+- **`--shimmer-pos` (`<percentage>`)**：用于 120Hz GPU 硬件加速的纸质骨架屏平滑微光，配合对称渐变色标（`calc(var(--shimmer-pos) - 25%)` 至 `calc(var(--shimmer-pos) + 25%)`）形成无拖尾、无停顿的匀速光带，废除昂贵的主线程重排；
 - **`--card-glow-color` (`<color>`) 与 `--card-glow-size` (`<percentage>`)**：用于 `DiscoveryCard` 等组件径向渐变（`radial-gradient`）光晕在 Hover 时的平滑色彩与范围插值，解决原生 CSS 无法跨不同 Gradient `<image>` 补间平滑过渡的历史痛点。
 
 ### 4. 现代选择器与高级架构
 
-- **`:has()` 去胶水代码（Baseline 2023）**：
-  - 在 `main.css` 中使用 `body:has(dialog[open]:not([aria-hidden='true'])) { overflow: clip; }` 原生锁屏，彻底废除在各弹窗挂载生命周期中操作 `document.body.classList` 的代码；
+- **`:has()` 与双轨滚动锁（Baseline 2023）**：
+  - 在 `main.css` 中使用 `body:has(dialog[open]:not([aria-hidden='true'])) { overflow: clip; }` 实现声明式原生锁屏；
+  - 同时在 `Modal.vue` 中保留 `useScrollLock` 作为老旧环境的渐进增强双轨防御；
   - 优化输入框与复合卡片的关联状态选择。
-- **CSS Anchor Positioning 全局回退库（`@position-try`）**：
-  - 在 `main.css` 顶层统一声明 `--flip-top-start`、`--flip-bottom-start`、`--flip-top-end`、`--flip-bottom-end`，为浮层提供免 JS 测量的视口越界自适应翻转能力。
+- **CSS Anchor Positioning 原生关键字与 `@position-try` 分层策略**：
+  - 首选采用标准 `position-try-fallbacks: flip-block, flip-inline;`，满足绝大多数上下/左右视口越界镜像自适应，消除全局冗余手写规则；
+  - 保留 `@position-try` 技术规范与落地范式于 `docs/CSS_RADAR.md` §2.8，供未来非对称避让或特殊方位越界时按需在组件局部声明。
 - **原生 CSS 嵌套三层深度定律**：
   - 严格限制原生嵌套深度最大为 3 层（`Block -> Element -> State/Modifier`），锁定特异度权重。
 - **CSS Subgrid**：
@@ -61,13 +63,13 @@ MDN 数据显示 `@property` 在 Chrome 85+、Firefox 128+、Safari 16.4+ 均已
 
 1. **Token 单源完备化**：`src/styles/tokens.css` 增加 `--space-badge-y`、`--space-badge-x`、`--radius-pill` 与 `--accent-contrast: #fff8f2;`，并注册 `@property --progress-ratio`、`@property --shimmer-pos`、`@property --card-glow-color` 与 `@property --card-glow-size`；
 2. **全局基建增强与死代码清理**：
-   - `src/styles/main.css` 注入全局 `@position-try` 策略库、`body:has(dialog[open])` 原生锁屏、全局 `@keyframes spin` 以及 `.skeleton-shimmer` / `.progress-ring` 现代组件样式；
+   - `src/styles/main.css` 注入 `body:has(dialog[open])` 原生声明式锁屏、全局 `@keyframes spin` 以及 `.skeleton-shimmer` / `.progress-ring` 现代组件微光与进度样式；
    - 彻底删除历史遗留废弃类名 `.icon-btn` 及其响应式媒体查询（已被 `AppButton.vue` 统一取代）；
 3. **完成存量组件硬编码与散落 Keyframes 清剿**：
    - 彻底治理了各业务组件中的微距硬编码与 4 处重复定义的 `@keyframes spin`（`UpdateBanner`、`GuestRosterTab`、`ImageSearchChip`、`StoragePwaCard`、`AppButton`、`ComicGrid`）；
    - 清除了 `DiscoveryView.vue` 中冗余重复的骨架屏渐变与手写 `@keyframes shimmer`，全面并轨到全局 `.skeleton-shimmer`；
    - 彻底清剿了所有业务组件与样式表中的非 Token 硬编码 Hex 颜色，全站非 `tokens.css` 文件内 Hex 颜色达到 **0 残留**；
-4. **组件进度与动效集成**：
+4. **组件动效集成**：
    - `AppProgressBar.vue` 注入 `--progress-ratio` 响应式 CSS 变量契约；
    - `DiscoveryCard.vue` 接入 `--card-glow-color` 与 `--card-glow-size` 径向渐变过渡；
    - 全局规范化 `transition: background-color` 与 `transition: all` 的精确属性收敛。

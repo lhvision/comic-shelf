@@ -156,7 +156,7 @@ function handleBackToSecret() {
   padding: var(--space-2) var(--space-3);
   background: var(--paper-0);
   border-radius: var(--radius-1);
-  border-left: 2px solid var(--line-strong);
+  border: 1px solid var(--line);
 }
 
 .pin-forgot-hint .hint-icon {

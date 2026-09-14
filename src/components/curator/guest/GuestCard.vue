@@ -675,7 +675,7 @@ function handleRemovePass() {
   padding-left: var(--space-0-5);
 }
 
-.quota-num {
+.quota-val {
   font-family: var(--font-mono);
   font-weight: 600;
   color: var(--ink-0);

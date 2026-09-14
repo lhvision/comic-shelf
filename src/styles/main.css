@@ -2,26 +2,6 @@
 
 @layer reset, base, components, utilities;
 
-/* ============================================================
-   CSS Anchor Positioning 全局回退策略库 (@position-try)
-   Baseline 2025/2026: Chrome 125+, Firefox 147+, Safari 26+
-   ============================================================ */
-@position-try --flip-top-start {
-  position-area: top span-right;
-}
-
-@position-try --flip-bottom-start {
-  position-area: bottom span-right;
-}
-
-@position-try --flip-top-end {
-  position-area: top span-left;
-}
-
-@position-try --flip-bottom-end {
-  position-area: bottom span-left;
-}
-
 @layer reset {
   *,
   *::before,
@@ -445,9 +425,9 @@
   .skeleton-shimmer {
     background: linear-gradient(
       90deg,
-      var(--paper-1) 0%,
-      color-mix(in oklab, var(--paper-2) 65%, transparent) calc(var(--shimmer-pos) + 20%),
-      var(--paper-1) calc(var(--shimmer-pos) + 40%)
+      var(--paper-1) calc(var(--shimmer-pos) - 25%),
+      color-mix(in oklab, var(--paper-2) 65%, transparent) var(--shimmer-pos),
+      var(--paper-1) calc(var(--shimmer-pos) + 25%)
     );
     animation: shimmer-sweep 1.8s var(--ease-out) infinite;
   }
@@ -455,6 +435,8 @@
   /* 纯 CSS 扇形/环形进度 (@property --progress-ratio) */
   .progress-ring {
     --progress-ratio: 0%;
+    display: inline-block;
+    aspect-ratio: 1;
     background: conic-gradient(
       var(--accent) var(--progress-ratio),
       color-mix(in oklab, var(--line) 30%, transparent) 0
@@ -772,10 +754,10 @@ html:active-view-transition-type(backward) {
 
 @keyframes shimmer-sweep {
   0% {
-    --shimmer-pos: -100%;
+    --shimmer-pos: -30%;
   }
   100% {
-    --shimmer-pos: 100%;
+    --shimmer-pos: 130%;
   }
 }
 

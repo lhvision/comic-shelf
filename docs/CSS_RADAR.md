@@ -73,7 +73,7 @@
 | **Invoker Commands (`commandfor`)**                  |              135+               |               144+               |                 26.2+                 |                ✅ Baseline 2025/2026                 |                      ✅ 渐进增强（支持原生调用，由 ToggleEvent 联动同步）                       |
 | **`ToggleEvent` (`beforetoggle/toggle`)**            | 114+ (popover)<br>132+ (dialog) | 125+ (popover)<br>133+ (dialog)  |     17+ (popover)<br>26+ (dialog)     |                ✅ Baseline 2025/2026                 |                       ✅ 已落地（`Modal.vue` / `AppPopover.vue` 状态机）                        |
 | **Interest Invokers (`interestfor`)**                |             130+🚩              |                ⏳                |                  ⏳                   |                   🧪 Experimental                    |                   ✅ 渐进增强（`AppTooltip.vue` 声明式属性 + JS 定时器兜底）                    |
-| **CSS Anchor Positioning API**                       |              125+               |               147+               |                  26+                  |                ✅ Baseline 2025/2026                 |                 ✅ 已落地（main.css 全局 @position-try / AppPopover / Tooltip）                 |
+| **CSS Anchor Positioning API**                       |              125+               |               147+               |                  26+                  |                ✅ Baseline 2025/2026                 |                  ✅ 已落地（`AppPopover` / `AppTooltip` 原生关键字自适应翻转）                  |
 | **`@container anchored(fallback)`**                  |              135+               |                ⏳                |                  ⏳                   |                   🧪 Experimental                    |                   ✅ 渐进增强（`AppPopover` / `AppTooltip` 小三角自适应翻转）                   |
 | **全局 View Transitions API**                        |     111+<br>_(125+ types)_      |      144+<br>_(147+ types)_      |        18+<br>_(18.2+ types)_         |                ✅ Baseline 2024/2025                 |                      ✅ 已落地（`useViewTransition.ts` / 跨页面路由推进）                       |
 | **`-webkit-line-clamp` / `line-clamp`**              | 6+ (前缀)<br>_(Preview 无前缀)_ | 68+ (前缀)<br>_(Preview 无前缀)_ | 5+ (前缀)<br>_(18.2-18.3 误开已回退)_ | ✅ W3C 兼容事实标准（前缀）<br>⏳ 规范草案（无前缀） |                       ✅ 已落地（`AppTextClamp.vue` / `main.css` 实用类）                       |
@@ -255,6 +255,8 @@ background: color-mix(in oklab, var(--paper-1) 50%, transparent);
 }
 
 .progress-ring {
+  display: inline-block;
+  aspect-ratio: 1;
   background: conic-gradient(
     var(--accent) var(--progress-ratio),
     color-mix(in oklab, var(--line) 30%, transparent) 0
@@ -262,7 +264,7 @@ background: color-mix(in oklab, var(--paper-1) 50%, transparent);
   transition: --progress-ratio var(--duration-2) var(--ease-out);
 }
 
-/* 3. 120Hz GPU 硬件加速纸张骨架屏平滑微光 */
+/* 3. 120Hz GPU 硬件加速纸张骨架屏平滑微光（对称光斑平移，零主线程重排） */
 @property --shimmer-pos {
   syntax: '<percentage>';
   inherits: false;
@@ -272,19 +274,19 @@ background: color-mix(in oklab, var(--paper-1) 50%, transparent);
 .skeleton-shimmer {
   background: linear-gradient(
     90deg,
-    var(--paper-1) 0%,
-    color-mix(in oklab, var(--paper-2) 65%, transparent) calc(var(--shimmer-pos) + 20%),
-    var(--paper-1) calc(var(--shimmer-pos) + 40%)
+    var(--paper-1) calc(var(--shimmer-pos) - 25%),
+    color-mix(in oklab, var(--paper-2) 65%, transparent) var(--shimmer-pos),
+    var(--paper-1) calc(var(--shimmer-pos) + 25%)
   );
   animation: shimmer-sweep 1.8s var(--ease-out) infinite;
 }
 
 @keyframes shimmer-sweep {
   0% {
-    --shimmer-pos: -100%;
+    --shimmer-pos: -30%;
   }
   100% {
-    --shimmer-pos: 100%;
+    --shimmer-pos: 130%;
   }
 }
 
@@ -395,7 +397,9 @@ background: color-mix(in oklab, var(--paper-1) 50%, transparent);
 **核心原理与优势**：
 
 1. **九宫格声明式定位（`position-area`）**：彻底取代传统 JS 坐标重算与繁琐的 `anchor(top)` 手动计算，使用 `position-area: bottom span-right` 或 `top` 配合 `justify-self: anchor-center` 直观宣告相对锚点的相对方位；
-2. **视口越界自适应翻转（`position-try-fallbacks`）**：声明 `position-try-fallbacks: flip-block, flip-inline`，当底部屏幕高度不足时由渲染引擎自动翻转到上方，0 布局抖动；
+2. **视口越界自适应翻转（`position-try-fallbacks` 与 `@position-try`）**：
+   - **首选内置关键字**：声明 `position-try-fallbacks: flip-block, flip-inline`，满足 95% 的镜像翻转需求，浏览器渲染引擎自动判定并翻转，**无需手写任何额外规则**；
+   - **高级定制回退（`@position-try`）**：当需要非镜像避让、特定贴边或改变对齐轴（如从 bottom 翻转到 left 或重设 `justify-self: start`）时，通过 `@position-try --name { ... }` 声明专属回退策略并在属性末尾挂载引用；
 3. **物理滑动胶囊动效（`SegmentedTabs.vue`）**：利用 `anchor-name` 给当前激活项赋予锚点名，滑块指示器纯 CSS 绑定锚点四边，实现 0 JS 重排的 120Hz 满帧跟手滑动。
 
 **纸间生产落地范式 A（`AppPopover.vue` 浮层锚定）**：

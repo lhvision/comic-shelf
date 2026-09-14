@@ -102,7 +102,7 @@
 - **全局基础动画集中声明**：`@keyframes spin` 等基础动效由 `main.css` 统一声明，严禁在各个业务 SFC 组件中重复手写私有 keyframes；
 - **原生 CSS 嵌套三层深度定律**：全站 SFC 仅允许最大 3 层嵌套（`Block -> Element -> State/Modifier`），锁死特异度权重；
 - **`:has()` 状态去胶水代码**：优先使用 `:has()` 接管子元素联动（`body:has(dialog[open])` 原生锁屏、`.field:has(input:focus-visible)`、`.card:has(:checked)`），杜绝维护冗余的纯样式响应式状态；
-- **CSS Anchor Positioning 全局回退库**：浮层越界翻转统一定义于 `src/styles/main.css` 的全局 `@position-try` 策略库（`--flip-top-start`, `--flip-bottom-start` 等）。
+- **CSS Anchor Positioning 越界自适应翻转**：浮层越界翻转统一采用标准关键字策略（`position-try-fallbacks: flip-block, flip-inline`）；非对称或特殊方位翻转可按需在组件局部通过 `@position-try` 扩展（完整落地范式查阅 `docs/CSS_RADAR.md` §2.8）。
 
 ---
 
