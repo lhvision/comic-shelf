@@ -110,7 +110,7 @@ function onKeydown(event: KeyboardEvent, index: number) {
   display: inline-flex;
   align-items: center;
   gap: var(--space-1);
-  padding: 0.25rem;
+  padding: var(--space-1);
   border: 1px solid var(--line);
   border-radius: var(--radius-2);
   background: var(--paper-1);
@@ -208,19 +208,19 @@ function onKeydown(event: KeyboardEvent, index: number) {
 
 /* Sizes */
 .segmented-tabs--sm .segmented-tab {
-  padding: 0.35rem 0.85rem;
+  padding: var(--space-1-5) var(--space-3-5);
   font-size: var(--text-xs);
   line-height: 1.2;
 }
 
 .segmented-tabs--md .segmented-tab {
-  padding: 0.45rem 1.1rem;
+  padding: var(--space-2) var(--space-4);
   font-size: var(--text-xs);
   line-height: 1.3;
 }
 
 .segmented-tabs--lg .segmented-tab {
-  padding: 0.6rem 1.4rem;
+  padding: var(--space-2-5) var(--space-5);
   font-size: var(--text-sm);
   line-height: 1.4;
 }

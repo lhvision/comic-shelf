@@ -208,17 +208,8 @@ if (import.meta.env.DEV) {
   border: 2px solid currentColor;
   border-right-color: transparent;
   border-radius: 50%;
-  animation: btn-spin 0.75s linear infinite;
+  animation: spin 0.75s linear infinite;
   flex-shrink: 0;
-}
-
-@keyframes btn-spin {
-  from {
-    transform: rotate(0deg);
-  }
-  to {
-    transform: rotate(360deg);
-  }
 }
 
 /* 形状外观：正圆与圆角方块 */
@@ -251,25 +242,25 @@ if (import.meta.env.DEV) {
 .btn-shape-circle.btn-sm,
 .btn-shape-square.btn-sm,
 .is-icon-only.btn-sm {
-  width: var(--control-sm, 2.15rem);
-  height: var(--control-sm, 2.15rem);
-  min-height: var(--control-sm, 2.15rem);
+  width: var(--control-sm);
+  height: var(--control-sm);
+  min-height: var(--control-sm);
 }
 
 .btn-shape-circle.btn-md,
 .btn-shape-square.btn-md,
 .is-icon-only.btn-md {
-  width: var(--control-md, 2.65rem);
-  height: var(--control-md, 2.65rem);
-  min-height: var(--control-md, 2.65rem);
+  width: var(--control-md);
+  height: var(--control-md);
+  min-height: var(--control-md);
 }
 
 .btn-shape-circle.btn-lg,
 .btn-shape-square.btn-lg,
 .is-icon-only.btn-lg {
-  width: var(--control-lg, 3.25rem);
-  height: var(--control-lg, 3.25rem);
-  min-height: var(--control-lg, 3.25rem);
+  width: var(--control-lg);
+  height: var(--control-lg);
+  min-height: var(--control-lg);
 }
 
 /* 图标按钮 ghost 变体质感（对齐旧 .icon-btn 典藏质感） */
@@ -301,20 +292,20 @@ if (import.meta.env.DEV) {
 
 /* 阅读器暗室主题高对比度防御（WCAG AA 级标准） */
 .btn.is-reader.btn-ghost {
-  background: var(--reader-surface-strong, rgba(255, 255, 255, 0.08));
-  border-color: var(--reader-line-strong, rgba(255, 255, 255, 0.18));
-  color: var(--reader-ink, #f5f5f5);
+  background: var(--reader-surface-strong);
+  border-color: var(--reader-line-strong);
+  color: var(--reader-ink);
 }
 
 .btn.is-reader.btn-ghost:hover:not(.is-disabled):not(:disabled) {
-  background: var(--reader-surface-hover, rgba(255, 255, 255, 0.16));
-  border-color: var(--reader-line-strong, rgba(255, 255, 255, 0.28));
-  color: #ffffff;
+  background: var(--reader-surface-hover);
+  border-color: var(--reader-line-strong);
+  color: var(--reader-ink);
 }
 
 .btn.is-reader.btn-primary {
   background: var(--accent);
-  color: #fff8f2;
+  color: var(--accent-contrast);
 }
 
 .btn.is-reader.btn-primary:hover:not(.is-disabled):not(:disabled) {
@@ -322,25 +313,25 @@ if (import.meta.env.DEV) {
 }
 
 .btn.is-reader.btn-secondary {
-  background: var(--reader-surface-strong, rgba(255, 255, 255, 0.12));
-  color: var(--reader-ink, #f5f5f5);
-  border-color: var(--reader-line-strong, rgba(255, 255, 255, 0.2));
+  background: var(--reader-surface-strong);
+  color: var(--reader-ink);
+  border-color: var(--reader-line-strong);
 }
 
 .btn.is-reader.btn-shape-circle.btn-ghost,
 .btn.is-reader.btn-shape-square.btn-ghost {
-  background: var(--reader-scrim-soft, rgba(0, 0, 0, 0.45));
-  border-color: var(--reader-line-strong, rgba(255, 255, 255, 0.18));
-  color: var(--reader-ink, #f5f5f5);
+  background: var(--reader-scrim-soft);
+  border-color: var(--reader-line-strong);
+  color: var(--reader-ink);
 }
 
 @media (max-width: 680px) {
   .btn-shape-circle.btn-md,
   .btn-shape-square.btn-md,
   .is-icon-only.btn-md {
-    width: var(--control-sm, 2.15rem);
-    height: var(--control-sm, 2.15rem);
-    min-height: var(--control-sm, 2.15rem);
+    width: var(--control-sm);
+    height: var(--control-sm);
+    min-height: var(--control-sm);
   }
 }
 </style>

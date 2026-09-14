@@ -95,13 +95,13 @@ defineEmits<{
   cursor: pointer;
   user-select: none;
   transition:
-    background var(--duration-2) var(--ease-out),
+    background-color var(--duration-2) var(--ease-out),
     color var(--duration-2) var(--ease-out),
     border-color var(--duration-2) var(--ease-out);
 }
 
 .reader-chapter-banner:hover {
-  background: var(--accent);
+  background-color: var(--accent);
   color: var(--paper-0);
 }
 
@@ -134,8 +134,8 @@ defineEmits<{
       var(--control-md) + max(var(--space-4), env(safe-area-inset-bottom, 0px)) + var(--space-2)
     );
     max-width: calc(100vw - var(--space-4) * 2);
-    padding: 0 var(--space-2-5, 0.625rem);
-    gap: var(--space-1-5, 0.375rem);
+    padding: 0 var(--space-2-5);
+    gap: var(--space-1-5);
   }
 
   .reader-chapter-title {

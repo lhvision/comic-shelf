@@ -402,7 +402,7 @@ const {
   display: inline-flex;
   align-items: center;
   gap: var(--space-1);
-  padding: 0.2rem 0.4rem;
+  padding: var(--space-badge-y) var(--space-1);
   border: 1px solid var(--line);
   border-radius: var(--radius-1);
   background: var(--paper-0);

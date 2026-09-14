@@ -64,10 +64,10 @@ const illustrationSrc = computed(() => getIllustration(props.variant))
   flex-direction: column;
   align-items: center;
   gap: var(--space-3);
-  padding: var(--space-3-5, var(--space-4)) var(--space-3-5, var(--space-4)) var(--space-3);
+  padding: var(--space-3-5) var(--space-3-5) var(--space-3);
   border-radius: var(--radius-2);
-  background: color-mix(in oklab, var(--paper-0, #f8f6f0) 8%, transparent);
-  border: 1px solid color-mix(in oklab, var(--line, #e2ded5) 16%, transparent);
+  background: color-mix(in oklab, var(--paper-0) 8%, transparent);
+  border: 1px solid color-mix(in oklab, var(--line) 16%, transparent);
   box-shadow: 0 16px 36px -6px rgb(0 0 0 / 52%);
   backdrop-filter: blur(14px);
   max-width: min(88vw, 24rem);
@@ -78,8 +78,8 @@ const illustrationSrc = computed(() => getIllustration(props.variant))
 /* 全幅漫画大尺寸模式：与漫画视口等比呼应，展现大尺寸看板插画 */
 .reader-loading-state.is-full-frame .loading-card {
   max-width: min(92%, 34rem);
-  padding: var(--space-4) var(--space-4) var(--space-3-5, var(--space-4));
-  gap: var(--space-3-5, var(--space-4));
+  padding: var(--space-4) var(--space-4) var(--space-3-5);
+  gap: var(--space-3-5);
   border-radius: var(--radius-3);
 }
 
@@ -101,8 +101,8 @@ const illustrationSrc = computed(() => getIllustration(props.variant))
   aspect-ratio: 16 / 9;
   overflow: hidden;
   border-radius: var(--radius-1);
-  background: color-mix(in oklab, var(--ink-0, #141311) 22%, transparent);
-  border: 1px solid color-mix(in oklab, var(--paper-0, #f8f6f0) 10%, transparent);
+  background: color-mix(in oklab, var(--ink-0) 22%, transparent);
+  border: 1px solid color-mix(in oklab, var(--paper-0) 10%, transparent);
 }
 
 .illustration-img {
@@ -122,11 +122,11 @@ const illustrationSrc = computed(() => getIllustration(props.variant))
   background: linear-gradient(
     110deg,
     transparent 15%,
-    color-mix(in oklab, var(--paper-0, #ffffff) 36%, transparent) 50%,
+    color-mix(in oklab, var(--paper-0) 36%, transparent) 50%,
     transparent 85%
   );
   translate: -100% 0;
-  animation: shimmer-sweep 2.4s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+  animation: shimmer 2.4s cubic-bezier(0.4, 0, 0.2, 1) infinite;
 }
 
 .loading-meta {
@@ -135,14 +135,14 @@ const illustrationSrc = computed(() => getIllustration(props.variant))
   gap: var(--space-2);
   font-family: var(--font-mono);
   font-size: var(--text-xs);
-  color: var(--reader-muted, #938d80);
+  color: var(--reader-muted);
   letter-spacing: 0.08em;
 }
 
 .pulse-indicator {
   width: 0.45rem;
   height: 0.45rem;
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   background: var(--accent);
   box-shadow: 0 0 0 0 color-mix(in oklab, var(--accent) 40%, transparent);
   animation: pulse-dot 1.8s var(--ease-out) infinite;
@@ -151,12 +151,6 @@ const illustrationSrc = computed(() => getIllustration(props.variant))
 .loading-text {
   font-size: var(--text-xs);
   line-height: 1.4;
-}
-
-@keyframes shimmer-sweep {
-  to {
-    translate: 100% 0;
-  }
 }
 
 @keyframes pulse-dot {

@@ -170,7 +170,7 @@ defineExpose({
 }
 
 .confirm-btn {
-  padding: 0.25rem 0.65rem;
+  padding: var(--space-1) var(--space-2-5);
   border-radius: var(--radius-1);
   font-family: var(--font-mono);
   font-size: var(--text-caption);
@@ -183,7 +183,7 @@ defineExpose({
 
 .confirm-btn.danger {
   background: var(--accent);
-  color: #fff;
+  color: var(--accent-contrast);
   border: 1px solid var(--accent-strong);
 }
 

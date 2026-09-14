@@ -218,12 +218,12 @@ function chapterState(id: string): 'past' | 'active' | 'upcoming' {
   padding: 0 var(--space-3);
   border: 1px solid var(--line);
   border-radius: var(--radius-2);
-  background: var(--paper-0);
+  background-color: var(--paper-0);
   color: var(--ink-1);
   font-size: var(--text-sm);
   transition:
     border-color var(--duration-2) var(--ease-out),
-    background var(--duration-2) var(--ease-out),
+    background-color var(--duration-2) var(--ease-out),
     color var(--duration-2) var(--ease-out);
 }
 

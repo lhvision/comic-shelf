@@ -67,13 +67,13 @@
 
 - **纸张底色（Paper）**：`--paper-0`（纯白卡片）、`--paper-1`（暖纸底色）、`--paper-2`（深层纸背）、`--paper-warm`（泛黄书页质感）；
 - **墨色层级（Ink）**：`--ink-0`（主标题浓墨）、`--ink-1`（正文浓淡）、`--ink-2`（次要信息与元数据淡墨）、`--ink-3`（边框淡墨与分割线）；
-- **品牌点缀（Accent）**：`--accent`（朱砂朱红 `oklch(0.59 0.17 38)`）、`--accent-soft`（朱砂印泥淡底）、`--accent-strong`（深朱砂选中态）；
+- **品牌点缀（Accent）**：`--accent`（朱砂朱红 `oklch(0.59 0.17 38)`）、`--accent-soft`（朱砂印泥淡底）、`--accent-strong`（深朱砂选中态）、`--accent-contrast`（`#fff8f2`，朱砂主色背景上的高对比反衬文本色）；
 - **状态感知（Status）**：`--success`（松石绿已缓存/就绪态）、`--danger`（朱红警示与危险操作）、`--line`（纸质装订压痕线）；
 - **阅览室暗室（Reader Dark Room）**：`--reader-bg`（纯黑暗室底）、`--reader-panel`（暗调磨砂控制面板）、`--reader-text`（防刺眼高对比柔白）。
 
 ### 2.2 间距与字阶体系（Spacing & Typography）
 
-- **4pt 黄金网格**：间距全部采用 `--space-1` (4px) 至 `--space-12` (48px)，禁止奇数 margin/padding；
+- **4pt 黄金网格**：间距全部采用 `--space-0-5` (2px)、`--space-1` (4px) 至 `--space-16` (128px)，禁止非 Token 魔法值；微标与芯片统一使用 `--space-badge-y: 0.15rem` 与 `--space-badge-x: 0.5rem`；胶囊药丸统一使用 `--radius-pill: 9999px`；
 - **字体分工**：
   - **标题与典藏名**：Serif Display（衬线体，营造书籍装订典雅感）；
   - **正文与控件**：Sans-serif（高可读性现代无衬线体）；
@@ -93,6 +93,16 @@
 - **平板视口（681px ~ 960px）**：单栏自适应，目录与详情纵向排布；
 - **移动视口（≤ 680px）**：紧凑单列排布，顶部导航栏简化，阅读器强制归一化为单列（`pagesPerView = 1`）；
 - **超窄抽屉（≤ 480px）**：弹窗自动切换为底部抽屉贴边形态。
+
+### 2.5 现代 CSS 属性与选择器架构契约（Modern CSS Architecture）
+
+- **`@property` 类型化自定义属性**：涉及平滑数值与渐变插值的 CSS 变量统一由 `@property` 注册（`--mask-left/right` 双滑块遮罩、`--progress-ratio: <percentage>` 扇形/环形进度、`--shimmer-pos: <percentage>` 120Hz 骨架屏平滑微光、`--card-glow-color` 与 `--card-glow-size` 径向光晕平滑过渡）；
+- **单源设计系统与禁止虚假防御（Single-Source & Zero Local Hex）**：除动态内联注入样式（如 `var(--mask-left, 0px)`）外，严禁在组件内部书写 `var(--name, #fallback)` 等硬编码兜底；全站除 `tokens.css` 外实现 0 十六进制散落；
+- **过渡属性精确收敛原则**：纯色背景必须使用长写 `transition: background-color`，渐变背景过渡使用 `@property` 变量插值，严禁滥用 `transition: background` 或 `transition: all`；
+- **全局基础动画集中声明**：`@keyframes spin` 等基础动效由 `main.css` 统一声明，严禁在各个业务 SFC 组件中重复手写私有 keyframes；
+- **原生 CSS 嵌套三层深度定律**：全站 SFC 仅允许最大 3 层嵌套（`Block -> Element -> State/Modifier`），锁死特异度权重；
+- **`:has()` 状态去胶水代码**：优先使用 `:has()` 接管子元素联动（`body:has(dialog[open])` 原生锁屏、`.field:has(input:focus-visible)`、`.card:has(:checked)`），杜绝维护冗余的纯样式响应式状态；
+- **CSS Anchor Positioning 全局回退库**：浮层越界翻转统一定义于 `src/styles/main.css` 的全局 `@position-try` 策略库（`--flip-top-start`, `--flip-bottom-start` 等）。
 
 ---
 

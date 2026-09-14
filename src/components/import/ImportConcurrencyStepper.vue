@@ -167,7 +167,7 @@ function handleInc() {
 
 .stepper__value--locked {
   display: inline-block;
-  padding: 0.1rem 0.4rem;
+  padding: var(--space-badge-y) var(--space-badge-x);
   background: var(--paper-1);
   border: 1px solid var(--line);
   border-radius: var(--radius-1);
@@ -181,10 +181,10 @@ function handleInc() {
 
 .download-settings__locked code {
   font-family: var(--font-mono);
-  font-size: 0.75rem;
+  font-size: var(--text-caption);
   color: var(--ink-1);
   background: var(--paper-1);
-  padding: 0.1rem 0.25rem;
+  padding: 1px var(--space-1);
   border-radius: var(--radius-1);
 }
 
@@ -196,7 +196,7 @@ function handleInc() {
   background: transparent;
   color: var(--ink-2);
   cursor: pointer;
-  padding: 2px;
+  padding: var(--space-0-5);
   border-radius: var(--radius-1);
 }
 

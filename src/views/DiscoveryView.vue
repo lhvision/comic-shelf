@@ -99,11 +99,11 @@ onMounted(() => {
     <!-- Loading Skeletons -->
     <section v-else-if="loading && !items.length" class="discovery-grid">
       <div v-for="i in 10" :key="i" class="skeleton-card">
-        <div class="skeleton-cover"></div>
+        <div class="skeleton-cover skeleton-shimmer"></div>
         <div class="skeleton-body">
-          <div class="skeleton-line line-title"></div>
-          <div class="skeleton-line line-meta"></div>
-          <div class="skeleton-btn"></div>
+          <div class="skeleton-line line-title skeleton-shimmer"></div>
+          <div class="skeleton-line line-meta skeleton-shimmer"></div>
+          <div class="skeleton-btn skeleton-shimmer"></div>
         </div>
       </div>
     </section>
@@ -246,9 +246,6 @@ onMounted(() => {
 
 .skeleton-cover {
   aspect-ratio: 3 / 4.15;
-  background: linear-gradient(90deg, var(--paper-1) 25%, var(--paper-2) 50%, var(--paper-1) 75%);
-  background-size: 200% 100%;
-  animation: shimmer 1.5s infinite;
 }
 
 .skeleton-body {
@@ -261,7 +258,6 @@ onMounted(() => {
 .skeleton-line {
   height: 0.875rem;
   border-radius: var(--radius-1);
-  background: var(--paper-2);
 }
 
 .line-title {
@@ -273,18 +269,8 @@ onMounted(() => {
 }
 
 .skeleton-btn {
-  height: 2rem;
+  height: var(--control-xs);
   border-radius: var(--radius-2);
-  background: var(--paper-2);
   margin-top: var(--space-2);
-}
-
-@keyframes shimmer {
-  0% {
-    background-position: 200% 0;
-  }
-  100% {
-    background-position: -200% 0;
-  }
 }
 </style>

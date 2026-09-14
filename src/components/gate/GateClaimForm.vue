@@ -126,7 +126,7 @@ function handleBackToSecret() {
   font-family: var(--font-mono);
   font-size: var(--text-caption);
   color: var(--ink-2);
-  padding: 0.15rem 0.45rem;
+  padding: var(--space-badge-y) var(--space-badge-x);
   background: var(--paper-1);
   border-radius: var(--radius-1);
   border: 1px solid var(--line);

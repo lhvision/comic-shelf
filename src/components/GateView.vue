@@ -131,7 +131,7 @@ const { brandIcon } = useBrandIcon()
 .gate-title-group {
   display: flex;
   flex-direction: column;
-  gap: 0.15rem;
+  gap: var(--space-0-5);
 }
 
 .brand-eyebrow {

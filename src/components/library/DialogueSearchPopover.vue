@@ -426,17 +426,17 @@ function onMouseEnterItem(index: number) {
   padding: var(--space-2) var(--space-2-5);
   border-radius: var(--radius-1);
   border: 1px solid transparent;
-  background: transparent;
+  background-color: transparent;
   cursor: pointer;
   transition:
-    background var(--duration-1) var(--ease-out),
+    background-color var(--duration-1) var(--ease-out),
     border-color var(--duration-1) var(--ease-out),
     box-shadow var(--duration-1) var(--ease-out);
 }
 
 .result-item:hover,
 .result-item.is-focused {
-  background: var(--paper-1);
+  background-color: var(--paper-1);
   border-color: var(--line-strong);
   box-shadow: inset 2px 0 0 var(--accent);
 }
@@ -485,8 +485,8 @@ function onMouseEnterItem(index: number) {
 .source-badge {
   font-size: var(--text-caption);
   font-weight: 600;
-  padding: 1px 4px;
-  border-radius: 3px;
+  padding: 1px var(--space-1);
+  border-radius: var(--radius-1);
   background: var(--paper-2);
   color: var(--ink-1);
   flex-shrink: 0;
@@ -507,8 +507,8 @@ function onMouseEnterItem(index: number) {
   font-size: var(--text-caption);
   color: var(--accent);
   background: color-mix(in oklab, var(--accent) 10%, transparent);
-  padding: 1px 5px;
-  border-radius: 3px;
+  padding: 1px var(--space-1);
+  border-radius: var(--radius-1);
   font-weight: 600;
   flex-shrink: 0;
 }

@@ -77,13 +77,13 @@ async function toggle() {
   display: grid;
   place-items: center;
   border-radius: 50%;
-  color: #fff;
+  color: var(--paper-0);
 }
 
 .favorite-button {
   width: 2.25rem;
   height: 2.25rem;
-  border: 1px solid rgb(255 255 255 / 26%);
+  border: 1px solid var(--reader-line);
   background: color-mix(in oklab, var(--ink-0) 78%, transparent);
   box-shadow: 0 2px 8px rgb(0 0 0 / 35%);
   transition:
@@ -109,7 +109,7 @@ async function toggle() {
 
 .favorite-button[aria-pressed='true'] {
   background: color-mix(in oklab, var(--accent) 82%, rgb(0 0 0 / 45%));
-  color: #fff;
+  color: var(--accent-contrast);
   border-color: transparent;
 }
 

@@ -101,6 +101,7 @@ const progressStyle = computed(() => {
   return {
     '--progress': fraction.value,
     '--percent': `${percent.value}%`,
+    '--progress-ratio': `${percent.value}%`,
     '--value': safeValue,
     '--max': safeMax,
   }
@@ -226,8 +227,7 @@ const progressStyle = computed(() => {
 
 /* 拟真非线性加载（先快后慢模拟等待） */
 .app-progress-bar.is-indeterminate .app-progress-bar__fill {
-  animation: app-progress-simulate 10s var(--ease-progress, cubic-bezier(0.08, 0.81, 0.29, 0.99))
-    forwards;
+  animation: app-progress-simulate 10s var(--ease-progress) forwards;
 }
 
 @keyframes app-progress-simulate {

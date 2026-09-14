@@ -248,7 +248,7 @@ async function handleConfirmReturn() {
 .card-titles {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: var(--space-0-5);
 }
 
 .title-row {
@@ -271,7 +271,7 @@ async function handleConfirmReturn() {
 }
 
 .card-subtitle {
-  font-size: 0.65rem;
+  font-size: var(--text-caption);
   letter-spacing: 0.12em;
   color: var(--ink-2);
 }
@@ -279,7 +279,7 @@ async function handleConfirmReturn() {
 .status-seal {
   font-family: var(--font-mono);
   font-size: var(--text-caption);
-  padding: 1px 6px;
+  padding: 1px var(--space-1-5);
   border-radius: var(--radius-1);
   background: var(--paper-1);
   color: var(--ink-1);
@@ -297,7 +297,7 @@ async function handleConfirmReturn() {
 .reader-plate {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: var(--space-0-5);
   padding: var(--space-2) var(--space-2-5);
   background: var(--paper-1);
   border: 1px solid var(--line);
@@ -305,7 +305,7 @@ async function handleConfirmReturn() {
 }
 
 .plate-label {
-  font-size: 0.68rem;
+  font-size: var(--text-caption);
   color: var(--ink-2);
   font-family: var(--font-mono);
 }
@@ -397,7 +397,7 @@ async function handleConfirmReturn() {
 .confirm-header {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: var(--space-0-5);
 }
 
 .confirm-title {

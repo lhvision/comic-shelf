@@ -85,7 +85,7 @@ const emit = defineEmits<{
   display: inline-flex;
   align-items: center;
   gap: var(--space-1);
-  padding: 0.2rem 0.5rem;
+  padding: var(--space-badge-y) var(--space-badge-x);
   border: 1px solid color-mix(in oklab, var(--accent) 35%, var(--line));
   border-radius: var(--radius-1);
   background: var(--accent-soft);
@@ -111,7 +111,7 @@ const emit = defineEmits<{
   display: inline-flex;
   align-items: center;
   gap: var(--space-1);
-  padding: 0.2rem 0.5rem;
+  padding: var(--space-badge-y) var(--space-badge-x);
   border: 1px dashed color-mix(in oklab, var(--line) 75%, var(--accent));
   border-radius: var(--radius-1);
   background: var(--paper-1);

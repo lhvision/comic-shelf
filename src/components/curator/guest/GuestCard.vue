@@ -413,7 +413,7 @@ function handleRemovePass() {
 .pass-identity {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: var(--space-0-5);
   min-width: 0;
 }
 
@@ -439,7 +439,7 @@ function handleRemovePass() {
   font-family: var(--font-mono);
   font-size: var(--text-caption);
   font-weight: 600;
-  padding: 2px 8px;
+  padding: var(--space-0-5) var(--space-2);
   border-radius: var(--radius-1);
   border: 1px solid transparent;
 }
@@ -457,15 +457,15 @@ function handleRemovePass() {
 }
 
 .status-seal.active {
-  color: var(--success, #2e7d32);
-  background: color-mix(in oklab, var(--success, #2e7d32) 10%, var(--paper-0));
-  border-color: color-mix(in oklab, var(--success, #2e7d32) 30%, transparent);
+  color: var(--success);
+  background: color-mix(in oklab, var(--success) 10%, var(--paper-0));
+  border-color: color-mix(in oklab, var(--success) 30%, transparent);
 }
 
 .status-seal.full {
-  color: var(--warning, #b45309);
-  background: color-mix(in oklab, var(--warning, #b45309) 10%, var(--paper-0));
-  border-color: color-mix(in oklab, var(--warning, #b45309) 35%, transparent);
+  color: var(--warning);
+  background: color-mix(in oklab, var(--warning) 10%, var(--paper-0));
+  border-color: color-mix(in oklab, var(--warning) 35%, transparent);
 }
 
 .status-seal.cooling-locked {
@@ -476,9 +476,9 @@ function handleRemovePass() {
 }
 
 .status-seal.rate-limited {
-  color: var(--warning, #b45309);
-  background: color-mix(in oklab, var(--warning, #b45309) 12%, var(--paper-0));
-  border-color: color-mix(in oklab, var(--warning, #b45309) 40%, transparent);
+  color: var(--warning);
+  background: color-mix(in oklab, var(--warning) 12%, var(--paper-0));
+  border-color: color-mix(in oklab, var(--warning) 40%, transparent);
   font-weight: 600;
 }
 
@@ -512,9 +512,9 @@ function handleRemovePass() {
 }
 
 .device-abuse-alert.rate {
-  color: var(--warning, #b45309);
-  background: color-mix(in oklab, var(--warning, #b45309) 8%, var(--paper-0));
-  border: 1px solid color-mix(in oklab, var(--warning, #b45309) 30%, transparent);
+  color: var(--warning);
+  background: color-mix(in oklab, var(--warning) 8%, var(--paper-0));
+  border: 1px solid color-mix(in oklab, var(--warning) 30%, transparent);
 }
 
 /* 核心高频动作区 */
@@ -620,7 +620,7 @@ function handleRemovePass() {
 }
 
 .device-tray-status.active {
-  color: var(--success, #2e7d32);
+  color: var(--success);
 }
 
 /* 卡片底栏 */
@@ -637,7 +637,7 @@ function handleRemovePass() {
 .expiry-info {
   display: flex;
   align-items: center;
-  gap: 2px;
+  gap: var(--space-0-5);
   font-size: var(--text-caption);
 }
 
@@ -660,8 +660,8 @@ function handleRemovePass() {
 .quota-stepper {
   display: inline-flex;
   align-items: center;
-  gap: 2px;
-  padding: 0 4px;
+  gap: var(--space-0-5);
+  padding: 0 var(--space-1);
   min-height: 36px;
   background: var(--paper-0);
   border: 1px solid var(--line);
@@ -671,16 +671,16 @@ function handleRemovePass() {
 
 .quota-label {
   color: var(--ink-2);
-  font-size: 11px;
-  padding-left: 2px;
+  font-size: var(--text-caption);
+  padding-left: var(--space-0-5);
 }
 
-.quota-val {
+.quota-num {
   font-family: var(--font-mono);
   font-weight: 600;
   color: var(--ink-0);
-  padding: 0 4px;
-  font-size: 12px;
+  padding: 0 var(--space-1);
+  font-size: var(--text-xs);
 }
 
 .quota-step-btn {
@@ -761,7 +761,7 @@ function handleRemovePass() {
   display: inline-flex;
   align-items: center;
   gap: var(--space-1);
-  padding: 2px 6px;
+  padding: var(--space-0-5) var(--space-1-5);
   background: var(--paper-1);
   border: 1px solid var(--line);
   border-radius: var(--radius-1);

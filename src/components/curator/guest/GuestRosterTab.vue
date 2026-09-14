@@ -219,14 +219,17 @@ function resetFilters() {
 .roster-search-box {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
+  gap: var(--space-1);
   padding: 0 var(--space-2);
   height: 32px;
   background: var(--paper-1);
   border: 1px solid var(--line);
-  border-radius: var(--radius-pill, 9999px);
+  border-radius: var(--radius-pill);
   color: var(--ink-2);
-  transition: all var(--duration-1) var(--ease-out);
+  transition:
+    background-color var(--duration-1) var(--ease-out),
+    border-color var(--duration-1) var(--ease-out),
+    color var(--duration-1) var(--ease-out);
 }
 
 .roster-search-box:focus-within {
@@ -238,15 +241,29 @@ function resetFilters() {
 .roster-search-input {
   border: none;
   background: transparent;
-  padding: 0;
-  font-size: var(--text-xs);
-  color: var(--ink-0);
   outline: none;
-  width: 110px;
+  font-size: var(--text-caption);
+  color: var(--ink-0);
+  min-width: 90px;
 }
 
 .roster-search-input::placeholder {
   color: var(--ink-2);
+}
+
+.roster-search-clear {
+  border: none;
+  background: transparent;
+  color: var(--ink-2);
+  cursor: pointer;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.roster-search-clear:hover {
+  color: var(--ink-0);
 }
 
 .roster-tip {
@@ -282,7 +299,7 @@ function resetFilters() {
   align-items: center;
   gap: var(--space-1);
   overflow-x: auto;
-  padding: 2px var(--space-1) var(--space-1) var(--space-1);
+  padding: var(--space-0-5) var(--space-1) var(--space-1) var(--space-1);
   scrollbar-width: none;
 }
 
@@ -293,17 +310,20 @@ function resetFilters() {
 .filter-tab-btn {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--space-1-5);
   min-height: 32px;
   padding: 0 var(--space-3);
-  border-radius: var(--radius-pill, 9999px);
+  border-radius: var(--radius-pill);
   border: 1px solid var(--line);
   background: var(--paper-1);
   color: var(--ink-1);
   font-size: var(--text-caption);
   cursor: pointer;
   white-space: nowrap;
-  transition: all var(--duration-1) var(--ease-out);
+  transition:
+    background-color var(--duration-1) var(--ease-out),
+    border-color var(--duration-1) var(--ease-out),
+    color var(--duration-1) var(--ease-out);
 }
 
 .filter-tab-btn:hover {
@@ -389,15 +409,6 @@ function resetFilters() {
 
 .spin-icon {
   animation: spin 1s linear infinite;
-}
-
-@keyframes spin {
-  from {
-    transform: rotate(0deg);
-  }
-  to {
-    transform: rotate(360deg);
-  }
 }
 
 @media (max-width: 640px) {

@@ -63,7 +63,7 @@ const emit = defineEmits<{
 .update-pill {
   display: inline-grid;
   place-items: center;
-  padding: 0.1rem 0.35rem;
+  padding: var(--space-badge-y) var(--space-badge-x);
   border-radius: var(--radius-1);
   background: var(--accent);
   color: var(--paper-0);
@@ -121,14 +121,5 @@ const emit = defineEmits<{
 
 .is-spinning {
   animation: spin 1s linear infinite;
-}
-
-@keyframes spin {
-  from {
-    transform: rotate(0deg);
-  }
-  to {
-    transform: rotate(360deg);
-  }
 }
 </style>

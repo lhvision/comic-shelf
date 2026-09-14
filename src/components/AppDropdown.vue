@@ -338,12 +338,12 @@ function onTriggerKeydown(event: KeyboardEvent) {
 
 .dropdown-trigger.btn-md {
   min-height: var(--control-md);
-  padding: 0.45rem 0.85rem 0.45rem 1rem;
+  padding: var(--space-2) var(--space-3-5) var(--space-2) var(--space-4);
 }
 
 .dropdown-trigger.btn-sm {
   min-height: var(--control-sm);
-  padding: 0.25rem 0.65rem 0.25rem 0.75rem;
+  padding: var(--space-1) var(--space-2-5) var(--space-1) var(--space-3);
   font-size: var(--text-xs);
 }
 
@@ -388,7 +388,7 @@ function onTriggerKeydown(event: KeyboardEvent) {
   align-items: center;
   gap: var(--space-2);
   width: 100%;
-  padding: 0.45rem 0.75rem;
+  padding: var(--space-2) var(--space-3);
   border: 0;
   border-radius: var(--radius-1);
   background: transparent;

@@ -255,7 +255,7 @@ const { recommendations, onReaderCompleted, onSelectComic, onOpenComicDetail, on
   display: grid;
   place-items: center;
   height: 100dvh;
-  background: var(--reader-bg, #0d0c0a);
+  background: var(--reader-bg);
   padding: var(--space-4);
 }
 

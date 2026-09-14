@@ -121,7 +121,7 @@ function onClickItem(cmd: SearchCommandDef) {
   border: 1px solid var(--line-strong);
   border-radius: var(--radius-2);
   box-shadow: var(--shadow-3);
-  z-index: var(--z-dropdown, 50);
+  z-index: var(--z-dropdown);
   overflow: hidden;
   user-select: none;
 }
@@ -161,7 +161,7 @@ function onClickItem(cmd: SearchCommandDef) {
 
 .kbd-hint {
   display: inline-block;
-  padding: 0.15rem 0.4rem;
+  padding: var(--space-badge-y) var(--space-badge-x);
   font-size: var(--text-caption);
   font-family: monospace;
   background: var(--paper-0);
@@ -184,13 +184,13 @@ function onClickItem(cmd: SearchCommandDef) {
   border-radius: var(--radius-1);
   cursor: pointer;
   transition:
-    background var(--duration-1) var(--ease-out),
+    background-color var(--duration-1) var(--ease-out),
     color var(--duration-1) var(--ease-out);
 }
 
 .menu-item:hover,
 .menu-item.is-focused {
-  background: var(--paper-2);
+  background-color: var(--paper-2);
 }
 
 .item-tag-wrapper {
@@ -199,7 +199,7 @@ function onClickItem(cmd: SearchCommandDef) {
 
 .command-tag {
   display: inline-block;
-  padding: 0.2rem 0.5rem;
+  padding: var(--space-badge-y) var(--space-badge-x);
   background: color-mix(in oklab, var(--accent) 12%, var(--paper-1));
   border: 1px solid color-mix(in oklab, var(--accent) 30%, transparent);
   border-radius: var(--radius-1);
@@ -214,7 +214,7 @@ function onClickItem(cmd: SearchCommandDef) {
   min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: 0.15rem;
+  gap: var(--space-0-5);
 }
 
 .command-desc {

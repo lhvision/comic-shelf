@@ -160,7 +160,7 @@ function handleRemove(event: MouseEvent) {
 
 <style scoped>
 .chip--sm {
-  padding: 0.15rem 0.5rem;
+  padding: var(--space-badge-y) var(--space-badge-x);
   font-size: var(--text-caption);
   gap: 0.25em;
 }

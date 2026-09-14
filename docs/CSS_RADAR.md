@@ -54,44 +54,46 @@
 
 > 数据来源：MDN BCD + Can I Use，更新于 2026-09。
 
-| 特性 / API                                           |             Chrome              |             Firefox              |                Safari                 |                 规范状态 / Baseline                  |                        本项目落地状态                        |
-| :--------------------------------------------------- | :-----------------------------: | :------------------------------: | :-----------------------------------: | :--------------------------------------------------: | :----------------------------------------------------------: |
-| `light-dark()`                                       |              123+               |               120+               |                 17.5+                 |                   ✅ Baseline 2024                   |      ⚠️ 审慎评估（保留 hex+oklch 双层回退，防色彩丢失）      |
-| `color-mix(in oklab, ...)`                           |              111+               |               113+               |                 16.2+                 |                   ✅ Baseline 2023                   |           ✅ 已落地（tokens.css / 柔和半透明色阶）           |
-| `@container (inline-size)`                           |              105+               |               110+               |                  16+                  |                   ✅ Baseline 2023                   |            ✅ 已落地（ImportPanel / 响应式侧栏）             |
-| `@layer`                                             |               99+               |               97+                |                 15.4+                 |                   ✅ Baseline 2022                   |            ✅ 已落地（main.css 顶层样式层级声明）            |
-| CSS Nesting (`&`)                                    |              120+               |               117+               |                 17.2+                 |                   ✅ Baseline 2024                   |                ✅ 已落地（全站 SFC 样式规范）                |
-| `@property`                                          |               85+               |               128+               |                 16.4+                 |                   ✅ Baseline 2024                   |           ✅ 已落地（tokens.css 渐变遮罩变量插值）           |
-| **HTML Popover (`auto`/`manual`)**                   |              114+               |               125+               |                  17+                  |                   ✅ Baseline 2024                   | ✅ 已落地（`AppPopover` / `AppDropdown` / `StoragePopover`） |
-| **HTML Popover (`hint`)**                            |              151+               |               153+               |                  ⏳                   |               🔶 Newly Available 2026                |         ✅ 渐进增强（`AppTooltip.vue` 轻量气泡提示）         |
-| **CSS Carousel (`::scroll-marker/button`)**          |              135+               |                ⏳                |                  ⏳                   |               🔶 Newly Available 2025                |     ✅ 渐进增强（`CoverCarousel.vue` 零 JS 标记与切换）      |
-| **CSS Gap Decorations (`row-rule` / `column-rule`)** |              149+               |                ⏳                |                  ⏳                   |               🔶 Newly Available 2026                |      ✅ 渐进增强（`MetadataPanel.vue` 双列网格装饰线）       |
-| **HTML5 `<dialog>` (Top Layer)**                     |               37+               |               98+                |                 15.4+                 |                   ✅ Baseline 2022                   |            ✅ 已落地（`Modal.vue` 核心弹窗基建）             |
-| **`<dialog closedby="any">`**                        |              134+               |               141+               |                  ⏳                   |               🔶 Newly Available 2025                |      ✅ 渐进增强（`Modal.vue` 原生属性 + 蒙层点击兜底）      |
-| **Invoker Commands (`commandfor`)**                  |              135+               |               144+               |                 26.2+                 |                ✅ Baseline 2025/2026                 |     ✅ 渐进增强（支持原生调用，由 ToggleEvent 联动同步）     |
-| **`ToggleEvent` (`beforetoggle/toggle`)**            | 114+ (popover)<br>132+ (dialog) | 125+ (popover)<br>133+ (dialog)  |     17+ (popover)<br>26+ (dialog)     |                ✅ Baseline 2025/2026                 |      ✅ 已落地（`Modal.vue` / `AppPopover.vue` 状态机）      |
-| **Interest Invokers (`interestfor`)**                |             130+🚩              |                ⏳                |                  ⏳                   |                   🧪 Experimental                    |  ✅ 渐进增强（`AppTooltip.vue` 声明式属性 + JS 定时器兜底）  |
-| **CSS Anchor Positioning API**                       |              125+               |               147+               |                  26+                  |                ✅ Baseline 2025/2026                 |  ✅ 已落地（`AppPopover` / `AppTooltip` / `SegmentedTabs`）  |
-| **`@container anchored(fallback)`**                  |              135+               |                ⏳                |                  ⏳                   |                   🧪 Experimental                    | ✅ 渐进增强（`AppPopover` / `AppTooltip` 小三角自适应翻转）  |
-| **全局 View Transitions API**                        |     111+<br>_(125+ types)_      |      144+<br>_(147+ types)_      |        18+<br>_(18.2+ types)_         |                ✅ Baseline 2024/2025                 |     ✅ 已落地（`useViewTransition.ts` / 跨页面路由推进）     |
-| **`-webkit-line-clamp` / `line-clamp`**              | 6+ (前缀)<br>_(Preview 无前缀)_ | 68+ (前缀)<br>_(Preview 无前缀)_ | 5+ (前缀)<br>_(18.2-18.3 误开已回退)_ | ✅ W3C 兼容事实标准（前缀）<br>⏳ 规范草案（无前缀） |     ✅ 已落地（`AppTextClamp.vue` / `main.css` 实用类）      |
-| **`font-size-adjust`**                               |              127+               |     3+<br>_(92+ two-values)_     |      16.4+<br>_(17+ two-values)_      |                   ✅ Baseline 2024                   |    ✅ 渐进增强（微标 `--text-caption` 与多语言字形排版）     |
-| **`CSS Counters` (`counter-reset`)**                 |              全通               |               全通               |                 全通                  |             ✅ Baseline Widely Available             |         ✅ 已落地（页面网格与折叠指示双轨混合架构）          |
-| **`scroll-margin-top` / `scroll-padding`**           |              全通               |               全通               |                 全通                  |             ✅ Baseline Widely Available             |          ✅ 已落地（画卷折叠平滑回顶吸顶锚点补偿）           |
-| **`srcset` / `sizes` (`w` 描述符)**                  |      38+<br>_(34+ srcset)_      |               38+                |         9.1+<br>_(8+ srcset)_         |                   ✅ Baseline 2016                   |           📋 路线图（响应式阶梯封面分阶调度管线）            |
-| **`sizes="auto"` (懒加载原生联动)**                  |              126+               |               150+               |                  ⏳                   |               🔶 Newly Available 2026                |         📋 路线图（配合 `loading="lazy"` 自动槽位）          |
-| **局部 Element-Scoped VT**                           |              147+               |                ⏳                |                  ⏳                   |                      🧪 Stage 2                      |     ✅ 渐进增强（`useViewTransition.ts` 元素级门面封装）     |
-| `interpolate-size: allow-keywords`                   |              129+               |                ⏳                |                  ⏳                   |               🔶 Limited Availability                | ✅ 已落地（TagFilterBar / MetadataPanel / ImportPanel 展开） |
-| `::details-content`                                  |              131+               |               143+               |                 18.4+                 |               🔶 Limited Availability                |          ✅ 渐进增强（main.css 全局 details 动画）           |
-| `scroll-timeline` / `view-timeline`                  |              115+               |              111+🚩              |                18.0+⏳                |               🔶 Limited Availability                |             ✅ 已落地（ReaderView 读物双轨渲染）             |
-| `@container scroll-state(...)`                       |              133+               |                ❌                |                  ❌                   |                   🧪 Experimental                    |           ⚠️ LightningCSS 解析限制，降级为 VueUse            |
-| `@container style(...)`                              |              111+               |               151+               |                  18+                  |                     🔶 有限支持                      |                 — 暂未采用（等范围语法成熟）                 |
-| `CSSStyleSheet` (Constructable)                      |               73+               |               101+               |                 16.4+                 |                   ✅ Baseline 2023                   |              ⚠️ 与 Vue SFC scoped CSS 模式冲突               |
-| CSS `progress()` 数学函数                            |              138+               |               155+               |                  26+                  |               🔶 Newly Available 2026                |    ✅ 渐进增强（以 `--progress` + `AppProgressBar` 承接）    |
-| CSS 动态鼠标跟随锚点                                 |              144+               |                ⏳                |                  ⏳                   |                      🧪 Stage 2                      |          📋 路线图（未来漫画阅读器局部高倍放大镜）           |
-| **`text-fit`**                                       |              150+               |                ❌                |                  ❌                   |                      🧪 Stage 2                      |         📋 路线图（未来阅读器顶栏长标题压缩防折行）          |
-| CSS `if()` 行内条件                                  |             137+🚩              |                ❌                |                  ❌                   |                      🧪 Stage 1                      |                  🚫 构建工具限制，暂不采用                   |
-| CSS `@function`                                      |             139+🚩              |                ❌                |                  ❌                   |                      🧪 Stage 2                      |                    🚫 过早引入，暂不采用                     |
+| 特性 / API                                           |             Chrome              |             Firefox              |                Safari                 |                 规范状态 / Baseline                  |                                         本项目落地状态                                          |
+| :--------------------------------------------------- | :-----------------------------: | :------------------------------: | :-----------------------------------: | :--------------------------------------------------: | :---------------------------------------------------------------------------------------------: |
+| `light-dark()`                                       |              123+               |               120+               |                 17.5+                 |                   ✅ Baseline 2024                   |                       ⚠️ 审慎评估（保留 hex+oklch 双层回退，防色彩丢失）                        |
+| `color-mix(in oklab, ...)`                           |              111+               |               113+               |                 16.2+                 |                   ✅ Baseline 2023                   |                            ✅ 已落地（tokens.css / 柔和半透明色阶）                             |
+| `@container (inline-size)`                           |              105+               |               110+               |                  16+                  |                   ✅ Baseline 2023                   |                              ✅ 已落地（ImportPanel / 响应式侧栏）                              |
+| `@layer`                                             |               99+               |               97+                |                 15.4+                 |                   ✅ Baseline 2022                   |                             ✅ 已落地（main.css 顶层样式层级声明）                              |
+| CSS Nesting (`&`)                                    |              120+               |               117+               |                 17.2+                 |                   ✅ Baseline 2024                   |                          ✅ 已落地（全站 SFC 样式规范，限制最大 3 层）                          |
+| `@property`                                          |               85+               |               128+               |                 16.4+                 |                   ✅ Baseline 2024                   | ✅ 已落地（遮罩变量 / --progress-ratio / --shimmer-pos / --card-glow-color / --card-glow-size） |
+| `:has()` (Parent / Relational Selector)              |              105+               |               121+               |                 15.4+                 |                   ✅ Baseline 2023                   |                     ✅ 已落地（body:has(dialog[open]) 锁屏与表单状态接管）                      |
+| CSS Subgrid (`subgrid`)                              |              117+               |               71+                |                  16+                  |                   ✅ Baseline 2023                   |                        ✅ 已落地（卡片网格跨卡片行高/操作槽位刚性对齐）                         |
+| **HTML Popover (`auto`/`manual`)**                   |              114+               |               125+               |                  17+                  |                   ✅ Baseline 2024                   |                  ✅ 已落地（`AppPopover` / `AppDropdown` / `StoragePopover`）                   |
+| **HTML Popover (`hint`)**                            |              151+               |               153+               |                  ⏳                   |               🔶 Newly Available 2026                |                          ✅ 渐进增强（`AppTooltip.vue` 轻量气泡提示）                           |
+| **CSS Carousel (`::scroll-marker/button`)**          |              135+               |                ⏳                |                  ⏳                   |               🔶 Newly Available 2025                |                       ✅ 渐进增强（`CoverCarousel.vue` 零 JS 标记与切换）                       |
+| **CSS Gap Decorations (`row-rule` / `column-rule`)** |              149+               |                ⏳                |                  ⏳                   |               🔶 Newly Available 2026                |                        ✅ 渐进增强（`MetadataPanel.vue` 双列网格装饰线）                        |
+| **HTML5 `<dialog>` (Top Layer)**                     |               37+               |               98+                |                 15.4+                 |                   ✅ Baseline 2022                   |                              ✅ 已落地（`Modal.vue` 核心弹窗基建）                              |
+| **`<dialog closedby="any">`**                        |              134+               |               141+               |                  ⏳                   |               🔶 Newly Available 2025                |                       ✅ 渐进增强（`Modal.vue` 原生属性 + 蒙层点击兜底）                        |
+| **Invoker Commands (`commandfor`)**                  |              135+               |               144+               |                 26.2+                 |                ✅ Baseline 2025/2026                 |                      ✅ 渐进增强（支持原生调用，由 ToggleEvent 联动同步）                       |
+| **`ToggleEvent` (`beforetoggle/toggle`)**            | 114+ (popover)<br>132+ (dialog) | 125+ (popover)<br>133+ (dialog)  |     17+ (popover)<br>26+ (dialog)     |                ✅ Baseline 2025/2026                 |                       ✅ 已落地（`Modal.vue` / `AppPopover.vue` 状态机）                        |
+| **Interest Invokers (`interestfor`)**                |             130+🚩              |                ⏳                |                  ⏳                   |                   🧪 Experimental                    |                   ✅ 渐进增强（`AppTooltip.vue` 声明式属性 + JS 定时器兜底）                    |
+| **CSS Anchor Positioning API**                       |              125+               |               147+               |                  26+                  |                ✅ Baseline 2025/2026                 |                 ✅ 已落地（main.css 全局 @position-try / AppPopover / Tooltip）                 |
+| **`@container anchored(fallback)`**                  |              135+               |                ⏳                |                  ⏳                   |                   🧪 Experimental                    |                   ✅ 渐进增强（`AppPopover` / `AppTooltip` 小三角自适应翻转）                   |
+| **全局 View Transitions API**                        |     111+<br>_(125+ types)_      |      144+<br>_(147+ types)_      |        18+<br>_(18.2+ types)_         |                ✅ Baseline 2024/2025                 |                      ✅ 已落地（`useViewTransition.ts` / 跨页面路由推进）                       |
+| **`-webkit-line-clamp` / `line-clamp`**              | 6+ (前缀)<br>_(Preview 无前缀)_ | 68+ (前缀)<br>_(Preview 无前缀)_ | 5+ (前缀)<br>_(18.2-18.3 误开已回退)_ | ✅ W3C 兼容事实标准（前缀）<br>⏳ 规范草案（无前缀） |                       ✅ 已落地（`AppTextClamp.vue` / `main.css` 实用类）                       |
+| **`font-size-adjust`**                               |              127+               |     3+<br>_(92+ two-values)_     |      16.4+<br>_(17+ two-values)_      |                   ✅ Baseline 2024                   |                      ✅ 渐进增强（微标 `--text-caption` 与多语言字形排版）                      |
+| **`CSS Counters` (`counter-reset`)**                 |              全通               |               全通               |                 全通                  |             ✅ Baseline Widely Available             |                           ✅ 已落地（页面网格与折叠指示双轨混合架构）                           |
+| **`scroll-margin-top` / `scroll-padding`**           |              全通               |               全通               |                 全通                  |             ✅ Baseline Widely Available             |                            ✅ 已落地（画卷折叠平滑回顶吸顶锚点补偿）                            |
+| **`srcset` / `sizes` (`w` 描述符)**                  |      38+<br>_(34+ srcset)_      |               38+                |         9.1+<br>_(8+ srcset)_         |                   ✅ Baseline 2016                   |                             📋 路线图（响应式阶梯封面分阶调度管线）                             |
+| **`sizes="auto"` (懒加载原生联动)**                  |              126+               |               150+               |                  ⏳                   |               🔶 Newly Available 2026                |                           📋 路线图（配合 `loading="lazy"` 自动槽位）                           |
+| **局部 Element-Scoped VT**                           |              147+               |                ⏳                |                  ⏳                   |                      🧪 Stage 2                      |                      ✅ 渐进增强（`useViewTransition.ts` 元素级门面封装）                       |
+| `interpolate-size: allow-keywords`                   |              129+               |                ⏳                |                  ⏳                   |               🔶 Limited Availability                |                  ✅ 已落地（TagFilterBar / MetadataPanel / ImportPanel 展开）                   |
+| `::details-content`                                  |              131+               |               143+               |                 18.4+                 |               🔶 Limited Availability                |                            ✅ 渐进增强（main.css 全局 details 动画）                            |
+| `scroll-timeline` / `view-timeline`                  |              115+               |              111+🚩              |                18.0+⏳                |               🔶 Limited Availability                |                              ✅ 已落地（ReaderView 读物双轨渲染）                               |
+| `@container scroll-state(...)`                       |              133+               |                ❌                |                  ❌                   |                   🧪 Experimental                    |                             ⚠️ LightningCSS 解析限制，降级为 VueUse                             |
+| `@container style(...)`                              |              111+               |               151+               |                  18+                  |                     🔶 有限支持                      |                                  — 暂未采用（等范围语法成熟）                                   |
+| `CSSStyleSheet` (Constructable)                      |               73+               |               101+               |                 16.4+                 |                   ✅ Baseline 2023                   |                                ⚠️ 与 Vue SFC scoped CSS 模式冲突                                |
+| CSS `progress()` 数学函数                            |              138+               |               155+               |                  26+                  |               🔶 Newly Available 2026                |                     ✅ 渐进增强（以 `--progress` + `AppProgressBar` 承接）                      |
+| CSS 动态鼠标跟随锚点                                 |              144+               |                ⏳                |                  ⏳                   |                      🧪 Stage 2                      |                            📋 路线图（未来漫画阅读器局部高倍放大镜）                            |
+| **`text-fit`**                                       |              150+               |                ❌                |                  ❌                   |                      🧪 Stage 2                      |                           📋 路线图（未来阅读器顶栏长标题压缩防折行）                           |
+| CSS `if()` 行内条件                                  |             137+🚩              |                ❌                |                  ❌                   |                      🧪 Stage 1                      |                                    🚫 构建工具限制，暂不采用                                    |
+| CSS `@function`                                      |             139+🚩              |                ❌                |                  ❌                   |                      🧪 Stage 2                      |                                      🚫 过早引入，暂不采用                                      |
 
 **图例**：✅ 可用 · 🔶 部分支持 · 🧪 实验旗 · 🚩 需开 Flag · ❌ 未支持 · 🚫 本项目不采用
 
@@ -229,9 +231,10 @@ background: color-mix(in oklab, var(--paper-1) 50%, transparent);
 
 **MDN**：[@property](https://developer.mozilla.org/en-US/docs/Web/CSS/@property)  
 **Baseline**：2024 · Chrome 85+, Firefox 128+, Safari 16.4+  
-**本项目落地状态**：✅ 已在 `src/styles/tokens.css` 落地
+**本项目落地状态**：✅ 已在 `src/styles/tokens.css` 与 `src/styles/main.css` 全面落地
 
 ```css
+/* 1. 导航栏双滑块遮罩平滑滑动 */
 @property --mask-left {
   syntax: '<length>';
   inherits: false;
@@ -244,10 +247,76 @@ background: color-mix(in oklab, var(--paper-1) 50%, transparent);
   initial-value: 0px;
 }
 
-.site-nav {
+/* 2. 纯 CSS 扇形/环形进度条平滑插值（章节离线/阅读进度） */
+@property --progress-ratio {
+  syntax: '<percentage>';
+  inherits: false;
+  initial-value: 0%;
+}
+
+.progress-ring {
+  background: conic-gradient(
+    var(--accent) var(--progress-ratio),
+    color-mix(in oklab, var(--line) 30%, transparent) 0
+  );
+  transition: --progress-ratio var(--duration-2) var(--ease-out);
+}
+
+/* 3. 120Hz GPU 硬件加速纸张骨架屏平滑微光 */
+@property --shimmer-pos {
+  syntax: '<percentage>';
+  inherits: false;
+  initial-value: -100%;
+}
+
+.skeleton-shimmer {
+  background: linear-gradient(
+    90deg,
+    var(--paper-1) 0%,
+    color-mix(in oklab, var(--paper-2) 65%, transparent) calc(var(--shimmer-pos) + 20%),
+    var(--paper-1) calc(var(--shimmer-pos) + 40%)
+  );
+  animation: shimmer-sweep 1.8s var(--ease-out) infinite;
+}
+
+@keyframes shimmer-sweep {
+  0% {
+    --shimmer-pos: -100%;
+  }
+  100% {
+    --shimmer-pos: 100%;
+  }
+}
+
+/* 4. 径向渐变光晕 hover 平滑色彩与范围插值（DiscoveryCard 等） */
+@property --card-glow-color {
+  syntax: '<color>';
+  inherits: false;
+  initial-value: transparent;
+}
+
+@property --card-glow-size {
+  syntax: '<percentage>';
+  inherits: false;
+  initial-value: 60%;
+}
+
+.cover-placeholder {
+  background:
+    radial-gradient(
+      circle at top right,
+      var(--card-glow-color) 0%,
+      transparent var(--card-glow-size)
+    ),
+    linear-gradient(145deg, var(--paper-1) 0%, var(--paper-2) 100%);
   transition:
-    --mask-left var(--duration-2) var(--ease-out),
-    --mask-right var(--duration-2) var(--ease-out);
+    --card-glow-color var(--duration-2) var(--ease-out),
+    --card-glow-size var(--duration-2) var(--ease-out);
+}
+
+.cover-link:hover .cover-placeholder {
+  --card-glow-color: color-mix(in oklab, var(--accent) 25%, transparent);
+  --card-glow-size: 70%;
 }
 ```
 

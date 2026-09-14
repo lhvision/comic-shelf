@@ -1022,6 +1022,21 @@
     2. **纵深防御（Defense-in-Depth Protection）**：前端检测 `customPages: true` 时自动隐匿「刷新资料」按钮，API 路由层拦截阻断带 `refresh: true` 的请求（400 友好报错），底层存储合并兜底强制保留本地章节结构；
     3. **复合分话智能聚类（Pattern Auto-Grouping）**：使用复合命名正则自动聚类切分多章节并自然序单调重排，在全量替换时智能继承已有章节标题。
 
+### 96. CSS 变量虚假防御与属性过渡反模式陷阱（CSS Token False Defense & Transition Shorthand Trap）
+
+- **本质**：
+  1. **组件层局部 Fallback 虚假防御（False Defensive Fallbacks）**：在单源设计系统（`tokens.css`）已全局静态载入的应用中，开发者在组件内部大量书写 `var(--accent, #b34a36)`、`var(--space-1, 0.25rem)` 等回退值。这不仅没有起到防御作用，反而会静默掩盖变量名拼写错误（Silent Failure），并导致设计系统 Token 演进时由于局部写死硬编码而引发严重的颜色与间距漂移；
+  2. **渐变背景滥用 `transition: background` 简写（Broken Gradient Interpolation）**：CSS 规范中线性/径向渐变归属于 `<image>` 类型，标准 CSS 引擎无法在两个不同的渐变图片之间直接进行平滑补间插值。写 `transition: background 0.2s` 会在 hover 时产生生硬闪烁（snap/flicker），且纯色背景使用简写会强制浏览器每帧计算 8 个长写子属性，引发合成器无谓重排；
+  3. **散落组件重复手写基础动画（Duplicate Keyframes Bloat）**：在多个组件中各自手写私有的 `@keyframes spin` 或 `@keyframes shimmer`，不仅增加 CSS 打包体积，还可能引发 SFC scoped 样式的同名 keyframes 命名空间污染。
+- **红线与防误伤**：
+  - **不要**在组件内部编写非动态注入变量的硬编码 Hex / 像素 Fallback（如 `var(--accent, #b34a36)`）；
+  - **不要**对渐变背景使用传统的 `transition: background`，也不要在纯色背景过渡中使用简写；
+  - **不要**在业务组件内重复声明 `@keyframes spin` 等通用基础动画；
+  - **放行/改用**：
+    1. **静态令牌 100% 裸用与单源收敛**：除动态内联注入样式（如 `var(--mask-left, 0px)`）外，所有静态令牌严禁编写局部 fallback；全站除 `tokens.css` 声明文件外，组件样式达到 **0 Hex 残留**；
+    2. **纯色过渡长写与渐变动画 `@property` 插值**：纯色背景明确声明 `transition: background-color`；渐变背景动效通过 `@property` 注册类型化自定义属性（`<percentage>`、`<color>`），交由 GPU 合成器进行平滑数学插值；
+    3. **基础动画全局统一收敛**：通用旋转动画收敛至 `main.css` 顶层 `@keyframes spin`，组件直接调用 `animation: spin 1s linear infinite`。
+
 ---
 
 ## 🚦 交付门禁（四步必跑）

@@ -23,6 +23,10 @@
   --space-12: clamp(4.5rem, 8vw, 6rem);
   --space-16: clamp(6rem, 12vw, 8rem);
 
+  /* badge / chip micro-spacing */
+  --space-badge-y: 0.15rem;
+  --space-badge-x: 0.5rem;
+
   /* type */
   --font-display:
     'Iowan Old Style', 'Baskerville', 'Noto Serif SC', 'Source Han Serif SC', 'Songti SC', serif;
@@ -49,6 +53,7 @@
   --radius-2: 0.625rem;
   --radius-3: 1rem;
   --radius-4: 1.5rem;
+  --radius-pill: 9999px;
 
   /* controls */
   --control-xs: 2rem;
@@ -73,6 +78,7 @@
   --accent-strong: #a23a27;
   --accent-strong: oklch(0.48 0.16 36);
   --accent-soft: color-mix(in oklab, var(--accent) 13%, transparent);
+  --accent-contrast: #fff8f2;
   --line: color-mix(in oklab, var(--ink-0) 15%, transparent);
   --line-strong: color-mix(in oklab, var(--ink-0) 28%, transparent);
   --success: #3f6d4e;
@@ -170,4 +176,28 @@
   syntax: '<length>';
   inherits: false;
   initial-value: 0px;
+}
+
+@property --progress-ratio {
+  syntax: '<percentage>';
+  inherits: false;
+  initial-value: 0%;
+}
+
+@property --shimmer-pos {
+  syntax: '<percentage>';
+  inherits: false;
+  initial-value: -100%;
+}
+
+@property --card-glow-color {
+  syntax: '<color>';
+  inherits: false;
+  initial-value: transparent;
+}
+
+@property --card-glow-size {
+  syntax: '<percentage>';
+  inherits: false;
+  initial-value: 60%;
 }

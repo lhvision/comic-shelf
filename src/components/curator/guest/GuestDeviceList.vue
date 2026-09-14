@@ -102,7 +102,7 @@ function confirmKick(deviceId: number) {
   padding: 0;
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: var(--space-1-5);
 }
 
 .device-chip {
@@ -112,7 +112,7 @@ function confirmKick(deviceId: number) {
   background: var(--paper-0);
   border: 1px solid var(--line);
   border-radius: var(--radius-1);
-  padding: 4px 8px;
+  padding: var(--space-1) var(--space-2);
   gap: var(--space-2);
 }
 
@@ -131,34 +131,34 @@ function confirmKick(deviceId: number) {
 }
 
 .device-time {
-  font-size: 11px;
+  font-size: var(--text-caption);
   color: var(--ink-2);
 }
 
 .device-ip {
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: var(--text-caption);
   color: var(--ink-2);
-  padding: 1px 4px;
+  padding: 1px var(--space-1);
   background: var(--paper-2);
-  border-radius: 2px;
+  border-radius: var(--radius-1);
 }
 
 .device-kick-wrapper {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
+  gap: var(--space-1);
 }
 
 .device-kick-confirm-text {
-  font-size: 11px;
+  font-size: var(--text-caption);
   color: var(--accent);
   font-weight: 600;
 }
 
 .device-kick-action {
-  font-size: 11px;
-  padding: 2px 6px;
+  font-size: var(--text-caption);
+  padding: var(--space-0-5) var(--space-1-5);
   min-height: 24px;
   border-radius: var(--radius-1);
   border: 1px solid var(--line);

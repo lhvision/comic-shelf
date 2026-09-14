@@ -542,7 +542,7 @@ useIntersectionObserver(
   .rec-status-badge {
     font-size: var(--text-caption);
     font-size-adjust: ch-width 0.48;
-    padding: 2px var(--space-1-5);
+    padding: var(--space-0-5) var(--space-1-5);
     left: var(--space-1-5);
     bottom: var(--space-1-5);
     max-width: calc(100% - var(--space-3));

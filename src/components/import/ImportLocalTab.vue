@@ -132,7 +132,7 @@ const localBtnText = computed(() => (props.localImporting ? '扫描中…' : '�
   border: 0;
   border-radius: var(--radius-3);
   background: var(--accent);
-  color: #fff8f2;
+  color: var(--accent-contrast);
   cursor: pointer;
   user-select: none;
   transition:
@@ -157,7 +157,7 @@ const localBtnText = computed(() => (props.localImporting ? '扫描中…' : '�
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 2px;
+  gap: var(--space-0-5);
   font-size: var(--text-sm);
   font-weight: 700;
   letter-spacing: 0.08em;

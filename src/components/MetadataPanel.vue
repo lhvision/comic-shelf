@@ -201,7 +201,7 @@ const fieldRows = computed(() => {
 }
 
 .meta-id {
-  padding: 0.25rem 0.55rem;
+  padding: var(--space-1) var(--space-2);
   border: 1px solid var(--line-strong);
   border-radius: var(--radius-1);
   font-family: var(--font-mono);
@@ -214,13 +214,13 @@ const fieldRows = computed(() => {
 }
 
 .custom-pages-badge {
-  padding: 0.25rem 0.55rem;
+  padding: var(--space-1) var(--space-2);
   border: 1px solid var(--accent);
   border-radius: var(--radius-1);
   font-family: var(--font-mono);
   font-size: var(--text-xs);
   color: var(--accent);
-  background: var(--accent-subtle);
+  background: var(--accent-soft);
   white-space: nowrap;
 }
 
@@ -372,7 +372,7 @@ const fieldRows = computed(() => {
 }
 
 .description-content.is-clamped {
-  height: calc(3 * var(--leading-body, 1.75) * 1em);
+  height: calc(3 * var(--leading-body) * 1em);
   height: 3lh;
   -webkit-mask-image: linear-gradient(to bottom, black calc(100% - 1.2lh), transparent 100%);
   mask-image: linear-gradient(to bottom, black calc(100% - 1.2lh), transparent 100%);

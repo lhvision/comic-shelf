@@ -586,7 +586,7 @@ function onCustomSpeedBlur() {
 .scope-status-tag {
   font-family: var(--font-mono);
   font-size: var(--text-caption);
-  padding: 0.1rem 0.45rem;
+  padding: var(--space-badge-y) var(--space-badge-x);
   border-radius: var(--radius-1);
   line-height: 1.2;
 }
@@ -706,11 +706,11 @@ function onCustomSpeedBlur() {
 
 .constraint-badge {
   font-family: var(--font-mono);
-  font-size: var(--text-caption, 11px);
+  font-size: var(--text-caption);
   color: var(--accent);
   background: var(--accent-soft);
-  padding: 0.15rem 0.5rem;
-  border-radius: var(--radius-sm, 4px);
+  padding: var(--space-badge-y) var(--space-badge-x);
+  border-radius: var(--radius-1);
   letter-spacing: 0.04em;
 }
 

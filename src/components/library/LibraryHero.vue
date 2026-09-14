@@ -139,7 +139,7 @@ const heroLede = computed(
 
 .hero-stats .hero-stat-item {
   display: grid;
-  gap: 0.1rem;
+  gap: var(--space-0-5);
 }
 
 .hero-stats strong {
@@ -200,7 +200,7 @@ const heroLede = computed(
   .hero-stats .hero-stat-item {
     display: inline-flex;
     align-items: baseline;
-    gap: 0.25rem;
+    gap: var(--space-1);
   }
 
   .hero-stats strong {
@@ -217,7 +217,7 @@ const heroLede = computed(
   }
 
   .hero-source-pill {
-    padding: 0.5rem 0.85rem;
+    padding: var(--space-2) var(--space-3);
     min-height: 28px;
     box-sizing: border-box;
     position: relative;
@@ -282,7 +282,7 @@ const heroLede = computed(
   display: inline-flex;
   align-items: center;
   gap: var(--space-1);
-  padding: 0.25rem 0.65rem;
+  padding: var(--space-1) var(--space-2-5);
   border: 1px solid var(--line);
   border-radius: var(--radius-pill);
   background: color-mix(in oklab, var(--paper-0) 70%, var(--paper-1));

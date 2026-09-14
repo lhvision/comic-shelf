@@ -370,7 +370,7 @@ function incConcurrency() {
   display: inline-flex;
   gap: var(--space-1);
   margin-bottom: var(--space-4);
-  padding: 0.25rem;
+  padding: var(--space-1);
   border: 1px solid var(--line);
   border-radius: var(--radius-2);
   background: var(--paper-1);
@@ -381,7 +381,7 @@ function incConcurrency() {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  padding: 0.35rem 0.85rem;
+  padding: var(--space-1-5) var(--space-3-5);
   border: 0;
   border-radius: var(--radius-1);
   background: transparent;
@@ -467,7 +467,7 @@ function incConcurrency() {
   background: transparent;
   color: var(--ink-2);
   cursor: pointer;
-  padding: 2px;
+  padding: var(--space-0-5);
   border-radius: var(--radius-1);
 }
 
@@ -503,7 +503,7 @@ function incConcurrency() {
   list-style: none;
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: var(--space-1);
   font-size: var(--text-xs);
   color: var(--accent);
 }

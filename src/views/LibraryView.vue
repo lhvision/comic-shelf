@@ -473,9 +473,9 @@ watch([() => store.error, imageSearch.error], ([err1, err2]) => {
   gap: var(--space-2);
   margin-top: var(--space-4);
   padding: var(--space-2) var(--space-3);
-  border: 1px solid var(--accent-subtle, var(--line-strong));
+  border: 1px solid var(--accent-soft);
   border-radius: var(--radius-2);
-  background: color-mix(in oklab, var(--paper-0) 85%, var(--accent-subtle, var(--paper-1)));
+  background: color-mix(in oklab, var(--paper-0) 85%, var(--accent-soft));
   color: var(--ink-1);
   font-family: var(--font-mono);
   font-size: var(--text-xs);

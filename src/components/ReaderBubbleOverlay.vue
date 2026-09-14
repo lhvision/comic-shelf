@@ -117,20 +117,20 @@ const calloutClasses = computed(() => {
   position: absolute;
   box-sizing: border-box;
   pointer-events: none;
-  border-radius: var(--radius-1, 0.375rem);
-  /* 温润朱砂金墨色边框：以品牌朱砂主色 oklch(0.59 0.17 38) 融合暖金纸色 */
-  border: 2px solid color-mix(in oklab, var(--accent, oklch(0.59 0.17 38)) 84%, #d49f48 16%);
+  border-radius: var(--radius-1);
+  /* 温润朱砂金墨色边框：以品牌朱砂主色融合暖金纸色 */
+  border: 2px solid color-mix(in oklab, var(--accent) 84%, var(--warning) 16%);
   /* 宣纸暖琥珀朱砂光晕背景 */
   background: color-mix(
     in oklab,
-    var(--accent, oklch(0.59 0.17 38)) 12%,
-    color-mix(in oklab, #d49f48 8%, transparent)
+    var(--accent) 12%,
+    color-mix(in oklab, var(--warning) 8%, transparent)
   );
   /* 细致朱砂呼吸光晕与微投影 */
   box-shadow:
-    0 0 0 1px color-mix(in oklab, var(--accent, oklch(0.59 0.17 38)) 50%, transparent),
-    0 0 18px color-mix(in oklab, var(--accent, oklch(0.59 0.17 38)) 35%, transparent),
-    inset 0 0 12px color-mix(in oklab, var(--accent, oklch(0.59 0.17 38)) 15%, transparent);
+    0 0 0 1px color-mix(in oklab, var(--accent) 50%, transparent),
+    0 0 18px color-mix(in oklab, var(--accent) 35%, transparent),
+    inset 0 0 12px color-mix(in oklab, var(--accent) 15%, transparent);
   animation: breathing-pulse 2.2s cubic-bezier(0.22, 1, 0.36, 1) forwards;
   will-change: transform, opacity;
 }
@@ -138,13 +138,13 @@ const calloutClasses = computed(() => {
 /* 命中台词微标胶囊 */
 .bubble-callout {
   position: absolute;
-  bottom: calc(100% + var(--space-1, 0.25rem));
+  bottom: calc(100% + var(--space-1));
   left: 0;
   max-width: min(20rem, 80vw);
-  padding: 0.15rem 0.5rem;
-  background: color-mix(in oklab, var(--reader-bg, #0d0e0c) 92%, var(--accent) 8%);
+  padding: var(--space-badge-y) var(--space-badge-x);
+  background: color-mix(in oklab, var(--reader-bg) 92%, var(--accent) 8%);
   border: 1px solid color-mix(in oklab, var(--accent) 55%, transparent);
-  border-radius: var(--radius-1, 0.375rem);
+  border-radius: var(--radius-1);
   box-shadow: var(--shadow-2);
   white-space: nowrap;
   overflow: hidden;
@@ -153,7 +153,7 @@ const calloutClasses = computed(() => {
 
 .bubble-callout.is-placement-bottom {
   bottom: auto;
-  top: calc(100% + var(--space-1, 0.25rem));
+  top: calc(100% + var(--space-1));
 }
 
 .bubble-callout.is-align-right {
@@ -163,8 +163,8 @@ const calloutClasses = computed(() => {
 
 .bubble-callout-text {
   font-family: var(--font-body);
-  font-size: var(--text-caption, 0.6875rem);
-  color: var(--reader-ink, #eee7da);
+  font-size: var(--text-caption);
+  color: var(--reader-ink);
   letter-spacing: 0.02em;
 }
 
@@ -174,39 +174,39 @@ const calloutClasses = computed(() => {
     opacity: 0;
     transform: scale(0.96);
     box-shadow:
-      0 0 0 1px color-mix(in oklab, var(--accent, oklch(0.59 0.17 38)) 30%, transparent),
-      0 0 8px color-mix(in oklab, var(--accent, oklch(0.59 0.17 38)) 20%, transparent);
+      0 0 0 1px color-mix(in oklab, var(--accent) 30%, transparent),
+      0 0 8px color-mix(in oklab, var(--accent) 20%, transparent);
   }
   16% {
     opacity: 1;
     transform: scale(1);
     box-shadow:
-      0 0 0 2px color-mix(in oklab, var(--accent, oklch(0.59 0.17 38)) 80%, transparent),
-      0 0 22px color-mix(in oklab, var(--accent, oklch(0.59 0.17 38)) 50%, transparent),
-      inset 0 0 14px color-mix(in oklab, var(--accent, oklch(0.59 0.17 38)) 20%, transparent);
+      0 0 0 2px color-mix(in oklab, var(--accent) 80%, transparent),
+      0 0 22px color-mix(in oklab, var(--accent) 50%, transparent),
+      inset 0 0 14px color-mix(in oklab, var(--accent) 20%, transparent);
   }
   42% {
     opacity: 0.95;
     transform: scale(1.015);
     box-shadow:
-      0 0 0 2.5px color-mix(in oklab, var(--accent, oklch(0.59 0.17 38)) 95%, #d49f48 5%),
-      0 0 26px color-mix(in oklab, var(--accent, oklch(0.59 0.17 38)) 60%, transparent),
-      inset 0 0 18px color-mix(in oklab, var(--accent, oklch(0.59 0.17 38)) 25%, transparent);
+      0 0 0 2.5px color-mix(in oklab, var(--accent) 95%, var(--warning) 5%),
+      0 0 26px color-mix(in oklab, var(--accent) 60%, transparent),
+      inset 0 0 18px color-mix(in oklab, var(--accent) 25%, transparent);
   }
   68% {
     opacity: 0.9;
     transform: scale(1);
     box-shadow:
-      0 0 0 1.5px color-mix(in oklab, var(--accent, oklch(0.59 0.17 38)) 70%, transparent),
-      0 0 16px color-mix(in oklab, var(--accent, oklch(0.59 0.17 38)) 35%, transparent),
-      inset 0 0 10px color-mix(in oklab, var(--accent, oklch(0.59 0.17 38)) 15%, transparent);
+      0 0 0 1.5px color-mix(in oklab, var(--accent) 70%, transparent),
+      0 0 16px color-mix(in oklab, var(--accent) 35%, transparent),
+      inset 0 0 10px color-mix(in oklab, var(--accent) 15%, transparent);
   }
   84% {
     opacity: 0.55;
     transform: scale(0.99);
     box-shadow:
-      0 0 0 1px color-mix(in oklab, var(--accent, oklch(0.59 0.17 38)) 40%, transparent),
-      0 0 10px color-mix(in oklab, var(--accent, oklch(0.59 0.17 38)) 20%, transparent);
+      0 0 0 1px color-mix(in oklab, var(--accent) 40%, transparent),
+      0 0 10px color-mix(in oklab, var(--accent) 20%, transparent);
   }
   100% {
     opacity: 0;

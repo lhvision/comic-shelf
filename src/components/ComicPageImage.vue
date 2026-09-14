@@ -245,17 +245,17 @@ watch(isOnline, (online, wasOnline) => {
   display: grid;
   justify-items: center;
   gap: var(--space-2);
-  color: var(--reader-muted, #938d80);
+  color: var(--reader-muted);
   font-family: var(--font-mono);
   font-size: var(--text-xs);
   text-align: center;
   padding: var(--space-4);
   border-radius: var(--radius-2);
-  background: color-mix(in oklab, var(--reader-bg, #0d0c0a) 85%, transparent);
+  background: color-mix(in oklab, var(--reader-bg) 85%, transparent);
 }
 
 .page-error.is-offline {
-  border: 1px dashed rgb(255 255 255 / 15%);
+  border: 1px dashed var(--reader-line);
   padding: var(--space-6) var(--space-8);
 }
 
@@ -263,27 +263,27 @@ watch(isOnline, (online, wasOnline) => {
   display: inline-flex;
   align-items: center;
   gap: var(--space-1);
-  color: var(--accent, #b34a36);
+  color: var(--accent);
   font-weight: 600;
   letter-spacing: 0.05em;
 }
 
 .offline-sub {
-  color: var(--reader-muted, #938d80);
-  font-size: 0.75rem;
+  color: var(--reader-muted);
+  font-size: var(--text-xs);
 }
 
 .page-error button {
-  padding: 0.3rem 0.65rem;
-  border: 1px solid rgb(255 255 255 / 18%);
+  padding: var(--space-1-5) var(--space-2-5);
+  border: 1px solid var(--reader-line);
   border-radius: var(--radius-1);
-  background: rgb(255 255 255 / 8%);
+  background: var(--reader-surface);
   color: inherit;
   cursor: pointer;
-  transition: background var(--duration-1) var(--ease-out);
+  transition: background-color var(--duration-1) var(--ease-out);
 }
 
 .page-error button:hover {
-  background: rgb(255 255 255 / 15%);
+  background: var(--reader-surface-hover);
 }
 </style>

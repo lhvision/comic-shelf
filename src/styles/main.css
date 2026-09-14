@@ -2,6 +2,26 @@
 
 @layer reset, base, components, utilities;
 
+/* ============================================================
+   CSS Anchor Positioning 全局回退策略库 (@position-try)
+   Baseline 2025/2026: Chrome 125+, Firefox 147+, Safari 26+
+   ============================================================ */
+@position-try --flip-top-start {
+  position-area: top span-right;
+}
+
+@position-try --flip-bottom-start {
+  position-area: bottom span-right;
+}
+
+@position-try --flip-top-end {
+  position-area: top span-left;
+}
+
+@position-try --flip-bottom-end {
+  position-area: bottom span-left;
+}
+
 @layer reset {
   *,
   *::before,
@@ -87,6 +107,11 @@
         transparent 30rem
       ),
       var(--paper-0);
+  }
+
+  /* 模态弹窗开启时原生锁止背景滚动，零 JS 胶水代码 */
+  body:has(dialog[open]:not([aria-hidden='true'])) {
+    overflow: clip;
   }
 
   ::selection {
@@ -218,7 +243,7 @@
 
   .btn-primary {
     background: var(--accent);
-    color: #fff8f2;
+    color: var(--accent-contrast);
 
     &:hover:not(:disabled) {
       background: var(--accent-strong);
@@ -252,7 +277,7 @@
 
     &:hover:not(:disabled) {
       background: var(--accent);
-      color: #fff;
+      color: var(--accent-contrast);
       border-color: var(--accent-strong);
     }
   }
@@ -264,7 +289,7 @@
 
     &:hover:not(:disabled) {
       background: var(--danger);
-      color: #fff;
+      color: var(--paper-0);
     }
   }
 
@@ -312,32 +337,6 @@
   .btn-block {
     display: flex;
     width: 100%;
-  }
-
-  .icon-btn {
-    display: inline-grid;
-    place-items: center;
-    width: var(--control-md);
-    height: var(--control-md);
-    border: 1px solid var(--line);
-    border-radius: 50%;
-    background: color-mix(in oklab, var(--paper-0) 82%, transparent);
-    color: var(--ink-1);
-    font-size: var(--text-sm);
-    box-shadow: var(--shadow-1);
-    backdrop-filter: blur(8px);
-    transition:
-      transform var(--duration-1) var(--ease-out),
-      background-color var(--duration-1) var(--ease-out),
-      border-color var(--duration-1) var(--ease-out),
-      color var(--duration-1) var(--ease-out);
-
-    &:hover {
-      transform: scale(1.06);
-      background: var(--paper-0);
-      border-color: var(--line-strong);
-      color: var(--ink-0);
-    }
   }
 
   .field {
@@ -412,7 +411,7 @@
     display: inline-flex;
     align-items: center;
     gap: var(--space-1);
-    padding: 0.15rem 0.5rem;
+    padding: var(--space-badge-y) var(--space-badge-x);
     border-radius: var(--radius-1);
     background: var(--paper-1);
     border: 1px solid var(--line);
@@ -426,8 +425,8 @@
     display: inline-flex;
     align-items: center;
     gap: var(--space-1);
-    padding: 0.15rem 0.55rem;
-    border-radius: 999px;
+    padding: var(--space-badge-y) var(--space-badge-x);
+    border-radius: var(--radius-pill);
     background: var(--paper-1);
     border: 1px solid var(--line);
     font-size: var(--text-caption);
@@ -440,6 +439,28 @@
     background: var(--accent-soft);
     color: var(--accent-strong);
     border-color: color-mix(in oklab, var(--accent) 30%, transparent);
+  }
+
+  /* 纯 CSS 骨架屏平滑微光 (由 @property --shimmer-pos 硬件加速驱动) */
+  .skeleton-shimmer {
+    background: linear-gradient(
+      90deg,
+      var(--paper-1) 0%,
+      color-mix(in oklab, var(--paper-2) 65%, transparent) calc(var(--shimmer-pos) + 20%),
+      var(--paper-1) calc(var(--shimmer-pos) + 40%)
+    );
+    animation: shimmer-sweep 1.8s var(--ease-out) infinite;
+  }
+
+  /* 纯 CSS 扇形/环形进度 (@property --progress-ratio) */
+  .progress-ring {
+    --progress-ratio: 0%;
+    background: conic-gradient(
+      var(--accent) var(--progress-ratio),
+      color-mix(in oklab, var(--line) 30%, transparent) 0
+    );
+    border-radius: 50%;
+    transition: --progress-ratio var(--duration-2) var(--ease-out);
   }
 
   /* Form Fields */
@@ -557,18 +578,6 @@
     color: var(--accent-strong);
     font-size: var(--text-sm);
   }
-
-  @media (max-width: 640px) {
-    .icon-btn {
-      width: var(--control-xs);
-      height: var(--control-xs);
-      border-color: var(--line);
-      background: color-mix(in oklab, var(--paper-0) 78%, transparent);
-      box-shadow: none;
-      backdrop-filter: none;
-      font-size: var(--text-xs);
-    }
-  }
 }
 
 @layer utilities {
@@ -643,6 +652,12 @@
     .text-fit-shrink {
       text-fit: shrink consistent;
     }
+  }
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
   }
 }
 
@@ -752,6 +767,15 @@ html:active-view-transition-type(backward) {
   }
   to {
     opacity: 1;
+  }
+}
+
+@keyframes shimmer-sweep {
+  0% {
+    --shimmer-pos: -100%;
+  }
+  100% {
+    --shimmer-pos: 100%;
   }
 }
 

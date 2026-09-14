@@ -173,6 +173,8 @@ const libraryRoute = computed(() => `/comic/${props.item.source}/${props.item.so
 }
 
 .cover-placeholder {
+  --card-glow-color: color-mix(in oklab, var(--accent-soft) 80%, transparent);
+  --card-glow-size: 60%;
   width: 100%;
   height: 100%;
   display: flex;
@@ -183,24 +185,21 @@ const libraryRoute = computed(() => `/comic/${props.item.source}/${props.item.so
   background:
     radial-gradient(
       circle at top right,
-      color-mix(in oklab, var(--accent-soft) 80%, transparent) 0%,
-      transparent 60%
+      var(--card-glow-color) 0%,
+      transparent var(--card-glow-size)
     ),
     linear-gradient(145deg, var(--paper-1) 0%, var(--paper-2) 100%);
   color: var(--ink-2);
   padding: var(--space-3);
   text-align: center;
-  transition: background var(--duration-2) var(--ease-out);
+  transition:
+    --card-glow-color var(--duration-2) var(--ease-out),
+    --card-glow-size var(--duration-2) var(--ease-out);
 }
 
 .cover-link:hover .cover-placeholder {
-  background:
-    radial-gradient(
-      circle at top right,
-      color-mix(in oklab, var(--accent) 25%, transparent) 0%,
-      transparent 70%
-    ),
-    linear-gradient(145deg, var(--paper-1) 0%, var(--paper-2) 100%);
+  --card-glow-color: color-mix(in oklab, var(--accent) 25%, transparent);
+  --card-glow-size: 70%;
 }
 
 .cover-pattern-id {
@@ -218,9 +217,9 @@ const libraryRoute = computed(() => `/comic/${props.item.source}/${props.item.so
 .cover-hint {
   display: inline-flex;
   align-items: center;
-  gap: 0.25rem;
+  gap: var(--space-1);
   margin-top: var(--space-1);
-  padding: 0.15rem 0.5rem;
+  padding: var(--space-badge-y) var(--space-badge-x);
   border-radius: var(--radius-1);
   background: color-mix(in oklab, var(--paper-0) 80%, transparent);
   border: 1px dashed color-mix(in oklab, var(--accent) 50%, var(--line));
@@ -242,7 +241,7 @@ const libraryRoute = computed(() => `/comic/${props.item.source}/${props.item.so
   position: absolute;
   top: var(--space-2);
   left: var(--space-2);
-  padding: 0.125rem 0.4rem;
+  padding: var(--space-0-5) var(--space-1);
   border-radius: var(--radius-1);
   font-family: var(--font-mono);
   font-size: var(--text-caption);
@@ -254,12 +253,12 @@ const libraryRoute = computed(() => `/comic/${props.item.source}/${props.item.so
   box-shadow: 0 1px 3px rgb(0 0 0 / 18%);
   display: flex;
   align-items: center;
-  gap: 0.1rem;
+  gap: var(--space-0-5);
 }
 
 .rank-top {
   background: var(--accent);
-  color: #fff;
+  color: var(--accent-contrast);
   border-color: var(--accent-strong);
   box-shadow: 0 2px 6px color-mix(in oklab, var(--accent) 40%, transparent);
 }
@@ -276,8 +275,8 @@ const libraryRoute = computed(() => `/comic/${props.item.source}/${props.item.so
   right: var(--space-2);
   display: inline-flex;
   align-items: center;
-  gap: 0.2rem;
-  padding: 0.125rem 0.375rem;
+  gap: var(--space-1);
+  padding: var(--space-0-5) var(--space-1);
   border-radius: var(--radius-1);
   font-family: var(--font-mono);
   font-size: var(--text-caption);
@@ -341,8 +340,8 @@ const libraryRoute = computed(() => `/comic/${props.item.source}/${props.item.so
 }
 
 .status-dot {
-  width: 6px;
-  height: 6px;
+  width: var(--space-1-5);
+  height: var(--space-1-5);
   border-radius: 50%;
   background: currentColor;
 }

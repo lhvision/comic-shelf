@@ -321,7 +321,7 @@ function handleCollapse() {
 .fold-card-actions .btn {
   width: 100%;
   min-height: 1.85rem;
-  padding: 0.2rem var(--space-1);
+  padding: var(--space-badge-y) var(--space-1);
   font-size: var(--text-caption);
   gap: var(--space-1);
   justify-content: center;

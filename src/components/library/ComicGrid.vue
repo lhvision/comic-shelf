@@ -1176,16 +1176,7 @@ watch(
 }
 
 .stream-loading-spinner {
-  animation: stream-spin 1.2s linear infinite;
-}
-
-@keyframes stream-spin {
-  from {
-    transform: rotate(0deg);
-  }
-  to {
-    transform: rotate(360deg);
-  }
+  animation: spin 1.2s linear infinite;
 }
 
 .shelf-fold-card.is-braked {

@@ -96,17 +96,17 @@ const isModalOpen = ref(false)
   height: 1.5rem;
   padding: 0;
   border: none;
-  background: transparent;
+  background-color: transparent;
   color: var(--ink-2);
   border-radius: var(--radius-1);
   cursor: pointer;
   transition:
-    background var(--duration-1) var(--ease-out),
+    background-color var(--duration-1) var(--ease-out),
     color var(--duration-1) var(--ease-out);
 }
 
 .chip-clear-btn:hover {
-  background: var(--paper-2);
+  background-color: var(--paper-2);
   color: var(--ink-0);
 }
 
@@ -124,11 +124,5 @@ const isModalOpen = ref(false)
   max-height: 60vh;
   object-fit: contain;
   border-radius: var(--radius-1);
-}
-
-@keyframes spin {
-  to {
-    transform: rotate(360deg);
-  }
 }
 </style>

@@ -103,7 +103,7 @@ const isVisible = computed(() => showPrompt.value && !isReaderView.value)
   flex: 1;
   display: flex;
   flex-direction: column;
-  gap: 0.125rem;
+  gap: var(--space-0-5);
 }
 
 .banner-title {
@@ -171,15 +171,6 @@ const isVisible = computed(() => showPrompt.value && !isReaderView.value)
 
 .is-spinning {
   animation: spin 1s linear infinite;
-}
-
-@keyframes spin {
-  from {
-    transform: rotate(0deg);
-  }
-  to {
-    transform: rotate(360deg);
-  }
 }
 
 .update-banner-enter-active,

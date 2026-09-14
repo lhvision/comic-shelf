@@ -404,11 +404,14 @@ onAuthSuccess(fetchProviders)
   cursor: pointer;
   white-space: nowrap;
   flex-shrink: 0;
-  transition: all var(--duration-1) var(--ease-out);
+  transition:
+    background-color var(--duration-1) var(--ease-out),
+    border-color var(--duration-1) var(--ease-out),
+    color var(--duration-1) var(--ease-out);
 }
 
 .guest-roster-btn:hover {
-  background: var(--paper-2);
+  background-color: var(--paper-2);
   border-color: var(--accent);
   color: var(--accent);
 }
@@ -420,7 +423,7 @@ onAuthSuccess(fetchProviders)
   gap: var(--space-1);
   padding: var(--space-1) var(--space-2);
   line-height: 1.5;
-  background: var(--paper-1);
+  background-color: var(--paper-1);
   border: 1px solid var(--line);
   border-radius: var(--radius-1);
   font-family: var(--font-mono);
@@ -429,18 +432,21 @@ onAuthSuccess(fetchProviders)
   cursor: pointer;
   white-space: nowrap;
   flex-shrink: 0;
-  transition: all var(--duration-1) var(--ease-out);
+  transition:
+    background-color var(--duration-1) var(--ease-out),
+    border-color var(--duration-1) var(--ease-out),
+    color var(--duration-1) var(--ease-out);
 }
 
 .auth-badge-btn:hover {
-  background: var(--paper-2);
+  background-color: var(--paper-2);
   border-color: var(--line-strong);
 }
 
 .auth-badge-btn.curator {
   color: var(--accent-strong);
   border-color: color-mix(in oklab, var(--accent) 30%, var(--line));
-  background: var(--accent-soft);
+  background-color: var(--accent-soft);
 }
 
 .auth-badge-btn.curator:hover {
