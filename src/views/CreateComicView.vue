@@ -168,7 +168,7 @@ const {
             :show-tabs="false"
             :disabled="submitting"
             path-label="服务器本地目录路径 *"
-            path-placeholder="如：public/tiya-frames 或 /data/comics/tiya"
+            path-placeholder="如：public/tiya-frames 或 /app/data/comics/tiya"
           >
             <template #path-guide>
               <div class="path-guide">

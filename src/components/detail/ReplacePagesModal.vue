@@ -294,7 +294,7 @@ async function submit() {
           :is-over-drop-zone="isOverDropZone"
           :open-file-dialog="onDropzoneTrigger"
           :disabled="submitting"
-          path-placeholder="如：public/tiya-frames 或 /data/comics/import-folder"
+          path-placeholder="如：public/tiya-frames 或 /app/data/comics/import-folder"
         >
           <template #path-guide>
             <p class="path-hint">

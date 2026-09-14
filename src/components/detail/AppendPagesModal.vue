@@ -198,7 +198,7 @@ async function submit() {
           :is-over-drop-zone="isOverDropZone"
           :open-file-dialog="() => openFileDialog()"
           :disabled="submitting || isUploading"
-          path-placeholder="如：public/tiya-frames 或 /data/manga/vol2"
+          path-placeholder="如：public/tiya-frames 或 /app/data/manga/vol2"
         >
           <template #path-guide>
             <p class="path-hint">指定包含图片的文件夹，系统将就地扫描并按文件名自然序号追加。</p>

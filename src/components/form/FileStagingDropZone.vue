@@ -42,7 +42,7 @@ const props = withDefaults(
     openFileDialog: undefined,
     prompt: '点击选择画页，或将图片批量拖拽到此处',
     hint: '支持 JPG, PNG, WebP, GIF, AVIF（自动按文件名自然排序）',
-    pathPlaceholder: '如：public/tiya-frames 或 /data/comics/tiya',
+    pathPlaceholder: '如：public/tiya-frames 或 /app/data/comics/tiya',
     pathLabel: '服务器本地目录绝对/相对路径',
     showTabs: true,
   },
