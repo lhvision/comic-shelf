@@ -44,7 +44,7 @@
 
 - **本质**：CSS 合成层规范中 `contain: paint` 会强行裁切所有超出容器 padding-box 的像素。
 - **复现场景**：在卡片容器声明 `content-visibility: auto`（隐式开启 `contain: paint`），同时卡片 Hover 向上浮动（`-0.35rem`）并投射柔和外阴影。
-- **红线与防误伤**：**不要**在包含 Hover 浮动、叠牌倾斜或投影弥散的卡片上设置 `contain: paint` 或 `content-visibility: auto`；**放行/改用**纯扁平无溢出的静态列表放行，带立体浮动的卡片改用 `contain: layout style` 并借助 48 图预算分批增量渲染（曾导致上浮边缘与投影被硬切黑边）。
+- **红线与防误伤**：**不要**在包含 Hover 浮动、叠牌倾斜或投影弥散的卡片上设置 `contain: paint` 或 `content-visibility: auto`；**严禁**试图通过“增加外层 DOM 壳将 Hover/阴影移至外层”的绕道方案（这不仅会因内层 `contain: paint` 导致 3D 叠牌副封面偏角切平与 Tooltip 锚定异常，还会因动态自适应网格的 `contain-intrinsic-size` 估算误差引发滚动条剧烈跳跃与 CLS 抖动）；**放行/改用**纯扁平无溢出的静态列表放行，带立体浮动的卡片改用 `contain: layout style` 并依托万级藏书三层防御架构（12 本切片 + 60 本刹车 + 120 本展开软封顶，见避坑 #90）实现零负担满帧渲染。
 
 ### 8. useMemoize 失败缓存残留与参数签名
 
