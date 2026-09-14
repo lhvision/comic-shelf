@@ -66,7 +66,7 @@ build: {
             id.includes('/pinia/') ||
             id.includes('/@vueuse/')
           ) {
-            return 'vendor-core'
+            return 'vue-core'
           }
         }
       },
@@ -77,18 +77,23 @@ build: {
 
 ### 2. 权限视图与重型弹窗异步导入范式
 
-在 Vue SFC 中统一采用 `defineAsyncComponent` 并搭配 `v-if` 门禁：
+在 Vue SFC 中统一采用 `defineAsyncComponent` 并搭配 `v-if` 门禁与初次交互懒加载（Lazy Once）：
 
 ```vue
 <!-- AppHeader.vue -->
 <script setup lang="ts">
-import { defineAsyncComponent } from 'vue'
+import { defineAsyncComponent, ref } from 'vue'
 const GuestModal = defineAsyncComponent(() => import('@/components/curator/GuestModal.vue'))
+const guestModalEverOpened = ref(false)
+function handleOpenGuestModal() {
+  guestModalEverOpened.value = true
+  openGuestModal()
+}
 </script>
 
 <template>
-  <!-- 仅馆长具有操作权限时才挂载该异步组件 -->
-  <GuestModal v-if="canWrite" />
+  <!-- 仅馆长具有操作权限且初次触发访客簿按钮时才挂载该异步组件 -->
+  <GuestModal v-if="canWrite && guestModalEverOpened" />
 </template>
 ```
 

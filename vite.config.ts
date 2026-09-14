@@ -225,16 +225,11 @@ export default defineConfig({
     rollupOptions: {
       output: {
         manualChunks(id) {
-          if (id.includes('node_modules')) {
-            if (
-              id.includes('/vue/') ||
-              id.includes('/@vue/') ||
-              id.includes('/vue-router/') ||
-              id.includes('/pinia/') ||
-              id.includes('/@vueuse/')
-            ) {
-              return 'vue-core'
-            }
+          if (
+            id.includes('node_modules') &&
+            /\/node_modules\/(?:@vue\/|vue\/|vue-router\/|pinia\/|@vueuse\/)/.test(id)
+          ) {
+            return 'vue-core'
           }
         },
       },
@@ -243,7 +238,6 @@ export default defineConfig({
   resolve: {
     alias: {
       '@': fileURLToPath(new URL('./src', import.meta.url)),
-      vue: 'vue/dist/vue.runtime-with-vapor.esm-browser.js',
     },
   },
   server: {

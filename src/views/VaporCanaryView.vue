@@ -7,6 +7,7 @@
  */
 import { ref } from 'vue'
 import { RouterLink } from 'vue-router'
+import { useTimeoutFn } from '@vueuse/core'
 import AppButton from '@/components/AppButton.vue'
 import AppIcon from '@/components/AppIcon.vue'
 import VaporBenchItem from '@/components/canary/VaporBenchItem.vue'
@@ -34,14 +35,19 @@ const {
 } = useVaporBenchmark()
 
 const copied = ref(false)
+const { start: startCopiedReset } = useTimeoutFn(
+  () => {
+    copied.value = false
+  },
+  2000,
+  { immediate: false },
+)
 
 async function handleCopy() {
   const ok = await copyReport()
   if (ok) {
     copied.value = true
-    setTimeout(() => {
-      copied.value = false
-    }, 2000)
+    startCopiedReset()
   }
 }
 </script>

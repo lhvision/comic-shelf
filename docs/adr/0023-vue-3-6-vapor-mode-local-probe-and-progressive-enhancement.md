@@ -134,6 +134,21 @@ function handleClick(e: MouseEvent) {
 
 收录第 97 条避坑经验，警示全团队严禁在 Vapor 组件中访问 `vnode`、样式变量避免依赖 `<style> v-bind()`、严禁全局盲目开启 `features.vapor: true`。
 
+## 演进与下线计划（Iteration & Sunset Plan）
+
+1. **沙盒生命周期与代码隔离**：
+   - `/vapor-canary` 基准沙盒采用路由级按需动态导入（`() => import('@/views/VaporCanaryView.vue')`），构建为 9.37 kB 独立 chunk，不进入全站主导航，严密防范首屏资源污染；
+   - 状态机 `useVaporBenchmark` 在各测试轮次切换时具备严格的内存与计时指标清空机制，杜绝脏状态累积。
+2. **渐进式迁移与准出路线**：
+   - **阶段 1（当前探针）**：以 `PageTile.vue` 作为叶子高密度生产探针，验证无虚树渲染与原生 `<a>` 路由跳转；
+   - **阶段 2（Vue 3.6 GA）**：待 Vue 3.6 正式发布且 CJS/ESM 双模导出彻底平稳后，依据跑分评估是否将目录 item 或发现流展示卡片按需引入 `<template vapor>`；
+   - **阶段 3（沙盒归档/下线）**：全站核心叶子组件完成评测沉淀后，可将沙盒收敛为内部诊断面板（置于 `import.meta.env.DEV` 门禁后）或移入归档基准用例。
+3. **依赖治理与升级契约（Catalog-First）**：
+   - 全面引入 `pnpm-workspace.yaml` 中的 `catalog.default.vue: rc` 统筹声明；
+   - 子包与主应用 `package.json` 统一使用 `"vue": "catalog:"`；
+   - `overrides` 中集中收敛 `@vue/*` 衍生包至 `rc` 渠道，彻底消灭每个小版本升级时人工修改十余处散落版本号的维护负担；
+   - 待 3.6 正式 GA 后，仅需在 catalog 中单点切换为 `"^3.6.0"`，零摩擦完成平稳过渡。
+
 ## 效果与收益
 
 1. **依赖底座就绪**：`pnpm-workspace.yaml` 与 `package.json` 全面对齐 Vue 3.6 RC，增量 `pnpm type-check` 0 错误；

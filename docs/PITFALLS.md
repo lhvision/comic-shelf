@@ -1056,6 +1056,20 @@
     4. **同构响应式底座**：100% 复用既有 `composables` 和 Pinia Store，状态层零分裂；
     5. **显式 CSS 变量注入**：统一通过 `:style="{ '--foo': bar }"` 与 CSS 变量通信。
 
+### 98. Vue 3.6 RC 与 Vitest 双包危害与实例割裂陷阱（Vue 3.6 Dual-Package Hazard & Test-Utils Instance Isolation Trap）
+
+- **本质**：
+  1. **构建格式非对称（Asymmetric ESM/CJS Builds）**：Vue 3.6 RC 中的 `@vue/runtime-vapor` 仅发布了 ESM Bundler 产物（没有 CommonJS 构建）。而 Vitest 在 Node.js (JSDOM) 环境执行测试时，Node 模块导出匹配策略默认命中 `"node"` 条件，使得 `@vue/test-utils` 与 `@vue/*` 底层依赖默认以 CJS 方式加载；
+  2. **跨模块实例割裂（Instance Isolation & currentInstance: null）**：若仅将 `vue` 别名重定向至独立打包的单文件（如 `vue.runtime-with-vapor.esm-browser.js`），而 `@vue/test-utils` 仍通过 CJS 运行时执行 `mount()`，会导致组件内的 `useSlots()`、`useTemplateRef()` 访问 ESM 上下文中的 `currentInstance`，其实例恒为 `null`，报 `TypeError: Cannot read properties of null (reading 'vapor')`；
+  3. **pnpm 隔离拓扑下的别名寻址失效（Strict Non-Flat node_modules Resolution）**：在 pnpm 严格模式下，`@vue/shared`、`@vue/server-renderer` 等非顶层直接依赖并未扁平提升至根目录 `node_modules/@vue/`，写死相对路径别名必然导致构建/单测解析中断。
+- **红线与防误伤**：
+  - **不要**在 `vitest.config.ts` 中单独将 `vue` 别名指向独立的 `esm-browser.js` 浏览器单文件；
+  - **不要**在 `vitest.config.ts` 中直接硬编码 `./node_modules/@vue/shared` 等假设扁平的相对物理路径；
+  - **不要**在子模块 `package.json` 中分散硬编码每个具体 RC 小版本号（如 `3.6.0-rc.7`）；
+  - **放行/改用**：
+    1. **全链路 ESM Bundler 单例收敛**：在 `vitest.config.ts` 中，通过 `createRequire` 从已解析的 `vue` 和 `@vue/test-utils` 根部动态解析 `@vue/test-utils/dist/vue-test-utils.esm-bundler.mjs` 以及各 `@vue/*` 的 `dist/*.esm-bundler.js`，确保测试用例、测试工具库与组件运行在完全一致的单一模块实例上下文内；
+    2. **pnpm Catalog 统筹版本治理**：在 `pnpm-workspace.yaml` 中定义 `catalog.default.vue: rc` 并在 `overrides` 中将 `@vue/*` 衍生包全量锁定到统一的 `'rc'` 标签，主应用 `package.json` 统一使用 `"vue": "catalog:"`，升级时只需一条 `pnpm update` 或 `pnpm install` 自动从 npm 镜像对齐最新版。
+
 ---
 
 ## 🚦 交付门禁（四步必跑）

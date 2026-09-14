@@ -27,6 +27,11 @@ const providers = ref<ProviderInfo[]>(DEFAULT_PROVIDERS)
 const { authRequired, isGuest, canWrite, logout } = useAuth()
 const { brandIcon } = useBrandIcon()
 const { openModal: openGuestModal } = useGuestPasses()
+const guestModalEverOpened = ref(false)
+function handleOpenGuestModal() {
+  guestModalEverOpened.value = true
+  openGuestModal()
+}
 const { resetAllShelfState } = useShelfState()
 
 // 零重排（Zero-Reflow）滚动边缘感知：基于原生 IntersectionObserver 哨兵架构
@@ -168,7 +173,7 @@ onAuthSuccess(fetchProviders)
         type="button"
         class="guest-roster-btn"
         title="打开访客簿，管理与印发专属通行证"
-        @click="openGuestModal"
+        @click="handleOpenGuestModal"
       >
         <AppIcon name="users" size="xs" :stroke-width="1.8" />
         <span class="guest-roster-label">〔 访客簿 〕</span>
@@ -189,7 +194,7 @@ onAuthSuccess(fetchProviders)
         <span class="auth-label">〔 馆长已入座 〕</span>
       </button>
     </div>
-    <GuestModal v-if="canWrite" />
+    <GuestModal v-if="canWrite && guestModalEverOpened" />
   </header>
 </template>
 

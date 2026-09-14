@@ -55,6 +55,9 @@ export function useVaporBenchmark() {
 
     // 先清理
     items.value = []
+    patchAvgDuration.value = null
+    patchFps.value = null
+    unmountDuration.value = null
     await nextTick()
 
     const count = itemCount.value

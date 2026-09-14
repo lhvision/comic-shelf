@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, useAttrs, useSlots } from 'vue'
-import { RouterLink, type RouteLocationRaw } from 'vue-router'
+import type { RouteLocationRaw } from 'vue-router'
 import AppIcon from '@/components/AppIcon.vue'
 import type { IconName } from '@/components/icons'
 
@@ -95,7 +95,7 @@ const isAnchor = computed(() => !props.to && Boolean(props.href))
 const isLink = computed(() => isRouterLink.value || isAnchor.value)
 
 const tag = computed(() => {
-  if (isRouterLink.value) return RouterLink
+  if (isRouterLink.value) return 'RouterLink'
   if (isAnchor.value) return 'a'
   return 'button'
 })

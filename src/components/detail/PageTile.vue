@@ -52,10 +52,11 @@ function handleClick(e: MouseEvent) {
   if (e.defaultPrevented || e.button !== 0 || e.ctrlKey || e.metaKey || e.shiftKey || e.altKey) {
     return
   }
-  e.preventDefault()
-  if (router) {
-    router.push(readerLink())
+  if (!router) {
+    return
   }
+  e.preventDefault()
+  router.push(readerLink())
 }
 
 function onThumbLoad() {
