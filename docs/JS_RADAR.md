@@ -40,29 +40,30 @@
 
 > 数据来源：MDN BCD (Browser Compatibility Data) + Can I Use，更新于 2026-09。
 
-| 特性 / API                                | Chrome | Firefox | Safari |   规范状态 / Baseline   |                               本项目落地状态                                |
-| :---------------------------------------- | :----: | :-----: | :----: | :---------------------: | :-------------------------------------------------------------------------: |
-| **`Promise.withResolvers()`**             |  119+  |  121+   | 17.4+  |    ✅ Baseline 2024     |        ✅ 已落地（`useViewTransition` / `router` / IDB 清理 / 单测）        |
-| **`Promise.try()`**                       |  128+  |  134+   | 18.2+  |    ✅ Baseline 2025     |              ✅ 已落地（`useViewTransition.ts` 安全执行门面）               |
-| **`AbortSignal.any()`**                   |  116+  |  124+   | 17.4+  |    ✅ Baseline 2024     |                  ✅ 已落地（`api/client.ts` 复合超时取消）                  |
-| **`AbortSignal.timeout()`**               |  124+  |  100+   |  16+   |    ✅ Baseline 2024     |  ⚠️ 架构决策（因无法提前取消定时器，短命 RPC 采用受控定时器 + 原生 `any`）  |
-| **`Set` 集合运算 (`intersection` 等)**    |  122+  |  127+   |  17+   |    ✅ Baseline 2024     |              ✅ 已落地（`TagFilterBar` / `useLibraryFilter`）               |
-| **`Map.groupBy` / `Object.groupBy`**      |  117+  |  119+   | 17.4+  |    ✅ Baseline 2024     |                 ✅ 已落地（漫画多章节切片与 Provider 分组）                 |
-| **`HTMLImageElement.decode()`**           |  65+   |   68+   |  11+   |    ✅ Baseline 2020     |               ✅ 已落地（阅读器大图预载管道 / 离线画页解码）                |
-| **`Intl.Collator`**                       |  24+   |   29+   |  10+   |    ✅ Baseline 2020     |           ✅ 已落地（`useLibraryFilter.ts` 中文拼音极速排序引擎）           |
-| **`WeakMap` 弱引用缓存模式**              |  36+   |   6+    |   8+   |       ✅ Baseline       |       ✅ 已落地（`useLibraryFilter.ts` 藏书全文字段小写搜索索引缓存）       |
-| **Module Web Workers (`type: 'module'`)** |  80+   |  114+   |  15+   |    ✅ Baseline 2023     | ✅ 已落地（`useLibraryFilter.ts` / `libraryFilter.worker.ts` 万级检索卸载） |
-| **Import Attributes (`with { type }`)**   |  125+  |  137+   | 17.2+  |    ✅ Baseline 2024     |                 📋 路线图（模块化 JSON 元数据与多语言字典）                 |
-| **OPFS (`getDirectory()`)**               |  86+   |  111+   | 15.2+  |    ✅ Baseline 2023     | 📋 储备特性（单体大文件流式落盘/整本离线包/字体；网络图片走 CacheStorage）  |
-| **Iterator Helpers (`.map()/.take()`)**   |  122+  |  131+   | 18.4+  |    ✅ Baseline 2025     |                 📋 路线图（IndexedDB 游标与分批上传流水线）                 |
-| **`using` (Explicit Resource Mgmt)**      |  134+  |  141+   |   TP   | 🔶 Newly Available 2025 |               📋 路线图（Canvas Context / ObjectURL 作用域）                |
-| **`Temporal API`**                        |  144+  |  139+   |   TP   | 🔶 Newly Available 2026 |               ⚠️ 审慎评估（待 iOS 稳定版就绪前暂不全量采用）                |
-| **WICG HTML-in-Canvas (`drawElement`)**   |  155+  |   ❌    |   ❌   |      🧪 WICG Draft      |         ⚠️ 前瞻雷达（严禁用于长列表；储备于未来富排版气泡/AVG合图）         |
-| **模式匹配 (`match / when`)**             |   ❌   |   ❌    |   ❌   |       🧪 Stage 1        |                       🚫 严禁引入转译插件，纯草案观测                       |
-| **管道运算符 (`\|>`)**                    |   ❌   |   ❌    |   ❌   |       🧪 Stage 2        |                       🚫 严禁引入转译插件，纯草案观测                       |
-| **`Record & Tuple` (`#{} / #[]`)**        |   ❌   |   ❌    |   ❌   |       🧪 Stage 2        |                       🚫 严禁引入转译插件，纯草案观测                       |
-| **`Decimal` (`0.1m`)**                    |   ❌   |   ❌    |   ❌   |       🧪 Stage 1        |                      🚫 纸间无浮点货币场景，纯草案观测                      |
-| **安全赋值 (`?=`) / Try 表达式**          |   ❌   |   ❌    |   ❌   |       🧪 Stage 1        |                          🚫 语法尚未定稿，暂不采用                          |
+| 特性 / API                                  | Chrome | Firefox | Safari |   规范状态 / Baseline   |                               本项目落地状态                                |
+| :------------------------------------------ | :----: | :-----: | :----: | :---------------------: | :-------------------------------------------------------------------------: |
+| **`Promise.withResolvers()`**               |  119+  |  121+   | 17.4+  |    ✅ Baseline 2024     |        ✅ 已落地（`useViewTransition` / `router` / IDB 清理 / 单测）        |
+| **`Promise.try()`**                         |  128+  |  134+   | 18.2+  |    ✅ Baseline 2025     |              ✅ 已落地（`useViewTransition.ts` 安全执行门面）               |
+| **`AbortSignal.any()`**                     |  116+  |  124+   | 17.4+  |    ✅ Baseline 2024     |                  ✅ 已落地（`api/client.ts` 复合超时取消）                  |
+| **`AbortSignal.timeout()`**                 |  124+  |  100+   |  16+   |    ✅ Baseline 2024     |  ⚠️ 架构决策（因无法提前取消定时器，短命 RPC 采用受控定时器 + 原生 `any`）  |
+| **`Set` 集合运算 (`intersection` 等)**      |  122+  |  127+   |  17+   |    ✅ Baseline 2024     |              ✅ 已落地（`TagFilterBar` / `useLibraryFilter`）               |
+| **`Map.groupBy` / `Object.groupBy`**        |  117+  |  119+   | 17.4+  |    ✅ Baseline 2024     |                 ✅ 已落地（漫画多章节切片与 Provider 分组）                 |
+| **`HTMLImageElement.decode()`**             |  65+   |   68+   |  11+   |    ✅ Baseline 2020     |               ✅ 已落地（阅读器大图预载管道 / 离线画页解码）                |
+| **`Intl.Collator`**                         |  24+   |   29+   |  10+   |    ✅ Baseline 2020     |           ✅ 已落地（`useLibraryFilter.ts` 中文拼音极速排序引擎）           |
+| **`WeakMap` 弱引用缓存模式**                |  36+   |   6+    |   8+   |       ✅ Baseline       |       ✅ 已落地（`useLibraryFilter.ts` 藏书全文字段小写搜索索引缓存）       |
+| **Module Web Workers (`type: 'module'`)**   |  80+   |  114+   |  15+   |    ✅ Baseline 2023     | ✅ 已落地（`useLibraryFilter.ts` / `libraryFilter.worker.ts` 万级检索卸载） |
+| **Import Attributes (`with { type }`)**     |  125+  |  137+   | 17.2+  |    ✅ Baseline 2024     |                 📋 路线图（模块化 JSON 元数据与多语言字典）                 |
+| **OPFS (`getDirectory()`)**                 |  86+   |  111+   | 15.2+  |    ✅ Baseline 2023     | 📋 储备特性（单体大文件流式落盘/整本离线包/字体；网络图片走 CacheStorage）  |
+| **Iterator Helpers (`.map()/.take()`)**     |  122+  |  131+   | 18.4+  |    ✅ Baseline 2025     |                 📋 路线图（IndexedDB 游标与分批上传流水线）                 |
+| **`using` (Explicit Resource Mgmt)**        |  134+  |  141+   |   TP   | 🔶 Newly Available 2025 |               📋 路线图（Canvas Context / ObjectURL 作用域）                |
+| **`Temporal API`**                          |  144+  |  139+   |   TP   | 🔶 Newly Available 2026 |               ⚠️ 审慎评估（待 iOS 稳定版就绪前暂不全量采用）                |
+| **Vue 3.6 Vapor Mode (`<template vapor>`)** | 全支持 | 全支持  | 全支持 |      🔶 Vue 3.6 RC      |            ✅ 局部探针已落地（`PageTile.vue` / `/vapor-canary`）            |
+| **WICG HTML-in-Canvas (`drawElement`)**     |  155+  |   ❌    |   ❌   |      🧪 WICG Draft      |         ⚠️ 前瞻雷达（严禁用于长列表；储备于未来富排版气泡/AVG合图）         |
+| **模式匹配 (`match / when`)**               |   ❌   |   ❌    |   ❌   |       🧪 Stage 1        |                       🚫 严禁引入转译插件，纯草案观测                       |
+| **管道运算符 (`\|>`)**                      |   ❌   |   ❌    |   ❌   |       🧪 Stage 2        |                       🚫 严禁引入转译插件，纯草案观测                       |
+| **`Record & Tuple` (`#{} / #[]`)**          |   ❌   |   ❌    |   ❌   |       🧪 Stage 2        |                       🚫 严禁引入转译插件，纯草案观测                       |
+| **`Decimal` (`0.1m`)**                      |   ❌   |   ❌    |   ❌   |       🧪 Stage 1        |                      🚫 纸间无浮点货币场景，纯草案观测                      |
+| **安全赋值 (`?=`) / Try 表达式**            |   ❌   |   ❌    |   ❌   |       🧪 Stage 1        |                          🚫 语法尚未定稿，暂不采用                          |
 
 **图例**：✅ 已落地 · 🔶 部分/最新可用 · 🧪 实验草案 · ❌ 未原生支持 · 🚫 本项目不采用
 
@@ -586,6 +587,27 @@ WICG HTML-in-Canvas 旨在允许 Web 开发者直接将 HTML DOM 子树的排版
 
 ---
 
+### 3.7 Vue 3.6 Vapor Mode — 去虚拟 DOM 响应式直接编译（Newly Available 2026）
+
+**官方规范**：[Vue 3.6 Vapor Mode RFC](https://github.com/vuejs/rfcs)  
+**实验状态**：Vue 3.6 RC (`3.6.0-rc.7/8`) · `@vue/runtime-vapor`  
+**本项目落地位置**：
+
+- `src/components/detail/PageTile.vue`（详情页与章节页画卷索引缩略图高密度探针）
+- `src/views/VaporCanaryView.vue`（`/vapor-canary` 横向跑分基准沙盒探针）
+- `docs/adr/0023-vue-3-6-vapor-mode-local-probe-and-progressive-enhancement.md`
+- `docs/PITFALLS.md` §97（Vapor 模式禁忌原语与避坑防线）
+
+#### 核心机制与架构优势
+
+Vue 3.6 Vapor Mode 汲取了 SolidJS 的编译期优化思想，将 SFC 单文件组件中的 `<template vapor>` 编译为直接操作原生 DOM 的指令：
+
+1. **零 VNode 内存分配**：跳过创建虚拟节点对象树，对于成千上万个卡片或图块，彻底消除垃圾回收（GC）周期中的内存碎片；
+2. **零树形递归 Diff**：当响应式状态变更时，直接由编译期生成的精准 Effect 执行单个 DOM 文本节点或属性的微粒原地补丁；
+3. **同构响应式底座**：100% 共享 `@vue/reactivity` 的 `ref`、`computed` 与 `watch`，无缝复用 Pinia 与 VueUse。
+
+---
+
 ## 4. 实验草案特性（Experimental / Stage 1-2 Proposals）
 
 > ⚠️ **纸间工程铁律**：严禁在生产构建工具链中安装 Babel 实验性插件或 Babel Macro 来提前使用 Stage 1-2 草案语法。此类特性仅作前瞻记录，等待 TC39 推进至 Stage 4 及主流引擎支持。
@@ -623,10 +645,15 @@ WICG HTML-in-Canvas 旨在允许 Web 开发者直接将 HTML DOM 子树的排版
   - 在 `src/api/client.ts` 落地原生 `AbortSignal.any` + `AbortSignal.timeout`；
   - 在 `useViewTransition.ts`、`router/index.ts`、`useOfflineStorage.ts` 及单元测试插桩中全面实装 `Promise.withResolvers` 与 `Promise.try`；
   - 确立 `env.d.ts` 全局标准契约，确保 `pnpm type-check` 与 `vp check` 0 报错。
-- [ ] **Phase 2: 标签与聚合运算下沉（2026-Q4）**
+- [x] **Phase 2: Vue 3.6 Vapor Mode 局部探针与渐进增强（2026-09 已完成首批闭环）**
+  - 全局依赖锁定 `vue@3.6.0-rc.8`，全站默认成熟 VDOM；
+  - 高密度生产叶子探针 `PageTile.vue`（`<template vapor>` + 原生链接直驱）接入画页索引网格；
+  - 落地 `/vapor-canary` 独立基准跑分沙盒，实现挂载/响应式补丁/内存直观测量；
+  - 固化 ADR 0023 与 `docs/PITFALLS.md` §97 禁忌原语防线。
+- [ ] **Phase 3: 标签与聚合运算下沉（2026-Q4）**
   - 将 `TagFilterBar.vue` 与 `useLibraryFilter.ts` 中的多标签交并集重构为原生 `Set.prototype.intersection` / `difference`；
   - 将目录树和书架分组重构为 `Map.groupBy`。
-- [ ] **Phase 3: 流式管道与资源作用域（2027 展望）**
+- [ ] **Phase 4: 流式管道与资源作用域（2027 展望）**
   - 在大批量漫画离线下载与 IndexedDB 分页查询中引入 `Iterator Helpers`；
   - 待 Safari 稳定版正式支持 `using` 后，在图片 Blob 与 Canvas 渲染中采用 RAII 资源守卫。
 

@@ -49,7 +49,7 @@ release. Add a tool name to select part of the graph. For example, run
 | `docs/PITFALLS.md`                 | 错题本与避坑指南（历史故障复盘、高频反模式与避坑红线速查）                                       |
 | `docs/CSS_RADAR.md`                | CSS 前瞻技术雷达：已落地特性用法、渐进增强降级方案、实验草案追踪与升级路线图                     |
 | `docs/JS_RADAR.md`                 | JavaScript 前瞻技术雷达：已落地特性用法、渐进增强降级方案、实验草案追踪与升级路线图              |
-| `docs/adr/`                        | 架构决策记录集（系统重大权衡与不可逆技术方案全景，ADR 0001 ~ 0018）                              |
+| `docs/adr/`                        | 架构决策记录集（系统重大权衡与不可逆技术方案全景，ADR 0001 ~ 0023）                              |
 | `docs/AI_ECOSYSTEM_ROADMAP.md`     | 扩展生态与 AI 演进路线图（MCP 服务、飞书 Bot、AI 漫画创作、Mac mini 本地微调与 2D 互动游戏规划） |
 | `docs/agents/architecture.md`      | 后端模型、FastAPI 路由、存储布局、Provider 扩展、安全与防盗链                                    |
 | `docs/agents/frontend.md`          | 书架/详情/阅读器、页面索引、多章节子路由、View Transitions                                       |

@@ -52,6 +52,12 @@ const router = createRouter({
       meta: { title: '章节', rank: 3 },
     },
     {
+      path: '/vapor-canary',
+      name: 'vapor-canary',
+      component: () => import('@/views/VaporCanaryView.vue'),
+      meta: { title: 'Vapor Mode 基准沙盒', rank: 2 },
+    },
+    {
       path: '/:pathMatch(.*)*',
       redirect: '/',
     },

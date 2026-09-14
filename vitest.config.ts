@@ -9,6 +9,14 @@ export default mergeConfig(
       environment: 'jsdom',
       exclude: [...configDefaults.exclude, 'e2e/**'],
       root: fileURLToPath(new URL('./', import.meta.url)),
+      alias: {
+        vue: 'vue/dist/vue.runtime-with-vapor.esm-browser.js',
+      },
+      server: {
+        deps: {
+          inline: [/vue/],
+        },
+      },
     },
   }),
 )

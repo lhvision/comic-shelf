@@ -1035,7 +1035,26 @@
   - **放行/改用**：
     1. **静态令牌 100% 裸用与单源收敛**：除动态内联注入样式（如 `var(--mask-left, 0px)`）外，所有静态令牌严禁编写局部 fallback；全站除 `tokens.css` 声明文件外，组件样式达到 **0 Hex 残留**；
     2. **纯色过渡长写与渐变动画 `@property` 插值**：纯色背景明确声明 `transition: background-color`；渐变背景动效通过 `@property` 注册类型化自定义属性（`<percentage>`、`<color>`），交由 GPU 合成器进行平滑数学插值；
-    3. **基础动画全局统一收敛**：通用旋转动画收敛至 `main.css` 顶层 `@keyframes spin`，组件直接调用 `animation: spin 1s linear infinite`。
+
+### 97. Vue 3.6 Vapor Mode 虚树假设与私有原语反模式陷阱（Vapor Mode VNode Assumption & Private Primitives Trap）
+
+- **本质**：
+  1. **虚拟节点假定失真（VNode Access Trap）**：在组件内调用 `getCurrentInstance()?.vnode` 或读取 `vnode.props`、`vnode.el`。在 Vapor 模式下，组件编译直接生成原生 DOM 节点和微粒响应式 Effect，**根本不存在虚拟 DOM 树**，`instance.vnode` 恒为 `undefined`，任何直接读取其属性的操作均会抛出 `TypeError: Cannot read properties of undefined` 导致页面白屏崩溃；
+  2. **样式绑定的机制差异（`<style> v-bind()` vs `:style`）**：在 Vapor SFC 中，若使用 `<style>` 内部的 `v-bind(expr)`，其依赖早期 VDOM 运行时的样式变量注入管线。在 Vapor 探针阶段，应优先使用显式 `:style="{ '--custom-var': expr }"` 动态注入 CSS 自定义属性，保障 100% 确定性；
+  3. **复杂插槽与未适配组件混部陷阱（Complex Slot & Heavy Interop Trap）**：在 `<template vapor>` 叶子组件内若盲目嵌套依赖复杂作用域插槽（Scoped Slots）或 VDOM 专属特性的深层第三方组件，会触发跨模式桥接开销甚至插槽上下文丢失；
+  4. **高密度 Vapor 叶子节点滥用 `<RouterLink>` 桥接陷阱（RouterLink VDOM-in-Vapor Thrashing）**：`<RouterLink>` 为纯正的 VDOM 组件，内部深度依赖 `h()` 与插槽分发。在高密度（50~200+ 节点）展示切片或卡片内部嵌套 `<RouterLink>`，会迫使运行时构建数百个微型 VDOM Bridge 桥接容器，不仅彻底抹平了 Vapor 的模板克隆（`cloneNode`）红利并增加内存 GC 负担，还在单测环境下极易触发 `shapeFlag` 未定义报错；
+  5. **全站无脑全量开启（Premature Full-Site Vaporization）**：在没有独立跑分沙盒与精准单测验证的情况下，在 `vite.config.ts` 中开启全局 `features: { vapor: true }`，会导致全站上百个组件的边界问题同时爆发，违背渐进增强原则。
+- **红线与防误伤**：
+  - **不要**在 Vapor 组件内部编写任何读取 `getCurrentInstance()?.vnode` 的代码；
+  - **不要**在 Vapor 组件中依赖 SFC `<style>` 内的 `v-bind()`；
+  - **不要**在高密度 `<template vapor>` 叶子展示组件内滥用 `<RouterLink>` 引入双模桥接损耗；
+  - **不要**在 `vite.config.ts` 开启强制全局 Vapor（`features.vapor: true`）；
+  - **放行/改用**：
+    1. **局部探针渐进落地**：维持全站默认稳定 VDOM，仅在原子叶子组件上通过 `<template vapor>` 显式开启；
+    2. **纯粹原生与零 VNode 编译**：Vapor 叶子组件优先采用纯原生 DOM 与 SVG 矢量，避免跨模式桥接开销；
+    3. **原生 `<a>` 渐进路由代理（Zero-VDOM Progressive Navigation）**：采用 `<a :href="url" @click="handleClick">`，在事件处理中智能放行多按键修饰符（`metaKey`/`ctrlKey` 等原生多标签页打开），普通左键点击调用 `e.preventDefault()` 并由 `router.push()` 无刷新接管，既达成 100% 零 VNode 微粒直驱，又完整保全无障碍 (a11y) 与浏览器原生交互；
+    4. **同构响应式底座**：100% 复用既有 `composables` 和 Pinia Store，状态层零分裂；
+    5. **显式 CSS 变量注入**：统一通过 `:style="{ '--foo': bar }"` 与 CSS 变量通信。
 
 ---
 
