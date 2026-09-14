@@ -145,10 +145,10 @@ function prefetchReader() {
       </AppButton>
 
       <AppButton
-        v-if="canWrite && source === 'local'"
+        v-if="canWrite"
         variant="ghost"
         type="button"
-        title="增量追加新页面或新章节到本地作品"
+        title="增量追加新页面或新章节到作品"
         @click="emit('appendPages')"
       >
         增量追加…
@@ -182,7 +182,7 @@ function prefetchReader() {
       </AppButton>
 
       <AppButton
-        v-if="canWrite && source !== 'local'"
+        v-if="canWrite && source !== 'local' && !customPages"
         variant="ghost"
         type="button"
         title="从远端重新同步作品章节与最新元数据"

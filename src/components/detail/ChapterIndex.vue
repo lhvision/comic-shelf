@@ -32,17 +32,21 @@ const props = withDefaults(
     runningChapterId?: string | null
     /** 读者上次读到的章节序号（确保初始可见区间覆盖该章节） */
     initialVisibleChapter?: number
+    /** 是否拥有编辑权限（馆长在线） */
+    canWrite?: boolean
   }>(),
   {
     chapterCache: () => ({}),
     running: false,
     runningChapterId: null,
     initialVisibleChapter: 1,
+    canWrite: false,
   },
 )
 
 const emit = defineEmits<{
   cacheChapter: [chapterId: string]
+  addChapter: []
 }>()
 
 const comicKey = computed(() => `${props.source}/${props.sourceId}`)
@@ -92,7 +96,20 @@ watch(
         <p class="eyebrow">Table of contents</p>
         <h2 id="chapter-index-title">章节目录</h2>
       </div>
-      <p>共 {{ chapters.length }} 话 · 点击进入对应话的页面索引</p>
+      <div class="chapter-index-head-actions">
+        <p>共 {{ chapters.length }} 话 · 点击进入对应话的页面索引</p>
+        <AppButton
+          v-if="canWrite"
+          variant="ghost"
+          size="xs"
+          icon="plus"
+          type="button"
+          title="为本作品追加新一话章节"
+          @click="emit('addChapter')"
+        >
+          追加新话
+        </AppButton>
+      </div>
     </div>
 
     <div class="chapter-grid">
@@ -175,9 +192,17 @@ watch(
   font-size: var(--text-2xl);
 }
 
-.chapter-index-head > p {
+.chapter-index-head-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  flex-wrap: wrap;
+}
+
+.chapter-index-head-actions > p {
   color: var(--ink-2);
   font-size: var(--text-sm);
+  margin: 0;
 }
 
 .chapter-grid {

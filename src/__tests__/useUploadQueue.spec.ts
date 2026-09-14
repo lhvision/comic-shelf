@@ -1,9 +1,13 @@
-import { describe, it, expect, vi } from 'vite-plus/test'
+import { describe, it, expect, vi, beforeEach } from 'vite-plus/test'
 import { useUploadQueue } from '@/composables/useUploadQueue'
 import { api } from '@/api/client'
 import type { ComicDetail } from '@/types'
 
 describe('useUploadQueue', () => {
+  beforeEach(() => {
+    vi.restoreAllMocks()
+  })
+
   it('initializes with default state', () => {
     const queue = useUploadQueue()
     expect(queue.isUploading.value).toBe(false)
@@ -57,7 +61,7 @@ describe('useUploadQueue', () => {
       cover_paths: [],
     }
 
-    vi.spyOn(api, 'uploadLocalPages').mockResolvedValue(mockDetail)
+    vi.spyOn(api, 'uploadPages').mockResolvedValue(mockDetail)
 
     const progressUpdates: number[] = []
     const result = await queue.uploadFiles('test', mockFiles, '', '', {
@@ -80,13 +84,14 @@ describe('useUploadQueue', () => {
     const mockFiles = rawNames.map((name) => new File(['dummy'], name, { type: 'image/jpeg' }))
 
     const uploadedBatches: string[][] = []
-    vi.spyOn(api, 'uploadLocalPages').mockImplementation(async (_id, chunk) => {
+    const spy = vi.spyOn(api, 'uploadPages').mockImplementation(async (_src, _id, chunk) => {
       uploadedBatches.push(chunk.map((f) => f.name))
       return {} as unknown as ComicDetail
     })
 
-    await queue.uploadFiles('test', mockFiles, '', '', { batchSize: 10 })
+    await queue.uploadFiles('test', mockFiles, '', '', { batchSize: 10, source: 'picacg' })
 
+    expect(spy).toHaveBeenCalledWith('picacg', 'test', expect.any(Array), '', '')
     expect(uploadedBatches.length).toBe(1)
     expect(uploadedBatches[0]).toEqual(['000.jpg', '00a.jpg', '001.jpg', '002.jpg', '010.jpg'])
   })

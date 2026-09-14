@@ -175,5 +175,151 @@ class TestReplacePages(unittest.TestCase):
             finally:
                 os.environ.pop("COMIC_SHELF_ALLOWED_DIRS", None)
 
+    def test_composite_filename_auto_grouping(self):
+        # Setup sample comic with 2 legacy chapters
+        from app.models import Chapter
+        fetched = self._setup_sample_comic("picacg", "5f80b1234567890abcdef123")
+        fetched.meta.chapters = [
+            Chapter(id="c1", index=1, title="第1话：青梅竹马", page_count=2, start=1),
+            Chapter(id="c2", index=2, title="第2话：雨后", page_count=2, start=3),
+        ]
+        self.store.save_fetched(fetched)
+
+        # Downloaded images in a single folder with composite filenames: 1-1.avif, 1-2.avif, 2-1.avif, 3-1.avif
+        img = self._create_sample_img("green")
+        files = [
+            ("2-1.avif", img),
+            ("1-2.avif", img),
+            ("3-1.avif", img),
+            ("1-1.avif", img),
+        ]
+
+        new_meta = self.store.replace_pages("picacg", "5f80b1234567890abcdef123", files=files)
+        self.assertTrue(new_meta.custom_pages)
+        self.assertEqual(new_meta.page_count, 4)
+        self.assertEqual(len(new_meta.chapters), 3)
+
+        # Chapter 1: inherited title, 2 pages
+        self.assertEqual(new_meta.chapters[0].title, "第1话：青梅竹马")
+        self.assertEqual(new_meta.chapters[0].page_count, 2)
+        self.assertEqual(new_meta.chapters[0].start, 1)
+
+        # Chapter 2: inherited title, 1 page
+        self.assertEqual(new_meta.chapters[1].title, "第2话：雨后")
+        self.assertEqual(new_meta.chapters[1].page_count, 1)
+        self.assertEqual(new_meta.chapters[1].start, 3)
+
+        # Chapter 3: new chapter, 1 page
+        self.assertEqual(new_meta.chapters[2].title, "第 3 话")
+        self.assertEqual(new_meta.chapters[2].page_count, 1)
+        self.assertEqual(new_meta.chapters[2].start, 4)
+
+    def test_scoped_thumbnail_invalidation_preserves_other_chapters(self):
+        from app.models import Chapter
+        fetched = self._setup_sample_comic("local", "multi_scoped")
+        fetched.meta.chapters = [
+            Chapter(id="c1", index=1, title="第 1 话", page_count=2, start=1),
+            Chapter(id="c2", index=2, title="第 2 话", page_count=2, start=3),
+        ]
+        self.store.save_fetched(fetched)
+
+        # Populate thumbnails for chapter 1 and chapter 2
+        thumbs_c1 = self.store.thumbs_dir("local", "multi_scoped") / "c1"
+        thumbs_c2 = self.store.thumbs_dir("local", "multi_scoped") / "c2"
+        thumbs_c1.mkdir(parents=True, exist_ok=True)
+        thumbs_c2.mkdir(parents=True, exist_ok=True)
+        (thumbs_c1 / "00001.webp").write_bytes(b"c1_thumb")
+        (thumbs_c2 / "00001.webp").write_bytes(b"c2_thumb")
+
+        # Replace only chapter 1
+        img = self._create_sample_img("cyan")
+        self.store.replace_pages("local", "multi_scoped", files=[("01.jpg", img)], target_chapter="c1")
+
+        # Chapter 2 thumbnail MUST still be preserved!
+        self.assertTrue((thumbs_c2 / "00001.webp").exists())
+        self.assertEqual((thumbs_c2 / "00001.webp").read_bytes(), b"c2_thumb")
+
+    def test_append_pages_to_remote_comic_sets_custom_pages(self):
+        fetched = self._setup_sample_comic("picacg", "5f80b1234567890abcdef999")
+        self.assertFalse(fetched.meta.custom_pages)
+
+        img = self._create_sample_img("pink")
+        new_meta = self.store.append_pages(
+            source_id="5f80b1234567890abcdef999",
+            source="picacg",
+            files=[("new_01.webp", img)],
+            new_chapter_title="第 2 话：手动补录",
+        )
+
+        self.assertTrue(new_meta.custom_pages)
+        self.assertEqual(len(new_meta.chapters), 2)
+        self.assertEqual(new_meta.chapters[1].title, "第 2 话：手动补录")
+        self.assertEqual(new_meta.page_count, 5)
+
+    def test_append_pages_multi_chapter_composite_grouping(self):
+        fetched = self._setup_sample_comic("local", "append_composite")
+        img = self._create_sample_img("purple")
+        files = [
+            ("2-1.avif", img),
+            ("2-2.avif", img),
+            ("3-1.avif", img),
+        ]
+        new_meta = self.store.append_pages(
+            source_id="append_composite",
+            source="local",
+            files=files,
+            new_chapter_title="第 2 话",
+        )
+        # Should create chapter 1 (existing promoted), chapter 2 (2 pages), and chapter 3 (1 page)
+        self.assertEqual(len(new_meta.chapters), 3)
+        self.assertEqual(new_meta.chapters[0].page_count, 4)
+        self.assertEqual(new_meta.chapters[1].page_count, 2)
+        self.assertEqual(new_meta.chapters[2].page_count, 1)
+        self.assertEqual(new_meta.page_count, 7)
+
+    def test_delete_and_title_update_sets_custom_pages(self):
+        from app.models import Chapter
+        fetched = self._setup_sample_comic("picacg", "5f80b1234567890abcdef777")
+        fetched.meta.chapters = [
+            Chapter(id="c1", index=1, title="第 1 话", page_count=2, start=1),
+            Chapter(id="c2", index=2, title="第 2 话", page_count=2, start=3),
+        ]
+        self.store.save_fetched(fetched)
+        self.assertFalse(fetched.meta.custom_pages)
+
+        # Title update on remote comic sets custom_pages
+        updated = self.store.update_chapter_title("picacg", "5f80b1234567890abcdef777", "c1", "全新改名")
+        self.assertTrue(updated.custom_pages)
+
+        # Delete chapter on remote comic preserves custom_pages
+        after_del = self.store.delete_chapter("picacg", "5f80b1234567890abcdef777", "c2")
+        self.assertTrue(after_del.custom_pages)
+        self.assertEqual(len(after_del.chapters), 1)
+
+    def test_save_fetched_defense_in_depth_preserves_custom_pages(self):
+        fetched = self._setup_sample_comic("picacg", "5f80b1234567890abcdef888")
+        fetched.meta.custom_pages = True
+        self.store.save_fetched(fetched)
+
+        # Simulated remote refresh with fresh meta (where custom_pages is False)
+        from app.models import PageRecord
+        fresh_meta = ComicMeta(
+            source="picacg",
+            source_id="5f80b1234567890abcdef888",
+            display_id="picacg:5f80b1234567890abcdef888",
+            title="Fresh Remote Comic",
+            page_count=10,
+            pages=[PageRecord(index=1, file="00001.webp", ext=".webp", cached=False)],
+            cover_count=4,
+            custom_pages=False,
+        )
+        simulated_remote = FetchedComic(meta=fresh_meta, remote_pages=[])
+
+        saved = self.store.save_fetched(simulated_remote, refresh=True)
+        self.assertTrue(saved.custom_pages)
+        self.assertEqual(saved.page_count, 4)  # Preserved original 4 pages
+
+
 if __name__ == "__main__":
     unittest.main()
+

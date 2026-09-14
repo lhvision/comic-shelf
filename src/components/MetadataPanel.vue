@@ -54,6 +54,13 @@ const fieldRows = computed(() => {
       value: `${props.meta.views || '—'} 次观看 · ${props.meta.likes || '—'} 点击喜欢`,
     })
   }
+  if (props.meta.custom_pages) {
+    rows.push({
+      label: '装订状态',
+      value: '馆长重新装订（保护生效中）',
+      mono: false,
+    })
+  }
   return rows
 })
 </script>
@@ -63,6 +70,13 @@ const fieldRows = computed(() => {
     <div class="meta-head">
       <div class="meta-head-top">
         <span class="meta-id" :title="meta.display_id">{{ meta.display_id }}</span>
+        <span
+          v-if="meta.custom_pages"
+          class="custom-pages-badge"
+          title="画卷已由馆长重新装订，已开启远端覆盖保护"
+        >
+          重新装订
+        </span>
       </div>
       <AppTextClamp
         id="meta-title"
@@ -179,6 +193,13 @@ const fieldRows = computed(() => {
   overflow-wrap: anywhere;
 }
 
+.meta-head-top {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
 .meta-id {
   padding: 0.25rem 0.55rem;
   border: 1px solid var(--line-strong);
@@ -190,6 +211,17 @@ const fieldRows = computed(() => {
   max-width: 100%;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.custom-pages-badge {
+  padding: 0.25rem 0.55rem;
+  border: 1px solid var(--accent);
+  border-radius: var(--radius-1);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--accent);
+  background: var(--accent-subtle);
+  white-space: nowrap;
 }
 
 @supports (text-fit: shrink) {
@@ -334,22 +366,17 @@ const fieldRows = computed(() => {
   margin: 0;
   line-height: var(--leading-body);
   white-space: pre-line;
-  overflow: clip;
-  interpolate-size: allow-keywords;
-  transition: height var(--duration-2) var(--ease-out);
 }
 
 .description-content.is-clamped {
-  height: calc(3 * var(--leading-body, 1.75) * 1em);
-  height: 3lh;
-  -webkit-mask-image: linear-gradient(to bottom, black calc(100% - 1.2lh), transparent 100%);
-  mask-image: linear-gradient(to bottom, black calc(100% - 1.2lh), transparent 100%);
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }
 
 .description-content.is-expanded {
-  height: auto;
-  -webkit-mask-image: none;
-  mask-image: none;
+  display: block;
 }
 
 @media (prefers-reduced-motion: reduce) {

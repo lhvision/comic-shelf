@@ -243,8 +243,16 @@ def test_storage_flat_to_chapter_migration():
         shutil.rmtree(temp_dir, ignore_errors=True)
 
 
+def _make_dummy_image() -> bytes:
+    img = Image.new("RGB", (10, 10), color="blue")
+    buf = io.BytesIO()
+    img.save(buf, format="WEBP")
+    return buf.getvalue()
+
+
 def test_append_pages_multi_chapter_reindex():
     temp_dir = Path(tempfile.mkdtemp())
+    dummy_img = _make_dummy_image()
     try:
         store = ComicStore(root=temp_dir)
         source = "local"
@@ -281,7 +289,7 @@ def test_append_pages_multi_chapter_reindex():
         store.save_fetched(fetched, refresh=False)
 
         # Append 2 pages to Chapter 1
-        new_files = [("001.webp", b"new_p1"), ("002.webp", b"new_p2")]
+        new_files = [("001.webp", dummy_img), ("002.webp", dummy_img)]
         updated = store.append_pages(source_id, files=new_files, target_chapter="ch1")
 
         # Invariants to verify:
@@ -299,13 +307,6 @@ def test_append_pages_multi_chapter_reindex():
         print("  ✓ test_append_pages_multi_chapter_reindex passed (monotonic 1..6 re-indexing verified)")
     finally:
         shutil.rmtree(temp_dir, ignore_errors=True)
-
-
-def _make_dummy_image() -> bytes:
-    img = Image.new("RGB", (10, 10), color="blue")
-    buf = io.BytesIO()
-    img.save(buf, format="WEBP")
-    return buf.getvalue()
 
 
 def test_append_pages_auto_promotion():

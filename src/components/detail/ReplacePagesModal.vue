@@ -10,10 +10,16 @@ import { useToast } from '@/composables/useToast'
 import { useSystemEvents } from '@/composables/useSystemEvents'
 import type { ComicMeta } from '@/types'
 
-const props = defineProps<{
-  open: boolean
-  meta: ComicMeta
-}>()
+const props = withDefaults(
+  defineProps<{
+    open: boolean
+    meta: ComicMeta
+    initialChapterId?: string
+  }>(),
+  {
+    initialChapterId: '',
+  },
+)
 
 const emit = defineEmits<{
   cancel: []
@@ -64,9 +70,14 @@ watch(
         uploadAbortController.value = null
       }
       mode.value = 'upload'
-      replaceScope.value =
-        props.meta.chapters && props.meta.chapters.length > 1 ? 'chapter' : 'full'
-      selectedChapterId.value = props.meta.chapters?.[0]?.id || ''
+      if (props.initialChapterId) {
+        replaceScope.value = 'chapter'
+        selectedChapterId.value = props.initialChapterId
+      } else {
+        replaceScope.value =
+          props.meta.chapters && props.meta.chapters.length > 1 ? 'chapter' : 'full'
+        selectedChapterId.value = props.meta.chapters?.[0]?.id || ''
+      }
       serverPath.value = ''
       selectedFiles.value = []
       ackReplace.value = false
@@ -75,6 +86,20 @@ watch(
   },
   { immediate: true },
 )
+
+const detectedCompositeChapters = computed(() => {
+  if (selectedFiles.value.length === 0) return []
+  const compositeRe = /^(?:\[?(?:c|ch|ep|vol|第)?\s*(\d+)\s*(?:话|話|回|卷|期)?\]?)[-_.#\s]+(\d+)/i
+  const set = new Set<number>()
+  for (const f of selectedFiles.value) {
+    const stem = f.name.replace(/\.[^/.]+$/, '')
+    const m = compositeRe.exec(stem)
+    if (m && m[1]) {
+      set.add(parseInt(m[1], 10))
+    }
+  }
+  return Array.from(set).sort((a, b) => a - b)
+})
 
 const isMulti = computed(() => (props.meta.chapters?.length ?? 0) > 1)
 
@@ -214,14 +239,23 @@ async function submit() {
             <input v-model="replaceScope" type="radio" value="full" :disabled="submitting" />
             <div>
               <strong>整部重新装订</strong>
-              <p class="radio-desc">将整部作品所有画页重新装订为这批图片（抹除多话合并为单卷）</p>
+              <p class="radio-desc">
+                用这批图片重订整部漫画（支持 1-1.avif 等复合文件名自动切分章节）
+              </p>
             </div>
           </label>
         </div>
 
         <div v-if="replaceScope === 'full'" class="scope-danger-warn">
           <AppIcon name="info" size="14" />
-          <span>注意：整部重新装订将彻底销毁现有多章节划分，不可逆转。</span>
+          <span v-if="detectedCompositeChapters.length > 1">
+            已检测到复合章节文件名（识别出
+            {{ detectedCompositeChapters.length }}
+            个章节），全量装订将自动切分章节并保留/顺延原有标题。
+          </span>
+          <span v-else>
+            注意：若画页未包含复合章节前缀（如 1-1.avif），整部重新装订将按单卷合并。
+          </span>
         </div>
       </div>
 
@@ -348,6 +382,7 @@ async function submit() {
   align-items: center;
   flex-wrap: wrap;
   gap: var(--space-2);
+  margin-bottom: var(--space-1-5);
 }
 
 .page-diff-badge {

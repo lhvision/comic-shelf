@@ -1008,6 +1008,20 @@
   - **放行/改用**：
     优先按单向数据流拓扑序初始化数据源 Composable（如 `useComicDetail`），并将返回的原生 Ref 直接传参给消费方；对于相互依赖的回调方法，采用轻量局部委托函数（如 `let syncJobStateDelegate: ((job) => void) | undefined`）在下方延迟挂接，彻底消除冗余状态与响应式双写。
 
+### 95. 复合画卷重新装订与缩略图粗暴失效陷阱（Composite Re-binding & Indiscriminate Thumbnail Invalidation Trap）
+
+- **本质**：
+  1. **单话靶向装订误删全本缩略图**：此前单话替换逻辑中直接执行 `shutil.rmtree(thumbs_dir)` 与 `covers_dir`，导致整本数十个章节的上百张缩略图瞬间全部失效，破坏了未改动章节的缓存连续性；
+  2. **手工装订漫画被远端刷新冲垮**：用户为停更漫画手工补录画页后，若无 `custom_pages: true` 保护与远端刷新拦截门禁，后台或用户误点「刷新资料」会导致远端旧章节全量重刷覆盖本地手工编排；
+  3. **单目录平铺图片丢失章节分界**：下载的复合文件名资源（如 `1-1.avif`, `2-1.avif`）若按单文件扁平处理，会抹去所有章节边界并退化为单话平铺。
+- **红线与防误伤**：
+  - **不要**在单话重新装订或局部更新时无差别清空整本缩略图/封面目录；
+  - **不要**允许远端 Provider 刷新覆盖带有 `custom_pages: true` 的漫画；
+  - **放行/改用**：
+    1. **靶向失效（Scoped Invalidation）**：仅清理目标话目录下的 WebP 缩略图（`thumbs_dir / _safe(target_chapter)`），其他话缩略图保持缓存秒开；仅当目标章节起始页落在前 4 页时局部刷新封面；
+    2. **纵深防御（Defense-in-Depth Protection）**：前端检测 `customPages: true` 时自动隐匿「刷新资料」按钮，API 路由层拦截阻断带 `refresh: true` 的请求（400 友好报错），底层存储合并兜底强制保留本地章节结构；
+    3. **复合分话智能聚类（Pattern Auto-Grouping）**：使用复合命名正则自动聚类切分多章节并自然序单调重排，在全量替换时智能继承已有章节标题。
+
 ---
 
 ## 🚦 交付门禁（四步必跑）

@@ -412,13 +412,14 @@ export const api = {
       body: JSON.stringify(payload),
     })
   },
-  uploadLocalPages: async (
+  uploadPages: async (
+    source: string,
     sourceId: string,
     files: File[],
     chapterId = '',
     newChapterTitle = '',
   ) => {
-    memoizedDetail.delete('local', sourceId)
+    memoizedDetail.delete(source, sourceId)
     const formData = new FormData()
     for (const file of files) {
       formData.append('files', file)
@@ -427,7 +428,7 @@ export const api = {
     if (chapterId) params.set('chapter_id', chapterId)
     if (newChapterTitle) params.set('new_chapter_title', newChapterTitle)
     const qs = params.toString() ? `?${params.toString()}` : ''
-    return request<ComicDetail>(`/library/local/${sourceId}/upload-pages${qs}`, {
+    return request<ComicDetail>(`/library/${source}/${sourceId}/upload-pages${qs}`, {
       method: 'POST',
       body: formData,
     })
@@ -470,9 +471,13 @@ export const api = {
       signal: options?.signal,
     })
   },
-  appendLocalComic: async (sourceId: string, payload: import('@/types').LocalAppendPayload) => {
-    memoizedDetail.delete('local', sourceId)
-    return request<ComicDetail>(`/library/local/${sourceId}/append`, {
+  appendPages: async (
+    source: string,
+    sourceId: string,
+    payload: import('@/types').LocalAppendPayload,
+  ) => {
+    memoizedDetail.delete(source, sourceId)
+    return request<ComicDetail>(`/library/${source}/${sourceId}/append`, {
       method: 'POST',
       body: JSON.stringify(payload),
     })

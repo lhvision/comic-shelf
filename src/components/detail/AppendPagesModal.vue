@@ -11,10 +11,18 @@ import { useToast } from '@/composables/useToast'
 import { useSystemEvents } from '@/composables/useSystemEvents'
 import type { ComicMeta } from '@/types'
 
-const props = defineProps<{
-  open: boolean
-  meta: ComicMeta
-}>()
+const props = withDefaults(
+  defineProps<{
+    open: boolean
+    meta: ComicMeta
+    initialChapterId?: string
+    initialAppendType?: 'current' | 'new'
+  }>(),
+  {
+    initialChapterId: '',
+    initialAppendType: 'current',
+  },
+)
 
 const emit = defineEmits<{
   cancel: []
@@ -43,8 +51,8 @@ watch(
   () => props.open,
   (isOpen) => {
     if (isOpen) {
-      appendType.value = 'current'
-      selectedChapterId.value = props.meta.chapters?.[0]?.id || ''
+      appendType.value = props.initialAppendType || 'current'
+      selectedChapterId.value = props.initialChapterId || props.meta.chapters?.[0]?.id || ''
       newChapterTitle.value = props.meta.chapters?.length
         ? `第 ${props.meta.chapters.length + 1} 话`
         : '第 2 话'
@@ -79,7 +87,14 @@ async function submit() {
         return
       }
 
-      await uploadFiles(props.meta.source_id, selectedFiles.value, targetChap, newTitle)
+      await uploadFiles(
+        props.meta.source_id,
+        selectedFiles.value,
+        targetChap,
+        newTitle,
+        {},
+        props.meta.source,
+      )
       broadcastLocalChange({
         action: 'update_pages',
         source: props.meta.source,
@@ -95,7 +110,7 @@ async function submit() {
         return
       }
 
-      await api.appendLocalComic(props.meta.source_id, {
+      await api.appendPages(props.meta.source, props.meta.source_id, {
         server_path: serverPath.value.trim(),
         target_chapter: targetChap,
         new_chapter_title: newTitle,

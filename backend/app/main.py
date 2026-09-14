@@ -819,6 +819,11 @@ def import_comic(req: ImportRequest) -> ImportResult:
     if req.refresh:
         cached_bundle = store.load_fetched(req.source, source_id)
         if cached_bundle is not None and cached_bundle.meta.page_count > 0:
+            if cached_bundle.meta.custom_pages:
+                raise HTTPException(
+                    status_code=400,
+                    detail="该漫画画页已由馆长重新装订保护，禁止远端重刷覆盖。如需更新元数据，请在详情页直接编辑资料。",
+                )
             existing = cached_bundle
     try:
         fetched = provider.fetch(source_id, existing=existing)
@@ -908,6 +913,7 @@ def update_chapter_title(
 def delete_chapter(source: str, source_id: str, chapter_id: str) -> ComicDetail:
     _require_known_source(source)
     meta = store.delete_chapter(source, source_id, chapter_id)
+    sync_comic_dialogues(source, source_id)
     broadcast_event(
         "library_changed",
         {"action": "delete_chapter", "source": source, "source_id": source_id, "chapter_id": chapter_id, "timestamp": time.time()},
@@ -935,13 +941,15 @@ def import_local_path(req: LocalPathImportRequest) -> ComicDetail:
     return store.detail(meta)
 
 
-@app.post("/api/library/local/{source_id}/upload-pages", response_model=ComicDetail)
-async def upload_local_pages(
+@app.post("/api/library/{source}/{source_id}/upload-pages", response_model=ComicDetail)
+async def upload_comic_pages(
+    source: str,
     source_id: str,
     chapter_id: str = Query(default="", description="目标章节 id"),
     new_chapter_title: str = Query(default="", description="若创建新章节，传入新章节标题"),
     files: list[UploadFile] = File(...),
 ) -> ComicDetail:
+    _require_known_source(source)
     file_tuples: list[tuple[str, bytes]] = []
     for f in files:
         content = await f.read()
@@ -951,30 +959,60 @@ async def upload_local_pages(
     meta = await asyncio.to_thread(
         store.append_pages,
         source_id=source_id,
+        source=source,
         files=file_tuples,
         target_chapter=chapter_id,
         new_chapter_title=new_chapter_title,
     )
+    sync_comic_dialogues(source, source_id)
     broadcast_event(
         "library_changed",
-        {"action": "update_pages", "source": "local", "source_id": source_id, "timestamp": time.time()},
+        {"action": "update_pages", "source": source, "source_id": source_id, "timestamp": time.time()},
     )
     return store.detail(meta)
 
 
-@app.post("/api/library/local/{source_id}/append", response_model=ComicDetail)
-def append_local_comic(source_id: str, req: LocalAppendRequest) -> ComicDetail:
+@app.post("/api/library/{source}/{source_id}/append", response_model=ComicDetail)
+def append_comic(
+    source: str,
+    source_id: str,
+    req: LocalAppendRequest,
+) -> ComicDetail:
+    _require_known_source(source)
     meta = store.append_pages(
         source_id=source_id,
+        source=source,
         server_path=req.server_path,
         target_chapter=req.target_chapter,
         new_chapter_title=req.new_chapter_title,
     )
+    sync_comic_dialogues(source, source_id)
     broadcast_event(
         "library_changed",
-        {"action": "update_pages", "source": "local", "source_id": source_id, "timestamp": time.time()},
+        {"action": "update_pages", "source": source, "source_id": source_id, "timestamp": time.time()},
     )
     return store.detail(meta)
+
+
+@app.post("/api/library/local/{source_id}/upload-pages", response_model=ComicDetail)
+async def upload_local_pages(
+    source_id: str,
+    chapter_id: str = Query(default="", description="目标章节 id"),
+    new_chapter_title: str = Query(default="", description="若创建新章节，传入新章节标题"),
+    files: list[UploadFile] = File(...),
+) -> ComicDetail:
+    return await upload_comic_pages(
+        source="local",
+        source_id=source_id,
+        chapter_id=chapter_id,
+        new_chapter_title=new_chapter_title,
+        files=files,
+    )
+
+
+@app.post("/api/library/local/{source_id}/append", response_model=ComicDetail)
+def append_local_comic(source_id: str, req: LocalAppendRequest) -> ComicDetail:
+    return append_comic(source="local", source_id=source_id, req=req)
 
 
 @app.post("/api/library/{source}/{source_id}/replace-pages", response_model=ComicDetail)

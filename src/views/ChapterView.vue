@@ -17,17 +17,12 @@ import CacheProgress from '@/components/CacheProgress.vue'
 import Modal from '@/components/Modal.vue'
 import AppButton from '@/components/AppButton.vue'
 import AppDropdown from '@/components/AppDropdown.vue'
+import AppendPagesModal from '@/components/detail/AppendPagesModal.vue'
+import ReplacePagesModal from '@/components/detail/ReplacePagesModal.vue'
 import { useLibraryStore } from '@/stores/library'
 import type { CacheJob } from '@/types'
 
-/**
- * 章节子路由详情 —— 一本多话作品的「单个话」页面索引。
- *
- * 遵循 docs/agents/frontend.md 规范：
- * - 视图轻量化（View Thinness ≤150 行）；
- * - 页面只做编排，状态与计算下沉至 composables；
- * - 契约自解释与顶层精准解构。
- */
+/** 章节子路由详情 —— 一本多话作品的「单个话」页面索引 */
 const route = useRoute()
 const router = useRouter()
 const store = useLibraryStore()
@@ -121,6 +116,8 @@ const {
   removeOpen,
   ackRemove,
   removing,
+  replaceOpen,
+  appendOpen,
   chapterMoreOptions,
   onChapterMoreSelect,
   openEditModal,
@@ -365,6 +362,35 @@ onMounted(() => {
           </AppButton>
         </template>
       </Modal>
+
+      <!-- 重新装订本话弹窗 -->
+      <ReplacePagesModal
+        :open="replaceOpen"
+        :meta="detail.meta"
+        :initial-chapter-id="activeChapter.id"
+        @cancel="replaceOpen = false"
+        @replaced="
+          () => {
+            replaceOpen = false
+            load(true)
+          }
+        "
+      />
+
+      <!-- 在本话追加画页弹窗 -->
+      <AppendPagesModal
+        :open="appendOpen"
+        :meta="detail.meta"
+        :initial-chapter-id="activeChapter.id"
+        initial-append-type="current"
+        @cancel="appendOpen = false"
+        @appended="
+          () => {
+            appendOpen = false
+            load(true)
+          }
+        "
+      />
     </template>
   </div>
 </template>

@@ -37,7 +37,7 @@
 | `src/composables/useReaderCompletion.ts`           | 阅读器末页完读感知、接卷推荐算法计算与直达离开路由                                                                                                             |
 | `src/composables/useChapterNavigation.ts`          | 详情/子路由章节导航：锁定章节、章节切片、48 增量渲染、「继续阅读」文案                                                                                         |
 | `src/composables/useChapterPageInfo.ts`            | 章节相对页码换算、跨话首尾探测与切话跳转状态机                                                                                                                 |
-| `src/composables/useChapterManagement.ts`          | 章节重命名弹窗、删除章节二次确认与菜单编排状态机                                                                                                               |
+| `src/composables/useChapterManagement.ts`          | 章节重命名弹窗、删除章节二次确认、重新装订本话与在本话追加画页的状态机编排                                                                                     |
 | `src/composables/useComicDetail.ts`                | 漫画详情生命周期、SWR 内存态占位、离线容错降级与后台任务对齐                                                                                                   |
 | `src/composables/useComicDetailActions.ts`         | 漫画详情操作编排：元数据刷新、漫画移除、阅读直达、返回书架与滚动记忆                                                                                           |
 | `src/composables/useChapterCache.ts`               | 漫画全书与分话后台缓存轮询与进度状态编排：任务驱动按需轮询、页码 cached 就地对齐与任务生命周期收敛                                                             |
@@ -85,8 +85,8 @@
 | `src/components/CacheProgress.vue`                 | 实时缓存进度条与后台任务状态指示                                                                                                                               |
 | `src/components/ToastStack.vue`                    | 全局轻量水墨印章通知堆叠容器（挂载于根视口，自适应多通道 Toast 消息排队）                                                                                      |
 | `src/components/detail/EditMetadataModal.vue`      | 典藏资料与标签编排弹窗（实时修改标题、作者、4 张封面展示页码、标签增删）                                                                                       |
-| `src/components/detail/AppendPagesModal.vue`       | 本地漫画增量追加弹窗（追加至已有话或新建分话、支持网页上传/服务器路径）                                                                                        |
-| `src/components/detail/ReplacePagesModal.vue`      | 全本画页重新装订弹窗：支持网页多图上传与服务器本地目录秒级替换、重新装订保护提示                                                                               |
+| `src/components/detail/AppendPagesModal.vue`       | 画页增量追加弹窗（全源支持，追加至已有话或新建分话、复合文件名智能切分、支持网页上传/服务器路径）                                                              |
+| `src/components/detail/ReplacePagesModal.vue`      | 画页重新装订弹窗（全源支持，支持整本重装订或单话靶向替换、复合文件名智能切分、重新装订三层保护提示）                                                           |
 | `src/components/discovery/DiscoveryCard.vue`       | 榜单漫画卡片：排名徽章、原站外链、分类胶囊与一键收录/在库直达                                                                                                  |
 | `src/components/form/TagManager.vue`               | 交互式标签管理器（Chip 展示、Enter/空格添加、SVG 居中删除、热门快选推荐）                                                                                      |
 | `src/components/form/CoverIndicesPicker.vue`       | 4 张封面展示页码选定器（4 槽位数值输入、实时越界纠偏与默认值安全回退）                                                                                         |

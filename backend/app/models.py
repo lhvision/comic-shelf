@@ -423,6 +423,9 @@ class LocalAppendRequest(BaseModel):
     server_path: str = ""
 
 
+ComicAppendRequest = LocalAppendRequest
+
+
 class ReplacePathRequest(BaseModel):
     server_path: str = ""
     target_chapter: str = ""

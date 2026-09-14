@@ -43,7 +43,21 @@ export function useChapterManagement(options: UseChapterManagementOptions) {
   const ackRemove = ref(false)
   const removing = ref(false)
 
+  // 重新装订与追加画页弹窗状态
+  const replaceOpen = ref(false)
+  const appendOpen = ref(false)
+
   const chapterMoreOptions = computed<DropdownOption[]>(() => [
+    {
+      key: 'replace',
+      label: '重新装订本话…',
+      hint: '替换画页',
+    },
+    {
+      key: 'append',
+      label: '在本话追加画页…',
+      hint: '增量补页',
+    },
     {
       key: 'remove',
       label: '删除本话…',
@@ -55,6 +69,10 @@ export function useChapterManagement(options: UseChapterManagementOptions) {
   function onChapterMoreSelect(option: DropdownOption) {
     if (option.key === 'remove') {
       requestRemoveChapter()
+    } else if (option.key === 'replace') {
+      replaceOpen.value = true
+    } else if (option.key === 'append') {
+      appendOpen.value = true
     }
   }
 
@@ -128,6 +146,8 @@ export function useChapterManagement(options: UseChapterManagementOptions) {
     removeOpen,
     ackRemove,
     removing,
+    replaceOpen,
+    appendOpen,
     chapterMoreOptions,
     onChapterMoreSelect,
     openEditModal,

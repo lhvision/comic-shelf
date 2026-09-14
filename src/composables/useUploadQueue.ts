@@ -6,6 +6,7 @@ import { calculateProgressPercent } from '@/utils/progress'
 export interface UploadQueueOptions {
   batchSize?: number
   onProgress?: (completed: number, total: number) => void
+  source?: string
 }
 
 export function useUploadQueue() {
@@ -28,8 +29,11 @@ export function useUploadQueue() {
     chapterId = '',
     newChapterTitle = '',
     options: UploadQueueOptions = {},
+    legacySource?: string,
   ): Promise<ComicDetail | null> {
     if (files.length === 0) return null
+
+    const source = options.source ?? legacySource ?? 'local'
 
     // Ensure files are naturally sorted before batching (e.g. 000.jpg -> 00a.jpg -> 001.jpg)
     const sortedFiles = [...files].sort((a, b) =>
@@ -68,7 +72,7 @@ export function useUploadQueue() {
             : (latestDetail?.meta.chapters?.slice(-1)[0]?.id ?? chapterId)
         const titleParam = currentIdx === 0 ? newChapterTitle : ''
 
-        const res = await api.uploadLocalPages(sourceId, chunk, targetChap, titleParam)
+        const res = await api.uploadPages(source, sourceId, chunk, targetChap, titleParam)
         latestDetail = res
         completedCount.value = Math.min(totalCount.value, completedCount.value + chunk.length)
         progress.value = calculateProgressPercent(completedCount.value, totalCount.value)

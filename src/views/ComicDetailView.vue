@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { pageFileUrl } from '@/api/client'
 import { useLastRead } from '@/composables/useLastRead'
@@ -119,6 +119,7 @@ const {
 })
 
 const isMulti = computed(() => (chapters.value?.length ?? 0) > 1)
+const initialAppendType = ref<'current' | 'new'>('current')
 
 const cachePercent = computed(() => {
   if (!detail.value) return 0
@@ -177,7 +178,12 @@ onMounted(() => {
         @refresh-metadata="refreshMetadata"
         @remove-comic="removeComic"
         @edit-metadata="editOpen = true"
-        @append-pages="appendOpen = true"
+        @append-pages="
+          () => {
+            initialAppendType = 'current'
+            appendOpen = true
+          }
+        "
         @replace-pages="replaceOpen = true"
       />
 
@@ -190,7 +196,14 @@ onMounted(() => {
         :running="caching"
         :running-chapter-id="runningChapterId"
         :initial-visible-chapter="lastReadChapter?.index"
+        :can-write="canWrite && isOnline && !store.isOffline"
         @cache-chapter="handleCacheChapter"
+        @add-chapter="
+          () => {
+            initialAppendType = 'new'
+            appendOpen = true
+          }
+        "
       />
 
       <PageIndexGrid
@@ -221,9 +234,9 @@ onMounted(() => {
       />
 
       <AppendPagesModal
-        v-if="source === 'local'"
         :open="appendOpen"
         :meta="detail.meta"
+        :initial-append-type="initialAppendType"
         @cancel="appendOpen = false"
         @appended="
           () => {

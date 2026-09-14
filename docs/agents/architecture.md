@@ -153,6 +153,16 @@ JmImageTool.decode_and_save(num, source_image, save_path)
   storage / API 只认 `Chapter{id,index,title,page_count,start}`，不感知禁漫具体字段。
 - **封面归属与全生命周期预热**：封面默认取全局前 `cover_count` 页（或馆长指定的 `cover_indices`）。在导入作品（`import_comic`）、元数据更新（`update_metadata`）、重新装订（`rebind_archive`）与后台异步预热（`prefetch_comic`/`prefetch_chapter`）时，系统均同步预热生成 720px 基准图与 360px 缩略图的双模（WebP + JPEG）物理缓存。封面端点严格遵守 HTTP 状态语义（底层画页缺失或未导入时响应 404 Not Found，严禁误抛 502）。
 
+### 4.6 全源画卷重新装订与复合章节智能分话（ADR 0020）
+
+- **全源画卷重新装订保护（Re-binding Protection）**：支持 JMComic、哔咔及本地自建全源画卷的高清画页替换与增量追加。装订完成后自动打上 `custom_pages: true` 标记。系统构建三层纵深防御：
+  1. **前端门禁**：`custom_pages: true` 时自动隐藏「刷新资料」按钮，杜绝误触；
+  2. **API 拦截**：`POST /api/library/import` 若传入 `refresh=true` 且目标画卷 `custom_pages=true`，立即拒绝并响应 HTTP 400；
+  3. **存储底线**：`save_fetched` 始终强行保留已有的 `custom_pages`、`chapters` 与 `pages`，彻底阻断外部上游刷新冲垮本地画卷。
+- **单话靶向替换与缩略图局部失效**：支持单话替换（`chapter_id` 显式指定）与整本全量重新装订。单话替换时仅清理本话及后续章节的画页与封面缩略图，保护未变动章节缩略图缓存，翻阅秒开无损。
+- **平铺复合文件名自然排序与自动聚类分话**：针对长篇漫画平铺单目录复合文件名（如 `1-1.avif`, `1-2.avif`, `2-1.avif` ...），后端内置自适应聚类正则与自然排序，无需手动建子文件夹，丢入即可自动归整切分为「第 1 话」、「第 2 话」... 并平滑升阶为多章节体系。
+- **前置二进制魔数防伪**：服务端采用 `PIL.Image.open().verify()` 前置校验，严格阻断伪装扩展名或损坏二进制注入。
+
 ## 5. 后端文件地图
 
 | 文件                                | 职责                                                                                                   |
@@ -181,13 +191,13 @@ JmImageTool.decode_and_save(num, source_image, save_path)
 - `GET /api/discovery/ranking`（发现页与排行榜数据：周榜/月榜/日榜/总榜，支持 `time_type` 与分类筛选）
 - `GET /api/library`（基于 SQLite `comics_index` 影子索引的毫秒级受控分页与多维筛选，参数支持 `page`, `page_size`, `status`, `favorite`, `source`, `q`, `tag`, `sort`, `ids`, `offset`；动态 JOIN 各用户独立阅读进度与喜欢）
 - `GET /api/library/facets`（藏书全貌聚合统计与高频前 30 标签，返回 `total_books`, `total_pages`, `cached_pages` 与高频标签元组）
-- `POST /api/library/import` `{id, source, prefetch_covers, prefetch_all, refresh}`（`refresh=true` 走增量，章节未变则复用旧 remote）
+- `POST /api/library/import` `{id, source, prefetch_covers, prefetch_all, refresh}`（`refresh=true` 走增量，章节未变则复用旧 remote；已重新装订画卷禁止 refresh 覆盖）
 - `POST /api/library/local/create`（自建工坊创建本地图集/多章节元数据骨架）
 - `POST /api/library/local/import-path`（扫描服务器本地目录如 `public/tiya-frames` 秒级收录）
-- `POST /api/library/local/{source_id}/upload-pages`（向本地图集分批上传图片）
-- `POST /api/library/local/{source_id}/append`（增量追加页面或新章节，单章节追加新话时自动升阶）
-- `POST /api/library/{source}/{id}/replace-pages`（网页端批量上传高清画页重新装订全本，原子替换旧页并加盖重新装订保护）
-- `POST /api/library/{source}/{id}/replace-path`（指定服务器本地路径秒级重新装订全本）
+- `POST /api/library/{source}/{id}/upload-pages`（支持全源，向指定漫画分批上传图片增量追加画页或创建新章节，兼容 `/local/{id}/upload-pages`）
+- `POST /api/library/{source}/{id}/append`（支持全源，从服务器路径增量追加页面或新章节，支持平铺复合模式自动切分，兼容 `/local/{id}/append`）
+- `POST /api/library/{source}/{id}/replace-pages`（支持全源，网页端批量上传高清画页重新装订全本或单话，支持平铺复合模式自动切分，原子替换并加盖重新装订保护）
+- `POST /api/library/{source}/{id}/replace-path`（支持全源，指定服务器本地路径秒级重新装订全本或单话）
 - `PATCH /api/library/{source}/{id}/metadata`（更新标题/作者/标签/叙述/自定义封面页码 `cover_indices`）
 - `PATCH /api/library/{source}/{id}/chapters/{chapterId}`（修改单章节名称）
 - `DELETE /api/library/{source}/{id}/chapters/{chapterId}`（物理删除单个章节并重排全书全局页码）
