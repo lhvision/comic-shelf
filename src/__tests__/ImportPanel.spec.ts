@@ -3,28 +3,37 @@ import { mount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
 import ImportPanel from '@/components/ImportPanel.vue'
 
-vi.mock('vue-router', () => ({
-  useRouter: () => ({
-    push: vi.fn<(to: string) => void>(),
-  }),
-}))
+vi.mock('vue-router', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('vue-router')>()
+  return {
+    ...actual,
+    useRouter: () => ({
+      push: vi.fn<(to: string) => void>(),
+    }),
+  }
+})
 
-vi.mock('@/api/client', () => ({
-  api: {
-    importLocalPath: vi.fn<
-      () => Promise<{
-        meta: { source: string; source_id: string; title: string; page_count: number }
-      }>
-    >(),
-    getSettings: vi
-      .fn<() => Promise<{ concurrency: number; guest_hide_new_comics: boolean }>>()
-      .mockResolvedValue({ concurrency: 4, guest_hide_new_comics: false }),
-    getLibrary: vi.fn<() => Promise<unknown[]>>().mockResolvedValue([]),
-    getSources: vi.fn<() => Promise<unknown[]>>().mockResolvedValue([]),
-  },
-  onAuthSuccess: vi.fn<() => void>(),
-  onUnauthorized: vi.fn<() => void>(),
-}))
+vi.mock('@/api/client', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/api/client')>()
+  return {
+    ...actual,
+    api: {
+      ...actual.api,
+      importLocalPath: vi.fn<
+        () => Promise<{
+          meta: { source: string; source_id: string; title: string; page_count: number }
+        }>
+      >(),
+      getSettings: vi
+        .fn<() => Promise<{ concurrency: number; guest_hide_new_comics: boolean }>>()
+        .mockResolvedValue({ concurrency: 4, guest_hide_new_comics: false }),
+      getLibrary: vi.fn<() => Promise<unknown[]>>().mockResolvedValue([]),
+      getSources: vi.fn<() => Promise<unknown[]>>().mockResolvedValue([]),
+    },
+    onAuthSuccess: vi.fn<() => void>(),
+    onUnauthorized: vi.fn<() => void>(),
+  }
+})
 
 const mockToast = vi.fn<(msg: string, type?: string) => void>()
 vi.mock('@/composables/useToast', () => ({

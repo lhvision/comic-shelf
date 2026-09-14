@@ -1,8 +1,7 @@
 <script setup lang="ts">
-import { onMounted } from 'vue'
+import { defineAsyncComponent, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
 import AppHeader from '@/components/AppHeader.vue'
-import GateView from '@/components/GateView.vue'
 import ToastStack from '@/components/ToastStack.vue'
 import UpdateBanner from '@/components/UpdateBanner.vue'
 import AmbientWatermark from '@/components/AmbientWatermark.vue'
@@ -10,6 +9,8 @@ import BackToTop from '@/components/BackToTop.vue'
 import { useAuth } from '@/composables/useAuth'
 import { useBrandIcon } from '@/composables/useBrandIcon'
 import { useOfflineSync } from '@/composables/useOfflineSync'
+
+const GateView = defineAsyncComponent(() => import('@/components/GateView.vue'))
 
 const route = useRoute()
 const { authRequired, authenticated, checkStatus } = useAuth()

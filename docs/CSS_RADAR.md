@@ -66,7 +66,7 @@
 | CSS Subgrid (`subgrid`)                              |              117+               |               71+                |                  16+                  |                   ✅ Baseline 2023                   |                        ✅ 已落地（卡片网格跨卡片行高/操作槽位刚性对齐）                         |
 | **HTML Popover (`auto`/`manual`)**                   |              114+               |               125+               |                  17+                  |                   ✅ Baseline 2024                   |                  ✅ 已落地（`AppPopover` / `AppDropdown` / `StoragePopover`）                   |
 | **HTML Popover (`hint`)**                            |              151+               |               153+               |                  ⏳                   |               🔶 Newly Available 2026                |                          ✅ 渐进增强（`AppTooltip.vue` 轻量气泡提示）                           |
-| **CSS Carousel (`::scroll-marker/button`)**          |              135+               |                ⏳                |                  ⏳                   |               🔶 Newly Available 2025                |                       ✅ 渐进增强（`CoverCarousel.vue` 零 JS 标记与切换）                       |
+| **CSS Carousel (`::scroll-marker/button`)**          |              135+               |                ⏳                |                  ⏳                   |               🔶 Newly Available 2025                |     ✅ 渐进增强（`CoverCarousel.vue` 零 JS 标记与切换，构建时 LightningCSS 提示非致命告警）     |
 | **CSS Gap Decorations (`row-rule` / `column-rule`)** |              149+               |                ⏳                |                  ⏳                   |               🔶 Newly Available 2026                |                        ✅ 渐进增强（`MetadataPanel.vue` 双列网格装饰线）                        |
 | **HTML5 `<dialog>` (Top Layer)**                     |               37+               |               98+                |                 15.4+                 |                   ✅ Baseline 2022                   |                              ✅ 已落地（`Modal.vue` 核心弹窗基建）                              |
 | **`<dialog closedby="any">`**                        |              134+               |               141+               |                  ⏳                   |               🔶 Newly Available 2025                |                       ✅ 渐进增强（`Modal.vue` 原生属性 + 蒙层点击兜底）                        |
@@ -1117,7 +1117,7 @@ await withViewTransition(
 **规范**：[CSS Overflow Module Level 5 (CSS Carousels)](https://drafts.csswg.org/css-overflow-5/#carousel)  
 **可用**：Chrome 135+ (2025-04 正式支持) · Safari (WebKit Bug #274944 跟踪中) · Firefox (规划中)  
 **参考**：[张鑫旭 CSS ::scroll-button ::scroll-marker伪元素又是干嘛用的？](https://www.zhangxinxu.com/wordpress/2025/06/css-scroll-button-marker/)  
-**本项目落地状态**：✅ **渐进增强落地（`CoverCarousel.vue` 零 JS 纸印指示点与 `:focus-visible` 原生焦点环）**
+**本项目落地状态**：✅ **渐进增强落地（`CoverCarousel.vue` 零 JS 纸印指示点与 `:focus-visible` 原生焦点环；当前 Vite+ 底层 LightningCSS 1.33 因旧草案 AST 存在非致命 minify 警告，不影响浏览器内核真实解析执行）**
 
 #### 核心机制解构
 

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, defineAsyncComponent, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useIntersectionObserver } from '@vueuse/core'
 import { api, DEFAULT_PROVIDERS, onAuthSuccess } from '@/api/client'
@@ -8,8 +8,9 @@ import { useBrandIcon } from '@/composables/useBrandIcon'
 import AppIcon from '@/components/AppIcon.vue'
 import StoragePopover from '@/components/StoragePopover.vue'
 import ReaderPassPopover from '@/components/ReaderPassPopover.vue'
-import GuestModal from '@/components/curator/GuestModal.vue'
 import { useGuestPasses } from '@/composables/useGuestPasses'
+
+const GuestModal = defineAsyncComponent(() => import('@/components/curator/GuestModal.vue'))
 import { useShelfState } from '@/composables/useShelfState'
 import type { ProviderInfo } from '@/types'
 
@@ -188,7 +189,7 @@ onAuthSuccess(fetchProviders)
         <span class="auth-label">〔 馆长已入座 〕</span>
       </button>
     </div>
-    <GuestModal />
+    <GuestModal v-if="canWrite" />
   </header>
 </template>
 

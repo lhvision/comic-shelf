@@ -1,9 +1,9 @@
 <script setup lang="ts">
-/** LibraryView.vue — 书架主视图，检索、排序、状态与流式分页下沉至 Composables 与 Stores */
-import { computed, nextTick, onMounted, ref, watch } from 'vue'
+import { computed, defineAsyncComponent, nextTick, onMounted, ref, watch } from 'vue'
 import { onBeforeRouteLeave, useRoute, useRouter } from 'vue-router'
 import { useEventListener, useFileDialog } from '@vueuse/core'
-import ImportPanel from '@/components/ImportPanel.vue'
+
+const ImportPanel = defineAsyncComponent(() => import('@/components/ImportPanel.vue'))
 import LibraryHero from '@/components/library/LibraryHero.vue'
 import TagFilterBar from '@/components/library/TagFilterBar.vue'
 import ComicGrid from '@/components/library/ComicGrid.vue'

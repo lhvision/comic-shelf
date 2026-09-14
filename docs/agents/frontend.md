@@ -401,3 +401,22 @@ graph TD
    })
    ```
 2. **内部按需解构**：在高阶 Composable 函数体头部根据业务调度需要就地精准解构，彻底消除视图层的胶水样板代码。
+
+## 15. 打包分块、长效缓存与异步分流契约（ADR 0022）
+
+### 15.1 框架长效切片（Vue Core Manual Chunking）
+
+在 `vite.config.ts` 中，构建配置必须使用 `manualChunks` 严格将全站四大底层核心运行时固化为 `vue-core.js`：
+
+- 范围：`@vue/`, `vue`, `pinia`, `vue-router`, `@vueuse/core`；
+- 目标：将业务主入口 `index.js` 压缩至 ~23 kB (gzip)，使业务代码日常迭代时不破坏框架依赖的浏览器持久缓存（`Cache-Control: public, max-age=31536000, immutable`）；
+- 红线：严禁将业务代码或 Store/Composable 强制塞入 `vue-core`，防止模块循环依赖死锁。
+
+### 15.2 权限视图与重型弹窗异步分流（Async Components）
+
+为了维持普通借阅访客与已登录读者首屏的极致轻巧，低频、权限专属的重型组件必须使用 `defineAsyncComponent` 异步引入并搭配 `v-if` 条件门禁：
+
+1. **`GateView.vue`**：全屏门禁视图，在 `App.vue` 中异步挂载（已认证状态与内网免密环境 0 字节）；
+2. **`GuestModal.vue`**：馆长专属访客簿，在 `AppHeader.vue` 中异步挂载并挂载 `v-if="canWrite"`（访客端 0 字节）；
+3. **`ImportPanel.vue`**：作品收录面板，在 `LibraryView.vue` 中异步挂载并挂载 `v-if="canWrite"`（普通读者首屏减负 ~20 kB）；
+4. **体验防御机制**：异步组件仍受 PWA Service Worker 全量预缓存管辖。馆长端点击唤起时秒级命中端侧 Cache Storage，绝对杜绝加载骨架抖动。
