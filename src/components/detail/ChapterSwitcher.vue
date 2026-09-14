@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { computed, nextTick, ref, watch } from 'vue'
-import { useEventListener, useScroll } from '@vueuse/core'
+import { computed, nextTick, onMounted, ref, watch } from 'vue'
+import { useEventListener, useResizeObserver, useScroll } from '@vueuse/core'
 import type { Chapter } from '@/types'
 
 /**
@@ -8,8 +8,10 @@ import type { Chapter } from '@/types'
  * 单章节（chapters.length <= 1）时不渲染任何内容，保持旧详情页外观。
  * 纯展示组件：选中态由父级 activeId 驱动，切换以 emit 上抛。
  *
- * - 选中 chip 的横向居中：VueUse `useScroll` 的 smooth 滚动（替代手写
- *   requestAnimationFrame），容器可横向滚动时自动把当前章节滚进视野中心。
+ * - 选中 chip 的横向居中：通过几何差值计算当前激活卡片在容器视口的中心位置。
+ *   首屏挂载 / 从阅读器返回初始定位采用瞬间直达（behavior: 'auto'），避免长篇动画眩晕与掉帧；
+ *   用户交互切话采用平滑平移（behavior: 'smooth'）。
+ * - 容器缩放自愈：监听容器尺寸变化（useResizeObserver），维持当前激活项始终居中。
  * - 键盘操作：左/右方向键在章节按钮间移动（复用既有的 `useEventListener`，
  *   不手写 addEventListener/disconnect）。
  */
@@ -26,26 +28,76 @@ const props = withDefaults(
 const emit = defineEmits<{ change: [id: string] }>()
 
 const listEl = ref<HTMLElement | null>(null)
-const buttonEls = ref<Record<string, HTMLElement | null>>({})
+const buttonEls: Record<string, HTMLElement | null> = {}
 
-// @vueuse/core 14.x：useScroll 不再暴露 scrollTo，改为给响应式 `x`（横向容器）赋值。
-const { x } = useScroll(listEl, { behavior: 'smooth' })
+const scrollBehavior = ref<ScrollBehavior>('auto')
+
+// @vueuse/core 14.x：useScroll 响应式绑定横向容器与动态 behavior。
+const { x } = useScroll(listEl, { behavior: scrollBehavior })
 
 // 防御：父级必须解构 unwrap 后传入；万一传了 Ref 或 undefined，这里兜底为空数组。
 const chapterList = computed(() => (Array.isArray(props.chapters) ? props.chapters : []))
 
 const activeIndex = computed(() => chapterList.value.findIndex((c) => c.id === props.activeId))
 
-watch(activeIndex, async (idx) => {
-  if (idx < 0) return
+/** 标记是否已完成初次挂载与初始定位 */
+let hasMounted = false
+
+/**
+ * 将当前激活章节卡片滚动至容器视口物理正中心。
+ *
+ * @param smooth 是否平滑过渡。首屏与视口尺寸变动时为 false（瞬间直达），用户交互切话时为 true。
+ */
+function scrollToActive(smooth = false) {
+  const container = listEl.value
+  const activeKey = props.activeId ?? ''
+  const el = buttonEls[activeKey]
+  if (!el || !container) return
+  if (container.scrollWidth <= container.clientWidth) return
+
+  const containerRect = container.getBoundingClientRect()
+  const elRect = el.getBoundingClientRect()
+  const currentScroll = container.scrollLeft
+
+  // 视口相对位移：当前滚动偏移 + 元素相对容器视口的可视左偏 - 视口居中余量
+  const targetLeft = Math.max(
+    0,
+    Math.min(
+      currentScroll +
+        (elRect.left - containerRect.left) -
+        (container.clientWidth - el.offsetWidth) / 2,
+      container.scrollWidth - container.clientWidth,
+    ),
+  )
+
+  scrollBehavior.value = smooth ? 'smooth' : 'auto'
+  x.value = targetLeft
+}
+
+onMounted(async () => {
   await nextTick()
   requestAnimationFrame(() => {
-    const el = buttonEls.value[props.activeId ?? '']
-    const container = listEl.value
-    if (!el || !container || container.scrollWidth <= container.clientWidth) return
-    const left = Math.max(0, el.offsetLeft - (container.clientWidth - el.offsetWidth) / 2)
-    x.value = left
+    scrollToActive(false)
+    hasMounted = true
   })
+})
+
+watch(
+  () => [props.activeId, chapterList.value.length] as const,
+  async ([newId, len], [oldId, oldLen]) => {
+    if (!newId || len === 0) return
+    await nextTick()
+    requestAnimationFrame(() => {
+      const isUserAction = hasMounted && oldId !== undefined && newId !== oldId
+      scrollToActive(isUserAction)
+    })
+  },
+)
+
+useResizeObserver(listEl, () => {
+  if (hasMounted && activeIndex.value >= 0) {
+    scrollToActive(false)
+  }
 })
 
 useEventListener(listEl, 'keydown', (event: KeyboardEvent) => {
@@ -69,7 +121,7 @@ useEventListener(listEl, 'keydown', (event: KeyboardEvent) => {
 
   if (nextId && nextId !== props.activeId) {
     emit('change', nextId)
-    void nextTick(() => buttonEls.value[nextId]?.focus())
+    void nextTick(() => buttonEls[nextId]?.focus())
   }
 })
 
@@ -116,6 +168,7 @@ function chapterState(id: string): 'past' | 'active' | 'upcoming' {
 
 <style scoped>
 .chapter-switcher {
+  position: relative;
   display: flex;
   align-items: center;
   gap: var(--space-3);

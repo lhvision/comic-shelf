@@ -38,6 +38,7 @@
   `start` 是该章在**全书全局页码**里的起始页。多话作品详情页按「章节目录」摆放（封面 + 章节信息），
   点某话进入「章节子路由」看该话页索引；阅读器页码/继续阅读/封面仍走全局页码。单章节作品 `chapters` 为空。
 - **章节子路由（Chapter Sub-route / ChapterView）**：多话漫画单个话的独立专注页面（`/comic/:source/:sourceId/chapter/:chapterId`）。承载本话的页面索引、章节导航条、单话缓存触发与画页管理，与详情页目录形成层级呼应。
+- **章节视口居中定位（Chapter Viewport Centering / Instant Center Anchor）**：章节子路由详情（ChapterView）中的横向章节切换条（ChapterSwitcher）在读者初次载入或从阅读器退出返回时，通过视口相对几何差值计算将当前激活话的卡片瞬间无感居中（Instant Jump）；在同级切话与键盘交互时平滑平移（Smooth Scroll），确保长篇多话作品在任何切入链路下均能即刻看见当前话与前后文脉络。
 - **层级树状导航与下级路由防卫（Hierarchical Up Navigation & Downward Navigation Guard）**：纸间路由体系基于四级树状面包屑（Rank 1 书库/发现 ⇄ Rank 2 本子详情 ⇄ Rank 3 章节子路由 ⇄ Rank 4 阅读器）建立的确定性导航契约。区分“向上层级导航（Up Navigation）”与“历史时序后退（History Back）”：
   1. 章节子路由向父详情返回时采用「来源感知出栈 + 替换兜底」，上一页为父详情时出栈还原滚动与折叠，否则就地替换（`router.replace`），严禁 push 污染历史栈；
   2. 章节子路由内同层切话使用 `router.replace` 维持单话专注视口，杜绝历史栈爆炸；
