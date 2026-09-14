@@ -1138,9 +1138,10 @@ class ComicStore:
         cls, items: list[tuple[str, str, Any]]
     ) -> dict[int, list[tuple[str, str, Any]]] | None:
         """Detect if items follow a composite chapter-page pattern (e.g. `1-1.avif`, `02_001.jpg`, `第1话_01.png`, `c1-1.webp`).
-        If at least 80% of items match, returns dict of { chap_num: [sorted items] }.
+        If at least 80% of items match and there are at least 2 distinct chapters, returns dict of { chap_num: [sorted items] }.
+        Zero data loss guarantee: any unclassified items are preserved in natural order within adjacent chapters.
         Otherwise returns None."""
-        if not items:
+        if not items or len(items) < 2:
             return None
 
         composite_re = re.compile(
@@ -1148,24 +1149,35 @@ class ComicStore:
             re.IGNORECASE,
         )
 
-        groups: dict[int, list[tuple[str, str, Any]]] = {}
-        matched_count = 0
+        sorted_items = sorted(items, key=lambda x: cls._natural_key(x[0]))
+        matched_items: list[tuple[int, tuple[str, str, Any]]] = []
 
-        for item in items:
-            filename = item[0]
-            stem = Path(filename).stem
+        for item in sorted_items:
+            stem = Path(item[0]).stem
             m = composite_re.match(stem)
             if m:
-                matched_count += 1
-                chap_num = int(m.group(1))
-                groups.setdefault(chap_num, []).append(item)
+                matched_items.append((int(m.group(1)), item))
 
-        if matched_count >= max(1, int(len(items) * 0.8)) and groups:
-            for cnum in groups:
-                groups[cnum].sort(key=lambda x: cls._natural_key(x[0]))
-            return groups
+        unique_chaps = sorted({cnum for cnum, _ in matched_items})
+        # Requires at least 2 chapters and at least 80% match rate to qualify as composite multi-chapter structure
+        if len(unique_chaps) < 2 or len(matched_items) < max(2, int(len(items) * 0.8)):
+            return None
 
-        return None
+        groups: dict[int, list[tuple[str, str, Any]]] = {c: [] for c in unique_chaps}
+
+        # Seamless natural placement for all items (100% data integrity, 0 files dropped)
+        curr_chap = unique_chaps[0]
+        for item in sorted_items:
+            stem = Path(item[0]).stem
+            m = composite_re.match(stem)
+            if m:
+                curr_chap = int(m.group(1))
+            groups[curr_chap].append(item)
+
+        for cnum in groups:
+            groups[cnum].sort(key=lambda x: cls._natural_key(x[0]))
+
+        return groups
 
     def update_metadata(self, source: str, source_id: str, updates: dict[str, Any]) -> ComicMeta:
         meta = self.load_meta(source, source_id)
@@ -1484,9 +1496,12 @@ class ComicStore:
             # Upfront verification: ensure all images are valid and uncorrupted before touching storage
             for idx, (filename, _ext, data_or_path) in enumerate(items, start=1):
                 try:
-                    content = data_or_path.read_bytes() if isinstance(data_or_path, Path) else data_or_path
-                    img = Image.open(io.BytesIO(content))
-                    img.verify()
+                    if isinstance(data_or_path, Path):
+                        with Image.open(data_or_path) as img:
+                            img.verify()
+                    else:
+                        with Image.open(io.BytesIO(data_or_path)) as img:
+                            img.verify()
                 except Exception as exc:
                     raise HTTPException(
                         status_code=400,
@@ -1521,10 +1536,8 @@ class ComicStore:
                         logger.warning("Failed to generate cover for synthesized Chapter 1 %s: %s", source_id, e)
 
                 # Check if multiple composite chapters are detected among the appended items
-                composite_groups = self._group_by_composite_chapter_pattern(
-                    [(fn, ext, (data if isinstance(data, bytes) else b"")) for fn, ext, data in items]
-                )
-                if composite_groups and len(composite_groups) > 1:
+                composite_groups = self._group_by_composite_chapter_pattern(items)
+                if composite_groups:
                     sorted_chap_nums = sorted(composite_groups.keys())
                     for c_order, chap_num in enumerate(sorted_chap_nums):
                         group_items = composite_groups[chap_num]
@@ -1534,11 +1547,9 @@ class ComicStore:
                         chap_dir.mkdir(parents=True, exist_ok=True)
 
                         start_idx = meta.page_count + 1
-                        for local_i, (fname, ext, _dummy) in enumerate(group_items, start=1):
+                        for local_i, (fname, ext, data_to_write) in enumerate(group_items, start=1):
                             dest_name = f"{local_i:05d}{ext}"
                             dest_path = chap_dir / dest_name
-                            orig_item = next((it for it in items if it[0] == fname), None)
-                            data_to_write = orig_item[2] if orig_item else b""
                             if isinstance(data_to_write, Path):
                                 shutil.copy2(data_to_write, dest_path)
                             else:
@@ -1682,7 +1693,7 @@ class ComicStore:
             meta = fetched.meta
             IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".webp", ".gif", ".avif", ".bmp"}
 
-            valid_items: list[tuple[str, str, bytes]] = []
+            valid_items: list[tuple[str, str, bytes | Path]] = []
             if files:
                 sorted_files = sorted(files, key=lambda f: self._natural_key(f[0]))
                 for filename, content in sorted_files:
@@ -1716,7 +1727,7 @@ class ComicStore:
 
                 img_files.sort(key=lambda f: self._natural_key(f.name))
                 for f in img_files:
-                    valid_items.append((f.name, f.suffix.lower(), f.read_bytes()))
+                    valid_items.append((f.name, f.suffix.lower(), f))
 
             if not valid_items:
                 raise HTTPException(status_code=400, detail="未提供有效的图片文件")
@@ -1732,10 +1743,14 @@ class ComicStore:
             import io
 
             # Upfront verification: ensure all items are valid images before touching staging directories
-            for idx, (filename, _ext, content) in enumerate(valid_items, start=1):
+            for idx, (filename, _ext, content_or_path) in enumerate(valid_items, start=1):
                 try:
-                    img = Image.open(io.BytesIO(content))
-                    img.verify()
+                    if isinstance(content_or_path, Path):
+                        with Image.open(content_or_path) as img:
+                            img.verify()
+                    else:
+                        with Image.open(io.BytesIO(content_or_path)) as img:
+                            img.verify()
                 except Exception as exc:
                     raise HTTPException(
                         status_code=400,
@@ -1755,10 +1770,13 @@ class ComicStore:
                     raise HTTPException(status_code=404, detail=f"章节 {target_chapter} 不存在")
 
                 staged_names: list[tuple[str, str]] = []
-                for idx, (_filename, ext, content) in enumerate(valid_items, start=1):
+                for idx, (_filename, ext, content_or_path) in enumerate(valid_items, start=1):
                     dest_name = f"{idx:05d}{ext}"
                     dest_path = staging_dir / dest_name
-                    dest_path.write_bytes(content)
+                    if isinstance(content_or_path, Path):
+                        shutil.copy2(content_or_path, dest_path)
+                    else:
+                        dest_path.write_bytes(content_or_path)
                     staged_names.append((dest_name, ext))
 
                 chap_dir = target_pages_dir / self._safe(target_chapter)
@@ -1861,9 +1879,13 @@ class ComicStore:
                             chap_staging_dir.mkdir(parents=True, exist_ok=True)
 
                             start_page = global_idx
-                            for local_i, (_filename, ext, content) in enumerate(chap_items, start=1):
+                            for local_i, (_filename, ext, content_or_path) in enumerate(chap_items, start=1):
                                 dest_name = f"{local_i:05d}{ext}"
-                                (chap_staging_dir / dest_name).write_bytes(content)
+                                dest_path = chap_staging_dir / dest_name
+                                if isinstance(content_or_path, Path):
+                                    shutil.copy2(content_or_path, dest_path)
+                                else:
+                                    dest_path.write_bytes(content_or_path)
                                 rebuilt_pages.append(
                                     PageRecord(index=global_idx, file=dest_name, ext=ext, cached=True, chapter=chap_id)
                                 )
@@ -1908,10 +1930,13 @@ class ComicStore:
                 else:
                     # Flat single-chapter replacement
                     staged_names: list[tuple[str, str]] = []
-                    for idx, (_filename, ext, content) in enumerate(valid_items, start=1):
+                    for idx, (_filename, ext, content_or_path) in enumerate(valid_items, start=1):
                         dest_name = f"{idx:05d}{ext}"
                         dest_path = staging_dir / dest_name
-                        dest_path.write_bytes(content)
+                        if isinstance(content_or_path, Path):
+                            shutil.copy2(content_or_path, dest_path)
+                        else:
+                            dest_path.write_bytes(content_or_path)
                         staged_names.append((dest_name, ext))
 
                     backup_pages_dir = comic_dir / ".pages_old"
@@ -1973,94 +1998,96 @@ class ComicStore:
                 return meta
 
     def update_chapter_title(self, source: str, source_id: str, chapter_id: str, new_title: str) -> ComicMeta:
-        meta = self.load_meta(source, source_id)
-        if meta is None:
-            raise HTTPException(status_code=404, detail="本子还没有导入本地书库")
+        with self._lock_for(source, source_id):
+            meta = self.load_meta(source, source_id)
+            if meta is None:
+                raise HTTPException(status_code=404, detail="本子还没有导入本地书库")
 
-        chapter = next((c for c in meta.chapters if c.id == chapter_id), None)
-        if chapter is None:
-            raise HTTPException(status_code=404, detail=f"未找到章节：{chapter_id}")
+            chapter = next((c for c in meta.chapters if c.id == chapter_id), None)
+            if chapter is None:
+                raise HTTPException(status_code=404, detail=f"未找到章节：{chapter_id}")
 
-        chapter.title = new_title.strip() or f"第 {chapter.index} 话"
-        if source != "local":
-            meta.custom_pages = True
-        meta.updated_at = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        _write_json_atomic(self.album_path(source, source_id), meta.model_dump())
-        self._invalidate_cache(source, source_id)
-        return meta
+            chapter.title = new_title.strip() or f"第 {chapter.index} 话"
+            if source != "local":
+                meta.custom_pages = True
+            meta.updated_at = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            _write_json_atomic(self.album_path(source, source_id), meta.model_dump())
+            self._invalidate_cache(source, source_id)
+            return meta
 
     def delete_chapter(self, source: str, source_id: str, chapter_id: str) -> ComicMeta:
-        fetched = self.load_fetched(source, source_id)
-        if fetched is None:
-            raise HTTPException(status_code=404, detail="本子还没有导入本地书库")
+        with self._lock_for(source, source_id):
+            fetched = self.load_fetched(source, source_id)
+            if fetched is None:
+                raise HTTPException(status_code=404, detail="本子还没有导入本地书库")
 
-        meta = fetched.meta
-        chapter = next((c for c in meta.chapters if c.id == chapter_id), None)
-        if chapter is None:
-            raise HTTPException(status_code=404, detail=f"未找到章节：{chapter_id}")
+            meta = fetched.meta
+            chapter = next((c for c in meta.chapters if c.id == chapter_id), None)
+            if chapter is None:
+                raise HTTPException(status_code=404, detail=f"未找到章节：{chapter_id}")
 
-        # Delete physical directory and covers for this chapter
-        safe_cid = self._safe(chapter_id)
-        chap_dir = self.pages_dir(source, source_id) / safe_cid
-        if chap_dir.exists():
-            shutil.rmtree(chap_dir, ignore_errors=True)
+            # Delete physical directory and covers for this chapter
+            safe_cid = self._safe(chapter_id)
+            chap_dir = self.pages_dir(source, source_id) / safe_cid
+            if chap_dir.exists():
+                shutil.rmtree(chap_dir, ignore_errors=True)
 
-        thumb_dir = self.thumbs_dir(source, source_id) / safe_cid
-        if thumb_dir.exists():
-            shutil.rmtree(thumb_dir, ignore_errors=True)
+            thumb_dir = self.thumbs_dir(source, source_id) / safe_cid
+            if thumb_dir.exists():
+                shutil.rmtree(thumb_dir, ignore_errors=True)
 
-        chap_cover = self.chapter_cover_path(meta, chapter)
-        chap_cover.unlink(missing_ok=True)
+            chap_cover = self.chapter_cover_path(meta, chapter)
+            chap_cover.unlink(missing_ok=True)
 
-        # Remove pages belonging to this chapter
-        meta.pages = [p for p in meta.pages if p.chapter != chapter_id]
-        fetched.remote_pages = [rp for rp in fetched.remote_pages if rp.chapter != chapter_id]
-        meta.chapters = [c for c in meta.chapters if c.id != chapter_id]
+            # Remove pages belonging to this chapter
+            meta.pages = [p for p in meta.pages if p.chapter != chapter_id]
+            fetched.remote_pages = [rp for rp in fetched.remote_pages if rp.chapter != chapter_id]
+            meta.chapters = [c for c in meta.chapters if c.id != chapter_id]
 
-        # Re-index all remaining pages and chapters monotonically
-        reindexed_pages: list[PageRecord] = []
-        reindexed_remote: list[RemotePage] = []
-        global_idx = 1
+            # Re-index all remaining pages and chapters monotonically
+            reindexed_pages: list[PageRecord] = []
+            reindexed_remote: list[RemotePage] = []
+            global_idx = 1
 
-        for c_idx, ch in enumerate(meta.chapters, start=1):
-            ch.index = c_idx
-            ch.start = global_idx
-            ch_pages = [p for p in meta.pages if p.chapter == ch.id]
-            ch.page_count = len(ch_pages)
-            for p in ch_pages:
-                p.index = global_idx
-                reindexed_pages.append(p)
-                global_idx += 1
+            for c_idx, ch in enumerate(meta.chapters, start=1):
+                ch.index = c_idx
+                ch.start = global_idx
+                ch_pages = [p for p in meta.pages if p.chapter == ch.id]
+                ch.page_count = len(ch_pages)
+                for p in ch_pages:
+                    p.index = global_idx
+                    reindexed_pages.append(p)
+                    global_idx += 1
 
-        # If no chapters left but pages exist
-        if not meta.chapters:
-            for p in meta.pages:
-                p.index = global_idx
-                p.chapter = ""
-                reindexed_pages.append(p)
-                global_idx += 1
+            # If no chapters left but pages exist
+            if not meta.chapters:
+                for p in meta.pages:
+                    p.index = global_idx
+                    p.chapter = ""
+                    reindexed_pages.append(p)
+                    global_idx += 1
 
-        for rp in fetched.remote_pages:
-            matching_p = next((p for p in reindexed_pages if p.chapter == rp.chapter and p.file == rp.file), None)
-            if matching_p is not None:
-                rp.index = matching_p.index
-                reindexed_remote.append(rp)
+            for rp in fetched.remote_pages:
+                matching_p = next((p for p in reindexed_pages if p.chapter == rp.chapter and p.file == rp.file), None)
+                if matching_p is not None:
+                    rp.index = matching_p.index
+                    reindexed_remote.append(rp)
 
-        meta.pages = reindexed_pages
-        meta.page_count = len(reindexed_pages)
-        fetched.remote_pages = reindexed_remote
-        if source != "local":
-            meta.custom_pages = True
-        meta.updated_at = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            meta.pages = reindexed_pages
+            meta.page_count = len(reindexed_pages)
+            fetched.remote_pages = reindexed_remote
+            if source != "local":
+                meta.custom_pages = True
+            meta.updated_at = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-        _write_json_atomic(self.album_path(source, source_id), meta.model_dump())
-        remote_data = {
-            "decode_version": CURRENT_DECODE_VERSION,
-            "remote_pages": [rp.model_dump() for rp in fetched.remote_pages],
-        }
-        _write_json_atomic(self.remote_path(source, source_id), remote_data)
-        self._invalidate_cache(source, source_id)
-        return meta
+            _write_json_atomic(self.album_path(source, source_id), meta.model_dump())
+            remote_data = {
+                "decode_version": CURRENT_DECODE_VERSION,
+                "remote_pages": [rp.model_dump() for rp in fetched.remote_pages],
+            }
+            _write_json_atomic(self.remote_path(source, source_id), remote_data)
+            self._invalidate_cache(source, source_id)
+            return meta
 
     # ------------------------------------------------------------------
     # discovery feeds & rankings cache

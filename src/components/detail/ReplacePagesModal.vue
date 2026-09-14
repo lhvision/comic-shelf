@@ -75,7 +75,7 @@ watch(
         selectedChapterId.value = props.initialChapterId
       } else {
         replaceScope.value =
-          props.meta.chapters && props.meta.chapters.length > 1 ? 'chapter' : 'full'
+          props.meta.chapters && props.meta.chapters.length >= 1 ? 'chapter' : 'full'
         selectedChapterId.value = props.meta.chapters?.[0]?.id || ''
       }
       serverPath.value = ''
@@ -101,10 +101,11 @@ const detectedCompositeChapters = computed(() => {
   return Array.from(set).sort((a, b) => a - b)
 })
 
+const hasChapters = computed(() => (props.meta.chapters?.length ?? 0) >= 1)
 const isMulti = computed(() => (props.meta.chapters?.length ?? 0) > 1)
 
 const targetDescription = computed(() => {
-  if (isMulti.value && replaceScope.value === 'chapter') {
+  if (hasChapters.value && replaceScope.value === 'chapter') {
     const ch = props.meta.chapters?.find((c) => c.id === selectedChapterId.value)
     return ch ? `第 ${ch.index} 话《${ch.title}》（现有 ${ch.page_count} 页）` : '选定章节'
   }
@@ -112,7 +113,7 @@ const targetDescription = computed(() => {
 })
 
 const existingPageCount = computed(() => {
-  if (isMulti.value && replaceScope.value === 'chapter') {
+  if (hasChapters.value && replaceScope.value === 'chapter') {
     const ch = props.meta.chapters?.find((c) => c.id === selectedChapterId.value)
     return ch?.page_count ?? 0
   }
@@ -161,7 +162,9 @@ async function submit() {
 
   try {
     const targetChap =
-      isMulti.value && replaceScope.value === 'chapter' ? selectedChapterId.value : ''
+      hasChapters.value && replaceScope.value === 'chapter'
+        ? selectedChapterId.value || props.initialChapterId || props.meta.chapters?.[0]?.id || ''
+        : ''
 
     if (mode.value === 'upload') {
       await api.replaceComicPages(
@@ -218,7 +221,7 @@ async function submit() {
         </div>
       </div>
 
-      <div v-if="isMulti" class="scope-group">
+      <div v-if="hasChapters" class="scope-group">
         <label class="form-label">装订范围</label>
         <div class="radio-cards">
           <label

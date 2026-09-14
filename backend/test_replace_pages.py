@@ -214,6 +214,46 @@ class TestReplacePages(unittest.TestCase):
         self.assertEqual(new_meta.chapters[2].page_count, 1)
         self.assertEqual(new_meta.chapters[2].start, 4)
 
+    def test_composite_grouping_zero_data_loss_preserves_unmatched_files(self):
+        fetched = self._setup_sample_comic("local", "zero_loss_test")
+        img = self._create_sample_img("blue")
+        # 10 files total: 8 composite, 2 non-composite (00_cover.avif and extra.avif)
+        files = [
+            ("00_cover.avif", img),
+            ("1-1.avif", img),
+            ("1-2.avif", img),
+            ("1-3.avif", img),
+            ("1-4.avif", img),
+            ("2-1.avif", img),
+            ("2-2.avif", img),
+            ("2-3.avif", img),
+            ("2-4.avif", img),
+            ("extra.avif", img),
+        ]
+
+        new_meta = self.store.replace_pages("local", "zero_loss_test", files=files)
+        self.assertEqual(new_meta.page_count, 10)
+        self.assertEqual(len(new_meta.chapters), 2)
+        # Chapter 1 has 00_cover + 4 pages = 5 pages
+        self.assertEqual(new_meta.chapters[0].page_count, 5)
+        self.assertEqual(new_meta.chapters[0].start, 1)
+        # Chapter 2 has 4 pages + extra = 5 pages
+        self.assertEqual(new_meta.chapters[1].page_count, 5)
+        self.assertEqual(new_meta.chapters[1].start, 6)
+
+    def test_composite_single_chapter_remains_flat(self):
+        self._setup_sample_comic("local", "single_ch_flat")
+        img = self._create_sample_img("yellow")
+        files = [
+            ("1-1.avif", img),
+            ("1-2.avif", img),
+        ]
+
+        new_meta = self.store.replace_pages("local", "single_ch_flat", files=files)
+        # Only 1 chapter detected, must remain flat single volume
+        self.assertEqual(len(new_meta.chapters), 0)
+        self.assertEqual(new_meta.page_count, 2)
+
     def test_scoped_thumbnail_invalidation_preserves_other_chapters(self):
         from app.models import Chapter
         fetched = self._setup_sample_comic("local", "multi_scoped")

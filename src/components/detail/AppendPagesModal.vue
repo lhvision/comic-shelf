@@ -87,14 +87,9 @@ async function submit() {
         return
       }
 
-      await uploadFiles(
-        props.meta.source_id,
-        selectedFiles.value,
-        targetChap,
-        newTitle,
-        {},
-        props.meta.source,
-      )
+      await uploadFiles(props.meta.source_id, selectedFiles.value, targetChap, newTitle, {
+        source: props.meta.source,
+      })
       broadcastLocalChange({
         action: 'update_pages',
         source: props.meta.source,

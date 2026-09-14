@@ -366,17 +366,22 @@ const fieldRows = computed(() => {
   margin: 0;
   line-height: var(--leading-body);
   white-space: pre-line;
+  overflow: clip;
+  interpolate-size: allow-keywords;
+  transition: height var(--duration-2) var(--ease-out);
 }
 
 .description-content.is-clamped {
-  display: -webkit-box;
-  -webkit-line-clamp: 3;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
+  height: calc(3 * var(--leading-body, 1.75) * 1em);
+  height: 3lh;
+  -webkit-mask-image: linear-gradient(to bottom, black calc(100% - 1.2lh), transparent 100%);
+  mask-image: linear-gradient(to bottom, black calc(100% - 1.2lh), transparent 100%);
 }
 
 .description-content.is-expanded {
-  display: block;
+  height: auto;
+  -webkit-mask-image: none;
+  mask-image: none;
 }
 
 @media (prefers-reduced-motion: reduce) {

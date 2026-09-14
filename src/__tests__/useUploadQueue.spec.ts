@@ -95,4 +95,46 @@ describe('useUploadQueue', () => {
     expect(uploadedBatches.length).toBe(1)
     expect(uploadedBatches[0]).toEqual(['000.jpg', '00a.jpg', '001.jpg', '002.jpg', '010.jpg'])
   })
+
+  it('correctly groups composite multi-chapter files and sends chapter titles', async () => {
+    const queue = useUploadQueue()
+    const rawNames = ['1-1.avif', '1-2.avif', '2-1.avif', '2-2.avif']
+    const mockFiles = rawNames.map((name) => new File(['dummy'], name, { type: 'image/avif' }))
+
+    const calls: { chunk: string[]; targetChap: string; title: string }[] = []
+    let chapterCounter = 0
+    vi.spyOn(api, 'uploadPages').mockImplementation(
+      async (_src, _id, chunk, targetChap = '', title = '') => {
+        calls.push({ chunk: chunk.map((f) => f.name), targetChap, title })
+        if (title) chapterCounter++
+        return {
+          meta: {
+            chapters: Array.from({ length: chapterCounter }, (_, i) => ({
+              id: `c${i + 1}`,
+              index: i + 1,
+              title: `第 ${i + 1} 话`,
+              page_count: 2,
+              start: i * 2 + 1,
+            })),
+          },
+        } as unknown as ComicDetail
+      },
+    )
+
+    await queue.uploadFiles('test', mockFiles, '', '第 1 话：首章', { batchSize: 2 })
+
+    expect(calls.length).toBe(2)
+    // Batch 1: Chapter 1 head
+    expect(calls[0]).toEqual({
+      chunk: ['1-1.avif', '1-2.avif'],
+      targetChap: '',
+      title: '第 1 话：首章',
+    })
+    // Batch 2: Chapter 2 head
+    expect(calls[1]).toEqual({
+      chunk: ['2-1.avif', '2-2.avif'],
+      targetChap: '',
+      title: '第 2 话',
+    })
+  })
 })

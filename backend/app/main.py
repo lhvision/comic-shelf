@@ -111,6 +111,7 @@ from .models import (
     LibraryStats,
     LibrarySummary,
     LocalAppendRequest,
+    ComicAppendRequest,
     LocalComicCreateRequest,
     LocalPathImportRequest,
     LoginRequest,
@@ -976,7 +977,7 @@ async def upload_comic_pages(
 def append_comic(
     source: str,
     source_id: str,
-    req: LocalAppendRequest,
+    req: ComicAppendRequest,
 ) -> ComicDetail:
     _require_known_source(source)
     meta = store.append_pages(
@@ -994,7 +995,7 @@ def append_comic(
     return store.detail(meta)
 
 
-@app.post("/api/library/local/{source_id}/upload-pages", response_model=ComicDetail)
+@app.post("/api/library/local/{source_id}/upload-pages", response_model=ComicDetail, deprecated=True)
 async def upload_local_pages(
     source_id: str,
     chapter_id: str = Query(default="", description="目标章节 id"),
@@ -1010,7 +1011,7 @@ async def upload_local_pages(
     )
 
 
-@app.post("/api/library/local/{source_id}/append", response_model=ComicDetail)
+@app.post("/api/library/local/{source_id}/append", response_model=ComicDetail, deprecated=True)
 def append_local_comic(source_id: str, req: LocalAppendRequest) -> ComicDetail:
     return append_comic(source="local", source_id=source_id, req=req)
 

@@ -29,11 +29,10 @@ export function useUploadQueue() {
     chapterId = '',
     newChapterTitle = '',
     options: UploadQueueOptions = {},
-    legacySource?: string,
   ): Promise<ComicDetail | null> {
     if (files.length === 0) return null
 
-    const source = options.source ?? legacySource ?? 'local'
+    const source = options.source ?? 'local'
 
     // Ensure files are naturally sorted before batching (e.g. 000.jpg -> 00a.jpg -> 001.jpg)
     const sortedFiles = [...files].sort((a, b) =>
@@ -48,33 +47,120 @@ export function useUploadQueue() {
     totalCount.value = sortedFiles.length
     progress.value = 0
 
-    // Split files into sequential chunks
-    const chunks: File[][] = []
-    for (let i = 0; i < sortedFiles.length; i += batchSize) {
-      chunks.push(sortedFiles.slice(i, i + batchSize))
+    // Detect if this is an auto-split multi-chapter upload (no explicit chapterId, and composite filenames detected across >= 2 chapters)
+    const compositeRe =
+      /^(?:\[?(?:c|ch|ep|vol|第)?\s*(\d+)\s*(?:话|話|回|卷|期)?\]?)[-_.#\s]+(\d+)/i
+    const matchedChapters = new Map<number, File[]>()
+    let matchedCount = 0
+
+    for (const f of sortedFiles) {
+      const stem = f.name.replace(/\.[^/.]+$/, '')
+      const m = compositeRe.exec(stem)
+      if (m && m[1]) {
+        matchedCount++
+        const cnum = parseInt(m[1], 10)
+        const list = matchedChapters.get(cnum) ?? []
+        list.push(f)
+        matchedChapters.set(cnum, list)
+      }
+    }
+
+    interface UploadBatchTask {
+      chunk: File[]
+      chapterId: string
+      newChapterTitle: string
+      isChapterHead: boolean
+    }
+
+    const tasks: UploadBatchTask[] = []
+
+    const isCompositeMulti =
+      !chapterId &&
+      matchedChapters.size > 1 &&
+      matchedCount >= Math.max(2, Math.floor(sortedFiles.length * 0.8))
+
+    if (isCompositeMulti) {
+      const sortedChapNums = Array.from(matchedChapters.keys()).sort((a, b) => a - b)
+      let currChap: number = sortedChapNums[0] ?? 1
+      const chapGroupMap = new Map<number, File[]>()
+      for (const cnum of sortedChapNums) {
+        chapGroupMap.set(cnum, [])
+      }
+      for (const f of sortedFiles) {
+        const stem = f.name.replace(/\.[^/.]+$/, '')
+        const m = compositeRe.exec(stem)
+        if (m && m[1]) {
+          currChap = parseInt(m[1], 10)
+        }
+        chapGroupMap.get(currChap)?.push(f)
+      }
+
+      for (let cIdx = 0; cIdx < sortedChapNums.length; cIdx++) {
+        const cnum = sortedChapNums[cIdx]!
+        const cFiles = chapGroupMap.get(cnum) || []
+        const defaultTitle = `第 ${cnum} 话`
+        const titleForChap = cIdx === 0 && newChapterTitle ? newChapterTitle : defaultTitle
+
+        for (let i = 0; i < cFiles.length; i += batchSize) {
+          const chunk = cFiles.slice(i, i + batchSize)
+          tasks.push({
+            chunk,
+            chapterId: '',
+            newChapterTitle: i === 0 ? titleForChap : '',
+            isChapterHead: i === 0,
+          })
+        }
+      }
+    } else {
+      // Standard sequential chunks
+      for (let i = 0; i < sortedFiles.length; i += batchSize) {
+        tasks.push({
+          chunk: sortedFiles.slice(i, i + batchSize),
+          chapterId: i === 0 ? chapterId : '',
+          newChapterTitle: i === 0 ? newChapterTitle : '',
+          isChapterHead: i === 0,
+        })
+      }
     }
 
     let latestDetail: ComicDetail | null = null
+    let activeChapterId = chapterId
 
     try {
       // Process chunks strictly sequentially to preserve 100% stable page ordering
-      for (let currentIdx = 0; currentIdx < chunks.length; currentIdx++) {
+      for (let currentIdx = 0; currentIdx < tasks.length; currentIdx++) {
         if (aborted) break
-        const chunk = chunks[currentIdx]
-        if (!chunk || chunk.length === 0) continue
+        const task = tasks[currentIdx]
+        if (!task || task.chunk.length === 0) continue
 
-        currentFileName.value = chunk[0]?.name || ''
+        currentFileName.value = task.chunk[0]?.name || ''
 
-        // If first chunk and new chapter title specified, pass it; subsequent chunks append to that chapter
-        const targetChap =
-          currentIdx === 0
-            ? chapterId
-            : (latestDetail?.meta.chapters?.slice(-1)[0]?.id ?? chapterId)
-        const titleParam = currentIdx === 0 ? newChapterTitle : ''
+        let targetChap = ''
+        let titleParam = ''
 
-        const res = await api.uploadPages(source, sourceId, chunk, targetChap, titleParam)
+        if (isCompositeMulti) {
+          if (task.isChapterHead) {
+            titleParam = task.newChapterTitle
+            targetChap = ''
+          } else {
+            targetChap = activeChapterId
+            titleParam = ''
+          }
+        } else {
+          targetChap =
+            currentIdx === 0
+              ? chapterId
+              : (latestDetail?.meta.chapters?.slice(-1)[0]?.id ?? chapterId)
+          titleParam = currentIdx === 0 ? newChapterTitle : ''
+        }
+
+        const res = await api.uploadPages(source, sourceId, task.chunk, targetChap, titleParam)
         latestDetail = res
-        completedCount.value = Math.min(totalCount.value, completedCount.value + chunk.length)
+        if (res?.meta?.chapters && res.meta.chapters.length > 0) {
+          activeChapterId = res.meta.chapters[res.meta.chapters.length - 1]?.id ?? activeChapterId
+        }
+
+        completedCount.value = Math.min(totalCount.value, completedCount.value + task.chunk.length)
         progress.value = calculateProgressPercent(completedCount.value, totalCount.value)
         options.onProgress?.(completedCount.value, totalCount.value)
       }

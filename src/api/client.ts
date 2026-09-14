@@ -474,7 +474,7 @@ export const api = {
   appendPages: async (
     source: string,
     sourceId: string,
-    payload: import('@/types').LocalAppendPayload,
+    payload: import('@/types').ComicAppendPayload,
   ) => {
     memoizedDetail.delete(source, sourceId)
     return request<ComicDetail>(`/library/${source}/${sourceId}/append`, {

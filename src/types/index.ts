@@ -260,6 +260,8 @@ export interface LocalAppendPayload {
   server_path?: string
 }
 
+export type ComicAppendPayload = LocalAppendPayload
+
 export type DiscoveryTimeframe = 'week' | 'month' | 'day'
 
 export interface DiscoveryItem {
