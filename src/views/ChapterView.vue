@@ -120,7 +120,6 @@ const {
   appendOpen,
   chapterMoreOptions,
   onChapterMoreSelect,
-  openEditModal,
   saveChapterTitle,
   confirmRemoveChapter,
 } = useChapterManagement({
@@ -221,17 +220,6 @@ onMounted(() => {
           </AppButton>
 
           <div v-if="canWrite && isOnline && !store.isOffline" class="chapter-mgmt-group">
-            <AppButton
-              class="chapter-edit-btn"
-              variant="ghost"
-              size="sm"
-              type="button"
-              title="修改本话名称"
-              @click="openEditModal"
-            >
-              编辑章节
-            </AppButton>
-
             <AppDropdown :options="chapterMoreOptions" align="end" @select="onChapterMoreSelect">
               <template #trigger="{ open }">
                 <AppButton
@@ -598,10 +586,6 @@ onMounted(() => {
   .chapter-mgmt-group {
     margin-left: 0;
     flex-shrink: 0;
-  }
-
-  .chapter-edit-btn {
-    display: none; /* 移动端收敛进更多 ··· 菜单，消除水平溢出 */
   }
 
   .more-trigger {

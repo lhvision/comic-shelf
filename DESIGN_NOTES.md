@@ -522,12 +522,12 @@
    - **下层（触控友好双按钮）**：移动端 Primary「开始/继续阅读」与 Secondary「缓存本话」等分撑满（`flex: 1 1 0`，高度 `min-height: 2.75rem` 满足 44px 触控底线），管理动作（编辑名称/删除/重订/追加）全量收敛进右侧独立的 44×44px 正方形 `···` 胶囊。
 2. **通边画卷与动态渐隐遮罩（Full-bleed Carousel & Arrived State Mask）**：
    - 横向切话卷轴（`ChapterSwitcher`）在移动端通过负外边距（`margin-inline: calc(-1 * var(--space-3-5))`）冲破卡片内边距局限，实现全宽通边探索；
-   - 结合 VueUse `useScroll` 的 `arrivedState` 动态驱动 CSS `mask-image`（只在存在溢出方向时渐隐，首尾无溢出方向保持纯黑锐利）；
+   - 结合 VueUse `useScroll` 的 `arrivedState` 动态驱动 CSS 双轨遮罩（`-webkit-mask-image` 在前、`mask-image` 在后，只在存在溢出方向时渐隐，首尾无溢出方向保持纯黑锐利，减弱动效偏好下物理关闭）；
    - 胶囊按钮移动端高度坚守 44px 底线（`min-height: 2.75rem`），彻底根除单手误触。
 3. **单章节幽灵分页防退化与页面级快捷键**：
    - 分页栏挂载 `v-if="chapters.length > 1"`，单话作品自然隐退整套分页器；
    - 移动端「上一话/下一话」收纳为左右各 44×44px 的正方形翻页箭钮，横向夹持 `ChapterSwitcher` 维持单行秩序；
-   - 页面级监听 `[` 与 `]` 键盘事件，实现免聚焦秒级切话。
+   - 页面级监听 `[` 与 `]` 键盘事件，并严格过滤修饰键（`metaKey`/`ctrlKey`/`altKey`）、活动模态框（`<dialog[open]>`）与输入框焦点，阻断浏览器原生后退与双重路由竞争。
 
 ---
 

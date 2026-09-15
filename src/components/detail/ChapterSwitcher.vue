@@ -292,14 +292,27 @@ function chapterState(id: string): 'past' | 'active' | 'upcoming' {
 
 /* 动态边缘渐隐提示（遵循 DESIGN_NOTES.md 与 CSS_RADAR 规范） */
 .chapter-switcher[data-scroll-right='true'] {
+  -webkit-mask-image: linear-gradient(
+    to right,
+    black calc(100% - var(--space-6)),
+    transparent 100%
+  );
   mask-image: linear-gradient(to right, black calc(100% - var(--space-6)), transparent 100%);
 }
 
 .chapter-switcher[data-scroll-left='true'] {
+  -webkit-mask-image: linear-gradient(to right, transparent 0%, black var(--space-6));
   mask-image: linear-gradient(to right, transparent 0%, black var(--space-6));
 }
 
 .chapter-switcher[data-scroll-left='true'][data-scroll-right='true'] {
+  -webkit-mask-image: linear-gradient(
+    to right,
+    transparent 0%,
+    black var(--space-6),
+    black calc(100% - var(--space-6)),
+    transparent 100%
+  );
   mask-image: linear-gradient(
     to right,
     transparent 0%,
@@ -311,6 +324,7 @@ function chapterState(id: string): 'past' | 'active' | 'upcoming' {
 
 @media (prefers-reduced-motion: reduce) {
   .chapter-switcher {
+    -webkit-mask-image: none !important;
     mask-image: none !important;
   }
 }

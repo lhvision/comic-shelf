@@ -68,6 +68,13 @@ export default defineConfig({
         },
       },
       {
+        files: ['**/*.vue'],
+        rules: {
+          // Vue 模板 ref 等语法由 vue-tsc (pnpm type-check) 的 noUnusedLocals 严格验证，规避 oxlint 对 SFC 模板 ref 的误报
+          'no-unused-vars': 'off',
+        },
+      },
+      {
         files: ['src/**/__tests__/*'],
         rules: {
           'vitest/expect-expect': 'error',

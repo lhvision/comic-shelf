@@ -46,7 +46,6 @@ const {
   isOverDropZone,
   openFileDialog,
 } = useFileStaging({ deduplicate: false, notifyIgnored: true, disabled: submitting })
-void dropZoneRef
 
 watch(
   () => props.open,
@@ -191,7 +190,13 @@ async function submit() {
         />
       </div>
 
-      <div ref="dropZoneRef">
+      <div
+        :ref="
+          (el) => {
+            dropZoneRef = el as HTMLElement
+          }
+        "
+      >
         <FileStagingDropZone
           v-model:mode="mode"
           v-model:files="selectedFiles"

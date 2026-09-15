@@ -7,8 +7,7 @@
   },
   "editor.codeActionsOnSave": {
     "source.fixAll": "explicit",
-    "source.fixAll.oxc": "explicit",
-    "source.organizeImports": "always"
+    "source.fixAll.oxc": "explicit"
   },
   "editor.formatOnSave": true,
   "editor.defaultFormatter": "oxc.oxc-vscode",

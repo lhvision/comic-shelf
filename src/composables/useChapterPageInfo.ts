@@ -124,18 +124,38 @@ export function useChapterPageInfo(options: UseChapterPageInfoOptions) {
     goToChapter(nextChapter.value.id)
   }
 
-  // 页面级全局快捷键：[ 上一话，] 下一话（输入框中静默豁免）
+  // 页面级全局快捷键：[ 上一话，] 下一话（修饰键、弹窗与输入框中静默豁免）
   useEventListener('keydown', (e: KeyboardEvent) => {
-    const target = e.target as HTMLElement | null
+    // 忽略长按重复连发，防止高频切话导致路由队列拥堵
+    if (e.repeat) return
+
+    // 忽略带修饰键的浏览器/系统组合键（如 macOS Cmd+[ 为浏览器后退）
+    if (e.metaKey || e.ctrlKey || e.altKey) return
+
+    // 忽略活动对话框或浮层菜单状态，防止交互中误切底层章节
     if (
-      target &&
-      (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)
+      typeof document !== 'undefined' &&
+      document.querySelector('dialog[open], [role="dialog"], [role="menu"]')
     ) {
       return
     }
+
+    const target = e.target as HTMLElement | null
+    if (
+      target &&
+      (target.tagName === 'INPUT' ||
+        target.tagName === 'TEXTAREA' ||
+        target.tagName === 'SELECT' ||
+        target.isContentEditable)
+    ) {
+      return
+    }
+
     if (e.key === '[' && prevChapter.value) {
+      e.preventDefault()
       goPrev()
     } else if (e.key === ']' && nextChapter.value) {
+      e.preventDefault()
       goNext()
     }
   })

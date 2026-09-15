@@ -1070,6 +1070,21 @@
     1. **全链路 ESM Bundler 单例收敛**：在 `vitest.config.ts` 中，通过 `createRequire` 从已解析的 `vue` 和 `@vue/test-utils` 根部动态解析 `@vue/test-utils/dist/vue-test-utils.esm-bundler.mjs` 以及各 `@vue/*` 的 `dist/*.esm-bundler.js`，确保测试用例、测试工具库与组件运行在完全一致的单一模块实例上下文内；
     2. **pnpm Catalog 统筹版本治理**：在 `pnpm-workspace.yaml` 中定义 `catalog.default.vue: rc` 并在 `overrides` 中将 `@vue/*` 衍生包全量锁定到统一的 `'rc'` 标签，主应用 `package.json` 统一使用 `"vue": "catalog:"`，升级时只需一条 `pnpm update` 或 `pnpm install` 自动从 npm 镜像对齐最新版。
 
+### 99. 全局按键切话监听穿透、macOS 历史导航抢占与伪存活 Ref 声明陷阱（Global Keydown Interception, Modifier Hijacking & Dummy Void Trap）
+
+- **本质**：
+  1. **修饰键漏滤与 macOS 历史竞争（Modifier Hijacking & Dual Navigation Race）**：在页面级通过 `useEventListener('keydown')` 监听 `[` 与 `]` 切话时，若未严格过滤 `metaKey`/`ctrlKey`/`altKey`，由于 macOS 上 `Cmd + [` 为浏览器原生“后退”、`Cmd + ]` 为“前进”，Mac 用户尝试返回上一网页时会同时触发应用内切话，且因未调用 `e.preventDefault()` 造成底层原生 History 弹出与 Vue Router 推进的并发竞争，导致路由栈撕裂；
+  2. **活动模态层与长按连发穿透（Modal Bleed & Keyrepeat Queue Flood）**：若未检测当前活动的对话框或菜单（`dialog[open], [role="dialog"], [role="menu"]`），读者在重命名、追加或重订画页弹窗中聚焦非输入区域敲击按键时，底层页面在用户无感知状态下跨话跳转；若未过滤 `e.repeat`，长按按键会高频狂发数十次切话请求造成导航队列拥堵；
+  3. **Linter 模板 Ref 误报与伪存活代码扩散（Dummy Void Ref Anti-Pattern）**：在开启 `no-unused-vars` 校验时，由于通用 linter 无法直接穿透 Vue SFC 原生标签上的字符串属性 `ref="xxx"`，部分实现为了平息警告而写出 `void dropZoneRef` 等伪存活死代码，破坏代码洁净度。
+- **红线与防误伤**：
+  - **不要**在任何页面级单键快捷键处理中遗漏 `e.metaKey || e.ctrlKey || e.altKey`；
+  - **不要**在顶层存在活动的模态对话框或下拉浮层时放行背景路由导航快捷键；
+  - **不要**在消费型组件中书写 `void <ref>` 等伪存活占位代码；
+  - **放行/改用**：
+    1. **严格四重前置守卫**：先验 `if (e.repeat) return`，再验 `if (e.metaKey || e.ctrlKey || e.altKey) return`，三验 `if (document.querySelector('dialog[open], [role="dialog"], [role="menu"]')) return`，四验输入元素（`INPUT`/`TEXTAREA`/`SELECT`/`isContentEditable`），合法切话时显式 `e.preventDefault()`；
+    2. **函数 Ref 绑定**：对于外部 Composable 注入的 Ref，模板中采用 `:ref="(el) => { dropZoneRef = el as HTMLElement }"` 明确建立 TS AST 依赖链；
+    3. **双轨分工检查**：`vite.config.ts` 对 `*.vue` 单独关闭 `no-unused-vars`，由开启了 `noUnusedLocals` 的 `pnpm type-check`（`vue-tsc --build`）全权负责 Vue 模板的严格未引用检查。
+
 ---
 
 ## 🚦 交付门禁（四步必跑）

@@ -44,7 +44,6 @@ const {
   isOverDropZone,
   openFileDialog,
 } = useFileStaging({ deduplicate: true, notifyIgnored: true, disabled: submitting })
-void dropZoneRef
 
 function cancelModal() {
   if (uploadAbortController.value) {
@@ -277,7 +276,13 @@ async function submit() {
         </select>
       </div>
 
-      <div ref="dropZoneRef">
+      <div
+        :ref="
+          (el) => {
+            dropZoneRef = el as HTMLElement
+          }
+        "
+      >
         <div v-if="mode === 'upload'" class="field-header">
           <label class="form-label">装入新画页图片（纯图片，按文件名排序）</label>
           <div v-if="selectedFiles.length" class="page-diff-badge">

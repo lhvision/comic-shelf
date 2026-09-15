@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vite-plus/test'
-import { ref } from 'vue'
+import { effectScope, ref } from 'vue'
 import { useChapterPageInfo } from '@/composables/useChapterPageInfo'
 import type { Chapter, ComicDetail } from '@/types'
 
@@ -174,5 +174,87 @@ describe('useChapterPageInfo.ts', () => {
 
     info.goToAlbum()
     expect(goUpFromChapterMock).toHaveBeenCalledWith('jm', '123')
+  })
+
+  it('页面级快捷键 [ 和 ] 支持切话，且严格遵守修饰键、弹窗与输入框豁免', () => {
+    const scope = effectScope()
+    scope.run(() => {
+      const source = ref('jm')
+      const sourceId = ref('123')
+      const chapterId = ref('ch2')
+      const chapters = ref(chaptersData)
+      const detail = ref(mockDetail)
+      const progressEl = ref(0)
+
+      useChapterPageInfo({
+        source,
+        sourceId,
+        chapterId,
+        chapters,
+        detail,
+        progressEl,
+      })
+
+      // 1. 按 [ 触发上一话并调用 preventDefault
+      const prevEvt = new KeyboardEvent('keydown', { key: '[', cancelable: true })
+      window.dispatchEvent(prevEvt)
+      expect(switchActiveChapterMock).toHaveBeenCalledWith('jm', '123', 'ch1')
+      expect(prevEvt.defaultPrevented).toBe(true)
+      switchActiveChapterMock.mockClear()
+
+      // 2. 按 ] 触发下一话并调用 preventDefault
+      const nextEvt = new KeyboardEvent('keydown', { key: ']', cancelable: true })
+      window.dispatchEvent(nextEvt)
+      expect(switchActiveChapterMock).toHaveBeenCalledWith('jm', '123', 'ch3')
+      expect(nextEvt.defaultPrevented).toBe(true)
+      switchActiveChapterMock.mockClear()
+
+      // 3. 修饰键 (Cmd+[ / Ctrl+[ / Alt+[) 必须静默豁免，防止 macOS 后退冲突
+      window.dispatchEvent(
+        new KeyboardEvent('keydown', { key: '[', metaKey: true, cancelable: true }),
+      )
+      window.dispatchEvent(
+        new KeyboardEvent('keydown', { key: '[', ctrlKey: true, cancelable: true }),
+      )
+      window.dispatchEvent(
+        new KeyboardEvent('keydown', { key: ']', altKey: true, cancelable: true }),
+      )
+      expect(switchActiveChapterMock).not.toHaveBeenCalled()
+
+      // 4. 输入框内按键静默豁免
+      const input = document.createElement('input')
+      document.body.appendChild(input)
+      input.dispatchEvent(
+        new KeyboardEvent('keydown', { key: '[', bubbles: true, cancelable: true }),
+      )
+      input.dispatchEvent(
+        new KeyboardEvent('keydown', { key: ']', bubbles: true, cancelable: true }),
+      )
+      expect(switchActiveChapterMock).not.toHaveBeenCalled()
+      input.remove()
+
+      // 5. 对话框打开时静默豁免
+      const dialog = document.createElement('dialog')
+      dialog.open = true
+      document.body.appendChild(dialog)
+      window.dispatchEvent(new KeyboardEvent('keydown', { key: '[', cancelable: true }))
+      expect(switchActiveChapterMock).not.toHaveBeenCalled()
+      dialog.remove()
+
+      // 6. 菜单浮层打开时静默豁免
+      const menu = document.createElement('div')
+      menu.setAttribute('role', 'menu')
+      document.body.appendChild(menu)
+      window.dispatchEvent(new KeyboardEvent('keydown', { key: '[', cancelable: true }))
+      expect(switchActiveChapterMock).not.toHaveBeenCalled()
+      menu.remove()
+
+      // 7. 长按连发 (repeat: true) 静默豁免，防止路由队列拥堵
+      window.dispatchEvent(
+        new KeyboardEvent('keydown', { key: '[', repeat: true, cancelable: true }),
+      )
+      expect(switchActiveChapterMock).not.toHaveBeenCalled()
+    })
+    scope.stop()
   })
 })

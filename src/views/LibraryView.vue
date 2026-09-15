@@ -147,8 +147,6 @@ const {
   router,
   toast,
 })
-void searchContainerRef
-void searchInputRef
 
 onBeforeRouteLeave(() => shelf.saveScrollPosition(window.scrollY))
 
@@ -214,7 +212,14 @@ watch([() => store.error, imageSearch.error], ([err1, err2]) => {
           <h2 id="shelf-title">{{ shelfTitle }}</h2>
         </div>
 
-        <div ref="searchContainerRef" class="search-container">
+        <div
+          :ref="
+            (el) => {
+              searchContainerRef = el as HTMLElement
+            }
+          "
+          class="search-container"
+        >
           <div class="search-field field" role="search">
             <AppIcon name="search" size="xs" aria-hidden="true" />
             <SearchCommandChip
@@ -231,7 +236,11 @@ watch([() => store.error, imageSearch.error], ([err1, err2]) => {
               class="search-lens-pill"
             />
             <input
-              ref="searchInputRef"
+              :ref="
+                (el) => {
+                  searchInputRef = el as HTMLInputElement
+                }
+              "
               v-model="searchInput"
               type="search"
               role="combobox"

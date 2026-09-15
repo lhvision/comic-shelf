@@ -42,7 +42,6 @@ const {
   totalCount,
   submit,
 } = useLocalWorkshop()
-void dropAreaRef
 </script>
 
 <template>
@@ -109,7 +108,13 @@ void dropAreaRef
           </div>
 
           <!-- Staging Drop Zone -->
-          <div ref="dropAreaRef">
+          <div
+            :ref="
+              (el) => {
+                dropAreaRef = el as HTMLElement
+              }
+            "
+          >
             <FileStagingDropZone
               v-model:mode="mode"
               v-model:files="currentChapterFiles"
