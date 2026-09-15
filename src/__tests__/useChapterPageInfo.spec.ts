@@ -4,11 +4,15 @@ import { useChapterPageInfo } from '@/composables/useChapterPageInfo'
 import type { Chapter, ComicDetail } from '@/types'
 
 const pushMock = vi.fn<(url: string) => Promise<unknown>>()
-vi.mock('vue-router', () => ({
-  useRouter: () => ({
-    push: pushMock,
-  }),
-}))
+vi.mock('vue-router', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('vue-router')>()
+  return {
+    ...actual,
+    useRouter: () => ({
+      push: pushMock,
+    }),
+  }
+})
 
 const switchActiveChapterMock =
   vi.fn<(source: string, sourceId: string, chapterId: string) => void>()

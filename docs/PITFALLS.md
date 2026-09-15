@@ -1100,6 +1100,18 @@
     2. **同卷零拷贝硬链接（Zero-Copy Hardlink with Fallback）**：优先通过 `os.link` 创建硬链接（微秒级瞬时完成且不占额外空间），若遇到跨设备/跨挂载点（`EXDEV`）自动回退至 `shutil.copy2`；
     3. **主封面同步 + 章节封面异步分阶就绪**：首图主封面同步秒级生成供书架展示，多话章节封面交由后台守护线程异步转码，彻底解放 HTTP 同步响应。
 
+### 101. 单测全量 Mock 模块导出缺失与 Pinia 上下文隔离陷阱（Vitest Mock Destructuring & Isolated Store Context Trap）
+
+- **本质**：
+  1. **全量 Mock 覆盖破坏导出完整性（Module Export Obliteration）**：在单测中使用 `vi.mock('vue-router', () => ({ ... }))` 进行简单对象替换时，会覆写该模块的所有原生导出（如 `createRouter`, `createWebHistory` 等）。当下游 composable 或 store 间接引入 `@/router` 时，触发 `No "createRouter" export is defined on the "vue-router" mock` 导致整个测试套件执行中断；
+  2. **Composable 隐式 Store 依赖缺少激活 Pinia（Missing Active Pinia in Composable Testing）**：在对依赖 Store 的 Composable 执行单测时，若未在 `beforeEach` 中调用 `setActivePinia(createPinia())`，会抛出 `[🍍]: "getActivePinia()" was called but there was no active Pinia`。
+- **红线与防误伤**：
+  - **不要**在 `vi.mock('vue-router')` 等第三方核心模块时使用简单的无透传工厂函数；
+  - **不要**在涉及 Composable/Store 组合测试时遗漏 Pinia 实例激活；
+  - **放行/改用**：
+    1. **`importOriginal` 局部透传 Mock 范式**：所有对第三方库的 `vi.mock` 必须采用 `async (importOriginal) => { const actual = await importOriginal<...>(); return { ...actual, ... } }`，严格保全未经 mock 的底层方法与工厂函数；
+    2. **标准 Pinia 单测沙箱隔离**：测试文件头部引入 `createPinia, setActivePinia`，并在 `beforeEach` 内执行 `setActivePinia(createPinia())` 为每个测试用例分配干净独立的状态沙箱。
+
 ---
 
 ## 🚦 交付门禁（四步必跑）

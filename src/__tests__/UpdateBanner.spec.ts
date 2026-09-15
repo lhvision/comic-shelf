@@ -4,11 +4,15 @@ import UpdateBanner from '@/components/UpdateBanner.vue'
 import { usePwaUpdate } from '@/composables/usePwaUpdate'
 
 // Mock vue-router
-vi.mock('vue-router', () => ({
-  useRoute: () => ({
-    name: 'shelf',
-  }),
-}))
+vi.mock('vue-router', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('vue-router')>()
+  return {
+    ...actual,
+    useRoute: () => ({
+      name: 'shelf',
+    }),
+  }
+})
 
 describe('UpdateBanner component', () => {
   it('does not render when no update is needed', () => {

@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vite-plus/test'
 import { defineComponent } from 'vue'
 import { mount, flushPromises } from '@vue/test-utils'
+import { createPinia, setActivePinia } from 'pinia'
 import { useReaderData, type UseReaderDataReturn } from '@/composables/useReaderData'
 import { api } from '@/api/client'
 import type { ComicDetail } from '@/types'
@@ -10,16 +11,20 @@ const mockReplace = vi.fn<(_url: string) => Promise<void>>()
 let mockRouteParams: Record<string, string> = { source: 'jm', sourceId: '123' }
 let mockRouteQuery: Record<string, string | undefined> = { chapter: undefined }
 
-vi.mock('vue-router', () => ({
-  useRoute: () => ({
-    params: mockRouteParams,
-    query: mockRouteQuery,
-  }),
-  useRouter: () => ({
-    push: mockPush,
-    replace: mockReplace,
-  }),
-}))
+vi.mock('vue-router', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('vue-router')>()
+  return {
+    ...actual,
+    useRoute: () => ({
+      params: mockRouteParams,
+      query: mockRouteQuery,
+    }),
+    useRouter: () => ({
+      push: mockPush,
+      replace: mockReplace,
+    }),
+  }
+})
 
 const mockToast = vi.fn<(_msg: string, _type?: string) => void>()
 vi.mock('@/composables/useToast', () => ({
@@ -30,6 +35,7 @@ vi.mock('@/composables/useToast', () => ({
 
 describe('useReaderData', () => {
   beforeEach(() => {
+    setActivePinia(createPinia())
     vi.restoreAllMocks()
     mockPush.mockReset()
     mockReplace.mockReset()
