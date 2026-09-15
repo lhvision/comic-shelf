@@ -10,7 +10,7 @@ import {
 } from '@/composables/useChapterNavigation'
 import type { ComicDetail } from '@/types'
 
-function makeTestDetail(isMulti = false): ComicDetail {
+function makeTestDetail(isMulti = false, pageCount = 100): ComicDetail {
   return {
     meta: {
       source: 'jm',
@@ -23,10 +23,10 @@ function makeTestDetail(isMulti = false): ComicDetail {
       tags: [],
       description: '',
       uploader: null,
-      page_count: 100,
+      page_count: pageCount,
       cover_count: 4,
       cover_indices: [],
-      pages: Array.from({ length: 100 }, (_, idx) => ({
+      pages: Array.from({ length: pageCount }, (_, idx) => ({
         index: idx + 1,
         file: `${String(idx + 1).padStart(5, '0')}.webp`,
         ext: '.webp',
@@ -150,5 +150,62 @@ describe('useChapterNavigation', () => {
     expect(chapterForPage(45)).toBe('ch2')
     expect(chapterForPage(46)).toBe('ch3')
     expect(chapterForPage(100)).toBe('ch3')
+  })
+
+  it('unfolds all pages directly when page count is within soft cap (<= 120)', () => {
+    const detail = ref<ComicDetail | null>(makeTestDetail(false, 80))
+    const lastRead = ref(0)
+    const { visiblePages, remainingPages, loadAll, collapse, canCollapse } = useChapterNavigation(
+      detail,
+      lastRead,
+    )
+
+    expect(visiblePages.value.length).toBe(24)
+    expect(remainingPages.value).toBe(56)
+    expect(canCollapse.value).toBe(false)
+
+    loadAll()
+    expect(visiblePages.value.length).toBe(80)
+    expect(remainingPages.value).toBe(0)
+    expect(canCollapse.value).toBe(true)
+
+    collapse()
+    expect(visiblePages.value.length).toBe(24)
+    expect(remainingPages.value).toBe(56)
+  })
+
+  it('applies 120 soft cap and tiered unfolding on massive comics like tiya-frames (917 pages)', () => {
+    const detail = ref<ComicDetail | null>(makeTestDetail(false, 917))
+    const lastRead = ref(0)
+    const { visiblePages, remainingPages, loadAll, collapse, canCollapse, loadMore } =
+      useChapterNavigation(detail, lastRead)
+
+    expect(visiblePages.value.length).toBe(24)
+    expect(remainingPages.value).toBe(893)
+
+    loadMore()
+    expect(visiblePages.value.length).toBe(48)
+    expect(remainingPages.value).toBe(869)
+
+    // First loadAll: capped at 120
+    loadAll()
+    expect(visiblePages.value.length).toBe(120)
+    expect(remainingPages.value).toBe(797)
+    expect(canCollapse.value).toBe(true)
+
+    // Second loadAll: stepped forward by +120 (to 240)
+    loadAll()
+    expect(visiblePages.value.length).toBe(240)
+    expect(remainingPages.value).toBe(677)
+
+    // Third loadAll: stepped forward by +120 (to 360)
+    loadAll()
+    expect(visiblePages.value.length).toBe(360)
+    expect(remainingPages.value).toBe(557)
+
+    // Collapse back to baseline
+    collapse()
+    expect(visiblePages.value.length).toBe(24)
+    expect(remainingPages.value).toBe(893)
   })
 })

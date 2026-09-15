@@ -324,7 +324,7 @@
 
 - **滚动逃逸根治**：页面索引与书架网格彻底废除长距离 `useIntersectionObserver` 引起的贪婪无节制自动追加，避免读者在浏览时纵向滚动条持续失控伸长；
 - **尾格余量折叠卡与单源焦点**：
-  1. **页面索引（PageIndexGrid）**：超出首屏预算的画页在网格末尾以独立的 `.page-fold-card`（保留 `.page-tile-overflow` 兼容）收纳卡呈现，视觉与交互完全与书架函套卡对齐（朱砂徽印、标题说明、主步进 `btn-primary`、展开全部 `btn-ghost` 与收拢出口）；折叠态严禁在网格外部同时渲染底部控制条（消除认知混淆与双重控件），仅在全量展开后于底部呈现 `.page-sentinel` 典雅收整条；严禁以透明蒙层盖死最后一个内容画页，彻底杜绝 DOM `RouterLink` 幽灵焦点与读屏语音冲突；
+  1. **页面索引（PageIndexGrid）**：超出首屏预算的画页在网格末尾以独立的 `.page-fold-card`（保留 `.page-tile-overflow` 兼容）收纳卡呈现，视觉与交互完全与书架函套卡对齐（朱砂徽印、标题说明、主步进 `btn-primary`、展开全部 `btn-ghost` 与收拢出口）；面对超大画卷（如 900+ 拆帧）统一接入 `DEFAULT_LOAD_ALL_CAP = 120` 顶线保护，梯次顺延展开；折叠卡采用紧凑 `btn-xs` 与次级操作并排布局（`.fold-card-sub-actions`），精简等宽副标题（`已展现 N 页 · 余 M 页`），确保在 `aspect-ratio: 3 / 4.15` 缩略图卡位内盒模型呼吸充裕、零垂直溢出；折叠态严禁在网格外部同时渲染底部控制条（消除认知混淆与双重控件），仅在全量展开后于底部呈现 `.page-sentinel` 典雅收整条；严禁以透明蒙层盖死最后一个内容画页，彻底杜绝 DOM `RouterLink` 幽灵焦点与读屏语音冲突；
   2. **书架网格（ComicGrid）**：未展开藏书在网格末尾以函套收纳卡（`.shelf-fold-card`）呈现，严格采用 `var(--radius-3)` 与 26rem 最小高度，彻底根治单卡成行时的断层塌陷；全部展开后底部呈现 `.shelf-sentinel` 单按钮收整书架；
 - **尺寸插值与溢出标签顶层浮层演进（interpolate-size & Overflow Tag Popover）**：
   1. **尾部归档抽屉插值**：位于书架尾部、不推挤复杂图形卡片的归档专匣（`.archive-drawer-body`）采用 `interpolate-size: allow-keywords; height: 0 ⇄ auto;` 实现平滑展开，并通过 `@supports not` 降级；

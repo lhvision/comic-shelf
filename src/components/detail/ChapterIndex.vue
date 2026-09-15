@@ -7,7 +7,7 @@ import {
   getExpandedChapterCount,
   setExpandedChapterCount,
 } from '@/composables/useChapterNavigation'
-import { usePaginationFold } from '@/composables/usePaginationFold'
+import { usePaginationFold, DEFAULT_LOAD_ALL_CAP } from '@/composables/usePaginationFold'
 import type { Chapter } from '@/types'
 
 const CHAPTER_CHUNK_STEP = 24
@@ -154,7 +154,7 @@ watch(
           size="sm"
           icon="book-open"
           type="button"
-          @click="loadAll()"
+          @click="loadAll(DEFAULT_LOAD_ALL_CAP)"
         >
           展开全部
         </AppButton>

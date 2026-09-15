@@ -118,24 +118,22 @@ function handleCollapse() {
             <span class="fold-badge-stamp">+{{ remainingPages }} 页已收纳</span>
           </div>
           <h4 class="fold-card-title">画卷余页已收纳</h4>
-          <p class="fold-card-hint">
-            案头展示前 {{ pages.length }} 页，还有 {{ remainingPages }} 页画卷已折叠。
-          </p>
+          <p class="fold-card-hint">已展现 {{ pages.length }} 页 · 余 {{ remainingPages }} 页</p>
           <div class="fold-card-actions">
             <AppButton
               variant="primary"
-              size="sm"
+              size="xs"
               icon="chevron-down"
               type="button"
               @click.prevent="emit('loadMore')"
             >
               再展开 {{ Math.min(pageStep, remainingPages) }} 页
             </AppButton>
-            <div class="fold-card-sub-actions">
+            <div class="fold-card-sub-actions" :class="{ 'has-collapse': canCollapse }">
               <AppButton
                 variant="ghost"
-                size="sm"
-                icon="book-open"
+                size="xs"
+                :icon="canCollapse ? undefined : 'book-open'"
                 type="button"
                 @click.prevent="emit('loadAll')"
               >
@@ -144,7 +142,7 @@ function handleCollapse() {
               <AppButton
                 v-if="canCollapse"
                 variant="ghost"
-                size="sm"
+                size="xs"
                 icon="chevron-up"
                 type="button"
                 @click.prevent="handleCollapse"
@@ -234,7 +232,7 @@ function handleCollapse() {
   flex-direction: column;
   justify-content: center;
   align-items: center;
-  padding: var(--space-3) var(--space-2);
+  padding: var(--space-2-5) var(--space-2);
   border-radius: var(--radius-3);
   border: 1px dashed color-mix(in oklab, var(--accent) 35%, var(--line-strong));
   background: color-mix(in oklab, var(--paper-1) 80%, transparent);
@@ -243,6 +241,8 @@ function handleCollapse() {
   min-height: 100%;
   aspect-ratio: 3 / 4.15;
   box-shadow: var(--shadow-1);
+  box-sizing: border-box;
+  overflow: hidden;
   transition:
     border-color var(--duration-2) var(--ease-out),
     background-color var(--duration-2) var(--ease-out),
@@ -262,7 +262,7 @@ function handleCollapse() {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: var(--space-1-5);
+  gap: var(--space-1);
   width: 100%;
   max-width: 10rem;
 }
@@ -286,6 +286,7 @@ function handleCollapse() {
   font-size: var(--text-caption);
   font-weight: 700;
   color: var(--accent);
+  line-height: var(--leading-none);
 }
 
 .fold-card-title {
@@ -297,10 +298,11 @@ function handleCollapse() {
 }
 
 .fold-card-hint {
+  font-family: var(--font-mono);
   font-size: var(--text-caption);
   color: var(--ink-2);
   margin: 0;
-  line-height: var(--leading-snug);
+  line-height: var(--leading-tight);
 }
 
 .fold-card-actions {
@@ -313,20 +315,30 @@ function handleCollapse() {
 
 .fold-card-sub-actions {
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
   gap: var(--space-1);
   width: 100%;
 }
 
+.fold-card-sub-actions .btn {
+  flex: 1;
+  min-width: 0;
+}
+
 .fold-card-actions .btn {
   width: 100%;
-  min-height: 1.85rem;
+  min-height: 1.65rem;
   padding: var(--space-badge-y) var(--space-1);
   font-size: var(--text-caption);
   gap: var(--space-1);
   justify-content: center;
   border-radius: var(--radius-1);
   white-space: nowrap;
+}
+
+.fold-card-sub-actions.has-collapse .btn {
+  padding: var(--space-badge-y) var(--space-0-5);
+  gap: var(--space-0-5);
 }
 
 .page-sentinel {

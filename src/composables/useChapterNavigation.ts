@@ -1,6 +1,7 @@
 import { computed, ref, watch } from 'vue'
 import type { Ref } from 'vue'
 import type { ComicDetail } from '@/types'
+import { DEFAULT_LOAD_ALL_CAP } from '@/composables/usePaginationFold'
 
 export const CHAPTER_PAGE_STEP = 24
 
@@ -151,8 +152,22 @@ export function useChapterNavigation(detail: Ref<ComicDetail | null>, lastRead: 
     )
   }
 
-  function loadAll() {
-    visiblePageCount.value = activeChapterCount.value
+  /**
+   * 展开画页条目。
+   * @param maxCap 可选软封顶数量（默认 DEFAULT_LOAD_ALL_CAP = 120）。
+   * 若当前章节总页数超出封顶，单次点击展开至封顶；若已达封顶则递进 +maxCap 顺延展开，杜绝超大画卷（如 900+ 拆帧）瞬间卡死 DOM。
+   */
+  function loadAll(maxCap?: number) {
+    const cap = typeof maxCap === 'number' && maxCap > 0 ? maxCap : DEFAULT_LOAD_ALL_CAP
+    if (activeChapterCount.value > cap) {
+      if (visiblePageCount.value < cap) {
+        visiblePageCount.value = cap
+      } else {
+        visiblePageCount.value = Math.min(activeChapterCount.value, visiblePageCount.value + cap)
+      }
+    } else {
+      visiblePageCount.value = activeChapterCount.value
+    }
   }
 
   function collapse() {

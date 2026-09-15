@@ -96,4 +96,29 @@ describe('ChapterIndex', () => {
 
     expect(wrapper.findAll('.mock-chapter-card').length).toBe(24)
   })
+
+  it('supports soft-capped loadAll when chapters count exceeds 120', async () => {
+    const chapters = makeChapters(200)
+    const wrapper = mount(ChapterIndex, {
+      props: {
+        source: 'jm',
+        sourceId: '123456',
+        chapters,
+      },
+    })
+
+    const sentinel = wrapper.find('.chapter-load-more-section')
+    const loadAllBtn = sentinel.findAll('button').find((b) => b.text().includes('展开全部'))
+    expect(loadAllBtn).toBeDefined()
+
+    // First click: expands to 120 chapters
+    await loadAllBtn!.trigger('click')
+    expect(wrapper.findAll('.mock-chapter-card').length).toBe(120)
+    expect(sentinel.text()).toContain('余 80 话已折叠')
+
+    // Second click: expands to full 200 chapters
+    await loadAllBtn!.trigger('click')
+    expect(wrapper.findAll('.mock-chapter-card').length).toBe(200)
+    expect(sentinel.text()).toContain('全目录已展开')
+  })
 })
