@@ -400,6 +400,8 @@ watch([() => store.error, imageSearch.error], ([err1, err2]) => {
 }
 
 .shelf-head {
+  position: relative;
+  z-index: var(--z-dropdown);
   display: grid;
   grid-template-columns: auto minmax(16rem, 26rem) auto;
   gap: var(--space-4);
@@ -417,6 +419,7 @@ watch([() => store.error, imageSearch.error], ([err1, err2]) => {
   display: flex;
   align-items: center;
   width: 100%;
+  z-index: var(--z-dropdown);
 }
 
 .search-field {

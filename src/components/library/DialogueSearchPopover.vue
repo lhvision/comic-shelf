@@ -276,7 +276,7 @@ function onMouseEnterItem(index: number) {
   border: 1px solid var(--line-strong);
   border-radius: var(--radius-2);
   box-shadow: var(--shadow-3);
-  z-index: 60;
+  z-index: var(--z-popover);
   overflow: hidden;
   display: flex;
   flex-direction: column;

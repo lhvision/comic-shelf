@@ -95,7 +95,23 @@
 - **移动视口（≤ 680px）**：紧凑单列排布，顶部导航栏简化，阅读器强制归一化为单列（`pagesPerView = 1`）；
 - **超窄抽屉（≤ 480px）**：弹窗自动切换为底部抽屉贴边形态。
 
-### 2.5 现代 CSS 属性与选择器架构契约（Modern CSS Architecture）
+### 2.5 Z-Index 标尺与层叠上下文体系（Elevation & Z-Index Scale）
+
+全站 Z-Index 统一收敛至 `src/styles/tokens.css`，杜绝散落魔法值：
+
+- `--z-base: 1`：基础相对定位与卡片内容；
+- `--z-card-stamp: 2`：卡片角落徽章、印章与状态标签；
+- `--z-nav: 20`：阅读器导航控件；
+- `--z-back-to-top: 30`：回到顶部浮动按钮；
+- `--z-dropdown: 35`：搜索框快捷指令选单（`SearchCommandMenu`）、书架头部层叠容器（`.search-container` 与 `.shelf-head`）；
+- `--z-header: 40`：全站顶栏（`AppHeader`）；
+- `--z-tooltip: 50`：全局文字提示（`AppTooltip`）；
+- `--z-popover: 60` / `--z-toast: 60`：气泡浮层（`AppPopover`、`DialogueSearchPopover`）与消息提示栈（`ToastStack`）；
+- `--z-banner: 70`：系统更新横幅（`UpdateBanner`）；
+- `--z-modal: 90`：通用模态对话框（`Modal.vue`）；
+- `--z-gate: 100`：全站安全门禁大门（`GateView.vue`）。
+
+### 2.6 现代 CSS 属性与选择器架构契约（Modern CSS Architecture）
 
 - **`@property` 类型化自定义属性**：涉及平滑数值与渐变插值的 CSS 变量统一由 `@property` 注册（`--mask-left/right` 双滑块遮罩、`--progress-ratio: <percentage>` 扇形/环形进度、`--shimmer-pos: <percentage>` 120Hz 骨架屏平滑微光、`--card-glow-color` 与 `--card-glow-size` 径向光晕平滑过渡）；
 - **单源设计系统与禁止虚假防御（Single-Source & Zero Local Hex）**：除动态内联注入样式（如 `var(--mask-left, 0px)`）外，严禁在组件内部书写 `var(--name, #fallback)` 等硬编码兜底；全站除 `tokens.css` 外实现 0 十六进制散落；
@@ -468,7 +484,8 @@
 - **快捷指令中枢（Slash Command Palette & `useSearchCommands`）**：
   1. **语法触发与选单**：搜索框输入 `/` 时展开 `SearchCommandMenu.vue`，展示指令清单（`/台词`、`/车号`、`/作者`、`/随机`）；
   2. **键盘导航与补全**：支持 `↑` / `↓` 视口跟随、`Tab` 或 `Enter` 快速补全，支持简写别名（`/d`、`/id`、`/a`、`/r`）；
-  3. **随手翻一本（/随机）**：即时从在读或未读藏书中随手翻阅一卷直达，辅以朱砂 Toast 提示，不改变搜索框输入态。
+  3. **随手翻一本（/随机）**：即时从在读或未读藏书中随手翻阅一卷直达，辅以朱砂 Toast 提示，不改变搜索框输入态；
+  4. **层叠上下文与 Token 标尺隔离（Stacking Context Elevation & Zero Occlusion）**：搜索容器 `.search-container` 与 `.shelf-head` 统一挂载 `z-index: var(--z-dropdown)`（35），选单浮层 `SearchCommandMenu` 使用 `var(--z-dropdown)`，台词联想浮层 `DialogueSearchPopover` 使用 `var(--z-popover)`（60），确保在包含 `contain: layout`、`transform` 及印章徽记（`z-index: 2`）的下方封面卡片网格前绝对置顶且位于顶栏（`--z-header: 40`）下方，彻底根绝卡片穿透遮挡。
 - **命令胶囊化与网格过滤冻结（Command Chip & Frozen Shelf Grid）**：
   1. **状态物理解耦**：选定 `/台词` 后，输入框左侧生成朱砂印章质感的专属胶囊 `〔 💬 台词 × 〕`（`SearchCommandChip.vue`）；
   2. **网格 100% 冻结**：在胶囊专注模式下，底层书架过滤词被强制置空（`effectiveShelfSearch = ''`），书架藏书大网格完全不动，彻底消灭“列表变空”假象；

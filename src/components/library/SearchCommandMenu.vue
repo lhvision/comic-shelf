@@ -55,11 +55,11 @@ function onClickItem(cmd: SearchCommandDef) {
 
 <template>
   <Transition name="menu-fade">
-    <div v-if="props.open" class="command-menu-popover" aria-label="搜索框快捷指令">
+    <div v-if="props.open" class="command-menu-popover" aria-label="搜索框快捷指令选单">
       <div class="menu-header">
         <div class="header-left">
           <AppIcon name="search" size="xs" class="header-icon" />
-          <span class="header-title">快捷命令选单</span>
+          <span class="header-title">快捷指令选单</span>
         </div>
         <div class="header-right">
           <kbd class="kbd-hint">↑↓ 导航</kbd>

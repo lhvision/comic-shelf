@@ -1144,6 +1144,18 @@
     3. **写入成功后原子清理（Write-Then-Delete）**：将关联索引与派生资产的物理/数据库删除操作严格延后至 `store.replace_pages` 写入成功之后，确保任意环节失败时数据 100% 可回滚；
     4. **代理头受信任门禁（Trusted Forwarded Proxy Gate）**：引入 `TRUST_FORWARDED_HEADERS` 配置（默认 `True`），在直连或私有部署时支持置为 `False` 并严格回退读取 `request.client.host` 物理底层套接字。
 
+### 104. CSS Token 标尺断层、Undefined 变量静默回退与层叠上下文遮挡反模式（Undefined Z-Index Token Decay, Stacking Context Occlusion & Dropdown Piercing Trap）
+
+- **本质**：
+  1. **CSS 变量未定义导致层级静默坍塌（Undefined CSS Variable Fallback to Auto）**：组件在绝对定位浮层声明 `z-index: var(--z-dropdown);`，若全局 `tokens.css` 缺失 `--z-dropdown` 声明，浏览器将该属性解析为 invalid/unset 并静默回退至 `z-index: auto`，不报任何编译错误或运行时异常；
+  2. **后续 DOM 节点层叠上下文物理覆盖（Later Stacking Context Overlap）**：书架头部（`.shelf-head` / `.search-container`）在 DOM 树中位于 `TagFilterBar` 与 `ComicGrid` 之前。当下方的 `ComicCard` 包含 `contain: layout style`、`transform` 动画及内部角标印章（`z-index: 2`）时，根据 CSS 规范，DOM 顺序靠后的独立层叠上下文将直接绘制在 `z-index: auto` 的前方兄弟节点之上，导致搜索选单或自动补全浮层被下方的卡片封面硬生生切断遮挡。
+- **红线与防误伤**：
+  - **不要**在组件内部使用未在 `src/styles/tokens.css` 注册的伪 CSS Token；
+  - **不要**将承载绝对定位下拉浮层的父级容器（如 `.shelf-head` / `.search-container`）置于未显式声明 `z-index` 的扁平层级中；
+- **放行/改用**：
+  1. **全局 Z-Index 标尺集中注册（Elevation Tokenization）**：在 `tokens.css` 固化 `--z-dropdown: 35`、`--z-header: 40`、`--z-popover: 60`、`--z-modal: 90` 等单一语义源；
+  2. **搜索头部容器显式层级提升（Stacking Context Elevation）**：在 `.shelf-head` 与 `.search-container` 挂载 `position: relative; z-index: var(--z-dropdown);`，确保浮层整体平稳浮于下方标签栏与卡片网格之上，且位于全站顶栏（`--z-header: 40`）下方。
+
 ---
 
 ## 🚦 交付门禁（四步必跑）

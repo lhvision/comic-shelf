@@ -123,6 +123,20 @@
     0 4px 8px color-mix(in oklab, var(--ink-0) 18%, transparent),
     0 30px 70px color-mix(in oklab, var(--ink-0) 28%, transparent);
 
+  /* z-index scale */
+  --z-base: 1;
+  --z-card-stamp: 2;
+  --z-nav: 20;
+  --z-back-to-top: 30;
+  --z-dropdown: 35;
+  --z-header: 40;
+  --z-tooltip: 50;
+  --z-popover: 60;
+  --z-toast: 60;
+  --z-banner: 70;
+  --z-modal: 90;
+  --z-gate: 100;
+
   /* layout */
   --page-pad: var(--space-5);
   --content-width: 1200px;
