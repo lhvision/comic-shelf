@@ -147,6 +147,8 @@ const {
   router,
   toast,
 })
+void searchContainerRef
+void searchInputRef
 
 onBeforeRouteLeave(() => shelf.saveScrollPosition(window.scrollY))
 

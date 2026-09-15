@@ -46,6 +46,7 @@ const {
   isOverDropZone,
   openFileDialog,
 } = useFileStaging({ deduplicate: false, notifyIgnored: true, disabled: submitting })
+void dropZoneRef
 
 watch(
   () => props.open,

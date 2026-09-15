@@ -42,6 +42,7 @@ const {
   totalCount,
   submit,
 } = useLocalWorkshop()
+void dropAreaRef
 </script>
 
 <template>

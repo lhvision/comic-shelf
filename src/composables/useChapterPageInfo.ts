@@ -9,6 +9,7 @@
 
 import { computed, type Ref } from 'vue'
 import { useRouter } from 'vue-router'
+import { useEventListener } from '@vueuse/core'
 import { useHierarchicalNavigation } from '@/composables/useHierarchicalNavigation'
 import type { Chapter, ComicDetail } from '@/types'
 
@@ -85,7 +86,7 @@ export function useChapterPageInfo(options: UseChapterPageInfoOptions) {
     const c = activeChapter.value
     if (!c) return ''
     const end = c.start + c.page_count - 1
-    return `第 ${c.start}–${end} 全局页`
+    return `全书第 ${c.start}–${end} 页`
   })
 
   const isCurrentChapterLastRead = computed(() => {
@@ -119,8 +120,25 @@ export function useChapterPageInfo(options: UseChapterPageInfoOptions) {
   }
 
   function goNext() {
-    if (nextChapter.value) goToChapter(nextChapter.value.id)
+    if (!nextChapter.value) return
+    goToChapter(nextChapter.value.id)
   }
+
+  // 页面级全局快捷键：[ 上一话，] 下一话（输入框中静默豁免）
+  useEventListener('keydown', (e: KeyboardEvent) => {
+    const target = e.target as HTMLElement | null
+    if (
+      target &&
+      (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)
+    ) {
+      return
+    }
+    if (e.key === '[' && prevChapter.value) {
+      goPrev()
+    } else if (e.key === ']' && nextChapter.value) {
+      goNext()
+    }
+  })
 
   return {
     activeChapter,

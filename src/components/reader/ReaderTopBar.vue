@@ -5,7 +5,6 @@
  * 按钮统一接入 AppButton（theme="reader"，暗室高对比度 Token 驱动）。
  */
 import AppButton from '@/components/AppButton.vue'
-import AppIcon from '@/components/AppIcon.vue'
 
 defineProps<{
   title: string

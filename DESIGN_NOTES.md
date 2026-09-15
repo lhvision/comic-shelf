@@ -36,6 +36,7 @@
    - [§64 前台台词全文检索与联想浮层体系](#sec-64)
    - [§65 搜索框快捷指令中枢、命令胶囊化与书架过滤冻结体系](#sec-65)
    - [§66 条漫连续流卷、视口有效阅读线探测与行内章末过渡架构](#sec-66)
+   - [§67 章节子路由移动端触控底线与双轨分页画卷架构](#sec-67)
 5. [历史演进里程碑归档索引（Historical Milestones Archive）](#5-历史演进里程碑归档索引historical-milestones-archive)
 
 ---
@@ -510,6 +511,23 @@
 - **VueUse 优先与顶层解构终验**：
   1. 深度使用 VueUse 标准函数（`useTimeoutFn`、`useLocalStorage`、`StorageSerializers.object`、`useFocus`、`useDropZone`）；
   2. 严格执行 `pnpm type-check` 验证模板解构绑定的完整性，彻底杜绝 TS2339 / TS2551 盲区。
+
+### <a id="sec-67"></a>§67 章节子路由移动端触控底线与双轨分页画卷架构
+
+针对多章节漫画的 Rank 3「章节子路由详情（ChapterView）」在移动端（≤680px）下的布局重构与规范演进：
+
+1. **头部信息三层解耦架构（Three-tier Decoupled Header）**：
+   - **首层（状态与导航）**：左侧 `[< 返回]` 圆形按钮 + `第 N 話` 眉题；右侧放置轻量胶囊化的 `CacheProgress` 进度印章，杜绝进度条挤压操作按钮；
+   - **中层（主标题与文档属性）**：大标题（Serif Display）+ 典雅元数据（“全书第 1–24 页 · 本子「…」”），剥离底层数据库“全局页”工程术语；
+   - **下层（触控友好双按钮）**：移动端 Primary「开始/继续阅读」与 Secondary「缓存本话」等分撑满（`flex: 1 1 0`，高度 `min-height: 2.75rem` 满足 44px 触控底线），管理动作（编辑名称/删除/重订/追加）全量收敛进右侧独立的 44×44px 正方形 `···` 胶囊。
+2. **通边画卷与动态渐隐遮罩（Full-bleed Carousel & Arrived State Mask）**：
+   - 横向切话卷轴（`ChapterSwitcher`）在移动端通过负外边距（`margin-inline: calc(-1 * var(--space-3-5))`）冲破卡片内边距局限，实现全宽通边探索；
+   - 结合 VueUse `useScroll` 的 `arrivedState` 动态驱动 CSS `mask-image`（只在存在溢出方向时渐隐，首尾无溢出方向保持纯黑锐利）；
+   - 胶囊按钮移动端高度坚守 44px 底线（`min-height: 2.75rem`），彻底根除单手误触。
+3. **单章节幽灵分页防退化与页面级快捷键**：
+   - 分页栏挂载 `v-if="chapters.length > 1"`，单话作品自然隐退整套分页器；
+   - 移动端「上一话/下一话」收纳为左右各 44×44px 的正方形翻页箭钮，横向夹持 `ChapterSwitcher` 维持单行秩序；
+   - 页面级监听 `[` 与 `]` 键盘事件，实现免聚焦秒级切话。
 
 ---
 

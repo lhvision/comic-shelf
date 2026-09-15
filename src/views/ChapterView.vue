@@ -170,89 +170,99 @@ onMounted(() => {
             <p class="eyebrow">第 {{ activeChapter.index }} 話</p>
           </div>
 
-          <div class="chapter-head-actions">
+          <div class="chapter-head-status">
             <CacheProgress
               :cached="activeChapterCached"
               :total="activeChapterTotal"
               :running="isCurrentChapterCaching"
             />
-
-            <AppButton
-              variant="primary"
-              size="xs"
-              type="button"
-              :title="readChapterLabel"
-              @click="startReadingChapter"
-            >
-              {{ readChapterLabel }}
-            </AppButton>
-
-            <AppButton
-              v-if="activeChapterCached < activeChapterTotal"
-              variant="secondary"
-              size="xs"
-              type="button"
-              :disabled="caching"
-              :title="
-                isCurrentChapterCaching
-                  ? '本话缓存进行中...'
-                  : caching
-                    ? '已有其他缓存任务在进行中'
-                    : '离线缓存本话所有画页'
-              "
-              @click="cacheCurrentChapter"
-            >
-              {{ isCurrentChapterCaching ? '缓存中…' : caching ? '排队中…' : '缓存本话' }}
-            </AppButton>
-
-            <div v-if="canWrite && isOnline && !store.isOffline" class="chapter-mgmt-group">
-              <AppButton
-                variant="ghost"
-                size="xs"
-                type="button"
-                title="修改本话名称"
-                @click="openEditModal"
-              >
-                编辑章节
-              </AppButton>
-
-              <AppDropdown :options="chapterMoreOptions" align="end" @select="onChapterMoreSelect">
-                <template #trigger="{ open }">
-                  <AppButton
-                    variant="ghost"
-                    size="xs"
-                    shape="square"
-                    class="more-trigger"
-                    :class="{ 'is-open': open }"
-                    type="button"
-                    icon="more"
-                    aria-label="更多章节操作"
-                    title="更多章节操作"
-                  />
-                </template>
-              </AppDropdown>
-            </div>
           </div>
         </div>
 
-        <h1 :title="activeChapter.title || `第 ${activeChapter.index} 話`">
-          {{ activeChapter.title || `第 ${activeChapter.index} 話` }}
-        </h1>
-        <p class="chapter-head-meta">
-          {{ activeChapter.index }} / {{ chapters.length }} 话 · {{ activeChapter.page_count }} 页 ·
-          {{ chapterRange }} · 本子「{{ detail.meta.title }}」
-        </p>
+        <div class="chapter-head-main">
+          <h1 :title="activeChapter.title || `第 ${activeChapter.index} 話`">
+            {{ activeChapter.title || `第 ${activeChapter.index} 話` }}
+          </h1>
+          <p class="chapter-head-meta">
+            {{ activeChapter.index }} / {{ chapters.length }} 话 · {{ activeChapter.page_count }} 页
+            · {{ chapterRange }} · 本子「{{ detail.meta.title }}」
+          </p>
+        </div>
 
-        <div class="chapter-pager">
+        <div class="chapter-head-actions">
           <AppButton
+            class="action-btn action-btn-read"
+            variant="primary"
+            size="sm"
+            type="button"
+            :title="readChapterLabel"
+            @click="startReadingChapter"
+          >
+            {{ readChapterLabel }}
+          </AppButton>
+
+          <AppButton
+            v-if="activeChapterCached < activeChapterTotal"
+            class="action-btn action-btn-cache"
+            variant="secondary"
+            size="sm"
+            type="button"
+            :disabled="caching"
+            :title="
+              isCurrentChapterCaching
+                ? '本话缓存进行中...'
+                : caching
+                  ? '已有其他缓存任务在进行中'
+                  : '离线缓存本话所有画页'
+            "
+            @click="cacheCurrentChapter"
+          >
+            {{ isCurrentChapterCaching ? '缓存中…' : caching ? '排队中…' : '缓存本话' }}
+          </AppButton>
+
+          <div v-if="canWrite && isOnline && !store.isOffline" class="chapter-mgmt-group">
+            <AppButton
+              class="chapter-edit-btn"
+              variant="ghost"
+              size="sm"
+              type="button"
+              title="修改本话名称"
+              @click="openEditModal"
+            >
+              编辑章节
+            </AppButton>
+
+            <AppDropdown :options="chapterMoreOptions" align="end" @select="onChapterMoreSelect">
+              <template #trigger="{ open }">
+                <AppButton
+                  variant="ghost"
+                  size="sm"
+                  shape="square"
+                  class="more-trigger"
+                  :class="{ 'is-open': open }"
+                  type="button"
+                  icon="more"
+                  aria-label="更多章节操作"
+                  title="更多章节操作"
+                />
+              </template>
+            </AppDropdown>
+          </div>
+        </div>
+
+        <div v-if="chapters.length > 1" class="chapter-pager">
+          <AppButton
+            class="pager-nav-btn pager-prev-btn"
             variant="ghost"
             size="sm"
             type="button"
             icon="arrow-left"
             :disabled="!prevChapter"
+            aria-label="上一话"
+            title="上一话 (快捷键 [ )"
             @click="goPrev"
           >
-            上一话
+            <span class="pager-btn-text">上一话</span>
           </AppButton>
 
           <ChapterSwitcher
@@ -264,15 +274,18 @@ onMounted(() => {
           />
 
           <AppButton
+            class="pager-nav-btn pager-next-btn"
             variant="ghost"
             size="sm"
             type="button"
             icon="arrow-right"
             icon-position="right"
             :disabled="!nextChapter"
+            aria-label="下一话"
+            title="下一话 (快捷键 ] )"
             @click="goNext"
           >
-            下一话
+            <span class="pager-btn-text">下一话</span>
           </AppButton>
         </div>
       </section>
@@ -425,7 +438,7 @@ onMounted(() => {
 
 .chapter-head {
   display: grid;
-  gap: var(--space-3);
+  gap: var(--space-3-5);
   padding: var(--space-5);
 }
 
@@ -434,40 +447,66 @@ onMounted(() => {
   align-items: center;
   justify-content: space-between;
   gap: var(--space-3);
-  flex-wrap: wrap;
+  min-width: 0;
 }
 
 .chapter-head-title-row {
   display: flex;
   align-items: center;
-  gap: var(--space-3);
+  gap: var(--space-2-5);
+  min-width: 0;
+}
+
+.chapter-head-title-row .eyebrow {
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  color: var(--accent);
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  white-space: nowrap;
+}
+
+.chapter-head-status {
+  flex-shrink: 0;
+}
+
+.chapter-head-main {
+  display: grid;
+  gap: var(--space-1);
+}
+
+.chapter-head-main h1 {
+  font-family: var(--font-display);
+  font-size: var(--text-xl);
+  line-height: var(--leading-tight);
+  color: var(--ink-0);
+  word-break: break-word;
+}
+
+.chapter-head-meta {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--ink-2);
+  line-height: 1.4;
+  word-break: break-word;
 }
 
 .chapter-head-actions {
   display: flex;
   align-items: center;
-  gap: var(--space-3);
+  gap: var(--space-2-5);
+  flex-wrap: wrap;
 }
 
 .chapter-mgmt-group {
   display: flex;
   align-items: center;
   gap: var(--space-2);
-}
-
-.btn-xs {
-  padding: var(--space-1) var(--space-2-5);
-  font-size: var(--text-xs);
-  min-height: 1.75rem;
-}
-
-.more-menu {
-  position: relative;
+  margin-left: auto;
 }
 
 .more-trigger {
-  min-width: 1.75rem;
-  font-weight: bold;
+  min-width: 2.25rem;
 }
 
 .edit-chap-form {
@@ -519,45 +558,89 @@ onMounted(() => {
   cursor: pointer;
 }
 
-.chapter-head h1 {
-  margin-top: var(--space-1);
-  font-family: var(--font-display);
-  font-size: var(--text-xl);
-  line-height: var(--leading-tight);
-}
-
-.chapter-head-meta {
-  font-family: var(--font-mono);
-  font-size: var(--text-xs);
-  color: var(--ink-2);
-}
-
 .chapter-pager {
   display: flex;
   align-items: center;
   gap: var(--space-3);
   border-top: 1px solid var(--line);
-  margin-top: var(--space-2);
+  margin-top: var(--space-1);
   padding-top: var(--space-3);
   min-width: 0;
 }
 
 .pager-tabs {
   display: flex;
+  flex: 1 1 auto;
+  min-width: 0;
 }
 
-@media (max-width: 720px) {
-  .chapter-pager {
-    flex-wrap: wrap;
+@media (max-width: 680px) {
+  .chapter-head {
+    padding: var(--space-3-5);
+    gap: var(--space-3);
   }
 
-  .chapter-pager > .btn {
-    flex: 1 1 6rem;
+  .chapter-head-actions {
+    display: flex;
+    align-items: stretch;
+    gap: var(--space-2);
+    width: 100%;
+  }
+
+  .action-btn {
+    flex: 1 1 0;
+    min-width: 0;
+    min-height: 2.75rem; /* 44px 移动端触控底线 */
+    font-size: var(--text-sm);
+    justify-content: center;
+  }
+
+  .chapter-mgmt-group {
+    margin-left: 0;
+    flex-shrink: 0;
+  }
+
+  .chapter-edit-btn {
+    display: none; /* 移动端收敛进更多 ··· 菜单，消除水平溢出 */
+  }
+
+  .more-trigger {
+    min-width: 2.75rem; /* 44px 移动端触控底线 */
+    min-height: 2.75rem; /* 44px 移动端触控底线 */
+  }
+
+  .chapter-head-main h1 {
+    font-size: var(--text-lg);
+  }
+
+  .chapter-head-meta {
+    font-size: var(--text-caption);
+  }
+
+  .chapter-pager {
+    display: flex;
+    flex-wrap: nowrap;
+    align-items: center;
+    gap: var(--space-2);
+  }
+
+  .pager-btn-text {
+    display: none; /* 移动端隐藏翻页字样，保留图标与 44px 正方形触控热区 */
+  }
+
+  .pager-nav-btn {
+    flex: 0 0 2.75rem;
+    min-width: 2.75rem;
+    min-height: 2.75rem; /* 44px 移动端触控底线 */
+    padding: 0;
+    justify-content: center;
   }
 
   .pager-tabs {
-    flex: 1 1 100%;
-    order: 3;
+    flex: 1 1 auto;
+    min-width: 0;
+    order: unset;
+    width: auto;
   }
 }
 </style>

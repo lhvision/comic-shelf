@@ -3,6 +3,10 @@
   "include": ["env.d.ts", "src/**/*", "src/**/*.vue", "shared"],
   "exclude": ["src/**/__tests__/*"],
   "compilerOptions": {
+    // Strict checks against unused variables and imports
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+
     // Extra safety for array and object lookups, but may have false positives.
     "noUncheckedIndexedAccess": true,
 

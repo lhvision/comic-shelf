@@ -49,6 +49,11 @@ export function useChapterManagement(options: UseChapterManagementOptions) {
 
   const chapterMoreOptions = computed<DropdownOption[]>(() => [
     {
+      key: 'edit',
+      label: '修改本话名称…',
+      hint: '重命名',
+    },
+    {
       key: 'replace',
       label: '重新装订本话…',
       hint: '替换画页',
@@ -67,7 +72,9 @@ export function useChapterManagement(options: UseChapterManagementOptions) {
   ])
 
   function onChapterMoreSelect(option: DropdownOption) {
-    if (option.key === 'remove') {
+    if (option.key === 'edit') {
+      openEditModal()
+    } else if (option.key === 'remove') {
       requestRemoveChapter()
     } else if (option.key === 'replace') {
       replaceOpen.value = true

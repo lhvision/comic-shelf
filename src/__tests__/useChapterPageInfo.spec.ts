@@ -74,7 +74,7 @@ describe('useChapterPageInfo.ts', () => {
     expect(info.activeIndex.value).toBe(1)
     expect(info.prevChapter.value?.id).toBe('ch1')
     expect(info.nextChapter.value?.id).toBe('ch3')
-    expect(info.chapterRange.value).toBe('第 11–25 全局页')
+    expect(info.chapterRange.value).toBe('全书第 11–25 页')
   })
 
   it('正确统计当前话的画页总数与已缓存数', () => {

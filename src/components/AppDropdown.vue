@@ -58,7 +58,6 @@ const triggerText = computed(() => {
 })
 
 const isOpen = ref(false)
-const popoverRef = ref<InstanceType<typeof AppPopover> | null>(null)
 const panelRef = ref<HTMLElement | null>(null)
 const uid = useId().replace(/[^a-zA-Z0-9_-]+/g, '')
 const listboxId = `dropdown-list-${uid}`
@@ -180,7 +179,6 @@ function onTriggerKeydown(event: KeyboardEvent) {
 
 <template>
   <AppPopover
-    ref="popoverRef"
     v-model:open="isOpen"
     :side="side"
     :align="align"
@@ -230,7 +228,7 @@ function onTriggerKeydown(event: KeyboardEvent) {
       </slot>
     </template>
 
-    <template #content="{ close }">
+    <template #content>
       <div
         :id="listboxId"
         ref="panelRef"

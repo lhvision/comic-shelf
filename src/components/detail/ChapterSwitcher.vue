@@ -33,7 +33,7 @@ const buttonEls: Record<string, HTMLElement | null> = {}
 const scrollBehavior = ref<ScrollBehavior>('auto')
 
 // @vueuse/core 14.x：useScroll 响应式绑定横向容器与动态 behavior。
-const { x } = useScroll(listEl, { behavior: scrollBehavior })
+const { x, arrivedState } = useScroll(listEl, { behavior: scrollBehavior })
 
 // 防御：父级必须解构 unwrap 后传入；万一传了 Ref 或 undefined，这里兜底为空数组。
 const chapterList = computed(() => (Array.isArray(props.chapters) ? props.chapters : []))
@@ -84,7 +84,7 @@ onMounted(async () => {
 
 watch(
   () => [props.activeId, chapterList.value.length] as const,
-  async ([newId, len], [oldId, oldLen]) => {
+  async ([newId, len], [oldId]) => {
     if (!newId || len === 0) return
     await nextTick()
     requestAnimationFrame(() => {
@@ -144,6 +144,8 @@ function chapterState(id: string): 'past' | 'active' | 'upcoming' {
     ref="listEl"
     class="chapter-switcher"
     :data-pager="inPager"
+    :data-scroll-left="!arrivedState.left"
+    :data-scroll-right="!arrivedState.right"
     role="group"
     aria-label="章节"
   >
@@ -275,12 +277,6 @@ function chapterState(id: string): 'past' | 'active' | 'upcoming' {
   opacity: 0.62;
 }
 
-@media (max-width: 640px) {
-  .chapter-title {
-    max-width: 8rem;
-  }
-}
-
 .chapter-count {
   font-family: var(--font-mono);
   font-size: var(--text-caption);
@@ -294,10 +290,47 @@ function chapterState(id: string): 'past' | 'active' | 'upcoming' {
   background: color-mix(in oklab, var(--accent) 10%, var(--paper-1));
 }
 
-@media (max-width: 640px) {
+/* 动态边缘渐隐提示（遵循 DESIGN_NOTES.md 与 CSS_RADAR 规范） */
+.chapter-switcher[data-scroll-right='true'] {
+  mask-image: linear-gradient(to right, black calc(100% - var(--space-6)), transparent 100%);
+}
+
+.chapter-switcher[data-scroll-left='true'] {
+  mask-image: linear-gradient(to right, transparent 0%, black var(--space-6));
+}
+
+.chapter-switcher[data-scroll-left='true'][data-scroll-right='true'] {
+  mask-image: linear-gradient(
+    to right,
+    transparent 0%,
+    black var(--space-6),
+    black calc(100% - var(--space-6)),
+    transparent 100%
+  );
+}
+
+@media (prefers-reduced-motion: reduce) {
   .chapter-switcher {
-    margin-inline: calc(-1 * var(--space-4));
-    padding-inline: var(--space-4);
+    mask-image: none !important;
+  }
+}
+
+@media (max-width: 680px) {
+  .chapter-switcher {
+    margin-inline: calc(-1 * var(--space-3-5));
+    padding-inline: var(--space-3-5);
+    gap: var(--space-2);
+  }
+
+  .chapter-switcher button {
+    padding: 0 var(--space-3);
+    gap: var(--space-2);
+    min-height: 2.75rem; /* 44px 移动端触控底线 */
+    font-size: var(--text-xs);
+  }
+
+  .chapter-title {
+    max-width: 8.5rem;
   }
 }
 </style>

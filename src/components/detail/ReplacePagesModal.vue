@@ -44,6 +44,7 @@ const {
   isOverDropZone,
   openFileDialog,
 } = useFileStaging({ deduplicate: true, notifyIgnored: true, disabled: submitting })
+void dropZoneRef
 
 function cancelModal() {
   if (uploadAbortController.value) {

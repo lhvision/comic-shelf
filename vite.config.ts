@@ -30,6 +30,7 @@ export default defineConfig({
     ignorePatterns: ['**/dist/**', '**/dist-ssr/**', '**/coverage/**'],
     rules: {
       'no-array-constructor': 'error',
+      'no-unused-vars': 'error',
       'typescript/ban-ts-comment': 'error',
       'typescript/no-empty-object-type': 'error',
       'typescript/no-explicit-any': 'error',

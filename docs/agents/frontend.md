@@ -36,7 +36,7 @@
 | `src/composables/useReaderSync.ts`                 | 阅读进度防抖持久化（800ms）、跨标签广播与单本阅读排版偏好记忆                                                                                                  |
 | `src/composables/useReaderCompletion.ts`           | 阅读器末页完读感知、接卷推荐算法计算与直达离开路由                                                                                                             |
 | `src/composables/useChapterNavigation.ts`          | 详情/子路由章节导航：锁定章节、章节切片、48 增量渲染、「继续阅读」文案                                                                                         |
-| `src/composables/useChapterPageInfo.ts`            | 章节相对页码换算、跨话首尾探测与切话跳转状态机                                                                                                                 |
+| `src/composables/useChapterPageInfo.ts`            | 章节相对页码换算、跨话首尾探测、全局切话快捷键（[ / ]）与切话跳转状态机                                                                                        |
 | `src/composables/useChapterManagement.ts`          | 章节重命名弹窗、删除章节二次确认、重新装订本话与在本话追加画页的状态机编排                                                                                     |
 | `src/composables/useComicDetail.ts`                | 漫画详情生命周期、SWR 内存态占位、离线容错降级与后台任务对齐                                                                                                   |
 | `src/composables/useComicDetailActions.ts`         | 漫画详情操作编排：元数据刷新、漫画移除、阅读直达、返回书架与滚动记忆                                                                                           |
