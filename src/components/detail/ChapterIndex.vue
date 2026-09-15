@@ -75,6 +75,7 @@ const {
   items: () => props.chapters,
   step: CHAPTER_CHUNK_STEP,
   initialStep: baseStepCount.value,
+  loadAllCap: DEFAULT_LOAD_ALL_CAP,
   scrollTarget: indexWrapEl,
   onChange: (count) => setExpandedChapterCount(comicKey.value, count),
 })
@@ -154,7 +155,7 @@ watch(
           size="sm"
           icon="book-open"
           type="button"
-          @click="loadAll(DEFAULT_LOAD_ALL_CAP)"
+          @click="loadAll()"
         >
           展开全部
         </AppButton>

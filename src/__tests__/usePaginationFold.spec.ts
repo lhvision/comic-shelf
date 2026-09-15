@@ -198,4 +198,30 @@ describe('usePaginationFold composable', () => {
     expect(visibleCount.value).toBe(250)
     expect(remainingCount.value).toBe(0)
   })
+
+  it('supports loadAllCap option in UsePaginationFoldOptions for automatic tiered unfolding', () => {
+    const list = ref(Array.from({ length: 300 }, (_, i) => i))
+    const { visibleCount, remainingCount, loadAll } = usePaginationFold({
+      items: list,
+      step: 24,
+      loadAllCap: 120,
+    })
+
+    expect(visibleCount.value).toBe(24)
+
+    // First loadAll() without arguments uses configured loadAllCap = 120
+    loadAll()
+    expect(visibleCount.value).toBe(120)
+    expect(remainingCount.value).toBe(180)
+
+    // Second loadAll() steps forward by +120 (to 240)
+    loadAll()
+    expect(visibleCount.value).toBe(240)
+    expect(remainingCount.value).toBe(60)
+
+    // Third loadAll() finishes the rest
+    loadAll()
+    expect(visibleCount.value).toBe(300)
+    expect(remainingCount.value).toBe(0)
+  })
 })

@@ -118,7 +118,9 @@ function handleCollapse() {
             <span class="fold-badge-stamp">+{{ remainingPages }} 页已收纳</span>
           </div>
           <h4 class="fold-card-title">画卷余页已收纳</h4>
-          <p class="fold-card-hint">已展现 {{ pages.length }} 页 · 余 {{ remainingPages }} 页</p>
+          <p class="fold-card-hint">
+            已展现 {{ pages.length }} / {{ pages.length + remainingPages }} 页
+          </p>
           <div class="fold-card-actions">
             <AppButton
               variant="primary"
@@ -137,7 +139,7 @@ function handleCollapse() {
                 type="button"
                 @click.prevent="emit('loadAll')"
               >
-                展开全部
+                {{ canCollapse ? '全展开' : '展开全部' }}
               </AppButton>
               <AppButton
                 v-if="canCollapse"
@@ -147,7 +149,7 @@ function handleCollapse() {
                 type="button"
                 @click.prevent="handleCollapse"
               >
-                收起画卷
+                收起
               </AppButton>
             </div>
           </div>
@@ -303,6 +305,7 @@ function handleCollapse() {
   color: var(--ink-2);
   margin: 0;
   line-height: var(--leading-tight);
+  white-space: nowrap;
 }
 
 .fold-card-actions {
@@ -323,6 +326,13 @@ function handleCollapse() {
 .fold-card-sub-actions .btn {
   flex: 1;
   min-width: 0;
+  overflow: hidden;
+}
+
+.fold-card-sub-actions .btn :deep(.btn-content) {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .fold-card-actions .btn {
@@ -410,7 +420,7 @@ function handleCollapse() {
   }
 }
 
-/* 
+/*
  * 性能优化（PITFALLS #76 深度根治）：
  * 废除 <TransitionGroup name="folio-card"> 包装，改用原生标准 <div class="page-grid">。
  * 画页入场完全由 PageTile.vue 内部现代 CSS @starting-style 原生合成器补间接管，

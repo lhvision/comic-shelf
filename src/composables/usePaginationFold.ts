@@ -35,6 +35,8 @@ export interface UsePaginationFoldOptions<T> {
   initialVisibleCount?: MaybeRefOrGetter<number | undefined>
   /** 安全刹车阈值数量（达到该数量时自动暂停流式加载，默认 60） */
   brakeThreshold?: MaybeRefOrGetter<number | undefined>
+  /** 全量展开时的默认软封顶数量（可选，若配置且调用 loadAll() 无参时按该步长软封顶递进） */
+  loadAllCap?: MaybeRefOrGetter<number | undefined>
   /** 滚动容器 DOM 引用（收起时平滑回滚至该元素顶部） */
   scrollTarget?: Ref<HTMLElement | null>
   /** 展开/收起/重置状态变更后的额外回调（如持久化展开数量） */
@@ -105,12 +107,14 @@ export function usePaginationFold<T>(
   }
 
   function loadAll(maxCap?: number) {
+    const effectiveCap =
+      typeof maxCap === 'number' && maxCap > 0 ? maxCap : toValue(options.loadAllCap)
     let target = totalLength.value
-    if (typeof maxCap === 'number' && maxCap > 0 && totalLength.value > maxCap) {
-      if (visibleCount.value < maxCap) {
-        target = maxCap
+    if (typeof effectiveCap === 'number' && effectiveCap > 0 && totalLength.value > effectiveCap) {
+      if (visibleCount.value < effectiveCap) {
+        target = effectiveCap
       } else {
-        target = Math.min(totalLength.value, visibleCount.value + maxCap)
+        target = Math.min(totalLength.value, visibleCount.value + effectiveCap)
       }
     }
     visibleCount.value = target
