@@ -1126,6 +1126,24 @@
     2. **线程安全惰性单例（Thread-Safe Lazy Singleton）**：采用 `threading.Lock()` + 双重检查锁定（Double-Checked Locking）在首次调用时按需解压并构建 `str.maketrans` 转换表，兼顾 0ms 模块导入开销与高并发安全；
     3. **自解释轻量单测覆盖**：在 `backend/tests/test_zh_conv.py` 中对 SMP 四字节字、去重变体及多线程并发进行全面断言，保障 100% 健壮性。
 
+### 103. 模块拆分动态反射、Mixin MRO 遮蔽与非原子性写入时序陷阱（Dynamic Reflection Anti-Pattern, Mixin MRO Shadowing & Premature Deletion Trap）
+
+- **本质**：
+  1. **动态反射逃逸与隐式调用断层（`sys.modules.get` Anti-Pattern）**：在拆分巨石文件（如 `main.py` / `storage.py`）后，为了规避直接依赖，在业务路由或预取逻辑中使用 `sys.modules.get("app.main")` 或 `getattr(store, ...)` 动态嗅探单例对象。此举彻底击穿了 Python 静态类型分析与 IDE 符号追踪，且在单独运行局部单元测试（未导入 `main.py`）时导致全局事件广播与单例方法静默失败；
+  2. **多继承 MRO 与 Fallback 桩方法遮蔽（Mixin MRO Shadowing）**：在 `ComicStore(ComicStoreBase, Mixin1, Mixin2, ...)` 继承体系中，若在 `ComicStoreBase` 中定义了显式 fallback 桩方法（用于静态类型提示与接口契约声明），由于 `ComicStoreBase` 在 MRO 顺序中排在 Mixin 之前，Python 方法解析会优先命中 Base 桩方法（抛出 `NotImplementedError`），使具体 Mixin 中的实际实现被彻底遮蔽；
+  3. **非原子写入与时序颠倒导致数据永久灭失（Premature Deletion before Disk Swap）**：在执行漫画画页全量替换等复杂操作时，若在写入磁盘前提前调用 `delete_comic_dialogues` 清理旧台词全文索引，一旦后续物理写盘或文件校验失败抛出异常，不仅新画页未能成功入库，旧台词索引也已被不可逆删除，破坏了事务的故障安全（Crash-Safe）不变量；
+  4. **直连公网反代头伪造绕过防护（Header Spoofing & Forwarded Trust Gap）**：在解析客户端真实 IP 时，若无条件信任 `X-Forwarded-For` 请求头，在直接暴露端口（未经正向代理）环境下，攻击者可伪造标头绕过登录防爆破与双重限流熔断。
+- **红线与防误伤**：
+  - **不要**在生产路由与存储逻辑中使用 `sys.modules.get(...)` 动态反射主应用符号；
+  - **不要**在多继承组合类中将提供 Fallback 桩方法的基类置于具体业务 Mixin 之前；
+  - **不要**在文件系统写入成功且元数据原子落盘之前提前删除关联数据库记录；
+  - **不要**在直连/未配置受信任代理时无条件信任外部 `X-Forwarded-For` 请求头；
+  - **放行/改用**：
+    1. **显式依赖注入与直接服务调用**：通过直接导入已解耦的 `app.routers.common.get_store` 与 `app.events.broadcast_system_event`，彻底消除动态反射；
+    2. **标准 MRO 继承顺序**：声明为 `class ComicStore(*Mixins, ComicStoreBase)`，并在 Base 中显式声明所有方法签名与抽象契约，既保全 IDE/类型检查，又确保 Mixin 实现正确覆写；
+    3. **写入成功后原子清理（Write-Then-Delete）**：将关联索引与派生资产的物理/数据库删除操作严格延后至 `store.replace_pages` 写入成功之后，确保任意环节失败时数据 100% 可回滚；
+    4. **代理头受信任门禁（Trusted Forwarded Proxy Gate）**：引入 `TRUST_FORWARDED_HEADERS` 配置（默认 `True`），在直连或私有部署时支持置为 `False` 并严格回退读取 `request.client.host` 物理底层套接字。
+
 ---
 
 ## 🚦 交付门禁（四步必跑）
