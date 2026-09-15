@@ -31,7 +31,25 @@
 Browser (Vue 3 + PWA Workbox)
    │  /api/* (Direct HTTP / Pinia In-Memory SWR)
    ▼
-FastAPI (backend/app/main.py)
+FastAPI (backend/app/main.py — 应用装配/中间件/SPA托管)
+   │
+   ├── routers/             # 领域 API 路由层 (APIRouter)
+   │     auth.py            # 认证状态、登录、登出与访客通行证管理
+   │     library.py         # 书库检索、分面聚合、排行榜、元数据与导入
+   │     media.py           # 原图/封面/缩略图流式推流与 WebP 内容协商
+   │     chapters.py        # 章节重命名、物理删除、章节封面与预取
+   │     local_comic.py     # 本地画册新建、服务端路径扫描导入与重排
+   │     search.py          # 以图搜图代理、FTS5 台词全文检索与 OCR 同步
+   │     system.py          # 健康检查、Providers 列表、下载并发配置
+   │     common.py          # 路由通用依赖、图片协商工具与 store 实例
+   │
+   ├── storage/             # 存储与画册领域包 (ComicStore Facade)
+   │     base.py            # 路径生成、读写细粒度锁、album.json 存取
+   │     media.py           # Pillow 图像压缩/WebP 转码/按需懒下载
+   │     chapters.py        # 章节自愈/复合文件名智能分组/单卷升级多话
+   │     local.py           # 本地导入/零拷贝硬链接/原子目录置换
+   │     prefetch.py        # 全书与单章后台并发下载池
+   │     utils.py           # 原子写 (_write_json_atomic) 与路径安全白名单
    │
    ├── providers/           # 站点适配层，唯一知道具体漫画站的地方
    │     base.py            # ComicProvider 抽象
@@ -47,8 +65,7 @@ FastAPI (backend/app/main.py)
    ├── gate.py              # 下载并发闸门控制
    ├── jobs.py              # 后台批量缓存任务管理
    ├── events.py            # 单向系统事件流（SSE，广播版本更新/书库变动/AI进度）
-   ├── imsearch.py          # 局部特征搜图客户端（HTTP 隔离通信）
-   └── storage.py           # 本地缓存与文件布局
+   └── imsearch.py          # 局部特征搜图客户端（HTTP 隔离通信）
          │
          ▼
 backend/data/library/<source>/<source_id>/
@@ -165,21 +182,23 @@ JmImageTool.decode_and_save(num, source_image, save_path)
 
 ## 5. 后端文件地图
 
-| 文件                                | 职责                                                                                                   |
-| ----------------------------------- | ------------------------------------------------------------------------------------------------------ |
-| `backend/app/main.py`               | FastAPI 路由与安全中间件、GZip 传输层压缩、SPA 静态文件回落挂载                                        |
-| `backend/app/auth.py`               | 鉴权校验、Cookie 会话管理、Sec-Fetch-Site 与 Referer 防盗链校验                                        |
-| `backend/app/gate.py`               | 运行时下载并发控制闸门（支持环境变量锁定与设置持久化）                                                 |
-| `backend/app/jobs.py`               | 后台异步缓存任务执行器与进度追踪                                                                       |
-| `backend/app/models.py`             | 通用模型：`ComicMeta`（含 `Chapter`/`chapters`）/ `PageRecord.chapter` / `RemotePage` / `FetchedComic` |
-| `backend/app/storage.py`            | 原子 JSON 写入、页面缓存（章节分目录路由）、封面生成、v1→v2 迁移、书库扫描                             |
-| `backend/app/providers/base.py`     | Provider 接口                                                                                          |
-| `backend/app/providers/jm.py`       | JM HTML 元数据、上传者解析、**多章节 episode 逐话拉取**、图片下载 + 解密                               |
-| `backend/app/providers/local.py`    | 本地自建、外部白名单目录扫描、视频拆帧与多章节追加、重新装订                                           |
-| `backend/app/providers/picacg.py`   | 哔咔 App REST 接口签名（HMAC-SHA256）、车号宽容清洗、多章节分卷映射与 3-CDN 容灾下载                   |
-| `backend/app/providers/registry.py` | `{"jm": JMProvider(), "local": LocalProvider(), "picacg": PicacgProvider()}` 注册表                    |
-| `backend/app/imsearch.py`           | 局部特征识图客户端（ORB 特征匹配、健康探测、路径解析）                                                 |
-| `backend/app/config.py`             | 数据目录、访问密钥、防盗链开关、封面尺寸、识图服务地址配置                                             |
+| 文件                                | 职责                                                                                                                        |
+| ----------------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
+| `backend/app/main.py`               | FastAPI 应用入口、全局中间件、应用生命周期、SPA 静态文件回落挂载与向前兼容门面                                              |
+| `backend/app/routers/`              | 模块化路由包（`auth.py`, `library.py`, `media.py`, `chapters.py`, `local_comic.py`, `search.py`, `system.py`, `common.py`） |
+| `backend/app/storage/`              | 模块化存储包（Domain Mixin + Facade 模式：`base.py`, `media.py`, `chapters.py`, `local.py`, `prefetch.py`, `utils.py`）     |
+| `backend/app/auth.py`               | 鉴权校验、Cookie 会话管理、Sec-Fetch-Site 与 Referer 防盗链校验                                                             |
+| `backend/app/db.py`                 | SQLite 会话存储与 WAL 模式持久化                                                                                            |
+| `backend/app/gate.py`               | 运行时下载并发控制闸门（支持环境变量锁定与设置持久化）                                                                      |
+| `backend/app/jobs.py`               | 后台异步缓存任务执行器与进度追踪                                                                                            |
+| `backend/app/models.py`             | 通用模型：`ComicMeta`（含 `Chapter`/`chapters`）/ `PageRecord.chapter` / `RemotePage` / `FetchedComic`                      |
+| `backend/app/providers/base.py`     | Provider 接口                                                                                                               |
+| `backend/app/providers/jm.py`       | JM HTML 元数据、上传者解析、**多章节 episode 逐话拉取**、图片下载 + 解密                                                    |
+| `backend/app/providers/local.py`    | 本地自建、外部白名单目录扫描、视频拆帧与多章节追加、重新装订                                                                |
+| `backend/app/providers/picacg.py`   | 哔咔 App REST 接口签名（HMAC-SHA256）、车号宽容清洗、多章节分卷映射与 3-CDN 容灾下载                                        |
+| `backend/app/providers/registry.py` | `{"jm": JMProvider(), "local": LocalProvider(), "picacg": PicacgProvider()}` 注册表                                         |
+| `backend/app/imsearch.py`           | 局部特征识图客户端（ORB 特征匹配、健康探测、路径解析）                                                                      |
+| `backend/app/config.py`             | 数据目录、访问密钥、防盗链开关、封面尺寸、识图服务地址配置                                                                  |
 
 - `GET /api/auth/status`（查询是否开启鉴权及当前登录态）
 - `POST /api/auth/login`（验证馆长口令或通行证并写入 Cookie）

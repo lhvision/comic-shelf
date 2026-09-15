@@ -43,8 +43,6 @@ COVER_COUNT = int(os.getenv("COMIC_SHELF_COVER_COUNT", "4"))
 PAGE_THUMB_WIDTH = int(os.getenv("COMIC_SHELF_PAGE_THUMB_WIDTH", "360"))
 PAGE_THUMB_QUALITY = int(os.getenv("COMIC_SHELF_PAGE_THUMB_QUALITY", "78"))
 
-INDEX_FILE = DATA_DIR / "index.json"
-
 # Be polite: cap eager prefetch when the user asks for "all" pages.
 MAX_PREFETCH = int(os.getenv("COMIC_SHELF_MAX_PREFETCH", "600"))
 

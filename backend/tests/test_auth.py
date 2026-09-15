@@ -4,7 +4,9 @@ from pathlib import Path
 from unittest.mock import MagicMock
 
 # Ensure backend package is importable
-sys.path.insert(0, str(Path(__file__).resolve().parent))
+BACKEND_DIR = Path(__file__).resolve().parent.parent
+if str(BACKEND_DIR) not in sys.path:
+    sys.path.insert(0, str(BACKEND_DIR))
 
 import tempfile
 from fastapi import HTTPException, Response

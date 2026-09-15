@@ -9,10 +9,12 @@ from pathlib import Path
 from unittest.mock import MagicMock
 
 # Ensure backend package is importable
-BACKEND_DIR = Path(__file__).resolve().parent
+BACKEND_DIR = Path(__file__).resolve().parent.parent
 PROJECT_ROOT = BACKEND_DIR.parent
-sys.path.insert(0, str(BACKEND_DIR))
-sys.path.insert(0, str(PROJECT_ROOT))
+if str(BACKEND_DIR) not in sys.path:
+    sys.path.insert(0, str(BACKEND_DIR))
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
 
 import app.config as config_mod
 import app.db as db_mod

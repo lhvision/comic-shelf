@@ -417,13 +417,10 @@ class LocalPathImportRequest(BaseModel):
     hidden_from_guest: bool = False
 
 
-class LocalAppendRequest(BaseModel):
+class ComicAppendRequest(BaseModel):
     target_chapter: str = ""
     new_chapter_title: str = ""
     server_path: str = ""
-
-
-ComicAppendRequest = LocalAppendRequest
 
 
 class ReplacePathRequest(BaseModel):

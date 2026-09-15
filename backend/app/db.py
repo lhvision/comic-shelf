@@ -59,6 +59,7 @@ def get_dialogue_db() -> Iterator[sqlite3.Connection]:
     conn = sqlite3.connect(_DIALOGUE_DB_PATH, timeout=15.0)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA journal_mode = WAL")
+    conn.execute("PRAGMA synchronous = NORMAL")
     conn.execute("PRAGMA busy_timeout = 5000")
     try:
         with conn:
@@ -72,6 +73,7 @@ def get_db() -> Iterator[sqlite3.Connection]:
     conn = sqlite3.connect(_DB_PATH, timeout=15.0)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA journal_mode = WAL")
+    conn.execute("PRAGMA synchronous = NORMAL")
     conn.execute("PRAGMA foreign_keys = ON")
     conn.execute("PRAGMA busy_timeout = 5000")
     try:
@@ -212,6 +214,8 @@ def init_db(db_path: Path | None = None) -> None:
             CREATE INDEX IF NOT EXISTS idx_comics_index_imported ON comics_index(imported_at DESC);
             CREATE INDEX IF NOT EXISTS idx_comics_index_source ON comics_index(source);
             CREATE INDEX IF NOT EXISTS idx_comics_index_title ON comics_index(title);
+            CREATE INDEX IF NOT EXISTS idx_comics_index_pages ON comics_index(page_count DESC);
+            CREATE INDEX IF NOT EXISTS idx_comics_index_cached ON comics_index(cached_pages DESC);
             """
         )
         # Migrations: ensure max_devices, pin_hash, pin_salt columns exist for existing DB
@@ -894,7 +898,25 @@ def query_library_index(
     ids: str | None = None,
     offset: int | None = None,
 ) -> tuple[list[dict[str, Any]], int]:
-    """支持万级藏书的毫秒级 SQL 分页、模糊过滤、状态关联与多模式排序。"""
+    """Queries comics_index with pagination, multi-criteria filtering, and user reading progress joins.
+
+    Args:
+        user_id: Authenticated user identifier (used to resolve favorites and progress).
+        is_curator: When False, automatically hides comics flagged with hidden_from_guest.
+        page: 1-indexed page number (used when offset is not provided).
+        page_size: Number of items per page.
+        status: Reading status filter ('all', 'reading', 'completed', 'unread').
+        favorite: When True, filters strictly to comics favorited by user_id.
+        source: Optional provider filter (e.g., 'jm', 'local', 'picacg').
+        q: Optional search query matched against title, authors, works, actors, and tags.
+        tag: Optional exact tag filter evaluated via json_each(tags_json).
+        sort: Sort mode ('recent', 'uploaded', 'views', 'likes', 'pages', 'alpha').
+        ids: Optional comma-separated list of "source/source_id" keys to filter to.
+        offset: Explicit SQL offset override, bypassing page * page_size calculation.
+
+    Returns:
+        A tuple of (matching_comic_dictionaries, total_matched_count).
+    """
     conditions: list[str] = []
     params: dict[str, Any] = {"user_id": user_id}
 
@@ -1021,7 +1043,15 @@ def query_library_index(
 
 
 def get_library_facets(is_curator: bool, source: str | None = None) -> dict[str, Any]:
-    """聚合全站藏书本数、总页数、缓存页数与高频前 30 个标签。"""
+    """Aggregates library statistics (total books, pages, cached pages) and top 30 most frequent tags.
+
+    Args:
+        is_curator: When False, excludes comics marked as hidden_from_guest from counts.
+        source: Optional source filter to scope facets to a single provider.
+
+    Returns:
+        Dict containing total_books, total_pages, cached_pages, and tags list with counts.
+    """
     conditions: list[str] = []
     params: dict[str, Any] = {}
     if not is_curator:
@@ -1090,11 +1120,19 @@ def _make_snippet(text: str, terms: list[str], max_chars: int = 60) -> str:
 
 
 def sync_comic_dialogues(source: str, source_id: str, force: bool = False) -> int:
-    """从画页伴生 OCR 数据（*.ocr.json）同步台词至 comic_dialogues_fts。
+    """Syncs comic page OCR dialogues (*.ocr.json) into the comic_dialogues_fts table.
 
-    安全沙箱与原子性保证：
-    1. 严格过滤路径穿越符号并校验 DATA_DIR 边界，禁止任意目录探测；
-    2. 先清空当前 (source, source_id) 的旧索引，再全量写入新气泡记录，杜绝幽灵索引。
+    Security sandbox and atomicity guarantees:
+    1. Strictly sanitizes directory path symbols and bounds traversal within DATA_DIR.
+    2. Atomically clears prior index rows for this comic before inserting new records.
+
+    Args:
+        source: Provider key (e.g., 'jm', 'picacg', 'local').
+        source_id: Unique comic identifier.
+        force: If True, bypasses mtime check and forces a full re-index.
+
+    Returns:
+        The total number of dialogue bubble records indexed.
     """
     safe_source = re.sub(r"[^a-zA-Z0-9_\-\.]+", "_", source).strip("._") or "_"
     safe_id = re.sub(r"[^a-zA-Z0-9_\-\.]+", "_", source_id).strip("._") or "_"
@@ -1304,7 +1342,19 @@ def search_dialogues(
     limit: int = 20,
     is_guest: bool = False,
 ) -> list[dict[str, Any]]:
-    """检索台词全文索引，支持简繁双向展开、模糊分词与访客权限过滤。"""
+    """Searches the dialogue FTS index with simplified/traditional expansion and guest filtering.
+
+    Short queries (< 2 chars) are blocked immediately to prevent unindexed table scans.
+
+    Args:
+        query: Full-text search string (expanded to simplified and traditional forms).
+        source: Optional source filter.
+        limit: Maximum number of dialogue matches to return (1..100, default 20).
+        is_guest: When True, filters out dialogue results from hidden_from_guest comics.
+
+    Returns:
+        List of matched dialogue records with text snippet, highlight, and bubble bounding box.
+    """
     clean_query = query.strip()
     # 短词全表扫描防爆守卫：少于 2 个字符直接阻断，杜绝无索引全表扫描
     if len(clean_query) < 2:

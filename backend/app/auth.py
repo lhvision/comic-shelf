@@ -25,6 +25,9 @@ def is_auth_required() -> bool:
 
 
 def get_client_ip(request: Request) -> str:
+    cf_ip = request.headers.get("cf-connecting-ip")
+    if cf_ip and isinstance(cf_ip, str):
+        return cf_ip.strip()[:45]
     xff = request.headers.get("x-forwarded-for")
     if xff and isinstance(xff, str):
         return xff.split(",")[0].strip()[:45]

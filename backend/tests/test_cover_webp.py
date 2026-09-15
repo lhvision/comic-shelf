@@ -7,7 +7,9 @@ from pathlib import Path
 from unittest.mock import MagicMock
 from PIL import Image
 
-sys.path.insert(0, str(Path(__file__).resolve().parent))
+BACKEND_DIR = Path(__file__).resolve().parent.parent
+if str(BACKEND_DIR) not in sys.path:
+    sys.path.insert(0, str(BACKEND_DIR))
 
 from app.models import ComicMeta, PageRecord, FetchedComic, Chapter
 from app.storage import ComicStore

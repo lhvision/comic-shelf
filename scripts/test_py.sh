@@ -15,22 +15,17 @@ if [ -z "$PYTHON" ]; then
   PYTHON="$(command -v python3 || command -v python || echo "python3")"
 fi
 
-TEST_FILES=(
-  "backend/check_backend.py"
-  "backend/test_auth.py"
-  "backend/test_incremental_update.py"
-  "backend/test_visibility_discovery.py"
-  "backend/test_imsearch.py"
-  "backend/test_spa_fallback.py"
-  "backend/test_replace_pages.py"
-  "backend/test_db_and_passes.py"
-  "backend/test_events.py"
-  "backend/test_cover_webp.py"
-  "backend/test_dialogue_fts.py"
-  "backend/test_ocr_worker.py"
-  "backend/test_picacg.py"
-  "backend/test_batch_prefetch.py"
-)
+CHECK_SCRIPT="backend/check_backend.py"
+
+# Auto-discover all test files in backend/tests/
+TEST_FILES=()
+if [ -f "$CHECK_SCRIPT" ]; then
+  TEST_FILES+=("$CHECK_SCRIPT")
+fi
+
+while IFS= read -r f; do
+  [ -n "$f" ] && TEST_FILES+=("$f")
+done < <(find backend/tests -maxdepth 1 -name 'test_*.py' | sort)
 
 # Support running specific tests (e.g. pnpm test:py auth) or all by default
 if [ $# -gt 0 ]; then

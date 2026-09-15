@@ -24,7 +24,7 @@
 
 ### 2. 测试与质量门禁状态（全绿基线）
 
-- **Python 后端测试**：`pnpm test:py`（运行 `backend/test_dialogue_fts.py`、`backend/test_ocr_worker.py` 等 15 个套件全部通过）；
+- **Python 后端测试**：`pnpm test:py`（运行 `backend/tests/test_dialogue_fts.py`、`backend/tests/test_ocr_worker.py` 等套件全部通过）；
 - **前端单测**：`vp test src/__tests__/useReaderBubble.spec.ts src/__tests__/ReaderBubbleOverlay.spec.ts` 16 个测试全部通过（含 0..1000 标度、百分比标度与气泡覆盖层单测）；
 - **设置单测**：`vp test src/__tests__/useReaderSettings.spec.ts` 13 个测试全部通过；
 - **类型与代码检查**：`vp check` 0 错误（325 文件格式化，250 文件 0 警告 0 报错），`pnpm type-check`（`vue-tsc --build` 增量验证）0 错误；
@@ -72,10 +72,14 @@
     4. 命中后响应规范 ➔ **严禁**直接暴露后台未授权 URL，必须调用 `create_direct_pass` 签发临时凭据，并套用典雅的“纸间馆员”口吻输出回复（包含封面、本子名、命中画页、气泡台词引用及 2 小时直达阅读卡片）。
   - **防越权与安全护栏**：Skill 中必须明文禁止 Agent 尝试列出隐藏本子或调用管理员接口。
 
-### 议题 4：前台搜索栏接入台词全文检索（已落地完成 ✅）
+### 议题 5：后端架构治理与模块化拆分（已落地完成 ✅）
 
-- **落地成果**：已在 `LibraryView.vue` 前台搜索栏无缝集成 `DialogueSearchPopover.vue` 与 `useDialogueSearch.ts`，基于静默伴生原则（检索为 0 条时静默不遮挡书架），支持防抖 300ms 异步全文检索、声明式分镜高亮（零 XSS）、WAI-ARIA Combobox 无障碍键盘视口跟随（`scrollIntoView`）与回车直达阅读器；
-- **验收记录**：通过 UI 双轨评审（`2026-09-12T09-56-24Z__dialogue-search.md`）、`vp check`、`pnpm type-check` 与 11 项定向单测，已收录至 [DESIGN_NOTES.md §64](DESIGN_NOTES.md#sec-64) 与 [PITFALLS.md §81](docs/PITFALLS.md)。
+- **落地成果**：
+  1. **测试目录规范化**：平铺的 13 个 `test_*.py` 全部归拢至 `backend/tests/`，引入统一辅助夹具 `helpers.py`；
+  2. **FastAPI 路由模块化**：原 1615 行上帝文件 `main.py` 拆解为 `backend/app/routers/`（`auth`, `library`, `media`, `chapters`, `local_comic`, `search`, `system`, `common`），`main.py` 骤降至 443 行（只保留应用启动装配与兼容门面）；
+  3. **ComicStore 存储分层解耦**：原 2171 行上帝类 `storage.py` 解构为 `backend/app/storage/` 模块包，采用 Mixin 领域模式分治（`base.py`, `media.py`, `chapters.py`, `local.py`, `prefetch.py`, `utils.py`），对外保留 100% 兼容门面；
+  4. **纵深安全加固**：优先提取 Cloudflare `CF-Connecting-IP` 标头防 IP 伪造，增加 50MB 单页上传上限防御 OOM。
+- **验收记录**：通过 `pnpm test:py`（全套 13 组测试全部通过）与 `vp check`（0 warning, 0 lint error, 0 type error）。
 
 ---
 
@@ -85,7 +89,7 @@
 
 ```markdown
 请阅读 docs/HANDOVER_NEXT_STAGE.md 与 docs/AI_ECOSYSTEM_ROADMAP.md。
-先行项 1（台词全文检索 FTS5 + 伴生 OCR 索引 + 阅读器气泡呼吸高亮）已全部完工并通过所有静态和单元测试（见 ADR 0017）。
+先行项 1（台词全文检索 FTS5 + 伴生 OCR 索引 + 阅读器气泡呼吸高亮）以及后端全面架构治理（main/storage 模块化拆分与安全加固）已全部完工并通过所有静态和单元测试。
 我们现在开始进行下一阶段工作：纸间 Paper Room MCP Server + 官方 Agent Skill 双子星架构，以及定向单本临时直达票据（One-Time Direct Pass）。
 请先结合 docs/HANDOVER_NEXT_STAGE.md 中的四个设计议题（协议选型、临时票据沙箱、Skill SOP 编排、前台 UI 接入），为我梳理并推演最佳实现方案。
 ```
@@ -94,9 +98,9 @@
 
 ## 四、 本地 Git 工作区状态说明
 
-当前工作区已完成全部代码编写与验证，未提交的代码属于先行项 1 的完整成果集合。可随时安全地执行 commit：
+当前工作区已完成全部代码编写与验证，未提交的代码属于台词检索与后端架构治理的完整成果集合。可随时安全地执行 commit：
 
 ```bash
 git add .
-git commit -m "feat(search): 漫画台词全文检索 (SQLite FTS5 + Trigram) 与阅读器气泡呼吸高亮定位 (ADR 0017)"
+git commit -m "refactor(backend): 拆分 main 与 storage 巨石文件为模块化 Routers 与 Storage Mixin，完成全链路安全加固"
 ```

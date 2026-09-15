@@ -6,7 +6,9 @@ from PIL import Image
 import io
 
 import sys
-sys.path.insert(0, "backend")
+BACKEND_DIR = Path(__file__).resolve().parent.parent
+if str(BACKEND_DIR) not in sys.path:
+    sys.path.insert(0, str(BACKEND_DIR))
 from app.models import ComicMeta, PageRecord, FetchedComic
 from app.storage import ComicStore
 from fastapi import HTTPException
