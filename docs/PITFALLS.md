@@ -1156,6 +1156,21 @@
   1. **全局 Z-Index 标尺集中注册（Elevation Tokenization）**：在 `tokens.css` 固化 `--z-dropdown: 35`、`--z-header: 40`、`--z-popover: 60`、`--z-modal: 90` 等单一语义源；
   2. **搜索头部容器显式层级提升（Stacking Context Elevation）**：在 `.shelf-head` 与 `.search-container` 挂载 `position: relative; z-index: var(--z-dropdown);`，确保浮层整体平稳浮于下方标签栏与卡片网格之上，且位于全站顶栏（`--z-header: 40`）下方。
 
+### 107. Starlette StaticFiles 与 FastAPI HTTPException 继承断层导致 SPA Fallback 穿透失灵（StaticFiles HTTPException Inheritance Mismatch & Mock Divergence Trap）
+
+- **本质**：
+  1. **FastAPI 与 Starlette 异常继承倒置导致无法捕获（Exception Subclass Catch Miss）**：FastAPI 的 `fastapi.exceptions.HTTPException` 是 Starlette 的 `starlette.exceptions.HTTPException` 的子类。Starlette 底层的 `StaticFiles.get_response` 在找不到文件时抛出的是父类 `starlette.exceptions.HTTPException`。若自定义 `SPAStaticFiles` 在 `get_response` 中使用 `except HTTPException:` 且顶部从 `fastapi` 导入，Python 异常匹配机制会直接跳过该捕获块，导致 404 异常穿透逃逸至全局异常处理器，将本应回退返回 `index.html` 的前端路由（如 `/comic/:source/:id`、`/discovery`）直接以 JSON 404 错误返回；
+  2. **单测私造 Mock 掩盖真机故障（Unit Test Mock Divergence）**：单测文件在自身脚本内部重新定义了一份 `SPAStaticFiles` 且在单测内部使用了 `from starlette.exceptions import HTTPException`，仅测试了单测局部的 Mock 类，未直接引入应用真实挂载的 `main.py:app` 与类定义，造成单测全绿但真机 Docker / NAS 部署一刷新就 404 的假绿现象；
+  3. **静态目录硬编码层级断裂（Static Dir Path Clamping）**：容器化（`/app/dist`）与本地开发（`<root>/dist`）环境下的相对路径层级不同，若仅依赖固定层级的 `parents[2]` 且环境变量未传时，可能引发静态文件根目录脱靶。
+- **红线与防误伤**：
+  - **不要**在继承或扩展 Starlette `StaticFiles` 时仅捕获 `fastapi.HTTPException`；
+  - **不要**在单测中复制粘贴业务类重新定义 Mock 进行虚假验证；
+  - **不要**对运行时静态文件路径采用单一硬编码 `parents` 解析；
+- **放行/改用**：
+  1. **联合捕获 Starlette 与 FastAPI 异常（Dual-Exception Catching）**：引入 `from starlette.exceptions import HTTPException as StarletteHTTPException`，使用 `except (HTTPException, StarletteHTTPException) as ex:` 彻底覆盖 404 拦截，确保非静态扩展名的请求稳定返回 `index.html`；
+  2. **端到端真机真实 App 挂载单测**：单测直接引入 `from app.main import SPAStaticFiles, app as main_app`，直接对生产 ASGI 实例发送路由与静态文件请求并验证 HTTP 状态码与 Content-Type；
+  3. **静态目录候选链自愈解析（Candidate Path Cascade）**：优先读取 `COMIC_SHELF_STATIC_DIR` 环境变量，自动在 monorepo 根目录 `../../dist`、容器目录 `../dist` 以及当前工作目录 `./dist` 之间智能探测就绪的 `index.html`。
+
 ---
 
 ## 🚦 交付门禁（四步必跑）

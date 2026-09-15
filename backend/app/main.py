@@ -331,51 +331,68 @@ async def auth_and_security_middleware(request: Request, call_next):
 # ----------------------------------------------------------------------
 # SPA Static file mounting (All-in-one / NAS single-container deployment)
 # ----------------------------------------------------------------------
-_DIST_DIR = Path(
-    os.getenv(
-        "COMIC_SHELF_STATIC_DIR",
-        str(Path(__file__).resolve().parents[2] / "dist"),
-    )
-)
+import mimetypes
+from starlette.exceptions import HTTPException as StarletteHTTPException
+from starlette.staticfiles import StaticFiles
+
+mimetypes.add_type("application/manifest+json", ".webmanifest")
+
+
+class SPAStaticFiles(StaticFiles):
+    """SPA-aware static file handler: falls back to index.html for client routes on 404."""
+
+    async def get_response(self, path: str, scope):
+        try:
+            response = await super().get_response(path, scope)
+        except (HTTPException, StarletteHTTPException) as ex:
+            if ex.status_code == 404:
+                filename = Path(path).name
+                # If target has a file extension (e.g. .js, .png, .json), it is a missing static file -> keep 404
+                is_file_request = "." in filename and not filename.startswith(".")
+                if not is_file_request:
+                    response = await super().get_response("index.html", scope)
+                    response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+                    return response
+            raise
+
+        clean_path = path.strip("/")
+        if clean_path in ("", "index.html", "sw.js", "registerSW.js", "manifest.webmanifest"):
+            response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+        elif clean_path.startswith("assets/") or clean_path.startswith("workbox-"):
+            response.headers["Cache-Control"] = "public, max-age=31536000, immutable"
+
+        if clean_path == "sw.js":
+            response.headers["Service-Worker-Allowed"] = "/"
+
+        if clean_path == "manifest.webmanifest":
+            response.headers["Access-Control-Allow-Origin"] = "*"
+            response.headers["Content-Type"] = "application/manifest+json"
+
+        return response
+
+
+def _resolve_dist_dir() -> Path:
+    env_dir = os.getenv("COMIC_SHELF_STATIC_DIR")
+    if env_dir:
+        return Path(env_dir)
+    # Check candidate directories in order:
+    # 1. Monorepo root dist (local dev: backend/app/main.py -> ../../dist)
+    # 2. Container app dist (Dockerfile: /app/app/main.py -> ../dist -> /app/dist)
+    # 3. Current working directory ./dist
+    candidates = [
+        Path(__file__).resolve().parents[2] / "dist",
+        Path(__file__).resolve().parents[1] / "dist",
+        Path.cwd() / "dist",
+    ]
+    for cand in candidates:
+        if cand.exists() and (cand / "index.html").exists():
+            return cand
+    return candidates[0]
+
+
+_DIST_DIR = _resolve_dist_dir()
 
 if _DIST_DIR.exists() and (_DIST_DIR / "index.html").exists():
-    import mimetypes
-    from fastapi.staticfiles import StaticFiles
-
-    mimetypes.add_type("application/manifest+json", ".webmanifest")
-
-    class SPAStaticFiles(StaticFiles):
-        """SPA-aware static file handler: falls back to index.html for client routes on 404."""
-
-        async def get_response(self, path: str, scope):
-            try:
-                response = await super().get_response(path, scope)
-            except HTTPException as ex:
-                if ex.status_code == 404:
-                    filename = Path(path).name
-                    # If target has a file extension (e.g. .js, .png, .json), it is a missing static file -> keep 404
-                    is_file_request = "." in filename and not filename.startswith(".")
-                    if not is_file_request:
-                        response = await super().get_response("index.html", scope)
-                        response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
-                        return response
-                raise
-
-            clean_path = path.strip("/")
-            if clean_path in ("", "index.html", "sw.js", "registerSW.js", "manifest.webmanifest"):
-                response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
-            elif clean_path.startswith("assets/") or clean_path.startswith("workbox-"):
-                response.headers["Cache-Control"] = "public, max-age=31536000, immutable"
-
-            if clean_path == "sw.js":
-                response.headers["Service-Worker-Allowed"] = "/"
-
-            if clean_path == "manifest.webmanifest":
-                response.headers["Access-Control-Allow-Origin"] = "*"
-                response.headers["Content-Type"] = "application/manifest+json"
-
-            return response
-
     app.mount(
         "/",
         SPAStaticFiles(directory=str(_DIST_DIR), html=True),
@@ -427,6 +444,7 @@ __all__ = [
     "search_dialogue_endpoint",
     "search_imsearch",
     "set_favorite",
+    "SPAStaticFiles",
     "start_job",
     "store",
     "sync_library_index",
@@ -439,5 +457,6 @@ __all__ = [
     "_prefetch_worker",
     "_require_known_source",
     "_require_meta",
+    "_resolve_dist_dir",
     "_serve_negotiated_image",
 ]

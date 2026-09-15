@@ -92,9 +92,11 @@ backend/data/library/<source>/<source_id>/
   - `illustration-pool-cache`：全站看板角色与加载插画运行时懒加载缓存（30 张上限）；
   - **API 离线缓存红线（PITFALLS #14）**：严禁在 Service Worker 中缓存任何 `/api/` 动态端点（防鉴权劫持与脏状态）；动态元数据统一走前端内存 SWR（`useMemoize`）直连后端；
   - **安全红线**：所有针对缓存的查看与清理（`useOfflineStorage`）**100% 局限于端侧浏览器**，零破坏性服务端 API，绝不触碰服务端持久化目录 `backend/data/`。
-- **服务端 SPAStaticFiles 部署中间件（PITFALLS #54）**：
+- **服务端 SPAStaticFiles 部署中间件（PITFALLS #54, #107）**：
   - 对 `/`、`/index.html`、`/sw.js`、`/registerSW.js`、`/manifest.webmanifest` 强制下发 `Cache-Control: no-cache, no-store, must-revalidate`；
   - 显式注册 `application/manifest+json` 对应 `.webmanifest`；
+  - **SPA 客户端路由 404 兜底与异常捕获**：联合捕获 `(HTTPException, StarletteHTTPException)`，对无扩展名的客户端路由（如 `/comic/:source/:id`、`/discovery`）在 404 时稳定回退返回 `index.html`，缺失的静态文件扩展名请求（如 `.js`、`.png`）严格保持 404；
+  - **静态目录自愈解析**：通过 `_resolve_dist_dir()` 依次探测环境变量、开发根目录 `../../dist`、容器目录 `/app/dist` 与 `./dist`；
   - **反代与边缘约定**：反向代理（NPM）严禁对静态资源勾选 `Cache Assets`，以防覆盖应用层 `no-cache`；Cloudflare WAF 针对 PWA 入口实施 Skip WAF 人机质询放行与 Cache Rules 边缘穿透。
 
 ### Provider 扩展点
