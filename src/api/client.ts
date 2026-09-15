@@ -63,6 +63,7 @@ export function onAuthSuccess(handler: AuthSuccessHandler): () => void {
 export interface RequestOptions {
   signal?: AbortSignal
   bypassCache?: boolean
+  timeoutMs?: number
 }
 
 export class ApiError extends Error {
@@ -83,7 +84,7 @@ export class ApiError extends Error {
  * 架构考量（避坑防泄漏）：
  * 1. 为什么不裸用 `AbortSignal.timeout()`？
  *    MDN 明确指出 `AbortSignal.timeout()` 无法被外部手动取消。在短生命周期 RPC 中，
- *    即便请求 10ms 兑现，底层系统定时器仍会在后台挂满 15s 并持有监听引用，高频请求下阻碍 GC。
+ *    即便请求 10ms 兑现，底层系统定时器仍会在后台挂满定时时长并持有监听引用，高频请求下阻碍 GC。
  *    因此超时控制采用 `AbortController` + `clearTimeout(timer)` 可控生命周期；
  * 2. 信号合成采用原生 Baseline 2024 `AbortSignal.any()`：
  *    当传入 callerSignal 时，由浏览器引擎底层自动联合监听多个信号，彻底消除手动
@@ -137,7 +138,7 @@ function combineSignals(
   }
 }
 
-async function request<T>(path: string, init?: RequestInit): Promise<T> {
+async function request<T>(path: string, init?: RequestInit, options?: RequestOptions): Promise<T> {
   const headers = new Headers(init?.headers)
   if (!headers.has('Content-Type') && !(init?.body instanceof FormData)) {
     headers.set('Content-Type', 'application/json')
@@ -148,7 +149,9 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     headers.set('Authorization', `Bearer ${token}`)
   }
 
-  const { signal, cleanup } = combineSignals(15000, init?.signal)
+  const timeout = options?.timeoutMs ?? 15000
+  const callerSignal = options?.signal ?? init?.signal
+  const { signal, cleanup } = combineSignals(timeout, callerSignal)
   try {
     const response = await fetch(`${BASE}${path}`, {
       ...init,
@@ -398,19 +401,35 @@ export const api = {
       body: JSON.stringify(payload),
     })
   },
-  createLocalComic: async (payload: import('@/types').LocalComicCreatePayload) => {
+  createLocalComic: async (
+    payload: import('@/types').LocalComicCreatePayload,
+    options?: RequestOptions,
+  ) => {
     memoizedDetail.clear()
-    return request<ComicDetail>('/library/local/create', {
-      method: 'POST',
-      body: JSON.stringify(payload),
-    })
+    return request<ComicDetail>(
+      '/library/local/create',
+      {
+        method: 'POST',
+        body: JSON.stringify(payload),
+        signal: options?.signal,
+      },
+      { timeoutMs: 60000, ...options },
+    )
   },
-  importLocalPath: async (payload: import('@/types').LocalPathImportPayload) => {
+  importLocalPath: async (
+    payload: import('@/types').LocalPathImportPayload,
+    options?: RequestOptions,
+  ) => {
     memoizedDetail.clear()
-    return request<ComicDetail>('/library/local/import-path', {
-      method: 'POST',
-      body: JSON.stringify(payload),
-    })
+    return request<ComicDetail>(
+      '/library/local/import-path',
+      {
+        method: 'POST',
+        body: JSON.stringify(payload),
+        signal: options?.signal,
+      },
+      { timeoutMs: 120000, ...options },
+    )
   },
   uploadPages: async (
     source: string,
@@ -418,6 +437,7 @@ export const api = {
     files: File[],
     chapterId = '',
     newChapterTitle = '',
+    options?: RequestOptions,
   ) => {
     memoizedDetail.delete(source, sourceId)
     const formData = new FormData()
@@ -428,10 +448,15 @@ export const api = {
     if (chapterId) params.set('chapter_id', chapterId)
     if (newChapterTitle) params.set('new_chapter_title', newChapterTitle)
     const qs = params.toString() ? `?${params.toString()}` : ''
-    return request<ComicDetail>(`/library/${source}/${sourceId}/upload-pages${qs}`, {
-      method: 'POST',
-      body: formData,
-    })
+    return request<ComicDetail>(
+      `/library/${source}/${sourceId}/upload-pages${qs}`,
+      {
+        method: 'POST',
+        body: formData,
+        signal: options?.signal,
+      },
+      { timeoutMs: 120000, ...options },
+    )
   },
   replaceComicPages: async (
     source: string,
@@ -448,11 +473,15 @@ export const api = {
     const params = new URLSearchParams()
     if (chapterId) params.set('chapter_id', chapterId)
     const qs = params.toString() ? `?${params.toString()}` : ''
-    return request<ComicDetail>(`/library/${source}/${sourceId}/replace-pages${qs}`, {
-      method: 'POST',
-      body: formData,
-      signal: options?.signal,
-    })
+    return request<ComicDetail>(
+      `/library/${source}/${sourceId}/replace-pages${qs}`,
+      {
+        method: 'POST',
+        body: formData,
+        signal: options?.signal,
+      },
+      { timeoutMs: 120000, ...options },
+    )
   },
   replaceComicPagesFromPath: async (
     source: string,
@@ -462,25 +491,35 @@ export const api = {
     options?: RequestOptions,
   ) => {
     memoizedDetail.delete(source, sourceId)
-    return request<ComicDetail>(`/library/${source}/${sourceId}/replace-path`, {
-      method: 'POST',
-      body: JSON.stringify({
-        server_path: serverPath,
-        target_chapter: chapterId,
-      }),
-      signal: options?.signal,
-    })
+    return request<ComicDetail>(
+      `/library/${source}/${sourceId}/replace-path`,
+      {
+        method: 'POST',
+        body: JSON.stringify({
+          server_path: serverPath,
+          target_chapter: chapterId,
+        }),
+        signal: options?.signal,
+      },
+      { timeoutMs: 120000, ...options },
+    )
   },
   appendPages: async (
     source: string,
     sourceId: string,
     payload: import('@/types').ComicAppendPayload,
+    options?: RequestOptions,
   ) => {
     memoizedDetail.delete(source, sourceId)
-    return request<ComicDetail>(`/library/${source}/${sourceId}/append`, {
-      method: 'POST',
-      body: JSON.stringify(payload),
-    })
+    return request<ComicDetail>(
+      `/library/${source}/${sourceId}/append`,
+      {
+        method: 'POST',
+        body: JSON.stringify(payload),
+        signal: options?.signal,
+      },
+      { timeoutMs: 120000, ...options },
+    )
   },
   updateChapter: async (source: string, sourceId: string, chapterId: string, title: string) => {
     memoizedDetail.delete(source, sourceId)
@@ -517,11 +556,15 @@ export const api = {
   imageSearch: async (file: File, options?: RequestOptions) => {
     const formData = new FormData()
     formData.append('file', file)
-    return request<import('@/types').ImageSearchResultItem[]>('/search/image', {
-      method: 'POST',
-      body: formData,
-      signal: options?.signal,
-    })
+    return request<import('@/types').ImageSearchResultItem[]>(
+      '/search/image',
+      {
+        method: 'POST',
+        body: formData,
+        signal: options?.signal,
+      },
+      { timeoutMs: 60000, ...options },
+    )
   },
   searchDialogue: (q: string, source?: string, limit: number = 20, options?: RequestOptions) => {
     const params = new URLSearchParams()

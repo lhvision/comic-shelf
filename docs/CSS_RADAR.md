@@ -45,6 +45,7 @@
    - [4.4 CSS `progress()` 数学函数](#44-css-progress-数学函数)
    - [4.5 CSS 动态鼠标跟随锚点（Mouse-Follow Anchor）](#45-css-动态鼠标跟随锚点mouse-follow-anchor)
    - [4.6 `text-fit` — 容器宽度文字自动适配（Stage 1-2 / Chrome 150+）](#46-text-fit--容器宽度文字自动适配stage-1-2--chrome-150)
+   - [4.7 CSS `border-shape` 与 `shape()` 一体化气泡轮廓裁切（Stage 1-2 / 实验草案）](#47-css-border-shape-与-shape-一体化气泡轮廓裁切stage-1-2--实验草案)
 5. [升级路线图（Roadmap）](#5-升级路线图roadmap)
 6. [参考资源（MDN & 博客专栏）](#6-参考资源mdn--博客专栏)
 
@@ -92,6 +93,7 @@
 | CSS `progress()` 数学函数                            |              138+               |               155+               |                  26+                  |               🔶 Newly Available 2026                |                     ✅ 渐进增强（以 `--progress` + `AppProgressBar` 承接）                      |
 | CSS 动态鼠标跟随锚点                                 |              144+               |                ⏳                |                  ⏳                   |                      🧪 Stage 2                      |                            📋 路线图（未来漫画阅读器局部高倍放大镜）                            |
 | **`text-fit`**                                       |              150+               |                ❌                |                  ❌                   |                      🧪 Stage 2                      |                           📋 路线图（未来阅读器顶栏长标题压缩防折行）                           |
+| **`border-shape` / `shape()`**                       |             148+🚩              |                ❌                |                  ❌                   |                     🧪 Stage 1-2                     |                   📋 实验探索（固定徽章提示储备，通用组件因动态内容形变慎用）                   |
 | CSS `if()` 行内条件                                  |             137+🚩              |                ❌                |                  ❌                   |                      🧪 Stage 1                      |                                    🚫 构建工具限制，暂不采用                                    |
 | CSS `@function`                                      |             139+🚩              |                ❌                |                  ❌                   |                      🧪 Stage 2                      |                                      🚫 过早引入，暂不采用                                      |
 
@@ -1052,14 +1054,15 @@ await withViewTransition(
 **MDN**：[Using interest invokers](https://developer.mozilla.org/en-US/docs/Web/API/Popover_API/Using_interest_invokers)  
 **规范阶段**：HTML / OpenUI Standard Track · Stage 2  
 **可用**：Chrome 130+🚩 (Origin Trial) · Firefox / Safari 规划中  
-**参考**：[张鑫旭 CSS interestfor 与 Invoker Target/Source 机制](https://www.zhangxinxu.com/wordpress/2026/03/css-interestfor-invoker-target-source/)  
-**本项目落地状态**：✅ 渐进增强声明（`AppTooltip.vue` 中声明 `interestfor` + `interest-delay`，旧环境由 Vue 事件定时器无缝兜底）
+**参考**：[张鑫旭 CSS interestfor 与 Invoker Target/Source 机制](https://www.zhangxinxu.com/wordpress/2026/03/css-interestfor-invoker-target-source/) · [张鑫旭 新时代下的tooltip提示效果的最佳实现](https://www.zhangxinxu.com/wordpress/2026/09/best-tooltip-effect/)  
+**本项目落地状态**：✅ 渐进增强声明（`AppTooltip.vue` 中声明 `interestfor` + `interest-delay` + `:interest-target`，旧环境由 Vue 事件定时器无缝兜底）
 
 **核心机制**：
 
-1. **声明式悬停关联**：`<button interestfor="tooltip-id">` 自动将悬停/聚焦意图派发至目标 popover，无需 JS 监听 mouseenter；
-2. **隐式锚点（Implicit Anchor）**：目标浮层只需写 `position-area: top` 即可自动定位，无需手写 `position-anchor`；
-3. **CSS 延迟与连环触发**：通过 `interest-delay: 100ms 150ms` 避免扫过时的误触，结合 `p:has(:interest-source) button { interest-delay-start: 0s }` 实现群组图标连续划过即时显现。
+1. **声明式悬停关联**：`<button interestfor="tooltip-id">` 自动将悬停/聚焦意图派发至目标 popover，无需手写 JS 监听 mouseenter/mouseleave；
+2. **隐式锚点（Implicit Anchor）**：目标浮层只需声明 `position-area: top` 即可自动与触发源关联并完成定位，在现代原生支持环境下无需显式生成 `--tip-xxx` 锚点名与 `position-anchor`；
+3. **状态伪类与关键帧联动（`:interest-target`）**：目标 Popover 被激活时浏览器引擎自动赋予 `:interest-target` 伪类，可直接触发硬件加速入场动画（`animation: tinydown 0.2s`），`AppTooltip.vue` 已将其纳入激活态选择器；
+4. **CSS 延迟与连环触发**：通过 `interest-delay: 100ms 150ms` 避免鼠标滑过时的误触，结合 `p:has(:interest-source) button { interest-delay-start: 0s }` 实现群组图标连续划过即时显现。
 
 ---
 
@@ -1388,6 +1391,64 @@ text-fit: <fit-type> <fit-target>;
 
 ---
 
+### 4.7 CSS `border-shape` 与 `shape()` 一体化气泡轮廓裁切（Stage 1-2 / 实验草案）
+
+**MDN**：[shape()](https://developer.mozilla.org/en-US/docs/Web/CSS/basic-shape/shape) · [border-shape (Draft)](https://drafts.csswg.org/css-borders-4/#border-shape)  
+**规范阶段**：Stage 1-2（CSS Borders and Backgrounds Module Level 4 / CSS Shapes Level 2）  
+**可用**：Chrome 148+🚩 · Firefox ❌ · Safari ❌  
+**参考**：[张鑫旭 全新的CSS border-shape属性简介](https://www.zhangxinxu.com/wordpress/2026/06/css-border-shape/) · [张鑫旭 新时代下的tooltip提示效果的最佳实现](https://www.zhangxinxu.com/wordpress/2026/09/best-tooltip-effect/)  
+**本项目落地决策**：📋 **前瞻实验储备；明确适用与禁忌边界（限定固定宽高/微标气泡，通用长文本 Tooltip 坚守当前 CSS Anchor + 伪元素方案）**
+
+**核心原理与语法**：
+
+1. **一体化路径轮廓（`shape(...)`）**：
+   使用全新 CSS `shape()` 函数（类似 SVG 路径语法的简化指令：`from`, `hline`, `vline`, `line`, `arc`, `close`），直接在单层 DOM 元素上裁切出带三角形指向尖角的异形气泡。
+2. **原生不规则边框（`border-shape`）**：
+   解决传统 `clip-path` 裁切后无法直接声明外描边的历史痛点。通过 `border-shape: var(--shape)`，浏览器渲染引擎直接沿着 `shape()` 路径计算并渲染真实清晰的 1px 细边框，无需借助多重 `drop-shadow()` 模糊滤镜模拟。
+
+```css
+.mention-tooltip {
+  --tooltip-shape: shape(
+    from 5% 0%,
+    hline to 95%,
+    arc to 100% 21.05% of 5% 21.05% small cw,
+    vline to 57.89%,
+    arc to 95% 78.95% of 5% 21.05% small cw,
+    hline to 55%,
+    line to 50% 100%,
+    line to 45% 78.95%,
+    hline to 5%,
+    arc to 0% 57.89% of 5% 21.05% small cw,
+    vline to 21.05%,
+    arc to 5% 0% of 5% 21.05% small cw,
+    close
+  );
+  aspect-ratio: 4.211;
+  clip-path: var(--tooltip-shape);
+}
+
+@supports (border-shape: none) {
+  .mention-tooltip {
+    clip-path: none;
+    border: 1px solid var(--line-strong);
+    border-shape: var(--tooltip-shape);
+  }
+}
+```
+
+**纸间实战评估与避坑红线（为什么通用 `<AppTooltip>` 不能直接照搬）**：
+
+1. **几何自适应与非线性形变暗礁**：
+   - `shape()` 中的坐标百分比是与盒模型尺寸强绑定的。张文中案例成立的前提是其固定了 `aspect-ratio: 4.211` 且文案固定；
+   - 纸间的 [`AppTooltip.vue`](file:///home/miku/lhvision/comic-shelf/src/components/AppTooltip.vue) 是全站通用的顶层组件，内部承载的内容涵盖单行简短徽章、多行折行长句、富文本 slot（如详情页致谢排版、阅读器快捷键指引等），宽度与高度完全动态。一旦把固定百分比的 `shape()` 应用到动态高度/宽度的容器，**三角形小尖角和四角圆角会被不可控地等比拉伸或扁平化畸变**；
+2. **视口碰撞翻转时的极度复杂性**：
+   - 传统方案通过 `@container anchored (fallback: flip-block)`，只需通过 CSS 重置伪元素 `::before` 的 `top/bottom` 方向即可反转小尖角；
+   - 若使用 `shape()`，在发生 `flip-block`（向上翻转）或 `flip-inline`（向左翻转）时，必须为每一种方位分别逆向计算一套全新的 `shape()` 路径字符串，维护成本与认知负荷极高；
+3. **纸间的最佳落地场景**：
+   - 纳入纸间设计系统实验库，保留用于**宽高与文字完全固定的单体微标指示气泡**（例如阅读器虚拟滑动悬浮页码浮标 `12/80`、阅读模式按键标签），通用复杂浮层继续坚定采用黄金组合拳（HTML Popover API + CSS Anchor Positioning + `@container anchored(fallback)` + 伪元素小三角）。
+
+---
+
 ## 5. 升级路线图（Roadmap）
 
 ### 已落地（2026-08 / 2026-09）
@@ -1455,6 +1516,8 @@ text-fit: <fit-type> <fit-target>;
 | **排版字效** | CSS `text-fit` 容器宽度文本自动适配                      | https://www.zhangxinxu.com/wordpress/2026/08/css-text-fit/                               |
 | **媒体管线** | 响应式图片 `srcset` 全新释义、`sizes` 属性与 `w` 描述符  | https://www.zhangxinxu.com/wordpress/2014/10/responsive-images-srcset-size-w-descriptor/ |
 | **浮层交互** | CSS `interestfor` 与 Invoker Target/Source 机制          | https://www.zhangxinxu.com/wordpress/2026/03/css-interestfor-invoker-target-source/      |
+| **浮层交互** | 新时代下的 tooltip 提示效果的最佳实现                    | https://www.zhangxinxu.com/wordpress/2026/09/best-tooltip-effect/                        |
+| **浮层交互** | 全新的 CSS `border-shape` 属性简介                       | https://www.zhangxinxu.com/wordpress/2026/06/css-border-shape/                           |
 | **浮层交互** | HTML `popover="hint"` 提示类型深度解析                   | https://www.zhangxinxu.com/wordpress/2025/07/html-popover-hint/                          |
 | **浮层交互** | JS 原生 HTML `popover` 实现下拉菜单                      | https://www.zhangxinxu.com/wordpress/2024/01/js-html-popover-dropdown/                   |
 | **锚点定位** | CSS Anchor Positioning API 深入浅出                      | https://www.zhangxinxu.com/wordpress/2024/06/css-anchor-positioning-api/                 |

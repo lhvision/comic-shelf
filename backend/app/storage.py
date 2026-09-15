@@ -1133,6 +1133,19 @@ class ComicStore:
     def _natural_key(s: str) -> list[int | str]:
         return [int(text) if text.isdigit() else text.lower() for text in re.split(r"(\d+)", s)]
 
+    @staticmethod
+    def _link_or_copy_file(src: Path, dest: Path) -> None:
+        """优先使用硬链接实现零拷贝极速导入，若跨盘/跨文件系统(EXDEV)则优雅降级为复制。"""
+        if dest.exists():
+            try:
+                dest.unlink()
+            except OSError:
+                pass
+        try:
+            os.link(src, dest)
+        except OSError:
+            shutil.copy2(src, dest)
+
     @classmethod
     def _group_by_composite_chapter_pattern(
         cls, items: list[tuple[str, str, Any]]
@@ -1333,7 +1346,7 @@ class ComicStore:
                     ext = img_file.suffix.lower()
                     dest_name = f"{local_i:05d}{ext}"
                     dest_path = chap_pages_dir / dest_name
-                    shutil.copy2(img_file, dest_path)
+                    self._link_or_copy_file(img_file, dest_path)
 
                     pages.append(PageRecord(index=global_idx, file=dest_name, ext=ext, cached=True, chapter=chap_id))
                     remote_pages.append(RemotePage(index=global_idx, url="", file=dest_name, ext=ext, chapter=chap_id))
@@ -1371,7 +1384,7 @@ class ComicStore:
                     for local_i, (filename, ext, img_file) in enumerate(chap_items, start=1):
                         dest_name = f"{local_i:05d}{ext}"
                         dest_path = chap_pages_dir / dest_name
-                        shutil.copy2(img_file, dest_path)
+                        self._link_or_copy_file(img_file, dest_path)
 
                         pages.append(PageRecord(index=global_idx, file=dest_name, ext=ext, cached=True, chapter=chap_id))
                         remote_pages.append(RemotePage(index=global_idx, url="", file=dest_name, ext=ext, chapter=chap_id))
@@ -1391,7 +1404,7 @@ class ComicStore:
                     ext = img_file.suffix.lower()
                     dest_name = f"{local_i:05d}{ext}"
                     dest_path = target_pages_dir / dest_name
-                    shutil.copy2(img_file, dest_path)
+                    self._link_or_copy_file(img_file, dest_path)
 
                     pages.append(PageRecord(index=global_idx, file=dest_name, ext=ext, cached=True, chapter=""))
                     remote_pages.append(RemotePage(index=global_idx, url="", file=dest_name, ext=ext, chapter=""))
@@ -1425,21 +1438,33 @@ class ComicStore:
         fetched = FetchedComic(meta=meta, remote_pages=remote_pages)
         self.save_fetched(fetched, refresh=False)
 
-        # Generate covers and thumbs for initial pages
-        for i in range(1, min(meta.cover_count, meta.page_count) + 1):
+        # Generate primary cover and thumbnail synchronously for instant shelf display
+        if meta.page_count > 0:
             try:
-                self.ensure_webp_cover(meta, fetched, i)
-                self.ensure_webp_cover(meta, fetched, i, COVER_THUMB_WIDTH)
+                self.ensure_webp_cover(meta, fetched, 1)
+                self.ensure_webp_cover(meta, fetched, 1, COVER_THUMB_WIDTH)
             except Exception as e:
-                logger.warning("Failed to generate initial cover %d for %s: %s", i, source_id, e)
+                logger.warning("Failed to generate initial primary cover for %s: %s", source_id, e)
 
-        if meta.chapters:
-            for ch in meta.chapters:
+        # Generate auxiliary covers and chapter covers asynchronously in background daemon thread,
+        # preventing heavy Pillow CPU encoding from blocking the synchronous HTTP response.
+        def _bg_generate_auxiliary_covers() -> None:
+            for i in range(2, min(meta.cover_count, meta.page_count) + 1):
                 try:
-                    self.ensure_webp_chapter_cover(meta, fetched, ch)
-                    self.ensure_webp_chapter_cover(meta, fetched, ch, COVER_THUMB_WIDTH)
+                    self.ensure_webp_cover(meta, fetched, i)
+                    self.ensure_webp_cover(meta, fetched, i, COVER_THUMB_WIDTH)
                 except Exception as e:
-                    logger.warning("Failed to generate initial chapter cover %s for %s: %s", ch.id, source_id, e)
+                    logger.debug("Background cover generation %d for %s skipped: %s", i, source_id, e)
+
+            if meta.chapters:
+                for ch in meta.chapters:
+                    try:
+                        self.ensure_webp_chapter_cover(meta, fetched, ch)
+                        self.ensure_webp_chapter_cover(meta, fetched, ch, COVER_THUMB_WIDTH)
+                    except Exception as e:
+                        logger.debug("Background chapter cover generation %s for %s skipped: %s", ch.id, source_id, e)
+
+        threading.Thread(target=_bg_generate_auxiliary_covers, daemon=True, name=f"cover-gen-{source_id}").start()
 
         return meta
 
@@ -1551,7 +1576,7 @@ class ComicStore:
                             dest_name = f"{local_i:05d}{ext}"
                             dest_path = chap_dir / dest_name
                             if isinstance(data_to_write, Path):
-                                shutil.copy2(data_to_write, dest_path)
+                                self._link_or_copy_file(data_to_write, dest_path)
                             else:
                                 dest_path.write_bytes(data_to_write)
 
@@ -1588,7 +1613,7 @@ class ComicStore:
                         dest_name = f"{local_i:05d}{ext}"
                         dest_path = chap_dir / dest_name
                         if isinstance(data_or_path, Path):
-                            shutil.copy2(data_or_path, dest_path)
+                            self._link_or_copy_file(data_or_path, dest_path)
                         else:
                             dest_path.write_bytes(data_or_path)
 
@@ -1624,7 +1649,7 @@ class ComicStore:
                     dest_name = f"{offset + local_i:05d}{ext}"
                     dest_path = chap_dir / dest_name
                     if isinstance(data_or_path, Path):
-                        shutil.copy2(data_or_path, dest_path)
+                        self._link_or_copy_file(data_or_path, dest_path)
                     else:
                         dest_path.write_bytes(data_or_path)
                     new_chap_pages.append((dest_name, ext))
@@ -1774,7 +1799,7 @@ class ComicStore:
                     dest_name = f"{idx:05d}{ext}"
                     dest_path = staging_dir / dest_name
                     if isinstance(content_or_path, Path):
-                        shutil.copy2(content_or_path, dest_path)
+                        self._link_or_copy_file(content_or_path, dest_path)
                     else:
                         dest_path.write_bytes(content_or_path)
                     staged_names.append((dest_name, ext))
@@ -1883,7 +1908,7 @@ class ComicStore:
                                 dest_name = f"{local_i:05d}{ext}"
                                 dest_path = chap_staging_dir / dest_name
                                 if isinstance(content_or_path, Path):
-                                    shutil.copy2(content_or_path, dest_path)
+                                    self._link_or_copy_file(content_or_path, dest_path)
                                 else:
                                     dest_path.write_bytes(content_or_path)
                                 rebuilt_pages.append(
@@ -1934,7 +1959,7 @@ class ComicStore:
                         dest_name = f"{idx:05d}{ext}"
                         dest_path = staging_dir / dest_name
                         if isinstance(content_or_path, Path):
-                            shutil.copy2(content_or_path, dest_path)
+                            self._link_or_copy_file(content_or_path, dest_path)
                         else:
                             dest_path.write_bytes(content_or_path)
                         staged_names.append((dest_name, ext))

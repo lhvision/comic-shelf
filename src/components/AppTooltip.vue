@@ -400,6 +400,7 @@ defineExpose({
 /* 激活态（结合 JS is-visible、:popover-open 或原生 :interest-target） */
 .tooltip__tip.is-visible,
 .tooltip__tip:popover-open,
+.tooltip__tip:interest-target,
 .tooltip-wrapper:hover .tooltip__tip,
 .tooltip-wrapper:focus-within .tooltip__tip {
   opacity: 1;

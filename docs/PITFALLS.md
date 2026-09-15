@@ -1085,6 +1085,21 @@
     2. **函数 Ref 绑定**：对于外部 Composable 注入的 Ref，模板中采用 `:ref="(el) => { dropZoneRef = el as HTMLElement }"` 明确建立 TS AST 依赖链；
     3. **双轨分工检查**：`vite.config.ts` 对 `*.vue` 单独关闭 `no-unused-vars`，由开启了 `noUnusedLocals` 的 `pnpm type-check`（`vue-tsc --build`）全权负责 Vue 模板的严格未引用检查。
 
+### 100. 本地路径导入与长耗时 RPC 一刀切短超时引发的时序撕裂与 I/O 阻塞陷阱（Split-Horizon Timeout & Heavy File Copy Stall）
+
+- **本质**：
+  1. **一刀切 15s 前端超时与重型 I/O 的时序撕裂（Split-Horizon Abortion）**：在防范 Socket 泄漏时，若全站无差别设置 15s 超时，面对服务器/NAS 本地目录导入（数百上千张图片）、全书重新装订等操作，由于服务端仍在同步遍历磁盘复制或生成各章节封面，前端在第 15 秒精准触发 `TimeoutError` 弹红提示失败；而服务端 Python 线程在后台默默将整本收录入库，造成「界面提示失败但刷新后已存在」的严重用户体验认知割裂；
+  2. **跨卷/同卷磁盘物理全量拷贝冗余（Physical Duplicate Copy vs Hardlink）**：在同一 NAS/主机文件系统下，使用 `shutil.copy2` 无谓地将几百兆至数千兆数据重新写入磁盘，不仅耗时长达数十秒，还浪费宝贵的磁盘存储空间；
+  3. **多话封面同步转码阻塞主请求（Synchronous Pillow CPU Bottleneck）**：在本地导入主请求中，若同步对几十个章节的第一页逐一解码并生成 WebP 缩略图，CPU 密集型计算直接卡死 HTTP 响应。
+- **红线与防误伤**：
+  - **不要**简单粗暴地将全站所有 API 请求超时调长为几分钟（破坏普通短请求的快速失败能力）；
+  - **不要**在本地路径导入中对所有文件无差别执行物理全量复制；
+  - **不要**在同步导入请求中连续生成全量多章节的封面图片；
+  - **放行/改用**：
+    1. **分级超时契约（Per-Request Timeout Override）**：轻量 API 继续维持 15s 快速失败基线，重型操作（`importLocalPath`、`replaceComicPagesFromPath`、`uploadPages`）显式放宽至 60s~120s；
+    2. **同卷零拷贝硬链接（Zero-Copy Hardlink with Fallback）**：优先通过 `os.link` 创建硬链接（微秒级瞬时完成且不占额外空间），若遇到跨设备/跨挂载点（`EXDEV`）自动回退至 `shutil.copy2`；
+    3. **主封面同步 + 章节封面异步分阶就绪**：首图主封面同步秒级生成供书架展示，多话章节封面交由后台守护线程异步转码，彻底解放 HTTP 同步响应。
+
 ---
 
 ## 🚦 交付门禁（四步必跑）

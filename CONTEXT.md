@@ -17,7 +17,7 @@
 - **来源（Source / Provider）**：作品的远端或本地出处（`jm` 禁漫、`local` 本地自建/本地目录导入、`picacg` 哔咔）。每个来源有独立的 `short_label`、编号格式、数据目录 `library/<source>/<source_id>/`。
 - **本地自建漫画（Local Comic）**：由用户直接上传图片文件或指定服务器已有文件夹（如视频拆帧目录）收录生成的作品。`source = "local"`，无远端依赖，直接持久化于 `library/local/<source_id>/`。
 - **哔咔漫画（PicAcg Comic）**：由哔咔数据源收录的作品。`source = "picacg"`，使用 24 位十六进制 ObjectId 标识；逆向协议与端点单一权威参考 `https://github.com/wgh136/PicaComic`；画卷原生为标准 JPEG/PNG 格式，不设切片混淆但需分流鉴权；封面策略首图优先采用官方 `thumb` 并转码 720px/360px WebP，续接正文前 3 页构成书架 4 叠牌展开。
-- **收录（Import）**：把一本作品"放进纸间"的动作。规则：先查本地 `album.json`，命中则 `from_cache=true` 绝不请求远端；首次收录缓存前 4 页做封面。本地自建漫画收录时即时生成封面与缩略图。
+- **收录（Import）**：把一本作品"放进纸间"的动作。规则：先查本地 `album.json`，命中则 `from_cache=true` 绝不请求远端；首次收录缓存前 4 页做封面。本地自建漫画收录时优先通过硬链接（Hardlink）实现零拷贝秒级收录（跨卷自动回退至物理复制）；即时生成主封面供书架秒级呈现，其余辅助封面与多话章节封面交由后台守护线程异步转码，绝不阻塞收录响应。
 - **服务端本地化（Server-side Caching / Cachify）**：把页面图片下载到服务器本地磁盘（`backend/data/library/`，对应 `cached_pages` / `cache_complete`）。图片必须走解密工具，禁止直接保存下载字节；本地自建漫画页面在导入时即为 100% 本地化。此概念属于后端存储范畴，严格区别于移动/浏览器端的离线运行状态。
 - **批次增量预缓存（Paged Batch Prefetch / Stepped Server-side Caching）**：针对单本总页数超出单次下载配额上限（`MAX_PREFETCH`，默认 600 页）的超长连载漫画，在触发全本本地化时建立的步进式顺延调度机制。系统通过探查磁盘与元数据，按全局页码从小到大提取未缓存（`cached === false`）画页切片取前 N 页执行下载；单批完成后全书若尚未全部就绪，维持未终态并支持馆长在详情页再次点击“缓存全部”顺延下一批，直至全本 100% 本地化。与远端发布新章节时的「增量更新（Incremental Refresh）」严格解耦。
 - **并发上传队列（Concurrent Upload Queue）**：批量上传大量图片（如数百张拆帧图）时的客户端流量阀门。采用受限并发（3~4 路）分批推送到后端，兼顾上传速度与服务器连接稳定性。
