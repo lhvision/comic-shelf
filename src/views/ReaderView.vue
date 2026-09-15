@@ -102,6 +102,10 @@ const readerNavigation = useReaderNavigation({
 const { progressValue, pillActive, prevGroup, nextGroup, goNextChapter, goPrevChapter } =
   readerNavigation
 
+const isAutoTurnActive = computed(
+  () => settings.autoTurn && settings.mode !== 'vertical-continuous',
+)
+
 const readerAutoTurn = useAutoTurn({
   settings,
   currentGroupIndex,
@@ -110,9 +114,8 @@ const readerAutoTurn = useAutoTurn({
   chromeVisible,
   onAdvance: () => advanceAutoTurn(),
   onScheduleChromeHide: readerChrome.scheduleChromeHide,
-  scrollEl,
 })
-const { autoTurnRemaining, autoTurnPaused, isDockedAtEnd, toggleAutoTurnPause } = readerAutoTurn
+const { autoTurnRemaining, autoTurnPaused, toggleAutoTurnPause } = readerAutoTurn
 
 const {
   initReaderView,
@@ -204,21 +207,18 @@ const { recommendations, onReaderCompleted, onSelectComic, onOpenComicDetail, on
 
     <ReaderHud
       v-if="!loading"
-      :auto-turn="settings.autoTurn"
+      :auto-turn="isAutoTurnActive"
       :at-last-group="atLastGroup"
-      :is-docked-at-end="isDockedAtEnd"
       :auto-turn-paused="autoTurnPaused"
       :settings-open="settingsOpen"
       :auto-turn-remaining="autoTurnRemaining"
-      :mode="settings.mode"
-      :auto-scroll-speed="settings.autoScrollSpeed"
       :current-group-label="currentGroupLabel"
       :total="total"
       :prev-icon="prevIcon"
       :next-icon="nextIcon"
       :can-prev="currentGroupIndex > 0"
       :can-next="currentGroupIndex < lastGroupIndex"
-      :hidden="!chromeVisible && !settings.autoTurn"
+      :hidden="!chromeVisible && !isAutoTurnActive"
       @toggle-auto-turn-pause="toggleAutoTurnPause"
       @prev="prevGroup"
       @next="nextGroup"

@@ -46,7 +46,7 @@ export function useReaderInteraction(options: UseReaderInteractionOptions) {
     settings: { settings, clearActiveComic, applyComicPreferences },
     bubble: { targetBubble, targetPage, dismissBubble },
     data: { detail, loading, source, sourceId, scopeId, backToDetail, lastRead },
-    paging: { scopedPages, total, clampToScope, groupIndexForPage, groupFirstPage, lastGroupIndex },
+    paging: { scopedPages, total, clampToScope, groupIndexForPage },
     chrome: { toggleChrome, showChromeTemporarily, scheduleChromeHide },
     navigation: {
       scrollToGroup,
@@ -54,13 +54,14 @@ export function useReaderInteraction(options: UseReaderInteractionOptions) {
       goToPage,
       prevGroup,
       nextGroup,
+      advanceAutoTurn: navAdvanceAutoTurn,
       onScroll,
       onWheel,
       preloadAround,
       goNextChapter,
       goPrevChapter,
     },
-    autoTurn: { yieldAutoScroll, onAutoTurnScroll, resetAutoTurnCountdown },
+    autoTurn: { resetAutoTurnCountdown },
   } = options
 
   async function initReaderView() {
@@ -80,11 +81,7 @@ export function useReaderInteraction(options: UseReaderInteractionOptions) {
   }
 
   function advanceAutoTurn() {
-    const nextIndex = Math.min(currentGroupIndex.value + 1, lastGroupIndex.value)
-    currentGroupIndex.value = nextIndex
-    currentPage.value = groupFirstPage(nextIndex)
-    const behavior = reducedMotion.value ? 'auto' : 'smooth'
-    scrollToGroup(nextIndex, behavior)
+    navAdvanceAutoTurn(reducedMotion.value)
   }
 
   function onPageReady(_page: number) {
@@ -95,18 +92,17 @@ export function useReaderInteraction(options: UseReaderInteractionOptions) {
 
   function onViewportWheel(event: WheelEvent) {
     userInteracted.value = true
-    yieldAutoScroll()
+    resetAutoTurnCountdown()
     onWheel(event)
   }
 
   function onUserInteract() {
     userInteracted.value = true
-    yieldAutoScroll()
+    resetAutoTurnCountdown()
   }
 
   function onContainerScroll() {
     onScroll()
-    onAutoTurnScroll()
   }
 
   function onReaderClick(event: MouseEvent) {

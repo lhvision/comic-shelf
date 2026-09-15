@@ -874,23 +874,18 @@
     3. **瞬态网络重试与漏页通知**：后端 `prefetch` 循环内注入单次 300ms 退避重试，平滑绝大部分网络抖动；若仍未完成则广播 `cache_partial`，前端 Toast 友好提示；
     4. **本地轻量自愈（Local Cache Reconciliation）**：在查询详情与进度时自动探查磁盘已存在的文件，自愈修正 `page.cached = true`。
 
-### 85. 条漫连续模式终页高度不足致物理触底失效、流卷停靠态竞态循环与手势避让死锁陷阱 (Webtoon Short Last-Page Clamping Failure, Continuous Auto-Scroll Race Condition & Docking Lockup Trap)
+### 85. 条漫连续模式终页高度不足致物理触底失效、流卷停靠态竞态循环与动晕症陷阱 (Webtoon Short Last-Page Clamping Failure, Continuous Stream Deprecation & Cybersickness Trap)
 
 - **本质**：
   1. **短终页几何对齐落空（Short Last-Page Distance Trap）**：在竖向连续（条漫）模式下，原分屏吸附算法通过计算 `Math.abs(spread.offsetTop - scrollTop)` 确定最临近画页。当整话最后一页物理高度小于浏览器视口高度时（例如终页高度 584px，视口高度 900px），滚动容器在完全触底（`scrollTop === scrollHeight - clientHeight`）时，最后一页顶边仍处于视口中下部，`scrollTop` 永远无法触达该页的 `offsetTop`。算法在距离判定上始终将倒数第二页判定为“最近页”，导致页码永远卡在 `N-1 / N`（例如 `160 / 161`），底层 `atChapterEnd` 永远无法激活，下一话跳转横幅彻底丢失；
-  2. **流卷停靠态与滚动事件竞态循环（Auto-Scroll Docking Race Condition）**：在条漫基于 `requestAnimationFrame` 匀速自动流卷推进中，每帧物理更新 `el.scrollTop` 均会触发原生 `scroll` 事件。若在 `handleScroll` 中无差别调用翻页倒计时重置 `resetAutoTurnCountdown()`，当流卷触底触发 `isDockedAtEnd = true` 并停止 rAF 时，触底最后一帧派发的异步 `scroll` 事件会立即调用 `resetAutoTurnCountdown()` 将 `isDockedAtEnd` 冲刷置回 `false` 并重新唤醒 rAF，引发底端无意义空转与状态撕裂；
-  3. **驻留锁死与回滚死锁（Docking Freeze Trap）**：读者抵达话末触发 `isDockedAtEnd` 驻留刹车后，若向上滑动回看前文，若底层仅在用户主动点击播放/暂停时才释放驻留锁，会导致软避让（Soft Yield）1.5 秒后由于 `isDockedAtEnd === true` 而永久无法恢复自动流卷，造成读者困惑；
-  4. **末页读阅中 HUD 速度控制提前退场**：若仅根据 `atLastGroup`（`currentGroupIndex >= lastGroupIndex`）作为 HUD 自动翻页按钮的隐藏门禁，当读者阅读线刚接触最后一页顶部时，由于当前组索引变为末组，右下角流卷速度控制胶囊（如 `80px`）突兀消失，导致读者在阅读整张末页长图时彻底丧失随时暂停控制的能力。
+  2. **匀速流卷动晕症与机械自动化冲突（Continuous Stream Cybersickness Anti-pattern）**：在条漫长卷中曾尝试基于 `requestAnimationFrame` 驱动视口以设定速度匀速流卷推进。由于条漫分镜高度与信息密度极其非均质，匀速移动破坏了注视锚点，诱发视觉-前庭感官冲突与严重动晕症（头晕恶心）。条漫模式已彻底废弃流卷与机械自动化，将节奏 100% 交还给读者的手势/滚轮；
+  3. **行内章末过渡卡片（In-flow Chapter Transition）**：条漫模式下废除遮挡分镜画面的悬浮下一话横幅，改在画卷尾部自然内嵌流式章末卡片（`.reader-webtoon-chapter-end`），末页整张画卷完整入目。
 - **红线与防误伤**：
   - **不要**在连续滚动模式下仅依赖页面顶边到视口顶端的绝对距离判定当前页；
-  - **不要**在连续流卷模式下的物理滚动事件监听中无条件重置离散倒计时；
-  - **不要**在读者已经回滚离开话末后依然强制锁死话末停靠状态；
-  - **不要**在条漫模式下将离散末屏判断作为连续流卷 HUD 的收起依据；
+  - **不要**在条漫（竖向连续）模式下引入任何持续线性位移或机械定时，防止动晕症与失控感；
   - **放行/改用**：
     1. **绝对触底夹紧与 40% 视口阅读线几何相交（Bottom Clamping & Read-Line Intersection）**：当滚动容器距离底端 `position >= max - 24` 时，确定性将当前组索引钳制为 `lastGroupIndex`，彻底根治短终页无法翻至最后一页与无下一话按钮问题；非极端边界采用视口高度上方 40% 有效阅读线与画页几何相交探测；
-    2. **翻页排版模式分流守卫（Paging Mode Guard）**：`useReaderNavigation` 仅在离散翻页模式（`settings.mode !== 'vertical-continuous'`）下在滚动时触发 `resetAutoTurnCountdown()`，条漫模式完全交由 rAF 流卷状态机接管，杜绝竞态死循环；
-    3. **回滚自愈解绑（Scroll-Away Un-docking）**：读者主动通过滚轮、触控或滚动条向上滑动离开底端（`el.scrollTop < max - 40`）时，即刻释放 `isDockedAtEnd` 驻留锁，静止 1.5 秒后平滑恢复自动流卷；
-    4. **停靠态解耦与行内章末过渡卡片（In-flow Chapter Transition & Decoupled Docking）**：条漫模式下废除遮挡分镜画面的悬浮下一话横幅，改在画卷尾部自然内嵌流式章末卡片（`.reader-webtoon-chapter-end`）；HUD 控制按钮以 `isContinuous() ? !isDockedAtEnd : !atLastGroup` 进行解耦，末页整张画卷阅读过程中速度胶囊全程常驻可用，直至滚动完全抵达底端停靠卡片时才平滑收整。
+    2. **自动翻页专精离散翻页**：自动翻页（Auto-turn）严格限定在横向/竖向离散翻页模式下运行，在静止阅读期 100% 绝对静止，条漫长卷彻底豁免自动化。
 
 ### 86. 超长单本主滚动容器全量 offsetTop 重排风暴致 Chrome 崩溃与 iPad WebKit 惯性动量锁死 (High-Volume Full-DOM offsetTop Reflow Storm & WebKit Momentum Lockup)
 
@@ -941,14 +936,8 @@
 - **本质**：
   1. **翻页模式大跳转探测误判**：在阅读器横向与纵向分页模式（`settings.mode !== 'vertical-continuous'`）下，页面由吸附滚动（Scroll Snap）驱动。若大跨度跳转阈值定为绝对像素（如 600px），在 iPad、高分屏或双页拼卷（双页跨度可达 1600px~2400px）场景下，一次正常的单屏翻页就会超过 600px，被算法误判为“用户拖拽了滚动条发生了大跨度跳转”，强制触发全量插值与 DOM 二分查找，破坏平滑翻页性能；
   2. **快速连续翻页候选页探测越界（Probe Miss）**：快速划动翻页时，用户可以在一个动画帧内跨越 2 个分组。若候选邻域仅探测当前组的前后 1 组（`±1`），快速翻页瞬间直接落空，导致每帧回退到二分查找；
-  3. **条漫回滚自愈驻留死锁**：条漫模式下到达章节末尾触发停靠锁（`isDockedAtEnd = true`）后，若用户向上滑动回看前文，若缺乏原生滚动事件的主动解绑机制，停靠锁无法解除，导致静止 1.5 秒后软避让失效、自动流卷永远无法恢复。
-- **红线与防误伤**：
-  - **不要**在分页模式下使用绝对固定像素作为大跨度跳转的判定门禁；
-  - **不要**在快速滚动探测中仅保留单项邻域探测；
-  - **放行/改用**：
-    1. **动态视口相对阈值（Dynamic Viewport Ratio Clamp）**：大跨度跳转门禁采用 `pageSize * 0.5`（或横向/纵向容器尺寸的半屏跨度），自适应单页、双页及任意分辨率设备；
-    2. **局部双向候选集拓宽（±2 Bidirectional Probe）**：邻域探测拓宽为 `[cur, cur + 1, cur - 1, cur + 2, cur - 2]`，99.9% 覆盖快速翻页场景，二分查找触发率降至 0.01%；
-    3. **滚动事件解耦与自愈解绑**：监听主容器原生 `@scroll` 事件，在条漫向上回滚时（`scrollTop < max - 40`）自动释放 `isDockedAtEnd` 驻留锁，保证读者手势回滑后平滑恢复自动流卷。
+  3. **动态视口相对阈值（Dynamic Viewport Ratio Clamp）**：大跨度跳转门禁采用 `pageSize * 0.5`（或横向/纵向容器尺寸的半屏跨度），自适应单页、双页及任意分辨率设备；
+  4. **局部双向候选集拓宽（±2 Bidirectional Probe）**：邻域探测拓宽为 `[cur, cur + 1, cur - 1, cur + 2, cur - 2]`，99.9% 覆盖快速翻页场景，二分查找触发率降至 0.01%。
 
 ### 90. 万级藏书客户端多维搜索与主线程 CPU 掉帧陷阱（Web Worker 卸载、极简 ID 传递与三层防御） (Large-Scale Library Client-Side Filtering & Web Worker Offloading)
 

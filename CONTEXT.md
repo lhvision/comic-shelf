@@ -101,8 +101,7 @@
 - **跨话横幅（Chapter Banners / 话首·话末横幅）**：多章节阅读模式下在当前话第一页与最后一页底部浮现的「← 上一话」与「本话完 · 下一话 →」导航交互胶囊（`ReaderChapterBanners.vue`）。
 - **离散滚轮步进与双轴分流（Discrete Wheel Stepping & Dual-Axis Discrimination）**：横向翻页模式下兼顾 PC 鼠标机械滚轮与触控板的物理映射范式。水平主导手势全额放行原生视口平滑滑移；垂直主导滚轮经阈值保护转换为单屏离散步进，自适应 LTR 与 RTL（日漫）阅读流向，通过原生物理滚动无缝联动内核级滚动驱动动画与进度条，彻底消除强制吸附对小位移滚轮的回弹假死。
 - **继续阅读（Last-read）**：每本作品独立记录"上次翻到第几页"（`comic-shelf:last-read:<source>/<sourceId>`），详情页据此显示"继续阅读"。
-- **自动切换（Auto-turn）**：按固定间隔（5/10/15/30 秒）自动翻到下一屏的辅助功能；开启后 HUD 常驻，手动操作重置计时。在竖向翻页与横向翻页离散模式下生效。
-- **自动流卷 / 匀速漫游（Auto-scroll Stream / Continuous Auto-Scroll）**：竖向连续（条漫）排版模式下自动阅读的特化形态。由 `requestAnimationFrame` 驱动视口以设定速率（40/80/140 px/s 或自定义）匀速向下平滑滑移，彻底替代离散切屏翻页；具备交互瞬时避让（Soft Yield，滚轮/触控介入时暂避并在停顿 1.5s 后平滑自愈恢复）与话末平缓停靠（Dock & Hold）特性。
+- **自动切换（Auto-turn）**：按固定间隔（5/10/15/30 秒或自定义）自动翻到下一屏的辅助功能；开启后 HUD 常驻，手动操作重置计时。严格限定在离散翻页排版模式（竖向翻页与横向翻页）下生效；在竖向连续（条漫长卷）模式下设计上彻底豁免自动化，尊重由读者指尖/滚轮 1:1 掌控的非均质流式阅读节奏，彻底消除机械定时与持续位移引发的动晕症。
 - **绝对触底夹紧与视口中心线探测（Scroll Bottom Clamping & Viewport Center Intersection）**：解决条漫分镜切片高度不一、末页顶边无法触及视口顶端导致页码停滞与下一话横幅缺失的几何法则。当滚动容器距底部小于等于 24px 时，强制夹紧至当前话末页并激活跨话状态；非触底状态以视口有效阅读线（视口上方 40% 处）与画卷相交计算当前页码，消除短切片识别盲区。
 - **流式行内收尾卡片（In-flow Chapter Transition Card）**：竖向连续长卷模式下位于全话末页正文文档流下方的章节完结与切话微件。自然顺接于末页画卷之后并带有充足的视口呼吸垫高留白，替代遮挡正文的绝对定位悬浮胶囊，确保全话末尾分镜与台词 100% 完整可见。
 - **阅览室暗色环境（Reader room）**：阅读器固定的深色环境（`--reader-*` tokens），不随系统亮/暗主题切换，与书房（书架首页）的亮色纸面刻意区分。
@@ -124,6 +123,7 @@
 - **设计演进里程碑归档（Design Milestones Archive）**：`docs/design-archive/` 下收录的纸间历史演进推演、挑刺与重构记录，供历史溯源，与常青设计规范物理解耦。
 - **设计令牌（Design tokens）**：`src/styles/tokens.css` 中的颜色/间距/字号/圆角/动效体系，UI 改动必须收敛到 token，禁止硬编码漂移。
 - **淘汰特性：HTML-in-Canvas 列表实验（Deprecated: HTML-in-Canvas List Experiment）**：曾作为探索将书架卡片 DOM 绘制进 Canvas 的试验，经实机评估，因 GPU 显存膨胀（每卡独立 Canvas 纹理暴涨）、CSS Grid 下 ResizeObserver 自激震荡（无限增长死循环）以及交互语义退化，已被作为反模式彻底从主干废弃移除；书架坚守原生 DOM + 48 图增量预算的高性能纯净架构。
+- **淘汰特性：匀速流卷实验（Deprecated: Continuous Auto-Scroll Stream Experiment）**：曾尝试通过 `requestAnimationFrame` 驱动长卷视口无休止线性位移（40/80/140 px/s），经实机评估，因视觉-前庭感官冲突（Visual-Vestibular Conflict）以及注视点缺失极易诱发视动性眼震与剧烈动晕症（视觉眩晕与恶心），已被作为反模式彻底从主干废弃移除；全站自动阅读统一收敛至 100% 画面静止的定时按屏切换架构。
 - **前瞻能力探针（Experimental Capability Probe）**：位于 `src/utils/canvasProbe.ts` 的零依赖纯函数探测工具，用于安全侦测浏览器对 WICG `HTML-in-Canvas`（`drawElementImage` 与 `<canvas layoutsubtree>`）的原生支持度。仅供未来富排版图文合成实验室与 2D 互动游戏探索使用，与主干书架生产视图物理隔离。
 - **双平台架构边界（Dual-Platform Architecture: Paper Studio vs Paper Room）**：明确纸间（Paper Room / comic-shelf）作为**读者端与成品展馆**的轻量定位（只负责作品收录、离线阅读、以图搜图与手稿回放）；而重型的 AI 生图调试（ComfyUI / Midjourney / Flux）、分镜修版与 VTracer 批量矢量压制交由独立的**创作者工作台平台（Paper Studio）**，两端通过标准 API（`POST /api/library/local/create` 与静态资源管道）松耦合协作，避免向阅读器仓库引入重型依赖与算力争抢。
 - **手稿分层资产（Making-of Layer Asset / `.layers.json`）**：由外部 AI 创作工坊（Paper Studio）通过 VTracer 矢量化引擎从光栅画页中提炼的高精矢量图层数据，与原图平级存储（如 `00001.layers.json`）。采用按拓扑层级（底层大面积底色 ➔ 阴影明暗过渡 ➔ 表层勾线与网点 ➔ 高光）排序的紧凑贝塞尔路径数组，体积比 XML SVG 减少 40%，且无需前端进行昂贵 DOM 解析。

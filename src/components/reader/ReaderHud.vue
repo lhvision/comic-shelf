@@ -6,7 +6,6 @@
  */
 import AppIcon from '@/components/AppIcon.vue'
 import type { IconName } from '@/components/icons'
-import type { ReaderMode } from '@/composables/useReaderSettings'
 
 const props = defineProps<{
   /** 自动切换是否已启用（启用时 HUD 常驻不隐藏） */
@@ -19,12 +18,6 @@ const props = defineProps<{
   settingsOpen: boolean
   /** 距离自动切换的剩余秒数 */
   autoTurnRemaining: number
-  /** 排版模式（用于区分离散翻页与连续流卷） */
-  mode?: ReaderMode
-  /** 连续流卷速度（px/s） */
-  autoScrollSpeed?: number
-  /** 连续模式下是否已停靠至话末 */
-  isDockedAtEnd?: boolean
   /** 当前屏页码文案，如 "1–2" */
   currentGroupLabel: string
   /** 总页数 */
@@ -44,15 +37,7 @@ const emit = defineEmits<{
   next: []
 }>()
 
-const isContinuous = () => props.mode === 'vertical-continuous'
-
 const autoTurnCountdownAriaLabel = () => {
-  if (isContinuous()) {
-    if (props.settingsOpen) return '自动流卷，设置中已暂停'
-    if (props.isDockedAtEnd) return '已到达本话末尾'
-    if (props.autoTurnPaused) return '自动流卷已暂停，点击继续'
-    return `正在以 ${props.autoScrollSpeed ?? 80} px/s 自动流卷，点击暂停`
-  }
   if (props.settingsOpen) return '自动切换倒计时，设置中已暂停'
   if (props.atLastGroup) return '已到最后一屏'
   if (props.autoTurnPaused) return '自动切换已暂停，点击继续'
@@ -66,7 +51,7 @@ const autoTurnActionLabel = () => (props.autoTurnPaused || props.settingsOpen ? 
 <template>
   <div class="reader-hud" :data-hidden="hidden" :inert="hidden">
     <button
-      v-if="autoTurn && (isContinuous() ? !isDockedAtEnd : !atLastGroup)"
+      v-if="autoTurn && !atLastGroup"
       class="auto-turn-countdown"
       type="button"
       :data-paused="autoTurnPaused || settingsOpen"
@@ -75,15 +60,12 @@ const autoTurnActionLabel = () => (props.autoTurnPaused || props.settingsOpen ? 
     >
       <span class="auto-turn-display">
         <template v-if="!autoTurnPaused && !settingsOpen">
-          <span v-if="isContinuous()" class="auto-turn-speed" aria-hidden="true">
-            {{ autoScrollSpeed ?? 80 }}<small>px</small>
-          </span>
-          <span v-else class="auto-turn-count" aria-hidden="true">
+          <span class="auto-turn-count" aria-hidden="true">
             {{ autoTurnRemaining }}
           </span>
         </template>
         <span v-else class="auto-turn-icon" aria-hidden="true">
-          <AppIcon :name="isContinuous() ? 'play' : 'pause'" size="xs" />
+          <AppIcon :name="autoTurnPaused ? 'play' : 'pause'" size="xs" />
         </span>
       </span>
       <span class="auto-turn-action" aria-hidden="true">{{ autoTurnActionLabel() }}</span>
@@ -186,18 +168,10 @@ const autoTurnActionLabel = () => (props.autoTurnPaused || props.settingsOpen ? 
   justify-content: center;
 }
 
-.auto-turn-speed {
-  display: inline-flex;
-  align-items: baseline;
-  gap: 1px;
+.auto-turn-count {
   font-family: var(--font-mono);
   font-size: var(--text-xs);
   font-weight: 600;
-}
-
-.auto-turn-speed small {
-  font-size: 9px;
-  opacity: 0.75;
 }
 
 .auto-turn-icon {

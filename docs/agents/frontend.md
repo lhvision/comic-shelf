@@ -223,8 +223,7 @@
   pagesPerView: 1 | 2 | 4,
   direction: 'ltr' | 'rtl',   // 横向模式：左→右 或 日漫右→左
   autoTurn: boolean,
-  autoTurnInterval: number,   // 离散翻页模式（竖翻/横翻）：1~300 秒，预设 5 | 10 | 15 | 30 秒
-  autoScrollSpeed: number,    // 连续流卷模式（竖向连续）：20~400 px/s，预设 40 | 80 | 140 px/s
+  autoTurnInterval: number,   // 离散翻页模式（竖翻/横翻）：1~300 秒，预设 5 | 10 | 15 | 30 秒（竖向连续长卷豁免）
   seamless: boolean,          // 仅 vertical-continuous 下有效，条漫无缝拼接
 }
 ```
@@ -250,12 +249,10 @@
   - 竖向连续模式在非无缝状态下应用 `animation-timeline: view()` 与 `animation-range: entry 0% entry 100%`，提供纸质微显入场动效（`opacity: 0.15 → 1`、`translateY: 6px → 0`），并在 `prefers-reduced-motion: reduce` 下自动静默降级；无缝长卷模式通过 `:not([data-seamless='true'])` 排除进场位移，杜绝滚动接缝抖动；
   - JS 轨通过 `useReaderNavigation` 引入 `requestAnimationFrame` 调度节流，杜绝主线程 Layout Thrashing。
 - 竖向连续模式的 `.reader-spread` 不要加 `min-height: 100dvh`，否则移动端每页后会留整屏空白；标准模式下页间间隔由后续 spread 的 `padding-top` 控制，无缝模式下间距归零并施加 `-1px` 亚像素微咬合与浮动页标（`ReaderFloatingPill`）。
-- **自动阅读双轨架构（Auto-reading Dual Track: Paged Discrete vs Webtoon Stream）**：
-  - **离散翻页模式（竖翻/横翻）**：按固定间隔（5/10/15/30 秒，支持 1~300 秒自定义）定时步进分屏；手动翻页/滚动重置倒计时；最后一屏停止；
-  - **连续条漫模式（竖向连续）**：基于 `requestAnimationFrame` 以设定像素速度（40/80/140 px/s，支持 20~400 px/s 自定义）匀速向下流卷推进；
-  - **交互软避让（Soft Yield）**：读者介入操作（鼠标滚轮、触屏拖拽、原生滚动条拖动、快捷键）时，自动流卷即刻避让挂起 1.5 秒，读者停手静止后平滑自愈恢复；若读者从底端回滚离开（`scrollTop < max - 40`），自动释放驻留锁继续流卷；
-  - **话末平缓停靠（Dock & Hold）**：流卷触达全话底端时自动驻留刹车（`isDockedAtEnd = true`），停止 rAF 耗电；点击“进入下一话”跳转后在新章节自动开跑；
-  - **HUD 状态联动与解耦**：翻页模式显示秒数倒计时；连续模式在流卷时显示速度微标（如 `80px`），暂停时显示播放图标；末页读卷过程中保持可见，物理停靠话末卡片后平滑收整；顶栏菜单唤出或切后台时即刻安全暂停。
+- **自动阅读设计规范（Auto-reading: Paged Discrete Only）**：
+  - **离散翻页模式（竖翻/横翻）**：按固定间隔（5/10/15/30 秒，支持 1~300 秒自定义）定时步进分屏；画面在阅读期间保持 100% 绝对静止，手动翻页/滚动无感重置倒计时；最后一屏停止；
+  - **连续条漫模式（竖向连续）**：设计上彻底豁免自动化，阅读节奏 100% 交由读者指尖触控与滚轮掌控，彻底杜绝连续像素漂移诱发的视动性动晕症（Cybersickness）；设置面板自动收起自动切换选项，底部 HUD 不展示倒计时；
+  - **HUD 状态联动与解耦**：翻页模式运行态显示秒数倒计时，暂停态显示播放图标；末页读卷过程中保持可见，最后一屏自动隐退；顶栏菜单唤出或切后台时即刻安全暂停。
 - `onKeydown` 必须在 `settingsOpen` 时提前返回（除 Escape），否则方向键/Space 会翻动面板背后的页面，
   且会劫持 switch 等原生 button 的 Space 激活。
 - 自动切换的滚动行为需尊重 `prefers-reduced-motion: reduce`，此时用 `behavior: 'auto'`。
@@ -277,6 +274,10 @@
   3. **交互语义与无障碍完全退化**：Canvas 丢失文本可选性、键盘 Tab 导航与原生辅助功能树（Accessibility Tree），必须在上方叠加透明的 DOM Hitbox 遮罩，违背本地优先与轻量化架构初衷；
   4. **规范设计初衷错位**：WICG 设计 `drawElementImage` 主要面向 3D WebGL 游戏 HUD 覆层、Canvas 图表富文本标注与视频位图导出，而非长列表内容承载；
 - **书架性能基准定性**：书架坚守原生 DOM + CSS Grid + 48 图增量预算，由合成器线程处理滚动，帧率稳定在 120 FPS+，无需任何 Canvas 代理层。
+
+## 8.2 淘汰反模式：条漫匀速流卷实验（Deprecated Continuous Auto-Scroll Stream）
+
+- **技术复盘与生理机制**：曾尝试通过 `requestAnimationFrame` 驱动竖向长卷视口以设定速度（40/80/140 px/s）持续线性位移。经实机评估，因视动性眼震、中心凹注视点缺失与视觉-前庭感官冲突（Visual-Vestibular Conflict），极易引发严重的生理性动晕症（视觉眩晕与恶心）。主干已彻底废除条漫流卷与自动化，全站自动阅读收敛至 100% 画面静止的离散翻页架构。
 
 ## 9. View Transitions API 行为规范与边界
 

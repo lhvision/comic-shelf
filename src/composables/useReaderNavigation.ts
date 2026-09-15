@@ -528,6 +528,18 @@ export function useReaderNavigation(options: UseReaderNavigationOptions) {
     }
   }
 
+  /**
+   * 离散翻页模式自动切换推进逻辑：推进至下一分屏分组
+   */
+  function advanceAutoTurn(reduced = false) {
+    if (settings.mode === 'vertical-continuous') return
+    const nextIndex = Math.min(currentGroupIndex.value + 1, lastGroupIndex.value)
+    currentGroupIndex.value = nextIndex
+    currentPage.value = groupFirstPage(nextIndex)
+    const behavior: ScrollBehavior = reduced ? 'auto' : 'smooth'
+    scrollToGroup(nextIndex, behavior)
+  }
+
   return {
     progressValue,
     pillActive,
@@ -537,6 +549,7 @@ export function useReaderNavigation(options: UseReaderNavigationOptions) {
     goToPage,
     prevGroup,
     nextGroup,
+    advanceAutoTurn,
     onScroll,
     onWheel,
     preloadAround,

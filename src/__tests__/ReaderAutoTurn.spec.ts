@@ -2,7 +2,11 @@ import { describe, it, expect, beforeEach } from 'vite-plus/test'
 import { mount } from '@vue/test-utils'
 import ReaderSettingsPanel from '@/components/reader/ReaderSettingsPanel.vue'
 import ReaderHud from '@/components/reader/ReaderHud.vue'
-import { useReaderSettings, DEFAULT_SETTINGS } from '@/composables/useReaderSettings'
+import {
+  useReaderSettings,
+  DEFAULT_SETTINGS,
+  type ReaderSettings,
+} from '@/composables/useReaderSettings'
 
 describe('Reader AutoTurn Custom Seconds and Paused Icon', () => {
   beforeEach(() => {
@@ -50,11 +54,10 @@ describe('Reader AutoTurn Custom Seconds and Paused Icon', () => {
     expect(wrapper.find('.custom-chip-btn').exists()).toBe(true)
   })
 
-  it('allows selecting speed presets and entering custom speed in vertical-continuous mode in ReaderSettingsPanel', async () => {
+  it('does not display autoTurn settings group in vertical-continuous mode in ReaderSettingsPanel', async () => {
     const { settings } = useReaderSettings()
     settings.mode = 'vertical-continuous'
     settings.autoTurn = true
-    settings.autoScrollSpeed = 80
 
     const wrapper = mount(ReaderSettingsPanel, {
       global: {
@@ -64,29 +67,9 @@ describe('Reader AutoTurn Custom Seconds and Paused Icon', () => {
       },
     })
 
-    // Speed preset buttons (40, 80, 140) + 1 custom button
-    const presetButtons = wrapper.findAll('.auto-turn-options button')
-    expect(presetButtons.length).toBe(4)
-    expect(wrapper.find('.custom-chip-btn').text()).toBe('自定义…')
-
-    // Click custom button to activate speed input
-    await wrapper.find('.custom-chip-btn').trigger('click')
-
-    const input = wrapper.find('.custom-interval-input')
-    expect(input.exists()).toBe(true)
-
-    // Set custom speed to 120 px/s
-    await input.setValue(120)
-    await input.trigger('blur')
-
-    expect(settings.autoScrollSpeed).toBe(120)
-    expect(wrapper.text()).toContain('以每秒 120 像素平滑匀速向下滚动')
-
-    // Click preset 40 px/s to switch back
-    const btn40 = wrapper.findAll('.auto-turn-options button')[0]
-    expect(btn40?.text()).toBe('40 px/s')
-    await btn40?.trigger('click')
-    expect(settings.autoScrollSpeed).toBe(40)
+    // AutoTurn settings group should be hidden for vertical-continuous mode
+    expect(wrapper.find('.auto-turn-options').exists()).toBe(false)
+    expect(wrapper.text()).not.toContain('切到下一屏')
   })
 
   it('renders countdown number when autoTurn is active and pause icon when paused in ReaderHud', async () => {
@@ -112,13 +95,13 @@ describe('Reader AutoTurn Custom Seconds and Paused Icon', () => {
     expect(wrapper.find('.app-icon--pause').exists()).toBe(false)
     expect(wrapper.find('.auto-turn-countdown').attributes('data-paused')).toBe('false')
 
-    // Paused state: displays pause icon
+    // Paused state: displays play icon to resume
     await wrapper.setProps({
       autoTurnPaused: true,
     } as Record<string, unknown>)
 
     expect(wrapper.find('.auto-turn-count').exists()).toBe(false)
-    expect(wrapper.find('.app-icon--pause').exists()).toBe(true)
+    expect(wrapper.find('.app-icon--play').exists()).toBe(true)
     expect(wrapper.find('.auto-turn-countdown').attributes('data-paused')).toBe('true')
   })
 
@@ -143,74 +126,18 @@ describe('Reader AutoTurn Custom Seconds and Paused Icon', () => {
     await wrapper.find('.auto-turn-countdown').trigger('click')
     expect(wrapper.emitted('toggleAutoTurnPause')).toBeTruthy()
   })
-
-  it('renders speed and play icon when in vertical-continuous mode in ReaderHud', async () => {
-    const wrapper = mount(ReaderHud, {
-      props: {
-        autoTurn: true,
-        atLastGroup: false,
-        autoTurnPaused: false,
-        settingsOpen: false,
-        autoTurnRemaining: 0,
-        mode: 'vertical-continuous',
-        autoScrollSpeed: 80,
-        currentGroupLabel: '1',
-        total: 20,
-        prevIcon: 'arrow-up',
-        nextIcon: 'arrow-down',
-        canPrev: false,
-        canNext: true,
-        hidden: false,
-      },
-    })
-
-    // Running state: displays speed
-    expect(wrapper.find('.auto-turn-speed').text()).toBe('80px')
-    expect(wrapper.find('.app-icon--play').exists()).toBe(false)
-
-    // Paused state: displays play icon
-    await wrapper.setProps({
-      autoTurnPaused: true,
-    } as Record<string, unknown>)
-
-    expect(wrapper.find('.auto-turn-speed').exists()).toBe(false)
-    expect(wrapper.find('.app-icon--play').exists()).toBe(true)
-
-    // At last group but not yet docked: button remains visible in continuous mode!
-    await wrapper.setProps({
-      autoTurnPaused: false,
-      atLastGroup: true,
-      isDockedAtEnd: false,
-    } as Record<string, unknown>)
-
-    expect(wrapper.find('.auto-turn-countdown').exists()).toBe(true)
-    expect(wrapper.find('.auto-turn-speed').text()).toBe('80px')
-
-    // Docked at end: button hides
-    await wrapper.setProps({
-      isDockedAtEnd: true,
-    } as Record<string, unknown>)
-
-    expect(wrapper.find('.auto-turn-countdown').exists()).toBe(false)
-  })
 })
 
-describe('useAutoTurn Composable - Continuous Mode & Soft Yield', () => {
-  it('smoothly scrolls container via rAF in vertical-continuous mode and docks at bottom', async () => {
+describe('useAutoTurn Composable - Discrete Paged AutoTurn State Machine', () => {
+  it('runs countdown in paged mode and stops in vertical-continuous mode', async () => {
     const { useAutoTurn } = await import('@/composables/useAutoTurn')
     const { ref, reactive, computed } = await import('vue')
 
-    const mockContainer = document.createElement('main')
-    Object.defineProperty(mockContainer, 'clientHeight', { value: 800, configurable: true })
-    Object.defineProperty(mockContainer, 'scrollHeight', { value: 1200, configurable: true })
-    mockContainer.scrollTop = 0
-
-    const scrollEl = ref<HTMLElement | null>(mockContainer)
-    const settings = reactive({
+    const settings = reactive<ReaderSettings>({
       ...DEFAULT_SETTINGS,
-      mode: 'vertical-continuous' as const,
+      mode: 'vertical-paged',
       autoTurn: true,
-      autoScrollSpeed: 100, // 100 px/s
+      autoTurnInterval: 10,
     })
 
     const currentGroupIndex = ref(0)
@@ -224,89 +151,47 @@ describe('useAutoTurn Composable - Continuous Mode & Soft Yield', () => {
       lastGroupIndex,
       settingsOpen,
       onAdvance,
-      scrollEl,
     })
 
-    auto.startAutoScroll()
-
-    // Let's verify startAutoScroll ran and canAutoTurnRun reflects state
     expect(auto.autoTurnPaused.value).toBe(false)
+    expect(auto.canAutoTurnRun()).toBe(true)
+
+    // Toggle pause
+    auto.toggleAutoTurnPause()
+    expect(auto.autoTurnPaused.value).toBe(true)
+    expect(auto.canAutoTurnRun()).toBe(false)
+
+    // Resume
+    auto.toggleAutoTurnPause()
+    expect(auto.autoTurnPaused.value).toBe(false)
+    expect(auto.canAutoTurnRun()).toBe(true)
+
+    // In vertical-continuous mode, canAutoTurnRun is false by design
+    settings.mode = 'vertical-continuous'
+    expect(auto.canAutoTurnRun()).toBe(false)
   })
 
-  it('un-docks when user scrolls away from the bottom in continuous mode', async () => {
+  it('resets countdown when resetAutoTurnCountdown is called on user interaction in paged mode', async () => {
     const { useAutoTurn } = await import('@/composables/useAutoTurn')
     const { ref, reactive, computed } = await import('vue')
 
-    const mockContainer = document.createElement('main')
-    Object.defineProperty(mockContainer, 'clientHeight', { value: 800, configurable: true })
-    Object.defineProperty(mockContainer, 'scrollHeight', { value: 2000, configurable: true })
-    // Currently at bottom: 2000 - 800 = 1200
-    mockContainer.scrollTop = 1200
-
-    const scrollEl = ref<HTMLElement | null>(mockContainer)
-    const settings = reactive({
+    const settings = reactive<ReaderSettings>({
       ...DEFAULT_SETTINGS,
-      mode: 'vertical-continuous' as const,
+      mode: 'horizontal',
       autoTurn: true,
-      autoScrollSpeed: 80,
+      autoTurnInterval: 15,
     })
 
     const auto = useAutoTurn({
       settings,
-      currentGroupIndex: ref(5),
+      currentGroupIndex: ref(0),
       lastGroupIndex: computed(() => 5),
       settingsOpen: ref(false),
       onAdvance: () => {},
-      scrollEl,
     })
 
-    // Simulate arriving at end
-    auto.isDockedAtEnd.value = true
-    expect(auto.isDockedAtEnd.value).toBe(true)
-
-    // User scrolls back up to 500px (< 1200 - 40)
-    mockContainer.scrollTop = 500
-    auto.yieldAutoScroll()
-
-    // isDockedAtEnd should be released
-    expect(auto.isDockedAtEnd.value).toBe(false)
-    expect(auto.isYielding.value).toBe(true)
-  })
-
-  it('un-docks on container scroll events when user scrolls away from bottom', async () => {
-    const { useAutoTurn } = await import('@/composables/useAutoTurn')
-    const { ref, reactive, computed } = await import('vue')
-
-    const mockContainer = document.createElement('main')
-    Object.defineProperty(mockContainer, 'clientHeight', { value: 800, configurable: true })
-    Object.defineProperty(mockContainer, 'scrollHeight', { value: 2000, configurable: true })
-    mockContainer.scrollTop = 1200
-
-    const scrollEl = ref<HTMLElement | null>(mockContainer)
-    const settings = reactive({
-      ...DEFAULT_SETTINGS,
-      mode: 'vertical-continuous' as const,
-      autoTurn: true,
-      autoScrollSpeed: 80,
-    })
-
-    const auto = useAutoTurn({
-      settings,
-      currentGroupIndex: ref(5),
-      lastGroupIndex: computed(() => 5),
-      settingsOpen: ref(false),
-      onAdvance: () => {},
-      scrollEl,
-    })
-
-    auto.isDockedAtEnd.value = true
-    expect(auto.isDockedAtEnd.value).toBe(true)
-
-    // User drags native scrollbar up to 600px
-    mockContainer.scrollTop = 600
-    auto.onAutoTurnScroll()
-
-    expect(auto.isDockedAtEnd.value).toBe(false)
-    expect(auto.isYielding.value).toBe(true)
+    auto.autoTurnRemaining.value = 3
+    auto.resetAutoTurnCountdown()
+    expect(auto.autoTurnRemaining.value).toBe(15)
   })
 })
