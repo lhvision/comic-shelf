@@ -110,7 +110,6 @@ from .models import (
     LibraryPageResponse,
     LibraryStats,
     LibrarySummary,
-    LocalAppendRequest,
     ComicAppendRequest,
     LocalComicCreateRequest,
     LocalPathImportRequest,
@@ -993,27 +992,6 @@ def append_comic(
         {"action": "update_pages", "source": source, "source_id": source_id, "timestamp": time.time()},
     )
     return store.detail(meta)
-
-
-@app.post("/api/library/local/{source_id}/upload-pages", response_model=ComicDetail, deprecated=True)
-async def upload_local_pages(
-    source_id: str,
-    chapter_id: str = Query(default="", description="目标章节 id"),
-    new_chapter_title: str = Query(default="", description="若创建新章节，传入新章节标题"),
-    files: list[UploadFile] = File(...),
-) -> ComicDetail:
-    return await upload_comic_pages(
-        source="local",
-        source_id=source_id,
-        chapter_id=chapter_id,
-        new_chapter_title=new_chapter_title,
-        files=files,
-    )
-
-
-@app.post("/api/library/local/{source_id}/append", response_model=ComicDetail, deprecated=True)
-def append_local_comic(source_id: str, req: LocalAppendRequest) -> ComicDetail:
-    return append_comic(source="local", source_id=source_id, req=req)
 
 
 @app.post("/api/library/{source}/{source_id}/replace-pages", response_model=ComicDetail)

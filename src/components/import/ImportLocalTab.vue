@@ -40,7 +40,7 @@ const localBtnText = computed(() => (props.localImporting ? '扫描中…' : '�
           v-model="localPathModel"
           type="text"
           autocomplete="off"
-          placeholder="public/tiya-frames"
+          placeholder="public/tiya-frames 或 /comics/title"
           aria-label="服务器本地目录路径"
         />
       </label>

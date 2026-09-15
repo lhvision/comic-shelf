@@ -9,6 +9,7 @@ import shutil
 import tempfile
 import threading
 import time
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Any, BinaryIO, Callable, Iterable
 
@@ -110,6 +111,10 @@ class ComicStore:
         self._meta_cache: dict[tuple[str, str], tuple[float, ComicMeta]] = {}
         self._fetched_cache: dict[tuple[str, str], tuple[float, float, FetchedComic]] = {}
         self._cache_guard = threading.Lock()
+        self._cover_executor = ThreadPoolExecutor(
+            max_workers=int(os.getenv("COMIC_SHELF_COVER_CONCURRENCY", "2")),
+            thread_name_prefix="cover-worker",
+        )
 
     # ------------------------------------------------------------------
     # paths
@@ -1136,8 +1141,16 @@ class ComicStore:
     @staticmethod
     def _link_or_copy_file(src: Path, dest: Path) -> None:
         """优先使用硬链接实现零拷贝极速导入，若跨盘/跨文件系统(EXDEV)则优雅降级为复制。"""
+        try:
+            if src.resolve() == dest.resolve():
+                return
+        except OSError:
+            pass
+
         if dest.exists():
             try:
+                if dest.is_file() and os.path.samefile(src, dest):
+                    return
                 dest.unlink()
             except OSError:
                 pass
@@ -1446,7 +1459,7 @@ class ComicStore:
             except Exception as e:
                 logger.warning("Failed to generate initial primary cover for %s: %s", source_id, e)
 
-        # Generate auxiliary covers and chapter covers asynchronously in background daemon thread,
+        # Generate auxiliary covers and chapter covers asynchronously in bounded background executor,
         # preventing heavy Pillow CPU encoding from blocking the synchronous HTTP response.
         def _bg_generate_auxiliary_covers() -> None:
             for i in range(2, min(meta.cover_count, meta.page_count) + 1):
@@ -1454,7 +1467,7 @@ class ComicStore:
                     self.ensure_webp_cover(meta, fetched, i)
                     self.ensure_webp_cover(meta, fetched, i, COVER_THUMB_WIDTH)
                 except Exception as e:
-                    logger.debug("Background cover generation %d for %s skipped: %s", i, source_id, e)
+                    logger.warning("Background cover generation %d for %s skipped: %s", i, source_id, e)
 
             if meta.chapters:
                 for ch in meta.chapters:
@@ -1462,9 +1475,9 @@ class ComicStore:
                         self.ensure_webp_chapter_cover(meta, fetched, ch)
                         self.ensure_webp_chapter_cover(meta, fetched, ch, COVER_THUMB_WIDTH)
                     except Exception as e:
-                        logger.debug("Background chapter cover generation %s for %s skipped: %s", ch.id, source_id, e)
+                        logger.warning("Background chapter cover generation %s for %s skipped: %s", ch.id, source_id, e)
 
-        threading.Thread(target=_bg_generate_auxiliary_covers, daemon=True, name=f"cover-gen-{source_id}").start()
+        self._cover_executor.submit(_bg_generate_auxiliary_covers)
 
         return meta
 
