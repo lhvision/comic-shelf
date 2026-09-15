@@ -5,7 +5,7 @@ import asyncio
 import time
 from fastapi import APIRouter, File, HTTPException, Query, UploadFile
 
-from ..db import delete_comic_dialogues, sync_comic_dialogues
+from ..db import sync_comic_dialogues
 from ..events import broadcast_event
 from ..models import (
     ComicAppendRequest,
@@ -116,9 +116,8 @@ async def replace_comic_pages(
     chapter_id: str = Query(default="", description="目标章节 id（多章节漫画可选）"),
     files: list[UploadFile] = File(...),
 ) -> ComicDetail:
-    """Replaces comic or chapter pages with newly uploaded image files, purging prior OCR dialogues."""
+    """Replaces comic or chapter pages with newly uploaded image files, purging prior OCR dialogues upon success."""
     _require_known_source(source)
-    delete_comic_dialogues(source, source_id)
     file_tuples = await _read_uploaded_files(files)
     meta = await asyncio.to_thread(
         store.replace_pages,
@@ -136,9 +135,8 @@ def replace_comic_pages_from_path(
     source_id: str,
     req: ReplacePathRequest,
 ) -> ComicDetail:
-    """Replaces comic or chapter pages with images from a server-side directory, purging prior OCR dialogues."""
+    """Replaces comic or chapter pages with images from a server-side directory, purging prior OCR dialogues upon success."""
     _require_known_source(source)
-    delete_comic_dialogues(source, source_id)
     meta = store.replace_pages(
         source=source,
         source_id=source_id,

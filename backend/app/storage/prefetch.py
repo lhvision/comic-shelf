@@ -38,9 +38,7 @@ class ComicStorePrefetchMixin:
                 uncached = [p.index for p in meta.pages if not p.cached]
             else:
                 uncached = list(range(1, (meta.page_count or 0) + 1))
-            import sys
-            storage_pkg = sys.modules.get("app.storage")
-            limit = getattr(storage_pkg, "MAX_PREFETCH", MAX_PREFETCH) if storage_pkg else MAX_PREFETCH
+            limit = MAX_PREFETCH
             indexes = uncached[:limit]
             remaining = len(uncached) - len(indexes)
             if remaining > 0:

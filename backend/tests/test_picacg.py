@@ -408,10 +408,10 @@ class TestPicacgProvider(unittest.TestCase):
         self.assertGreaterEqual(slept, 0.20)
         self.assertLessEqual(slept, 0.30)
 
-    @patch("app.main.store.load_fetched")
-    @patch("app.main.get_provider")
-    @patch("app.main.store.save_fetched")
-    @patch("app.main.start_job")
+    @patch("app.routers.library.store.load_fetched")
+    @patch("app.routers.library.get_provider")
+    @patch("app.routers.library.store.save_fetched")
+    @patch("app.routers.library.start_job")
     def test_import_self_healing_zero_pages(
         self,
         mock_job: MagicMock,
@@ -419,7 +419,7 @@ class TestPicacgProvider(unittest.TestCase):
         mock_get_prov: MagicMock,
         mock_load: MagicMock,
     ) -> None:
-        from app.main import import_comic
+        from app.routers.library import import_comic
         from app.models import ComicMeta, FetchedComic, ImportRequest
 
         # 1. Simulate cached comic has page_count == 0 (historical broken record)

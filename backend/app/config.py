@@ -62,6 +62,9 @@ AUTH_SECRET = os.getenv("COMIC_SHELF_SECRET", os.getenv("COMIC_SHELF_AUTH_TOKEN"
 # Machine API token for external pipeline / Paper Studio synchronization
 MACHINE_TOKEN = os.getenv("COMIC_SHELF_MACHINE_TOKEN", os.getenv("MACHINE_API_TOKEN", "")).strip()
 
+# Trust reverse-proxy headers (CF-Connecting-IP, X-Forwarded-For) for client IP detection
+TRUST_FORWARDED_HEADERS = os.getenv("COMIC_SHELF_TRUST_FORWARDED_HEADERS", "true").lower() in ("1", "true", "yes")
+
 _VALID_COOKIE_NAME_RE = re.compile(r"^[a-zA-Z0-9_-]+$")
 
 

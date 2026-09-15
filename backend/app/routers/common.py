@@ -141,10 +141,7 @@ def _prefetch_worker(
         job["total"] = meta.page_count
         job["warnings"] = warnings
         is_complete = final_cached >= meta.page_count
-        import sys
-        app_main = sys.modules.get("app.main")
-        emit_fn = getattr(app_main, "broadcast_event", broadcast_event) if app_main else broadcast_event
-        emit_fn(
+        broadcast_event(
             "library_changed",
             {
                 "action": "cache_complete" if is_complete else "cache_partial",

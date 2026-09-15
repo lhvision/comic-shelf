@@ -10,6 +10,7 @@ from .config import (
     DEVICE_COOKIE_NAME,
     ENABLE_HOTLINK_PROTECTION,
     MACHINE_TOKEN,
+    TRUST_FORWARDED_HEADERS,
 )
 from .db import (
     get_device_by_token,
@@ -25,12 +26,14 @@ def is_auth_required() -> bool:
 
 
 def get_client_ip(request: Request) -> str:
-    cf_ip = request.headers.get("cf-connecting-ip")
-    if cf_ip and isinstance(cf_ip, str):
-        return cf_ip.strip()[:45]
-    xff = request.headers.get("x-forwarded-for")
-    if xff and isinstance(xff, str):
-        return xff.split(",")[0].strip()[:45]
+    """Extracts client IP address, honoring reverse-proxy headers only if TRUST_FORWARDED_HEADERS is True."""
+    if TRUST_FORWARDED_HEADERS:
+        cf_ip = request.headers.get("cf-connecting-ip")
+        if cf_ip and isinstance(cf_ip, str):
+            return cf_ip.strip()[:45]
+        xff = request.headers.get("x-forwarded-for")
+        if xff and isinstance(xff, str):
+            return xff.split(",")[0].strip()[:45]
     client = getattr(request, "client", None)
     if client and hasattr(client, "host") and isinstance(client.host, str):
         return client.host[:45]

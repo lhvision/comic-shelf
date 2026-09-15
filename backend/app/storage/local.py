@@ -5,6 +5,7 @@ import datetime
 import io
 import logging
 import os
+import re
 import shutil
 from pathlib import Path
 from typing import Any
@@ -33,6 +34,47 @@ class ComicStoreLocalMixin:
     @staticmethod
     def _natural_key(s: str) -> list[int | str]:
         return [int(text) if text.isdigit() else text.lower() for text in _NATURAL_SPLIT.split(s)]
+
+    @classmethod
+    def _group_by_composite_chapter_pattern(
+        cls, items: list[tuple[str, str, Any]]
+    ) -> dict[int, list[tuple[str, str, Any]]] | None:
+        """Detect if items follow a composite chapter-page pattern (e.g. `1-1.avif`, `02_001.jpg`, `第1话_01.png`, `c1-1.webp`)."""
+        if not items or len(items) < 2:
+            return None
+
+        composite_re = re.compile(
+            r"^(?:\[?(?:c|ch|ep|vol|第)?\s*(\d+)\s*(?:话|話|回|卷|期)?\]?)[-_.#\s]+(\d+)",
+            re.IGNORECASE,
+        )
+
+        sorted_items = sorted(items, key=lambda x: cls._natural_key(x[0]))
+        matched_items: list[tuple[int, tuple[str, str, Any]]] = []
+
+        for item in sorted_items:
+            stem = Path(item[0]).stem
+            m = composite_re.match(stem)
+            if m:
+                matched_items.append((int(m.group(1)), item))
+
+        unique_chaps = sorted({cnum for cnum, _ in matched_items})
+        if len(unique_chaps) < 2 or len(matched_items) < max(2, int(len(items) * 0.8)):
+            return None
+
+        groups: dict[int, list[tuple[str, str, Any]]] = {c: [] for c in unique_chaps}
+
+        curr_chap = unique_chaps[0]
+        for item in sorted_items:
+            stem = Path(item[0]).stem
+            m = composite_re.match(stem)
+            if m:
+                curr_chap = int(m.group(1))
+            groups[curr_chap].append(item)
+
+        for cnum in groups:
+            groups[cnum].sort(key=lambda x: cls._natural_key(x[0]))
+
+        return groups
 
     @staticmethod
     def _link_or_copy_file(src: Path, dest: Path) -> None:

@@ -18,11 +18,11 @@ from ..config import MAX_PREFETCH
 
 
 class ComicStore(
-    ComicStoreBase,
     ComicStoreMediaMixin,
     ComicStoreChapterMixin,
     ComicStoreLocalMixin,
     ComicStorePrefetchMixin,
+    ComicStoreBase,
 ):
     """Local-first cache.
 

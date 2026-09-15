@@ -656,7 +656,7 @@ function onCustomSpeedBlur() {
   color: var(--accent);
   font-size: var(--text-xs);
   cursor: pointer;
-  padding: 0;
+  padding: var(--space-1) var(--space-2);
   text-decoration: underline;
   text-underline-offset: 2px;
   white-space: nowrap;

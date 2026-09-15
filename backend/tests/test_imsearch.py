@@ -75,15 +75,15 @@ def test_search_imsearch():
 
 
 def test_fastapi_endpoints():
-    from app.main import image_search, image_search_status
+    from app.routers.search import image_search, image_search_status
 
-    with patch("app.main.check_imsearch_status") as mock_status:
+    with patch("app.routers.search.check_imsearch_status") as mock_status:
         mock_status.return_value = {"available": True, "url": "http://localhost:8765"}
         res = image_search_status()
         assert res.available is True
         assert res.url == "http://localhost:8765"
 
-    with patch("app.main.search_imsearch") as mock_search:
+    with patch("app.routers.search.search_imsearch") as mock_search:
         from app.models import ImageSearchItem
 
         mock_search.return_value = [

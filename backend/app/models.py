@@ -261,10 +261,6 @@ class ImageSearchItem(BaseModel):
     score: float
 
 
-class ImageSearchResponse(BaseModel):
-    results: list[ImageSearchItem]
-
-
 class ImageSearchStatusResponse(BaseModel):
     available: bool
     url: str

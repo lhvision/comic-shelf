@@ -134,6 +134,36 @@ class ComicStoreBase:
         return self.chapter_covers_dir(meta.source, meta.source_id) / f"{self._safe(chapter.id)}{suffix}"
 
     # ------------------------------------------------------------------
+    # polymorphic mixin hooks & defaults
+    # ------------------------------------------------------------------
+    def cached_page_count(self, meta: ComicMeta) -> int:
+        return sum(1 for page in meta.pages if page.cached)
+
+    def reconcile_cached_pages(self, meta: ComicMeta) -> int:
+        return self.cached_page_count(meta)
+
+    def _migrate_flat_to_chapter(self, meta: ComicMeta, first_chapter_id: str) -> None:
+        pass
+
+    def _migrate_decode_v2(
+        self,
+        meta: ComicMeta,
+        pages: list[RemotePage],
+        remote_path: Path,
+        data: dict,
+    ) -> None:
+        pass
+
+    def ensure_webp_cover(
+        self,
+        meta: ComicMeta,
+        fetched: FetchedComic | None = None,
+        index: int = 1,
+        width: int | None = None,
+    ) -> Path:
+        return self.cover_path(meta, index, width, ext="webp")
+
+    # ------------------------------------------------------------------
     # locks & cache
     # ------------------------------------------------------------------
     def _lock_for(self, source: str, source_id: str) -> threading.RLock:
@@ -158,7 +188,7 @@ class ComicStoreBase:
                         mtime = album_path.stat().st_mtime
                     except Exception:
                         mtime = 0.0
-                    cached_pages = getattr(self, "cached_page_count", lambda m: 0)(meta)
+                    cached_pages = self.cached_page_count(meta)
                     upsert_comic_index({
                         "source": meta.source,
                         "source_id": meta.source_id,
@@ -211,8 +241,7 @@ class ComicStoreBase:
 
             # 单章节升级多章节时，自动将平铺旧文件迁移至首话子目录
             if not existing.chapters and meta.chapters:
-                if hasattr(self, "_migrate_flat_to_chapter"):
-                    getattr(self, "_migrate_flat_to_chapter")(meta, meta.chapters[0].id)
+                self._migrate_flat_to_chapter(meta, meta.chapters[0].id)
 
             for page in meta.pages:
                 target = self._chapter_page_path(meta, page)
@@ -301,8 +330,7 @@ class ComicStoreBase:
             orphaned_count = meta.chapters[0].start - 1
             first_id = "c1"
             c1 = Chapter(id=first_id, index=1, title="第 1 话", page_count=orphaned_count, start=1)
-            if hasattr(self, "_migrate_flat_to_chapter"):
-                getattr(self, "_migrate_flat_to_chapter")(meta, first_id)
+            self._migrate_flat_to_chapter(meta, first_id)
             for p in meta.pages:
                 if p.index < meta.chapters[0].start:
                     p.chapter = first_id
@@ -369,8 +397,7 @@ class ComicStoreBase:
         version = int(data.get("decode_version", 1) or 1)
         if version < CURRENT_DECODE_VERSION:
             with self._lock_for(source, source_id):
-                if hasattr(self, "_migrate_decode_v2"):
-                    getattr(self, "_migrate_decode_v2")(meta, pages, remote_path, data)
+                self._migrate_decode_v2(meta, pages, remote_path, data)
                 try:
                     remote_mtime = remote_path.stat().st_mtime
                 except Exception:
@@ -385,7 +412,7 @@ class ComicStoreBase:
     # library queries & summary helpers
     # ------------------------------------------------------------------
     def summary(self, meta: ComicMeta) -> LibrarySummary:
-        cached_count = getattr(self, "cached_page_count", lambda m: 0)(meta)
+        cached_count = self.cached_page_count(meta)
         return LibrarySummary(
             source=meta.source,
             source_id=meta.source_id,
@@ -411,8 +438,7 @@ class ComicStoreBase:
         )
 
     def detail(self, meta: ComicMeta) -> ComicDetail:
-        reconcile_fn = getattr(self, "reconcile_cached_pages", lambda m: 0)
-        cached = reconcile_fn(meta)
+        cached = self.reconcile_cached_pages(meta)
         return ComicDetail(
             meta=meta,
             cached_pages=cached,
@@ -463,7 +489,7 @@ class ComicStoreBase:
                         f.unlink(missing_ok=True)
             # Regenerate covers with active pre-warming (both 720px & 360px WEBP + JPEG)
             fetched = self.load_fetched(source, source_id)
-            if fetched is not None and hasattr(self, "ensure_webp_cover"):
+            if fetched is not None:
                 for idx in range(1, len(meta.cover_paths()) + 1):
                     try:
                         self.ensure_webp_cover(meta, fetched, idx)

@@ -23,10 +23,7 @@ router = APIRouter(tags=["search"])
 @router.get("/api/search/image/status", response_model=ImageSearchStatusResponse)
 def image_search_status() -> ImageSearchStatusResponse:
     """Check availability of the imsearch sidecar container."""
-    import sys
-    app_main = sys.modules.get("app.main")
-    status_fn = getattr(app_main, "check_imsearch_status", check_imsearch_status) if app_main else check_imsearch_status
-    status = status_fn()
+    status = check_imsearch_status()
     return ImageSearchStatusResponse(**status)
 
 
@@ -36,10 +33,7 @@ async def image_search(request: Request, file: UploadFile = File(...)) -> list[I
     content = await file.read()
     if not content:
         raise HTTPException(status_code=400, detail="上传图片不能为空")
-    import sys
-    app_main = sys.modules.get("app.main")
-    search_fn = getattr(app_main, "search_imsearch", search_imsearch) if app_main else search_imsearch
-    results = await asyncio.to_thread(search_fn, content, filename=file.filename or "query.jpg")
+    results = await asyncio.to_thread(search_imsearch, content, filename=file.filename or "query.jpg")
     if not is_curator(request):
         filtered: list[ImageSearchItem] = []
         for r in results:

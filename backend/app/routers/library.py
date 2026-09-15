@@ -218,12 +218,7 @@ def discovery_ranking(
 @router.post("/api/library/import", response_model=ImportResult)
 def import_comic(req: ImportRequest) -> ImportResult:
     """Imports remote comic metadata into local library and initiates background page caching."""
-    import sys
-    app_main = sys.modules.get("app.main")
-    get_prov_fn = getattr(app_main, "get_provider", get_provider) if app_main else get_provider
-    start_job_fn = getattr(app_main, "start_job", start_job) if app_main else start_job
-
-    provider = get_prov_fn(req.source)
+    provider = get_provider(req.source)
     try:
         source_id = provider.normalize_id(req.id)
     except ValueError as exc:
@@ -271,7 +266,7 @@ def import_comic(req: ImportRequest) -> ImportResult:
         if req.prefetch_all
         else (req.prefetch_covers or fetched.meta.cover_count)
     )
-    start_job_fn(req.source, source_id, lambda job: _prefetch_worker(job, fetched, cover_count, req.prefetch_all))
+    start_job(req.source, source_id, lambda job: _prefetch_worker(job, fetched, cover_count, req.prefetch_all))
 
     return ImportResult(
         meta=fetched.meta,
