@@ -1112,6 +1112,20 @@
     1. **`importOriginal` 局部透传 Mock 范式**：所有对第三方库的 `vi.mock` 必须采用 `async (importOriginal) => { const actual = await importOriginal<...>(); return { ...actual, ... } }`，严格保全未经 mock 的底层方法与工厂函数；
     2. **标准 Pinia 单测沙箱隔离**：测试文件头部引入 `createPinia, setActivePinia`，并在 `beforeEach` 内执行 `setActivePinia(createPinia())` 为每个测试用例分配干净独立的状态沙箱。
 
+### 102. 源代码内嵌巨型多字节字符字面量致 IDE/LSP 卡死与静态数据解耦陷阱 (Giant Raw String Literals in Code, IDE/LSP Freeze & Asset Decoupling Trap)
+
+- **本质**：
+  1. **巨型单行字面量冲垮编辑器语法高亮与 AST 词法分析（IDE / LSP Freeze）**：在 Python 或 JS 脚本中直接内嵌数千甚至上万字符的超长单行字符串字面量（如提取自 OpenCC 的 3,881 对 CJK 简繁映射表），且包含大量多字节 Unicode 与 SMP 扩展区汉字（如 `𠗣`, `𡞵`, `𡠹`）。当开发者在 VS Code、Cursor、PyCharm 或 Zed 等现代编辑器中打开该文件时，Tree-sitter 语法着色引擎、Language Server (Pyright/Pylance) 与软换行排版管线在解析巨型 Token 时遭遇极端性能瓶颈，导致编辑器主界面直接假死或无响应；
+  2. **模块顶层即时构建拖慢无关模块启动（Eager Init Overhead）**：若在模块 import 顶层无条件执行 `str.maketrans` 解析数千映射对，使得仅仅 import `app.db` 或执行轻量单元测试时也要为未被调用的简繁模块付出额外的 CPU 与内存开销；
+  3. **并发调用下的惰性初始化竞态（Lazy Init Data Race）**：若为了解耦改为惰性加载但未加互斥锁，多工作线程在服务冷启动并发调用时可能产生重复解压与字典赋值竞态。
+- **红线与防误伤**：
+  - **不要**在任何 Python/TS 代码源文件中直接内嵌数千字符以上的静态数据字典或超长字符字面量；
+  - **不要**在模块导入期（Top-level）对未使用的重型映射表执行急切初始化；
+  - **放行/改用**：
+    1. **静态数据物理解耦（Binary Asset Decoupling）**：将静态映射数据按紧凑格式（如 UTF-8 变长序列 + zlib 压缩）持久化于独立的伴生资产文件（如 `backend/app/assets/zh_tables.dat`），使 Python 代码保持为纯净的轻量高内聚函数（≤60 行），IDE 打开秒开；
+    2. **线程安全惰性单例（Thread-Safe Lazy Singleton）**：采用 `threading.Lock()` + 双重检查锁定（Double-Checked Locking）在首次调用时按需解压并构建 `str.maketrans` 转换表，兼顾 0ms 模块导入开销与高并发安全；
+    3. **自解释轻量单测覆盖**：在 `backend/tests/test_zh_conv.py` 中对 SMP 四字节字、去重变体及多线程并发进行全面断言，保障 100% 健壮性。
+
 ---
 
 ## 🚦 交付门禁（四步必跑）

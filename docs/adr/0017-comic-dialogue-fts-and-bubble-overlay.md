@@ -36,7 +36,7 @@
 - **路线 A（引入 opencc-python 依赖库）**：
   - _否决理由_：需要编译 C++ 扩展或拉取重型字典包，增加 Docker 与各平台移植成本。
 - **路线 B（零依赖 OpenCC 精简双向映射字典，推荐）**：
-  - _实现原理_：编写 `backend/app/zh_conv.py`，提取 3,881 对最高频中日汉字简繁对应表，在搜索入参层进行变体展开（`expand_search_variants`），生成 `(term_simp OR term_trad)` 查询原语，保持零外部依赖且覆盖 99.9% 二次元对白场景。
+  - _实现原理_：编写 `backend/app/zh_conv.py`，提取 3,881 对最高频中日汉字简繁对应表（数据解耦存储于 `backend/app/assets/zh_tables.dat` 压缩二进制资产并惰性单例加载，消除源码巨型字面量对 IDE/LSP 的解析卡顿），在搜索入参层进行变体展开（`expand_search_variants`），生成 `(term_simp OR term_trad)` 查询原语，保持零外部依赖且覆盖 99.9% 二次元对白场景。
 
 ### 3. 伴生资产契约与多章节全局映射
 
