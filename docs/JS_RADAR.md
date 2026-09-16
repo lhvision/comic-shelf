@@ -625,6 +625,7 @@ Vue 3.6 Vapor Mode 汲取了 SolidJS 的编译期优化思想，将 SFC 单文�
 - `src/composables/useLocalWorkshop.ts`（多章节拆帧图片总数统计）
 - `src/composables/useOfflineStorage.ts`（离线缓存资产字节容量规约）
 - `src/composables/useVaporBenchmark.ts`（高精帧耗时累加与基准跑分）
+- `src/utils/progress.ts`（进度条亚像素截断与浮点百分比统一基于 `round` + `EPSILON` 规约）
 
 #### 核心机制与解决的反模式
 

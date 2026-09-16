@@ -5,8 +5,6 @@ import { clearAllMetadataDb } from '@/utils/offlineDb'
 import { formatBytes } from '@/utils/format'
 import { clamp, sumPrecise } from '@/utils/math'
 
-export { formatBytes }
-
 export const MANGA_IMAGE_MAX_BUDGET = 3000
 
 export const useOfflineStorage = createGlobalState(() => {

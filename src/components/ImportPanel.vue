@@ -22,6 +22,7 @@ import AppIcon from '@/components/AppIcon.vue'
 import ImportRemoteTab from './import/ImportRemoteTab.vue'
 import ImportLocalTab from './import/ImportLocalTab.vue'
 import ImportConcurrencyStepper from './import/ImportConcurrencyStepper.vue'
+import { isJmComic, isLocalComic, isPicacgComic } from '@/utils/is'
 
 const props = defineProps<{
   /**
@@ -61,16 +62,16 @@ const prefetchAll = ref(false)
 const warnings = ref<string[]>([])
 
 const activeTab = ref<'jm' | 'picacg' | 'local'>(
-  props.source === 'jm' || props.source === 'picacg' || props.source === 'local'
-    ? props.source
+  isJmComic(props.source) || isPicacgComic(props.source) || isLocalComic(props.source)
+    ? (props.source as 'jm' | 'picacg' | 'local')
     : 'jm',
 )
 
 watch(
   () => props.source,
   (val) => {
-    if (val === 'jm' || val === 'picacg' || val === 'local') {
-      activeTab.value = val
+    if (isJmComic(val) || isPicacgComic(val) || isLocalComic(val)) {
+      activeTab.value = val as 'jm' | 'picacg' | 'local'
     }
   },
 )

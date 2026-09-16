@@ -12,6 +12,7 @@ import type { RouteLocationNormalizedLoaded } from 'vue-router'
 import { useTimeoutFn } from '@vueuse/core'
 import { useReaderKeyboard } from '@/composables/useReaderKeyboard'
 import { useReaderSync } from '@/composables/useReaderSync'
+import { isFiniteNumber } from '@/utils/is'
 import type { useReaderSettings } from '@/composables/useReaderSettings'
 import type { useReaderPaging } from '@/composables/useReaderPaging'
 import type { useReaderChrome } from '@/composables/useReaderChrome'
@@ -230,7 +231,7 @@ export function useReaderInteraction(options: UseReaderInteractionOptions) {
       if (loading.value) return
       const page = targetPage.value ?? lastRead.value ?? scopedPages.value[0] ?? 1
       const pages = scopedPages.value
-      if (!Number.isFinite(page) || pages.length === 0) return
+      if (!isFiniteNumber(page) || pages.length === 0) return
       if (page < pages[0]! || page > pages[pages.length - 1]!) return
       if (page === currentPage.value) return
       goToPage(page, 'smooth')

@@ -11,6 +11,8 @@
  *    污染 DOM style 属性与 CSS 变量，同时在 4K（3840px）屏下亚像素误差低于 0.38px。
  */
 
+import { round } from '@/utils/math'
+
 /**
  * 依据「当前完成量」与「总配额量」计算确定性进度百分比（0~100）。
  *
@@ -45,7 +47,5 @@ export function calculateFloatPercent(progress: number): number {
  * @returns 截断后的高精浮点数
  */
 export function truncateProgressFloat(value: number, decimals = 4): number {
-  if (typeof value !== 'number' || Number.isNaN(value)) return 0
-  const factor = 10 ** decimals
-  return Math.round(value * factor) / factor
+  return round(value, decimals)
 }

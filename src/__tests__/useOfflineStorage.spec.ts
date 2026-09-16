@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vite-plus/test'
-import { formatBytes, useOfflineStorage } from '@/composables/useOfflineStorage'
+import { useOfflineStorage } from '@/composables/useOfflineStorage'
+import { formatBytes } from '@/utils/format'
 
 describe('useOfflineStorage composable', () => {
   it('formats bytes into human readable representations', () => {

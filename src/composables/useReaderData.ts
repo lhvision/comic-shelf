@@ -142,6 +142,9 @@ export function useReaderData(options: UseReaderDataOptions = {}): UseReaderData
 
       // 若已有缓存内容在正常渲染，后台静默保活，绝不中断正在进行的阅读会话
       if (detail.value) {
+        if (import.meta.env.DEV) {
+          console.debug('[useReaderData] SWR refresh bypassed with active session cache:', e)
+        }
         return
       }
 

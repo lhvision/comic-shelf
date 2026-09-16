@@ -78,6 +78,7 @@ export interface LibrarySummary {
 }
 
 export type ReadingStatus = 'all' | 'reading' | 'completed' | 'unread'
+export type SortKey = 'recent' | 'title' | 'pages' | 'cached'
 
 export interface LibraryQueryParams {
   page?: number

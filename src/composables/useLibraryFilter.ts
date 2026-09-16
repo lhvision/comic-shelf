@@ -4,19 +4,15 @@ import type {
   ImageSearchResultItem,
   ReadingStatus,
   LibraryFacetsResponse,
+  SortKey,
 } from '@/types'
-import {
-  isCompletedComic,
-  isInProgressComic,
-  filterAndSortLibrary,
-  type FilterParams,
-} from '@/utils/libraryFilterCore'
+import { filterAndSortLibrary, type FilterParams } from '@/utils/libraryFilterCore'
+import { isCompletedComic, isInProgressComic } from '@/utils/is'
 import { sumBy } from '@/utils/math'
 import type { WorkerInMessage, WorkerOutMessage } from '@/workers/libraryFilter.worker'
 
 export { isCompletedComic, isInProgressComic }
-
-export type SortKey = 'recent' | 'title' | 'pages' | 'cached'
+export type { SortKey }
 
 /**
  * 触发 Web Worker 卸载计算的藏书规模阈值。

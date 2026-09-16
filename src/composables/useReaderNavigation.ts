@@ -79,6 +79,28 @@ export interface UseReaderNavigationOptions {
  * @param lastIdx 最后一组分组索引
  * @param isContinuous 是否为竖向连续条漫模式
  */
+/**
+ * 判定连续模式下画页容器是否与当前自适应阅读线相交。
+ * 当画页高度充足时保持 40% 视口阅读线；矮画幅/拆帧画卷取画页自身高度中线（50%），杜绝穿透反向跳跃。
+ */
+function isSpreadIntersecting(
+  spread: HTMLElement,
+  position: number,
+  viewportHeight: number,
+): { intersects: boolean; readLine: number; top: number; height: number } {
+  const top = spread.offsetTop
+  const height = spread.offsetHeight
+  const bottom = top + height
+  const threshold = Math.min(viewportHeight * 0.4, height * 0.5)
+  const readLine = position + threshold
+  return {
+    intersects: readLine >= top && readLine <= bottom,
+    readLine,
+    top,
+    height,
+  }
+}
+
 function resolveNearestGroupIndex(
   el: HTMLElement,
   position: number,
@@ -102,13 +124,7 @@ function resolveNearestGroupIndex(
       if (idx < 0 || idx > lastIdx) continue
       const spread = el.querySelector<HTMLElement>(`[data-group-index="${idx}"]`)
       if (!spread) continue
-      const top = spread.offsetTop
-      const height = spread.offsetHeight
-      const bottom = top + height
-      // 开本自适应阅读线：当画页高度充足时保持 40% 视口阅读线；矮画幅/拆帧画卷取画页自身高度中线（50%），杜绝穿透反向跳跃
-      const threshold = Math.min(el.clientHeight * 0.4, height * 0.5)
-      const readLine = position + threshold
-      if (readLine >= top && readLine <= bottom) {
+      if (isSpreadIntersecting(spread, position, el.clientHeight).intersects) {
         return idx
       }
     }
@@ -128,12 +144,7 @@ function resolveNearestGroupIndex(
         if (idx < 0 || idx > lastIdx) continue
         const spread = el.querySelector<HTMLElement>(`[data-group-index="${idx}"]`)
         if (!spread) continue
-        const top = spread.offsetTop
-        const height = spread.offsetHeight
-        const bottom = top + height
-        const threshold = Math.min(el.clientHeight * 0.4, height * 0.5)
-        const readLine = position + threshold
-        if (readLine >= top && readLine <= bottom) {
+        if (isSpreadIntersecting(spread, position, el.clientHeight).intersects) {
           return idx
         }
       }
@@ -151,12 +162,12 @@ function resolveNearestGroupIndex(
       if (!spread) {
         break
       }
-      const top = spread.offsetTop
-      const height = spread.offsetHeight
-      const bottom = top + height
-      const threshold = Math.min(el.clientHeight * 0.4, height * 0.5)
-      const readLine = position + threshold
-      if (readLine >= top && readLine <= bottom) {
+      const { intersects, readLine, top, height } = isSpreadIntersecting(
+        spread,
+        position,
+        el.clientHeight,
+      )
+      if (intersects) {
         return mid
       }
       const midCenter = top + height / 2

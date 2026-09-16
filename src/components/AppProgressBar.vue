@@ -20,6 +20,7 @@ import {
   truncateProgressFloat,
 } from '@/utils/progress'
 import { clamp, round, toFiniteNumber } from '@/utils/math'
+import { isNumber } from '@/utils/is'
 
 const props = withDefaults(
   defineProps<{
@@ -61,8 +62,7 @@ const props = withDefaults(
 const fraction = computed(() => {
   if (props.indeterminate) return 0
   let raw = 0
-  if (typeof props.progress === 'number') {
-    if (Number.isNaN(props.progress)) return 0
+  if (isNumber(props.progress)) {
     raw = clamp(props.progress, 0, 1)
   } else {
     const safeMax = Math.max(toFiniteNumber(props.max, 100), 0.0001)
@@ -75,7 +75,7 @@ const fraction = computed(() => {
 
 const percent = computed(() => {
   if (props.indeterminate) return 0
-  if (typeof props.progress === 'number' && !Number.isNaN(props.progress)) {
+  if (isNumber(props.progress)) {
     return calculateFloatPercent(props.progress)
   }
   const rawMax = toFiniteNumber(props.max, 100)
@@ -91,10 +91,9 @@ const transformOrigin = computed(() => (props.invert ? '100% 50%' : '0 50%'))
 
 const progressStyle = computed(() => {
   const safeMax = Math.max(toFiniteNumber(props.max, 100), 0.0001)
-  const safeValue =
-    typeof props.progress === 'number' && !Number.isNaN(props.progress)
-      ? round(fraction.value * safeMax, 4)
-      : Math.max(0, toFiniteNumber(props.value, 0))
+  const safeValue = isNumber(props.progress)
+    ? round(fraction.value * safeMax, 4)
+    : Math.max(0, toFiniteNumber(props.value, 0))
   return {
     '--progress': fraction.value,
     '--percent': `${percent.value}%`,

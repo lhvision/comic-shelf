@@ -15,6 +15,7 @@ import { useReaderData } from '@/composables/useReaderData'
 import { useReaderBubble } from '@/composables/useReaderBubble'
 import { useReaderCompletion } from '@/composables/useReaderCompletion'
 import { useReaderInteraction } from '@/composables/useReaderInteraction'
+import { isPositiveNumber } from '@/utils/is'
 import ReaderTopBar from '@/components/reader/ReaderTopBar.vue'
 import ReaderLoadingState from '@/components/reader/ReaderLoadingState.vue'
 import ReaderViewport from '@/components/reader/ReaderViewport.vue'
@@ -33,8 +34,8 @@ const { settings } = readerSettings
 const readerBubble = useReaderBubble(route, router)
 const { targetBubble } = readerBubble
 const initP = Number.parseInt(String(route.params.page || route.query.page), 10)
-const currentPage = ref(Number.isFinite(initP) && initP > 0 ? initP : 1)
-const currentGroupIndex = ref(Number.isFinite(initP) && initP > 0 ? Math.max(0, initP - 1) : 0)
+const currentPage = ref(isPositiveNumber(initP) ? initP : 1)
+const currentGroupIndex = ref(isPositiveNumber(initP) ? Math.max(0, initP - 1) : 0)
 const userInteracted = ref(false)
 const [settingsOpen] = useToggle(false)
 const [filmstripOpen, toggleFilmstrip] = useToggle(false)

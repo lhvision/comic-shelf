@@ -15,7 +15,7 @@ import ComicCard from '@/components/ComicCard.vue'
 import AppButton from '@/components/AppButton.vue'
 import AppIcon from '@/components/AppIcon.vue'
 import { liveCacheKey, type LiveCacheState } from '@/stores/library'
-import { isCompletedComic } from '@/composables/useLibraryFilter'
+import { isCompletedComic } from '@/utils/is'
 import { usePaginationFold, DEFAULT_LOAD_ALL_CAP } from '@/composables/usePaginationFold'
 
 const props = withDefaults(

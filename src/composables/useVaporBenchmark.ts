@@ -44,7 +44,7 @@ export function useVaporBenchmark() {
   function readHeapMb(): number | undefined {
     const memory = (performance as { memory?: { usedJSHeapSize?: number } }).memory
     if (memory?.usedJSHeapSize) {
-      return Math.round((memory.usedJSHeapSize / (1024 * 1024)) * 10) / 10
+      return round(memory.usedJSHeapSize / (1024 * 1024), 1)
     }
     return undefined
   }

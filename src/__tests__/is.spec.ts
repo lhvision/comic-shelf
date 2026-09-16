@@ -26,7 +26,7 @@ import {
   isPicacgComic,
   isJmComic,
 } from '@/utils/is'
-import type { LibrarySummary } from '@/types'
+import type { ComicDetail, LibrarySummary } from '@/types'
 
 describe('is utility module (Type Guards & Predicates)', () => {
   describe('Value & Nil Guards', () => {
@@ -197,6 +197,29 @@ describe('is utility module (Type Guards & Predicates)', () => {
       expect(isMultiChapterComic({ chapters: [] })).toBe(false)
       expect(isMultiChapterComic({})).toBe(false)
       expect(isMultiChapterComic(null)).toBe(false)
+
+      // LibrarySummary 结构支持（chapter_titles）
+      expect(
+        isMultiChapterComic({
+          chapter_titles: ['第 1 话', '第 2 话'],
+        } as unknown as LibrarySummary),
+      ).toBe(true)
+      expect(isMultiChapterComic({ chapter_titles: ['单行本'] } as unknown as LibrarySummary)).toBe(
+        false,
+      )
+      expect(isMultiChapterComic({ chapter_titles: [] } as unknown as LibrarySummary)).toBe(false)
+
+      // ComicDetail 结构支持（meta.chapters）
+      expect(
+        isMultiChapterComic({
+          meta: { chapters: [{ id: '1' }, { id: '2' }] },
+        } as unknown as ComicDetail),
+      ).toBe(true)
+      expect(
+        isMultiChapterComic({
+          meta: { chapters: [{ id: '1' }] },
+        } as unknown as ComicDetail),
+      ).toBe(false)
     })
 
     it('source predicates', () => {

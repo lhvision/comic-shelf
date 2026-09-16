@@ -3,8 +3,7 @@
  * @description 书架多维检索与排序核心纯函数（主线程与 Web Worker 共享）。
  */
 
-import type { LibrarySummary, ReadingStatus } from '@/types'
-import type { SortKey } from '@/composables/useLibraryFilter'
+import type { ComicDetail, LibrarySummary, ReadingStatus, SortKey } from '@/types'
 
 export function isCompletedComic(item: LibrarySummary | null | undefined): boolean {
   if (!item) return false
@@ -18,11 +17,23 @@ export function isInProgressComic(item: LibrarySummary | null | undefined): bool
 
 export function isUnreadComic(item: LibrarySummary | null | undefined): boolean {
   if (!item) return false
-  return (item.last_page ?? 0) === 0 || !item.last_page
+  return (item.last_page ?? 0) === 0
 }
 
-export function isMultiChapterComic(item: { chapters?: unknown[] } | null | undefined): boolean {
-  return Array.isArray(item?.chapters) && item.chapters.length > 1
+export function isMultiChapterComic(
+  item: LibrarySummary | ComicDetail | { chapters?: unknown[] } | null | undefined,
+): boolean {
+  if (!item) return false
+  if ('chapter_titles' in item && Array.isArray(item.chapter_titles)) {
+    return item.chapter_titles.length > 1
+  }
+  if ('meta' in item && item.meta && Array.isArray(item.meta.chapters)) {
+    return item.meta.chapters.length > 1
+  }
+  if ('chapters' in item && Array.isArray(item.chapters)) {
+    return item.chapters.length > 1
+  }
+  return false
 }
 
 export function isLocalComic(source: string | null | undefined): boolean {

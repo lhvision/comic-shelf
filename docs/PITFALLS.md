@@ -1234,6 +1234,22 @@
   5. **内存缓存直出与后台 SWR 保活（Instant Memory Cache & SWR Resilience）**：`useReaderData` 挂载时优先同步命中 `store.getDetail`，`loading` 初值赋 `false` 零骨架闪烁直出；后台更新失败静默保活；
   6. **初值提级与 RAF 合批（Route Param Initialization & RAF Batching）**：`currentPage` 挂载前直接由路由提取初值，规避二次重渲染；`recalibrateTargetOffset` 通过 RAF 合批消抖并清理历史调度。
 
+### 112. 领域断言契约错位、跨层反向类型依赖与工具投机性泛化陷阱 (Domain Contract Divergence, Inverted Worker Type Dependency & Speculative Generality Trap)
+
+- **本质**：
+  1. **领域多态契约假设与真实结构脱节（Domain Field Divergence）**：在为领域对象（如漫画）实现通用状态守卫（如 `isMultiChapterComic`）时，直觉假设输入形如 `{ chapters: [...] }`。但书架摘要 `LibrarySummary` 真实字段是 `chapter_titles?: string[]`，而漫画详情 `ComicDetail` 章节列表位于嵌套的 `meta.chapters?: Chapter[]`。若入参未做多态解包与字段嗅探，传入标准的领域对象时会静默永远返回 `false`，埋下高危隐蔽缺陷；
+  2. **Worker 共享底层纯函数反向依赖上层 Composable（Inverted Dependency across Layers）**：`src/utils/libraryFilterCore.ts` 既是主线程也是后台 Web Worker（`libraryFilter.worker.ts`）的过滤/排序算法核心。若直接从上层 `@/composables/useLibraryFilter` 反向导入 `SortKey` 类型，导致底层纯算法与上层 Vue 响应式状态机逻辑产生倒置耦合，破坏依赖倒置（DIP）原则；
+  3. **单源工具库与组件孤岛判定断层（Fragmented Predicates & Speculative Generality）**：建立基础断言库与高精代数工具（`src/utils/is.ts` 与 `src/utils/math.ts`）后，若未能将组件层（如 `ReaderView`、`AppProgressBar`、`ImportPanel`、`ComicGrid`）中散落的手写判定与冗余中转重导出（`export { formatBytes }`）彻底收敛，既产生工具死代码，又破坏了单一事实来源（Single Source of Truth）。
+- **红线与防误伤**：
+  - **不要**在通用工具函数中凭空假设领域对象结构，必须严格核对 `src/types/index.ts` 核心契约；
+  - **不要**允许 `src/utils/` 中的底层纯函数模块反向引用 `src/composables/` 或 `src/views/` 的任何符号或类型；
+  - **不要**在多个模块之间级联中转重导出领域断言或格式化工具，必须收敛至单一出口；
+  - **不要**新建了高精/守卫工具库却在组件层继续保留手写 `typeof === 'number'` 或 `Math.round(val * factor) / factor`。
+- **放行/改用**：
+  1. **多态领域对象安全解包（Polymorphic Contract Unwrapping）**：在断言函数中通过 `'chapter_titles' in item` 与 `'meta' in item` 兼容 `LibrarySummary`、`ComicDetail` 及带通用章节数组的对象；
+  2. **核心契约类型下沉（Type Contract Sinking）**：将跨层共享类型（如 `SortKey`）下沉至 `src/types/index.ts`，由工具层与组合式函数单向消费；
+  3. **单一真理源收敛与彻底落地**：全站数值/源判定全面收敛至 `@/utils/is`、保留小数统一委托至 `round(val, decimals)`，并彻底拔除 Composable 层的冗余中转导出。
+
 ---
 
 ## 🚦 交付门禁（四步必跑）
