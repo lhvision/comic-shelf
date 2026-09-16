@@ -152,14 +152,30 @@ function centerTileByGroupIndex(groupIndex: number, smooth = true) {
     const targetEl = rail.querySelector<HTMLElement>(`[data-group-index="${groupIndex}"]`)
     if (!targetEl) return
 
-    const targetLeft = targetEl.offsetLeft - rail.clientWidth / 2 + targetEl.clientWidth / 2
-    if (typeof rail.scrollTo === 'function') {
+    const railRect = rail.getBoundingClientRect()
+    const targetRect = targetEl.getBoundingClientRect()
+    const hasGeometry = railRect.width > 0 && targetRect.width > 0
+    const delta = hasGeometry
+      ? targetRect.left + targetRect.width / 2 - (railRect.left + railRect.width / 2)
+      : targetEl.offsetLeft - rail.clientWidth / 2 + targetEl.clientWidth / 2
+
+    if (typeof rail.scrollBy === 'function' && hasGeometry) {
+      if (Math.abs(delta) > 1) {
+        rail.scrollBy({
+          left: delta,
+          behavior: smooth ? 'smooth' : 'auto',
+        })
+      }
+    } else if (typeof rail.scrollTo === 'function') {
+      const targetLeft = props.rtlHorizontal
+        ? rail.scrollLeft + delta
+        : Math.max(0, rail.scrollLeft + delta)
       rail.scrollTo({
-        left: Math.max(0, targetLeft),
+        left: targetLeft,
         behavior: smooth ? 'smooth' : 'auto',
       })
     } else {
-      rail.scrollLeft = Math.max(0, targetLeft)
+      rail.scrollLeft += delta
     }
   })
 }
@@ -171,14 +187,30 @@ function centerActiveTile(smooth = true) {
     const activeEl = rail.querySelector<HTMLElement>('[data-group-active="true"]')
     if (!activeEl) return
 
-    const targetLeft = activeEl.offsetLeft - rail.clientWidth / 2 + activeEl.clientWidth / 2
-    if (typeof rail.scrollTo === 'function') {
+    const railRect = rail.getBoundingClientRect()
+    const targetRect = activeEl.getBoundingClientRect()
+    const hasGeometry = railRect.width > 0 && targetRect.width > 0
+    const delta = hasGeometry
+      ? targetRect.left + targetRect.width / 2 - (railRect.left + railRect.width / 2)
+      : activeEl.offsetLeft - rail.clientWidth / 2 + activeEl.clientWidth / 2
+
+    if (typeof rail.scrollBy === 'function' && hasGeometry) {
+      if (Math.abs(delta) > 1) {
+        rail.scrollBy({
+          left: delta,
+          behavior: smooth ? 'smooth' : 'auto',
+        })
+      }
+    } else if (typeof rail.scrollTo === 'function') {
+      const targetLeft = props.rtlHorizontal
+        ? rail.scrollLeft + delta
+        : Math.max(0, rail.scrollLeft + delta)
       rail.scrollTo({
-        left: Math.max(0, targetLeft),
+        left: targetLeft,
         behavior: smooth ? 'smooth' : 'auto',
       })
     } else {
-      rail.scrollLeft = Math.max(0, targetLeft)
+      rail.scrollLeft += delta
     }
   })
 }
@@ -290,7 +322,11 @@ function onRailPointerMove(e: PointerEvent) {
     hasDragged = true
     // 仅在判定为真实位移拖拽后，才按需接管 Pointer Capture 确保平稳跟手
     if (activePointerId !== null && !rail.hasPointerCapture(activePointerId)) {
-      rail.setPointerCapture(activePointerId)
+      try {
+        rail.setPointerCapture(activePointerId)
+      } catch {
+        // Defensive: ignore InvalidPointerId if gesture ended abruptly
+      }
     }
   }
   if (hasDragged) {
@@ -312,7 +348,11 @@ function onRailPointerUp() {
   isDraggingRail = false
   const rail = railEl.value
   if (rail && activePointerId !== null && rail.hasPointerCapture(activePointerId)) {
-    rail.releasePointerCapture(activePointerId)
+    try {
+      rail.releasePointerCapture(activePointerId)
+    } catch {
+      // Ignored
+    }
   }
   activePointerId = null
   if (hasDragged) {
@@ -434,7 +474,7 @@ function handleThumbLoad(page: number, e: Event) {
         @contextmenu="onContextMenu"
       >
         <section
-          v-for="group in scopedGroups"
+          v-for="(group, gIdx) in scopedGroups"
           :key="group.index"
           class="filmstrip-group"
           :data-group-index="group.index"
@@ -459,7 +499,7 @@ function handleThumbLoad(page: number, e: Event) {
             @keydown.space.prevent="handleTileClick(group, page)"
           >
             <img
-              v-if="isGroupHydrated(group.index)"
+              v-if="isGroupHydrated(gIdx)"
               :src="pageThumbUrl(source, sourceId, page)"
               :alt="`第 ${toLocalPage ? toLocalPage(page) : page} 页缩略图`"
               class="tile-thumb"

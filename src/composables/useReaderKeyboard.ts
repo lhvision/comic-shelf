@@ -69,6 +69,7 @@ export function useReaderKeyboard(options: UseReaderKeyboardOptions) {
     goPrevChapter,
     backToDetail,
     onUserInteract,
+    onKeyRelease,
   } = options
 
   /** 通过 VueUse useFullscreen 控制 root HTML 元素全屏 */
@@ -86,6 +87,11 @@ export function useReaderKeyboard(options: UseReaderKeyboardOptions) {
       return
     }
     if (event.target instanceof HTMLSelectElement) return
+
+    // 忽略带修饰键的组合键（Ctrl / Cmd / Alt），避免劫持浏览器原生快捷键（如 Ctrl+S / Ctrl+T / Ctrl+F 等）
+    if (event.ctrlKey || event.metaKey || event.altKey) {
+      return
+    }
 
     // 1. 设置面板打开时，ESC 优先关闭面板
     if (settingsOpen.value) {
@@ -198,7 +204,7 @@ export function useReaderKeyboard(options: UseReaderKeyboardOptions) {
         event.key,
       )
     ) {
-      options.onKeyRelease?.()
+      onKeyRelease?.()
     }
   }
 

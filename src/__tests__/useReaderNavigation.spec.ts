@@ -466,8 +466,8 @@ describe('useReaderNavigation - Discrete Wheel Stepping & Dual-Axis Discriminati
     expect(currentGroupIndex.value).toBe(2)
     expect(currentPage.value).toBe(5)
 
-    // After programmatic silence timer expires
-    vi.advanceTimersByTime(350)
+    // After programmatic silence timer expires (duration is 400ms for smooth scroll)
+    vi.advanceTimersByTime(420)
 
     // Normal passive scroll event can now update
     nav.onScroll()

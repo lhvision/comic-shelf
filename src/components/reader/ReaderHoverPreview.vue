@@ -48,20 +48,29 @@ const emit = defineEmits<{
 const imgRef = ref<HTMLImageElement | null>(null)
 const imgLoaded = ref(false)
 const imgFailed = ref(false)
+const loadedRatio = ref<string | null>(null)
 
 const thumbUrl = computed(() => {
   if (!props.source || !props.sourceId || props.page <= 0) return ''
   return pageThumbUrl(props.source, props.sourceId, props.page)
 })
 
-const effectiveRatio = computed(() => props.ratio || '3 / 4')
+const effectiveRatio = computed(() => loadedRatio.value || props.ratio || '3 / 4')
 
 function checkImageComplete() {
   const img = imgRef.value
-  if (img && img.complete && img.naturalWidth > 0) {
+  if (
+    img &&
+    img.complete &&
+    img.naturalWidth > 0 &&
+    thumbUrl.value &&
+    (img.currentSrc === thumbUrl.value || img.src === thumbUrl.value)
+  ) {
     imgLoaded.value = true
     imgFailed.value = false
-    emit('imageReady', props.page, `${img.naturalWidth} / ${img.naturalHeight}`)
+    const r = `${img.naturalWidth} / ${img.naturalHeight}`
+    loadedRatio.value = r
+    emit('imageReady', props.page, r)
   }
 }
 
@@ -70,6 +79,7 @@ watch(
   () => {
     imgLoaded.value = false
     imgFailed.value = false
+    loadedRatio.value = null
     if (props.show && props.page > 0) {
       nextTick(() => {
         checkImageComplete()
@@ -83,7 +93,9 @@ function onImageLoad(e: Event) {
   imgFailed.value = false
   const img = e.target as HTMLImageElement
   if (img && img.naturalWidth > 0 && img.naturalHeight > 0) {
-    emit('imageReady', props.page, `${img.naturalWidth} / ${img.naturalHeight}`)
+    const r = `${img.naturalWidth} / ${img.naturalHeight}`
+    loadedRatio.value = r
+    emit('imageReady', props.page, r)
   }
 }
 

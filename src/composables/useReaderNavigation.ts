@@ -259,27 +259,25 @@ export function useReaderNavigation(options: UseReaderNavigationOptions) {
    * 在此期间阻止 handleScroll 被动探测中间态并反向抢占当前页码，根除页码跳动抖动死锁。
    */
   const isProgrammaticScrolling = ref(false)
-  let programmaticTimer: ReturnType<typeof setTimeout> | null = null
+  const programmaticDuration = ref(320)
+  const { start: startProgrammaticUnlock, stop: stopProgrammaticUnlock } = useTimeoutFn(
+    () => {
+      isProgrammaticScrolling.value = false
+    },
+    programmaticDuration,
+    { immediate: false },
+  )
 
   function lockProgrammaticScroll(durationMs = 320) {
     isProgrammaticScrolling.value = true
-    if (programmaticTimer !== null) {
-      clearTimeout(programmaticTimer)
-    }
-    programmaticTimer = setTimeout(() => {
-      isProgrammaticScrolling.value = false
-      programmaticTimer = null
-    }, durationMs)
+    stopProgrammaticUnlock()
+    programmaticDuration.value = durationMs
+    startProgrammaticUnlock()
   }
 
   function unlockProgrammaticScroll() {
-    if (isProgrammaticScrolling.value) {
-      isProgrammaticScrolling.value = false
-      if (programmaticTimer !== null) {
-        clearTimeout(programmaticTimer)
-        programmaticTimer = null
-      }
-    }
+    isProgrammaticScrolling.value = false
+    stopProgrammaticUnlock()
   }
 
   /**
@@ -381,10 +379,6 @@ export function useReaderNavigation(options: UseReaderNavigationOptions) {
       if (wheelResetTimer !== null) {
         clearTimeout(wheelResetTimer)
         wheelResetTimer = null
-      }
-      if (programmaticTimer !== null) {
-        clearTimeout(programmaticTimer)
-        programmaticTimer = null
       }
       preloadAround.cancel?.()
       stopPillHide()

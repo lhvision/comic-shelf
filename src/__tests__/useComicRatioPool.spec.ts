@@ -53,4 +53,27 @@ describe('useComicRatioPool - Cross-View Aspect Ratio Sharing Pool', () => {
     pool.setPageRatio(1, '16 / 9')
     expect(pool.getPageRatio(1)).toBe('16 / 9')
   })
+
+  it('enforces true LRU eviction (refreshes accessed comic and evicts least recently used)', () => {
+    // Fill 24 entries: comic-1 to comic-24
+    for (let i = 1; i <= 24; i++) {
+      const p = useComicRatioPool(ref(`lru-comic-${i}`))
+      p.setPageRatio(1, `1 / ${i}`)
+    }
+
+    // Access comic-1 again to refresh its LRU position
+    const p1 = useComicRatioPool(ref('lru-comic-1'))
+    expect(p1.getPageRatio(1)).toBe('1 / 1')
+
+    // Add comic-25 (exceeding MAX_POOL_ENTRIES=24)
+    const p25 = useComicRatioPool(ref('lru-comic-25'))
+    p25.setPageRatio(1, '1 / 25')
+
+    // comic-1 should STILL be cached because it was recently accessed
+    expect(p1.getPageRatio(1)).toBe('1 / 1')
+
+    // comic-2 was the least recently used, so it should have been evicted
+    const p2 = useComicRatioPool(ref('lru-comic-2'))
+    expect(p2.getPageRatio(1)).toBeNull()
+  })
 })

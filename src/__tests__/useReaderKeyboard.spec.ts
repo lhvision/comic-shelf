@@ -129,4 +129,25 @@ describe('useReaderKeyboard - Cascading Escape & Filmstrip Toggle', () => {
     state.onKeyup(new KeyboardEvent('keyup', { key: 'ArrowRight' }))
     expect(onKeyRelease).toHaveBeenCalledTimes(1)
   })
+
+  it('ignores keydown when modifier keys (ctrlKey, metaKey, altKey) are pressed to avoid hijacking browser shortcuts', () => {
+    const nextGroup = vi.fn<() => void>()
+    const goNextChapter = vi.fn<() => void>()
+    const state = setupKeyboard({ nextGroup, goNextChapter })
+
+    // Ctrl+S / Cmd+S should NOT toggle filmstrip
+    state.onKeydown(new KeyboardEvent('keydown', { key: 's', ctrlKey: true }))
+    state.onKeydown(new KeyboardEvent('keydown', { key: 's', metaKey: true }))
+    // Ctrl+T should NOT toggle filmstrip
+    state.onKeydown(new KeyboardEvent('keydown', { key: 't', ctrlKey: true }))
+    expect(state.toggleFilmstrip).not.toHaveBeenCalled()
+
+    // Ctrl+Right should NOT advance
+    state.onKeydown(new KeyboardEvent('keydown', { key: 'ArrowRight', ctrlKey: true }))
+    expect(nextGroup).not.toHaveBeenCalled()
+
+    // Alt+N should NOT jump chapter
+    state.onKeydown(new KeyboardEvent('keydown', { key: 'n', altKey: true }))
+    expect(goNextChapter).not.toHaveBeenCalled()
+  })
 })

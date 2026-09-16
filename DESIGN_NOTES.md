@@ -558,15 +558,16 @@
    - 胶片单元格与画中画悬停气泡（`ReaderHoverPreview`）读取共享池实现 $O(1)$ 瞬态定盘，彻底消灭弹窗尺寸几何抖动；
 3. **分屏组级光标框定与 RTL 镜像流向（Group-level Framing Cursor & RTL Mirroring）**：
    - 在 1/2/4 页多开分屏模式下保持单页微缩卡片尺寸单调恒定（52×68px），通过外层朱砂金色线框（`.group-active`）将当前视口分屏组整体圈定高亮，消灭模式切换时的横向几何坍塌；单页激活态附着朱砂底标（`.tile-badge`）；
-   - 横向日漫右翻模式下容器严格声明 `dir="rtl"`，胶片滑动流向与读者滚轮/手势物理直觉 100% 对齐；
+   - 横向日漫右翻模式下容器严格声明 `dir="rtl"`，胶片滑动流向与读者滚轮/手势物理直觉 100% 对齐；视口居中锚定统一基于几何中点相对差值（`delta`）执行 `scrollBy`，根除不同内核浏览器在 RTL 负坐标轴下的截断归零死锁；
 4. **桌面端横向滚轮映射与 Pointer Capture 抓取漫游（Wheel Remapping & Desktop Pan Gesture）**：
    - 胶片滚动轨挂载 `@wheel.prevent.stop="onRailWheel"`，将鼠标滚轮垂直 `deltaY` 平滑转化为横向 `scrollLeft`，坚决杜绝滚轮事件穿透冒泡导致背景正文意外跳屏翻页；
    - 辅以指针捕获（`setPointerCapture`）实现桌面端鼠标抓取任意空白平滑拖拽漫游；
 5. **画中画悬停安全钳位与触控屏抑制（Edge Clamping & Touch Sticking Prevention）**：
-   - 基于视口与胶片轨容器边界执行左右 80px 刚性钳位（Edge Clamping），120ms 防抖；
+   - 基于视口与胶片轨容器边界执行左右 80px 刚性钳位（Edge Clamping），120ms 防抖；图片就绪后局部自适应撑开真实宽高比并增加严格 URL 校验防竞态；
    - 触控端（`@media (hover: none)`）物理抑制悬停气泡，点击直达跳页，彻底根除触控屏气泡悬挂黏滞；
 6. **阶梯式 Escape 级联收起与全键盘热键生态（Cascading Escape & Keyboard Affordance）**：
    - 在 `useReaderKeyboard` 中严格确立三级 Escape 拦截闭环：`settingsOpen`（设置面板优先）➔ `filmstripOpen`（胶片轨次之）➔ `backToDetail`（阅读器退回详情页），杜绝收起胶卷时误退阅读器；
+   - 键盘监听严格过滤修饰键（`metaKey`/`ctrlKey`/`altKey`），坚决杜绝浏览器原生 `Ctrl+S`（保存）、`Ctrl+T`（新标签页）、`Ctrl+F`（搜索）被意外劫持；
    - 键盘操作者支持单键 `T`（Thumbnails / 缩略胶卷）与 `S`（Strip / 胶片轨）一键切换抽屉显隐，无需挪动鼠标唤起控制台；
 7. **多状态机防干扰守护与暗室遮罩（State Machine Immunity & Backdrop Dismissal）**：
    - 胶片轨抽屉展开时，`useAutoTurn` 自动感知并挂起后台翻页倒计时，杜绝阅读器在读者专注选页时自动切屏与胶卷轨道被强行居中拖走；
@@ -579,7 +580,7 @@
    - 阅读器主点击 `onReaderClick` 严格限制为主鼠标按键（`event.button === 0`），阻断右键菜单或辅助点击穿透冒泡导致 HUD 闪烁或抽屉意外收起；
    - 胶片轨与悬停图片显式声明 `draggable="false"`，并绑定 `@contextmenu` 立即隐退悬停气泡，杜绝浏览器原生拖拽残影与气泡反复进退闪烁；
 10. **全卷宽高比池有界 LRU 与零胶水生命周期（Bounded LRU & Zero DOM Glue）**：
-    - `useComicRatioPool` 挂载 24 条 LRU 上限，彻底阻断长会话多本漫游时的内存膨胀；
+    - `useComicRatioPool` 挂载 24 条有界 LRU 缓存，通过命中时重入队实现真实 LRU 淘汰，彻底阻断长会话多本漫游时的内存膨胀；
     - 胶片轨内部定时器全部交由 VueUse `useTimeoutFn` 托管，自动响应 `onScopeDispose` 闭环销毁，实现 0 内存泄漏与 0 原生 DOM 粘连。
 
 ---

@@ -1192,6 +1192,24 @@
   3. **宽高比固化防抖（Aspect-Ratio Latch）**：画页在首次解码测得真实物理尺寸后，将 `naturalRatio` 永久固化于外层包裹容器，消除后续视口进出或网络重试引起的几何形变与滚动条跳跃；
   4. **全量 DOM 容器常驻与迟滞注水视窗（Permanent DOM Shell with Hysteresis Hydration Window - `useReaderHydration.ts`）**：保持所有 900+ 最外层 `<section>` 与 `<article>` 在文档流中，永不物理删除以维持 `scrollHeight`、继续阅读定位与 DOM 锚点确定性；业务逻辑独立下沉至 `useReaderHydration.ts`，借助 VueUse 动态自适应设备与网络环境（弱网 5/10 屏、高 DPR 移动端 8/15 屏、桌面 15/30 屏）；离屏画页渲染纯 CSS `quiescent-paper` 静默纸框并由底层 `content-visibility: auto` 跳过排版绘制，形成**框架组件层（削减 97% 图片显存）+ 浏览器内核层（跳过离屏骨架绘制）的双层立体防御体系**，彻底根除自激震荡狂滚与控制台卡死。
 
+### 110. 阅读器胶片预览轨局部切片全局索引脱靶与浏览器修饰键穿透陷阱 (Reader Filmstrip Scoped Hydration Desynchronization & Keyboard Modifier Shortcut Hijack)
+
+- **本质**：
+  1. **局部切片与全局分组索引脱靶致缩略图假死（Scoped Slice vs. Global Group Index Mismatch）**：在多章节漫画中，`scopedGroups` 过滤出当前章节的分组（保留全局 `group.index`，例如第 2 话为 `30..59`），而 `scopedCurrentGroupIndex` 计算的是局部数组索引（`0..29`）。传入 `useReaderHydration` 的滑动窗口基于局部索引运行（`minIdx: 0, maxIdx: 12`）。若在模板中误将全局 `group.index` 传入 `isGroupHydrated(group.index)`，当章节总组数超过全量注水阈值（24 组）时，所有全局序号 `30..59` 都会被误判为超出窗口（`30 > 12`），导致第 2 话及以后的缩略图全量脱靶瘫痪，永久停留在空白纸质骨架；
+  2. **全局快捷键修饰键穿透劫持浏览器系统指令（Global Keydown Modifier Leakage）**：在顶层注册单键快捷操作（如 `s` 呼出胶片轨、`t` 缩略图、`f` 全屏、`n` 切话）时，若仅排除了表单 input 焦点而未严格校验 `event.ctrlKey || event.metaKey || event.altKey`，读者触发浏览器原生快捷键 `Ctrl+S`（保存网页）、`Ctrl+T`（新标签页）、`Ctrl+F`（页内查找）或 `Ctrl+N`（新建窗口）时，会被阅读器错误截获并触发界面跳变与全屏切换；
+  3. **横向日漫 RTL 模式带符号负坐标轴居中死锁（Signed scrollLeft in dir="rtl"）**：现代浏览器（Chromium/WebKit/Gecko）在 `dir="rtl"` 滚动容器中遵循标准负坐标系规范，`scrollLeft` 取值范围为 `0` 至 `-(scrollWidth - clientWidth)`。使用常规 LTR 的 `Math.max(0, offsetLeft - ...)` 计算目标绝对坐标会强行传入正数，在 RTL 容器中被底层无情归零截断，导致横向日漫模式下任何居中滚动指令全线失效；
+  4. **画中画异步跨页测绘尺寸竞态（Stale Decoded Geometry Race Condition）**：鼠标高速划过微缩单元格时，`props.page` 与图片 `src` 频繁切换。若在 `nextTick` 中仅校验 `img.complete && img.naturalWidth` 而未校验 `img.currentSrc === thumbUrl`，可能在浏览器网络层未完成新图重置前误读上一页的尺寸并错误上报当前页的宽高比。
+- **红线与防误伤**：
+  - **不要**将经过局部过滤切片的列表数组的全局属性直接传入依赖局部视窗滑动窗口的 `isGroupHydrated`，必须传入 `v-for="(group, gIdx)"` 的局部循环索引 `gIdx`；
+  - **不要**在全局键盘监听器中遗漏修饰键拦截，严禁在 `ctrlKey / metaKey / altKey` 为 true 时分发单键业务动作；
+  - **不要**在带有 `dir="rtl"` 属性的横向滚动容器上通过绝对正值 `Math.max(0, ...)` 进行定位；
+  - **不要**在动态复用单体 `<img>` 的画中画浮层中读取未经 URL 校验的 `img.naturalWidth/Height`；
+- **放行/改用**：
+  1. **局部循环索引用作注水校验单源（Localized Loop Index Injection）**：模板统一书写 `<img v-if="isGroupHydrated(gIdx)" ...>`，使 `useReaderHydration` 内部的 `currentGroupIndex`、`orderedGroups` 与外部渲染完全保持局部坐标系统一；
+  2. **修饰键前置阻断防线（Modifier Guard）**：在 `useReaderKeyboard` 的 `onKeydown` 顶层统一增加 `if (event.ctrlKey || event.metaKey || event.altKey) return` 守卫，与全站 `useChapterPageInfo` 规范统一；
+  3. **物理中点物理差值相对滚动（Relative Midpoint Delta via scrollBy）**：通过 `targetRect.left + targetRect.width / 2 - (railRect.left + railRect.width / 2)` 测算物理视口中心偏差值 `delta`，调用 `rail.scrollBy({ left: delta })`，天然穿透 LTR 与 RTL 坐标轴正负极性差异；
+  4. **画中画真实解码响应式撑高与 URL 防穿透（Self-healing Popover Aspect-Ratio）**：在 `ReaderHoverPreview` 声明局部 `loadedRatio` 驱动 `--hover-ratio`，并在 `checkImageComplete` 中增加 `(img.currentSrc === thumbUrl.value || img.src === thumbUrl.value)` 校验，确保几何定盘与尺寸上报 100% 幂等可靠。
+
 ---
 
 ## 🚦 交付门禁（四步必跑）

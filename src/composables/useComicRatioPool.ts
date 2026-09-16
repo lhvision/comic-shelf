@@ -28,19 +28,23 @@ const pool = new Map<string, ComicRatioPoolEntry>()
  */
 export function getOrCreatePoolEntry(key: string): ComicRatioPoolEntry {
   let entry = pool.get(key)
-  if (!entry) {
-    if (pool.size >= MAX_POOL_ENTRIES) {
-      const oldestKey = pool.keys().next().value
-      if (oldestKey) {
-        pool.delete(oldestKey)
-      }
-    }
-    entry = {
-      pageRatios: new Map<number, string>(),
-      defaultRatio: ref<string | null>(null),
-    }
+  if (entry) {
+    // 命中缓存：重置位置刷新至 Map 末尾以维持真实 LRU 淘汰顺序
+    pool.delete(key)
     pool.set(key, entry)
+    return entry
   }
+  if (pool.size >= MAX_POOL_ENTRIES) {
+    const oldestKey = pool.keys().next().value
+    if (oldestKey) {
+      pool.delete(oldestKey)
+    }
+  }
+  entry = {
+    pageRatios: new Map<number, string>(),
+    defaultRatio: ref<string | null>(null),
+  }
+  pool.set(key, entry)
   return entry
 }
 
@@ -62,15 +66,6 @@ export function useComicRatioPool(comicKey: Ref<string>) {
     get: () => getOrCreatePoolEntry(comicKey.value).defaultRatio.value,
     set: (v) => {
       getOrCreatePoolEntry(comicKey.value).defaultRatio.value = v
-    },
-  })
-
-  // 通过 Proxy 代理 Map 操作，确保在 comicKey 切换时自动对齐到当前活跃条目
-  const pageRatios = new Proxy(new Map<number, string>(), {
-    get(_, prop) {
-      const activeMap = getOrCreatePoolEntry(comicKey.value).pageRatios
-      const val = Reflect.get(activeMap, prop)
-      return typeof val === 'function' ? val.bind(activeMap) : val
     },
   })
 
@@ -114,7 +109,6 @@ export function useComicRatioPool(comicKey: Ref<string>) {
   }
 
   return {
-    pageRatios,
     defaultComicRatio,
     setPageRatio,
     getPageRatio,

@@ -166,4 +166,46 @@ describe('ReaderFilmstrip - Filmstrip Scrubber Component', () => {
     await wrapper.setProps({ currentGroupIndex: 2 } as Record<string, unknown>)
     expect(scrollToSpy).not.toHaveBeenCalled()
   })
+
+  it('properly hydrates thumbnails in subsequent chapters of large multi-chapter comics (>24 groups)', () => {
+    // 60 groups total: Chapter 1 has 30 groups (pages 1..30), Chapter 2 has 30 groups (pages 31..60)
+    const largeGroups = Array.from({ length: 60 }, (_, i) => ({
+      pages: [i + 1],
+      index: i,
+    }))
+
+    const chapters = [
+      { id: 'c1', index: 0, title: '第 1 话', page_count: 30, start: 1 },
+      { id: 'c2', index: 1, title: '第 2 话', page_count: 30, start: 31 },
+    ]
+
+    const wrapper = mount(ReaderFilmstrip, {
+      props: {
+        ...defaultProps,
+        orderedGroups: largeGroups,
+        chapters,
+        currentChapterId: 'c2',
+        currentGroupIndex: 30, // First group of chapter 2 (global index 30)
+        currentPage: 31,
+        total: 60,
+        pagesPerView: 1,
+      },
+    })
+
+    // Chapter 2 has 30 groups, which exceeds fullHydrationThreshold (24)
+    const scopedGroupElements = wrapper.findAll('.filmstrip-group')
+    expect(scopedGroupElements.length).toBe(30)
+
+    // With local index hydration, images in the active window (around local index 0) MUST be hydrated
+    const hydratedImgs = wrapper.findAll('.filmstrip-tile img')
+    expect(hydratedImgs.length).toBeGreaterThanOrEqual(1)
+    expect(hydratedImgs.length).toBeLessThanOrEqual(25)
+
+    // The active first group of chapter 2 (local index 0) must contain a hydrated img
+    const firstGroup = scopedGroupElements[0]
+    expect(firstGroup).toBeDefined()
+    const firstTileImg = firstGroup!.find('img.tile-thumb')
+    expect(firstTileImg.exists()).toBe(true)
+    expect(firstTileImg.attributes('src')).toContain('/31')
+  })
 })

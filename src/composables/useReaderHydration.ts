@@ -101,7 +101,7 @@ export function useReaderHydration(options: UseReaderHydrationOptions) {
   const fullHydrationThreshold = computed(() => forwardBuffer.value + backwardBuffer.value)
 
   // 2. 物理宽高比锁盘池（集成漫画会话级共享池 useComicRatioPool，实现主视口、胶片轨与画中画跨视图零损耗互通）
-  const { pageRatios, defaultComicRatio, setPageRatio, getPageStyle } = useComicRatioPool(comicKey)
+  const { defaultComicRatio, setPageRatio, getPageStyle } = useComicRatioPool(comicKey)
 
   function onPageImageReady(page: number, ratio?: string | null) {
     setPageRatio(page, ratio)
@@ -146,6 +146,5 @@ export function useReaderHydration(options: UseReaderHydrationOptions) {
     getPageStyle,
     onPageImageReady,
     defaultComicRatio,
-    pageRatios,
   }
 }
