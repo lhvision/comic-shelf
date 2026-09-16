@@ -315,6 +315,44 @@ describe('useReaderNavigation - Discrete Wheel Stepping & Dual-Axis Discriminati
     expect(currentPage.value).toBe(3)
   })
 
+  it('accurately detects short spreads (height < 0.4 * clientHeight) without premature advancing', () => {
+    settings.mode = 'vertical-continuous'
+    const nav = createNavigation()
+
+    // Mobile viewport: clientHeight=844, short spreads (e.g. 16:9 frames): height=220
+    Object.defineProperty(mockContainer, 'clientHeight', { value: 844, configurable: true })
+    Object.defineProperty(mockContainer, 'scrollHeight', { value: 5000, configurable: true })
+
+    const spreads = mockContainer.querySelectorAll('section')
+    spreads.forEach((spread, idx) => {
+      Object.defineProperty(spread, 'offsetTop', { value: idx * 220, configurable: true })
+      Object.defineProperty(spread, 'offsetHeight', { value: 220, configurable: true })
+    })
+
+    // 1. Scrolled directly to Group 1's top (scrollTop = 220)
+    // In old buggy code, readLine = 220 + 844 * 0.4 = 557.6, which fell into Group 2 (440..660), incorrectly advancing to Group 2!
+    // With adaptive threshold = Math.min(337.6, 110) = 110, readLine = 220 + 110 = 330, staying accurately inside Group 1 (220..440)!
+    currentGroupIndex.value = 1
+    currentPage.value = 3
+    Object.defineProperty(mockContainer, 'scrollTop', { value: 220, configurable: true })
+
+    nav.onScroll()
+    vi.runAllTimers()
+
+    expect(currentGroupIndex.value).toBe(1)
+    expect(currentPage.value).toBe(3)
+
+    // 2. User scrolls down past Group 1's midpoint (> 220 + 110 = 330)
+    Object.defineProperty(mockContainer, 'scrollTop', { value: 340, configurable: true })
+
+    nav.onScroll()
+    vi.runAllTimers()
+
+    // Now it should smoothly transition to Group 2
+    expect(currentGroupIndex.value).toBe(2)
+    expect(currentPage.value).toBe(5)
+  })
+
   it('does not invoke resetAutoTurnCountdown on scroll in vertical-continuous mode', () => {
     settings.mode = 'vertical-continuous'
     const nav = createNavigation()

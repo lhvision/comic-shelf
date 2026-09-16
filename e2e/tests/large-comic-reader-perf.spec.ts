@@ -235,4 +235,88 @@ test.describe('900+ 页超大画卷阅读器性能与多模式全景回归测试
         .catch(() => {})
     }
   })
+
+  test('6. 移动端窄视口直达防自激高速翻页回归测试（Mobile Viewport Anchor Lock & No Auto-Scroll Loop）', async ({
+    gotoRoute,
+    page,
+  }) => {
+    // 模拟移动端视口（iPhone 12/13/14 390x844）
+    await page.setViewportSize({ width: 390, height: 844 })
+
+    // 直达 16:9 拆帧漫第 8 页
+    await gotoRoute('/comic/local/tiya-frames/read/8')
+
+    const readerView = page.locator('.reader-view')
+    await expect(readerView).toBeVisible({ timeout: 15000 })
+
+    // 等待第 8 页图片装载
+    const page8Img = page.locator('#page-8 .comic-page-img')
+    await expect(page8Img).toBeVisible({ timeout: 15000 })
+
+    // 等待 1.5 秒异步图片解码与迟滞注水稳定
+    await page.waitForTimeout(1500)
+
+    // 验证视口绝对锚定在第 8 页（group 7），绝无自激连续向下狂滚
+    const state = await page.evaluate(() => {
+      const el = document.querySelector('.reader-scroll')
+      const target = document.querySelector('[data-group-index="7"]') as HTMLElement | null
+      return {
+        scrollTop: el ? el.scrollTop : 0,
+        targetTop: target ? target.offsetTop : 0,
+        diff: target && el ? Math.abs(el.scrollTop - target.offsetTop) : 9999,
+      }
+    })
+
+    // 视口与目标页面偏差必须在 8px 安全冗余以内，绝对严禁漂移到后序页面（如第 9 页、第 50 页或第 917 页）
+    expect(state.diff).toBeLessThanOrEqual(8)
+  })
+
+  test('7. 移动端连续模式向上逐屏翻页防反弹测试（Mobile Upward Navigation & Anchor Reset）', async ({
+    gotoRoute,
+    page,
+  }) => {
+    // 模拟移动端视口（iPhone 12/13/14 390x844）
+    await page.setViewportSize({ width: 390, height: 844 })
+
+    // 直达第 13 页
+    await gotoRoute('/comic/local/tiya-frames/read/13')
+
+    const readerView = page.locator('.reader-view')
+    await expect(readerView).toBeVisible({ timeout: 15000 })
+
+    // 等待第 13 页图片装载并稳定
+    const page13Img = page.locator('#page-13 .comic-page-img')
+    await expect(page13Img).toBeVisible({ timeout: 15000 })
+    await page.waitForTimeout(1000)
+
+    // 轻触画面唤醒 HUD
+    await page.mouse.click(200, 300)
+
+    const prevBtn = page.locator('.reader-page-indicator button[aria-label="上一屏"]')
+    await expect(prevBtn).toBeVisible({ timeout: 5000 })
+
+    // 连续向上翻 3 屏：从 13 -> 12 -> 11 -> 10
+    await prevBtn.dispatchEvent('click')
+    await page.waitForTimeout(400)
+    await prevBtn.dispatchEvent('click')
+    await page.waitForTimeout(400)
+    await prevBtn.dispatchEvent('click')
+    await page.waitForTimeout(1500)
+
+    // 验证当前页码稳定停留在第 10 页，绝无因离屏图片注水或锚点残留自激弹回第 13 页
+    const indicator = page.locator('.reader-page-indicator span')
+    await expect(indicator).toHaveText('10 / 917')
+
+    // 验证物理视口精确停留在第 10 页（group index 9）
+    const state = await page.evaluate(() => {
+      const el = document.querySelector('.reader-scroll')
+      const target = document.querySelector('[data-group-index="9"]') as HTMLElement | null
+      return {
+        scrollTop: el ? el.scrollTop : 0,
+        targetTop: target ? target.offsetTop : 0,
+        diff: target && el ? Math.abs(el.scrollTop - target.offsetTop) : 9999,
+      }
+    })
+    expect(state.diff).toBeLessThanOrEqual(8)
+  })
 })

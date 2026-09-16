@@ -113,19 +113,37 @@ export function useReaderData(options: UseReaderDataOptions = {}): UseReaderData
     }
     const controller = new AbortController()
     readerAbortController = controller
-    loading.value = true
+
+    // 内存缓存秒级直出：若上一页（详情页/书架）已拉取过详情，直接秒开避免白屏与 loading 撕裂
+    const cached = store.getDetail(source.value, sourceId.value)
+    if (cached) {
+      detail.value = cached
+      loading.value = false
+      if (onLoaded) {
+        void onLoaded(cached)
+      }
+    } else {
+      loading.value = true
+    }
 
     try {
       const data = await api.detail(source.value, sourceId.value, { signal: controller.signal })
       if (controller.signal.aborted) return
       detail.value = data
       store.setDetail(data, userId.value)
-      loading.value = false
-      if (onLoaded) {
-        await onLoaded(data)
+      if (loading.value) {
+        loading.value = false
+        if (onLoaded) {
+          await onLoaded(data)
+        }
       }
     } catch (e) {
       if (controller.signal.aborted) return
+
+      // 若已有缓存内容在正常渲染，后台静默保活，绝不中断正在进行的阅读会话
+      if (detail.value) {
+        return
+      }
 
       // 离线容错降级：优先命中本地 IndexedDB 或书架概要占位
       const offlineDetail = await store.getOrFetchOfflineDetail(

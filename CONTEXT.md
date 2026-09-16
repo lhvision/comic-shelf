@@ -103,7 +103,7 @@
 - **离散滚轮步进与双轴分流（Discrete Wheel Stepping & Dual-Axis Discrimination）**：横向翻页模式下兼顾 PC 鼠标机械滚轮与触控板的物理映射范式。水平主导手势全额放行原生视口平滑滑移；垂直主导滚轮经阈值保护转换为单屏离散步进，自适应 LTR 与 RTL（日漫）阅读流向，通过原生物理滚动无缝联动内核级滚动驱动动画与进度条，彻底消除强制吸附对小位移滚轮的回弹假死。
 - **继续阅读（Last-read）**：每本作品独立记录"上次翻到第几页"（`comic-shelf:last-read:<source>/<sourceId>`），详情页据此显示"继续阅读"。
 - **自动切换（Auto-turn）**：按固定间隔（5/10/15/30 秒或自定义）自动翻到下一屏的辅助功能；开启后 HUD 常驻，手动操作重置计时。严格限定在离散翻页排版模式（竖向翻页与横向翻页）下生效；在竖向连续（条漫长卷）模式下设计上彻底豁免自动化，尊重由读者指尖/滚轮 1:1 掌控的非均质流式阅读节奏，彻底消除机械定时与持续位移引发的动晕症。
-- **绝对触底夹紧与视口中心线探测（Scroll Bottom Clamping & Viewport Center Intersection）**：解决条漫分镜切片高度不一、末页顶边无法触及视口顶端导致页码停滞与下一话横幅缺失的几何法则。当滚动容器距底部小于等于 24px 时，强制夹紧至当前话末页并激活跨话状态；非触底状态以视口有效阅读线（视口上方 40% 处）与画卷相交计算当前页码，消除短切片识别盲区。
+- **绝对触底夹紧与视口中心线探测（Scroll Bottom Clamping & Viewport Center Intersection）**：解决条漫分镜切片高度不一、末页顶边无法触及视口顶端导致页码停滞与下一话横幅缺失的几何法则。当滚动容器距底部小于等于 24px 时，强制夹紧至当前话末页并激活跨话状态；非触底状态以开本自适应阅读线（视口上方 40% 与画页半高的较小值，`min(0.4 × clientHeight, 0.5 × height)`）与画卷相交计算当前页码，彻底消除短切片识别盲区与矮幅拆帧漫超前误判。
 - **流式行内收尾卡片（In-flow Chapter Transition Card）**：竖向连续长卷模式下位于全话末页正文文档流下方的章节完结与切话微件。自然顺接于末页画卷之后并带有充足的视口呼吸垫高留白，替代遮挡正文的绝对定位悬浮胶囊，确保全话末尾分镜与台词 100% 完整可见。
 - **阅览室暗色环境（Reader room）**：阅读器固定的深色环境（`--reader-*` tokens），不随系统亮/暗主题切换，与书房（书架首页）的亮色纸面刻意区分。
 - **条漫无缝拼接（Webtoon Seamless Stitched View / Gapless Scroll）**：在竖向连续阅读模式下，通过彻底剥离行内占位页脚、外边距（gap/padding）与页面阴影（box-shadow），并将画卷视口强制约束为适应全宽（Fit Width），使图源切片的上下边缘以 0 像素物理咬合，还原韩漫/条漫原本浑然一体的垂直连续长卷。
@@ -269,3 +269,6 @@
 - **无虚树直驱（VDOM-less Direct DOM Compilation / Vapor Mode）**：Vue 3.6 引入的去虚拟 DOM 编译与运行时机制。通过在 SFC 模板标记 `<template vapor>`，由编译器将模板直接生成精准的原生 DOM 节点创建与微粒响应式侦听代码（Effect）；运行期跳过 VNode 树分配与递归 Diff 计算，与现有 `@vue/reactivity` 响应式原语（`ref`、`computed`）及 Pinia Store 100% 保持同构。
 - **Vapor 局部探针（Vapor Mode Local Probe）**：在全站维持成熟稳定 VDOM 架构的前提下，以单组件为原子粒度局部开启 Vapor 模式的工程试炼机制。通过设立基准测试沙盒与叶子展示原子组件试点，在零侵入、零全站回归风险下验证无虚树运行时的吞吐量、GC 垃圾回收与内存开销。
 - **双模渐进共存（Hybrid VDOM/Vapor Interoperability）**：标准 VDOM 容器组件与 Vapor 叶子探针在统一应用实例与响应式事件流下的双向混部形态。组件边界严格遵循标准 Props、Emits 与 Slots 契约，严禁组件内部访问 `instance.vnode` 等 VDOM 私有上下文，确保互操作边界黑盒解耦。
+- **冷启动目标锚点与微调熔断（Cold-Start Target Anchor & Micro-Adjustment Circuit Breaker）**：阅读器深度直达目标画页时设立的瞬态稳定机制。仅在冷启动未交互、连续模式且上方画页加载撑高时允许执行单次微调；读者触控、HUD 点击（上一屏/下一屏/胶片轨/切章）即刻注销锚点，并挂载 4000ms TTL 安全超时自毁，配合 `groupIndex === currentGroupIndex` 刚性守卫与 `requestAnimationFrame` 合批，彻底杜绝多图并发撑高与向上翻页时的反弹震荡。
+- **开本自适应连续阅读线（Aspect-Ratio Adaptive Readline）**：纵向长卷滚动探测对不同开本画卷设立的重心自适应探测算法。高画幅画卷维持 40% 视口阅读重心线，矮切片（16:9 拆帧漫、四格漫）动态回退至自身 50% 高度中线，消除矮画幅对齐顶端时阅读线穿透后序画页诱发的误判与跳帧。
+- **阅读器内存直出与离线保活（Reader Memory Instant Render & Offline SWR Resilience）**：阅读器挂载时直接探测 Pinia Store 内存详情缓存（`getDetail`），命中即以 `loading = false` 0ms 直出画卷，配合路由参数初始提级消除二次虚拟 DOM 抖动；后台网络接口若失败，依托现有内存快照静默保活，严禁粗暴弹退阻断阅读会话。

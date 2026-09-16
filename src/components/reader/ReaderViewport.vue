@@ -174,7 +174,10 @@ defineExpose({
           </div>
         </div>
         <footer
-          v-if="!settings.seamless || settings.mode !== 'vertical-continuous'"
+          v-if="
+            isGroupHydrated(group.index) &&
+            (!settings.seamless || settings.mode !== 'vertical-continuous')
+          "
           class="page-footer"
         >
           <span>{{ String(toLocalPage(page)).padStart(3, '0') }}</span>
@@ -242,7 +245,8 @@ defineExpose({
   scroll-timeline-axis: block;
 }
 
-.reader-spread {
+.reader-scroll[data-mode='vertical-paged'] .reader-spread,
+.reader-scroll[data-mode='horizontal'] .reader-spread {
   content-visibility: auto;
   contain-intrinsic-block-size: auto 100dvh;
   contain-intrinsic-inline-size: auto 100vw;
@@ -277,7 +281,7 @@ defineExpose({
   position: relative;
   width: 100%;
   height: 100%;
-  min-height: clamp(16rem, 55vh, 48rem);
+  min-height: 0;
   aspect-ratio: var(--quiescent-ratio, 0.72);
   display: flex;
   align-items: center;
@@ -562,7 +566,8 @@ defineExpose({
    并在 prefers-reduced-motion: reduce 下秒级静默禁用。 */
 @supports (animation-timeline: view()) {
   @media (prefers-reduced-motion: no-preference) {
-    .reader-scroll[data-mode='vertical-continuous']:not([data-seamless='true']) .reader-page {
+    .reader-scroll[data-mode='vertical-continuous']:not([data-seamless='true'])
+      .reader-page:has(.comic-page-image) {
       animation: reader-page-appear 1ms var(--ease-out) both;
       animation-timeline: view();
       animation-range: entry 0% entry 100%;

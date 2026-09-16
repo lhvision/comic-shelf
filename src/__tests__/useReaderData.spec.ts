@@ -3,6 +3,7 @@ import { defineComponent } from 'vue'
 import { mount, flushPromises } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
 import { useReaderData, type UseReaderDataReturn } from '@/composables/useReaderData'
+import { useLibraryStore } from '@/stores/library'
 import { api } from '@/api/client'
 import type { ComicDetail } from '@/types'
 
@@ -127,6 +128,74 @@ describe('useReaderData', () => {
     expect(hookResult.loading.value).toBe(false)
     expect(mockToast).toHaveBeenCalledWith('Network failure', 'error')
     expect(mockReplace).toHaveBeenCalledWith('/comic/jm/123')
+
+    wrapper.unmount()
+  })
+
+  it('instantly renders cached detail and silently preserves it if background API fails', async () => {
+    const store = useLibraryStore()
+    const cachedDetail: ComicDetail = {
+      meta: {
+        source: 'jm',
+        source_id: '123',
+        display_id: '123',
+        title: 'Cached Book',
+        authors: ['Cached Author'],
+        works: [],
+        actors: [],
+        tags: [],
+        description: '',
+        uploader: null,
+        page_count: 5,
+        published_at: '',
+        updated_at: '',
+        views: '',
+        likes: '',
+        comment_count: 0,
+        favorite: false,
+        cover_count: 1,
+        source_url: '',
+        pages: Array.from({ length: 5 }, (_, i) => ({
+          index: i + 1,
+          file: `${i + 1}.webp`,
+          ext: 'webp',
+          chapter: '',
+          cached: true,
+        })),
+        imported_at: '',
+        last_checked_at: '',
+        raw: {},
+      },
+      cached_pages: 5,
+      cache_complete: true,
+      cover_paths: ['/cover-1.webp'],
+    }
+    store.setDetail(cachedDetail)
+
+    vi.spyOn(api, 'detail').mockRejectedValueOnce(new Error('Background offline error'))
+
+    let hookResult!: UseReaderDataReturn
+    const onLoadedMock = vi.fn<(_data: ComicDetail) => void>()
+    const TestComponent = defineComponent({
+      setup() {
+        hookResult = useReaderData({ onLoaded: onLoadedMock })
+        return () => null
+      },
+    })
+
+    const wrapper = mount(TestComponent)
+    // 首次挂载即命中内存缓存，loading 为 false，detail 立即就绪
+    expect(hookResult.loading.value).toBe(false)
+    expect(hookResult.detail.value?.meta.title).toBe('Cached Book')
+    expect(onLoadedMock).toHaveBeenCalledWith(cachedDetail)
+
+    await flushPromises()
+
+    // 后台接口报错后静默保活，未中断阅读或重定向
+    expect(hookResult.loading.value).toBe(false)
+    expect(hookResult.detail.value?.meta.title).toBe('Cached Book')
+    expect(mockToast).not.toHaveBeenCalled()
+    expect(mockReplace).not.toHaveBeenCalled()
 
     wrapper.unmount()
   })

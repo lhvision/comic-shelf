@@ -1210,6 +1210,30 @@
   3. **物理中点物理差值相对滚动（Relative Midpoint Delta via scrollBy）**：通过 `targetRect.left + targetRect.width / 2 - (railRect.left + railRect.width / 2)` 测算物理视口中心偏差值 `delta`，调用 `rail.scrollBy({ left: delta })`，天然穿透 LTR 与 RTL 坐标轴正负极性差异；
   4. **画中画真实解码响应式撑高与 URL 防穿透（Self-healing Popover Aspect-Ratio）**：在 `ReaderHoverPreview` 声明局部 `loadedRatio` 驱动 `--hover-ratio`，并在 `checkImageComplete` 中增加 `(img.currentSrc === thumbUrl.value || img.src === thumbUrl.value)` 校验，确保几何定盘与尺寸上报 100% 幂等可靠。
 
+### 111. 矮切片阅读线穿透反噬、离屏伪 100dvh 崩塌与异步撑高重排自激翻页风暴 (Short-Spread Reading Line Penetration, Phantom 100dvh Collapse & Async Reflow Stampede)
+
+- **本质**：
+  1. **矮切片/宽幅拆帧漫 40% 阅读线几何穿透反噬（Short-Spread Read-Line Overshoot）**：在 16:9 视频拆帧漫、四格漫或移动端矮画幅长卷（单页高度 $H \approx 205\text{px}$）中，若在竖向连续滚动探测中硬编码 `readLine = position + el.clientHeight * 0.4`（移动端 $844 \times 0.4 = 338\text{px}$）。当视口精确对齐第 K 页顶端（`position = top`）时，由于 $H < 338\text{px}$，阅读线瞬间越界穿透至第 K+1 页甚至第 K+2 页，导致被动滚动算法把位于视口顶部正中央、完全可视的第 K 页误判为已被读完，直接将 `currentGroupIndex` 强行推进至下一组；
+  2. **连续长卷误用 `content-visibility: auto` 与伪 `100dvh` 内在尺寸造成 600px+ 巨幅雪崩塌陷（Phantom 100dvh Collapse）**：若在 `.reader-spread` 全局声明 `content-visibility: auto; contain-intrinsic-block-size: auto 100dvh;`，在翻页模式下单屏确实是 100dvh，但在竖向连续模式下，画页真实高度是由开本宽高比决定的（如移动端 16:9 画页仅 239px）。浏览器会将尚未入目的离屏画页全部伪造为 849px，产生高达数十万像素的"幽灵滚动条"。一旦读者向上翻卷接近上方画页，画页进入渲染视界并真实布局，单页瞬间从 849px 塌陷至 239px（-610px/页），引发全卷 `scrollHeight` 和 `offsetTop` 剧烈断层缩水，导致读者在第 13 页向上点到第 10 页时，上方画页塌陷使物理 `scrollTop` 相对位置暴涨，被误判为跌回第 13 页；
+  3. **HUD/工具栏点击与画卷脱节导致初始锚点残留弹回（HUD Click Detachment & Target Anchor Leakage）**：为补偿冷启动直达深层页码时上方图片异步加载撑高而引入了 `targetAnchorGroupIndex`。若仅在画卷视口（`ReaderViewport`）内部监听 touch/pointer 事件，读者点击处于视口外部的底部 HUD（`ReaderHud`）中的"上一屏"按钮时，`userInteracted` 无法被置为 `true`，导致初始锚点（如第 13 页）持续常驻。一旦读者向上翻到第 10 页且第 10 页图片就绪，`onPageReady` 判定 $10 < 13$ 且用户未交互，立即触发 `recalibrateTargetOffset(12)` 强行把视口弹回第 13 页；
+  4. **未注水纸印占位骨架 `min-height` 倒挂诱发 250px+ 巨额 CLS 震荡（Skeleton Min-Height Inversion）**：在 `.quiescent-paper` 中硬编码 `min-height: clamp(...)` 会在矮切片下覆盖 `aspect-ratio`，导致脱水骨架与真实画页尺寸倒挂；
+  5. **平滑滚动途中微调任务抢占打断（Smooth Scroll Preemption）**：在 `goToGroup` / `goToPage` 平滑过渡中无条件即时快跳打断读者视觉；
+  6. **详情缓存未利用与二次挂载虚拟 DOM 抖动（Uncached Deep Mount & Forced Reflow Thrashing）**：进入阅读器时若无条件重置 `loading = true`，即便已持有详情也会闪烁 100ms 骨架屏再挂载 900+ 节点画卷；且 `currentPage` 初始赋 1 导致异步 watch 触发二次虚拟 DOM 重渲染；多图并发就绪同步读取 `target.offsetTop` 产生 180ms+ Forced Reflow 阻塞。
+- **红线与防误伤**：
+  - **不要**在连续长卷滚动探测中采用超越画页本身几何高度的固定视口偏置阅读线；
+  - **不要**在连续长卷模式（`vertical-continuous`）的画页容器上滥用 `content-visibility: auto` 与 `contain-intrinsic-block-size: 100dvh`；
+  - **不要**将交互监听局限于单个子组件内部，必须确保任何控制台/HUD 导航行为均能清空初始微调锚点；
+  - **不要**允许微调逻辑对非当前分屏（`groupIndex !== currentGroupIndex`）执行跳转；
+  - **不要**在已有缓存数据正常渲染时，因后台 SWR 接口失败将读者粗暴踢出阅读器或重置阅读进度；
+  - **不要**在多图并发加载回调中同步读取 DOM 几何属性诱发 Forced Reflow。
+- **放行/改用**：
+  1. **开本自适应有效阅读线（Adaptive Reading Line）**：`resolveNearestGroupIndex` 采用 `threshold = Math.min(el.clientHeight * 0.4, height * 0.5)`，高画卷保持 40% 重心线，矮画幅回退至 50% 中线；
+  2. **连续长卷豁免 `content-visibility: auto`（Continuous Mode Layout Exemption）**：将 `content-visibility: auto; contain-intrinsic-block-size: auto 100dvh;` 严格收敛至单屏定高的 `vertical-paged` 与 `horizontal` 模式。在 `vertical-continuous` 模式下完全由已具备真实宽高比的轻量 `.quiescent-paper` 直接进行原生布局，全卷 900+ 节点尺寸首帧 100% 确定，0px CLS，0 幽灵高度；
+  3. **交互驱动锚点终结与 4 秒自毁（User Interaction Anchor Teardown & 4s TTL）**：在 `useReaderInteraction` 对 `prevGroup`、`nextGroup`、`goToPage`、`goNextChapter` 等交互统一注入 `onUserInteract()`，彻底注销 `targetAnchorGroupIndex`；冷启动设置 4000ms 兜底自毁定时器；并在 `recalibrateTargetOffset` 中增加 `groupIndex === currentGroupIndex.value` 刚性守卫；
+  4. **开本比例定盘零 CLS（Zero-CLS Ratio-Governed Placeholder）**：`.quiescent-paper` 释放 `min-height: 0`，由 `aspect-ratio` 百分之百主导高度；
+  5. **内存缓存直出与后台 SWR 保活（Instant Memory Cache & SWR Resilience）**：`useReaderData` 挂载时优先同步命中 `store.getDetail`，`loading` 初值赋 `false` 零骨架闪烁直出；后台更新失败静默保活；
+  6. **初值提级与 RAF 合批（Route Param Initialization & RAF Batching）**：`currentPage` 挂载前直接由路由提取初值，规避二次重渲染；`recalibrateTargetOffset` 通过 RAF 合批消抖并清理历史调度。
+
 ---
 
 ## 🚦 交付门禁（四步必跑）

@@ -7,8 +7,9 @@
  * - 接收子状态机契约对象，大幅压缩视图层样板解构。
  */
 
-import { nextTick, watch, type Ref } from 'vue'
+import { nextTick, ref, watch, type Ref } from 'vue'
 import type { RouteLocationNormalizedLoaded } from 'vue-router'
+import { useTimeoutFn } from '@vueuse/core'
 import { useReaderKeyboard } from '@/composables/useReaderKeyboard'
 import { useReaderSync } from '@/composables/useReaderSync'
 import type { useReaderSettings } from '@/composables/useReaderSettings'
@@ -55,21 +56,35 @@ export function useReaderInteraction(options: UseReaderInteractionOptions) {
     navigation: {
       scrollToGroup,
       recalibrateTargetOffset,
-      goToPage,
-      prevGroup,
-      nextGroup,
+      goToPage: navGoToPage,
+      prevGroup: navPrevGroup,
+      nextGroup: navNextGroup,
       advanceAutoTurn: navAdvanceAutoTurn,
       onScroll,
       onWheel,
       preloadAround,
-      goNextChapter,
-      goPrevChapter,
+      goNextChapter: navGoNextChapter,
+      goPrevChapter: navGoPrevChapter,
       lockProgrammaticScroll,
       unlockProgrammaticScroll,
-      isProgrammaticScrolling,
     },
     autoTurn: { resetAutoTurnCountdown },
   } = options
+
+  /**
+   * 记录初次载入或显式跳转的目标锚点页码与分组。
+   * 仅用于在用户未交互前，若视口上方离屏图片异步解码撑高时精准微调，绝不跟随滚动探测漂移。
+   */
+  const targetAnchorPage = ref<number | null>(null)
+  const targetAnchorGroupIndex = ref<number | null>(null)
+  const { start: startAnchorExpiry } = useTimeoutFn(
+    () => {
+      targetAnchorPage.value = null
+      targetAnchorGroupIndex.value = null
+    },
+    4000,
+    { immediate: false },
+  )
 
   async function initReaderView() {
     userInteracted.value = false
@@ -79,6 +94,9 @@ export function useReaderInteraction(options: UseReaderInteractionOptions) {
         : lastRead.value || scopedPages.value[0] || 1
     currentPage.value = clampToScope(initial)
     currentGroupIndex.value = groupIndexForPage(currentPage.value)
+    targetAnchorPage.value = currentPage.value
+    targetAnchorGroupIndex.value = currentGroupIndex.value
+    startAnchorExpiry()
 
     await nextTick()
     scrollToGroup(currentGroupIndex.value, 'instant')
@@ -91,25 +109,62 @@ export function useReaderInteraction(options: UseReaderInteractionOptions) {
     navAdvanceAutoTurn(reducedMotion.value)
   }
 
-  function onPageReady(_page: number) {
+  function onPageReady(page: number) {
+    // 仅在用户未曾交互、处于连续模式、锚点未过期、且就绪页码严格位于当前视口锚点上方时执行微调
+    // 下方画页无论如何加载排版，绝对不会改变上方锚点的 offsetTop，杜绝正反馈自激翻页
     if (
-      (!userInteracted.value || isProgrammaticScrolling.value) &&
-      settings.mode === 'vertical-continuous'
+      !userInteracted.value &&
+      settings.mode === 'vertical-continuous' &&
+      targetAnchorGroupIndex.value !== null &&
+      targetAnchorPage.value !== null &&
+      page < targetAnchorPage.value &&
+      targetAnchorGroupIndex.value === currentGroupIndex.value
     ) {
-      recalibrateTargetOffset(currentGroupIndex.value)
+      recalibrateTargetOffset(targetAnchorGroupIndex.value)
     }
   }
 
   function onViewportWheel(event: WheelEvent) {
-    userInteracted.value = true
-    resetAutoTurnCountdown()
+    onUserInteract()
     onWheel(event)
   }
 
   function onUserInteract() {
     userInteracted.value = true
+    targetAnchorGroupIndex.value = null
+    targetAnchorPage.value = null
     resetAutoTurnCountdown()
     unlockProgrammaticScroll()
+  }
+
+  function prevGroup(behavior: ScrollBehavior = 'smooth') {
+    onUserInteract()
+    navPrevGroup(behavior)
+  }
+
+  function nextGroup(behavior: ScrollBehavior = 'smooth') {
+    onUserInteract()
+    navNextGroup(behavior)
+  }
+
+  function goToPage(page: number, behavior: ScrollBehavior = 'smooth') {
+    onUserInteract()
+    navGoToPage(page, behavior)
+  }
+
+  function goToGroup(groupIndex: number, behavior: ScrollBehavior = 'smooth') {
+    onUserInteract()
+    options.navigation.goToGroup(groupIndex, behavior)
+  }
+
+  function goNextChapter() {
+    onUserInteract()
+    navGoNextChapter()
+  }
+
+  function goPrevChapter() {
+    onUserInteract()
+    navGoPrevChapter()
   }
 
   function onContainerScroll() {
@@ -223,5 +278,11 @@ export function useReaderInteraction(options: UseReaderInteractionOptions) {
     onReaderClick,
     onSelectChapter,
     toggleFullscreen,
+    prevGroup,
+    nextGroup,
+    goToPage,
+    goToGroup,
+    goNextChapter,
+    goPrevChapter,
   }
 }

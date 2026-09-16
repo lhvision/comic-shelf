@@ -259,10 +259,10 @@
 - 每屏页数按视口开放：`min-width: 681px` 的 PC/平板允许 1/2/4 页，更窄屏幕（<681px）默认收敛为 1 页（可选 1/2 页）；窄屏下 4 页配置自动降级单列渲染。
 - 移动端沉浸交互：彻底废除顶部中央悬浮遮挡画面的折叠按钮，统一由画面点击/轻触（Tap/Click-to-Toggle）唤醒与收起顶栏及 HUD；连续滚动模式下滚动不反复弹顶栏，无操作 2.6s 自动淡出。
 - 移动端安全区全覆盖：顶栏与底栏 HUD 均计算 `env(safe-area-inset-top/bottom/left/right)`，移动端跨话悬浮横幅自动垫高避让 HUD。
-- 点击详情页/章节页进入阅读器后，精准定位到目标页（`useReaderData` 先执行 `loading=false` 确保 DOM 视口挂载，`onLoaded` 在 `await nextTick()` 后执行 `scrollToGroup('instant')` 物理定位；缺省 `:page` 时优先回落至 `lastRead.value` 进度；纵向连续模式下由 `recalibrateTargetOffset` 在图片异步加载时微调位移）。
-- **视口有效阅读线相交与绝对触底夹紧（40% Read-Line & Bottom Clamping）**：
+- 点击详情页/章节页进入阅读器后，精准定位到目标页（`useReaderData` 优先同步命中 Pinia 详情内存缓存 `store.getDetail`，`loading` 初值赋 `false` 零骨架闪烁直出；后台 SWR 失败依托现有缓存静默保活；`currentPage` 与 `currentGroupIndex` 直接从 `route.params.page || route.query.page` 提级计算初值，首帧即对齐目标分屏，消除二次虚拟 DOM 抖动；`onLoaded` 在 `await nextTick()` 后执行 `scrollToGroup('instant')` 物理定位；缺省 `:page` 时优先回落至 `lastRead.value` 进度；纵向连续模式下由固化目标锚点 `targetAnchorGroupIndex` 配合 `recalibrateTargetOffset` 通过 `requestAnimationFrame` 合批在上方画页异步加载撑高时精准微调位移；读者触控、HUD 点击均立即销毁锚点并辅以 4000ms 兜底自毁超时）。
+- **开本自适应有效阅读线相交与绝对触底夹紧（Adaptive Read-Line & Bottom Clamping）**：
   - 针对条漫切片分幅高度不一、终页高度不足（如终页 584px 矮于视口 900px）导致无法触及顶端的痛点，当滚动容器触底 `position >= max - 24` 时，绝对夹紧至最后一页并激活末话状态；
-  - 非极端边界下，以视口上方 40% 处阅读线与画页几何相交探测激活当前页码，消除短切片识别死角。
+  - 非极端边界下，以开本自适应阅读线 `threshold = Math.min(el.clientHeight * 0.4, height * 0.5)` 与画页几何相交探测激活当前页码。高画幅长卷保持 40% 视口重心线，矮切片/拆帧画页回退至画页自身高度 50% 中线，彻底消除矮切片被 40% 阅读线超前穿透落入下一页导致的页码误判与自激翻页死锁。
 - **条漫流式行内章末过渡卡片（In-flow Chapter Transition）**：
   - 竖向连续模式下废除遮挡漫画分镜画面的悬浮下一话横幅，改在画卷尾部以文档流自然内嵌行内过渡卡片（`.reader-webtoon-chapter-end`）；
   - 卡片下方自带充足呼吸留白，读者流卷到底即可完整入目，点击一键切换下一话。

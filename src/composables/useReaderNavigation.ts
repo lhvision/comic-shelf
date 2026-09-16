@@ -89,8 +89,6 @@ function resolveNearestGroupIndex(
   rtl = false,
 ): number {
   if (isContinuous) {
-    const readLine = position + el.clientHeight * 0.4
-
     // 1. 局部邻域极速探测（针对平滑连续滚动，99% 命中当前页或前后 2 页，仅需 1~3 次轻量查询）
     const probeCandidates = [
       currentIdx,
@@ -104,7 +102,11 @@ function resolveNearestGroupIndex(
       const spread = el.querySelector<HTMLElement>(`[data-group-index="${idx}"]`)
       if (!spread) continue
       const top = spread.offsetTop
-      const bottom = top + spread.offsetHeight
+      const height = spread.offsetHeight
+      const bottom = top + height
+      // 开本自适应阅读线：当画页高度充足时保持 40% 视口阅读线；矮画幅/拆帧画卷取画页自身高度中线（50%），杜绝穿透反向跳跃
+      const threshold = Math.min(el.clientHeight * 0.4, height * 0.5)
+      const readLine = position + threshold
       if (readLine >= top && readLine <= bottom) {
         return idx
       }
@@ -126,7 +128,10 @@ function resolveNearestGroupIndex(
         const spread = el.querySelector<HTMLElement>(`[data-group-index="${idx}"]`)
         if (!spread) continue
         const top = spread.offsetTop
-        const bottom = top + spread.offsetHeight
+        const height = spread.offsetHeight
+        const bottom = top + height
+        const threshold = Math.min(el.clientHeight * 0.4, height * 0.5)
+        const readLine = position + threshold
         if (readLine >= top && readLine <= bottom) {
           return idx
         }
@@ -146,11 +151,14 @@ function resolveNearestGroupIndex(
         break
       }
       const top = spread.offsetTop
-      const bottom = top + spread.offsetHeight
+      const height = spread.offsetHeight
+      const bottom = top + height
+      const threshold = Math.min(el.clientHeight * 0.4, height * 0.5)
+      const readLine = position + threshold
       if (readLine >= top && readLine <= bottom) {
         return mid
       }
-      const midCenter = top + spread.offsetHeight / 2
+      const midCenter = top + height / 2
       const dist = Math.abs(midCenter - readLine)
       if (dist < bestDist) {
         bestDist = dist
@@ -322,9 +330,11 @@ export function useReaderNavigation(options: UseReaderNavigationOptions) {
     currentGroupIndex.value = clamped
     currentPage.value = groupFirstPage(clamped)
     scrollToGroup(clamped, behavior)
-    void nextTick(() => {
-      recalibrateTargetOffset(clamped)
-    })
+    if (behavior === 'instant' || behavior === 'auto') {
+      void nextTick(() => {
+        recalibrateTargetOffset(clamped)
+      })
+    }
     showChromeTemporarily()
     resetAutoTurnCountdown()
   }
@@ -340,9 +350,11 @@ export function useReaderNavigation(options: UseReaderNavigationOptions) {
     currentPage.value = clampedPage
     currentGroupIndex.value = groupIndex
     scrollToGroup(groupIndex, behavior)
-    void nextTick(() => {
-      recalibrateTargetOffset(groupIndex)
-    })
+    if (behavior === 'instant' || behavior === 'auto') {
+      void nextTick(() => {
+        recalibrateTargetOffset(groupIndex)
+      })
+    }
     showChromeTemporarily()
     resetAutoTurnCountdown()
   }
@@ -362,6 +374,7 @@ export function useReaderNavigation(options: UseReaderNavigationOptions) {
   let wheelCooldownTimer: ReturnType<typeof setTimeout> | null = null
   let accumulatedWheelDelta = 0
   let wheelResetTimer: ReturnType<typeof setTimeout> | null = null
+  let recalibrateRafId: number | null = null
 
   const WHEEL_THRESHOLD = 40
   const WHEEL_COOLDOWN_MS = 220
@@ -371,6 +384,10 @@ export function useReaderNavigation(options: UseReaderNavigationOptions) {
       if (scrollRafId !== null) {
         cancelAnimationFrame(scrollRafId)
         scrollRafId = null
+      }
+      if (recalibrateRafId !== null) {
+        cancelAnimationFrame(recalibrateRafId)
+        recalibrateRafId = null
       }
       if (wheelCooldownTimer !== null) {
         clearTimeout(wheelCooldownTimer)
@@ -575,17 +592,32 @@ export function useReaderNavigation(options: UseReaderNavigationOptions) {
   }
 
   /**
-   * 纵向连续模式下在图片异步加载撑高后，微调视口位置以消除排版位移
+   * 纵向连续模式下在图片异步加载撑高后，微调视口位置以消除排版位移。
+   * 采用 requestAnimationFrame 合批，杜绝多张图片在同一帧并发完成时引发的强制同步重排（Forced Reflow）。
    * @param groupIndex 目标分屏索引
    */
   function recalibrateTargetOffset(groupIndex: number) {
     const el = scrollEl.value
     if (!el || settings.mode !== 'vertical-continuous') return
-    const target = el.querySelector<HTMLElement>(`[data-group-index="${groupIndex}"]`)
-    if (!target) return
-    if (Math.abs(el.scrollTop - target.offsetTop) > 8) {
-      el.scrollTo({ left: 0, top: target.offsetTop, behavior: 'instant' })
+    if (groupIndex !== currentGroupIndex.value) return
+
+    if (recalibrateRafId !== null) {
+      cancelAnimationFrame(recalibrateRafId)
+      recalibrateRafId = null
     }
+
+    recalibrateRafId = requestAnimationFrame(() => {
+      recalibrateRafId = null
+      const currentEl = scrollEl.value
+      if (!currentEl || settings.mode !== 'vertical-continuous') return
+      if (groupIndex !== currentGroupIndex.value) return
+      const target = currentEl.querySelector<HTMLElement>(`[data-group-index="${groupIndex}"]`)
+      if (!target) return
+      if (Math.abs(currentEl.scrollTop - target.offsetTop) > 8) {
+        lockProgrammaticScroll(320)
+        currentEl.scrollTo({ left: 0, top: target.offsetTop, behavior: 'instant' })
+      }
+    })
   }
 
   /**

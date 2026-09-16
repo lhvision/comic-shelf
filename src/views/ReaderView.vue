@@ -32,8 +32,9 @@ const { settings } = readerSettings
 
 const readerBubble = useReaderBubble(route, router)
 const { targetBubble } = readerBubble
-const currentPage = ref(1)
-const currentGroupIndex = ref(0)
+const initP = Number.parseInt(String(route.params.page || route.query.page), 10)
+const currentPage = ref(Number.isFinite(initP) && initP > 0 ? initP : 1)
+const currentGroupIndex = ref(Number.isFinite(initP) && initP > 0 ? Math.max(0, initP - 1) : 0)
 const userInteracted = ref(false)
 const [settingsOpen] = useToggle(false)
 const [filmstripOpen, toggleFilmstrip] = useToggle(false)
@@ -94,8 +95,7 @@ const readerNavigation = useReaderNavigation({
   scopeId,
   router,
 })
-const { progressValue, pillActive, prevGroup, nextGroup, goToPage, goNextChapter, goPrevChapter } =
-  readerNavigation
+const { progressValue, pillActive } = readerNavigation
 
 const readerAutoTurn = useAutoTurn({
   settings,
@@ -119,6 +119,11 @@ const {
   onReaderClick,
   onSelectChapter,
   toggleFullscreen,
+  prevGroup,
+  nextGroup,
+  goToPage,
+  goNextChapter,
+  goPrevChapter,
 } = useReaderInteraction({
   userInteracted,
   currentPage,
