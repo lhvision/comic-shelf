@@ -29,12 +29,15 @@ const props = defineProps<{
   canNext: boolean
   /** 是否隐藏（用户清空工具栏且未开启自动切换） */
   hidden: boolean
+  /** 胶片预览轨是否已展开 */
+  filmstripOpen?: boolean
 }>()
 
 const emit = defineEmits<{
   toggleAutoTurnPause: []
   prev: []
   next: []
+  toggleFilmstrip: []
 }>()
 
 const autoTurnCountdownAriaLabel = () => {
@@ -49,7 +52,7 @@ const autoTurnActionLabel = () => (props.autoTurnPaused || props.settingsOpen ? 
 </script>
 
 <template>
-  <div class="reader-hud" :data-hidden="hidden" :inert="hidden">
+  <div class="reader-hud" :data-hidden="hidden || filmstripOpen" :inert="hidden || filmstripOpen">
     <button
       v-if="autoTurn && !atLastGroup"
       class="auto-turn-countdown"
@@ -80,6 +83,18 @@ const autoTurnActionLabel = () => (props.autoTurnPaused || props.settingsOpen ? 
         <AppIcon :name="nextIcon" size="xs" />
       </button>
     </div>
+
+    <button
+      type="button"
+      class="filmstrip-toggle-btn"
+      :data-active="filmstripOpen"
+      :aria-expanded="filmstripOpen"
+      aria-label="胶片预览轨"
+      @click="emit('toggleFilmstrip')"
+    >
+      <AppIcon name="film" size="xs" />
+      <span class="filmstrip-toggle-tip">胶片</span>
+    </button>
   </div>
 </template>
 
@@ -213,6 +228,43 @@ const autoTurnActionLabel = () => (props.autoTurnPaused || props.settingsOpen ? 
   }
 }
 
+.filmstrip-toggle-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  min-height: var(--control-md);
+  padding: var(--space-1) var(--space-2);
+  border: 1px solid var(--reader-line-strong);
+  border-radius: 999px;
+  background: var(--reader-scrim);
+  backdrop-filter: blur(10px);
+  color: var(--reader-ink);
+  font-family: var(--font-mono);
+  font-size: 0.625rem;
+  cursor: pointer;
+  transition:
+    background-color var(--duration-1) var(--ease-out),
+    border-color var(--duration-1) var(--ease-out),
+    color var(--duration-1) var(--ease-out);
+}
+
+.filmstrip-toggle-btn:hover {
+  background: var(--reader-surface-hover);
+  border-color: var(--reader-line);
+}
+
+.filmstrip-toggle-btn[data-active='true'] {
+  background: color-mix(in oklab, var(--accent) 20%, var(--reader-scrim));
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.filmstrip-toggle-tip {
+  line-height: 1;
+}
+
 @media (max-width: 680px), (max-height: 560px) {
   .reader-hud {
     flex-direction: row;
@@ -240,6 +292,18 @@ const autoTurnActionLabel = () => (props.autoTurnPaused || props.settingsOpen ? 
     min-height: 0;
     padding: 0;
     border-radius: 50%;
+  }
+
+  .filmstrip-toggle-btn {
+    width: var(--control-md);
+    height: var(--control-md);
+    min-height: 0;
+    padding: 0;
+    border-radius: 50%;
+  }
+
+  .filmstrip-toggle-tip {
+    display: none;
   }
 }
 

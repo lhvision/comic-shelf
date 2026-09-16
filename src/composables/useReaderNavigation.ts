@@ -11,7 +11,15 @@
  * 6. 跨章节边界切入（`goNextChapter` / `goPrevChapter`）：自动维护 `?chapter=` 作用域与 URL 替换。
  */
 
-import { getCurrentScope, onScopeDispose, ref, watch, type ComputedRef, type Ref } from 'vue'
+import {
+  getCurrentScope,
+  nextTick,
+  onScopeDispose,
+  ref,
+  watch,
+  type ComputedRef,
+  type Ref,
+} from 'vue'
 import type { Router } from 'vue-router'
 import { useDebounceFn, useTimeoutFn } from '@vueuse/core'
 import { pageFileUrl } from '@/api/client'
@@ -250,23 +258,23 @@ export function useReaderNavigation(options: UseReaderNavigationOptions) {
    * 标记是否处于程序化跳转（如点击翻页、外部直达、滑块跳转）的滑行期。
    * 在此期间阻止 handleScroll 被动探测中间态并反向抢占当前页码，根除页码跳动抖动死锁。
    */
-  let isProgrammaticScrolling = false
+  const isProgrammaticScrolling = ref(false)
   let programmaticTimer: ReturnType<typeof setTimeout> | null = null
 
   function lockProgrammaticScroll(durationMs = 320) {
-    isProgrammaticScrolling = true
+    isProgrammaticScrolling.value = true
     if (programmaticTimer !== null) {
       clearTimeout(programmaticTimer)
     }
     programmaticTimer = setTimeout(() => {
-      isProgrammaticScrolling = false
+      isProgrammaticScrolling.value = false
       programmaticTimer = null
     }, durationMs)
   }
 
   function unlockProgrammaticScroll() {
-    if (isProgrammaticScrolling) {
-      isProgrammaticScrolling = false
+    if (isProgrammaticScrolling.value) {
+      isProgrammaticScrolling.value = false
       if (programmaticTimer !== null) {
         clearTimeout(programmaticTimer)
         programmaticTimer = null
@@ -292,7 +300,7 @@ export function useReaderNavigation(options: UseReaderNavigationOptions) {
       groupDiff > 5 && behavior === 'smooth' ? 'auto' : behavior
 
     lockProgrammaticScroll(
-      effectiveBehavior === 'instant' || effectiveBehavior === 'auto' ? 60 : 320,
+      effectiveBehavior === 'instant' || effectiveBehavior === 'auto' ? 480 : 400,
     )
 
     if (typeof window !== 'undefined' && 'onscrollend' in window) {
@@ -316,6 +324,9 @@ export function useReaderNavigation(options: UseReaderNavigationOptions) {
     currentGroupIndex.value = clamped
     currentPage.value = groupFirstPage(clamped)
     scrollToGroup(clamped, behavior)
+    void nextTick(() => {
+      recalibrateTargetOffset(clamped)
+    })
     showChromeTemporarily()
     resetAutoTurnCountdown()
   }
@@ -331,18 +342,21 @@ export function useReaderNavigation(options: UseReaderNavigationOptions) {
     currentPage.value = clampedPage
     currentGroupIndex.value = groupIndex
     scrollToGroup(groupIndex, behavior)
+    void nextTick(() => {
+      recalibrateTargetOffset(groupIndex)
+    })
     showChromeTemporarily()
     resetAutoTurnCountdown()
   }
 
   /** 翻到上一屏 */
-  function prevGroup() {
-    goToGroup(currentGroupIndex.value - 1)
+  function prevGroup(behavior: ScrollBehavior = 'smooth') {
+    goToGroup(currentGroupIndex.value - 1, behavior)
   }
 
   /** 翻到下一屏 */
-  function nextGroup() {
-    goToGroup(currentGroupIndex.value + 1)
+  function nextGroup(behavior: ScrollBehavior = 'smooth') {
+    goToGroup(currentGroupIndex.value + 1, behavior)
   }
 
   let scrollRafId: number | null = null
@@ -398,7 +412,7 @@ export function useReaderNavigation(options: UseReaderNavigationOptions) {
     progressValue.value = rtl ? 1 - rawProgress : rawProgress
 
     // 处于程序化跳转平滑滑行期：仅更新滚动进度条 progressValue，禁止被动探测反向抢占当前页码
-    if (isProgrammaticScrolling) {
+    if (isProgrammaticScrolling.value) {
       return
     }
 
@@ -608,6 +622,8 @@ export function useReaderNavigation(options: UseReaderNavigationOptions) {
     setScope,
     goNextChapter,
     goPrevChapter,
+    lockProgrammaticScroll,
     unlockProgrammaticScroll,
+    isProgrammaticScrolling,
   }
 }

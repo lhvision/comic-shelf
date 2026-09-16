@@ -546,6 +546,42 @@
    - 移动端「上一话/下一话」收纳为左右各 44×44px 的正方形翻页箭钮，横向夹持 `ChapterSwitcher` 维持单行秩序；
    - 页面级监听 `[` 与 `]` 键盘事件，并严格过滤修饰键（`metaKey`/`ctrlKey`/`altKey`）、活动模态框（`<dialog[open]>`）与输入框焦点，阻断浏览器原生后退与双重路由竞争。
 
+### <a id="sec-68"></a>§68 胶片预览轨抽屉、全卷宽高比池共享与画中画悬停架构
+
+针对阅读器底部长卷快速定位与跨模式多图预览演进出的四重防护架构：
+
+1. **胶片抽屉受控覆盖与 HUD 避让闭环（Controlled Filmstrip Drawer & HUD Clearance）**：
+   - 胶片轨抽屉（`ReaderFilmstrip`）以半透明磨砂（`--reader-scrim-strong`）悬浮覆盖在阅读器底部，主画卷视口 0 重排、0 颠簸；
+   - 抽屉展开时 HUD 自动平滑退避隐退（`:data-hidden="hidden || filmstripOpen" :inert="hidden || filmstripOpen"`），彻底根除状态重叠与操作死锁；抽屉关闭或完成选页后 HUD 瞬间原位复现；
+2. **全卷会话级物理宽高比共享（Shared Comic Ratio Pool & useComicRatioPool）**：
+   - 通过 `useComicRatioPool` 维护按 `comicKey` 索引的轻量 Map 共享池，主视口大图解码后就地写入；
+   - 胶片单元格与画中画悬停气泡（`ReaderHoverPreview`）读取共享池实现 $O(1)$ 瞬态定盘，彻底消灭弹窗尺寸几何抖动；
+3. **分屏组级光标框定与 RTL 镜像流向（Group-level Framing Cursor & RTL Mirroring）**：
+   - 在 1/2/4 页多开分屏模式下保持单页微缩卡片尺寸单调恒定（52×68px），通过外层朱砂金色线框（`.group-active`）将当前视口分屏组整体圈定高亮，消灭模式切换时的横向几何坍塌；单页激活态附着朱砂底标（`.tile-badge`）；
+   - 横向日漫右翻模式下容器严格声明 `dir="rtl"`，胶片滑动流向与读者滚轮/手势物理直觉 100% 对齐；
+4. **桌面端横向滚轮映射与 Pointer Capture 抓取漫游（Wheel Remapping & Desktop Pan Gesture）**：
+   - 胶片滚动轨挂载 `@wheel.prevent.stop="onRailWheel"`，将鼠标滚轮垂直 `deltaY` 平滑转化为横向 `scrollLeft`，坚决杜绝滚轮事件穿透冒泡导致背景正文意外跳屏翻页；
+   - 辅以指针捕获（`setPointerCapture`）实现桌面端鼠标抓取任意空白平滑拖拽漫游；
+5. **画中画悬停安全钳位与触控屏抑制（Edge Clamping & Touch Sticking Prevention）**：
+   - 基于视口与胶片轨容器边界执行左右 80px 刚性钳位（Edge Clamping），120ms 防抖；
+   - 触控端（`@media (hover: none)`）物理抑制悬停气泡，点击直达跳页，彻底根除触控屏气泡悬挂黏滞；
+6. **阶梯式 Escape 级联收起与全键盘热键生态（Cascading Escape & Keyboard Affordance）**：
+   - 在 `useReaderKeyboard` 中严格确立三级 Escape 拦截闭环：`settingsOpen`（设置面板优先）➔ `filmstripOpen`（胶片轨次之）➔ `backToDetail`（阅读器退回详情页），杜绝收起胶卷时误退阅读器；
+   - 键盘操作者支持单键 `T`（Thumbnails / 缩略胶卷）与 `S`（Strip / 胶片轨）一键切换抽屉显隐，无需挪动鼠标唤起控制台；
+7. **多状态机防干扰守护与暗室遮罩（State Machine Immunity & Backdrop Dismissal）**：
+   - 胶片轨抽屉展开时，`useAutoTurn` 自动感知并挂起后台翻页倒计时，杜绝阅读器在读者专注选页时自动切屏与胶卷轨道被强行居中拖走；
+   - `useReaderChrome` 自动将胶片抽屉纳入可见态保活，暂停 2.6s 自动隐退定时器；
+   - 抽屉背后挂载轻量半透明纸质遮罩（`filmstrip-backdrop`），读者点击上方漫画任意区域即可自然收起抽屉；
+8. **三阶梯抗震消抖与单向物理定盘（Three-Stage Anti-Oscillation & Trajectory Lock）**：
+   - 彻底阻断大跨度点击跳转时因动态注水高度未稳定而引发的被动中间态误读与胶片轨反向倒退（Ping-pong Bouncing）；
+   - 将 `lockProgrammaticScroll` 静音锁时效提升至 480ms，胶片轨通过 `lockClickNavigation` 实施 500ms 单向确定性位移锁定，并在 Playwright E2E 中引入 20ms 高频物理探针校验位移反转次数为 0；
+9. **右键穿透防御与手势安全防护（Right-Click & Gesture Isolation）**：
+   - 阅读器主点击 `onReaderClick` 严格限制为主鼠标按键（`event.button === 0`），阻断右键菜单或辅助点击穿透冒泡导致 HUD 闪烁或抽屉意外收起；
+   - 胶片轨与悬停图片显式声明 `draggable="false"`，并绑定 `@contextmenu` 立即隐退悬停气泡，杜绝浏览器原生拖拽残影与气泡反复进退闪烁；
+10. **全卷宽高比池有界 LRU 与零胶水生命周期（Bounded LRU & Zero DOM Glue）**：
+    - `useComicRatioPool` 挂载 24 条 LRU 上限，彻底阻断长会话多本漫游时的内存膨胀；
+    - 胶片轨内部定时器全部交由 VueUse `useTimeoutFn` 托管，自动响应 `onScopeDispose` 闭环销毁，实现 0 内存泄漏与 0 原生 DOM 粘连。
+
 ---
 
 ## 5. 历史演进里程碑归档索引（Historical Milestones Archive）

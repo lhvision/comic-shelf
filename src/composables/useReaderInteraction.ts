@@ -24,6 +24,8 @@ export interface UseReaderInteractionOptions {
   currentPage: Ref<number>
   currentGroupIndex: Ref<number>
   settingsOpen: Ref<boolean>
+  filmstripOpen?: Ref<boolean>
+  toggleFilmstrip?: () => void
   reducedMotion: Ref<boolean>
   route: RouteLocationNormalizedLoaded
   settings: ReturnType<typeof useReaderSettings>
@@ -41,6 +43,8 @@ export function useReaderInteraction(options: UseReaderInteractionOptions) {
     currentPage,
     currentGroupIndex,
     settingsOpen,
+    filmstripOpen,
+    toggleFilmstrip,
     reducedMotion,
     route,
     settings: { settings, clearActiveComic, applyComicPreferences },
@@ -60,7 +64,9 @@ export function useReaderInteraction(options: UseReaderInteractionOptions) {
       preloadAround,
       goNextChapter,
       goPrevChapter,
+      lockProgrammaticScroll,
       unlockProgrammaticScroll,
+      isProgrammaticScrolling,
     },
     autoTurn: { resetAutoTurnCountdown },
   } = options
@@ -86,7 +92,10 @@ export function useReaderInteraction(options: UseReaderInteractionOptions) {
   }
 
   function onPageReady(_page: number) {
-    if (!userInteracted.value && settings.mode === 'vertical-continuous') {
+    if (
+      (!userInteracted.value || isProgrammaticScrolling.value) &&
+      settings.mode === 'vertical-continuous'
+    ) {
       recalibrateTargetOffset(currentGroupIndex.value)
     }
   }
@@ -108,6 +117,9 @@ export function useReaderInteraction(options: UseReaderInteractionOptions) {
   }
 
   function onReaderClick(event: MouseEvent) {
+    if (event.button !== 0) {
+      return
+    }
     const target = event.target as HTMLElement | null
     if (target?.closest('button, a, input, select, textarea, [role="button"]')) {
       return
@@ -115,7 +127,19 @@ export function useReaderInteraction(options: UseReaderInteractionOptions) {
     if (window.getSelection()?.toString()) {
       return
     }
+    if (filmstripOpen?.value) {
+      filmstripOpen.value = false
+      return
+    }
     toggleChrome()
+  }
+
+  function onSelectChapter(id: string) {
+    const c = detail.value?.meta.chapters?.find((item) => item.id === id)
+    if (c) {
+      options.navigation.setScope(c.id, c.start)
+      goToPage(c.start, 'smooth')
+    }
   }
 
   useReaderSync({
@@ -131,6 +155,8 @@ export function useReaderInteraction(options: UseReaderInteractionOptions) {
 
   const { toggleFullscreen } = useReaderKeyboard({
     settingsOpen,
+    filmstripOpen,
+    toggleFilmstrip,
     settings,
     total,
     goToPage,
@@ -140,6 +166,7 @@ export function useReaderInteraction(options: UseReaderInteractionOptions) {
     goPrevChapter,
     backToDetail,
     onUserInteract,
+    onKeyRelease: () => lockProgrammaticScroll(380),
   })
 
   watch(
@@ -194,6 +221,7 @@ export function useReaderInteraction(options: UseReaderInteractionOptions) {
     onUserInteract,
     onContainerScroll,
     onReaderClick,
+    onSelectChapter,
     toggleFullscreen,
   }
 }

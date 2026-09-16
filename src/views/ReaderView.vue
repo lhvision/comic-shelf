@@ -1,12 +1,6 @@
 <script setup lang="ts">
 /**
- * @file ReaderView.vue
- * @description 沉浸式阅读器主视图（纯编排视图，脚本严格 ≤150 行）。
- *
- * 遵循 docs/agents/frontend.md 规范：
- * - 视图轻量化（View Thinness ≤150 行）；
- * - 状态机分层下沉至 composables；
- * - 契约自解释与顶层精准解构。
+ * @file ReaderView.vue - 沉浸式阅读器主视图（纯编排视图，脚本严格 ≤150 行）
  */
 
 import { computed, ref } from 'vue'
@@ -29,6 +23,7 @@ import ReaderChapterBanners from '@/components/reader/ReaderChapterBanners.vue'
 import ReaderHud from '@/components/reader/ReaderHud.vue'
 import ReaderFloatingPill from '@/components/reader/ReaderFloatingPill.vue'
 import ReaderSettingsPanel from '@/components/reader/ReaderSettingsPanel.vue'
+import ReaderFilmstrip from '@/components/reader/ReaderFilmstrip.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -39,12 +34,12 @@ const readerBubble = useReaderBubble(route, router)
 const { targetBubble } = readerBubble
 const currentPage = ref(1)
 const currentGroupIndex = ref(0)
+const userInteracted = ref(false)
 const [settingsOpen] = useToggle(false)
+const [filmstripOpen, toggleFilmstrip] = useToggle(false)
 const reducedMotion = usePreferredReducedMotion()
-
 const viewportRef = ref<{ scrollEl: HTMLElement | null } | null>(null)
 const scrollEl = computed(() => viewportRef.value?.scrollEl ?? null)
-const userInteracted = ref(false)
 
 const readerData = useReaderData({ onLoaded: () => initReaderView() })
 const { detail, loading, loadingVariant, source, sourceId, scopeId, backToDetail, lastRead } =
@@ -77,7 +72,7 @@ const {
   atLastGroup,
 } = readerPaging
 
-const readerChrome = useReaderChrome({ settingsOpen })
+const readerChrome = useReaderChrome({ settingsOpen, filmstripOpen })
 const { chromeVisible, showChromeTemporarily } = readerChrome
 
 const readerNavigation = useReaderNavigation({
@@ -99,23 +94,20 @@ const readerNavigation = useReaderNavigation({
   scopeId,
   router,
 })
-const { progressValue, pillActive, prevGroup, nextGroup, goNextChapter, goPrevChapter } =
+const { progressValue, pillActive, prevGroup, nextGroup, goToPage, goNextChapter, goPrevChapter } =
   readerNavigation
-
-const isAutoTurnActive = computed(
-  () => settings.autoTurn && settings.mode !== 'vertical-continuous',
-)
 
 const readerAutoTurn = useAutoTurn({
   settings,
   currentGroupIndex,
   lastGroupIndex: readerPaging.lastGroupIndex,
   settingsOpen,
+  filmstripOpen,
   chromeVisible,
   onAdvance: () => advanceAutoTurn(),
   onScheduleChromeHide: readerChrome.scheduleChromeHide,
 })
-const { autoTurnRemaining, autoTurnPaused, toggleAutoTurnPause } = readerAutoTurn
+const { isAutoTurnActive, autoTurnRemaining, autoTurnPaused, toggleAutoTurnPause } = readerAutoTurn
 
 const {
   initReaderView,
@@ -125,12 +117,15 @@ const {
   onUserInteract,
   onContainerScroll,
   onReaderClick,
+  onSelectChapter,
   toggleFullscreen,
 } = useReaderInteraction({
   userInteracted,
   currentPage,
   currentGroupIndex,
   settingsOpen,
+  filmstripOpen,
+  toggleFilmstrip,
   reducedMotion: computed(() => Boolean(reducedMotion.value)),
   route,
   settings: readerSettings,
@@ -220,9 +215,31 @@ const { recommendations, onReaderCompleted, onSelectComic, onOpenComicDetail, on
       :can-prev="currentGroupIndex > 0"
       :can-next="currentGroupIndex < lastGroupIndex"
       :hidden="!chromeVisible && !isAutoTurnActive"
+      :filmstrip-open="filmstripOpen"
       @toggle-auto-turn-pause="toggleAutoTurnPause"
+      @toggle-filmstrip="toggleFilmstrip()"
       @prev="prevGroup"
       @next="nextGroup"
+    />
+
+    <ReaderFilmstrip
+      v-if="!loading"
+      :open="filmstripOpen"
+      :source="source"
+      :source-id="sourceId"
+      :ordered-groups="orderedGroups"
+      :current-group-index="currentGroupIndex"
+      :current-page="currentPage"
+      :total="total"
+      :mode="settings.mode"
+      :pages-per-view="settings.pagesPerView"
+      :rtl-horizontal="rtlHorizontal"
+      :chapters="detail?.meta.chapters"
+      :current-chapter-id="scopeId"
+      :to-local-page="toLocalPage"
+      @select-page="goToPage"
+      @select-chapter="onSelectChapter"
+      @close="filmstripOpen = false"
     />
 
     <ReaderFloatingPill
@@ -230,7 +247,7 @@ const { recommendations, onReaderCompleted, onSelectComic, onOpenComicDetail, on
       :current="toLocalPage(currentPage)"
       :total="total"
       :active="pillActive"
-      :suppressed="chromeVisible || settingsOpen"
+      :suppressed="chromeVisible || settingsOpen || filmstripOpen"
     />
 
     <ReaderSettingsPanel :open="settingsOpen" @close="settingsOpen = false" />

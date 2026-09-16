@@ -16,9 +16,10 @@
  *    - 为分卷缩略卷轴（Filmstrip）、主画卷视口（ReaderViewport）、画中画悬停预览（Hover Preview）提供标准复用契约。
  */
 
-import { computed, ref, watch, type CSSProperties, type Ref } from 'vue'
+import { computed, type Ref } from 'vue'
 import { useDevicePixelRatio, useMediaQuery, useNetwork } from '@vueuse/core'
 import type { TargetBubble } from '@/composables/useReaderBubble'
+import { useComicRatioPool } from '@/composables/useComicRatioPool'
 
 /**
  * 分屏页码分组定义
@@ -99,32 +100,11 @@ export function useReaderHydration(options: UseReaderHydrationOptions) {
 
   const fullHydrationThreshold = computed(() => forwardBuffer.value + backwardBuffer.value)
 
-  // 2. 物理宽高比锁盘池（非响应式 Map 隔离高频并发解码；单一 defaultComicRatio 响应式 Ref 驱动骨架）
-  const pageRatios = new Map<number, string>()
-  const defaultComicRatio = ref<string | null>(null)
-
-  watch(comicKey, () => {
-    pageRatios.clear()
-    defaultComicRatio.value = null
-  })
+  // 2. 物理宽高比锁盘池（集成漫画会话级共享池 useComicRatioPool，实现主视口、胶片轨与画中画跨视图零损耗互通）
+  const { pageRatios, defaultComicRatio, setPageRatio, getPageStyle } = useComicRatioPool(comicKey)
 
   function onPageImageReady(page: number, ratio?: string | null) {
-    if (ratio && Number.isFinite(page) && page > 0) {
-      pageRatios.set(page, ratio)
-      if (!defaultComicRatio.value) {
-        defaultComicRatio.value = ratio
-      }
-    }
-  }
-
-  function getPageStyle(page: number): CSSProperties | undefined {
-    const ratio = pageRatios.get(page) ?? defaultComicRatio.value
-    return ratio
-      ? ({
-          '--quiescent-ratio': ratio,
-          aspectRatio: ratio,
-        } as CSSProperties)
-      : undefined
+    setPageRatio(page, ratio)
   }
 
   // 3. 目标气泡特权保护（O(1) 预先计算目标分组）

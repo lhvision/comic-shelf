@@ -121,6 +121,12 @@
 - **常驻 DOM 外层骨架（Permanent DOM Shell）**：阅读器视口针对 900+ 页超长画卷采取的几何刚性保障基建。所有 `<section class="reader-spread">` 与 `<article class="reader-page">` 永久常驻 DOM 树，严禁动态 unmount 外层节点，保证容器 `scrollHeight` 绝对恒定与每个 Spread 的 `offsetTop` 物理固定，根除全量 DOM 虚拟化引发的滚动坍塌与剧烈上下颠簸。
 - **非对称迟滞注水视窗（Hysteresis Hydration Window / useReaderHydration）**：针对画页组件（`ComicPageImage`）设立的独立状态驱动视窗（`useReaderHydration`）。集成 VueUse（`useDevicePixelRatio`、`useNetwork`、`useMediaQuery`）自适应环境（弱网 5/10 屏、高 DPR 移动端 8/15 屏、桌面宽带 15/30 屏）；前方智能预热挂载，身后的画页全量驻留内存，使读者回翻零重绘零闪烁，赋予台词气泡 $O(1)$ 永久注水特权，并支持跨画卷视口、底边缩略胶卷与画中画悬停预览复用。
 - **静默纸印占位符（Quiescent Paper）**：视窗外未注水画页的极简纯 CSS 骨架（`.quiescent-paper`）。借助 `pageRatios` 物理宽高比定盘与 `--quiescent-ratio` 变量锁死几何高度，与底层 `content-visibility: auto` 形成框架级与内核级双层防护，完全摒弃昂贵的插画池或 CSS 无限脉冲动画，使 900+ 页超大漫画在注水与脱水前后 0 像素形变，将 DOM 与活跃图片数量压缩 50%~97%。
+- **胶片预览轨（Filmstrip Scrubber / Reader Filmstrip）**：阅读器底部受控展开的横向微缩画卷抽屉（`ReaderFilmstrip.vue`）。复用 `useReaderHydration` 非对称迟滞注水（`±8`）与本地增量 WebP 缩略图（`thumbnail.webp`）；单章节全卷一轨，多章节作品专注当前话并支持跨话快切；支持阻尼静默拖拽与松手直达，绝不穿透并发阀门抢占主视口正文大图。
+- **全卷宽高比池（Shared Comic Ratio Pool / useComicRatioPool）**：在漫画会话级（Comic Scope）共享的物理宽高比轻量字典。打破单组件闭包隔离，由主视口正文解码实时写入，为胶片轨与画中画悬停气泡提供 $O(1)$ 瞬时定盘支撑，彻底告别悬停弹窗尺寸抖动。
+- **胶片轨分屏组级光标（Group-level Framing Cursor）**：在横向/竖向多页分屏（`pagesPerView: 2 / 4`）模式下，胶片轨保持单页单元格单调几何尺寸，通过外层平滑朱砂金色装订线框将当前聚焦组内的多张微缩图整体圈定高亮，消灭模式切换时的横向几何坍塌。
+- **画中画悬停气泡（Hover Preview Popover / PiP）**：鼠标在底边进度条或胶片轨上悬停移动时浮现的单页微缩预览气泡。集成 VueUse `useMouseInElement` 精确几何映射与 120ms 防抖，强制应用全卷基准开本比例（`defaultComicRatio`）结合平滑淡入，兼顾零抖动与防高频请求轰炸。
+- **RTL 胶片镜像流向（RTL Inverted Filmstrip Flow）**：在横向日漫右翻（RTL）模式下，胶片轨跟随阅读流向镜像翻转（`dir="rtl"`，右侧为第 1 页，向左翻卷），使读者物理交互手感与画面运动方向绝对统一。
+- **阻尼静默拖拽（Damped Silent Scrubbing）**：读者按住胶片轨或滑块高速滑动时，挂起一切新的网络请求与组件挂载，全速展示极简纸质骨架与大字页标（120 FPS 纯 CSS Transform）；停手或微调稳定后才对当前停留视窗进行精准注水。
 
 ## 基础设施
 

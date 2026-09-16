@@ -34,6 +34,7 @@
 | `src/composables/useReaderChrome.ts`               | 阅读器顶栏/HUD 延时隐藏与交互唤醒控制                                                                                                                          |
 | `src/composables/useReaderInteraction.ts`          | 阅读器交互状态机调度：聚合快捷键（`useReaderKeyboard`）、进度上报（`useReaderSync`）、滚轮映射与自动翻页步进                                                   |
 | `src/composables/useReaderSync.ts`                 | 阅读进度防抖持久化（800ms）、跨标签广播与单本阅读排版偏好记忆                                                                                                  |
+| `src/composables/useComicRatioPool.ts`             | 漫画会话级宽高比共享池：24 条 LRU 有界单例 Map，跨组件实时互通解码物理尺寸，提供 O(1) 瞬态定盘与防抖撑高                                                       |
 | `src/composables/useReaderCompletion.ts`           | 阅读器末页完读感知、接卷推荐算法计算与直达离开路由                                                                                                             |
 | `src/composables/useChapterNavigation.ts`          | 详情/子路由章节导航：锁定章节、章节切片、48 增量渲染、「继续阅读」文案                                                                                         |
 | `src/composables/useChapterPageInfo.ts`            | 章节相对页码换算、跨话首尾探测、全局切话快捷键（[ / ]，含修饰键/弹窗/长按防抖豁免）与切话跳转状态机                                                            |
@@ -102,6 +103,8 @@
 | `src/components/reader/ReaderChapterBanners.vue`   | 阅读器跨话悬浮横幅：话首「← 上一话」与话末「本话完 · 下一话 →」导航交互胶囊                                                                                    |
 | `src/components/reader/ReaderEndCard.vue`          | 阅读器末页结尾卡片：视口真实触达感知（`useIntersectionObserver`）、暗室响应式接卷推荐三联卡与双向离开出口                                                      |
 | `src/components/reader/ReaderFloatingPill.vue`     | 阅读器浮动画卷页标：条漫无缝拼接模式下的非侵入式页码浮标，滚动感应淡入淡出与 HUD 互斥避让                                                                      |
+| `src/components/reader/ReaderFilmstrip.vue`        | 阅读器胶片预览轨抽屉：半透明磨砂横向微缩画卷，分屏组级光标、RTL 镜像流向、三阶梯抗抖防反弹与桌面鼠标拖拽漫游                                                   |
+| `src/components/reader/ReaderHoverPreview.vue`     | 阅读器画中画悬停气泡：瞬态定盘、未就绪极简页码胶囊渐进降级与左右 80px 刚性边界安全钳位                                                                         |
 | `src/components/reader/ReaderLoadingState.vue`     | 典藏 WebP 呼吸微光加载组件（整本首屏与单页渐进式加载）                                                                                                         |
 | `src/styles/tokens.css`                            | 设计 token 与原生 CSS 样式体系                                                                                                                                 |
 | `src/stores/library.ts`                            | 书库 Pinia store（SWR 保持、静默回源、后台缓存轮询与自动清理收录提示）                                                                                         |

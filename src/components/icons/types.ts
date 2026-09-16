@@ -37,3 +37,4 @@ export type IconName =
   | 'pause'
   | 'play'
   | 'message-square'
+  | 'film'

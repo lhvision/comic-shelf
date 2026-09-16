@@ -33,6 +33,8 @@ export interface UseAutoTurnOptions {
   lastGroupIndex: ComputedRef<number>
   /** 设置面板是否处于打开态 Ref */
   settingsOpen: Ref<boolean>
+  /** 胶片预览轨是否处于展开态 Ref */
+  filmstripOpen?: Ref<boolean>
   /** 顶栏与悬浮控制栏是否处于展开可见态 Ref */
   chromeVisible?: Ref<boolean>
   /** 自动翻页推进回调 */
@@ -51,6 +53,7 @@ export function useAutoTurn(options: UseAutoTurnOptions) {
     currentGroupIndex,
     lastGroupIndex,
     settingsOpen,
+    filmstripOpen,
     onAdvance,
     onScheduleChromeHide,
   } = options
@@ -60,12 +63,17 @@ export function useAutoTurn(options: UseAutoTurnOptions) {
   const autoTurnPaused = ref(false)
   const documentVisibility = useDocumentVisibility()
 
+  const isAutoTurnActive = computed(
+    () => currentSettings.value.autoTurn && currentSettings.value.mode !== 'vertical-continuous',
+  )
+
   function canAutoTurnRun() {
     return (
       currentSettings.value.autoTurn &&
       currentSettings.value.mode !== 'vertical-continuous' &&
       !autoTurnPaused.value &&
       !settingsOpen.value &&
+      !filmstripOpen?.value &&
       documentVisibility.value === 'visible' &&
       currentGroupIndex.value < lastGroupIndex.value
     )
@@ -150,6 +158,17 @@ export function useAutoTurn(options: UseAutoTurnOptions) {
     }
   })
 
+  if (filmstripOpen) {
+    watch(filmstripOpen, (open) => {
+      if (open) {
+        pauseAutoTurnTick()
+      } else {
+        onScheduleChromeHide?.()
+        resetAutoTurnCountdown()
+      }
+    })
+  }
+
   watch(documentVisibility, (state) => {
     if (state === 'hidden') {
       pauseAutoTurnTick()
@@ -165,6 +184,7 @@ export function useAutoTurn(options: UseAutoTurnOptions) {
   }
 
   return {
+    isAutoTurnActive,
     autoTurnRemaining,
     autoTurnPaused,
     canAutoTurnRun,
