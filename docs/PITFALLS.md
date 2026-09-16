@@ -1175,6 +1175,22 @@
   2. **本地自定义画页缺失防御门禁**：在 `ensure_page` 内部显式拦截 `if not page.url: raise FileNotFoundError(...)`，路由层捕获 `(FileNotFoundError, KeyError)` 并返回 `HTTP 404 Not Found`；
   3. **无损自愈对齐**：修复路径解析后，`load_meta(verify_cache=True)` 在下一次读取时即可自动将磁盘真实存在的图片纠偏为 `page.cached = True`，存量 `album.json` 与 `remote.json` 结构完整无损，无需重新装订或重新导入。
 
+### 109. 超长画卷离屏毛玻璃与无限动画引发合成雪崩及翻页页码自激震荡陷阱 (High-Volume Offscreen Backdrop-Filter Reflow Storm & Reader Programmatic Scroll Feedback Loop)
+
+- **本质**：
+  1. **离屏重型装饰引发合成雪崩（Offscreen Backdrop-Filter & Animation Stampede）**：在单卷达到 1000~2000 页的超长画卷（如拆帧漫或长条漫）中，若画页加载骨架（`ReaderLoadingState`）无差别使用 `backdrop-filter: blur(14px)`、`loading="eager"` 伴生插画以及包含 `loading-breathe` / `shimmer` 无限循环 CSS 动画，即使配合 `content-visibility: auto`，浏览器主线程与 GPU 合成器管线也会被迫同时维护数千个高开销图形图层与动画时间轴，在高速滚动时发生严重的掉帧、显卡风扇狂转与移动端 OOM 崩溃；
+  2. **粗暴卸载式虚拟滚动的深水区反噬（Naive Virtualizer Feedback Traps）**：为了降低 DOM 内存曾尝试激进卸载离屏画页，引发三重严重退化：① 快速划动直接白屏（DOM 插入与图片重解码排队滞后）；② 条漫未知高度异步测绘引起 `scrollHeight` 突变，滚动微移触发 `@scroll` 监听器反向误判页码，形成自激震荡死锁（点击翻页页码来回跳动抽搐）；③ 彻底破坏外部「继续阅读」直达、按页码跳卷以及台词全文检索气泡（`BreathingBubbleOverlay`）的 DOM 挂载锚点；
+  3. **主动跳转与被动滚动监听缺少互斥隔离（Missing Programmatic Scroll Silence Lock）**：在调用 `scrollToGroup` 平滑滚动时，沿途路过的中间画页不断触发容器 `@scroll`，被动监听算法将中间经过的画页误判为读者目标并反向覆盖 `currentGroupIndex` 与 `currentPage`，导致滑行途中页码不断闪烁并可能反弹回退。
+- **红线与防误伤**：
+  - **不要**在阅读器高频重复的画页占位与离屏状态中堆砌 `backdrop-filter` 复合滤镜与无限循环 CSS 动画；
+  - **不要**在插画占位图上使用 `loading="eager"`；
+  - **不要**在未解决动态高度锁死与锚点保留前对阅读器长卷引入侵入式组件卸载虚拟列表；
+  - **不要**在程序化平滑滚动（`goToPage`/`goToGroup`）推进期间允许滚动监听器被动重写页码；
+- **放行/改用**：
+  1. **静默装订骨架（Quiescent Loading Placeholder）**：阅读器画页骨架采用极简静态暗色纸质混合背景（`color-mix`），全面剔除 `backdrop-filter` 与无限呼吸扫光动画，插画强制收敛为懒加载（`loading="lazy"`），挂载 `contain: layout style` 与 `contain: strict` 阻断局部重排；
+  2. **程序化跳转静音锁（Programmatic Scroll Silence Lock）**：在 `scrollToGroup` 触发主动位移时挂载 80ms~320ms 静音互斥锁，滚动期间放行进度条更新但严格阻断页码反向覆盖；并在读者触屏（`onUserInteract`）或滚轮（`onWheel`）干预时 0 毫秒即时解锁释放控制权；
+  3. **宽高比固化防抖（Aspect-Ratio Latch）**：画页在首次解码测得真实物理尺寸后，将 `naturalRatio` 永久固化于外层包裹容器，消除后续视口进出或网络重试引起的几何形变与滚动条跳跃。
+
 ---
 
 ## 🚦 交付门禁（四步必跑）

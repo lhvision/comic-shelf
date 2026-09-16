@@ -436,4 +436,43 @@ describe('useReaderNavigation - Discrete Wheel Stepping & Dual-Axis Discriminati
       globalThis.Image = OriginalImage
     }
   })
+
+  it('silences scroll listener during programmatic jump to prevent page number jitter', () => {
+    settings.mode = 'vertical-continuous'
+    const nav = createNavigation()
+
+    Object.defineProperty(mockContainer, 'clientHeight', { value: 1000, configurable: true })
+    Object.defineProperty(mockContainer, 'scrollHeight', { value: 3000, configurable: true })
+    Object.defineProperty(mockContainer, 'scrollTop', { value: 100, configurable: true })
+
+    const spreads = mockContainer.querySelectorAll('section')
+    spreads.forEach((spread, idx) => {
+      Object.defineProperty(spread, 'offsetTop', { value: idx * 900, configurable: true })
+      Object.defineProperty(spread, 'offsetHeight', { value: 900, configurable: true })
+    })
+
+    // Programmatically jump to group 2 (pages 5, 6)
+    nav.goToGroup(2)
+    expect(currentGroupIndex.value).toBe(2)
+    expect(currentPage.value).toBe(5)
+
+    // Intermediate scroll event fires while scrolling past group 0
+    Object.defineProperty(mockContainer, 'scrollTop', { value: 100, configurable: true })
+    nav.onScroll()
+    // Trigger rAF without letting the 320ms timer expire
+    vi.advanceTimersByTime(16)
+
+    // Current page MUST NOT be hijacked by intermediate position
+    expect(currentGroupIndex.value).toBe(2)
+    expect(currentPage.value).toBe(5)
+
+    // After programmatic silence timer expires
+    vi.advanceTimersByTime(350)
+
+    // Normal passive scroll event can now update
+    nav.onScroll()
+    vi.advanceTimersByTime(16)
+    expect(currentGroupIndex.value).toBe(0)
+    expect(currentPage.value).toBe(1)
+  })
 })

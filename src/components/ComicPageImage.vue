@@ -144,7 +144,11 @@ watch(isOnline, (online, wasOnline) => {
 </script>
 
 <template>
-  <div class="comic-page-image" :data-state="loading ? 'loading' : failed ? 'error' : 'ready'">
+  <div
+    class="comic-page-image"
+    :data-state="loading ? 'loading' : failed ? 'error' : 'ready'"
+    :style="naturalRatio ? { aspectRatio: naturalRatio } : undefined"
+  >
     <div
       class="comic-page-img-frame"
       :style="naturalRatio ? { aspectRatio: naturalRatio } : undefined"
@@ -199,6 +203,7 @@ watch(isOnline, (online, wasOnline) => {
   justify-content: center;
   min-width: 0;
   min-height: 0;
+  contain: layout style;
 }
 
 .comic-page-img-frame {
@@ -235,6 +240,7 @@ watch(isOnline, (online, wasOnline) => {
   position: absolute;
   inset: 0;
   z-index: 3;
+  contain: strict;
 }
 
 .page-error {

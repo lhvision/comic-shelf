@@ -35,10 +35,9 @@ const illustrationSrc = computed(() => getIllustration(props.variant))
           :src="illustrationSrc"
           alt="加载中插画"
           aria-hidden="true"
-          loading="eager"
+          loading="lazy"
           decoding="async"
         />
-        <div class="shimmer-overlay" aria-hidden="true" />
       </div>
 
       <div class="loading-meta">
@@ -66,13 +65,12 @@ const illustrationSrc = computed(() => getIllustration(props.variant))
   gap: var(--space-3);
   padding: var(--space-3-5) var(--space-3-5) var(--space-3);
   border-radius: var(--radius-2);
-  background: color-mix(in oklab, var(--paper-0) 8%, transparent);
+  background: color-mix(in oklab, var(--paper-0) 8%, #141512);
   border: 1px solid color-mix(in oklab, var(--line) 16%, transparent);
   box-shadow: 0 16px 36px -6px rgb(0 0 0 / 52%);
-  backdrop-filter: blur(14px);
+  contain: layout style;
   max-width: min(88vw, 24rem);
   width: 100%;
-  animation: loading-breathe 2.8s var(--ease-out) infinite;
 }
 
 /* 全幅漫画大尺寸模式：与漫画视口等比呼应，展现大尺寸看板插画 */
@@ -115,20 +113,6 @@ const illustrationSrc = computed(() => getIllustration(props.variant))
   transition: filter var(--duration-2) var(--ease-out);
 }
 
-.shimmer-overlay {
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  background: linear-gradient(
-    110deg,
-    transparent 15%,
-    color-mix(in oklab, var(--paper-0) 36%, transparent) 50%,
-    transparent 85%
-  );
-  translate: -100% 0;
-  animation: shimmer 2.4s cubic-bezier(0.4, 0, 0.2, 1) infinite;
-}
-
 .loading-meta {
   display: inline-flex;
   align-items: center;
@@ -163,21 +147,7 @@ const illustrationSrc = computed(() => getIllustration(props.variant))
   }
 }
 
-@keyframes loading-breathe {
-  0%,
-  100% {
-    transform: scale(0.988);
-    opacity: 0.9;
-  }
-  50% {
-    transform: scale(1);
-    opacity: 1;
-  }
-}
-
 @media (prefers-reduced-motion: reduce) {
-  .loading-card,
-  .shimmer-overlay,
   .pulse-indicator {
     animation: none;
   }

@@ -60,6 +60,7 @@ export function useReaderInteraction(options: UseReaderInteractionOptions) {
       preloadAround,
       goNextChapter,
       goPrevChapter,
+      unlockProgrammaticScroll,
     },
     autoTurn: { resetAutoTurnCountdown },
   } = options
@@ -99,6 +100,7 @@ export function useReaderInteraction(options: UseReaderInteractionOptions) {
   function onUserInteract() {
     userInteracted.value = true
     resetAutoTurnCountdown()
+    unlockProgrammaticScroll()
   }
 
   function onContainerScroll() {

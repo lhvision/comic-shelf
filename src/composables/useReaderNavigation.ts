@@ -247,6 +247,34 @@ export function useReaderNavigation(options: UseReaderNavigationOptions) {
   }
 
   /**
+   * 标记是否处于程序化跳转（如点击翻页、外部直达、滑块跳转）的滑行期。
+   * 在此期间阻止 handleScroll 被动探测中间态并反向抢占当前页码，根除页码跳动抖动死锁。
+   */
+  let isProgrammaticScrolling = false
+  let programmaticTimer: ReturnType<typeof setTimeout> | null = null
+
+  function lockProgrammaticScroll(durationMs = 320) {
+    isProgrammaticScrolling = true
+    if (programmaticTimer !== null) {
+      clearTimeout(programmaticTimer)
+    }
+    programmaticTimer = setTimeout(() => {
+      isProgrammaticScrolling = false
+      programmaticTimer = null
+    }, durationMs)
+  }
+
+  function unlockProgrammaticScroll() {
+    if (isProgrammaticScrolling) {
+      isProgrammaticScrolling = false
+      if (programmaticTimer !== null) {
+        clearTimeout(programmaticTimer)
+        programmaticTimer = null
+      }
+    }
+  }
+
+  /**
    * 将阅读器滚动视口物理定位到指定的分屏容器
    * @param groupIndex 目标分屏索引
    * @param behavior 滚动动画行为（'smooth' | 'auto' | 'instant'）
@@ -257,6 +285,7 @@ export function useReaderNavigation(options: UseReaderNavigationOptions) {
     const target = el.querySelector<HTMLElement>(`[data-group-index="${groupIndex}"]`)
     if (!target) return
 
+    lockProgrammaticScroll(behavior === 'instant' || behavior === 'auto' ? 60 : 320)
     if (settings.mode === 'horizontal') {
       el.scrollTo({ left: target.offsetLeft, top: 0, behavior })
     } else {
@@ -326,6 +355,10 @@ export function useReaderNavigation(options: UseReaderNavigationOptions) {
         clearTimeout(wheelResetTimer)
         wheelResetTimer = null
       }
+      if (programmaticTimer !== null) {
+        clearTimeout(programmaticTimer)
+        programmaticTimer = null
+      }
       preloadAround.cancel?.()
       stopPillHide()
     })
@@ -350,6 +383,11 @@ export function useReaderNavigation(options: UseReaderNavigationOptions) {
     const max = horizontal ? el.scrollWidth - el.clientWidth : el.scrollHeight - el.clientHeight
     const rawProgress = max <= 0 ? 1 : Math.min(1, Math.max(0, position / max))
     progressValue.value = rtl ? 1 - rawProgress : rawProgress
+
+    // 处于程序化跳转平滑滑行期：仅更新滚动进度条 progressValue，禁止被动探测反向抢占当前页码
+    if (isProgrammaticScrolling) {
+      return
+    }
 
     let nearest = currentGroupIndex.value
     const lastIdx = Math.max(0, lastGroupIndex.value)
@@ -410,6 +448,7 @@ export function useReaderNavigation(options: UseReaderNavigationOptions) {
    * @param event 滚轮事件对象
    */
   function onWheel(event: WheelEvent) {
+    unlockProgrammaticScroll()
     if (settings.mode !== 'horizontal') return
     const el = scrollEl.value
     if (!el) return
@@ -537,6 +576,7 @@ export function useReaderNavigation(options: UseReaderNavigationOptions) {
     currentGroupIndex.value = nextIndex
     currentPage.value = groupFirstPage(nextIndex)
     const behavior: ScrollBehavior = reduced ? 'auto' : 'smooth'
+    lockProgrammaticScroll(reduced ? 60 : 320)
     scrollToGroup(nextIndex, behavior)
   }
 
@@ -556,5 +596,6 @@ export function useReaderNavigation(options: UseReaderNavigationOptions) {
     setScope,
     goNextChapter,
     goPrevChapter,
+    unlockProgrammaticScroll,
   }
 }
