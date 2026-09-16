@@ -103,6 +103,8 @@ def page_file(source: str, source_id: str, index: int, request: Request, ext: st
         path = store.ensure_page(fetched, index)
     except HTTPException:
         raise
+    except (FileNotFoundError, KeyError) as exc:
+        raise HTTPException(status_code=404, detail=f"页面文件不存在：{exc}") from exc
     except Exception as exc:
         raise HTTPException(status_code=502, detail=f"页面下载失败：{exc}") from exc
     return FileResponse(
@@ -140,6 +142,8 @@ def page_thumbnail(source: str, source_id: str, index: int, request: Request, ex
         path = store.ensure_page_thumb(meta, fetched, index, ext=target_ext)
     except HTTPException:
         raise
+    except (FileNotFoundError, KeyError) as exc:
+        raise HTTPException(status_code=404, detail=f"缩略图源文件不存在：{exc}") from exc
     except Exception as exc:
         raise HTTPException(status_code=502, detail=f"页面缩略图生成失败：{exc}") from exc
     return FileResponse(

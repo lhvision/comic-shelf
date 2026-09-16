@@ -1160,6 +1160,21 @@
   2. **端到端真机真实 App 挂载单测**：单测直接引入 `from app.main import SPAStaticFiles, app as main_app`，直接对生产 ASGI 实例发送路由与静态文件请求并验证 HTTP 状态码与 Content-Type；
   3. **静态目录候选链自愈解析（Candidate Path Cascade）**：优先读取 `COMIC_SHELF_STATIC_DIR` 环境变量，自动在 monorepo 根目录 `../../dist`、容器目录 `../dist` 以及当前工作目录 `./dist` 之间智能探测就绪的 `index.html`。
 
+### 108. 存储拆分重构中画页物理路径与全局页码合成脱靶致 502 穿透陷阱 (Storage Refactoring Page Path Synthesis vs. Physical Filename Desynchronization Trap)
+
+- **本质**：
+  1. **全局页码合成覆盖物理文件名（`page.file` Single Truth Decay）**：在拆分巨石存储层至模块化 Router 与 Storage Mixin 时，`store.page_path` 与 `store._chapter_page_path` 被错误重构为 `f"{index:05d}{ext}"` 动态合成。对于多章节漫画（如哔咔、JM 或本地多话），第 2 话以后的画页物理文件名保存在 `page.file` 中（如 `00001.webp`），而全局页码 `page.index` 为全局单调递增（如 15）。动态合成会寻址到不存在的 `00015.webp`，破坏了 `page.file` 的单一事实源；
+  2. **替换漫画空远端协议触发下载异常并转为 502（Empty Remote URL Download Cascade）**：当 `page_path.exists()` 误判为 `False` 时，媒体流路由回退调用 `store.ensure_page`。对于全量重新装订的漫画（`custom_pages: true`），其 `remote_pages` 中的 `url` 为空字符串 `""`。Provider 解析空协议抛出 `ValueError`，媒体路由未捕获具体错误而是包装为 `502 Bad Gateway`，导致全本画页与缩略图大面积报错；
+  3. **元数据自愈逆向标记本地缓存为未就绪（False Negative Cache Mark）**：`load_meta(verify_cache=True)` 与 `save_fetched` 在校验缓存时调用脱靶的 `_chapter_page_path`，将已完整落盘的图片误判为丢失，并将元数据中的 `page.cached` 反向刷为 `False`。
+- **红线与防误伤**：
+  - **不要**在 `page_path` 或 `_chapter_page_path` 中通过 `index` 猜测合成文件名，必须无条件读取 `page.file`；
+  - **不要**在 `ensure_page` 中对 `not page.url` 的画页调用远端 Provider 下载；
+  - **不要**在媒体路由中将本地文件缺失或空 URL 抛出为 502，必须返回 404；
+- **放行/改用**：
+  1. **物理文件名单源寻址**：`_chapter_page_path(meta, page)` 严格寻址 `pages_dir / safe(page.chapter) / page.file`（或平铺 `pages_dir / page.file`），仅在 `page` 缺失时降级；
+  2. **本地自定义画页缺失防御门禁**：在 `ensure_page` 内部显式拦截 `if not page.url: raise FileNotFoundError(...)`，路由层捕获 `(FileNotFoundError, KeyError)` 并返回 `HTTP 404 Not Found`；
+  3. **无损自愈对齐**：修复路径解析后，`load_meta(verify_cache=True)` 在下一次读取时即可自动将磁盘真实存在的图片纠偏为 `page.cached = True`，存量 `album.json` 与 `remote.json` 结构完整无损，无需重新装订或重新导入。
+
 ---
 
 ## 🚦 交付门禁（四步必跑）

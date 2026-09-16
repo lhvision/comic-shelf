@@ -75,11 +75,11 @@
 ### 议题 5：后端架构治理与模块化拆分（已落地完成 ✅）
 
 - **落地成果**：
-  1. **测试目录规范化**：平铺的 13 个 `test_*.py` 全部归拢至 `backend/tests/`，引入统一辅助夹具 `helpers.py`；
-  2. **FastAPI 路由模块化**：原 1615 行上帝文件 `main.py` 拆解为 `backend/app/routers/`（`auth`, `library`, `media`, `chapters`, `local_comic`, `search`, `system`, `common`），`main.py` 骤降至 443 行（只保留应用启动装配与兼容门面）；
-  3. **ComicStore 存储分层解耦**：原 2171 行上帝类 `storage.py` 解构为 `backend/app/storage/` 模块包，采用 Mixin 领域模式分治（`base.py`, `media.py`, `chapters.py`, `local.py`, `prefetch.py`, `utils.py`），对外保留 100% 兼容门面；
-  4. **纵深安全加固**：优先提取 Cloudflare `CF-Connecting-IP` 标头防 IP 伪造，增加 50MB 单页上传上限防御 OOM。
-- **验收记录**：通过 `pnpm test:py`（全套 13 组测试全部通过）与 `vp check`（0 warning, 0 lint error, 0 type error）。
+  1. **测试目录规范化与动态 AST 静态巡检**：平铺的 `test_*.py` 全部归拢至 `backend/tests/`（14 套件，72+ 单测用例），引入统一辅助夹具 `helpers.py`；升级 `backend/check_backend.py` 为递归动态发现全量 AST 作用域与未定义符号；
+  2. **FastAPI 路由模块化**：原 1615 行上帝文件 `main.py` 拆解为 `backend/app/routers/`（`auth`, `library`, `media`, `chapters`, `local_comic`, `search`, `system`, `common`），`main.py` 骤降至 443 行（只保留应用启动装配与向前兼容门面）；
+  3. **ComicStore 存储分层解耦与多章节物理路径加固（修复 Pitfall 108）**：原 2171 行上帝类 `storage.py` 解构为 `backend/app/storage/` 模块包，采用 Mixin 领域模式分治（`base.py`, `media.py`, `chapters.py`, `local.py`, `prefetch.py`, `utils.py`）；确立 `PageRecord.file` 为物理磁盘文件名单源事实，根除多章节在 `pages/<chapter>/<file>` 误用全局页码合成导致 502 穿透的缺陷；
+  4. **纵深安全加固与 404 语义守门**：优先提取 Cloudflare `CF-Connecting-IP` 标头防 IP 伪造；单页上传 50MB 阈值防 OOM；自定义画卷在磁盘文件缺失且 URL 为空时严密阻断下游 Provider 下载，精准返回 404 Not Found。
+- **验收记录**：通过 `pnpm test:py`（全套 14 组测试全部通过）与 `vp check`（0 warning, 0 lint error, 0 type error）。
 
 ---
 

@@ -99,8 +99,9 @@ class TestReplacePages(unittest.TestCase):
         fetched.meta.chapters = [ch1, ch2]
         for p in fetched.meta.pages[:2]:
             p.chapter = "c1"
-        for p in fetched.meta.pages[2:]:
+        for idx, p in enumerate(fetched.meta.pages[2:], start=1):
             p.chapter = "c2"
+            p.file = f"{idx:05d}.webp"
 
         # Organize physical directory for chapters
         pages_dir = self.store.pages_dir("test", "multi")
@@ -361,7 +362,83 @@ class TestReplacePages(unittest.TestCase):
         self.assertTrue(saved.custom_pages)
         self.assertEqual(saved.page_count, 4)  # Preserved original 4 pages
 
+    def test_picacg_replaced_pages_page_path_and_ensure_page(self):
+        from app.models import Chapter
+        source = "picacg"
+        source_id = "5f80b1234567890abcdef999"
+        fetched = self._setup_sample_comic(source, source_id)
+        fetched.meta.chapters = [
+            Chapter(id="c1", index=1, title="第 1 话", page_count=2, start=1),
+            Chapter(id="c2", index=2, title="第 2 话", page_count=2, start=3),
+        ]
+        self.store.save_fetched(fetched)
+
+        # Replace with composite chapters (2 chapters, 2 pages each)
+        img1 = self._create_sample_img("pink", size=(150, 200))
+        img2 = self._create_sample_img("cyan", size=(150, 200))
+        img3 = self._create_sample_img("orange", size=(150, 200))
+        img4 = self._create_sample_img("black", size=(150, 200))
+        files = [
+            ("ch1_01.jpg", img1),
+            ("ch1_02.jpg", img2),
+            ("ch2_01.jpg", img3),
+            ("ch2_02.jpg", img4),
+        ]
+        new_meta = self.store.replace_pages(source, source_id, files=files)
+        self.assertTrue(new_meta.custom_pages)
+        self.assertEqual(len(new_meta.chapters), 2)
+        self.assertEqual(new_meta.page_count, 4)
+
+        fetched = self.store.load_fetched(source, source_id)
+        self.assertIsNotNone(fetched)
+
+        # Verify page_path for Chapter 1 (page 1) and Chapter 2 (page 3)
+        p1_path = self.store.page_path(new_meta, 1)
+        p3_path = self.store.page_path(new_meta, 3)
+        self.assertTrue(p1_path.exists())
+        self.assertTrue(p3_path.exists())
+        self.assertEqual(p1_path.name, "00001.jpg")
+        self.assertEqual(p3_path.name, "00001.jpg")
+        self.assertEqual(p3_path.parent.name, "c2")
+
+        # Verify ensure_page does not call remote provider or raise ValueError
+        ensured_p3 = self.store.ensure_page(fetched, 3)
+        self.assertEqual(ensured_p3, p3_path)
+
+        # Verify thumbnail generation works cleanly for chapter 2
+        thumb_p3 = self.store.ensure_page_thumb(new_meta, fetched, 3)
+        self.assertTrue(thumb_p3.exists())
+
+    def test_picacg_replaced_with_flat_pages(self):
+        source = "picacg"
+        source_id = "5f80b1234567890abcdefflat"
+        self._setup_sample_comic(source, source_id)
+
+        # Replace full comic with flat 3 pages
+        img1 = self._create_sample_img("red", size=(120, 160))
+        img2 = self._create_sample_img("green", size=(120, 160))
+        img3 = self._create_sample_img("blue", size=(120, 160))
+        files = [("p1.png", img1), ("p2.png", img2), ("p3.png", img3)]
+
+        new_meta = self.store.replace_pages(source, source_id, files=files)
+        self.assertTrue(new_meta.custom_pages)
+        self.assertEqual(new_meta.page_count, 3)
+        self.assertEqual(len(new_meta.chapters), 0)
+
+        fetched = self.store.load_fetched(source, source_id)
+        self.assertIsNotNone(fetched)
+
+        for i in range(1, 4):
+            path = self.store.page_path(new_meta, i)
+            self.assertTrue(path.exists())
+            self.assertEqual(path.name, f"{i:05d}.png")
+            ensured = self.store.ensure_page(fetched, i)
+            self.assertEqual(ensured, path)
+            thumb = self.store.ensure_page_thumb(new_meta, fetched, i)
+            self.assertTrue(thumb.exists())
+
 
 if __name__ == "__main__":
     unittest.main()
+
 

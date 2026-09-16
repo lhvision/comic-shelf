@@ -146,6 +146,9 @@ class ComicStoreMediaMixin:
             if target.exists():
                 return target
 
+            if not page.url:
+                raise FileNotFoundError(f"本地页面文件不存在：{target}")
+
             from ..providers.registry import get_provider
 
             provider = get_provider(meta.source)

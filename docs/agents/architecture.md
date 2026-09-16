@@ -170,7 +170,8 @@ JmImageTool.decode_and_save(num, source_image, save_path)
   `chapters`（压平标题空白）并原位修复 `album.json`，和 v1→v2 迁移同一哲学——不碰远端。
 - **Provider 边界**：章节概念只存在于 provider 的 `fetch()`（读 `album.episode_list`）；
   storage / API 只认 `Chapter{id,index,title,page_count,start}`，不感知禁漫具体字段。
-- **封面归属与全生命周期预热**：封面默认取全局前 `cover_count` 页（或馆长指定的 `cover_indices`）。在导入作品（`import_comic`）、元数据更新（`update_metadata`）、重新装订（`rebind_archive`）与后台异步预热（`prefetch_comic`/`prefetch_chapter`）时，系统均同步预热生成 720px 基准图与 360px 缩略图的双模（WebP + JPEG）物理缓存。封面端点严格遵守 HTTP 状态语义（底层画页缺失或未导入时响应 404 Not Found，严禁误抛 502）。
+- **画页物理文件名单源事实（PageRecord.file 契约）**：无论是单章节扁平目录（`pages/<file>`）还是多章节子目录（`pages/<chapter>/<file>`），磁盘上的物理文件名统一以 `PageRecord.file` 为唯一真理（存储解析器强制使用 `Path(page.file).name` 防越权沙箱校验）。多章节内部画页在物理磁盘上是话内局域序号（如 `00001.webp`），而 `page.index` 是全书全局扁平页码（如 `15`），**严禁**在存储路径解析器中依据全局页码合成物理路径（如 `f"{page.index:05d}{ext}"`）。
+- **封面归属与全生命周期预热**：封面默认取全局前 `cover_count` 页（或馆长指定的 `cover_indices`）。在导入作品（`import_comic`）、元数据更新（`update_metadata`）、重新装订（`rebind_archive`）与后台异步预热（`prefetch_comic`/`prefetch_chapter`）时，系统均同步预热生成 720px 基准图与 360px 缩略图的双模（WebP + JPEG）物理缓存。封面与画页端点严格遵守 HTTP 状态语义（底层画页缺失、自定义装订缺失或未导入时响应 404 Not Found，严禁误抛 502）。
 
 ### 4.6 全源画卷重新装订与复合章节智能分话（ADR 0020）
 
@@ -178,6 +179,7 @@ JmImageTool.decode_and_save(num, source_image, save_path)
   1. **前端门禁**：`custom_pages: true` 时自动隐藏「刷新资料」按钮，杜绝误触；
   2. **API 拦截**：`POST /api/library/import` 若传入 `refresh=true` 且目标画卷 `custom_pages=true`，立即拒绝并响应 HTTP 400；
   3. **存储底线**：`save_fetched` 始终强行保留已有的 `custom_pages`、`chapters` 与 `pages`，彻底阻断外部上游刷新冲垮本地画卷。
+- **自定义画卷防穿透保护（Zero 502 Cascade）**：重新装订或本地图集的 `remote_pages` 中的 `url` 为空字符串。在画页或封面服务层（`ensure_page` / `page_file`），若磁盘文件因外部原因缺失且 `page.url == ""` 时，存储层立即中断并抛出 `FileNotFoundError`，路由层统一捕获并返回 HTTP 404 Not Found，彻底阻断向下游 Provider 发送空 URL 下载请求导致网络层抛出 `ValueError` 并串联为 502 Bad Gateway 异常。
 - **单话靶向替换与缩略图局部失效**：支持单话替换（`chapter_id` 显式指定）与整本全量重新装订。单话替换时仅清理本话及后续章节的画页与封面缩略图，保护未变动章节缩略图缓存，翻阅秒开无损。
 - **平铺复合文件名自然排序与自动聚类分话**：针对长篇漫画平铺单目录复合文件名（如 `1-1.avif`, `1-2.avif`, `2-1.avif` ...），后端内置自适应聚类正则与自然排序，无需手动建子文件夹，丢入即可自动归整切分为「第 1 话」、「第 2 话」... 并平滑升阶为多章节体系。
 - **前置二进制魔数防伪**：服务端采用 `PIL.Image.open().verify()` 前置校验，严格阻断伪装扩展名或损坏二进制注入。

@@ -214,25 +214,16 @@ def check_syntax_and_imports() -> list[str]:
             errors.append(f"Syntax error in {pf.relative_to(PROJECT_ROOT)}: {e}")
 
     # 2. Module import checks
-    modules = [
-        "app.config",
-        "app.models",
-        "app.auth",
-        "app.abuse",
-        "app.db",
-        "app.events",
-        "app.gate",
-        "app.jobs",
-        "app.storage",
-        "app.zh_conv",
-        "app.providers.base",
-        "app.providers.local",
-        "app.providers.jm",
-        "app.providers.picacg",
-        "app.providers.registry",
-        "app.imsearch",
-        "app.main",
-    ]
+    app_py_files = sorted((BACKEND_DIR / "app").glob("**/*.py"))
+    modules: list[str] = []
+    for pf in app_py_files:
+        rel = pf.relative_to(BACKEND_DIR).with_suffix("")
+        parts = list(rel.parts)
+        if parts[-1] == "__init__":
+            parts = parts[:-1]
+        if parts:
+            modules.append(".".join(parts))
+    modules = sorted(set(modules))
 
     for mod in modules:
         try:

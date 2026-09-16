@@ -79,28 +79,18 @@ class ComicStoreBase:
 
     def page_path(self, meta: ComicMeta, index: int) -> Path:
         page = next((p for p in meta.pages if p.index == index), None)
-        ext = (page.ext if page else "") or ".webp"
-        if not ext.startswith("."):
-            ext = f".{ext}"
-        chapter_dir = (self._safe(page.chapter) if page and page.chapter else "")
-        filename = f"{index:05d}{ext}"
-        if chapter_dir:
-            return self.pages_dir(meta.source, meta.source_id) / chapter_dir / filename
-        return self.pages_dir(meta.source, meta.source_id) / filename
+        if page is not None:
+            return self._chapter_page_path(meta, page)
+        return self.pages_dir(meta.source, meta.source_id) / f"{index:05d}.webp"
 
     def _chapter_page_path(self, meta: ComicMeta, page: PageRecord) -> Path:
-        chapter_dir = (self._safe(page.chapter) if page.chapter else "")
-        filename = f"{page.index:05d}{page.ext}"
-        if chapter_dir:
-            return self.pages_dir(meta.source, meta.source_id) / chapter_dir / filename
-        return self.pages_dir(meta.source, meta.source_id) / filename
-
-    def _chapter_thumb_path(self, meta: ComicMeta, page: PageRecord, ext: str = "webp") -> Path:
-        chapter_dir = (self._safe(page.chapter) if page.chapter else "")
-        filename = f"{page.index:05d}.{ext}"
-        if chapter_dir:
-            return self.thumbs_dir(meta.source, meta.source_id) / chapter_dir / filename
-        return self.thumbs_dir(meta.source, meta.source_id) / filename
+        """Route a page to ``pages/<chapter>/<file>`` for multi-chapter albums,
+        or the legacy flat ``pages/<file>`` layout for single-chapter albums."""
+        base = self.pages_dir(meta.source, meta.source_id)
+        filename = Path(page.file).name or f"{page.index:05d}.webp"
+        if page.chapter:
+            return base / self._safe(page.chapter) / filename
+        return base / filename
 
     def cover_path(self, meta: ComicMeta, index: int, width: int | None = None, ext: str = "jpg") -> Path:
         clean_ext = "webp" if ext.lower().lstrip(".") == "webp" else "jpg"
@@ -114,11 +104,16 @@ class ComicStoreBase:
 
     def page_thumb_path(self, meta: ComicMeta, index: int, ext: str = "webp") -> Path:
         page = next((p for p in meta.pages if p.index == index), None)
+        if page is not None:
+            return self._chapter_thumb_path(meta, page, ext=ext)
         clean_ext = "webp" if ext.lower().lstrip(".") == "webp" else "jpg"
-        filename = f"{index:05d}.{clean_ext}"
-        chapter_dir = (self._safe(page.chapter) if page and page.chapter else "")
-        if chapter_dir:
-            return self.thumbs_dir(meta.source, meta.source_id) / chapter_dir / filename
+        return self.thumbs_dir(meta.source, meta.source_id) / f"{index:05d}.{clean_ext}"
+
+    def _chapter_thumb_path(self, meta: ComicMeta, page: PageRecord, ext: str = "webp") -> Path:
+        clean_ext = "webp" if ext.lower().lstrip(".") == "webp" else "jpg"
+        filename = f"{page.index:05d}.{clean_ext}"
+        if page.chapter:
+            return self.thumbs_dir(meta.source, meta.source_id) / self._safe(page.chapter) / filename
         return self.thumbs_dir(meta.source, meta.source_id) / filename
 
     def chapter_covers_dir(self, source: str, source_id: str) -> Path:
