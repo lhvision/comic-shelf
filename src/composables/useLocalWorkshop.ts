@@ -8,6 +8,7 @@ import { useToast } from '@/composables/useToast'
 import { useSystemEvents } from '@/composables/useSystemEvents'
 import { useUploadQueue } from '@/composables/useUploadQueue'
 import { filterImageFiles, naturalSortFiles } from '@/composables/useFileStaging'
+import { sumBy } from '@/utils/math'
 import type { LocalChapterInput } from '@/types'
 
 export interface StagedChapter {
@@ -116,7 +117,7 @@ export function useLocalWorkshop() {
 
   const totalStagedFilesCount = computed(() => {
     if (!isMulti.value) return singleFiles.value.length
-    return chapters.value.reduce((acc, ch) => acc + ch.files.length, 0)
+    return sumBy(chapters.value, (ch) => ch.files.length)
   })
 
   const currentChapterFiles = computed<File[]>({

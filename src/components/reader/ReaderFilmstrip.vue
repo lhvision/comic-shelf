@@ -28,6 +28,7 @@ import type { Chapter } from '@/types'
 import type { ReaderMode } from '@/composables/useReaderSettings'
 import AppIcon from '@/components/AppIcon.vue'
 import ReaderHoverPreview from '@/components/reader/ReaderHoverPreview.vue'
+import { clamp } from '@/utils/math'
 
 const props = withDefaults(
   defineProps<{
@@ -267,7 +268,7 @@ function onTileHover(e: MouseEvent, page: number, group: OrderedGroup) {
   const centerX = tileRect.left + tileRect.width / 2 - containerRect.left
 
   // 边界钳位：保证画中画中心不超出胶片轨左右 80px 边缘
-  const clampedX = Math.max(80, Math.min(containerRect.width - 80, centerX))
+  const clampedX = clamp(centerX, 80, containerRect.width - 80)
 
   let tip: string | undefined
   if (props.pagesPerView > 1 && group.pages.length > 1) {

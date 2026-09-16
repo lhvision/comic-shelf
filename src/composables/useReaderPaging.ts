@@ -1,4 +1,5 @@
 import { computed, toValue, type MaybeRefOrGetter, type Ref } from 'vue'
+import { clamp } from '@/utils/math'
 import type { ComicDetail, Chapter } from '@/types'
 import type { ReaderSettings } from '@/composables/useReaderSettings'
 import type { IconName } from '@/components/icons'
@@ -42,7 +43,7 @@ export function useReaderPaging(options: UseReaderPagingOptions) {
   function clampToScope(page: number): number {
     const pages = scopedPages.value
     if (pages.length === 0) return 1
-    return Math.min(Math.max(page, pages[0]!), pages[pages.length - 1]!)
+    return clamp(page, pages[0]!, pages[pages.length - 1]!)
   }
 
   const currentChapter = computed<Chapter | null>(() => {

@@ -3,6 +3,8 @@
  * @description URL 格式化与直达链接构造工具函数。
  */
 
+import { isBrowser } from '@/utils/is'
+
 /**
  * 构造免密或跨端专属直达链接。
  *
@@ -15,7 +17,7 @@
  * @returns 美化后的免密直达链接字符串
  */
 export function formatDirectLink(base: string | URL, token: string): string {
-  const origin = typeof window !== 'undefined' ? window.location.origin : 'http://localhost'
+  const origin = isBrowser() ? window.location.origin : 'http://localhost'
   const url = typeof base === 'string' ? new URL(base, origin) : new URL(base.toString())
   if (url.protocol !== 'http:' && url.protocol !== 'https:') {
     throw new TypeError(`不支持的直达链接协议: ${url.protocol}`)

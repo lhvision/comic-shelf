@@ -2,6 +2,7 @@
 import { ref } from 'vue'
 import AppButton from '@/components/AppButton.vue'
 import { coverSrcset } from '@/api/client'
+import { clamp } from '@/utils/math'
 
 defineProps<{
   covers: string[]
@@ -37,7 +38,7 @@ function scrollByStep(direction: number) {
     }
   }
 
-  const targetIndex = Math.max(0, Math.min(slides.length - 1, closestIndex + direction))
+  const targetIndex = clamp(closestIndex + direction, 0, slides.length - 1)
   scrollToSlide(slides[targetIndex] ?? null)
 }
 

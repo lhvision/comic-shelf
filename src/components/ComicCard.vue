@@ -8,7 +8,7 @@ import AppChip from '@/components/AppChip.vue'
 import { api, coverSrcset, pageFileUrl } from '@/api/client'
 import { useCoverTransition } from '@/composables/useCoverTransition'
 import { useAuth } from '@/composables/useAuth'
-import { isCompletedComic } from '@/composables/useLibraryFilter'
+import { isCompletedComic, isInProgressComic } from '@/utils/is'
 
 const props = defineProps<{
   comic: LibrarySummary
@@ -49,7 +49,7 @@ const liveTotal = computed(() => props.cache?.total || props.comic.page_count)
 const liveRunning = computed(() => Boolean(props.cache?.running))
 const isTargetCover = computed(() => isCoverActive(props.comic.source, props.comic.source_id))
 const isCompleted = computed(() => isCompletedComic(props.comic))
-const isInProgress = computed(() => !isCompleted.value && (props.comic.last_page ?? 0) > 0)
+const isInProgress = computed(() => isInProgressComic(props.comic))
 
 const coverFailed = ref(false)
 function onCoverError() {

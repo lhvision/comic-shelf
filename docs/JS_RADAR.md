@@ -25,6 +25,9 @@
    - [3.3 `Temporal API` — 新一代不可变高精度时间与时区系统（Stage 3-4）](#33-temporal-api--新一代不可变高精度时间与时区系统stage-3-4)
    - [3.4 Import Attributes（`with { type: 'json' }`）— 声明式静态模块导入属性（Baseline 2024 / ES2025）](#34-import-attributeswith--type-json--声明式静态模块导入属性baseline-2024--es2025)
    - [3.5 OPFS（Origin Private File System）— 源私有文件系统与流式高性能本地落盘（Baseline 2023）](#35-opfsorigin-private-file-system--源私有文件系统与流式高性能本地落盘baseline-2023)
+   - [3.6 WICG HTML-in-Canvas（`drawElementImage` & `<canvas layoutsubtree>`）— DOM 子树 Canvas 栅格化（WICG 2026 草案）](#36-wicg-html-in-canvasdrawelementimage--canvas-layoutsubtree--dom-子树-canvas-栅格化wicg-2026-草案)
+   - [3.7 Vue 3.6 Vapor Mode — 去虚拟 DOM 响应式直接编译（Newly Available 2026）](#37-vue-36-vapor-mode--去虚拟-dom-响应式直接编译newly-available-2026)
+   - [3.8 `Math.sumPrecise()` — 浮点无损精确求和与多维数值规约（TC39 Stage 4 / Baseline 2025-2026）](#38-mathsumprecise--浮点无损精确求和与多维数值规约tc39-stage-4--baseline-2025-2026)
 4. [实验草案特性（Experimental / Stage 1-2 Proposals）](#4-实验草案特性experimental--stage-1-2-proposals)
    - [4.1 模式匹配（Pattern Matching: `match / when`）](#41-模式匹配pattern-matching-match--when)
    - [4.2 管道运算符（Pipeline Operator: `\|>` 与 Topic `%`）](#42-管道运算符pipeline-operator--与-topic-)
@@ -52,6 +55,7 @@
 | **`Intl.Collator`**                         |  24+   |   29+   |  10+   |    ✅ Baseline 2020     |           ✅ 已落地（`useLibraryFilter.ts` 中文拼音极速排序引擎）           |
 | **`WeakMap` 弱引用缓存模式**                |  36+   |   6+    |   8+   |       ✅ Baseline       |       ✅ 已落地（`useLibraryFilter.ts` 藏书全文字段小写搜索索引缓存）       |
 | **Module Web Workers (`type: 'module'`)**   |  80+   |  114+   |  15+   |    ✅ Baseline 2023     | ✅ 已落地（`useLibraryFilter.ts` / `libraryFilter.worker.ts` 万级检索卸载） |
+| **`Math.sumPrecise()` 高精求和**            |  135+  | Nightly | 18.2TP | 🔶 Newly Available 2025 |     ✅ 已落地（`src/utils/math.ts` 门面 + 书库统计/离线容量/基准跑分）      |
 | **Import Attributes (`with { type }`)**     |  125+  |  137+   | 17.2+  |    ✅ Baseline 2024     |                 📋 路线图（模块化 JSON 元数据与多语言字典）                 |
 | **OPFS (`getDirectory()`)**                 |  86+   |  111+   | 15.2+  |    ✅ Baseline 2023     | 📋 储备特性（单体大文件流式落盘/整本离线包/字体；网络图片走 CacheStorage）  |
 | **Iterator Helpers (`.map()/.take()`)**     |  122+  |  131+   | 18.4+  |    ✅ Baseline 2025     |                 📋 路线图（IndexedDB 游标与分批上传流水线）                 |
@@ -608,6 +612,40 @@ Vue 3.6 Vapor Mode 汲取了 SolidJS 的编译期优化思想，将 SFC 单文�
 
 ---
 
+### 3.8 `Math.sumPrecise()` — 浮点无损精确求和与多维数值规约（TC39 Stage 4 / Baseline 2025-2026）
+
+**TC39 规范**：[proposal-math-sum](https://github.com/tc39/proposal-math-sum)  
+**Baseline / 支持**：Chrome 135+ · Firefox Nightly · Safari 18.2 TP · Node.js 24+  
+**参考**：[张鑫旭《还在reduce求和吗？该使用Math.sumPrecise()方法啦》(2026-08)](https://www.zhangxinxu.com/wordpress/2026/08/js-math-sumprecise/)  
+**本项目落地位置**：
+
+- `src/utils/math.ts`（全仓统一单源收敛门面：`sumPrecise`、`sumBy`、`clamp`、`round`、`toFiniteNumber`）
+- `src/utils/format.ts`（`formatBytes` 字节大小格式化单源收敛）
+- `src/composables/useLibraryFilter.ts`（全书页码与本地化缓存页码统计）
+- `src/composables/useLocalWorkshop.ts`（多章节拆帧图片总数统计）
+- `src/composables/useOfflineStorage.ts`（离线缓存资产字节容量规约）
+- `src/composables/useVaporBenchmark.ts`（高精帧耗时累加与基准跑分）
+
+#### 核心机制与解决的反模式
+
+传统 JavaScript 中，数组求和通常采用 `arr.reduce((acc, v) => acc + v, 0)`。在多项小数累加或大数与小数混合场景下，存在两大历史缺陷：
+
+1. **累积舍入漂移**：`[0.1, 0.2, 0.3].reduce(...)` 计算结果为 `0.6000000000000001`；
+2. **大数相消吞噬**：`[1e20, 0.1, -1e20].reduce(...)` 中间大数先合并后导致小数精度丢失，最终误算为 `0`（预期为 `0.1`）。
+
+原生 `Math.sumPrecise(iterable)` 接收任意可迭代对象，在数学累加过程中执行无损归约，最终再舍入为 IEEE 754 双精度浮点值。
+
+#### 关键认知勘误与纸间守则
+
+1. **无法逆转 IEEE 754 底层物理表示限制**：
+   `Math.sumPrecise([0.1, 0.2])` 的结果**依然是** `0.30000000000000004`。这是由于 `0.1` 与 `0.2` 转换为二进制浮点数时本身就是近似值，`Math.sumPrecise` 解决的是**求和累加顺序与中间精度丢失**，而不是十进制 Arbitrary Precision 运算。对于 UI 展示，必须配合 `round(val, decimals)` 或 `truncateProgressFloat`。
+2. **零原型污染与平滑降级（`src/utils/math.ts`）**：
+   纸间杜绝直接向全局 `Math` 挂载猴子补丁（Monkey Patch）。通过 `sumPrecise` 门面检测，在不支持的宿主中无缝退回 Neumaier 补偿算法（Compensated Summation），并完备处理 `NaN`、`±Infinity` 与 `-0` 边界。
+3. **`sumBy` 零分配流式聚合**：
+   针对业务中常见的对象数组求和（如 `item.page_count`），封装 `sumBy(list, item => item.page_count)`，内部通过惰性生成器直接驱动 `sumPrecise`，**彻底消除调用端手写 `.map()` 分配临时数组导致的堆内存抖动与 GC 压力**。
+
+---
+
 ## 4. 实验草案特性（Experimental / Stage 1-2 Proposals）
 
 > ⚠️ **纸间工程铁律**：严禁在生产构建工具链中安装 Babel 实验性插件或 Babel Macro 来提前使用 Stage 1-2 草案语法。此类特性仅作前瞻记录，等待 TC39 推进至 Stage 4 及主流引擎支持。
@@ -650,10 +688,13 @@ Vue 3.6 Vapor Mode 汲取了 SolidJS 的编译期优化思想，将 SFC 单文�
   - 高密度生产叶子探针 `PageTile.vue`（`<template vapor>` + 原生链接直驱）接入画页索引网格；
   - 落地 `/vapor-canary` 独立基准跑分沙盒，实现挂载/响应式补丁/内存直观测量；
   - 固化 ADR 0023 与 `docs/PITFALLS.md` §97 禁忌原语防线。
-- [ ] **Phase 3: 标签与聚合运算下沉（2026-Q4）**
+- [x] **Phase 3: 高精代数规约与单源工具下沉（2026-09 已完成）**
+  - 在 `src/utils/math.ts` 落地 `sumPrecise`、`sumBy`、`clamp`、`round`、`toFiniteNumber`；
+  - 下沉 `src/utils/format.ts`（`formatBytes`）并全仓重构替换手写 `reduce` 与冗余 `Math.min(Math.max(...))`。
+- [ ] **Phase 4: 标签与聚合运算下沉（2026-Q4）**
   - 将 `TagFilterBar.vue` 与 `useLibraryFilter.ts` 中的多标签交并集重构为原生 `Set.prototype.intersection` / `difference`；
   - 将目录树和书架分组重构为 `Map.groupBy`。
-- [ ] **Phase 4: 流式管道与资源作用域（2027 展望）**
+- [ ] **Phase 5: 流式管道与资源作用域（2027 展望）**
   - 在大批量漫画离线下载与 IndexedDB 分页查询中引入 `Iterator Helpers`；
   - 待 Safari 稳定版正式支持 `using` 后，在图片 Blob 与 Canvas 渲染中采用 RAII 资源守卫。
 
@@ -661,6 +702,7 @@ Vue 3.6 Vapor Mode 汲取了 SolidJS 的编译期优化思想，将 SFC 单文�
 
 ## 6. 参考资源（MDN & 博客专栏）
 
+- [张鑫旭 — 还在reduce求和吗？该使用Math.sumPrecise()方法啦 (2026-08)](https://www.zhangxinxu.com/wordpress/2026/08/js-math-sumprecise/)
 - [张鑫旭 — Promise.try()和Promise.withResolvers()作用速览 (2026-01)](https://www.zhangxinxu.com/wordpress/2026/01/promise-try-withresolvers/)
 - [大知闲闲 — JavaScript还能这样写？！ES2025新语法让代码优雅到极致](https://juejin.cn/post/7566929798098944015)
 - [MDN Web Docs — Promise.withResolvers()](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Promise/withResolvers)

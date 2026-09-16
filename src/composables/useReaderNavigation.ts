@@ -23,6 +23,7 @@ import {
 import type { Router } from 'vue-router'
 import { useDebounceFn, useTimeoutFn } from '@vueuse/core'
 import { pageFileUrl } from '@/api/client'
+import { clamp } from '@/utils/math'
 import type { Chapter } from '@/types'
 import type { ReaderSettings } from '@/composables/useReaderSettings'
 
@@ -115,7 +116,7 @@ function resolveNearestGroupIndex(
     // 2. 大跨度跳转（拖拽滚动条滑块）：先以滚动百分比插值估算基准
     if (max > 0) {
       const ratio = rtl ? 1 - position / max : position / max
-      const estimated = Math.max(0, Math.min(lastIdx, Math.round(ratio * lastIdx)))
+      const estimated = clamp(Math.round(ratio * lastIdx), 0, lastIdx)
       const estimatedCandidates = [
         estimated,
         estimated - 1,
@@ -200,7 +201,7 @@ function resolveNearestGroupIndex(
   const pageSize = horizontal ? el.clientWidth : el.clientHeight
   if (bestDist > pageSize * 0.5 && max > 0) {
     const ratio = rtl ? 1 - position / max : position / max
-    const estimated = Math.max(0, Math.min(lastIdx, Math.round(ratio * lastIdx)))
+    const estimated = clamp(Math.round(ratio * lastIdx), 0, lastIdx)
     const estimatedCandidates = [estimated, estimated - 1, estimated + 1]
     for (const idx of estimatedCandidates) {
       if (idx < 0 || idx > lastIdx) continue
@@ -326,7 +327,7 @@ export function useReaderNavigation(options: UseReaderNavigationOptions) {
    * @param behavior 滚动行为
    */
   function goToGroup(groupIndex: number, behavior: ScrollBehavior = 'smooth') {
-    const clamped = Math.min(Math.max(groupIndex, 0), Math.max(0, lastGroupIndex.value))
+    const clamped = clamp(groupIndex, 0, Math.max(0, lastGroupIndex.value))
     currentGroupIndex.value = clamped
     currentPage.value = groupFirstPage(clamped)
     scrollToGroup(clamped, behavior)
@@ -419,7 +420,7 @@ export function useReaderNavigation(options: UseReaderNavigationOptions) {
     const rtl = horizontal && settings.direction === 'rtl'
     const position = horizontal ? el.scrollLeft : el.scrollTop
     const max = horizontal ? el.scrollWidth - el.clientWidth : el.scrollHeight - el.clientHeight
-    const rawProgress = max <= 0 ? 1 : Math.min(1, Math.max(0, position / max))
+    const rawProgress = max <= 0 ? 1 : clamp(position / max, 0, 1)
     progressValue.value = rtl ? 1 - rawProgress : rawProgress
 
     // 处于程序化跳转平滑滑行期：仅更新滚动进度条 progressValue，禁止被动探测反向抢占当前页码

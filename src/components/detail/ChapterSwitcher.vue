@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import { useEventListener, useResizeObserver, useScroll } from '@vueuse/core'
+import { clamp } from '@/utils/math'
 import type { Chapter } from '@/types'
 
 /**
@@ -60,14 +61,12 @@ function scrollToActive(smooth = false) {
   const currentScroll = container.scrollLeft
 
   // 视口相对位移：当前滚动偏移 + 元素相对容器视口的可视左偏 - 视口居中余量
-  const targetLeft = Math.max(
+  const targetLeft = clamp(
+    currentScroll +
+      (elRect.left - containerRect.left) -
+      (container.clientWidth - el.offsetWidth) / 2,
     0,
-    Math.min(
-      currentScroll +
-        (elRect.left - containerRect.left) -
-        (container.clientWidth - el.offsetWidth) / 2,
-      container.scrollWidth - container.clientWidth,
-    ),
+    container.scrollWidth - container.clientWidth,
   )
 
   scrollBehavior.value = smooth ? 'smooth' : 'auto'
@@ -114,9 +113,7 @@ useEventListener(listEl, 'keydown', (event: KeyboardEvent) => {
     if (idx < 0) return
     event.preventDefault()
     const delta = event.key === 'ArrowRight' ? 1 : -1
-    nextId =
-      chapterList.value[Math.min(Math.max(idx + delta, 0), chapterList.value.length - 1)]?.id ??
-      null
+    nextId = chapterList.value[clamp(idx + delta, 0, chapterList.value.length - 1)]?.id ?? null
   }
 
   if (nextId && nextId !== props.activeId) {

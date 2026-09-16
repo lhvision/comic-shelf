@@ -1,0 +1,181 @@
+/**
+ * @file math.ts
+ * @description 纸间全站数学计算、精确求和与数值防卫统一工具集。
+ *
+ * 核心设计原则：
+ * 1. 渐进增强高精求和（sumPrecise / sumBy）：
+ *    优先使用现代引擎原生 Math.sumPrecise（TC39 Stage 4 / Baseline 2025-2026），
+ *    在未支持宿主中平滑降级为 Neumaier 补偿算法，杜绝浮点累加过程中的舍入误差与相消漂移；
+ * 2. 确定性区间钳位（clamp）：
+ *    消除全站散落手写的 Math.min(Math.max(...))，支持上下界自适应校正与 NaN 防卫；
+ * 3. 亚像素/小数规约（round）：
+ *    统一浮点保留位数，避免 16 位 IEEE 754 噪点污染 DOM 与 CSS 变量；
+ * 4. 有限数值防卫（toFiniteNumber）：
+ *    安全提取数值，避免非法 NaN / Infinity 击穿组件响应式计算。
+ */
+
+/**
+ * 原生 Math.sumPrecise 的 Polyfill 降级实现（基于 Neumaier 补偿算法）。
+ * 处理 NaN、±Infinity、-0 以及极端浮点运算。
+ */
+function polyfillSumPrecise(items: Iterable<number>): number {
+  if (items == null) {
+    throw new TypeError('sumPrecise: 入参不能为空或未定义')
+  }
+  if (typeof (items as unknown as Record<symbol, unknown>)[Symbol.iterator] !== 'function') {
+    throw new TypeError('sumPrecise: 入参必须为可迭代对象 (Iterable)')
+  }
+
+  let sum = 0
+  let compensation = 0 // Neumaier 补偿累加器
+  let hasNonZero = false
+  let allNegZero = true
+  let zeroCount = 0
+
+  for (const value of items) {
+    const num = Number(value)
+
+    // 任意元素为 NaN，直接返回 NaN
+    if (Number.isNaN(num)) {
+      return Number.NaN
+    }
+
+    // 任意元素为 ±Infinity，处理正负无穷大相消逻辑
+    if (!Number.isFinite(num)) {
+      if (sum === Number.POSITIVE_INFINITY && num === Number.NEGATIVE_INFINITY) return Number.NaN
+      if (sum === Number.NEGATIVE_INFINITY && num === Number.POSITIVE_INFINITY) return Number.NaN
+      sum = num
+      hasNonZero = true
+      continue
+    }
+
+    // 零（包含 -0 与 +0）的符号处理
+    if (num === 0) {
+      zeroCount++
+      if (!Object.is(num, -0)) {
+        allNegZero = false
+      }
+      continue
+    }
+
+    hasNonZero = true
+
+    // Neumaier 补偿求和核心（二阶无损累加）
+    const t = sum + num
+    if (Math.abs(sum) >= Math.abs(num)) {
+      compensation += sum - t + num
+    } else {
+      compensation += num - t + sum
+    }
+    sum = t
+  }
+
+  // 全为零（含 -0 与空集合）的情况
+  if (!hasNonZero) {
+    if (zeroCount > 0 && allNegZero) {
+      return -0
+    }
+    return 0
+  }
+
+  // 存在非有限值时直接返回
+  if (!Number.isFinite(sum)) {
+    return sum
+  }
+
+  return sum + compensation
+}
+
+/**
+ * 对可迭代的数值序列执行高精度浮点求和（渐进增强）。
+ * 优先调用原生 Math.sumPrecise，若未实现则回退至 Neumaier 补偿算法。
+ *
+ * @param iterable 可迭代的数值集合（Array, Set, Generator 等）
+ * @returns 累加求和结果
+ */
+export function sumPrecise(iterable: Iterable<number>): number {
+  const mathObj = Math as unknown as { sumPrecise?: (it: Iterable<number>) => number }
+  if (typeof mathObj.sumPrecise === 'function') {
+    return mathObj.sumPrecise(iterable)
+  }
+  return polyfillSumPrecise(iterable)
+}
+
+/**
+ * 依据指定属性提取函数，对集合项进行高精流式求和。
+ * 内部通过惰性生成器迭代取值，零中间临时数组分配，杜绝 GC 内存颠簸。
+ * 防御性支持传入 null / undefined 空集合，安全返回 0。
+ *
+ * @template T 集合元素类型
+ * @param items 可迭代对象（若为空或未定义直接返回 0）
+ * @param iteratee 从元素中提取数值的映射函数
+ * @returns 累加求和结果
+ */
+export function sumBy<T>(
+  items: Iterable<T> | null | undefined,
+  iteratee: (item: T) => number,
+): number {
+  if (!items) return 0
+  function* generateValues(): Generator<number, void, unknown> {
+    for (const item of items!) {
+      yield iteratee(item)
+    }
+  }
+  return sumPrecise(generateValues())
+}
+
+/**
+ * 将数值限制在 [min, max] 区间之内（包含边界）。
+ * 防御性设计：
+ * 1. 若 value 为 NaN，安全回落为 min；
+ * 2. 若 min > max，自动交换两者保证区间合法；
+ * 3. 若 min 或 max 为 NaN，安全归一为 0。
+ *
+ * @param value 目标数值
+ * @param min 下界
+ * @param max 上界
+ * @returns 钳位后的有效数值
+ */
+export function clamp(value: number, min: number, max: number): number {
+  const safeMin = typeof min === 'number' && !Number.isNaN(min) ? min : 0
+  const safeMax = typeof max === 'number' && !Number.isNaN(max) ? max : 0
+  const lower = Math.min(safeMin, safeMax)
+  const upper = Math.max(safeMin, safeMax)
+
+  if (typeof value !== 'number' || Number.isNaN(value)) {
+    return lower
+  }
+
+  return Math.min(Math.max(value, lower), upper)
+}
+
+/**
+ * 截断/四舍五入数值至指定小数位（默认 0 位）。
+ * 采用 Number.EPSILON 符号偏移修正，消除浮点数临界值进位缺陷（如 1.005 保留 2 位小数精确得到 1.01）。
+ *
+ * @param value 目标数值
+ * @param decimals 保留小数位数（>= 0），默认 0
+ * @returns 规约后的浮点数值
+ */
+export function round(value: number, decimals = 0): number {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return 0
+  if (decimals <= 0) return Math.round(value)
+  const factor = 10 ** decimals
+  const offset = (value >= 0 ? 1 : -1) * Number.EPSILON
+  return Math.round((value + offset) * factor) / factor
+}
+
+/**
+ * 防御性将输入转换为有限数值（Finite Number）。
+ * 若输入非 number 或为 NaN / ±Infinity，返回指定的 fallback 默认值。
+ *
+ * @param value 待检查的输入值
+ * @param fallback 非法时的兜底数值，默认为 0
+ * @returns 合法的有限数值
+ */
+export function toFiniteNumber(value: unknown, fallback = 0): number {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return value
+  }
+  return fallback
+}

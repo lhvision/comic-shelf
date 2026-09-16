@@ -21,6 +21,7 @@
  */
 
 import { computed } from 'vue'
+import { clamp, round } from '@/utils/math'
 import type { TargetBubble } from '@/composables/useReaderBubble'
 
 export type { TargetBubble }
@@ -51,18 +52,14 @@ const isMatched = computed(() => {
   )
 })
 
-function formatPercent(val: number): number {
-  return Math.round(val * 10000) / 10000
-}
-
 const boxStyle = computed(() => {
   if (!isMatched.value || !props.targetBubble) return {}
   const [ymin, xmin, ymax, xmax] = props.targetBubble.box
 
-  const top = formatPercent(Math.max(0, Math.min(100, ymin * 100)))
-  const left = formatPercent(Math.max(0, Math.min(100, xmin * 100)))
-  const height = formatPercent(Math.max(0, Math.min(100 - top, (ymax - ymin) * 100)))
-  const width = formatPercent(Math.max(0, Math.min(100 - left, (xmax - xmin) * 100)))
+  const top = round(clamp(ymin * 100, 0, 100), 4)
+  const left = round(clamp(xmin * 100, 0, 100), 4)
+  const height = round(clamp((ymax - ymin) * 100, 0, 100 - top), 4)
+  const width = round(clamp((xmax - xmin) * 100, 0, 100 - left), 4)
 
   return {
     top: `${top}%`,

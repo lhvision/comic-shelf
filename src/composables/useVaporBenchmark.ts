@@ -6,6 +6,7 @@
  */
 
 import { ref, computed, nextTick } from 'vue'
+import { sumPrecise, round } from '@/utils/math'
 
 export interface BenchItem {
   id: number
@@ -73,7 +74,7 @@ export function useVaporBenchmark() {
     await nextTick()
     const t1 = performance.now()
 
-    mountDuration.value = Math.round((t1 - t0) * 100) / 100
+    mountDuration.value = round(t1 - t0, 2)
     heapUsedMb.value = readHeapMb() ?? null
     isRunning.value = false
   }
@@ -86,7 +87,7 @@ export function useVaporBenchmark() {
 
     const frameDurations: number[] = []
 
-    for (let round = 0; round < ticks; round++) {
+    for (let roundIdx = 0; roundIdx < ticks; roundIdx++) {
       const t0 = performance.now()
 
       // 批量微粒变更
@@ -94,7 +95,7 @@ export function useVaporBenchmark() {
         const item = items.value[i]
         if (item) {
           item.progress = (item.progress + 5) % 101
-          item.active = round % 2 === 0
+          item.active = roundIdx % 2 === 0
         }
       }
 
@@ -106,9 +107,9 @@ export function useVaporBenchmark() {
       await new Promise((r) => requestAnimationFrame(r))
     }
 
-    const totalTime = frameDurations.reduce((acc, v) => acc + v, 0)
+    const totalTime = sumPrecise(frameDurations)
     const avgMs = totalTime / frameDurations.length
-    patchAvgDuration.value = Math.round(avgMs * 100) / 100
+    patchAvgDuration.value = round(avgMs, 2)
     patchFps.value = Math.round(1000 / Math.max(avgMs, 0.1))
 
     isPatching.value = false
@@ -125,7 +126,7 @@ export function useVaporBenchmark() {
     await nextTick()
     const t1 = performance.now()
 
-    unmountDuration.value = Math.round((t1 - t0) * 100) / 100
+    unmountDuration.value = round(t1 - t0, 2)
     heapUsedMb.value = readHeapMb() ?? null
     isRunning.value = false
 

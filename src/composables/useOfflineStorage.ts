@@ -2,15 +2,10 @@ import { computed, ref } from 'vue'
 import { createGlobalState } from '@vueuse/core'
 import { withResolvers } from '@/utils/promise'
 import { clearAllMetadataDb } from '@/utils/offlineDb'
+import { formatBytes } from '@/utils/format'
+import { clamp, sumPrecise } from '@/utils/math'
 
-export function formatBytes(bytes: number): string {
-  if (!Number.isFinite(bytes) || bytes <= 0) return '0 B'
-  const units = ['B', 'KB', 'MB', 'GB', 'TB']
-  const k = 1024
-  const i = Math.min(Math.floor(Math.log(bytes) / Math.log(k)), units.length - 1)
-  const val = bytes / Math.pow(k, i)
-  return `${val < 10 && i > 0 ? val.toFixed(1) : Math.round(val)} ${units[i]}`
-}
+export { formatBytes }
 
 export const MANGA_IMAGE_MAX_BUDGET = 3000
 
@@ -32,13 +27,13 @@ export const useOfflineStorage = createGlobalState(() => {
   // 物理磁盘配额百分比
   const percentage = computed(() => {
     if (!quota.value || quota.value <= 0) return 0
-    return Math.min(100, Math.max(0, (usage.value / quota.value) * 100))
+    return clamp((usage.value / quota.value) * 100, 0, 100)
   })
 
   // 漫画画页离线预算百分比（相对于 3,000 张上限）
   const budgetPercentage = computed(() => {
     if (mangaImageCount.value <= 0) return 0
-    return Math.min(100, Math.max(0, (mangaImageCount.value / MANGA_IMAGE_MAX_BUDGET) * 100))
+    return clamp((mangaImageCount.value / MANGA_IMAGE_MAX_BUDGET) * 100, 0, 100)
   })
 
   const usageFormatted = computed(() => formatBytes(usage.value))
@@ -94,7 +89,7 @@ export const useOfflineStorage = createGlobalState(() => {
                   .catch(() => 0),
               )
               const sizes = await Promise.all(sizeTasks)
-              precacheBytes += sizes.reduce((acc, curr) => acc + curr, 0)
+              precacheBytes += sumPrecise(sizes)
             } catch {
               // 忽略单个缓存打开异常
             }

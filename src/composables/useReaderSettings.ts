@@ -1,5 +1,6 @@
 import { computed, reactive, ref, watch } from 'vue'
 import { createGlobalState, useLocalStorage, useMediaQuery } from '@vueuse/core'
+import { isFiniteNumber, isArray, isString } from '@/utils/is'
 
 /**
  * 阅读器设置 —— 单一事实来源（single source of truth）。
@@ -76,10 +77,7 @@ export function clampSettings(
 ): ReaderSettings {
   const rawInterval = value.autoTurnInterval
   const autoTurnInterval =
-    typeof rawInterval === 'number' &&
-    Number.isFinite(rawInterval) &&
-    rawInterval >= 1 &&
-    rawInterval <= 300
+    isFiniteNumber(rawInterval) && rawInterval >= 1 && rawInterval <= 300
       ? Math.round(rawInterval)
       : DEFAULT_SETTINGS.autoTurnInterval
 
@@ -306,8 +304,8 @@ export const useReaderSettings = createGlobalState(() => {
       Object.assign(settings, clampSettings({ ...baseline, ...custom }, isWideViewport.value))
     } else {
       const isStrip =
-        Array.isArray(tags) &&
-        tags.some((tag) => typeof tag === 'string' && /条漫|條漫|韩漫|韓漫|webtoon/i.test(tag))
+        isArray(tags) &&
+        tags.some((tag) => isString(tag) && /条漫|條漫|韩漫|韓漫|webtoon/i.test(tag))
       if (isStrip) {
         Object.assign(
           settings,

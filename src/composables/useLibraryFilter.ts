@@ -11,6 +11,7 @@ import {
   filterAndSortLibrary,
   type FilterParams,
 } from '@/utils/libraryFilterCore'
+import { sumBy } from '@/utils/math'
 import type { WorkerInMessage, WorkerOutMessage } from '@/workers/libraryFilter.worker'
 
 export { isCompletedComic, isInProgressComic }
@@ -77,13 +78,13 @@ export function useLibraryFilter(
   const totalPages = computed(
     () =>
       options?.facets?.value?.stats?.total_pages ??
-      sourceItems.value.reduce((sum, item) => sum + (item?.page_count ?? 0), 0),
+      sumBy(sourceItems.value, (item) => item?.page_count ?? 0),
   )
 
   const totalCachedPages = computed(
     () =>
       options?.facets?.value?.stats?.cached_pages ??
-      sourceItems.value.reduce((sum, item) => sum + (item?.cached_pages ?? 0), 0),
+      sumBy(sourceItems.value, (item) => item?.cached_pages ?? 0),
   )
 
   const tagCounts = computed<Array<[string, number]>>(() => {

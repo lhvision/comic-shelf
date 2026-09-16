@@ -14,6 +14,7 @@
 import { computed, ref, watch, type ComputedRef } from 'vue'
 import { useRoute, useRouter, type RouteLocationNormalizedLoaded, type Router } from 'vue-router'
 import { useTimeoutFn } from '@vueuse/core'
+import { clamp } from '@/utils/math'
 
 /**
  * 目标气泡高亮数据结构
@@ -72,10 +73,10 @@ export function parseBubbleBox(raw: unknown): [number, number, number, number] |
   }
 
   // 坐标下限 0，上限 1
-  const clampedYmin = Math.max(0, Math.min(1, ymin))
-  const clampedXmin = Math.max(0, Math.min(1, xmin))
-  const clampedYmax = Math.max(clampedYmin, Math.min(1, ymax))
-  const clampedXmax = Math.max(clampedXmin, Math.min(1, xmax))
+  const clampedYmin = clamp(ymin, 0, 1)
+  const clampedXmin = clamp(xmin, 0, 1)
+  const clampedYmax = clamp(ymax, clampedYmin, 1)
+  const clampedXmax = clamp(xmax, clampedXmin, 1)
 
   return [clampedYmin, clampedXmin, clampedYmax, clampedXmax]
 }

@@ -6,6 +6,7 @@ import {
 } from '@/composables/useReaderNavigation'
 import { DEFAULT_SETTINGS, type ReaderSettings } from '@/composables/useReaderSettings'
 import type { Router } from 'vue-router'
+import { clamp } from '@/utils/math'
 
 describe('useReaderNavigation - Discrete Wheel Stepping & Dual-Axis Discrimination', () => {
   let settings: ReaderSettings
@@ -69,7 +70,7 @@ describe('useReaderNavigation - Discrete Wheel Stepping & Dual-Axis Discriminati
       currentGroupIndex,
       pageGroups,
       lastGroupIndex,
-      clampToScope: (p: number) => Math.min(Math.max(p, 1), 6),
+      clampToScope: (p: number) => clamp(p, 1, 6),
       groupIndexForPage: (p: number) => Math.floor((p - 1) / 2),
       groupFirstPage: (g: number) => g * 2 + 1,
       showChromeTemporarily,

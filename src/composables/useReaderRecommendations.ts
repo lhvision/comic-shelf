@@ -15,7 +15,7 @@
 
 import { computed, type MaybeRefOrGetter, toValue } from 'vue'
 import type { LibrarySummary } from '@/types'
-import { isCompletedComic } from '@/composables/useLibraryFilter'
+import { isCompletedComic, isInProgressComic } from '@/utils/is'
 
 export interface RecommendTarget {
   source: string
@@ -85,7 +85,7 @@ export function computeRecommendations(
     }
 
     // 在读状态微加权（优先引导读完在读书卷）
-    if ((item.last_page ?? 0) > 0 && (item.last_page ?? 0) < item.page_count) {
+    if (isInProgressComic(item)) {
       score += 1
     }
 

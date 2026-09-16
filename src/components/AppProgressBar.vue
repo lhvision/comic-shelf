@@ -19,6 +19,7 @@ import {
   calculateFloatPercent,
   truncateProgressFloat,
 } from '@/utils/progress'
+import { clamp, round, toFiniteNumber } from '@/utils/math'
 
 const props = withDefaults(
   defineProps<{
@@ -62,13 +63,11 @@ const fraction = computed(() => {
   let raw = 0
   if (typeof props.progress === 'number') {
     if (Number.isNaN(props.progress)) return 0
-    raw = Math.min(1, Math.max(0, props.progress))
+    raw = clamp(props.progress, 0, 1)
   } else {
-    const rawMax = typeof props.max === 'number' && !Number.isNaN(props.max) ? props.max : 100
-    const safeMax = Math.max(rawMax, 0.0001)
-    const rawVal = typeof props.value === 'number' && !Number.isNaN(props.value) ? props.value : 0
-    const safeValue = Math.max(0, rawVal)
-    raw = Math.min(1, safeValue / safeMax)
+    const safeMax = Math.max(toFiniteNumber(props.max, 100), 0.0001)
+    const safeValue = Math.max(0, toFiniteNumber(props.value, 0))
+    raw = clamp(safeValue / safeMax, 0, 1)
   }
   // 高精亚像素截断（4 位精度规约）：避免 16 位浮点噪点污染 DOM 属性与 CSS 样式，在 4K 屏下亚像素精度仍达 0.38px
   return truncateProgressFloat(raw)
@@ -79,8 +78,8 @@ const percent = computed(() => {
   if (typeof props.progress === 'number' && !Number.isNaN(props.progress)) {
     return calculateFloatPercent(props.progress)
   }
-  const rawMax = typeof props.max === 'number' && !Number.isNaN(props.max) ? props.max : 100
-  const rawVal = typeof props.value === 'number' && !Number.isNaN(props.value) ? props.value : 0
+  const rawMax = toFiniteNumber(props.max, 100)
+  const rawVal = toFiniteNumber(props.value, 0)
   return calculateProgressPercent(rawVal, rawMax)
 })
 
@@ -91,13 +90,11 @@ const scaleTransform = computed(() =>
 const transformOrigin = computed(() => (props.invert ? '100% 50%' : '0 50%'))
 
 const progressStyle = computed(() => {
-  const rawMax = typeof props.max === 'number' && !Number.isNaN(props.max) ? props.max : 100
-  const safeMax = Math.max(rawMax, 0.0001)
-  const rawVal = typeof props.value === 'number' && !Number.isNaN(props.value) ? props.value : 0
+  const safeMax = Math.max(toFiniteNumber(props.max, 100), 0.0001)
   const safeValue =
     typeof props.progress === 'number' && !Number.isNaN(props.progress)
-      ? Math.round(fraction.value * safeMax * 10000) / 10000
-      : Math.max(0, rawVal)
+      ? round(fraction.value * safeMax, 4)
+      : Math.max(0, toFiniteNumber(props.value, 0))
   return {
     '--progress': fraction.value,
     '--percent': `${percent.value}%`,

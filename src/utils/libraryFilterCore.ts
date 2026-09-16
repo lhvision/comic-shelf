@@ -6,12 +6,35 @@
 import type { LibrarySummary, ReadingStatus } from '@/types'
 import type { SortKey } from '@/composables/useLibraryFilter'
 
-export function isCompletedComic(item: LibrarySummary): boolean {
+export function isCompletedComic(item: LibrarySummary | null | undefined): boolean {
+  if (!item) return false
   return (item.last_page ?? 0) >= item.page_count && item.page_count > 0
 }
 
-export function isInProgressComic(item: LibrarySummary): boolean {
+export function isInProgressComic(item: LibrarySummary | null | undefined): boolean {
+  if (!item) return false
   return (item.last_page ?? 0) > 0 && (item.last_page ?? 0) < item.page_count && item.page_count > 0
+}
+
+export function isUnreadComic(item: LibrarySummary | null | undefined): boolean {
+  if (!item) return false
+  return (item.last_page ?? 0) === 0 || !item.last_page
+}
+
+export function isMultiChapterComic(item: { chapters?: unknown[] } | null | undefined): boolean {
+  return Array.isArray(item?.chapters) && item.chapters.length > 1
+}
+
+export function isLocalComic(source: string | null | undefined): boolean {
+  return source === 'local'
+}
+
+export function isPicacgComic(source: string | null | undefined): boolean {
+  return source === 'picacg'
+}
+
+export function isJmComic(source: string | null | undefined): boolean {
+  return source === 'jm'
 }
 
 const zhCollator = new Intl.Collator('zh-CN', { numeric: true })

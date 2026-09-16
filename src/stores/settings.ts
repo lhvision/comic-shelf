@@ -2,6 +2,7 @@ import { ref } from 'vue'
 import { defineStore } from 'pinia'
 import { useLocalStorage } from '@vueuse/core'
 import { api } from '@/api/client'
+import { clamp } from '@/utils/math'
 
 const STORAGE_KEY = 'comic-shelf:download-concurrency:v1'
 const MIN = 1
@@ -65,7 +66,7 @@ export const useAppSettings = defineStore('appSettings', () => {
 
   async function set(value: number) {
     if (envControlled.value) return false
-    const next = Math.min(MAX, Math.max(MIN, Math.round(value)))
+    const next = clamp(Math.round(value), MIN, MAX)
     concurrency.value = next
     savedConcurrency.value = next
     try {
