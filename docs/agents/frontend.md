@@ -155,18 +155,20 @@
 1. **常驻 DOM 外层骨架（Permanent DOM Shell）**：
    - 所有 `<section class="reader-spread">` 与 `<article class="reader-page">` 永久驻留 DOM 树，严禁动态 unmount 外层节点；
    - 保证容器 `scrollHeight` 绝对恒定、每个 Spread 的 `offsetTop` 物理固定，彻底根除“卸载节点 → scrollHeight 瞬间坍塌 → 视口物理距离被动归零/错位”的连锁反应；
-2. **非对称迟滞注水视窗（Hysteresis Hydration Window）**：
-   - 采用 **后向 30 屏 + 前向 15 屏** 的非对称缓冲区；
-   - 读者向后滚动时，前向提前 15 屏挂载并预加载图片；读者回头翻看已读画页时，后方 30 屏 100% 驻留内存，零组件重挂、零重绘、零闪烁；
+2. **非对称迟滞注水视窗（Hysteresis Hydration Window - `useReaderHydration.ts`）**：
+   - 采用 **后向 30 屏 + 前向 15 屏** 的非对称缓冲区，结合 VueUse（`useDevicePixelRatio`、`useNetwork`）进行设备与网络自适应（弱网 5/10 屏、高 DPR 移动端 8/15 屏、桌面高速宽带 15/30 屏）；
+   - 读者向后滚动时，前向提前挂载并预加载图片；读者回头翻看已读画页时，后方全量驻留内存，零组件重挂、零重绘、零闪烁；
+   - 逻辑完整收敛于 [`src/composables/useReaderHydration.ts`](file:///home/miku/lhvision/comic-shelf/src/composables/useReaderHydration.ts)，支持主画卷、画中画悬停预览（Hover Preview）与分卷缩略卷轴（Filmstrip）多场景复用；
 3. **宽高比定盘与静默纸印占位符（Ratio Latching & Quiescent Paper）**：
    - 未注水页面渲染为无开销的 `.quiescent-paper`，静默展现页码水印，禁止挂载昂贵的插画池或 CSS 无限脉冲动画；
-   - `pageRatios` 记录已解码图片的物理宽高比并通过 CSS 变量 `--quiescent-ratio` 绑定，注水与脱水切换时容器几何 0 像素形变；
-4. **程序化滚动 320ms 互锁（Programmatic Lock）**：
-   - 点击翻页、快捷跳页或自动切页时，`lockProgrammaticScroll(320)` 彻底静音被动的 `@scroll` 探测，彻底切断“滑行中途触发 scroll → 误判邻近页码 → 反向矫正 → 再次滚动”的震荡死锁反馈环；
+   - `pageRatios` 以非响应式 Map 记录已解码图片的物理宽高比并通过 CSS 变量 `--quiescent-ratio` 绑定，注水与脱水切换时容器几何 0 像素形变，且批量解码时零模板级联重算；
+4. **程序化滚动互锁与长距离降级（Programmatic Lock & Scrollend Fallback）**：
+   - 点击翻页、快捷跳页或自动切页时，`lockProgrammaticScroll` 静音被动的 `@scroll` 探测，切断震荡死锁反馈环；
+   - 超过 5 屏的长距离跳转（如 Home/End 键）自动降级为即时跳转，并挂载 `scrollend` 事件监听即时释放锁定；
 5. **台词气泡绝对特权（Target Bubble Hydration Privilege）**：
-   - 台词检索等跳转目标所在分组被赋予永久注水特权，即便远在视窗外也强制渲染，确保获得真实的 DOM BoundingClientRect 进行高亮贴合。
+   - 台词检索等跳转目标所在分组被赋予永久注水特权（$O(1)$ 顶层计算），即便远在视窗外也强制渲染，确保获得真实的 DOM BoundingClientRect 进行高亮贴合。
 
-- **自动化回归保障**：由 `e2e/tests/large-comic-reader-perf.spec.ts` 执行端到端性能与稳定性检验。
+- **自动化回归保障**：由 `src/__tests__/useReaderHydration.spec.ts` 与 `e2e/tests/large-comic-reader-perf.spec.ts` 执行单元与端到端性能与稳定性检验。
 
 ## 6.6 多来源导航
 

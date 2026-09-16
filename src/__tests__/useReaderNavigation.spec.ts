@@ -475,4 +475,21 @@ describe('useReaderNavigation - Discrete Wheel Stepping & Dual-Axis Discriminati
     expect(currentGroupIndex.value).toBe(0)
     expect(currentPage.value).toBe(1)
   })
+
+  it('downgrades long-distance smooth scroll (>5 groups) to auto behavior', () => {
+    const spread10 = document.createElement('section')
+    spread10.dataset.groupIndex = '10'
+    Object.defineProperty(spread10, 'offsetLeft', { value: 8000, configurable: true })
+    mockContainer.appendChild(spread10)
+
+    const nav = createNavigation()
+    nav.scrollToGroup(10, 'smooth')
+
+    expect(mockScrollTo).toHaveBeenCalledWith(
+      expect.objectContaining({
+        left: 8000,
+        behavior: 'auto',
+      }),
+    )
+  })
 })

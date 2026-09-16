@@ -1188,9 +1188,9 @@
   - **不要**在程序化平滑滚动（`goToPage`/`goToGroup`）推进期间允许滚动监听器被动重写页码；
 - **放行/改用**：
   1. **静默装订骨架（Quiescent Loading Placeholder）**：阅读器画页骨架采用极简静态暗色纸质混合背景（`color-mix`），全面剔除 `backdrop-filter` 与无限呼吸扫光动画，插画强制收敛为懒加载（`loading="lazy"`），挂载 `contain: layout style` 与 `contain: strict` 阻断局部重排；
-  2. **程序化跳转静音锁（Programmatic Scroll Silence Lock）**：在 `scrollToGroup` 触发主动位移时挂载 80ms~320ms 静音互斥锁，滚动期间放行进度条更新但严格阻断页码反向覆盖；并在读者触屏（`onUserInteract`）或滚轮（`onWheel`）干预时 0 毫秒即时解锁释放控制权；
+  2. **程序化跳转静音锁与长跨度降级（Programmatic Scroll Silence Lock & Long-Distance Downgrade）**：在 `scrollToGroup` 触发主动位移时挂载 60ms~320ms 静音互斥锁，滚动期间放行进度条更新但严格阻断页码反向覆盖；超过 5 屏的长距离跳转自动降级为即时定位，并挂载原生 `scrollend` 事件与定时器双重释放保底；在读者触屏（`onUserInteract`）或滚轮（`onWheel`）干预时 0 毫秒即时解锁释放控制权；
   3. **宽高比固化防抖（Aspect-Ratio Latch）**：画页在首次解码测得真实物理尺寸后，将 `naturalRatio` 永久固化于外层包裹容器，消除后续视口进出或网络重试引起的几何形变与滚动条跳跃；
-  4. **全量 DOM 容器常驻与滞后注水窗口（Permanent DOM Shell with Hysteresis Hydration Window）**：保持所有 900+ 最外层 `<section>` 与 `<article>` 在文档流中，永不物理删除以维持 `scrollHeight`、继续阅读定位与 DOM 锚点确定性；仅对视口前向 15 屏 + 后向 30 屏（加台词搜索气泡强制特权）挂载 `ComicPageImage`，离屏画页渲染纯 CSS `quiescent-paper` 静默纸框，组件实例与活动图片骤降 97%，彻底根除自激震荡狂滚与控制台卡死。
+  4. **全量 DOM 容器常驻与迟滞注水视窗（Permanent DOM Shell with Hysteresis Hydration Window - `useReaderHydration.ts`）**：保持所有 900+ 最外层 `<section>` 与 `<article>` 在文档流中，永不物理删除以维持 `scrollHeight`、继续阅读定位与 DOM 锚点确定性；业务逻辑独立下沉至 `useReaderHydration.ts`，借助 VueUse 动态自适应设备与网络环境（弱网 5/10 屏、高 DPR 移动端 8/15 屏、桌面 15/30 屏）；离屏画页渲染纯 CSS `quiescent-paper` 静默纸框并由底层 `content-visibility: auto` 跳过排版绘制，形成**框架组件层（削减 97% 图片显存）+ 浏览器内核层（跳过离屏骨架绘制）的双层立体防御体系**，彻底根除自激震荡狂滚与控制台卡死。
 
 ---
 

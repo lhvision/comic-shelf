@@ -285,11 +285,24 @@ export function useReaderNavigation(options: UseReaderNavigationOptions) {
     const target = el.querySelector<HTMLElement>(`[data-group-index="${groupIndex}"]`)
     if (!target) return
 
-    lockProgrammaticScroll(behavior === 'instant' || behavior === 'auto' ? 60 : 320)
+    // 跨度判定：当跳转跨度超过 5 个分屏分组时（如外部直达、Home/End、跳章），退化为即时跳转，
+    // 避免几十万像素漫长平滑滚动导致浏览器合成器压力以及中途 320ms 静音锁提前超时
+    const groupDiff = Math.abs(groupIndex - currentGroupIndex.value)
+    const effectiveBehavior: ScrollBehavior =
+      groupDiff > 5 && behavior === 'smooth' ? 'auto' : behavior
+
+    lockProgrammaticScroll(
+      effectiveBehavior === 'instant' || effectiveBehavior === 'auto' ? 60 : 320,
+    )
+
+    if (typeof window !== 'undefined' && 'onscrollend' in window) {
+      el.addEventListener('scrollend', unlockProgrammaticScroll, { once: true })
+    }
+
     if (settings.mode === 'horizontal') {
-      el.scrollTo({ left: target.offsetLeft, top: 0, behavior })
+      el.scrollTo({ left: target.offsetLeft, top: 0, behavior: effectiveBehavior })
     } else {
-      el.scrollTo({ left: 0, top: target.offsetTop, behavior })
+      el.scrollTo({ left: 0, top: target.offsetTop, behavior: effectiveBehavior })
     }
   }
 
@@ -576,7 +589,6 @@ export function useReaderNavigation(options: UseReaderNavigationOptions) {
     currentGroupIndex.value = nextIndex
     currentPage.value = groupFirstPage(nextIndex)
     const behavior: ScrollBehavior = reduced ? 'auto' : 'smooth'
-    lockProgrammaticScroll(reduced ? 60 : 320)
     scrollToGroup(nextIndex, behavior)
   }
 

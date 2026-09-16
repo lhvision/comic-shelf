@@ -168,67 +168,71 @@ test.describe('900+ 页超大画卷阅读器性能与多模式全景回归测试
     gotoRoute,
     page,
   }) => {
-    // --- 5.1 竖向翻页模式（vertical-paged）---
-    await gotoRoute('/comic/local/tiya-frames/read/50')
-    await page.evaluate(() => {
-      const raw = localStorage.getItem('comic-shelf:reader-settings:v1')
-      const current = raw ? JSON.parse(raw) : {}
-      current.mode = 'vertical-paged'
-      current.seamless = false
-      localStorage.setItem('comic-shelf:reader-settings:v1', JSON.stringify(current))
-      localStorage.removeItem('comic-shelf:reader-overrides:v1')
-    })
-    await page.reload()
+    try {
+      // --- 5.1 竖向翻页模式（vertical-paged）---
+      await gotoRoute('/comic/local/tiya-frames/read/50')
+      await page.evaluate(() => {
+        const raw = localStorage.getItem('comic-shelf:reader-settings:v1')
+        const current = raw ? JSON.parse(raw) : {}
+        current.mode = 'vertical-paged'
+        current.seamless = false
+        localStorage.setItem('comic-shelf:reader-settings:v1', JSON.stringify(current))
+        localStorage.removeItem('comic-shelf:reader-overrides:v1')
+      })
+      await page.reload()
 
-    const scrollEl = page.locator('.reader-scroll')
-    await expect(scrollEl).toBeVisible({ timeout: 15000 })
-    await expect(scrollEl).toHaveAttribute('data-mode', 'vertical-paged')
+      const scrollEl = page.locator('.reader-scroll')
+      await expect(scrollEl).toBeVisible({ timeout: 15000 })
+      await expect(scrollEl).toHaveAttribute('data-mode', 'vertical-paged')
 
-    // 验证 scroll-snap 为 y mandatory
-    const pagedSnap = await page.evaluate(() => {
-      const el = document.querySelector('.reader-scroll')
-      return el ? window.getComputedStyle(el).scrollSnapType : ''
-    })
-    expect(pagedSnap).toContain('y mandatory')
+      // 验证 scroll-snap 为 y mandatory
+      const pagedSnap = await page.evaluate(() => {
+        const el = document.querySelector('.reader-scroll')
+        return el ? window.getComputedStyle(el).scrollSnapType : ''
+      })
+      expect(pagedSnap).toContain('y mandatory')
 
-    // --- 5.2 横向翻页日漫 RTL 模式（horizontal RTL）---
-    await page.evaluate(() => {
-      const raw = localStorage.getItem('comic-shelf:reader-settings:v1')
-      const current = raw ? JSON.parse(raw) : {}
-      current.mode = 'horizontal'
-      current.direction = 'rtl'
-      localStorage.setItem('comic-shelf:reader-settings:v1', JSON.stringify(current))
-      localStorage.removeItem('comic-shelf:reader-overrides:v1')
-    })
-    await page.reload()
+      // --- 5.2 横向翻页日漫 RTL 模式（horizontal RTL）---
+      await page.evaluate(() => {
+        const raw = localStorage.getItem('comic-shelf:reader-settings:v1')
+        const current = raw ? JSON.parse(raw) : {}
+        current.mode = 'horizontal'
+        current.direction = 'rtl'
+        localStorage.setItem('comic-shelf:reader-settings:v1', JSON.stringify(current))
+        localStorage.removeItem('comic-shelf:reader-overrides:v1')
+      })
+      await page.reload()
 
-    await expect(scrollEl).toHaveAttribute('data-mode', 'horizontal')
-    const horizontalMetrics = await page.evaluate(() => {
-      const el = document.querySelector('.reader-scroll')
-      const activeImgs = document.querySelectorAll('.comic-page-img')
-      const endCardRtl = document.querySelector('.reader-end-rtl')
-      return {
-        scrollWidth: el ? el.scrollWidth : 0,
-        scrollSnap: el ? window.getComputedStyle(el).scrollSnapType : '',
-        activeCount: activeImgs.length,
-        hasRtlEndCard: !!endCardRtl,
-      }
-    })
+      await expect(scrollEl).toHaveAttribute('data-mode', 'horizontal')
+      const horizontalMetrics = await page.evaluate(() => {
+        const el = document.querySelector('.reader-scroll')
+        const activeImgs = document.querySelectorAll('.comic-page-img')
+        const endCardRtl = document.querySelector('.reader-end-rtl')
+        return {
+          scrollWidth: el ? el.scrollWidth : 0,
+          scrollSnap: el ? window.getComputedStyle(el).scrollSnapType : '',
+          activeCount: activeImgs.length,
+          hasRtlEndCard: !!endCardRtl,
+        }
+      })
 
-    expect(horizontalMetrics.scrollSnap).toContain('x mandatory')
-    expect(horizontalMetrics.scrollWidth).toBeGreaterThan(400000)
-    expect(horizontalMetrics.activeCount).toBeLessThanOrEqual(50)
-    expect(horizontalMetrics.hasRtlEndCard).toBe(true)
-
-    // 清理测试设置，恢复默认纵向连续
-    await page.evaluate(() => {
-      const raw = localStorage.getItem('comic-shelf:reader-settings:v1')
-      const current = raw ? JSON.parse(raw) : {}
-      current.mode = 'vertical-continuous'
-      current.seamless = false
-      current.direction = 'ltr'
-      localStorage.setItem('comic-shelf:reader-settings:v1', JSON.stringify(current))
-      localStorage.removeItem('comic-shelf:reader-overrides:v1')
-    })
+      expect(horizontalMetrics.scrollSnap).toContain('x mandatory')
+      expect(horizontalMetrics.scrollWidth).toBeGreaterThan(400000)
+      expect(horizontalMetrics.activeCount).toBeLessThanOrEqual(50)
+      expect(horizontalMetrics.hasRtlEndCard).toBe(true)
+    } finally {
+      // 清理测试设置，恢复默认纵向连续
+      await page
+        .evaluate(() => {
+          const raw = localStorage.getItem('comic-shelf:reader-settings:v1')
+          const current = raw ? JSON.parse(raw) : {}
+          current.mode = 'vertical-continuous'
+          current.seamless = false
+          current.direction = 'ltr'
+          localStorage.setItem('comic-shelf:reader-settings:v1', JSON.stringify(current))
+          localStorage.removeItem('comic-shelf:reader-overrides:v1')
+        })
+        .catch(() => {})
+    }
   })
 })

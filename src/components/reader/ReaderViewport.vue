@@ -11,25 +11,18 @@
  * 5. 抛出滚动、滚轮、鼠标移动与视图点击等高频视口交互事件。
  */
 
-import { ref, watch } from 'vue'
+import { computed, ref } from 'vue'
 import { pageFileUrl } from '@/api/client'
 import ComicPageImage from '@/components/ComicPageImage.vue'
 import ReaderBubbleOverlay, { type TargetBubble } from '@/components/ReaderBubbleOverlay.vue'
 import ReaderEndCard from '@/components/reader/ReaderEndCard.vue'
 import AppButton from '@/components/AppButton.vue'
 import AppIcon from '@/components/AppIcon.vue'
+import { useReaderHydration, type OrderedGroup } from '@/composables/useReaderHydration'
 import type { ReaderSettings } from '@/composables/useReaderSettings'
 import type { LibrarySummary, Chapter } from '@/types'
 
-/**
- * 分屏页码分组定义
- */
-export interface OrderedGroup {
-  /** 当前分屏包含的全局页码列表 */
-  pages: number[]
-  /** 分屏分组原始索引（0-based） */
-  index: number
-}
+export type { OrderedGroup }
 
 /**
  * `ReaderViewport` 组件 Props 契约
@@ -94,66 +87,18 @@ const emit = defineEmits<{
 
 const scrollEl = ref<HTMLElement | null>(null)
 
-/** 前向预热屏数：提前 15 屏挂载画页组件并预加载图片 */
-const FORWARD_BUFFER = 15
-/** 后向驻留屏数：保留身后已读的 30 屏，读者往回翻看零组件重建、零重绘、零闪烁 */
-const BACKWARD_BUFFER = 30
+const comicKey = computed(() => `${props.source}/${props.sourceId}`)
 
-/**
- * 记录每个页码已解析出的物理宽高比（如 '1280 / 720'）。
- * 供静默纸本骨架（quiescent-paper）复用，确保注水与脱水前后容器高度 0 像素形变。
- */
-const pageRatios = ref<Record<number, string>>({})
-const defaultComicRatio = ref<string | null>(null)
+const { isGroupHydrated, getPageStyle, onPageImageReady } = useReaderHydration({
+  orderedGroups: computed(() => props.orderedGroups),
+  currentGroupIndex: computed(() => props.currentGroupIndex),
+  comicKey,
+  targetBubble: computed(() => props.targetBubble),
+})
 
-watch(
-  () => `${props.source}/${props.sourceId}`,
-  () => {
-    pageRatios.value = {}
-    defaultComicRatio.value = null
-  },
-)
-
-function onPageImageReady(page: number, ratio?: string | null) {
-  if (ratio) {
-    pageRatios.value[page] = ratio
-    if (!defaultComicRatio.value) {
-      defaultComicRatio.value = ratio
-    }
-  }
+function handlePageImageReady(page: number, ratio?: string | null) {
+  onPageImageReady(page, ratio)
   emit('pageReady', page)
-}
-
-function getPageStyle(page: number) {
-  const ratio = pageRatios.value[page] ?? defaultComicRatio.value
-  return ratio ? { '--quiescent-ratio': ratio, aspectRatio: ratio } : undefined
-}
-
-/**
- * 判定指定分屏是否处于活跃注水窗口内
- * @param groupIndex 分屏分组原始索引
- */
-function isGroupHydrated(groupIndex: number): boolean {
-  // 1. 若总组数少于等于 45 组，全量注水呈现，无需限制
-  if (props.orderedGroups.length <= 45) {
-    return true
-  }
-
-  // 2. 特权保护：若存在目标气泡（台词搜索定位），其所在分组永久强制注水
-  if (props.targetBubble) {
-    const bubblePage = props.targetBubble.page
-    const targetGroup = props.orderedGroups.find((g) => g.pages.includes(bubblePage))
-    if (targetGroup && targetGroup.index === groupIndex) {
-      return true
-    }
-  }
-
-  // 3. 核心注水视窗：当前视口分组前向 15 屏 + 后向 30 屏
-  const cur = props.currentGroupIndex ?? 0
-  const minIdx = Math.max(0, cur - BACKWARD_BUFFER)
-  const maxIdx = cur + FORWARD_BUFFER
-
-  return groupIndex >= minIdx && groupIndex <= maxIdx
 }
 
 defineExpose({
@@ -214,7 +159,7 @@ defineExpose({
             :alt="`第 ${toLocalPage(page)} 页`"
             :eager="toLocalPage(page) <= settings.pagesPerView * 3"
             :loading-variant="loadingVariant"
-            @ready="onPageImageReady(page, $event)"
+            @ready="handlePageImageReady(page, $event)"
             v-slot="{ ready: imageReady }"
           >
             <ReaderBubbleOverlay
@@ -224,7 +169,7 @@ defineExpose({
               :image-ready="imageReady"
             />
           </ComicPageImage>
-          <div v-else class="quiescent-paper" :style="getPageStyle(page)" aria-hidden="true">
+          <div v-else class="quiescent-paper" aria-hidden="true">
             <span class="quiescent-page-num">{{ String(toLocalPage(page)).padStart(3, '0') }}</span>
           </div>
         </div>
