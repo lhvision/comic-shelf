@@ -124,6 +124,54 @@ describe('ReaderViewport', () => {
     await nextBtn.trigger('click')
     expect(wrapper.emitted('nextChapter')).toBeTruthy()
   })
+
+  it('hydrates near groups and renders quiescent paper for distant groups in large comics (>45 groups)', () => {
+    const largeGroups = Array.from({ length: 60 }, (_, i) => ({
+      pages: [i + 1],
+      index: i,
+    }))
+
+    const wrapper = mount(ReaderViewport, {
+      props: {
+        ...defaultProps,
+        orderedGroups: largeGroups,
+        currentGroupIndex: 10,
+      },
+    })
+
+    // Group 10 is hydrated (index 10 is near currentGroupIndex 10)
+    const page10 = wrapper.find('#page-11')
+    expect(page10.findComponent({ name: 'ComicPageImage' }).exists()).toBe(true)
+    expect(page10.find('.quiescent-paper').exists()).toBe(false)
+
+    // Group 55 is distant (55 > 10 + 15), should render quiescent paper instead of ComicPageImage
+    const page56 = wrapper.find('#page-56')
+    expect(page56.findComponent({ name: 'ComicPageImage' }).exists()).toBe(false)
+    const quiescentPaper = page56.find('.quiescent-paper')
+    expect(quiescentPaper.exists()).toBe(true)
+    expect(quiescentPaper.text()).toBe('056')
+  })
+
+  it('always hydrates group containing targetBubble regardless of distance', () => {
+    const largeGroups = Array.from({ length: 60 }, (_, i) => ({
+      pages: [i + 1],
+      index: i,
+    }))
+
+    const wrapper = mount(ReaderViewport, {
+      props: {
+        ...defaultProps,
+        orderedGroups: largeGroups,
+        currentGroupIndex: 0,
+        targetBubble: { page: 55, box: [100, 100, 200, 200] },
+      },
+    })
+
+    // Group 54 (page 55) is distant from currentGroupIndex 0, but has targetBubble so it must be hydrated
+    const page55 = wrapper.find('#page-55')
+    expect(page55.findComponent({ name: 'ComicPageImage' }).exists()).toBe(true)
+    expect(page55.find('.quiescent-paper').exists()).toBe(false)
+  })
 })
 
 describe('ReaderChapterBanners', () => {

@@ -148,6 +148,26 @@
   - **意图预热（卡片与按钮）**：`ComicCard` 在 `@pointerenter.once` / `@focusin.once` / `@touchstart.passive.once` 时静默预热 `ComicDetailView.vue` 路由 chunk 与 `api.detail` 接口（写入 `useMemoize` 内存）；`DetailActionBar` 在悬停阅读按钮时同步预热 `ReaderView.vue`；
   - **SWR Hero 占位（消灭白屏/闪烁）**：从书架跳入详情页时，初始直接调用 `createPlaceholderDetail(store.byId(source, sourceId))` 渲染 Hero 头部（真实标题、封面轮播与元数据），使浏览器 View Transition 精准捕获到真正的 `comic-cover-active` 并连贯执行共享封面形变（Shared Cover Morph），彻底杜绝捕获纯灰骨架屏导致的二次闪烁。
 
+### 6.5.1 超大画卷常驻骨架与非对称迟滞注水视窗（Permanent DOM Shell with Hysteresis Hydration Window）
+
+针对 900+ 页超长画卷/条漫（如 `tiya-frames`），避免同步挂载上千张图片导致的 1.1s+ 进场长任务、数百个 CSS 无限动画与 8GB+ 显存溢出，同时彻底规避全量 DOM 虚拟化引发的滚动抖动死锁：
+
+1. **常驻 DOM 外层骨架（Permanent DOM Shell）**：
+   - 所有 `<section class="reader-spread">` 与 `<article class="reader-page">` 永久驻留 DOM 树，严禁动态 unmount 外层节点；
+   - 保证容器 `scrollHeight` 绝对恒定、每个 Spread 的 `offsetTop` 物理固定，彻底根除“卸载节点 → scrollHeight 瞬间坍塌 → 视口物理距离被动归零/错位”的连锁反应；
+2. **非对称迟滞注水视窗（Hysteresis Hydration Window）**：
+   - 采用 **后向 30 屏 + 前向 15 屏** 的非对称缓冲区；
+   - 读者向后滚动时，前向提前 15 屏挂载并预加载图片；读者回头翻看已读画页时，后方 30 屏 100% 驻留内存，零组件重挂、零重绘、零闪烁；
+3. **宽高比定盘与静默纸印占位符（Ratio Latching & Quiescent Paper）**：
+   - 未注水页面渲染为无开销的 `.quiescent-paper`，静默展现页码水印，禁止挂载昂贵的插画池或 CSS 无限脉冲动画；
+   - `pageRatios` 记录已解码图片的物理宽高比并通过 CSS 变量 `--quiescent-ratio` 绑定，注水与脱水切换时容器几何 0 像素形变；
+4. **程序化滚动 320ms 互锁（Programmatic Lock）**：
+   - 点击翻页、快捷跳页或自动切页时，`lockProgrammaticScroll(320)` 彻底静音被动的 `@scroll` 探测，彻底切断“滑行中途触发 scroll → 误判邻近页码 → 反向矫正 → 再次滚动”的震荡死锁反馈环；
+5. **台词气泡绝对特权（Target Bubble Hydration Privilege）**：
+   - 台词检索等跳转目标所在分组被赋予永久注水特权，即便远在视窗外也强制渲染，确保获得真实的 DOM BoundingClientRect 进行高亮贴合。
+
+- **自动化回归保障**：由 `e2e/tests/large-comic-reader-perf.spec.ts` 执行端到端性能与稳定性检验。
+
 ## 6.6 多来源导航
 
 - AppHeader 的导航不是写死的：启动时请求 `/api/providers`，渲染

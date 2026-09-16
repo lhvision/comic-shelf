@@ -11,7 +11,7 @@
  * 5. 抛出滚动、滚轮、鼠标移动与视图点击等高频视口交互事件。
  */
 
-import { ref } from 'vue'
+import { ref, watch } from 'vue'
 import { pageFileUrl } from '@/api/client'
 import ComicPageImage from '@/components/ComicPageImage.vue'
 import ReaderBubbleOverlay, { type TargetBubble } from '@/components/ReaderBubbleOverlay.vue'
@@ -43,6 +43,8 @@ export interface ReaderViewportProps {
   sourceId: string
   /** 排序后的分屏分组列表（RTL 模式下已倒序） */
   orderedGroups: OrderedGroup[]
+  /** 当前聚焦的分屏分组索引（0-based），用于惰性注水计算 */
+  currentGroupIndex?: number
   /** 是否展示卷末完结卡片 */
   showEndCard: boolean
   /** 是否处于横向 RTL 日漫翻页模式 */
@@ -61,9 +63,9 @@ export interface ReaderViewportProps {
   chapterShortLabel?: (chapter: Chapter) => string
 }
 
-defineProps<ReaderViewportProps>()
+const props = defineProps<ReaderViewportProps>()
 
-defineEmits<{
+const emit = defineEmits<{
   /** 容器滚动事件 */
   scroll: [event: Event]
   /** 容器滚轮事件 */
@@ -91,6 +93,68 @@ defineEmits<{
 }>()
 
 const scrollEl = ref<HTMLElement | null>(null)
+
+/** 前向预热屏数：提前 15 屏挂载画页组件并预加载图片 */
+const FORWARD_BUFFER = 15
+/** 后向驻留屏数：保留身后已读的 30 屏，读者往回翻看零组件重建、零重绘、零闪烁 */
+const BACKWARD_BUFFER = 30
+
+/**
+ * 记录每个页码已解析出的物理宽高比（如 '1280 / 720'）。
+ * 供静默纸本骨架（quiescent-paper）复用，确保注水与脱水前后容器高度 0 像素形变。
+ */
+const pageRatios = ref<Record<number, string>>({})
+const defaultComicRatio = ref<string | null>(null)
+
+watch(
+  () => `${props.source}/${props.sourceId}`,
+  () => {
+    pageRatios.value = {}
+    defaultComicRatio.value = null
+  },
+)
+
+function onPageImageReady(page: number, ratio?: string | null) {
+  if (ratio) {
+    pageRatios.value[page] = ratio
+    if (!defaultComicRatio.value) {
+      defaultComicRatio.value = ratio
+    }
+  }
+  emit('pageReady', page)
+}
+
+function getPageStyle(page: number) {
+  const ratio = pageRatios.value[page] ?? defaultComicRatio.value
+  return ratio ? { '--quiescent-ratio': ratio, aspectRatio: ratio } : undefined
+}
+
+/**
+ * 判定指定分屏是否处于活跃注水窗口内
+ * @param groupIndex 分屏分组原始索引
+ */
+function isGroupHydrated(groupIndex: number): boolean {
+  // 1. 若总组数少于等于 45 组，全量注水呈现，无需限制
+  if (props.orderedGroups.length <= 45) {
+    return true
+  }
+
+  // 2. 特权保护：若存在目标气泡（台词搜索定位），其所在分组永久强制注水
+  if (props.targetBubble) {
+    const bubblePage = props.targetBubble.page
+    const targetGroup = props.orderedGroups.find((g) => g.pages.includes(bubblePage))
+    if (targetGroup && targetGroup.index === groupIndex) {
+      return true
+    }
+  }
+
+  // 3. 核心注水视窗：当前视口分组前向 15 屏 + 后向 30 屏
+  const cur = props.currentGroupIndex ?? 0
+  const minIdx = Math.max(0, cur - BACKWARD_BUFFER)
+  const maxIdx = cur + FORWARD_BUFFER
+
+  return groupIndex >= minIdx && groupIndex <= maxIdx
+}
 
 defineExpose({
   /** 暴露滚动容器 DOM 引用供导航 Hook 执行物理滚动与定位 */
@@ -143,13 +207,14 @@ defineExpose({
         :data-page="page"
         :id="`page-${page}`"
       >
-        <div class="page-frame" :data-fit="settings.fit">
+        <div class="page-frame" :data-fit="settings.fit" :style="getPageStyle(page)">
           <ComicPageImage
+            v-if="isGroupHydrated(group.index)"
             :src="pageFileUrl(source, sourceId, page)"
             :alt="`第 ${toLocalPage(page)} 页`"
             :eager="toLocalPage(page) <= settings.pagesPerView * 3"
             :loading-variant="loadingVariant"
-            @ready="$emit('pageReady', page)"
+            @ready="onPageImageReady(page, $event)"
             v-slot="{ ready: imageReady }"
           >
             <ReaderBubbleOverlay
@@ -159,6 +224,9 @@ defineExpose({
               :image-ready="imageReady"
             />
           </ComicPageImage>
+          <div v-else class="quiescent-paper" :style="getPageStyle(page)" aria-hidden="true">
+            <span class="quiescent-page-num">{{ String(toLocalPage(page)).padStart(3, '0') }}</span>
+          </div>
         </div>
         <footer
           v-if="!settings.seamless || settings.mode !== 'vertical-continuous'"
@@ -258,6 +326,39 @@ defineExpose({
   min-height: 40px;
   background: var(--reader-page-bg);
   box-shadow: var(--shadow-3);
+}
+
+.quiescent-paper {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  min-height: clamp(16rem, 55vh, 48rem);
+  aspect-ratio: var(--quiescent-ratio, 0.72);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: color-mix(in oklab, var(--paper-0) 4%, #111210);
+  border: 1px dashed color-mix(in oklab, var(--line) 18%, transparent);
+  border-radius: var(--radius-1);
+  box-shadow: var(--shadow-2);
+  user-select: none;
+  pointer-events: none;
+  contain: layout style;
+  box-sizing: border-box;
+}
+
+.quiescent-page-num {
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  color: color-mix(in oklab, var(--reader-muted) 55%, transparent);
+  letter-spacing: 0.12em;
+}
+
+.reader-scroll[data-mode='vertical-continuous'][data-seamless='true'] .quiescent-paper {
+  border: none;
+  box-shadow: none;
+  border-radius: 0;
+  background: var(--reader-bg);
 }
 
 /* ------------------------------ 竖向连续 ------------------------------ */

@@ -169,6 +169,7 @@ const { recommendations, onReaderCompleted, onSelectComic, onOpenComicDetail, on
       :source="source"
       :source-id="sourceId"
       :ordered-groups="orderedGroups"
+      :current-group-index="currentGroupIndex"
       :show-end-card="showEndCard"
       :rtl-horizontal="rtlHorizontal"
       :loading-variant="loadingVariant"

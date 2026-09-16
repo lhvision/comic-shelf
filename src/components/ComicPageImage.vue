@@ -43,7 +43,7 @@ const displaySrc = computed(() => {
 })
 
 const emit = defineEmits<{
-  ready: []
+  ready: [ratio?: string | null]
 }>()
 
 let hasEmittedReady = false
@@ -66,7 +66,7 @@ function checkReadyState() {
     failed.value = false
     if (!hasEmittedReady) {
       hasEmittedReady = true
-      emit('ready')
+      emit('ready', naturalRatio.value)
     }
   } else {
     handleError()
@@ -81,7 +81,7 @@ function onLoad() {
   failed.value = false
   if (!hasEmittedReady) {
     hasEmittedReady = true
-    emit('ready')
+    emit('ready', naturalRatio.value)
   }
 }
 

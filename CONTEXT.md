@@ -118,6 +118,9 @@
 - **气泡呼吸高亮（Breathing Bubble Overlay）**：阅读器接收到台词检索直达意图时（`?page=42&bubble_box=...`），在目标画页对应的归一化气泡矩形（`[ymin, xmin, ymax, xmax]`）上浮现暖纸朱砂金色半透明覆盖层，呼吸闪烁 2 秒后自然平滑淡出并原地静默擦除 URL 查询参数；非台词检索进入或翻离当前页时物理不挂载覆盖层，零 DOM 重排且不打扰后续连续阅读心流。
 - **静默装订骨架（Quiescent Loading Placeholder）**：阅读器超长画卷（1000~2000 页）中，离屏未渲染画页采用的极简纸本占位盒模型。全面剥离 `backdrop-filter` 复合滤镜与无限循环 CSS 动画，插画统一收敛为懒加载（`loading="lazy"`），彻底阻断千页规模下主线程合成雪崩与 GPU 显存过载。
 - **程序化跳转静音锁（Programmatic Scroll Silence Lock）**：阅读器执行外部直达（`last_page`）、翻页步进（`goToGroup`）或台词搜索气泡直达时挂载的瞬态互斥锁。在主动平滑滑移期间阻断滚动监听器的被动页码重算，彻底根除因异步排版几何微移诱发的“页码跳动震荡死锁（Jitter Loop）”。
+- **常驻 DOM 外层骨架（Permanent DOM Shell）**：阅读器视口针对 900+ 页超长画卷采取的几何刚性保障基建。所有 `<section class="reader-spread">` 与 `<article class="reader-page">` 永久常驻 DOM 树，严禁动态 unmount 外层节点，保证容器 `scrollHeight` 绝对恒定与每个 Spread 的 `offsetTop` 物理固定，根除全量 DOM 虚拟化引发的滚动坍塌与剧烈上下颠簸。
+- **非对称迟滞注水视窗（Hysteresis Hydration Window）**：针对画页组件（`ComicPageImage`）设立的「后向 30 屏 + 前向 15 屏」非对称活跃视窗。前方预热 15 屏加载，身后的 30 屏 100% 驻留内存，使读者回翻零重绘零闪烁，并对台词高亮目标赋予永久注水特权。
+- **静默纸印占位符（Quiescent Paper）**：视窗外未注水画页的极简纯 CSS 骨架（`.quiescent-paper`）。借助 `pageRatios` 宽高比定盘与 `--quiescent-ratio` 变量锁死几何高度，完全摒弃昂贵的插画池或 CSS 无限脉冲动画，使 900+ 页超大漫画在注水与脱水前后 0 像素形变，将 DOM 与活跃图片数量压缩 50%~97%。
 
 ## 基础设施
 
