@@ -23,9 +23,7 @@ class LocalProvider(ComicProvider):
 
     def normalize_id(self, raw: str) -> str:
         clean = raw.strip()
-        if clean.upper().startswith("LOC_") or clean.upper().startswith("LOC-"):
-            clean = clean[4:]
-        elif clean.lower().startswith("loc_") or clean.lower().startswith("loc-"):
+        if clean.upper().startswith(("LOC_", "LOC-")):
             clean = clean[4:]
         clean = _SAFE_ID.sub("_", clean).strip("._")
         return clean.lower() if clean else "collection"

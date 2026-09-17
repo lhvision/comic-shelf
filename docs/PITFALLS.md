@@ -1318,6 +1318,24 @@
   1. **状态项右对齐刚性锁**：使用 `.card-progress { margin-left: auto; }` 确保右侧项恒定靠右对齐；
   2. **时序清晰自解释车号**：未提供自定义 ID 时生成 `YYYYMMDD_HHMMSS`，格式化为 `LOC_YYYYMMDD_HHMMSS`。
 
+### 117. 外部创作平台 API 契约与本地分卷暂存流水线解耦、URL 响应式污染与深层直达失衡 (Machine API Contract Preservation, Bookshelf Deep-Link URL SSOT & Staging Pipeline Isolation)
+
+- **本质**：
+  1. **外部创作者平台（Paper Studio）Machine API 契约与内部暂存管道混淆（Machine Contract Preservation vs Internal Staging）**：
+     在重构或清理接口时，将 `POST /api/library/local/create` 误当作可废弃的代码，却忽视了它是外部创作者平台（Paper Studio）携带 Machine API Token 自动化收录成品与手稿资产（`.layers.json`）的标准契约。内部暂存 PDF 管道（`POST /api/library/local/create-from-staged-pdf`）为纸间内部的原子隔离渲染服务，二者职责正交，不可相互取代；
+  2. **书架筛选高频 `router.replace` 污染与单向深层直达（Deep-Link Hydration vs Reactive Replace Thrashing）**：
+     在实现书架筛选状态与 URL 同步时，若在每次用户输入或点击标签时高频调用 `router.replace`，不仅会在快速切页/跳入详情时引发 Vue Router 的 `NavigationCancelled` 异常中断导航，还会造成历史栈抖动与输入卡顿。解决之道：内存状态作为单一真理源（SSOT），URL 参数仅在组件首次挂载时单向恢复（`hydrateFromQuery`）；需要分享当前筛选视口时，通过用户显式触发的「复制筛选链接」基于 `@vueuse/core` 的 `useClipboard` 导出直达链接，达成 0 导航抢占、0 性能抖动与 100% 可深层直达分享的完美平衡；
+  3. **原生 Popover / Tooltip 进场离散过渡缺失 `@starting-style`（Discrete Entry Animation Glitch）**：
+     原生 Popover / Tooltip 从 `display: none` 切换至 Top Layer `:popover-open` 时，若只声明了 `transition: ... allow-discrete` 而未配置 `@starting-style`，浏览器无法推断入场初始帧，导致进场动画丢失或瞬间跳变。必须显式声明 `@starting-style` 匹配对应进场关键帧。
+- **红线与防误伤**：
+  - **不要**在清理自建接口时废弃 `POST /api/library/local/create`；
+  - **不要**在书架筛选过滤响应式循环中高频调用 `router.replace`；
+  - **不要**在依赖 `allow-discrete` 的原生 Top Layer 浮层组件中遗漏 `@starting-style` 初始帧声明；
+- **放行/改用**：
+  1. **双平台架构 API 边界**：`POST /api/library/local/create` 作为外部平台入库契约保留，前端统一通过 `buildCommonMetadata` 内部解耦；
+  2. **单向水合与按需复制直达**：初次挂载通过 `hydrateFromQuery` 恢复 URL 参数，通过 `buildShareUrl` + `useClipboard` 提供显式深层链接分享；
+  3. **标准离散过渡范式**：结合 `transition: ... allow-discrete` 与 `@starting-style` 实现 0 闪烁原生进出场动效。
+
 ---
 
 ## 🚦 交付门禁（四步必跑）

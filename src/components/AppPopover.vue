@@ -135,40 +135,43 @@ const { start: scheduleClose, stop: cancelClose } = useTimeoutFn(closePopover, 1
   immediate: false,
 })
 
-function openPopover() {
-  if (props.disabled || open.value) return
-  open.value = true
-  emit('open')
-
-  nextTick(() => {
+function syncDomPopover(isOpen: boolean) {
+  if (isOpen) {
+    emit('open')
+    nextTick(() => {
+      try {
+        if (popoverEl.value && typeof popoverEl.value.showPopover === 'function') {
+          if (!popoverEl.value.matches(':popover-open')) {
+            popoverEl.value.showPopover()
+          }
+        }
+      } catch {
+        // 忽略不支持
+      }
+      updateActualSide()
+    })
+  } else {
+    emit('close')
     try {
-      if (popoverEl.value && typeof popoverEl.value.showPopover === 'function') {
-        if (!popoverEl.value.matches(':popover-open')) {
-          popoverEl.value.showPopover()
+      if (popoverEl.value && typeof popoverEl.value.hidePopover === 'function') {
+        if (popoverEl.value.matches(':popover-open')) {
+          popoverEl.value.hidePopover()
         }
       }
     } catch {
       // 忽略不支持
     }
+  }
+}
 
-    updateActualSide()
-  })
+function openPopover() {
+  if (props.disabled || open.value) return
+  open.value = true
 }
 
 function closePopover() {
   if (!open.value) return
   open.value = false
-  emit('close')
-
-  try {
-    if (popoverEl.value && typeof popoverEl.value.hidePopover === 'function') {
-      if (popoverEl.value.matches(':popover-open')) {
-        popoverEl.value.hidePopover()
-      }
-    }
-  } catch {
-    // 忽略不支持
-  }
 }
 
 function toggle() {
@@ -186,27 +189,19 @@ function onNativeToggle(e: Event) {
   const newState = toggleEvent.newState === 'open'
   if (newState !== open.value) {
     open.value = newState
-    if (newState) {
-      emit('open')
-      nextTick(() => updateActualSide())
-    } else {
-      emit('close')
-    }
   }
 }
 
-// 响应外部 open 变化，并在展开期间动态绑定窗口监听器（关闭时通过 onWatcherCleanup 0 监听器休眠）
+// 响应 open 变化，统一由单一真理源驱动 DOM 弹出层并挂载窗口监听器（休眠期 0 监听器）
 watch(open, (val) => {
+  syncDomPopover(val)
   if (val) {
-    openPopover()
     const stopScroll = useEventListener(window, 'scroll', updateActualSide, { passive: true })
     const stopResize = useEventListener(window, 'resize', updateActualSide, { passive: true })
     onWatcherCleanup(() => {
       stopScroll()
       stopResize()
     })
-  } else {
-    closePopover()
   }
 })
 
@@ -237,7 +232,7 @@ useEventListener(popoverEl, 'toggle', onNativeToggle)
 
 onMounted(() => {
   if (open.value) {
-    nextTick(() => openPopover())
+    syncDomPopover(true)
   }
 })
 
@@ -366,7 +361,8 @@ defineExpose({
 
 /* 现代 @starting-style 入场过渡 */
 @starting-style {
-  .app-popover-panel:popover-open {
+  .app-popover-panel:popover-open,
+  .app-popover-panel.is-open {
     opacity: 0;
     scale: 0.96;
   }

@@ -22,7 +22,7 @@
 | `src/workers/libraryFilter.worker.ts`              | 书架海量检索专用 Web Worker 线程（常驻内存快照、接收微量查询参数、向主线程回传轻量 ID 数组）                                                                   |
 | `src/composables/useSearchCommands.ts`             | 快捷指令中枢与命令胶囊状态机：斜杠触发、模糊过滤、键盘选中、模式切换与列表冻结                                                                                 |
 | `src/composables/useDialogueSearch.ts`             | 分镜台词全文检索状态机：短词防爆守卫、防抖请求、高亮片段与气泡定位映射                                                                                         |
-| `src/composables/useShelfState.ts`                 | 书架会话上下文记忆单例：跨路由纵向视口滚动锚定、展开批次、归档专匣开闭、筛选条件保持与主动置顶重置                                                             |
+| `src/composables/useShelfState.ts`                 | 书架会话上下文记忆单例：跨路由纵向视口滚动锚定、展开批次、归档专匣开闭、筛选条件保持、单向 URL 深层水合（hydrateFromQuery）与直达分享链接构建（buildShareUrl） |
 | `src/composables/usePaginationFold.ts`             | 画卷与书架分批折叠展开状态机：受控步进铺开（24页/12本）、60本安全刹车、显式余量徽印计算与平滑滚顶自愈                                                          |
 | `src/composables/useReaderRecommendations.ts`      | 阅读器末页接卷推荐：启发式元数据权重评分（同作者/同原作/共有标签/在读状态）与未读作品遴选                                                                      |
 | `src/composables/useImageSearch.ts`                | 以图搜图状态机：文件上传、剪贴板粘贴、拖拽、置信度与状态管理                                                                                                   |
@@ -109,6 +109,17 @@
 | `src/styles/tokens.css`                            | 设计 token 与原生 CSS 样式体系                                                                                                                                 |
 | `src/stores/library.ts`                            | 书库 Pinia store（SWR 保持、静默回源、后台缓存轮询与自动清理收录提示）                                                                                         |
 | `src/stores/settings.ts`                           | 下载并发与运行时设置 store                                                                                                                                     |
+
+## 6.4 书架状态记忆、单向 URL 水合与深层直达分享（SSOT & Deep-Link Sharing）
+
+- **单一真理源（SSOT）与零路由污染**：
+  书架检索关键词（`search`）、多标签集合（`activeTags`，上限 5 个）、只看喜欢（`favoritesOnly`）、阅读状态（`readingStatus`: all/reading/completed）、排序规则（`sortBy`）以及展开批次和滚动偏移量统一由 `useShelfState`（`createGlobalState` 单例）集中驱动。
+- **杜绝高频 `router.replace`**：
+  严禁在用户日常筛选、输入搜索词或切页过程中高频调用 `router.replace`。这彻底根除了 Vue Router 导航抢占抛出 `NavigationCancelled` 导致顶栏导航与页面跳转被意外中断的问题，保持低延迟交互响应。
+- **单向只读水合（`hydrateFromQuery`）**：
+  当用户通过外部直达链接、浏览器书签或在新标签页打开带参数的 URL（如 `/?tags=同人,全彩&status=reading`）时，`LibraryView` 仅在 `onMounted` 与 `activeSource` 切换时调用 `shelf.hydrateFromQuery(route.query)` 执行单向状态恢复，不反向回写路由历史栈。
+- **按需深层直达分享（`buildShareUrl` + `useClipboard`）**：
+  当存在激活的筛选条件时，`TagFilterBar` 工具条底部渲染筛选提示与「复制筛选链接」按钮。点击后由 `shelf.buildShareUrl()` 动态拼装非默认参数，通过 VueUse `useClipboard({ legacy: true })` 写入剪贴板并提示 Toast，实现便捷无缝的视图分享。
 
 ## 6.5 页面索引性能策略与全链路图片流水线闭环
 

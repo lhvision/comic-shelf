@@ -306,4 +306,45 @@ describe('TagFilterBar', () => {
     await directButtons[2]?.trigger('click')
     expect(wrapper.emitted('update:activeTags')?.[0]).toEqual([['tag2', 'tag3', 'tag4', 'tag5']])
   })
+
+  it('renders copy-link button and emits copyLink when clicked', async () => {
+    const wrapper = mount(TagFilterBar, {
+      props: {
+        favoritesOnly: true,
+        readingStatus: 'reading',
+        activeTags: ['tag1'],
+        tagCounts,
+        filteredCount: 3,
+      },
+    })
+
+    const filterNote = wrapper.find('.filter-note')
+    expect(filterNote.exists()).toBe(true)
+    expect(filterNote.text()).toContain('正在查看标签「tag1」 · 只看喜欢 · 在读的 3 本')
+
+    const copyBtn = wrapper.find('.copy-link-btn')
+    expect(copyBtn.exists()).toBe(true)
+    await copyBtn.trigger('click')
+    expect(wrapper.emitted('copyLink')).toBeTruthy()
+  })
+
+  it('emits clearAll and resets tags and status when clear-btn is clicked', async () => {
+    const wrapper = mount(TagFilterBar, {
+      props: {
+        favoritesOnly: true,
+        readingStatus: 'completed',
+        activeTags: ['tag1'],
+        tagCounts,
+        filteredCount: 2,
+      },
+    })
+
+    const clearBtn = wrapper.find('.filter-note .clear-btn')
+    expect(clearBtn.exists()).toBe(true)
+    await clearBtn.trigger('click')
+
+    expect(wrapper.emitted('clearAll')).toBeTruthy()
+    expect(wrapper.emitted('update:activeTags')).toContainEqual([[]])
+    expect(wrapper.emitted('update:readingStatus')).toContainEqual(['all'])
+  })
 })

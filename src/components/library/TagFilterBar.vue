@@ -15,15 +15,16 @@
  * - 补齐无障碍焦点归还（Focus Restoration，WCAG 2.1 2.4.3）与溢出标签双向清除闭环（Header Clear / Pinned Active Tag / Close Restoration）。
  *
  * @prop {boolean} favoritesOnly - 是否仅筛选已加入喜欢的藏书
- * @prop {ReadingStatus} [readingStatus='all'] - 当前选中的阅读状态（'all' | 'reading' | 'completed'）
- * @prop {string} activeTag - 当前激活的分类标签名称（空表示全部标签）
  * @prop {Array<[string, number]>} tagCounts - 全库或当前来源前 18/30 高频标签及其计数
  * @prop {number} filteredCount - 当前筛选命中的条目数
  *
- * @emit toggleFavorites - 切换喜欢状态
- * @emit update:readingStatus - 阅读状态变更事件（'all' | 'reading' | 'completed'）
- * @emit selectTag - 选中指定标签（传空表示取消标签筛选）
- * @emit clearTag - 清空标签筛选
+ * @model {boolean} [trayExpanded=false] - 标签更多抽屉/气泡展开状态
+ * @model {string[]} [activeTags=[]] - 当前选中的多标签集合（交集筛选，上限 5 个）
+ * @model {ReadingStatus} [readingStatus='all'] - 当前选中的阅读状态（'all' | 'reading' | 'completed'）
+ *
+ * @emit toggleFavorites - 切换只看喜欢状态
+ * @emit clearAll - 清除全部活动筛选维度（标签、喜欢状态及阅读状态）
+ * @emit copyLink - 触发复制当前筛选直达深层链接
  */
 import { computed, nextTick, useTemplateRef } from 'vue'
 import { useToast } from '@/composables/useToast'
@@ -55,6 +56,8 @@ const props = defineProps<TagFilterBarProps>()
 
 const emit = defineEmits<{
   toggleFavorites: []
+  clearAll: []
+  copyLink: []
 }>()
 
 const readingStatusTabs: TabItem<ReadingStatus>[] = [
@@ -133,6 +136,34 @@ function removeTag(tag: string) {
 
 function clearFilter() {
   activeTags.value = []
+}
+
+/** 是否处于激活筛选态（标签、喜欢或状态非初态） */
+const hasActiveFilters = computed(
+  () => activeTags.value.length > 0 || props.favoritesOnly || readingStatus.value !== 'all',
+)
+
+/** 底部筛选摘要提示文案 */
+const filterSummaryText = computed(() => {
+  const parts: string[] = []
+  if (activeTags.value.length > 0) {
+    parts.push(`标签「${activeTags.value.join(' · ')}」`)
+  }
+  if (props.favoritesOnly) {
+    parts.push('只看喜欢')
+  }
+  if (readingStatus.value === 'reading') {
+    parts.push('在读')
+  } else if (readingStatus.value === 'completed') {
+    parts.push('已读')
+  }
+  return parts.length > 0 ? parts.join(' · ') : ''
+})
+
+function clearAllFilters() {
+  activeTags.value = []
+  readingStatus.value = 'all'
+  emit('clearAll')
 }
 </script>
 
@@ -258,9 +289,19 @@ function clearFilter() {
       </template>
     </div>
 
-    <p v-if="activeTags.length" class="filter-note">
-      正在查看标签「{{ activeTags.join(' · ') }}」的 {{ filteredCount }} 本
-      <button class="clear-btn" type="button" @click="clearFilter">清除筛选</button>
+    <p v-if="hasActiveFilters" class="filter-note">
+      <span>正在查看{{ filterSummaryText }}的 {{ filteredCount }} 本</span>
+      <button
+        class="copy-link-btn"
+        type="button"
+        title="复制当前筛选直达链接"
+        aria-label="复制当前筛选直达链接"
+        @click="emit('copyLink')"
+      >
+        <AppIcon name="copy" size="xs" />
+        <span>复制筛选链接</span>
+      </button>
+      <button class="clear-btn" type="button" @click="clearAllFilters">清除筛选</button>
     </p>
   </div>
 </template>
@@ -414,6 +455,7 @@ function clearFilter() {
 .filter-note {
   display: inline-flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: var(--space-2);
   margin-top: var(--space-3);
   padding: var(--space-1) var(--space-3);
@@ -424,13 +466,27 @@ function clearFilter() {
   font-family: var(--font-mono);
 }
 
+.copy-link-btn,
 .clear-btn {
   background: transparent;
+  border: none;
   color: var(--accent-strong);
-  text-decoration: underline;
-  text-underline-offset: 3px;
   cursor: pointer;
   padding: 0;
   font: inherit;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  transition: opacity var(--duration-1) var(--ease-out);
+}
+
+.copy-link-btn:hover,
+.clear-btn:hover {
+  opacity: 0.8;
+}
+
+.clear-btn {
+  text-decoration: underline;
+  text-underline-offset: 3px;
 }
 </style>

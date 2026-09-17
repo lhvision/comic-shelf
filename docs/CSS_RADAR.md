@@ -372,15 +372,17 @@ background: color-mix(in oklab, var(--paper-1) 50%, transparent);
     display var(--duration-1) var(--ease-out) allow-discrete;
 }
 
-/* 激活态（原生 :popover-open） */
-.app-popover-panel:popover-open {
+/* 激活态（原生 :popover-open 与受控降级态 .is-open） */
+.app-popover-panel:popover-open,
+.app-popover-panel.is-open {
   opacity: 1;
   scale: 1;
 }
 
 /* 入场前初始帧 */
 @starting-style {
-  .app-popover-panel:popover-open {
+  .app-popover-panel:popover-open,
+  .app-popover-panel.is-open {
     opacity: 0;
     scale: 0.96;
   }

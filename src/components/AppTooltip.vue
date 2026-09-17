@@ -390,6 +390,32 @@ defineExpose({
     visibility var(--duration-1) step-start;
 }
 
+/* 现代 @starting-style 原生离散入场补间 */
+@starting-style {
+  :is(
+    .tooltip__tip.is-visible,
+    .tooltip__tip:popover-open,
+    .tooltip__tip:interest-target,
+    .tooltip-wrapper:hover .tooltip__tip,
+    .tooltip-wrapper:focus-within .tooltip__tip
+  ) {
+    opacity: 0;
+    visibility: hidden;
+  }
+  .tooltip__tip[data-side='top']:is(.is-visible, :popover-open, :interest-target) {
+    translate: 0 -4px;
+  }
+  .tooltip__tip[data-side='bottom']:is(.is-visible, :popover-open, :interest-target) {
+    translate: 0 4px;
+  }
+  .tooltip__tip[data-side='left']:is(.is-visible, :popover-open, :interest-target) {
+    translate: -4px 0;
+  }
+  .tooltip__tip[data-side='right']:is(.is-visible, :popover-open, :interest-target) {
+    translate: 4px 0;
+  }
+}
+
 /* 小三角指示器 */
 .tooltip__tip.has-arrow::before {
   content: '';

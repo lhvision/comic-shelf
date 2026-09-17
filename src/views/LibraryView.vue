@@ -9,7 +9,7 @@ import {
   watch,
 } from 'vue'
 import { onBeforeRouteLeave, useRoute, useRouter } from 'vue-router'
-import { useEventListener, useFileDialog } from '@vueuse/core'
+import { useClipboard, useEventListener, useFileDialog } from '@vueuse/core'
 
 const ImportPanel = defineAsyncComponent(() => import('@/components/ImportPanel.vue'))
 import LibraryHero from '@/components/library/LibraryHero.vue'
@@ -43,7 +43,33 @@ const { toast } = useToast()
 const { canWrite, userId } = useAuth()
 const { broadcastLocalChange } = useSystemEvents()
 const { isOnline } = useOfflineSync()
+const { copy: copyToClipboard, isSupported: isClipboardSupported } = useClipboard({
+  legacy: true,
+})
 const providers = ref<ProviderInfo[]>(DEFAULT_PROVIDERS)
+
+async function onCopyShareLink() {
+  const shareUrl = shelf.buildShareUrl(undefined, activeSource.value)
+  try {
+    if (isClipboardSupported.value) {
+      await copyToClipboard(shareUrl)
+      toast('已复制筛选直达链接到剪贴板', 'success')
+    } else if (typeof navigator !== 'undefined' && navigator.clipboard) {
+      await navigator.clipboard.writeText(shareUrl)
+      toast('已复制筛选直达链接到剪贴板', 'success')
+    } else {
+      toast('当前浏览器不支持剪贴板，请手动复制地址栏', 'error')
+    }
+  } catch {
+    toast('复制直达链接失败，请重试', 'error')
+  }
+}
+
+function onClearAllFilters() {
+  activeTags.value = []
+  favoritesOnly.value = false
+  readingStatus.value = 'all'
+}
 
 const shelf = useShelfState()
 const { activeUnfoldCount, archiveOpen, archiveUnfoldCount, unifiedUnfoldCount, tagTrayExpanded } =
@@ -161,16 +187,20 @@ onBeforeRouteLeave(() => shelf.saveScrollPosition(window.scrollY))
 watch(activeSource, (newSource, oldSource) => {
   if (oldSource !== undefined && newSource !== oldSource) {
     shelf.resetAllShelfState()
+    const hasHydrated = shelf.hydrateFromQuery(route.query)
+    searchInput.value = hasHydrated ? shelf.search.value : ''
     window.scrollTo({ top: 0, behavior: 'instant' })
   }
 })
 
 onMounted(() => {
+  // 仅在初始挂载时单向恢复 URL 参数（SSOT 保持内存驱动，杜绝交互过程高频 replace 污染导航）
+  const hasHydrated = shelf.hydrateFromQuery(route.query)
+  if (hasHydrated && shelf.search.value && !searchInput.value) {
+    searchInput.value = shelf.search.value
+  }
   if (shelf.shelfScrollY.value > 0) {
     nextTick(() => window.scrollTo({ top: shelf.shelfScrollY.value, behavior: 'instant' }))
-  }
-  if (shelf.search.value && !searchInput.value) {
-    searchInput.value = shelf.search.value
   }
   void fetchLibrary(true, true)
   store.startPollingIfActive()
@@ -325,6 +355,8 @@ watch([() => store.error, imageSearch.error], ([err1, err2]) => {
         :tag-counts="tagCounts"
         :filtered-count="filtered.length"
         @toggle-favorites="favoritesOnly = !favoritesOnly"
+        @clear-all="onClearAllFilters"
+        @copy-link="onCopyShareLink"
       />
 
       <p v-if="store.isOffline || !isOnline" class="offline-active-note" role="status">

@@ -44,10 +44,20 @@ describe('buildQueryString object filtering', () => {
     ).toBe('a=hello&num=42&bool=true')
   })
 
+  it('filters whitespace-only strings and correctly serializes boolean values', () => {
+    expect(
+      buildQueryString({
+        search: '   ',
+        valid: 'ok',
+        flag: false,
+      }),
+    ).toBe('valid=ok&flag=false')
+  })
+
   it('joins array values into comma-separated strings', () => {
     expect(
       buildQueryString({
-        tags: ['纯爱', '全彩', ''],
+        tags: ['纯爱', '全彩', '  ', ''],
         emptyArray: [],
       }),
     ).toBe('tags=%E7%BA%AF%E7%88%B1%2C%E5%85%A8%E5%BD%A9')

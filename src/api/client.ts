@@ -160,8 +160,10 @@ function combineSignals(
 }
 
 /**
- * 纯函数：声明式过滤对象中的 undefined、null、空字符串，
+ * 纯函数：声明式过滤对象中的 undefined、null、空字符串与空白字符串，
  * 将数组展开为逗号分隔字符串，生成符合规范的 URL 查询字符串。
+ * 注意：布尔值若为 `false` 会被序列化为字符串 `'false'`；
+ * 若希望在为 `false` 时完全省略该 Query 参数，请传入 `undefined`（如 `flag ? 'true' : undefined`）。
  */
 export function buildQueryString(params?: QueryParams): string {
   if (!params) return ''
@@ -169,12 +171,17 @@ export function buildQueryString(params?: QueryParams): string {
   for (const [key, val] of Object.entries(params)) {
     if (val === undefined || val === null || val === '') continue
     if (Array.isArray(val)) {
-      const filtered = val.filter((item) => item !== undefined && item !== null && item !== '')
+      const filtered = val
+        .map((item) => (item !== undefined && item !== null ? String(item).trim() : ''))
+        .filter(Boolean)
       if (filtered.length > 0) {
-        entries.push([key, filtered.map(String).join(',')])
+        entries.push([key, filtered.join(',')])
       }
     } else {
-      entries.push([key, String(val)])
+      const str = String(val).trim()
+      if (str !== '') {
+        entries.push([key, str])
+      }
     }
   }
   if (entries.length === 0) return ''

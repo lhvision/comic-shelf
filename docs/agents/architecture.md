@@ -246,7 +246,8 @@ JmImageTool.decode_and_save(num, source_image, save_path)
 - `GET /api/library`（基于 SQLite `comics_index` 影子索引的毫秒级受控分页与多维筛选，参数支持 `page`, `page_size`, `status`, `favorite`, `source`, `q`, `tag`, `sort`, `ids`, `offset`；动态 JOIN 各用户独立阅读进度与喜欢）
 - `GET /api/library/facets`（藏书全貌聚合统计与高频前 30 标签，返回 `total_books`, `total_pages`, `cached_pages` 与高频标签元组）
 - `POST /api/library/import` `{id, source, prefetch_covers, prefetch_all, refresh}`（`refresh=true` 走增量，章节未变则复用旧 remote；已重新装订画卷禁止 refresh 覆盖）
-- `POST /api/library/local/create`（自建工坊创建本地图集/多章节元数据骨架）
+- `POST /api/library/local/create`（自建工坊创建本地图集/多章节元数据骨架；作为 Paper Studio 外部创作平台 Machine API 规范契约长期保留）
+- `POST /api/library/local/create-from-staged-pdf`（从隔离区暂存 PDF 页面原子收录为本地多章节漫画，带章节草案与页码重排）
 - `POST /api/library/local/import-path`（扫描服务器本地目录或单个/多卷 PDF 文件秒级收录）
 - `POST /api/library/local/inspect-pdf`（接收上传 PDF 并在隔离工作区预解包分析，返回双轨探测章节草案与 staging_token）
 - `DELETE /api/library/local/staged-pdf/{staging_token}`（物理释放暂存解包隔离区）

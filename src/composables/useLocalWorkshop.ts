@@ -9,7 +9,7 @@ import { useSystemEvents } from '@/composables/useSystemEvents'
 import { useUploadQueue } from '@/composables/useUploadQueue'
 import { filterImageFiles, isPdfFile, naturalSortFiles } from '@/composables/useFileStaging'
 import { sumBy } from '@/utils/math'
-import type { LocalChapterInput, PdfInspectResponse } from '@/types'
+import type { ComicDetail, LocalChapterInput, PdfInspectResponse } from '@/types'
 
 export interface StagedChapter {
   id: string
@@ -274,6 +274,33 @@ export function useLocalWorkshop(options: UseLocalWorkshopOptions = {}) {
       .filter(Boolean)
   }
 
+  function buildCommonMetadata(defaultUploader: string) {
+    return {
+      id: slugId.value.trim() || undefined,
+      title: title.value.trim(),
+      works: parseList(works.value),
+      authors: parseList(authors.value),
+      actors: parseList(actors.value),
+      tags: tags.value,
+      description: description.value.trim(),
+      uploader: uploader.value.trim() || defaultUploader,
+      cover_indices: coverIndices.value,
+    }
+  }
+
+  async function finishImport(comic: ComicDetail, successMessage: string): Promise<void> {
+    const sourceId = comic.meta.source_id
+    await store.load()
+    broadcastLocalChange({
+      action: 'import',
+      source: comic.meta.source,
+      source_id: sourceId,
+      timestamp: Date.now(),
+    })
+    toast(successMessage, 'info')
+    void router.replace(`/comic/${comic.meta.source}/${sourceId}`)
+  }
+
   async function submit() {
     if (!title.value.trim()) {
       toast('请输入作品标题', 'error')
@@ -293,14 +320,7 @@ export function useLocalWorkshop(options: UseLocalWorkshopOptions = {}) {
       try {
         const created = await api.createFromStagedPdf({
           staging_token: stagedPdfMeta.value.staging_token,
-          id: slugId.value.trim() || undefined,
-          title: title.value.trim(),
-          works: parseList(works.value),
-          authors: parseList(authors.value),
-          actors: parseList(actors.value),
-          tags: tags.value,
-          description: description.value.trim(),
-          uploader: uploader.value.trim() || 'PDF导入',
+          ...buildCommonMetadata('PDF导入'),
           chapters: (() => {
             let cursor = 1
             return chapters.value.map((ch, idx) => {
@@ -316,18 +336,8 @@ export function useLocalWorkshop(options: UseLocalWorkshopOptions = {}) {
               }
             })
           })(),
-          cover_indices: coverIndices.value,
         })
-        const sourceId = created.meta.source_id
-        await store.load()
-        broadcastLocalChange({
-          action: 'import',
-          source: created.meta.source,
-          source_id: sourceId,
-          timestamp: Date.now(),
-        })
-        toast(`PDF 漫画《${created.meta.title}》已成功收录！`, 'info')
-        void router.replace(`/comic/${created.meta.source}/${sourceId}`)
+        await finishImport(created, `PDF 漫画《${created.meta.title}》已成功收录！`)
       } catch (err) {
         toast(err instanceof Error ? err.message : String(err), 'error')
       } finally {
@@ -345,25 +355,9 @@ export function useLocalWorkshop(options: UseLocalWorkshopOptions = {}) {
       try {
         const res = await api.importLocalPath({
           path: serverPath.value.trim(),
-          id: slugId.value.trim() || undefined,
-          title: title.value.trim(),
-          works: parseList(works.value),
-          authors: parseList(authors.value),
-          actors: parseList(actors.value),
-          tags: tags.value,
-          description: description.value.trim(),
-          uploader: uploader.value.trim() || '本地导入',
-          cover_indices: coverIndices.value,
+          ...buildCommonMetadata('本地导入'),
         })
-        await store.load()
-        broadcastLocalChange({
-          action: 'import',
-          source: res.meta.source,
-          source_id: res.meta.source_id,
-          timestamp: Date.now(),
-        })
-        toast('本地目录已收录', 'info')
-        void router.replace(`/comic/${res.meta.source}/${res.meta.source_id}`)
+        await finishImport(res, '本地目录已收录')
       } catch (err) {
         toast(err instanceof Error ? err.message : String(err), 'error')
       } finally {
@@ -386,16 +380,8 @@ export function useLocalWorkshop(options: UseLocalWorkshopOptions = {}) {
 
       // 1. Create base metadata
       const created = await api.createLocalComic({
-        id: slugId.value.trim() || undefined,
-        title: title.value.trim(),
-        works: parseList(works.value),
-        authors: parseList(authors.value),
-        actors: parseList(actors.value),
-        tags: tags.value,
-        description: description.value.trim(),
-        uploader: uploader.value.trim() || '自制',
+        ...buildCommonMetadata('自制'),
         chapters: chapterInputs,
-        cover_indices: coverIndices.value,
       })
 
       const sourceId = created.meta.source_id
@@ -411,15 +397,7 @@ export function useLocalWorkshop(options: UseLocalWorkshopOptions = {}) {
         await uploadFiles(sourceId, singleFiles.value, '', '')
       }
 
-      await store.load()
-      broadcastLocalChange({
-        action: 'import',
-        source: created.meta.source,
-        source_id: sourceId,
-        timestamp: Date.now(),
-      })
-      toast(`自建图集《${created.meta.title}》已成功收录！`, 'info')
-      void router.replace(`/comic/${created.meta.source}/${sourceId}`)
+      await finishImport(created, `自建图集《${created.meta.title}》已成功收录！`)
     } catch (err) {
       toast(err instanceof Error ? err.message : String(err), 'error')
     } finally {

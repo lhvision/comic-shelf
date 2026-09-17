@@ -213,6 +213,12 @@ class ComicStoreLocalMixin:
             while self.album_path("local", source_id).exists():
                 source_id = f"{base_id}_{counter}"
                 counter += 1
+        elif not req_id:
+            base_id = source_id
+            counter = 1
+            while self.album_path("local", source_id).exists():
+                source_id = f"{base_id}_{counter}"
+                counter += 1
 
         display_id = provider.display_id(source_id)
         return source_id, display_id
@@ -273,20 +279,125 @@ class ComicStoreLocalMixin:
         provider = LocalProvider()
         source_id, display_id = self._allocate_local_id(req.id, pdf_path.stem)
 
-        staging_dir = TMP_DIR / f".pdf_tmp_{source_id}_{int(time.time() * 1000)}"
-        try:
-            extracted_pages, pdf_meta = unpack_pdf(pdf_path, staging_dir)
-            total_pages = len(extracted_pages)
-            if total_pages == 0:
-                raise HTTPException(status_code=400, detail=f"PDF 中未发现有效画卷内容：{pdf_path.name}")
+        with self._lock_for("local", source_id):
+            if req.id and self.load_meta("local", source_id) is not None:
+                raise HTTPException(
+                    status_code=409,
+                    detail=f"已存在唯一标识为「{source_id}」的漫画，请指定新的标识或留空由系统自动生成。",
+                )
 
-            doc_title = req.title.strip() if req.title and req.title.strip() else (pdf_meta.get("title") or pdf_path.stem)
+            staging_dir = TMP_DIR / f".pdf_tmp_{source_id}_{int(time.time() * 1000)}"
+            try:
+                extracted_pages, pdf_meta = unpack_pdf(pdf_path, staging_dir)
+                total_pages = len(extracted_pages)
+                if total_pages == 0:
+                    raise HTTPException(status_code=400, detail=f"PDF 中未发现有效画卷内容：{pdf_path.name}")
 
-            if getattr(req, "chapters", None) and len(req.chapters) > 0:
-                chap_specs = [c.model_dump() if hasattr(c, "model_dump") else dict(c) for c in req.chapters]
-            else:
-                chap_specs, _ = detect_pdf_chapters(pdf_path, total_pages, doc_title)
+                doc_title = req.title.strip() if req.title and req.title.strip() else (pdf_meta.get("title") or pdf_path.stem)
 
+                if getattr(req, "chapters", None) and len(req.chapters) > 0:
+                    chap_specs = [c.model_dump() if hasattr(c, "model_dump") else dict(c) for c in req.chapters]
+                else:
+                    chap_specs, _ = detect_pdf_chapters(pdf_path, total_pages, doc_title)
+
+                target_pages_dir = self.pages_dir("local", source_id)
+                target_pages_dir.mkdir(parents=True, exist_ok=True)
+
+                pages: list[PageRecord] = []
+                remote_pages: list[RemotePage] = []
+                chapters: list[Chapter] = []
+
+                if len(chap_specs) > 1:
+                    global_idx = 1
+                    for chap_idx, ch_spec in enumerate(chap_specs, start=1):
+                        raw_cid = ch_spec.get("id") or f"c{chap_idx}"
+                        chap_id = provider.normalize_id(raw_cid)
+                        chap_title = ch_spec.get("title") or f"第 {chap_idx} 话"
+                        c_start = ch_spec.get("start", global_idx)
+                        c_count = ch_spec.get("page_count", 0)
+
+                        chap_pages_dir = target_pages_dir / self._safe(chap_id)
+                        chap_pages_dir.mkdir(parents=True, exist_ok=True)
+
+                        chap_files = [item for item in extracted_pages if c_start <= item[0] < c_start + c_count]
+                        if not chap_files:
+                            continue
+
+                        chap_start_page = global_idx
+                        for local_i, (_, src_file, ext) in enumerate(chap_files, start=1):
+                            dest_name = f"{local_i:05d}{ext}"
+                            dest_path = chap_pages_dir / dest_name
+                            shutil.move(str(src_file), str(dest_path))
+
+                            pages.append(PageRecord(index=global_idx, file=dest_name, ext=ext, cached=True, chapter=chap_id))
+                            remote_pages.append(RemotePage(index=global_idx, url="", file=dest_name, ext=ext, chapter=chap_id))
+                            global_idx += 1
+
+                        chapters.append(
+                            Chapter(
+                                id=chap_id,
+                                index=chap_idx,
+                                title=chap_title,
+                                page_count=len(chap_files),
+                                start=chap_start_page,
+                            )
+                        )
+                else:
+                    global_idx = 1
+                    for local_i, (_, src_file, ext) in enumerate(extracted_pages, start=1):
+                        dest_name = f"{local_i:05d}{ext}"
+                        dest_path = target_pages_dir / dest_name
+                        shutil.move(str(src_file), str(dest_path))
+
+                        pages.append(PageRecord(index=global_idx, file=dest_name, ext=ext, cached=True, chapter=""))
+                        remote_pages.append(RemotePage(index=global_idx, url="", file=dest_name, ext=ext, chapter=""))
+                        global_idx += 1
+
+                now_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                author_val = req.authors if req.authors else ([pdf_meta["author"]] if pdf_meta.get("author") else ["自制"])
+
+                meta = ComicMeta(
+                    source="local",
+                    source_id=source_id,
+                    display_id=display_id,
+                    title=doc_title,
+                    authors=author_val,
+                    works=req.works or [],
+                    actors=req.actors or [],
+                    tags=req.tags or [],
+                    description=req.description or "",
+                    uploader=req.uploader or "PDF导入",
+                    page_count=len(pages),
+                    cover_count=4,
+                    cover_indices=getattr(req, "cover_indices", []) or [],
+                    published_at=now_str,
+                    updated_at=now_str,
+                    imported_at=now_str,
+                    pages=pages,
+                    chapters=chapters,
+                    hidden_from_guest=getattr(req, "hidden_from_guest", False) or get_guest_hide_new_comics(),
+                )
+
+                fetched = FetchedComic(meta=meta, remote_pages=remote_pages)
+                self.save_fetched(fetched, refresh=False)
+
+                self._schedule_initial_and_auxiliary_covers(meta, fetched)
+                return meta
+            finally:
+                shutil.rmtree(staging_dir, ignore_errors=True)
+
+    def _import_multi_pdfs(self: Any, pdf_files: list[Path], req: Any, base_dir: Path) -> ComicMeta:
+        provider = LocalProvider()
+        source_id, display_id = self._allocate_local_id(req.id, base_dir.name)
+
+        with self._lock_for("local", source_id):
+            if req.id and self.load_meta("local", source_id) is not None:
+                raise HTTPException(
+                    status_code=409,
+                    detail=f"已存在唯一标识为「{source_id}」的漫画，请指定新的标识或留空由系统自动生成。",
+                )
+
+            pdf_files.sort(key=lambda f: self._natural_key(f.name))
             target_pages_dir = self.pages_dir("local", source_id)
             target_pages_dir.mkdir(parents=True, exist_ok=True)
 
@@ -294,66 +405,51 @@ class ComicStoreLocalMixin:
             remote_pages: list[RemotePage] = []
             chapters: list[Chapter] = []
 
-            if len(chap_specs) > 1:
-                global_idx = 1
-                for chap_idx, ch_spec in enumerate(chap_specs, start=1):
-                    raw_cid = ch_spec.get("id") or f"c{chap_idx}"
-                    chap_id = provider.normalize_id(raw_cid)
-                    chap_title = ch_spec.get("title") or f"第 {chap_idx} 话"
-                    c_start = ch_spec.get("start", global_idx)
-                    c_count = ch_spec.get("page_count", 0)
+            global_idx = 1
+            for chap_idx, pdf_f in enumerate(pdf_files, start=1):
+                chap_id = provider.normalize_id(f"c{chap_idx}")
+                chap_title = pdf_f.stem
+                chap_pages_dir = target_pages_dir / self._safe(chap_id)
+                chap_pages_dir.mkdir(parents=True, exist_ok=True)
 
-                    chap_pages_dir = target_pages_dir / self._safe(chap_id)
-                    chap_pages_dir.mkdir(parents=True, exist_ok=True)
+                chap_extracted, _ = unpack_pdf(pdf_f, chap_pages_dir)
+                start_page = global_idx
+                chap_count = len(chap_extracted)
 
-                    chap_files = [item for item in extracted_pages if c_start <= item[0] < c_start + c_count]
-                    if not chap_files:
-                        continue
-
-                    chap_start_page = global_idx
-                    for local_i, (_, src_file, ext) in enumerate(chap_files, start=1):
-                        dest_name = f"{local_i:05d}{ext}"
-                        dest_path = chap_pages_dir / dest_name
-                        shutil.move(str(src_file), str(dest_path))
-
-                        pages.append(PageRecord(index=global_idx, file=dest_name, ext=ext, cached=True, chapter=chap_id))
-                        remote_pages.append(RemotePage(index=global_idx, url="", file=dest_name, ext=ext, chapter=chap_id))
-                        global_idx += 1
-
-                    chapters.append(
-                        Chapter(
-                            id=chap_id,
-                            index=chap_idx,
-                            title=chap_title,
-                            page_count=len(chap_files),
-                            start=chap_start_page,
-                        )
-                    )
-            else:
-                global_idx = 1
-                for local_i, (_, src_file, ext) in enumerate(extracted_pages, start=1):
+                for local_i, (_, dest_file, ext) in enumerate(chap_extracted, start=1):
                     dest_name = f"{local_i:05d}{ext}"
-                    dest_path = target_pages_dir / dest_name
-                    shutil.move(str(src_file), str(dest_path))
+                    final_path = chap_pages_dir / dest_name
+                    if dest_file != final_path:
+                        dest_file.rename(final_path)
 
-                    pages.append(PageRecord(index=global_idx, file=dest_name, ext=ext, cached=True, chapter=""))
-                    remote_pages.append(RemotePage(index=global_idx, url="", file=dest_name, ext=ext, chapter=""))
+                    pages.append(PageRecord(index=global_idx, file=dest_name, ext=ext, cached=True, chapter=chap_id))
+                    remote_pages.append(RemotePage(index=global_idx, url="", file=dest_name, ext=ext, chapter=chap_id))
                     global_idx += 1
 
+                chapters.append(
+                    Chapter(
+                        id=chap_id,
+                        index=chap_idx,
+                        title=chap_title,
+                        page_count=chap_count,
+                        start=start_page,
+                    )
+                )
+
             now_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            author_val = req.authors if req.authors else ([pdf_meta["author"]] if pdf_meta.get("author") else ["自制"])
+            title = req.title.strip() if req.title and req.title.strip() else base_dir.name
 
             meta = ComicMeta(
                 source="local",
                 source_id=source_id,
                 display_id=display_id,
-                title=doc_title,
-                authors=author_val,
+                title=title,
+                authors=req.authors or ["自制"],
                 works=req.works or [],
                 actors=req.actors or [],
                 tags=req.tags or [],
                 description=req.description or "",
-                uploader=req.uploader or "PDF导入",
+                uploader=req.uploader or "PDF合集导入",
                 page_count=len(pages),
                 cover_count=4,
                 cover_indices=getattr(req, "cover_indices", []) or [],
@@ -370,82 +466,6 @@ class ComicStoreLocalMixin:
 
             self._schedule_initial_and_auxiliary_covers(meta, fetched)
             return meta
-        finally:
-            shutil.rmtree(staging_dir, ignore_errors=True)
-
-    def _import_multi_pdfs(self: Any, pdf_files: list[Path], req: Any, base_dir: Path) -> ComicMeta:
-        provider = LocalProvider()
-        source_id, display_id = self._allocate_local_id(req.id, base_dir.name)
-
-        pdf_files.sort(key=lambda f: self._natural_key(f.name))
-        target_pages_dir = self.pages_dir("local", source_id)
-        target_pages_dir.mkdir(parents=True, exist_ok=True)
-
-        pages: list[PageRecord] = []
-        remote_pages: list[RemotePage] = []
-        chapters: list[Chapter] = []
-
-        global_idx = 1
-        for chap_idx, pdf_f in enumerate(pdf_files, start=1):
-            chap_id = provider.normalize_id(f"c{chap_idx}")
-            chap_title = pdf_f.stem
-            chap_pages_dir = target_pages_dir / self._safe(chap_id)
-            chap_pages_dir.mkdir(parents=True, exist_ok=True)
-
-            chap_extracted, _ = unpack_pdf(pdf_f, chap_pages_dir)
-            start_page = global_idx
-            chap_count = len(chap_extracted)
-
-            for local_i, (_, dest_file, ext) in enumerate(chap_extracted, start=1):
-                standard_name = f"{local_i:05d}{ext}"
-                final_path = chap_pages_dir / standard_name
-                if dest_file != final_path:
-                    dest_file.rename(final_path)
-
-                pages.append(PageRecord(index=global_idx, file=standard_name, ext=ext, cached=True, chapter=chap_id))
-                remote_pages.append(RemotePage(index=global_idx, url="", file=standard_name, ext=ext, chapter=chap_id))
-                global_idx += 1
-
-            chapters.append(
-                Chapter(
-                    id=chap_id,
-                    index=chap_idx,
-                    title=chap_title,
-                    page_count=chap_count,
-                    start=start_page,
-                )
-            )
-
-        now_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        title = req.title.strip() if req.title and req.title.strip() else base_dir.name
-
-        meta = ComicMeta(
-            source="local",
-            source_id=source_id,
-            display_id=display_id,
-            title=title,
-            authors=req.authors or ["自制"],
-            works=req.works or [],
-            actors=req.actors or [],
-            tags=req.tags or [],
-            description=req.description or "",
-            uploader=req.uploader or "PDF合集导入",
-            page_count=len(pages),
-            cover_count=4,
-            cover_indices=getattr(req, "cover_indices", []) or [],
-            published_at=now_str,
-            updated_at=now_str,
-            imported_at=now_str,
-            pages=pages,
-            chapters=chapters,
-            hidden_from_guest=getattr(req, "hidden_from_guest", False) or get_guest_hide_new_comics(),
-        )
-
-        fetched = FetchedComic(meta=meta, remote_pages=remote_pages)
-        self.save_fetched(fetched, refresh=False)
-
-        self._schedule_initial_and_auxiliary_covers(meta, fetched)
-        return meta
 
     def _cleanup_staged_pdfs(self: Any, max_age_seconds: int = 3600) -> None:
         """Sweeps and deletes expired temporary staging directories in TMP_DIR."""
@@ -668,66 +688,37 @@ class ComicStoreLocalMixin:
         provider = LocalProvider()
         source_id, display_id = self._allocate_local_id(req.id, raw_path.name)
 
-        multi_chap_dirs: list[tuple[str, str, list[Path]]] = []
-        for d in subdirs:
-            imgs = [f for f in d.iterdir() if f.is_file() and f.suffix.lower() in IMAGE_EXTS]
-            if imgs:
-                imgs.sort(key=lambda f: self._natural_key(f.name))
-                multi_chap_dirs.append((provider.normalize_id(d.name), d.name, imgs))
-
-        target_pages_dir = self.pages_dir("local", source_id)
-        target_pages_dir.mkdir(parents=True, exist_ok=True)
-
-        pages: list[PageRecord] = []
-        remote_pages: list[RemotePage] = []
-        chapters: list[Chapter] = []
-
-        global_idx = 1
-        if multi_chap_dirs:
-            for chap_idx, (chap_id, chap_title, img_files) in enumerate(multi_chap_dirs, start=1):
-                chap_pages_dir = target_pages_dir / self._safe(chap_id)
-                chap_pages_dir.mkdir(parents=True, exist_ok=True)
-                start_page = global_idx
-                chap_page_count = len(img_files)
-
-                for local_i, img_file in enumerate(img_files, start=1):
-                    ext = img_file.suffix.lower()
-                    dest_name = f"{local_i:05d}{ext}"
-                    dest_path = chap_pages_dir / dest_name
-                    self._link_or_copy_file(img_file, dest_path)
-
-                    pages.append(PageRecord(index=global_idx, file=dest_name, ext=ext, cached=True, chapter=chap_id))
-                    remote_pages.append(RemotePage(index=global_idx, url="", file=dest_name, ext=ext, chapter=chap_id))
-                    global_idx += 1
-
-                chapters.append(
-                    Chapter(
-                        id=chap_id,
-                        index=chap_idx,
-                        title=chap_title,
-                        page_count=chap_page_count,
-                        start=start_page,
-                    )
+        with self._lock_for("local", source_id):
+            if req.id and self.load_meta("local", source_id) is not None:
+                raise HTTPException(
+                    status_code=409,
+                    detail=f"已存在唯一标识为「{source_id}」的漫画，请指定新的标识或留空由系统自动生成。",
                 )
-        else:
-            img_files = [f for f in raw_path.iterdir() if f.is_file() and f.suffix.lower() in IMAGE_EXTS]
-            img_files.sort(key=lambda f: self._natural_key(f.name))
-            if not img_files:
-                raise HTTPException(status_code=400, detail=f"目录中未找到支持的图片文件（支持 {', '.join(IMAGE_EXTS)}）")
 
-            composite_groups = self._group_by_composite_chapter_pattern(
-                [(f.name, f.suffix.lower(), f) for f in img_files]
-            )
-            if composite_groups:
-                sorted_chap_nums = sorted(composite_groups.keys())
-                for chap_idx, chap_num in enumerate(sorted_chap_nums, start=1):
-                    chap_id = provider.normalize_id(f"c{chap_num}")
+            multi_chap_dirs: list[tuple[str, str, list[Path]]] = []
+            for d in subdirs:
+                imgs = [f for f in d.iterdir() if f.is_file() and f.suffix.lower() in IMAGE_EXTS]
+                if imgs:
+                    imgs.sort(key=lambda f: self._natural_key(f.name))
+                    multi_chap_dirs.append((provider.normalize_id(d.name), d.name, imgs))
+
+            target_pages_dir = self.pages_dir("local", source_id)
+            target_pages_dir.mkdir(parents=True, exist_ok=True)
+
+            pages: list[PageRecord] = []
+            remote_pages: list[RemotePage] = []
+            chapters: list[Chapter] = []
+
+            global_idx = 1
+            if multi_chap_dirs:
+                for chap_idx, (chap_id, chap_title, img_files) in enumerate(multi_chap_dirs, start=1):
                     chap_pages_dir = target_pages_dir / self._safe(chap_id)
                     chap_pages_dir.mkdir(parents=True, exist_ok=True)
                     start_page = global_idx
-                    chap_items = composite_groups[chap_num]
+                    chap_page_count = len(img_files)
 
-                    for local_i, (filename, ext, img_file) in enumerate(chap_items, start=1):
+                    for local_i, img_file in enumerate(img_files, start=1):
+                        ext = img_file.suffix.lower()
                         dest_name = f"{local_i:05d}{ext}"
                         dest_path = chap_pages_dir / dest_name
                         self._link_or_copy_file(img_file, dest_path)
@@ -740,52 +731,88 @@ class ComicStoreLocalMixin:
                         Chapter(
                             id=chap_id,
                             index=chap_idx,
-                            title=f"第 {chap_num} 话",
-                            page_count=len(chap_items),
+                            title=chap_title,
+                            page_count=chap_page_count,
                             start=start_page,
                         )
                     )
             else:
-                for local_i, img_file in enumerate(img_files, start=1):
-                    ext = img_file.suffix.lower()
-                    dest_name = f"{local_i:05d}{ext}"
-                    dest_path = target_pages_dir / dest_name
-                    self._link_or_copy_file(img_file, dest_path)
+                img_files = [f for f in raw_path.iterdir() if f.is_file() and f.suffix.lower() in IMAGE_EXTS]
+                img_files.sort(key=lambda f: self._natural_key(f.name))
+                if not img_files:
+                    raise HTTPException(status_code=400, detail=f"目录中未找到支持的图片文件（支持 {', '.join(IMAGE_EXTS)}）")
 
-                    pages.append(PageRecord(index=global_idx, file=dest_name, ext=ext, cached=True, chapter=""))
-                    remote_pages.append(RemotePage(index=global_idx, url="", file=dest_name, ext=ext, chapter=""))
-                    global_idx += 1
+                composite_groups = self._group_by_composite_chapter_pattern(
+                    [(f.name, f.suffix.lower(), f) for f in img_files]
+                )
+                if composite_groups:
+                    sorted_chap_nums = sorted(composite_groups.keys())
+                    for chap_idx, chap_num in enumerate(sorted_chap_nums, start=1):
+                        chap_id = provider.normalize_id(f"c{chap_num}")
+                        chap_pages_dir = target_pages_dir / self._safe(chap_id)
+                        chap_pages_dir.mkdir(parents=True, exist_ok=True)
+                        start_page = global_idx
+                        chap_items = composite_groups[chap_num]
 
-        now_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        title = req.title.strip() if req.title and req.title.strip() else raw_path.name
+                        for local_i, (filename, ext, img_file) in enumerate(chap_items, start=1):
+                            dest_name = f"{local_i:05d}{ext}"
+                            dest_path = chap_pages_dir / dest_name
+                            self._link_or_copy_file(img_file, dest_path)
 
-        meta = ComicMeta(
-            source="local",
-            source_id=source_id,
-            display_id=display_id,
-            title=title,
-            authors=req.authors or ["自制"],
-            works=req.works or [],
-            actors=req.actors or [],
-            tags=req.tags or [],
-            description=req.description or "",
-            uploader=req.uploader or "本地导入",
-            page_count=len(pages),
-            cover_count=4,
-            cover_indices=getattr(req, "cover_indices", []) or [],
-            published_at=now_str,
-            updated_at=now_str,
-            imported_at=now_str,
-            pages=pages,
-            chapters=chapters,
-            hidden_from_guest=getattr(req, "hidden_from_guest", False) or get_guest_hide_new_comics(),
-        )
+                            pages.append(PageRecord(index=global_idx, file=dest_name, ext=ext, cached=True, chapter=chap_id))
+                            remote_pages.append(RemotePage(index=global_idx, url="", file=dest_name, ext=ext, chapter=chap_id))
+                            global_idx += 1
 
-        fetched = FetchedComic(meta=meta, remote_pages=remote_pages)
-        self.save_fetched(fetched, refresh=False)
+                        chapters.append(
+                            Chapter(
+                                id=chap_id,
+                                index=chap_idx,
+                                title=f"第 {chap_num} 话",
+                                page_count=len(chap_items),
+                                start=start_page,
+                            )
+                        )
+                else:
+                    for local_i, img_file in enumerate(img_files, start=1):
+                        ext = img_file.suffix.lower()
+                        dest_name = f"{local_i:05d}{ext}"
+                        dest_path = target_pages_dir / dest_name
+                        self._link_or_copy_file(img_file, dest_path)
 
-        self._schedule_initial_and_auxiliary_covers(meta, fetched)
-        return meta
+                        pages.append(PageRecord(index=global_idx, file=dest_name, ext=ext, cached=True, chapter=""))
+                        remote_pages.append(RemotePage(index=global_idx, url="", file=dest_name, ext=ext, chapter=""))
+                        global_idx += 1
+
+            now_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            title = req.title.strip() if req.title and req.title.strip() else raw_path.name
+
+            meta = ComicMeta(
+                source="local",
+                source_id=source_id,
+                display_id=display_id,
+                title=title,
+                authors=req.authors or ["自制"],
+                works=req.works or [],
+                actors=req.actors or [],
+                tags=req.tags or [],
+                description=req.description or "",
+                uploader=req.uploader or "本地导入",
+                page_count=len(pages),
+                cover_count=4,
+                cover_indices=getattr(req, "cover_indices", []) or [],
+                published_at=now_str,
+                updated_at=now_str,
+                imported_at=now_str,
+                pages=pages,
+                chapters=chapters,
+                hidden_from_guest=getattr(req, "hidden_from_guest", False) or get_guest_hide_new_comics(),
+            )
+
+            fetched = FetchedComic(meta=meta, remote_pages=remote_pages)
+            self.save_fetched(fetched, refresh=False)
+
+            self._schedule_initial_and_auxiliary_covers(meta, fetched)
+            return meta
 
     def _append_multi_chapter_pdf(
         self: Any,
