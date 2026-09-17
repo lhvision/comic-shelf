@@ -229,6 +229,10 @@ export function useLocalWorkshop() {
   })
 
   function clearCurrentStaged() {
+    if (stagedPdfMeta.value) {
+      toast('PDF 暂存模式下无法单独清空单话，如需重置请点击「重置暂存」', 'info')
+      return
+    }
     if (isMulti.value) {
       const current = chapters.value[activeChapterIdx.value]
       if (current) current.files = []
@@ -272,6 +276,14 @@ export function useLocalWorkshop() {
     }
 
     if (stagedPdfMeta.value) {
+      const totalAssignedPages = sumBy(chapters.value, (ch) => ch.files.length)
+      if (totalAssignedPages !== stagedPdfMeta.value.total_pages) {
+        toast(
+          `章节分配总页数（${totalAssignedPages}P）与 PDF 实际页数（${stagedPdfMeta.value.total_pages}P）不一致，请重置后重试`,
+          'error',
+        )
+        return
+      }
       submitting.value = true
       try {
         const created = await api.createFromStagedPdf({

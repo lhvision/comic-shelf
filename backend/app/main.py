@@ -202,6 +202,7 @@ async def lifespan(app: FastAPI):
         init_db()
         _migrate_existing_favorites_to_db()
         sync_library_index(store)
+        store._cleanup_staged_pdfs(max_age_seconds=0)
     except Exception as exc:
         logger.warning("Startup initialization error: %s", exc)
     yield

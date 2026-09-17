@@ -72,18 +72,24 @@ def unpack_pdf(pdf_path: Path, output_dir: Path) -> tuple[list[tuple[int, Path, 
                     logger.warning("Failed raw extraction for page %d in %s: %s, falling back to render", idx, pdf_path, exc)
 
             if not done:
-                # Fallback: rasterize page to high-quality pixmap (200 DPI)
-                pix = page.get_pixmap(dpi=200)
+                # Fallback: rasterize page to high-quality pixmap (200 DPI, capped for memory safety)
+                rect = page.rect
+                max_dim_pt = max(rect.width, rect.height)
+                dpi = 200
+                if max_dim_pt > 0 and (max_dim_pt * dpi / 72) > 3500:
+                    dpi = max(72, int(3500 * 72 / max_dim_pt))
+                pix = page.get_pixmap(dpi=dpi)
                 ext = ".png"
                 dest_file = output_dir / f"{idx:05d}{ext}"
                 pix.save(str(dest_file))
                 extracted.append((idx, dest_file, ext))
 
+        doc_meta = doc.metadata or {}
         meta = {
-            "title": (doc.metadata.get("title") or "").strip() or pdf_path.stem,
-            "author": (doc.metadata.get("author") or "").strip(),
+            "title": (doc_meta.get("title") or "").strip() or pdf_path.stem,
+            "author": (doc_meta.get("author") or "").strip(),
             "total_pages": total_pages,
-            "format": doc.metadata.get("format", "PDF"),
+            "format": doc_meta.get("format", "PDF"),
         }
     return extracted, meta
 
@@ -206,37 +212,45 @@ def _extract_chapters_from_ocr(
                             splits[target_pno] = title
             break
 
-    # 2. Also scan pages to corroborate or discover standalone chapter title cards
-    # If contents page was found, we can check candidate pages around splits or scan with step
-    scan_range = range(total_pages)
-    for pno in scan_range:
-        page_idx = pno + 1
-        # Skip if this is the contents page
-        if contents_page_found and page_idx <= toc_limit and page_idx not in splits:
-            continue
+    # 2. If table of contents gave us >= 2 chapters, we are done! No need to blind-scan all pages.
+    # Otherwise, scan candidate pages (up to 40 pages maximum) to discover standalone chapter title cards.
+    if len(splits) < 2:
+        max_ocr_pages = min(40, total_pages)
+        if total_pages <= max_ocr_pages:
+            scan_indices = list(range(total_pages))
+        else:
+            early = list(range(min(15, total_pages)))
+            step = max(1, (total_pages - 15) // max(1, max_ocr_pages - len(early)))
+            remaining = list(range(15, total_pages, step))[: max_ocr_pages - len(early)]
+            scan_indices = sorted(set(early + remaining))
 
-        page = doc[pno]
-        imgs = page.get_images()
-        if not imgs:
-            continue
-        try:
-            base_img = doc.extract_image(imgs[0][0])
-            res, _ = ocr(base_img["image"])
-        except Exception:
-            continue
-        if not res:
-            continue
+        for pno in scan_indices:
+            page_idx = pno + 1
+            if contents_page_found and page_idx <= toc_limit and page_idx not in splits:
+                continue
 
-        for _, text, _ in res:
-            t = text.strip()
-            if len(t) <= 20 and not any(p in t for p in ("，", "。", "！", "？", "…", "的", "不是", "她是")):
-                m = chap_pattern.match(t)
-                if m and not t.startswith("第一次") and not t.startswith("第二天") and not t.startswith("第1名"):
-                    splits[page_idx] = t
-                    break
-                elif extra_pattern.match(t) and len(t) <= 12:
-                    splits[page_idx] = t
-                    break
+            page = doc[pno]
+            imgs = page.get_images()
+            if not imgs:
+                continue
+            try:
+                base_img = doc.extract_image(imgs[0][0])
+                res, _ = ocr(base_img["image"])
+            except Exception:
+                continue
+            if not res:
+                continue
+
+            for _, text, _ in res:
+                t = text.strip()
+                if len(t) <= 20 and not any(p in t for p in ("，", "。", "！", "？", "…", "的", "不是", "她是")):
+                    m = chap_pattern.match(t)
+                    if m and not t.startswith("第一次") and not t.startswith("第二天") and not t.startswith("第1名"):
+                        splits[page_idx] = t
+                        break
+                    elif extra_pattern.match(t) and len(t) <= 12:
+                        splits[page_idx] = t
+                        break
 
     if len(splits) < 2:
         return None

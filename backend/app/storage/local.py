@@ -164,6 +164,34 @@ class ComicStoreLocalMixin:
             shutil.rmtree(staging_dir, ignore_errors=True)
             raise
 
+    def _schedule_initial_and_auxiliary_covers(self: Any, meta: ComicMeta, fetched: FetchedComic) -> None:
+        """Generates primary cover synchronously and schedules auxiliary and chapter covers in background."""
+        source_id = meta.source_id
+        if meta.page_count > 0:
+            try:
+                self.ensure_webp_cover(meta, fetched, 1)
+                self.ensure_webp_cover(meta, fetched, 1, COVER_THUMB_WIDTH)
+            except Exception as e:
+                logger.warning("Failed to generate initial primary cover for %s: %s", source_id, e)
+
+        def _bg_generate_auxiliary_covers() -> None:
+            for i in range(2, min(meta.cover_count, meta.page_count) + 1):
+                try:
+                    self.ensure_webp_cover(meta, fetched, i)
+                    self.ensure_webp_cover(meta, fetched, i, COVER_THUMB_WIDTH)
+                except Exception as e:
+                    logger.warning("Background cover generation %d for %s skipped: %s", i, source_id, e)
+
+            if meta.chapters:
+                for ch in meta.chapters:
+                    try:
+                        self.ensure_webp_chapter_cover(meta, fetched, ch)
+                        self.ensure_webp_chapter_cover(meta, fetched, ch, COVER_THUMB_WIDTH)
+                    except Exception as e:
+                        logger.warning("Background chapter cover generation %s for %s skipped: %s", ch.id, source_id, e)
+
+        self._cover_executor.submit(_bg_generate_auxiliary_covers)
+
     def create_local_comic(self: Any, req: Any) -> ComicMeta:
         provider = LocalProvider()
         source_id = provider.normalize_id(req.id) if req.id else f"loc_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}"
@@ -252,6 +280,7 @@ class ComicStoreLocalMixin:
                     if not chap_files:
                         continue
 
+                    chap_start_page = global_idx
                     for local_i, (_, src_file, ext) in enumerate(chap_files, start=1):
                         dest_name = f"{local_i:05d}{ext}"
                         dest_path = chap_pages_dir / dest_name
@@ -267,7 +296,7 @@ class ComicStoreLocalMixin:
                             index=chap_idx,
                             title=chap_title,
                             page_count=len(chap_files),
-                            start=c_start,
+                            start=chap_start_page,
                         )
                     )
             else:
@@ -309,30 +338,7 @@ class ComicStoreLocalMixin:
             fetched = FetchedComic(meta=meta, remote_pages=remote_pages)
             self.save_fetched(fetched, refresh=False)
 
-            if meta.page_count > 0:
-                try:
-                    self.ensure_webp_cover(meta, fetched, 1)
-                    self.ensure_webp_cover(meta, fetched, 1, COVER_THUMB_WIDTH)
-                except Exception as e:
-                    logger.warning("Failed to generate initial primary cover for %s: %s", source_id, e)
-
-            def _bg_generate_auxiliary_covers() -> None:
-                for i in range(2, min(meta.cover_count, meta.page_count) + 1):
-                    try:
-                        self.ensure_webp_cover(meta, fetched, i)
-                        self.ensure_webp_cover(meta, fetched, i, COVER_THUMB_WIDTH)
-                    except Exception as e:
-                        logger.warning("Background cover generation %d for %s skipped: %s", i, source_id, e)
-
-                if meta.chapters:
-                    for ch in meta.chapters:
-                        try:
-                            self.ensure_webp_chapter_cover(meta, fetched, ch)
-                            self.ensure_webp_chapter_cover(meta, fetched, ch, COVER_THUMB_WIDTH)
-                        except Exception as e:
-                            logger.warning("Background chapter cover generation %s for %s skipped: %s", ch.id, source_id, e)
-
-            self._cover_executor.submit(_bg_generate_auxiliary_covers)
+            self._schedule_initial_and_auxiliary_covers(meta, fetched)
             return meta
         finally:
             shutil.rmtree(staging_dir, ignore_errors=True)
@@ -410,30 +416,7 @@ class ComicStoreLocalMixin:
         fetched = FetchedComic(meta=meta, remote_pages=remote_pages)
         self.save_fetched(fetched, refresh=False)
 
-        if meta.page_count > 0:
-            try:
-                self.ensure_webp_cover(meta, fetched, 1)
-                self.ensure_webp_cover(meta, fetched, 1, COVER_THUMB_WIDTH)
-            except Exception as e:
-                logger.warning("Failed to generate initial primary cover for %s: %s", source_id, e)
-
-        def _bg_generate_auxiliary_covers() -> None:
-            for i in range(2, min(meta.cover_count, meta.page_count) + 1):
-                try:
-                    self.ensure_webp_cover(meta, fetched, i)
-                    self.ensure_webp_cover(meta, fetched, i, COVER_THUMB_WIDTH)
-                except Exception as e:
-                    logger.warning("Background cover generation %d for %s skipped: %s", i, source_id, e)
-
-            if meta.chapters:
-                for ch in meta.chapters:
-                    try:
-                        self.ensure_webp_chapter_cover(meta, fetched, ch)
-                        self.ensure_webp_chapter_cover(meta, fetched, ch, COVER_THUMB_WIDTH)
-                    except Exception as e:
-                        logger.warning("Background chapter cover generation %s for %s skipped: %s", ch.id, source_id, e)
-
-        self._cover_executor.submit(_bg_generate_auxiliary_covers)
+        self._schedule_initial_and_auxiliary_covers(meta, fetched)
         return meta
 
     def _cleanup_staged_pdfs(self: Any, max_age_seconds: int = 3600) -> None:
@@ -475,36 +458,42 @@ class ComicStoreLocalMixin:
         staging_dir = TMP_DIR / staging_token
         staging_dir.mkdir(parents=True, exist_ok=True)
 
-        extracted_pages, pdf_meta = unpack_pdf(pdf_path, staging_dir)
-        total_pages = len(extracted_pages)
-        if total_pages == 0:
+        try:
+            extracted_pages, pdf_meta = unpack_pdf(pdf_path, staging_dir)
+            total_pages = len(extracted_pages)
+            if total_pages == 0:
+                raise HTTPException(status_code=400, detail=f"PDF 中未发现有效画页：{pdf_path.name}")
+
+            title = (pdf_meta.get("title") or "").strip() or pdf_path.stem
+            author = (pdf_meta.get("author") or "").strip()
+            chapters_data, track = detect_pdf_chapters(pdf_path, total_pages, title)
+
+            _write_json_atomic(
+                staging_dir / "meta.json",
+                {
+                    "title": title,
+                    "author": author,
+                    "total_pages": total_pages,
+                    "detection_track": track,
+                    "chapters": chapters_data,
+                    "extracted_count": len(extracted_pages),
+                },
+            )
+
+            return PdfInspectResponse(
+                staging_token=staging_token,
+                title=title,
+                authors=[author] if author else [],
+                total_pages=total_pages,
+                chapters=[PdfChapterPreview(**ch) for ch in chapters_data],
+                detection_track=track,
+            )
+        except ValueError as exc:
             shutil.rmtree(staging_dir, ignore_errors=True)
-            raise HTTPException(status_code=400, detail=f"PDF 中未发现有效画页：{pdf_path.name}")
-
-        title = (pdf_meta.get("title") or "").strip() or pdf_path.stem
-        author = (pdf_meta.get("author") or "").strip()
-        chapters_data, track = detect_pdf_chapters(pdf_path, total_pages, title)
-
-        _write_json_atomic(
-            staging_dir / "meta.json",
-            {
-                "title": title,
-                "author": author,
-                "total_pages": total_pages,
-                "detection_track": track,
-                "chapters": chapters_data,
-                "extracted_count": len(extracted_pages),
-            },
-        )
-
-        return PdfInspectResponse(
-            staging_token=staging_token,
-            title=title,
-            authors=[author] if author else [],
-            total_pages=total_pages,
-            chapters=[PdfChapterPreview(**ch) for ch in chapters_data],
-            detection_track=track,
-        )
+            raise HTTPException(status_code=400, detail=str(exc))
+        except Exception:
+            shutil.rmtree(staging_dir, ignore_errors=True)
+            raise
 
     def create_from_staged_pdf(self: Any, req: CreateFromStagedPdfRequest) -> ComicMeta:
         safe_token = re.sub(r"[^a-zA-Z0-9_]", "", req.staging_token)
@@ -517,123 +506,117 @@ class ComicStoreLocalMixin:
         provider = LocalProvider()
         source_id = provider.normalize_id(req.id) if req.id else f"loc_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}"
 
-        all_files = [f for f in staging_dir.iterdir() if f.is_file() and f.suffix.lower() in IMAGE_EXTS]
-        all_files.sort(key=lambda f: self._natural_key(f.name))
-        if not all_files:
-            shutil.rmtree(staging_dir, ignore_errors=True)
-            raise HTTPException(status_code=400, detail="暂存目录中未找到解包画页文件。")
-
-        target_pages_dir = self.pages_dir("local", source_id)
-        target_pages_dir.mkdir(parents=True, exist_ok=True)
-
-        pages: list[PageRecord] = []
-        remote_pages: list[RemotePage] = []
-        chapters: list[Chapter] = []
-
-        chap_specs = [c.model_dump() for c in req.chapters] if req.chapters else []
-
-        if len(chap_specs) > 1:
-            global_idx = 1
-            for chap_idx, ch_spec in enumerate(chap_specs, start=1):
-                raw_cid = ch_spec.get("id") or f"c{chap_idx}"
-                chap_id = provider.normalize_id(raw_cid)
-                chap_title = ch_spec.get("title") or f"第 {chap_idx} 话"
-                c_start = ch_spec.get("start", global_idx)
-                c_count = ch_spec.get("page_count", 0)
-
-                chap_pages_dir = target_pages_dir / self._safe(chap_id)
-                chap_pages_dir.mkdir(parents=True, exist_ok=True)
-
-                start_idx = max(0, c_start - 1)
-                end_idx = min(len(all_files), start_idx + c_count)
-                chap_files = all_files[start_idx:end_idx]
-                if not chap_files:
-                    continue
-
-                for local_i, src_file in enumerate(chap_files, start=1):
-                    ext = src_file.suffix.lower()
-                    dest_name = f"{local_i:05d}{ext}"
-                    dest_path = chap_pages_dir / dest_name
-                    shutil.move(str(src_file), str(dest_path))
-
-                    pages.append(PageRecord(index=global_idx, file=dest_name, ext=ext, cached=True, chapter=chap_id))
-                    remote_pages.append(RemotePage(index=global_idx, url="", file=dest_name, ext=ext, chapter=chap_id))
-                    global_idx += 1
-
-                chapters.append(
-                    Chapter(
-                        id=chap_id,
-                        index=chap_idx,
-                        title=chap_title,
-                        page_count=len(chap_files),
-                        start=c_start,
-                    )
+        with self._lock_for("local", source_id):
+            if req.id and self.load_meta("local", source_id) is not None:
+                raise HTTPException(
+                    status_code=409,
+                    detail=f"已存在唯一标识为「{source_id}」的漫画，请指定新的标识或留空由系统自动生成。",
                 )
-        else:
-            global_idx = 1
-            for local_i, src_file in enumerate(all_files, start=1):
-                ext = src_file.suffix.lower()
-                dest_name = f"{local_i:05d}{ext}"
-                dest_path = target_pages_dir / dest_name
-                shutil.move(str(src_file), str(dest_path))
 
-                pages.append(PageRecord(index=global_idx, file=dest_name, ext=ext, cached=True, chapter=""))
-                remote_pages.append(RemotePage(index=global_idx, url="", file=dest_name, ext=ext, chapter=""))
-                global_idx += 1
+            all_files = [f for f in staging_dir.iterdir() if f.is_file() and f.suffix.lower() in IMAGE_EXTS]
+            all_files.sort(key=lambda f: self._natural_key(f.name))
+            if not all_files:
+                shutil.rmtree(staging_dir, ignore_errors=True)
+                raise HTTPException(status_code=400, detail="暂存目录中未找到解包画页文件。")
 
-        shutil.rmtree(staging_dir, ignore_errors=True)
+            target_pages_dir = self.pages_dir("local", source_id)
+            comic_dir = self.comic_dir("local", source_id)
+            comic_dir.mkdir(parents=True, exist_ok=True)
+            staging_work_dir = comic_dir / f".tmp_create_pages_{int(time.time() * 1000)}"
+            staging_work_dir.mkdir(parents=True, exist_ok=True)
 
-        now_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        meta = ComicMeta(
-            source="local",
-            source_id=source_id,
-            display_id=f"LOC_{source_id}",
-            title=req.title,
-            authors=req.authors or ["自制"],
-            works=req.works or [],
-            actors=req.actors or [],
-            tags=req.tags or [],
-            description=req.description or "",
-            uploader=req.uploader or "PDF导入",
-            page_count=len(pages),
-            cover_count=4,
-            cover_indices=getattr(req, "cover_indices", []) or [],
-            published_at=now_str,
-            updated_at=now_str,
-            imported_at=now_str,
-            pages=pages,
-            chapters=chapters,
-            hidden_from_guest=getattr(req, "hidden_from_guest", False) or get_guest_hide_new_comics(),
-        )
+            pages: list[PageRecord] = []
+            remote_pages: list[RemotePage] = []
+            chapters: list[Chapter] = []
 
-        fetched = FetchedComic(meta=meta, remote_pages=remote_pages)
-        self.save_fetched(fetched, refresh=False)
+            chap_specs = [c.model_dump() for c in req.chapters] if req.chapters else []
 
-        if meta.page_count > 0:
             try:
-                self.ensure_webp_cover(meta, fetched, 1)
-                self.ensure_webp_cover(meta, fetched, 1, COVER_THUMB_WIDTH)
-            except Exception as e:
-                logger.warning("Failed to generate initial primary cover for %s: %s", source_id, e)
+                if len(chap_specs) > 1:
+                    global_idx = 1
+                    for chap_idx, ch_spec in enumerate(chap_specs, start=1):
+                        raw_cid = ch_spec.get("id") or f"c{chap_idx}"
+                        chap_id = provider.normalize_id(raw_cid)
+                        chap_title = ch_spec.get("title") or f"第 {chap_idx} 话"
+                        c_start = ch_spec.get("start", global_idx)
+                        c_count = ch_spec.get("page_count", 0)
 
-        def _bg_generate_auxiliary_covers() -> None:
-            for i in range(2, min(meta.cover_count, meta.page_count) + 1):
-                try:
-                    self.ensure_webp_cover(meta, fetched, i)
-                    self.ensure_webp_cover(meta, fetched, i, COVER_THUMB_WIDTH)
-                except Exception as e:
-                    logger.warning("Background cover generation %d for %s skipped: %s", i, source_id, e)
+                        chap_pages_dir = staging_work_dir / self._safe(chap_id)
+                        chap_pages_dir.mkdir(parents=True, exist_ok=True)
 
-            if meta.chapters:
-                for ch in meta.chapters:
-                    try:
-                        self.ensure_webp_chapter_cover(meta, fetched, ch)
-                        self.ensure_webp_chapter_cover(meta, fetched, ch, COVER_THUMB_WIDTH)
-                    except Exception as e:
-                        logger.warning("Background chapter cover generation %s for %s skipped: %s", ch.id, source_id, e)
+                        start_idx = max(0, c_start - 1)
+                        end_idx = min(len(all_files), start_idx + c_count)
+                        chap_files = all_files[start_idx:end_idx]
+                        if not chap_files:
+                            continue
 
-        self._cover_executor.submit(_bg_generate_auxiliary_covers)
-        return meta
+                        chap_start_page = global_idx
+                        for local_i, src_file in enumerate(chap_files, start=1):
+                            ext = src_file.suffix.lower()
+                            dest_name = f"{local_i:05d}{ext}"
+                            dest_path = chap_pages_dir / dest_name
+                            shutil.move(str(src_file), str(dest_path))
+
+                            pages.append(PageRecord(index=global_idx, file=dest_name, ext=ext, cached=True, chapter=chap_id))
+                            remote_pages.append(RemotePage(index=global_idx, url="", file=dest_name, ext=ext, chapter=chap_id))
+                            global_idx += 1
+
+                        chapters.append(
+                            Chapter(
+                                id=chap_id,
+                                index=chap_idx,
+                                title=chap_title,
+                                page_count=len(chap_files),
+                                start=chap_start_page,
+                            )
+                        )
+                else:
+                    global_idx = 1
+                    for local_i, src_file in enumerate(all_files, start=1):
+                        ext = src_file.suffix.lower()
+                        dest_name = f"{local_i:05d}{ext}"
+                        dest_path = staging_work_dir / dest_name
+                        shutil.move(str(src_file), str(dest_path))
+
+                        pages.append(PageRecord(index=global_idx, file=dest_name, ext=ext, cached=True, chapter=""))
+                        remote_pages.append(RemotePage(index=global_idx, url="", file=dest_name, ext=ext, chapter=""))
+                        global_idx += 1
+
+                self._atomic_swap_dir(staging_work_dir, target_pages_dir)
+            except Exception:
+                shutil.rmtree(staging_work_dir, ignore_errors=True)
+                raise
+            finally:
+                shutil.rmtree(staging_dir, ignore_errors=True)
+
+            now_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            meta = ComicMeta(
+                source="local",
+                source_id=source_id,
+                display_id=f"LOC_{source_id}",
+                title=req.title,
+                authors=req.authors or ["自制"],
+                works=req.works or [],
+                actors=req.actors or [],
+                tags=req.tags or [],
+                description=req.description or "",
+                uploader=req.uploader or "PDF导入",
+                page_count=len(pages),
+                cover_count=4,
+                cover_indices=getattr(req, "cover_indices", []) or [],
+                published_at=now_str,
+                updated_at=now_str,
+                imported_at=now_str,
+                pages=pages,
+                chapters=chapters,
+                hidden_from_guest=getattr(req, "hidden_from_guest", False) or get_guest_hide_new_comics(),
+            )
+
+            fetched = FetchedComic(meta=meta, remote_pages=remote_pages)
+            self.save_fetched(fetched, refresh=False)
+
+            self._schedule_initial_and_auxiliary_covers(meta, fetched)
+            return meta
 
     def import_local_path(self: Any, req: Any) -> ComicMeta:
         raw_path = self._resolve_and_verify_server_path(req.path, must_be_dir=False)
@@ -775,30 +758,7 @@ class ComicStoreLocalMixin:
         fetched = FetchedComic(meta=meta, remote_pages=remote_pages)
         self.save_fetched(fetched, refresh=False)
 
-        if meta.page_count > 0:
-            try:
-                self.ensure_webp_cover(meta, fetched, 1)
-                self.ensure_webp_cover(meta, fetched, 1, COVER_THUMB_WIDTH)
-            except Exception as e:
-                logger.warning("Failed to generate initial primary cover for %s: %s", source_id, e)
-
-        def _bg_generate_auxiliary_covers() -> None:
-            for i in range(2, min(meta.cover_count, meta.page_count) + 1):
-                try:
-                    self.ensure_webp_cover(meta, fetched, i)
-                    self.ensure_webp_cover(meta, fetched, i, COVER_THUMB_WIDTH)
-                except Exception as e:
-                    logger.warning("Background cover generation %d for %s skipped: %s", i, source_id, e)
-
-            if meta.chapters:
-                for ch in meta.chapters:
-                    try:
-                        self.ensure_webp_chapter_cover(meta, fetched, ch)
-                        self.ensure_webp_chapter_cover(meta, fetched, ch, COVER_THUMB_WIDTH)
-                    except Exception as e:
-                        logger.warning("Background chapter cover generation %s for %s skipped: %s", ch.id, source_id, e)
-
-        self._cover_executor.submit(_bg_generate_auxiliary_covers)
+        self._schedule_initial_and_auxiliary_covers(meta, fetched)
         return meta
 
     def _append_multi_chapter_pdf(
@@ -911,13 +871,12 @@ class ComicStoreLocalMixin:
                             tmp_pdf = pdf_staging / "upload.pdf"
                             tmp_pdf.write_bytes(content)
                             extracted_pages, pdf_meta = unpack_pdf(tmp_pdf, pdf_staging / "pages")
-                            tmp_pdf.unlink(missing_ok=True)
                             pdf_temp_dirs.append(pdf_staging)
 
                             if not target_chapter:
                                 total_pages = len(extracted_pages)
                                 detected_chaps, _ = detect_pdf_chapters(
-                                    pdf_staging / "pages",
+                                    tmp_pdf,
                                     total_pages,
                                     new_chapter_title or pdf_meta.get("title") or Path(filename).stem,
                                 )
@@ -925,6 +884,8 @@ class ComicStoreLocalMixin:
                                     return self._append_multi_chapter_pdf(
                                         source, source_id, fetched, extracted_pages, detected_chaps, new_chapter_title
                                     )
+
+                            tmp_pdf.unlink(missing_ok=True)
 
                             for _pno, f_path, p_ext in extracted_pages:
                                 items.append((f_path.name, p_ext, f_path))

@@ -65,7 +65,7 @@
 | `src/components/GateView.vue`                      | 全屏 Zero-DOM 门禁大门视图：反 DevTools 篡改哨兵与三态表单编排外壳                                                                                             |
 | `src/components/gate/`                             | 门禁模块化表单群：初始口令表单、首访认领自设 PIN 表单、已认领 PIN 验证表单                                                                                     |
 | `src/components/gate/GatePasswordInput.vue`        | 门禁口令输入分子：自动聚焦、密码显隐切换与回车提交契约单一真理源                                                                                               |
-| `src/components/FileStagingDropZone.vue`           | 画卷文件暂存区：自建漫画/追加/重装订拖拽投放与服务器路径扫描双模暂存（原生支持图片与 PDF 徽印及文件类型提示）                                                  |
+| `src/components/form/FileStagingDropZone.vue`      | 画卷文件暂存区：自建漫画/追加/重装订拖拽投放与服务器路径扫描双模暂存（原生支持图片与 PDF 徽印及文件类型提示）                                                  |
 | `src/components/Modal.vue`                         | 通用顶层模态对话框：基于 HTML5 原生 `<dialog>` Top Layer 与无障碍焦点圈闭，支持声明式关闭指令 (`commandfor`)、焦点记忆自动返还、防穿透微弹反馈与子表单安全防护 |
 | `src/components/SegmentedTabs.vue`                 | 典藏分段选项卡：支持泛型 `TabItem<T>`/字符串、左右/Home/End 键导航与多尺寸                                                                                     |
 | `src/components/AppButton.vue`                     | 通用典藏按钮：支持 primary / secondary / soft / ghost / danger 多种变体                                                                                        |

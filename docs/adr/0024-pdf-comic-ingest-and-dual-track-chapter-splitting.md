@@ -23,11 +23,14 @@
 2. **原生图像流无损直出管道（Direct Stream Extraction）**：
    - 优先探测 PDF 页面内嵌的 Image XObject；
    - 漫画扫描 PDF 每页通常内嵌 1 张原始图像，通过底层无损直接导出二进制流（`extract_image`），166 页提取仅需 0.3 秒，0 重编码、0 像素失真；
-   - 若遇矢量元素或多图拼版页面，优雅降级为 300 DPI 高保真光栅化渲染。
+   - 若遇矢量元素或多图拼版页面，优雅降级为 300 DPI 高保真光栅化渲染，并设置单边最高 3500px 尺寸硬上限，杜绝超大画幅致使内存暴涨。
 
 3. **双轨分话探测器（Dual-Track Chapter Detector）**：
    - **第一轨（电子书签优先）**：若 PDF 包含 `doc.get_toc()` 大纲书签，自动提取章节标题、层级与起始页；
    - **第二轨（本地 OCR 扉页启发式推断）**：若无电子书签，复用本地既有的 `rapidocr-onnxruntime` 嗅探纸质印刷目录与各话扉页标志（如 `第 N 话`、`加笔/附录`、`番外`），自动计算 `start` 与 `page_count`；
+   - **性能与防超时熔断（Anti-524 Timeout）**：为杜绝无界 OCR 导致 Cloudflare 524 或 Nginx 超时，引入双重熔断：
+     1. 若第一轨 TOC 提取到 $\ge 2$ 个有效章节，立即短路早退（Early Return），完全跳过耗时 OCR；
+     2. 若必须执行第二轨 OCR，限制最多抽样扫描 40 个候选页（`MAX_OCR_SCAN_PAGES = 40`），结合步长跳页采样，将耗时严格压制在安全区间；
    - 自动将第 1 话之前的封面、版权页、致辞与纸质目录归纳为独立的首个章节「卷首 / 目录」（`id: c0`），保持正文阅读心流。
 
 4. **自建工坊双模体验与多卷目录合集聚类**：
@@ -36,13 +39,15 @@
    - **网页端暂存分话确认面板**：提供轻量分析接口，在正式入库前呈现系统推断出的章节草案，供馆长一键采纳或微调。
 
 5. **画卷后续增补与重新装订全链路接入 PDF（Append & Re-binding）**：
-   - **追加画卷 / 增补新卷（Append Pages）**：模态弹窗与后端存储层全面放行 `.pdf` 格式。若选择追加到指定章节，自动解压合并；若作为新卷追加，自动识别卷内小节或整卷切片，从 `meta.page_count + 1` 起算全局页码并自愈升阶；
+   - **追加画卷 / 增补新卷（Append Pages）**：模态弹窗与后端存储层全面放行 `.pdf` 格式。若选择追加到指定章节，自动解压合并；若作为新卷追加，自动识别卷内小节或整卷切片，从 `meta.page_count + 1` 起算全局页码并自愈升阶；临时文件在解压后、`unlink` 前透传至分话探测器，保障追加分话准确无误；
    - **重新装订 / 替换画质（Replace Pages）**：支持单话替换或全卷重装，旧文件原子替换，缩略图按需重排。
 
-6. **五层安全防护与自愈删除机制（Security Hardening & Self-Healing Deletion）**：
+6. **六层安全防护与自愈隔离机制（Six-Layer Security Hardening & Lifecycle Isolation）**：
    - **路径与沙箱安全**：`staging_token` 严格受控于 32 位十六进制正则；服务端路径受限于 `COMIC_SHELF_ALLOWED_DIRS` 白名单与软链接穿透保护；
-   - **解压炸弹与 OOM 防护**：`MAX_PDF_PAGES = 5000` 刚性上限拦截；Web 上传采用 1GB 上限与 1MB 流式分块写入；探测加密 PDF 友好拦截；
-   - **生命周期与暂存清理**：暴露 `DELETE /api/library/local/staged-pdf/{staging_token}` 物理释放接口，配备后台 1 小时自动 TTL 垃圾回收；所有后端解压操作统一收敛于 `try...finally` 清理保底；
+   - **解压炸弹与 OOM 防护**：`MAX_PDF_PAGES = 5000` 刚性上限拦截；Web 上传采用 1GB 上限与 1MB 流式分块写入；探测加密 PDF 友好拦截；光栅化渲染尺寸 3500px 熔断限制；
+   - **并发互斥与原子目录交换（Atomic Staging Swap）**：`create_from_staged_pdf` 采用 `_lock_for("local", source_id)` 全局并发锁并实施 slug 碰撞检查（409 Conflict）；文件组装先落盘于 `.tmp_create_pages_<token>` 临时区，生成完毕后通过 `_atomic_swap_dir` 原子替换目标目录，失败自动回滚，彻底杜绝半拉子残缺卷；
+   - **全生命周期与冷启动清理**：暴露 `DELETE /api/library/local/staged-pdf/{staging_token}` 物理释放接口；后台常驻 1 小时自动 TTL 垃圾回收；FastAPI 启动 `lifespan` 钩入无条件清扫（`max_age_seconds=0`），宿主机异常重启后残存孤儿暂存零泄漏；所有解包调用收敛于 `try...finally` 清理保底；
+   - **权威后端单调索引指针（Monotonic Page Invariant）**：无论客户端传入何种章节 `start`，后端一律以内部全局递增写入计数器 `chap_start_page = global_idx` 强制约束，捍卫核心不变量 #3；
    - **删除断层自愈（Self-Healing Page Re-indexing）**：删除指定章节（`DELETE /api/library/{source}/{source_id}/chapters/{chapter_id}`）时，全书剩余章节与全局单调页号自动无缝压实连续重排（$1 \dots N$），绝不留空洞或错页；整本删除（`DELETE /api/library/{source}/{source_id}`）连带清除本地图片、SQLite 索引与全文检索台词。
 
 ## 后果

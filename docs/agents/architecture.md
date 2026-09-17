@@ -187,16 +187,16 @@ JmImageTool.decode_and_save(num, source_image, save_path)
 
 ### 4.6 PDF 画卷无损解包与多卷目录合集导入规范 (ADR 0024)
 
-- **无损抽取直出（Direct Stream Extraction）**：底层优先提取 PDF 页面内嵌的 Image XObject 原生二进制流，0 重编码、0 像素失真、极速落盘；遇到矢量图层或复杂版面自动降级至 300 DPI 栅格化渲染。
+- **无损抽取直出（Direct Stream Extraction）**：底层优先提取 PDF 页面内嵌的 Image XObject 原生二进制流，0 重编码、0 像素失真、极速落盘；遇到矢量图层或复杂版面自动降级至 300 DPI 栅格化渲染，并设 3500px 尺寸硬上限防内存暴涨。
 - **双轨智能分话探测器（Dual-Track Chapter Detector）**：
-  - **第一轨（电子书签优先）**：若 PDF 包含大纲目录（`doc.get_toc()`），精准提取章节标题与起始页码；
-  - **第二轨（OCR 扉页启发式推断）**：若无书签，复用本地轻量 OCR 嗅探纸质目录与各话扉页标志（`第 N 话`、`番外`、`加笔/附录`）；
+  - **第一轨（电子书签优先）**：若 PDF 包含大纲目录（`doc.get_toc()`），精准提取章节标题与起始页码；若提取到 $\ge 2$ 章节则立即短路返回，跳过 OCR；
+  - **第二轨（OCR 扉页启发式推断）**：若无书签，复用本地轻量 OCR 嗅探纸质目录与各话扉页标志（`第 N 话`、`番外`、`加笔/附录`）；采用步长抽样与最多 40 页候选上限（`MAX_OCR_SCAN_PAGES = 40`），防止击穿 Cloudflare 524 超时；
   - **卷首章节归纳**：正文第 1 话之前的封面与目录页自动收录为「卷首 / 目录」（`c0`），保持正文阅读心流。
 - **多卷目录合集批量入库（Multi-Volume Directory Ingest）**：
   - 支持指定包含多卷 PDF（如 `第01卷.pdf` ~ `第07卷.pdf`）的目录一键路径导入；
   - 自动基于自然文件名排序（`_natural_key`）将各卷映射为独立章节，连续编排全书全局页码（$1 \dots N$）并预生成各卷封面；
   - 最佳实践：将系列多卷文件收敛至单目录扁平化命名，规避网盘下载多级嵌套目录字符排序倒置问题。
-- **全链路增补与重新装订支持**：追加页面（`append_pages`）与重新装订（`replace_pages`）全面支持 `.pdf` 文件上传与服务端路径。
+- **全链路增补与重新装订支持**：追加页面（`append_pages`）与重新装订（`replace_pages`）全面支持 `.pdf` 文件上传与服务端路径，上传文件在解压后、删除前传递真实路径至分话探测器。
 
 ### 4.7 画卷生命周期与多粒度自愈删除规范
 
@@ -208,10 +208,12 @@ JmImageTool.decode_and_save(num, source_image, save_path)
   - 物理删除该章节目录 `pages/<chapter_id>/`；
   - **连续单调自愈重排（核心）**：自动重编全书剩余章节的 `start` 与各页全局 `index`，保证全书页码 $1 \dots N$ 严格单调递增，不留断层；
   - 自动重新生成受影响章节的封面与整本封面。
-- **临时暂存区物理释放与 TTL 保底**：
+- **临时暂存区物理释放、冷启动清扫与原子替换**：
   - 上传取消或重设时调用 `DELETE /api/library/local/staged-pdf/{staging_token}` 物理删除暂存工作区；
-  - 后台常驻 1 小时自动 TTL 清理任务，所有内部解包操作包裹 `try...finally` 保障零孤儿文件泄露。
-- **安全拦截守卫**：`MAX_PDF_PAGES = 5000` 拦截解压炸弹；Web 上传 1GB 上限 + 1MB 分块流式落盘防 OOM；密码加密 PDF 友好阻断。
+  - 后台常驻 1 小时自动 TTL 清理任务，所有内部解包操作包裹 `try...finally` 保障零孤儿文件泄露；
+  - FastAPI 启动 `lifespan` 钩入立即清扫（`_cleanup_staged_pdfs(max_age_seconds=0)`），根治服务异常关机残留；
+  - 暂存分步建卷（`create_from_staged_pdf`）采用 `_lock_for` 互斥保护，页面先组装在临时隔离目录再由 `_atomic_swap_dir` 原子替换，章节起始页严格绑定后端权威单调写入计数器 `chap_start_page = global_idx`。
+- **安全拦截守卫**：`MAX_PDF_PAGES = 5000` 拦截解压炸弹；Web 上传 1GB 上限 + 1MB 分块流式落盘防 OOM；密码加密 PDF 友好阻断；slug 碰撞校验返回 409 Conflict。
 
 ## 5. 后端文件地图
 

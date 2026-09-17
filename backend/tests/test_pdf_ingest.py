@@ -232,6 +232,45 @@ class TestPdfIngest(unittest.TestCase):
         self.assertEqual(updated_meta.page_count, 4)
         self.assertEqual([p.index for p in updated_meta.pages], [1, 2, 3, 4])
 
+    def test_append_pages_with_uploaded_pdf(self) -> None:
+        pdf_path1 = self.tmp_dir / "base_up.pdf"
+        self._create_synthetic_pdf(pdf_path1, num_pages=3)
+        req = LocalPathImportRequest(path=str(pdf_path1), title="追加上传测试")
+        meta = self.store.import_local_path(req)
+        self.assertEqual(meta.page_count, 3)
+
+        pdf_path2 = self.tmp_dir / "volume_upload.pdf"
+        self._create_synthetic_pdf(pdf_path2, num_pages=4, with_toc=True)
+        pdf_bytes = pdf_path2.read_bytes()
+
+        updated_meta = self.store.append_pages(
+            source_id=meta.source_id,
+            source="local",
+            files=[("volume_upload.pdf", pdf_bytes)],
+        )
+        self.assertEqual(updated_meta.page_count, 7)
+        self.assertEqual([p.index for p in updated_meta.pages], [1, 2, 3, 4, 5, 6, 7])
+        self.assertTrue(len(updated_meta.chapters) >= 2)
+
+    def test_replace_pages_with_uploaded_pdf(self) -> None:
+        pdf_path1 = self.tmp_dir / "to_replace_up.pdf"
+        self._create_synthetic_pdf(pdf_path1, num_pages=5)
+        req = LocalPathImportRequest(path=str(pdf_path1), title="替换上传测试")
+        meta = self.store.import_local_path(req)
+        self.assertEqual(meta.page_count, 5)
+
+        pdf_path2 = self.tmp_dir / "new_edition_up.pdf"
+        self._create_synthetic_pdf(pdf_path2, num_pages=4)
+        pdf_bytes = pdf_path2.read_bytes()
+
+        updated_meta = self.store.replace_pages(
+            source="local",
+            source_id=meta.source_id,
+            files=[("new_edition_up.pdf", pdf_bytes)],
+        )
+        self.assertEqual(updated_meta.page_count, 4)
+        self.assertEqual([p.index for p in updated_meta.pages], [1, 2, 3, 4])
+
 
 if __name__ == "__main__":
     unittest.main()

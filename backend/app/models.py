@@ -387,10 +387,6 @@ class LocalChapterInput(BaseModel):
     page_count: int = 0
 
 
-class PdfInspectRequest(BaseModel):
-    server_path: str = ""
-
-
 class PdfChapterPreview(BaseModel):
     id: str
     index: int

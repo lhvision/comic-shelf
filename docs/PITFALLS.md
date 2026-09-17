@@ -1256,17 +1256,29 @@
   1. **网盘/多层级下载目录结构字符排序倒置反噬（Netdisk Folder Inversion）**：网盘下载资源常见三级松散目录（如根目录 `Y | 作品名/` 下包含 `番外/`、`后续更新/`、`台东立版1-7卷/`）。若直接按根目录粗暴递归扫描，字符自然排序导致 `番外`（拼音 F）与 `后续更新`（拼音 H）被排在 `台东立版1-7卷`（拼音 T）之前，导致阅读器首话直接呈现番外或剧透后续；最佳实践是收敛到单目录扁平化多卷命名（`01_第1卷.pdf` ~ `07_第7卷.pdf`）或先按正篇目录导入再通过详情页「追加页面」补充番外与更新；
   2. **多卷 PDF 目录探测中空子目录阻断陷阱（Empty Subdir Ingest Blocking）**：在扫描包含多卷 PDF 的目录时，若检测条件硬编码 `if pdf_files and not subdirs:`，一旦目录内存在空文件夹或非图片目录（如 `.cache/`、`temp/`、`notes/`），会导致合订 PDF 无法被命中并回退至未找到图片报错；
   3. **章节删除后全局页码与起始页未压实引发的断层悬挂（Dangling Chapter Page Indices）**：删除中间章节（如第 3 话）时，若仅物理删除其目录而未联动重排剩余章节的 `start` 与全书全局单调页码表（1..N），会导致全书页码断层、阅读器跨话翻页报错与封面缩略图映射错位。必须严格执行自愈单调重排与封面级联重算；
-  4. **PDF 暂存解包目录孤儿泄漏与内存耗尽（Staging Isolation Leak & OOM Bomb）**：导入、追加或替换 PDF 时解压的临时目录必须在 `try...finally` 块中确保清理；大文件上传必须流式分块（1MB）落盘以防 OOM，且单本强制限制 `MAX_PDF_PAGES = 5000` 防止解压炸弹。
+  4. **PDF 暂存解包目录孤儿泄漏与内存耗尽（Staging Isolation Leak & OOM Bomb）**：导入、追加或替换 PDF 时解压的临时目录必须在 `try...finally` 块中确保清理；大文件上传必须流式分块（1MB）落盘以防 OOM，且单本强制限制 `MAX_PDF_PAGES = 5000` 防止解压炸弹；
+  5. **上传 PDF 追加/替换场景下分话探测传入目录而非文件路径陷阱（Directory Passed as PDF Path in Append/Replace）**：在 `append_pages` / `replace_pages` 接收前端上传的 `UploadFile` PDF 时，解包后若误将解压产物临时目录路径传给 `detect_pdf_chapters`（该函数期望输入的是 PDF 文件路径或 bytes，由 `pymupdf.open()` 打开），会因 `fitz.open(dir_path)` 抛异常并静默回退至单章节导入，破坏多话探测；必须在临时 PDF 文件（`tmp_pdf`）解压后但在 `os.unlink()` 删除前，将真实文件路径传入分话探测器；
+  6. **无界 OCR 扫描引发 Cloudflare 524 超时与 DoS 拒绝服务陷阱（Unbounded OCR 524 Timeout）**：对于大体积（如 500-1000 页）且无内置目录书签（TOC）的合订本 PDF，若开启 RapidOCR 逐页探测章节，每页 OCR 耗时 200-500ms，整书将阻塞 2-5 分钟，瞬间击穿 Cloudflare 100s（HTTP 524 Gateway Timeout）或 Nginx 网关超时。必须设置扫描步长采样与探测硬上限（`MAX_OCR_SCAN_PAGES = 40`），并在 TOC 提取到 $\ge 2$ 章节时立即短路退出（Early Return），杜绝无意义的全本 OCR 慢速扫描；
+  7. **客户端分话起始页偏移信任与全局单调页号脱节断层（Client Chapter Start Divergence）**：在暂存分步建卷（`create_from_staged_pdf`）与单本 PDF 自动切分（`_import_single_pdf`）中，若盲目信任前端提交或探测器返回的相对 `c_start`，在跨卷拼接或多次追加时会导致章节 `start` 与底层全局单调索引（`PageRecord.index = 1..N`）产生偏移，打破核心不变量 #3。后端必须以全局累计写盘指针 `chap_start_page = global_idx` 为唯一真理源强行绑定 `Chapter.start`；
+  8. **暂存生成画卷非原子组装导致半拉子孤儿卷与并发竞态（Non-Atomic Staging Ingest & Concurrency Collision）**：在 `create_from_staged_pdf` 中，若直接向最终漫画目录逐页生成或未加锁，一旦中途失败（磁盘满、进程崩溃），会留下残缺的损坏漫画，且可能引发目录并发冲突。必须：(1) 对 `(source, comic_slug)` 加全局锁；(2) 先向 `.tmp_create_pages_<token>` 组装完整散图再通过 `_atomic_swap_dir` 原子重命名切换；(3) 校验 slug 碰撞并返回 409 Conflict；(4) FastAPI 服务冷启动时立即触发 `_cleanup_staged_pdfs(max_age_seconds=0)` 彻底清除宿主机断电遗留的残余暂存文件。
 - **红线与防误伤**：
   - **不要**在存在多卷 PDF 的目录导入判定中仅因存在非图片子目录就直接抛弃 PDF 聚类；
   - **不要**在删除章节后保留跳跃断开的全局页号，全书 `PageRecord.index` 必须从 1 开始严格单调连续；
   - **不要**在未校验 `staging_token` 正则格式前进行路径拼接；
-  - **不要**在文件解压过程中漏掉 `finally` 目录物理清除兜底。
+  - **不要**在文件解压过程中漏掉 `finally` 目录物理清除兜底；
+  - **不要**将散图解压目录路径当作 PDF 文件传入 `detect_pdf_chapters`；
+  - **不要**在无电子书签时全量逐页无界运行 OCR，必须限制步长与最大候选扫描页数（$\le 40$P）；
+  - **不要**信任前端传入的 `c.start`，必须由后端全局写入索引 `global_idx` 强制兜底；
+  - **不要**直接在宿主漫画目录中非原子性地逐张组装页面，必须隔离在临时目录并执行原子目录替换。
 - **放行/改用**：
   1. **单目录扁平化多卷推荐最佳实践**：推荐将系列卷册整理在同一漫画目录下命名为 `01_第1卷.pdf`、`02_第2卷.pdf` ...，利用自然排序直接一次性批量映射为各章节；
   2. **非排他性 PDF 多卷探测**：当目录内存在 `pdf_files` 且无顶级散图及多图子目录时，放行并执行 `_import_multi_pdfs`；
   3. **单调页码连续自愈压实（Monotonic Page Re-indexing）**：`delete_chapter` 物理删除目录后，立即重构全书 `rebuilt_pages`（`1..page_count`）并同步调整各章 `start`；
-  4. **五层纵深防御与 1 小时自动 TTL**：结合 32 位 hex 令牌、流式 1MB 上传、5000 页上限与 1 小时后台 TTL，彻底根除磁盘膨胀与解压炸弹。
+  4. **五层纵深防御与 1 小时自动 TTL**：结合 32 位 hex 令牌、流式 1MB 上传、5000 页上限与 1 小时后台 TTL，彻底根除磁盘膨胀与解压炸弹；
+  5. **先探测后清理暂存 PDF 路径**：在解包后、`unlink` 前将真实 `tmp_pdf` 传给分话探测器；
+  6. **TOC 短路早退与 40P 步长采样**：若提取到 $\ge 2$ 个有效目录章节直接返回，否则只扫描前 40 页或隔页抽样；
+  7. **后端权威指针锁定 `Chapter.start`**：无论前端传入何种 `c.start`，后端只认 `chap_start_page = global_idx`；
+  8. **互斥锁 + 原子目录交换 + 冷启动清理保底**：`_lock_for("local", source_id)` 互斥保护，`.tmp_create_pages_*` 组装完毕后原子重命名切换，FastAPI lifespan 钩入 `_cleanup_staged_pdfs(max_age_seconds=0)`。
 
 ---
 

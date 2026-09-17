@@ -22,6 +22,7 @@ from ..models import (
     PdfInspectResponse,
     ReplacePathRequest,
 )
+from ..storage.pdf import is_pdf_file
 from .common import _require_known_source, store
 
 router = APIRouter(tags=["local_comic"])
@@ -87,6 +88,8 @@ async def inspect_pdf(
 ) -> PdfInspectResponse:
     """Inspects a PDF from uploaded file or server path, unpacks pages to staging, and detects chapters."""
     if file and file.filename:
+        if not is_pdf_file(file.filename):
+            raise HTTPException(status_code=400, detail=f"上传的文件不是有效的 PDF 格式：{file.filename}")
         raw_name = Path(file.filename).name
         safe_name = re.sub(r"[^a-zA-Z0-9._-]", "_", raw_name) or "upload.pdf"
         tmp_pdf = TMP_DIR / f".upload_{uuid.uuid4().hex[:12]}_{safe_name}"
@@ -103,8 +106,8 @@ async def inspect_pdf(
             tmp_pdf.unlink(missing_ok=True)
     elif server_path and server_path.strip():
         resolved = store._resolve_and_verify_server_path(server_path.strip(), must_be_dir=False)
-        if not resolved.is_file():
-            raise HTTPException(status_code=400, detail=f"指定的路径不是文件：{server_path}")
+        if not resolved.is_file() or not is_pdf_file(resolved):
+            raise HTTPException(status_code=400, detail=f"指定的路径不是有效的 PDF 文件：{server_path}")
         return await asyncio.to_thread(store.inspect_pdf_file, resolved)
     else:
         raise HTTPException(status_code=400, detail="请上传 PDF 文件或指定合法的服务器 PDF 路径。")
