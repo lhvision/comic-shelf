@@ -192,56 +192,86 @@ class ComicStoreLocalMixin:
 
         self._cover_executor.submit(_bg_generate_auxiliary_covers)
 
+    def _allocate_local_id(self: Any, req_id: str | None = None, fallback_name: str | None = None) -> tuple[str, str]:
+        """Allocates a unique (source_id, display_id) pair for a local comic.
+
+        Avoids disk collisions and strips redundant 'loc_' prefixes to prevent 'LOC_loc_...' stutter.
+        """
+        provider = LocalProvider()
+        source_id = ""
+        if req_id:
+            source_id = provider.normalize_id(req_id)
+        elif fallback_name:
+            cand = provider.normalize_id(fallback_name)
+            if cand and cand != "collection":
+                source_id = cand
+
+        if not source_id:
+            base_id = provider.generate_id()
+            source_id = base_id
+            counter = 1
+            while self.album_path("local", source_id).exists():
+                source_id = f"{base_id}_{counter}"
+                counter += 1
+
+        display_id = provider.display_id(source_id)
+        return source_id, display_id
+
     def create_local_comic(self: Any, req: Any) -> ComicMeta:
         provider = LocalProvider()
-        source_id = provider.normalize_id(req.id) if req.id else f"loc_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}"
+        source_id, display_id = self._allocate_local_id(req.id)
 
-        comic_dir = self.comic_dir("local", source_id)
-        comic_dir.mkdir(parents=True, exist_ok=True)
-        self.pages_dir("local", source_id).mkdir(parents=True, exist_ok=True)
+        with self._lock_for("local", source_id):
+            if req.id and self.load_meta("local", source_id) is not None:
+                raise HTTPException(
+                    status_code=409,
+                    detail=f"已存在唯一标识为「{source_id}」的漫画，请指定新的标识或留空由系统自动生成。",
+                )
 
-        chapters: list[Chapter] = []
-        if getattr(req, "chapters", None):
-            for idx, c in enumerate(req.chapters, start=1):
-                cid = provider.normalize_id(c.id) if getattr(c, "id", "") else f"c{idx}"
-                title = getattr(c, "title", "") or f"第 {idx} 话"
-                chapters.append(Chapter(id=cid, index=idx, title=title, page_count=0, start=1))
+            comic_dir = self.comic_dir("local", source_id)
+            comic_dir.mkdir(parents=True, exist_ok=True)
+            self.pages_dir("local", source_id).mkdir(parents=True, exist_ok=True)
 
-        now_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        meta = ComicMeta(
-            source="local",
-            source_id=source_id,
-            display_id=f"LOC_{source_id}",
-            title=req.title,
-            authors=req.authors or ["自制"],
-            works=req.works or [],
-            actors=req.actors or [],
-            tags=req.tags or [],
-            description=req.description or "",
-            uploader=req.uploader or "自制",
-            page_count=0,
-            cover_count=4,
-            cover_indices=getattr(req, "cover_indices", []) or [],
-            published_at=now_str,
-            updated_at=now_str,
-            imported_at=now_str,
-            chapters=chapters,
-            hidden_from_guest=getattr(req, "hidden_from_guest", False) or get_guest_hide_new_comics(),
-        )
+            chapters: list[Chapter] = []
+            if getattr(req, "chapters", None):
+                for idx, c in enumerate(req.chapters, start=1):
+                    cid = provider.normalize_id(c.id) if getattr(c, "id", "") else f"c{idx}"
+                    title = getattr(c, "title", "") or f"第 {idx} 话"
+                    chapters.append(Chapter(id=cid, index=idx, title=title, page_count=0, start=1))
 
-        _write_json_atomic(self.album_path("local", source_id), meta.model_dump())
-        _write_json_atomic(
-            self.remote_path("local", source_id),
-            {"decode_version": CURRENT_DECODE_VERSION, "remote_pages": []},
-        )
-        self._invalidate_cache("local", source_id)
-        return meta
+            now_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            meta = ComicMeta(
+                source="local",
+                source_id=source_id,
+                display_id=display_id,
+                title=req.title,
+                authors=req.authors or ["自制"],
+                works=req.works or [],
+                actors=req.actors or [],
+                tags=req.tags or [],
+                description=req.description or "",
+                uploader=req.uploader or "自制",
+                page_count=0,
+                cover_count=4,
+                cover_indices=getattr(req, "cover_indices", []) or [],
+                published_at=now_str,
+                updated_at=now_str,
+                imported_at=now_str,
+                chapters=chapters,
+                hidden_from_guest=getattr(req, "hidden_from_guest", False) or get_guest_hide_new_comics(),
+            )
+
+            _write_json_atomic(self.album_path("local", source_id), meta.model_dump())
+            _write_json_atomic(
+                self.remote_path("local", source_id),
+                {"decode_version": CURRENT_DECODE_VERSION, "remote_pages": []},
+            )
+            self._invalidate_cache("local", source_id)
+            return meta
 
     def _import_single_pdf(self: Any, pdf_path: Path, req: Any) -> ComicMeta:
         provider = LocalProvider()
-        source_id = provider.normalize_id(req.id) if req.id else provider.normalize_id(pdf_path.stem)
-        if not source_id:
-            source_id = f"loc_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}"
+        source_id, display_id = self._allocate_local_id(req.id, pdf_path.stem)
 
         staging_dir = TMP_DIR / f".pdf_tmp_{source_id}_{int(time.time() * 1000)}"
         try:
@@ -316,7 +346,7 @@ class ComicStoreLocalMixin:
             meta = ComicMeta(
                 source="local",
                 source_id=source_id,
-                display_id=f"LOC_{source_id}",
+                display_id=display_id,
                 title=doc_title,
                 authors=author_val,
                 works=req.works or [],
@@ -345,9 +375,7 @@ class ComicStoreLocalMixin:
 
     def _import_multi_pdfs(self: Any, pdf_files: list[Path], req: Any, base_dir: Path) -> ComicMeta:
         provider = LocalProvider()
-        source_id = provider.normalize_id(req.id) if req.id else provider.normalize_id(base_dir.name)
-        if not source_id:
-            source_id = f"loc_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}"
+        source_id, display_id = self._allocate_local_id(req.id, base_dir.name)
 
         pdf_files.sort(key=lambda f: self._natural_key(f.name))
         target_pages_dir = self.pages_dir("local", source_id)
@@ -394,7 +422,7 @@ class ComicStoreLocalMixin:
         meta = ComicMeta(
             source="local",
             source_id=source_id,
-            display_id=f"LOC_{source_id}",
+            display_id=display_id,
             title=title,
             authors=req.authors or ["自制"],
             works=req.works or [],
@@ -504,7 +532,7 @@ class ComicStoreLocalMixin:
             raise HTTPException(status_code=400, detail="暂存的 PDF 数据已过期或不存在，请重新上传。")
 
         provider = LocalProvider()
-        source_id = provider.normalize_id(req.id) if req.id else f"loc_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}"
+        source_id, display_id = self._allocate_local_id(req.id)
 
         with self._lock_for("local", source_id):
             if req.id and self.load_meta("local", source_id) is not None:
@@ -593,7 +621,7 @@ class ComicStoreLocalMixin:
             meta = ComicMeta(
                 source="local",
                 source_id=source_id,
-                display_id=f"LOC_{source_id}",
+                display_id=display_id,
                 title=req.title,
                 authors=req.authors or ["自制"],
                 works=req.works or [],
@@ -638,9 +666,7 @@ class ComicStoreLocalMixin:
                 return self._import_multi_pdfs(pdf_files, req, raw_path)
 
         provider = LocalProvider()
-        source_id = provider.normalize_id(req.id) if req.id else provider.normalize_id(raw_path.name)
-        if not source_id:
-            source_id = f"loc_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}"
+        source_id, display_id = self._allocate_local_id(req.id, raw_path.name)
 
         multi_chap_dirs: list[tuple[str, str, list[Path]]] = []
         for d in subdirs:
@@ -736,7 +762,7 @@ class ComicStoreLocalMixin:
         meta = ComicMeta(
             source="local",
             source_id=source_id,
-            display_id=f"LOC_{source_id}",
+            display_id=display_id,
             title=title,
             authors=req.authors or ["自制"],
             works=req.works or [],

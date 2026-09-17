@@ -172,7 +172,12 @@ const effectiveCover = computed(() => {
         </div>
         <div class="card-foot">
           <span v-if="comic.views" class="views">{{ comic.views }} 次观看</span>
-          <CacheProgress :cached="liveCached" :total="liveTotal" :running="liveRunning" />
+          <CacheProgress
+            class="card-progress"
+            :cached="liveCached"
+            :total="liveTotal"
+            :running="liveRunning"
+          />
         </div>
       </div>
     </RouterLink>
@@ -410,11 +415,19 @@ const effectiveCover = computed(() => {
   color: var(--ink-2);
 }
 
+.card-progress {
+  margin-left: auto;
+}
+
 @container (max-width: 220px) {
   .card-foot {
     align-items: flex-start;
     flex-direction: column;
     gap: var(--space-1);
+  }
+
+  .card-progress {
+    margin-left: 0;
   }
 }
 

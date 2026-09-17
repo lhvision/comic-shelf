@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import datetime
 import re
 from typing import TYPE_CHECKING
 
@@ -24,8 +25,26 @@ class LocalProvider(ComicProvider):
         clean = raw.strip()
         if clean.upper().startswith("LOC_") or clean.upper().startswith("LOC-"):
             clean = clean[4:]
+        elif clean.lower().startswith("loc_") or clean.lower().startswith("loc-"):
+            clean = clean[4:]
         clean = _SAFE_ID.sub("_", clean).strip("._")
         return clean.lower() if clean else "collection"
+
+    def generate_id(self) -> str:
+        """Generates a clean, time-ordered identifier for local comics, e.g. '20260918_010452'."""
+        return datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+
+    def display_id(self, source_id: str) -> str:
+        """Constructs human-facing display_id / book plate stamp (e.g. 'LOC_20260918_010452').
+
+        If source_id has a historical or redundant 'loc_' prefix (e.g. 'loc_20260917_194250'),
+        it strips it to avoid ugly stuttering like 'LOC_loc_20260917_194250'.
+        """
+        clean = source_id.strip()
+        if clean.lower().startswith("loc_") or clean.lower().startswith("loc-"):
+            clean = clean[4:]
+        clean = clean.strip("._")
+        return f"LOC_{clean}" if clean else "LOC_collection"
 
     def fetch(
         self,

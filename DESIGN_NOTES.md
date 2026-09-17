@@ -620,6 +620,7 @@
 2. **零浏览量与缺省元数据隐退（Null Views Guard & Clean Metadata）**：
    - 本地自建或第三方源未统计浏览量时，卡片底部严禁直接裸露空前缀「 次观看」；
    - 约束为 `<span v-if="comic.views" class="views">` 严格条件渲染，保障自建画卷与未收录画卷卡片信息流干净纯粹；
+   - **状态项右对齐刚性锁（Pinned Progress Right-Alignment）**：当 `v-if="comic.views"` 条件未满足（如本地自建无浏览量）时，由于 Flex 容器仅剩单个子项，`justify-content: space-between` 会导致进度条退化为靠左对齐。通过为 `<CacheProgress>` 赋予 `.card-progress { margin-left: auto; }`，无论左侧是否有统计项，进度条始终刚性锚定在右下角，与整行所有卡片保持绝对水平基线对齐；窄屏容器折叠时自动复位；
 3. **多标签复合筛选与交集（AND）契约（Multi-Tag Compound Filter & AND Semantics）**：
    - 筛选标签交互全面升级为支持复合多选。点击未选标签将其追加至激活集合，点击已选标签执行反选移除，点击「全部」一键排空；
    - 检索语义定为严格交集（AND），画卷需同时包含所有已选标签方可匹配命中；
