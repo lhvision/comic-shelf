@@ -268,47 +268,28 @@ class PicacgProvider(ComicProvider):
         return headers
 
     def _load_cached_token(self) -> str | None:
-        try:
-            if self._session_file.exists():
-                data = json.loads(self._session_file.read_text(encoding="utf-8"))
-                token = data.get("token")
-                cached_email = data.get("email")
-                configured_email = (PICA_EMAIL or "").strip()
-                if configured_email and cached_email != configured_email:
-                    return None
-                # Token valid for 7 days (604800 seconds)
-                if token and time.time() - float(data.get("time", 0)) < 7 * 24 * 3600:
-                    return str(token)
-        except Exception as exc:
-            logger.warning(f"读取哔咔本地 Session 失败: {exc}")
+        data = self.load_secure_session(self._session_file)
+        if not data:
+            return None
+        token = data.get("token")
+        cached_email = data.get("email")
+        configured_email = (PICA_EMAIL or "").strip()
+        if configured_email and cached_email != configured_email:
+            return None
+        # Token valid for 7 days (604800 seconds)
+        if token and time.time() - float(data.get("time", 0)) < 7 * 24 * 3600:
+            return str(token)
         return None
 
     def _save_token(self, token: str, email: str) -> None:
-        temp_file = None
-        try:
-            self._session_file.parent.mkdir(parents=True, exist_ok=True)
-            payload = json.dumps(
-                {
-                    "token": token,
-                    "email": email,
-                    "time": time.time(),
-                },
-                ensure_ascii=False,
-            )
-            temp_file = self._session_file.with_suffix(f".tmp.{os.getpid()}.{threading.get_ident()}")
-            fd = os.open(temp_file, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
-            with open(fd, "w", encoding="utf-8") as f:
-                f.write(payload)
-            os.replace(temp_file, self._session_file)
-            temp_file = None
-        except Exception as exc:
-            logger.warning(f"写入哔咔本地 Session 失败: {exc}")
-        finally:
-            if temp_file is not None and temp_file.exists():
-                try:
-                    temp_file.unlink()
-                except OSError:
-                    pass
+        self.save_secure_session(
+            self._session_file,
+            {
+                "token": token,
+                "email": email,
+                "time": time.time(),
+            },
+        )
 
     def login(self, email: str | None = None, password: str | None = None) -> str:
         """Authenticates with PicAcg and returns a fresh JWT authorization token."""

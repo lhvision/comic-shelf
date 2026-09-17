@@ -1,8 +1,15 @@
 from __future__ import annotations
 
+import json
+import logging
+import os
+import time
 from abc import ABC, abstractmethod
+from pathlib import Path
 
 from ..models import DiscoveryItem, FetchedComic, RemotePage
+
+logger = logging.getLogger("paper_room.provider.base")
 
 
 class ComicProvider(ABC):
@@ -18,6 +25,61 @@ class ComicProvider(ABC):
     short_label: str = ""
     id_pattern: str = ""
     example: str = ""
+
+    # ------------------------------------------------------------------
+    # Secure Session / Credential Persistence (0o600 POSIX File Permissions)
+    # ------------------------------------------------------------------
+    @staticmethod
+    def save_secure_session(path: Path, data: dict) -> None:
+        """Atomically persist sensitive session/credentials with private POSIX permissions (0o600).
+
+        Ensures zero-TOCTOU permission window (0o600 at creation), atomic replacement,
+        and safe cleanup on failure.
+        """
+        temp_file: Path | None = None
+        try:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            payload = json.dumps(data, ensure_ascii=False).encode("utf-8")
+            temp_file = path.parent / f".{path.name}.tmp.{os.getpid()}_{time.time_ns()}"
+            fd = os.open(temp_file, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+            try:
+                with open(fd, "wb") as f:
+                    f.write(payload)
+                os.replace(temp_file, path)
+                temp_file = None
+            except Exception:
+                if temp_file is not None and temp_file.exists():
+                    temp_file.unlink(missing_ok=True)
+                raise
+        except Exception as exc:
+            logger.warning("Failed to save secure session file %s: %s", path.name, exc)
+        finally:
+            if temp_file is not None and temp_file.exists():
+                try:
+                    temp_file.unlink(missing_ok=True)
+                except OSError:
+                    pass
+
+    @staticmethod
+    def load_secure_session(path: Path) -> dict | None:
+        """Safely load a session json file."""
+        try:
+            if not path.is_file():
+                return None
+            data = json.loads(path.read_text(encoding="utf-8"))
+            return data if isinstance(data, dict) else None
+        except Exception as exc:
+            logger.warning("Failed to load secure session file %s: %s", path.name, exc)
+            return None
+
+    @staticmethod
+    def clear_secure_session(path: Path) -> None:
+        """Safely remove a session file."""
+        try:
+            if path.is_file():
+                path.unlink(missing_ok=True)
+        except Exception as exc:
+            logger.warning("Failed to clear secure session file %s: %s", path.name, exc)
 
     @abstractmethod
     def normalize_id(self, raw: str) -> str:

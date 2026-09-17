@@ -1336,6 +1336,28 @@
   2. **单向水合与按需复制直达**：初次挂载通过 `hydrateFromQuery` 恢复 URL 参数，通过 `buildShareUrl` + `useClipboard` 提供显式深层链接分享；
   3. **标准离散过渡范式**：结合 `transition: ... allow-discrete` 与 `@starting-style` 实现 0 闪烁原生进出场动效。
 
+### 118. 多图源鉴权凭据落盘 TOCTOU 权限真空、SSRF 端口/畸形 IP 绕过与 CDN 候选池兜底反向放行 (Multi-Provider Secure Session TOCTOU, SSRF Port/Obfuscated-IP Bypass & Failover Fallback Vulnerability)
+
+- **本质**：
+  1. **多图源凭据落盘 TOCTOU 权限真空与重复胶水代码（Credential Persistence TOCTOU & Base Class Convergence）**：
+     第三方漫画图源（PicAcg、JMComic、以及未来接入的其他需登录站点）需要持久化 Token 或 Cookies 会话。若采用常规的 `open()` 写入后再调用 `chmod(0o600)`，在文件刚创建到 `chmod` 执行之间存在微秒级的时间窗口（TOCTOU），文件在共享 NAS 或多用户 Linux 宿主机上会以系统默认 umask（如 0644/0664）暴露给同宿主机其他账号。此外，若由各个 Provider 自行维护临时文件、并发锁与清理逻辑，极易导致新接入图源遗漏安全防护或写出损坏的半截 JSON。解决之道：将安全持久化下沉至 `ComicProvider` 基类（`save_secure_session` / `load_secure_session` / `clear_secure_session`），在 `os.open(..., 0o600)` 诞生瞬间即赋予私有权限，配合独立进程与纳秒时间戳临时文件及 `os.replace` 原子替换，彻底实现全平台接入契约的单源收敛；
+  2. **SSRF 域名安全沙箱的端口伪造与畸形 IP 绕过（SSRF Port Stripping & Obfuscated IP Bypass）**：
+     在校验远端重定向或 CDN 域名是否安全时，若直接将携带端口号的字符串（如 `127.0.0.1:8080`、`[::1]:8080`）传入 `ipaddress.ip_address`，底层会抛出 `ValueError`，导致后续逻辑因字符串包含 `.` 而错误判定为合法公网域名放行。同时，八进制 IP（如 `0177.0.0.1`）或携带凭据字符（如 `attacker.com@127.0.0.1`）亦可能绕过常规检查。解决之道：必须前置剥离 IPv6 方括号与 `:port` 端口，强制校验 RFC 1123 / RFC 1035 标准合法主机名格式，并对最后一段为纯数字的疑似 IP 严格执行点分十进制解析阻断；
+  3. **CDN 容灾候选池的兜底反向放行陷阱（Failover Fallback Bypass）**：
+     在为多 CDN 集群构建容灾降级池时，若存在形如 `if not cdn_candidates and orig_domain: cdn_candidates = [orig_domain]` 的“兜底容错”，一旦所有 CDN 均被安全规则拦截，该分支将无条件将最初被拦截的原始不安全域名重新加入请求队列，使前置防御形同虚设。解决之道：无安全候选可用时坚决阻断并直接抛出异常；
+  4. **上游报错与代理凭据泄漏（Sensitive Credential Scrubbing in Logs）**：
+     第三方网络库（如 `jmcomic`、`curl_cffi`）抛出的异常文本可能包含包含密码的原始 HTTP 请求或代理连接串，直接输出到 logger 会造成凭据明文落盘。解决之道：统一接入 `_mask_sensitive` 正则清洗，将密码与代理认证信息替换为 `***`。
+- **红线与防误伤**：
+  - **不要**在敏感凭据持久化中写文件后再异步补调 `chmod`；
+  - **不要**在各个 Provider 中自行重复编写 session 文件读写与权限控制逻辑；
+  - **不要**在未剥离端口号或未校验主机名字符集的情况下直接使用 `ipaddress.ip_address` 判定域名安全性；
+  - **不要**在多候选容灾池中编写放行未通过安全检验的兜底逻辑；
+- **放行/改用**：
+  1. **基类标准原子安全落盘**：所有图源会话读写统一调用 `self.save_secure_session` 与 `self.load_secure_session`；
+  2. **严格的主机名沙箱防御**：剥离端口后判定私有 IP、回环地址、链路本地、云厂商元数据（169.254.169.254）与 RFC 标准主机名格式；
+  3. **候选池全量安全阻断**：无安全节点可用时严格抛出 `RuntimeError`，杜绝任何反向放行；
+  4. **敏感日志脱敏保护**：日志记录前统一清洗 `JM_PASSWORD` 与 `proxy` 凭据。
+
 ---
 
 ## 🚦 交付门禁（四步必跑）

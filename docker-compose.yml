@@ -23,6 +23,11 @@ services:
       # PICA_EMAIL: 'your_pica_email'
       # PICA_PASSWORD: 'your_pica_password'
       # PICA_PROXY: 'http://host.docker.internal:7890'
+      # 禁漫天堂配置（可选；配置账号密码解析受限本子，支持控制流代理与图片分流）：
+      # JM_USERNAME: 'your_jm_username'
+      # JM_PASSWORD: 'your_jm_password'
+      # JM_PROXY: 'http://host.docker.internal:7890'
+      # JM_IMAGE_PROXY_MODE: 'auto'
       COMIC_SHELF_ENABLE_HOTLINK_PROTECTION: 'true'
       COMIC_SHELF_PAGE_THUMB_WIDTH: '360'
     volumes:

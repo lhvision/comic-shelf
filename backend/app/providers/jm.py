@@ -1,7 +1,10 @@
 from __future__ import annotations
 
 import html as html_lib
+import ipaddress
 import json
+import logging
+import os
 import re
 import tempfile
 import time
@@ -12,19 +15,123 @@ from urllib.parse import urlparse
 
 from curl_cffi import requests as curl_requests
 
-from ..config import COVER_COUNT, DATA_DIR
+from ..config import (
+    COVER_COUNT,
+    DATA_DIR,
+    JM_IMAGE_PROXY_MODE,
+    JM_PASSWORD,
+    JM_PROXY,
+    JM_USERNAME,
+)
 from ..gate import download_gate
 from ..models import Chapter, ComicMeta, DiscoveryItem, FetchedComic, RemotePage
 from .base import ComicProvider
+
+logger = logging.getLogger("paper_room.provider.jm")
 
 _JM_REDIRECT_URL = "https://jm365.work/3YeBdF"
 _FALLBACK_HTML_DOMAINS = [
     "comic18j-rita.cc",
     "18comic.vip",
     "18comic.org",
-    "jmcomic1.me",
 ]
 _DOMAIN_TTL_SECONDS = 6 * 60 * 60
+_SESSION_TTL_SECONDS = 7 * 24 * 60 * 60
+_PROXY_CRED_RE = re.compile(r"://([^:@\s]*):([^@\s]+)@")
+
+
+def sanitize_proxy_url(text: str) -> str:
+    """Mask credentials (username:password) in proxy URLs or error messages."""
+    return _PROXY_CRED_RE.sub(r"://\1:***@", text)
+
+
+def _mask_sensitive(text: object) -> str:
+    """Mask passwords and credentials in logs and exception messages."""
+    if text is None:
+        return ""
+    s = sanitize_proxy_url(str(text))
+    if JM_PASSWORD and JM_PASSWORD in s:
+        s = s.replace(JM_PASSWORD, "***")
+    return s
+
+
+def _is_safe_remote_domain(domain: str) -> bool:
+    """Validate that a domain is a safe public hostname.
+
+    Protects against SSRF and DNS/captive portal hijacking redirecting to LAN,
+    loopback, link-local, or cloud metadata endpoints (PITFALLS.md #59).
+    """
+    if not domain or len(domain) > 253:
+        return False
+    d = domain.strip().lower()
+
+    # Handle IPv6 brackets or trailing port (e.g. "[::1]:8080" or "127.0.0.1:8080")
+    if d.startswith("[") and "]" in d:
+        host_part = d[1 : d.index("]")]
+    else:
+        host_part = d.split(":")[0]
+
+    # Block URI components, credentials, and path traversal tokens
+    if any(c in host_part for c in "/?#@%"):
+        return False
+
+    if host_part in {"jm-88.cc", "localhost", "broadcasthost"}:
+        return False
+
+    # Check for direct IP addresses
+    try:
+        ip = ipaddress.ip_address(host_part)
+        if (
+            ip.is_private
+            or ip.is_loopback
+            or ip.is_link_local
+            or ip.is_reserved
+            or ip.is_multicast
+            or (
+                hasattr(ip, "ipv4_mapped")
+                and ip.ipv4_mapped
+                and (
+                    ip.ipv4_mapped.is_private
+                    or ip.ipv4_mapped.is_loopback
+                    or ip.ipv4_mapped.is_link_local
+                )
+            )
+        ):
+            return False
+        return True
+    except ValueError:
+        pass
+
+    # If the last segment is purely numeric, it's an invalid or obfuscated IP (e.g. 0177.0.0.1)
+    parts = host_part.split(".")
+    if len(parts) > 1 and parts[-1].isdigit():
+        return False
+
+    # Block private and internal TLDs
+    if host_part.endswith(
+        (
+            ".local",
+            ".internal",
+            ".lan",
+            ".arpa",
+            ".invalid",
+            ".test",
+            ".home.arpa",
+        )
+    ):
+        return False
+
+    if "." not in host_part:
+        return False
+
+    # RFC 1123 / RFC 1035 standard hostname validation
+    if not re.match(
+        r"^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)+$",
+        host_part,
+    ):
+        return False
+
+    return True
 
 
 class JMProvider(ComicProvider):
@@ -43,12 +150,123 @@ class JMProvider(ComicProvider):
     def __init__(self) -> None:
         self._lock = threading.Lock()
         self._domain_cache_file = DATA_DIR / "jm_html_domain.json"
+        self._session_cache_file = DATA_DIR / "jm_session.json"
+
+    # ------------------------------------------------------------------
+    # proxy & network routing helpers
+    # ------------------------------------------------------------------
+    @staticmethod
+    def _sanitize_proxy(proxy: str) -> str:
+        p = proxy.strip()
+        if not p:
+            return ""
+        if not (
+            p.startswith("http://")
+            or p.startswith("https://")
+            or p.startswith("socks5://")
+            or p.startswith("socks5h://")
+        ):
+            p = f"http://{p}"
+        return p
+
+    def _get_control_proxies(self) -> dict[str, str] | None:
+        p = self._sanitize_proxy(JM_PROXY)
+        return {"http": p, "https": p} if p else None
+
+    def _get_image_proxies(self) -> dict[str, str] | None:
+        if JM_IMAGE_PROXY_MODE.lower() == "direct":
+            return None
+        # default "auto": follow JM_PROXY
+        p = self._sanitize_proxy(JM_PROXY)
+        return {"http": p, "https": p} if p else None
+
+    # ------------------------------------------------------------------
+    # session & authentication lifecycle
+    # ------------------------------------------------------------------
+    def _load_session_cache(self) -> dict[str, str] | None:
+        data = self.load_secure_session(self._session_cache_file)
+        if not data or data.get("username") != JM_USERNAME:
+            return None
+        if time.time() - float(data.get("ts", 0)) < _SESSION_TTL_SECONDS:
+            cookies = data.get("cookies")
+            if isinstance(cookies, dict) and cookies:
+                return {str(k): str(v) for k, v in cookies.items()}
+        return None
+
+    def _save_session_cache(self, cookies: dict[str, str]) -> None:
+        self.save_secure_session(
+            self._session_cache_file,
+            {
+                "cookies": cookies,
+                "username": JM_USERNAME,
+                "ts": time.time(),
+            },
+        )
+
+    def _clear_session_cache(self) -> None:
+        self.clear_secure_session(self._session_cache_file)
+
+    def _get_valid_cookies(self, option=None, force_refresh: bool = False) -> dict[str, str] | None:
+        if not JM_USERNAME or not JM_PASSWORD:
+            return None
+
+        if not force_refresh:
+            cached = self._load_session_cache()
+            if cached is not None:
+                return cached
+
+        with self._lock:
+            if not force_refresh:
+                cached = self._load_session_cache()
+                if cached is not None:
+                    return cached
+            return self._perform_login(option)
+
+    def _perform_login(self, option=None) -> dict[str, str] | None:
+        if not JM_USERNAME or not JM_PASSWORD:
+            return None
+        try:
+            from jmcomic import JmOption
+
+            opt = option or JmOption.default()
+            control_proxies = self._get_control_proxies()
+            opt.client.postman.meta_data["proxies"] = control_proxies
+
+            cookies: dict[str, str] = {}
+            # 优先尝试 API 客户端登录，失败则降级到 HTML 客户端登录
+            try:
+                api_client = opt.build_jm_client(impl="api")
+                api_client.login(JM_USERNAME, JM_PASSWORD)
+                meta_cookies = api_client.get_meta_data("cookies")
+                if isinstance(meta_cookies, dict):
+                    cookies.update({str(k): str(v) for k, v in meta_cookies.items()})
+            except Exception as e_api:
+                logger.warning("禁漫 API 客户端登录失败，尝试 HTML 网页登录: %s", _mask_sensitive(e_api))
+                try:
+                    domain = self.resolve_html_domain()
+                    html_client = opt.new_jm_client(impl="html", domain_list=[domain])
+                    html_client.login(JM_USERNAME, JM_PASSWORD)
+                    meta_cookies = html_client.get_meta_data("cookies")
+                    if isinstance(meta_cookies, dict):
+                        cookies.update({str(k): str(v) for k, v in meta_cookies.items()})
+                except Exception as e_html:
+                    logger.warning("禁漫 HTML 网页登录亦失败: %s", _mask_sensitive(e_html))
+                    return None
+
+            if cookies:
+                self._save_session_cache(cookies)
+                logger.info("禁漫账号登录成功，会话凭据已持久化缓存")
+                return cookies
+        except Exception as exc:
+            logger.warning("禁漫登录流程异常: %s", _mask_sensitive(exc))
+            return None
+        return None
 
     # ------------------------------------------------------------------
     # id / domain helpers
     # ------------------------------------------------------------------
     def normalize_id(self, raw: str) -> str:
-        m = re.fullmatch(self.id_pattern, raw.strip())
+        m = re.fullmatch(self.id_pattern, raw.strip(), re.IGNORECASE)
         if m is None:
             raise ValueError("禁漫车号格式不正确，示例：JM523607 或 523607")
         return m.group(1)
@@ -82,6 +300,10 @@ class JMProvider(ComicProvider):
                 return cached
 
             session = curl_requests.Session(impersonate="chrome")
+            proxies = self._get_control_proxies()
+            if proxies:
+                session.proxies = proxies
+
             domain = ""
             try:
                 resp = session.get(
@@ -97,9 +319,9 @@ class JMProvider(ComicProvider):
                     },
                 )
                 parsed = urlparse(str(resp.url))
-                domain = parsed.hostname or ""
-                if not domain or domain in {"jm-88.cc"}:
-                    domain = ""
+                cand_domain = parsed.hostname or ""
+                if cand_domain and _is_safe_remote_domain(cand_domain):
+                    domain = cand_domain
             except Exception:
                 domain = ""
 
@@ -108,17 +330,19 @@ class JMProvider(ComicProvider):
                     try:
                         probe = session.get(
                             f"https://{candidate}/",
-                            timeout=8,
+                            timeout=4,
                             allow_redirects=True,
                         )
                         if probe.status_code == 200 and len(probe.content) > 1000:
-                            domain = urlparse(str(probe.url)).hostname or candidate
-                            break
+                            cand_domain = urlparse(str(probe.url)).hostname or candidate
+                            if cand_domain and _is_safe_remote_domain(cand_domain):
+                                domain = cand_domain
+                                break
                     except Exception:
                         continue
 
             if not domain:
-                raise RuntimeError("无法找到可用的禁漫网页域名，请稍后重试")
+                raise RuntimeError("无法找到可用的禁漫网页域名，请检查网络连接或配置 JM_PROXY")
 
             self._write_html_domain(domain)
             return domain
@@ -126,12 +350,22 @@ class JMProvider(ComicProvider):
     # ------------------------------------------------------------------
     # fetching
     # ------------------------------------------------------------------
-    def _make_html_client(self):
+    def _make_html_client(self, force_refresh_session: bool = False):
         from jmcomic import JmModuleConfig, JmOption
 
         JmModuleConfig.FLAG_ENABLE_JM_LOG = False
         option = JmOption.default()
+        # 覆写 jmcomic 内置硬编码 127.0.0.1:7890 默认代理
+        control_proxies = self._get_control_proxies()
+        option.client.postman.meta_data["proxies"] = control_proxies
+
+        # 装载已认证的 Cookies
+        cookies = self._get_valid_cookies(option, force_refresh=force_refresh_session)
+        if cookies:
+            option.update_cookies(cookies)
+
         return option.new_jm_client(impl="html", domain_list=[self.resolve_html_domain()])
+
 
     @staticmethod
     def _parse_uploader(text: str) -> str | None:
@@ -158,18 +392,52 @@ class JMProvider(ComicProvider):
         jm_id = self.normalize_id(raw_id)
         client = self._make_html_client()
 
+        def _is_restricted(resp) -> bool:
+            url_str = str(getattr(resp, "url", ""))
+            text = getattr(resp, "text", "")
+            return (
+                "/login" in url_str
+                or "需要登入" in text
+                or "需要登录" in text
+                or "登入後才能" in text
+                or "登录后才能" in text
+                or "請先登入" in text
+                or "请先登录" in text
+            )
+
         album_resp = client.get(f"/album/{jm_id}")
+        if _is_restricted(album_resp):
+            if JM_USERNAME and JM_PASSWORD:
+                logger.info(f"检测到受限车号 JM{jm_id}，尝试会话自愈刷新重登并重试...")
+                self._clear_session_cache()
+                client = self._make_html_client(force_refresh_session=True)
+                album_resp = client.get(f"/album/{jm_id}")
+                if _is_restricted(album_resp):
+                    raise ValueError(f"禁漫车号 JM{jm_id} 受权限保护（需登录查看），当前账号无权访问或登录会话已失效")
+            else:
+                raise ValueError(
+                    f"禁漫车号 JM{jm_id} 受权限保护（需登录查看），请在 .env 中配置 JM_USERNAME 与 JM_PASSWORD 后重试"
+                )
+
         if (
             "album_missing" in getattr(album_resp, "url", "")
             or "album_missing" in album_resp.text
             or "/error/" in getattr(album_resp, "url", "")
         ):
+            if not JM_USERNAME:
+                raise ValueError(
+                    f"禁漫车号 JM{jm_id} 不存在、已被下架，或属于受权限保护的漫画（如需登录请在 .env 中配置 JM_USERNAME 与 JM_PASSWORD）"
+                )
             raise ValueError(f"禁漫车号 JM{jm_id} 不存在或已被下架")
 
         try:
             detail = JmcomicText.analyse_jm_album_html(album_resp.text)
         except Exception as exc:
             if "album_id" in str(exc) or "pattern_html_album_" in str(exc):
+                if not JM_USERNAME:
+                    raise ValueError(
+                        f"禁漫车号 JM{jm_id} 页面解析失败（可能不存在或属于需登录查看的受限作品，请在 .env 配置 JM_USERNAME 与 JM_PASSWORD 后重试）"
+                    ) from exc
                 raise ValueError(f"禁漫车号 JM{jm_id} 页面解析失败（可能不存在或已被删除）") from exc
             raise
         uploader = self._parse_uploader(album_resp.text)
@@ -235,8 +503,16 @@ class JMProvider(ComicProvider):
             image_domain = str((existing.meta.raw or {}).get("image_domain", "") or "")
         else:
             def _fetch_episode(pid: str, ptitle: str, ordinal: int):
-                nonlocal first_photo
+                nonlocal first_photo, client
                 photo_resp = client.get(f"/photo/{pid}")
+                if _is_restricted(photo_resp):
+                    if JM_USERNAME and JM_PASSWORD:
+                        logger.info(f"检测到单话 {pid} 受限，尝试会话重登并重试...")
+                        self._clear_session_cache()
+                        client = self._make_html_client(force_refresh_session=True)
+                        photo_resp = client.get(f"/photo/{pid}")
+                    if _is_restricted(photo_resp):
+                        raise ValueError(f"禁漫话数 {pid} 需登录后才能查看，当前账号无权访问")
                 photo = JmcomicText.analyse_jm_photo_html(photo_resp.text)
                 photo.from_album = detail
                 photo.data_original_query_params = photo.get_data_original_query_params(
@@ -401,13 +677,47 @@ class JMProvider(ComicProvider):
     # One session per thread + connection pooling. Creating a brand new session
     # per page was the biggest cost: each one did a fresh TLS handshake, and any
     # flaky image made the whole (pre)fetch appear to hang for tens of seconds.
+    @staticmethod
+    def _is_image_bytes(content: bytes) -> bool:
+        """Verify binary magic bytes for JPEG, PNG, WebP, GIF, or AVIF.
+
+        Prevents upstream WAF / CDN challenge HTML pages (often returned as HTTP 200)
+        from corrupting the image cache (PITFALLS.md #60).
+        """
+        if len(content) < 16:
+            return False
+        # JPEG
+        if content.startswith(b"\xff\xd8\xff"):
+            return True
+        # PNG
+        if content.startswith(b"\x89PNG\r\n\x1a\n"):
+            return True
+        # WebP: RIFF....WEBP
+        if content.startswith(b"RIFF") and content[8:12] == b"WEBP":
+            return True
+        # GIF
+        if content.startswith(b"GIF87a") or content.startswith(b"GIF89a"):
+            return True
+        # AVIF
+        if b"ftypavif" in content[:32] or b"ftypavis" in content[:32]:
+            return True
+        return False
+
+    # One session per thread + connection pooling. Creating a brand new session
+    # per page was the biggest cost: each one did a fresh TLS handshake, and any
+    # flaky image made the whole (pre)fetch appear to hang for tens of seconds.
     _tls = threading.local()
 
     def _session(self):
         session = getattr(self._tls, "session", None)
+        proxies = self._get_image_proxies()
         if session is None:
             session = curl_requests.Session(impersonate="chrome")
+            if proxies:
+                session.proxies = proxies
             self._tls.session = session
+        else:
+            session.proxies = proxies or {}
         return session
 
     @staticmethod
@@ -427,44 +737,67 @@ class JMProvider(ComicProvider):
             return self._do_download(comic, page)
 
     def _do_download(self, comic: FetchedComic, page: RemotePage) -> bytes:
+        from jmcomic import JmModuleConfig
+
         session = self._session()
         headers = dict(page.headers)
         headers.setdefault("Accept", "image/avif,image/webp,image/apng,image/*,*/*;q=0.8")
 
+        parsed_url = urlparse(page.url)
+        orig_domain = parsed_url.hostname or ""
+
+        # 构建包含官方多 CDN 集群的容灾候选池 (Multi-CDN Failover)，严格过滤内网与不安全主机
+        cdn_candidates: list[str] = [orig_domain] if orig_domain and _is_safe_remote_domain(orig_domain) else []
+        for cand in JmModuleConfig.DOMAIN_IMAGE_LIST:
+            if cand and _is_safe_remote_domain(cand) and cand not in cdn_candidates:
+                cdn_candidates.append(cand)
+        if not cdn_candidates:
+            raise RuntimeError(
+                f"未找到可信安全的图片 CDN 域名（原始域名受限或已被阻断: {orig_domain}）"
+            )
+
         transient = {401, 403, 429, 500, 502, 503, 504}
         last_err: RuntimeError | None = None
-        for attempt in range(4):
-            url = page.url if attempt == 0 else self._cache_bust(page.url, attempt)
+        max_attempts = max(4, min(len(cdn_candidates), 6))
+
+        for attempt in range(max_attempts):
+            curr_domain = cdn_candidates[attempt % len(cdn_candidates)]
+            target_url = parsed_url._replace(netloc=curr_domain).geturl()
+            url = target_url if attempt == 0 else self._cache_bust(target_url, attempt)
+
             try:
-                resp = session.get(url, headers=headers, timeout=45, allow_redirects=True)
+                resp = session.get(url, headers=headers, timeout=35, allow_redirects=True)
             except Exception as exc:
+                safe_exc = _mask_sensitive(exc)
                 last_err = RuntimeError(
-                    f"下载图片失败 {comic.meta.display_id} 第{page.index}页: {exc}"
+                    f"下载图片失败 {comic.meta.display_id} 第{page.index}页 ({curr_domain}): {safe_exc}"
                 )
-                time.sleep(0.5 * (attempt + 1))
+                time.sleep(0.3 * (attempt + 1))
                 continue
 
             if resp.status_code == 200:
-                if len(resp.content) < 100:
+                if not self._is_image_bytes(resp.content):
                     last_err = RuntimeError(
-                        f"下载图片异常 {comic.meta.display_id} 第{page.index}页: 内容过短"
+                        f"下载图片异常 {comic.meta.display_id} 第{page.index}页 ({curr_domain}): "
+                        f"收到非图像内容 (长度 {len(resp.content)}B，可能为上游 CDN/WAF 拦截页)"
                     )
-                    time.sleep(0.5 * (attempt + 1))
+                    time.sleep(0.3 * (attempt + 1))
                     continue
                 return self._decode_page(page, resp.content)
 
             if resp.status_code in transient:
                 last_err = RuntimeError(
-                    f"下载图片失败 {comic.meta.display_id} 第{page.index}页: "
+                    f"下载图片失败 {comic.meta.display_id} 第{page.index}页 ({curr_domain}): "
                     f"HTTP {resp.status_code}"
                 )
-                time.sleep(0.5 * (attempt + 1))
+                time.sleep(0.3 * (attempt + 1))
                 continue
 
-            raise RuntimeError(
-                f"下载图片失败 {comic.meta.display_id} 第{page.index}页: "
+            last_err = RuntimeError(
+                f"下载图片失败 {comic.meta.display_id} 第{page.index}页 ({curr_domain}): "
                 f"HTTP {resp.status_code}"
             )
+            time.sleep(0.3 * (attempt + 1))
 
         raise last_err or RuntimeError(
             f"下载图片失败 {comic.meta.display_id} 第{page.index}页: 未知错误"
@@ -502,6 +835,12 @@ class JMProvider(ComicProvider):
         from jmcomic import JmOption
 
         option = JmOption.default()
+        control_proxies = self._get_control_proxies()
+        option.client.postman.meta_data["proxies"] = control_proxies
+        cookies = self._get_valid_cookies(option)
+        if cookies:
+            option.update_cookies(cookies)
+
         client = option.build_jm_client()
 
         if timeframe == "day":
@@ -510,6 +849,11 @@ class JMProvider(ComicProvider):
             resp = client.month_ranking(page=page)
         else:
             resp = client.week_ranking(page=page)
+
+        try:
+            ranking_domain = self.resolve_html_domain()
+        except Exception:
+            ranking_domain = "18comic.vip"
 
         items: list[DiscoveryItem] = []
         if hasattr(resp, "content") and resp.content:
@@ -535,7 +879,7 @@ class JMProvider(ComicProvider):
                             title=name,
                             author=author,
                             category=category,
-                            url=f"https://18comic.vip/album/{aid}",
+                            url=f"https://{ranking_domain}/album/{aid}",
                         )
                     )
         return items

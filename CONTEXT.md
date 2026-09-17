@@ -17,6 +17,12 @@
 - **来源（Source / Provider）**：作品的远端或本地出处（`jm` 禁漫、`local` 本地自建/本地目录导入、`picacg` 哔咔）。每个来源有独立的 `short_label`、编号格式、数据目录 `library/<source>/<source_id>/`。
 - **本地自建漫画（Local Comic）**：由用户直接上传图片文件或指定服务器已有文件夹（如视频拆帧目录）收录生成的作品。`source = "local"`，无远端依赖，直接持久化于 `library/local/<source_id>/`。未指定 ID 时系统自动分配基于时间排序且带冲突重试的单调唯一标识（`YYYYMMDD_HHMMSS`），由 `LocalProvider.generate_id()` 与 `display_id()` 统一调度。
 - **哔咔漫画（PicAcg Comic）**：由哔咔数据源收录的作品。`source = "picacg"`，使用 24 位十六进制 ObjectId 标识；逆向协议与端点单一权威参考 `https://github.com/wgh136/PicaComic`；画卷原生为标准 JPEG/PNG 格式，不设切片混淆但需分流鉴权；封面策略首图优先采用官方 `thumb` 并转码 720px/360px WebP，续接正文前 3 页构成书架 4 叠牌展开。
+- **禁漫漫画（JMComic）**：由禁漫天堂数据源收录的作品。`source = "jm"`，车号格式为 `JM\d{5,8}`；画卷采用官方动态切片反混淆算法（`JmImageTool.get_num_by_url()`），下载后必须就地解码为连续完整图片落盘；支持多卷多话章节扁平映射与章节子路由；支持凭据鉴权解析受限画卷入库。
+- **受限画卷鉴权解析（Restricted Comic Album Fetching）**：针对禁漫平台中标记为需登录、特定敏感题材或作者作品的鉴权抓取能力。通过已认证的会话凭据（如 `AVS` 会话 Cookies）穿透平台访客限制，将原本返回 404/下架假象的受限车号完整解析入库。
+- **控制流与数据流代理分流（Control & Data Plane Proxy Decoupling）**：针对禁漫及跨国图源设立的细粒度出站代理分流架构。将重定向探测、域名嗅探、登录认证与 HTML/API 元数据拉取定义为「控制流」（由 `JM_PROXY` 强制穿透阻断），将海量大体积画页大图下载定义为「数据流」（由 `JM_IMAGE_PROXY_MODE` 灵活控制直连、跟随或独立代理），兼顾连接通达性与带宽效率。
+- **远端会话保活与自愈重登（Remote Session Lifecycle & Self-Healing Auth）**：馆长在系统级凭据配置（如 `.env`）下，后端启动或首次请求时通过客户端接口自动置换出 Session Cookies 并持久化到本地（如 `jm_session.json`）。遇 401/403 会话失效或登录失效提示时，系统底层自动静默重新登录换取新凭据并无缝重试，对业务层保持透明。
+- **多图源统一会话安全持久化（Unified Provider Secure Session Persistence）**：系统针对第三方漫画平台（如哔咔 `picacg_session.json`、禁漫 `jm_session.json` 以及未来新增鉴权图源）所建立的基础设施级安全凭据存储规范。所有持久化统一由基类 `ComicProvider.save_secure_session` 管理，采用独立进程加纳秒级时间戳生成防冲突临时文件，在 `os.open` 创建瞬间赋予 `0o600` 私有 POSIX 权限（消灭非 root 用户在共享存储或 NAS 宿主机上的微秒级可读 TOCTOU 窗口），写入完成后使用 `os.replace` 原子覆盖，兼顾极致数据完整性与宿主机级别隔离安全。
+- **多 CDN 动态轮换降级（Multi-CDN Dynamic Failover）**：图源画页下载阶段的弹性容灾范式。系统内置官方多组 CDN 域名候选集群；当主用图片域名发生超时、连接中断或 WAF/拦截页伪装（非图像魔数）时，自动在可用 CDN 候选池中平滑轮换重试，杜绝单点死锁并保障离线落盘成功率。
 - **收录（Import）**：把一本作品"放进纸间"的动作。规则：先查本地 `album.json`，命中则 `from_cache=true` 绝不请求远端；首次收录缓存前 4 页做封面。本地自建漫画收录时优先通过硬链接（Hardlink）实现零拷贝秒级收录（跨卷自动回退至物理复制）；即时生成主封面供书架秒级呈现，其余辅助封面与多话章节封面交由后台守护线程异步转码，绝不阻塞收录响应。
 - **服务端本地化（Server-side Caching / Cachify）**：把页面图片下载到服务器本地磁盘（`backend/data/library/`，对应 `cached_pages` / `cache_complete`）。图片必须走解密工具，禁止直接保存下载字节；本地自建漫画页面在导入时即为 100% 本地化。此概念属于后端存储范畴，严格区别于移动/浏览器端的离线运行状态。
 - **批次增量预缓存（Paged Batch Prefetch / Stepped Server-side Caching）**：针对单本总页数超出单次下载配额上限（`MAX_PREFETCH`，默认 600 页）的超长连载漫画，在触发全本本地化时建立的步进式顺延调度机制。系统通过探查磁盘与元数据，按全局页码从小到大提取未缓存（`cached === false`）画页切片取前 N 页执行下载；单批完成后全书若尚未全部就绪，维持未终态并支持馆长在详情页再次点击“缓存全部”顺延下一批，直至全本 100% 本地化。与远端发布新章节时的「增量更新（Incremental Refresh）」严格解耦。

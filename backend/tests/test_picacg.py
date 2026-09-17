@@ -389,11 +389,32 @@ class TestPicacgProvider(unittest.TestCase):
     def test_load_cached_token_email_mismatch(self) -> None:
         # If cache was saved for old_user@example.com, it should not be used
         mock_file = MagicMock()
-        mock_file.exists.return_value = True
+        mock_file.is_file.return_value = True
         mock_file.read_text.return_value = '{"token": "old_jwt", "email": "old_user@example.com", "time": 9999999999}'
         with patch.object(self.provider, "_session_file", mock_file):
             token = self.provider._load_cached_token()
             self.assertIsNone(token)
+
+    def test_save_token_secure_permissions(self) -> None:
+        import os
+        import tempfile
+        from pathlib import Path
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            tmp_session = Path(tmp_dir) / "test_pica_session.json"
+            with patch.object(self.provider, "_session_file", tmp_session):
+                self.provider._save_token("test_jwt_token", "test@example.com")
+                self.assertTrue(tmp_session.is_file())
+
+                # Verify POSIX file permission is 0o600
+                if hasattr(os, "stat"):
+                    mode = tmp_session.stat().st_mode & 0o777
+                    self.assertEqual(mode, 0o600)
+
+                # Verify load matches
+                with patch("app.providers.picacg.PICA_EMAIL", "test@example.com"):
+                    token = self.provider._load_cached_token()
+                    self.assertEqual(token, "test_jwt_token")
 
     @patch("app.providers.picacg.time.sleep")
     def test_apply_pacing(self, mock_sleep: MagicMock) -> None:

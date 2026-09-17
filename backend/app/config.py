@@ -97,4 +97,12 @@ PICA_PROXY = os.getenv("PICA_PROXY", os.getenv("COMIC_SHELF_PICA_PROXY", "")).st
 PICA_API_URL = os.getenv("PICA_API_URL", "https://picaapi.picacomic.com").rstrip("/")
 PICA_CHANNEL = os.getenv("PICA_CHANNEL", "2").strip()
 
+# JMComic (禁漫天堂) provider settings
+JM_USERNAME = os.getenv("JM_USERNAME", os.getenv("COMIC_SHELF_JM_USERNAME", "")).strip()
+JM_PASSWORD = os.getenv("JM_PASSWORD", os.getenv("COMIC_SHELF_JM_PASSWORD", "")).strip()
+JM_PROXY = os.getenv("JM_PROXY", os.getenv("COMIC_SHELF_JM_PROXY", "")).strip()
+JM_IMAGE_PROXY_MODE = os.getenv("JM_IMAGE_PROXY_MODE", os.getenv("COMIC_SHELF_JM_IMAGE_PROXY_MODE", "auto")).strip().lower()
+
+
+
 
