@@ -174,7 +174,7 @@ class TestReplacePages(unittest.TestCase):
                 # The symlink should NOT be included, and since scan_dir has no other images, it should raise 400
                 with self.assertRaises(Exception) as ctx:
                     self.store.replace_pages("test", "symlink_test", server_path=str(scan_dir))
-                self.assertIn("未提供有效的图片文件", str(ctx.exception))
+                self.assertIn("未提供有效的图片或 PDF 画卷文件", str(ctx.exception))
             finally:
                 os.environ.pop("COMIC_SHELF_ALLOWED_DIRS", None)
 

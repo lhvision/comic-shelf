@@ -7,9 +7,9 @@ import { useAuth } from '@/composables/useAuth'
 import { useToast } from '@/composables/useToast'
 import { useSystemEvents } from '@/composables/useSystemEvents'
 import { useUploadQueue } from '@/composables/useUploadQueue'
-import { filterImageFiles, naturalSortFiles } from '@/composables/useFileStaging'
+import { filterImageFiles, isPdfFile, naturalSortFiles } from '@/composables/useFileStaging'
 import { sumBy } from '@/utils/math'
-import type { LocalChapterInput } from '@/types'
+import type { LocalChapterInput, PdfInspectResponse } from '@/types'
 
 export interface StagedChapter {
   id: string
@@ -52,6 +52,10 @@ export function useLocalWorkshop() {
   const coverIndices = ref<number[]>([1, 2, 3, 4])
   const submitting = ref(false)
 
+  // PDF inspection state
+  const isInspectingPdf = ref(false)
+  const stagedPdfMeta = ref<PdfInspectResponse | null>(null)
+
   // Staged chapters
   const activeChapterIdx = ref(0)
   const chapters = ref<StagedChapter[]>([{ id: 'ch1', title: '第 1 话', files: [] }])
@@ -60,7 +64,103 @@ export function useLocalWorkshop() {
   // DropZone & FileDialog via VueUse
   const dropAreaRef = ref<HTMLElement | null>(null)
 
+  async function inspectPdfFile(pdfFile: File) {
+    isInspectingPdf.value = true
+    try {
+      const fd = new FormData()
+      fd.append('file', pdfFile)
+      const res = await api.inspectPdf(fd)
+      stagedPdfMeta.value = res
+      if (!title.value.trim() && res.title) {
+        title.value = res.title
+      }
+      if (res.authors.length > 0 && authors.value === '自制') {
+        authors.value = res.authors.join(', ')
+      }
+      isMulti.value = res.chapters.length > 1
+      chapters.value = res.chapters.map((c) => ({
+        id: c.id,
+        title: c.title,
+        files: Array.from({ length: c.page_count }, () => null as unknown as File),
+      }))
+      activeChapterIdx.value = 0
+      const trackLabel =
+        res.detection_track === 'toc'
+          ? '电子书签'
+          : res.detection_track === 'ocr'
+            ? 'OCR扉页探测'
+            : '单卷平铺'
+      toast(
+        `成功解析 PDF：全书 ${res.total_pages} 页，已按${trackLabel}切分为 ${res.chapters.length} 话`,
+        'info',
+      )
+    } catch (err) {
+      toast(err instanceof Error ? err.message : String(err), 'error')
+    } finally {
+      isInspectingPdf.value = false
+    }
+  }
+
+  async function inspectServerPdf() {
+    if (!serverPath.value.trim()) {
+      toast('请输入服务器 PDF 文件路径', 'error')
+      return
+    }
+    isInspectingPdf.value = true
+    try {
+      const fd = new FormData()
+      fd.append('server_path', serverPath.value.trim())
+      const res = await api.inspectPdf(fd)
+      stagedPdfMeta.value = res
+      if (!title.value.trim() && res.title) {
+        title.value = res.title
+      }
+      if (res.authors.length > 0 && authors.value === '自制') {
+        authors.value = res.authors.join(', ')
+      }
+      isMulti.value = res.chapters.length > 1
+      chapters.value = res.chapters.map((c) => ({
+        id: c.id,
+        title: c.title,
+        files: Array.from({ length: c.page_count }, () => null as unknown as File),
+      }))
+      activeChapterIdx.value = 0
+      const trackLabel =
+        res.detection_track === 'toc'
+          ? '电子书签'
+          : res.detection_track === 'ocr'
+            ? 'OCR扉页探测'
+            : '单卷平铺'
+      toast(
+        `成功解析 PDF：全书 ${res.total_pages} 页，已按${trackLabel}切分为 ${res.chapters.length} 话`,
+        'info',
+      )
+    } catch (err) {
+      toast(err instanceof Error ? err.message : String(err), 'error')
+    } finally {
+      isInspectingPdf.value = false
+    }
+  }
+
+  function clearStagedPdf() {
+    const token = stagedPdfMeta.value?.staging_token
+    if (token) {
+      void api.deleteStagedPdf(token).catch(() => {})
+    }
+    stagedPdfMeta.value = null
+    chapters.value = [{ id: 'ch1', title: '第 1 话', files: [] }]
+    activeChapterIdx.value = 0
+    singleFiles.value = []
+    isMulti.value = false
+    toast('已重置 PDF 暂存状态', 'info')
+  }
+
   function stageFiles(rawList: File[]) {
+    const pdf = rawList.find(isPdfFile)
+    if (pdf) {
+      void inspectPdfFile(pdf)
+      return
+    }
     const { valid } = filterImageFiles(rawList)
     if (isMulti.value) {
       const ch = chapters.value[activeChapterIdx.value]
@@ -74,7 +174,7 @@ export function useLocalWorkshop() {
 
   const { open: openFileDialog, onChange: onFileDialogChange } = useFileDialog({
     multiple: true,
-    accept: 'image/*',
+    accept: 'image/*,application/pdf,.pdf',
     reset: true,
   })
 
@@ -100,11 +200,33 @@ export function useLocalWorkshop() {
 
   function removeChapter(idx: number) {
     if (chapters.value.length <= 1) return
+    if (stagedPdfMeta.value) {
+      const removed = chapters.value[idx]
+      const mergeTargetIdx = idx > 0 ? idx - 1 : 1
+      const target = chapters.value[mergeTargetIdx]
+      if (target && removed) {
+        target.files = Array.from(
+          { length: target.files.length + removed.files.length },
+          () => null as unknown as File,
+        )
+      }
+    }
     chapters.value.splice(idx, 1)
     if (activeChapterIdx.value >= chapters.value.length) {
       activeChapterIdx.value = chapters.value.length - 1
     }
   }
+
+  const chapterRanges = computed(() => {
+    let cursor = 1
+    return chapters.value.map((ch) => {
+      const count = ch.files.length
+      const start = cursor
+      const end = start + Math.max(0, count - 1)
+      cursor += count
+      return { id: ch.id, start, end, count }
+    })
+  })
 
   function clearCurrentStaged() {
     if (isMulti.value) {
@@ -116,6 +238,9 @@ export function useLocalWorkshop() {
   }
 
   const totalStagedFilesCount = computed(() => {
+    if (stagedPdfMeta.value) {
+      return stagedPdfMeta.value.total_pages
+    }
     if (!isMulti.value) return singleFiles.value.length
     return sumBy(chapters.value, (ch) => ch.files.length)
   })
@@ -143,6 +268,54 @@ export function useLocalWorkshop() {
   async function submit() {
     if (!title.value.trim()) {
       toast('请输入作品标题', 'error')
+      return
+    }
+
+    if (stagedPdfMeta.value) {
+      submitting.value = true
+      try {
+        const created = await api.createFromStagedPdf({
+          staging_token: stagedPdfMeta.value.staging_token,
+          id: slugId.value.trim() || undefined,
+          title: title.value.trim(),
+          works: parseList(works.value),
+          authors: parseList(authors.value),
+          actors: parseList(actors.value),
+          tags: tags.value,
+          description: description.value.trim(),
+          uploader: uploader.value.trim() || 'PDF导入',
+          chapters: (() => {
+            let cursor = 1
+            return chapters.value.map((ch, idx) => {
+              const count = Math.max(1, ch.files.length)
+              const start = cursor
+              cursor += count
+              return {
+                id: ch.id,
+                index: idx + 1,
+                title: ch.title,
+                start,
+                page_count: count,
+              }
+            })
+          })(),
+          cover_indices: coverIndices.value,
+        })
+        const sourceId = created.meta.source_id
+        await store.load()
+        broadcastLocalChange({
+          action: 'import',
+          source: created.meta.source,
+          source_id: sourceId,
+          timestamp: Date.now(),
+        })
+        toast(`PDF 漫画《${created.meta.title}》已成功收录！`, 'info')
+        void router.replace(`/comic/${created.meta.source}/${sourceId}`)
+      } catch (err) {
+        toast(err instanceof Error ? err.message : String(err), 'error')
+      } finally {
+        submitting.value = false
+      }
       return
     }
 
@@ -263,10 +436,16 @@ export function useLocalWorkshop() {
     removeChapter,
     clearCurrentStaged,
     totalStagedFilesCount,
+    chapterRanges,
     isUploading,
     progress,
     completedCount,
     totalCount,
     submit,
+    isInspectingPdf,
+    stagedPdfMeta,
+    inspectPdfFile,
+    inspectServerPdf,
+    clearStagedPdf,
   }
 }

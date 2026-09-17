@@ -48,6 +48,7 @@ FastAPI (backend/app/main.py — 应用装配/中间件/SPA托管)
    │     media.py           # Pillow 图像压缩/WebP 转码/按需懒下载
    │     chapters.py        # 章节自愈/复合文件名智能分组/单卷升级多话
    │     local.py           # 本地导入/零拷贝硬链接/原子目录置换
+   │     pdf.py             # PDF 原始图像流无损提取/双轨分话智能探测
    │     prefetch.py        # 全书与单章后台并发下载池
    │     utils.py           # 原子写 (_write_json_atomic) 与路径安全白名单
    │
@@ -184,6 +185,34 @@ JmImageTool.decode_and_save(num, source_image, save_path)
 - **平铺复合文件名自然排序与自动聚类分话**：针对长篇漫画平铺单目录复合文件名（如 `1-1.avif`, `1-2.avif`, `2-1.avif` ...），后端内置自适应聚类正则与自然排序，无需手动建子文件夹，丢入即可自动归整切分为「第 1 话」、「第 2 话」... 并平滑升阶为多章节体系。
 - **前置二进制魔数防伪**：服务端采用 `PIL.Image.open().verify()` 前置校验，严格阻断伪装扩展名或损坏二进制注入。
 
+### 4.6 PDF 画卷无损解包与多卷目录合集导入规范 (ADR 0024)
+
+- **无损抽取直出（Direct Stream Extraction）**：底层优先提取 PDF 页面内嵌的 Image XObject 原生二进制流，0 重编码、0 像素失真、极速落盘；遇到矢量图层或复杂版面自动降级至 300 DPI 栅格化渲染。
+- **双轨智能分话探测器（Dual-Track Chapter Detector）**：
+  - **第一轨（电子书签优先）**：若 PDF 包含大纲目录（`doc.get_toc()`），精准提取章节标题与起始页码；
+  - **第二轨（OCR 扉页启发式推断）**：若无书签，复用本地轻量 OCR 嗅探纸质目录与各话扉页标志（`第 N 话`、`番外`、`加笔/附录`）；
+  - **卷首章节归纳**：正文第 1 话之前的封面与目录页自动收录为「卷首 / 目录」（`c0`），保持正文阅读心流。
+- **多卷目录合集批量入库（Multi-Volume Directory Ingest）**：
+  - 支持指定包含多卷 PDF（如 `第01卷.pdf` ~ `第07卷.pdf`）的目录一键路径导入；
+  - 自动基于自然文件名排序（`_natural_key`）将各卷映射为独立章节，连续编排全书全局页码（$1 \dots N$）并预生成各卷封面；
+  - 最佳实践：将系列多卷文件收敛至单目录扁平化命名，规避网盘下载多级嵌套目录字符排序倒置问题。
+- **全链路增补与重新装订支持**：追加页面（`append_pages`）与重新装订（`replace_pages`）全面支持 `.pdf` 文件上传与服务端路径。
+
+### 4.7 画卷生命周期与多粒度自愈删除规范
+
+- **整本漫画彻底删除**（`DELETE /api/library/{source}/{source_id}`）：
+  - 物理删除 `backend/data/library/<source>/<source_id>/` 完整目录（页面原图、多级 WebP 封面、360 缩略图、`album.json`）；
+  - 级联清除 SQLite 主库 `comics` 索引记录与全文检索 `comic_dialogues.db` 中的台词记录；
+  - 广播 SSE `library_changed: delete` 事件，书架与详情页协同移除。
+- **单章节删除与页码自愈**（`DELETE /api/library/{source}/{source_id}/chapters/{chapter_id}`）：
+  - 物理删除该章节目录 `pages/<chapter_id>/`；
+  - **连续单调自愈重排（核心）**：自动重编全书剩余章节的 `start` 与各页全局 `index`，保证全书页码 $1 \dots N$ 严格单调递增，不留断层；
+  - 自动重新生成受影响章节的封面与整本封面。
+- **临时暂存区物理释放与 TTL 保底**：
+  - 上传取消或重设时调用 `DELETE /api/library/local/staged-pdf/{staging_token}` 物理删除暂存工作区；
+  - 后台常驻 1 小时自动 TTL 清理任务，所有内部解包操作包裹 `try...finally` 保障零孤儿文件泄露。
+- **安全拦截守卫**：`MAX_PDF_PAGES = 5000` 拦截解压炸弹；Web 上传 1GB 上限 + 1MB 分块流式落盘防 OOM；密码加密 PDF 友好阻断。
+
 ## 5. 后端文件地图
 
 | 文件                                | 职责                                                                                                                        |
@@ -216,11 +245,13 @@ JmImageTool.decode_and_save(num, source_image, save_path)
 - `GET /api/library/facets`（藏书全貌聚合统计与高频前 30 标签，返回 `total_books`, `total_pages`, `cached_pages` 与高频标签元组）
 - `POST /api/library/import` `{id, source, prefetch_covers, prefetch_all, refresh}`（`refresh=true` 走增量，章节未变则复用旧 remote；已重新装订画卷禁止 refresh 覆盖）
 - `POST /api/library/local/create`（自建工坊创建本地图集/多章节元数据骨架）
-- `POST /api/library/local/import-path`（扫描服务器本地目录如 `public/tiya-frames` 秒级收录）
-- `POST /api/library/{source}/{id}/upload-pages`（支持全源，向指定漫画分批上传图片增量追加画页或创建新章节，兼容 `/local/{id}/upload-pages`）
-- `POST /api/library/{source}/{id}/append`（支持全源，从服务器路径增量追加页面或新章节，支持平铺复合模式自动切分，兼容 `/local/{id}/append`）
-- `POST /api/library/{source}/{id}/replace-pages`（支持全源，网页端批量上传高清画页重新装订全本或单话，支持平铺复合模式自动切分，原子替换并加盖重新装订保护）
-- `POST /api/library/{source}/{id}/replace-path`（支持全源，指定服务器本地路径秒级重新装订全本或单话）
+- `POST /api/library/local/import-path`（扫描服务器本地目录或单个/多卷 PDF 文件秒级收录）
+- `POST /api/library/local/inspect-pdf`（接收上传 PDF 并在隔离工作区预解包分析，返回双轨探测章节草案与 staging_token）
+- `DELETE /api/library/local/staged-pdf/{staging_token}`（物理释放暂存解包隔离区）
+- `POST /api/library/{source}/{id}/upload-pages`（支持全源，向指定漫画分批上传图片或 PDF 增量追加画页或创建新章节，兼容 `/local/{id}/upload-pages`）
+- `POST /api/library/{source}/{id}/append`（支持全源，从服务器路径增量追加图片或多卷 PDF 页面/新章节，支持平铺复合模式自动切分，兼容 `/local/{id}/append`）
+- `POST /api/library/{source}/{id}/replace-pages`（支持全源，网页端批量上传高清画页或 PDF 重新装订全本或单话，支持平铺复合模式自动切分，原子替换并加盖重新装订保护）
+- `POST /api/library/{source}/{id}/replace-path`（支持全源，指定服务器本地图片或 PDF 路径秒级重新装订全本或单话）
 - `PATCH /api/library/{source}/{id}/metadata`（更新标题/作者/标签/叙述/自定义封面页码 `cover_indices`）
 - `PATCH /api/library/{source}/{id}/chapters/{chapterId}`（修改单章节名称）
 - `DELETE /api/library/{source}/{id}/chapters/{chapterId}`（物理删除单个章节并重排全书全局页码）

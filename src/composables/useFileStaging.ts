@@ -26,13 +26,23 @@ export function naturalSortFiles(files: File[]): File[] {
   )
 }
 
+export function isPdfFile(file: File): boolean {
+  return file.type === 'application/pdf' || /\.pdf$/i.test(file.name)
+}
+
 /**
  * 图片文件格式校验与过滤
  * @param files 原始文件列表
  * @returns 过滤后的有效图片数组与被忽略的文件数量
  */
-export function filterImageFiles(files: File[]): { valid: File[]; ignoredCount: number } {
-  const valid = files.filter((f) => /\.(jpe?g|png|webp|gif|avif|bmp)$/i.test(f.name))
+export function filterImageFiles(
+  files: File[],
+  allowPdf = false,
+): { valid: File[]; ignoredCount: number } {
+  const pattern = allowPdf
+    ? /\.(jpe?g|png|webp|gif|avif|bmp|pdf)$/i
+    : /\.(jpe?g|png|webp|gif|avif|bmp)$/i
+  const valid = files.filter((f) => pattern.test(f.name))
   return {
     valid,
     ignoredCount: files.length - valid.length,
@@ -43,6 +53,8 @@ export function filterImageFiles(files: File[]): { valid: File[]; ignoredCount: 
  * `useFileStaging` 配置选项
  */
 export interface UseFileStagingOptions {
+  /** 是否允许选择和暂存 PDF 漫画文件（默认: false） */
+  allowPdf?: boolean
   /** 是否开启文件名+文件大小的去重合并（默认: true） */
   deduplicate?: boolean
   /** 拖入非图片文件时是否弹出 Toast 提示（默认: true） */
@@ -59,7 +71,7 @@ export interface UseFileStagingOptions {
  * @returns 响应式文件列表、拖拽 Ref、打开文件弹窗函数与增删管理工具
  */
 export function useFileStaging(options: UseFileStagingOptions = {}) {
-  const { deduplicate = true, notifyIgnored = true, disabled } = options
+  const { allowPdf = false, deduplicate = true, notifyIgnored = true, disabled } = options
   const { toast } = useToast()
 
   /** 当前暂存池中的就绪文件列表（已自然排序） */
@@ -76,9 +88,14 @@ export function useFileStaging(options: UseFileStagingOptions = {}) {
   function stageFiles(rawList: File[], customDeduplicate = deduplicate) {
     if (toValue(disabled)) return
 
-    const { valid, ignoredCount } = filterImageFiles(rawList)
+    const { valid, ignoredCount } = filterImageFiles(rawList, allowPdf)
     if (ignoredCount > 0 && notifyIgnored) {
-      toast('已自动忽略非图片格式文件（仅支持 JPG/PNG/WebP/AVIF 等）', 'info')
+      toast(
+        allowPdf
+          ? '已自动忽略非图片/PDF格式文件（仅支持 JPG/PNG/WebP/PDF 等）'
+          : '已自动忽略非图片格式文件（仅支持 JPG/PNG/WebP/AVIF 等）',
+        'info',
+      )
     }
 
     if (customDeduplicate) {
@@ -94,7 +111,7 @@ export function useFileStaging(options: UseFileStagingOptions = {}) {
 
   const { open: triggerFileDialog, onChange: onFileDialogChange } = useFileDialog({
     multiple: true,
-    accept: 'image/*',
+    accept: allowPdf ? 'image/*,application/pdf,.pdf' : 'image/*',
     reset: true,
   })
 

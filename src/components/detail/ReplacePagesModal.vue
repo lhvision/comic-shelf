@@ -43,7 +43,7 @@ const {
   dropZoneRef,
   isOverDropZone,
   openFileDialog,
-} = useFileStaging({ deduplicate: true, notifyIgnored: true, disabled: submitting })
+} = useFileStaging({ allowPdf: true, deduplicate: true, notifyIgnored: true, disabled: submitting })
 
 function cancelModal() {
   if (uploadAbortController.value) {
@@ -300,11 +300,15 @@ async function submit() {
           :is-over-drop-zone="isOverDropZone"
           :open-file-dialog="onDropzoneTrigger"
           :disabled="submitting"
-          path-placeholder="如：public/tiya-frames 或 /app/data/comics/import-folder"
+          prompt="点击选择画页，或将图片/PDF拖拽到此处"
+          hint="支持 JPG, PNG, WebP 及 PDF 漫画文件（无损解包重新装订）"
+          path-placeholder="如：/storage/comics/ch1_fixed.pdf 或 /app/data/comics/import-folder"
+          path-label="服务器本地路径（支持目录、图片或单文件 PDF）"
         >
           <template #path-guide>
             <p class="path-hint">
-              指定服务器上包含画页的文件夹或图片路径，系统将就地扫描并按文件名自然序号重新装订。
+              指定服务器上包含画页的文件夹、图片路径或单文件
+              .pdf，系统将就地扫描并无损解包重新装订。
             </p>
           </template>
         </FileStagingDropZone>

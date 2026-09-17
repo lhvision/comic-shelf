@@ -431,6 +431,42 @@ export const api = {
       { timeoutMs: 120000, ...options },
     )
   },
+  inspectPdf: async (formData: FormData, options?: RequestOptions) => {
+    return request<import('@/types').PdfInspectResponse>(
+      '/library/local/inspect-pdf',
+      {
+        method: 'POST',
+        body: formData,
+        signal: options?.signal,
+      },
+      { timeoutMs: 180000, ...options },
+    )
+  },
+  deleteStagedPdf: async (stagingToken: string, options?: RequestOptions) => {
+    return request<{ ok: boolean }>(
+      `/library/local/staged-pdf/${encodeURIComponent(stagingToken)}`,
+      {
+        method: 'DELETE',
+        signal: options?.signal,
+      },
+      options,
+    )
+  },
+  createFromStagedPdf: async (
+    payload: import('@/types').CreateFromStagedPdfPayload,
+    options?: RequestOptions,
+  ) => {
+    memoizedDetail.clear()
+    return request<ComicDetail>(
+      '/library/local/create-from-staged-pdf',
+      {
+        method: 'POST',
+        body: JSON.stringify(payload),
+        signal: options?.signal,
+      },
+      { timeoutMs: 120000, ...options },
+    )
+  },
   uploadPages: async (
     source: string,
     sourceId: string,

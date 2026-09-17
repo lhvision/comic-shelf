@@ -45,7 +45,12 @@ const {
   dropZoneRef,
   isOverDropZone,
   openFileDialog,
-} = useFileStaging({ deduplicate: false, notifyIgnored: true, disabled: submitting })
+} = useFileStaging({
+  allowPdf: true,
+  deduplicate: false,
+  notifyIgnored: true,
+  disabled: submitting,
+})
 
 watch(
   () => props.open,
@@ -204,10 +209,15 @@ async function submit() {
           :is-over-drop-zone="isOverDropZone"
           :open-file-dialog="() => openFileDialog()"
           :disabled="submitting || isUploading"
-          path-placeholder="如：public/tiya-frames 或 /app/data/manga/vol2"
+          prompt="点击选择画页，或将图片/PDF拖拽到此处"
+          hint="支持 JPG, PNG, WebP 及 PDF 漫画文件（无损解包与章节追加）"
+          path-placeholder="如：/storage/comics/vol2.pdf 或 /app/data/manga/vol2"
+          path-label="服务器本地路径（支持目录或单文件 PDF）"
         >
           <template #path-guide>
-            <p class="path-hint">指定包含图片的文件夹，系统将就地扫描并按文件名自然序号追加。</p>
+            <p class="path-hint">
+              指定包含图片/PDF的文件夹，或直接指定单文件 .pdf 路径，系统将自动无损解包并依序追加。
+            </p>
           </template>
         </FileStagingDropZone>
       </div>

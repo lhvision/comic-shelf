@@ -8,14 +8,14 @@
 | `src/views/DiscoveryView.vue`                      | 发现页视图编排：分段榜单切换、分类筛选、榜单卡片网格与一键收录                                                                                                 |
 | `src/views/ComicDetailView.vue`                    | 详情视图编排：封面流 / 元数据 / 操作栏 / 章节目录 / 页面索引                                                                                                   |
 | `src/views/ChapterView.vue`                        | 章节子路由：某话章节头（本话缓存进度/重命名/删除管理）+ 该话 PageIndexGrid                                                                                     |
-| `src/views/CreateComicView.vue`                    | 自建图集工坊：单话/多章节多图拖拽暂存、服务器路径导入、元数据与封面编排                                                                                        |
+| `src/views/CreateComicView.vue`                    | 自建图集工坊：单话/多章节多图拖拽暂存、PDF 智能分话预检确认、服务器路径导入、元数据与封面编排                                                                  |
 | `src/views/ReaderView.vue`                         | 阅读器视图编排：模式切换、DOM 分屏挂载、HUD / 顶栏 / 设置面板接线                                                                                              |
 | `src/composables/useAuth.ts`                       | 访问鉴权与门禁状态机：Cookie/Token 会话、状态探测、401 拦截联动                                                                                                |
 | `src/composables/useGuestPasses.ts`                | 访客通行证名册管理状态机：登记印发、Token 密钥换新、有效期延长、启停与设备踢除联动                                                                             |
 | `src/composables/useDiscovery.ts`                  | 发现页排行榜状态机：周榜/月榜/日榜/总榜拉取、分类过滤与收录状态追踪                                                                                            |
 | `src/composables/useUploadQueue.ts`                | 受限并发批量上传队列控制器（3 路 Worker 并发、细粒度进度与取消支持）                                                                                           |
-| `src/composables/useFileStaging.ts`                | 多图与画页暂存：自然文件名数字排序、格式过滤、`useFileDialog` + `useDropZone` 聚合                                                                             |
-| `src/composables/useLocalWorkshop.ts`              | 自建漫画工坊状态机：服务器本地路径扫描、白名单过滤、单话/多章节模式切换与元数据暂存                                                                            |
+| `src/composables/useFileStaging.ts`                | 多图与画页/PDF 暂存：自然文件名数字排序、格式过滤（支持 allowPdf）、`useFileDialog` + `useDropZone` 聚合                                                       |
+| `src/composables/useLocalWorkshop.ts`              | 自建漫画工坊状态机：服务器本地路径扫描、白名单过滤、单话/多章节模式切换、PDF 双轨分话预览与隔离工作区管理                                                      |
 | `src/composables/useLibrarySync.ts`                | 书架筛选与流式分页协同：URL Query 双向同步、防抖拉取服务端分页、全貌统计联动与 SSE 跨端变动感知                                                                |
 | `src/composables/useLibraryFilter.ts`              | 书架检索与多维筛选：双轨自适应（小书库同步 / 万级藏书 Web Worker 卸载）、模糊搜索、标签频率统计、多模式排序、阅读状态单选三态与以图搜图映射                    |
 | `src/utils/libraryFilterCore.ts`                   | 书架多维检索与复合排序核心纯函数（主线程与 Web Worker 共享，弱引用小写缓存与自然拼音排序）                                                                     |
@@ -38,7 +38,7 @@
 | `src/composables/useReaderCompletion.ts`           | 阅读器末页完读感知、接卷推荐算法计算与直达离开路由                                                                                                             |
 | `src/composables/useChapterNavigation.ts`          | 详情/子路由章节导航：锁定章节、章节切片、48 增量渲染、「继续阅读」文案                                                                                         |
 | `src/composables/useChapterPageInfo.ts`            | 章节相对页码换算、跨话首尾探测、全局切话快捷键（[ / ]，含修饰键/弹窗/长按防抖豁免）与切话跳转状态机                                                            |
-| `src/composables/useChapterManagement.ts`          | 章节重命名弹窗、删除章节二次确认、重新装订本话与在本话追加画页的状态机编排                                                                                     |
+| `src/composables/useChapterManagement.ts`          | 章节重命名弹窗、删除章节二次确认与全局页码自愈、重新装订本话与在本话追加画页的状态机编排                                                                       |
 | `src/composables/useComicDetail.ts`                | 漫画详情生命周期、SWR 内存态占位、离线容错降级与后台任务对齐                                                                                                   |
 | `src/composables/useComicDetailActions.ts`         | 漫画详情操作编排：元数据刷新、漫画移除、阅读直达、返回书架与滚动记忆                                                                                           |
 | `src/composables/useChapterCache.ts`               | 漫画全书与分话后台缓存轮询与进度状态编排：任务驱动按需轮询、页码 cached 就地对齐与任务生命周期收敛                                                             |
@@ -65,7 +65,7 @@
 | `src/components/GateView.vue`                      | 全屏 Zero-DOM 门禁大门视图：反 DevTools 篡改哨兵与三态表单编排外壳                                                                                             |
 | `src/components/gate/`                             | 门禁模块化表单群：初始口令表单、首访认领自设 PIN 表单、已认领 PIN 验证表单                                                                                     |
 | `src/components/gate/GatePasswordInput.vue`        | 门禁口令输入分子：自动聚焦、密码显隐切换与回车提交契约单一真理源                                                                                               |
-| `src/components/FileStagingDropZone.vue`           | 画卷文件暂存区：自建漫画/追加/重装订拖拽投放与服务器路径扫描双模暂存                                                                                           |
+| `src/components/FileStagingDropZone.vue`           | 画卷文件暂存区：自建漫画/追加/重装订拖拽投放与服务器路径扫描双模暂存（原生支持图片与 PDF 徽印及文件类型提示）                                                  |
 | `src/components/Modal.vue`                         | 通用顶层模态对话框：基于 HTML5 原生 `<dialog>` Top Layer 与无障碍焦点圈闭，支持声明式关闭指令 (`commandfor`)、焦点记忆自动返还、防穿透微弹反馈与子表单安全防护 |
 | `src/components/SegmentedTabs.vue`                 | 典藏分段选项卡：支持泛型 `TabItem<T>`/字符串、左右/Home/End 键导航与多尺寸                                                                                     |
 | `src/components/AppButton.vue`                     | 通用典藏按钮：支持 primary / secondary / soft / ghost / danger 多种变体                                                                                        |

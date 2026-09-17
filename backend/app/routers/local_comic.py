@@ -2,17 +2,24 @@
 from __future__ import annotations
 
 import asyncio
+import os
+import re
 import time
-from fastapi import APIRouter, File, HTTPException, Query, UploadFile
+import uuid
+from pathlib import Path
+from fastapi import APIRouter, File, Form, HTTPException, Query, UploadFile
 
+from ..config import TMP_DIR
 from ..db import sync_comic_dialogues
 from ..events import broadcast_event
 from ..models import (
     ComicAppendRequest,
     ComicDetail,
     ComicMeta,
+    CreateFromStagedPdfRequest,
     LocalComicCreateRequest,
     LocalPathImportRequest,
+    PdfInspectResponse,
     ReplacePathRequest,
 )
 from .common import _require_known_source, store
@@ -20,6 +27,7 @@ from .common import _require_known_source, store
 router = APIRouter(tags=["local_comic"])
 
 MAX_UPLOAD_PAGE_SIZE = 50 * 1024 * 1024  # 50MB per single page
+MAX_PDF_UPLOAD_SIZE = 1024 * 1024 * 1024  # 1GB per PDF upload
 
 
 async def _read_uploaded_files(files: list[UploadFile]) -> list[tuple[str, bytes]]:
@@ -28,12 +36,15 @@ async def _read_uploaded_files(files: list[UploadFile]) -> list[tuple[str, bytes
     for f in files:
         content = await f.read()
         if content:
-            if len(content) > MAX_UPLOAD_PAGE_SIZE:
+            is_pdf = (f.filename or "").lower().endswith(".pdf")
+            max_size = MAX_PDF_UPLOAD_SIZE if is_pdf else MAX_UPLOAD_PAGE_SIZE
+            if len(content) > max_size:
+                limit_str = "1GB" if is_pdf else "50MB"
                 raise HTTPException(
                     status_code=413,
-                    detail=f"单个图片文件过大（超过 50MB）：{f.filename or 'upload'}",
+                    detail=f"文件过大（超过 {limit_str}）：{f.filename or 'upload'}",
                 )
-            file_tuples.append((f.filename or "page.webp", content))
+            file_tuples.append((f.filename or ("upload.pdf" if is_pdf else "page.webp"), content))
     return file_tuples
 
 
@@ -62,6 +73,54 @@ def create_local_comic(req: LocalComicCreateRequest) -> ComicDetail:
 def import_local_path(req: LocalPathImportRequest) -> ComicDetail:
     """Imports an existing server-side image folder or archive into the local library."""
     meta = store.import_local_path(req)
+    broadcast_event(
+        "library_changed",
+        {"action": "import", "source": "local", "source_id": meta.source_id, "timestamp": time.time()},
+    )
+    return store.detail(meta)
+
+
+@router.post("/api/library/local/inspect-pdf", response_model=PdfInspectResponse)
+async def inspect_pdf(
+    server_path: str = Form(default=""),
+    file: UploadFile | None = File(default=None),
+) -> PdfInspectResponse:
+    """Inspects a PDF from uploaded file or server path, unpacks pages to staging, and detects chapters."""
+    if file and file.filename:
+        raw_name = Path(file.filename).name
+        safe_name = re.sub(r"[^a-zA-Z0-9._-]", "_", raw_name) or "upload.pdf"
+        tmp_pdf = TMP_DIR / f".upload_{uuid.uuid4().hex[:12]}_{safe_name}"
+        total_read = 0
+        try:
+            with open(tmp_pdf, "wb") as f:
+                while chunk := await file.read(1024 * 1024):
+                    total_read += len(chunk)
+                    if total_read > MAX_PDF_UPLOAD_SIZE:
+                        raise HTTPException(status_code=413, detail="PDF 文件体积过大（超过 1GB 上限）。")
+                    f.write(chunk)
+            return await asyncio.to_thread(store.inspect_pdf_file, tmp_pdf)
+        finally:
+            tmp_pdf.unlink(missing_ok=True)
+    elif server_path and server_path.strip():
+        resolved = store._resolve_and_verify_server_path(server_path.strip(), must_be_dir=False)
+        if not resolved.is_file():
+            raise HTTPException(status_code=400, detail=f"指定的路径不是文件：{server_path}")
+        return await asyncio.to_thread(store.inspect_pdf_file, resolved)
+    else:
+        raise HTTPException(status_code=400, detail="请上传 PDF 文件或指定合法的服务器 PDF 路径。")
+
+
+@router.delete("/api/library/local/staged-pdf/{staging_token}")
+def delete_staged_pdf(staging_token: str) -> dict[str, bool]:
+    """Cancels and purges staged PDF temporary assets."""
+    success = store.delete_staged_pdf(staging_token)
+    return {"ok": success}
+
+
+@router.post("/api/library/local/create-from-staged-pdf", response_model=ComicDetail)
+def create_from_staged_pdf(req: CreateFromStagedPdfRequest) -> ComicDetail:
+    """Creates a local comic from staged PDF pages using confirmed chapters."""
+    meta = store.create_from_staged_pdf(req)
     broadcast_event(
         "library_changed",
         {"action": "import", "source": "local", "source_id": meta.source_id, "timestamp": time.time()},

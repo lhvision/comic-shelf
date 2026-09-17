@@ -383,6 +383,44 @@ class MetadataUpdateRequest(BaseModel):
 class LocalChapterInput(BaseModel):
     id: str
     title: str = ""
+    start: int = 1
+    page_count: int = 0
+
+
+class PdfInspectRequest(BaseModel):
+    server_path: str = ""
+
+
+class PdfChapterPreview(BaseModel):
+    id: str
+    index: int
+    title: str
+    start: int
+    page_count: int
+
+
+class PdfInspectResponse(BaseModel):
+    staging_token: str
+    title: str
+    authors: list[str] = Field(default_factory=list)
+    total_pages: int
+    chapters: list[PdfChapterPreview] = Field(default_factory=list)
+    detection_track: str = "fallback"
+
+
+class CreateFromStagedPdfRequest(BaseModel):
+    staging_token: str
+    id: str = ""
+    title: str
+    authors: list[str] = Field(default_factory=list)
+    works: list[str] = Field(default_factory=list)
+    actors: list[str] = Field(default_factory=list)
+    tags: list[str] = Field(default_factory=list)
+    description: str = ""
+    uploader: str = "PDF导入"
+    chapters: list[PdfChapterPreview] = Field(default_factory=list)
+    cover_indices: list[int] = Field(default_factory=list)
+    hidden_from_guest: bool = False
 
 
 class LocalComicCreateRequest(BaseModel):
@@ -410,6 +448,7 @@ class LocalPathImportRequest(BaseModel):
     description: str = ""
     uploader: str = "本地导入"
     cover_indices: list[int] = Field(default_factory=list)
+    chapters: list[LocalChapterInput] = Field(default_factory=list)
     hidden_from_guest: bool = False
 
 

@@ -225,6 +225,40 @@ export interface MetadataUpdatePayload {
 export interface LocalChapterInput {
   id: string
   title: string
+  start?: number
+  page_count?: number
+}
+
+export interface PdfChapterPreview {
+  id: string
+  index: number
+  title: string
+  start: number
+  page_count: number
+}
+
+export interface PdfInspectResponse {
+  staging_token: string
+  title: string
+  authors: string[]
+  total_pages: number
+  chapters: PdfChapterPreview[]
+  detection_track: 'toc' | 'ocr' | 'fallback'
+}
+
+export interface CreateFromStagedPdfPayload {
+  staging_token: string
+  id?: string
+  title: string
+  authors?: string[]
+  works?: string[]
+  actors?: string[]
+  tags?: string[]
+  description?: string
+  uploader?: string
+  chapters: PdfChapterPreview[]
+  cover_indices?: number[]
+  hidden_from_guest?: boolean
 }
 
 export interface LocalComicCreatePayload {
