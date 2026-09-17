@@ -416,6 +416,19 @@ class TestPicacgProvider(unittest.TestCase):
                     token = self.provider._load_cached_token()
                     self.assertEqual(token, "test_jwt_token")
 
+                # Verify null or corrupted timestamp does not raise TypeError/ValueError
+                self.provider.save_secure_session(
+                    tmp_session,
+                    {"token": "test_jwt", "email": "test@example.com", "time": None},
+                )
+                self.assertIsNone(self.provider._load_cached_token())
+
+                self.provider.save_secure_session(
+                    tmp_session,
+                    {"token": "test_jwt", "email": "test@example.com", "time": "invalid_num"},
+                )
+                self.assertIsNone(self.provider._load_cached_token())
+
     @patch("app.providers.picacg.time.sleep")
     def test_apply_pacing(self, mock_sleep: MagicMock) -> None:
         # 0 ms must not trigger sleep

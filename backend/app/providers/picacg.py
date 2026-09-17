@@ -3,7 +3,6 @@ from __future__ import annotations
 import hashlib
 import hmac
 import ipaddress
-import json
 import logging
 import os
 import random
@@ -277,7 +276,11 @@ class PicacgProvider(ComicProvider):
         if configured_email and cached_email != configured_email:
             return None
         # Token valid for 7 days (604800 seconds)
-        if token and time.time() - float(data.get("time", 0)) < 7 * 24 * 3600:
+        try:
+            ts = float(data.get("time") or 0)
+        except (TypeError, ValueError):
+            return None
+        if token and time.time() - ts < 7 * 24 * 3600:
             return str(token)
         return None
 

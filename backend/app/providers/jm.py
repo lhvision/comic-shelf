@@ -4,7 +4,6 @@ import html as html_lib
 import ipaddress
 import json
 import logging
-import os
 import re
 import tempfile
 import time
@@ -50,8 +49,10 @@ def _mask_sensitive(text: object) -> str:
     if text is None:
         return ""
     s = sanitize_proxy_url(str(text))
-    if JM_PASSWORD and JM_PASSWORD in s:
+    if JM_PASSWORD and len(JM_PASSWORD) >= 4 and JM_PASSWORD in s:
         s = s.replace(JM_PASSWORD, "***")
+    elif JM_PASSWORD and len(JM_PASSWORD) < 4 and JM_PASSWORD in s:
+        s = s.replace(f":{JM_PASSWORD}@", ":***@").replace(f"={JM_PASSWORD}", "=***")
     return s
 
 
@@ -65,15 +66,15 @@ def _is_safe_remote_domain(domain: str) -> bool:
         return False
     d = domain.strip().lower()
 
+    # Block URI components, credentials, query, hash, and path traversal tokens anywhere in domain
+    if any(c in d for c in "/?#@%"):
+        return False
+
     # Handle IPv6 brackets or trailing port (e.g. "[::1]:8080" or "127.0.0.1:8080")
     if d.startswith("[") and "]" in d:
         host_part = d[1 : d.index("]")]
     else:
         host_part = d.split(":")[0]
-
-    # Block URI components, credentials, and path traversal tokens
-    if any(c in host_part for c in "/?#@%"):
-        return False
 
     if host_part in {"jm-88.cc", "localhost", "broadcasthost"}:
         return False
@@ -151,6 +152,12 @@ class JMProvider(ComicProvider):
         self._lock = threading.Lock()
         self._domain_cache_file = DATA_DIR / "jm_html_domain.json"
         self._session_cache_file = DATA_DIR / "jm_session.json"
+        try:
+            from jmcomic import JmModuleConfig
+
+            JmModuleConfig.FLAG_ENABLE_JM_LOG = False
+        except ImportError:
+            pass
 
     # ------------------------------------------------------------------
     # proxy & network routing helpers
@@ -187,7 +194,11 @@ class JMProvider(ComicProvider):
         data = self.load_secure_session(self._session_cache_file)
         if not data or data.get("username") != JM_USERNAME:
             return None
-        if time.time() - float(data.get("ts", 0)) < _SESSION_TTL_SECONDS:
+        try:
+            ts = float(data.get("ts") or 0)
+        except (TypeError, ValueError):
+            return None
+        if time.time() - ts < _SESSION_TTL_SECONDS:
             cookies = data.get("cookies")
             if isinstance(cookies, dict) and cookies:
                 return {str(k): str(v) for k, v in cookies.items()}
@@ -216,9 +227,17 @@ class JMProvider(ComicProvider):
                 return cached
 
         with self._lock:
-            if not force_refresh:
-                cached = self._load_session_cache()
-                if cached is not None:
+            cached = self._load_session_cache()
+            if cached is not None:
+                if not force_refresh:
+                    return cached
+                # 若已有其他并发线程在近 15 秒内刚刚完成登录自愈，直接复用避免惊群重登
+                data = self.load_secure_session(self._session_cache_file) or {}
+                try:
+                    ts = float(data.get("ts") or 0)
+                except (TypeError, ValueError):
+                    ts = 0.0
+                if time.time() - ts < 15:
                     return cached
             return self._perform_login(option)
 
@@ -226,8 +245,9 @@ class JMProvider(ComicProvider):
         if not JM_USERNAME or not JM_PASSWORD:
             return None
         try:
-            from jmcomic import JmOption
+            from jmcomic import JmModuleConfig, JmOption
 
+            JmModuleConfig.FLAG_ENABLE_JM_LOG = False
             opt = option or JmOption.default()
             control_proxies = self._get_control_proxies()
             opt.client.postman.meta_data["proxies"] = control_proxies
@@ -299,47 +319,47 @@ class JMProvider(ComicProvider):
             if cached is not None:
                 return cached
 
-            session = curl_requests.Session(impersonate="chrome")
-            proxies = self._get_control_proxies()
-            if proxies:
-                session.proxies = proxies
-
             domain = ""
-            try:
-                resp = session.get(
-                    _JM_REDIRECT_URL,
-                    timeout=15,
-                    allow_redirects=True,
-                    headers={
-                        "User-Agent": (
-                            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                            "AppleWebKit/537.36 (KHTML, like Gecko) "
-                            "Chrome/124.0 Safari/537.36"
-                        )
-                    },
-                )
-                parsed = urlparse(str(resp.url))
-                cand_domain = parsed.hostname or ""
-                if cand_domain and _is_safe_remote_domain(cand_domain):
-                    domain = cand_domain
-            except Exception:
-                domain = ""
+            with curl_requests.Session(impersonate="chrome") as session:
+                proxies = self._get_control_proxies()
+                if proxies:
+                    session.proxies = proxies
 
-            if not domain:
-                for candidate in _FALLBACK_HTML_DOMAINS:
-                    try:
-                        probe = session.get(
-                            f"https://{candidate}/",
-                            timeout=4,
-                            allow_redirects=True,
-                        )
-                        if probe.status_code == 200 and len(probe.content) > 1000:
-                            cand_domain = urlparse(str(probe.url)).hostname or candidate
-                            if cand_domain and _is_safe_remote_domain(cand_domain):
-                                domain = cand_domain
-                                break
-                    except Exception:
-                        continue
+                try:
+                    resp = session.get(
+                        _JM_REDIRECT_URL,
+                        timeout=15,
+                        allow_redirects=True,
+                        headers={
+                            "User-Agent": (
+                                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                                "AppleWebKit/537.36 (KHTML, like Gecko) "
+                                "Chrome/124.0 Safari/537.36"
+                            )
+                        },
+                    )
+                    parsed = urlparse(str(resp.url))
+                    cand_domain = parsed.hostname or ""
+                    if cand_domain and _is_safe_remote_domain(cand_domain):
+                        domain = cand_domain
+                except Exception:
+                    domain = ""
+
+                if not domain:
+                    for candidate in _FALLBACK_HTML_DOMAINS:
+                        try:
+                            probe = session.get(
+                                f"https://{candidate}/",
+                                timeout=4,
+                                allow_redirects=True,
+                            )
+                            if probe.status_code == 200 and len(probe.content) > 1000:
+                                cand_domain = urlparse(str(probe.url)).hostname or candidate
+                                if cand_domain and _is_safe_remote_domain(cand_domain):
+                                    domain = cand_domain
+                                    break
+                        except Exception:
+                            continue
 
             if not domain:
                 raise RuntimeError("无法找到可用的禁漫网页域名，请检查网络连接或配置 JM_PROXY")
@@ -511,8 +531,12 @@ class JMProvider(ComicProvider):
                         self._clear_session_cache()
                         client = self._make_html_client(force_refresh_session=True)
                         photo_resp = client.get(f"/photo/{pid}")
+                    else:
+                        raise ValueError(
+                            f"禁漫话数 {pid} 受权限保护（需登录查看），请在 .env 中配置 JM_USERNAME 与 JM_PASSWORD 后重试"
+                        )
                     if _is_restricted(photo_resp):
-                        raise ValueError(f"禁漫话数 {pid} 需登录后才能查看，当前账号无权访问")
+                        raise ValueError(f"禁漫话数 {pid} 需登录后才能查看，当前账号无权访问或登录会话已失效")
                 photo = JmcomicText.analyse_jm_photo_html(photo_resp.text)
                 photo.from_album = detail
                 photo.data_original_query_params = photo.get_data_original_query_params(
@@ -549,6 +573,31 @@ class JMProvider(ComicProvider):
                 chap_title = ptitle or str(photo.name or f"第 {ordinal} 話")
                 return ep_pages, chap_title
 
+            def _append_episode(ep_pages: list[RemotePage], pid: str, chap_title: str, ordinal: int) -> None:
+                start = len(remote_pages) + 1
+                for p in ep_pages:
+                    p.index = len(remote_pages) + 1
+                    remote_pages.append(p)
+                if multi:
+                    chapters.append(
+                        Chapter(
+                            id=pid,
+                            index=ordinal,
+                            title=chap_title,
+                            page_count=len(ep_pages),
+                            start=start,
+                        )
+                    )
+
+            def _pull_all_episodes() -> None:
+                nonlocal remote_pages, chapters, first_photo
+                remote_pages = []
+                chapters = []
+                first_photo = None
+                for ord_idx, (p_id, p_title) in enumerate(episodes, start=1):
+                    e_pages, c_title = _fetch_episode(p_id, p_title, ord_idx)
+                    _append_episode(e_pages, p_id, c_title, ord_idx)
+
             for ordinal, (pid, ptitle) in enumerate(episodes, start=1):
                 cached_pages = existing_pages_by_chap.get(pid)
                 cached_chap = existing_chapter_map.get(pid)
@@ -557,67 +606,22 @@ class JMProvider(ComicProvider):
                     cached_chap is not None
                     or (existing and not existing.meta.chapters and ordinal == 1)
                 ):
-                    start = len(remote_pages) + 1
-                    for p in cached_pages:
-                        page_copy = RemotePage.model_validate(p.model_dump())
-                        page_copy.index = len(remote_pages) + 1
-                        page_copy.chapter = pid if multi else ""
-                        remote_pages.append(page_copy)
-
-                    if multi:
-                        chap_title = ptitle or (
-                            cached_chap.title if cached_chap else f"第 {ordinal} 話"
-                        )
-                        chapters.append(
-                            Chapter(
-                                id=pid,
-                                index=ordinal,
-                                title=chap_title,
-                                page_count=len(cached_pages),
-                                start=start,
-                            )
-                        )
+                    copied = [RemotePage.model_validate(p.model_dump()) for p in cached_pages]
+                    for p in copied:
+                        p.chapter = pid if multi else ""
+                    chap_title = ptitle or (
+                        cached_chap.title if cached_chap else f"第 {ordinal} 話"
+                    )
+                    _append_episode(copied, pid, chap_title, ordinal)
                 else:
                     ep_pages, chap_title = _fetch_episode(pid, ptitle, ordinal)
-                    start = len(remote_pages) + 1
-                    for p in ep_pages:
-                        p.index = len(remote_pages) + 1
-                        remote_pages.append(p)
-
-                    if multi:
-                        chapters.append(
-                            Chapter(
-                                id=pid,
-                                index=ordinal,
-                                title=chap_title,
-                                page_count=len(ep_pages),
-                                start=start,
-                            )
-                        )
+                    _append_episode(ep_pages, pid, chap_title, ordinal)
 
             # 兜底校验：如果按章节复用后的总页数与 album HTML 解析出的总页数不符
             # （说明作者在既有章节里增删了页码），回退为全量重新拉取以确保页码准确
             expected_total = int(detail.page_count or 0)
             if expected_total > 0 and len(remote_pages) != expected_total and existing is not None:
-                remote_pages = []
-                chapters = []
-                first_photo = None
-                for ordinal, (pid, ptitle) in enumerate(episodes, start=1):
-                    ep_pages, chap_title = _fetch_episode(pid, ptitle, ordinal)
-                    start = len(remote_pages) + 1
-                    for p in ep_pages:
-                        p.index = len(remote_pages) + 1
-                        remote_pages.append(p)
-                    if multi:
-                        chapters.append(
-                            Chapter(
-                                id=pid,
-                                index=ordinal,
-                                title=chap_title,
-                                page_count=len(ep_pages),
-                                start=start,
-                            )
-                        )
+                _pull_all_episodes()
 
             page_count = len(remote_pages) or int(detail.page_count or 0)
             image_domain = (
@@ -674,9 +678,6 @@ class JMProvider(ComicProvider):
 
         return FetchedComic(meta=meta, remote_pages=remote_pages)
 
-    # One session per thread + connection pooling. Creating a brand new session
-    # per page was the biggest cost: each one did a fresh TLS handshake, and any
-    # flaky image made the whole (pre)fetch appear to hang for tens of seconds.
     @staticmethod
     def _is_image_bytes(content: bytes) -> bool:
         """Verify binary magic bytes for JPEG, PNG, WebP, GIF, or AVIF.
@@ -762,7 +763,7 @@ class JMProvider(ComicProvider):
 
         for attempt in range(max_attempts):
             curr_domain = cdn_candidates[attempt % len(cdn_candidates)]
-            target_url = parsed_url._replace(netloc=curr_domain).geturl()
+            target_url = parsed_url._replace(netloc=curr_domain, scheme="https").geturl()
             url = target_url if attempt == 0 else self._cache_bust(target_url, attempt)
 
             try:
@@ -816,7 +817,11 @@ class JMProvider(ComicProvider):
             return raw
 
         url = page.url.split("?", 1)[0]
-        num = JmImageTool.get_num_by_url(page.scramble_id, url)
+        try:
+            num = JmImageTool.get_num_by_url(page.scramble_id, url)
+        except Exception as exc:
+            logger.warning("解析图片分割数异常 (%s, %s): %s，回退为原图", page.scramble_id, url, exc)
+            return raw
         if num == 0:
             return raw
 
@@ -832,8 +837,9 @@ class JMProvider(ComicProvider):
     def fetch_ranking(
         self, timeframe: str = "week", page: int = 1, limit: int = 20
     ) -> list[DiscoveryItem]:
-        from jmcomic import JmOption
+        from jmcomic import JmModuleConfig, JmOption
 
+        JmModuleConfig.FLAG_ENABLE_JM_LOG = False
         option = JmOption.default()
         control_proxies = self._get_control_proxies()
         option.client.postman.meta_data["proxies"] = control_proxies

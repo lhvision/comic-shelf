@@ -64,8 +64,13 @@ class TestJMProvider(unittest.TestCase):
         # SSRF: octal / hex / obfuscated IP representations
         self.assertFalse(_is_safe_remote_domain("0177.0.0.1"))
 
-        # SSRF: URI components, userinfo credentials, path traversal tokens
+        # SSRF: URI components, userinfo credentials, path traversal tokens (including post-colon)
         self.assertFalse(_is_safe_remote_domain("attacker.com@127.0.0.1"))
+        self.assertFalse(_is_safe_remote_domain("trusted.com:80@127.0.0.1"))
+        self.assertFalse(_is_safe_remote_domain("trusted.com:80/evil"))
+        self.assertFalse(_is_safe_remote_domain("trusted.com:80?query"))
+        self.assertFalse(_is_safe_remote_domain("trusted.com:80#hash"))
+        self.assertFalse(_is_safe_remote_domain("trusted.com:80%2f"))
         self.assertFalse(_is_safe_remote_domain("foo.com/bar"))
         self.assertFalse(_is_safe_remote_domain("foo.com?bar"))
         self.assertFalse(_is_safe_remote_domain("foo.com#bar"))
@@ -97,6 +102,13 @@ class TestJMProvider(unittest.TestCase):
             msg2 = "Proxy failed: socks5://:MyProxyPass@1.2.3.4:1080"
             masked2 = _mask_sensitive(msg2)
             self.assertNotIn("MyProxyPass", masked2)
+
+        # Short password (e.g. 2 characters): masks inside credentials, does not replace regular text
+        with patch("app.providers.jm.JM_PASSWORD", "ab"):
+            cred_msg = "Proxy auth failed: http://user:ab@127.0.0.1:8080"
+            self.assertIn(":***@", _mask_sensitive(cred_msg))
+            normal_msg = "about this abstract album"
+            self.assertEqual(_mask_sensitive(normal_msg), "about this abstract album")
 
     def test_proxy_helpers(self) -> None:
         # 1. Sanitize proxy URLs
@@ -187,9 +199,36 @@ class TestJMProvider(unittest.TestCase):
             with patch("app.providers.jm.JM_USERNAME", "bob"):
                 self.assertIsNone(self.provider._load_session_cache())
 
+            # Corrupted / null timestamp in session file must not raise TypeError/ValueError
+            self.provider.save_secure_session(
+                self.provider._session_cache_file,
+                {"cookies": cookies, "username": "alice", "ts": None},
+            )
+            self.assertIsNone(self.provider._load_session_cache())
+
+            self.provider.save_secure_session(
+                self.provider._session_cache_file,
+                {"cookies": cookies, "username": "alice", "ts": "not_a_number"},
+            )
+            self.assertIsNone(self.provider._load_session_cache())
+
             # Clear cache
             self.provider._clear_session_cache()
             self.assertIsNone(self.provider._load_session_cache())
+
+    def test_get_valid_cookies_concurrent_refresh_grace_window(self) -> None:
+        with patch("app.providers.jm.JM_USERNAME", "alice"), patch(
+            "app.providers.jm.JM_PASSWORD", "secret123"
+        ):
+            # Simulate thread 1 just completed login and cached cookies 2 seconds ago
+            cookies = {"AVS": "fresh_token_xyz"}
+            self.provider._save_session_cache(cookies)
+
+            with patch.object(self.provider, "_perform_login") as mock_login:
+                # Thread 2 enters with force_refresh=True, but should reuse recently refreshed cookies
+                res = self.provider._get_valid_cookies(force_refresh=True)
+                self.assertEqual(res, cookies)
+                mock_login.assert_not_called()
 
     def test_fetch_restricted_album_guidance_when_anonymous(self) -> None:
         mock_client = MagicMock()
@@ -201,6 +240,43 @@ class TestJMProvider(unittest.TestCase):
         with patch.object(self.provider, "_make_html_client", return_value=mock_client), patch(
             "app.providers.jm.JM_USERNAME", ""
         ), patch("app.providers.jm.JM_PASSWORD", ""):
+            with self.assertRaises(ValueError) as ctx:
+                self.provider.fetch("523607")
+            self.assertIn("受权限保护（需登录查看）", str(ctx.exception))
+            self.assertIn("JM_USERNAME", str(ctx.exception))
+
+    def test_fetch_restricted_episode_guidance_when_anonymous(self) -> None:
+        mock_client = MagicMock()
+        mock_album_resp = MagicMock()
+        mock_album_resp.url = "https://18comic.vip/album/523607"
+        mock_album_resp.text = "<html>Valid Album HTML</html>"
+
+        mock_photo_resp = MagicMock()
+        mock_photo_resp.url = "https://18comic.vip/login"
+        mock_photo_resp.text = "<html>需登入後才能觀看</html>"
+
+        mock_client.get.side_effect = [mock_album_resp, mock_photo_resp]
+
+        mock_detail = MagicMock()
+        mock_detail.name = "单话受限本子"
+        mock_detail.authors = ["测试作者"]
+        mock_detail.works = []
+        mock_detail.actors = []
+        mock_detail.tags = []
+        mock_detail.description = ""
+        mock_detail.episode_list = [("523607", "1", "第 1 話")]
+        mock_detail.page_count = 1
+        mock_detail.pub_date = ""
+        mock_detail.update_date = ""
+        mock_detail.views = ""
+        mock_detail.likes = ""
+        mock_detail.comment_count = 0
+
+        with patch.object(self.provider, "_make_html_client", return_value=mock_client), patch(
+            "app.providers.jm.JM_USERNAME", ""
+        ), patch("app.providers.jm.JM_PASSWORD", ""), patch(
+            "jmcomic.JmcomicText.analyse_jm_album_html", return_value=mock_detail
+        ):
             with self.assertRaises(ValueError) as ctx:
                 self.provider.fetch("523607")
             self.assertIn("受权限保护（需登录查看）", str(ctx.exception))

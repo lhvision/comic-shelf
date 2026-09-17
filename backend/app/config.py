@@ -102,7 +102,3 @@ JM_USERNAME = os.getenv("JM_USERNAME", os.getenv("COMIC_SHELF_JM_USERNAME", ""))
 JM_PASSWORD = os.getenv("JM_PASSWORD", os.getenv("COMIC_SHELF_JM_PASSWORD", "")).strip()
 JM_PROXY = os.getenv("JM_PROXY", os.getenv("COMIC_SHELF_JM_PROXY", "")).strip()
 JM_IMAGE_PROXY_MODE = os.getenv("JM_IMAGE_PROXY_MODE", os.getenv("COMIC_SHELF_JM_IMAGE_PROXY_MODE", "auto")).strip().lower()
-
-
-
-
