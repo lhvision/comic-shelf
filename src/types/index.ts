@@ -91,6 +91,7 @@ export interface LibraryQueryParams {
   q?: string
   search?: string
   tag?: string
+  tags?: string
   sort?: string
 }
 

@@ -241,4 +241,57 @@ describe('TagFilterBar', () => {
     // Popover remains open so user can pick another tag
     expect(wrapper.emitted('update:trayExpanded')).toBeUndefined()
   })
+
+  it('supports multiple activeTags and toggles individual tags on/off', async () => {
+    const wrapper = mount(TagFilterBar, {
+      props: {
+        favoritesOnly: false,
+        activeTags: ['tag1'],
+        tagCounts,
+        filteredCount: 5,
+      },
+    })
+
+    const directButtons = wrapper.findAll('.filter-cluster > .chip-button')
+    // Buttons: favorite (0), all (1), tag1 (2), tag2 (3) ...
+    // Check "全部" is not pressed when activeTags is non-empty
+    expect(directButtons[1]?.attributes('aria-pressed')).toBe('false')
+    // tag1 is pressed
+    expect(directButtons[2]?.attributes('aria-pressed')).toBe('true')
+    // tag2 is not pressed
+    expect(directButtons[3]?.attributes('aria-pressed')).toBe('false')
+
+    // Click unselected tag2 -> emits update:activeTags with ['tag1', 'tag2']
+    await directButtons[3]?.trigger('click')
+    expect(wrapper.emitted('update:activeTags')?.[0]).toEqual([['tag1', 'tag2']])
+
+    // Click selected tag1 -> emits update:activeTags with []
+    await directButtons[2]?.trigger('click')
+    expect(wrapper.emitted('update:activeTags')?.[1]).toEqual([[]])
+
+    // Click "全部" -> clears all activeTags
+    await directButtons[1]?.trigger('click')
+    expect(wrapper.emitted('update:activeTags')?.[2]).toEqual([[]])
+    expect(wrapper.emitted('clearTag')).toBeTruthy()
+  })
+
+  it('displays composite tag label in more button when multiple overflow tags are selected', () => {
+    const wrapper = mount(TagFilterBar, {
+      props: {
+        favoritesOnly: false,
+        activeTags: ['tag9', 'tag10'],
+        tagCounts,
+        filteredCount: 1,
+      },
+    })
+
+    const moreBtn = wrapper.find('.more-tags')
+    expect(moreBtn.classes()).toContain('is-active-filter')
+    expect(moreBtn.attributes('aria-pressed')).toBe('true')
+    expect(moreBtn.text()).toContain('更多 · 2 (已选 2)')
+
+    // Check filter note at bottom shows joined tags
+    const filterNote = wrapper.find('.filter-note')
+    expect(filterNote.text()).toContain('正在查看标签「tag9 · tag10」的 1 本')
+  })
 })

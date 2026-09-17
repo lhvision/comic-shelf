@@ -74,7 +74,8 @@ export function getSearchText(item: LibrarySummary): string {
 export interface FilterParams {
   activeSource: string
   search: string
-  activeTag: string
+  activeTag?: string
+  activeTags?: string[]
   favoritesOnly: boolean
   readingStatus: ReadingStatus
   sortBy: SortKey
@@ -87,7 +88,13 @@ export function filterAndSortLibrary(
 ): LibrarySummary[] {
   const needle = params.search.trim().toLocaleLowerCase()
   const activeSource = params.activeSource
-  const activeTag = params.activeTag
+  const rawTags =
+    params.activeTags && params.activeTags.length > 0
+      ? params.activeTags
+      : params.activeTag && params.activeTag.trim()
+        ? [params.activeTag.trim()]
+        : []
+  const activeTags = rawTags.map((t) => t.trim()).filter(Boolean)
   const favoritesOnly = params.favoritesOnly
   const readingStatus = params.readingStatus
   const sortBy = params.sortBy
@@ -101,7 +108,7 @@ export function filterAndSortLibrary(
   list = list.filter((item) => {
     if (!item) return false
     const matchSearch = needle.length === 0 || getSearchText(item).includes(needle)
-    const matchTag = activeTag === '' || item.tags.includes(activeTag)
+    const matchTag = activeTags.every((t) => Array.isArray(item.tags) && item.tags.includes(t))
     const matchFavorite = !favoritesOnly || item.favorite
     const matchStatus =
       readingStatus === 'all'

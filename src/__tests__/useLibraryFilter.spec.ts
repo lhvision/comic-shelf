@@ -113,6 +113,43 @@ describe('useLibraryFilter', () => {
     expect(filtered.value[0]?.source_id).toBe('1')
   })
 
+  it('filters by multiple tags using AND intersection logic', () => {
+    const multiTagItems: LibrarySummary[] = [
+      {
+        ...items[0]!,
+        source_id: 'm1',
+        tags: ['纯爱', '全彩'],
+      },
+      {
+        ...items[1]!,
+        source_id: 'm2',
+        tags: ['纯爱'],
+      },
+      {
+        ...items[2]!,
+        source_id: 'm3',
+        tags: ['同人', '全彩'],
+      },
+    ]
+
+    const itemsRef = ref(multiTagItems)
+    const activeSourceRef = ref('')
+    const { filtered, activeTags } = useLibraryFilter(itemsRef, activeSourceRef)
+
+    // Select single tag '纯爱' -> m1, m2
+    activeTags.value = ['纯爱']
+    expect(filtered.value.length).toBe(2)
+
+    // Select multiple tags '纯爱' + '全彩' -> only m1 (AND intersection)
+    activeTags.value = ['纯爱', '全彩']
+    expect(filtered.value.length).toBe(1)
+    expect(filtered.value[0]?.source_id).toBe('m1')
+
+    // Select non-intersecting tags -> 0 matches
+    activeTags.value = ['纯爱', '短篇']
+    expect(filtered.value.length).toBe(0)
+  })
+
   it('deprioritizes completed comics in default recent sort', () => {
     const list: LibrarySummary[] = [
       {

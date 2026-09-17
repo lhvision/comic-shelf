@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vite-plus/test'
-import { ref, reactive, nextTick } from 'vue'
+import { ref, nextTick } from 'vue'
 import { setActivePinia, createPinia } from 'pinia'
 import { useLibrarySync } from '@/composables/useLibrarySync'
 import { useLibraryStore } from '@/stores/library'
@@ -12,61 +12,22 @@ describe('useLibrarySync composable', () => {
     vi.useFakeTimers()
   })
 
-  it('restores status and favorite from route query on initialization', () => {
-    const route = {
-      query: { status: 'reading', favorite: 'true', source: 'jm' },
-    } as unknown as Parameters<typeof useLibrarySync>[0]['route']
-
-    const router = {
-      replace: vi.fn<() => Promise<void>>().mockResolvedValue(undefined),
-    } as unknown as Parameters<typeof useLibrarySync>[0]['router']
-
-    const activeSource = ref('jm')
-    const search = ref('')
-    const activeTag = ref('')
-    const favoritesOnly = ref(false)
-    const readingStatus = ref<ReadingStatus>('all')
-    const sortBy = ref<SortKey>('recent')
-
-    useLibrarySync({
-      route,
-      router,
-      activeSource,
-      search,
-      activeTag,
-      favoritesOnly,
-      readingStatus,
-      sortBy,
-    })
-
-    expect(readingStatus.value).toBe('reading')
-    expect(favoritesOnly.value).toBe(true)
-  })
-
-  it('synchronizes query parameters and triggers debounced fetch when filters mutate', async () => {
+  it('triggers debounced fetch when filters mutate without manipulating router or query', async () => {
     const store = useLibraryStore()
     const loadItemsSpy = vi.spyOn(store, 'loadItems').mockResolvedValue()
     const loadFacetsSpy = vi.spyOn(store, 'loadFacets').mockResolvedValue()
 
-    const route = { query: {} } as unknown as Parameters<typeof useLibrarySync>[0]['route']
-    const replaceMock = vi.fn<(to: unknown) => Promise<void>>().mockResolvedValue(undefined)
-    const router = { replace: replaceMock } as unknown as Parameters<
-      typeof useLibrarySync
-    >[0]['router']
-
     const activeSource = ref('')
     const search = ref('')
-    const activeTag = ref('')
+    const activeTags = ref<string[]>([])
     const favoritesOnly = ref(false)
     const readingStatus = ref<ReadingStatus>('all')
     const sortBy = ref<SortKey>('recent')
 
     useLibrarySync({
-      route,
-      router,
       activeSource,
       search,
-      activeTag,
+      activeTags,
       favoritesOnly,
       readingStatus,
       sortBy,
@@ -77,15 +38,9 @@ describe('useLibrarySync composable', () => {
     readingStatus.value = 'reading'
     favoritesOnly.value = true
     activeSource.value = 'jm'
+    activeTags.value = ['同人', '全彩']
 
     await Promise.resolve()
-    expect(replaceMock).toHaveBeenCalledWith({
-      query: {
-        source: 'jm',
-        favorite: 'true',
-        status: 'reading',
-      },
-    })
 
     // Advance debounce timer
     vi.advanceTimersByTime(150)
@@ -94,7 +49,7 @@ describe('useLibrarySync composable', () => {
     expect(loadItemsSpy).toHaveBeenCalledWith(false, false, {
       source: 'jm',
       search: undefined,
-      tag: undefined,
+      tags: '同人,全彩',
       favorite: true,
       status: 'reading',
       sort: 'recent',
@@ -108,25 +63,19 @@ describe('useLibrarySync composable', () => {
   it('queries exact matched comics when imageSearchResults are present', async () => {
     const store = useLibraryStore()
     const loadItemsSpy = vi.spyOn(store, 'loadItems').mockResolvedValue()
-    const route = { query: {} } as unknown as Parameters<typeof useLibrarySync>[0]['route']
-    const router = {
-      replace: vi.fn<(to: unknown) => Promise<void>>().mockResolvedValue(undefined),
-    } as unknown as Parameters<typeof useLibrarySync>[0]['router']
 
     const activeSource = ref('')
     const search = ref('')
-    const activeTag = ref('')
+    const activeTags = ref<string[]>([])
     const favoritesOnly = ref(false)
     const readingStatus = ref<ReadingStatus>('all')
     const sortBy = ref<SortKey>('recent')
     const imageSearchResults = ref<ImageSearchResultItem[] | null>(null)
 
     useLibrarySync({
-      route,
-      router,
       activeSource,
       search,
-      activeTag,
+      activeTags,
       favoritesOnly,
       readingStatus,
       sortBy,
@@ -147,7 +96,7 @@ describe('useLibrarySync composable', () => {
     expect(loadItemsSpy).toHaveBeenCalledWith(false, false, {
       source: undefined,
       search: undefined,
-      tag: undefined,
+      tags: undefined,
       favorite: undefined,
       status: 'all',
       sort: 'recent',
@@ -183,17 +132,10 @@ describe('useLibrarySync composable', () => {
       cover_count: 0,
     }))
 
-    const route = { query: {} } as unknown as Parameters<typeof useLibrarySync>[0]['route']
-    const router = {
-      replace: vi.fn<(to: unknown) => Promise<void>>().mockResolvedValue(undefined),
-    } as unknown as Parameters<typeof useLibrarySync>[0]['router']
-
     const { fetchLibrary } = useLibrarySync({
-      route,
-      router,
       activeSource: ref(''),
       search: ref(''),
-      activeTag: ref(''),
+      activeTags: ref<string[]>([]),
       favoritesOnly: ref(false),
       readingStatus: ref<ReadingStatus>('all'),
       sortBy: ref<SortKey>('recent'),
@@ -208,7 +150,7 @@ describe('useLibrarySync composable', () => {
     expect(loadItemsSpy).toHaveBeenCalledWith(false, false, {
       source: undefined,
       search: undefined,
-      tag: undefined,
+      tags: undefined,
       favorite: undefined,
       status: 'all',
       sort: 'recent',
@@ -218,34 +160,23 @@ describe('useLibrarySync composable', () => {
     })
   })
 
-  it('syncs readingStatus and favoritesOnly when route.query changes (back/forward navigation)', async () => {
-    const route = reactive({
-      query: {} as Record<string, string>,
-    }) as unknown as Parameters<typeof useLibrarySync>[0]['route']
-    const router = {
-      replace: vi.fn<() => Promise<void>>().mockResolvedValue(undefined),
-    } as unknown as Parameters<typeof useLibrarySync>[0]['router']
-
-    const readingStatus = ref<ReadingStatus>('all')
-    const favoritesOnly = ref(false)
+  it('preserves shelf state in memory without invoking router or writing to url query', async () => {
+    const activeTags = ref<string[]>([])
 
     useLibrarySync({
-      route,
-      router,
       activeSource: ref(''),
       search: ref(''),
-      activeTag: ref(''),
-      favoritesOnly,
-      readingStatus,
+      activeTags,
+      favoritesOnly: ref(false),
+      readingStatus: ref<ReadingStatus>('all'),
       sortBy: ref<SortKey>('recent'),
       debounceMs: 10,
     })
 
-    // Simulate browser history navigation (back/forward) updating route.query
-    route.query = { status: 'reading', favorite: 'true' }
-    await nextTick()
+    activeTags.value = ['同人', '全彩']
+    await Promise.resolve()
 
-    expect(readingStatus.value).toBe('reading')
-    expect(favoritesOnly.value).toBe(true)
+    // activeTags updates in memory without any side effects on location or router
+    expect(activeTags.value).toEqual(['同人', '全彩'])
   })
 })

@@ -16,7 +16,7 @@
 | `src/composables/useUploadQueue.ts`                | 受限并发批量上传队列控制器（3 路 Worker 并发、细粒度进度与取消支持）                                                                                           |
 | `src/composables/useFileStaging.ts`                | 多图与画页/PDF 暂存：自然文件名数字排序、格式过滤（支持 allowPdf）、`useFileDialog` + `useDropZone` 聚合                                                       |
 | `src/composables/useLocalWorkshop.ts`              | 自建漫画工坊状态机：服务器本地路径扫描、白名单过滤、单话/多章节模式切换、PDF 双轨分话预览与隔离工作区管理                                                      |
-| `src/composables/useLibrarySync.ts`                | 书架筛选与流式分页协同：URL Query 双向同步、防抖拉取服务端分页、全貌统计联动与 SSE 跨端变动感知                                                                |
+| `src/composables/useLibrarySync.ts`                | 书架筛选与流式分页协同：内存单例驱动、250ms 防抖拉取服务端分页、全貌统计联动与 SSE 跨端变动感知（0 路由写入，彻底释放顶栏导航原生调度）                        |
 | `src/composables/useLibraryFilter.ts`              | 书架检索与多维筛选：双轨自适应（小书库同步 / 万级藏书 Web Worker 卸载）、模糊搜索、标签频率统计、多模式排序、阅读状态单选三态与以图搜图映射                    |
 | `src/utils/libraryFilterCore.ts`                   | 书架多维检索与复合排序核心纯函数（主线程与 Web Worker 共享，弱引用小写缓存与自然拼音排序）                                                                     |
 | `src/workers/libraryFilter.worker.ts`              | 书架海量检索专用 Web Worker 线程（常驻内存快照、接收微量查询参数、向主线程回传轻量 ID 数组）                                                                   |
@@ -336,6 +336,7 @@
 - **`useMemoize` 失败自清理与类型签名规范**：
   - 所有使用 `@vueuse/core` 的 `useMemoize` 缓存的异步函数，必须在 catch 中调用 `.delete(key)`，防止因 Abort 或临时网络抖动导致 rejected promise 常驻缓存污染后续访问；
   - 在 `api` 导出对象上必须通过包装函数声明包含 `options?: RequestOptions` 的显式类型签名，杜绝 IDE 参数长度推导偏差。
+- **声明式参数过滤与纯函数单源**：严禁在业务 RPC 方法中书写散落的 `new URLSearchParams()` 与冗余 `if (...) set(...)`，或通过模板字符串手工拼接 URL Query；必须统一通过强类型纯函数 `buildQueryString(params?: QueryParams)` 声明式过滤 `undefined` / `null` / `''`，由 `options.params` 统一传递 Plain Object 键值对。
 
 ## 12. 来源导航单一真理源与收录工作台解耦架构（Source SSOT Decoupling）
 

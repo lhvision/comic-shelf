@@ -16,10 +16,35 @@ describe('useShelfState', () => {
     expect(state.unifiedUnfoldCount.value).toBe(DEFAULT_SHELF_BATCH)
     expect(state.search.value).toBe('')
     expect(state.activeTag.value).toBe('')
+    expect(state.activeTags.value).toEqual([])
     expect(state.favoritesOnly.value).toBe(false)
     expect(state.readingStatus.value).toBe('all')
     expect(state.sortBy.value).toBe('recent')
     expect(state.tagTrayExpanded.value).toBe(false)
+  })
+
+  it('supports activeTags and provides bidirectional bridge with activeTag', () => {
+    const state = useShelfState()
+    expect(state.activeTags.value).toEqual([])
+    expect(state.activeTag.value).toBe('')
+
+    // Set via activeTags
+    state.activeTags.value = ['同人', '全彩']
+    expect(state.activeTag.value).toBe('同人')
+
+    // Set via activeTag
+    state.activeTag.value = '汉化'
+    expect(state.activeTags.value).toEqual(['汉化'])
+
+    // Clear via activeTag
+    state.activeTag.value = ''
+    expect(state.activeTags.value).toEqual([])
+
+    // Clear via resetAllShelfState
+    state.activeTags.value = ['tagA', 'tagB']
+    state.resetAllShelfState()
+    expect(state.activeTags.value).toEqual([])
+    expect(state.activeTag.value).toBe('')
   })
 
   it('saves and resets scroll position', () => {

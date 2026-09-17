@@ -1,17 +1,15 @@
 /**
  * @file useLibrarySync.ts
- * @description 书架多维筛选、URL 查询参数双向联动与服务端流式分页协同 Composable。
+ * @description 书架多维筛选状态与服务端流式分页协同 Composable。
  *
  * 核心契约：
- * 1. 监听 activeSource, search, activeTag, favoritesOnly, readingStatus, sortBy, imageSearchResults 变化；
- * 2. 状态正交同步至 URL Query（?status=all|reading|completed & ?favorite=true & ?source=）；
+ * 1. 监听 activeSource, search, activeTags, favoritesOnly, readingStatus, sortBy, imageSearchResults 变化；
+ * 2. 内存单例驱动，零路由污染，杜绝滥用路由 replace 导致顶栏导航被中断取消；
  * 3. 250ms 防抖请求 /api/library 服务端分页并联动刷新 /api/library/facets 全貌统计；
- * 4. 路由初次挂载时支持从 URL 反向还原 readingStatus 与 favoritesOnly；
- * 5. 监听跨标签/跨设备 SSE 事件（import, delete, reconcile）自动同步。
+ * 4. 监听跨标签/跨设备 SSE 事件（import, delete, reconcile, metadata_changed）自动同步。
  */
 
 import { watch, type Ref } from 'vue'
-import type { Router, RouteLocationNormalizedLoaded } from 'vue-router'
 import { useDebounceFn } from '@vueuse/core'
 import { useLibraryStore } from '@/stores/library'
 import { useSystemEvents } from '@/composables/useSystemEvents'
@@ -19,16 +17,12 @@ import type { ReadingStatus, ImageSearchResultItem } from '@/types'
 import type { SortKey } from '@/composables/useLibraryFilter'
 
 export interface UseLibrarySyncOptions {
-  /** 当前路由对象 */
-  route: RouteLocationNormalizedLoaded
-  /** 路由器实例 */
-  router: Router
   /** 外部激活的数据源 Ref */
   activeSource: Ref<string>
   /** 外部搜索关键词 Ref */
   search: Ref<string>
-  /** 外部选中标签 Ref */
-  activeTag: Ref<string>
+  /** 外部选中多标签集合 Ref */
+  activeTags: Ref<string[]>
   /** 外部只看喜欢 Ref */
   favoritesOnly: Ref<boolean>
   /** 外部阅读状态单选 Ref */
@@ -52,11 +46,9 @@ export function useLibrarySync(options: UseLibrarySyncOptions): UseLibrarySyncRe
   const store = useLibraryStore()
   const { lastLibraryEvent } = useSystemEvents()
   const {
-    route,
-    router,
     activeSource,
     search,
-    activeTag,
+    activeTags,
     favoritesOnly,
     readingStatus,
     sortBy,
@@ -64,14 +56,6 @@ export function useLibrarySync(options: UseLibrarySyncOptions): UseLibrarySyncRe
     pageSize = 24,
     debounceMs = 250,
   } = options
-
-  // 从 URL 初始参数恢复阅读状态与喜欢筛选
-  if (route.query.status === 'reading' || route.query.status === 'completed') {
-    readingStatus.value = route.query.status
-  }
-  if (route.query.favorite === 'true') {
-    favoritesOnly.value = true
-  }
 
   const fetchLibrary = useDebounceFn(async (reset = true, keepLoadedCount = false) => {
     const hasImageSearch = Boolean(imageSearchResults?.value && imageSearchResults.value.length > 0)
@@ -85,10 +69,11 @@ export function useLibrarySync(options: UseLibrarySyncOptions): UseLibrarySyncRe
         ? Math.min(120, store.items.length)
         : pageSize
 
+    const tagsParam = activeTags.value.join(',')
     await store.loadItems(false, false, {
       source: activeSource.value || undefined,
       search: hasImageSearch ? undefined : search.value.trim() || undefined,
-      tag: activeTag.value || undefined,
+      tags: tagsParam || undefined,
       favorite: favoritesOnly.value ? true : undefined,
       status: readingStatus.value,
       sort: sortBy.value,
@@ -100,38 +85,11 @@ export function useLibrarySync(options: UseLibrarySyncOptions): UseLibrarySyncRe
   }, debounceMs)
 
   watch(
-    [activeSource, search, activeTag, favoritesOnly, readingStatus, sortBy],
-    ([source, , , fav, status]) => {
-      const nextQuery: Record<string, string> = {}
-      if (source) nextQuery.source = source
-      if (fav) nextQuery.favorite = 'true'
-      if (status && status !== 'all') nextQuery.status = status
-      router.replace({ query: nextQuery }).catch(() => {})
+    [activeSource, search, activeTags, favoritesOnly, readingStatus, sortBy],
+    () => {
       void fetchLibrary(true)
     },
-  )
-
-  // 监听浏览器前进/后退（PopState）导航，反向对齐 URL 状态与内部筛选 Ref
-  watch(
-    () => route.query,
-    (query) => {
-      const qStatus: ReadingStatus =
-        query.status === 'reading' || query.status === 'completed' ? query.status : 'all'
-      const qFav = query.favorite === 'true'
-
-      let changed = false
-      if (readingStatus.value !== qStatus) {
-        readingStatus.value = qStatus
-        changed = true
-      }
-      if (favoritesOnly.value !== qFav) {
-        favoritesOnly.value = qFav
-        changed = true
-      }
-      if (changed) {
-        void fetchLibrary(true)
-      }
-    },
+    { deep: true },
   )
 
   if (imageSearchResults) {

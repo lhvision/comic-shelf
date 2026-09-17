@@ -527,6 +527,19 @@ def test_comics_index_and_pagination():
     assert total_tag == 1
     assert items_tag[0]["source_id"] == "c1"
 
+    # Multi-tag compound filter (AND intersection: c1 has 同人 + 全彩, c2 has only 同人)
+    items_multi, total_multi = db_mod.query_library_index("u1", is_curator=True, tags="同人,全彩")
+    assert total_multi == 1
+    assert items_multi[0]["source_id"] == "c1"
+
+    items_multi_list, total_multi_list = db_mod.query_library_index("u1", is_curator=True, tags=["同人", "全彩"])
+    assert total_multi_list == 1
+    assert items_multi_list[0]["source_id"] == "c1"
+
+    # No comic has both 同人 and 短篇
+    items_multi_miss, total_multi_miss = db_mod.query_library_index("u1", is_curator=True, tags=["同人", "短篇"])
+    assert total_multi_miss == 0
+
     # Keyword search
     items_search, total_search = db_mod.query_library_index("u1", is_curator=True, q="Beta")
     assert total_search == 1

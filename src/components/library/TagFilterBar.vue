@@ -37,7 +37,10 @@ const trayExpanded = defineModel<boolean>('trayExpanded', { default: false })
 export interface TagFilterBarProps {
   favoritesOnly: boolean
   readingStatus?: ReadingStatus
-  activeTag: string
+  /** 当前激活的多标签集合（推荐） */
+  activeTags?: string[]
+  /** 向后兼容单标签 */
+  activeTag?: string
   /** [标签, 数量] 有序列表，按出现次数降序 */
   tagCounts: Array<[string, number]>
   /** 当前筛选命中的数量（用于提示文案） */
@@ -46,11 +49,14 @@ export interface TagFilterBarProps {
 
 const props = withDefaults(defineProps<TagFilterBarProps>(), {
   readingStatus: 'all',
+  activeTags: undefined,
+  activeTag: '',
 })
 
 const emit = defineEmits<{
   toggleFavorites: []
   'update:readingStatus': [status: ReadingStatus]
+  'update:activeTags': [tags: string[]]
   selectTag: [tag: string]
   clearTag: []
 }>()
@@ -65,29 +71,47 @@ function onReadingStatusChange(status: ReadingStatus) {
   emit('update:readingStatus', status)
 }
 
+/** 规范化当前激活标签列表 */
+const effectiveActiveTags = computed<string[]>(() => {
+  if (Array.isArray(props.activeTags)) {
+    return props.activeTags.filter(Boolean)
+  }
+  if (props.activeTag && props.activeTag.trim()) {
+    return [props.activeTag.trim()]
+  }
+  return []
+})
+
 /** 默认展示的高频标签数（连「全部」一起 ≤9 个 chip） */
 const VISIBLE_TAGS = 8
 
 const moreCount = computed(() => Math.max(0, props.tagCounts.length - VISIBLE_TAGS))
 const primaryTags = computed(() => props.tagCounts.slice(0, VISIBLE_TAGS))
 const overflowTags = computed(() => props.tagCounts.slice(VISIBLE_TAGS))
+const overflowTagNames = computed(() => new Set(overflowTags.value.map(([t]) => t)))
 
-/** 当前激活标签是否位于溢出标签列表中 */
-const isOverflowActive = computed(() =>
-  Boolean(props.activeTag && overflowTags.value.some(([t]) => t === props.activeTag)),
+/** 当前激活标签中属于次级溢出标签的集合 */
+const activeOverflowTags = computed(() =>
+  effectiveActiveTags.value.filter((t) => overflowTagNames.value.has(t)),
 )
 
-/** 当前激活标签对应的数量统计 */
-const activeTagCount = computed(() => {
-  if (!props.activeTag) return undefined
-  const match = props.tagCounts.find(([t]) => t === props.activeTag)
+/** 是否有次级溢出标签被激活 */
+const isOverflowActive = computed(() => activeOverflowTags.value.length > 0)
+
+function getTagCount(tag: string): number | undefined {
+  const match = props.tagCounts.find(([t]) => t === tag)
   return match ? match[1] : undefined
-})
+}
 
 /** 「更多标签」按钮文案动态计算 */
 const moreButtonLabel = computed(() => {
   if (trayExpanded.value) return '收起标签'
-  if (isOverflowActive.value) return `标签：${props.activeTag}`
+  if (activeOverflowTags.value.length === 1) {
+    return `标签：${activeOverflowTags.value[0]}`
+  }
+  if (activeOverflowTags.value.length > 1) {
+    return `更多 · ${moreCount.value} (已选 ${activeOverflowTags.value.length})`
+  }
   return `更多 · ${moreCount.value}`
 })
 
@@ -104,11 +128,33 @@ function focusTrigger() {
   })
 }
 
+function isTagActive(tag: string): boolean {
+  return effectiveActiveTags.value.includes(tag)
+}
+
 function selectTag(tag: string) {
-  emit('selectTag', tag === props.activeTag ? '' : tag)
+  let nextTags: string[]
+  const wasActive = isTagActive(tag)
+  if (wasActive) {
+    nextTags = effectiveActiveTags.value.filter((t) => t !== tag)
+  } else {
+    nextTags = [...effectiveActiveTags.value, tag]
+  }
+  emit('update:activeTags', nextTags)
+  emit('selectTag', wasActive ? '' : tag)
+}
+
+function removeTag(tag: string) {
+  const nextTags = effectiveActiveTags.value.filter((t) => t !== tag)
+  emit('update:activeTags', nextTags)
+  emit('selectTag', tag)
+  if (nextTags.length === 0) {
+    emit('clearTag')
+  }
 }
 
 function clearFilter() {
+  emit('update:activeTags', [])
   emit('selectTag', '')
   emit('clearTag')
 }
@@ -138,11 +184,11 @@ function clearFilter() {
       <span v-if="tagCounts.length" class="filter-divider" aria-hidden="true" />
 
       <template v-if="tagCounts.length">
-        <AppChip :pressed="activeTag === ''" @click="clearFilter"> 全部 </AppChip>
+        <AppChip :pressed="effectiveActiveTags.length === 0" @click="clearFilter"> 全部 </AppChip>
         <AppChip
           v-for="[tag, count] in primaryTags"
           :key="tag"
-          :pressed="activeTag === tag"
+          :pressed="isTagActive(tag)"
           :count="count"
           @click="selectTag(tag)"
         >
@@ -201,26 +247,30 @@ function clearFilter() {
                 </button>
               </div>
 
-              <!-- 置顶当前已激活的次级标签 -->
+              <!-- 置顶当前已激活的次级标签集合 -->
               <div v-if="isOverflowActive" class="overflow-active-row">
                 <span class="overflow-active-label">当前在看：</span>
-                <AppChip
-                  pressed
-                  removable
-                  remove-aria-label="清除当前次级标签筛选"
-                  :count="activeTagCount"
-                  @remove="clearFilter"
-                  @click="clearFilter"
-                >
-                  {{ activeTag }}
-                </AppChip>
+                <div class="cluster overflow-active-chips">
+                  <AppChip
+                    v-for="tag in activeOverflowTags"
+                    :key="tag"
+                    pressed
+                    removable
+                    remove-aria-label="清除该次级标签筛选"
+                    :count="getTagCount(tag)"
+                    @remove="removeTag(tag)"
+                    @click="removeTag(tag)"
+                  >
+                    {{ tag }}
+                  </AppChip>
+                </div>
               </div>
 
               <div class="overflow-cluster cluster">
                 <AppChip
                   v-for="[tag, count] in overflowTags"
                   :key="tag"
-                  :pressed="activeTag === tag"
+                  :pressed="isTagActive(tag)"
                   :count="count"
                   @click="selectTag(tag)"
                 >
@@ -233,8 +283,8 @@ function clearFilter() {
       </template>
     </div>
 
-    <p v-if="activeTag" class="filter-note">
-      正在查看标签「{{ activeTag }}」的 {{ filteredCount }} 本
+    <p v-if="effectiveActiveTags.length" class="filter-note">
+      正在查看标签「{{ effectiveActiveTags.join(' · ') }}」的 {{ filteredCount }} 本
       <button class="clear-btn" type="button" @click="clearFilter">清除筛选</button>
     </p>
   </div>

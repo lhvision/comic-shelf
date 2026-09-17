@@ -881,6 +881,7 @@ def query_library_index(
     source: str | None = None,
     q: str | None = None,
     tag: str | None = None,
+    tags: list[str] | str | None = None,
     sort: str = "recent",
     ids: str | None = None,
     offset: int | None = None,
@@ -897,6 +898,7 @@ def query_library_index(
         source: Optional provider filter (e.g., 'jm', 'local', 'picacg').
         q: Optional search query matched against title, authors, works, actors, and tags.
         tag: Optional exact tag filter evaluated via json_each(tags_json).
+        tags: Optional comma-separated or list of tags for multi-tag compound AND filtering.
         sort: Sort mode ('recent', 'uploaded', 'views', 'likes', 'pages', 'alpha').
         ids: Optional comma-separated list of "source/source_id" keys to filter to.
         offset: Explicit SQL offset override, bypassing page * page_size calculation.
@@ -924,9 +926,27 @@ def query_library_index(
     elif status == "unread":
         conditions.append("COALESCE(urp.last_page, 0) = 0")
 
+    # Multi-Tag Compound Filter: Collect all tags for AND-intersection filtering
+    all_tags: list[str] = []
     if tag and tag.strip():
-        conditions.append("EXISTS (SELECT 1 FROM json_each(ci.tags_json) WHERE value = :tag)")
-        params["tag"] = tag.strip()
+        all_tags.append(tag.strip())
+    if tags:
+        if isinstance(tags, str):
+            for t in tags.split(","):
+                t_clean = t.strip()
+                if t_clean and t_clean not in all_tags:
+                    all_tags.append(t_clean)
+        elif isinstance(tags, (list, tuple)):
+            for t in tags:
+                if isinstance(t, str):
+                    t_clean = t.strip()
+                    if t_clean and t_clean not in all_tags:
+                        all_tags.append(t_clean)
+
+    for i, t in enumerate(all_tags):
+        param_name = f"tag_{i}"
+        conditions.append(f"EXISTS (SELECT 1 FROM json_each(ci.tags_json) WHERE value = :{param_name})")
+        params[param_name] = t
 
     if q and q.strip():
         raw_q = q.strip()

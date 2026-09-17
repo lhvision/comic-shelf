@@ -24,8 +24,10 @@ export const WORKER_THRESHOLD = 1000
 export interface UseLibraryFilterOptions {
   /** 外部共享的搜索关键词 Ref（用于跨路由状态记忆） */
   search?: Ref<string>
-  /** 外部共享的选中标签 Ref */
+  /** 外部共享的单标签 Ref（向后兼容） */
   activeTag?: Ref<string>
+  /** 外部共享的多标签集合 Ref */
+  activeTags?: Ref<string[]>
   /** 外部共享的只看喜欢 Ref */
   favoritesOnly?: Ref<boolean>
   /** 外部共享的阅读状态单选维度 Ref */
@@ -57,7 +59,22 @@ export function useLibraryFilter(
   options?: UseLibraryFilterOptions,
 ) {
   const search = options?.search ?? ref('')
-  const activeTag = options?.activeTag ?? ref('')
+  const activeTags =
+    options?.activeTags ??
+    (options?.activeTag
+      ? ref(options.activeTag.value ? [options.activeTag.value] : [])
+      : ref<string[]>([]))
+  if (options?.activeTag && !options?.activeTags) {
+    watch(options.activeTag, (val) => {
+      activeTags.value = val ? [val] : []
+    })
+  }
+  const activeTag = computed({
+    get: () => activeTags.value[0] || '',
+    set: (val: string) => {
+      activeTags.value = val ? [val] : []
+    },
+  })
   const favoritesOnly = options?.favoritesOnly ?? ref(false)
   const readingStatus = options?.readingStatus ?? ref<ReadingStatus>('all')
   const sortBy = options?.sortBy ?? ref<SortKey>('recent')
@@ -132,6 +149,7 @@ export function useLibraryFilter(
     activeSource: activeSource.value,
     search: search.value,
     activeTag: activeTag.value,
+    activeTags: activeTags.value,
     favoritesOnly: favoritesOnly.value,
     readingStatus: readingStatus.value,
     sortBy: sortBy.value,
@@ -246,6 +264,7 @@ export function useLibraryFilter(
   return {
     search,
     activeTag,
+    activeTags,
     favoritesOnly,
     readingStatus,
     sortBy,

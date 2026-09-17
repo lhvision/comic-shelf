@@ -1280,6 +1280,24 @@
   7. **后端权威指针锁定 `Chapter.start`**：无论前端传入何种 `c.start`，后端只认 `chap_start_page = global_idx`；
   8. **互斥锁 + 原子目录交换 + 冷启动清理保底**：`_lock_for("local", source_id)` 互斥保护，`.tmp_create_pages_*` 组装完毕后原子重命名切换，FastAPI lifespan 钩入 `_cleanup_staged_pdfs(max_age_seconds=0)`。
 
+### 114. 动态位移悬停抖动死锁、路由过度同步导航抢占与冗余 Query 组装反模式 (Hover Jitter Loop, Route Over-syncing Preemption & Redundant Query Assembly)
+
+- **本质**：
+  1. **位移子容器的 Hover 自激振荡（Hover Displacement Jitter Loop）**：当元素自身或直属子节点在 `:hover` 下发生位移（如 `translate: 0 -0.35rem` 或 `transform: translateY(-4px)`）时，鼠标如果恰好处在位移前的边缘（例如卡片底边），元素向上位移导致鼠标脱离命中区（失去 hover），元素复位又使鼠标重新进入命中区（重新获得 hover），从而在特定像素坐标触发 30~60Hz 的剧烈纵向抖动。解决之道是**迟滞隔离与作用域外提（Hover Hysteresis Guard）**：将 `:hover` 伪类绑定在几何尺寸与物理位置绝对静止的外层容器（如 `.comic-card:hover .card-link`），确保即便内部卡片上浮，鼠标仍在父容器的安全命中区内；
+  2. **复合筛选向后兼容事件监听冲突（Multi-Select Event Collapsing Trap）**：在重构组件支持多选模式（如多标签筛选由单数 `activeTag` 升级为复数 `activeTags`）时，若外层调用方在监听 `@update:active-tags` 的同时残留了旧版的 `@select-tag="activeTag = $event"` 监听器，若 `activeTag` 为双向 computed setter（如 `activeTag = val ? [val] : []`），则组件抛出单项选择事件时会立即将刚刚多选的数组强制折叠回仅包含该单项的数组，导致多选失效。组件在跨版本兼容升级时，调用方必须收敛至单一数据源事件流（`@update:active-tags`）；
+  3. **书架交互过度同步路由导致导航抢占死锁（Route Query Over-syncing & Navigation Preemption Trap）**：将书架纯内存筛选交互（如状态、喜欢、多标签、排序）强行持久化至 URL `route.query`。当读者点击顶栏导航或切换路由时，内部监听触发异步 `router.replace`，直接抢占并掐断了正在执行中的页面跳转（Vue Router 抛出 `NavigationCancelled`），导致顶栏导航与页面切换卡死不动。彻底根治方案：**将书架多维筛选状态彻底收敛至 `useShelfState` 纯内存全局单例，在 `useLibrarySync` 中彻底拔除 `router.replace` 与 `route.query` watch**，0 路由写入，彻底释放 Vue Router 的原生调度；
+  4. **API 层冗余 URLSearchParams 手工拼接（Redundant Manual URLSearchParams Assembly）**：在业务 RPC 方法中为每个字段写十余行 `if (params?.xxx) query.set(...)` 属于严重代码坏味道。底层 `request` 应统一支持强类型纯函数 `buildQueryString` 与声明式 `options.params`，通过对象过滤机制自动剔除 `undefined`/`null`/`''`，实现声明式参数映射。
+- **红线与防误伤**：
+  - **不要**对发生自身位移（`translate` / `top` / `margin`）的元素直接绑定触发该位移的 `:hover` 规则，严禁在卡片自身边界留出悬空断层；
+  - **不要**在多选容器上同时绑定会导致状态坍缩的旧版单选同步事件；
+  - **不要**将书架筛选维度强行同步到路由 URL，严禁在 `useLibrarySync` 中调用 `router.replace` 破坏路由跳转生命周期；
+  - **不要**在各业务请求方法中散落复制繁琐的手工 `query.set` 样板代码；
+- **放行/改用**：
+  1. **迟滞容器保护（Hysteresis Guard Wrapper）**：将悬浮动画的作用选择器重构为静止外层容器驱动（如 `.comic-card:hover .card-link`、`.comic-card:focus-within .card-link` 以及 `.card-link:focus-visible` 键盘可访问性兜底）；
+  2. **单一事件流派发**：消费方模板只监听 `@update:active-tags`，组件内部在兼顾旧版单项事件的同时保证多选状态由单一阵列驱动；
+  3. **纯内存响应式状态管理**：书架筛选完全由 `useShelfState` 内存驱动，`useLibrarySync` 只负责触发防抖加载，杜绝路由写入；
+  4. **底层收敛声明式 options.params**：统一在 `request` 调度 `buildQueryString` 纯函数，业务层只传递干净的 Plain Object。
+
 ---
 
 ## 🚦 交付门禁（四步必跑）

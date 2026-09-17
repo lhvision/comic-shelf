@@ -171,7 +171,7 @@ const effectiveCover = computed(() => {
           <AppChip v-for="tag in primaryTags" :key="tag">{{ tag }}</AppChip>
         </div>
         <div class="card-foot">
-          <span class="views">{{ comic.views }} 次观看</span>
+          <span v-if="comic.views" class="views">{{ comic.views }} 次观看</span>
           <CacheProgress :cached="liveCached" :total="liveTotal" :running="liveRunning" />
         </div>
       </div>
@@ -211,7 +211,10 @@ const effectiveCover = computed(() => {
     border-color var(--duration-2) var(--ease-out);
 }
 
-.card-link:hover {
+/* Hover Hysteresis Guard: 锚定至静止宿主容器 .comic-card，杜绝位移导致光标反复脱靶的高频抖动 */
+.comic-card:hover .card-link,
+.comic-card:focus-within .card-link,
+.card-link:focus-visible {
   translate: 0 -0.35rem;
   border-color: var(--line-strong);
   box-shadow: var(--shadow-2);
@@ -224,7 +227,8 @@ const effectiveCover = computed(() => {
   flex-shrink: 0;
 }
 
-.card-link:hover .cover-deck,
+.comic-card:hover .cover-deck,
+.comic-card:focus-within .cover-deck,
 .card-link:focus-visible .cover-deck {
   perspective: 60rem;
 }
@@ -261,15 +265,21 @@ const effectiveCover = computed(() => {
   transform: translateX(13%) rotate(-5deg) translateY(6%);
 }
 
-.card-link:hover .deck-leaf[data-deck-index='0'] {
+.comic-card:hover .deck-leaf[data-deck-index='0'],
+.comic-card:focus-within .deck-leaf[data-deck-index='0'],
+.card-link:focus-visible .deck-leaf[data-deck-index='0'] {
   transform: translateX(-16%) rotate(7deg);
 }
 
-.card-link:hover .deck-leaf[data-deck-index='1'] {
+.comic-card:hover .deck-leaf[data-deck-index='1'],
+.comic-card:focus-within .deck-leaf[data-deck-index='1'],
+.card-link:focus-visible .deck-leaf[data-deck-index='1'] {
   transform: translateX(0) rotate(0deg) translateY(4%);
 }
 
-.card-link:hover .deck-leaf[data-deck-index='2'] {
+.comic-card:hover .deck-leaf[data-deck-index='2'],
+.comic-card:focus-within .deck-leaf[data-deck-index='2'],
+.card-link:focus-visible .deck-leaf[data-deck-index='2'] {
   transform: translateX(16%) rotate(-7deg) translateY(8%);
 }
 
@@ -284,7 +294,9 @@ const effectiveCover = computed(() => {
   transition: transform var(--duration-3) var(--ease-out);
 }
 
-.card-link:hover .cover-front {
+.comic-card:hover .cover-front,
+.comic-card:focus-within .cover-front,
+.card-link:focus-visible .cover-front {
   transform: rotateX(-3deg) rotateY(4deg) translateY(-0.35rem);
 }
 
@@ -441,7 +453,9 @@ const effectiveCover = computed(() => {
   filter: grayscale(0.12);
 }
 
-.comic-card[data-completed='true'] .card-link:hover {
+.comic-card[data-completed='true']:hover .card-link,
+.comic-card[data-completed='true']:focus-within .card-link,
+.comic-card[data-completed='true'] .card-link:focus-visible {
   opacity: 1;
   filter: none;
 }

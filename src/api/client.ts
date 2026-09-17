@@ -4,15 +4,32 @@ import type {
   AuthStatus,
   CacheJob,
   CacheProgress,
+  ClaimGuestPassPayload,
+  ComicAppendPayload,
   ComicDetail,
+  CreateFromStagedPdfPayload,
+  CreateGuestPassPayload,
+  DialogueSearchResponse,
+  DiscoveryFeed,
+  DiscoveryTimeframe,
   DownloadConcurrency,
+  GuestPass,
+  GuestPrivacySettings,
+  ImageSearchResultItem,
+  ImageSearchStatus,
   ImportRequest,
   ImportResult,
   LibraryFacetsResponse,
   LibraryPageResponse,
   LibraryQueryParams,
+  LocalComicCreatePayload,
+  LocalPathImportPayload,
   LoginResult,
+  MetadataUpdatePayload,
+  PdfInspectResponse,
   ProviderInfo,
+  ReadingProgressInfo,
+  UpdateGuestPassPayload,
 } from '@/types'
 
 const BASE = '/api'
@@ -60,10 +77,14 @@ export function onAuthSuccess(handler: AuthSuccessHandler): () => void {
   return () => authSuccessHandlers.delete(handler)
 }
 
+export type QueryParamValue = string | number | boolean | null | undefined
+export type QueryParams = Record<string, QueryParamValue | QueryParamValue[]>
+
 export interface RequestOptions {
   signal?: AbortSignal
   bypassCache?: boolean
   timeoutMs?: number
+  params?: QueryParams
 }
 
 export class ApiError extends Error {
@@ -138,6 +159,28 @@ function combineSignals(
   }
 }
 
+/**
+ * 纯函数：声明式过滤对象中的 undefined、null、空字符串，
+ * 将数组展开为逗号分隔字符串，生成符合规范的 URL 查询字符串。
+ */
+export function buildQueryString(params?: QueryParams): string {
+  if (!params) return ''
+  const entries: [string, string][] = []
+  for (const [key, val] of Object.entries(params)) {
+    if (val === undefined || val === null || val === '') continue
+    if (Array.isArray(val)) {
+      const filtered = val.filter((item) => item !== undefined && item !== null && item !== '')
+      if (filtered.length > 0) {
+        entries.push([key, filtered.map(String).join(',')])
+      }
+    } else {
+      entries.push([key, String(val)])
+    }
+  }
+  if (entries.length === 0) return ''
+  return new URLSearchParams(entries).toString()
+}
+
 async function request<T>(path: string, init?: RequestInit, options?: RequestOptions): Promise<T> {
   const headers = new Headers(init?.headers)
   if (!headers.has('Content-Type') && !(init?.body instanceof FormData)) {
@@ -152,8 +195,17 @@ async function request<T>(path: string, init?: RequestInit, options?: RequestOpt
   const timeout = options?.timeoutMs ?? 15000
   const callerSignal = options?.signal ?? init?.signal
   const { signal, cleanup } = combineSignals(timeout, callerSignal)
+
+  let fullPath = `${BASE}${path}`
+  if (options?.params) {
+    const qs = buildQueryString(options.params)
+    if (qs) {
+      fullPath += (fullPath.includes('?') ? '&' : '?') + qs
+    }
+  }
+
   try {
-    const response = await fetch(`${BASE}${path}`, {
+    const response = await fetch(fullPath, {
       ...init,
       headers,
       signal,
@@ -269,7 +321,7 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ secret, pin, username }),
     }),
-  claimPass: (payload: import('@/types').ClaimGuestPassPayload) =>
+  claimPass: (payload: ClaimGuestPassPayload) =>
     request<LoginResult>('/auth/claim', {
       method: 'POST',
       body: JSON.stringify(payload),
@@ -281,29 +333,32 @@ export const api = {
     }),
   providers: (options?: RequestOptions) => memoizedProviders(options),
   library: (params?: LibraryQueryParams, options?: RequestOptions) => {
-    const query = new URLSearchParams()
-    if (params?.page) query.set('page', String(params.page))
-    if (params?.page_size) query.set('page_size', String(params.page_size))
-    if (params?.offset !== undefined) query.set('offset', String(params.offset))
-    if (params?.ids && params.ids.trim()) query.set('ids', params.ids.trim())
-    if (params?.status && params.status !== 'all') query.set('status', params.status)
-    if (params?.favorite) query.set('favorite', 'true')
-    if (params?.source) query.set('source', params.source)
-    const q = params?.q ?? params?.search
-    if (q && q.trim()) query.set('q', q.trim())
-    if (params?.tag && params.tag.trim()) query.set('tag', params.tag.trim())
-    if (params?.sort && params.sort !== 'recent') query.set('sort', params.sort)
-    const qs = query.toString()
-    return request<LibraryPageResponse>(`/library${qs ? `?${qs}` : ''}`, {
-      signal: options?.signal,
-    })
+    return request<LibraryPageResponse>(
+      '/library',
+      { signal: options?.signal },
+      {
+        ...options,
+        params: {
+          page: params?.page,
+          page_size: params?.page_size,
+          offset: params?.offset,
+          ids: params?.ids?.trim(),
+          status: params?.status !== 'all' ? params?.status : undefined,
+          favorite: params?.favorite ? 'true' : undefined,
+          source: params?.source,
+          q: (params?.q ?? params?.search)?.trim(),
+          tags: (params?.tags ?? params?.tag)?.trim(),
+          sort: params?.sort !== 'recent' ? params?.sort : undefined,
+        },
+      },
+    )
   },
-  libraryFacets: (source?: string, options?: RequestOptions) => {
-    const qs = source ? `?source=${encodeURIComponent(source)}` : ''
-    return request<LibraryFacetsResponse>(`/library/facets${qs}`, {
-      signal: options?.signal,
-    })
-  },
+  libraryFacets: (source?: string, options?: RequestOptions) =>
+    request<LibraryFacetsResponse>(
+      '/library/facets',
+      { signal: options?.signal },
+      { ...options, params: { source } },
+    ),
   detail: (source: string, sourceId: string, options?: RequestOptions) => {
     if (options?.bypassCache) {
       memoizedDetail.delete(source, sourceId)
@@ -382,29 +437,22 @@ export const api = {
       body: JSON.stringify({ limit }),
     }),
   guestPrivacy: (options?: RequestOptions) =>
-    request<import('@/types').GuestPrivacySettings>('/settings/guest-privacy', {
+    request<GuestPrivacySettings>('/settings/guest-privacy', {
       signal: options?.signal,
     }),
   setGuestPrivacy: (guest_hide_new_comics: boolean) =>
-    request<import('@/types').GuestPrivacySettings>('/settings/guest-privacy', {
+    request<GuestPrivacySettings>('/settings/guest-privacy', {
       method: 'PUT',
       body: JSON.stringify({ guest_hide_new_comics }),
     }),
-  updateMetadata: async (
-    source: string,
-    sourceId: string,
-    payload: import('@/types').MetadataUpdatePayload,
-  ) => {
+  updateMetadata: async (source: string, sourceId: string, payload: MetadataUpdatePayload) => {
     memoizedDetail.delete(source, sourceId)
     return request<ComicDetail>(`/library/${source}/${sourceId}/metadata`, {
       method: 'PATCH',
       body: JSON.stringify(payload),
     })
   },
-  createLocalComic: async (
-    payload: import('@/types').LocalComicCreatePayload,
-    options?: RequestOptions,
-  ) => {
+  createLocalComic: async (payload: LocalComicCreatePayload, options?: RequestOptions) => {
     memoizedDetail.clear()
     return request<ComicDetail>(
       '/library/local/create',
@@ -416,10 +464,7 @@ export const api = {
       { timeoutMs: 60000, ...options },
     )
   },
-  importLocalPath: async (
-    payload: import('@/types').LocalPathImportPayload,
-    options?: RequestOptions,
-  ) => {
+  importLocalPath: async (payload: LocalPathImportPayload, options?: RequestOptions) => {
     memoizedDetail.clear()
     return request<ComicDetail>(
       '/library/local/import-path',
@@ -432,7 +477,7 @@ export const api = {
     )
   },
   inspectPdf: async (formData: FormData, options?: RequestOptions) => {
-    return request<import('@/types').PdfInspectResponse>(
+    return request<PdfInspectResponse>(
       '/library/local/inspect-pdf',
       {
         method: 'POST',
@@ -452,10 +497,7 @@ export const api = {
       options,
     )
   },
-  createFromStagedPdf: async (
-    payload: import('@/types').CreateFromStagedPdfPayload,
-    options?: RequestOptions,
-  ) => {
+  createFromStagedPdf: async (payload: CreateFromStagedPdfPayload, options?: RequestOptions) => {
     memoizedDetail.clear()
     return request<ComicDetail>(
       '/library/local/create-from-staged-pdf',
@@ -480,18 +522,21 @@ export const api = {
     for (const file of files) {
       formData.append('files', file)
     }
-    const params = new URLSearchParams()
-    if (chapterId) params.set('chapter_id', chapterId)
-    if (newChapterTitle) params.set('new_chapter_title', newChapterTitle)
-    const qs = params.toString() ? `?${params.toString()}` : ''
     return request<ComicDetail>(
-      `/library/${source}/${sourceId}/upload-pages${qs}`,
+      `/library/${source}/${sourceId}/upload-pages`,
       {
         method: 'POST',
         body: formData,
         signal: options?.signal,
       },
-      { timeoutMs: 120000, ...options },
+      {
+        timeoutMs: 120000,
+        ...options,
+        params: {
+          chapter_id: chapterId || undefined,
+          new_chapter_title: newChapterTitle || undefined,
+        },
+      },
     )
   },
   replaceComicPages: async (
@@ -506,17 +551,20 @@ export const api = {
     for (const file of files) {
       formData.append('files', file)
     }
-    const params = new URLSearchParams()
-    if (chapterId) params.set('chapter_id', chapterId)
-    const qs = params.toString() ? `?${params.toString()}` : ''
     return request<ComicDetail>(
-      `/library/${source}/${sourceId}/replace-pages${qs}`,
+      `/library/${source}/${sourceId}/replace-pages`,
       {
         method: 'POST',
         body: formData,
         signal: options?.signal,
       },
-      { timeoutMs: 120000, ...options },
+      {
+        timeoutMs: 120000,
+        ...options,
+        params: {
+          chapter_id: chapterId || undefined,
+        },
+      },
     )
   },
   replaceComicPagesFromPath: async (
@@ -543,7 +591,7 @@ export const api = {
   appendPages: async (
     source: string,
     sourceId: string,
-    payload: import('@/types').ComicAppendPayload,
+    payload: ComicAppendPayload,
     options?: RequestOptions,
   ) => {
     memoizedDetail.delete(source, sourceId)
@@ -577,22 +625,29 @@ export const api = {
     )
   },
   discoveryRanking: (
-    timeframe: import('@/types').DiscoveryTimeframe = 'week',
+    timeframe: DiscoveryTimeframe = 'week',
     refresh = false,
     options?: RequestOptions,
   ) =>
-    request<import('@/types').DiscoveryFeed>(
-      `/discovery/ranking?timeframe=${encodeURIComponent(timeframe)}${refresh ? '&refresh=true' : ''}`,
+    request<DiscoveryFeed>(
+      '/discovery/ranking',
       { signal: options?.signal },
+      {
+        ...options,
+        params: {
+          timeframe,
+          refresh: refresh ? 'true' : undefined,
+        },
+      },
     ),
   imageSearchStatus: (options?: RequestOptions) =>
-    request<import('@/types').ImageSearchStatus>('/search/image/status', {
+    request<ImageSearchStatus>('/search/image/status', {
       signal: options?.signal,
     }),
   imageSearch: async (file: File, options?: RequestOptions) => {
     const formData = new FormData()
     formData.append('file', file)
-    return request<import('@/types').ImageSearchResultItem[]>(
+    return request<ImageSearchResultItem[]>(
       '/search/image',
       {
         method: 'POST',
@@ -602,20 +657,14 @@ export const api = {
       { timeoutMs: 60000, ...options },
     )
   },
-  searchDialogue: (q: string, source?: string, limit: number = 20, options?: RequestOptions) => {
-    const params = new URLSearchParams()
-    if (q) params.set('q', q)
-    if (source) params.set('source', source)
-    if (limit) params.set('limit', String(limit))
-    return request<import('@/types').DialogueSearchResponse>(
-      `/search/dialogue?${params.toString()}`,
-      {
-        signal: options?.signal,
-      },
-    )
-  },
+  searchDialogue: (q: string, source?: string, limit: number = 20, options?: RequestOptions) =>
+    request<DialogueSearchResponse>(
+      '/search/dialogue',
+      { signal: options?.signal },
+      { ...options, params: { q, source, limit } },
+    ),
   getReadingProgress: (source: string, sourceId: string, options?: RequestOptions) =>
-    request<import('@/types').ReadingProgressInfo>(`/library/${source}/${sourceId}/progress`, {
+    request<ReadingProgressInfo>(`/library/${source}/${sourceId}/progress`, {
       signal: options?.signal,
     }),
   saveReadingProgress: (
@@ -625,30 +674,23 @@ export const api = {
     total_pages?: number,
     options?: RequestOptions,
   ) =>
-    request<import('@/types').ReadingProgressInfo>(`/library/${source}/${sourceId}/progress`, {
+    request<ReadingProgressInfo>(`/library/${source}/${sourceId}/progress`, {
       method: 'PUT',
       body: JSON.stringify({ page, total_pages }),
       signal: options?.signal,
     }),
   getCuratorPasses: (options?: RequestOptions) =>
-    request<import('@/types').GuestPass[]>('/curator/passes', {
+    request<GuestPass[]>('/curator/passes', {
       signal: options?.signal,
     }),
-  createCuratorPass: (
-    payload: import('@/types').CreateGuestPassPayload,
-    options?: RequestOptions,
-  ) =>
-    request<import('@/types').GuestPass>('/curator/passes', {
+  createCuratorPass: (payload: CreateGuestPassPayload, options?: RequestOptions) =>
+    request<GuestPass>('/curator/passes', {
       method: 'POST',
       body: JSON.stringify(payload),
       signal: options?.signal,
     }),
-  updateCuratorPass: (
-    passId: number,
-    payload: import('@/types').UpdateGuestPassPayload,
-    options?: RequestOptions,
-  ) =>
-    request<import('@/types').GuestPass>(`/curator/passes/${passId}`, {
+  updateCuratorPass: (passId: number, payload: UpdateGuestPassPayload, options?: RequestOptions) =>
+    request<GuestPass>(`/curator/passes/${passId}`, {
       method: 'PATCH',
       body: JSON.stringify(payload),
       signal: options?.signal,
@@ -673,7 +715,8 @@ export const pageThumbUrl = (source: string, sourceId: string, index: number) =>
 
 export const coverFileUrl = (source: string, sourceId: string, index: number, width?: number) => {
   const base = `${BASE}/library/${source}/${sourceId}/covers/${index}/file.webp`
-  return width ? `${base}?w=${width}` : base
+  const qs = buildQueryString({ w: width })
+  return qs ? `${base}?${qs}` : base
 }
 
 // T17：章节目录封面端点（后端按章节 id 定位，从该话第一页生成并池化缓存）
@@ -684,7 +727,8 @@ export const chapterCoverUrl = (
   width?: number,
 ) => {
   const base = `${BASE}/library/${source}/${sourceId}/chapters/${chapterId}/cover.webp`
-  return width ? `${base}?w=${width}` : base
+  const qs = buildQueryString({ w: width })
+  return qs ? `${base}?${qs}` : base
 }
 
 /** 为图片/封面 URL 安全附加宽度参数（?w=360 或 &w=360），自动保护 data:/blob: 协议并更新已有参数 */

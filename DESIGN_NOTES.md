@@ -610,6 +610,22 @@
    - 脱水画页通过 `v-if="isGroupHydrated(group.index)"` 隐藏页脚 footer 容器，首屏削减 1,800 个冗余 DOM 节点；合成器滚动时间线限制在已激活画页（`.reader-page:has(.comic-page-image)`），避免 900+ 个 ViewTimeline 并发实例化；
    - `recalibrateTargetOffset` 采用 `requestAnimationFrame` 调度合批，在同一帧内取消并覆盖历史 pending 任务，彻底杜绝并发多图就绪引发的强制同步重排（Forced Reflow Thrashing）。
 
+### <a id="sec-70"></a>§70 卡片悬浮位移迟滞保护、无浏览量零裸露与多标签复合筛选交互架构（Hover Hysteresis Guard, Null Views Guard & Multi-Tag Compound Filter Architecture）
+
+针对首页卡片悬停边缘自激抖动、自建漫画元数据缺省与多维度多标签交集检索的设计系统演进：
+
+1. **悬浮位移迟滞保护（Hover Hysteresis Guard）**：
+   - 传统在位移卡片本身（`.card-link`）上直接声明 `.card-link:hover { translate: 0 -0.35rem; }`，当光标停留在卡片底边 1-5px 区域时，卡片上浮导致光标移出边界（失去 hover），卡片回落时光标重新进入（触发 hover），引发 30~60Hz 剧烈自激抖动死循环（Jitter Loop）；
+   - 将 `:hover` 作用域提升重构至几何位置绝对静止的父级容器 `.comic-card:hover .card-link` 与键盘焦点容器 `.comic-card:focus-within .card-link`，同时保留 `.card-link:focus-visible` 无障碍兜底。即便内部卡片向上位移，光标依然处于外层父容器安全判定区内，彻底消灭振荡死锁；
+2. **零浏览量与缺省元数据隐退（Null Views Guard & Clean Metadata）**：
+   - 本地自建或第三方源未统计浏览量时，卡片底部严禁直接裸露空前缀「 次观看」；
+   - 约束为 `<span v-if="comic.views" class="views">` 严格条件渲染，保障自建画卷与未收录画卷卡片信息流干净纯粹；
+3. **多标签复合筛选与交集（AND）契约（Multi-Tag Compound Filter & AND Semantics）**：
+   - 筛选标签交互全面升级为支持复合多选。点击未选标签将其追加至激活集合，点击已选标签执行反选移除，点击「全部」一键排空；
+   - 检索语义定为严格交集（AND），画卷需同时包含所有已选标签方可匹配命中；
+   - 浮层容器（`Popover`）内点选次级溢出标签时，保持浮层常驻不自动关闭，支持连续点选并动态在外露主按钮呈现 `更多 · N (已选 M)`；
+   - 状态纯粹收敛至纯内存响应式状态（`useShelfState`），完全解耦 URL 路由查询参数，杜绝路由监听导致的跨页面导航中断与卡死；同时底层 API 客户端收敛为声明式 `options.params` 映射，消除冗余繁琐的手工 `URLSearchParams` 样板代码。
+
 ---
 
 ## 5. 历史演进里程碑归档索引（Historical Milestones Archive）

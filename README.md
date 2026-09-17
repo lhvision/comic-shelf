@@ -99,6 +99,7 @@
 - **统一矢量图标集、通用胶囊与现代浮层基建**：
   - 全站图标收敛到 `src/components/icons/`（1.8px 细线条描边 / 朱砂质感），零 Unicode 伪字符（`✕`/`✓`）；
   - **通用微件胶囊体系（`AppChip`）**：单一真相源收敛全站分类标签、筛选切换器（“只看喜欢”/“只看已读”）、计数值与可移除标记，原生支持多态语义（`<span>` ⇄ `<button aria-pressed>`）；
+  - **多标签复合筛选与交集（AND）淘书**：全站标签筛选全面支持复合多选，点选时溢出抽屉保持常驻并动态呈现已选项数；纯内存响应式状态驱动，解耦路由 URL 干扰，保障跨页面导航原生流畅；
   - 基于 HTML Popover API 与 CSS Anchor Positioning 规范构建现代浮层，包含 `Modal`、`AppPopover`、`AppDropdown` 与带悬停安全桥的 `AppTooltip`。
 - **PWA 独立安装、纸室离线模式与端侧自愈流水线（ADR 0005）**：
   - **标准 PWA 规范支持**：完整支持桌面/移动端独立窗口安装（Standalone）、离线秒开与后台静默更新，符合 W3C Web App Manifest 与 Service Worker 规范；

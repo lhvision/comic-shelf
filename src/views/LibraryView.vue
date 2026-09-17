@@ -80,7 +80,7 @@ useEventListener(window, 'paste', imageSearch.handlePaste)
 
 const {
   search,
-  activeTag,
+  activeTags,
   favoritesOnly,
   readingStatus,
   sortBy,
@@ -97,7 +97,7 @@ const {
   imageSearch.searchResults,
   {
     search: shelf.search,
-    activeTag: shelf.activeTag,
+    activeTags: shelf.activeTags,
     favoritesOnly: shelf.favoritesOnly,
     readingStatus: shelf.readingStatus,
     sortBy: shelf.sortBy,
@@ -106,11 +106,9 @@ const {
 )
 
 const { fetchLibrary } = useLibrarySync({
-  route,
-  router,
   activeSource,
   search,
-  activeTag,
+  activeTags,
   favoritesOnly,
   readingStatus,
   sortBy,
@@ -327,12 +325,12 @@ watch([() => store.error, imageSearch.error], ([err1, err2]) => {
         v-model:tray-expanded="tagTrayExpanded"
         :favorites-only="favoritesOnly"
         :reading-status="readingStatus"
-        :active-tag="activeTag"
+        :active-tags="activeTags"
         :tag-counts="tagCounts"
         :filtered-count="filtered.length"
         @toggle-favorites="favoritesOnly = !favoritesOnly"
         @update:reading-status="readingStatus = $event"
-        @select-tag="activeTag = $event"
+        @update:active-tags="activeTags = $event"
       />
 
       <p v-if="store.isOffline || !isOnline" class="offline-active-note" role="status">
