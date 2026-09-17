@@ -8,7 +8,7 @@
  * 起步展示，末尾通过折叠卡（.shelf-fold-card）提示剩余藏书并支持手动步进/全量展开与随时收起，
  * 彻底避免海量 DOM 阻塞与滚动条无节制失控拉长。
  */
-import { ref, computed, watch, nextTick } from 'vue'
+import { ref, computed, watch, nextTick, useTemplateRef } from 'vue'
 import { useIntersectionObserver } from '@vueuse/core'
 import type { LibrarySummary } from '@/types'
 import ComicCard from '@/components/ComicCard.vue'
@@ -32,14 +32,6 @@ const props = withDefaults(
     batchStep?: number
     /** 是否为默认的最近收录排序（用于展示卷末归档分割线） */
     isRecentSort?: boolean
-    /** 案头在读藏书初始呈现数量（用于跨路由状态记忆） */
-    initialActiveCount?: number
-    /** 卷末归档专匣初始呈现数量 */
-    initialArchiveCount?: number
-    /** 单网格模式初始呈现数量 */
-    initialUnifiedCount?: number
-    /** 卷末归档专匣初始开闭状态 */
-    initialArchiveOpen?: boolean
     /** 服务端是否仍有更多页数据可流式拉取 */
     hasMore?: boolean
     /** 服务端是否正在加载更多 */
@@ -52,10 +44,6 @@ const props = withDefaults(
   {
     batchStep: 12,
     isRecentSort: true,
-    initialActiveCount: undefined,
-    initialArchiveCount: undefined,
-    initialUnifiedCount: undefined,
-    initialArchiveOpen: undefined,
     hasMore: false,
     loadingMore: false,
     totalCount: undefined,
@@ -85,22 +73,23 @@ const isSplitMode = computed(
   () => props.isRecentSort && activeComics.value.length > 0 && completedComics.value.length > 0,
 )
 
+const archiveOpen = defineModel<boolean>('archiveOpen', { default: false })
+const activeCount = defineModel<number>('activeCount')
+const archiveCount = defineModel<number>('archiveCount')
+const unifiedCount = defineModel<number>('unifiedCount')
+
 const emit = defineEmits<{
   favoriteToggled: [source: string, sourceId: string, favorite: boolean]
-  'update:activeCount': [count: number]
-  'update:archiveCount': [count: number]
-  'update:unifiedCount': [count: number]
-  'update:archiveOpen': [open: boolean]
   loadMore: []
   loadAll: []
 }>()
 
 const keyOf = (source: string, sourceId: string) => liveCacheKey(source, sourceId)
 
-const gridWrapEl = ref<HTMLElement | null>(null)
-const archiveDrawerEl = ref<HTMLElement | null>(null)
-const activeSentinelEl = ref<HTMLElement | null>(null)
-const unifiedSentinelEl = ref<HTMLElement | null>(null)
+const gridWrapEl = useTemplateRef<HTMLElement>('gridWrapEl')
+const archiveDrawerEl = useTemplateRef<HTMLElement>('archiveDrawerEl')
+const activeSentinelEl = useTemplateRef<HTMLElement>('activeSentinelEl')
+const unifiedSentinelEl = useTemplateRef<HTMLElement>('unifiedSentinelEl')
 
 // 1. 未读区分批状态
 const {
@@ -117,28 +106,19 @@ const {
 } = usePaginationFold({
   items: activeComics,
   step: () => props.batchStep,
-  initialVisibleCount: () => props.initialActiveCount,
+  initialVisibleCount: () => activeCount.value,
   brakeThreshold: () => props.brakeThreshold,
   totalCount: () => (isSplitMode.value ? undefined : props.totalCount),
   scrollTarget: gridWrapEl,
-  onChange: (count) => emit('update:activeCount', count),
+  onChange: (count) => {
+    activeCount.value = count
+  },
 })
 const canCollapseActive = computed(() => canCollapseActiveRaw.value)
 
 // 2. 卷末归档专匣状态
-const archiveOpen = ref(props.initialArchiveOpen ?? false)
-watch(
-  () => props.initialArchiveOpen,
-  (val) => {
-    if (val !== undefined && val !== archiveOpen.value) {
-      archiveOpen.value = val
-    }
-  },
-)
-
 function toggleArchive() {
   archiveOpen.value = !archiveOpen.value
-  emit('update:archiveOpen', archiveOpen.value)
 }
 
 const {
@@ -153,10 +133,12 @@ const {
 } = usePaginationFold({
   items: completedComics,
   step: () => props.batchStep,
-  initialVisibleCount: () => props.initialArchiveCount,
+  initialVisibleCount: () => archiveCount.value,
   brakeThreshold: () => props.brakeThreshold,
   scrollTarget: archiveDrawerEl,
-  onChange: (count) => emit('update:archiveCount', count),
+  onChange: (count) => {
+    archiveCount.value = count
+  },
 })
 
 // 3. 全局单网格（非 splitMode 时：如全已读、全未读、非最近收录、Canvas 模式）
@@ -174,11 +156,13 @@ const {
 } = usePaginationFold({
   items: () => props.items,
   step: () => props.batchStep,
-  initialVisibleCount: () => props.initialUnifiedCount,
+  initialVisibleCount: () => unifiedCount.value,
   brakeThreshold: () => props.brakeThreshold,
   totalCount: () => props.totalCount,
   scrollTarget: gridWrapEl,
-  onChange: (count) => emit('update:unifiedCount', count),
+  onChange: (count) => {
+    unifiedCount.value = count
+  },
 })
 
 useIntersectionObserver(
@@ -279,36 +263,27 @@ function handleLoadAllArchive() {
 const visibleItems = computed(() => rawVisibleItems.value)
 const canCollapse = computed(() => canCollapseRaw.value)
 
-watch(
-  () => props.initialActiveCount,
-  (count) => {
-    if (count !== undefined && count !== activeVisibleCount.value) {
-      resetActive(count)
-    }
-  },
-)
-watch(
-  () => props.initialArchiveCount,
-  (count) => {
-    if (count !== undefined && count !== archiveVisibleCount.value) {
-      resetArchive(count)
-    }
-  },
-)
-watch(
-  () => props.initialUnifiedCount,
-  (count) => {
-    if (count !== undefined && count !== unifiedVisibleCount.value) {
-      resetUnified(count)
-    }
-  },
-)
+watch(activeCount, (count) => {
+  if (count !== undefined && count !== activeVisibleCount.value) {
+    resetActive(count)
+  }
+})
+watch(archiveCount, (count) => {
+  if (count !== undefined && count !== archiveVisibleCount.value) {
+    resetArchive(count)
+  }
+})
+watch(unifiedCount, (count) => {
+  if (count !== undefined && count !== unifiedVisibleCount.value) {
+    resetUnified(count)
+  }
+})
 
 watch(isSplitMode, (isSplit, wasSplit) => {
   if (isSplit && !wasSplit) {
     if (activeVisibleCount.value < unifiedVisibleCount.value) {
       activeVisibleCount.value = Math.min(activeComics.value.length, unifiedVisibleCount.value)
-      emit('update:activeCount', activeVisibleCount.value)
+      activeCount.value = activeVisibleCount.value
     }
   }
 })
@@ -341,7 +316,7 @@ watch(
           activeComics.value.length,
           activeVisibleCount.value + addedActive,
         )
-        emit('update:activeCount', activeVisibleCount.value)
+        activeCount.value = activeVisibleCount.value
       }
 
       if (isExpandingAllUnified.value) {
@@ -353,12 +328,12 @@ watch(
           newItems.length,
           unifiedVisibleCount.value + addedUnified,
         )
-        emit('update:unifiedCount', unifiedVisibleCount.value)
+        unifiedCount.value = unifiedVisibleCount.value
       }
     } else {
       isExpandingAllActive.value = false
       isExpandingAllUnified.value = false
-      if (props.initialActiveCount === undefined) {
+      if (activeCount.value === undefined) {
         resetActive()
         resetArchive()
         resetUnified()

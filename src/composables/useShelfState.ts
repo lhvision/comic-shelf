@@ -9,7 +9,7 @@
  * 3. 顶栏显式点击 Logo 或切换来源时支持主动重置书架记忆，回归初态。
  */
 
-import { ref, computed } from 'vue'
+import { ref } from 'vue'
 import { createGlobalState } from '@vueuse/core'
 import type { SortKey } from '@/composables/useLibraryFilter'
 import type { ReadingStatus } from '@/types'
@@ -32,13 +32,6 @@ export const useShelfState = createGlobalState(() => {
   const search = ref('')
   /** 当前选中的多标签集合（空数组表示全部） */
   const activeTags = ref<string[]>([])
-  /** 向后兼容单标签访问器 */
-  const activeTag = computed({
-    get: () => activeTags.value[0] || '',
-    set: (val: string) => {
-      activeTags.value = val ? [val] : []
-    },
-  })
   /** 是否只看已加入喜欢的藏书 */
   const favoritesOnly = ref(false)
   /** 阅读状态单选维度（all | reading | completed） */
@@ -90,7 +83,6 @@ export const useShelfState = createGlobalState(() => {
     archiveUnfoldCount,
     unifiedUnfoldCount,
     search,
-    activeTag,
     activeTags,
     favoritesOnly,
     readingStatus,

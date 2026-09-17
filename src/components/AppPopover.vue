@@ -1,6 +1,15 @@
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, onMounted, ref, useId, watch } from 'vue'
-import { onClickOutside, useEventListener } from '@vueuse/core'
+import {
+  computed,
+  nextTick,
+  onMounted,
+  onWatcherCleanup,
+  ref,
+  useId,
+  useTemplateRef,
+  watch,
+} from 'vue'
+import { onClickOutside, useEventListener, useTimeoutFn } from '@vueuse/core'
 
 /**
  * 现代通用弹出层组件（AppPopover）。
@@ -10,9 +19,10 @@ import { onClickOutside, useEventListener } from '@vueuse/core'
  * - 原生支持失焦自动关闭（Light Dismiss / Esc）
  * - 兼容 click、hover 与 manual 触发模式，非现代浏览器提供稳健回退
  */
+const open = defineModel<boolean>('open', { default: false })
+
 const props = withDefaults(
   defineProps<{
-    open?: boolean
     /** 弹出方位：top / bottom / left / right（默认 bottom） */
     side?: 'top' | 'bottom' | 'left' | 'right'
     /** 对齐方式：start / center / end（默认 start） */
@@ -31,7 +41,6 @@ const props = withDefaults(
     role?: string
   }>(),
   {
-    open: undefined,
     side: 'bottom',
     align: 'start',
     trigger: 'click',
@@ -44,7 +53,6 @@ const props = withDefaults(
 )
 
 const emit = defineEmits<{
-  'update:open': [value: boolean]
   open: []
   close: []
 }>()
@@ -84,12 +92,9 @@ const alignSelf = computed(() => {
   return 'anchor-center'
 })
 
-const internalOpen = ref(props.open ?? false)
-const isOpen = computed(() => (props.open !== undefined ? props.open : internalOpen.value))
-
-const popoverEl = ref<HTMLElement | null>(null)
-const triggerEl = ref<HTMLElement | null>(null)
-const rootEl = ref<HTMLElement | null>(null)
+const popoverEl = useTemplateRef<HTMLElement>('popoverEl')
+const triggerEl = useTemplateRef<HTMLElement>('triggerEl')
+const rootEl = useTemplateRef<HTMLElement>('rootEl')
 const actualSide = ref<'top' | 'bottom' | 'left' | 'right'>(props.side)
 
 watch(
@@ -123,12 +128,16 @@ function updateActualSide() {
   }
 }
 
-let hoverTimer: ReturnType<typeof setTimeout> | null = null
+const { start: scheduleOpen, stop: cancelOpen } = useTimeoutFn(openPopover, 120, {
+  immediate: false,
+})
+const { start: scheduleClose, stop: cancelClose } = useTimeoutFn(closePopover, 150, {
+  immediate: false,
+})
 
 function openPopover() {
-  if (props.disabled || isOpen.value) return
-  if (props.open === undefined) internalOpen.value = true
-  emit('update:open', true)
+  if (props.disabled || open.value) return
+  open.value = true
   emit('open')
 
   nextTick(() => {
@@ -147,9 +156,8 @@ function openPopover() {
 }
 
 function closePopover() {
-  if (!isOpen.value) return
-  if (props.open === undefined) internalOpen.value = false
-  emit('update:open', false)
+  if (!open.value) return
+  open.value = false
   emit('close')
 
   try {
@@ -165,7 +173,7 @@ function closePopover() {
 
 function toggle() {
   if (props.disabled) return
-  if (isOpen.value) {
+  if (open.value) {
     closePopover()
   } else {
     openPopover()
@@ -176,9 +184,8 @@ function toggle() {
 function onNativeToggle(e: Event) {
   const toggleEvent = e as Event & { newState?: 'open' | 'closed' }
   const newState = toggleEvent.newState === 'open'
-  if (newState !== isOpen.value) {
-    if (props.open === undefined) internalOpen.value = newState
-    emit('update:open', newState)
+  if (newState !== open.value) {
+    open.value = newState
     if (newState) {
       emit('open')
       nextTick(() => updateActualSide())
@@ -188,73 +195,50 @@ function onNativeToggle(e: Event) {
   }
 }
 
-// 响应外部 props.open 变化
-watch(
-  () => props.open,
-  (val) => {
-    if (val === undefined) return
-    if (val) {
-      openPopover()
-    } else {
-      closePopover()
-    }
-  },
-)
-
-useEventListener(
-  window,
-  'scroll',
-  () => {
-    if (isOpen.value) updateActualSide()
-  },
-  { passive: true },
-)
-
-useEventListener(
-  window,
-  'resize',
-  () => {
-    if (isOpen.value) updateActualSide()
-  },
-  { passive: true },
-)
+// 响应外部 open 变化，并在展开期间动态绑定窗口监听器（关闭时通过 onWatcherCleanup 0 监听器休眠）
+watch(open, (val) => {
+  if (val) {
+    openPopover()
+    const stopScroll = useEventListener(window, 'scroll', updateActualSide, { passive: true })
+    const stopResize = useEventListener(window, 'resize', updateActualSide, { passive: true })
+    onWatcherCleanup(() => {
+      stopScroll()
+      stopResize()
+    })
+  } else {
+    closePopover()
+  }
+})
 
 // Hover 模式交互
 function onMouseEnter() {
   if (props.trigger !== 'hover' || props.disabled) return
-  if (hoverTimer) clearTimeout(hoverTimer)
-  hoverTimer = setTimeout(() => openPopover(), 120)
+  cancelClose()
+  scheduleOpen()
 }
 
 function onMouseLeave() {
   if (props.trigger !== 'hover') return
-  if (hoverTimer) clearTimeout(hoverTimer)
-  hoverTimer = setTimeout(() => closePopover(), 150)
+  cancelOpen()
+  scheduleClose()
 }
 
 // 非原生 Popover 降级时的外部点击关闭
 onClickOutside(rootEl, (event) => {
   // 如果原生 Popover 已在工作，由原生处理；否则通过 VueUse 兜底关闭
   if (popoverEl.value && typeof popoverEl.value.showPopover === 'function') return
-  if (isOpen.value && !triggerEl.value?.contains(event.target as Node)) {
+  if (open.value && !triggerEl.value?.contains(event.target as Node)) {
     closePopover()
   }
 })
 
+// 原生 popover toggle 事件监听（VueUse 自动绑定与解绑）
+useEventListener(popoverEl, 'toggle', onNativeToggle)
+
 onMounted(() => {
-  if (popoverEl.value) {
-    popoverEl.value.addEventListener('toggle', onNativeToggle)
-  }
-  if (props.open) {
+  if (open.value) {
     nextTick(() => openPopover())
   }
-})
-
-onBeforeUnmount(() => {
-  if (popoverEl.value) {
-    popoverEl.value.removeEventListener('toggle', onNativeToggle)
-  }
-  if (hoverTimer) clearTimeout(hoverTimer)
 })
 
 function onTriggerClick(event: MouseEvent) {
@@ -276,7 +260,7 @@ defineExpose({
   open: openPopover,
   close: closePopover,
   toggle,
-  isOpen,
+  isOpen: open,
 })
 </script>
 
@@ -295,7 +279,7 @@ defineExpose({
       @click="onTriggerClick"
     >
       <slot
-        :open="isOpen"
+        :open="open"
         :toggle="toggle"
         :close="closePopover"
         :target-id="popoverId"
@@ -312,7 +296,7 @@ defineExpose({
       :aria-label="ariaLabel"
       class="app-popover-panel surface"
       :class="{
-        'is-open': isOpen,
+        'is-open': open,
         'has-arrow': arrow,
         [`side-${actualSide}`]: true,
         [`align-${align}`]: true,

@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, ref, useId, watch } from 'vue'
-import { useEventListener } from '@vueuse/core'
+import { computed, nextTick, onWatcherCleanup, ref, useId, useTemplateRef, watch } from 'vue'
+import { useEventListener, useTimeoutFn } from '@vueuse/core'
 
 /**
  * 现代轻量气泡提示组件（Modern AppTooltip）。
@@ -82,8 +82,8 @@ const alignSelf = computed(() => {
 })
 
 const isVisible = ref(false)
-const tipElement = ref<HTMLElement | null>(null)
-const triggerElement = ref<HTMLElement | null>(null)
+const tipElement = useTemplateRef<HTMLElement>('tipElement')
+const triggerElement = useTemplateRef<HTMLElement>('triggerElement')
 const actualSide = ref<'top' | 'right' | 'bottom' | 'left'>(props.side)
 const actualAlign = ref<'start' | 'center' | 'end'>(props.align)
 
@@ -139,49 +139,62 @@ function updateActualSide() {
   }
 }
 
-let showTimer: ReturnType<typeof setTimeout> | null = null
-let hideTimer: ReturnType<typeof setTimeout> | null = null
-
-function show() {
-  if (hideTimer) {
-    clearTimeout(hideTimer)
-    hideTimer = null
+function executeShow() {
+  if (props.disabled) return
+  isVisible.value = true
+  try {
+    if (tipElement.value && typeof tipElement.value.showPopover === 'function') {
+      if (!tipElement.value.matches(':popover-open')) {
+        tipElement.value.showPopover()
+      }
+    }
+  } catch {
+    // 忽略不支持或已展开情况
   }
-  showTimer = setTimeout(() => {
-    if (props.disabled) return
-    isVisible.value = true
-    try {
-      if (tipElement.value && typeof tipElement.value.showPopover === 'function') {
+
+  updateActualSide()
+  nextTick(() => {
+    if (props.lazy && tipElement.value && typeof tipElement.value.showPopover === 'function') {
+      try {
         if (!tipElement.value.matches(':popover-open')) {
           tipElement.value.showPopover()
         }
+      } catch {
+        // 忽略不支持或已展开情况
       }
-    } catch {
-      // 忽略不支持或已展开情况
     }
-
     updateActualSide()
-    nextTick(() => {
-      if (props.lazy && tipElement.value && typeof tipElement.value.showPopover === 'function') {
-        try {
-          if (!tipElement.value.matches(':popover-open')) {
-            tipElement.value.showPopover()
-          }
-        } catch {
-          // 忽略不支持或已展开情况
-        }
+  })
+}
+
+function executeHide() {
+  isVisible.value = false
+  try {
+    if (tipElement.value && typeof tipElement.value.hidePopover === 'function') {
+      if (tipElement.value.matches(':popover-open')) {
+        tipElement.value.hidePopover()
       }
-      updateActualSide()
-    })
-  }, props.delay)
+    }
+  } catch {
+    // 忽略不支持或已收起情况
+  }
+}
+
+const { start: scheduleShow, stop: cancelShow } = useTimeoutFn(executeShow, () => props.delay, {
+  immediate: false,
+})
+const { start: scheduleHide, stop: cancelHide } = useTimeoutFn(executeHide, () => props.hideDelay, {
+  immediate: false,
+})
+
+function show() {
+  cancelHide()
+  scheduleShow()
 }
 
 function onTipEnter() {
   if (props.disabled) return
-  if (hideTimer) {
-    clearTimeout(hideTimer)
-    hideTimer = null
-  }
+  cancelHide()
 }
 
 function onTipLeave() {
@@ -189,70 +202,33 @@ function onTipLeave() {
 }
 
 function hide() {
-  if (showTimer) {
-    clearTimeout(showTimer)
-    showTimer = null
-  }
-  if (hideTimer) {
-    clearTimeout(hideTimer)
-  }
-  hideTimer = setTimeout(() => {
-    isVisible.value = false
-    try {
-      if (tipElement.value && typeof tipElement.value.hidePopover === 'function') {
-        if (tipElement.value.matches(':popover-open')) {
-          tipElement.value.hidePopover()
-        }
-      }
-    } catch {
-      // 忽略不支持或已收起情况
-    }
-  }, props.hideDelay)
+  cancelShow()
+  scheduleHide()
 }
 
-/* 性能铁律：仅在气泡真正可见时动态挂载 window 监听器，气泡休眠时为 0 监听器开销 */
-let stopScroll: (() => void) | null = null
-let stopResize: (() => void) | null = null
-
-function attachWindowListeners() {
-  if (!stopScroll) {
-    stopScroll = useEventListener(
-      window,
-      'scroll',
-      () => {
-        if (isVisible.value) updateActualSide()
-      },
-      { passive: true },
-    )
-  }
-  if (!stopResize) {
-    stopResize = useEventListener(
-      window,
-      'resize',
-      () => {
-        if (isVisible.value) updateActualSide()
-      },
-      { passive: true },
-    )
-  }
-}
-
-function detachWindowListeners() {
-  stopScroll?.()
-  stopScroll = null
-  stopResize?.()
-  stopResize = null
-}
-
+/* 性能铁律：仅在气泡真正可见时动态挂载 window 监听器，气泡休眠时由 onWatcherCleanup 保证 0 监听器开销 */
 watch(isVisible, (val) => {
-  if (val) attachWindowListeners()
-  else detachWindowListeners()
-})
-
-onBeforeUnmount(() => {
-  detachWindowListeners()
-  if (showTimer) clearTimeout(showTimer)
-  if (hideTimer) clearTimeout(hideTimer)
+  if (!val) return
+  const stopScroll = useEventListener(
+    window,
+    'scroll',
+    () => {
+      if (isVisible.value) updateActualSide()
+    },
+    { passive: true },
+  )
+  const stopResize = useEventListener(
+    window,
+    'resize',
+    () => {
+      if (isVisible.value) updateActualSide()
+    },
+    { passive: true },
+  )
+  onWatcherCleanup(() => {
+    stopScroll()
+    stopResize()
+  })
 })
 
 defineExpose({

@@ -10,9 +10,10 @@ export interface SelectOption {
   hint?: string
 }
 
+const modelValue = defineModel<string>({ default: '' })
+
 const props = withDefaults(
   defineProps<{
-    modelValue: string
     options: SelectOption[]
     placeholder?: string
     label?: string
@@ -32,7 +33,6 @@ const props = withDefaults(
 )
 
 const emit = defineEmits<{
-  'update:modelValue': [value: string]
   change: [value: string]
   open: []
   close: []
@@ -51,15 +51,14 @@ const dropdownOptions = computed<DropdownOption<string>[]>(() =>
 <template>
   <AppDropdown
     v-bind="$attrs"
+    v-model="modelValue"
     :options="dropdownOptions"
-    :model-value="modelValue"
     :placeholder="placeholder"
     :label="label"
     :disabled="disabled"
     :size="size"
     :block="block"
     :align="align"
-    @update:model-value="(val) => emit('update:modelValue', String(val))"
     @change="(val) => emit('change', String(val))"
   >
     <template v-if="$slots.trigger" #trigger="slotProps">

@@ -943,6 +943,9 @@ def query_library_index(
                     if t_clean and t_clean not in all_tags:
                         all_tags.append(t_clean)
 
+    # 限制多标签交集最大数量（最多 5 个），防范极端查询导致 SQLite 变量耗尽与 CPU 算力耗尽
+    all_tags = all_tags[:5]
+
     for i, t in enumerate(all_tags):
         param_name = f"tag_{i}"
         conditions.append(f"EXISTS (SELECT 1 FROM json_each(ci.tags_json) WHERE value = :{param_name})")

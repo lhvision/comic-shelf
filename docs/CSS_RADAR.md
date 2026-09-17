@@ -1440,7 +1440,7 @@ text-fit: <fit-type> <fit-target>;
 
 1. **几何自适应与非线性形变暗礁**：
    - `shape()` 中的坐标百分比是与盒模型尺寸强绑定的。张文中案例成立的前提是其固定了 `aspect-ratio: 4.211` 且文案固定；
-   - 纸间的 [`AppTooltip.vue`](file:///home/miku/lhvision/comic-shelf/src/components/AppTooltip.vue) 是全站通用的顶层组件，内部承载的内容涵盖单行简短徽章、多行折行长句、富文本 slot（如详情页致谢排版、阅读器快捷键指引等），宽度与高度完全动态。一旦把固定百分比的 `shape()` 应用到动态高度/宽度的容器，**三角形小尖角和四角圆角会被不可控地等比拉伸或扁平化畸变**；
+   - 纸间的 `src/components/AppTooltip.vue` 是全站通用的顶层组件，内部承载的内容涵盖单行简短徽章、多行折行长句、富文本 slot（如详情页致谢排版、阅读器快捷键指引等），宽度与高度完全动态。一旦把固定百分比的 `shape()` 应用到动态高度/宽度的容器，**三角形小尖角和四角圆角会被不可控地等比拉伸或扁平化畸变**；
 2. **视口碰撞翻转时的极度复杂性**：
    - 传统方案通过 `@container anchored (fallback: flip-block)`，只需通过 CSS 重置伪元素 `::before` 的 `top/bottom` 方向即可反转小尖角；
    - 若使用 `shape()`，在发生 `flip-block`（向上翻转）或 `flip-inline`（向左翻转）时，必须为每一种方位分别逆向计算一套全新的 `shape()` 路径字符串，维护成本与认知负荷极高；

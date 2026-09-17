@@ -19,7 +19,7 @@
  *    - 鼠标悬停单元格时防抖浮现单页画中画气泡。
  */
 
-import { computed, nextTick, ref, watch } from 'vue'
+import { computed, nextTick, ref, useTemplateRef, watch } from 'vue'
 import { useDebounceFn, useTimeoutFn } from '@vueuse/core'
 import { pageThumbUrl } from '@/api/client'
 import { useReaderHydration, type OrderedGroup } from '@/composables/useReaderHydration'
@@ -74,8 +74,8 @@ const emit = defineEmits<{
 }>()
 
 const comicKey = computed(() => `${props.source}/${props.sourceId}`)
-const railEl = ref<HTMLElement | null>(null)
-const containerEl = ref<HTMLElement | null>(null)
+const railEl = useTemplateRef<HTMLElement>('railEl')
+const containerEl = useTemplateRef<HTMLElement>('containerEl')
 
 // 1. 漫画会话级宽高比池
 const { getPageRatio, setPageRatio } = useComicRatioPool(comicKey)

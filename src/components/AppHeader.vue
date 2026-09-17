@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, defineAsyncComponent, onMounted, ref } from 'vue'
+import { computed, defineAsyncComponent, onMounted, ref, useTemplateRef } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useIntersectionObserver } from '@vueuse/core'
 import { api, DEFAULT_PROVIDERS, onAuthSuccess } from '@/api/client'
@@ -36,9 +36,9 @@ const { resetAllShelfState } = useShelfState()
 
 // 零重排（Zero-Reflow）滚动边缘感知：基于原生 IntersectionObserver 哨兵架构
 // 彻底废除 useScroll 引起的初始几何重排（消除 57ms Forced Reflow）
-const navScrollEl = ref<HTMLElement | null>(null)
-const sentinelStartEl = ref<HTMLElement | null>(null)
-const sentinelEndEl = ref<HTMLElement | null>(null)
+const navScrollEl = useTemplateRef<HTMLElement>('navScrollEl')
+const sentinelStartEl = useTemplateRef<HTMLElement>('sentinelStartEl')
+const sentinelEndEl = useTemplateRef<HTMLElement>('sentinelEndEl')
 
 const isStartVisible = ref(true)
 const isEndVisible = ref(true)

@@ -161,7 +161,7 @@
 2. **非对称迟滞注水视窗（Hysteresis Hydration Window - `useReaderHydration.ts`）**：
    - 采用 **后向 30 屏 + 前向 15 屏** 的非对称缓冲区，结合 VueUse（`useDevicePixelRatio`、`useNetwork`）进行设备与网络自适应（弱网 5/10 屏、高 DPR 移动端 8/15 屏、桌面高速宽带 15/30 屏）；
    - 读者向后滚动时，前向提前挂载并预加载图片；读者回头翻看已读画页时，后方全量驻留内存，零组件重挂、零重绘、零闪烁；
-   - 逻辑完整收敛于 [`src/composables/useReaderHydration.ts`](file:///home/miku/lhvision/comic-shelf/src/composables/useReaderHydration.ts)，支持主画卷、画中画悬停预览（Hover Preview）与分卷缩略卷轴（Filmstrip）多场景复用；
+   - 逻辑完整收敛于 `src/composables/useReaderHydration.ts`，支持主画卷、画中画悬停预览（Hover Preview）与分卷缩略卷轴（Filmstrip）多场景复用；
 3. **宽高比定盘与静默纸印占位符（Ratio Latching & Quiescent Paper）**：
    - 未注水页面渲染为无开销的 `.quiescent-paper`，静默展现页码水印，禁止挂载昂贵的插画池或 CSS 无限脉冲动画；
    - `pageRatios` 以非响应式 Map 记录已解码图片的物理宽高比并通过 CSS 变量 `--quiescent-ratio` 绑定，注水与脱水切换时容器几何 0 像素形变，且批量解码时零模板级联重算；
@@ -316,9 +316,28 @@
 - **异步网络请求防裹入**：严禁在 `withViewTransition` 回调内部发起或等待网络请求（如 API 修改），更新回调必须为纯净的本地状态与 DOM 同步。
 - **弹窗动效分工**：弹窗（`Modal.vue` 及内部子弹窗）必须走 Vue 原生 `<Transition>`，利用组件内 Scoped CSS 分离遮罩（沉降）与面板（微弹），严禁将整个弹窗根容器包装进 View Transition 快照，防止全屏遮罩空间畸变与文字亚像素插值模糊。
 
-## 10. VueUse 优先与零 DOM 胶水代码规范
+## 10. VueUse 优先与 Vue 3.5/3.6 现代语法零胶水代码规范（Modern Vue & Zero-Glue Architecture）
 
 - **查阅门禁**：新增交互组件、修改表单或重构状态逻辑前，必须查阅 `vueuse-functions` skill，严禁重复手写已有 VueUse composable 的样板代码。
+- **模板引用全面现代化（`useTemplateRef` 强制门禁）**：
+  - 严禁在 `<script setup>` 中手写 `const el = ref<HTMLElement | null>(null)` 作为模板 DOM 引用或子组件引用；
+  - 必须统一使用 Vue 3.5+ 原生 `useTemplateRef<T>('el')`（如 `useTemplateRef<HTMLDialogElement>('dialogEl')`、`useTemplateRef<InstanceType<typeof AppTooltip>>('tooltipRef')`），彻底实现模板字符串 ref 与内部变量绑定的强类型解耦；
+  - 在由 Composable 驱动的 DOM 容器（如 `useDropZone`、`useShelfSearch`、`useFileStaging`、`useLocalWorkshop`）中，视图/组件层统一通过 `const el = useTemplateRef<HTMLElement>('el')` 声明并在模板中声明标准 `ref="el"`，将该 Ref 作为入参注入 Composable（如 `{ dropZoneRef: el }`），Composable 内部采用 `options.dropZoneRef ?? ref<HTMLElement | null>(null)` 平滑承接并保障 Vitest/SSR 无 DOM 测试；严禁在模板中手写 `:ref="(el) => { dropRef = el }"` 等内联函数式赋值胶水；
+  - **函数 Ref（`:ref`）全站单一合法场景**：全站仅保留在 `v-for` 循环中需要按业务动态 ID 进行字典寻址的场景（如 `ChapterSwitcher.vue` 中的 `:ref="(el) => (buttonEls[chapter.id] = el as HTMLElement | null)"`）。在此场景下，由于元素需要被 O(1) 按章节 ID 检索居中定位，使用字典型函数 Ref 是 Vue 官方推荐且唯一的规范范式（详见 Vue 官方文档 Template Refs on v-for）；其他所有确定节点 100% 收敛为 `useTemplateRef`；
+- **双向绑定一等公民（`defineModel` 全面收敛）**：
+  - 凡涉及父子双向状态绑定的组件（表单输入、弹窗开闭 `open`、多选标签 `activeTags`、阅读状态 `readingStatus`、抽屉折叠展开、当前页号等），一律使用 Vue 3.4+ `defineModel` 宏，严禁手工声明 `props.modelValue` + `emit('update:modelValue')` 或编写 `internalOpen` + `isOpen` 双轨胶水代码；
+  - 消费层一律使用原生 `v-model` / `v-model:name`，彻底消除所有 `@update:xxx` 手写事件绑定；
+  - 针对通用容器（如 `AppPopover.vue`、`Modal.vue`、`ComicGrid.vue`），`defineModel('open', { default: false })` 同时原生兼顾非受控内部驱动与外部受控绑定（`v-model:open`）；
+- **性能优先：大规模数据结构强行采用 `shallowRef` 杜绝代理风暴（`shallowRef over ref`）**：
+  - 核心红线：严禁对大体量集合（如书架全量 `items: LibrarySummary[]`、阅读器全量漫画详情 `detail: ComicDetail`、发现页精选流 `feed: DiscoveryFeed`、分镜台词全文检索结果、以及 Worker 异步排序结果）使用深层 `ref()`；
+  - 架构原理：深层 `ref()` 会递归遍历成百上千本漫画对象及其嵌套数组（`authors`、`works`、`tags`、`pages` 等）并为其逐一注入 `reactive()` 代理，带来极其高昂的初始 CPU 消耗、内存占用与垃圾回收（GC）冻结卡顿；
+  - 正确规范：必须统一采用 `shallowRef()`，状态更新通过全量引用置换（`items.value = [...items.value]`）或顶层替换触发。只有在特定局部需要深度细粒度监听属性变动时才使用 `ref`；
+- **响应式定时器与动态休眠门禁（VueUse `useTimeoutFn` & Vue 3.5 `onWatcherCleanup`）**：
+  - 严禁在组件内部书写裸露的 `let timer = setTimeout(...)` 并手工在 `onBeforeUnmount` 中 `clearTimeout`；必须统一使用 VueUse `useTimeoutFn`，利用其响应式作用域自动绑定与注销特性；
+  - 浮层视口碰撞与滚动监听器（如 Tooltip / Popover 的 `scroll` / `resize`）必须结合 Vue 3.5 原生 `onWatcherCleanup`：仅在浮层展开可见时挂载监听器，在浮层关闭休眠时自动解绑，达成 **休眠期 0 监听器、0 CPU 唤醒开销**，彻底淘汰外层游离变量与旧式注销样板；
+- **零手写事件监听与生命周期安全托管**：
+  - 严禁在 `onMounted` / `onBeforeUnmount` 中手写原生 `addEventListener` / `removeEventListener`（如 `toggle`、`scroll`、`resize`、`keydown`）；
+  - 必须统一使用 VueUse `useEventListener(target, event, handler)`，依赖响应式生命周期自动注销，杜绝事件监听器泄漏；
 - **消除隐藏 DOM**：严禁在模板中放置 `<input type="file" class="visually-hidden">` 并通过 DOM 引用 `.click()` 触发文件选择，必须使用 `useFileDialog({ multiple: true, accept: 'image/*' })`；
 - **拖拽响应式化**：拖拽上传与投放区域必须使用 `useDropZone(elRef, { onDrop })`，直接利用其解构出的 `isOverDropZone` 响应式变量驱动高亮样式，杜绝手写 `@dragover.prevent` 与原生 `dataTransfer` 胶水；
 - **全局状态与单例**：跨组件持久化配置必须使用 `createGlobalState` 与 `useStorage`；

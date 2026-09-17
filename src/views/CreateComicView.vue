@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useTemplateRef } from 'vue'
 import { useLocalWorkshop } from '@/composables/useLocalWorkshop'
 import { useHierarchicalNavigation } from '@/composables/useHierarchicalNavigation'
 import TagManager from '@/components/form/TagManager.vue'
@@ -10,6 +11,8 @@ import AppIcon from '@/components/AppIcon.vue'
 import AppProgressBar from '@/components/AppProgressBar.vue'
 
 const { goUpFromCreate } = useHierarchicalNavigation()
+
+const dropAreaEl = useTemplateRef<HTMLElement>('dropAreaEl')
 
 const {
   mode,
@@ -29,7 +32,6 @@ const {
   activeChapterIdx,
   chapters,
   currentChapterFiles,
-  dropAreaRef,
   isOverDropZone,
   openFileDialog,
   addChapter,
@@ -46,7 +48,7 @@ const {
   inspectServerPdf,
   clearStagedPdf,
   chapterRanges,
-} = useLocalWorkshop()
+} = useLocalWorkshop({ dropAreaRef: dropAreaEl })
 </script>
 
 <template>
@@ -198,14 +200,7 @@ const {
           </div>
 
           <!-- Staging Drop Zone (when NOT staged PDF) -->
-          <div
-            v-else
-            :ref="
-              (el) => {
-                dropAreaRef = el as HTMLElement
-              }
-            "
-          >
+          <div v-else ref="dropAreaEl">
             <FileStagingDropZone
               v-model:mode="mode"
               v-model:files="currentChapterFiles"

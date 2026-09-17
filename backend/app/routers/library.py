@@ -123,7 +123,7 @@ def library(
     source: str | None = Query(default=None, description="来源过滤 (jm, picacg, local)"),
     q: str | None = Query(default=None, description="标题/作者/标签过滤"),
     tag: str | None = Query(default=None, description="单标签过滤"),
-    tags: str | None = Query(default=None, description="逗号分隔的多标签交集过滤"),
+    tags: str | None = Query(default=None, description="逗号分隔的多标签交集过滤（最多支持 5 个）"),
     sort: str = Query(default="recent", pattern="^(recent|title|pages|cached)$", description="排序方式"),
     ids: str | None = Query(default=None, description="指定逗号分隔的 source:source_id 列表，精准获取目标漫画"),
     offset: int | None = Query(default=None, ge=0, description="显式偏移量（支持平滑流式追加）"),

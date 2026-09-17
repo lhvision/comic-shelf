@@ -1,5 +1,13 @@
 <script setup lang="ts">
-import { computed, defineAsyncComponent, nextTick, onMounted, ref, watch } from 'vue'
+import {
+  computed,
+  defineAsyncComponent,
+  nextTick,
+  onMounted,
+  ref,
+  useTemplateRef,
+  watch,
+} from 'vue'
 import { onBeforeRouteLeave, useRoute, useRouter } from 'vue-router'
 import { useEventListener, useFileDialog } from '@vueuse/core'
 
@@ -90,7 +98,6 @@ const {
   tagCounts,
   imageSearchMatchMap,
   filtered,
-  setSort,
 } = useLibraryFilter(
   computed(() => store.items || []),
   activeSource,
@@ -115,9 +122,10 @@ const { fetchLibrary } = useLibrarySync({
   imageSearchResults: imageSearch.searchResults,
 })
 
+const searchContainerEl = useTemplateRef<HTMLElement>('searchContainerEl')
+const searchInputEl = useTemplateRef<HTMLInputElement>('searchInputEl')
+
 const {
-  searchContainerRef,
-  searchInputRef,
   searchInput,
   searchActiveCommand,
   searchPlaceholder,
@@ -144,6 +152,8 @@ const {
   allItems: computed(() => store.items || []),
   router,
   toast,
+  searchContainerRef: searchContainerEl,
+  searchInputRef: searchInputEl,
 })
 
 onBeforeRouteLeave(() => shelf.saveScrollPosition(window.scrollY))
@@ -210,14 +220,7 @@ watch([() => store.error, imageSearch.error], ([err1, err2]) => {
           <h2 id="shelf-title">{{ shelfTitle }}</h2>
         </div>
 
-        <div
-          :ref="
-            (el) => {
-              searchContainerRef = el as HTMLElement
-            }
-          "
-          class="search-container"
-        >
+        <div ref="searchContainerEl" class="search-container">
           <div class="search-field field" role="search">
             <AppIcon name="search" size="xs" aria-hidden="true" />
             <SearchCommandChip
@@ -234,11 +237,7 @@ watch([() => store.error, imageSearch.error], ([err1, err2]) => {
               class="search-lens-pill"
             />
             <input
-              :ref="
-                (el) => {
-                  searchInputRef = el as HTMLInputElement
-                }
-              "
+              ref="searchInputEl"
               v-model="searchInput"
               type="search"
               role="combobox"
@@ -282,55 +281,50 @@ watch([() => store.error, imageSearch.error], ([err1, err2]) => {
 
           <!-- 快捷指令选单浮层 -->
           <SearchCommandMenu
+            v-model:focused-index="commandMenuFocusedIndex"
             :open="isCommandMenuOpen"
             :commands="commandFilteredCommands"
-            :focused-index="commandMenuFocusedIndex"
             @select="handleSelectCommand"
-            @update:focused-index="(val) => (commandMenuFocusedIndex = val)"
           />
 
           <!-- 分镜台词检索浮层（专注台词模式呈现） -->
           <DialogueSearchPopover
             v-if="searchActiveCommand === 'dialogue'"
+            v-model:focused-index="dialogueFocusedIndex"
             :open="isDialogueOpen"
             :results="dialogueResults"
             :total="dialogueTotal"
             :is-searching="isDialogueSearching"
             :error="dialogueError"
             :query="dialogueQuery"
-            :focused-index="dialogueFocusedIndex"
             @select="navigateToResult"
             @close="closeDialogueSearch"
-            @update:focused-index="(val) => (dialogueFocusedIndex = val)"
           />
         </div>
 
         <div class="sort-field">
           <span>排序</span>
           <ThemeSelect
+            v-model="sortBy"
             label="排序"
-            :model-value="sortBy"
             :options="[
               { value: 'recent', label: '最近收录（未读优先）' },
               { value: 'title', label: '标题' },
               { value: 'pages', label: '页数' },
               { value: 'cached', label: '本地完整度' },
             ]"
-            @update:model-value="setSort"
           />
         </div>
       </div>
 
       <TagFilterBar
         v-model:tray-expanded="tagTrayExpanded"
+        v-model:active-tags="activeTags"
+        v-model:reading-status="readingStatus"
         :favorites-only="favoritesOnly"
-        :reading-status="readingStatus"
-        :active-tags="activeTags"
         :tag-counts="tagCounts"
         :filtered-count="filtered.length"
         @toggle-favorites="favoritesOnly = !favoritesOnly"
-        @update:reading-status="readingStatus = $event"
-        @update:active-tags="activeTags = $event"
       />
 
       <p v-if="store.isOffline || !isOnline" class="offline-active-note" role="status">
@@ -347,6 +341,10 @@ watch([() => store.error, imageSearch.error], ([err1, err2]) => {
       </p>
 
       <ComicGrid
+        v-model:active-count="activeUnfoldCount"
+        v-model:archive-count="archiveUnfoldCount"
+        v-model:unified-count="unifiedUnfoldCount"
+        v-model:archive-open="archiveOpen"
         :loading="store.loading"
         :items="filtered"
         :has-any-items="totalBooks > 0 || store.items.length > 0"
@@ -355,17 +353,9 @@ watch([() => store.error, imageSearch.error], ([err1, err2]) => {
         :is-recent-sort="
           sortBy === 'recent' && !imageSearch.searchImagePreviewUrl.value && !search.trim()
         "
-        :initial-active-count="activeUnfoldCount"
-        :initial-archive-count="archiveUnfoldCount"
-        :initial-unified-count="unifiedUnfoldCount"
-        :initial-archive-open="archiveOpen"
         :has-more="store.hasMore"
         :loading-more="store.loadingMore"
         :total-count="store.total"
-        @update:active-count="activeUnfoldCount = $event"
-        @update:archive-count="archiveUnfoldCount = $event"
-        @update:unified-count="unifiedUnfoldCount = $event"
-        @update:archive-open="archiveOpen = $event"
         @favorite-toggled="onFavoriteToggled"
         @load-more="store.loadMore()"
         @load-all="store.loadAll()"

@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { computed, nextTick, onUnmounted, ref, useId, watch } from 'vue'
-import { useEventListener, useScrollLock } from '@vueuse/core'
+import { computed, nextTick, onUnmounted, ref, shallowRef, useId, useTemplateRef, watch } from 'vue'
+import { useEventListener, useScrollLock, useTimeoutFn } from '@vueuse/core'
 import AmbientWatermark from '@/components/AmbientWatermark.vue'
 import AppButton from '@/components/AppButton.vue'
 
@@ -16,9 +16,10 @@ import AppButton from '@/components/AppButton.vue'
  * - 视觉遮罩由内部 .modal-scrim 承接（::backdrop 设为透明），实现蒙层与面板 100% 同步平滑淡入淡出，彻底告别关闭黑屏闪退；
  * - 全部颜色/间距/圆角严格收敛于 tokens.css，无第三方 UI 库。
  */
+const open = defineModel<boolean>('open', { default: false })
+
 const props = withDefaults(
   defineProps<{
-    open: boolean
     title?: string
     /** 无障碍标签（当未提供 title 且未提供 #title 插槽时使用） */
     ariaLabel?: string
@@ -51,18 +52,24 @@ const props = withDefaults(
 )
 
 const emit = defineEmits<{
-  'update:open': [value: boolean]
   cancel: []
 }>()
 
 const uid = useId().replace(/[^a-zA-Z0-9_-]/g, '')
 const titleId = `modal-title-${uid}`
 const dialogId = `modal-dialog-${uid}`
-const dialogEl = ref<HTMLDialogElement | null>(null)
-const panel = ref<HTMLElement | null>(null)
+const dialogEl = useTemplateRef<HTMLDialogElement>('dialogEl')
+const panel = useTemplateRef<HTMLElement>('panel')
 const isShaking = ref(false)
-const previousActiveElement = ref<HTMLElement | null>(null)
-let shakeTimer: ReturnType<typeof setTimeout> | null = null
+const previousActiveElement = shallowRef<HTMLElement | null>(null)
+
+const { start: startShakeTimer } = useTimeoutFn(
+  () => {
+    isShaking.value = false
+  },
+  380,
+  { immediate: false },
+)
 
 const showWatermark = computed(() => props.watermark ?? props.variant === 'paper')
 
@@ -84,10 +91,7 @@ const isLocked = useScrollLock(typeof document !== 'undefined' ? document.body :
 function triggerAttention() {
   if (isShaking.value) return
   isShaking.value = true
-  if (shakeTimer) clearTimeout(shakeTimer)
-  shakeTimer = setTimeout(() => {
-    isShaking.value = false
-  }, 380)
+  startShakeTimer()
 }
 
 function restoreFocus() {
@@ -100,8 +104,8 @@ function restoreFocus() {
 }
 
 function requestClose() {
-  if (!props.open) return
-  emit('update:open', false)
+  if (!open.value) return
+  open.value = false
   emit('cancel')
   nextTick(() => {
     restoreFocus()
@@ -148,9 +152,9 @@ async function openDialog() {
 }
 
 watch(
-  () => props.open,
-  (open) => {
-    if (open) {
+  open,
+  (isOpen) => {
+    if (isOpen) {
       isLocked.value = true
       openDialog()
     } else {
@@ -182,7 +186,6 @@ onUnmounted(() => {
   } else {
     isLocked.value = false
   }
-  if (shakeTimer) clearTimeout(shakeTimer)
 })
 
 // 原生 cancel 事件（如 ESC 键触发）
@@ -198,14 +201,14 @@ function onCancel(event: Event) {
 // 原生 toggle / beforetoggle 事件（双向同步 Vue 状态与外部 commandfor 调用）
 function onToggle(event: Event) {
   const toggleEvent = event as Event & { newState?: 'open' | 'closed' }
-  if (toggleEvent.newState === 'closed' && props.open) {
+  if (toggleEvent.newState === 'closed' && open.value) {
     if (!canCloseOnEsc.value && !canCloseOnBackdrop.value) {
       triggerAttention()
       return
     }
     requestClose()
-  } else if (toggleEvent.newState === 'open' && !props.open) {
-    emit('update:open', true)
+  } else if (toggleEvent.newState === 'open' && !open.value) {
+    open.value = true
   }
 }
 
@@ -231,7 +234,7 @@ function onDialogClick(event: MouseEvent) {
 
 // 键盘 Escape 与焦点辅助监听（兼顾测试环境与老旧浏览器无障碍）
 useEventListener(window, 'keydown', (event: KeyboardEvent) => {
-  if (!props.open) return
+  if (!open.value) return
   if (event.key === 'Escape') {
     event.preventDefault()
     if (!canCloseOnEsc.value) {

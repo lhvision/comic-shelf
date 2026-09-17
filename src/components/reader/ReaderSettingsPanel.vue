@@ -5,7 +5,7 @@
  * 状态直接来自全局 `useReaderSettings`（createGlobalState 单例），
  * 面板与 ReaderView 天然共享同一份设置，修改即时响应式生效。
  */
-import { computed, nextTick, ref, watch } from 'vue'
+import { computed, nextTick, ref, useTemplateRef, watch } from 'vue'
 import {
   AUTO_TURN_INTERVALS,
   AUTO_TURN_OPTIONS,
@@ -58,7 +58,7 @@ const isCustomInterval = computed(
   () => !AUTO_TURN_INTERVALS.some((val) => val === currentTargetSettings.value.autoTurnInterval),
 )
 
-const customInputRef = ref<HTMLInputElement | null>(null)
+const customInputRef = useTemplateRef<HTMLInputElement>('customInputRef')
 const customValue = ref(currentTargetSettings.value.autoTurnInterval)
 
 watch(

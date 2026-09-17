@@ -5,28 +5,19 @@ import AppButton from '@/components/AppButton.vue'
 import AppChip from '@/components/AppChip.vue'
 import AppIcon from '@/components/AppIcon.vue'
 
+const currentTags = defineModel<string[]>({ default: () => [] })
+
 const props = withDefaults(
   defineProps<{
-    modelValue?: string[]
     maxSuggestions?: number
   }>(),
   {
-    modelValue: () => [],
     maxSuggestions: 15,
   },
 )
 
-const emit = defineEmits<{
-  'update:modelValue': [tags: string[]]
-}>()
-
 const store = useLibraryStore()
 const newTagInput = ref('')
-
-const currentTags = computed({
-  get: () => props.modelValue || [],
-  set: (val: string[]) => emit('update:modelValue', val),
-})
 
 const popularTags = computed(() => {
   const counts: Record<string, number> = {}

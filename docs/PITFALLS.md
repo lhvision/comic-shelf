@@ -1064,15 +1064,17 @@
 - **本质**：
   1. **修饰键漏滤与 macOS 历史竞争（Modifier Hijacking & Dual Navigation Race）**：在页面级通过 `useEventListener('keydown')` 监听 `[` 与 `]` 切话时，若未严格过滤 `metaKey`/`ctrlKey`/`altKey`，由于 macOS 上 `Cmd + [` 为浏览器原生“后退”、`Cmd + ]` 为“前进”，Mac 用户尝试返回上一网页时会同时触发应用内切话，且因未调用 `e.preventDefault()` 造成底层原生 History 弹出与 Vue Router 推进的并发竞争，导致路由栈撕裂；
   2. **活动模态层与长按连发穿透（Modal Bleed & Keyrepeat Queue Flood）**：若未检测当前活动的对话框或菜单（`dialog[open], [role="dialog"], [role="menu"]`），读者在重命名、追加或重订画页弹窗中聚焦非输入区域敲击按键时，底层页面在用户无感知状态下跨话跳转；若未过滤 `e.repeat`，长按按键会高频狂发数十次切话请求造成导航队列拥堵；
-  3. **Linter 模板 Ref 误报与伪存活代码扩散（Dummy Void Ref Anti-Pattern）**：在开启 `no-unused-vars` 校验时，由于通用 linter 无法直接穿透 Vue SFC 原生标签上的字符串属性 `ref="xxx"`，部分实现为了平息警告而写出 `void dropZoneRef` 等伪存活死代码，破坏代码洁净度。
+  3. **Linter 模板 Ref 误报、伪存活代码与函数 Ref 滥用（Dummy Void & Inline Function Ref Anti-Pattern）**：早期在开启 `no-unused-vars` 校验时，由于通用 linter 无法直接穿透 Vue SFC 原生标签上的字符串属性 `ref="xxx"`，且旧版 Composable 尝试在自身内部直接创建 Ref 暴露给模板绑定，部分实现为了平息警告写出 `void dropZoneRef` 或内联赋值 `:ref="(el) => { dropZoneRef = el as HTMLElement }"` 等胶水代码。不仅污染了模板 AST，还破坏了 Composable 的声明式设计与单元测试沙箱解耦。
 - **红线与防误伤**：
   - **不要**在任何页面级单键快捷键处理中遗漏 `e.metaKey || e.ctrlKey || e.altKey`；
   - **不要**在顶层存在活动的模态对话框或下拉浮层时放行背景路由导航快捷键；
   - **不要**在消费型组件中书写 `void <ref>` 等伪存活占位代码；
+  - **不要**在单 DOM 节点或 Composable 驱动容器上使用 `:ref="(el) => ..."` 函数式内联赋值胶水；
   - **放行/改用**：
     1. **严格四重前置守卫**：先验 `if (e.repeat) return`，再验 `if (e.metaKey || e.ctrlKey || e.altKey) return`，三验 `if (document.querySelector('dialog[open], [role="dialog"], [role="menu"]')) return`，四验输入元素（`INPUT`/`TEXTAREA`/`SELECT`/`isContentEditable`），合法切话时显式 `e.preventDefault()`；
-    2. **函数 Ref 绑定**：对于外部 Composable 注入的 Ref，模板中采用 `:ref="(el) => { dropZoneRef = el as HTMLElement }"` 明确建立 TS AST 依赖链；
-    3. **双轨分工检查**：`vite.config.ts` 对 `*.vue` 单独关闭 `no-unused-vars`，由开启了 `noUnusedLocals` 的 `pnpm type-check`（`vue-tsc --build`）全权负责 Vue 模板的严格未引用检查。
+    2. **现代 Composable DOM 容器注入范式（Composable DOM Injection via useTemplateRef）**：宿主 DOM 元素统一在组件 `<script setup>` 顶层使用 Vue 3.5 `useTemplateRef<HTMLElement>('dropZoneEl')` 声明，模板直接使用原生静态 `ref="dropZoneEl"` 绑定，再将其作为可选入参注入下游 Composable（如 `useFileStaging({ dropZoneRef: dropZoneEl })`、`useLocalWorkshop({ dropAreaRef: dropAreaEl })`），彻底淘汰 `:ref="(el) => ..."` 胶水与 `void <ref>` 占位；
+    3. **函数 Ref（:ref）全站单一合法场景**：全站仅保留在 `v-for` 循环中需要按业务动态 ID 进行字典寻址的场景（如 `ChapterSwitcher.vue` 中的 `:ref="(el) => (buttonEls[chapter.id] = el as HTMLElement | null)"`）。在此场景下，由于元素需要被 O(1) 按章节 ID 检索居中定位，使用字典型函数 Ref 是 Vue 官方推荐且唯一的规范范式（详见 Vue 官方文档 Template Refs on v-for）；其他所有确定节点必须 100% 收敛为 `useTemplateRef`；
+    4. **双轨分工检查**：`vite.config.ts` 对 `*.vue` 单独关闭 `no-unused-vars`，由开启了 `noUnusedLocals` 的 `pnpm type-check`（`vue-tsc --build`）全权负责 Vue 模板的严格未引用检查。
 
 ### 100. 本地路径导入与长耗时 RPC 一刀切短超时引发的时序撕裂与 I/O 阻塞陷阱（Split-Horizon Timeout & Heavy File Copy Stall）
 
@@ -1280,23 +1282,29 @@
   7. **后端权威指针锁定 `Chapter.start`**：无论前端传入何种 `c.start`，后端只认 `chap_start_page = global_idx`；
   8. **互斥锁 + 原子目录交换 + 冷启动清理保底**：`_lock_for("local", source_id)` 互斥保护，`.tmp_create_pages_*` 组装完毕后原子重命名切换，FastAPI lifespan 钩入 `_cleanup_staged_pdfs(max_age_seconds=0)`。
 
-### 114. 动态位移悬停抖动死锁、路由过度同步导航抢占与冗余 Query 组装反模式 (Hover Jitter Loop, Route Over-syncing Preemption & Redundant Query Assembly)
+### 115. Vue 3 模板引用隐式解绑、双轨双向状态脱节与大体量对象深度代理风暴 (Template Ref Decoupling, DefineModel State Desync & ShallowRef Proxy Flooding)
 
 - **本质**：
-  1. **位移子容器的 Hover 自激振荡（Hover Displacement Jitter Loop）**：当元素自身或直属子节点在 `:hover` 下发生位移（如 `translate: 0 -0.35rem` 或 `transform: translateY(-4px)`）时，鼠标如果恰好处在位移前的边缘（例如卡片底边），元素向上位移导致鼠标脱离命中区（失去 hover），元素复位又使鼠标重新进入命中区（重新获得 hover），从而在特定像素坐标触发 30~60Hz 的剧烈纵向抖动。解决之道是**迟滞隔离与作用域外提（Hover Hysteresis Guard）**：将 `:hover` 伪类绑定在几何尺寸与物理位置绝对静止的外层容器（如 `.comic-card:hover .card-link`），确保即便内部卡片上浮，鼠标仍在父容器的安全命中区内；
-  2. **复合筛选向后兼容事件监听冲突（Multi-Select Event Collapsing Trap）**：在重构组件支持多选模式（如多标签筛选由单数 `activeTag` 升级为复数 `activeTags`）时，若外层调用方在监听 `@update:active-tags` 的同时残留了旧版的 `@select-tag="activeTag = $event"` 监听器，若 `activeTag` 为双向 computed setter（如 `activeTag = val ? [val] : []`），则组件抛出单项选择事件时会立即将刚刚多选的数组强制折叠回仅包含该单项的数组，导致多选失效。组件在跨版本兼容升级时，调用方必须收敛至单一数据源事件流（`@update:active-tags`）；
-  3. **书架交互过度同步路由导致导航抢占死锁（Route Query Over-syncing & Navigation Preemption Trap）**：将书架纯内存筛选交互（如状态、喜欢、多标签、排序）强行持久化至 URL `route.query`。当读者点击顶栏导航或切换路由时，内部监听触发异步 `router.replace`，直接抢占并掐断了正在执行中的页面跳转（Vue Router 抛出 `NavigationCancelled`），导致顶栏导航与页面切换卡死不动。彻底根治方案：**将书架多维筛选状态彻底收敛至 `useShelfState` 纯内存全局单例，在 `useLibrarySync` 中彻底拔除 `router.replace` 与 `route.query` watch**，0 路由写入，彻底释放 Vue Router 的原生调度；
-  4. **API 层冗余 URLSearchParams 手工拼接（Redundant Manual URLSearchParams Assembly）**：在业务 RPC 方法中为每个字段写十余行 `if (params?.xxx) query.set(...)` 属于严重代码坏味道。底层 `request` 应统一支持强类型纯函数 `buildQueryString` 与声明式 `options.params`，通过对象过滤机制自动剔除 `undefined`/`null`/`''`，实现声明式参数映射。
+  1. **模板引用与变量命名隐式耦合（Template Ref String Coupling）**：旧式在 `<script setup>` 中写 `const el = ref<HTMLElement | null>(null)`，严格依赖变量名与模板中 `ref="el"` 的字符串匹配。在代码重构、重命名或在 Composable 间复用时极易断联，且类型无法向模板编译器强保障。解决之道：统一使用 Vue 3.5+ 原生 `useTemplateRef<T>('el')`，实现编译期强类型绑定与标识符解耦；
+  2. **父子受控状态手写 `emit('update:xxx')` 与内部 `internalX` 镜像状态引发的双轨脱节（Dual-Track State Divergence）**：在封装具有开闭或受控状态的组件（如弹窗 `Modal`、浮层 `AppPopover`、抽屉 `ComicGrid`、标签栏 `TagFilterBar`）时，手工声明 `props.open` + `emit('update:open')` 并在组件内部维护 `internalOpen` 本地 ref 与双轨计算属性。当外部未传或异步赋值时，本地镜像与外部受控状态极易脱节，且消费层散落大量 `@update:active-count`、`@update:archive-open` 等胶水代码。解决之道：一律使用 Vue 3.4+ 原生 `defineModel`，一行宏声明兼顾受控（`v-model:name`）与非受控默认行为，全站彻底拔除 `@update:xxx` 胶水；
+  3. **单测中 `wrapper.setProps` 遇到内部触发 `defineModel` 的组件浅比较失效（DefineModel Test Reactivity Trap）**：在 Vitest / Vue Test Utils 单元测试中，若子组件通过 `defineModel` 改变了自身内部状态（如点击关闭按钮将 `open.value` 赋为 `false`），而测试挂载时传入的初始 `props.open` 仍为 `true`。若测试接下来直接调用 `await wrapper.setProps({ open: true })`，Vue 的 Props 浅比较机制发现上游传入的值前后均为 `true`，判定无需触发响应式通知，导致组件无法被重新展开，引发 `.find(...)` 为空的断言假失败。解决之道：测试中针对不同的关闭与阻断链路，**推荐为不同交互分别挂载干净的独立实例**，或先 `await wrapper.setProps({ open: false })` 强制变更上游再置 `true`；
+  4. **大体量集合滥用深度 `ref` 导致的代理风暴与掉帧（Large Dataset Deep Proxy Storm）**：将书架全量藏书（`items: LibrarySummary[]`，含数百上千本漫画及各自的 tags、authors、covers 嵌套数组）、阅读器全本漫画（`detail: ComicDetail`，含 50~200 个分镜页对象）、以及发现页排行流存入深层 `ref()` 中。Vue 3 会对每个条目及其所有子属性递归注入 `reactive()` 代理，产生成千上万个 Proxy 实例，引发昂贵的初始化 CPU 占用、内存膨胀和垃圾回收（GC）卡顿。解决之道：对不需要深度细粒度监听属性原地修改的大体量数据集，**强行采用 `shallowRef()`**，数据变更统一通过不可变替换（`items.value = [...items.value]`）触发；
+  5. **未关联作用域的裸露定时器与视口常驻监听器（Unscoped Timers & Idle Listener Leak）**：组件内部书写原生 `setTimeout` / `clearTimeout`，并在 `onBeforeUnmount` 中手写清理样板；或为了计算弹出层视口碰撞而在组件初始化时为 `window` 全局挂载 `scroll` 与 `resize` 监听，导致组件在休眠收拢时仍持续唤醒 CPU。解决之道：使用 VueUse `useTimeoutFn` 依托响应式作用域自动回收定时器；使用 Vue 3.5 原生 `onWatcherCleanup` 在 `watch(open)` 展开时动态注册 `window` 监听器、收拢时即刻解绑，达成休眠期 0 监听器、0 CPU 唤醒开销；
+  6. **向后兼容双轨桥接与遗留初值 Props 的死代码沉淀（Legacy Dual-Track Bridges & Redundant Initial Props）**：在架构演进升级为多选（如 `activeTag` -> `activeTags`）或使用 `defineModel`（如 `initialActiveCount` -> `v-model:active-count`）后，继续在 Composable 或子组件中保留旧单数属性的 `@deprecated` computed 读写桥、4 组冗余的 `props.initialX` 以及对应的 4 组手写 `watch(() => props.initialX)`。这不仅造成代码膨胀，还会引起状态重复同步的静默回环。解决之道：演进完成后必须彻底拔除 `@deprecated` 桥接与 `initialX` 冗余 props，全面收敛至现代单一真理源。
 - **红线与防误伤**：
-  - **不要**对发生自身位移（`translate` / `top` / `margin`）的元素直接绑定触发该位移的 `:hover` 规则，严禁在卡片自身边界留出悬空断层；
-  - **不要**在多选容器上同时绑定会导致状态坍缩的旧版单选同步事件；
-  - **不要**将书架筛选维度强行同步到路由 URL，严禁在 `useLibrarySync` 中调用 `router.replace` 破坏路由跳转生命周期；
-  - **不要**在各业务请求方法中散落复制繁琐的手工 `query.set` 样板代码；
+  - **不要**在 `<script setup>` 中声明 `ref<HTMLElement | null>(null)` 作为模板 DOM 引用；
+  - **不要**在模板中手写 `@update:xxx` 胶水绑定，父子双向状态一律使用 `v-model` / `v-model:name`；
+  - **不要**在组件内部维护 `internalOpen` 和 `props.open` 的冗余双轨镜像逻辑；
+  - **不要**对大体量集合（书架全量 items、阅读器全本 pages、搜索结果）使用深层 `ref()`；
+  - **不要**在组件内部保留裸露的 `setTimeout` 并在 `onBeforeUnmount` 中手工清理；
+  - **不要**在架构迁移完成后遗留 `@deprecated` 胶水桥接或保留重叠的 `initialX` 初始值 props 与监听器；
 - **放行/改用**：
-  1. **迟滞容器保护（Hysteresis Guard Wrapper）**：将悬浮动画的作用选择器重构为静止外层容器驱动（如 `.comic-card:hover .card-link`、`.comic-card:focus-within .card-link` 以及 `.card-link:focus-visible` 键盘可访问性兜底）；
-  2. **单一事件流派发**：消费方模板只监听 `@update:active-tags`，组件内部在兼顾旧版单项事件的同时保证多选状态由单一阵列驱动；
-  3. **纯内存响应式状态管理**：书架筛选完全由 `useShelfState` 内存驱动，`useLibrarySync` 只负责触发防抖加载，杜绝路由写入；
-  4. **底层收敛声明式 options.params**：统一在 `request` 调度 `buildQueryString` 纯函数，业务层只传递干净的 Plain Object。
+  1. **模板引用强类型化**：全站统一使用 `useTemplateRef<T>('refName')`；
+  2. **双向绑定一等公民**：统一使用 `defineModel<T>('name')`，模板消费层直接 `v-model:name`；
+  3. **单元测试独立挂载**：对于 `defineModel` 组件的不同交互路径，分别挂载独立 wrapper 避免浅比较跳过；
+  4. **大规模数据浅层化**：书架 Store `items`、阅读器 `detail`、发现页 `feed`、Worker 过滤结果一律采用 `shallowRef`；
+  5. **动态休眠与作用域定时器**：使用 `useTimeoutFn` 与 `onWatcherCleanup`，实现真正的休眠期零开销；
+  6. **坚决淘汰胶水与冗余 Props**：彻底清退遗留的兼容桥与旧式 `initialX` 样板，单一状态唯一收敛。
 
 ---
 

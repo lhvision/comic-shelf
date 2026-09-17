@@ -10,42 +10,34 @@
  * 4. 纸间水墨质感与朱砂提示徽印。
  */
 
-import { nextTick, ref, watch } from 'vue'
+import { nextTick, useTemplateRef, watch } from 'vue'
 import AppIcon from '@/components/AppIcon.vue'
 import type { SearchCommandDef } from '@/composables/useSearchCommands'
 
-const props = withDefaults(
-  defineProps<{
-    open: boolean
-    commands: SearchCommandDef[]
-    focusedIndex?: number
-  }>(),
-  {
-    focusedIndex: 0,
-  },
-)
+const focusedIndex = defineModel<number>('focusedIndex', { default: 0 })
+
+const props = defineProps<{
+  open: boolean
+  commands: SearchCommandDef[]
+}>()
 
 const emit = defineEmits<{
   select: [cmd: SearchCommandDef]
-  'update:focusedIndex': [index: number]
 }>()
 
-const menuListRef = ref<HTMLElement | null>(null)
+const menuListRef = useTemplateRef<HTMLElement>('menuListRef')
 
-watch(
-  () => props.focusedIndex,
-  async (idx) => {
-    if (idx === undefined || idx < 0 || !menuListRef.value) return
-    await nextTick()
-    const activeEl = menuListRef.value.querySelector<HTMLElement>(`#cmd-opt-${idx}`)
-    if (activeEl && typeof activeEl.scrollIntoView === 'function') {
-      activeEl.scrollIntoView({ block: 'nearest' })
-    }
-  },
-)
+watch(focusedIndex, async (idx) => {
+  if (idx === undefined || idx < 0 || !menuListRef.value) return
+  await nextTick()
+  const activeEl = menuListRef.value.querySelector<HTMLElement>(`#cmd-opt-${idx}`)
+  if (activeEl && typeof activeEl.scrollIntoView === 'function') {
+    activeEl.scrollIntoView({ block: 'nearest' })
+  }
+})
 
 function onMouseEnter(idx: number) {
-  emit('update:focusedIndex', idx)
+  focusedIndex.value = idx
 }
 
 function onClickItem(cmd: SearchCommandDef) {
@@ -79,9 +71,9 @@ function onClickItem(cmd: SearchCommandDef) {
           :id="`cmd-opt-${idx}`"
           :key="cmd.id"
           class="menu-item"
-          :class="{ 'is-focused': props.focusedIndex === idx }"
+          :class="{ 'is-focused': focusedIndex === idx }"
           role="option"
-          :aria-selected="props.focusedIndex === idx"
+          :aria-selected="focusedIndex === idx"
           @mouseenter="onMouseEnter(idx)"
           @click="onClickItem(cmd)"
         >

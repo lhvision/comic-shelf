@@ -10,7 +10,7 @@
  * 4. 密码输入字体与占位符对齐。
  */
 
-import { ref } from 'vue'
+import { ref, useTemplateRef } from 'vue'
 import { useFocus } from '@vueuse/core'
 import AppIcon from '@/components/AppIcon.vue'
 import type { IconName } from '@/components/icons'
@@ -47,7 +47,7 @@ const props = withDefaults(
 )
 
 const showPassword = ref(false)
-const inputRef = ref<HTMLInputElement | null>(null)
+const inputRef = useTemplateRef<HTMLInputElement>('inputRef')
 
 if (props.autofocus) {
   useFocus(inputRef, { initialValue: true })

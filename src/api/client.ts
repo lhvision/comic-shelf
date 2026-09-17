@@ -347,7 +347,7 @@ export const api = {
           favorite: params?.favorite ? 'true' : undefined,
           source: params?.source,
           q: (params?.q ?? params?.search)?.trim(),
-          tags: (params?.tags ?? params?.tag)?.trim(),
+          tags: (params?.tags || params?.tag)?.trim(),
           sort: params?.sort !== 'recent' ? params?.sort : undefined,
         },
       },

@@ -1,22 +1,18 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 
+const modelValue = defineModel<number[]>({ default: () => [1, 2, 3, 4] })
+
 const props = withDefaults(
   defineProps<{
-    modelValue?: number[]
     maxPage?: number
     hint?: string
   }>(),
   {
-    modelValue: () => [1, 2, 3, 4],
     maxPage: 1,
     hint: '',
   },
 )
-
-const emit = defineEmits<{
-  'update:modelValue': [indices: number[]]
-}>()
 
 const cover1 = ref(1)
 const cover2 = ref(2)
@@ -26,7 +22,7 @@ const cover4 = ref(4)
 const effectiveMax = computed(() => Math.max(1, props.maxPage || 1))
 
 watch(
-  () => props.modelValue,
+  modelValue,
   (val) => {
     const list = val || []
     const next1 = list[0] ?? 1
@@ -50,7 +46,7 @@ watch(
 )
 
 function emitChange() {
-  emit('update:modelValue', [cover1.value, cover2.value, cover3.value, cover4.value])
+  modelValue.value = [cover1.value, cover2.value, cover3.value, cover4.value]
 }
 
 watch([cover1, cover2, cover3, cover4], () => {

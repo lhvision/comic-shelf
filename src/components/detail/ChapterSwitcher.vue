@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, ref, useTemplateRef, watch } from 'vue'
 import { useEventListener, useResizeObserver, useScroll } from '@vueuse/core'
 import { clamp } from '@/utils/math'
 import type { Chapter } from '@/types'
@@ -28,7 +28,7 @@ const props = withDefaults(
 
 const emit = defineEmits<{ change: [id: string] }>()
 
-const listEl = ref<HTMLElement | null>(null)
+const listEl = useTemplateRef<HTMLElement>('listEl')
 const buttonEls: Record<string, HTMLElement | null> = {}
 
 const scrollBehavior = ref<ScrollBehavior>('auto')

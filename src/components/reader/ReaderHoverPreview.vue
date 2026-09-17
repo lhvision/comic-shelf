@@ -12,7 +12,7 @@
  *    - 依据传入的 anchorX 百分比或绝对坐标居中浮现，通过 CSS 保证不超出视口边界。
  */
 
-import { computed, nextTick, ref, watch } from 'vue'
+import { computed, nextTick, ref, useTemplateRef, watch } from 'vue'
 import { pageThumbUrl } from '@/api/client'
 
 const props = withDefaults(
@@ -45,7 +45,7 @@ const emit = defineEmits<{
   imageReady: [page: number, ratio: string]
 }>()
 
-const imgRef = ref<HTMLImageElement | null>(null)
+const imgRef = useTemplateRef<HTMLImageElement>('imgRef')
 const imgLoaded = ref(false)
 const imgFailed = ref(false)
 const loadedRatio = ref<string | null>(null)

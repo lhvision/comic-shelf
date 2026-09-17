@@ -63,8 +63,19 @@ describe('Modal Component', () => {
     await wrapper.find('.modal-close').trigger('click')
     expect(wrapper.emitted('cancel')).toBeTruthy()
 
-    await wrapper.find('.modal-scrim').trigger('click')
-    expect(wrapper.emitted('cancel')?.length).toBe(2)
+    const scrimWrapper = mount(Modal, {
+      props: {
+        open: true,
+        title: '测试遮罩弹窗',
+      },
+      global: {
+        stubs: {
+          Teleport: true,
+        },
+      },
+    })
+    await scrimWrapper.find('.modal-scrim').trigger('click')
+    expect(scrimWrapper.emitted('cancel')).toBeTruthy()
   })
 
   it('emits cancel on Escape keydown', async () => {

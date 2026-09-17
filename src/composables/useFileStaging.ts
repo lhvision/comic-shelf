@@ -63,6 +63,8 @@ export interface UseFileStagingOptions {
   disabled?: MaybeRefOrGetter<boolean>
   /** 初始预设的文件列表 */
   initialFiles?: File[]
+  /** 外部传入的拖拽接收 DOM 容器 Ref（如通过 Vue 3.5 useTemplateRef 获取） */
+  dropZoneRef?: Readonly<Ref<HTMLElement | null>> | Ref<HTMLElement | null>
 }
 
 /**
@@ -78,7 +80,7 @@ export function useFileStaging(options: UseFileStagingOptions = {}) {
   const files = ref<File[]>(options.initialFiles ?? []) as Ref<File[]>
 
   /** 绑定至拖拽接收 DOM 容器的 Template Ref */
-  const dropZoneRef = ref<HTMLElement | null>(null)
+  const dropZoneRef = options.dropZoneRef ?? ref<HTMLElement | null>(null)
 
   /**
    * 将原始文件加入暂存池（自动完成格式过滤、去重与自然排序）

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, ref, useTemplateRef, watch } from 'vue'
 import Modal from '@/components/Modal.vue'
 import AppButton from '@/components/AppButton.vue'
 import AppProgressBar from '@/components/AppProgressBar.vue'
@@ -40,9 +40,10 @@ const newChapterTitle = ref('')
 const serverPath = ref('')
 const submitting = ref(false)
 
+const dropZoneEl = useTemplateRef<HTMLElement>('dropZoneEl')
+
 const {
   files: selectedFiles,
-  dropZoneRef,
   isOverDropZone,
   openFileDialog,
 } = useFileStaging({
@@ -50,6 +51,7 @@ const {
   deduplicate: false,
   notifyIgnored: true,
   disabled: submitting,
+  dropZoneRef: dropZoneEl,
 })
 
 watch(
@@ -195,13 +197,7 @@ async function submit() {
         />
       </div>
 
-      <div
-        :ref="
-          (el) => {
-            dropZoneRef = el as HTMLElement
-          }
-        "
-      >
+      <div ref="dropZoneEl">
         <FileStagingDropZone
           v-model:mode="mode"
           v-model:files="selectedFiles"

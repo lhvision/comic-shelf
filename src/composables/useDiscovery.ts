@@ -1,4 +1,4 @@
-import { ref } from 'vue'
+import { ref, shallowRef } from 'vue'
 import { tryOnScopeDispose } from '@vueuse/core'
 import { api } from '@/api/client'
 import { getTaskId, useSystemEvents } from '@/composables/useSystemEvents'
@@ -8,7 +8,7 @@ import type { DiscoveryFeed, DiscoveryItem, DiscoveryTimeframe } from '@/types'
 
 export function useDiscovery() {
   const timeframe = ref<DiscoveryTimeframe>('week')
-  const feed = ref<DiscoveryFeed | null>(null)
+  const feed = shallowRef<DiscoveryFeed | null>(null)
   const loading = ref(false)
   const refreshing = ref(false)
   const error = ref<string | null>(null)

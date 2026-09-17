@@ -3,7 +3,7 @@
  * @file ReaderView.vue - 沉浸式阅读器主视图（纯编排视图，脚本严格 ≤150 行）
  */
 
-import { computed, ref } from 'vue'
+import { computed, ref, useTemplateRef } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { usePreferredReducedMotion, useToggle } from '@vueuse/core'
 import { useReaderSettings } from '@/composables/useReaderSettings'
@@ -40,7 +40,7 @@ const userInteracted = ref(false)
 const [settingsOpen] = useToggle(false)
 const [filmstripOpen, toggleFilmstrip] = useToggle(false)
 const reducedMotion = usePreferredReducedMotion()
-const viewportRef = ref<{ scrollEl: HTMLElement | null } | null>(null)
+const viewportRef = useTemplateRef<{ scrollEl: HTMLElement | null }>('viewportRef')
 const scrollEl = computed(() => viewportRef.value?.scrollEl ?? null)
 
 const readerData = useReaderData({ onLoaded: () => initReaderView() })

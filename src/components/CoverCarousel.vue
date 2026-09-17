@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { useTemplateRef } from 'vue'
 import AppButton from '@/components/AppButton.vue'
 import { coverSrcset } from '@/api/client'
 import { clamp } from '@/utils/math'
@@ -9,7 +9,7 @@ defineProps<{
   title: string
 }>()
 
-const track = ref<HTMLElement | null>(null)
+const track = useTemplateRef<HTMLElement>('track')
 
 function scrollToSlide(slide: HTMLElement | null) {
   if (!slide) return

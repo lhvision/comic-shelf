@@ -11,10 +11,12 @@
  * 5. 封面自适应防崩退化与典藏朱砂金墨分镜导引指示。
  */
 
-import { nextTick, ref, watch } from 'vue'
+import { nextTick, ref, useTemplateRef, watch } from 'vue'
 import AppIcon from '@/components/AppIcon.vue'
 import type { DialogueSearchItem } from '@/types'
 import { coverFileUrl } from '@/api/client'
+
+const focusedIndex = defineModel<number>('focusedIndex', { default: -1 })
 
 const props = withDefaults(
   defineProps<{
@@ -24,21 +26,18 @@ const props = withDefaults(
     isSearching: boolean
     error?: string
     query: string
-    focusedIndex?: number
   }>(),
   {
     error: '',
-    focusedIndex: -1,
   },
 )
 
 const emit = defineEmits<{
   select: [item: DialogueSearchItem]
   close: []
-  'update:focusedIndex': [index: number]
 }>()
 
-const listContainerRef = ref<HTMLElement | null>(null)
+const listContainerRef = useTemplateRef<HTMLElement>('listContainerRef')
 const failedCovers = ref<Record<string, boolean>>({})
 
 function onCoverError(key: string) {
@@ -53,18 +52,15 @@ function getItemCoverUrl(item: DialogueSearchItem): string {
 /**
  * 监听键盘导航索引变化，驱动列表视口平滑对齐跟随
  */
-watch(
-  () => props.focusedIndex,
-  async (idx) => {
-    if (idx === undefined || idx < 0 || !listContainerRef.value) return
-    await nextTick()
-    const items = listContainerRef.value.querySelectorAll('.result-item')
-    const activeEl = items[idx] as HTMLElement | undefined
-    if (activeEl) {
-      activeEl.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: 'smooth' })
-    }
-  },
-)
+watch(focusedIndex, async (idx) => {
+  if (idx === undefined || idx < 0 || !listContainerRef.value) return
+  await nextTick()
+  const items = listContainerRef.value.querySelectorAll('.result-item')
+  const activeEl = items[idx] as HTMLElement | undefined
+  if (activeEl) {
+    activeEl.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: 'smooth' })
+  }
+})
 
 const snippetTokensCache = new Map<string, Array<{ text: string; isMark: boolean }>>()
 
@@ -124,7 +120,7 @@ function onSelect(item: DialogueSearchItem) {
 }
 
 function onMouseEnterItem(index: number) {
-  emit('update:focusedIndex', index)
+  focusedIndex.value = index
 }
 </script>
 

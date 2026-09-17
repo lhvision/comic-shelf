@@ -119,6 +119,27 @@ describe('api client query assembly', () => {
     expect(calledUrl).toContain('favorite=true')
   })
 
+  it('correctly falls back to tag when tags is empty string', async () => {
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(
+      mockJsonResponse({
+        items: [],
+        total: 0,
+        page: 1,
+        page_size: 24,
+        has_more: false,
+      }),
+    )
+    globalThis.fetch = fetchMock
+
+    await api.library({
+      tags: '',
+      tag: '单标签',
+    })
+
+    const calledUrl = getCalledUrl(fetchMock)
+    expect(calledUrl).toContain('tags=%E5%8D%95%E6%A0%87%E7%AD%BE')
+  })
+
   it('assembles libraryFacets query parameters cleanly', async () => {
     const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(
       mockJsonResponse({

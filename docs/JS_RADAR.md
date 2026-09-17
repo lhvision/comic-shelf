@@ -19,6 +19,7 @@
    - [2.7 `Intl.Collator` — 高性能本地化文本排序与拼音对齐（Baseline 2020）](#27-intlcollator--高性能本地化文本排序与拼音对齐baseline-2020)
    - [2.8 `WeakMap` 弱引用缓存 — 高频列表检索与多维度元数据无泄漏记忆（Baseline）](#28-weakmap-弱引用缓存--高频列表检索与多维度元数据无泄漏记忆baseline)
    - [2.9 Module Web Workers 与极简结构化通信 — 海量藏书主线程 CPU 卸载（Baseline 2023）](#29-module-web-workers-与极简结构化通信--海量藏书主线程-cpu-卸载baseline-2023)
+   - [2.10 Vue 3.5/3.6 现代语法与零胶水实现（`useTemplateRef` & `defineModel`）](#210-vue-3536-现代语法与零胶水实现usetemplateref--definemodel)
 3. [渐进增强特性（Progressive Enhancement & Newly Available）](#3-渐进增强特性progressive-enhancement--newly-available)
    - [3.1 Iterator Helpers — 生成器流式管道与惰性求值（Baseline 2025）](#31-iterator-helpers--生成器流式管道与惰性求值baseline-2025)
    - [3.2 Explicit Resource Management（`using` / `Symbol.dispose`）— 声明式 RAII 作用域资源清理](#32-explicit-resource-managementusing--symboldispose--声明式-raii-作用域资源清理)
@@ -62,6 +63,8 @@
 | **`using` (Explicit Resource Mgmt)**        |  134+  |  141+   |   TP   | 🔶 Newly Available 2025 |               📋 路线图（Canvas Context / ObjectURL 作用域）                |
 | **`Temporal API`**                          |  144+  |  139+   |   TP   | 🔶 Newly Available 2026 |               ⚠️ 审慎评估（待 iOS 稳定版就绪前暂不全量采用）                |
 | **Vue 3.6 Vapor Mode (`<template vapor>`)** | 全支持 | 全支持  | 全支持 |      🔶 Vue 3.6 RC      |            ✅ 局部探针已落地（`PageTile.vue` / `/vapor-canary`）            |
+| **Vue `useTemplateRef()` 模板引用**         | 全支持 | 全支持  | 全支持 |     ✅ Vue 3.5+ GA      |    ✅ 已落地（全站 20+ 组件模板引用强类型化，彻底消灭 `ref(null)` 样板）    |
+| **Vue `defineModel()` 声明式双向绑定**      | 全支持 | 全支持  | 全支持 |     ✅ Vue 3.4+ GA      |   ✅ 已落地（`Modal` / `AppPopover` / `TagFilterBar` 等双向绑定胶水清零）   |
 | **WICG HTML-in-Canvas (`drawElement`)**     |  155+  |   ❌    |   ❌   |      🧪 WICG Draft      |         ⚠️ 前瞻雷达（严禁用于长列表；储备于未来富排版气泡/AVG合图）         |
 | **模式匹配 (`match / when`)**               |   ❌   |   ❌    |   ❌   |       🧪 Stage 1        |                       🚫 严禁引入转译插件，纯草案观测                       |
 | **管道运算符 (`\|>`)**                      |   ❌   |   ❌    |   ❌   |       🧪 Stage 2        |                       🚫 严禁引入转译插件，纯草案观测                       |
@@ -414,6 +417,37 @@ function getSearchText(item: LibrarySummary): string {
 2. **内存快照单次同步**：Worker 内存常驻藏书快照，仅在数据增删改时同步一次全量数据；
 3. **微量参数 + 轻量 ID 交换（Zero Clone Storm）**：主线程击键检索时仅发送微量入参（~50 字节）；Worker 计算完毕后仅向主线程返回有序的 `idList: string[]`（几十 KB），主线程依托 `itemMap` 快速指针还原，耗时 `< 0.3ms`；
 4. **双轨平滑降级**：`WORKER_THRESHOLD = 1000`，小于 1000 本或在 Node/SSR/Vitest 无 DOM/Worker 环境下自动回退为主线程同步纯函数运算，确保生产极致灵敏且单测 100% 稳健。
+
+---
+
+### 2.10 Vue 3.5/3.6 现代语法与零胶水实现（`useTemplateRef`、`defineModel`、`shallowRef` 与动态休眠）
+
+**官方规范**：[Vue 3.5 Released](https://blog.vuejs.org/posts/vue-3-5) · [Vue 3.4 Released](https://blog.vuejs.org/posts/vue-3-4)  
+**规范状态**：Vue 3.4+ / 3.5+ GA（本项目当前运行于 Vue `3.6.0-rc.8`）  
+**本项目落地位置**：
+
+- `src/stores/library.ts`（全量藏书 `items`、详情缓存 `detailCache`、统计汇总 `facets` 升级为 `shallowRef`，彻底杜绝深层代理消耗）
+- `src/composables/useReaderData.ts`（阅读器漫画元数据 `detail: ShallowRef<ComicDetail | null>` 杜绝百页漫画深度代理风暴）
+- `src/composables/useLibraryFilter.ts`（Worker 过滤结果 `workerFiltered: shallowRef`）与 `useDiscovery.ts`（精选流 `feed: shallowRef`）
+- `src/components/Modal.vue`（`open` 升级为 `defineModel`，`dialogEl` / `panel` 升级为 `useTemplateRef`，`useTimeoutFn` 托管微弹防误触）
+- `src/components/AppPopover.vue` 与 `src/components/AppTooltip.vue`（`open` 升级为 `defineModel`，`useTimeoutFn` 托管展开/收起延迟，Vue 3.5 `onWatcherCleanup` 动态挂载/注销 `window` 监听器，达成休眠期 0 监听器开销）
+- `src/components/library/ComicGrid.vue` 与 `LibraryView.vue`（`archiveOpen`、`activeCount`、`archiveCount`、`unifiedCount` 统一升级为 `defineModel`，全站模板消灭所有 `@update:xxx` 手写事件）
+- 全站 20+ 核心组件模板 DOM 引用（`AppDropdown`、`AppHeader`、`ComicPageImage`、`CoverCarousel`、`ReaderViewport`、`ReaderFilmstrip`、`ReaderHoverPreview` 等）全面普及 `useTemplateRef`
+
+#### 核心机制与解决的历史反模式
+
+1. **模板引用与变量名称解耦（`useTemplateRef`）**：
+   - ❌ **旧反模式**：在 `<script setup>` 中书写 `const imageEl = ref<HTMLImageElement | null>(null)`，依赖变量名与模板中的 `ref="imageEl"` 隐式字符串匹配。容易引发重命名漏改、类型断言混乱以及无法在不同作用域灵活复用；
+   - ✅ **新范式**：`const imageEl = useTemplateRef<HTMLImageElement>('imageEl')`，明确声明模板 ref 标识符与目标 DOM/组件实例的强类型契约，赋初值逻辑由 Vue 编译器接管；
+2. **声明式双向绑定（`defineModel`）**：
+   - ❌ **旧反模式**：手动声明 `props.modelValue` / `emit('update:modelValue')`，并需要借助中间 computed 或 watcher 监听向上传递；或在组件内部维护 `internalOpen` 和 `props.open` 的双轨判定逻辑；
+   - ✅ **新范式**：`const open = defineModel<boolean>('open', { default: false })`，一行声明即可天然兼顾非受控内部驱动（无外部绑定时作为独立 ref 工作）与外部双向受控同步（`v-model:open`），彻底消除 20+ 行冗余的事件派发与本地镜像状态；全站 `@update:xxx` 事件胶水 100% 清零。
+3. **性能提升：大规模数据杜绝深层代理（`shallowRef over ref`）**：
+   - ❌ **旧反模式**：对包含成百上千本漫画对象的数组（`LibrarySummary[]`）或百页漫画文档（`ComicDetail`）使用深层 `ref()`，Vue 递归代理每个对象及其内部嵌套数组，产生数以千计的 Proxy 实例，引发沉重的内存压力与 GC 掉帧；
+   - ✅ **新范式**：对大体量且采用不可变引用置换更新的数据集合统一使用 `shallowRef`，只在顶层 `.value` 引用变化时触发渲染通知，内部属性保持纯净原生对象，渲染帧率与内存占用获得显著优化。
+4. **动态休眠与定时器安全生命周期（`onWatcherCleanup` & `useTimeoutFn`）**：
+   - ❌ **旧反模式**：在组件外层声明 `let timer = null`，在 `onBeforeUnmount` 中手工 `clearTimeout`；或在挂载时无条件为全局 `window` 绑定 `scroll` / `resize`，即使弹窗关闭休眠仍在空跑计算；
+   - ✅ **新范式**：使用 VueUse `useTimeoutFn` 自动关联组件作用域注销；使用 Vue 3.5 `onWatcherCleanup` 在 `watch(open)` 激活时动态绑定视口监听器、失活时立即自清理，达成真正的零开销休眠。
 
 ---
 

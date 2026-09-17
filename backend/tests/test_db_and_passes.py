@@ -428,7 +428,7 @@ def test_comics_index_and_pagination():
         "authors_json": '["Author A"]',
         "works_json": '[]',
         "actors_json": '[]',
-        "tags_json": '["同人", "全彩"]',
+        "tags_json": '["同人", "全彩", "t1", "t2", "t3"]',
         "chapter_titles_json": '["第 1 话"]',
         "page_count": 20,
         "cached_pages": 20,
@@ -539,6 +539,13 @@ def test_comics_index_and_pagination():
     # No comic has both 同人 and 短篇
     items_multi_miss, total_multi_miss = db_mod.query_library_index("u1", is_curator=True, tags=["同人", "短篇"])
     assert total_multi_miss == 0
+
+    # Defensive truncation: passing > 5 tags truncates to first 5 tags (6th tag '短篇' is dropped)
+    items_truncated, _ = db_mod.query_library_index(
+        "u1", is_curator=True, tags=["同人", "全彩", "t1", "t2", "t3", "短篇"]
+    )
+    assert len(items_truncated) == 1
+    assert items_truncated[0]["source_id"] == "c1"
 
     # Keyword search
     items_search, total_search = db_mod.query_library_index("u1", is_curator=True, q="Beta")

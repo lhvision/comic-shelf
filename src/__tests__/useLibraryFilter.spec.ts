@@ -103,10 +103,10 @@ describe('useLibraryFilter', () => {
       { source: 'jm', source_id: '1', page_index: 1, score: 0.85, is_cover: true },
     ])
 
-    const { filtered, activeTag } = useLibraryFilter(itemsRef, activeSourceRef, searchResultsRef)
+    const { filtered, activeTags } = useLibraryFilter(itemsRef, activeSourceRef, searchResultsRef)
 
     // apply tag filter
-    activeTag.value = 'tag1'
+    activeTags.value = ['tag1']
 
     // Only Book A matches both image search AND tag1
     expect(filtered.value.length).toBe(1)
@@ -413,10 +413,10 @@ describe('useLibraryFilter', () => {
   it('sorts by cached page completion ratio correctly when requested', () => {
     const itemsRef = ref(items) // Book A (cached 10/10), Book B (cached 0/20), Book C (cached 15/30)
     const activeSourceRef = ref('')
-    const { filtered, setSort } = useLibraryFilter(itemsRef, activeSourceRef)
+    const { filtered, sortBy } = useLibraryFilter(itemsRef, activeSourceRef)
 
     expect(filtered.value.length).toBe(3)
-    setSort('cached')
+    sortBy.value = 'cached'
     expect(filtered.value.map((b) => b.source_id)).toEqual(['1', '3', '2'])
   })
 
@@ -490,9 +490,9 @@ describe('useLibraryFilter', () => {
     ]
     const itemsRef = ref(list)
     const activeSourceRef = ref('')
-    const { filtered, setSort } = useLibraryFilter(itemsRef, activeSourceRef)
+    const { filtered, sortBy } = useLibraryFilter(itemsRef, activeSourceRef)
 
-    setSort('title')
+    sortBy.value = 'title'
     expect(filtered.value.map((b) => b.source_id)).toEqual(['1', '2', '10'])
   })
 
@@ -501,7 +501,7 @@ describe('useLibraryFilter', () => {
     const ids = filterAndSortLibraryIds(items, {
       activeSource: '',
       search: '',
-      activeTag: 'tag2',
+      activeTags: ['tag2'],
       favoritesOnly: false,
       readingStatus: 'all',
       sortBy: 'recent',
@@ -536,13 +536,13 @@ describe('useLibraryFilter', () => {
 
     const itemsRef = ref(largeList)
     const activeSourceRef = ref('')
-    const { filtered, search, activeTag } = useLibraryFilter(itemsRef, activeSourceRef)
+    const { filtered, search, activeTags } = useLibraryFilter(itemsRef, activeSourceRef)
 
     // Initially all 1200 items in Node environment without Worker support
     expect(filtered.value.length).toBe(1200)
 
     // Tag filter
-    activeTag.value = 'odd'
+    activeTags.value = ['odd']
     expect(filtered.value.length).toBe(600)
 
     // Search filter

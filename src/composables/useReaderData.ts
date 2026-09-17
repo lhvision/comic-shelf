@@ -10,7 +10,17 @@
  * 5. 详情页/子路由返回路径（`backTarget` / `backToDetail`）计算与导航。
  */
 
-import { computed, onBeforeUnmount, onMounted, ref, watch, type ComputedRef, type Ref } from 'vue'
+import {
+  computed,
+  onBeforeUnmount,
+  onMounted,
+  ref,
+  shallowRef,
+  watch,
+  type ComputedRef,
+  type Ref,
+  type ShallowRef,
+} from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { api } from '@/api/client'
 import { useToast } from '@/composables/useToast'
@@ -32,8 +42,8 @@ export interface UseReaderDataOptions {
  * `useReaderData` 返回值契约
  */
 export interface UseReaderDataReturn {
-  /** 漫画元数据详情（加载中为 null） */
-  detail: Ref<ComicDetail | null>
+  /** 漫画元数据详情（加载中为 null，采用 shallowRef 杜绝大批量页码深度代理开销） */
+  detail: ShallowRef<ComicDetail | null>
   /** 全局初次加载状态指示 */
   loading: Ref<boolean>
   /** 随机看板插画变体序号或路径 */
@@ -70,7 +80,7 @@ export function useReaderData(options: UseReaderDataOptions = {}): UseReaderData
   const sourceId = computed(() => String(route.params.sourceId ?? ''))
   const lastRead = useLastRead(source, sourceId)
 
-  const detail = ref<ComicDetail | null>(null)
+  const detail = shallowRef<ComicDetail | null>(null)
   const loading = ref(true)
 
   const { getRandomIllustration } = useIllustrationPool()

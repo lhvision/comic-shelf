@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, ref } from 'vue'
+import { computed, nextTick, ref, useTemplateRef } from 'vue'
 import { useClipboard } from '@vueuse/core'
 import AppPopover from '@/components/AppPopover.vue'
 import AppButton from '@/components/AppButton.vue'
@@ -16,8 +16,8 @@ const isOpen = ref(false)
 const isConfirming = ref(false)
 const loggingOut = ref(false)
 
-const cancelBtnRef = ref<InstanceType<typeof AppButton> | null>(null)
-const promptBtnRef = ref<InstanceType<typeof AppButton> | null>(null)
+const cancelBtnRef = useTemplateRef<InstanceType<typeof AppButton>>('cancelBtnRef')
+const promptBtnRef = useTemplateRef<InstanceType<typeof AppButton>>('promptBtnRef')
 
 const trimmedName = computed(() => username.value.trim())
 const displayName = computed(() => trimmedName.value || '阅览室读者')

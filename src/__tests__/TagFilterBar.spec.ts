@@ -20,7 +20,6 @@ describe('TagFilterBar', () => {
     const wrapper = mount(TagFilterBar, {
       props: {
         favoritesOnly: false,
-        activeTag: '',
         tagCounts,
         filteredCount: 10,
       },
@@ -48,7 +47,6 @@ describe('TagFilterBar', () => {
     const wrapper = mount(TagFilterBar, {
       props: {
         favoritesOnly: false,
-        activeTag: '',
         tagCounts,
         filteredCount: 10,
         trayExpanded: false,
@@ -71,11 +69,10 @@ describe('TagFilterBar', () => {
     expect(overflowTags[1]?.text()).toContain('tag10')
   })
 
-  it('emits selectTag when an overflow tag is clicked without closing popover', async () => {
+  it('emits update:activeTags when an overflow tag is clicked without closing popover', async () => {
     const wrapper = mount(TagFilterBar, {
       props: {
         favoritesOnly: false,
-        activeTag: '',
         tagCounts,
         filteredCount: 10,
         trayExpanded: true,
@@ -85,7 +82,7 @@ describe('TagFilterBar', () => {
     const overflowTag = wrapper.find('.overflow-cluster').findAll('.chip-button')[0]
     await overflowTag?.trigger('click')
 
-    expect(wrapper.emitted('selectTag')?.[0]).toEqual(['tag9'])
+    expect(wrapper.emitted('update:activeTags')?.[0]).toEqual([['tag9']])
     // Popover stays open for consecutive tag selection
     expect(wrapper.emitted('update:trayExpanded')).toBeUndefined()
   })
@@ -94,7 +91,6 @@ describe('TagFilterBar', () => {
     const wrapper = mount(TagFilterBar, {
       props: {
         favoritesOnly: false,
-        activeTag: '',
         tagCounts,
         filteredCount: 10,
       },
@@ -111,7 +107,6 @@ describe('TagFilterBar', () => {
       props: {
         favoritesOnly: false,
         readingStatus: 'all',
-        activeTag: '',
         tagCounts,
         filteredCount: 10,
       },
@@ -133,11 +128,11 @@ describe('TagFilterBar', () => {
     expect(tabs[2]?.classes()).toContain('is-active')
   })
 
-  it('indicates active state on more button when activeTag is in overflow tags', () => {
+  it('indicates active state on more button when activeTags includes overflow tag', () => {
     const wrapper = mount(TagFilterBar, {
       props: {
         favoritesOnly: false,
-        activeTag: 'tag9',
+        activeTags: ['tag9'],
         tagCounts,
         filteredCount: 2,
       },
@@ -149,11 +144,11 @@ describe('TagFilterBar', () => {
     expect(moreBtn.text()).toContain('标签：tag9')
   })
 
-  it('updates active state on more button when activeTag changes to an overflow tag', async () => {
+  it('updates active state on more button when activeTags changes to an overflow tag', async () => {
     const wrapper = mount(TagFilterBar, {
       props: {
         favoritesOnly: false,
-        activeTag: '',
+        activeTags: [],
         tagCounts,
         filteredCount: 10,
       },
@@ -162,7 +157,7 @@ describe('TagFilterBar', () => {
     expect(wrapper.find('.more-tags').classes()).not.toContain('is-active-filter')
 
     await wrapper.setProps({
-      activeTag: 'tag10',
+      activeTags: ['tag10'],
       filteredCount: 1,
     } as Record<string, unknown>)
 
@@ -176,7 +171,6 @@ describe('TagFilterBar', () => {
     const wrapper = mount(TagFilterBar, {
       props: {
         favoritesOnly: false,
-        activeTag: '',
         tagCounts,
         filteredCount: 10,
         trayExpanded: false,
@@ -193,7 +187,6 @@ describe('TagFilterBar', () => {
     const wrapper = mount(TagFilterBar, {
       props: {
         favoritesOnly: false,
-        activeTag: '',
         tagCounts,
         filteredCount: 10,
       },
@@ -206,7 +199,7 @@ describe('TagFilterBar', () => {
     const wrapper = mount(TagFilterBar, {
       props: {
         favoritesOnly: false,
-        activeTag: 'tag9',
+        activeTags: ['tag9'],
         tagCounts,
         filteredCount: 2,
       },
@@ -226,7 +219,7 @@ describe('TagFilterBar', () => {
     const wrapper = mount(TagFilterBar, {
       props: {
         favoritesOnly: false,
-        activeTag: 'tag9',
+        activeTags: ['tag9'],
         tagCounts,
         filteredCount: 2,
         trayExpanded: true,
@@ -236,8 +229,7 @@ describe('TagFilterBar', () => {
     const clearBtn = wrapper.find('.overflow-clear-btn')
     await clearBtn.trigger('click')
 
-    expect(wrapper.emitted('selectTag')).toContainEqual([''])
-    expect(wrapper.emitted('clearTag')).toHaveLength(1)
+    expect(wrapper.emitted('update:activeTags')).toContainEqual([[]])
     // Popover remains open so user can pick another tag
     expect(wrapper.emitted('update:trayExpanded')).toBeUndefined()
   })
@@ -265,14 +257,13 @@ describe('TagFilterBar', () => {
     await directButtons[3]?.trigger('click')
     expect(wrapper.emitted('update:activeTags')?.[0]).toEqual([['tag1', 'tag2']])
 
-    // Click selected tag1 -> emits update:activeTags with []
+    // Click selected tag1 -> emits update:activeTags with ['tag2'] (since tag2 was added)
     await directButtons[2]?.trigger('click')
-    expect(wrapper.emitted('update:activeTags')?.[1]).toEqual([[]])
+    expect(wrapper.emitted('update:activeTags')?.[1]).toEqual([['tag2']])
 
     // Click "全部" -> clears all activeTags
     await directButtons[1]?.trigger('click')
     expect(wrapper.emitted('update:activeTags')?.[2]).toEqual([[]])
-    expect(wrapper.emitted('clearTag')).toBeTruthy()
   })
 
   it('displays composite tag label in more button when multiple overflow tags are selected', () => {
@@ -293,5 +284,26 @@ describe('TagFilterBar', () => {
     // Check filter note at bottom shows joined tags
     const filterNote = wrapper.find('.filter-note')
     expect(filterNote.text()).toContain('正在查看标签「tag9 · tag10」的 1 本')
+  })
+
+  it('blocks selecting more than 5 tags and removes tag on deselect', async () => {
+    const wrapper = mount(TagFilterBar, {
+      props: {
+        favoritesOnly: false,
+        activeTags: ['tag1', 'tag2', 'tag3', 'tag4', 'tag5'],
+        tagCounts,
+        filteredCount: 1,
+      },
+    })
+
+    const directButtons = wrapper.findAll('.filter-cluster > .chip-button')
+    // Buttons: favorite (0), all (1), tag1 (2), tag2 (3), tag3 (4), tag4 (5), tag5 (6), tag6 (7)
+    // Click 6th tag (tag6) -> should be blocked by MAX_SELECTED_TAGS = 5
+    await directButtons[7]?.trigger('click')
+    expect(wrapper.emitted('update:activeTags')).toBeUndefined()
+
+    // Test deselect: clicking an already selected tag (tag1) deselects it and emits remaining
+    await directButtons[2]?.trigger('click')
+    expect(wrapper.emitted('update:activeTags')?.[0]).toEqual([['tag2', 'tag3', 'tag4', 'tag5']])
   })
 })

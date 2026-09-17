@@ -5,7 +5,7 @@
  * 2. 推荐至多 3 本未读/在读精选藏书，支持点击直接开读与查看详情；
  * 3. 底部提供“回到详情”与“返回书架”导航入口。
  */
-import { ref } from 'vue'
+import { useTemplateRef } from 'vue'
 import { useIntersectionObserver } from '@vueuse/core'
 import type { LibrarySummary } from '@/types'
 import AppTextClamp from '@/components/AppTextClamp.vue'
@@ -37,7 +37,7 @@ const emit = defineEmits<{
   completed: []
 }>()
 
-const cardEl = ref<HTMLElement | null>(null)
+const cardEl = useTemplateRef<HTMLElement>('cardEl')
 let hasTriggeredCompleted = false
 
 // 真实视口感知：仅当读者真正滑阅至末页卡片且在视口呈现时，才判定为全卷读完

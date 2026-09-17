@@ -74,7 +74,6 @@ export function getSearchText(item: LibrarySummary): string {
 export interface FilterParams {
   activeSource: string
   search: string
-  activeTag?: string
   activeTags?: string[]
   favoritesOnly: boolean
   readingStatus: ReadingStatus
@@ -88,13 +87,11 @@ export function filterAndSortLibrary(
 ): LibrarySummary[] {
   const needle = params.search.trim().toLocaleLowerCase()
   const activeSource = params.activeSource
-  const rawTags =
-    params.activeTags && params.activeTags.length > 0
-      ? params.activeTags
-      : params.activeTag && params.activeTag.trim()
-        ? [params.activeTag.trim()]
-        : []
-  const activeTags = rawTags.map((t) => t.trim()).filter(Boolean)
+  const rawTags = params.activeTags ?? []
+  const activeTags = rawTags
+    .map((t) => t.trim())
+    .filter(Boolean)
+    .slice(0, 5)
   const favoritesOnly = params.favoritesOnly
   const readingStatus = params.readingStatus
   const sortBy = params.sortBy

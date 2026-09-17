@@ -626,6 +626,26 @@
    - 浮层容器（`Popover`）内点选次级溢出标签时，保持浮层常驻不自动关闭，支持连续点选并动态在外露主按钮呈现 `更多 · N (已选 M)`；
    - 状态纯粹收敛至纯内存响应式状态（`useShelfState`），完全解耦 URL 路由查询参数，杜绝路由监听导致的跨页面导航中断与卡死；同时底层 API 客户端收敛为声明式 `options.params` 映射，消除冗余繁琐的手工 `URLSearchParams` 样板代码。
 
+### <a id="sec-71"></a>§71 Vue 3.5/3.6 现代语法演进、模板引用强类型化与零胶水双向绑定架构（Vue Modern Syntax & Zero-Glue Architecture）
+
+随着项目底层依赖升级至 Vue `3.6.0-rc.8` 与 `@vueuse/core` 14.x，前端对历史遗留的旧式 Vue 胶水代码进行了全面现代化重构：
+
+1. **模板 DOM 引用强类型化与解耦（`useTemplateRef`）**：
+   - 彻底废除全仓 20 余处手写 `const el = ref<HTMLElement | null>(null)` 并依托模板隐式字符串匹配的旧样板；
+   - 全面推行 Vue 3.5+ 原生 `useTemplateRef<T>('el')`（覆盖 `Modal`、`AppPopover`、`AppDropdown`、`ComicPageImage`、`CoverCarousel`、`ComicGrid`、`ReaderViewport`、`ReaderFilmstrip`、`ReaderHoverPreview` 等所有交互分子与容器）；
+   - 明确解耦模板标识符与脚本内部变量命名，提升重命名重构与类型推导的鲁棒性；
+2. **声明式双向绑定全面收敛（`defineModel`）与 `@update:` 胶水全面清零**：
+   - 通用容器组件（`Modal.vue`、`AppPopover.vue`）的 `open` 状态重构为 `const open = defineModel<boolean>('open', { default: false })`，彻底消灭原先在 `AppPopover` 内部手写的 `internalOpen` 本地 ref、`isOpen` 双轨计算属性、手动 `update:open` 派发以及 20+ 行条件分支判断；
+   - 书架多选标签工具栏（`TagFilterBar.vue`）全面使用 `defineModel` 收敛 `trayExpanded`、`activeTags`、`readingStatus`；
+   - 书架网格（`ComicGrid.vue`）使用 `defineModel` 收敛 `archiveOpen`、`activeCount`、`archiveCount`、`unifiedCount`；
+   - 全站 Vue SFC 模板中历史遗留的手写 `@update:xxx` 事件绑定彻底清零，统一提升为语法糖级受控双向绑定（`v-model` / `v-model:name`）；
+3. **性能优先：大规模数据杜绝深层代理（`shallowRef over ref`）**：
+   - 书架全量藏书（`items: LibrarySummary[]`）、详情缓存（`detailCache: Record<string, ComicDetail>`）、统计汇总（`facets`）以及阅读器全量漫画详情（`detail: ComicDetail`）、发现页流（`feed`）全部升级为 `shallowRef`；
+   - 避免 Vue 对成百上千本漫画对象及百页分镜数据进行昂贵的递归深度 Proxy 代理，降低大列表渲染时的内存占用与 GC 压力，数据更新统一通过全量引用置换驱动；
+4. **动态休眠与定时器安全生命周期（`onWatcherCleanup` & `useTimeoutFn`）**：
+   - 消除组件内部手写的 `let timer = null` 与 `onBeforeUnmount` 手动 `clearTimeout`，统一由 VueUse `useTimeoutFn` 自动托管作用域生命周期；
+   - 浮层视口碰撞与滚动监听器结合 Vue 3.5 原生 `onWatcherCleanup`：仅在浮层展开可见时挂载 `window.scroll` / `window.resize` 监听器，在浮层收拢休眠时自动注销，达成 **休眠期 0 监听器、0 CPU 唤醒开销**。
+
 ---
 
 ## 5. 历史演进里程碑归档索引（Historical Milestones Archive）

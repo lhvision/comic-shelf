@@ -11,7 +11,7 @@
  * 5. 抛出滚动、滚轮、鼠标移动与视图点击等高频视口交互事件。
  */
 
-import { computed, ref } from 'vue'
+import { computed, useTemplateRef } from 'vue'
 import { pageFileUrl } from '@/api/client'
 import ComicPageImage from '@/components/ComicPageImage.vue'
 import ReaderBubbleOverlay, { type TargetBubble } from '@/components/ReaderBubbleOverlay.vue'
@@ -85,7 +85,7 @@ const emit = defineEmits<{
   nextChapter: []
 }>()
 
-const scrollEl = ref<HTMLElement | null>(null)
+const scrollEl = useTemplateRef<HTMLElement>('scrollEl')
 
 const comicKey = computed(() => `${props.source}/${props.sourceId}`)
 

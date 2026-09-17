@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, watch } from 'vue'
+import { ref, useTemplateRef, watch } from 'vue'
 import AppTooltip from '@/components/AppTooltip.vue'
 
 /**
@@ -59,8 +59,8 @@ const props = withDefaults(defineProps<Props>(), {
   disabled: false,
 })
 
-const tooltipRef = ref<InstanceType<typeof AppTooltip> | null>(null)
-const textRef = ref<HTMLElement | null>(null)
+const tooltipRef = useTemplateRef<InstanceType<typeof AppTooltip>>('tooltipRef')
+const textRef = useTemplateRef<HTMLElement>('textRef')
 const isTruncated = ref(false)
 
 /**

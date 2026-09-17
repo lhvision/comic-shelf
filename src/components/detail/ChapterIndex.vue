@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, useTemplateRef, watch } from 'vue'
 import ChapterCard from '@/components/detail/ChapterCard.vue'
 import AppButton from '@/components/AppButton.vue'
 import AppIcon from '@/components/AppIcon.vue'
@@ -50,7 +50,7 @@ const emit = defineEmits<{
 }>()
 
 const comicKey = computed(() => `${props.source}/${props.sourceId}`)
-const indexWrapEl = ref<HTMLElement | null>(null)
+const indexWrapEl = useTemplateRef<HTMLElement>('indexWrapEl')
 
 const baseStepCount = computed(() => {
   const target = props.initialVisibleChapter || 1

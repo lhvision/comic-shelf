@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { nextTick, ref } from 'vue'
+import { nextTick, useTemplateRef } from 'vue'
 import PageTile from '@/components/detail/PageTile.vue'
 import AppButton from '@/components/AppButton.vue'
 import AppIcon from '@/components/AppIcon.vue'
@@ -50,7 +50,7 @@ const emit = defineEmits<{
   pageCached: [index: number]
 }>()
 
-const sectionEl = ref<HTMLElement | null>(null)
+const sectionEl = useTemplateRef<HTMLElement>('sectionEl')
 
 function localLabel(page: PageRecord) {
   return props.chapterStart ? page.index - props.chapterStart + 1 : page.index

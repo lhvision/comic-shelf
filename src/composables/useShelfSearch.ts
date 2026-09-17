@@ -33,13 +33,17 @@ export interface UseShelfSearchOptions {
   router: Router
   /** 消息气泡通知方法 */
   toast: (msg: string, tone?: 'info' | 'error' | 'success') => unknown
+  /** 外部传入的搜索容器 DOM 引用（如通过 Vue 3.5 useTemplateRef 获取） */
+  searchContainerRef?: Readonly<Ref<HTMLElement | null>> | Ref<HTMLElement | null>
+  /** 外部传入的搜索输入框 DOM 引用（如通过 Vue 3.5 useTemplateRef 获取） */
+  searchInputRef?: Readonly<Ref<HTMLInputElement | null>> | Ref<HTMLInputElement | null>
 }
 
 export interface UseShelfSearchReturn {
   /** 搜索容器 DOM 引用（用于浮层与点击外部检测） */
-  searchContainerRef: Ref<HTMLElement | null>
+  searchContainerRef: Readonly<Ref<HTMLElement | null>> | Ref<HTMLElement | null>
   /** 搜索输入框 DOM 引用 */
-  searchInputRef: Ref<HTMLInputElement | null>
+  searchInputRef: Readonly<Ref<HTMLInputElement | null>> | Ref<HTMLInputElement | null>
   /** 搜索输入框双向绑定的原始文本 */
   searchInput: Ref<string>
   /** 当前激活的快捷指令模式（null 为常规搜索） */
@@ -85,8 +89,8 @@ export interface UseShelfSearchReturn {
 export function useShelfSearch(options: UseShelfSearchOptions): UseShelfSearchReturn {
   const { activeSource, shelfSearch, filteredItems, allItems, router, toast } = options
 
-  const searchContainerRef = ref<HTMLElement | null>(null)
-  const searchInputRef = ref<HTMLInputElement | null>(null)
+  const searchContainerRef = options.searchContainerRef ?? ref<HTMLElement | null>(null)
+  const searchInputRef = options.searchInputRef ?? ref<HTMLInputElement | null>(null)
 
   const {
     query: dialogueQuery,

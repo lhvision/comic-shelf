@@ -25,40 +25,36 @@
  * @emit selectTag - 选中指定标签（传空表示取消标签筛选）
  * @emit clearTag - 清空标签筛选
  */
-import { computed, nextTick, ref } from 'vue'
+import { computed, nextTick, useTemplateRef } from 'vue'
+import { useToast } from '@/composables/useToast'
 import AppIcon from '@/components/AppIcon.vue'
 import AppChip from '@/components/AppChip.vue'
 import AppPopover from '@/components/AppPopover.vue'
 import SegmentedTabs, { type TabItem } from '@/components/SegmentedTabs.vue'
 import type { ReadingStatus } from '@/types'
 
+/** 最多允许同时复合选中的标签数 */
+const MAX_SELECTED_TAGS = 5
+
+/** 抽屉/气泡展开状态双向绑定 */
 const trayExpanded = defineModel<boolean>('trayExpanded', { default: false })
+/** 当前选中的标签集合双向绑定 */
+const activeTags = defineModel<string[]>('activeTags', { default: () => [] })
+/** 当前选中的阅读状态双向绑定 */
+const readingStatus = defineModel<ReadingStatus>('readingStatus', { default: 'all' })
 
 export interface TagFilterBarProps {
   favoritesOnly: boolean
-  readingStatus?: ReadingStatus
-  /** 当前激活的多标签集合（推荐） */
-  activeTags?: string[]
-  /** 向后兼容单标签 */
-  activeTag?: string
   /** [标签, 数量] 有序列表，按出现次数降序 */
   tagCounts: Array<[string, number]>
   /** 当前筛选命中的数量（用于提示文案） */
   filteredCount: number
 }
 
-const props = withDefaults(defineProps<TagFilterBarProps>(), {
-  readingStatus: 'all',
-  activeTags: undefined,
-  activeTag: '',
-})
+const props = defineProps<TagFilterBarProps>()
 
 const emit = defineEmits<{
   toggleFavorites: []
-  'update:readingStatus': [status: ReadingStatus]
-  'update:activeTags': [tags: string[]]
-  selectTag: [tag: string]
-  clearTag: []
 }>()
 
 const readingStatusTabs: TabItem<ReadingStatus>[] = [
@@ -67,20 +63,7 @@ const readingStatusTabs: TabItem<ReadingStatus>[] = [
   { key: 'completed', label: '已读' },
 ]
 
-function onReadingStatusChange(status: ReadingStatus) {
-  emit('update:readingStatus', status)
-}
-
-/** 规范化当前激活标签列表 */
-const effectiveActiveTags = computed<string[]>(() => {
-  if (Array.isArray(props.activeTags)) {
-    return props.activeTags.filter(Boolean)
-  }
-  if (props.activeTag && props.activeTag.trim()) {
-    return [props.activeTag.trim()]
-  }
-  return []
-})
+const { toast } = useToast()
 
 /** 默认展示的高频标签数（连「全部」一起 ≤9 个 chip） */
 const VISIBLE_TAGS = 8
@@ -92,7 +75,7 @@ const overflowTagNames = computed(() => new Set(overflowTags.value.map(([t]) => 
 
 /** 当前激活标签中属于次级溢出标签的集合 */
 const activeOverflowTags = computed(() =>
-  effectiveActiveTags.value.filter((t) => overflowTagNames.value.has(t)),
+  activeTags.value.filter((t) => overflowTagNames.value.has(t)),
 )
 
 /** 是否有次级溢出标签被激活 */
@@ -116,7 +99,7 @@ const moreButtonLabel = computed(() => {
 })
 
 /** 触发器元素引用（用于浮层关闭后的焦点归还） */
-const triggerChipRef = ref<InstanceType<typeof AppChip> | null>(null)
+const triggerChipRef = useTemplateRef<InstanceType<typeof AppChip>>('triggerChipRef')
 
 function focusTrigger() {
   nextTick(() => {
@@ -129,34 +112,27 @@ function focusTrigger() {
 }
 
 function isTagActive(tag: string): boolean {
-  return effectiveActiveTags.value.includes(tag)
+  return activeTags.value.includes(tag)
 }
 
 function selectTag(tag: string) {
-  let nextTags: string[]
-  const wasActive = isTagActive(tag)
-  if (wasActive) {
-    nextTags = effectiveActiveTags.value.filter((t) => t !== tag)
+  if (isTagActive(tag)) {
+    activeTags.value = activeTags.value.filter((t) => t !== tag)
   } else {
-    nextTags = [...effectiveActiveTags.value, tag]
+    if (activeTags.value.length >= MAX_SELECTED_TAGS) {
+      toast(`最多支持同时筛选 ${MAX_SELECTED_TAGS} 个标签`, 'info')
+      return
+    }
+    activeTags.value = [...activeTags.value, tag]
   }
-  emit('update:activeTags', nextTags)
-  emit('selectTag', wasActive ? '' : tag)
 }
 
 function removeTag(tag: string) {
-  const nextTags = effectiveActiveTags.value.filter((t) => t !== tag)
-  emit('update:activeTags', nextTags)
-  emit('selectTag', tag)
-  if (nextTags.length === 0) {
-    emit('clearTag')
-  }
+  activeTags.value = activeTags.value.filter((t) => t !== tag)
 }
 
 function clearFilter() {
-  emit('update:activeTags', [])
-  emit('selectTag', '')
-  emit('clearTag')
+  activeTags.value = []
 }
 </script>
 
@@ -174,17 +150,16 @@ function clearFilter() {
 
       <SegmentedTabs
         class="reading-status-tabs"
-        :model-value="readingStatus"
+        v-model="readingStatus"
         :items="readingStatusTabs"
         size="sm"
         aria-label="阅读状态筛选"
-        @update:model-value="onReadingStatusChange"
       />
 
       <span v-if="tagCounts.length" class="filter-divider" aria-hidden="true" />
 
       <template v-if="tagCounts.length">
-        <AppChip :pressed="effectiveActiveTags.length === 0" @click="clearFilter"> 全部 </AppChip>
+        <AppChip :pressed="activeTags.length === 0" @click="clearFilter"> 全部 </AppChip>
         <AppChip
           v-for="[tag, count] in primaryTags"
           :key="tag"
@@ -283,8 +258,8 @@ function clearFilter() {
       </template>
     </div>
 
-    <p v-if="effectiveActiveTags.length" class="filter-note">
-      正在查看标签「{{ effectiveActiveTags.join(' · ') }}」的 {{ filteredCount }} 本
+    <p v-if="activeTags.length" class="filter-note">
+      正在查看标签「{{ activeTags.join(' · ') }}」的 {{ filteredCount }} 本
       <button class="clear-btn" type="button" @click="clearFilter">清除筛选</button>
     </p>
   </div>

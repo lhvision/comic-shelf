@@ -266,7 +266,7 @@ describe('ComicGrid', () => {
     expect(wrapper.findAll('.mock-comic-card').length).toBe(10)
   })
 
-  it('honors initialActiveCount and initialArchiveOpen for shelf state restoration', async () => {
+  it('honors activeCount and archiveOpen models for shelf state restoration', async () => {
     const unread = makeComics(30).map((c, i) => ({
       ...c,
       source_id: `unread_${i}`,
@@ -287,9 +287,9 @@ describe('ComicGrid', () => {
         items: mixed,
         hasAnyItems: true,
         batchStep: 12,
-        initialActiveCount: 24,
-        initialArchiveOpen: true,
-        initialArchiveCount: 15,
+        activeCount: 24,
+        archiveOpen: true,
+        archiveCount: 15,
       },
     })
 
@@ -366,7 +366,7 @@ describe('ComicGrid', () => {
         hasAnyItems: true,
         batchStep: 12,
         isRecentSort: false, // Unified grid mode
-        initialUnifiedCount: 24, // User has scrolled to the end of page 1
+        unifiedCount: 24, // User has scrolled to the end of page 1
         hasMore: true,
       },
     })
@@ -400,7 +400,7 @@ describe('ComicGrid', () => {
         hasAnyItems: true,
         batchStep: 12,
         isRecentSort: true,
-        initialActiveCount: 24,
+        activeCount: 24,
         hasMore: true,
       },
     })

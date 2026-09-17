@@ -1,4 +1,4 @@
-import { computed, ref, onMounted } from 'vue'
+import { computed, ref, onMounted, type Ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useFileDialog, useDropZone } from '@vueuse/core'
 import { api } from '@/api/client'
@@ -17,7 +17,12 @@ export interface StagedChapter {
   files: File[]
 }
 
-export function useLocalWorkshop() {
+export interface UseLocalWorkshopOptions {
+  /** 外部传入的拖拽接收 DOM 容器 Ref（如通过 Vue 3.5 useTemplateRef 获取） */
+  dropAreaRef?: Readonly<Ref<HTMLElement | null>> | Ref<HTMLElement | null>
+}
+
+export function useLocalWorkshop(options: UseLocalWorkshopOptions = {}) {
   const router = useRouter()
   const store = useLibraryStore()
   const { canWrite } = useAuth()
@@ -62,7 +67,7 @@ export function useLocalWorkshop() {
   const singleFiles = ref<File[]>([])
 
   // DropZone & FileDialog via VueUse
-  const dropAreaRef = ref<HTMLElement | null>(null)
+  const dropAreaRef = options.dropAreaRef ?? ref<HTMLElement | null>(null)
 
   async function inspectPdfFile(pdfFile: File) {
     isInspectingPdf.value = true

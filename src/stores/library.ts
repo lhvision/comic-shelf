@@ -1,4 +1,4 @@
-import { computed, ref } from 'vue'
+import { computed, ref, shallowRef } from 'vue'
 import { tryOnScopeDispose, useIntervalFn } from '@vueuse/core'
 import { defineStore } from 'pinia'
 import { api, onAuthSuccess, onUnauthorized } from '@/api/client'
@@ -118,7 +118,7 @@ export const useLibraryStore = defineStore('library', () => {
   const { beginTask, endTask, broadcastLocalChange } = useSystemEvents()
   const { userId, isGuest } = useAuth()
 
-  const items = ref<LibrarySummary[]>([])
+  const items = shallowRef<LibrarySummary[]>([])
   const loading = ref(false)
   const importing = ref(false)
   const error = ref('')
@@ -129,9 +129,9 @@ export const useLibraryStore = defineStore('library', () => {
   /** Live cache progress for comics with a running background prefetch job. */
   const liveCache = ref<Record<string, LiveCacheState>>({})
   /** In-memory cache for full ComicDetail to prevent re-fetching/re-parsing huge JSONs on view navigation */
-  const detailCache = ref<Record<string, ComicDetail>>({})
+  const detailCache = shallowRef<Record<string, ComicDetail>>({})
 
-  const facets = ref<LibraryFacetsResponse | null>(null)
+  const facets = shallowRef<LibraryFacetsResponse | null>(null)
   const page = ref(1)
   const pageSize = ref(24)
   const total = ref(0)
@@ -582,13 +582,13 @@ export const useLibraryStore = defineStore('library', () => {
 
   function setDetail(detail: ComicDetail, targetUserId?: string) {
     const key = `${detail.meta.source}/${detail.meta.source_id}`
-    delete detailCache.value[key]
-    detailCache.value[key] = detail
-    const keys = Object.keys(detailCache.value)
+    const next = { ...detailCache.value, [key]: detail }
+    const keys = Object.keys(next)
     if (keys.length > MAX_DETAIL_CACHE) {
       const oldest = keys[0]
-      if (oldest) delete detailCache.value[oldest]
+      if (oldest) delete next[oldest]
     }
+    detailCache.value = next
 
     // 异步同步到端侧 IndexedDB 镜像
     const uid = targetUserId ?? userId.value ?? ''
@@ -602,7 +602,12 @@ export const useLibraryStore = defineStore('library', () => {
   }
 
   function removeDetail(source: string, sourceId: string) {
-    delete detailCache.value[`${source}/${sourceId}`]
+    const key = `${source}/${sourceId}`
+    if (key in detailCache.value) {
+      const next = { ...detailCache.value }
+      delete next[key]
+      detailCache.value = next
+    }
   }
 
   return {

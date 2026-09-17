@@ -15,7 +15,6 @@ describe('useShelfState', () => {
     expect(state.archiveUnfoldCount.value).toBe(DEFAULT_SHELF_BATCH)
     expect(state.unifiedUnfoldCount.value).toBe(DEFAULT_SHELF_BATCH)
     expect(state.search.value).toBe('')
-    expect(state.activeTag.value).toBe('')
     expect(state.activeTags.value).toEqual([])
     expect(state.favoritesOnly.value).toBe(false)
     expect(state.readingStatus.value).toBe('all')
@@ -23,28 +22,22 @@ describe('useShelfState', () => {
     expect(state.tagTrayExpanded.value).toBe(false)
   })
 
-  it('supports activeTags and provides bidirectional bridge with activeTag', () => {
+  it('supports activeTags and preserves state across resets', () => {
     const state = useShelfState()
     expect(state.activeTags.value).toEqual([])
-    expect(state.activeTag.value).toBe('')
 
     // Set via activeTags
     state.activeTags.value = ['同人', '全彩']
-    expect(state.activeTag.value).toBe('同人')
+    expect(state.activeTags.value).toEqual(['同人', '全彩'])
 
-    // Set via activeTag
-    state.activeTag.value = '汉化'
-    expect(state.activeTags.value).toEqual(['汉化'])
-
-    // Clear via activeTag
-    state.activeTag.value = ''
+    // Clear via resetShelfFilters
+    state.resetShelfFilters()
     expect(state.activeTags.value).toEqual([])
 
     // Clear via resetAllShelfState
     state.activeTags.value = ['tagA', 'tagB']
     state.resetAllShelfState()
     expect(state.activeTags.value).toEqual([])
-    expect(state.activeTag.value).toBe('')
   })
 
   it('saves and resets scroll position', () => {
@@ -81,7 +74,7 @@ describe('useShelfState', () => {
   it('maintains filters and resets all shelf state cleanly', () => {
     const state = useShelfState()
     state.search.value = '夏日'
-    state.activeTag.value = '同人'
+    state.activeTags.value = ['同人']
     state.favoritesOnly.value = true
     state.readingStatus.value = 'completed'
     state.sortBy.value = 'pages'
@@ -94,7 +87,7 @@ describe('useShelfState', () => {
     expect(state.shelfScrollY.value).toBe(0)
     expect(state.activeUnfoldCount.value).toBe(DEFAULT_SHELF_BATCH)
     expect(state.search.value).toBe('')
-    expect(state.activeTag.value).toBe('')
+    expect(state.activeTags.value).toEqual([])
     expect(state.favoritesOnly.value).toBe(false)
     expect(state.readingStatus.value).toBe('all')
     expect(state.sortBy.value).toBe('recent')

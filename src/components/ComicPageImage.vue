@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, onMounted, ref, useTemplateRef, watch } from 'vue'
 import { useTimeoutFn } from '@vueuse/core'
 import { useOfflineSync } from '@/composables/useOfflineSync'
 import ReaderLoadingState from '@/components/reader/ReaderLoadingState.vue'
@@ -16,7 +16,7 @@ const props = withDefaults(
   { eager: false, loadingVariant: undefined },
 )
 
-const imageEl = ref<HTMLImageElement | null>(null)
+const imageEl = useTemplateRef<HTMLImageElement>('imageEl')
 const loading = ref(true)
 const failed = ref(false)
 const retryKey = ref(0)

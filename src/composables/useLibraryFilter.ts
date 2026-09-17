@@ -1,4 +1,4 @@
-import { computed, ref, watch, getCurrentScope, onScopeDispose, type Ref } from 'vue'
+import { computed, ref, shallowRef, watch, getCurrentScope, onScopeDispose, type Ref } from 'vue'
 import type {
   LibrarySummary,
   ImageSearchResultItem,
@@ -24,8 +24,6 @@ export const WORKER_THRESHOLD = 1000
 export interface UseLibraryFilterOptions {
   /** 外部共享的搜索关键词 Ref（用于跨路由状态记忆） */
   search?: Ref<string>
-  /** 外部共享的单标签 Ref（向后兼容） */
-  activeTag?: Ref<string>
   /** 外部共享的多标签集合 Ref */
   activeTags?: Ref<string[]>
   /** 外部共享的只看喜欢 Ref */
@@ -59,22 +57,7 @@ export function useLibraryFilter(
   options?: UseLibraryFilterOptions,
 ) {
   const search = options?.search ?? ref('')
-  const activeTags =
-    options?.activeTags ??
-    (options?.activeTag
-      ? ref(options.activeTag.value ? [options.activeTag.value] : [])
-      : ref<string[]>([]))
-  if (options?.activeTag && !options?.activeTags) {
-    watch(options.activeTag, (val) => {
-      activeTags.value = val ? [val] : []
-    })
-  }
-  const activeTag = computed({
-    get: () => activeTags.value[0] || '',
-    set: (val: string) => {
-      activeTags.value = val ? [val] : []
-    },
-  })
+  const activeTags = options?.activeTags ?? ref<string[]>([])
   const favoritesOnly = options?.favoritesOnly ?? ref(false)
   const readingStatus = options?.readingStatus ?? ref<ReadingStatus>('all')
   const sortBy = options?.sortBy ?? ref<SortKey>('recent')
@@ -148,7 +131,6 @@ export function useLibraryFilter(
   const filterParams = computed<FilterParams>(() => ({
     activeSource: activeSource.value,
     search: search.value,
-    activeTag: activeTag.value,
     activeTags: activeTags.value,
     favoritesOnly: favoritesOnly.value,
     readingStatus: readingStatus.value,
@@ -173,8 +155,8 @@ export function useLibraryFilter(
     () => isWorkerSupported && (items.value?.length ?? 0) >= WORKER_THRESHOLD,
   )
 
-  // Worker 异步检索出的结果
-  const workerFiltered = ref<LibrarySummary[]>([])
+  // Worker 异步检索出的结果（采用 shallowRef 杜绝大规模条目代理）
+  const workerFiltered = shallowRef<LibrarySummary[]>([])
   let workerInstance: Worker | null = null
   let currentRequestId = 0
 
@@ -257,13 +239,8 @@ export function useLibraryFilter(
     return filterAndSortLibrary(items.value || [], filterParams.value)
   })
 
-  function setSort(value: string) {
-    sortBy.value = value as SortKey
-  }
-
   return {
     search,
-    activeTag,
     activeTags,
     favoritesOnly,
     readingStatus,
@@ -275,6 +252,5 @@ export function useLibraryFilter(
     tagCounts,
     imageSearchMatchMap,
     filtered,
-    setSort,
   }
 }

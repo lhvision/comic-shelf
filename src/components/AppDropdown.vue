@@ -1,15 +1,16 @@
 <script setup lang="ts" generic="T extends string | number">
-import { computed, nextTick, ref, useId, watch } from 'vue'
+import { computed, nextTick, ref, useId, useTemplateRef, watch } from 'vue'
 import AppIcon from '@/components/AppIcon.vue'
 import AppPopover from '@/components/AppPopover.vue'
 import type { DropdownOption } from '@/types'
 
 export type { DropdownOption }
 
+const modelValue = defineModel<T | null>({ default: null })
+
 const props = withDefaults(
   defineProps<{
     options: DropdownOption<T>[]
-    modelValue?: T | null
     placeholder?: string
     label?: string
     disabled?: boolean
@@ -22,7 +23,6 @@ const props = withDefaults(
     ariaLabel?: string
   }>(),
   {
-    modelValue: null,
     placeholder: '请选择',
     label: undefined,
     disabled: false,
@@ -37,17 +37,16 @@ const props = withDefaults(
 )
 
 const emit = defineEmits<{
-  'update:modelValue': [value: T]
   change: [value: T]
   select: [option: DropdownOption<T>]
 }>()
 
-const isSelectMode = computed(() => props.modelValue !== null && props.modelValue !== undefined)
+const isSelectMode = computed(() => modelValue.value !== null && modelValue.value !== undefined)
 const hasIcons = computed(() => props.options.some((opt) => !!opt.icon))
 
 const selectedOption = computed(() => {
   if (!isSelectMode.value) return null
-  return props.options.find((opt) => opt.key === props.modelValue) ?? null
+  return props.options.find((opt) => opt.key === modelValue.value) ?? null
 })
 
 const triggerText = computed(() => {
@@ -58,25 +57,21 @@ const triggerText = computed(() => {
 })
 
 const isOpen = ref(false)
-const panelRef = ref<HTMLElement | null>(null)
+const panelRef = useTemplateRef<HTMLElement>('panelRef')
 const uid = useId().replace(/[^a-zA-Z0-9_-]+/g, '')
 const listboxId = `dropdown-list-${uid}`
 
 const activeIndex = ref<number>(-1)
 
 function syncActiveIndex() {
-  if (props.modelValue !== null && props.modelValue !== undefined) {
-    activeIndex.value = props.options.findIndex((opt) => opt.key === props.modelValue)
+  if (modelValue.value !== null && modelValue.value !== undefined) {
+    activeIndex.value = props.options.findIndex((opt) => opt.key === modelValue.value)
   } else {
     activeIndex.value = props.options.findIndex((opt) => !opt.disabled && !opt.separator)
   }
 }
 
-watch(
-  () => props.modelValue,
-  () => syncActiveIndex(),
-  { immediate: true },
-)
+watch(modelValue, () => syncActiveIndex(), { immediate: true })
 
 function scrollActiveIntoView() {
   nextTick(() => {
@@ -135,10 +130,8 @@ function moveToLast() {
 function selectOption(option: DropdownOption<T>) {
   if (option.disabled || option.separator) return
   emit('select', option)
-  if (props.modelValue !== undefined) {
-    emit('update:modelValue', option.key)
-    emit('change', option.key)
-  }
+  modelValue.value = option.key
+  emit('change', option.key)
   if (props.closeOnSelect) {
     isOpen.value = false
   }

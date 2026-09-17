@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, ref, useTemplateRef, watch } from 'vue'
 import Modal from '@/components/Modal.vue'
 import AppButton from '@/components/AppButton.vue'
 import AppIcon from '@/components/AppIcon.vue'
@@ -38,12 +38,19 @@ const submitting = ref(false)
 const ackReplace = ref(false)
 const uploadAbortController = ref<AbortController | null>(null)
 
+const dropZoneEl = useTemplateRef<HTMLElement>('dropZoneEl')
+
 const {
   files: selectedFiles,
-  dropZoneRef,
   isOverDropZone,
   openFileDialog,
-} = useFileStaging({ allowPdf: true, deduplicate: true, notifyIgnored: true, disabled: submitting })
+} = useFileStaging({
+  allowPdf: true,
+  deduplicate: true,
+  notifyIgnored: true,
+  disabled: submitting,
+  dropZoneRef: dropZoneEl,
+})
 
 function cancelModal() {
   if (uploadAbortController.value) {
@@ -276,13 +283,7 @@ async function submit() {
         </select>
       </div>
 
-      <div
-        :ref="
-          (el) => {
-            dropZoneRef = el as HTMLElement
-          }
-        "
-      >
+      <div ref="dropZoneEl">
         <div v-if="mode === 'upload'" class="field-header">
           <label class="form-label">装入新画页图片（纯图片，按文件名排序）</label>
           <div v-if="selectedFiles.length" class="page-diff-badge">

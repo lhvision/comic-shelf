@@ -8,9 +8,10 @@ export interface TabItem<T = string | number> {
   disabled?: boolean
 }
 
+const modelValue = defineModel<T>({ required: true })
+
 const props = withDefaults(
   defineProps<{
-    modelValue: T
     items: (TabItem<T> | string)[]
     size?: 'sm' | 'md' | 'lg'
     disabled?: boolean
@@ -26,7 +27,6 @@ const props = withDefaults(
 )
 
 const emit = defineEmits<{
-  'update:modelValue': [value: T]
   change: [value: T]
 }>()
 
@@ -41,8 +41,8 @@ function normalizeItem(item: TabItem<T> | string): TabItem<T> {
 }
 
 function onSelect(key: T) {
-  if (props.disabled || props.modelValue === key) return
-  emit('update:modelValue', key)
+  if (props.disabled || modelValue.value === key) return
+  modelValue.value = key
   emit('change', key)
 }
 

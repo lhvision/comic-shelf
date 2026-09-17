@@ -69,7 +69,11 @@ export function useLibrarySync(options: UseLibrarySyncOptions): UseLibrarySyncRe
         ? Math.min(120, store.items.length)
         : pageSize
 
-    const tagsParam = activeTags.value.join(',')
+    const tagsParam = activeTags.value
+      .map((t) => t.trim())
+      .filter(Boolean)
+      .slice(0, 5)
+      .join(',')
     await store.loadItems(false, false, {
       source: activeSource.value || undefined,
       search: hasImageSearch ? undefined : search.value.trim() || undefined,
