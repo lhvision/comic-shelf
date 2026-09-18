@@ -1,762 +1,144 @@
-import { useMemoize } from '@vueuse/core'
-import { promiseTry } from '@/utils/promise'
-import type {
-  AuthStatus,
-  CacheJob,
-  CacheProgress,
-  ClaimGuestPassPayload,
-  ComicAppendPayload,
-  ComicDetail,
-  CreateFromStagedPdfPayload,
-  CreateGuestPassPayload,
-  DialogueSearchResponse,
-  DiscoveryFeed,
-  DiscoveryTimeframe,
-  DownloadConcurrency,
-  GuestPass,
-  GuestPrivacySettings,
-  ImageSearchResultItem,
-  ImageSearchStatus,
-  ImportRequest,
-  ImportResult,
-  LibraryFacetsResponse,
-  LibraryPageResponse,
-  LibraryQueryParams,
-  LocalComicCreatePayload,
-  LocalPathImportPayload,
-  LoginResult,
-  MetadataUpdatePayload,
-  PdfInspectResponse,
-  ProviderInfo,
-  ReadingProgressInfo,
-  UpdateGuestPassPayload,
-} from '@/types'
-
-const BASE = '/api'
-const TOKEN_STORAGE_KEY = 'comic-shelf:auth-token'
-
-export function getStoredToken(): string {
-  try {
-    return localStorage.getItem(TOKEN_STORAGE_KEY) || ''
-  } catch {
-    return ''
-  }
-}
-
-export function setStoredToken(token: string): void {
-  try {
-    if (token) {
-      localStorage.setItem(TOKEN_STORAGE_KEY, token)
-    } else {
-      localStorage.removeItem(TOKEN_STORAGE_KEY)
-    }
-  } catch {
-    // ignore
-  }
-}
-
-type UnauthorizedHandler = () => void | Promise<void>
-const unauthorizedHandlers = new Set<UnauthorizedHandler>()
-
-export function onUnauthorized(handler: UnauthorizedHandler): () => void {
-  unauthorizedHandlers.add(handler)
-  return () => unauthorizedHandlers.delete(handler)
-}
-
-export function notifyUnauthorized(): void {
-  for (const handler of unauthorizedHandlers) {
-    promiseTry(handler).catch(() => {})
-  }
-}
-
-type AuthSuccessHandler = () => void | Promise<void>
-const authSuccessHandlers = new Set<AuthSuccessHandler>()
-
-export function onAuthSuccess(handler: AuthSuccessHandler): () => void {
-  authSuccessHandlers.add(handler)
-  return () => authSuccessHandlers.delete(handler)
-}
-
-export type QueryParamValue = string | number | boolean | null | undefined
-export type QueryParams = Record<string, QueryParamValue | QueryParamValue[]>
-
-export interface RequestOptions {
-  signal?: AbortSignal
-  bypassCache?: boolean
-  timeoutMs?: number
-  params?: QueryParams
-}
-
-export class ApiError extends Error {
-  status: number
-  detail: string
-
-  constructor(status: number, detail: string) {
-    super(detail)
-    this.name = 'ApiError'
-    this.status = status
-    this.detail = detail
-  }
-}
-
 /**
- * 聚合请求超时信号与调用方的主动取消信号。
+ * @file client.ts
+ * @description 纸间全站统一 API 门面与契约中枢（Unified API Facade & Contract Central）。
  *
- * 架构考量（避坑防泄漏）：
- * 1. 为什么不裸用 `AbortSignal.timeout()`？
- *    MDN 明确指出 `AbortSignal.timeout()` 无法被外部手动取消。在短生命周期 RPC 中，
- *    即便请求 10ms 兑现，底层系统定时器仍会在后台挂满定时时长并持有监听引用，高频请求下阻碍 GC。
- *    因此超时控制采用 `AbortController` + `clearTimeout(timer)` 可控生命周期；
- * 2. 信号合成采用原生 Baseline 2024 `AbortSignal.any()`：
- *    当传入 callerSignal 时，由浏览器引擎底层自动联合监听多个信号，彻底消除手动
- *    `addEventListener('abort')` 与 `removeEventListener` 的胶水代码与事件监听器泄漏风险；
- * 3. 旧版环境自动降级至安全事件监听兜底。
+ * 架构重构与设计说明：
+ * 1. 【领域模块化划分】：按业务职责拆解为 8 大单一职责领域模块（Auth, Library, Cache, Workshop, Discovery, Search, Reader, Curator）；
+ * 2. 【分层解耦与可测试性】：底层 HTTP 传输拦截、Token 广播与 Baseline 2024 复合信号下沉至 `core/http.ts`，URL 工具下沉至 `core/urls.ts`；
+ * 3. 【100% 向后兼容与零破坏性变更】：统一聚合导出 `api` 门面对象及所有历史具名函数与工具类型，全仓无缝迁移；
+ * 4. 【完备契约注释】：所有领域函数配备完整 TSDoc，严格遵循无未使用变量与强类型检查。
  */
-function combineSignals(
-  timeoutMs: number,
-  callerSignal?: AbortSignal | null,
-): { signal: AbortSignal; cleanup: () => void } {
-  const controller = new AbortController()
-  const timer = setTimeout(() => {
-    controller.abort(new DOMException('请求超时，请重试', 'TimeoutError'))
-  }, timeoutMs)
 
-  const cleanup = () => {
-    clearTimeout(timer)
-  }
+import * as auth from './modules/auth'
+import * as library from './modules/library'
+import * as cache from './modules/cache'
+import * as workshop from './modules/workshop'
+import * as discovery from './modules/discovery'
+import * as search from './modules/search'
+import * as reader from './modules/reader'
+import * as curator from './modules/curator'
 
-  if (!callerSignal) {
-    return { signal: controller.signal, cleanup }
-  }
+// Re-export core transport and helpers
+export * from './core/http'
+export * from './core/urls'
 
-  if (callerSignal.aborted) {
-    clearTimeout(timer)
-    controller.abort(callerSignal.reason)
-    return { signal: controller.signal, cleanup }
-  }
-
-  // 现代环境：原生复合信号合成，由引擎底层调度
-  if (typeof AbortSignal !== 'undefined' && 'any' in AbortSignal) {
-    return {
-      signal: AbortSignal.any([controller.signal, callerSignal]),
-      cleanup,
-    }
-  }
-
-  // 旧版降级：传统一次性事件监听
-  const onAbort = () => {
-    clearTimeout(timer)
-    controller.abort(callerSignal.reason)
-  }
-  callerSignal.addEventListener('abort', onAbort, { once: true })
-
-  return {
-    signal: controller.signal,
-    cleanup: () => {
-      clearTimeout(timer)
-      callerSignal.removeEventListener('abort', onAbort)
-    },
-  }
-}
+// Re-export domain modules
+export * from './modules/auth'
+export * from './modules/library'
+export * from './modules/cache'
+export * from './modules/workshop'
+export * from './modules/discovery'
+export * from './modules/search'
+export * from './modules/reader'
+export * from './modules/curator'
 
 /**
- * 纯函数：声明式过滤对象中的 undefined、null、空字符串与空白字符串，
- * 将数组展开为逗号分隔字符串，生成符合规范的 URL 查询字符串。
- * 注意：布尔值若为 `false` 会被序列化为字符串 `'false'`；
- * 若希望在为 `false` 时完全省略该 Query 参数，请传入 `undefined`（如 `flag ? 'true' : undefined`）。
+ * 纸间统一 API 客户端对象（聚合全站所有领域功能）
  */
-export function buildQueryString(params?: QueryParams): string {
-  if (!params) return ''
-  const entries: [string, string][] = []
-  for (const [key, val] of Object.entries(params)) {
-    if (val === undefined || val === null || val === '') continue
-    if (Array.isArray(val)) {
-      const filtered = val
-        .map((item) => (item !== undefined && item !== null ? String(item).trim() : ''))
-        .filter(Boolean)
-      if (filtered.length > 0) {
-        entries.push([key, filtered.join(',')])
-      }
-    } else {
-      const str = String(val).trim()
-      if (str !== '') {
-        entries.push([key, str])
-      }
-    }
-  }
-  if (entries.length === 0) return ''
-  return new URLSearchParams(entries).toString()
-}
-
-async function request<T>(path: string, init?: RequestInit, options?: RequestOptions): Promise<T> {
-  const headers = new Headers(init?.headers)
-  if (!headers.has('Content-Type') && !(init?.body instanceof FormData)) {
-    headers.set('Content-Type', 'application/json')
-  }
-
-  const token = getStoredToken()
-  if (token && !headers.has('Authorization')) {
-    headers.set('Authorization', `Bearer ${token}`)
-  }
-
-  const timeout = options?.timeoutMs ?? 15000
-  const callerSignal = options?.signal ?? init?.signal
-  const { signal, cleanup } = combineSignals(timeout, callerSignal)
-
-  let fullPath = `${BASE}${path}`
-  if (options?.params) {
-    const qs = buildQueryString(options.params)
-    if (qs) {
-      fullPath += (fullPath.includes('?') ? '&' : '?') + qs
-    }
-  }
-
-  try {
-    const response = await fetch(fullPath, {
-      ...init,
-      headers,
-      signal,
-      credentials: 'same-origin',
-    })
-
-    if (!response.ok) {
-      if (response.status === 401) {
-        notifyUnauthorized()
-      }
-      let detail = `请求失败（${response.status}）`
-      try {
-        const body = (await response.json()) as { detail?: string; message?: string }
-        detail = body.detail || body.message || detail
-      } catch {
-        /* keep default message */
-      }
-      throw new ApiError(response.status, detail)
-    }
-
-    return (await response.json()) as T
-  } finally {
-    cleanup()
-  }
-}
-
-const memoizedDetail = useMemoize(
-  async (source: string, sourceId: string, options?: RequestOptions): Promise<ComicDetail> => {
-    try {
-      return await request<ComicDetail>(`/library/${source}/${sourceId}`, {
-        signal: options?.signal,
-      })
-    } catch (e) {
-      memoizedDetail.delete(source, sourceId)
-      throw e
-    }
-  },
-  {
-    getKey: (source: string, sourceId: string, _options?: RequestOptions) =>
-      `${source}/${sourceId}`,
-  },
-)
-
-export const DEFAULT_PROVIDERS: ProviderInfo[] = [
-  {
-    key: 'jm',
-    label: '禁漫天堂',
-    short_label: '禁漫',
-    id_pattern: '^(?:JM)?\\d+$',
-    example: '523607',
-    description: '禁漫天堂 (18comic)',
-  },
-  {
-    key: 'picacg',
-    label: '哔咔漫画',
-    short_label: '哔咔',
-    id_pattern: '^[0-9a-fA-F]{24}$',
-    example: '5ebe89bf63918511c2c362a7',
-    description: '哔咔漫画 (PicAcg)',
-  },
-  {
-    key: 'local',
-    label: '本地自建',
-    short_label: '本地',
-    id_pattern: '^[\\w\\.\\-]+$',
-    example: 'my-album-01',
-    description: '本地自建画集',
-  },
-]
-
-const memoizedProviders = useMemoize(async (options?: RequestOptions): Promise<ProviderInfo[]> => {
-  try {
-    return await request<ProviderInfo[]>('/providers', {
-      signal: options?.signal,
-    })
-  } catch (e) {
-    memoizedProviders.clear()
-    throw e
-  }
-})
-
-export function clearApiDetailCache(source?: string, sourceId?: string): void {
-  if (source && sourceId) {
-    memoizedDetail.delete(source, sourceId)
-  } else {
-    memoizedDetail.clear()
-  }
-}
-
-export function clearApiCaches(): void {
-  clearApiDetailCache()
-  memoizedProviders.clear()
-}
-
-export function notifyAuthSuccess(): void {
-  clearApiCaches()
-  for (const handler of authSuccessHandlers) {
-    promiseTry(handler).catch(() => {})
-  }
-}
-
 export const api = {
-  health: (options?: RequestOptions) =>
-    request<{ ok: boolean; auth_required?: boolean }>('/health', {
-      signal: options?.signal,
-    }),
-  authStatus: (options?: RequestOptions) =>
-    request<AuthStatus>('/auth/status', {
-      signal: options?.signal,
-    }),
-  login: (secret: string, pin?: string, username?: string) =>
-    request<LoginResult>('/auth/login', {
-      method: 'POST',
-      body: JSON.stringify({ secret, pin, username }),
-    }),
-  claimPass: (payload: ClaimGuestPassPayload) =>
-    request<LoginResult>('/auth/claim', {
-      method: 'POST',
-      body: JSON.stringify(payload),
-    }),
+  // === 1. 认证与权限 (Auth) ===
+  /** 探测后端服务健康状态与鉴权需求 */
+  health: auth.health,
+  /** 获取当前登录用户的权限与角色状态 */
+  authStatus: auth.authStatus,
+  /** 馆长密码或访客凭证登录 */
+  login: auth.login,
+  /** 认领并激活访客通行证 */
+  claimPass: auth.claimPass,
+  /** 注销当前登录会话 */
+  logout: auth.logout,
 
-  logout: () =>
-    request<{ ok: boolean }>('/auth/logout', {
-      method: 'POST',
-    }),
-  providers: (options?: RequestOptions) => memoizedProviders(options),
-  library: (params?: LibraryQueryParams, options?: RequestOptions) => {
-    return request<LibraryPageResponse>(
-      '/library',
-      { signal: options?.signal },
-      {
-        ...options,
-        params: {
-          page: params?.page,
-          page_size: params?.page_size,
-          offset: params?.offset,
-          ids: params?.ids?.trim(),
-          status: params?.status !== 'all' ? params?.status : undefined,
-          favorite: params?.favorite ? 'true' : undefined,
-          source: params?.source,
-          q: (params?.q ?? params?.search)?.trim(),
-          tags: (params?.tags || params?.tag)?.trim(),
-          sort: params?.sort !== 'recent' ? params?.sort : undefined,
-        },
-      },
-    )
-  },
-  libraryFacets: (source?: string, options?: RequestOptions) =>
-    request<LibraryFacetsResponse>(
-      '/library/facets',
-      { signal: options?.signal },
-      { ...options, params: { source } },
-    ),
-  detail: (source: string, sourceId: string, options?: RequestOptions) => {
-    if (options?.bypassCache) {
-      memoizedDetail.delete(source, sourceId)
-    }
-    return memoizedDetail(source, sourceId, options)
-  },
-  importComic: async (payload: ImportRequest) => {
-    memoizedDetail.clear()
-    return request<ImportResult>('/library/import', {
-      method: 'POST',
-      body: JSON.stringify(payload),
-    })
-  },
-  deleteComic: async (source: string, sourceId: string) => {
-    memoizedDetail.delete(source, sourceId)
-    return request<{ ok: boolean }>(`/library/${source}/${sourceId}`, {
-      method: 'DELETE',
-    })
-  },
-  setFavorite: async (source: string, sourceId: string, favorite: boolean) => {
-    memoizedDetail.delete(source, sourceId)
-    return request<{ ok: boolean; favorite: boolean }>(`/library/${source}/${sourceId}/favorite`, {
-      method: 'PATCH',
-      body: JSON.stringify({ favorite }),
-    })
-  },
-  cacheAll: async (source: string, sourceId: string) => {
-    memoizedDetail.delete(source, sourceId)
-    return request<CacheProgress>(`/library/${source}/${sourceId}/cache`, {
-      method: 'POST',
-      body: '{}',
-    })
-  },
-  cacheProgress: (source: string, sourceId: string, options?: RequestOptions) =>
-    request<CacheProgress>(`/library/${source}/${sourceId}/cache`, {
-      signal: options?.signal,
-    }),
-  chapterCacheProgress: (
-    source: string,
-    sourceId: string,
-    chapterId: string,
-    options?: RequestOptions,
-  ) =>
-    request<CacheProgress>(`/library/${source}/${sourceId}/chapters/${chapterId}/cache`, {
-      signal: options?.signal,
-    }),
-  cacheChapter: async (
-    source: string,
-    sourceId: string,
-    chapterId: string,
-    options?: RequestOptions,
-  ) => {
-    memoizedDetail.delete(source, sourceId)
-    return request<CacheProgress>(`/library/${source}/${sourceId}/chapters/${chapterId}/cache`, {
-      method: 'POST',
-      signal: options?.signal,
-      headers: { 'Content-Type': 'application/json' },
-      body: '{}',
-    })
-  },
-  cacheJob: (source: string, sourceId: string, options?: RequestOptions) =>
-    request<CacheJob>(`/library/${source}/${sourceId}/cache/job`, {
-      signal: options?.signal,
-    }),
-  cacheJobs: (options?: RequestOptions) =>
-    request<CacheJob[]>('/cache/jobs', {
-      signal: options?.signal,
-    }),
-  downloadConcurrency: (options?: RequestOptions) =>
-    request<DownloadConcurrency>('/settings/download-concurrency', {
-      signal: options?.signal,
-    }),
-  setDownloadConcurrency: (limit: number) =>
-    request<DownloadConcurrency>('/settings/download-concurrency', {
-      method: 'PUT',
-      body: JSON.stringify({ limit }),
-    }),
-  guestPrivacy: (options?: RequestOptions) =>
-    request<GuestPrivacySettings>('/settings/guest-privacy', {
-      signal: options?.signal,
-    }),
-  setGuestPrivacy: (guest_hide_new_comics: boolean) =>
-    request<GuestPrivacySettings>('/settings/guest-privacy', {
-      method: 'PUT',
-      body: JSON.stringify({ guest_hide_new_comics }),
-    }),
-  updateMetadata: async (source: string, sourceId: string, payload: MetadataUpdatePayload) => {
-    memoizedDetail.delete(source, sourceId)
-    return request<ComicDetail>(`/library/${source}/${sourceId}/metadata`, {
-      method: 'PATCH',
-      body: JSON.stringify(payload),
-    })
-  },
-  createLocalComic: async (payload: LocalComicCreatePayload, options?: RequestOptions) => {
-    memoizedDetail.clear()
-    return request<ComicDetail>(
-      '/library/local/create',
-      {
-        method: 'POST',
-        body: JSON.stringify(payload),
-        signal: options?.signal,
-      },
-      { timeoutMs: 60000, ...options },
-    )
-  },
-  importLocalPath: async (payload: LocalPathImportPayload, options?: RequestOptions) => {
-    memoizedDetail.clear()
-    return request<ComicDetail>(
-      '/library/local/import-path',
-      {
-        method: 'POST',
-        body: JSON.stringify(payload),
-        signal: options?.signal,
-      },
-      { timeoutMs: 120000, ...options },
-    )
-  },
-  inspectPdf: async (formData: FormData, options?: RequestOptions) => {
-    return request<PdfInspectResponse>(
-      '/library/local/inspect-pdf',
-      {
-        method: 'POST',
-        body: formData,
-        signal: options?.signal,
-      },
-      { timeoutMs: 180000, ...options },
-    )
-  },
-  deleteStagedPdf: async (stagingToken: string, options?: RequestOptions) => {
-    return request<{ ok: boolean }>(
-      `/library/local/staged-pdf/${encodeURIComponent(stagingToken)}`,
-      {
-        method: 'DELETE',
-        signal: options?.signal,
-      },
-      options,
-    )
-  },
-  createFromStagedPdf: async (payload: CreateFromStagedPdfPayload, options?: RequestOptions) => {
-    memoizedDetail.clear()
-    return request<ComicDetail>(
-      '/library/local/create-from-staged-pdf',
-      {
-        method: 'POST',
-        body: JSON.stringify(payload),
-        signal: options?.signal,
-      },
-      { timeoutMs: 120000, ...options },
-    )
-  },
-  uploadPages: async (
-    source: string,
-    sourceId: string,
-    files: File[],
-    chapterId = '',
-    newChapterTitle = '',
-    options?: RequestOptions,
-  ) => {
-    memoizedDetail.delete(source, sourceId)
-    const formData = new FormData()
-    for (const file of files) {
-      formData.append('files', file)
-    }
-    return request<ComicDetail>(
-      `/library/${source}/${sourceId}/upload-pages`,
-      {
-        method: 'POST',
-        body: formData,
-        signal: options?.signal,
-      },
-      {
-        timeoutMs: 120000,
-        ...options,
-        params: {
-          chapter_id: chapterId || undefined,
-          new_chapter_title: newChapterTitle || undefined,
-        },
-      },
-    )
-  },
-  replaceComicPages: async (
-    source: string,
-    sourceId: string,
-    files: File[],
-    chapterId = '',
-    options?: RequestOptions,
-  ) => {
-    memoizedDetail.delete(source, sourceId)
-    const formData = new FormData()
-    for (const file of files) {
-      formData.append('files', file)
-    }
-    return request<ComicDetail>(
-      `/library/${source}/${sourceId}/replace-pages`,
-      {
-        method: 'POST',
-        body: formData,
-        signal: options?.signal,
-      },
-      {
-        timeoutMs: 120000,
-        ...options,
-        params: {
-          chapter_id: chapterId || undefined,
-        },
-      },
-    )
-  },
-  replaceComicPagesFromPath: async (
-    source: string,
-    sourceId: string,
-    serverPath: string,
-    chapterId = '',
-    options?: RequestOptions,
-  ) => {
-    memoizedDetail.delete(source, sourceId)
-    return request<ComicDetail>(
-      `/library/${source}/${sourceId}/replace-path`,
-      {
-        method: 'POST',
-        body: JSON.stringify({
-          server_path: serverPath,
-          target_chapter: chapterId,
-        }),
-        signal: options?.signal,
-      },
-      { timeoutMs: 120000, ...options },
-    )
-  },
-  appendPages: async (
-    source: string,
-    sourceId: string,
-    payload: ComicAppendPayload,
-    options?: RequestOptions,
-  ) => {
-    memoizedDetail.delete(source, sourceId)
-    return request<ComicDetail>(
-      `/library/${source}/${sourceId}/append`,
-      {
-        method: 'POST',
-        body: JSON.stringify(payload),
-        signal: options?.signal,
-      },
-      { timeoutMs: 120000, ...options },
-    )
-  },
-  updateChapter: async (source: string, sourceId: string, chapterId: string, title: string) => {
-    memoizedDetail.delete(source, sourceId)
-    return request<ComicDetail>(
-      `/library/${source}/${sourceId}/chapters/${encodeURIComponent(chapterId)}`,
-      {
-        method: 'PATCH',
-        body: JSON.stringify({ title }),
-      },
-    )
-  },
-  deleteChapter: async (source: string, sourceId: string, chapterId: string) => {
-    memoizedDetail.delete(source, sourceId)
-    return request<ComicDetail>(
-      `/library/${source}/${sourceId}/chapters/${encodeURIComponent(chapterId)}`,
-      {
-        method: 'DELETE',
-      },
-    )
-  },
-  discoveryRanking: (
-    timeframe: DiscoveryTimeframe = 'week',
-    refresh = false,
-    options?: RequestOptions,
-  ) =>
-    request<DiscoveryFeed>(
-      '/discovery/ranking',
-      { signal: options?.signal },
-      {
-        ...options,
-        params: {
-          timeframe,
-          refresh: refresh ? 'true' : undefined,
-        },
-      },
-    ),
-  imageSearchStatus: (options?: RequestOptions) =>
-    request<ImageSearchStatus>('/search/image/status', {
-      signal: options?.signal,
-    }),
-  imageSearch: async (file: File, options?: RequestOptions) => {
-    const formData = new FormData()
-    formData.append('file', file)
-    return request<ImageSearchResultItem[]>(
-      '/search/image',
-      {
-        method: 'POST',
-        body: formData,
-        signal: options?.signal,
-      },
-      { timeoutMs: 60000, ...options },
-    )
-  },
-  searchDialogue: (q: string, source?: string, limit: number = 20, options?: RequestOptions) =>
-    request<DialogueSearchResponse>(
-      '/search/dialogue',
-      { signal: options?.signal },
-      { ...options, params: { q, source, limit } },
-    ),
-  getReadingProgress: (source: string, sourceId: string, options?: RequestOptions) =>
-    request<ReadingProgressInfo>(`/library/${source}/${sourceId}/progress`, {
-      signal: options?.signal,
-    }),
-  saveReadingProgress: (
-    source: string,
-    sourceId: string,
-    page: number,
-    total_pages?: number,
-    options?: RequestOptions,
-  ) =>
-    request<ReadingProgressInfo>(`/library/${source}/${sourceId}/progress`, {
-      method: 'PUT',
-      body: JSON.stringify({ page, total_pages }),
-      signal: options?.signal,
-    }),
-  getCuratorPasses: (options?: RequestOptions) =>
-    request<GuestPass[]>('/curator/passes', {
-      signal: options?.signal,
-    }),
-  createCuratorPass: (payload: CreateGuestPassPayload, options?: RequestOptions) =>
-    request<GuestPass>('/curator/passes', {
-      method: 'POST',
-      body: JSON.stringify(payload),
-      signal: options?.signal,
-    }),
-  updateCuratorPass: (passId: number, payload: UpdateGuestPassPayload, options?: RequestOptions) =>
-    request<GuestPass>(`/curator/passes/${passId}`, {
-      method: 'PATCH',
-      body: JSON.stringify(payload),
-      signal: options?.signal,
-    }),
-  deleteCuratorPass: (passId: number, options?: RequestOptions) =>
-    request<{ ok: boolean }>(`/curator/passes/${passId}`, {
-      method: 'DELETE',
-      signal: options?.signal,
-    }),
-  deleteCuratorPassDevice: (passId: number, deviceId: number, options?: RequestOptions) =>
-    request<{ ok: boolean }>(`/curator/passes/${passId}/devices/${deviceId}`, {
-      method: 'DELETE',
-      signal: options?.signal,
-    }),
-}
+  // === 2. 书架与作品 (Library) ===
+  /** 获取支持的漫画图源 Provider 清单（内存缓存） */
+  providers: library.providers,
+  /** 多维度分页检索与筛选书架中的漫画作品 */
+  library: library.library,
+  /** 获取书架的聚合统计数据（Facets） */
+  libraryFacets: library.libraryFacets,
+  /** 获取作品详情结构化数据（支持 bypassCache） */
+  detail: library.detail,
+  /** 向书架导入远端作品 */
+  importComic: library.importComic,
+  /** 从书架中永久删除指定作品 */
+  deleteComic: library.deleteComic,
+  /** 切换指定作品的收藏状态 */
+  setFavorite: library.setFavorite,
+  /** 更新作品自定义元数据 */
+  updateMetadata: library.updateMetadata,
 
-export const pageFileUrl = (source: string, sourceId: string, index: number) =>
-  `${BASE}/library/${source}/${sourceId}/pages/${index}/file`
+  // === 3. 离线缓存与并发管理 (Cache) ===
+  /** 触发指定作品的全本后台离线缓存下载 */
+  cacheAll: cache.cacheAll,
+  /** 查询指定作品的全本离线缓存进度 */
+  cacheProgress: cache.cacheProgress,
+  /** 查询指定单章节的离线缓存进度 */
+  chapterCacheProgress: cache.chapterCacheProgress,
+  /** 触发指定单章节的后台离线下载与解密 */
+  cacheChapter: cache.cacheChapter,
+  /** 查询指定作品当前关联的下载任务详情 */
+  cacheJob: cache.cacheJob,
+  /** 查询全站所有正在运行或排队的后台下载任务列表 */
+  cacheJobs: cache.cacheJobs,
+  /** 获取当前的全局图片下载并发限制 */
+  downloadConcurrency: cache.downloadConcurrency,
+  /** 调整全局图片下载并发限制 */
+  setDownloadConcurrency: cache.setDownloadConcurrency,
+  /** 获取访客隐私可见性策略 */
+  guestPrivacy: cache.guestPrivacy,
+  /** 设置访客隐私可见性策略 */
+  setGuestPrivacy: cache.setGuestPrivacy,
 
-export const pageThumbUrl = (source: string, sourceId: string, index: number) =>
-  `${BASE}/library/${source}/${sourceId}/pages/${index}/thumbnail.webp`
+  // === 4. 本地工坊与章节编辑 (Workshop) ===
+  /** 在本地自建库中创建全新漫画作品 */
+  createLocalComic: workshop.createLocalComic,
+  /** 从服务器本地路径导入漫画文件夹或归档 */
+  importLocalPath: workshop.importLocalPath,
+  /** 上传并嗅探 PDF 文件结构 */
+  inspectPdf: workshop.inspectPdf,
+  /** 删除服务器暂存的 PDF 临时文件 */
+  deleteStagedPdf: workshop.deleteStagedPdf,
+  /** 基于已暂存的 PDF 执行切分渲染并入库为本地画集 */
+  createFromStagedPdf: workshop.createFromStagedPdf,
+  /** 向作品或指定章节上传并插入多张画页 */
+  uploadPages: workshop.uploadPages,
+  /** 整话/整本覆盖替换画页 */
+  replaceComicPages: workshop.replaceComicPages,
+  /** 从服务器本地路径重新加载并替换画页 */
+  replaceComicPagesFromPath: workshop.replaceComicPagesFromPath,
+  /** 追加画页或合并其他画集内容 */
+  appendPages: workshop.appendPages,
+  /** 重命名或修改指定章节标题 */
+  updateChapter: workshop.updateChapter,
+  /** 删除指定作品的某一章节 */
+  deleteChapter: workshop.deleteChapter,
 
-export const coverFileUrl = (source: string, sourceId: string, index: number, width?: number) => {
-  const base = `${BASE}/library/${source}/${sourceId}/covers/${index}/file.webp`
-  const qs = buildQueryString({ w: width })
-  return qs ? `${base}?${qs}` : base
-}
+  // === 5. 发现榜单 (Discovery) ===
+  /** 获取官方发现排行榜数据（日榜、周榜、月榜） */
+  discoveryRanking: discovery.discoveryRanking,
 
-// T17：章节目录封面端点（后端按章节 id 定位，从该话第一页生成并池化缓存）
-export const chapterCoverUrl = (
-  source: string,
-  sourceId: string,
-  chapterId: string,
-  width?: number,
-) => {
-  const base = `${BASE}/library/${source}/${sourceId}/chapters/${chapterId}/cover.webp`
-  const qs = buildQueryString({ w: width })
-  return qs ? `${base}?${qs}` : base
-}
+  // === 6. 视觉搜图与台词全文检索 (Search) ===
+  /** 查询以图搜图服务引擎的就绪状态与特征索引总量 */
+  imageSearchStatus: search.imageSearchStatus,
+  /** 上传图片文件检索相似漫画画页 */
+  imageSearch: search.imageSearch,
+  /** 基于 SQLite FTS5 对全库漫画台词进行全文检索 */
+  searchDialogue: search.searchDialogue,
 
-/** 为图片/封面 URL 安全附加宽度参数（?w=360 或 &w=360），自动保护 data:/blob: 协议并更新已有参数 */
-export const withWidth = (url: string, width: number): string => {
-  if (!url) return ''
-  if (url.startsWith('data:') || url.startsWith('blob:')) return url
-  try {
-    const parsed = new URL(url, 'http://localhost')
-    parsed.searchParams.set('w', String(width))
-    if (!url.startsWith('http://') && !url.startsWith('https://')) {
-      return `${parsed.pathname}${parsed.search}`
-    }
-    return parsed.toString()
-  } catch {
-    const sep = url.includes('?') ? '&' : '?'
-    return `${url}${sep}w=${width}`
-  }
-}
+  // === 7. 阅读进度 (Reader) ===
+  /** 获取指定作品的最新阅读进度 */
+  getReadingProgress: reader.getReadingProgress,
+  /** 提交并更新指定作品的阅读进度 */
+  saveReadingProgress: reader.saveReadingProgress,
 
-/** 生成符合 HTML5 规范的响应式封面 srcset 字符串（默认 360w 阶梯 + 720w 高保真原图） */
-export const coverSrcset = (url: string, thumbWidth = 360, fullWidth = 720): string => {
-  if (!url || url.startsWith('data:') || url.startsWith('blob:')) return ''
-  return `${withWidth(url, thumbWidth)} ${thumbWidth}w, ${url} ${fullWidth}w`
+  // === 8. 馆长通行证运维 (Curator) ===
+  /** 获取全站所有访客通行证列表 */
+  getCuratorPasses: curator.getCuratorPasses,
+  /** 签发全新的访客通行证 */
+  createCuratorPass: curator.createCuratorPass,
+  /** 更新或调整已有访客通行证的信息 */
+  updateCuratorPass: curator.updateCuratorPass,
+  /** 撤销并永久删除指定的访客通行证 */
+  deleteCuratorPass: curator.deleteCuratorPass,
+  /** 解绑指定通行证下绑定的特定访客设备 */
+  deleteCuratorPassDevice: curator.deleteCuratorPassDevice,
 }
