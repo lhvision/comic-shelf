@@ -9,6 +9,8 @@ describe('useIdlePrefetch', () => {
   })
 
   afterEach(() => {
+    vi.useRealTimers()
+    vi.unstubAllGlobals()
     vi.restoreAllMocks()
   })
 
@@ -45,10 +47,7 @@ describe('useIdlePrefetch', () => {
   it('falls back to setTimeout when requestIdleCallback is unavailable', async () => {
     const loader = vi.fn<() => Promise<Record<string, unknown>>>().mockResolvedValue({})
 
-    // Delete requestIdleCallback if present
-    const original = window.requestIdleCallback
-    // @ts-expect-error delete for testing fallback
-    delete window.requestIdleCallback
+    vi.stubGlobal('requestIdleCallback', undefined)
 
     const TestComponent = defineComponent({
       setup() {
@@ -67,9 +66,6 @@ describe('useIdlePrefetch', () => {
     expect(loader).toHaveBeenCalledTimes(1)
 
     wrapper.unmount()
-    if (original) {
-      window.requestIdleCallback = original
-    }
   })
 
   it('cancels scheduled prefetch when unmounted before trigger', () => {

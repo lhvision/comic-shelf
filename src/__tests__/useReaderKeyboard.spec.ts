@@ -1,9 +1,17 @@
-import { describe, it, expect, vi } from 'vite-plus/test'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vite-plus/test'
 import { ref, computed } from 'vue'
 import { useReaderKeyboard } from '@/composables/useReaderKeyboard'
 import type { ReaderSettings } from '@/composables/useReaderSettings'
 
 describe('useReaderKeyboard - Cascading Escape & Filmstrip Toggle', () => {
+  beforeEach(() => {
+    vi.useFakeTimers()
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+    vi.restoreAllMocks()
+  })
   const defaultSettings: ReaderSettings = {
     mode: 'horizontal',
     direction: 'ltr',
@@ -120,7 +128,7 @@ describe('useReaderKeyboard - Cascading Escape & Filmstrip Toggle', () => {
     expect(nextGroup).toHaveBeenCalledTimes(1)
 
     // 3. Repeating keydown after 120ms passes 'auto' behavior
-    await new Promise((r) => setTimeout(r, 120))
+    vi.advanceTimersByTime(120)
     state.onKeydown(fastRepeatEvent)
     expect(nextGroup).toHaveBeenCalledTimes(2)
     expect(nextGroup).toHaveBeenLastCalledWith('auto')

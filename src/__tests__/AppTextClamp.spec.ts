@@ -1,8 +1,18 @@
-import { describe, it, expect, vi } from 'vite-plus/test'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vite-plus/test'
 import { mount } from '@vue/test-utils'
+import { nextTick } from 'vue'
 import AppTextClamp from '@/components/AppTextClamp.vue'
 
 describe('AppTextClamp', () => {
+  beforeEach(() => {
+    vi.useFakeTimers()
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+    vi.restoreAllMocks()
+  })
+
   it('renders customized HTML tag with line clamp classes', () => {
     const wrapper = mount(AppTextClamp, {
       props: {
@@ -36,7 +46,7 @@ describe('AppTextClamp', () => {
     Object.defineProperty(clampEl.element, 'clientWidth', { value: 100, configurable: true })
 
     await clampEl.trigger('pointerenter')
-    await wrapper.vm.$nextTick()
+    await nextTick()
 
     expect(clampEl.classes()).not.toContain('is-truncated')
     // Tooltip tip 元素在 lazy 且 disabled 状态下不挂载
@@ -45,7 +55,6 @@ describe('AppTextClamp', () => {
   })
 
   it('activates truncated state and lazy mounts tooltip when overflow is detected on pointerenter', async () => {
-    vi.useFakeTimers()
     const wrapper = mount(AppTextClamp, {
       props: {
         text: '非常非常长的多作者或者角色列表超长文本内容',
@@ -62,20 +71,18 @@ describe('AppTextClamp', () => {
     Object.defineProperty(clampEl.element, 'clientWidth', { value: 150, configurable: true })
 
     await clampEl.trigger('pointerenter')
-    await wrapper.vm.$nextTick()
+    await nextTick()
 
     expect(clampEl.classes()).toContain('is-truncated')
 
     // 触发 tooltip-wrapper 的 mouseenter
     await wrapper.find('.tooltip-wrapper').trigger('mouseenter')
     vi.advanceTimersByTime(150)
-    await wrapper.vm.$nextTick()
+    await nextTick()
 
     const tip = wrapper.find('.tooltip__tip')
     expect(tip.exists()).toBe(true)
     expect(tip.text()).toBe('非常非常长的多作者或者角色列表超长文本内容')
-
-    vi.useRealTimers()
   })
 
   it('respects disabled prop and suppresses tooltip', async () => {
@@ -92,7 +99,7 @@ describe('AppTextClamp', () => {
     Object.defineProperty(clampEl.element, 'clientWidth', { value: 100, configurable: true })
 
     await clampEl.trigger('pointerenter')
-    await wrapper.vm.$nextTick()
+    await nextTick()
 
     expect(clampEl.classes()).not.toContain('is-truncated')
     expect(wrapper.find('.tooltip__tip').exists()).toBe(false)
@@ -114,7 +121,6 @@ describe('AppTextClamp', () => {
   })
 
   it('activates tooltip when delay is 0', async () => {
-    vi.useFakeTimers()
     const wrapper = mount(AppTextClamp, {
       props: {
         text: '零延迟超长文本提示内容',
@@ -130,17 +136,14 @@ describe('AppTextClamp', () => {
     await clampEl.trigger('pointerenter')
     await wrapper.find('.tooltip-wrapper').trigger('mouseenter')
     vi.advanceTimersByTime(0)
-    await wrapper.vm.$nextTick()
+    await nextTick()
 
     const tip = wrapper.find('.tooltip__tip')
     expect(tip.exists()).toBe(true)
     expect(tip.text()).toBe('零延迟超长文本提示内容')
-
-    vi.useRealTimers()
   })
 
   it('triggers tooltip on touchstart on mobile devices', async () => {
-    vi.useFakeTimers()
     const wrapper = mount(AppTextClamp, {
       props: {
         text: '移动端触碰测试文本内容',
@@ -155,12 +158,10 @@ describe('AppTextClamp', () => {
 
     await clampEl.trigger('touchstart')
     vi.advanceTimersByTime(50)
-    await wrapper.vm.$nextTick()
+    await nextTick()
 
     const tip = wrapper.find('.tooltip__tip')
     expect(tip.exists()).toBe(true)
     expect(tip.text()).toBe('移动端触碰测试文本内容')
-
-    vi.useRealTimers()
   })
 })

@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vite-plus/test'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vite-plus/test'
 import { ref, nextTick } from 'vue'
 import { setActivePinia, createPinia } from 'pinia'
 import { useLibrarySync } from '@/composables/useLibrarySync'
@@ -10,6 +10,11 @@ describe('useLibrarySync composable', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
     vi.useFakeTimers()
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+    vi.restoreAllMocks()
   })
 
   it('triggers debounced fetch when filters mutate without manipulating router or query', async () => {

@@ -1,12 +1,8 @@
 import { describe, it, expect } from 'vite-plus/test'
-import { mount } from '@vue/test-utils'
+import { mount, type VueWrapper } from '@vue/test-utils'
 import DetailActionBar from '@/components/detail/DetailActionBar.vue'
+import AppDropdown from '@/components/AppDropdown.vue'
 import type { DropdownOption } from '@/types'
-
-interface DetailActionBarVm {
-  moreOptions: DropdownOption[]
-  onMoreSelect: (option: DropdownOption) => void
-}
 
 describe('DetailActionBar - Replace Pages', () => {
   const baseProps = {
@@ -24,17 +20,22 @@ describe('DetailActionBar - Replace Pages', () => {
 
   it('renders replace_pages option in more dropdown when canWrite is true', () => {
     const wrapper = mount(DetailActionBar, { props: baseProps })
-    const vm = wrapper.vm as unknown as DetailActionBarVm
-    const replaceOpt = vm.moreOptions.find((o) => o.key === 'replace_pages')
+    const dropdown = wrapper.findComponent(AppDropdown) as unknown as VueWrapper
+    expect(dropdown.exists()).toBe(true)
+
+    const props = dropdown.props() as { options?: DropdownOption[] }
+    const replaceOpt = props.options?.find((o) => o.key === 'replace_pages')
 
     expect(replaceOpt).toBeDefined()
     expect(replaceOpt?.label).toContain('重新装订')
   })
 
-  it('emits replacePages when replace_pages is selected', () => {
+  it('emits replacePages when replace_pages is selected', async () => {
     const wrapper = mount(DetailActionBar, { props: baseProps })
-    const vm = wrapper.vm as unknown as DetailActionBarVm
-    vm.onMoreSelect({ key: 'replace_pages', label: '重新装订…' })
+    const dropdown = wrapper.findComponent(AppDropdown) as unknown as VueWrapper
+    expect(dropdown.exists()).toBe(true)
+
+    dropdown.vm.$emit('select', { key: 'replace_pages', label: '重新装订…' })
 
     expect(wrapper.emitted('replacePages')).toHaveLength(1)
   })

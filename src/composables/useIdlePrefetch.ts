@@ -34,7 +34,7 @@ export function useIdlePrefetch(
   onMounted(() => {
     if (typeof window === 'undefined') return
 
-    if ('requestIdleCallback' in window) {
+    if (typeof window.requestIdleCallback === 'function') {
       idleHandle = window.requestIdleCallback(
         () => {
           idleHandle = null
@@ -52,7 +52,7 @@ export function useIdlePrefetch(
 
   onBeforeUnmount(() => {
     if (typeof window === 'undefined') return
-    if (idleHandle !== null && 'cancelIdleCallback' in window) {
+    if (idleHandle !== null && typeof window.cancelIdleCallback === 'function') {
       window.cancelIdleCallback(idleHandle)
       idleHandle = null
     }

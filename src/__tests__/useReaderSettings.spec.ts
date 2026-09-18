@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vite-plus/test'
+import { nextTick } from 'vue'
 import {
   useReaderSettings,
   DEFAULT_SETTINGS,
@@ -78,7 +79,7 @@ describe('useReaderSettings composable', () => {
     settings.fit = 'height'
 
     settings.seamless = true
-    await new Promise((resolve) => setTimeout(resolve, 0))
+    await nextTick()
 
     expect(settings.seamless).toBe(true)
     expect(settings.pagesPerView).toBe(1)
@@ -232,7 +233,7 @@ describe('useReaderSettings composable', () => {
 
     // 修改全局基准为 fit='width'
     globalSettings.fit = 'width'
-    await new Promise((resolve) => setTimeout(resolve, 0))
+    await nextTick()
 
     // 继承态漫画视口必须实时同步
     expect(settings.fit).toBe('width')
@@ -260,7 +261,7 @@ describe('useReaderSettings composable', () => {
     // 进入漫画并设置独立覆盖为 fit='width'
     applyComicPreferences('jm', 'comic_custom', [])
     settings.fit = 'width'
-    await new Promise((resolve) => setTimeout(resolve, 0))
+    await nextTick()
 
     expect(hasActiveOverride.value).toBe(true)
     expect(isInheritingGlobal.value).toBe(false)
@@ -269,7 +270,7 @@ describe('useReaderSettings composable', () => {
 
     // 恢复跟随全局
     revertToGlobal()
-    await new Promise((resolve) => setTimeout(resolve, 0))
+    await nextTick()
 
     expect(hasActiveOverride.value).toBe(false)
     expect(isInheritingGlobal.value).toBe(true)
@@ -296,7 +297,7 @@ describe('useReaderSettings composable', () => {
     applyComicPreferences('jm', 'comic_turn_test', [])
     settings.autoTurn = true
     settings.autoTurnInterval = 25
-    await new Promise((resolve) => setTimeout(resolve, 0))
+    await nextTick()
 
     expect(hasActiveOverride.value).toBe(true)
     expect(settings.autoTurn).toBe(true)
@@ -313,7 +314,7 @@ describe('useReaderSettings composable', () => {
 
     // 恢复跟随全局后，退回全局基线
     revertToGlobal()
-    await new Promise((resolve) => setTimeout(resolve, 0))
+    await nextTick()
     expect(settings.autoTurn).toBe(false)
     expect(settings.autoTurnInterval).toBe(10)
 

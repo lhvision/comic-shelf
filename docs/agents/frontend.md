@@ -56,6 +56,7 @@
 | `src/composables/useViewTransition.ts`             | 全局与局域视图过渡门面封装：`Promise.withResolvers` + `Promise.try`、异常自动捕获兜底与抢占自愈                                                                |
 | `src/composables/useCoverTransition.ts`            | 书架卡片与详情 Hero 共享封面形变（`comic-cover-active`）动态类名与过渡时机调度                                                                                 |
 | `src/composables/useBrandIcon.ts`                  | 品牌与动态多态矢量图标映射与解析器                                                                                                                             |
+| `src/__tests__/testUtils.ts`                       | 前端通用单测工具集：`withSetup` Composable 宿主上下文注入挂载、Pinia 自动初始化与 `flushAsync` 助手                                                            |
 | `src/pwa.ts`                                       | PWA 与 SSE 系统事件流统一初始化入口                                                                                                                            |
 | `src/components/curator/GuestModal.vue`            | 馆长专属访客簿全屏模态：名册检视、设备抽屉、印发表单与凭证展示装配外壳                                                                                         |
 | `src/components/curator/guest/`                    | 访客簿模块化组件群：名册卡片、设备抽屉、印发表单、凭据展示与时间格式化                                                                                         |

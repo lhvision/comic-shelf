@@ -1393,6 +1393,24 @@
 - **放行/改用**：
   - 在任何基于像素极值的空白/单色过滤算法中，前置执行 `im.convert("RGB")` 规范化色彩空间后再做极值分析。
 
+### 121. 单测黑盒契约与测试生命周期隔离 (Test Suite Governance: Blackbox Contracts & Timer Lifecycle Isolation)
+
+- **本质**：
+  1. **测试实现细节（White-box Testing Fragility）**：在 Vue 组件测试中，通过 `wrapper.vm.*` 直接读取或修改组件内部响应式状态、直接调用内部私有函数，导致组件进行内部重构（如提取 Composable、改名局部状态）时测试发生假阳性崩溃。解决之道：坚持黑盒测试理念（遵循 Vue Testing Best Practices 与 Kent C. Dodds 哲学），以用户可见的 DOM 内容、ARIA 角色与属性、公开 Props 与 Emits 事件流为断言基准；
+  2. **异步与时钟宏任务污染（Real Timer Flakiness & Macro-task Delays）**：使用 `new Promise(r => setTimeout(r, ms))` 带来真实耗时与测试不稳定（Flakiness），或 `await wrapper.vm.$nextTick()` 深度耦合 VM 实例。解决之道：使用 Vitest 假时钟 `vi.useFakeTimers()` + `vi.advanceTimersByTime()` 实现 0 毫秒确定性步进，响应式刷新统一使用 Vue 原生 `import { nextTick } from 'vue'` 与 `@vue/test-utils` 的 `flushPromises()`；
+  3. **时钟与全局 Stub 泄漏（Timer & Global Stub Leakage）**：在单用例内部裸调 `vi.useFakeTimers()` 或 `vi.stubGlobal()`，一旦前面断言失败导致后续 `useRealTimers()` 未执行，污染后续测试套件。解决之道：严格在 `beforeEach` / `afterEach` 生命周期钩子中对称管理（`afterEach` 必调 `vi.useRealTimers()`、`vi.unstubAllGlobals()`、`vi.restoreAllMocks()`）；
+  4. **复杂的 Composable 宿主上下文（Host Context for Composables）**：依赖 Vue 生命周期钩子（`onMounted`/`onUnmounted`）或依赖注入（`provide`/`inject`）的 Composable，统一使用 `src/__tests__/testUtils.ts` 提供的 `withSetup` 包装器，并在 `afterEach` 执行宿主 App 的 `app.unmount()`。
+- **红线与防误伤**：
+  - **不要**在组件单测中直接访问私有 `wrapper.vm.*` 内部数据（除非测试 `defineExpose` 声明的显式公共 API）；
+  - **不要**在测试中书写 `setTimeout` / `setInterval` 真实延时宏任务；
+  - **不要**在测试用例内部裸调假时钟却未在 `afterEach` 中保底恢复；
+  - **不要**在修改全局 DOM Prototype 时缺少 `try...finally` 清理；
+- **放行/改用**：
+  1. **黑盒断言**：通过 `wrapper.find()`、`trigger()`、`setProps()` 及 `emitted()` 测试公开行为；
+  2. **Vitest 假时钟与微任务**：使用 `vi.advanceTimersByTime()` 与 `await nextTick()` / `await flushPromises()`；
+  3. **严格对称的生命周期清理**：在 `beforeEach` / `afterEach` 保证全局与 Mock 100% 隔离；
+  4. **统一测试底座**：复杂的 Composable 使用 `src/__tests__/testUtils.ts` 的 `withSetup()` 工具。
+
 ---
 
 ## 🚦 交付门禁（四步必跑）

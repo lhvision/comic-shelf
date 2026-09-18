@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vite-plus/test'
 import { mount } from '@vue/test-utils'
+import { nextTick } from 'vue'
 import Modal from '@/components/Modal.vue'
 
 describe('Modal Component', () => {
@@ -297,7 +298,7 @@ describe('Modal Component', () => {
     const cmdEvent = new Event('command', { cancelable: true }) as Event & { command?: string }
     cmdEvent.command = 'close'
     dialog.element.dispatchEvent(cmdEvent)
-    await wrapper.vm.$nextTick()
+    await nextTick()
 
     expect(cmdEvent.defaultPrevented).toBe(true)
     expect(wrapper.emitted('cancel')).toBeFalsy()

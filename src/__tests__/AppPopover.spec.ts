@@ -5,6 +5,7 @@
 
 import { describe, it, expect } from 'vite-plus/test'
 import { mount } from '@vue/test-utils'
+import { nextTick } from 'vue'
 import AppPopover from '@/components/AppPopover.vue'
 
 describe('AppPopover component', () => {
@@ -96,14 +97,14 @@ describe('AppPopover component', () => {
 
     expect(vm.isOpen).toBe(false)
     vm.open()
-    await wrapper.vm.$nextTick()
+    await nextTick()
     expect(wrapper.emitted('update:open')?.[0]).toEqual([true])
 
     await wrapper.setProps({ open: true } as Record<string, unknown>)
     expect(vm.isOpen).toBe(true)
 
     vm.close()
-    await wrapper.vm.$nextTick()
+    await nextTick()
     expect(wrapper.emitted('update:open')).toContainEqual([false])
   })
 })

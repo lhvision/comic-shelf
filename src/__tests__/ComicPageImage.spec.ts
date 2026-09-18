@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vite-plus/test'
 import { mount } from '@vue/test-utils'
+import { nextTick } from 'vue'
 import ComicPageImage from '@/components/ComicPageImage.vue'
 
 describe('ComicPageImage.vue', () => {
@@ -9,6 +10,7 @@ describe('ComicPageImage.vue', () => {
 
   afterEach(() => {
     vi.useRealTimers()
+    vi.restoreAllMocks()
   })
 
   it('renders initial loading state', () => {
@@ -54,7 +56,7 @@ describe('ComicPageImage.vue', () => {
 
     // Advance 1.2s: first retry triggered
     vi.advanceTimersByTime(1200)
-    await wrapper.vm.$nextTick()
+    await nextTick()
 
     const updatedImg = wrapper.find('img')
     expect(updatedImg.attributes('src')).toContain('retry=1')
@@ -73,21 +75,21 @@ describe('ComicPageImage.vue', () => {
     // Attempt 1 -> error -> wait 1.2s -> retry 1
     await wrapper.find('img').trigger('error')
     vi.advanceTimersByTime(1200)
-    await wrapper.vm.$nextTick()
+    await nextTick()
 
     // Attempt 2 -> error -> wait 2.4s -> retry 2
     await wrapper.find('img').trigger('error')
     vi.advanceTimersByTime(2400)
-    await wrapper.vm.$nextTick()
+    await nextTick()
 
     // Attempt 3 -> error -> wait 3.6s -> retry 3
     await wrapper.find('img').trigger('error')
     vi.advanceTimersByTime(3600)
-    await wrapper.vm.$nextTick()
+    await nextTick()
 
     // Attempt 4 (exhausted maxAutoRetries = 3) -> finally show error card
     await wrapper.find('img').trigger('error')
-    await wrapper.vm.$nextTick()
+    await nextTick()
 
     expect(wrapper.attributes('data-state')).toBe('error')
     expect(wrapper.find('.page-error').exists()).toBe(true)
@@ -95,7 +97,7 @@ describe('ComicPageImage.vue', () => {
 
     // Click retry button: resets and starts retry again
     await wrapper.find('.page-error button').trigger('click')
-    await wrapper.vm.$nextTick()
+    await nextTick()
 
     expect(wrapper.attributes('data-state')).toBe('loading')
     expect(wrapper.find('.page-error').exists()).toBe(false)

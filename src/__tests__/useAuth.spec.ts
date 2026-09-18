@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vite-plus/test'
+import { flushPromises } from '@vue/test-utils'
 import {
   useAuth,
   setSessionPendingToken,
@@ -355,7 +356,7 @@ describe('useAuth', () => {
     const { requiresPin, pendingToken, username, authenticated } = useAuth()
     notifyUnauthorized()
 
-    await new Promise((r) => setTimeout(r, 10))
+    await flushPromises()
 
     expect(authenticated.value).toBe(false)
     expect(requiresPin.value).toBe(true)

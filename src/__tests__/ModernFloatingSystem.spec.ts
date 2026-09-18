@@ -1,5 +1,6 @@
-import { describe, it, expect, vi } from 'vite-plus/test'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vite-plus/test'
 import { mount } from '@vue/test-utils'
+import { nextTick } from 'vue'
 import AppTooltip from '@/components/AppTooltip.vue'
 import AppPopover from '@/components/AppPopover.vue'
 import AppDropdown from '@/components/AppDropdown.vue'
@@ -8,9 +9,17 @@ import SegmentedTabs from '@/components/SegmentedTabs.vue'
 import type { DropdownOption } from '@/types'
 
 describe('Modern Floating System', () => {
+  beforeEach(() => {
+    vi.useFakeTimers()
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+    vi.restoreAllMocks()
+  })
+
   describe('Tooltip & AppTooltip', () => {
     it('defaults to lazy: true (zero-DOM) and mounts popover=hint tip element on hover', async () => {
-      vi.useFakeTimers()
       const wrapper = mount(AppTooltip, {
         props: {
           tip: '提示信息说明',
@@ -30,7 +39,7 @@ describe('Modern Floating System', () => {
 
       await wrapper.find('.tooltip-wrapper').trigger('mouseenter')
       vi.advanceTimersByTime(50)
-      await wrapper.vm.$nextTick()
+      await nextTick()
 
       const tip = wrapper.find('.tooltip__tip')
       expect(tip.exists()).toBe(true)
@@ -42,8 +51,6 @@ describe('Modern Floating System', () => {
       expect(describedBy).toBe(tip.attributes('id'))
       expect(tip.classes()).toContain('side-top')
       expect(tip.classes()).toContain('align-center')
-
-      vi.useRealTimers()
     })
 
     it('applies side and align classes for dynamic arrow targeting when lazy=false', () => {
@@ -82,7 +89,6 @@ describe('Modern Floating System', () => {
     })
 
     it('keeps tooltip open when cursor moves onto the tip element (WCAG 1.4.13 hoverable)', async () => {
-      vi.useFakeTimers()
       const wrapper = mount(AppTooltip, {
         props: {
           tip: '说明文本',
@@ -99,7 +105,7 @@ describe('Modern Floating System', () => {
       // 移入触发元素
       await root.trigger('mouseenter')
       vi.advanceTimersByTime(50)
-      await wrapper.vm.$nextTick()
+      await nextTick()
 
       const tip = wrapper.find('.tooltip__tip')
       expect(tip.exists()).toBe(true)
@@ -114,21 +120,18 @@ describe('Modern Floating System', () => {
 
       // 推进 200ms（已超过 150ms 缓冲延时）
       vi.advanceTimersByTime(200)
-      await wrapper.vm.$nextTick()
+      await nextTick()
       // 气泡因处于悬停保护期而依然保持展开
       expect(tip.classes()).toContain('is-visible')
 
       // 最终光标移出气泡
       await tip.trigger('mouseleave')
       vi.advanceTimersByTime(150)
-      await wrapper.vm.$nextTick()
+      await nextTick()
       expect(tip.classes()).not.toContain('is-visible')
-
-      vi.useRealTimers()
     })
 
     it('dynamically flips actualSide class and data-side when collision causes vertical inversion', async () => {
-      vi.useFakeTimers()
       const wrapper = mount(AppTooltip, {
         props: {
           tip: '顶部提示',
@@ -170,13 +173,11 @@ describe('Modern Floating System', () => {
 
       await wrapper.find('.tooltip-wrapper').trigger('mouseenter')
       vi.advanceTimersByTime(10)
-      await wrapper.vm.$nextTick()
+      await nextTick()
 
       // 实际渲染在下方，实际类名与属性自适应更新为 side-bottom，确保箭头指向正确的上方
       expect(tip.classes()).toContain('side-bottom')
       expect(tip.attributes('data-side')).toBe('bottom')
-
-      vi.useRealTimers()
     })
   })
 
@@ -283,21 +284,27 @@ describe('Modern Floating System', () => {
 
     it('scrolls active item into view during continuous keyboard navigation', async () => {
       const scrollMock = vi.fn<() => void>()
-      window.HTMLElement.prototype.scrollIntoView = scrollMock
+      Element.prototype.scrollIntoView = scrollMock
 
-      const wrapper = mount(AppDropdown, {
-        props: {
-          options,
-          modelValue: 'opt1',
-        },
-      })
+      try {
+        const wrapper = mount(AppDropdown, {
+          props: {
+            options,
+            modelValue: 'opt1',
+          },
+        })
 
-      const trigger = wrapper.find('.dropdown-trigger')
-      await trigger.trigger('click')
-      await trigger.trigger('keydown', { key: 'ArrowDown' })
+        const trigger = wrapper.find('.dropdown-trigger')
+        await trigger.trigger('click')
+        await trigger.trigger('keydown', { key: 'ArrowDown' })
 
-      expect(scrollMock).toHaveBeenCalled()
+        expect(scrollMock).toHaveBeenCalled()
+      } finally {
+        // @ts-expect-error cleanup polyfill
+        delete Element.prototype.scrollIntoView
+      }
     })
+
     it('does not render item-leading for action menu without icons', () => {
       const actionOptions: DropdownOption[] = [
         { key: 'remove', label: '移除本地缓存…', danger: true, hint: '不可撤销' },

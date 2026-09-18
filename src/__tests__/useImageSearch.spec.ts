@@ -7,6 +7,7 @@ describe('useImageSearch', () => {
   const createObjectURLMock = vi.fn<() => string>(() => 'blob:test')
 
   beforeEach(() => {
+    vi.useFakeTimers()
     useImageSearch().resetState()
     vi.stubGlobal(
       'fetch',
@@ -19,6 +20,8 @@ describe('useImageSearch', () => {
   })
 
   afterEach(() => {
+    vi.useRealTimers()
+    vi.unstubAllGlobals()
     vi.restoreAllMocks()
   })
 
@@ -93,7 +96,6 @@ describe('useImageSearch', () => {
   })
 
   it('caps auto retries at 3 attempts and allows manual recheck', async () => {
-    vi.useFakeTimers()
     vi.mocked(fetch).mockResolvedValue({
       ok: true,
       status: 200,
@@ -128,12 +130,9 @@ describe('useImageSearch', () => {
     // Manual failed check does not resume auto polling
     await vi.advanceTimersByTimeAsync(60000)
     expect(fetch).toHaveBeenCalledTimes(4)
-
-    vi.useRealTimers()
   })
 
   it('suppresses auto retry when manual check is requested during in-flight fetch', async () => {
-    vi.useFakeTimers()
     const { promise: pendingPromise, resolve: resolveFetch } = withResolvers<Response>()
     vi.mocked(fetch).mockReturnValue(pendingPromise)
 

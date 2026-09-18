@@ -49,6 +49,7 @@ describe('useReaderNavigation - Discrete Wheel Stepping & Dual-Axis Discriminati
 
   afterEach(() => {
     vi.useRealTimers()
+    vi.restoreAllMocks()
   })
 
   function createNavigation(overrides?: Partial<UseReaderNavigationOptions>) {

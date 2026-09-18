@@ -1,6 +1,5 @@
 import { describe, it, expect } from 'vite-plus/test'
 import { mount } from '@vue/test-utils'
-import { ref } from 'vue'
 import GatePasswordInput from '@/components/gate/GatePasswordInput.vue'
 
 describe('GatePasswordInput.vue', () => {
@@ -43,18 +42,15 @@ describe('GatePasswordInput.vue', () => {
   })
 
   it('支持 v-model 双向绑定', async () => {
-    const wrapper = mount({
-      components: { GatePasswordInput },
-      setup() {
-        const text = ref('')
-        return { text }
+    const wrapper = mount(GatePasswordInput, {
+      props: {
+        modelValue: '',
       },
-      template: '<GatePasswordInput v-model="text" />',
     })
 
     const input = wrapper.find('input')
     await input.setValue('my-password')
-    expect(wrapper.vm.text).toBe('my-password')
+    expect(wrapper.emitted('update:modelValue')?.[0]).toEqual(['my-password'])
   })
 
   it('传递 error 属性时，容器正确挂载 .error 样式类', () => {
