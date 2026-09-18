@@ -471,7 +471,6 @@ export const useLibraryStore = defineStore('library', () => {
   async function importComic(payload: ImportRequest) {
     importing.value = true
     clearImportMessage()
-    error.value = ''
     try {
       const result = await api.importComic(payload)
       const msg = result.from_cache
@@ -495,9 +494,6 @@ export const useLibraryStore = defineStore('library', () => {
       })
       await load()
       return result
-    } catch (e) {
-      error.value = e instanceof Error ? e.message : String(e)
-      throw e
     } finally {
       importing.value = false
     }

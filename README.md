@@ -239,7 +239,8 @@ bash scripts/reindex.sh --full
 ```text
 $COMIC_SHELF_DATA/
 ├── jm_html_domain.json                  # 禁漫网页域名 6 小时缓存
-├── picacg_session.json                  # 哔咔会话凭据与 JWT 缓存
+├── jm_session.json                      # 禁漫 AVS 会话凭据与 Cookies 缓存（0o600 私有安全权限）
+├── picacg_session.json                  # 哔咔会话凭据与 JWT 缓存（0o600 私有安全权限）
 ├── imsearch/                            # 识图索引与特征库（centroids.bin / invlists.bin / imsearch.db）
 └── library/
     └── <source>/                         # provider key：jm / pica / local

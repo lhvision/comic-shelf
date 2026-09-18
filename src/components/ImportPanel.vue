@@ -122,8 +122,8 @@ async function submitRemote(source: 'jm' | 'picacg') {
       emit('imported', result.meta.source, result.meta.source_id)
     }
     id.value = ''
-  } catch {
-    toast(store.error, 'error')
+  } catch (err) {
+    toast(err instanceof Error ? err.message : String(err), 'error')
   }
 }
 

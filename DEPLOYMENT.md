@@ -313,6 +313,8 @@ backend/data/
 ├── comic_shelf.db              # SQLite 核心状态库（访客通行证、阅读进度、藏书影子索引，~5MB）
 ├── comic_dialogues.db          # 台词全文检索专库（FTS5 Trigram 倒排索引、OCR 增量元数据，独立物理隔离，~500MB+）
 ├── jm_html_domain.json          # 禁漫可用域名缓存
+├── jm_session.json             # 禁漫 AVS 会话凭据（0o600 私有安全权限，7 天有效）
+├── picacg_session.json         # 哔咔会话凭据与 JWT 缓存（0o600 私有安全权限）
 ├── corpus/                     # 领域语料库
 │   └── galgame/                # Galgame 双语剧本资产 (*.jsonl)
 ├── imsearch/                   # 以图搜图特征库与倒排索引

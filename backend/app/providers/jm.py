@@ -28,6 +28,13 @@ from .base import ComicProvider
 
 logger = logging.getLogger("paper_room.provider.jm")
 
+try:
+    from jmcomic import JmModuleConfig
+
+    JmModuleConfig.disable_jm_log()
+except ImportError:
+    pass
+
 _JM_REDIRECT_URL = "https://jm365.work/3YeBdF"
 _FALLBACK_HTML_DOMAINS = [
     "comic18j-rita.cc",
@@ -152,12 +159,6 @@ class JMProvider(ComicProvider):
         self._lock = threading.Lock()
         self._domain_cache_file = DATA_DIR / "jm_html_domain.json"
         self._session_cache_file = DATA_DIR / "jm_session.json"
-        try:
-            from jmcomic import JmModuleConfig
-
-            JmModuleConfig.FLAG_ENABLE_JM_LOG = False
-        except ImportError:
-            pass
 
     # ------------------------------------------------------------------
     # proxy & network routing helpers
@@ -245,9 +246,8 @@ class JMProvider(ComicProvider):
         if not JM_USERNAME or not JM_PASSWORD:
             return None
         try:
-            from jmcomic import JmModuleConfig, JmOption
+            from jmcomic import JmOption
 
-            JmModuleConfig.FLAG_ENABLE_JM_LOG = False
             opt = option or JmOption.default()
             control_proxies = self._get_control_proxies()
             opt.client.postman.meta_data["proxies"] = control_proxies
@@ -370,22 +370,31 @@ class JMProvider(ComicProvider):
     # ------------------------------------------------------------------
     # fetching
     # ------------------------------------------------------------------
-    def _make_html_client(self, force_refresh_session: bool = False):
-        from jmcomic import JmModuleConfig, JmOption
+    def _make_api_client(self, force_refresh_session: bool = False):
+        from jmcomic import JmOption
 
-        JmModuleConfig.FLAG_ENABLE_JM_LOG = False
         option = JmOption.default()
-        # 覆写 jmcomic 内置硬编码 127.0.0.1:7890 默认代理
         control_proxies = self._get_control_proxies()
         option.client.postman.meta_data["proxies"] = control_proxies
 
-        # 装载已认证的 Cookies
+        cookies = self._get_valid_cookies(option, force_refresh=force_refresh_session)
+        if cookies:
+            option.update_cookies(cookies)
+
+        return option.new_jm_client(impl="api")
+
+    def _make_html_client(self, force_refresh_session: bool = False):
+        from jmcomic import JmOption
+
+        option = JmOption.default()
+        control_proxies = self._get_control_proxies()
+        option.client.postman.meta_data["proxies"] = control_proxies
+
         cookies = self._get_valid_cookies(option, force_refresh=force_refresh_session)
         if cookies:
             option.update_cookies(cookies)
 
         return option.new_jm_client(impl="html", domain_list=[self.resolve_html_domain()])
-
 
     @staticmethod
     def _parse_uploader(text: str) -> str | None:
@@ -401,15 +410,70 @@ class JMProvider(ComicProvider):
                     return value
         return None
 
-    def fetch(
+    def _fetch_via_api(
         self,
-        raw_id: str,
+        jm_id: str,
+        *,
+        existing: FetchedComic | None = None,
+    ) -> FetchedComic:
+        from jmcomic import MissingAlbumPhotoException
+
+        api_client = self._make_api_client()
+
+        try:
+            detail = api_client.get_album_detail(jm_id)
+        except MissingAlbumPhotoException as e_missing:
+            if JM_USERNAME and JM_PASSWORD:
+                logger.info("检测到受限车号 JM%s 在 API 端返回缺失，尝试自愈刷新凭据重试...", jm_id)
+                self._clear_session_cache()
+                api_client = self._make_api_client(force_refresh_session=True)
+                try:
+                    detail = api_client.get_album_detail(jm_id)
+                except Exception:
+                    raise e_missing
+            else:
+                raise
+
+        def fetch_photo_api(pid: str):
+            nonlocal api_client
+            try:
+                photo = api_client.get_photo_detail(pid, fetch_album=False)
+                photo.from_album = detail
+                return photo
+            except MissingAlbumPhotoException as e_ep_missing:
+                if JM_USERNAME and JM_PASSWORD:
+                    logger.info("检测到单话 %s 在 API 端受限或缺失，尝试自愈刷新重登...", pid)
+                    self._clear_session_cache()
+                    api_client = self._make_api_client(force_refresh_session=True)
+                    try:
+                        photo = api_client.get_photo_detail(pid, fetch_album=False)
+                        photo.from_album = detail
+                        return photo
+                    except Exception:
+                        raise e_ep_missing
+                else:
+                    raise
+
+        html_domain = self._cached_html_domain() or "18comic.vip"
+        source_url = f"https://{html_domain}/album/{jm_id}"
+
+        return self._assemble_fetched_comic(
+            jm_id=jm_id,
+            detail=detail,
+            fetch_photo=fetch_photo_api,
+            existing=existing,
+            uploader=None,
+            source_url=source_url,
+        )
+
+    def _fetch_via_html(
+        self,
+        jm_id: str,
         *,
         existing: FetchedComic | None = None,
     ) -> FetchedComic:
         from jmcomic import JmcomicText
 
-        jm_id = self.normalize_id(raw_id)
         client = self._make_html_client()
 
         def _is_restricted(resp) -> bool:
@@ -428,7 +492,7 @@ class JMProvider(ComicProvider):
         album_resp = client.get(f"/album/{jm_id}")
         if _is_restricted(album_resp):
             if JM_USERNAME and JM_PASSWORD:
-                logger.info(f"检测到受限车号 JM{jm_id}，尝试会话自愈刷新重登并重试...")
+                logger.info("检测到受限车号 JM%s，尝试 HTML 会话自愈刷新重登并重试...", jm_id)
                 self._clear_session_cache()
                 client = self._make_html_client(force_refresh_session=True)
                 album_resp = client.get(f"/album/{jm_id}")
@@ -462,9 +526,43 @@ class JMProvider(ComicProvider):
             raise
         uploader = self._parse_uploader(album_resp.text)
 
-        # Each album carries one or more chapters (episodes). A single-chapter
-        # album's episode_list is [(album_id, "1", name)], so fetching each
-        # episode by its own photo id stays backward compatible.
+        def fetch_photo_html(pid: str):
+            nonlocal client
+            photo_resp = client.get(f"/photo/{pid}")
+            if _is_restricted(photo_resp):
+                if JM_USERNAME and JM_PASSWORD:
+                    logger.info("检测到单话 %s 受限，尝试 HTML 会话重登并重试...", pid)
+                    self._clear_session_cache()
+                    client = self._make_html_client(force_refresh_session=True)
+                    photo_resp = client.get(f"/photo/{pid}")
+                else:
+                    raise ValueError(
+                        f"禁漫话数 {pid} 受权限保护（需登录查看），请在 .env 中配置 JM_USERNAME 与 JM_PASSWORD 后重试"
+                    )
+                if _is_restricted(photo_resp):
+                    raise ValueError(f"禁漫话数 {pid} 需登录后才能查看，当前账号无权访问或登录会话已失效")
+            photo = JmcomicText.analyse_jm_photo_html(photo_resp.text)
+            photo.from_album = detail
+            return photo
+
+        return self._assemble_fetched_comic(
+            jm_id=jm_id,
+            detail=detail,
+            fetch_photo=fetch_photo_html,
+            existing=existing,
+            uploader=uploader,
+            source_url=str(album_resp.url),
+        )
+
+    def _assemble_fetched_comic(
+        self,
+        jm_id: str,
+        detail,
+        fetch_photo,
+        existing: FetchedComic | None = None,
+        uploader: str | None = None,
+        source_url: str = "",
+    ) -> FetchedComic:
         episodes = [
             (ep[0], (ep[2] if len(ep) > 2 else "").strip())
             for ep in (detail.episode_list or [])
@@ -474,10 +572,6 @@ class JMProvider(ComicProvider):
 
         multi = len(episodes) > 1
 
-        # ---- 增量刷新与章节复用：
-        # 1. 若章节集合与总页数完全一致，直接复用旧 remote_pages（0 次 photo 网络请求）
-        # 2. 若连载漫画新增章节，复用已有章节的 remote_pages，仅对新章节拉取 photo HTML
-        # 3. 若检测到章节内部页数修改（总页数不符），兜底全量拉取保证数据准确
         existing_chapter_map = {
             c.id: c for c in (existing.meta.chapters if existing else [])
         }
@@ -487,21 +581,29 @@ class JMProvider(ComicProvider):
                 if p.chapter:
                     existing_pages_by_chap.setdefault(p.chapter, []).append(p)
                 elif not existing.meta.chapters and len(episodes) > 1:
-                    # 单章节升级多章节时，将原有页面归入第一话
                     first_pid = episodes[0][0]
                     existing_pages_by_chap.setdefault(first_pid, []).append(p)
 
+        api_has_page_count = int(detail.page_count or 0) > 0
         all_ids_match = (
             existing is not None
             and multi
             and [c.id for c in existing.meta.chapters] == [ep[0] for ep in episodes]
-            and existing.meta.page_count == int(detail.page_count or 0)
+            and (
+                existing.meta.page_count == int(detail.page_count or 0)
+                if api_has_page_count
+                else True
+            )
         )
         single_match = (
             existing is not None
             and not multi
             and not existing.meta.chapters
-            and existing.meta.page_count == int(detail.page_count or 0)
+            and (
+                existing.meta.page_count == int(detail.page_count or 0)
+                if api_has_page_count
+                else True
+            )
         )
 
         remote_pages: list[RemotePage] = []
@@ -523,25 +625,12 @@ class JMProvider(ComicProvider):
             image_domain = str((existing.meta.raw or {}).get("image_domain", "") or "")
         else:
             def _fetch_episode(pid: str, ptitle: str, ordinal: int):
-                nonlocal first_photo, client
-                photo_resp = client.get(f"/photo/{pid}")
-                if _is_restricted(photo_resp):
-                    if JM_USERNAME and JM_PASSWORD:
-                        logger.info(f"检测到单话 {pid} 受限，尝试会话重登并重试...")
-                        self._clear_session_cache()
-                        client = self._make_html_client(force_refresh_session=True)
-                        photo_resp = client.get(f"/photo/{pid}")
-                    else:
-                        raise ValueError(
-                            f"禁漫话数 {pid} 受权限保护（需登录查看），请在 .env 中配置 JM_USERNAME 与 JM_PASSWORD 后重试"
-                        )
-                    if _is_restricted(photo_resp):
-                        raise ValueError(f"禁漫话数 {pid} 需登录后才能查看，当前账号无权访问或登录会话已失效")
-                photo = JmcomicText.analyse_jm_photo_html(photo_resp.text)
-                photo.from_album = detail
-                photo.data_original_query_params = photo.get_data_original_query_params(
-                    photo.data_original_0
-                )
+                nonlocal first_photo
+                photo = fetch_photo(pid)
+                if getattr(photo, "data_original_0", None):
+                    photo.data_original_query_params = photo.get_data_original_query_params(
+                        photo.data_original_0
+                    )
                 if first_photo is None:
                     first_photo = photo
 
@@ -558,10 +647,7 @@ class JMProvider(ComicProvider):
                             scramble_id=str(photo.scramble_id or ""),
                             chapter=pid if multi else "",
                             headers={
-                                "Referer": (
-                                    f"https://{urlparse(str(photo_resp.url)).hostname or ''}"
-                                    f"/photo/{pid}"
-                                ),
+                                "Referer": source_url or f"https://18comic.vip/album/{jm_id}",
                                 "User-Agent": (
                                     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
                                     "AppleWebKit/537.36 (KHTML, like Gecko) "
@@ -570,7 +656,7 @@ class JMProvider(ComicProvider):
                             },
                         )
                     )
-                chap_title = ptitle or str(photo.name or f"第 {ordinal} 話")
+                chap_title = ptitle or str(getattr(photo, "name", None) or f"第 {ordinal} 話")
                 return ep_pages, chap_title
 
             def _append_episode(ep_pages: list[RemotePage], pid: str, chap_title: str, ordinal: int) -> None:
@@ -617,40 +703,53 @@ class JMProvider(ComicProvider):
                     ep_pages, chap_title = _fetch_episode(pid, ptitle, ordinal)
                     _append_episode(ep_pages, pid, chap_title, ordinal)
 
-            # 兜底校验：如果按章节复用后的总页数与 album HTML 解析出的总页数不符
-            # （说明作者在既有章节里增删了页码），回退为全量重新拉取以确保页码准确
             expected_total = int(detail.page_count or 0)
             if expected_total > 0 and len(remote_pages) != expected_total and existing is not None:
                 _pull_all_episodes()
 
             page_count = len(remote_pages) or int(detail.page_count or 0)
             image_domain = (
-                first_photo.data_original_domain
+                getattr(first_photo, "data_original_domain", "")
                 if first_photo
                 else str((existing.meta.raw or {}).get("image_domain", "") or "")
                 if existing
                 else ""
             )
 
+        # 清洗 API 模式下被硬编码为 '0' 或 None 的字段，优先继承已有元数据
+        raw_pub_date = str(getattr(detail, "pub_date", "") or "").strip()
+        pub_date = (
+            raw_pub_date
+            if raw_pub_date and raw_pub_date != "0"
+            else (existing.meta.published_at if existing else "")
+        )
+        raw_update_date = str(getattr(detail, "update_date", "") or "").strip()
+        update_date = (
+            raw_update_date
+            if raw_update_date and raw_update_date != "0"
+            else (existing.meta.updated_at if existing else "")
+        )
+        effective_uploader = uploader or (existing.meta.uploader if existing else None)
+
         meta = ComicMeta(
             source=self.key,
             source_id=jm_id,
             display_id=f"JM{jm_id}",
-            title=detail.name,
-            authors=list(detail.authors),
-            works=list(detail.works),
-            actors=list(detail.actors),
-            tags=list(detail.tags),
-            description=detail.description or "",
-            uploader=uploader,
+            title=str(getattr(detail, "name", "") or getattr(detail, "title", "") or ""),
+            authors=list(getattr(detail, "authors", []) or []),
+            works=list(getattr(detail, "works", []) or []),
+            actors=list(getattr(detail, "actors", []) or []),
+            tags=list(getattr(detail, "tags", []) or []),
+            description=str(getattr(detail, "description", "") or ""),
+            uploader=effective_uploader,
             page_count=page_count,
-            published_at=str(detail.pub_date or ""),
-            updated_at=str(detail.update_date or ""),
-            views=str(detail.views or ""),
-            likes=str(detail.likes or ""),
-            comment_count=int(detail.comment_count or 0),
+            published_at=pub_date,
+            updated_at=update_date,
+            views=str(getattr(detail, "views", "") or ""),
+            likes=str(getattr(detail, "likes", "") or ""),
+            comment_count=int(getattr(detail, "comment_count", 0) or 0),
             cover_count=min(COVER_COUNT, page_count) if page_count else COVER_COUNT,
-            source_url=str(album_resp.url),
+            source_url=source_url or f"https://18comic.vip/album/{jm_id}",
             pages=[
                 {
                     "index": page.index,
@@ -677,6 +776,28 @@ class JMProvider(ComicProvider):
         )
 
         return FetchedComic(meta=meta, remote_pages=remote_pages)
+
+    def fetch(
+        self,
+        raw_id: str,
+        *,
+        existing: FetchedComic | None = None,
+    ) -> FetchedComic:
+        jm_id = self.normalize_id(raw_id)
+
+        # 1. 优先使用 API 客户端（针对受限画卷天然适配 AVS 凭据，无网页 CAPTCHA 与 album_missing 假拦截）
+        try:
+            return self._fetch_via_api(jm_id, existing=existing)
+        except (ValueError, RuntimeError) as exc:
+            # 若是明确的权限/账号配置错误，直接上浮明确提示，不再做无意义的 HTML 重试
+            if "受权限保护" in str(exc) or "需登录查看" in str(exc):
+                raise
+            logger.warning("禁漫 API 客户端解析车号 JM%s 失败: %s，尝试降级到 HTML 网页解析...", jm_id, _mask_sensitive(exc))
+        except Exception as exc:
+            logger.warning("禁漫 API 客户端解析车号 JM%s 异常: %s，尝试降级到 HTML 网页解析...", jm_id, _mask_sensitive(exc))
+
+        # 2. 降级到既有的 HTML 网页客户端解析
+        return self._fetch_via_html(jm_id, existing=existing)
 
     @staticmethod
     def _is_image_bytes(content: bytes) -> bool:

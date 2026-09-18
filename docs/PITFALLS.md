@@ -1362,6 +1362,27 @@
   4. **候选池全量安全阻断与强制 HTTPS**：无安全节点可用时严格抛出 `RuntimeError`，杜绝任何反向放行与明文 HTTP 传输；
   5. **敏感日志脱敏保护**：日志记录前统一清洗 `JM_PASSWORD` 与 `proxy` 凭据。
 
+### 119. 禁漫 AVS 会话与网页客户端分流错配导致假下架，以及操作级 RPC 污染全局状态引发 Toast 双重弹窗 (JM AVS-Session vs Web-Client Mismatch & Operation-Level RPC Store Error Pollution)
+
+- **本质**：
+  1. **禁漫移动端 AVS 凭据与网页客户端分流错配（JM AVS Token & Web Client Mismatch）**：
+     禁漫平台（JMComic）在官方 App（移动端 REST API）与网页端（Web HTML）具有截然不同的鉴权协议。上游 `jmcomic` 库在 `client.login()` 成功后，置换出的是 App 端专属的 `AVS` Token。但是若后端在 `fetch()` 中写死调用 HTML 网页客户端（`_make_html_client()`），禁漫 Web 服务器对受限作品（如车号 `1208546`）会执行 302 重定向至 `/error/album_missing`（页面渲染“請先登入”），且 Web 网页登录必须附带图形验证码（`<img src="/captcha">`），根本不识别移动端的 `AVS` Cookie。这导致即使后端已配置合法账号密码且自愈重登成功，使用 HTML 客户端拉取仍会被禁漫当作未登录访客强行重定向至 404，误导为“受权限保护或登录失效”的死锁假下架。
+     **解决之道**：架构上确立 **API 客户端优先拉取 + HTML 网页兜底降级**。创建 `_make_api_client()` 并将移动端 `AVS` 会话注入，通过 `_fetch_via_api()` 直接调用移动端 REST API。移动端接口原生识别 `AVS` 凭据，无图形验证码拦截，可毫秒级直达返回受限画卷的完整页数与多章节。通过通用的 `_assemble_fetched_comic()` 完成画卷模型收敛；仅当 API 客户端因网络故障时平滑降级至既有 HTML 抓取。
+  2. **操作级 RPC 错误污染全局 Store 状态与 Toast 缺乏防抖去重引发双重弹窗（Store Error Pollution & Undebounced Toast Duplication）**：
+     在前端状态管理中，若单次瞬态操作（如 `store.importComic`）在 `catch` 块中将错误赋值给全局状态 `store.error`，会导致挂载在根视图（如 `LibraryView.vue`）的全局监听器 `watch([() => store.error])` 自动弹窗提示 #1；而该操作由于继续向上抛出 `throw e`，发起操作的具体交互组件（如 `ImportPanel.vue`）在局部 `catch` 块中又显式调用 `toast(err.message)` 弹窗提示 #2。同时，若底层 `useToast.ts` 仅做无脑数组 `push` 且缺少短时防抖去重，两条完全相同的错误提示会同时并排堆叠在视口右下角，产生严重的“双重报错”劣质体验。
+     **解决之道**：
+     - **状态与异常边界清晰化**：操作级 RPC 失败严禁污染表示全库健康状态的全局 `store.error`，仅向外抛出异常，由发起操作的组件（`ImportPanel.vue`）负责直接捕获并展示；全局 `store.error` 仅留给全量书架列表拉取失败等系统级生命周期状态；
+     - **Toast 底层同文同音调幂等去重与延期**：`useToast.ts` 内部记录活跃消息。在短时间（如 1.5s）内遭遇相同 `text` 与 `tone` 时，直接忽略新入队动作，并重新刷新既有 Toast 的自动销毁定时器（TTL），彻底消灭任何偶发重入或多链路冒泡导致的重复弹窗。
+- **红线与防误伤**：
+  - **不要**在已获取移动端 API Token（`AVS`）的环境下仅通过 HTML 网页客户端抓取需鉴权的第三方图源；
+  - **不要**在操作级（瞬态 RPC，如导入、重命名、编辑、重新装订）方法中向全局数据流状态 `store.error` 写入局部错误；
+  - **不要**在全局监听器和局部交互组件中针对同一操作错误并存两道相同的 `toast()` 弹窗逻辑；
+  - **不要**在没有短时去重防抖机制的情况下直接将多路并发/异步捕获的文本推入 Toast 消息队列；
+- **放行/改用**：
+  1. **API 优先 + 兜底降级双轨契约**：涉及第三方平台解析时，优先使用抗 WAF/免验证码的官方 App REST API，通过统一装配器转换为纸间领域实体，保留 HTML 解析作为网络或协议容灾兜底；
+  2. **局部操作异常仅抛不存**：操作级 RPC 的 catch 块仅记录日志并向上 re-throw，不污染全局响应式 Store，由触发交互的具体 UI 局部响应；
+  3. **Toast 全局同文同音调短时防抖**：在 `useToast` 中以 1.5s 为窗口对同一 `(text, tone)` 实施幂等合并并刷新定时器，保障 UI 干净利落。
+
 ---
 
 ## 🚦 交付门禁（四步必跑）

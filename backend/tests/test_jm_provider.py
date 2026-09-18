@@ -26,8 +26,16 @@ class TestJMProvider(unittest.TestCase):
         self.provider._session_cache_file = self.tmp_path / "jm_session.json"
         if hasattr(self.provider._tls, "session"):
             delattr(self.provider._tls, "session")
+        # 默认隔离 API 真实网络请求，防止离线单测外联打到官方 CDN/API
+        self.api_patcher = patch.object(
+            self.provider,
+            "_make_api_client",
+            side_effect=RuntimeError("API Client mock disabled by default in test suite"),
+        )
+        self.api_patcher.start()
 
     def tearDown(self) -> None:
+        self.api_patcher.stop()
         self.tmp_dir.cleanup()
 
     def test_normalize_id(self) -> None:
@@ -413,6 +421,116 @@ class TestJMProvider(unittest.TestCase):
             with self.assertRaises(RuntimeError) as ctx:
                 self.provider.download_page(comic, page)
             self.assertIn("未找到可信安全的图片 CDN 域名", str(ctx.exception))
+
+    def test_fetch_via_api_success(self) -> None:
+        self.api_patcher.stop()
+        try:
+            mock_api_client = MagicMock()
+            mock_detail = MagicMock()
+            mock_detail.name = "API解析画卷"
+            mock_detail.authors = ["API作者"]
+            mock_detail.works = []
+            mock_detail.actors = []
+            mock_detail.tags = ["全彩"]
+            mock_detail.description = "API描述"
+            mock_detail.episode_list = [("1208546", "1", "第一话")]
+            mock_detail.page_count = 1
+            mock_detail.pub_date = "2026-09-18"
+            mock_detail.update_date = "2026-09-18"
+            mock_detail.views = "100"
+            mock_detail.likes = "50"
+            mock_detail.comment_count = 5
+
+            mock_photo = MagicMock()
+            mock_photo.page_arr = ["1.webp"]
+            mock_photo.scramble_id = "220980"
+            mock_photo.data_original_0 = None
+            mock_photo.data_original_domain = "cdn-msp.jmapinodeudzn.net"
+
+            mock_img = MagicMock()
+            mock_img.download_url = "https://cdn-msp.jmapinodeudzn.net/media/photos/1208546/00001.webp"
+            mock_img.img_file_suffix = ".webp"
+            mock_photo.create_image_detail.return_value = mock_img
+
+            mock_api_client.get_album_detail.return_value = mock_detail
+            mock_api_client.get_photo_detail.return_value = mock_photo
+
+            with patch.object(self.provider, "_make_api_client", return_value=mock_api_client):
+                comic = self.provider.fetch("1208546")
+                self.assertEqual(comic.meta.title, "API解析画卷")
+                self.assertEqual(comic.meta.display_id, "JM1208546")
+                self.assertEqual(len(comic.remote_pages), 1)
+                self.assertEqual(comic.remote_pages[0].scramble_id, "220980")
+                mock_api_client.get_album_detail.assert_called_once_with("1208546")
+        finally:
+            self.api_patcher.start()
+
+    def test_fetch_via_api_restricted_self_healing(self) -> None:
+        self.api_patcher.stop()
+        try:
+            from jmcomic import MissingAlbumPhotoException
+            mock_client1 = MagicMock()
+            mock_client1.get_album_detail.side_effect = MissingAlbumPhotoException("Album requires login", {})
+
+            mock_client2 = MagicMock()
+            mock_detail = MagicMock()
+            mock_detail.name = "受限自愈画卷"
+            mock_detail.authors = []
+            mock_detail.works = []
+            mock_detail.actors = []
+            mock_detail.tags = []
+            mock_detail.description = ""
+            mock_detail.episode_list = []
+            mock_detail.page_count = 0
+            mock_detail.pub_date = ""
+            mock_detail.update_date = ""
+            mock_detail.views = ""
+            mock_detail.likes = ""
+            mock_detail.comment_count = 0
+            mock_client2.get_album_detail.return_value = mock_detail
+
+            mock_photo = MagicMock()
+            mock_photo.page_arr = ["1.webp"]
+            mock_photo.scramble_id = "0"
+            mock_photo.data_original_0 = None
+            mock_photo.data_original_domain = "cdn-msp.jmapiproxy1.cc"
+            mock_img = MagicMock()
+            mock_img.download_url = "https://cdn-msp.jmapiproxy1.cc/1.webp"
+            mock_img.img_file_suffix = ".webp"
+            mock_photo.create_image_detail.return_value = mock_img
+            mock_client2.get_photo_detail.return_value = mock_photo
+
+            call_count = 0
+            def api_factory(force_refresh_session: bool = False):
+                nonlocal call_count
+                call_count += 1
+                return mock_client2 if force_refresh_session else mock_client1
+
+            with patch.object(self.provider, "_make_api_client", side_effect=api_factory), patch(
+                "app.providers.jm.JM_USERNAME", "alice"
+            ), patch("app.providers.jm.JM_PASSWORD", "secret123"):
+                comic = self.provider.fetch("1208546")
+                self.assertEqual(comic.meta.title, "受限自愈画卷")
+                self.assertEqual(call_count, 2)
+        finally:
+            self.api_patcher.start()
+
+    def test_fetch_via_api_restricted_guidance_when_anonymous(self) -> None:
+        self.api_patcher.stop()
+        try:
+            from jmcomic import MissingAlbumPhotoException
+            mock_client = MagicMock()
+            mock_client.get_album_detail.side_effect = MissingAlbumPhotoException("Missing album", {})
+
+            with patch.object(self.provider, "_make_api_client", return_value=mock_client), patch(
+                "app.providers.jm.JM_USERNAME", ""
+            ), patch("app.providers.jm.JM_PASSWORD", ""):
+                with self.assertRaises(ValueError) as ctx:
+                    self.provider.fetch("1208546")
+                self.assertIn("受权限保护（需登录查看）", str(ctx.exception))
+                self.assertIn("JM_USERNAME", str(ctx.exception))
+        finally:
+            self.api_patcher.start()
 
 
 if __name__ == "__main__":
