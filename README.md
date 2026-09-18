@@ -119,6 +119,12 @@
   - **幽灵索引自愈与删改联动**：漫画删除或重新装订（`replace-pages`）时原子清空 FTS5 记录，多章节分卷自动映射至全书拍平物理页码；
   - **多层纵深安全与沙箱隔离**：严格过滤 `hidden_from_guest` 隐私漫画，禁止未授权访客嗅探；路径穿越沙箱硬边界校验；查询入参限制 `max_length=200` 防 DoS；对白摘要严格转义彻底免疫 XSS；
   - **NAS 离线同步脚本**：提供 `python3 scripts/sync_ocr.py`，智能感知 NAS 挂载路径（`/mnt/nas_manga`）并一键批量建立台词索引。
+- **智能体协同中枢与模型上下文协议（Model Context Protocol / MCP & WebMCP）**：
+  - **三模服务端 MCP 协议架构**：FastAPI 提供标准 JSON-RPC 2.0 协议支持，包括 SSE 流式传输（`/api/mcp/sse` 与 `/mcp/sse`）、长连接消息端点（`/api/mcp/messages`）、直连 HTTP RPC（`POST /mcp` 与 `/api/mcp/rpc`）以及原生 Stdio 命令行模式（`python3 backend/app/mcp_server.py`），无缝直连 Claude Desktop、Antigravity、Cursor、飞书 Bot 与局域网微服务；
+  - **7 大原子数据工具**：`search_by_image`（局部特征识图）、`search_by_dialogue`（台词倒排全文检索）、`query_shelf`（多维藏书筛选）、`get_comic_detail`（完整元数据与章节）、`recommend_unread`（智能未读书籍淘选）、`create_direct_pass`（单本沙箱免密直达凭据签发）、`get_shelf_stats`（书架聚合统计）；
+  - **单本沙箱临时直达凭据（Single-Book Sandbox Pass）**：外部智能体定位名场面后，可一键签发带 TTL（默认 2 小时，最长 7 天）的高熵临时阅读 Token 与直达链接（`/comic/{source}/{id}/read/{page}?temp_token={token}`）；访客点开链接自动静默免密登入并锁定在单本沙箱中，**严格禁止窥探书架全景与其他作品（HTTP 403 阻断）**，写操作一律拦截，保障隐私绝对安全；
+  - **前端原生 WebMCP 视口控制**：基于 VueUse 15 `useWebMCP` 规范，在书架、详情、发现与阅读器四大核心页面向 Chrome 原生 `document.modelContext` 声明式注册交互控制工具（支持翻页/跳页/章节跳转/排版切换/缓存触发），非兼容浏览器自动优雅空跑；
+  - **内网机器专属密钥（Machine API Token）双轨鉴权**：支持配置 `COMIC_SHELF_MACHINE_TOKEN`，局域网内部应用、飞书 Bot 与自动化流水线可使用专属 Token 调取 MCP 与 REST API，与网页端馆长密码完全解耦互不干扰。
 - **分级离线缓存体系与安全边界**：基于 Workbox 实现 App Shell 核心资产预缓存 + 漫画画页 Cache-First（最大 3000 篇目 LRU 淘汰）；日常清理仅释放画页缓存、保留元数据快照；彻底重置才清空所有 DB；**绝对不触碰服务器已下载珍藏数据（`backend/data/`）**。
 
 ---

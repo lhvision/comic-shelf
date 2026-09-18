@@ -216,6 +216,18 @@ def init_db(db_path: Path | None = None) -> None:
             CREATE INDEX IF NOT EXISTS idx_comics_index_title ON comics_index(title);
             CREATE INDEX IF NOT EXISTS idx_comics_index_pages ON comics_index(page_count DESC);
             CREATE INDEX IF NOT EXISTS idx_comics_index_cached ON comics_index(cached_pages DESC);
+
+            CREATE TABLE IF NOT EXISTS direct_passes (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                token TEXT UNIQUE NOT NULL,
+                source TEXT NOT NULL,
+                source_id TEXT NOT NULL,
+                page_index INTEGER NOT NULL DEFAULT 1,
+                created_at INTEGER NOT NULL,
+                expires_at INTEGER NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS idx_direct_passes_token ON direct_passes(token);
+            CREATE INDEX IF NOT EXISTS idx_direct_passes_expires ON direct_passes(expires_at);
             """
         )
         # Migrations: ensure max_devices, pin_hash, pin_salt columns exist for existing DB
@@ -1521,5 +1533,64 @@ def search_dialogues(
             break
 
     return results
+
+
+def create_direct_pass(
+    source: str,
+    source_id: str,
+    page_index: int = 1,
+    ttl_seconds: int = 7200,
+    custom_token: str | None = None,
+) -> dict[str, Any]:
+    """Issues a sandboxed temporary direct pass for a single comic."""
+    token = custom_token.strip() if custom_token and custom_token.strip() else secrets.token_hex(16)
+    now = int(time.time())
+    expires_at = now + max(60, min(86400 * 7, ttl_seconds))
+    safe_page = max(1, page_index)
+
+    with get_db() as conn:
+        conn.execute("DELETE FROM direct_passes WHERE expires_at <= ?", (now,))
+        conn.execute(
+            """
+            INSERT INTO direct_passes (token, source, source_id, page_index, created_at, expires_at)
+            VALUES (?, ?, ?, ?, ?, ?)
+            """,
+            (token, source, source_id, safe_page, now, expires_at),
+        )
+        conn.commit()
+
+    return {
+        "token": token,
+        "source": source,
+        "source_id": source_id,
+        "page_index": safe_page,
+        "created_at": now,
+        "expires_at": expires_at,
+        "expires_in": expires_at - now,
+    }
+
+
+def get_direct_pass(token: str) -> dict[str, Any] | None:
+    """Retrieves a valid unexpired single-comic direct pass by token."""
+    if not token or not token.strip():
+        return None
+    now = int(time.time())
+    with get_db() as conn:
+        row = conn.execute(
+            "SELECT * FROM direct_passes WHERE token = ? AND expires_at > ?",
+            (token.strip(), now),
+        ).fetchone()
+        if not row:
+            return None
+        return dict(row)
+
+
+def clean_expired_direct_passes() -> int:
+    """Purges expired direct passes from the database."""
+    now = int(time.time())
+    with get_db() as conn:
+        cur = conn.execute("DELETE FROM direct_passes WHERE expires_at <= ?", (now,))
+        conn.commit()
+        return cur.rowcount
 
 

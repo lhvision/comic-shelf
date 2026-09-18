@@ -28,10 +28,12 @@ from ..auth import (
 from ..config import AUTH_SECRET
 from ..db import (
     claim_guest_pass,
+    create_direct_pass,
     create_guest_pass,
     delete_guest_device,
     delete_guest_pass,
     get_device_by_token,
+    get_direct_pass,
     get_guest_pass_by_token,
     list_guest_passes,
     register_guest_device,
@@ -43,6 +45,8 @@ from ..models import (
     AuthStatusResponse,
     ClaimGuestPassRequest,
     CreateGuestPassRequest,
+    DirectPassCreateRequest,
+    DirectPassResponse,
     GuestPassItem,
     LoginRequest,
     LoginResponse,
@@ -106,6 +110,20 @@ def auth_login(req: LoginRequest, request: Request, response: Response) -> Login
         set_auth_cookie(response, AUTH_SECRET, secure=is_sec)
         clear_device_cookie(response, secure=is_sec)  # Clean up any lingering guest device session
         return LoginResponse(ok=True, token=AUTH_SECRET, role="admin", username="馆长", user_id="curator")
+
+    dp = get_direct_pass(secret)
+    if dp is not None:
+        clear_ip_login_failures(ip)
+        set_auth_cookie(response, dp["token"], secure=is_sec)
+        clear_device_cookie(response, secure=is_sec)
+        return LoginResponse(
+            ok=True,
+            token=dp["token"],
+            role="guest",
+            username="临时单本读者",
+            user_id=f"direct:{dp['source']}:{dp['source_id']}",
+            is_claimed=True,
+        )
 
     pass_item = get_guest_pass_by_token(secret)
     if pass_item is not None:
@@ -319,3 +337,26 @@ def curator_delete_pass_device(pass_id: int, device_id: int, request: Request) -
     if not ok:
         raise HTTPException(status_code=404, detail="未找到该设备或已被移除")
     return {"ok": True}
+
+
+@router.post("/api/auth/direct-pass", response_model=DirectPassResponse)
+def create_direct_pass_api(req: DirectPassCreateRequest, request: Request) -> DirectPassResponse:
+    """Issues a sandboxed temporary direct pass for a single comic (Single-Book Sandbox)."""
+    require_curator(request)
+    result = create_direct_pass(
+        source=req.source,
+        source_id=req.source_id,
+        page_index=req.page_index,
+        ttl_seconds=req.ttl_seconds,
+    )
+    direct_url = f"/comic/{req.source}/{req.source_id}/read/{req.page_index}?temp_token={result['token']}"
+    return DirectPassResponse(
+        token=result["token"],
+        source=result["source"],
+        source_id=result["source_id"],
+        page_index=result["page_index"],
+        expires_at=result["expires_at"],
+        expires_in=result["expires_in"],
+        direct_url=direct_url,
+    )
+

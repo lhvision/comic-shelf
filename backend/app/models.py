@@ -336,6 +336,23 @@ class GuestPrivacySettings(BaseModel):
     guest_hide_new_comics: bool = False
 
 
+class DirectPassCreateRequest(BaseModel):
+    source: str = Field(description="图源标识，如 jm, picacg, local")
+    source_id: str = Field(description="作品 ID")
+    page_index: int = Field(default=1, ge=1, description="直达画页序号")
+    ttl_seconds: int = Field(default=7200, ge=60, le=86400 * 7, description="有效秒数")
+
+
+class DirectPassResponse(BaseModel):
+    token: str
+    source: str
+    source_id: str
+    page_index: int
+    expires_at: int
+    expires_in: int
+    direct_url: str
+
+
 class CreateGuestPassRequest(BaseModel):
     username: str = Field(min_length=1, max_length=20)
     expires_days: int | None = Field(default=None, gt=0)

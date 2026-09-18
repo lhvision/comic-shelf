@@ -25,62 +25,87 @@
 约定：**不用 SCSS**。新增视觉请走 `src/styles/tokens.css` 的设计 token。
 设计基线见 `DESIGN_NOTES.md`：私人阅览室 / 卡片目录，禁紫色渐变，禁玻璃拟态堆叠。
 
-## 3. 架构
+## 3. 系统全景架构图（System Architecture）
 
-```text
-Browser (Vue 3 + PWA Workbox)
-   │  /api/* (Direct HTTP / Pinia In-Memory SWR)
-   ▼
-FastAPI (backend/app/main.py — 应用装配/中间件/SPA托管)
-   │
-   ├── routers/             # 领域 API 路由层 (APIRouter)
-   │     auth.py            # 认证状态、登录、登出与访客通行证管理
-   │     library.py         # 书库检索、分面聚合、排行榜、元数据与导入
-   │     media.py           # 原图/封面/缩略图流式推流与 WebP 内容协商
-   │     chapters.py        # 章节重命名、物理删除、章节封面与预取
-   │     local_comic.py     # 本地画册新建、服务端路径扫描导入与重排
-   │     search.py          # 以图搜图代理、FTS5 台词全文检索与 OCR 同步
-   │     system.py          # 健康检查、Providers 列表、下载并发配置
-   │     common.py          # 路由通用依赖、图片协商工具与 store 实例
-   │
-   ├── storage/             # 存储与画册领域包 (ComicStore Facade)
-   │     base.py            # 路径生成、读写细粒度锁、album.json 存取
-   │     media.py           # Pillow 图像压缩/WebP 转码/按需懒下载
-   │     chapters.py        # 章节自愈/复合文件名智能分组/单卷升级多话
-   │     local.py           # 本地导入/零拷贝硬链接/原子目录置换
-   │     pdf.py             # PDF 原始图像流无损提取/双轨分话智能探测
-   │     prefetch.py        # 全书与单章后台并发下载池
-   │     utils.py           # 原子写 (_write_json_atomic) 与路径安全白名单
-   │
-   ├── providers/           # 站点适配层，唯一知道具体漫画站的地方
-   │     base.py            # ComicProvider 抽象
-   │     jm.py              # 禁漫实现
-   │     local.py           # 本地自建与视频拆帧实现
-   │     picacg.py          # 哔咔实现（App REST API + 3-CDN 容灾）
-   │     registry.py        # 注册表
-   │
-   ├── db.py                # 双轨 SQLite 存储分库（读写事务完全物理隔离）
-   │     ├── comic_shelf.db       # 核心用户状态、通行证、阅读进度、藏书影子索引 (~5MB)
-   │     └── comic_dialogues.db   # 台词全文检索专库（FTS5 Trigram 倒排索引，独立写事务，~500MB+）
-   │
-   ├── gate.py              # 下载并发闸门控制
-   ├── jobs.py              # 后台批量缓存任务管理
-   ├── events.py            # 单向系统事件流（SSE，广播版本更新/书库变动/AI进度）
-   └── imsearch.py          # 局部特征搜图客户端（HTTP 隔离通信）
-         │
-         ▼
-backend/data/library/<source>/<source_id>/
-   ├── album.json           # 通用元数据 + favorite + pages[].cached + chapters[]
-   ├── remote.json          # 图片 URL + scramble_id + decode_version
-   ├── pages/00001.webp     # 单章节（扁平）已解密成品页
-   ├── pages/<chapter>/00001.webp   # 多章节：页面按章节 id 分目录
-   ├── covers/001.jpg       # 双模基准封面（720px JPEG）与 .webp 格式并存
-   ├── covers/001_360.webp  # 360px 缩略图（Accept: image/webp 内容协商，按需生成）
-   ├── covers/chapters/     # 章节独立目录封面（池化按需生成，支持 .webp 与 360 规格）
-   └── thumbs/…            # 360px 索引缩略图；多章节同样按章节分目录
+```mermaid
+flowchart TD
+    subgraph Clients["客户端与智能体生态 (Clients & AI Ecosystem)"]
+        WebUI["Web 浏览器 (Vue 3 SPA / PWA)"]
+        WebMCP["WebMCP 前端上下文<br/>(Chrome document.modelContext)"]
+        LocalAgent["本地 IDE 智能体<br/>(Claude / Antigravity / Cursor)"]
+        LanBots["局域网应用 / 飞书 Bot / 微服务<br/>(Python / Node.js / Automation)"]
+    end
+
+    subgraph Gateway["网关与安全门禁层 (Security & Middleware)"]
+        AuthMiddleware["FastAPI 安全与鉴权中间件<br/>(auth_and_security_middleware)"]
+        CuratorAuth["馆长口令认证<br/>(AUTH_SECRET)"]
+        MachineAuth["内网专属机器密钥<br/>(MACHINE_TOKEN)"]
+        SandboxGuard["单本沙箱隔离守卫<br/>(Single-Book Sandbox Guard)"]
+        GuestDevice["访客设备与 PIN 绑定<br/>(PBKDF2 100k + Anti-Bruteforce)"]
+        Hotlink["防盗链与 LAN 跨域放行<br/>(Sec-Fetch-Site + CORS Regex)"]
+    end
+
+    subgraph AppLayer["FastAPI 领域路由层 (Application Routers)"]
+        MCPServer["MCP 服务端路由 (routers/mcp.py)<br/>• 7大核心工具 / 3大资源 / 2大提示词<br/>• SSE / HTTP RPC / Stdio 管道"]
+        AuthRouter["认证与通行证 (routers/auth.py)<br/>• 访客簿 / PIN认领 / 单本临时直达"]
+        LibraryRouter["书架检索与导入 (routers/library.py)<br/>• 影子索引分页 / 分面聚合 / 排行榜"]
+        MediaRouter["媒体流式推流 (routers/media.py)<br/>• WebP内容协商 / 双模封面 / 懒下载"]
+        SearchRouter["复合搜索路由 (routers/search.py)<br/>• 识图代理 / 台词全文检索 / OCR同步"]
+        ChaptersRouter["章节编排 (routers/chapters.py)"]
+        LocalRouter["自建工坊 (routers/local_comic.py)"]
+    end
+
+    subgraph Domain["领域与存储驱动层 (Domain Storage & Providers)"]
+        ComicStore["ComicStore 领域门面<br/>(细粒度文件锁 / 原子写入 / 缓存预取)"]
+        Providers["站点适配层 (Providers)<br/>• JMComic (Scramble解密)<br/>• PicAcg (JWT/3-CDN容灾)<br/>• Local (自建图集/视频拆帧/PDF提取)"]
+    end
+
+    subgraph Storage["数据存储与外部索引 (Data Persistence)"]
+        subgraph Databases["双轨 SQLite 数据库 (事务物理隔离)"]
+            MainDB[("comic_shelf.db<br/>• 藏书影子索引<br/>• 访客通行证 & 设备会话<br/>• 单本直达临时票据<br/>• 隔离阅读进度 & 收藏")]
+            DiagDB[("comic_dialogues.db<br/>• FTS5 Trigram 倒排全文索引<br/>• OCR 识别台词与气泡归一化坐标")]
+        end
+        ImsearchSidecar["imsearch 识图 Sidecar (:8765)<br/>(ORB 特征点 + 倒排向量索引)"]
+        DataDir["本地持久化存储 (backend/data/library/)<br/>• album.json (通用元数据)<br/>• pages/ (已解密成品画页)<br/>• covers/ (大封面与360px缩略图)"]
+    end
+
+    WebUI -->|Direct HTTP / SWR| AuthMiddleware
+    WebMCP -.->|前端视口控制| WebUI
+    LocalAgent -->|Stdio 管道| MCPServer
+    LocalAgent -->|SSE /api/mcp/sse| AuthMiddleware
+    LanBots -->|JSON-RPC /mcp 或 /api/mcp/rpc| AuthMiddleware
+
+    AuthMiddleware --> CuratorAuth
+    AuthMiddleware --> MachineAuth
+    AuthMiddleware --> SandboxGuard
+    AuthMiddleware --> GuestDevice
+    AuthMiddleware --> Hotlink
+
+    CuratorAuth --> AppLayer
+    MachineAuth --> AppLayer
+    SandboxGuard -->|403 严格阻断越权| AppLayer
+    GuestDevice --> AppLayer
+
+    MCPServer --> Domain
+    AuthRouter --> Domain
+    LibraryRouter --> Domain
+    MediaRouter --> Domain
+    SearchRouter --> Domain
+    ChaptersRouter --> Domain
+    LocalRouter --> Domain
+
+    Domain --> ComicStore
+    Domain --> Providers
+    Providers --> DataDir
+    ComicStore --> DataDir
+
+    AppLayer --> Databases
+    SearchRouter --> ImsearchSidecar
+    MCPServer --> Databases
+    MCPServer --> ImsearchSidecar
 ```
 
-> 多章节模型：`ComicMeta.pages` 始终是**全书拍平的全局页码表**，每页带
+> **多章节模型**：`ComicMeta.pages` 始终是**全书拍平的全局页码表**，每页带
 > `chapter` 字段（空串 = 单章节扁平布局）；`ComicMeta.chapters[]` 记录各章节
 > id / 序数 / 标题 / 页数 / 起始全局页（`start`）。这样阅读器页码、继续阅读、
 > 封面、API 路径都不用为章节拆分端点。
@@ -232,11 +257,17 @@ JmImageTool.decode_and_save(num, source_image, save_path)
 | `backend/app/providers/local.py`    | 本地自建、外部白名单目录扫描、视频拆帧与多章节追加、重新装订                                                                |
 | `backend/app/providers/picacg.py`   | 哔咔 App REST 接口签名（HMAC-SHA256）、车号宽容清洗、多章节分卷映射与 3-CDN 容灾下载                                        |
 | `backend/app/providers/registry.py` | `{"jm": JMProvider(), "local": LocalProvider(), "picacg": PicacgProvider()}` 注册表                                         |
+| `backend/app/routers/mcp.py`        | 模型上下文协议（MCP）服务端路由（SSE流式、消息派发、直接RPC、7大工具、3大资源、2大Prompts）                                 |
+| `backend/app/mcp_server.py`         | MCP 原生 Stdio 命令行模式运行入口（标准管道集成）                                                                           |
 | `backend/app/imsearch.py`           | 局部特征识图客户端（ORB 特征匹配、健康探测、路径解析）                                                                      |
 | `backend/app/config.py`             | 数据目录、访问密钥、防盗链开关、封面尺寸、识图服务地址配置                                                                  |
 
+- `GET /api/mcp/sse` / `GET /mcp/sse`（MCP SSE 握手与实时下行事件流，支持馆长/机器鉴权）
+- `POST /api/mcp/messages` / `POST /mcp/messages`（向指定 MCP SSE 会话投递 JSON-RPC 2.0 请求）
+- `POST /api/mcp/rpc` / `POST /mcp`（无状态直连 MCP JSON-RPC 2.0 执行端点）
+- `POST /api/auth/direct-pass` `{source, source_id, page_index, ttl_seconds}`（签发单本沙箱临时直达阅读票据）
 - `GET /api/auth/status`（查询是否开启鉴权及当前登录态）
-- `POST /api/auth/login`（验证馆长口令或通行证并写入 Cookie）
+- `POST /api/auth/login`（验证馆长口令、通行证或单本直达票据并写入 Cookie）
 - `POST /api/auth/claim` `{token, username, pin}`（读者首次认领通行证并自设 PIN 码，建立设备会话）
 - `POST /api/auth/logout`（清除当前设备登录凭据并注销设备席位）
 - `GET /api/settings/download-concurrency` / `PUT /api/settings/download-concurrency`（获取与修改下载并发数）

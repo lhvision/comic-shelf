@@ -517,7 +517,7 @@ export const useLibraryStore = defineStore('library', () => {
 
   /**
    * 本地乐观更新「喜欢」标记：书架卡片的 FavoriteButton 已经完成了 API 调用或离线入队，
-   * 这里只原地改内存里的那一项，不整表刷新，避免列表全部重绘闪屏。
+   * 这里原地替换内存中的条目对象引用，触发 shallowRef 与下游各计算属性/子组件响应式更新。
    */
   function setFavoriteLocal(
     source: string,
@@ -525,10 +525,15 @@ export const useLibraryStore = defineStore('library', () => {
     favorite: boolean,
     targetUserId?: string,
   ) {
-    const item = byId(source, sourceId)
-    if (item) {
-      item.favorite = favorite
-      items.value = [...items.value]
+    const idx = items.value.findIndex(
+      (item) => item.source === source && item.source_id === sourceId,
+    )
+    const current = items.value[idx]
+    if (idx !== -1 && current) {
+      const updatedItem: LibrarySummary = { ...current, favorite }
+      const newItems = [...items.value]
+      newItems[idx] = updatedItem
+      items.value = newItems
       const uid = targetUserId ?? userId.value ?? ''
       void saveShelfSnapshot(uid, { items: items.value, facets: facets.value })
     }
@@ -536,7 +541,7 @@ export const useLibraryStore = defineStore('library', () => {
 
   /**
    * 本地乐观更新「阅读进度」标记：读者在阅读器翻页或读完时，
-   * 原地改内存里的 last_page，不整表刷新，保证书架排序与状态印章即时响应。
+   * 替换内存中的条目对象引用，保证书架排序与状态印章即时响应。
    */
   function setReadingProgressLocal(
     source: string,
@@ -544,10 +549,15 @@ export const useLibraryStore = defineStore('library', () => {
     page: number,
     targetUserId?: string,
   ) {
-    const item = byId(source, sourceId)
-    if (item) {
-      item.last_page = page
-      items.value = [...items.value]
+    const idx = items.value.findIndex(
+      (item) => item.source === source && item.source_id === sourceId,
+    )
+    const current = items.value[idx]
+    if (idx !== -1 && current) {
+      const updatedItem: LibrarySummary = { ...current, last_page: page }
+      const newItems = [...items.value]
+      newItems[idx] = updatedItem
+      items.value = newItems
       const uid = targetUserId ?? userId.value ?? ''
       void saveShelfSnapshot(uid, { items: items.value, facets: facets.value })
     }

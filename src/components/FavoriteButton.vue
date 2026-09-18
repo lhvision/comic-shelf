@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, watch } from 'vue'
 import { api } from '@/api/client'
 import { useToast } from '@/composables/useToast'
 import { useOfflineSync } from '@/composables/useOfflineSync'
@@ -19,6 +19,14 @@ const emit = defineEmits<{
   toggled: [favorite: boolean]
 }>()
 
+const localFavorite = ref(props.favorite)
+watch(
+  () => props.favorite,
+  (val) => {
+    localFavorite.value = val
+  },
+)
+
 const busy = ref(false)
 const { toast } = useToast()
 const { recordOfflineAction } = useOfflineSync()
@@ -26,7 +34,8 @@ const { recordOfflineAction } = useOfflineSync()
 async function toggle() {
   if (!props.interactive || busy.value) return
   busy.value = true
-  const next = !props.favorite
+  const next = !localFavorite.value
+  localFavorite.value = next
   emit('toggled', next)
   try {
     await api.setFavorite(props.source, props.sourceId, next)
@@ -39,6 +48,7 @@ async function toggle() {
       })
       toast('离线已记录，联网后自动同步', 'info')
     } else {
+      localFavorite.value = !next
       emit('toggled', !next)
       toast(error instanceof Error ? error.message : '更新收藏状态失败，请稍后重试', 'error')
     }
@@ -53,15 +63,15 @@ async function toggle() {
     v-if="interactive"
     class="favorite-button"
     type="button"
-    :aria-pressed="favorite"
-    :aria-label="favorite ? '取消喜欢' : '标记喜欢'"
+    :aria-pressed="localFavorite"
+    :aria-label="localFavorite ? '取消喜欢' : '标记喜欢'"
     :disabled="busy"
     @click.stop.prevent="toggle"
   >
-    <AppIcon :name="favorite ? 'heart-filled' : 'heart'" size="md" />
-    <span class="visually-hidden">{{ favorite ? '已喜欢' : '喜欢' }}</span>
+    <AppIcon :name="localFavorite ? 'heart-filled' : 'heart'" size="md" />
+    <span class="visually-hidden">{{ localFavorite ? '已喜欢' : '喜欢' }}</span>
   </button>
-  <div v-else-if="favorite" class="favorite-badge" aria-label="已标记喜欢" role="img">
+  <div v-else-if="localFavorite" class="favorite-badge" aria-label="已标记喜欢" role="img">
     <AppIcon name="heart-filled" size="sm" />
     <span class="visually-hidden">已喜欢</span>
   </div>

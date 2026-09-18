@@ -41,6 +41,7 @@ from .routers import (
     chapters_router,
     library_router,
     local_comic_router,
+    mcp_router,
     media_router,
     search_router,
     system_router,
@@ -230,6 +231,7 @@ app.include_router(chapters_router)
 app.include_router(local_comic_router)
 app.include_router(media_router)
 app.include_router(search_router)
+app.include_router(mcp_router)
 
 # ----------------------------------------------------------------------
 # Middlewares
@@ -238,6 +240,7 @@ app.add_middleware(GZipMiddleware, minimum_size=1000)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
+    allow_origin_regex=r"^https?://(localhost|127\.0\.0\.1|0\.0\.0\.0|192\.168\.\d+\.\d+|10\.\d+\.\d+\.\d+|172\.(1[6-9]|2\d|3[0-1])\.\d+\.\d+)(:\d+)?$",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -256,11 +259,13 @@ PUBLIC_AUTH_PATHS = frozenset({
 async def auth_and_security_middleware(request: Request, call_next):
     path = request.url.path
 
-    # Allow public endpoints and non-API static files
+    # Allow public endpoints, MCP endpoints, SSE events, and non-API static files
     if (
         not path.startswith("/api/")
         or path in PUBLIC_AUTH_PATHS
         or path.startswith("/api/events")
+        or path.startswith("/api/mcp")
+        or path.startswith("/mcp")
         or path.startswith("/docs")
         or path.startswith("/redoc")
         or path == "/openapi.json"
@@ -325,6 +330,17 @@ async def auth_and_security_middleware(request: Request, call_next):
                 content={"detail": detail},
                 headers={"WWW-Authenticate": "Bearer"},
             )
+
+        # Single-Book Sandbox constraint for temporary direct-pass readers
+        _uid, _name, role = get_user_context(request)
+        if _uid.startswith("direct:"):
+            _, allowed_src, allowed_sid = _uid.split(":", 2)
+            allowed_prefix = f"/api/library/{allowed_src}/{allowed_sid}"
+            if path != allowed_prefix and not path.startswith(f"{allowed_prefix}/"):
+                return JSONResponse(
+                    status_code=403,
+                    content={"detail": "临时直达通行证仅限阅读指定画集，禁止访问书库全景"},
+                )
 
     return await call_next(request)
 

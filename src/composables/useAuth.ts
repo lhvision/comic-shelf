@@ -159,11 +159,11 @@ export function useAuth() {
       userId.value = status.user_id || ''
       persistCurrentProfile()
 
-      // 0. 支持链接免密直达：若 URL Query 携带 ?token=...，自动验证入馆
+      // 0. 支持链接免密直达：若 URL Query 携带 ?token=... 或 ?temp_token=...，自动验证入馆
       let urlToken: string | null = null
       if (typeof window !== 'undefined') {
         const params = new URLSearchParams(window.location.search)
-        urlToken = params.get('token')
+        urlToken = params.get('token') || params.get('temp_token')
       }
 
       if (urlToken) {
@@ -194,9 +194,10 @@ export function useAuth() {
             username.value = res.username || ''
           }
 
-          // 清理地址栏 token 参数，防止二次复制分享泄露口令
+          // 清理地址栏 token / temp_token 参数，防止二次复制分享泄露口令
           const cleanUrl = new URL(window.location.href)
           cleanUrl.searchParams.delete('token')
+          cleanUrl.searchParams.delete('temp_token')
           window.history.replaceState({}, '', cleanUrl.pathname + cleanUrl.search + cleanUrl.hash)
           if (res.ok) return true
         } catch (err: unknown) {

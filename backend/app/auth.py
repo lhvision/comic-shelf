@@ -14,6 +14,7 @@ from .config import (
 )
 from .db import (
     get_device_by_token,
+    get_direct_pass,
     get_guest_pass_by_token,
     register_guest_device,
     touch_device_active,
@@ -56,8 +57,11 @@ def extract_token(request: Request) -> str:
     if cookie_token:
         return cookie_token
 
-    # 4. Query param (?token=xxx)
-    query_token = request.query_params.get("token", "").strip()
+    # 4. Query param (?token=xxx or ?temp_token=xxx)
+    query_token = (
+        request.query_params.get("token", "").strip()
+        or request.query_params.get("temp_token", "").strip()
+    )
     if query_token:
         return query_token
 
@@ -128,7 +132,16 @@ def get_user_context(request: Request) -> tuple[str, str, str]:
             request.state.user_context = ctx
             return ctx
 
-    # 3. Pass token check
+    # 3. Direct pass token check (Single-Book Sandbox)
+    if token:
+        dp = get_direct_pass(token)
+        if dp is not None:
+            ctx = (f"direct:{dp['source']}:{dp['source_id']}", "临时单本读者", "guest")
+            request.state.direct_pass = dp
+            request.state.user_context = ctx
+            return ctx
+
+    # 4. Pass token check
     # Under ADR 0008, all guest access to protected endpoints MUST be authenticated via an active
     # device session (device_token). A bare pass token cannot grant 'guest' role without PIN verification.
     if token:
