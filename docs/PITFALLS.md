@@ -1411,6 +1411,23 @@
   3. **严格对称的生命周期清理**：在 `beforeEach` / `afterEach` 保证全局与 Mock 100% 隔离；
   4. **统一测试底座**：复杂的 Composable 使用 `src/__tests__/testUtils.ts` 的 `withSetup()` 工具。
 
+### 122. 局域网纯 HTTP 访问缺少安全上下文导致 WebMCP / document.modelContext 无法注册与失效 (LAN Insecure Context Disabling WebMCP / document.modelContext)
+
+- **本质**：
+  1. **Chromium 安全上下文（Secure Context）硬性限制**：
+     浏览器端模型上下文协议（WebMCP，即 `document.modelContext.registerTool()`）属于 Chromium 规范中的高权限高级能力（Powerful Feature）。W3C 与 Chromium 强制要求其宿主页面必须满足安全上下文（`window.isSecureContext === true`）。
+  2. **本地回环 vs 局域网 IP 的判定差异**：
+     `http://localhost:*` 与 `http://127.0.0.1:*` 被 Chromium 视为本地回环（Loopback），天然被信任为 `isSecureContext = true`，因此在开发机本地访问时 WebMCP 正常生效与注册；但当通过局域网其他设备访问纯 HTTP 地址（如 `http://192.168.x.x:5173` 或 `http://192.168.x.x:8000`）时，Chromium 将其判定为不安全上下文（`isSecureContext = false`），直接将 `document.modelContext` 隐藏或置为 `undefined`，导致前端 WebMCP 工具完全无法注册；
+  3. **双轨解决方案**：
+     - **临时调试方案（Chrome Flag 局部放行）**：在访问端 Chrome 地址栏打开 `chrome://flags/#unsafely-treat-insecure-origin-as-secure`，填入局域网源地址（如 `http://192.168.1.100:5173`），设为 `Enabled` 并重启 Chrome 即可强制开启 Secure Context；
+     - **生产终极方案（泛域名 HTTPS）**：通过反向代理网关（Nginx Proxy Manager / Cloudflare Origin Rules）挂载 SSL 证书，全站使用 `https://comic.yourdomain.com` 访问，局域网与公网统一满足 `isSecureContext === true`。
+- **红线与防误伤**：
+  - **不要**在局域网纯 HTTP 访问发现 `document.modelContext` 为 `undefined` 时误判为代码丢失或前端打包 Bug；
+  - **不要**在前端移除针对 `document.modelContext` 是否存在的防御性可选链（`?.`）判定；
+- **放行/改用**：
+  1. 局域网调试优先使用 `chrome://flags/#unsafely-treat-insecure-origin-as-secure` 声明来源为安全上下文；
+  2. 局域网生产部署全面推进 HTTPS 终结。
+
 ---
 
 ## 🚦 交付门禁（四步必跑）

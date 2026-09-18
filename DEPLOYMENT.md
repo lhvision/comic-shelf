@@ -666,11 +666,44 @@ curl -X POST "http://<NAS_IP>:8000/api/mcp/rpc" \
 
 ---
 
-### 9.5 安全防护与权限矩阵
+### 9.5 安全防护、角色分工与权限矩阵（双轨 Token 体系）
 
-1. **强鉴权拦截**：仅放行馆长凭据（`COMIC_SHELF_SECRET`）与专有机器令牌（`MACHINE_TOKEN`）。任何未授权请求、普通访客（`guest`）或单本沙箱直达凭证（`direct:`）均被拒之门外（401/403 阻断）；
-2. **最小特权控制（Least Privilege）**：即使持有 `MACHINE_TOKEN`，也只能调用注册表内的工具（查询、OCR、收录），严禁调用后台危险管理或删除接口；
-3. **连接池过载防护**：SSE 活跃会话设上限 `_MAX_MCP_SESSIONS = 50`，超限自动返回 503，防止客户端异常断连泄漏连接池。
+纸间在认证层实现了基于**最小特权原则（Principle of Least Privilege）**的分层双轨鉴权体系，两者各司其职、互不冲突：
+
+| 鉴权凭证                        | 授予角色                       | 适用场景                                                | 权限边界与安全约束                                                                                                                                                                                          |
+| :------------------------------ | :----------------------------- | :------------------------------------------------------ | :---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **`COMIC_SHELF_SECRET`**        | `curator`（馆长 / 超级管理员） | 馆长个人管理、本地/远程 Claude Desktop 调试             | **全站最高绝对特权**：支持全量 MCP 工具、管理后台登入、访客通行证派发/禁用、彻底删除藏书、全站配置修改。                                                                                                    |
+| **`COMIC_SHELF_MACHINE_TOKEN`** | `machine`（外部机器 / 微服务） | 飞书 Bot、AI 漫画工坊（Paper Studio）、NAS 定时同步脚本 | **受限最小特权沙箱**：仅开放 MCP 数据工具调用、单本沙箱签发（`create_direct_pass`）及标准推书入库（`POST /api/library/local/create`）；**严格禁止访问通行证名册、禁止彻底删除漫画、禁止越权修改系统密钥**。 |
+
+- **为什么 MCP 端点两者都支持？**
+  MCP 既可能由“馆长本人的 AI 客户端（Curator 身份）”使用，也可能由“飞书机器人 / 外部智能体（Machine 身份）”调用。MCP 路由底层统一对两者放行数据查询与单本签发能力；但一旦外部请求尝试执行敏感管理或破坏性操作，`machine` 角色会被立即拦截，杜绝因外部脚本或 Bot 配置泄露导致全库被删的风险。
+- **连接池过载防护**：SSE 活跃会话设上限 `_MAX_MCP_SESSIONS = 50`，超限自动返回 503，防止客户端异常断连泄漏连接池。
+
+---
+
+### 9.6 浏览器端 WebMCP（Chrome 原生视口控制）与局域网安全上下文（Secure Context）配置
+
+纸间前端基于 VueUse 15 `useWebMCP` 规范接入 Chrome 浏览器级 `document.modelContext`。由于 Model Context API 属于 Chromium 体系中的 **高权限特性（Powerful Feature）**，W3C 规范强制要求其必须在**安全上下文（`window.isSecureContext === true`）**下运行：
+
+#### 1. 为什么 `localhost` 正常而局域网 IP 不显示？
+
+- `http://localhost:*` 与 `http://127.0.0.1:*` 被浏览器判定为本地回环（Loopback），天然满足 `isSecureContext = true`，因此在开发本机打开时 WebMCP 工具正常生效；
+- `http://192.168.x.x:*` 等局域网纯 HTTP 地址会被 Chromium 强制判定为非安全上下文（`isSecureContext = false`），在此状态下浏览器会**主动隐藏或将 `document.modelContext` 置为 `undefined`**，导致工具无法注册。
+
+#### 2. 局域网调试临时放行方案（Chrome Flag）
+
+若在局域网其它电脑或手机上通过 IP 访问并调试 WebMCP，可使用 Chrome 内置白名单机制：
+
+1. 在访问端 Chrome 浏览器地址栏输入并回车：
+   `chrome://flags/#unsafely-treat-insecure-origin-as-secure`
+2. 在 **Insecure origins treated as secure** 输入框中填入你的局域网地址（例如 `http://192.168.1.100:5173` 或 `http://192.168.1.100:8000`，多个地址用英文逗号分隔）；
+3. 将右侧下拉框切换为 **`Enabled`**；
+4. 点击右下角 **`Relaunch`** 重启 Chrome。
+5. 重启后刷新纸间页面，`window.isSecureContext` 即变为 `true`，WebMCP 工具将正常注册并在浏览器 AI 扩展中就绪可用。
+
+#### 3. 生产终极方案（泛域名 HTTPS）
+
+在家庭私有云部署中，建议参考 [`docs/HOMELAB_NETWORKING_GUIDE.md`](docs/HOMELAB_NETWORKING_GUIDE.md)，通过 Nginx Proxy Manager 或 Cloudflare 配置泛域名 SSL 证书并使用 HTTPS（如 `https://comic.yourdomain.com`）访问，局域网与公网设备均天然满足安全上下文，无需任何客户端配置。
 
 ---
 

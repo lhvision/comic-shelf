@@ -2,7 +2,7 @@
 
 > 本文档记录纸间在完成多源收录（JM / Local / PicAcg）与阅读器核心基建后，关于**外部智能连接、AI 漫画创作、私有模型微调与互动游戏化**的探索性设计方案与演进蓝图。
 >
-> 与确定性架构决策记录（[ADR 0013](docs/adr/0013-picacg-provider-and-architecture-fidelity.md)）解耦，本文档作为前瞻提案库与需求蓄水池，为后续各阶段的落地与重构提供设计参考。
+> 与确定性架构决策记录（[ADR 0013](docs/adr/0013-picacg-provider-and-architecture-fidelity.md)、[ADR 0026](docs/adr/0026-central-data-hub-and-polyrepo-ecosystem.md)）解耦，本文档作为前瞻提案库与需求蓄水池，为后续各阶段的落地与重构提供设计参考。
 
 ---
 
