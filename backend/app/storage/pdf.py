@@ -101,16 +101,12 @@ def is_blank_or_solid_page(img_bytes: bytes) -> bool:
         from PIL import Image
 
         with Image.open(io.BytesIO(img_bytes)) as im:
-            thumb = im.resize((32, 32))
+            thumb = im.convert("RGB").resize((32, 32))
             extrema = thumb.getextrema()
-            if isinstance(extrema[0], tuple):  # RGB / RGBA
-                is_near_uniform = all((high - low) <= 15 for low, high in extrema[:3])
-                is_dark = all(high <= 35 for _, high in extrema[:3])
-                is_white = all(low >= 240 for low, _ in extrema[:3])
-                return is_near_uniform and (is_dark or is_white)
-            else:  # Grayscale
-                low, high = extrema
-                return (high - low <= 15) and (high <= 35 or low >= 240)
+            is_near_uniform = all((high - low) <= 15 for low, high in extrema)
+            is_dark = all(high <= 35 for _, high in extrema)
+            is_white = all(low >= 240 for low, _ in extrema)
+            return is_near_uniform and (is_dark or is_white)
     except Exception:
         return False
 

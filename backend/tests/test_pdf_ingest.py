@@ -280,6 +280,24 @@ class TestPdfIngest(unittest.TestCase):
         white_img.save(buf, format="JPEG")
         self.assertTrue(is_blank_or_solid_page(buf.getvalue()))
 
+        # Grayscale & RGBA
+        gray_img = Image.new("L", (100, 100), color=255)
+        buf = io.BytesIO()
+        gray_img.save(buf, format="PNG")
+        self.assertTrue(is_blank_or_solid_page(buf.getvalue()))
+
+        rgba_black = Image.new("RGBA", (100, 100), color=(0, 0, 0, 255))
+        buf = io.BytesIO()
+        rgba_black.save(buf, format="PNG")
+        self.assertTrue(is_blank_or_solid_page(buf.getvalue()))
+
+        # Paletted (P mode)
+        pal_img = Image.new("P", (100, 100), color=0)
+        pal_img.putpalette([255, 255, 255] * 256)
+        buf = io.BytesIO()
+        pal_img.save(buf, format="PNG")
+        self.assertTrue(is_blank_or_solid_page(buf.getvalue()))
+
         content_img = Image.new("RGB", (100, 100), color=(255, 255, 255))
         for y in range(30, 70):
             for x in range(30, 70):
