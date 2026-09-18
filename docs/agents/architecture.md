@@ -240,6 +240,39 @@ JmImageTool.decode_and_save(num, source_image, save_path)
   - 暂存分步建卷（`create_from_staged_pdf`）采用 `_lock_for` 互斥保护，页面先组装在临时隔离目录再由 `_atomic_swap_dir` 原子替换，章节起始页严格绑定后端权威单调写入计数器 `chap_start_page = global_idx`。
 - **安全拦截守卫**：`MAX_PDF_PAGES = 5000` 拦截解压炸弹；Web 上传 1GB 上限 + 1MB 分块流式落盘防 OOM；密码加密 PDF 友好阻断；slug 碰撞校验返回 409 Conflict。
 
+### 4.8 权限角色、机器令牌与单本沙箱隔离规范（Role Matrix & Sandbox Isolation）
+
+- **四态权限角色模型（Role Matrix）**：
+  1. `admin`（馆长）：由 `COMIC_SHELF_SECRET` 鉴权，拥有全库浏览、收录、元数据修改、访客通行证派发与高危物理删除（`DELETE`）等全权权限；
+  2. `machine`（机器专属流水线）：由 `MACHINE_TOKEN`（`COMIC_SHELF_MACHINE_TOKEN`）鉴权，遵循**最小特权原则（Least Privilege）**：
+     - 允许调用自动化创作端点（`POST /api/library/local/create`）、增量画页追加（`/upload-pages`）、OCR 台词同步（`/ocr/sync`）与 MCP 服务端全部工具；
+     - **严格禁止**执行全库物理删除（`DELETE /api/library/...`）、删除章节、注销访客通行证或注销设备会话等高危破坏性端点（HTTP 403 阻断）；
+     - 支持请求头 `Authorization: Bearer <TOKEN>`、`X-Machine-Token: <TOKEN>` 或 Query 参数 `token=<TOKEN>`；
+  3. `guest`（访客）：持有专属通行证并绑定自设 PIN 码的读者，仅限只读已授权藏书；
+  4. `unauthorized`：未鉴权或通行证过期，严格阻断（HTTP 401）。
+- **单本沙箱临时直达通行证（Single-Book Direct Pass & Sandbox Boundary）**：
+  - **凭证契约**：上下文标识为 `_uid = f"direct:{source}:{source_id}"`，角色为 `guest`，由 `create_direct_pass` 签发（默认 2 小时有效，最长 7 天）；
+  - **沙箱绝对物理隔离**：单本读者被严格约束在指定的单一作品中：
+    - 访问书架全库（`GET /api/library`）或全貌统计（`/api/library/facets`）立即响应 HTTP 403 阻断，前端阅读器完成页亦禁止加载书库；
+    - 尝试访问其他作品的元数据、画页或封面立即响应 HTTP 403；
+    - 所有修改、收藏、缓存与删除等写操作一律拦截；
+  - **防抓取与复合滑动窗口频控（Composite Rate Limiting Guard）**：
+    - 在全局中间件 `auth_and_security_middleware` 中，针对画页二进制端点（`/file`、`/thumbnail`）实施 180 页/分钟频控；
+    - 针对 `direct:` 用户采用 `rate_key = f"{_uid}:{client_ip}"` 复合键，杜绝临时直达链接被公开分享到外部社区后，恶意爬虫多线程高并发刷取全本画页导致宿主机带宽与磁盘 I/O 耗尽。
+
+### 4.9 服务端 MCP 架构与传输流控规范（MCP Server & Transport Protocols）
+
+- **三模服务端通信架构**：
+  - **SSE 传输（`GET /api/mcp/sse`、`GET /mcp/sse`）**：面向局域网 NAS / 远程 Agent（如 Claude Desktop / Cursor），采用标准 Server-Sent Events 流式握手；
+    - **Token 链路继承**：客户端使用 Query 参数 `?token=...` 握手时，下发的 `message_endpoint_url` 自动拼接转义后的 `&token={quote(token)}`，保障不支持自定义 Header 的 SSE 客户端正常回传消息；
+    - **并发会话熔断（Connection Throttling）**：内存会话队列设硬上限 `_MAX_MCP_SESSIONS = 50`，超限响应 HTTP 429 Too Many Requests，防止长连接泄漏；
+  - **消息上行传输（`POST /api/mcp/messages`、`POST /mcp/messages`）**：接收与 SSE 会话绑定的 JSON-RPC 2.0 请求；
+  - **无状态直接 RPC（`POST /api/mcp/rpc`、`POST /mcp`）**：面向飞书 Bot Webhook、微服务或单次调用的无状态端点；
+  - **本地 Stdio 管道（`backend/app/mcp_server.py`）**：面向本地 IDE / 命令行 Agent，零网络端口暴露，跨进程管道直连。
+- **解耦注册表分发设计（Registry Dispatch Pattern）**：
+  - 协议路由与具体工具/资源实现解耦：工具执行由 `TOOL_HANDLERS` 字典映射，资源读取由 `RESOURCE_HANDLERS` 字典映射，杜绝庞大单体 `if/elif` 堆砌；
+  - 支持完整的 JSON-RPC 2.0 批量请求数组（Batch Requests）及针对非法入参的标准化错误格式（`-32600 Invalid Request`）。
+
 ## 5. 后端文件地图
 
 | 文件                                | 职责                                                                                                                        |

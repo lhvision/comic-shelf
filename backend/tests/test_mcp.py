@@ -49,6 +49,7 @@ def make_mock_request(
     req.state = type("State", (), {})()
     req.url.path = path
     req.method = method
+    req.client = type("Client", (), {"host": "127.0.0.1"})()
     headers_dict = {k.lower(): v for k, v in (headers or {}).items()}
     req.headers.get = lambda k, default="": headers_dict.get(k.lower(), default)
     req.cookies.get = lambda k, default="": (cookies or {}).get(k, default)
@@ -161,6 +162,22 @@ def test_mcp_protocol_initialize_and_tools():
             "get_shelf_stats",
         }
         assert expected_tools.issubset(tool_names)
+
+        # 4. Test JSON-RPC 2.0 batch array request
+        batch_resp = asyncio.run(
+            process_jsonrpc_request([
+                {"jsonrpc": "2.0", "id": 41, "method": "ping"},
+                {"jsonrpc": "2.0", "id": 42, "method": "ping"},
+            ])
+        )
+        assert isinstance(batch_resp, list)
+        assert len(batch_resp) == 2
+        assert batch_resp[0] == {"jsonrpc": "2.0", "id": 41, "result": {}}
+        assert batch_resp[1] == {"jsonrpc": "2.0", "id": 42, "result": {}}
+
+        # 5. Test JSON-RPC 2.0 invalid non-dict request defense
+        invalid_resp = asyncio.run(process_jsonrpc_request("not-a-dict"))
+        assert invalid_resp["error"]["code"] == -32600
     finally:
         shutil.rmtree(tmp_dir, ignore_errors=True)
 
@@ -401,8 +418,54 @@ def test_http_direct_rpc_and_sandbox_middleware():
             query_params={"temp_token": temp_token},
         )
         resp_blocked_other = asyncio.run(auth_and_security_middleware(req_blocked_other, dummy_call_next))
+        # 2e. Direct pass rate limiting on reading page binary endpoint (/file)
+        from app.abuse import _guest_rate_buckets
+        req_file = make_mock_request(
+            path="/api/library/local/mcp_test_comic/pages/1/file",
+            query_params={"temp_token": temp_token},
+        )
+        next_called = False
+        resp_file = asyncio.run(auth_and_security_middleware(req_file, dummy_call_next))
+        assert next_called is True
+        assert resp_file.status_code == 200
+
+        # Simulate exhausted rate-limiting token bucket for this direct reader
+        rate_key = f"direct:local:mcp_test_comic:127.0.0.1"
+        assert rate_key in _guest_rate_buckets
+        _guest_rate_buckets[rate_key].tokens = 0.0
+        next_called = False
+        resp_limited = asyncio.run(auth_and_security_middleware(req_file, dummy_call_next))
         assert next_called is False
-        assert resp_blocked_other.status_code == 403
+        assert resp_limited.status_code == 429
+
+        # 3. Machine token least-privilege write permission tests
+        config_mod.MACHINE_TOKEN = "dedicated-machine-key"
+        auth_mod.MACHINE_TOKEN = "dedicated-machine-key"
+        try:
+            # 3a. Allowed write: local create
+            next_called = False
+            req_machine_write_ok = make_mock_request(
+                path="/api/library/local/create",
+                method="POST",
+                headers={"X-Machine-Token": "dedicated-machine-key"},
+            )
+            resp_write_ok = asyncio.run(auth_and_security_middleware(req_machine_write_ok, dummy_call_next))
+            assert next_called is True
+            assert resp_write_ok.status_code == 200
+
+            # 3b. Disallowed write: DELETE library comic -> 403 Forbidden
+            next_called = False
+            req_machine_delete_blocked = make_mock_request(
+                path="/api/library/local/mcp_test_comic",
+                method="DELETE",
+                headers={"X-Machine-Token": "dedicated-machine-key"},
+            )
+            resp_delete_blocked = asyncio.run(auth_and_security_middleware(req_machine_delete_blocked, dummy_call_next))
+            assert next_called is False
+            assert resp_delete_blocked.status_code == 403
+        finally:
+            auth_mod.MACHINE_TOKEN = ""
+            config_mod.MACHINE_TOKEN = ""
 
     finally:
         auth_mod.AUTH_SECRET = ""

@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import secrets
+from urllib.parse import quote
 from fastapi import APIRouter, HTTPException, Request, Response
 
 from ..abuse import (
@@ -41,6 +42,7 @@ from ..db import (
     update_guest_pass,
     verify_guest_pass_pin,
 )
+from .common import store
 from ..models import (
     AuthStatusResponse,
     ClaimGuestPassRequest,
@@ -343,13 +345,18 @@ def curator_delete_pass_device(pass_id: int, device_id: int, request: Request) -
 def create_direct_pass_api(req: DirectPassCreateRequest, request: Request) -> DirectPassResponse:
     """Issues a sandboxed temporary direct pass for a single comic (Single-Book Sandbox)."""
     require_curator(request)
+    meta = store.load_meta(req.source, req.source_id)
+    if not meta:
+        raise HTTPException(status_code=404, detail=f"指定作品不存在: {req.source}/{req.source_id}")
     result = create_direct_pass(
         source=req.source,
         source_id=req.source_id,
         page_index=req.page_index,
         ttl_seconds=req.ttl_seconds,
     )
-    direct_url = f"/comic/{req.source}/{req.source_id}/read/{req.page_index}?temp_token={result['token']}"
+    safe_src = quote(req.source, safe="")
+    safe_sid = quote(req.source_id, safe="")
+    direct_url = f"/comic/{safe_src}/{safe_sid}/read/{req.page_index}?temp_token={result['token']}"
     return DirectPassResponse(
         token=result["token"],
         source=result["source"],

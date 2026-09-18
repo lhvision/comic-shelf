@@ -13,6 +13,8 @@ import { useLibraryStore } from '@/stores/library'
 import { useToast } from '@/composables/useToast'
 import { useCoverTransition } from '@/composables/useCoverTransition'
 import { useHierarchicalNavigation } from '@/composables/useHierarchicalNavigation'
+import { useComicDetailWebMCP } from '@/composables/useComicDetailWebMCP'
+import { api } from '@/api/client'
 import {
   getDetailScrollPosition,
   setDetailScrollPosition,
@@ -34,6 +36,12 @@ export interface UseComicDetailActionsOptions {
   chapterForPage: (page: number) => string | null | undefined
   /** 重新加载详情回调 */
   load: () => Promise<void>
+  /** 上次阅读页码引用（可选，用于声明式 WebMCP 交互） */
+  lastRead?: Ref<number>
+  /** 全部缓存回调（可选，用于声明式 WebMCP 交互） */
+  cacheAll?: () => Promise<void>
+  /** 单章缓存回调（可选，用于声明式 WebMCP 交互） */
+  cacheChapter?: (chapterId: string) => Promise<void>
 }
 
 export function useComicDetailActions(options: UseComicDetailActionsOptions) {
@@ -43,6 +51,26 @@ export function useComicDetailActions(options: UseComicDetailActionsOptions) {
   const { toast } = useToast()
   const { setActiveCover } = useCoverTransition()
   const { goUpFromDetail } = useHierarchicalNavigation()
+
+  if (options.lastRead) {
+    useComicDetailWebMCP({
+      source,
+      sourceId,
+      detail,
+      chapters,
+      lastRead: options.lastRead,
+      router,
+      cacheAll: options.cacheAll,
+      cacheChapter: options.cacheChapter,
+      toggleFavorite: async () => {
+        if (detail.value) {
+          const nextFav = !detail.value.meta.favorite
+          detail.value.meta.favorite = nextFav
+          await api.setFavorite(source.value, sourceId.value, nextFav)
+        }
+      },
+    })
+  }
 
   // 弹窗状态
   const editOpen = ref(false)

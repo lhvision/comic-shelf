@@ -11,6 +11,8 @@ import { computed, type Ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useEventListener } from '@vueuse/core'
 import { useHierarchicalNavigation } from '@/composables/useHierarchicalNavigation'
+import { useComicDetailWebMCP } from '@/composables/useComicDetailWebMCP'
+import { api } from '@/api/client'
 import type { Chapter, ComicDetail } from '@/types'
 
 export interface UseChapterPageInfoOptions {
@@ -32,6 +34,8 @@ export interface UseChapterPageInfoOptions {
   runningChapterId?: Ref<string | null>
   /** 触发缓存章节函数 */
   cacheChapter?: (chapterId: string) => Promise<void>
+  /** 上次阅读页码引用（可选，用于声明式 WebMCP 交互） */
+  lastRead?: Ref<number>
 }
 
 export function useChapterPageInfo(options: UseChapterPageInfoOptions) {
@@ -53,6 +57,26 @@ export function useChapterPageInfo(options: UseChapterPageInfoOptions) {
   const activeIndex = computed(() => chapters.value.findIndex((c) => c.id === chapterId.value))
   const prevChapter = computed(() => chapters.value[activeIndex.value - 1] ?? null)
   const nextChapter = computed(() => chapters.value[activeIndex.value + 1] ?? null)
+
+  if (options.lastRead) {
+    useComicDetailWebMCP({
+      source,
+      sourceId,
+      detail,
+      chapters,
+      lastRead: options.lastRead,
+      router,
+      cacheChapter,
+      activeChapterId: computed(() => activeChapter.value?.id),
+      toggleFavorite: async () => {
+        if (detail.value) {
+          const nextFav = !detail.value.meta.favorite
+          detail.value.meta.favorite = nextFav
+          await api.setFavorite(source.value, sourceId.value, nextFav)
+        }
+      },
+    })
+  }
 
   const isCurrentChapterCaching = computed(() => {
     if (!caching?.value) return false

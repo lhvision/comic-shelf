@@ -144,9 +144,8 @@ def test_auth_logic():
     except HTTPException as exc:
         assert exc.status_code == 401
 
-    # require_curator and require_admin alias on curator passes
+    # require_curator on curator passes
     auth_mod.require_curator(req_curator)
-    auth_mod.require_admin(req_curator)
 
     # 3. Test user isolation for favorites and reading progress
     db_mod.set_user_favorite("curator", "jm", "12345", True)

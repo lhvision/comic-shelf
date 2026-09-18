@@ -10,7 +10,7 @@
  *    离开详情或章节视口时工具随 Vue Scope 自动销毁注销。
  */
 
-import { type ComputedRef, type ShallowRef, type Ref } from 'vue'
+import type { Ref } from 'vue'
 import { useWebMCP } from '@vueuse/core'
 import type { Router } from 'vue-router'
 import type { Chapter, ComicDetail } from '@/types'
@@ -20,13 +20,13 @@ import type { Chapter, ComicDetail } from '@/types'
  */
 export interface UseComicDetailWebMCPOptions {
   /** 漫画来源 Provider (jm, local, picacg) */
-  source: ComputedRef<string>
+  source: Ref<string>
   /** 漫画唯一 ID / 车号 */
-  sourceId: ComputedRef<string>
+  sourceId: Ref<string>
   /** 漫画元数据详情 Ref */
-  detail: ShallowRef<ComicDetail | null>
+  detail: Ref<ComicDetail | null>
   /** 章节列表 */
-  chapters: ComputedRef<Chapter[]>
+  chapters: Ref<Chapter[]>
   /** 上次阅读页码 Ref */
   lastRead: Ref<number>
   /** 路由实例 */
@@ -38,7 +38,7 @@ export interface UseComicDetailWebMCPOptions {
   /** 切换红心收藏方法（可选） */
   toggleFavorite?: () => Promise<void> | void
   /** 当前锁定的章节 ID（若处于 ChapterView 章节子路由中） */
-  activeChapterId?: ComputedRef<string | undefined>
+  activeChapterId?: Ref<string | undefined>
 }
 
 /**

@@ -103,7 +103,7 @@ def get_user_context(request: Request) -> tuple[str, str, str]:
         return ctx
 
     if MACHINE_TOKEN and ((token and secrets.compare_digest(token, MACHINE_TOKEN)) or (x_machine and secrets.compare_digest(x_machine, MACHINE_TOKEN))):
-        ctx = ("machine", "Paper Studio", "admin")
+        ctx = ("machine", "Paper Studio", "machine")
         request.state.user_context = ctx
         return ctx
 
@@ -177,9 +177,14 @@ def is_guest(request: Request) -> bool:
     return get_user_context(request)[2] == "guest"
 
 
+def is_machine(request: Request) -> bool:
+    """True if caller provided a valid dedicated Machine Token."""
+    return get_user_context(request)[2] == "machine"
+
+
 def is_authenticated(request: Request) -> bool:
-    """True if caller provided either a valid curator secret or active guest pass."""
-    return get_user_context(request)[2] in ("admin", "guest")
+    """True if caller provided either a valid curator secret, machine token, or active guest pass."""
+    return get_user_context(request)[2] in ("admin", "guest", "machine")
 
 
 def can_read(request: Request) -> bool:
@@ -188,9 +193,9 @@ def can_read(request: Request) -> bool:
 
 
 def get_user_role(request: Request) -> str:
-    """Returns 'admin', 'guest', or 'unauthorized'."""
+    """Returns 'admin', 'machine', 'guest', or 'unauthorized'."""
     role = get_user_context(request)[2]
-    return role if role in ("admin", "guest") else "unauthorized"
+    return role if role in ("admin", "machine", "guest") else "unauthorized"
 
 
 def require_curator(request: Request) -> None:
@@ -198,6 +203,12 @@ def require_curator(request: Request) -> None:
     _uid, _name, role = get_user_context(request)
     if role == "admin":
         return
+
+    if role == "machine":
+        raise HTTPException(
+            status_code=403,
+            detail="机器凭证仅限执行流水线资产同步，禁止执行全站管理操作",
+        )
 
     if role == "guest":
         raise HTTPException(
@@ -217,10 +228,6 @@ def require_curator(request: Request) -> None:
         detail="未授权访问，需要提供有效的通行口令",
         headers={"WWW-Authenticate": "Bearer"},
     )
-
-
-# Alias for backward compatibility
-require_admin = require_curator
 
 
 def is_request_secure(request: Request | None) -> bool:

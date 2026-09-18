@@ -45,6 +45,8 @@ export const api = {
   login: auth.login,
   /** 认领并激活访客通行证 */
   claimPass: auth.claimPass,
+  /** 签发单本专属沙箱直达通行证（Direct Pass） */
+  createDirectPass: auth.createDirectPass,
   /** 注销当前登录会话 */
   logout: auth.logout,
 

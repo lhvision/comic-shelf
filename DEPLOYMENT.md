@@ -554,7 +554,127 @@ docker push yourname/paper-room:v1.0.0
 
 ---
 
-## 9. 和 Vite+ / vp 的关系说明
+## 9. MCP（Model Context Protocol）智能体配置与连接指南
+
+纸间原生支持 **Anthropic MCP（Model Context Protocol）** 标准规范，允许各类 AI 智能体（如 Claude Desktop、Cursor、Antigravity、飞书 Bot、本地 Agent 脚本）直接与你的个人漫画书架交互（支持检索书架藏书、全库台词全文检索、以图搜图、详情查询、跨卷章节缓存与签发单本沙箱直达链接）。
+
+### 9.1 三种连接模式说明
+
+| 模式                | 传输协议                | 适用部署场景                                                 | 客户端形态                                               |
+| :------------------ | :---------------------- | :----------------------------------------------------------- | :------------------------------------------------------- |
+| **SSE 模式**        | HTTP Server-Sent Events | **局域网 NAS（TrueNAS / 群晖 / Unraid / Docker）或远程 VPS** | 远程客户端填入 HTTP URL 链接直连                         |
+| **Stdio 模式**      | 本地标准输入输出管道    | **本机开发或与 Agent 运行在同一台宿主机**                    | 客户端直接拉起 Python 脚本子进程，零网络端口暴露，最安全 |
+| **Direct RPC 模式** | HTTP POST JSON-RPC 2.0  | **外部无状态自动化脚本、飞书 Bot Webhook、微服务**           | 单次 HTTP POST 立即返回，无需保持长连接                  |
+
+---
+
+### 9.2 局域网 NAS 部署（SSE 模式配置）
+
+当纸间作为 Docker 容器运行在 NAS 上时，局域网内的其它电脑、客户端可通过 **SSE 链接** 连接。
+
+#### 1. 端点地址与鉴权规则
+
+- **免密部署**（家庭纯内网未配置 `COMIC_SHELF_SECRET`）：
+  - SSE 握手链接：`http://<NAS_IP>:8000/api/mcp/sse`
+- **带密码部署**（已配置 `COMIC_SHELF_SECRET` 或专用 `MACHINE_TOKEN`）：
+  - **方式 A（标准 Headers 鉴权，推荐）**：
+    - 链接：`http://<NAS_IP>:8000/api/mcp/sse`
+    - 标头：`Authorization: Bearer <你的管理密码或MACHINE_TOKEN>`
+  - **方式 B（Query 参数鉴权，适合不支持自定义 Headers 的客户端）**：
+    - 链接：`http://<NAS_IP>:8000/api/mcp/sse?token=<你的管理密码或MACHINE_TOKEN>`
+    - 服务端会自动将 Token 继承至消息回传端点，零断流。
+
+#### 2. Claude Desktop 客户端配置
+
+在你的电脑上编辑 Claude Desktop 配置文件（MacOS: `~/Library/Application Support/Claude/claude_desktop_config.json`，Windows: `%APPDATA%\Claude\claude_desktop_config.json`）：
+
+```json
+{
+  "mcpServers": {
+    "paper-room": {
+      "url": "http://192.168.1.100:8000/api/mcp/sse",
+      "headers": {
+        "Authorization": "Bearer 你的COMIC_SHELF_SECRET或MACHINE_TOKEN"
+      }
+    }
+  }
+}
+```
+
+> 💡 **提示**：若你的客户端版本暂未开放 `headers` 配置项，可直接改用带有 Query 参数的链接：
+> `"url": "http://192.168.1.100:8000/api/mcp/sse?token=你的管理密码"`
+
+#### 3. Cursor / 其它 MCP 客户端配置
+
+在项目根目录创建或编辑 `.cursor/mcp.json`：
+
+```json
+{
+  "mcpServers": {
+    "paper-room": {
+      "url": "http://192.168.1.100:8000/api/mcp/sse",
+      "headers": {
+        "Authorization": "Bearer 你的COMIC_SHELF_SECRET"
+      }
+    }
+  }
+}
+```
+
+---
+
+### 9.3 本地开发与本机运行（Stdio 模式配置）
+
+若你直接在本地工作站或开发机上运行 Agent，**推荐直接走 Stdio 管道通信**（无需依赖 Web Server 运行，直接读写本地 SQLite 数据库与缓存目录）：
+
+在 `claude_desktop_config.json` 或 Agent 的配置文件中配置：
+
+```json
+{
+  "mcpServers": {
+    "paper-room": {
+      "command": "/absolute/path/to/comic-shelf/.venv/bin/python",
+      "args": ["/absolute/path/to/comic-shelf/backend/app/mcp_server.py"],
+      "env": {
+        "PYTHONPATH": "/absolute/path/to/comic-shelf"
+      }
+    }
+  }
+}
+```
+
+---
+
+### 9.4 外部脚本与微服务（Direct HTTP RPC 模式）
+
+若通过外部脚本或飞书机器人进行无状态调用，可直接向 `/api/mcp/rpc`（或 `/mcp`）发送标准 JSON-RPC 2.0 请求：
+
+```bash
+curl -X POST "http://<NAS_IP>:8000/api/mcp/rpc" \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer <COMIC_SHELF_SECRET>" \
+  -d '{
+    "jsonrpc": "2.0",
+    "id": 1,
+    "method": "tools/call",
+    "params": {
+      "name": "query_shelf",
+      "arguments": { "keyword": "电锯人", "limit": 5 }
+    }
+  }'
+```
+
+---
+
+### 9.5 安全防护与权限矩阵
+
+1. **强鉴权拦截**：仅放行馆长凭据（`COMIC_SHELF_SECRET`）与专有机器令牌（`MACHINE_TOKEN`）。任何未授权请求、普通访客（`guest`）或单本沙箱直达凭证（`direct:`）均被拒之门外（401/403 阻断）；
+2. **最小特权控制（Least Privilege）**：即使持有 `MACHINE_TOKEN`，也只能调用注册表内的工具（查询、OCR、收录），严禁调用后台危险管理或删除接口；
+3. **连接池过载防护**：SSE 活跃会话设上限 `_MAX_MCP_SESSIONS = 50`，超限自动返回 503，防止客户端异常断连泄漏连接池。
+
+---
+
+## 10. 和 Vite+ / vp 的关系说明
 
 仓库已全面迁移至 Vite+：
 

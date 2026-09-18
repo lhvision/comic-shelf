@@ -19,12 +19,15 @@ from .abuse import check_guest_rate_limit
 from .auth import (
     can_read,
     check_hotlink_protection,
+    get_client_ip,
     get_user_context,
     is_curator,
     is_guest,
+    is_machine,
 )
 from .config import ENABLE_DOCS, LIBRARY_DIR
 from .db import (
+    clean_expired_direct_passes,
     delete_comic_index,
     get_all_indexed_mtimes,
     get_user_favorites,
@@ -201,6 +204,7 @@ def sync_library_index(store: ComicStore) -> None:
 async def lifespan(app: FastAPI):
     try:
         init_db()
+        clean_expired_direct_passes()
         _migrate_existing_favorites_to_db()
         sync_library_index(store)
         store._cleanup_staged_pdfs(max_age_seconds=0)
@@ -288,17 +292,23 @@ async def auth_and_security_middleware(request: Request, call_next):
         # Note: /cover is excluded to prevent bookshelf grid loading from false-positive rate limiting
         if clean_stem.endswith(("/file", "/thumbnail")):
             _uid, _name, role = get_user_context(request)
-            if role == "guest" and _uid.startswith("guest:"):
-                try:
-                    pass_id_val = int(_uid.split(":", 1)[1])
-                    if not check_guest_rate_limit(pass_id_val):
-                        return JSONResponse(
-                            status_code=429,
-                            content={"detail": "阅读翻页速率异常（超过 180 页/分钟），请稍憩数秒"},
-                            headers={"Retry-After": "5"},
-                        )
-                except (ValueError, IndexError):
-                    pass
+            if role == "guest":
+                rate_key: int | str | None = None
+                if _uid.startswith("guest:"):
+                    try:
+                        rate_key = int(_uid.split(":", 1)[1])
+                    except (ValueError, IndexError):
+                        pass
+                elif _uid.startswith("direct:"):
+                    client_ip = get_client_ip(request)
+                    rate_key = f"{_uid}:{client_ip}"
+
+                if rate_key is not None and not check_guest_rate_limit(rate_key):
+                    return JSONResponse(
+                        status_code=429,
+                        content={"detail": "阅读翻页速率异常（超过 180 页/分钟），请稍憩数秒"},
+                        headers={"Retry-After": "5"},
+                    )
 
     # Allow guest-permitted mutating operations (search, isolated favorite & reading progress)
     is_user_mutation = (
@@ -310,16 +320,28 @@ async def auth_and_security_middleware(request: Request, call_next):
     is_write = request.method in ("POST", "PUT", "PATCH", "DELETE") and not is_user_mutation
     if is_write:
         if not is_curator(request):
-            if is_guest(request):
+            if is_machine(request):
+                # Machine token is allowed to create local comics, upload pages, and sync OCR
+                is_machine_allowed_write = (
+                    path.startswith("/api/library/local/")
+                    or path.endswith("/ocr/sync")
+                ) and request.method != "DELETE"
+                if not is_machine_allowed_write:
+                    return JSONResponse(
+                        status_code=403,
+                        content={"detail": "机器密钥仅限执行作品创作入库与伴生同步，禁止执行全站管理或删除操作"},
+                    )
+            elif is_guest(request):
                 return JSONResponse(
                     status_code=403,
                     content={"detail": "访客模式下禁止执行修改操作，请先解锁馆长权限"},
                 )
-            return JSONResponse(
-                status_code=401,
-                content={"detail": "未授权访问，需要提供有效的通行口令"},
-                headers={"WWW-Authenticate": "Bearer"},
-            )
+            else:
+                return JSONResponse(
+                    status_code=401,
+                    content={"detail": "未授权访问，需要提供有效的通行口令"},
+                    headers={"WWW-Authenticate": "Bearer"},
+                )
     else:
         # Read or guest-allowed mutation: require valid curator or guest token
         if not can_read(request):

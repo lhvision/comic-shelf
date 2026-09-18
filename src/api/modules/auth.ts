@@ -9,7 +9,13 @@
  */
 
 import { request, type RequestOptions } from '../core/http'
-import type { AuthStatus, ClaimGuestPassPayload, LoginResult } from '@/types'
+import type {
+  AuthStatus,
+  ClaimGuestPassPayload,
+  DirectPassPayload,
+  DirectPassResponse,
+  LoginResult,
+} from '@/types'
 
 /**
  * 探测后端服务健康状态及是否开启了鉴权保护
@@ -74,4 +80,26 @@ export async function logout(): Promise<{ ok: boolean }> {
   return request<{ ok: boolean }>('/auth/logout', {
     method: 'POST',
   })
+}
+
+/**
+ * 签发单本沙箱临时直达阅读通行证（Single-Book Sandbox）
+ *
+ * @param payload 单本直达通行证载荷（包含 source, source_id, page_index, ttl_seconds）
+ * @param options 可选的请求配置
+ * @returns 签发的临时直达凭证与直达 URL
+ */
+export async function createDirectPass(
+  payload: DirectPassPayload,
+  options?: RequestOptions,
+): Promise<DirectPassResponse> {
+  return request<DirectPassResponse>(
+    '/auth/direct-pass',
+    {
+      method: 'POST',
+      body: JSON.stringify(payload),
+      signal: options?.signal,
+    },
+    options,
+  )
 }

@@ -7,11 +7,12 @@
  * - 接收子状态机契约对象，大幅压缩视图层样板解构。
  */
 
-import { nextTick, ref, watch, type Ref } from 'vue'
-import type { RouteLocationNormalizedLoaded } from 'vue-router'
+import { computed, nextTick, ref, watch, type Ref } from 'vue'
+import type { RouteLocationNormalizedLoaded, Router } from 'vue-router'
 import { useTimeoutFn } from '@vueuse/core'
 import { useReaderKeyboard } from '@/composables/useReaderKeyboard'
 import { useReaderSync } from '@/composables/useReaderSync'
+import { useReaderWebMCP } from '@/composables/useReaderWebMCP'
 import { isFiniteNumber } from '@/utils/is'
 import type { useReaderSettings } from '@/composables/useReaderSettings'
 import type { useReaderPaging } from '@/composables/useReaderPaging'
@@ -30,6 +31,7 @@ export interface UseReaderInteractionOptions {
   toggleFilmstrip?: () => void
   reducedMotion: Ref<boolean>
   route: RouteLocationNormalizedLoaded
+  router?: Router
   settings: ReturnType<typeof useReaderSettings>
   bubble: ReturnType<typeof useReaderBubble>
   data: ReturnType<typeof useReaderData>
@@ -267,6 +269,21 @@ export function useReaderInteraction(options: UseReaderInteractionOptions) {
     if (targetBubble.value && targetBubble.value.page !== page) {
       dismissBubble()
     }
+  })
+
+  useReaderWebMCP({
+    currentPage,
+    pageCount: total,
+    settings,
+    goToPage,
+    prevGroup,
+    nextGroup,
+    goNextChapter,
+    goPrevChapter,
+    title: computed(() => detail.value?.meta.title ?? ''),
+    isFavorite: computed(() => Boolean(detail.value?.meta.favorite)),
+    router: options.router,
+    route,
   })
 
   return {

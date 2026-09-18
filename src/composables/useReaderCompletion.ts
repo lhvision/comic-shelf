@@ -36,7 +36,7 @@ export function useReaderCompletion(options: UseReaderCompletionOptions) {
   const { broadcastLocalChange } = useSystemEvents()
 
   onMounted(() => {
-    if (libraryStore.items.length === 0) {
+    if (libraryStore.items.length === 0 && !userId.value.startsWith('direct:')) {
       void libraryStore.load()
     }
   })

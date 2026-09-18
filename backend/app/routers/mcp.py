@@ -12,12 +12,13 @@ import json
 import logging
 import secrets
 import time
-from typing import Any, AsyncGenerator
+from typing import Any, AsyncGenerator, Awaitable, Callable
+from urllib.parse import quote
 
 from fastapi import APIRouter, HTTPException, Query, Request, Response
 from fastapi.responses import JSONResponse, StreamingResponse
 
-from ..auth import is_curator
+from ..auth import is_curator, is_machine
 from ..db import (
     create_direct_pass,
     get_library_facets,
@@ -35,6 +36,7 @@ router = APIRouter(tags=["mcp"])
 PROTOCOL_VERSION = "2024-11-05"
 SERVER_NAME = "paper-room-mcp"
 SERVER_VERSION = "0.1.0"
+_MAX_MCP_SESSIONS = 50
 
 # ----------------------------------------------------------------------
 # In-memory SSE session queues for bidirectional MCP over SSE
@@ -273,326 +275,347 @@ MCP_PROMPTS: list[dict[str, Any]] = [
 
 
 # ----------------------------------------------------------------------
-# Tool Execution Dispatcher
+# Tool Execution Registry & Modular Handlers
 # ----------------------------------------------------------------------
-async def execute_tool(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
-    """Executes an MCP tool and returns a standard JSON-RPC Tool Result object."""
+async def _tool_search_by_image(arguments: dict[str, Any]) -> dict[str, Any]:
+    raw_b64 = str(arguments.get("image_base64", ""))
+    if not raw_b64:
+        raise ValueError("image_base64 不能为空")
+    if "," in raw_b64:
+        raw_b64 = raw_b64.split(",", 1)[1]
     try:
-        if name == "search_by_image":
-            raw_b64 = str(arguments.get("image_base64", ""))
-            if not raw_b64:
-                raise ValueError("image_base64 不能为空")
-            if "," in raw_b64:
-                raw_b64 = raw_b64.split(",", 1)[1]
-            try:
-                img_bytes = base64.b64decode(raw_b64)
-            except Exception as e:
-                raise ValueError(f"Base64 解码失败: {e}")
+        img_bytes = base64.b64decode(raw_b64)
+    except Exception as e:
+        raise ValueError(f"Base64 解码失败: {e}")
 
-            limit = int(arguments.get("limit", 5))
-            raw_results = search_imsearch(img_bytes)
+    limit = int(arguments.get("limit", 5))
+    raw_results = search_imsearch(img_bytes)
 
-            hits = []
-            for item in raw_results[:limit]:
-                meta = store.load_meta(item.source, item.source_id)
-                title = meta.title if meta else item.source_id
-                authors = meta.authors if meta else []
-                hits.append({
-                    "source": item.source,
-                    "source_id": item.source_id,
-                    "title": title,
-                    "authors": authors,
-                    "page_index": item.page_index,
-                    "is_cover": item.is_cover,
-                    "similarity_score": round(item.score, 4),
-                    "confidence_percent": f"{round(item.score * 100, 1)}%",
-                    "reader_url": f"/comic/{item.source}/{item.source_id}/read/{item.page_index}",
-                })
+    hits = []
+    for item in raw_results[:limit]:
+        meta = store.load_meta(item.source, item.source_id)
+        title = meta.title if meta else item.source_id
+        authors = meta.authors if meta else []
+        hits.append({
+            "source": item.source,
+            "source_id": item.source_id,
+            "title": title,
+            "authors": authors,
+            "page_index": item.page_index,
+            "is_cover": item.is_cover,
+            "similarity_score": round(item.score, 4),
+            "confidence_percent": f"{round(item.score * 100, 1)}%",
+            "reader_url": f"/comic/{item.source}/{item.source_id}/read/{item.page_index}",
+        })
 
-            return {
-                "content": [
-                    {
-                        "type": "text",
-                        "text": json.dumps({
-                            "total_matched": len(hits),
-                            "hits": hits,
-                        }, ensure_ascii=False, indent=2),
-                    }
-                ],
-                "isError": False,
+    return {
+        "content": [
+            {
+                "type": "text",
+                "text": json.dumps({
+                    "total_matched": len(hits),
+                    "hits": hits,
+                }, ensure_ascii=False, indent=2),
             }
+        ],
+        "isError": False,
+    }
 
-        elif name == "search_by_dialogue":
-            text = str(arguments.get("text", "")).strip()
-            if not text:
-                raise ValueError("text 台词关键词不能为空")
-            source = arguments.get("source")
-            limit = int(arguments.get("limit", 5))
 
-            diag_results = search_dialogues(query=text, source=source, limit=limit, is_guest=False)
-            hits = []
-            for d in diag_results:
-                bubble_param = f"?bubble={d.get('bubble_id')}" if d.get("bubble_id") else ""
-                hits.append({
-                    "source": d["source"],
-                    "source_id": d["source_id"],
-                    "title": d.get("title", d["source_id"]),
-                    "authors": d.get("authors", []),
-                    "page_index": d["page_index"],
-                    "bubble_id": d.get("bubble_id"),
-                    "text": d["text"],
-                    "snippet": d.get("snippet", d["text"]),
-                    "box": d.get("box", []),
-                    "reader_url": f"/comic/{d['source']}/{d['source_id']}/read/{d['page_index']}{bubble_param}",
-                })
+async def _tool_search_by_dialogue(arguments: dict[str, Any]) -> dict[str, Any]:
+    text = str(arguments.get("text", "")).strip()
+    if not text:
+        raise ValueError("text 台词关键词不能为空")
+    source = arguments.get("source")
+    limit = int(arguments.get("limit", 5))
 
-            return {
-                "content": [
-                    {
-                        "type": "text",
-                        "text": json.dumps({
-                            "query": text,
-                            "total_matched": len(hits),
-                            "hits": hits,
-                        }, ensure_ascii=False, indent=2),
-                    }
-                ],
-                "isError": False,
+    diag_results = search_dialogues(query=text, source=source, limit=limit, is_guest=False)
+    hits = []
+    for d in diag_results:
+        bubble_param = f"?bubble={d.get('bubble_id')}" if d.get("bubble_id") else ""
+        hits.append({
+            "source": d["source"],
+            "source_id": d["source_id"],
+            "title": d.get("title", d["source_id"]),
+            "authors": d.get("authors", []),
+            "page_index": d["page_index"],
+            "bubble_id": d.get("bubble_id"),
+            "text": d["text"],
+            "snippet": d.get("snippet", d["text"]),
+            "box": d.get("box", []),
+            "reader_url": f"/comic/{d['source']}/{d['source_id']}/read/{d['page_index']}{bubble_param}",
+        })
+
+    return {
+        "content": [
+            {
+                "type": "text",
+                "text": json.dumps({
+                    "query": text,
+                    "total_matched": len(hits),
+                    "hits": hits,
+                }, ensure_ascii=False, indent=2),
             }
+        ],
+        "isError": False,
+    }
 
-        elif name == "query_shelf":
-            keyword = arguments.get("keyword")
-            tag = arguments.get("tag")
-            tags = arguments.get("tags")
-            source = arguments.get("source")
-            status = arguments.get("status", "all")
-            favorite = bool(arguments.get("favorite", False))
-            sort = arguments.get("sort", "recent")
-            limit = max(1, min(int(arguments.get("limit", 20)), 50))
-            offset = max(0, int(arguments.get("offset", 0)))
 
-            items, total = query_library_index(
-                user_id="curator",
-                is_curator=True,
-                page=1,
-                page_size=limit,
-                status=status,
-                favorite=favorite,
-                source=source,
-                q=keyword,
-                tag=tag,
-                tags=tags,
-                sort=sort,
-                offset=offset,
-            )
+async def _tool_query_shelf(arguments: dict[str, Any]) -> dict[str, Any]:
+    keyword = arguments.get("keyword")
+    tag = arguments.get("tag")
+    tags = arguments.get("tags")
+    source = arguments.get("source")
+    status = arguments.get("status", "all")
+    favorite = bool(arguments.get("favorite", False))
+    sort = arguments.get("sort", "recent")
+    limit = max(1, min(int(arguments.get("limit", 20)), 50))
+    offset = max(0, int(arguments.get("offset", 0)))
 
-            summaries = []
-            for item in items:
-                authors = json.loads(item["authors_json"]) if item.get("authors_json") else []
-                tags_list = json.loads(item["tags_json"]) if item.get("tags_json") else []
-                summaries.append({
-                    "source": item["source"],
-                    "source_id": item["source_id"],
-                    "display_id": item.get("display_id", item["source_id"]),
-                    "title": item["title"],
-                    "authors": authors,
-                    "tags": tags_list,
-                    "page_count": item["page_count"],
-                    "cached_pages": item.get("cached_pages", 0),
-                    "likes": item.get("likes", ""),
-                    "views": item.get("views", ""),
-                    "imported_at": item.get("imported_at", ""),
-                    "detail_url": f"/comic/{item['source']}/{item['source_id']}",
-                })
+    items, total = query_library_index(
+        user_id="curator",
+        is_curator=True,
+        page=1,
+        page_size=limit,
+        status=status,
+        favorite=favorite,
+        source=source,
+        q=keyword,
+        tag=tag,
+        tags=tags,
+        sort=sort,
+        offset=offset,
+    )
 
-            return {
-                "content": [
-                    {
-                        "type": "text",
-                        "text": json.dumps({
-                            "total": total,
-                            "returned": len(summaries),
-                            "offset": offset,
-                            "limit": limit,
-                            "items": summaries,
-                        }, ensure_ascii=False, indent=2),
-                    }
-                ],
-                "isError": False,
+    summaries = []
+    for item in items:
+        authors = json.loads(item["authors_json"]) if item.get("authors_json") else []
+        tags_list = json.loads(item["tags_json"]) if item.get("tags_json") else []
+        summaries.append({
+            "source": item["source"],
+            "source_id": item["source_id"],
+            "display_id": item.get("display_id", item["source_id"]),
+            "title": item["title"],
+            "authors": authors,
+            "tags": tags_list,
+            "page_count": item["page_count"],
+            "cached_pages": item.get("cached_pages", 0),
+            "likes": item.get("likes", ""),
+            "views": item.get("views", ""),
+            "imported_at": item.get("imported_at", ""),
+            "detail_url": f"/comic/{item['source']}/{item['source_id']}",
+        })
+
+    return {
+        "content": [
+            {
+                "type": "text",
+                "text": json.dumps({
+                    "total": total,
+                    "returned": len(summaries),
+                    "offset": offset,
+                    "limit": limit,
+                    "items": summaries,
+                }, ensure_ascii=False, indent=2),
             }
+        ],
+        "isError": False,
+    }
 
-        elif name == "get_comic_detail":
-            source = str(arguments.get("source", "")).strip()
-            source_id = str(arguments.get("source_id", "")).strip()
-            if not source or not source_id:
-                raise ValueError("source 与 source_id 不能为空")
 
-            meta = store.load_meta(source, source_id)
-            if not meta:
-                return {
-                    "content": [{"type": "text", "text": f"作品不存在或尚未收录: {source}/{source_id}"}],
-                    "isError": True,
-                }
+async def _tool_get_comic_detail(arguments: dict[str, Any]) -> dict[str, Any]:
+    source = str(arguments.get("source", "")).strip()
+    source_id = str(arguments.get("source_id", "")).strip()
+    if not source or not source_id:
+        raise ValueError("source 与 source_id 不能为空")
 
-            cached_count = store.cached_page_count(meta)
-            chapters_data = [
-                {
-                    "id": c.id,
-                    "index": c.index,
-                    "title": c.title,
-                    "page_count": c.page_count,
-                    "start_page": c.start,
-                }
-                for c in meta.chapters
-            ]
+    meta = store.load_meta(source, source_id)
+    if not meta:
+        return {
+            "content": [{"type": "text", "text": f"作品不存在或尚未收录: {source}/{source_id}"}],
+            "isError": True,
+        }
 
-            detail_payload = {
-                "source": meta.source,
-                "source_id": meta.source_id,
-                "display_id": meta.display_id,
-                "title": meta.title,
-                "authors": meta.authors,
-                "tags": meta.tags,
-                "works": meta.works,
-                "actors": meta.actors,
-                "description": meta.description,
-                "page_count": meta.page_count,
-                "cached_pages": cached_count,
-                "is_cached": cached_count >= meta.page_count if meta.page_count > 0 else False,
-                "chapter_count": len(chapters_data),
-                "chapters": chapters_data,
-                "views": meta.views,
-                "likes": meta.likes,
-                "published_at": meta.published_at,
-                "imported_at": meta.imported_at,
+    cached_count = store.cached_page_count(meta)
+    chapters_data = [
+        {
+            "id": c.id,
+            "index": c.index,
+            "title": c.title,
+            "page_count": c.page_count,
+            "start_page": c.start,
+        }
+        for c in meta.chapters
+    ]
+
+    detail_payload = {
+        "source": meta.source,
+        "source_id": meta.source_id,
+        "display_id": meta.display_id,
+        "title": meta.title,
+        "authors": meta.authors,
+        "tags": meta.tags,
+        "works": meta.works,
+        "actors": meta.actors,
+        "description": meta.description,
+        "page_count": meta.page_count,
+        "cached_pages": cached_count,
+        "is_cached": cached_count >= meta.page_count if meta.page_count > 0 else False,
+        "chapter_count": len(chapters_data),
+        "chapters": chapters_data,
+        "views": meta.views,
+        "likes": meta.likes,
+        "published_at": meta.published_at,
+        "imported_at": meta.imported_at,
+    }
+
+    return {
+        "content": [
+            {
+                "type": "text",
+                "text": json.dumps(detail_payload, ensure_ascii=False, indent=2),
             }
+        ],
+        "isError": False,
+    }
 
-            return {
-                "content": [
-                    {
-                        "type": "text",
-                        "text": json.dumps(detail_payload, ensure_ascii=False, indent=2),
-                    }
-                ],
-                "isError": False,
+
+async def _tool_recommend_unread(arguments: dict[str, Any]) -> dict[str, Any]:
+    limit = max(1, min(int(arguments.get("limit", 5)), 20))
+    tag = arguments.get("tag")
+    source = arguments.get("source")
+
+    items, total = query_library_index(
+        user_id="curator",
+        is_curator=True,
+        page=1,
+        page_size=limit,
+        status="unread",
+        source=source,
+        tag=tag,
+        sort="recent",
+    )
+
+    results = []
+    for item in items:
+        authors = json.loads(item["authors_json"]) if item.get("authors_json") else []
+        tags_list = json.loads(item["tags_json"]) if item.get("tags_json") else []
+        results.append({
+            "source": item["source"],
+            "source_id": item["source_id"],
+            "title": item["title"],
+            "authors": authors,
+            "tags": tags_list,
+            "page_count": item["page_count"],
+            "detail_url": f"/comic/{item['source']}/{item['source_id']}",
+        })
+
+    return {
+        "content": [
+            {
+                "type": "text",
+                "text": json.dumps({
+                    "total_unread": total,
+                    "recommendations": results,
+                }, ensure_ascii=False, indent=2),
             }
+        ],
+        "isError": False,
+    }
 
-        elif name == "recommend_unread":
-            limit = max(1, min(int(arguments.get("limit", 5)), 20))
-            tag = arguments.get("tag")
-            source = arguments.get("source")
 
-            items, total = query_library_index(
-                user_id="curator",
-                is_curator=True,
-                page=1,
-                page_size=limit,
-                status="unread",
-                source=source,
-                tag=tag,
-                sort="recent",
-            )
+async def _tool_create_direct_pass(arguments: dict[str, Any]) -> dict[str, Any]:
+    source = str(arguments.get("source", "")).strip()
+    source_id = str(arguments.get("source_id", "")).strip()
+    page_index = max(1, int(arguments.get("page_index", 1)))
+    ttl_seconds = max(60, min(int(arguments.get("ttl_seconds", 7200)), 86400 * 7))
 
-            results = []
-            for item in items:
-                authors = json.loads(item["authors_json"]) if item.get("authors_json") else []
-                tags_list = json.loads(item["tags_json"]) if item.get("tags_json") else []
-                results.append({
-                    "source": item["source"],
-                    "source_id": item["source_id"],
-                    "title": item["title"],
-                    "authors": authors,
-                    "tags": tags_list,
-                    "page_count": item["page_count"],
-                    "detail_url": f"/comic/{item['source']}/{item['source_id']}",
-                })
+    if not source or not source_id:
+        raise ValueError("source 与 source_id 不能为空")
 
-            return {
-                "content": [
-                    {
-                        "type": "text",
-                        "text": json.dumps({
-                            "total_unread": total,
-                            "recommendations": results,
-                        }, ensure_ascii=False, indent=2),
-                    }
-                ],
-                "isError": False,
+    meta = store.load_meta(source, source_id)
+    if not meta:
+        return {
+            "content": [{"type": "text", "text": f"作品不存在: {source}/{source_id}"}],
+            "isError": True,
+        }
+
+    res = create_direct_pass(
+        source=source,
+        source_id=source_id,
+        page_index=page_index,
+        ttl_seconds=ttl_seconds,
+    )
+    safe_src = quote(source, safe="")
+    safe_sid = quote(source_id, safe="")
+    direct_url = f"/comic/{safe_src}/{safe_sid}/read/{page_index}?temp_token={res['token']}"
+
+    return {
+        "content": [
+            {
+                "type": "text",
+                "text": json.dumps({
+                    "token": res["token"],
+                    "source": source,
+                    "source_id": source_id,
+                    "title": meta.title,
+                    "page_index": page_index,
+                    "direct_url": direct_url,
+                    "expires_at": res["expires_at"],
+                    "expires_in_seconds": res["expires_in"],
+                    "expires_in_hours": round(res["expires_in"] / 3600, 1),
+                }, ensure_ascii=False, indent=2),
             }
+        ],
+        "isError": False,
+    }
 
-        elif name == "create_direct_pass":
-            source = str(arguments.get("source", "")).strip()
-            source_id = str(arguments.get("source_id", "")).strip()
-            page_index = max(1, int(arguments.get("page_index", 1)))
-            ttl_seconds = max(60, min(int(arguments.get("ttl_seconds", 7200)), 86400 * 7))
 
-            if not source or not source_id:
-                raise ValueError("source 与 source_id 不能为空")
+async def _tool_get_shelf_stats(arguments: dict[str, Any]) -> dict[str, Any]:
+    facets = get_library_facets(is_curator=True)
+    stats = facets.get("stats", {})
+    im_status = check_imsearch_status()
 
-            meta = store.load_meta(source, source_id)
-            if not meta:
-                return {
-                    "content": [{"type": "text", "text": f"作品不存在: {source}/{source_id}"}],
-                    "isError": True,
-                }
+    payload = {
+        "total_books": stats.get("total_books", 0),
+        "total_pages": stats.get("total_pages", 0),
+        "cached_pages": stats.get("cached_pages", 0),
+        "visual_search_available": im_status.get("available", False),
+        "top_tags": facets.get("top_tags", []),
+    }
 
-            res = create_direct_pass(
-                source=source,
-                source_id=source_id,
-                page_index=page_index,
-                ttl_seconds=ttl_seconds,
-            )
-            direct_url = f"/comic/{source}/{source_id}/read/{page_index}?temp_token={res['token']}"
-
-            return {
-                "content": [
-                    {
-                        "type": "text",
-                        "text": json.dumps({
-                            "token": res["token"],
-                            "source": source,
-                            "source_id": source_id,
-                            "title": meta.title,
-                            "page_index": page_index,
-                            "direct_url": direct_url,
-                            "expires_at": res["expires_at"],
-                            "expires_in_seconds": res["expires_in"],
-                            "expires_in_hours": round(res["expires_in"] / 3600, 1),
-                        }, ensure_ascii=False, indent=2),
-                    }
-                ],
-                "isError": False,
+    return {
+        "content": [
+            {
+                "type": "text",
+                "text": json.dumps(payload, ensure_ascii=False, indent=2),
             }
+        ],
+        "isError": False,
+    }
 
-        elif name == "get_shelf_stats":
-            facets = get_library_facets(is_curator=True)
-            stats = facets.get("stats", {})
-            im_status = check_imsearch_status()
 
-            payload = {
-                "total_books": stats.get("total_books", 0),
-                "total_pages": stats.get("total_pages", 0),
-                "cached_pages": stats.get("cached_pages", 0),
-                "visual_search_available": im_status.get("available", False),
-                "top_tags": facets.get("top_tags", []),
-            }
+TOOL_HANDLERS: dict[str, Callable[[dict[str, Any]], Awaitable[dict[str, Any]]]] = {
+    "search_by_image": _tool_search_by_image,
+    "search_by_dialogue": _tool_search_by_dialogue,
+    "query_shelf": _tool_query_shelf,
+    "get_comic_detail": _tool_get_comic_detail,
+    "recommend_unread": _tool_recommend_unread,
+    "create_direct_pass": _tool_create_direct_pass,
+    "get_shelf_stats": _tool_get_shelf_stats,
+}
 
-            return {
-                "content": [
-                    {
-                        "type": "text",
-                        "text": json.dumps(payload, ensure_ascii=False, indent=2),
-                    }
-                ],
-                "isError": False,
-            }
 
-        else:
-            return {
-                "content": [{"type": "text", "text": f"未知的 MCP 工具: {name}"}],
-                "isError": True,
-            }
-
+async def execute_tool(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
+    """Executes an MCP tool via registry dispatch and returns a standard JSON-RPC Tool Result."""
+    handler = TOOL_HANDLERS.get(name)
+    if not handler:
+        return {
+            "content": [{"type": "text", "text": f"未知的 MCP 工具: {name}"}],
+            "isError": True,
+        }
+    try:
+        return await handler(arguments)
     except Exception as exc:
         logger.warning("MCP tool execution error for '%s': %s", name, exc)
         return {
@@ -602,68 +625,90 @@ async def execute_tool(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
 
 
 # ----------------------------------------------------------------------
-# Resource Content Provider
+# Resource Content Provider Registry
 # ----------------------------------------------------------------------
+async def _read_shelf_stats() -> dict[str, Any]:
+    facets = get_library_facets(is_curator=True)
+    return {
+        "contents": [
+            {
+                "uri": "shelf://stats",
+                "mimeType": "application/json",
+                "text": json.dumps(facets, ensure_ascii=False, indent=2),
+            }
+        ]
+    }
+
+
+async def _read_shelf_providers() -> dict[str, Any]:
+    return {
+        "contents": [
+            {
+                "uri": "shelf://providers",
+                "mimeType": "application/json",
+                "text": json.dumps(provider_list(), ensure_ascii=False, indent=2),
+            }
+        ]
+    }
+
+
+async def _read_shelf_recent() -> dict[str, Any]:
+    items, _ = query_library_index(
+        user_id="curator",
+        is_curator=True,
+        page=1,
+        page_size=20,
+        sort="recent",
+    )
+    recent_list = [
+        {
+            "source": item["source"],
+            "source_id": item["source_id"],
+            "title": item["title"],
+            "authors": json.loads(item["authors_json"]) if item.get("authors_json") else [],
+            "tags": json.loads(item["tags_json"]) if item.get("tags_json") else [],
+            "page_count": item["page_count"],
+        }
+        for item in items
+    ]
+    return {
+        "contents": [
+            {
+                "uri": "shelf://recent",
+                "mimeType": "application/json",
+                "text": json.dumps(recent_list, ensure_ascii=False, indent=2),
+            }
+        ]
+    }
+
+
+RESOURCE_HANDLERS: dict[str, Callable[[], Awaitable[dict[str, Any]]]] = {
+    "shelf://stats": _read_shelf_stats,
+    "shelf://providers": _read_shelf_providers,
+    "shelf://recent": _read_shelf_recent,
+}
+
+
 async def read_resource(uri: str) -> dict[str, Any]:
     """Reads the contents of an MCP resource by URI."""
-    if uri == "shelf://stats":
-        facets = get_library_facets(is_curator=True)
-        return {
-            "contents": [
-                {
-                    "uri": uri,
-                    "mimeType": "application/json",
-                    "text": json.dumps(facets, ensure_ascii=False, indent=2),
-                }
-            ]
-        }
-    elif uri == "shelf://providers":
-        return {
-            "contents": [
-                {
-                    "uri": uri,
-                    "mimeType": "application/json",
-                    "text": json.dumps(provider_list(), ensure_ascii=False, indent=2),
-                }
-            ]
-        }
-    elif uri == "shelf://recent":
-        items, _ = query_library_index(
-            user_id="curator",
-            is_curator=True,
-            page=1,
-            page_size=20,
-            sort="recent",
-        )
-        recent_list = [
-            {
-                "source": item["source"],
-                "source_id": item["source_id"],
-                "title": item["title"],
-                "authors": json.loads(item["authors_json"]) if item.get("authors_json") else [],
-                "tags": json.loads(item["tags_json"]) if item.get("tags_json") else [],
-                "page_count": item["page_count"],
-            }
-            for item in items
-        ]
-        return {
-            "contents": [
-                {
-                    "uri": uri,
-                    "mimeType": "application/json",
-                    "text": json.dumps(recent_list, ensure_ascii=False, indent=2),
-                }
-            ]
-        }
-    else:
+    handler = RESOURCE_HANDLERS.get(uri)
+    if not handler:
         raise ValueError(f"Resource not found: {uri}")
+    return await handler()
 
 
 # ----------------------------------------------------------------------
 # JSON-RPC 2.0 Request Processor
 # ----------------------------------------------------------------------
-async def process_jsonrpc_request(req_data: dict[str, Any]) -> dict[str, Any] | None:
-    """Processes an incoming JSON-RPC 2.0 request or notification and returns a JSON-RPC response."""
+async def _process_single_jsonrpc_request(req_data: Any) -> dict[str, Any] | None:
+    """Processes an individual JSON-RPC 2.0 request or notification and returns a response."""
+    if not isinstance(req_data, dict):
+        return {
+            "jsonrpc": "2.0",
+            "id": None,
+            "error": {"code": -32600, "message": "Invalid Request: expected JSON object"},
+        }
+
     msg_id = req_data.get("id")
     method = req_data.get("method")
     params = req_data.get("params", {}) or {}
@@ -799,12 +844,31 @@ async def process_jsonrpc_request(req_data: dict[str, Any]) -> dict[str, Any] | 
         }
 
 
+async def process_jsonrpc_request(req_data: Any) -> Any:
+    """Processes an incoming JSON-RPC 2.0 request, batch array, or notification."""
+    if isinstance(req_data, list):
+        if not req_data:
+            return {
+                "jsonrpc": "2.0",
+                "id": None,
+                "error": {"code": -32600, "message": "Invalid Request: empty batch"},
+            }
+        results = []
+        for single_req in req_data:
+            res = await _process_single_jsonrpc_request(single_req)
+            if res is not None:
+                results.append(res)
+        return results if results else None
+
+    return await _process_single_jsonrpc_request(req_data)
+
+
 def _require_mcp_auth(request: Request) -> None:
-    """Enforces curator-level authentication on HTTP/SSE MCP endpoints when AUTH_SECRET is configured."""
-    if not is_curator(request):
+    """Enforces curator-level or machine authentication on HTTP/SSE MCP endpoints."""
+    if not (is_curator(request) or is_machine(request)):
         raise HTTPException(
             status_code=401,
-            detail="未授权访问：MCP 接口需要馆长有效口令 (Curator Token Required)",
+            detail="未授权访问：MCP 接口需要馆长有效口令或机器密钥 (Curator or Machine Token Required)",
             headers={"WWW-Authenticate": "Bearer"},
         )
 
@@ -823,13 +887,19 @@ async def mcp_sse_endpoint(request: Request) -> StreamingResponse:
     3. Streams JSON-RPC 2.0 messages from the session queue to the client.
     """
     _require_mcp_auth(request)
-    session_id = secrets.token_hex(16)
-    queue: asyncio.Queue[str | None] = asyncio.Queue(maxsize=100)
-
     async with _sessions_lock:
+        if len(_mcp_sessions) >= _MAX_MCP_SESSIONS:
+            raise HTTPException(
+                status_code=429,
+                detail=f"MCP 并发会话数超限（最大支持 {_MAX_MCP_SESSIONS} 个并发会话）",
+            )
+        session_id = secrets.token_hex(16)
+        queue: asyncio.Queue[str | None] = asyncio.Queue(maxsize=100)
         _mcp_sessions[session_id] = queue
 
-    message_endpoint_url = f"/api/mcp/messages?session_id={session_id}"
+    token_param = request.query_params.get("token") or request.query_params.get("temp_token")
+    token_suffix = f"&token={quote(token_param, safe='')}" if token_param else ""
+    message_endpoint_url = f"/api/mcp/messages?session_id={session_id}{token_suffix}"
 
     async def sse_stream() -> AsyncGenerator[str, None]:
         try:

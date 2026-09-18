@@ -83,12 +83,12 @@ class _TokenBucket:
         return False
 
 
-_guest_rate_buckets: dict[int, _TokenBucket] = {}
-_guest_rate_limited_until: dict[int, float] = {}  # pass_id -> timestamp
+_guest_rate_buckets: dict[int | str, _TokenBucket] = {}
+_guest_rate_limited_until: dict[int | str, float] = {}  # pass_key -> timestamp
 _rate_mutex = threading.RLock()
 
 
-def check_guest_rate_limit(pass_id: int) -> bool:
+def check_guest_rate_limit(pass_id: int | str) -> bool:
     """Returns True if allowed, False if rate limited."""
     now = time.time()
     with _rate_mutex:
@@ -103,7 +103,7 @@ def check_guest_rate_limit(pass_id: int) -> bool:
         return allowed
 
 
-def is_pass_rate_limited(pass_id: int) -> bool:
+def is_pass_rate_limited(pass_id: int | str) -> bool:
     now = time.time()
     with _rate_mutex:
         limited_until = _guest_rate_limited_until.get(pass_id, 0.0)
@@ -114,7 +114,7 @@ def is_pass_rate_limited(pass_id: int) -> bool:
         return False
 
 
-def clear_rate_limit(pass_id: int) -> None:
+def clear_rate_limit(pass_id: int | str) -> None:
     with _rate_mutex:
         _guest_rate_buckets.pop(pass_id, None)
         _guest_rate_limited_until.pop(pass_id, None)

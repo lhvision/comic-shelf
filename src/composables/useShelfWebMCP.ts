@@ -344,14 +344,24 @@ export function useShelfWebMCP(options: UseShelfWebMCPOptions) {
         throw new Error('参数 "image_base64" 为必填项。')
       }
 
-      const commaIdx = image_base64.indexOf(',')
-      const rawBase64 = commaIdx >= 0 ? image_base64.slice(commaIdx + 1) : image_base64
-      const byteCharacters = atob(rawBase64.trim())
-      const byteNumbers = new Uint8Array(byteCharacters.length)
-      for (let i = 0; i < byteCharacters.length; i++) {
-        byteNumbers[i] = byteCharacters.charCodeAt(i)
+      let file: File
+      try {
+        const dataUri = image_base64.startsWith('data:')
+          ? image_base64
+          : `data:image/jpeg;base64,${image_base64.trim()}`
+        const res = await fetch(dataUri)
+        const blob = await res.blob()
+        file = new File([blob], 'search.jpg', { type: blob.type || 'image/jpeg' })
+      } catch {
+        const commaIdx = image_base64.indexOf(',')
+        const rawBase64 = commaIdx >= 0 ? image_base64.slice(commaIdx + 1) : image_base64
+        const byteCharacters = atob(rawBase64.trim())
+        const byteNumbers = new Uint8Array(byteCharacters.length)
+        for (let i = 0; i < byteCharacters.length; i++) {
+          byteNumbers[i] = byteCharacters.charCodeAt(i)
+        }
+        file = new File([byteNumbers], 'search.jpg', { type: 'image/jpeg' })
       }
-      const file = new File([byteNumbers], 'search.jpg', { type: 'image/jpeg' })
 
       const results = await api.imageSearch(file)
       return {

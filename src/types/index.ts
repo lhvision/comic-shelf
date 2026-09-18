@@ -418,3 +418,20 @@ export interface DialogueSearchResponse {
   results: DialogueSearchItem[]
   total: number
 }
+
+export interface DirectPassPayload {
+  source: string
+  source_id: string
+  page_index?: number
+  ttl_seconds?: number
+}
+
+export interface DirectPassResponse {
+  token: string
+  source: string
+  source_id: string
+  page_index: number
+  expires_at: number
+  expires_in: number
+  direct_url: string
+}

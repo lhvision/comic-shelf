@@ -5,8 +5,7 @@ import asyncio
 import secrets
 from fastapi import APIRouter, File, HTTPException, Query, Request, UploadFile
 
-from ..auth import can_read, is_curator, require_curator
-from ..config import MACHINE_TOKEN
+from ..auth import can_read, is_curator, is_machine, require_curator
 from ..db import search_dialogues, sync_comic_dialogues
 from ..imsearch import check_imsearch_status, search_imsearch
 from ..models import (
@@ -70,16 +69,8 @@ def sync_ocr_endpoint(
 ) -> OcrSyncResponse:
     """增量同步漫画伴生 OCR 识别台词至 SQLite FTS5 全文索引。支持馆长口令或外部流水线专用 Machine Token。"""
     _require_known_source(source)
-    if not is_curator(request):
-        x_machine = request.headers.get("x-machine-token", "").strip()
-        bearer = request.headers.get("authorization", "").strip()
-        cand = (
-            x_machine
-            or (bearer[7:].strip() if bearer.lower().startswith("bearer ") else "")
-            or request.query_params.get("token", "").strip()
-        )
-        if not (MACHINE_TOKEN and cand and secrets.compare_digest(cand, MACHINE_TOKEN)):
-            require_curator(request)
+    if not (is_curator(request) or is_machine(request)):
+        require_curator(request)
 
     count = sync_comic_dialogues(source, source_id)
     return OcrSyncResponse(ok=True, count=count)
