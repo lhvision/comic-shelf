@@ -14,6 +14,7 @@
 import { useWebMCP } from '@vueuse/core'
 import type { Router } from 'vue-router'
 import { api } from '@/api/client'
+import { useAuth } from '@/composables/useAuth'
 import { useShelfState } from '@/composables/useShelfState'
 import { useLibraryStore } from '@/stores/library'
 import type { ReadingStatus, SortKey } from '@/types'
@@ -33,12 +34,13 @@ export function useShelfWebMCP(options: UseShelfWebMCPOptions) {
   const { router } = options
   const shelfState = useShelfState()
   const store = useLibraryStore()
+  const { canWrite } = useAuth()
 
   // 工具 1: 书架多维淘书与全字段检索
   const searchComicsTool = useWebMCP({
     name: 'shelf_search_comics',
     description:
-      '多维检索与过滤书架中的漫画藏书。支持按标题/作者关键词、分类标签、排序规则、红心收藏标记以及阅读进度综合筛选',
+      '多维检索与过滤书架中的漫画藏书。支持按标题/作者关键词、单标签/多标签组合、排序规则、红心收藏标记以及阅读进度综合筛选',
     inputSchema: {
       type: 'object',
       properties: {
@@ -48,7 +50,12 @@ export function useShelfWebMCP(options: UseShelfWebMCPOptions) {
         },
         tag: {
           type: 'string',
-          description: '分类题材标签（例如 "同人", "恋爱", "动作"）',
+          description: '单个分类题材标签（例如 "同人", "恋爱", "动作"）',
+        },
+        tags: {
+          type: 'array',
+          items: { type: 'string' },
+          description: '多标签复合筛选列表（多标签取交集 AND 筛选）',
         },
         sortBy: {
           type: 'string',
@@ -66,21 +73,33 @@ export function useShelfWebMCP(options: UseShelfWebMCPOptions) {
           description:
             '按阅读进度筛选：all(全部藏书), reading(在读中), completed(已读完归档), unread(未读新入)',
         },
+        reset: {
+          type: 'boolean',
+          description: '在应用新条件前是否先清空重置当前已有筛选过滤条件（默认 false）',
+        },
       },
     },
     async execute(args) {
-      const { keyword, tag, sortBy, favoritesOnly, readingStatus } = (args ?? {}) as {
+      const { keyword, tag, tags, sortBy, favoritesOnly, readingStatus, reset } = (args ?? {}) as {
         keyword?: string
         tag?: string
+        tags?: string[]
         sortBy?: SortKey
         favoritesOnly?: boolean
         readingStatus?: ReadingStatus
+        reset?: boolean
+      }
+
+      if (reset) {
+        shelfState.resetShelfFilters()
       }
 
       if (typeof keyword === 'string') {
         shelfState.search.value = keyword.trim()
       }
-      if (typeof tag === 'string') {
+      if (Array.isArray(tags)) {
+        shelfState.activeTags.value = tags.map((t) => String(t).trim()).filter(Boolean)
+      } else if (typeof tag === 'string') {
         if (tag.trim() === '') {
           shelfState.activeTags.value = []
         } else {
@@ -174,30 +193,64 @@ export function useShelfWebMCP(options: UseShelfWebMCPOptions) {
   const pickRandomTool = useWebMCP({
     name: 'shelf_pick_random',
     description:
-      '从当前书架藏书中随机淘选一本漫画，并直接导航进入其详情页（适合漫无目的时随手翻一本）',
+      '从当前书架藏书中随机淘选一本漫画。支持限定已收藏或特定图源，并可选择直达详情页或直接进入阅读器',
     inputSchema: {
       type: 'object',
-      properties: {},
+      properties: {
+        favoritesOnly: {
+          type: 'boolean',
+          description: '是否仅在红心收藏的漫画中随机抽选（默认 false）',
+        },
+        source: {
+          type: 'string',
+          enum: ['jm', 'picacg', 'local'],
+          description: '可选限定图源平台（如 "jm" | "picacg" | "local"）',
+        },
+        openReader: {
+          type: 'boolean',
+          description:
+            '是否直接打开阅读器开始阅读（true 直达阅读器，false 直达详情页，默认 false）',
+        },
+      },
     },
-    async execute() {
-      const items = store.items
-      if (!items || items.length === 0) {
-        throw new Error('当前书架为空，无可淘选的漫画。')
+    async execute(args) {
+      const { favoritesOnly, source, openReader } = (args ?? {}) as {
+        favoritesOnly?: boolean
+        source?: string
+        openReader?: boolean
       }
-      const randomIndex = Math.floor(Math.random() * items.length)
-      const picked = items[randomIndex]
+
+      let candidates = store.items || []
+      if (favoritesOnly) {
+        candidates = candidates.filter((item) => item.favorite)
+      }
+      if (source) {
+        candidates = candidates.filter((item) => item.source === source)
+      }
+
+      if (candidates.length === 0) {
+        throw new Error('未找到符合条件的候选漫画。')
+      }
+      const randomIndex = Math.floor(Math.random() * candidates.length)
+      const picked = candidates[randomIndex]
       if (!picked) {
         throw new Error('随机抽选漫画失败。')
       }
 
-      await router.push({
-        name: 'comic-detail',
-        params: { source: picked.source, sourceId: picked.source_id },
-      })
+      if (openReader) {
+        await router.push({
+          path: `/comic/${encodeURIComponent(picked.source)}/${encodeURIComponent(picked.source_id)}/read/1`,
+        })
+      } else {
+        await router.push({
+          name: 'comic-detail',
+          params: { source: picked.source, sourceId: picked.source_id },
+        })
+      }
 
       return {
         success: true,
-        message: `已随机淘选漫画《${picked.title}》(${picked.source}/${picked.source_id}) 并进入详情页`,
+        message: `已随机淘选漫画《${picked.title}》（${picked.source}/${picked.source_id}）并${openReader ? '进入阅读器' : '进入详情页'}`,
         comic: {
           source: picked.source,
           source_id: picked.source_id,
@@ -211,7 +264,7 @@ export function useShelfWebMCP(options: UseShelfWebMCPOptions) {
   // 工具 4: 打开指定藏书详情
   const openComicTool = useWebMCP({
     name: 'shelf_open_comic',
-    description: '通过图源 Provider 和漫画车号 ID 直达打开指定漫画的详情页',
+    description: '通过图源 Provider 和漫画车号 ID 直达打开指定漫画的详情页或章节子路由页',
     inputSchema: {
       type: 'object',
       properties: {
@@ -223,26 +276,35 @@ export function useShelfWebMCP(options: UseShelfWebMCPOptions) {
           type: 'string',
           description: '漫画唯一车号或作品 ID',
         },
+        chapter_id: {
+          type: 'string',
+          description: '可选直达的章节 ID（例如 "c1", "c2"）',
+        },
       },
       required: ['source', 'source_id'],
     },
     async execute(args) {
-      const { source, source_id } = (args ?? {}) as {
+      const { source, source_id, chapter_id } = (args ?? {}) as {
         source?: string
         source_id?: string
+        chapter_id?: string
       }
       if (!source || !source_id) {
         throw new Error('参数 "source" 与 "source_id" 均为必填项。')
       }
 
-      await router.push({
-        name: 'comic-detail',
-        params: { source, sourceId: source_id },
-      })
+      if (chapter_id) {
+        await router.push(`/comic/${source}/${source_id}/chapter/${chapter_id}`)
+      } else {
+        await router.push({
+          name: 'comic-detail',
+          params: { source, sourceId: source_id },
+        })
+      }
 
       return {
         success: true,
-        message: `已导航直达漫画 ${source}/${source_id} 详情页`,
+        message: `已导航直达漫画 ${source}/${source_id}${chapter_id ? ` 章节 ${chapter_id}` : ''} 页面`,
       }
     },
   })
@@ -267,6 +329,14 @@ export function useShelfWebMCP(options: UseShelfWebMCPOptions) {
           type: 'number',
           description: '目标画页的 1-based 全局页码（默认第 1 页）',
         },
+        fromBeginning: {
+          type: 'boolean',
+          description: '是否强制从第 1 页开始（忽略上次历史进度）',
+        },
+        chapter_id: {
+          type: 'string',
+          description: '可选指定章节 ID',
+        },
         bubble_box: {
           type: 'array',
           items: { type: 'number' },
@@ -280,24 +350,25 @@ export function useShelfWebMCP(options: UseShelfWebMCPOptions) {
       required: ['source', 'source_id'],
     },
     async execute(args) {
-      const {
-        source,
-        source_id,
-        page = 1,
-        bubble_box,
-        bubble_text,
-      } = (args ?? {}) as {
-        source?: string
-        source_id?: string
-        page?: number
-        bubble_box?: number[]
-        bubble_text?: string
-      }
+      const { source, source_id, page, fromBeginning, chapter_id, bubble_box, bubble_text } =
+        (args ?? {}) as {
+          source?: string
+          source_id?: string
+          page?: number
+          fromBeginning?: boolean
+          chapter_id?: string
+          bubble_box?: number[]
+          bubble_text?: string
+        }
       if (!source || !source_id) {
         throw new Error('参数 "source" 与 "source_id" 均为必填项。')
       }
 
-      const queryObj: Record<string, string> = {}
+      const targetPage = typeof page === 'number' && page >= 1 ? page : fromBeginning ? 1 : 1
+      const queryObj: Record<string, string> = { page: String(targetPage) }
+      if (chapter_id) {
+        queryObj.chapter = chapter_id
+      }
       if (Array.isArray(bubble_box) && bubble_box.length === 4) {
         queryObj.bubble_box = bubble_box.map((v) => Number(v).toFixed(4)).join(',')
       }
@@ -309,16 +380,16 @@ export function useShelfWebMCP(options: UseShelfWebMCPOptions) {
       }
 
       await router.push({
-        path: `/comic/${encodeURIComponent(source)}/${encodeURIComponent(source_id)}/read/${page}`,
+        path: `/comic/${encodeURIComponent(source)}/${encodeURIComponent(source_id)}/read/${targetPage}`,
         query: queryObj,
       })
 
       return {
         success: true,
-        message: `已直达漫画 ${source}/${source_id} 第 ${page} 页阅读器${bubble_text ? ` 并高亮气泡：“${bubble_text}”` : ''}`,
+        message: `已直达漫画 ${source}/${source_id} 第 ${targetPage} 页阅读器${bubble_text ? ` 并高亮气泡：“${bubble_text}”` : ''}`,
         source,
         source_id,
-        page,
+        page: targetPage,
       }
     },
   })
@@ -379,52 +450,185 @@ export function useShelfWebMCP(options: UseShelfWebMCPOptions) {
     },
   })
 
-  // 工具 7: 收录/导入新漫画至本地书库
-  const importComicTool = useWebMCP({
-    name: 'shelf_import_comic',
-    description:
-      '通过图源 Provider 和漫画车号/作品 ID 将远端漫画收录导入至本地书库（会自动触发元数据解析与后台首批预缓存）',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        source: {
-          type: 'string',
-          description: '漫画图源 Provider（例如 "jm", "picacg", "local"）',
+  // 工具 7: 收录/导入新漫画至本地书库（仅馆长权限注册）
+  const importComicTool = canWrite.value
+    ? useWebMCP({
+        name: 'shelf_import_comic',
+        description:
+          '将漫画收录导入至本地书库。支持禁漫车号、哔咔画卷 ID/分享链接、以及服务器本地目录/PDF 导入；支持自动推断图源、后台离线全本预缓存、初始标签设定与收藏联动',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            id: {
+              type: 'string',
+              description:
+                '漫画车号或标识符（例如禁漫 "523607" 或 "JM523607"、哔咔 24 位 ID 或分享链接、服务器本地目录 "public/tiya-frames"）',
+            },
+            source_id: {
+              type: 'string',
+              description: '与 id 等效的漫画唯一作品标识符（若传入则优先使用）',
+            },
+            source: {
+              type: 'string',
+              enum: ['jm', 'picacg', 'local'],
+              description: '可选的图源 Provider。若省略，系统将根据输入字符串格式自动智能推断',
+            },
+            local_path: {
+              type: 'string',
+              description: '若导入服务器本地已有文件夹或 PDF 文件，可显式传入本地路径',
+            },
+            prefetch_all: {
+              type: 'boolean',
+              description: '收录后是否立即在后台启动全本离线预缓存任务（默认 false）',
+            },
+            prefetch_covers: {
+              type: 'number',
+              description: '首次收录时即时预热的封面张数（默认 4）',
+            },
+            favorite: {
+              type: 'boolean',
+              description: '收录成功后是否自动加入红心喜欢（默认 false）',
+            },
+            tags: {
+              type: 'array',
+              items: { type: 'string' },
+              description: '可选为收录漫画追加的初始自定义分类标签列表',
+            },
+            open_after: {
+              type: 'boolean',
+              description: '收录成功后是否自动导航跳转至该漫画的详情页（默认 false）',
+            },
+          },
         },
-        source_id: {
-          type: 'string',
-          description: '漫画车号或唯一作品 ID（例如 "523607"）',
-        },
-      },
-      required: ['source', 'source_id'],
-    },
-    async execute(args) {
-      const { source, source_id } = (args ?? {}) as {
-        source?: string
-        source_id?: string
-      }
-      if (!source || !source_id) {
-        throw new Error('参数 "source" 与 "source_id" 均为必填项。')
-      }
+        async execute(args) {
+          const {
+            id,
+            source_id,
+            source: rawSource,
+            local_path,
+            prefetch_all = false,
+            prefetch_covers = 4,
+            favorite = false,
+            tags = [],
+            open_after = false,
+          } = (args ?? {}) as {
+            id?: string
+            source_id?: string
+            source?: 'jm' | 'picacg' | 'local'
+            local_path?: string
+            prefetch_all?: boolean
+            prefetch_covers?: number
+            favorite?: boolean
+            tags?: string[]
+            open_after?: boolean
+          }
 
-      const result = await store.importComic({
-        id: source_id,
-        source,
+          const inputVal = (source_id || id || local_path || '').trim()
+          if (!inputVal) {
+            throw new Error('请提供漫画车号、作品 ID 或本地路径（id / source_id / local_path）。')
+          }
+
+          // 智能识别图源 Provider
+          let finalSource: 'jm' | 'picacg' | 'local' = rawSource || 'jm'
+          let finalId = inputVal
+
+          if (!rawSource) {
+            if (
+              local_path ||
+              inputVal.startsWith('/') ||
+              inputVal.startsWith('./') ||
+              inputVal.startsWith('public/')
+            ) {
+              finalSource = 'local'
+            } else if (
+              inputVal.includes('picacomic') ||
+              inputVal.includes('picawang') ||
+              /^[0-9a-fA-F]{24}$/.test(inputVal)
+            ) {
+              finalSource = 'picacg'
+              // 提取 24 位 hex ID
+              const hexMatch = inputVal.match(/[0-9a-fA-F]{24}/)
+              if (hexMatch) {
+                finalId = hexMatch[0]
+              }
+            } else {
+              finalSource = 'jm'
+            }
+          }
+
+          let importedSource: string = finalSource
+          let importedSourceId = finalId
+          let importedTitle = finalId
+          let pageCount = 0
+          let fromCache = false
+
+          if (finalSource === 'local') {
+            const res = await api.importLocalPath({ path: finalId })
+            await store.load()
+            importedSource = res.meta.source
+            importedSourceId = res.meta.source_id
+            importedTitle = res.meta.title
+            pageCount = res.meta.page_count
+            fromCache = false
+          } else {
+            const result = await store.importComic({
+              id: finalId,
+              source: finalSource,
+              prefetch_covers: typeof prefetch_covers === 'number' ? prefetch_covers : 4,
+              prefetch_all: Boolean(prefetch_all),
+            })
+            importedSource = result.meta.source
+            importedSourceId = result.meta.source_id
+            importedTitle = result.meta.title
+            pageCount = result.meta.page_count
+            fromCache = result.from_cache
+          }
+
+          // 后续动作 1: 标记喜欢
+          if (favorite) {
+            try {
+              await api.setFavorite(importedSource, importedSourceId, true)
+              store.setFavoriteLocal(importedSource, importedSourceId, true)
+            } catch {
+              // 忽略非关键错误
+            }
+          }
+
+          // 后续动作 2: 追加自定义标签
+          if (Array.isArray(tags) && tags.length > 0) {
+            try {
+              const detailRes = await api.detail(importedSource, importedSourceId)
+              const mergedTags = Array.from(new Set([...(detailRes.meta.tags || []), ...tags]))
+              await api.updateMetadata(importedSource, importedSourceId, { tags: mergedTags })
+              await store.load()
+            } catch {
+              // 忽略非关键错误
+            }
+          }
+
+          // 后续动作 3: 自动跳转详情页
+          if (open_after) {
+            await router.push({
+              name: 'comic-detail',
+              params: { source: importedSource, sourceId: importedSourceId },
+            })
+          }
+
+          return {
+            success: true,
+            message: `已成功收录漫画《${importedTitle}》（${importedSource}/${importedSourceId}，共 ${pageCount} 页）`,
+            comic: {
+              source: importedSource,
+              source_id: importedSourceId,
+              title: importedTitle,
+              page_count: pageCount,
+              from_cache: fromCache,
+              favorite: Boolean(favorite),
+            },
+          }
+        },
       })
-
-      return {
-        success: true,
-        message: `已成功收录漫画《${result.meta.title}》（车号：${result.meta.display_id || result.meta.source_id}）`,
-        comic: {
-          source: result.meta.source,
-          source_id: result.meta.source_id,
-          title: result.meta.title,
-          page_count: result.meta.page_count,
-          from_cache: result.from_cache,
-        },
-      }
-    },
-  })
+    : undefined
 
   return {
     isSupported: searchComicsTool.isSupported,

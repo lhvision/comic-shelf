@@ -12,6 +12,7 @@ import {
 import { useReaderWebMCP } from '@/composables/useReaderWebMCP'
 import { useShelfWebMCP } from '@/composables/useShelfWebMCP'
 import { useComicDetailWebMCP } from '@/composables/useComicDetailWebMCP'
+import { useDiscoveryWebMCP } from '@/composables/useDiscoveryWebMCP'
 import { useShelfState } from '@/composables/useShelfState'
 import { useLibraryStore, createPlaceholderDetail } from '@/stores/library'
 import { createPinia, setActivePinia } from 'pinia'
@@ -144,19 +145,20 @@ describe('WebMCP Composables', () => {
           }),
         )
 
-        // Turn next & prev
+        // Turn next & prev with step count
         const turnExecute = registeredTools['reader_turn_page']
         expect(turnExecute).toBeDefined()
-        await turnExecute!({ direction: 'next' })
-        expect(nextGroupMock).toHaveBeenCalled()
-        await turnExecute!({ direction: 'prev' })
-        expect(prevGroupMock).toHaveBeenCalled()
+        await turnExecute!({ direction: 'next', count: 3 })
+        expect(nextGroupMock).toHaveBeenCalledTimes(3)
+        await turnExecute!({ direction: 'prev', count: 2 })
+        expect(prevGroupMock).toHaveBeenCalledTimes(2)
 
-        // Switch mode & fit
+        // Switch mode, fit & seamless
         const modeExecute = registeredTools['reader_switch_mode']
         expect(modeExecute).toBeDefined()
-        await modeExecute!({ mode: 'horizontal' })
+        await modeExecute!({ mode: 'horizontal', seamless: true })
         expect(mockSettings.mode).toBe('horizontal')
+        expect(mockSettings.seamless).toBe(true)
 
         const fitExecute = registeredTools['reader_switch_fit']
         expect(fitExecute).toBeDefined()
@@ -199,7 +201,7 @@ describe('WebMCP Composables', () => {
         // Favorite
         const favExecute = registeredTools['reader_toggle_favorite']
         expect(favExecute).toBeDefined()
-        await favExecute!({})
+        await favExecute!({ favorite: true })
         expect(toggleFavoriteMock).toHaveBeenCalled()
 
         scope.stop()
@@ -211,7 +213,7 @@ describe('WebMCP Composables', () => {
   })
 
   describe('useShelfWebMCP', () => {
-    it('handles shelf search, dialogue FTS5, random pick, and opening comics', async () => {
+    it('handles shelf search, dialogue FTS5, random pick, import, and opening comics', async () => {
       const registeredTools: Record<string, (args: unknown) => Promise<unknown>> = {}
       const registerToolMock = vi.fn<
         (toolDef: { name: string; execute: (args: unknown) => Promise<unknown> }) => void
@@ -293,10 +295,11 @@ describe('WebMCP Composables', () => {
         expect(randomExecute).toBeDefined()
         expect(openComicExecute).toBeDefined()
 
-        // 1. Test filtering
+        // 1. Test filtering with reset & multiple tags
         await filterExecute!({
+          reset: true,
           keyword: 'test query',
-          tag: 'Romance',
+          tags: ['Romance', 'Fantasy'],
           sortBy: 'pages',
           favoritesOnly: true,
           readingStatus: 'reading',
@@ -304,7 +307,7 @@ describe('WebMCP Composables', () => {
 
         const shelfState = useShelfState()
         expect(shelfState.search.value).toBe('test query')
-        expect(shelfState.activeTags.value).toEqual(['Romance'])
+        expect(shelfState.activeTags.value).toEqual(['Romance', 'Fantasy'])
         expect(shelfState.sortBy.value).toBe('pages')
         expect(shelfState.favoritesOnly.value).toBe(true)
         expect(shelfState.readingStatus.value).toBe('reading')
@@ -322,19 +325,15 @@ describe('WebMCP Composables', () => {
           }),
         )
 
-        // 3. Test pick random
-        await randomExecute!({})
+        // 3. Test pick random and enter reader
+        await randomExecute!({ openReader: true })
         expect(routerPushMock).toHaveBeenCalledWith({
-          name: 'comic-detail',
-          params: { source: 'jm', sourceId: '123456' },
+          path: '/comic/jm/123456/read/1',
         })
 
-        // 4. Test open comic
-        await openComicExecute!({ source: 'jm', source_id: '123456' })
-        expect(routerPushMock).toHaveBeenCalledWith({
-          name: 'comic-detail',
-          params: { source: 'jm', sourceId: '123456' },
-        })
+        // 4. Test open comic with chapter
+        await openComicExecute!({ source: 'jm', source_id: '123456', chapter_id: 'c2' })
+        expect(routerPushMock).toHaveBeenCalledWith('/comic/jm/123456/chapter/c2')
 
         // 5. Test read comic directly with bubble
         const readComicExecute = registeredTools['shelf_read_comic']
@@ -349,6 +348,7 @@ describe('WebMCP Composables', () => {
         expect(routerPushMock).toHaveBeenCalledWith({
           path: '/comic/jm/123456/read/5',
           query: {
+            page: '5',
             bubble_box: '0.1000,0.2000,0.3000,0.4000',
             bubble_text: 'Found dialogue',
             highlight_bubble: '1',
@@ -381,7 +381,7 @@ describe('WebMCP Composables', () => {
           }),
         )
 
-        // 7. Test import comic
+        // 7. Test import comic with auto inference, tags, favorite & open_after
         vi.spyOn(api, 'importComic').mockResolvedValue({
           from_cache: false,
           background: true,
@@ -411,13 +411,58 @@ describe('WebMCP Composables', () => {
             last_page: 0,
           }).meta,
         })
+        const mockImportDetail = createPlaceholderDetail({
+          source: 'jm',
+          source_id: '999999',
+          display_id: '999999',
+          title: 'Imported Title',
+          page_count: 20,
+          authors: [],
+          works: [],
+          actors: [],
+          tags: ['ExistingTag'],
+          favorite: false,
+          views: '0',
+          likes: '0',
+          uploaded_at: '',
+          published_at: '',
+          updated_at: '',
+          imported_at: '',
+          cover_paths: [],
+          cached_pages: 0,
+          cover_count: 1,
+          chapter_titles: [],
+          last_page: 0,
+        })
+        const setFavSpy = vi
+          .spyOn(api, 'setFavorite')
+          .mockResolvedValue({ ok: true, favorite: true })
+        const updateMetaSpy = vi.spyOn(api, 'updateMetadata').mockResolvedValue(mockImportDetail)
+        vi.spyOn(api, 'detail').mockResolvedValue(mockImportDetail)
+
         const importComicExecute = registeredTools['shelf_import_comic']
         expect(importComicExecute).toBeDefined()
         const importRes = await importComicExecute!({
-          source: 'jm',
-          source_id: '999999',
+          id: '999999',
+          prefetch_all: true,
+          favorite: true,
+          tags: ['NewTag'],
+          open_after: true,
         })
-        expect(api.importComic).toHaveBeenCalled()
+        expect(api.importComic).toHaveBeenCalledWith({
+          id: '999999',
+          source: 'jm',
+          prefetch_covers: 4,
+          prefetch_all: true,
+        })
+        expect(setFavSpy).toHaveBeenCalledWith('jm', '999999', true)
+        expect(updateMetaSpy).toHaveBeenCalledWith('jm', '999999', {
+          tags: ['ExistingTag', 'NewTag'],
+        })
+        expect(routerPushMock).toHaveBeenCalledWith({
+          name: 'comic-detail',
+          params: { source: 'jm', sourceId: '999999' },
+        })
         expect(importRes).toEqual(
           expect.objectContaining({
             content: expect.arrayContaining([
@@ -437,7 +482,7 @@ describe('WebMCP Composables', () => {
   })
 
   describe('useComicDetailWebMCP', () => {
-    it('handles reading start, caching, chapter switching and metadata inspection', async () => {
+    it('handles reading start, caching, chapter switching, metadata update and inspection', async () => {
       const registeredTools: Record<string, (args: unknown) => Promise<unknown>> = {}
       const registerToolMock = vi.fn<
         (toolDef: { name: string; execute: (args: unknown) => Promise<unknown> }) => void
@@ -492,6 +537,14 @@ describe('WebMCP Composables', () => {
       const cacheChapterMock = vi.fn<(id: string) => Promise<void>>().mockResolvedValue(undefined)
       const toggleFavMock = vi.fn<() => Promise<void>>().mockResolvedValue(undefined)
 
+      vi.spyOn(api, 'updateMetadata').mockResolvedValue({
+        ...mockDetail,
+        meta: {
+          ...mockDetail.meta,
+          title: 'Updated Title',
+        },
+      })
+
       try {
         const scope = effectScope()
         scope.run(() => {
@@ -517,6 +570,7 @@ describe('WebMCP Composables', () => {
         const openChapter = registeredTools['detail_open_chapter']
         const getInfo = registeredTools['detail_get_comic_info']
         const toggleFav = registeredTools['detail_toggle_favorite']
+        const updateMeta = registeredTools['detail_update_metadata']
 
         expect(startReading).toBeDefined()
         expect(cacheAll).toBeDefined()
@@ -524,6 +578,7 @@ describe('WebMCP Composables', () => {
         expect(openChapter).toBeDefined()
         expect(getInfo).toBeDefined()
         expect(toggleFav).toBeDefined()
+        expect(updateMeta).toBeDefined()
 
         // 1. Start reading from last read
         await startReading!({})
@@ -532,11 +587,11 @@ describe('WebMCP Composables', () => {
           query: { page: '15', chapter: 'c1' },
         })
 
-        // 2. Start reading from explicit page
-        await startReading!({ page: 42 })
+        // 2. Start reading from chapter_id c2
+        await startReading!({ chapter_id: 'c2' })
         expect(routerPushMock).toHaveBeenCalledWith({
-          path: '/comic/jm/523607/read/42',
-          query: { page: '42', chapter: 'c1' },
+          path: '/comic/jm/523607/read/51',
+          query: { page: '51', chapter: 'c2' },
         })
 
         // 3. Cache all
@@ -564,8 +619,21 @@ describe('WebMCP Composables', () => {
         )
 
         // 7. Toggle favorite
-        await toggleFav!({})
+        await toggleFav!({ favorite: false })
         expect(toggleFavMock).toHaveBeenCalled()
+
+        // 8. Update metadata
+        const updateRes = await updateMeta!({ title: 'Updated Title' })
+        expect(api.updateMetadata).toHaveBeenCalledWith('jm', '523607', { title: 'Updated Title' })
+        expect(updateRes).toEqual(
+          expect.objectContaining({
+            content: expect.arrayContaining([
+              expect.objectContaining({
+                text: expect.stringContaining('Updated Title'),
+              }),
+            ]),
+          }),
+        )
 
         scope.stop()
       } finally {
@@ -641,8 +709,13 @@ describe('WebMCP Composables', () => {
         expect(ingestComic).toBeDefined()
         expect(openDetail).toBeDefined()
 
-        // 1. Get ranking
-        const res = await getRanking!({ timeframe: 'month', refresh: true })
+        // 1. Get ranking with limit and category filter
+        const res = await getRanking!({
+          timeframe: 'month',
+          refresh: true,
+          limit: 5,
+          category: 'Comedy',
+        })
         expect(loadRankingMock).toHaveBeenCalledWith('month', true)
         expect(res).toEqual(
           expect.objectContaining({
@@ -658,9 +731,13 @@ describe('WebMCP Composables', () => {
         await switchTimeframe!({ timeframe: 'day' })
         expect(loadRankingMock).toHaveBeenCalledWith('day', false)
 
-        // 3. Ingest comic
-        await ingestComic!({ source_id: '888888' })
+        // 3. Ingest comic and navigate
+        await ingestComic!({ source_id: '888888', open_after: true })
         expect(ingestComicMock).toHaveBeenCalled()
+        expect(routerPushMock).toHaveBeenCalledWith({
+          name: 'comic-detail',
+          params: { source: 'jm', sourceId: '888888' },
+        })
 
         // 4. Open detail
         await openDetail!({ source: 'jm', source_id: '888888' })
@@ -671,6 +748,116 @@ describe('WebMCP Composables', () => {
 
         scope.stop()
       } finally {
+        // @ts-expect-error restore
+        window.document.modelContext = originalModelContext
+      }
+    })
+  })
+
+  describe('WebMCP Role Isolation (Guest vs Curator Gating)', () => {
+    it('does not register curator-only tools on guest sessions while keeping read tools active', async () => {
+      const registeredTools: Record<string, (args: unknown) => Promise<unknown>> = {}
+      const registerToolMock = vi.fn<
+        (toolDef: { name: string; execute: (args: unknown) => Promise<unknown> }) => void
+      >((toolDef) => {
+        registeredTools[toolDef.name] = toolDef.execute
+      })
+
+      // @ts-expect-error mock window.document
+      const originalModelContext = window.document.modelContext
+      // @ts-expect-error mock window.document
+      window.document.modelContext = {
+        registerTool: registerToolMock,
+      }
+
+      const mockRouter = {
+        push: vi.fn<() => Promise<void>>().mockResolvedValue(undefined),
+      } as unknown as Router
+
+      const { useAuth } = await import('@/composables/useAuth')
+      const auth = useAuth()
+      const prevAuthRequired = auth.authRequired.value
+      const prevRole = auth.role.value
+      const prevAuth = auth.authenticated.value
+
+      auth.authRequired.value = true
+      auth.authenticated.value = true
+      auth.role.value = 'guest'
+      expect(auth.canWrite.value).toBe(false)
+
+      try {
+        const scope = effectScope()
+        scope.run(() => {
+          // 1. Shelf
+          const shelfMcp = useShelfWebMCP({ router: mockRouter })
+          expect(shelfMcp.searchComicsTool).toBeDefined()
+          expect(shelfMcp.importComicTool).toBeUndefined()
+
+          // 2. Detail
+          const mockDetail = createPlaceholderDetail({
+            source: 'jm',
+            source_id: '123',
+            display_id: '123',
+            title: 'Guest View Comic',
+            page_count: 10,
+            authors: [],
+            works: [],
+            actors: [],
+            tags: [],
+            favorite: false,
+            views: '0',
+            likes: '0',
+            uploaded_at: '',
+            published_at: '',
+            updated_at: '',
+            imported_at: '',
+            cover_paths: [],
+            cached_pages: 0,
+            cover_count: 1,
+            chapter_titles: [],
+            last_page: 0,
+          })
+          const detailMcp = useComicDetailWebMCP({
+            source: computed(() => 'jm'),
+            sourceId: computed(() => '123'),
+            detail: shallowRef(mockDetail),
+            chapters: computed(() => []),
+            lastRead: ref(1),
+            router: mockRouter,
+          })
+          expect(detailMcp.startReadingTool).toBeDefined()
+          expect(detailMcp.cacheAllTool).toBeUndefined()
+          expect(detailMcp.cacheChapterTool).toBeUndefined()
+          expect(detailMcp.updateMetadataTool).toBeUndefined()
+
+          // 3. Discovery
+          const discoveryMcp = useDiscoveryWebMCP({
+            timeframe: ref('week'),
+            feed: shallowRef(null),
+            loadRanking: vi.fn<() => Promise<void>>().mockResolvedValue(undefined),
+            ingestComic: vi.fn<() => Promise<void>>().mockResolvedValue(undefined),
+            router: mockRouter,
+          })
+          expect(discoveryMcp.getRankingTool).toBeDefined()
+          expect(discoveryMcp.ingestComicTool).toBeUndefined()
+        })
+
+        await nextTick()
+
+        // Verify registered tool names in document.modelContext
+        expect(registeredTools['shelf_search_comics']).toBeDefined()
+        expect(registeredTools['shelf_import_comic']).toBeUndefined()
+        expect(registeredTools['detail_start_reading']).toBeDefined()
+        expect(registeredTools['detail_cache_all_pages']).toBeUndefined()
+        expect(registeredTools['detail_update_metadata']).toBeUndefined()
+        expect(registeredTools['discovery_get_ranking']).toBeDefined()
+        expect(registeredTools['discovery_ingest_comic']).toBeUndefined()
+
+        scope.stop()
+      } finally {
+        auth.authRequired.value = prevAuthRequired
+        auth.role.value = prevRole
+        auth.authenticated.value = prevAuth
         // @ts-expect-error restore
         window.document.modelContext = originalModelContext
       }

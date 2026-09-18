@@ -13,6 +13,8 @@
 import type { Ref } from 'vue'
 import { useWebMCP } from '@vueuse/core'
 import type { Router } from 'vue-router'
+import { api } from '@/api/client'
+import { useAuth } from '@/composables/useAuth'
 import type { Chapter, ComicDetail } from '@/types'
 
 /**
@@ -57,18 +59,23 @@ export function useComicDetailWebMCP(options: UseComicDetailWebMCPOptions) {
     toggleFavorite,
     activeChapterId,
   } = options
+  const { canWrite } = useAuth()
 
   // 工具 1: 启动漫画阅读
   const startReadingTool = useWebMCP({
     name: 'detail_start_reading',
     description:
-      '启动当前漫画的阅读器。支持从第 1 页开篇、从上次历史阅读进度继续、或精准直达指定页码',
+      '启动当前漫画的阅读器。支持从第 1 页开篇、从上次历史阅读进度继续、精准直达指定全局页码或跳转至指定章节开卷',
     inputSchema: {
       type: 'object',
       properties: {
         page: {
           type: 'number',
           description: '指定的全局起始页码（从 1 开始的正整数）',
+        },
+        chapter_id: {
+          type: 'string',
+          description: '可选指定跳转至特定章节的第一页开篇（如 "c1", "c2"）',
         },
         fromBeginning: {
           type: 'boolean',
@@ -77,19 +84,26 @@ export function useComicDetailWebMCP(options: UseComicDetailWebMCPOptions) {
       },
     },
     async execute(args) {
-      const { page, fromBeginning } = (args ?? {}) as {
+      const { page, chapter_id, fromBeginning } = (args ?? {}) as {
         page?: number
+        chapter_id?: string
         fromBeginning?: boolean
       }
 
       let targetPage = 1
-      if (typeof page === 'number' && page >= 1) {
+      const activeScope = chapter_id || activeChapterId?.value
+
+      if (chapter_id) {
+        const found = chapters.value.find((c) => c.id === chapter_id)
+        if (found) {
+          targetPage = typeof page === 'number' && page >= 1 ? found.start + page - 1 : found.start
+        }
+      } else if (typeof page === 'number' && page >= 1) {
         targetPage = page
       } else if (!fromBeginning && lastRead.value > 1) {
         targetPage = lastRead.value
       }
 
-      const activeScope = activeChapterId?.value
       const query: Record<string, string> = { page: String(targetPage) }
       if (activeScope) {
         query.chapter = activeScope
@@ -102,63 +116,67 @@ export function useComicDetailWebMCP(options: UseComicDetailWebMCPOptions) {
 
       return {
         success: true,
-        message: `已为漫画《${detail.value?.meta.title || sourceId.value}》启动阅读（起始页码：第 ${targetPage} 页）`,
+        message: `已为漫画《${detail.value?.meta.title || sourceId.value}》启动阅读（起始页码：第 ${targetPage} 页${activeScope ? `，章节：${activeScope}` : ''}）`,
         targetPage,
       }
     },
   })
 
-  // 工具 2: 触发整本漫画后台预缓存
-  const cacheAllTool = useWebMCP({
-    name: 'detail_cache_all_pages',
-    description: '触发服务端后台将当前漫画的全本所有画页进行离线预缓存与解密',
-    inputSchema: {
-      type: 'object',
-      properties: {},
-    },
-    async execute() {
-      if (typeof cacheAll === 'function') {
-        await cacheAll()
-        return {
-          success: true,
-          message: `已成功触发漫画《${detail.value?.meta.title || sourceId.value}》的全本后台离线预缓存任务`,
-        }
-      }
-      throw new Error('当前视图不支持全本缓存操作。')
-    },
-  })
-
-  // 工具 3: 触发单话后台预缓存
-  const cacheChapterTool = useWebMCP({
-    name: 'detail_cache_chapter',
-    description: '触发服务端后台将当前漫画指定章节的所有画页进行离线预缓存与解密',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        chapter_id: {
-          type: 'string',
-          description: '目标章节唯一标识符（如 "c1", "0"，若省略则默认缓存当前聚焦的章节）',
+  // 工具 2: 触发整本漫画后台预缓存（仅馆长权限注册）
+  const cacheAllTool = canWrite.value
+    ? useWebMCP({
+        name: 'detail_cache_all_pages',
+        description: '触发服务端后台将当前漫画的全本所有画页进行离线预缓存与解密',
+        inputSchema: {
+          type: 'object',
+          properties: {},
         },
-      },
-    },
-    async execute(args) {
-      const targetChapterId =
-        (args as { chapter_id?: string })?.chapter_id || activeChapterId?.value
-      if (!targetChapterId) {
-        throw new Error('请指定需要缓存的章节 ID (chapter_id)。')
-      }
+        async execute() {
+          if (typeof cacheAll === 'function') {
+            await cacheAll()
+            return {
+              success: true,
+              message: `已成功触发漫画《${detail.value?.meta.title || sourceId.value}》的全本后台离线预缓存任务`,
+            }
+          }
+          throw new Error('当前视图不支持全本缓存操作。')
+        },
+      })
+    : undefined
 
-      if (typeof cacheChapter === 'function') {
-        await cacheChapter(targetChapterId)
-        return {
-          success: true,
-          message: `已成功触发章节 "${targetChapterId}" 的后台预缓存任务`,
-          chapter_id: targetChapterId,
-        }
-      }
-      throw new Error('当前视图不支持单话缓存操作。')
-    },
-  })
+  // 工具 3: 触发单话后台预缓存（仅馆长权限注册）
+  const cacheChapterTool = canWrite.value
+    ? useWebMCP({
+        name: 'detail_cache_chapter',
+        description: '触发服务端后台将当前漫画指定章节的所有画页进行离线预缓存与解密',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            chapter_id: {
+              type: 'string',
+              description: '目标章节唯一标识符（如 "c1", "0"，若省略则默认缓存当前聚焦的章节）',
+            },
+          },
+        },
+        async execute(args) {
+          const targetChapterId =
+            (args as { chapter_id?: string })?.chapter_id || activeChapterId?.value
+          if (!targetChapterId) {
+            throw new Error('请指定需要缓存的章节 ID (chapter_id)。')
+          }
+
+          if (typeof cacheChapter === 'function') {
+            await cacheChapter(targetChapterId)
+            return {
+              success: true,
+              message: `已成功触发章节 "${targetChapterId}" 的后台预缓存任务`,
+              chapter_id: targetChapterId,
+            }
+          }
+          throw new Error('当前视图不支持单话缓存操作。')
+        },
+      })
+    : undefined
 
   // 工具 4: 打开/切换至指定章节
   const openChapterTool = useWebMCP({
@@ -228,21 +246,39 @@ export function useComicDetailWebMCP(options: UseComicDetailWebMCPOptions) {
     },
   })
 
-  // 工具 6: 切换收藏红心
+  // 工具 6: 切换或设定收藏红心
   const favTool = useWebMCP({
     name: 'detail_toggle_favorite',
-    description: '切换当前漫画的红心收藏（喜欢/取消喜欢）状态',
+    description: '切换或显式设定当前漫画的红心收藏（喜欢/取消喜欢）状态',
     inputSchema: {
       type: 'object',
-      properties: {},
+      properties: {
+        favorite: {
+          type: 'boolean',
+          description:
+            '可选显式设定收藏状态（true 设为喜欢，false 取消喜欢；若省略则自动翻转当前状态）',
+        },
+      },
     },
-    async execute() {
-      if (typeof toggleFavorite === 'function') {
-        await toggleFavorite()
+    async execute(args) {
+      const desiredFav = (args as { favorite?: boolean })?.favorite
+      const currentFav = Boolean(detail.value?.meta.favorite)
+
+      if (typeof desiredFav === 'boolean' && desiredFav === currentFav) {
         return {
           success: true,
-          message: `已切换漫画《${detail.value?.meta.title || sourceId.value}》的红心收藏状态（当前：${detail.value?.meta.favorite ? '已收藏' : '未收藏'}）`,
-          favorite: Boolean(detail.value?.meta.favorite),
+          message: `漫画《${detail.value?.meta.title || sourceId.value}》已处于${desiredFav ? '已收藏' : '未收藏'}状态`,
+          favorite: currentFav,
+        }
+      }
+
+      if (typeof toggleFavorite === 'function') {
+        await toggleFavorite()
+        const newFav = Boolean(detail.value?.meta.favorite)
+        return {
+          success: true,
+          message: `已更新漫画《${detail.value?.meta.title || sourceId.value}》的红心收藏状态为：${newFav ? '已收藏' : '未收藏'}`,
+          favorite: newFav,
         }
       }
       return {
@@ -252,6 +288,81 @@ export function useComicDetailWebMCP(options: UseComicDetailWebMCPOptions) {
     },
   })
 
+  // 工具 7: 编辑漫画典藏资料与元数据（仅馆长权限注册）
+  const updateMetadataTool = canWrite.value
+    ? useWebMCP({
+        name: 'detail_update_metadata',
+        description:
+          '就地编辑当前漫画的典藏资料与元数据。支持修改标题、作者、分类标签列表、4张展示封面页码序号（cover_indices）以及故事简介',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            title: {
+              type: 'string',
+              description: '更新后的漫画标题',
+            },
+            authors: {
+              type: 'array',
+              items: { type: 'string' },
+              description: '更新后的作者列表',
+            },
+            tags: {
+              type: 'array',
+              items: { type: 'string' },
+              description: '更新后的分类题材标签列表',
+            },
+            description: {
+              type: 'string',
+              description: '更新后的故事简介与剧情介绍',
+            },
+            cover_indices: {
+              type: 'array',
+              items: { type: 'number' },
+              description: '自定义 4 张封面的全局页码序号（例如 [1, 10, 25, 50]）',
+            },
+          },
+        },
+        async execute(args) {
+          const payload = (args ?? {}) as {
+            title?: string
+            authors?: string[]
+            tags?: string[]
+            description?: string
+            cover_indices?: number[]
+          }
+
+          if (
+            !payload.title &&
+            !payload.authors &&
+            !payload.tags &&
+            !payload.description &&
+            !payload.cover_indices
+          ) {
+            throw new Error(
+              '请至少提供一个需要修改的元数据字段（title / authors / tags / description / cover_indices）。',
+            )
+          }
+
+          const updated = await api.updateMetadata(source.value, sourceId.value, payload)
+          if (detail.value) {
+            detail.value = updated
+          }
+
+          return {
+            success: true,
+            message: `已成功更新漫画《${updated.meta.title}》的元数据资料`,
+            meta: {
+              title: updated.meta.title,
+              authors: updated.meta.authors,
+              tags: updated.meta.tags,
+              description: updated.meta.description,
+              cover_indices: updated.meta.cover_indices,
+            },
+          }
+        },
+      })
+    : undefined
+
   return {
     isSupported: startReadingTool.isSupported,
     startReadingTool,
@@ -260,5 +371,6 @@ export function useComicDetailWebMCP(options: UseComicDetailWebMCPOptions) {
     openChapterTool,
     getInfoTool,
     favTool,
+    updateMetadataTool,
   }
 }

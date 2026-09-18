@@ -92,50 +92,52 @@
 
 ##### 1. 书架视口工具（Shelf Viewport / `useShelfWebMCP`）
 
-- `shelf_search_comics({ keyword?, tag?, sortBy?, favoritesOnly?, readingStatus? })`：
-  多维检索与过滤书架漫画藏书（支持标题/作者关键词、题材标签、排序规则、红心收藏与阅读进度筛选）。
+- `shelf_search_comics({ keyword?, tag?, tags?, sortBy?, favoritesOnly?, readingStatus?, reset? })`：
+  多维检索与过滤书架漫画藏书（支持标题/作者关键词、单标签/多标签复合 AND 筛选、排序规则、红心收藏、阅读进度及前置清空重置）。
 - `shelf_search_dialogue({ query, source?, limit? })`：
   基于 SQLite FTS5 全文索引在全站漫画分镜中检索台词对白，并返回匹配漫画、具体画页与气泡归一化坐标。
 - `shelf_search_image({ image_base64 })`：
   通过传入图片的 Base64 编码数据在全库中进行视觉向量特征匹配，精准定位到所属漫画、画页及相似度评分。
-- `shelf_read_comic({ source, source_id, page?, bubble_box?, bubble_text? })`：
-  直接从书架打开指定漫画并跳转到特定画页阅读，可附带对白气泡坐标进行朱砂色呼吸光效高亮。
-- `shelf_import_comic({ source, source_id })`：
-  通过图源与车号将远端漫画收录导入至本地书库（自动触发元数据解析与后台首批预缓存）。
-- `shelf_pick_random()`：
-  从当前书架藏书中随机淘选一本漫画并直达详情页。
-- `shelf_open_comic({ source, source_id })`：
-  通过图源和车号直达打开指定漫画的详情页。
+- `shelf_read_comic({ source, source_id, page?, fromBeginning?, chapter_id?, bubble_box?, bubble_text? })`：
+  直接从书架打开指定漫画并跳转到特定画页阅读，可附带章节、强制首开与对白气泡坐标进行朱砂色呼吸光效高亮。
+- `shelf_import_comic({ id?, source_id?, source?, local_path?, prefetch_all?, prefetch_covers?, favorite?, tags?, open_after? })`：
+  将远端或服务器本地漫画收录导入至书架（支持省略 `source` 自动智能推断图源、支持后台全本离线预缓存、初始喜欢标记、自定义标签追加与导入后自动直达详情页）。**【仅馆长权限】**
+- `shelf_pick_random({ favoritesOnly?, source?, openReader? })`：
+  从当前书架藏书中随机淘选一本漫画，支持限定已收藏或特定图源，并可选择直达详情页或直接进入阅读器。
+- `shelf_open_comic({ source, source_id, chapter_id? })`：
+  通过图源和车号直达打开指定漫画的详情页或章节专注子路由。
 
 ##### 2. 详情与章节视口工具（Detail & Chapter Viewport / `useComicDetailWebMCP`）
 
-- `detail_start_reading({ page?, fromBeginning? })`：
-  启动当前漫画阅读器（支持从第 1 页开篇、从上次历史进度继续、或直达指定页码）。
+- `detail_start_reading({ page?, chapter_id?, fromBeginning? })`：
+  启动当前漫画阅读器（支持从第 1 页开篇、从上次历史进度继续、直达指定页码或直达特定章节开卷）。
 - `detail_cache_all_pages()`：
-  触发服务端后台将当前漫画全本所有画页进行离线预缓存与解密。
+  触发服务端后台将当前漫画全本所有画页进行离线预缓存与解密。**【仅馆长权限】**
 - `detail_cache_chapter({ chapter_id? })`：
-  触发服务端后台将当前漫画指定章节的所有画页进行离线预缓存与解密。
+  触发服务端后台将当前漫画指定章节的所有画页进行离线预缓存与解密。**【仅馆长权限】**
 - `detail_open_chapter({ chapter_id })`：
   进入当前漫画指定章节的独立子路由专注页。
 - `detail_get_comic_info()`：
   获取当前漫画完整元数据、离线缓存进度比例、全书章节目录及上次阅读记录快照。
-- `detail_toggle_favorite()`：
-  切换当前漫画的红心收藏（喜欢/取消喜欢）状态。
+- `detail_toggle_favorite({ favorite? })`：
+  切换或显式设定当前漫画的红心收藏（喜欢/取消喜欢）状态。
+- `detail_update_metadata({ title?, authors?, tags?, description?, cover_indices? })`：
+  就地编辑修改漫画的标题、作者列表、分类标签、简介及 4 张展示封面页码序号。**【仅馆长权限】**
 
 ##### 3. 阅读器视口工具（Reader Viewport / `useReaderWebMCP`）
 
 - `reader_jump_to_page({ page })`：
   在当前打开的漫画阅读器中，精准跳转至指定的 1-based 全局页码。
-- `reader_turn_page({ direction: "next" | "prev" })`：
-  在阅读器中向前或向后步进翻页（支持多页并排与分屏模式）。
-- `reader_switch_mode({ mode?, pagesPerView?, direction? })`：
-  动态配置与切换阅读器排版布局（排版模式：瀑布流/单页吸附/横向切页；分屏：1/2/4页；翻页方向：从左往右 / 从右往左日漫模式）。
+- `reader_turn_page({ direction: "next" | "prev", count? })`：
+  在阅读器中向前或向后步进翻页（支持多页并排与分屏模式，支持传入 `count` 一次连翻多页/多屏）。
+- `reader_switch_mode({ mode?, pagesPerView?, direction?, seamless? })`：
+  动态配置与切换阅读器排版布局（排版模式：瀑布流/单页吸附/横向切页；分屏：1/2/4页；翻页方向：从左往右 / 从右往左日漫模式；无缝连续拼接滚动）。
 - `reader_switch_fit({ fit: "width" | "height" })`：
   切换画页在阅读视口中的缩放适配策略（适应宽度 / 适应高度）。
 - `reader_toggle_auto_turn({ enable?, interval? })`：
   开启、关闭自动翻页功能，或调节自动翻页倒计时秒数间隔。
-- `reader_toggle_favorite()`：
-  在阅读器中快速切换当前漫画的红心收藏状态。
+- `reader_toggle_favorite({ favorite? })`：
+  在阅读器中快速切换或显式设定当前漫画的红心收藏状态。
 - `reader_locate_bubble({ page, box?, text? })`：
   定位画页并以朱砂色呼吸线框高亮指定的对白气泡框。
 - `reader_jump_chapter({ direction: "next" | "prev" })`：
@@ -143,14 +145,26 @@
 
 ##### 4. 发现与排行视口工具（Discovery Viewport / `useDiscoveryWebMCP`）
 
-- `discovery_get_ranking({ timeframe?, refresh? })`：
-  获取禁漫官方精选与排行数据（周榜/月榜/日榜），返回作品标题、作者、分类标签及是否已收录状态。
+- `discovery_get_ranking({ timeframe?, refresh?, limit?, category? })`：
+  获取禁漫官方精选与排行数据（周榜/月榜/日榜），支持数量截取与题材过滤，返回作品标题、作者、分类标签及是否已收录状态。
 - `discovery_switch_timeframe({ timeframe: "week" | "month" | "day" })`：
   切换官方精选榜单的时间跨度分类标签。
-- `discovery_ingest_comic({ source_id })`：
-  一键将排行榜中的指定漫画收录导入至本地书库（后台自动开启预缓存）。
+- `discovery_ingest_comic({ source_id, open_after? })`：
+  一键将排行榜中的指定漫画收录导入至本地书库（后台自动开启预缓存，支持收录后直达详情页）。**【仅馆长权限】**
 - `discovery_open_detail({ source?, source_id })`：
   导航进入榜单中某本漫画的详情页。
+
+#### (3) WebMCP 角色与权限分层模型（Curator vs Guest vs Direct Pass）
+
+WebMCP 作为运行在浏览器宿主内的模型上下文通道，遵循**最小权限与按需暴露**原则：
+
+| 操作分类                 | 涵盖工具                                                                                                                                                                                                                                                                                                        | 馆长（Curator） |     访客（Guest Pass）      |     单本直达（Direct Pass）     | 权限防线机制                                                                                                                                          |
+| :----------------------- | :-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | :-------------: | :-------------------------: | :-----------------------------: | :---------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **视口阅读与排版控制**   | `reader_jump_to_page`<br>`reader_turn_page`<br>`reader_switch_mode`<br>`reader_switch_fit`<br>`reader_toggle_auto_turn`<br>`reader_locate_bubble`<br>`reader_jump_chapter`                                                                                                                                      |     ✅ 允许     |           ✅ 允许           |             ✅ 允许             | 纯前端响应式状态与 DOM 视口调度，零后端写操作，所有在读读者均可自由由 Agent 遥控排版与翻页。                                                          |
+| **书架淘书与检索查询**   | `shelf_search_comics`<br>`shelf_search_dialogue`<br>`shelf_search_image`<br>`shelf_pick_random`<br>`shelf_open_comic`<br>`shelf_read_comic`<br>`detail_start_reading`<br>`detail_open_chapter`<br>`detail_get_comic_info`<br>`discovery_get_ranking`<br>`discovery_switch_timeframe`<br>`discovery_open_detail` |     ✅ 允许     |  ✅ 允许（自动过滤隐藏本）  | ❌ 视口隔离（离开阅读器不暴露） | 只读查询；访客查询书架时后端自动应用 `hidden_from_guest` 隐私白名单过滤；单本直达用户离开该本子阅读视口后工具自动注销。                               |
+| **偏好与红心标记**       | `reader_toggle_favorite`<br>`detail_toggle_favorite`                                                                                                                                                                                                                                                            |     ✅ 允许     |  ✅ 允许（本地/借阅账单）   |             ❌ 禁用             | 访客标记喜欢保存在客户端 IndexedDB 离线账本，不污染馆长云端元数据。                                                                                   |
+| **藏书收录与元数据写入** | `shelf_import_comic`<br>`discovery_ingest_comic`<br>`detail_update_metadata`                                                                                                                                                                                                                                    |     ✅ 允许     | ❌ 零暴露（不注册进上下文） |   ❌ 零暴露（不注册进上下文）   | 前端 `canWrite` 哨兵在注册层直接掐断（`undefined` 不注册进 `document.modelContext`，Agent 零感知无 token 浪费），后端对直接 API 写入执行 403 强校验。 |
+| **服务端全本预缓存触发** | `detail_cache_all_pages`<br>`detail_cache_chapter`                                                                                                                                                                                                                                                              |     ✅ 允许     | ❌ 零暴露（不注册进上下文） |   ❌ 零暴露（不注册进上下文）   | 防止访客消耗服务器大带宽与解密算力，前端注册层直接掐断，后端中间件执行 403 强阻断。                                                                   |
 
 ---
 

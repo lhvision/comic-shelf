@@ -705,6 +705,13 @@ curl -X POST "http://<NAS_IP>:8000/api/mcp/rpc" \
 
 在家庭私有云部署中，建议参考 [`docs/HOMELAB_NETWORKING_GUIDE.md`](docs/HOMELAB_NETWORKING_GUIDE.md)，通过 Nginx Proxy Manager 或 Cloudflare 配置泛域名 SSL 证书并使用 HTTPS（如 `https://comic.yourdomain.com`）访问，局域网与公网设备均天然满足安全上下文，无需任何客户端配置。
 
+#### 4. WebMCP 角色与功能权限（馆长 vs 访客）
+
+纸间对浏览器端 WebMCP 工具同样进行了安全分层：
+
+- **全员可用（馆长 / 访客 / 单本直达）**：阅读器视口控制（跳页、步进翻页、排版/分屏/日漫方向切换、画面自适应、自动翻页、对白气泡呼吸高亮、跨话切章）与只读检索（书架多维筛选、台词全文检索、以图搜图、随机淘书、榜单浏览）。
+- **馆长专属（Curator Only）**：远端/本地漫画收录（`shelf_import_comic` / `discovery_ingest_comic`）、全本/单话离线预缓存下载（`detail_cache_all_pages` / `detail_cache_chapter`）、漫画典藏元数据就地修改（`detail_update_metadata`）。对于访客会话，前端在注册层直接掐断（`undefined` 不注册进 `document.modelContext`，浏览器 AI Agent 零感知零污染）；若直接向后端 API 发起未授权写入，后端安全中间件将严格执行 403 权限阻断。
+
 ---
 
 ## 10. 和 Vite+ / vp 的关系说明

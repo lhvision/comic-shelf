@@ -13,6 +13,7 @@
 import { type Ref, type ShallowRef } from 'vue'
 import { useWebMCP } from '@vueuse/core'
 import type { Router } from 'vue-router'
+import { useAuth } from '@/composables/useAuth'
 import type { DiscoveryFeed, DiscoveryItem, DiscoveryTimeframe } from '@/types'
 
 /**
@@ -36,6 +37,7 @@ export interface UseDiscoveryWebMCPOptions {
  */
 export function useDiscoveryWebMCP(options: UseDiscoveryWebMCPOptions) {
   const { timeframe, feed, loadRanking, ingestComic, router } = options
+  const { canWrite } = useAuth()
 
   // 工具 1: 获取官方精选排行榜
   const getRankingTool = useWebMCP({
@@ -55,12 +57,27 @@ export function useDiscoveryWebMCP(options: UseDiscoveryWebMCPOptions) {
           type: 'boolean',
           description: '是否强制刷新远端官方排行榜数据（默认 false 读取缓存）',
         },
+        limit: {
+          type: 'number',
+          description: '可选限制返回的作品条数（例如 5, 10, 20）',
+        },
+        category: {
+          type: 'string',
+          description: '可选按分类题材名称进行前置过滤',
+        },
       },
     },
     async execute(args) {
-      const { timeframe: targetTf, refresh } = (args ?? {}) as {
+      const {
+        timeframe: targetTf,
+        refresh,
+        limit,
+        category,
+      } = (args ?? {}) as {
         timeframe?: DiscoveryTimeframe
         refresh?: boolean
+        limit?: number
+        category?: string
       }
 
       if (targetTf === 'week' || targetTf === 'month' || targetTf === 'day') {
@@ -69,7 +86,15 @@ export function useDiscoveryWebMCP(options: UseDiscoveryWebMCPOptions) {
         await loadRanking(timeframe.value, true)
       }
 
-      const items = feed.value?.items || []
+      let items = feed.value?.items || []
+      if (category && category.trim()) {
+        const catLower = category.trim().toLowerCase()
+        items = items.filter((it) => (it.category || '').toLowerCase().includes(catLower))
+      }
+      if (typeof limit === 'number' && limit > 0) {
+        items = items.slice(0, Math.round(limit))
+      }
+
       return {
         success: true,
         timeframe: timeframe.value,
@@ -117,45 +142,62 @@ export function useDiscoveryWebMCP(options: UseDiscoveryWebMCPOptions) {
     },
   })
 
-  // 工具 3: 一键收录榜单中的漫画至本地书库
-  const ingestComicTool = useWebMCP({
-    name: 'discovery_ingest_comic',
-    description: '一键将排行榜中的指定漫画收录导入至本地书库（会自动在后台开启预缓存）',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        source_id: {
-          type: 'string',
-          description: '榜单中漫画的车号或唯一作品 ID（例如 "523607"）',
+  // 工具 3: 一键收录榜单中的漫画至本地书库（仅馆长权限注册）
+  const ingestComicTool = canWrite.value
+    ? useWebMCP({
+        name: 'discovery_ingest_comic',
+        description: '一键将排行榜中的指定漫画收录导入至本地书库（会自动在后台开启预缓存）',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            source_id: {
+              type: 'string',
+              description: '榜单中漫画的车号或唯一作品 ID（例如 "523607"）',
+            },
+            open_after: {
+              type: 'boolean',
+              description: '收录成功后是否自动导航跳转至该漫画的详情页（默认 false）',
+            },
+          },
+          required: ['source_id'],
         },
-      },
-      required: ['source_id'],
-    },
-    async execute(args) {
-      const { source_id } = (args ?? {}) as { source_id?: string }
-      if (!source_id) {
-        throw new Error('参数 "source_id" 为必填项。')
-      }
+        async execute(args) {
+          const { source_id, open_after = false } = (args ?? {}) as {
+            source_id?: string
+            open_after?: boolean
+          }
+          if (!source_id) {
+            throw new Error('参数 "source_id" 为必填项。')
+          }
 
-      const items = feed.value?.items || []
-      const targetItem = items.find((it) => it.source_id === source_id)
-      if (!targetItem) {
-        throw new Error(`未在当前排行榜中找到车号为 "${source_id}" 的漫画。`)
-      }
+          const items = feed.value?.items || []
+          const targetItem = items.find((it) => it.source_id === source_id)
+          if (!targetItem) {
+            throw new Error(`未在当前排行榜中找到车号为 "${source_id}" 的漫画。`)
+          }
 
-      await ingestComic(targetItem)
-      return {
-        success: true,
-        message: `已成功将榜单漫画《${targetItem.title}》（车号：${source_id}）收录至本地书库`,
-        comic: {
-          source: targetItem.source,
-          source_id: targetItem.source_id,
-          title: targetItem.title,
-          author: targetItem.author,
+          await ingestComic(targetItem)
+
+          if (open_after) {
+            await router.push({
+              name: 'comic-detail',
+              params: { source: targetItem.source, sourceId: targetItem.source_id },
+            })
+          }
+
+          return {
+            success: true,
+            message: `已成功将榜单漫画《${targetItem.title}》（车号：${source_id}）收录至本地书库`,
+            comic: {
+              source: targetItem.source,
+              source_id: targetItem.source_id,
+              title: targetItem.title,
+              author: targetItem.author,
+            },
+          }
         },
-      }
-    },
-  })
+      })
+    : undefined
 
   // 工具 4: 查看已收录漫画详情
   const openDetailTool = useWebMCP({

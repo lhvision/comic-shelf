@@ -96,10 +96,11 @@ export function useReaderWebMCP(options: UseReaderWebMCPOptions) {
     },
   })
 
-  // 工具 2: 步进翻页
+  // 工具 2: 步进翻页（支持多步连续翻页）
   const turnTool = useWebMCP({
     name: 'reader_turn_page',
-    description: '在阅读器中向前或向后步进翻页（支持多页并排与分屏模式）',
+    description:
+      '在阅读器中向前或向后步进翻页（支持多页并排与分屏模式，支持指定连续步进页数/屏数）',
     inputSchema: {
       type: 'object',
       properties: {
@@ -108,21 +109,34 @@ export function useReaderWebMCP(options: UseReaderWebMCPOptions) {
           enum: ['next', 'prev'],
           description: '翻页方向：next 为向后翻下一页/下一屏，prev 为向前翻上一页/上一屏',
         },
+        count: {
+          type: 'number',
+          description: '连续翻页/翻屏步数（默认 1，正整数）',
+        },
       },
       required: ['direction'],
     },
     async execute(args) {
-      const dir = (args as { direction?: string }).direction
+      const { direction: dir, count = 1 } = (args ?? {}) as {
+        direction?: string
+        count?: number
+      }
+      const steps = Math.max(1, Math.min(50, Math.round(Number(count) || 1)))
+
       if (dir === 'next') {
-        nextGroup()
+        for (let i = 0; i < steps; i++) {
+          nextGroup()
+        }
       } else if (dir === 'prev') {
-        prevGroup()
+        for (let i = 0; i < steps; i++) {
+          prevGroup()
+        }
       } else {
         throw new Error(`不支持的翻页方向参数：${dir}`)
       }
       return {
         success: true,
-        message: `已向${dir === 'next' ? '后' : '前'}翻页（当前处于第 ${currentPage.value} 页）`,
+        message: `已向${dir === 'next' ? '后' : '前'}翻 ${steps} 屏（当前处于第 ${currentPage.value} 页）`,
         currentPage: currentPage.value,
       }
     },
@@ -132,7 +146,7 @@ export function useReaderWebMCP(options: UseReaderWebMCPOptions) {
   const modeTool = useWebMCP({
     name: 'reader_switch_mode',
     description:
-      '动态配置与切换阅读器的排版布局。支持设置排版模式（条漫/单页/横向）、单屏分屏画页数（1/2/4页）以及翻页方向（从左往右/从右往左日漫模式）',
+      '动态配置与切换阅读器的排版布局。支持设置排版模式（条漫/单页/横向）、单屏分屏画页数（1/2/4页）、翻页方向（从左往右/从右往左日漫模式）以及无缝连续滚动',
     inputSchema: {
       type: 'object',
       properties: {
@@ -153,18 +167,23 @@ export function useReaderWebMCP(options: UseReaderWebMCPOptions) {
           enum: ['ltr', 'rtl'],
           description: '横向翻页方向：ltr（从左向右/常规现代）、rtl（从右向左/日漫传统）',
         },
+        seamless: {
+          type: 'boolean',
+          description: '是否开启无缝跨页拼接连续显示（条漫模式下消除画页间距）',
+        },
       },
     },
     async execute(args) {
-      const { mode, pagesPerView, direction } = (args ?? {}) as {
+      const { mode, pagesPerView, direction, seamless } = (args ?? {}) as {
         mode?: ReaderMode
         pagesPerView?: 1 | 2 | 4
         direction?: 'ltr' | 'rtl'
+        seamless?: boolean
       }
 
-      if (!mode && pagesPerView === undefined && !direction) {
+      if (!mode && pagesPerView === undefined && !direction && typeof seamless !== 'boolean') {
         throw new Error(
-          '请至少指定 mode(排版模式)、pagesPerView(单屏页数) 或 direction(翻页方向) 中的一个参数。',
+          '请至少指定 mode(排版模式)、pagesPerView(单屏页数)、direction(翻页方向) 或 seamless(无缝拼合) 中的一个参数。',
         )
       }
 
@@ -192,12 +211,17 @@ export function useReaderWebMCP(options: UseReaderWebMCPOptions) {
         }
       }
 
+      if (typeof seamless === 'boolean') {
+        settings.seamless = seamless
+      }
+
       return {
         success: true,
-        message: `已更新阅读器排版设置（模式：${settings.mode}，分屏：${settings.pagesPerView}页，方向：${settings.direction}）`,
+        message: `已更新阅读器排版设置（模式：${settings.mode}，分屏：${settings.pagesPerView}页，方向：${settings.direction}，无缝：${settings.seamless}）`,
         currentMode: settings.mode,
         pagesPerView: settings.pagesPerView,
         direction: settings.direction,
+        seamless: settings.seamless,
       }
     },
   })
@@ -269,15 +293,31 @@ export function useReaderWebMCP(options: UseReaderWebMCPOptions) {
     },
   })
 
-  // 工具 6: 切换收藏红心标记
+  // 工具 6: 切换或设定收藏红心标记
   const favTool = useWebMCP({
     name: 'reader_toggle_favorite',
-    description: '在阅读器中快速切换当前漫画的红心收藏状态',
+    description: '在阅读器中切换或显式设定当前漫画的红心收藏状态',
     inputSchema: {
       type: 'object',
-      properties: {},
+      properties: {
+        favorite: {
+          type: 'boolean',
+          description: '可选显式设定收藏状态（true 为设为喜欢，false 为取消喜欢；省略则自动翻转）',
+        },
+      },
     },
-    async execute() {
+    async execute(args) {
+      const desiredFav = (args as { favorite?: boolean })?.favorite
+      const currentFav = isFavorite ? isFavorite.value : false
+
+      if (typeof desiredFav === 'boolean' && desiredFav === currentFav) {
+        return {
+          success: true,
+          message: `漫画《${title?.value ?? '当前漫画'}》已处于${desiredFav ? '已收藏' : '未收藏'}状态`,
+          favorite: currentFav,
+        }
+      }
+
       if (typeof toggleFavorite === 'function') {
         toggleFavorite()
         return {
