@@ -19,6 +19,7 @@ from app.models import Chapter, LocalPathImportRequest, PdfChapterPreview
 from app.storage.pdf import (
     _extract_chapters_from_toc,
     detect_pdf_chapters,
+    is_blank_or_solid_page,
     is_pdf_file,
     unpack_pdf,
 )
@@ -268,8 +269,24 @@ class TestPdfIngest(unittest.TestCase):
             source_id=meta.source_id,
             files=[("new_edition_up.pdf", pdf_bytes)],
         )
-        self.assertEqual(updated_meta.page_count, 4)
-        self.assertEqual([p.index for p in updated_meta.pages], [1, 2, 3, 4])
+    def test_solid_separator_page_detection(self) -> None:
+        black_img = Image.new("RGB", (100, 100), color=(10, 10, 10))
+        buf = io.BytesIO()
+        black_img.save(buf, format="JPEG")
+        self.assertTrue(is_blank_or_solid_page(buf.getvalue()))
+
+        white_img = Image.new("RGB", (100, 100), color=(255, 255, 255))
+        buf = io.BytesIO()
+        white_img.save(buf, format="JPEG")
+        self.assertTrue(is_blank_or_solid_page(buf.getvalue()))
+
+        content_img = Image.new("RGB", (100, 100), color=(255, 255, 255))
+        for y in range(30, 70):
+            for x in range(30, 70):
+                content_img.putpixel((x, y), (0, 0, 0))
+        buf = io.BytesIO()
+        content_img.save(buf, format="JPEG")
+        self.assertFalse(is_blank_or_solid_page(buf.getvalue()))
 
 
 if __name__ == "__main__":

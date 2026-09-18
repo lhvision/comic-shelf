@@ -101,8 +101,24 @@ router.beforeResolve(async (to, from) => {
   const direction = toRank >= fromRank ? 'forward' : 'backward'
 
   const { promise, resolve } = withResolvers<void>()
+  let resolved = false
+  const safeResolve = () => {
+    if (!resolved) {
+      resolved = true
+      resolve()
+    }
+  }
 
+  // 严格超时保护（Zero-Deadlock Guard）：
+  // 在 WebKit / iPadOS 等环境下，当视图快照阻塞或过渡被抢占时，350ms 严格超时放行路由，彻底杜绝路由卡死
+  const timeoutId = setTimeout(safeResolve, 350)
+
+  let updateExecuted = false
   const performUpdate = async () => {
+    if (updateExecuted) return
+    updateExecuted = true
+    clearTimeout(timeoutId)
+
     // 捕获间隙瞬时重置（In-Flight Pre-Capture Scroll）：
     // 当旧视图快照已由浏览器离屏捕获（被 GPU 冻结在屏幕上）、新视图尚未挂载时，
     // 前进推进瞬时将视口归零：
@@ -115,46 +131,35 @@ router.beforeResolve(async (to, from) => {
         window.scrollTo({ top: 0, behavior: 'instant' })
       }
     }
-    resolve()
+    safeResolve()
     await nextTick()
   }
 
   try {
     const doc = document as unknown as {
-      startViewTransition: (opt: { update: () => Promise<void>; types: string[] }) => {
+      startViewTransition: (
+        cbOrOpt: (() => Promise<void>) | { update: () => Promise<void>; types: string[] },
+      ) => {
         ready?: Promise<void>
         finished?: Promise<void>
         updateCallbackDone?: Promise<void>
       }
     }
-    const transition = doc.startViewTransition({
-      update: performUpdate,
-      types: [direction],
-    })
-    transition?.ready?.catch(() => {})
-    transition?.finished?.catch(() => {
-      resolve()
-    })
-    transition?.updateCallbackDone?.catch(() => {
-      resolve()
-    })
-  } catch {
+    let transition
     try {
-      const transition = document.startViewTransition(performUpdate) as unknown as {
-        ready?: Promise<void>
-        finished?: Promise<void>
-        updateCallbackDone?: Promise<void>
-      }
-      transition?.ready?.catch(() => {})
-      transition?.finished?.catch(() => {
-        resolve()
-      })
-      transition?.updateCallbackDone?.catch(() => {
-        resolve()
+      transition = doc.startViewTransition({
+        update: performUpdate,
+        types: [direction],
       })
     } catch {
-      resolve()
+      transition = doc.startViewTransition(performUpdate)
     }
+
+    transition?.ready?.catch(() => {})
+    void transition?.updateCallbackDone?.finally(performUpdate).catch(() => {})
+    void transition?.finished?.finally(safeResolve).catch(() => {})
+  } catch {
+    void performUpdate()
   }
 
   return promise

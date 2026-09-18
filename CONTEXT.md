@@ -143,6 +143,10 @@
 - **画中画悬停气泡（Hover Preview Popover / PiP）**：鼠标在底边进度条或胶片轨上悬停移动时浮现的单页微缩预览气泡。集成 VueUse `useMouseInElement` 精确几何映射与 120ms 防抖，强制应用全卷基准开本比例（`defaultComicRatio`）结合平滑淡入，兼顾零抖动与防高频请求轰炸。
 - **RTL 胶片镜像流向（RTL Inverted Filmstrip Flow）**：在横向日漫右翻（RTL）模式下，胶片轨跟随阅读流向镜像翻转（`dir="rtl"`，右侧为第 1 页，向左翻卷），使读者物理交互手感与画面运动方向绝对统一。
 - **阻尼静默拖拽（Damped Silent Scrubbing）**：读者按住胶片轨或滑块高速滑动时，挂起一切新的网络请求与组件挂载，全速展示极简纸质骨架与大字页标（120 FPS 纯 CSS Transform）；停手或微调稳定后才对当前停留视窗进行精准注水。
+- **日漫模式开本排布（RTL Spread Layout / 2 | 1 开本）**：在双页（`pagesPerView = 2`）或多页分屏下，当阅读方向设置为日漫/RTL（右起翻页）时，通过外层画卷视口 `direction: rtl` 与子画页 `direction: ltr` 组合，使 Child 1（序号较小画页）自动排入右侧，Child 2（序号较大画页）排入左侧，物理还原传统实体日本漫画从右至左的翻阅排版视线习惯。
+- **跨话横幅分屏覆盖契约（Spread-Aware Boundary Detection）**：在多页分屏排版模式下，跨话起始横幅（`atChapterStart`）与末尾横幅（`atChapterEnd`）不再仅依据首单页索引判断，而是基于当前整屏画页组（`pageGroups`）包含的页码集合与章节物理边界页（`start_page` / `start_page + page_count - 1`）做交集判定。即使最后一屏仅落在偶数/奇数分屏的后半部分，亦能准确激活「本话完 · 下一话」悬浮横幅。
+- **零死锁路由过渡守卫（Zero-Deadlock View Transition Guard）**：跨页面路由切换时针对 WebKit / iPadOS View Transitions API 的弹性超时防卫契约。通过在全局解析守卫（`router.beforeResolve`）中引入 `safeResolve` 与 350ms 严格超时竞速机制，针对底层 WebIDL 不兼容对象传参或未调用 `updateCallback` 的边缘假死情况实施快速降级脱困，并在 `finally` 中严格清理句柄，杜绝任何移动端/跨平台连点翻章导致的路由无限挂起死锁。
+- **单行本衬页嗅探与剥离（Separator Blank/Solid Page Ingest Filter）**：在本地 PDF 漫画解析导入管道中，对章节边界（尤其是章末）出现的纯黑或纯白衬页（保护扉页对齐的单色空白印张）进行的自动化无损检测与剔除机制。在保留正文画幅完整的前提下，消除双页阅读时末页右侧出现纯黑断画的反常视觉瑕疵。
 
 ## 基础设施
 

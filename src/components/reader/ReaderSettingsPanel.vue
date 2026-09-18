@@ -321,26 +321,53 @@ function onCustomBlur() {
         </div>
       </div>
 
-      <div class="setting-group">
-        <h3>横向阅读方向</h3>
+      <div
+        v-if="
+          currentTargetSettings.mode === 'horizontal' ||
+          (currentTargetSettings.mode === 'vertical-paged' &&
+            currentTargetSettings.pagesPerView >= 2)
+        "
+        class="setting-group"
+      >
+        <h3>
+          {{
+            currentTargetSettings.mode === 'horizontal'
+              ? '横向阅读方向'
+              : currentTargetSettings.pagesPerView > 2
+                ? '多页排版流向'
+                : '双页排版流向'
+          }}
+        </h3>
         <div class="segmented">
           <button
             type="button"
             :aria-pressed="currentTargetSettings.direction === 'ltr'"
             @click="currentTargetSettings.direction = 'ltr'"
           >
-            <span>左</span>
+            <span>{{ currentTargetSettings.mode === 'horizontal' ? '左' : '左起' }}</span>
             <AppIcon name="arrow-right" size="xs" />
-            <span>右</span>
+            <span>{{
+              currentTargetSettings.mode === 'horizontal'
+                ? '右'
+                : currentTargetSettings.pagesPerView > 2
+                  ? '（1..4）'
+                  : '（1 | 2）'
+            }}</span>
           </button>
           <button
             type="button"
             :aria-pressed="currentTargetSettings.direction === 'rtl'"
             @click="currentTargetSettings.direction = 'rtl'"
           >
-            <span>右</span>
+            <span>{{ currentTargetSettings.mode === 'horizontal' ? '右' : '右起' }}</span>
             <AppIcon name="arrow-left" size="xs" />
-            <span>左（日漫）</span>
+            <span>{{
+              currentTargetSettings.mode === 'horizontal'
+                ? '左（日漫）'
+                : currentTargetSettings.pagesPerView > 2
+                  ? '（4..1 日漫）'
+                  : '（2 | 1 日漫）'
+            }}</span>
           </button>
         </div>
       </div>

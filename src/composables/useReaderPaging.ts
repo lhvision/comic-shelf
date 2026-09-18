@@ -73,22 +73,6 @@ export function useReaderPaging(options: UseReaderPagingOptions) {
     currentChapterIndex.value > 0 ? (chapters.value[currentChapterIndex.value - 1] ?? null) : null,
   )
 
-  const atChapterEnd = computed(() => {
-    const c = currentChapter.value
-    return c !== null && currentPage.value >= c.start + c.page_count - 1
-  })
-
-  const atChapterStart = computed(() => {
-    const c = currentChapter.value
-    return c !== null && currentPage.value <= c.start
-  })
-
-  const showEndCard = computed(() => {
-    if (!detail.value || scopedPages.value.length === 0) return false
-    if (scopedChapter.value === null) return true
-    return !nextChapter.value
-  })
-
   const pageGroups = computed<number[][]>(() => {
     const groups: number[][] = []
     const pages = scopedPages.value
@@ -97,6 +81,30 @@ export function useReaderPaging(options: UseReaderPagingOptions) {
       groups.push(pages.slice(index, index + ppv))
     }
     return groups
+  })
+
+  const atChapterEnd = computed(() => {
+    const c = currentChapter.value
+    if (!c) return false
+    const endPage = c.start + c.page_count - 1
+    const group = pageGroups.value[currentGroupIndex.value]
+    if (group && group.includes(endPage)) return true
+    return currentPage.value >= endPage
+  })
+
+  const atChapterStart = computed(() => {
+    const c = currentChapter.value
+    if (!c) return false
+    const startPage = c.start
+    const group = pageGroups.value[currentGroupIndex.value]
+    if (group && group.includes(startPage)) return true
+    return currentPage.value <= startPage
+  })
+
+  const showEndCard = computed(() => {
+    if (!detail.value || scopedPages.value.length === 0) return false
+    if (scopedChapter.value === null) return true
+    return !nextChapter.value
   })
 
   const orderedGroups = computed(() => {

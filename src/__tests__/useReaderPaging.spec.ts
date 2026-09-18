@@ -198,4 +198,41 @@ describe('useReaderPaging - End Card Navigation Integration', () => {
     expect(paging.groupIndexForPage(5)).toBe(4)
     expect(paging.groupIndexForPage(10)).toBe(9)
   })
+
+  it('correctly sets atChapterEnd and atChapterStart in multi-page mode (2 pages)', () => {
+    const chapters = [
+      { id: 'ch1', index: 1, title: '第 1 话', page_count: 6, start: 1 },
+      { id: 'ch2', index: 2, title: '第 2 话', page_count: 6, start: 7 },
+    ]
+    const detail = ref<ComicDetail | null>(createMockDetail(12, chapters))
+    const scopeId = ref<string | null>('ch1')
+    const settings = ref<ReaderSettings>({ ...DEFAULT_SETTINGS, pagesPerView: 2 })
+    const currentPage = ref(1)
+    const currentGroupIndex = ref(0)
+
+    const paging = useReaderPaging({
+      detail,
+      scopeId,
+      settings,
+      currentPage,
+      currentGroupIndex,
+    })
+
+    // Group 0: pages [1, 2] -> atChapterStart should be true, atChapterEnd should be false
+    expect(paging.atChapterStart.value).toBe(true)
+    expect(paging.atChapterEnd.value).toBe(false)
+
+    // Group 1: pages [3, 4] -> neither start nor end
+    currentGroupIndex.value = 1
+    currentPage.value = 3
+    expect(paging.atChapterStart.value).toBe(false)
+    expect(paging.atChapterEnd.value).toBe(false)
+
+    // Group 2: pages [5, 6] -> currentPage is 5 (first page of group), but group contains page 6 (chapter end)
+    currentGroupIndex.value = 2
+    currentPage.value = 5
+    expect(paging.atChapterStart.value).toBe(false)
+    // In 2-page mode, atChapterEnd MUST be true so nextChapter banner is visible!
+    expect(paging.atChapterEnd.value).toBe(true)
+  })
 })

@@ -113,6 +113,7 @@ defineExpose({
     class="reader-scroll"
     :data-mode="settings.mode"
     :data-pages="settings.pagesPerView"
+    :data-direction="settings.direction"
     :data-seamless="
       settings.mode === 'vertical-continuous' && settings.seamless ? 'true' : undefined
     "
@@ -513,6 +514,17 @@ defineExpose({
   scroll-snap-align: start;
   scroll-snap-stop: always;
   box-sizing: border-box;
+}
+
+/* 日漫模式 (RTL) 多页排版：右起读 (2 | 1 开本) */
+.reader-scroll[data-mode='horizontal'][data-direction='rtl'] .reader-spread,
+.reader-scroll[data-mode='vertical-paged'][data-direction='rtl'] .reader-spread {
+  direction: rtl;
+}
+
+.reader-scroll[data-mode='horizontal'][data-direction='rtl'] .reader-spread .reader-page,
+.reader-scroll[data-mode='vertical-paged'][data-direction='rtl'] .reader-spread .reader-page {
+  direction: ltr;
 }
 
 .reader-scroll[data-mode='horizontal'] .reader-page {

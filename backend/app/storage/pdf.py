@@ -94,7 +94,45 @@ def unpack_pdf(pdf_path: Path, output_dir: Path) -> tuple[list[tuple[int, Path, 
     return extracted, meta
 
 
-def _extract_chapters_from_toc(toc: list[list[Any]], total_pages: int) -> list[dict[str, Any]] | None:
+def is_blank_or_solid_page(img_bytes: bytes) -> bool:
+    """Detects if an extracted page image is a solid blank (near-black or near-white) separator page (>99% uniform)."""
+    try:
+        import io
+        from PIL import Image
+
+        with Image.open(io.BytesIO(img_bytes)) as im:
+            thumb = im.resize((32, 32))
+            extrema = thumb.getextrema()
+            if isinstance(extrema[0], tuple):  # RGB / RGBA
+                is_near_uniform = all((high - low) <= 15 for low, high in extrema[:3])
+                is_dark = all(high <= 35 for _, high in extrema[:3])
+                is_white = all(low >= 240 for low, _ in extrema[:3])
+                return is_near_uniform and (is_dark or is_white)
+            else:  # Grayscale
+                low, high = extrema
+                return (high - low <= 15) and (high <= 35 or low >= 240)
+    except Exception:
+        return False
+
+
+def is_separator_page(doc: pymupdf.Document | None, pno_1_based: int) -> bool:
+    """Checks if the 1-based page in doc is an extracted single-image blank/black separator page."""
+    if doc is None or pno_1_based < 1 or pno_1_based > len(doc):
+        return False
+    try:
+        page = doc[pno_1_based - 1]
+        imgs = page.get_images()
+        if len(imgs) == 1:
+            base_img = doc.extract_image(imgs[0][0])
+            return is_blank_or_solid_page(base_img.get("image", b""))
+    except Exception:
+        pass
+    return False
+
+
+def _extract_chapters_from_toc(
+    toc: list[list[Any]], total_pages: int, doc: pymupdf.Document | None = None
+) -> list[dict[str, Any]] | None:
     """Parses PDF electronic bookmarks (TOC) into structured chapters."""
     if not toc:
         return None
@@ -121,18 +159,26 @@ def _extract_chapters_from_toc(toc: list[list[Any]], total_pages: int) -> list[d
     chap_idx = 1
 
     if first_pno > 1:
+        first_count = first_pno - 1
+        while first_count > 1 and is_separator_page(doc, first_count):
+            logger.info("Trimmed trailing blank separator page at PDF p.%d in prelude/contents", first_count)
+            first_count -= 1
         chapters.append({
             "id": "c0",
             "index": chap_idx,
             "title": "卷首 / 目录",
             "start": 1,
-            "page_count": first_pno - 1,
+            "page_count": first_count,
         })
         chap_idx += 1
 
     for i, (title, pno) in enumerate(unique_entries):
         next_pno = unique_entries[i + 1][1] if i + 1 < len(unique_entries) else total_pages + 1
-        page_count = max(1, next_pno - pno)
+        raw_count = next_pno - pno
+        while raw_count > 1 and is_separator_page(doc, pno + raw_count - 1):
+            logger.info("Trimmed trailing blank separator page at PDF p.%d in chapter %d", pno + raw_count - 1, chap_idx)
+            raw_count -= 1
+        page_count = max(1, raw_count)
         chapters.append({
             "id": f"c{chap_idx}",
             "index": chap_idx,
@@ -280,18 +326,26 @@ def _extract_chapters_from_ocr(
 
     first_pno = final_pnos[0]
     if first_pno > 1:
+        first_count = first_pno - 1
+        while first_count > 1 and is_separator_page(doc, first_count):
+            logger.info("Trimmed trailing blank separator page at PDF p.%d in prelude/contents", first_count)
+            first_count -= 1
         chapters.append({
             "id": "c0",
             "index": chap_idx,
             "title": "卷首 / 目录",
             "start": 1,
-            "page_count": first_pno - 1,
+            "page_count": first_count,
         })
         chap_idx += 1
 
     for i, pno in enumerate(final_pnos):
         next_pno = final_pnos[i + 1] if i + 1 < len(final_pnos) else total_pages + 1
-        page_count = max(1, next_pno - pno)
+        raw_count = next_pno - pno
+        while raw_count > 1 and is_separator_page(doc, pno + raw_count - 1):
+            logger.info("Trimmed trailing blank separator page at PDF p.%d in chapter %d", pno + raw_count - 1, chap_idx)
+            raw_count -= 1
+        page_count = max(1, raw_count)
         title = filtered_splits[pno]
         if not title or len(title) < 2:
             title = f"第 {chap_idx} 话"
@@ -341,7 +395,7 @@ def detect_pdf_chapters(pdf_path: Path, total_pages: int, doc_title: str = "") -
 
         # Track 1: Electronic bookmarks
         toc = doc.get_toc()
-        chapters = _extract_chapters_from_toc(toc, total_pages)
+        chapters = _extract_chapters_from_toc(toc, total_pages, doc)
         if chapters and len(chapters) >= 2:
             return chapters, "toc"
 

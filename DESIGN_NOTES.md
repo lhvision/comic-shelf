@@ -39,6 +39,9 @@
    - [§67 章节子路由移动端触控底线与双轨分页画卷架构](#sec-67)
    - [§68 胶片预览轨抽屉、全卷宽高比池共享与画中画悬停架构](#sec-68)
    - [§69 开本自适应有效阅读线、未注水骨架 0 CLS 与目标锚点锁定微调架构](#sec-69)
+   - [§70 卡片悬浮位移迟滞保护、无浏览量零裸露与多标签复合筛选交互架构](#sec-70)
+   - [§71 Vue 3.5/3.6 现代语法演进、模板引用强类型化与零胶水双向绑定架构](#sec-71)
+   - [§72 阅读器双页开本排布（2 | 1 日漫开本）、分屏跨话横幅判定与设置项按需收敛体系](#sec-72)
 5. [历史演进里程碑归档索引（Historical Milestones Archive）](#5-历史演进里程碑归档索引historical-milestones-archive)
 
 ---
@@ -272,7 +275,9 @@
 - **铁律**：
   1. **全屏路由过渡仅限跨页面跳转**（书架 ⇄ 详情 ⇄ 章节 ⇄ 阅读器）；
   2. **严禁在阅读器内部翻页、切话或 HUD 显隐时触发 `startViewTransition`**（彻底杜绝微任务调度抢占导致的 `AbortError` 崩溃）；
-  3. 所有 `document.startViewTransition` 调用必须显式捕获并静默处理 `ready`、`finished`、`updateCallbackDone` 的 Promise 异常。
+  3. 所有 `document.startViewTransition` 调用必须显式捕获并静默处理 `ready`、`finished`、`updateCallbackDone` 的 Promise 异常；
+  4. **WebKit / iPadOS 路由过渡超时防卫（Safe Timeout Race Guard）**：在全局解析守卫（`router.beforeResolve`）中对 `startViewTransition` 必须绑定 `safeResolve` 与 350ms 严格超时竞速；针对 WebKit Level 2 对象传参（`{ update, types }`）做降级兼容（若 WebIDL 无法识别对象则回退至纯函数回调），并在 `finally` 中严格清理定时器句柄，杜绝移动端连续翻章导致导航无限挂死；
+  5. **过渡实例生命周期兜底**：必须同时捕获 `transition.updateCallbackDone` 与 `transition.finished`，即便捕获帧渲染被浏览器底层中断，亦能安全退出过渡态。
 
 <a id="sec-31"></a>
 
@@ -645,7 +650,25 @@
    - 避免 Vue 对成百上千本漫画对象及百页分镜数据进行昂贵的递归深度 Proxy 代理，降低大列表渲染时的内存占用与 GC 压力，数据更新统一通过全量引用置换驱动；
 4. **动态休眠与定时器安全生命周期（`onWatcherCleanup` & `useTimeoutFn`）**：
    - 消除组件内部手写的 `let timer = null` 与 `onBeforeUnmount` 手动 `clearTimeout`，统一由 VueUse `useTimeoutFn` 自动托管作用域生命周期；
-   - 浮层视口碰撞与滚动监听器结合 Vue 3.5 原生 `onWatcherCleanup`：仅在浮层展开可见时挂载 `window.scroll` / `window.resize` 监听器，在浮层收拢休眠时自动注销，达成 **休眠期 0 监听器、0 CPU 唤醒开销**。
+
+### <a id="sec-72"></a>§72 阅读器双页开本排布（2 | 1 日漫开本）、分屏跨话横幅判定与设置项按需收敛体系（Spread Layout 2 | 1, Spread-Aware Banner Detection & Adaptive Settings Panel Architecture）
+
+针对多页分屏排版、传统日漫实体开本视线、章节边界交互触达及阅读器设置项的视觉噪声抑制演进：
+
+1. **分屏跨话横幅范围探测契约（Spread-Aware Boundary Detection）**：
+   - 传统逻辑仅使用当前激活单页码（`currentPage`）对比章节边界页（`start_page` 与 `start_page + page_count - 1`）。在双页分屏（`pagesPerView = 2`）场景下，当翻至最后一屏（例如第 `[29, 30]` 页），`currentPage` 为该屏首张 `29`，小于末页 `30`，导致 `atChapterEnd` 恒为 `false`，全话完结横幅与下一话按钮彻底丢失；
+   - 重构 `useReaderPaging`：将 `pageGroups` 响应式计算前置，`atChapterEnd` 与 `atChapterStart` 升级为组级范围匹配——只要当前分屏包含的画页集合中存在章节末页（`group.includes(endPage)`），即确定性判定为章节末屏并激活跨话横幅；同理包含第一页时激活起始横幅；
+2. **日漫模式 2 | 1 开本排布（RTL Spread Layout 2 | 1）**：
+   - 实体日漫遵循右起翻页与由右向左的视线流。在双页横向或竖向分屏下，若按照西方排版将第 1 页置于左、第 2 页置于右，会产生严重剧情时序倒流与跨页通栏分镜错位；
+   - 遵循「2 | 1」日漫开本法则：当 `direction === 'rtl'` 且 `pagesPerView >= 2` 时，主视口通过 CSS `direction: rtl` 驱动分屏 Flex 容器由右向左排列子项，并在内部 `.reader-page` 强制重置为 `direction: ltr` 保护页面内文字与图层；
+   - 第 1 页自动排入屏幕右侧，第 2 页自动排入屏幕左侧，完美贴合实体日漫翻页习惯与跨页大跨幅拼版效果；
+3. **设置面板语义作用域收敛与按需隐退（Adaptive Direction Settings & Scope Discipline）**：
+   - 「横向阅读方向」选项仅在具有横向视线意义的排版下有效。在竖向连续长卷（条漫）模式下无任何横向概念，原先无差别展示造成认知负担与设置冗余；
+   - 约束展示契约：仅在 `mode === 'horizontal'`（横向翻页）或 `mode === 'vertical-paged' && pagesPerView >= 2`（多页竖向翻页）时呈现方向控制；
+   - 在多页竖向翻页下，将文案自适应调整为「双页排版流向」，并提供明确开本提示（`左起 (1 | 2)` 与 `右起 (2 | 1 日漫)`），消除读者的理解歧义；条漫模式下彻底隐退；
+4. **单行本章末衬页嗅探与双页洁净（Separator Blank Page Cleansing & Dual-Page Purity）**：
+   - 日漫单行本为维持实体跨章扉页始终位于特定版面（奇偶对齐），出版商在章末往往留有单色纯黑或纯白衬页。在电子化解包入库时若未过滤，双页模式下全章最后一幕右侧将突兀拼接一块死黑无意义图像；
+   - 本地 PDF 导入管道（`backend/app/storage/pdf.py`）增加章末纯色衬页智能截断嗅探，对于灰度标准差接近 0 的章末衬页自动剥离，保障双页合订本正文分镜原汁原味与末页收尾的视觉纯净。
 
 ---
 
