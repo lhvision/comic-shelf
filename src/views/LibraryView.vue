@@ -28,6 +28,7 @@ import { useLibrarySync } from '@/composables/useLibrarySync'
 import { useShelfState } from '@/composables/useShelfState'
 import { useImageSearch } from '@/composables/useImageSearch'
 import { useShelfSearch } from '@/composables/useShelfSearch'
+import { useShelfWebMCP } from '@/composables/useShelfWebMCP'
 import { AVAILABLE_COMMANDS } from '@/composables/useSearchCommands'
 import { useToast } from '@/composables/useToast'
 import { useAuth } from '@/composables/useAuth'
@@ -39,6 +40,7 @@ import type { ProviderInfo } from '@/types'
 const store = useLibraryStore()
 const route = useRoute()
 const router = useRouter()
+useShelfWebMCP({ router })
 const { toast } = useToast()
 const { canWrite, userId } = useAuth()
 const { broadcastLocalChange } = useSystemEvents()

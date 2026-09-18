@@ -34,7 +34,7 @@
     "ai-e2e:yaml": "ai-e2e yaml"
   },
   "dependencies": {
-    "@vueuse/core": "^14.4.0",
+    "@vueuse/core": "^15.0.0",
     "pinia": "^4.0.2",
     "vue": "catalog:",
     "vue-router": "^5.3.1"

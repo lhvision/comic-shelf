@@ -49,27 +49,31 @@
 
 ---
 
-## 一、 纸间 MCP 服务端与配套 Agent Skill（MCP Tools + Skill SOP Dual-Layer Architecture）
+## 一、 纸间端云双轨 MCP 与配套 Agent Skill（Backend MCP + Frontend WebMCP + Skill SOP Architecture）
 
-### 1. 定位与“双子星”架构设计（Why MCP + Skill?）
+### 1. 定位与“三位一体”架构设计（Why Backend MCP + Frontend WebMCP + Skill?）
 
-在现代 AI Agent 生态中，工具与智能体协作必须建立 **“能力层 + 心智层”** 双子星架构：
+在现代 AI Agent 生态中，纸间构建 **“数据中枢（后端 MCP） + 视口操作面（前端 WebMCP） + 决策心智（Agent Skill）”** 三位一体架构：
 
-- **MCP（能力层 / Device Driver & Hands）**：
-  - 提供原子化的标准 API（如 `search_by_image`、`search_by_dialogue`、`create_direct_pass`）；
-  - 强制输入参数校验（JSON Schema），输出标准结构化响应。
+- **服务端 MCP（数据面与计算中枢 / Backend Data Plane）**：
+  - 由 FastAPI 暴露 `/mcp/sse`，提供原子化的重型计算与存储检索 API（如 `search_by_image`、`search_by_dialogue`、`create_direct_pass`）；
+  - 供外部独立 Agent（飞书 Bot、Claude Desktop、Antigravity）远程调用，强制 JSON Schema 校验。
+- **前端 WebMCP（视口操作面 / Frontend Viewport Operator）**：
+  - 基于 W3C / Chrome 浏览器级 `document.modelContext.registerTool()` 规范与 VueUse 15 `useWebMCP` 构建；
+  - **视口生命周期绑定**：仅在对应页面存活期间向浏览器内置 AI、扩展 Agent 或自动化测试驱动暴露微操工具（如阅读器跳页、翻页、模式切换，书架标签筛选）；离开视口即刻随 Vue Scope 自动注销，杜绝跨页面非法调用与脆弱 DOM 模拟点击。
 - **Agent Skill（心智与工作流层 / Playbook & SOP）**：
   - 为 LLM 提供专属的《纸间领域业务说明书（`SKILL.md`）》；
-  - **明确执行顺序与决策树**：如“当用户发图求出处时，优先调用 `search_by_image`；若用户补充了台词碎片，联动调用 `search_by_dialogue` 交叉验证；命中后严禁直接返回公开库链接，必须调用 `create_direct_pass` 签发临时阅读凭证并套用典雅的二次元回复模板”；
-  - **规避反模式**：杜绝 Agent 盲目并发爬取全站目录，杜绝绕过访客门禁向群聊泄露管理员接口；
-  - **结论**：**Skill 提供了明确的工作说明书，MCP 提供了实际执行的工具能力**。两者结对才是生产级 Agent 的标准范式。
+  - **明确跨端协同顺序与决策树**：如“当读者发图求出处时，优先调用后端 `search_by_image` 检索漫画与页码；若在浏览器当前会话内，联动调用前端 `reader_jump_to_page` 直达该页；若用户提供了台词碎片，联动调用 `reader_locate_bubble` 聚焦对白气泡”；
+  - **规避反模式**：杜绝 Agent 盲目并发爬取全站目录，杜绝绕过访客门禁向群聊泄露管理员接口。
 
-### 2. 传输协议选型
+### 2. 传输协议与生命周期
 
-- **内置 HTTP-SSE 传输模式（推荐）**：在 FastAPI 中挂载 `/mcp/sse`，遵循标准 MCP over Server-Sent Events 协议。
-- **本地 stdio 代理**：通过极轻量的 CLI 包装脚本，供本地桌面 AI 客户端通过管道调用。
+- **后端通道**：FastAPI `/mcp/sse`（标准 Server-Sent Events），或本地 stdio 管道。
+- **前端通道**：Chrome `document.modelContext`（`chrome://flags/#enable-webmcp-testing`），通过 VueUse `useWebMCP` 实现响应式状态与组件生命周期同步（挂载注册、销毁注销、安全降级）。
 
-### 3. 工具清单（Tools Draft）
+### 3. 工具清单（Tools Full Matrix）
+
+#### (1) 后端数据面工具（Backend Data Tools）
 
 - `search_by_image(image_bytes | image_base64)`：
   调用内部 `imsearch` 引擎比对局部特征，输出命中的漫画 `source`、`source_id`、具体页码及置信度。
@@ -83,6 +87,70 @@
   基于当前读者的阅读进度与红心偏好，推荐同标签或同作者的未读藏书。
 - `create_direct_pass(source, source_id, page_index=1, ttl_seconds=7200)`：
   签发单本锁定的带时效直达阅读链接。
+
+#### (2) 前端视口操作面工具（Frontend WebMCP Tools 全量 4 大视口矩阵）
+
+##### 1. 书架视口工具（Shelf Viewport / `useShelfWebMCP`）
+
+- `shelf_search_comics({ keyword?, tag?, sortBy?, favoritesOnly?, readingStatus? })`：
+  多维检索与过滤书架漫画藏书（支持标题/作者关键词、题材标签、排序规则、红心收藏与阅读进度筛选）。
+- `shelf_search_dialogue({ query, source?, limit? })`：
+  基于 SQLite FTS5 全文索引在全站漫画分镜中检索台词对白，并返回匹配漫画、具体画页与气泡归一化坐标。
+- `shelf_search_image({ image_base64 })`：
+  通过传入图片的 Base64 编码数据在全库中进行视觉向量特征匹配，精准定位到所属漫画、画页及相似度评分。
+- `shelf_read_comic({ source, source_id, page?, bubble_box?, bubble_text? })`：
+  直接从书架打开指定漫画并跳转到特定画页阅读，可附带对白气泡坐标进行朱砂色呼吸光效高亮。
+- `shelf_import_comic({ source, source_id })`：
+  通过图源与车号将远端漫画收录导入至本地书库（自动触发元数据解析与后台首批预缓存）。
+- `shelf_pick_random()`：
+  从当前书架藏书中随机淘选一本漫画并直达详情页。
+- `shelf_open_comic({ source, source_id })`：
+  通过图源和车号直达打开指定漫画的详情页。
+
+##### 2. 详情与章节视口工具（Detail & Chapter Viewport / `useComicDetailWebMCP`）
+
+- `detail_start_reading({ page?, fromBeginning? })`：
+  启动当前漫画阅读器（支持从第 1 页开篇、从上次历史进度继续、或直达指定页码）。
+- `detail_cache_all_pages()`：
+  触发服务端后台将当前漫画全本所有画页进行离线预缓存与解密。
+- `detail_cache_chapter({ chapter_id? })`：
+  触发服务端后台将当前漫画指定章节的所有画页进行离线预缓存与解密。
+- `detail_open_chapter({ chapter_id })`：
+  进入当前漫画指定章节的独立子路由专注页。
+- `detail_get_comic_info()`：
+  获取当前漫画完整元数据、离线缓存进度比例、全书章节目录及上次阅读记录快照。
+- `detail_toggle_favorite()`：
+  切换当前漫画的红心收藏（喜欢/取消喜欢）状态。
+
+##### 3. 阅读器视口工具（Reader Viewport / `useReaderWebMCP`）
+
+- `reader_jump_to_page({ page })`：
+  在当前打开的漫画阅读器中，精准跳转至指定的 1-based 全局页码。
+- `reader_turn_page({ direction: "next" | "prev" })`：
+  在阅读器中向前或向后步进翻页（支持多页并排与分屏模式）。
+- `reader_switch_mode({ mode?, pagesPerView?, direction? })`：
+  动态配置与切换阅读器排版布局（排版模式：瀑布流/单页吸附/横向切页；分屏：1/2/4页；翻页方向：从左往右 / 从右往左日漫模式）。
+- `reader_switch_fit({ fit: "width" | "height" })`：
+  切换画页在阅读视口中的缩放适配策略（适应宽度 / 适应高度）。
+- `reader_toggle_auto_turn({ enable?, interval? })`：
+  开启、关闭自动翻页功能，或调节自动翻页倒计时秒数间隔。
+- `reader_toggle_favorite()`：
+  在阅读器中快速切换当前漫画的红心收藏状态。
+- `reader_locate_bubble({ page, box?, text? })`：
+  定位画页并以朱砂色呼吸线框高亮指定的对白气泡框。
+- `reader_jump_chapter({ direction: "next" | "prev" })`：
+  在多章节漫画中跨话切换上一话或下一话。
+
+##### 4. 发现与排行视口工具（Discovery Viewport / `useDiscoveryWebMCP`）
+
+- `discovery_get_ranking({ timeframe?, refresh? })`：
+  获取禁漫官方精选与排行数据（周榜/月榜/日榜），返回作品标题、作者、分类标签及是否已收录状态。
+- `discovery_switch_timeframe({ timeframe: "week" | "month" | "day" })`：
+  切换官方精选榜单的时间跨度分类标签。
+- `discovery_ingest_comic({ source_id })`：
+  一键将排行榜中的指定漫画收录导入至本地书库（后台自动开启预缓存）。
+- `discovery_open_detail({ source?, source_id })`：
+  导航进入榜单中某本漫画的详情页。
 
 ---
 

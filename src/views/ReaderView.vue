@@ -15,6 +15,7 @@ import { useReaderData } from '@/composables/useReaderData'
 import { useReaderBubble } from '@/composables/useReaderBubble'
 import { useReaderCompletion } from '@/composables/useReaderCompletion'
 import { useReaderInteraction } from '@/composables/useReaderInteraction'
+import { useReaderWebMCP } from '@/composables/useReaderWebMCP'
 import { isPositiveNumber } from '@/utils/is'
 import ReaderTopBar from '@/components/reader/ReaderTopBar.vue'
 import ReaderLoadingState from '@/components/reader/ReaderLoadingState.vue'
@@ -145,6 +146,21 @@ const {
 
 const { recommendations, onReaderCompleted, onSelectComic, onOpenComicDetail, onBackToShelf } =
   useReaderCompletion({ source, sourceId, detail, total, lastRead })
+
+useReaderWebMCP({
+  currentPage,
+  pageCount: total,
+  settings,
+  goToPage,
+  prevGroup,
+  nextGroup,
+  goNextChapter,
+  goPrevChapter,
+  title: computed(() => detail.value?.meta.title ?? ''),
+  isFavorite: computed(() => Boolean(detail.value?.meta.favorite)),
+  router,
+  route,
+})
 </script>
 
 <template>

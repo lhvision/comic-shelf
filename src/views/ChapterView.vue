@@ -11,6 +11,8 @@ import { useIdlePrefetch } from '@/composables/useIdlePrefetch'
 import { useToast } from '@/composables/useToast'
 import { useChapterCache } from '@/composables/useChapterCache'
 import { useComicDetail } from '@/composables/useComicDetail'
+import { useComicDetailWebMCP } from '@/composables/useComicDetailWebMCP'
+import { api } from '@/api/client'
 import ChapterSwitcher from '@/components/detail/ChapterSwitcher.vue'
 import PageIndexGrid from '@/components/detail/PageIndexGrid.vue'
 import CacheProgress from '@/components/CacheProgress.vue'
@@ -137,6 +139,24 @@ watch(
   },
   { immediate: true },
 )
+
+useComicDetailWebMCP({
+  source,
+  sourceId,
+  detail,
+  chapters,
+  lastRead,
+  router,
+  cacheChapter,
+  activeChapterId: computed(() => activeChapter.value?.id),
+  toggleFavorite: async () => {
+    if (detail.value) {
+      const nextFav = !detail.value.meta.favorite
+      detail.value.meta.favorite = nextFav
+      await api.setFavorite(source.value, sourceId.value, nextFav)
+    }
+  },
+})
 
 useIdlePrefetch(() => import('@/views/ReaderView.vue'))
 

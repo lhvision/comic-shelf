@@ -6,6 +6,7 @@ import SegmentedTabs from '@/components/SegmentedTabs.vue'
 import AppButton from '@/components/AppButton.vue'
 import AppIcon from '@/components/AppIcon.vue'
 import { useDiscovery } from '@/composables/useDiscovery'
+import { useDiscoveryWebMCP } from '@/composables/useDiscoveryWebMCP'
 import { useAuth } from '@/composables/useAuth'
 import type { DiscoveryItem, DiscoveryTimeframe } from '@/types'
 
@@ -15,6 +16,14 @@ const { canWrite } = useAuth()
 // Composable top-level destructuring (DESIGN_NOTES §13)
 const { timeframe, feed, loading, refreshing, error, ingestingMap, loadRanking, ingestComic } =
   useDiscovery()
+
+useDiscoveryWebMCP({
+  timeframe,
+  feed,
+  loadRanking,
+  ingestComic,
+  router,
+})
 
 const tabs: { key: DiscoveryTimeframe; label: string; sub: string }[] = [
   { key: 'week', label: '本周必看', sub: '周榜' },

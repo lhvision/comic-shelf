@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { pageFileUrl } from '@/api/client'
+import { pageFileUrl, api } from '@/api/client'
 import { useLastRead } from '@/composables/useLastRead'
 import { useChapterNavigation } from '@/composables/useChapterNavigation'
 import { useIdlePrefetch } from '@/composables/useIdlePrefetch'
@@ -12,6 +12,7 @@ import { useOfflineSync } from '@/composables/useOfflineSync'
 import { useChapterCache } from '@/composables/useChapterCache'
 import { useComicDetail } from '@/composables/useComicDetail'
 import { useComicDetailActions } from '@/composables/useComicDetailActions'
+import { useComicDetailWebMCP } from '@/composables/useComicDetailWebMCP'
 import CoverCarousel from '@/components/CoverCarousel.vue'
 import AppButton from '@/components/AppButton.vue'
 import { calculateProgressPercent } from '@/utils/progress'
@@ -124,6 +125,24 @@ const initialAppendType = ref<'current' | 'new'>('current')
 const cachePercent = computed(() => {
   if (!detail.value) return 0
   return calculateProgressPercent(detail.value.cached_pages, detail.value.meta.page_count)
+})
+
+useComicDetailWebMCP({
+  source,
+  sourceId,
+  detail,
+  chapters,
+  lastRead,
+  router,
+  cacheAll,
+  cacheChapter: handleCacheChapter,
+  toggleFavorite: async () => {
+    if (detail.value) {
+      const nextFav = !detail.value.meta.favorite
+      detail.value.meta.favorite = nextFav
+      await api.setFavorite(source.value, sourceId.value, nextFav)
+    }
+  },
 })
 
 useIdlePrefetch(() => import('@/views/ReaderView.vue'))
