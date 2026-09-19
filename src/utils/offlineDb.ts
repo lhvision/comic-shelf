@@ -374,6 +374,75 @@ export async function getAllCachedComicDetails(userId?: string): Promise<ComicDe
   return promise
 }
 
+/**
+ * 从 IndexedDB 中删除指定漫画的所有详情缓存（支持按 source + sourceId 精准清理全部用户维度的记录）
+ */
+export async function deleteCachedComicDetail(source: string, sourceId: string): Promise<void> {
+  const db = await openOfflineDb()
+  if (!db || !source || !sourceId) return
+
+  const { promise, resolve } = withResolvers<void>()
+  try {
+    const tx = db.transaction(STORE_DETAILS, 'readwrite')
+    const store = tx.objectStore(STORE_DETAILS)
+    const req = store.getAll()
+    req.onsuccess = () => {
+      const records = (req.result as CachedComicDetailRecord[]) || []
+      for (const r of records) {
+        if (r.source === source && r.sourceId === sourceId) {
+          store.delete(r.key)
+        }
+      }
+      resolve()
+    }
+    req.onerror = () => resolve()
+    tx.oncomplete = () => resolve()
+    tx.onerror = () => resolve()
+  } catch {
+    resolve()
+  }
+  return promise
+}
+
+/**
+ * 清理指定漫画在离线队列中尚未回写的所有残留动作（避免重连后向已删除漫画回写脏数据）
+ */
+export async function removeOfflineActionsForComic(
+  source: string,
+  sourceId: string,
+): Promise<void> {
+  const db = await openOfflineDb()
+  if (!db || !source || !sourceId) return
+
+  const { promise, resolve } = withResolvers<void>()
+  try {
+    const tx = db.transaction(STORE_ACTIONS, 'readwrite')
+    const store = tx.objectStore(STORE_ACTIONS)
+    const req = store.getAll()
+    req.onsuccess = () => {
+      const records = (req.result as OfflineActionRecord[]) || []
+      for (const r of records) {
+        const payload = r.payload as Record<string, unknown> | undefined
+        if (
+          payload &&
+          payload.source === source &&
+          payload.sourceId === sourceId &&
+          r.id !== undefined
+        ) {
+          store.delete(r.id)
+        }
+      }
+      resolve()
+    }
+    req.onerror = () => resolve()
+    tx.oncomplete = () => resolve()
+    tx.onerror = () => resolve()
+  } catch {
+    resolve()
+  }
+  return promise
+}
+
 /* ---------------- 3. 离线事务记账队列 ---------------- */
 
 /**

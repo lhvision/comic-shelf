@@ -33,14 +33,14 @@ async def image_search(request: Request, file: UploadFile = File(...)) -> list[I
     if not content:
         raise HTTPException(status_code=400, detail="上传图片不能为空")
     results = await asyncio.to_thread(search_imsearch, content, filename=file.filename or "query.jpg")
-    if not is_curator(request):
-        filtered: list[ImageSearchItem] = []
-        for r in results:
-            m = store.load_meta(r.source, r.source_id)
-            if m and not getattr(m, "hidden_from_guest", False):
+    filtered: list[ImageSearchItem] = []
+    is_cur = is_curator(request)
+    for r in results:
+        m = store.load_meta(r.source, r.source_id)
+        if m is not None:
+            if is_cur or not getattr(m, "hidden_from_guest", False):
                 filtered.append(r)
-        return filtered
-    return results
+    return filtered
 
 
 @router.get("/api/search/dialogue", response_model=DialogueSearchResponse)

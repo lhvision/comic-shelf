@@ -135,18 +135,19 @@ def _prefetch_worker(
             on_progress=_on_progress,
         )
     finally:
-        store.reconcile_cached_pages(meta)
-        final_cached = store.cached_page_count(meta)
-        job["prefetched"] = final_cached
-        job["total"] = meta.page_count
-        job["warnings"] = warnings
-        is_complete = final_cached >= meta.page_count
-        broadcast_event(
-            "library_changed",
-            {
-                "action": "cache_complete" if is_complete else "cache_partial",
-                "source": fetched.meta.source,
-                "source_id": fetched.meta.source_id,
-                "timestamp": time.time(),
-            },
-        )
+        if not job.get("cancelled"):
+            store.reconcile_cached_pages(meta)
+            final_cached = store.cached_page_count(meta)
+            job["prefetched"] = final_cached
+            job["total"] = meta.page_count
+            job["warnings"] = warnings
+            is_complete = final_cached >= meta.page_count
+            broadcast_event(
+                "library_changed",
+                {
+                    "action": "cache_complete" if is_complete else "cache_partial",
+                    "source": fetched.meta.source,
+                    "source_id": fetched.meta.source_id,
+                    "timestamp": time.time(),
+                },
+            )

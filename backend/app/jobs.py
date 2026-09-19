@@ -105,3 +105,23 @@ def list_running() -> list[dict[str, Any]]:
     """Snapshot of all currently running jobs (for the shelf's live progress)."""
     with _locker:
         return [dict(job) for job in _jobs.values() if job.get("running")]
+
+
+def cancel_job(source: str, source_id: str) -> None:
+    """Cancels and marks any in-flight background job for the comic as terminated."""
+    key = _key(source, source_id)
+    with _locker:
+        job = _jobs.get(key)
+        if job is not None:
+            job["cancelled"] = True
+            job["running"] = False
+            job["done"] = True
+            job["finished_at"] = time.time()
+
+
+def is_job_cancelled(source: str, source_id: str) -> bool:
+    """Checks whether a job has been cancelled."""
+    key = _key(source, source_id)
+    with _locker:
+        job = _jobs.get(key)
+        return bool(job and job.get("cancelled"))

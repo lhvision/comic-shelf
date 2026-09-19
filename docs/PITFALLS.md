@@ -1504,6 +1504,20 @@
   1. **参数签名声明标准化**：对非必填查询参数采用类型标注与默认值 `cover_url: str | None = None`（FastAPI 会自动推导为 Optional Query 参数）；
   2. **强类型安全防御**：函数体内部使用 `cover_url.strip() if isinstance(cover_url, str) else ""`，完美兼容 FastAPI 注入环境与单测直接调用环境。
 
+### 129. 漫画移除影子索引遗漏与全链路级联清理缺陷 (Comic Eviction Phantom Shadow Index & Cascade Purge Trap)
+
+- **本质**：
+  1. **影子索引未同步注销致需删两次（Phantom Index Persistence）**：`DELETE /api/library/{source}/{source_id}` 早期仅执行了磁盘目录删除（`shutil.rmtree`）与台词 FTS 清理，遗漏了 SQLite `comics_index` 影子索引的注销。前端删除后刷新列表，后端由于直接走 `comics_index` 分页表仍能查到该作品，使得已删除漫画在书架卡片中重新浮现；直到用户进行二次点击或触发 `load_meta()` 探测到磁盘目录不存在触发 fallback 自愈时，条目才最终从索引剥离；
+  2. **在途下载任务竞争与僵尸复活（In-flight Prefetch Zombie Resurrection）**：若在后台预缓存执行中删除漫画，若未对在途协程/线程触发显式熔断，下载工作协程会在循环中将后续页面重新写入被删目录，并在 `finally` 阶段触发 `reconcile_cached_pages` 重建索引，导致已删作品幽灵复活；
+  3. **离线快照与待决事务队列残留（Offline IndexedDB Leakage）**：前端 IndexedDB 若未在删除时同步清除 `STORE_DETAILS` 单本详情快照及 `STORE_ACTIONS` 未决动作，当网络断开切入离线模式时，离线逆向注水会再次把已删漫画重新渲染到书架网格上。
+- **红线与防误伤**：
+  - **严禁**在移除作品时仅执行单点文件删除，必须保证 SQLite 影子索引、全文台词 FTS、多用户进度/喜欢、单本沙箱通行证与离线 IndexedDB 的原子级联清理；
+  - **严禁**在后台预缓存仍在运行时直接裸删目录，必须先触发 `cancel_job` 并在下载循环与 `finally` 对齐中加入存活性探测；
+- **放行/改用**：
+  1. **全链路级联清理单源收敛**：后端定义并调度 `purge_comic_db_records(source, source_id)`，一站式级联清理 `comics_index`、`comic_dialogues_fts`、`comic_ocr_sync_meta`、`user_favorites`、`user_reading_progress` 与 `direct_passes`；
+  2. **在途任务安全熔断与主动避让**：`store.delete` 先调用 `cancel_job` 标记熔断；`prefetch` 批处理循环中增加 `album_path.exists()` 实时侦测，一旦发现作品已删即刻 `break` 安全退出，`finally` 块发现作品已销毁时静默放弃对齐与广播；
+  3. **前端离线存储秒级清理**：`offlineDb.ts` 导出 `deleteCachedComicDetail` 与 `removeOfflineActionsForComic`，在作品被主动移除或收到 `delete` 事件广播时，秒级同步清理 IndexedDB 快照与未决操作队列。
+
 ---
 
 ## 🚦 交付门禁（四步必跑）

@@ -849,14 +849,42 @@ def upsert_comic_index(item: dict[str, Any]) -> None:
         conn.commit()
 
 
-def delete_comic_index(source: str, source_id: str) -> None:
-    """删除指定漫画的影子索引。"""
+def purge_comic_db_records(source: str, source_id: str) -> None:
+    """彻底级联清理指定漫画在 SQLite 数据库中的所有关联记录：
+    1. 影子索引 (comics_index)
+    2. 用户喜欢标记 (user_favorites)
+    3. 用户阅读进度 (user_reading_progress)
+    4. 单本沙箱专属通行证 (direct_passes)
+    5. 台词全文检索与 OCR 同步元数据 (comic_dialogues_fts, comic_ocr_sync_meta)
+    """
     with get_db() as conn:
         conn.execute(
             "DELETE FROM comics_index WHERE source = ? AND source_id = ?",
             (source, source_id),
         )
+        conn.execute(
+            "DELETE FROM user_favorites WHERE source = ? AND source_id = ?",
+            (source, source_id),
+        )
+        conn.execute(
+            "DELETE FROM user_reading_progress WHERE source = ? AND source_id = ?",
+            (source, source_id),
+        )
+        conn.execute(
+            "DELETE FROM direct_passes WHERE source = ? AND source_id = ?",
+            (source, source_id),
+        )
         conn.commit()
+
+    try:
+        delete_comic_dialogues(source, source_id)
+    except Exception:
+        pass
+
+
+def delete_comic_index(source: str, source_id: str) -> None:
+    """删除指定漫画的影子索引及级联元数据。"""
+    purge_comic_db_records(source, source_id)
 
 
 def get_all_indexed_mtimes() -> dict[tuple[str, str], float]:

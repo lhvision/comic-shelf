@@ -9,6 +9,8 @@ import {
   getOfflineActions,
   removeOfflineAction,
   clearOfflineActions,
+  deleteCachedComicDetail,
+  removeOfflineActionsForComic,
   clearAllMetadataDb,
 } from '@/utils/offlineDb'
 import type { ComicDetail, LibrarySummary } from '@/types'
@@ -392,6 +394,56 @@ describe('offlineDb utils', () => {
     await clearOfflineActions()
     const cleared = await getOfflineActions()
     expect(cleared.length).toBe(0)
+  })
+
+  it('deletes cached comic detail and removes associated offline actions on comic removal', async () => {
+    // 1. Store detail for comic
+    const detail = {
+      meta: {
+        source: 'jm',
+        source_id: 'comic-to-delete',
+        title: 'Delete Me',
+        display_id: 'comic-to-delete',
+        page_count: 10,
+        authors: [],
+        works: [],
+        actors: [],
+        tags: [],
+        cover_indices: [1],
+        cover_count: 1,
+        pages: [],
+        chapters: [],
+      },
+      cached_pages: 10,
+      cache_complete: true,
+      cover_paths: [],
+    } as unknown as ComicDetail
+    await saveComicDetail('curator', detail)
+    const fetchedBefore = await getComicDetail('curator', 'jm', 'comic-to-delete')
+    expect(fetchedBefore?.meta?.title).toBe('Delete Me')
+
+    // 2. Queue actions for this comic and another comic
+    await enqueueOfflineAction({
+      type: 'favorite',
+      payload: { source: 'jm', sourceId: 'comic-to-delete', favorite: true },
+    })
+    await enqueueOfflineAction({
+      type: 'favorite',
+      payload: { source: 'jm', sourceId: 'comic-other', favorite: true },
+    })
+
+    // 3. Perform delete
+    await deleteCachedComicDetail('jm', 'comic-to-delete')
+    await removeOfflineActionsForComic('jm', 'comic-to-delete')
+
+    // 4. Assert detail is gone and actions for deleted comic are removed
+    const fetchedAfter = await getComicDetail('curator', 'jm', 'comic-to-delete')
+    expect(fetchedAfter).toBeNull()
+
+    const remainingActions = await getOfflineActions()
+    expect(remainingActions.length).toBe(1)
+    const firstPayload = remainingActions[0]?.payload as Record<string, unknown> | undefined
+    expect(firstPayload?.sourceId).toBe('comic-other')
   })
 
   it('prevents guest users from accessing hidden_from_guest comics and falling back to curator shelf', async () => {

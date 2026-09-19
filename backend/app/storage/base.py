@@ -208,9 +208,8 @@ class ComicStoreBase:
                         "mtime": mtime,
                     })
             else:
-                from ..db import delete_comic_dialogues, delete_comic_index
-                delete_comic_index(source, source_id)
-                delete_comic_dialogues(source, source_id)
+                from ..db import purge_comic_db_records
+                purge_comic_db_records(source, source_id)
         except Exception:
             pass
 
@@ -442,12 +441,22 @@ class ComicStoreBase:
         )
 
     def delete(self, source: str, source_id: str) -> bool:
+        try:
+            from ..jobs import cancel_job
+            cancel_job(source, source_id)
+        except Exception:
+            pass
         target = self.comic_dir(source, source_id)
-        self._invalidate_cache(source, source_id)
-        if target.exists():
+        existed = target.exists()
+        if existed:
             shutil.rmtree(target)
-            return True
-        return False
+        self._invalidate_cache(source, source_id)
+        try:
+            from ..db import purge_comic_db_records
+            purge_comic_db_records(source, source_id)
+        except Exception as e:
+            logger.exception("Failed to purge comic db records for %s/%s: %s", source, source_id, e)
+        return existed
 
     def update_metadata(self, source: str, source_id: str, updates: dict[str, Any]) -> ComicMeta:
         meta = self.load_meta(source, source_id)

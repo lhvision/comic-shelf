@@ -29,11 +29,11 @@ from .auth import (
 from .config import ENABLE_DOCS, LIBRARY_DIR
 from .db import (
     clean_expired_direct_passes,
-    delete_comic_index,
     get_all_indexed_mtimes,
     get_user_favorites,
     init_db,
     migrate_legacy_favorites,
+    purge_comic_db_records,
     upsert_comic_index,
 )
 from .events import broadcast_event, router as events_router, shutdown_events
@@ -196,7 +196,7 @@ def sync_library_index(store: ComicStore) -> None:
                 })
 
         for source, source_id in set(existing_mtimes.keys()) - disk_keys:
-            delete_comic_index(source, source_id)
+            purge_comic_db_records(source, source_id)
     except Exception as exc:
         logger.warning("sync_library_index error: %s", exc)
 

@@ -10,6 +10,8 @@ import {
   getComicDetail as getOfflineComicDetail,
   saveComicDetail as saveOfflineComicDetail,
   getAllCachedComicDetails,
+  deleteCachedComicDetail,
+  removeOfflineActionsForComic,
 } from '@/utils/offlineDb'
 import type {
   ComicDetail,
@@ -502,6 +504,8 @@ export const useLibraryStore = defineStore('library', () => {
   async function remove(source: string, sourceId: string) {
     await api.deleteComic(source, sourceId)
     removeDetail(source, sourceId)
+    void deleteCachedComicDetail(source, sourceId)
+    void removeOfflineActionsForComic(source, sourceId)
     await load()
     broadcastLocalChange({
       action: 'delete',

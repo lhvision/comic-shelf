@@ -65,6 +65,9 @@ class ComicStorePrefetchMixin:
             logger.warning("预热官方封面异常，降级使用画页第一页: %s", exc)
 
         for index in indexes:
+            if not self.album_path(meta.source, meta.source_id).exists():
+                logger.info("Prefetch aborted for deleted comic %s/%s", meta.source, meta.source_id)
+                break
             success = False
             last_exc = None
             for attempt in range(2):
@@ -105,6 +108,9 @@ class ComicStorePrefetchMixin:
         total = len(indexes)
 
         for index in indexes:
+            if not self.album_path(meta.source, meta.source_id).exists():
+                logger.info("Prefetch chapter aborted for deleted comic %s/%s", meta.source, meta.source_id)
+                break
             success = False
             last_exc = None
             for attempt in range(2):

@@ -10,6 +10,7 @@ import { api, clearApiDetailCache } from '@/api/client'
 import { usePwaUpdate } from '@/composables/usePwaUpdate'
 import router from '@/router'
 import { useLibraryStore } from '@/stores/library'
+import { deleteCachedComicDetail, removeOfflineActionsForComic } from '@/utils/offlineDb'
 
 export const MAX_SSE_RETRY_ATTEMPTS = 10
 export const TASK_TEARDOWN_COOLDOWN_MS = 5000 // 5 seconds graceful teardown cooldown
@@ -198,6 +199,10 @@ export const useSystemEvents = createGlobalState(() => {
       }
 
       if (data.source && data.source_id) {
+        if (data.action === 'delete') {
+          void deleteCachedComicDetail(data.source, data.source_id)
+          void removeOfflineActionsForComic(data.source, data.source_id)
+        }
         clearApiDetailCache(data.source, data.source_id)
         libraryStore.removeDetail(data.source, data.source_id)
       } else {
