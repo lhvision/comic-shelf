@@ -53,11 +53,6 @@ const moreOptions = computed<DropdownOption[]>(() => {
   const list: DropdownOption[] = []
   if (props.canWrite) {
     list.push({
-      key: 'share_direct',
-      label: '签发单本直达…',
-      hint: '临时沙箱',
-    })
-    list.push({
       key: 'replace_pages',
       label: '重新装订…',
       hint: '重订画页',
@@ -77,8 +72,6 @@ function onMoreSelect(option: DropdownOption) {
     requestRemove()
   } else if (option.key === 'replace_pages') {
     emit('replacePages')
-  } else if (option.key === 'share_direct') {
-    emit('shareDirect')
   }
 }
 

@@ -70,7 +70,7 @@ export function useChapterNavigation(detail: Ref<ComicDetail | null>, lastRead: 
   })
 
   /** 上次阅读页（限定在全书页数范围内）；单章节作品同样返回全局页。 */
-  const progressEl = computed(() =>
+  const lastReadPage = computed(() =>
     lastRead.value >= 1 && lastRead.value <= (detail.value?.meta.page_count ?? 0)
       ? lastRead.value
       : 0,
@@ -103,24 +103,25 @@ export function useChapterNavigation(detail: Ref<ComicDetail | null>, lastRead: 
   })
 
   const lastReadChapter = computed(() => {
-    if (progressEl.value < 1) return null
+    if (lastReadPage.value < 1) return null
     const chs = chapters.value
     if (chs.length <= 1) return null
     return (
-      chs.find((c) => progressEl.value >= c.start && progressEl.value < c.start + c.page_count) ??
-      null
+      chs.find(
+        (c) => lastReadPage.value >= c.start && lastReadPage.value < c.start + c.page_count,
+      ) ?? null
     )
   })
 
   /** 「继续阅读」按钮文案：多章节时带章节定位与章内相对页码，单章节保持「第 N 页」原文案。 */
   const lastReadLabel = computed(() => {
-    if (progressEl.value < 1) return ''
+    if (lastReadPage.value < 1) return ''
     const c = lastReadChapter.value
     if (c) {
-      const localPage = progressEl.value - c.start + 1
+      const localPage = lastReadPage.value - c.start + 1
       return `继续阅读 · 第 ${c.index} 話 · 第 ${localPage} 页`
     }
-    return `继续阅读 · 第 ${progressEl.value} 页`
+    return `继续阅读 · 第 ${lastReadPage.value} 页`
   })
 
   // 切换章节：重置本章的增量渲染（第 1 批 48 页）。
@@ -195,7 +196,9 @@ export function useChapterNavigation(detail: Ref<ComicDetail | null>, lastRead: 
     activeChapterLabel,
     chapters,
     chapterCache,
-    progressEl,
+    lastReadPage,
+    /** @deprecated 请优先使用语义明确的 `lastReadPage` */
+    progressEl: lastReadPage,
     visiblePages,
     remainingPages,
     showingRange,

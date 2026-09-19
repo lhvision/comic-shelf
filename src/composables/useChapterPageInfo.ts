@@ -7,7 +7,7 @@
  * 承载当前激活话的起止范围计算、阅读进度换算、相邻话导航及阅读器直达。
  */
 
-import { computed, type Ref } from 'vue'
+import { computed, ref, type Ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useEventListener } from '@vueuse/core'
 import { useHierarchicalNavigation } from '@/composables/useHierarchicalNavigation'
@@ -26,8 +26,10 @@ export interface UseChapterPageInfoOptions {
   chapters: Ref<Chapter[]>
   /** 漫画完整详情数据引用 */
   detail: Ref<ComicDetail | null>
-  /** 上次阅读的全局页码进度 */
-  progressEl: Ref<number>
+  /** 上次阅读的全局页码进度（推荐） */
+  lastReadPage?: Ref<number>
+  /** @deprecated 请优先使用语义明确的 `lastReadPage` */
+  progressEl?: Ref<number>
   /** 是否正在缓存 */
   caching?: Ref<boolean>
   /** 正在缓存的章节 ID */
@@ -39,17 +41,9 @@ export interface UseChapterPageInfoOptions {
 }
 
 export function useChapterPageInfo(options: UseChapterPageInfoOptions) {
-  const {
-    source,
-    sourceId,
-    chapterId,
-    chapters,
-    detail,
-    progressEl,
-    caching,
-    runningChapterId,
-    cacheChapter,
-  } = options
+  const { source, sourceId, chapterId, chapters, detail, caching, runningChapterId, cacheChapter } =
+    options
+  const lastReadPage = options.lastReadPage ?? options.progressEl ?? ref(0)
   const router = useRouter()
   const { goToChapter: switchActiveChapter, goUpFromChapter } = useHierarchicalNavigation()
 
@@ -114,14 +108,14 @@ export function useChapterPageInfo(options: UseChapterPageInfoOptions) {
   })
 
   const isCurrentChapterLastRead = computed(() => {
-    if (!activeChapter.value || progressEl.value < 1) return false
+    if (!activeChapter.value || lastReadPage.value < 1) return false
     const ch = activeChapter.value
-    return progressEl.value >= ch.start && progressEl.value < ch.start + ch.page_count
+    return lastReadPage.value >= ch.start && lastReadPage.value < ch.start + ch.page_count
   })
 
   const readChapterLabel = computed(() => {
     if (isCurrentChapterLastRead.value && activeChapter.value) {
-      const localPage = progressEl.value - activeChapter.value.start + 1
+      const localPage = lastReadPage.value - activeChapter.value.start + 1
       return `继续阅读 · 第 ${localPage} 页`
     }
     return '开始阅读本话'
@@ -129,7 +123,9 @@ export function useChapterPageInfo(options: UseChapterPageInfoOptions) {
 
   function startReadingChapter() {
     if (!activeChapter.value) return
-    const targetPage = isCurrentChapterLastRead.value ? progressEl.value : activeChapter.value.start
+    const targetPage = isCurrentChapterLastRead.value
+      ? lastReadPage.value
+      : activeChapter.value.start
     void router.push(
       `/comic/${source.value}/${sourceId.value}/read/${targetPage}?chapter=${encodeURIComponent(activeChapter.value.id)}`,
     )

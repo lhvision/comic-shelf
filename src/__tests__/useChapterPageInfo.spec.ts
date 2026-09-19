@@ -63,7 +63,7 @@ describe('useChapterPageInfo.ts', () => {
     const chapterId = ref('ch2')
     const chapters = ref(chaptersData)
     const detail = ref(mockDetail)
-    const progressEl = ref(0)
+    const lastReadPage = ref(0)
 
     const info = useChapterPageInfo({
       source,
@@ -71,7 +71,7 @@ describe('useChapterPageInfo.ts', () => {
       chapterId,
       chapters,
       detail,
-      progressEl,
+      lastReadPage,
     })
 
     expect(info.activeChapter.value?.id).toBe('ch2')
@@ -87,7 +87,7 @@ describe('useChapterPageInfo.ts', () => {
     const chapterId = ref('ch1')
     const chapters = ref(chaptersData)
     const detail = ref(mockDetail)
-    const progressEl = ref(0)
+    const lastReadPage = ref(0)
 
     const info = useChapterPageInfo({
       source,
@@ -95,7 +95,7 @@ describe('useChapterPageInfo.ts', () => {
       chapterId,
       chapters,
       detail,
-      progressEl,
+      lastReadPage,
     })
 
     expect(info.activeChapterTotal.value).toBe(10)
@@ -109,7 +109,7 @@ describe('useChapterPageInfo.ts', () => {
     const chapterId = ref('ch2') // start: 11, count: 15
     const chapters = ref(chaptersData)
     const detail = ref(mockDetail)
-    const progressEl = ref(15) // 全局第 15 页，对应本话第 5 页 (15 - 11 + 1)
+    const lastReadPage = ref(15) // 全局第 15 页，对应本话第 5 页 (15 - 11 + 1)
 
     const info = useChapterPageInfo({
       source,
@@ -117,7 +117,7 @@ describe('useChapterPageInfo.ts', () => {
       chapterId,
       chapters,
       detail,
-      progressEl,
+      lastReadPage,
     })
 
     expect(info.isCurrentChapterLastRead.value).toBe(true)
@@ -159,7 +159,7 @@ describe('useChapterPageInfo.ts', () => {
     const chapterId = ref('ch2')
     const chapters = ref(chaptersData)
     const detail = ref(mockDetail)
-    const progressEl = ref(0)
+    const lastReadPage = ref(0)
 
     const info = useChapterPageInfo({
       source,
@@ -167,11 +167,12 @@ describe('useChapterPageInfo.ts', () => {
       chapterId,
       chapters,
       detail,
-      progressEl,
+      lastReadPage,
     })
 
     info.goPrev()
     expect(switchActiveChapterMock).toHaveBeenCalledWith('jm', '123', 'ch1')
+    expect(info.readChapterLabel.value).toBe('开始阅读本话')
 
     info.goNext()
     expect(switchActiveChapterMock).toHaveBeenCalledWith('jm', '123', 'ch3')
@@ -188,7 +189,7 @@ describe('useChapterPageInfo.ts', () => {
       const chapterId = ref('ch2')
       const chapters = ref(chaptersData)
       const detail = ref(mockDetail)
-      const progressEl = ref(0)
+      const lastReadPage = ref(0)
 
       useChapterPageInfo({
         source,
@@ -196,7 +197,7 @@ describe('useChapterPageInfo.ts', () => {
         chapterId,
         chapters,
         detail,
-        progressEl,
+        lastReadPage,
       })
 
       // 1. 按 [ 触发上一话并调用 preventDefault

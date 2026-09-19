@@ -11,7 +11,7 @@
  *    若宿主浏览器未开启 WebMCP 支持，底层自动安全空跑（No-op），零控制台警告，零副作用。
  */
 
-import { type ComputedRef, type Ref } from 'vue'
+import { ref, type ComputedRef, type Ref } from 'vue'
 import type { RouteLocationNormalizedLoaded, Router } from 'vue-router'
 import { useWebMCP } from '@vueuse/core'
 import { useAuth } from '@/composables/useAuth'
@@ -49,14 +49,31 @@ export interface UseReaderWebMCPOptions {
   route?: RouteLocationNormalizedLoaded
 }
 
+import type { WebMCPComposableReturn } from '@/types'
+
+export type UseReaderWebMCPReturn = WebMCPComposableReturn<
+  | 'jumpTool'
+  | 'turnTool'
+  | 'modeTool'
+  | 'fitTool'
+  | 'autoTurnTool'
+  | 'favTool'
+  | 'locateBubbleTool'
+  | 'jumpChapterTool'
+>
+
 /**
  * 在阅读器挂载期间注册 WebMCP 浏览器端交互全功能工具集
  */
-export function useReaderWebMCP(options: UseReaderWebMCPOptions) {
+export function useReaderWebMCP(options: UseReaderWebMCPOptions): UseReaderWebMCPReturn {
   const { isDirectPass } = useAuth()
 
   // 单本沙箱临时受访者：彻底关停 WebMCP，避免外部自动化脚本穿透与高频抓取
-  if (isDirectPass.value) return
+  if (isDirectPass.value) {
+    return {
+      isSupported: ref(false),
+    }
+  }
 
   const {
     currentPage,

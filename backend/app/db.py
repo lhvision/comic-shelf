@@ -849,7 +849,7 @@ def upsert_comic_index(item: dict[str, Any]) -> None:
         conn.commit()
 
 
-def purge_comic_db_records(source: str, source_id: str) -> None:
+def purge_comic_db_records(source: str, source_id: str) -> bool:
     """彻底级联清理指定漫画在 SQLite 数据库中的所有关联记录：
     1. 影子索引 (comics_index)
     2. 用户喜欢标记 (user_favorites)
@@ -857,29 +857,34 @@ def purge_comic_db_records(source: str, source_id: str) -> None:
     4. 单本沙箱专属通行证 (direct_passes)
     5. 台词全文检索与 OCR 同步元数据 (comic_dialogues_fts, comic_ocr_sync_meta)
     """
+    purged = False
     with get_db() as conn:
-        conn.execute(
+        c1 = conn.execute(
             "DELETE FROM comics_index WHERE source = ? AND source_id = ?",
             (source, source_id),
-        )
-        conn.execute(
+        ).rowcount
+        c2 = conn.execute(
             "DELETE FROM user_favorites WHERE source = ? AND source_id = ?",
             (source, source_id),
-        )
-        conn.execute(
+        ).rowcount
+        c3 = conn.execute(
             "DELETE FROM user_reading_progress WHERE source = ? AND source_id = ?",
             (source, source_id),
-        )
-        conn.execute(
+        ).rowcount
+        c4 = conn.execute(
             "DELETE FROM direct_passes WHERE source = ? AND source_id = ?",
             (source, source_id),
-        )
+        ).rowcount
         conn.commit()
+        if (c1 + c2 + c3 + c4) > 0:
+            purged = True
 
     try:
         delete_comic_dialogues(source, source_id)
     except Exception:
         pass
+
+    return purged
 
 
 def delete_comic_index(source: str, source_id: str) -> None:
@@ -1610,7 +1615,9 @@ def get_direct_pass(token: str) -> dict[str, Any] | None:
         ).fetchone()
         if not row:
             return None
-        return dict(row)
+        res = dict(row)
+        res["expires_in"] = max(1, int(res["expires_at"] - now))
+        return res
 
 
 def clean_expired_direct_passes() -> int:

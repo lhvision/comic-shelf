@@ -15,14 +15,13 @@ from ..db import (
     get_library_facets,
     get_user_progress,
     is_user_favorite,
-    purge_comic_db_records,
     query_library_index,
     set_user_favorite,
     set_user_progress,
 )
 from ..events import broadcast_event
 from ..gate import get_guest_hide_new_comics
-from ..jobs import cancel_job, start_job
+from ..jobs import start_job
 from ..models import (
     ComicDetail,
     DeleteResponse,
@@ -395,8 +394,6 @@ def comic_detail(source: str, source_id: str, request: Request) -> ComicDetail:
 def delete_comic(source: str, source_id: str) -> DeleteResponse:
     """Permanently deletes a comic from the local library, purging FTS dialogues, index, and cached images."""
     _require_known_source(source)
-    cancel_job(source, source_id)
-    purge_comic_db_records(source, source_id)
     ok = store.delete(source, source_id)
     if ok:
         broadcast_event(

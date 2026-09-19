@@ -10,7 +10,7 @@
  *    离开发现页面时自动注销工具。
  */
 
-import { type Ref, type ShallowRef } from 'vue'
+import { ref, type Ref, type ShallowRef } from 'vue'
 import { useWebMCP } from '@vueuse/core'
 import type { Router } from 'vue-router'
 import type { useDiscovery } from '@/composables/useDiscovery'
@@ -35,15 +35,29 @@ export interface UseDiscoveryWebMCPOptions {
   router: Router
 }
 
+import type { WebMCPComposableReturn } from '@/types'
+
+export type UseDiscoveryWebMCPReturn = WebMCPComposableReturn<
+  | 'getRankingTool'
+  | 'switchSourceTool'
+  | 'switchTimeframeTool'
+  | 'ingestComicTool'
+  | 'openDetailTool'
+>
+
 /**
  * 在发现视图挂载期间注册 WebMCP 排行榜交互工具集
  */
-export function useDiscoveryWebMCP(options: UseDiscoveryWebMCPOptions) {
+export function useDiscoveryWebMCP(options: UseDiscoveryWebMCPOptions): UseDiscoveryWebMCPReturn {
   const { source, timeframe, feed, loadRanking, ingestComic, router } = options
   const { canWrite, isDirectPass } = useAuth()
 
   // 单本沙箱临时受访者：彻底关停 WebMCP，避免外部自动化脚本穿透与高频抓取
-  if (isDirectPass.value) return
+  if (isDirectPass.value) {
+    return {
+      isSupported: ref(false),
+    }
+  }
 
   // 工具 1: 获取官方精选排行榜
   const getRankingTool = useWebMCP({

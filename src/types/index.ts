@@ -1,3 +1,5 @@
+import type { Ref } from 'vue'
+import type { useWebMCP } from '@vueuse/core'
 import type { IconName } from '@/components/icons'
 
 export interface PageRecord {
@@ -435,4 +437,16 @@ export interface DirectPassResponse {
   expires_at: number
   expires_in: number
   direct_url: string
+}
+
+export type WebMCPTool = ReturnType<typeof useWebMCP>
+
+/**
+ * 统一 WebMCP 组合式函数返回类型泛型构造器。
+ * 基础包含 `isSupported: Ref<boolean>`，并通过映射类型将传入的工具 Key 联合自动映射为可选的 `WebMCPTool`。
+ */
+export type WebMCPComposableReturn<K extends string = never> = {
+  isSupported: Ref<boolean>
+} & {
+  [P in K]?: WebMCPTool
 }

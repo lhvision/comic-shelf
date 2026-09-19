@@ -451,12 +451,13 @@ class ComicStoreBase:
         if existed:
             shutil.rmtree(target)
         self._invalidate_cache(source, source_id)
+        db_purged = False
         try:
             from ..db import purge_comic_db_records
-            purge_comic_db_records(source, source_id)
+            db_purged = bool(purge_comic_db_records(source, source_id))
         except Exception as e:
             logger.exception("Failed to purge comic db records for %s/%s: %s", source, source_id, e)
-        return existed
+        return existed or db_purged
 
     def update_metadata(self, source: str, source_id: str, updates: dict[str, Any]) -> ComicMeta:
         meta = self.load_meta(source, source_id)

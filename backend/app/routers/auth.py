@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 import secrets
+import time
+from typing import Any
 from urllib.parse import quote
 from fastapi import APIRouter, HTTPException, Request, Response
 
@@ -56,6 +58,15 @@ from ..models import (
 )
 
 router = APIRouter(tags=["auth"])
+
+
+def _calc_pass_cookie_ttl(pass_item: dict[str, Any]) -> int:
+    """Calculates bounded cookie TTL aligned with pass expiration (defaulting to 30 days)."""
+    expires_at = pass_item.get("expires_at")
+    if not expires_at:
+        return 2592000
+    now = int(time.time())
+    return min(2592000, max(60, int(expires_at - now)))
 
 
 @router.get("/api/auth/status", response_model=AuthStatusResponse)
@@ -116,7 +127,7 @@ def auth_login(req: LoginRequest, request: Request, response: Response) -> Login
     dp = get_direct_pass(secret)
     if dp is not None:
         clear_ip_login_failures(ip)
-        set_auth_cookie(response, dp["token"], secure=is_sec)
+        set_auth_cookie(response, dp["token"], secure=is_sec, max_age=dp.get("expires_in", 7200))
         clear_device_cookie(response, secure=is_sec)
         return LoginResponse(
             ok=True,
@@ -164,7 +175,7 @@ def auth_login(req: LoginRequest, request: Request, response: Response) -> Login
                 raise HTTPException(status_code=400, detail=msg)
 
             clear_ip_login_failures(ip)
-            set_auth_cookie(response, claimed["token"], secure=is_sec)
+            set_auth_cookie(response, claimed["token"], secure=is_sec, max_age=_calc_pass_cookie_ttl(claimed))
             set_device_cookie(response, dev["device_token"], secure=is_sec)
             return LoginResponse(
                 ok=True,
@@ -187,7 +198,7 @@ def auth_login(req: LoginRequest, request: Request, response: Response) -> Login
 
         if dev is not None:
             clear_ip_login_failures(ip)
-            set_auth_cookie(response, pass_item["token"], secure=is_sec)
+            set_auth_cookie(response, pass_item["token"], secure=is_sec, max_age=_calc_pass_cookie_ttl(pass_item))
             set_device_cookie(response, dev["device_token"], secure=is_sec)
             return LoginResponse(
                 ok=True,
@@ -231,7 +242,7 @@ def auth_login(req: LoginRequest, request: Request, response: Response) -> Login
                 raise HTTPException(status_code=429, detail=msg)
             raise HTTPException(status_code=400, detail=msg)
 
-        set_auth_cookie(response, pass_item["token"], secure=is_sec)
+        set_auth_cookie(response, pass_item["token"], secure=is_sec, max_age=_calc_pass_cookie_ttl(pass_item))
         set_device_cookie(response, dev["device_token"], secure=is_sec)
         return LoginResponse(
             ok=True,
@@ -348,15 +359,16 @@ def create_direct_pass_api(req: DirectPassCreateRequest, request: Request) -> Di
     meta = store.load_meta(req.source, req.source_id)
     if not meta:
         raise HTTPException(status_code=404, detail=f"指定作品不存在: {req.source}/{req.source_id}")
+    safe_page = min(max(1, req.page_index), max(1, meta.page_count))
     result = create_direct_pass(
         source=req.source,
         source_id=req.source_id,
-        page_index=req.page_index,
+        page_index=safe_page,
         ttl_seconds=req.ttl_seconds,
     )
     safe_src = quote(req.source, safe="")
     safe_sid = quote(req.source_id, safe="")
-    direct_url = f"/comic/{safe_src}/{safe_sid}/read/{req.page_index}?temp_token={result['token']}"
+    direct_url = f"/comic/{safe_src}/{safe_sid}/read/{safe_page}?temp_token={result['token']}"
     return DirectPassResponse(
         token=result["token"],
         source=result["source"],

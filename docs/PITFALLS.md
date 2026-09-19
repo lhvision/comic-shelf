@@ -1531,6 +1531,49 @@
   2. **机器人私聊硬编码确定性门禁（Bot Code Deterministic Enforcement）**：外部机器人（如 QQ / 飞书 Bot）若需支持私聊推书入库，必须由机器人自身代码在调用接口前执行 CPU 级确定性身份校验（`if (sender_id !== CURATOR_ID) return`），校验通过后直接调用纸间后端标准 REST API（`POST /api/library/import`），将特权彻底锁死在确定性代码中；
   3. **人类终极把关（Human-in-the-loop）**：高危与重度写操作严格收敛于馆长亲自登录的 Web 界面，保持私人书库的绝对纯净。
 
+### 131. 临时通行证会话 Cookie TTL 错配与边缘 CDN 越权穿透陷阱 (Direct Pass Cookie Max-Age Mismatch & Edge CDN Cache Leakage Trap)
+
+- **本质**：
+  1. **服务端 Token 时效与浏览器 Cookie 寿命失配**：临时单本直达通行证（Direct Pass）或有时效的读者通行证签发时可能设定较短 TTL（例如 2 小时或 1 天）。若后端设置鉴权 Cookie（`set_auth_cookie`）时使用硬编码的固定默认值（如 30 天 / 2,592,000 秒），在服务端数据库判定通行证已过期并将其自动清理后，访客浏览器中仍留存长达 30 天有效的会话 Cookie；
+  2. **边缘 WAF 白名单放行与 CDN 静态图片缓存越权泄漏**：在 Cloudflare 边缘加速与家庭宽带反代体系中，WAF 规则通常对包含 `comic_shelf_token` 的 Cookie 执行放行策略，且 CDN Anycast 节点对画页图片执行长效边缘缓存（Edge TTL 30 天）。持有该超期 Cookie 的访客浏览器请求画页时，WAF 判定合法放行，且 Cloudflare Anycast 节点直接从边缘缓存返回图片切片，完全不回源服务端进行 Token 鉴权校验，导致临时读者可以在通行证注销后持续拉取已缓存的漫画画页。
+- **红线与防误伤**：
+  - **严禁**在临时通行证、有时效读者证登录时写入固定 30 天 `max_age` 的会话 Cookie；
+  - **严禁**假设“服务端数据库单方删除 Token 即可杜绝边缘 CDN 缓存越权拉取”。
+- **放行/改用**：
+  1. **Cookie TTL 毫秒级动态对齐**：`set_auth_cookie` 必须支持动态 `max_age` 参数。单本直达证登录时取 `dp["expires_in"]`，有时效访客证登录时取 `min(2592000, max(60, pass["expires_at"] - now))`，确保客户端 Cookie 与服务端 Token 生命周期严格同步自毁；
+  2. **地址栏敏感 Token 零残留闭环**：前端在解析 URL Query 携带的 `?token=...` 或 `?temp_token=...` 凭证换取 Cookie 后，无论登录成功还是异常报错，均必须在 `finally/catch` 中通过 `replaceState` 剥离全部临时凭据，杜绝复制二次分享泄密。
+
+### 132. 组合式函数多态返回类型逃逸与空对象样板代码陷阱 (Composable Polymorphic Return Type Escape & Boilerplate Trap)
+
+- **本质**：
+  1. **类型逃逸破坏消费端契约（`as any` Escape）**：组合式函数（Composable）在特定条件（如沙箱访客、未挂载）下提前退出时，若为了逃避返回字段缺失的类型检查而直接使用 `return { isSupported: ref(false) } as any`，会导致调用方与单元测试彻底丧失 TypeScript 类型推导与智能补全，引发不可预测的解构运行时错误；
+  2. **空对象模式键值膨胀（Null Object Boilerplate Inflation）**：若为了满足 TypeScript 推导而手动在早退分支平铺书写所有字段的 `undefined`（如 `searchTool: undefined, filterTool: undefined, ...`），会产生严重的样板代码冗余；每当 Composable 新增或废弃一个工具，开发者必须同步维护早退分支的字面量字典，极易遗漏。
+- **红线与防误伤**：
+  - **严禁**在 Composable 早退分支使用 `as any` 逃逸；
+  - **不要**在早退分支手写冗长平铺的全量 `xxx: undefined` 假对象字典。
+- **放行/改用**：
+  1. **基于 TypeScript 映射类型的通用泛型构造器**：定义通用泛型 `WebMCPComposableReturn<K extends string>`：
+     ```ts
+     export type WebMCPComposableReturn<K extends string = never> = {
+       isSupported: Ref<boolean>
+     } & {
+       [P in K]?: WebMCPTool
+     }
+     ```
+  2. **单行优雅早退与零冗余契约**：Composable 仅需声明对应的 Tool Key 联合类型，早退分支仅需 1 行代码 `return { isSupported: ref(false) }`，不仅完全符合可选属性接口规范，且在消费端解构时自动享受 `WebMCPTool | undefined` 的强类型推导与类型守卫。
+
+### 133. 非 DOM 响应式变量的匈牙利命名误导与缝合别名反模式 (Hungarian Notation DOM Suffix & Stitching Alias Anti-Pattern)
+
+- **本质**：
+  1. **DOM 后缀污染纯逻辑变量（Misleading `*El` Hungarian Suffix）**：在现代前端工程中，`*El` 后缀（如 `targetEl`、`buttonEl`）严格用于指代真实的 `HTMLElement` DOM 节点。若历史代码中将纯数值进度页码（`number`）命名为 `progressEl`，不仅会引发阅读理解上的严重误导（误以为是进度条 DOM 节点），还会诱发类型断言与绑定错误；
+  2. **函数体内部同名影子赋值缝合（Local Shadow Assignment Trap）**：在重构时，为了平息规范检查却又担忧破坏下游依赖，在函数体内声明 `const lastReadPage = progressEl`，导致同一作用域内出现两个代表同一业务概念的冗余变量，既未根治下游代码的命名污染，又给代码库留下了显眼的重构缝合痕迹。
+- **红线与防误伤**：
+  - **严禁**给任何非 DOM 节点变量（如数值、字符串、布尔标识）添加 `El` 后缀；
+  - **严禁**在函数体作用域内写 `const goodName = badName` 的影子桥接别名。
+- **放行/改用**：
+  1. **正本清源单一事实源（Single Source of Truth）**：核心响应式变量直接声明为正统语义的 `lastReadPage = computed(...)`，函数内部所有文案、跳转与计算全链路直达该正统变量；
+  2. **只在导出边界声明向后兼容别名**：若下游存在第三方或未及时重构的调用方，仅在 Composable 的最终 `return` 对象中导出别名并挂载 JSDoc 注解（`progressEl: lastReadPage /** @deprecated */`），并推动消费层在本次迭代中彻底对齐。
+
 ---
 
 ## 🚦 交付门禁（四步必跑）

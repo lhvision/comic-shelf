@@ -10,7 +10,7 @@
  *    离开详情或章节视口时工具随 Vue Scope 自动销毁注销。
  */
 
-import type { Ref } from 'vue'
+import { ref, type Ref } from 'vue'
 import { useWebMCP } from '@vueuse/core'
 import type { Router } from 'vue-router'
 import { api } from '@/api/client'
@@ -43,10 +43,25 @@ export interface UseComicDetailWebMCPOptions {
   activeChapterId?: Ref<string | undefined>
 }
 
+import type { WebMCPComposableReturn } from '@/types'
+
+export type UseComicDetailWebMCPReturn = WebMCPComposableReturn<
+  | 'startReadingTool'
+  | 'cacheAllTool'
+  | 'cacheChapterTool'
+  | 'openChapterTool'
+  | 'getInfoTool'
+  | 'favTool'
+  | 'updateMetadataTool'
+  | 'createDirectPassTool'
+>
+
 /**
- * 在漫画详情与章节视图挂载期间注册 WebMCP 交互工具集
+ * 在漫画详情与章节子路由视口期间注册 WebMCP 全功能交互工具集
  */
-export function useComicDetailWebMCP(options: UseComicDetailWebMCPOptions) {
+export function useComicDetailWebMCP(
+  options: UseComicDetailWebMCPOptions,
+): UseComicDetailWebMCPReturn {
   const {
     source,
     sourceId,
@@ -62,7 +77,11 @@ export function useComicDetailWebMCP(options: UseComicDetailWebMCPOptions) {
   const { canWrite, isDirectPass } = useAuth()
 
   // 单本沙箱临时受访者：彻底关停 WebMCP，避免外部自动化脚本穿透与高频抓取
-  if (isDirectPass.value) return
+  if (isDirectPass.value) {
+    return {
+      isSupported: ref(false),
+    }
+  }
 
   // 工具 1: 启动漫画阅读
   const startReadingTool = useWebMCP({
@@ -399,6 +418,8 @@ export function useComicDetailWebMCP(options: UseComicDetailWebMCPOptions) {
           } else if (lastRead.value > 1) {
             targetPage = lastRead.value
           }
+          const totalPages = detail.value?.meta.page_count ?? 1
+          targetPage = Math.min(Math.max(1, targetPage), Math.max(1, totalPages))
 
           const validTtl =
             typeof ttl_seconds === 'number' && ttl_seconds > 0

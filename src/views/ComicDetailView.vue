@@ -55,7 +55,7 @@ const { detail, loading, load } = useComicDetail({
   onLoaded: (data) => {
     const pageCount = data.meta.page_count ?? 0
     if (pageCount > 0) {
-      const targetPage = progressEl.value || 1
+      const targetPage = lastReadPage.value || 1
       const preloadImg = new Image()
       preloadImg.src = pageFileUrl(source.value, sourceId.value, targetPage)
     }
@@ -70,7 +70,7 @@ const { detail, loading, load } = useComicDetail({
 const {
   chapters,
   chapterCache,
-  progressEl,
+  lastReadPage,
   visiblePages,
   remainingPages,
   showingRange,
@@ -114,7 +114,7 @@ const {
   sourceId,
   detail,
   chapters,
-  progressEl,
+  lastReadPage,
   chapterForPage,
   load,
   lastRead,
@@ -169,7 +169,7 @@ onMounted(() => {
 
       <DetailActionBar
         :title="detail.meta.title"
-        :last-read="progressEl"
+        :last-read="lastReadPage"
         :last-read-label="lastReadLabel"
         :cache-percent="cachePercent"
         :caching="caching"
@@ -272,7 +272,7 @@ onMounted(() => {
         :source-id="sourceId"
         :title="detail.meta.title"
         :page-count="detail.meta.page_count"
-        :last-read="progressEl"
+        :last-read="lastReadPage"
       />
     </template>
   </div>

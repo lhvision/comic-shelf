@@ -306,11 +306,16 @@ def check_hotlink_protection(request: Request) -> None:
             pass
 
 
-def set_auth_cookie(response: Response, token: str, secure: bool = False) -> None:
+def set_auth_cookie(
+    response: Response,
+    token: str,
+    secure: bool = False,
+    max_age: int = 2592000,
+) -> None:
     response.set_cookie(
         key=COOKIE_NAME,
         value=token,
-        max_age=2592000,  # 30 days
+        max_age=max_age,
         httponly=True,
         secure=secure,
         samesite="lax",

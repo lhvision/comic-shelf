@@ -819,8 +819,8 @@ describe('WebMCP Composables', () => {
         scope.run(() => {
           // 1. Shelf
           const shelfMcp = useShelfWebMCP({ router: mockRouter })
-          expect(shelfMcp!.searchComicsTool).toBeDefined()
-          expect(shelfMcp!.importComicTool).toBeUndefined()
+          expect(shelfMcp.searchComicsTool).toBeDefined()
+          expect(shelfMcp.importComicTool).toBeUndefined()
 
           // 2. Detail
           const mockDetail = createPlaceholderDetail({
@@ -854,11 +854,11 @@ describe('WebMCP Composables', () => {
             lastRead: ref(1),
             router: mockRouter,
           })
-          expect(detailMcp!.startReadingTool).toBeDefined()
-          expect(detailMcp!.cacheAllTool).toBeUndefined()
-          expect(detailMcp!.cacheChapterTool).toBeUndefined()
-          expect(detailMcp!.updateMetadataTool).toBeUndefined()
-          expect(detailMcp!.createDirectPassTool).toBeUndefined()
+          expect(detailMcp.startReadingTool).toBeDefined()
+          expect(detailMcp.cacheAllTool).toBeUndefined()
+          expect(detailMcp.cacheChapterTool).toBeUndefined()
+          expect(detailMcp.updateMetadataTool).toBeUndefined()
+          expect(detailMcp.createDirectPassTool).toBeUndefined()
 
           // 3. Discovery
           const discoveryMcp = useDiscoveryWebMCP({
@@ -868,13 +868,13 @@ describe('WebMCP Composables', () => {
             ingestComic: vi.fn<() => Promise<void>>().mockResolvedValue(undefined),
             router: mockRouter,
           })
-          expect(discoveryMcp!.getRankingTool).toBeDefined()
-          expect(discoveryMcp!.ingestComicTool).toBeUndefined()
+          expect(discoveryMcp.getRankingTool).toBeDefined()
+          expect(discoveryMcp.ingestComicTool).toBeUndefined()
         })
 
         await nextTick()
 
-        // Verify registered tool names in document.modelContext
+        // Tools available for guest
         expect(registeredTools['shelf_search_comics']).toBeDefined()
         expect(registeredTools['shelf_import_comic']).toBeUndefined()
         expect(registeredTools['detail_start_reading']).toBeDefined()
@@ -931,7 +931,8 @@ describe('WebMCP Composables', () => {
         scope.run(() => {
           // 1. Shelf
           const shelfMcp = useShelfWebMCP({ router: mockRouter })
-          expect(shelfMcp).toBeUndefined()
+          expect(shelfMcp.isSupported.value).toBe(false)
+          expect(shelfMcp.searchComicsTool).toBeUndefined()
 
           // 2. Detail
           const mockDetail = createPlaceholderDetail({
@@ -965,7 +966,8 @@ describe('WebMCP Composables', () => {
             lastRead: ref(1),
             router: mockRouter,
           })
-          expect(detailMcp).toBeUndefined()
+          expect(detailMcp.isSupported.value).toBe(false)
+          expect(detailMcp.startReadingTool).toBeUndefined()
 
           // 3. Reader
           const readerMcp = useReaderWebMCP({
@@ -986,7 +988,8 @@ describe('WebMCP Composables', () => {
             prevGroup: vi.fn<() => void>(),
             nextGroup: vi.fn<() => void>(),
           })
-          expect(readerMcp).toBeUndefined()
+          expect(readerMcp.isSupported.value).toBe(false)
+          expect(readerMcp.jumpTool).toBeUndefined()
 
           // 4. Discovery
           const discoveryMcp = useDiscoveryWebMCP({
@@ -996,7 +999,8 @@ describe('WebMCP Composables', () => {
             ingestComic: vi.fn<() => Promise<void>>().mockResolvedValue(undefined),
             router: mockRouter,
           })
-          expect(discoveryMcp).toBeUndefined()
+          expect(discoveryMcp.isSupported.value).toBe(false)
+          expect(discoveryMcp.getRankingTool).toBeUndefined()
         })
 
         await nextTick()

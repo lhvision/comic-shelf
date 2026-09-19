@@ -540,15 +540,16 @@ async def _tool_create_direct_pass(arguments: dict[str, Any]) -> dict[str, Any]:
             "isError": True,
         }
 
+    safe_page = min(page_index, max(1, meta.page_count))
     res = create_direct_pass(
         source=source,
         source_id=source_id,
-        page_index=page_index,
+        page_index=safe_page,
         ttl_seconds=ttl_seconds,
     )
     safe_src = quote(source, safe="")
     safe_sid = quote(source_id, safe="")
-    direct_url = f"/comic/{safe_src}/{safe_sid}/read/{page_index}?temp_token={res['token']}"
+    direct_url = f"/comic/{safe_src}/{safe_sid}/read/{safe_page}?temp_token={res['token']}"
 
     return {
         "content": [

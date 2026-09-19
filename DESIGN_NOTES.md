@@ -689,6 +689,27 @@
    - 起始页码输入框内嵌在组合边框容器中，提供实时范围校验（1 ~ 全书总页数）与动态非法高亮；
    - 支持在输入框按下 Enter 键直接触发立即签发，生成成功后自动平滑聚焦「复制直达链接」按钮，为高效馆长打通零鼠标极速借阅流。
 
+### <a id="sec-74"></a>§74 WebMCP 通用泛型映射、多态组合式函数返回契约与命名洁净架构（WebMCP Mapped Type Generator, Polymorphic Composable Return & Naming Purity Architecture）
+
+针对多页面 WebMCP 工具注册契约、沙箱条件早退类型收敛及非 DOM 响应式变量的语义纯化演进：
+
+1. **WebMCP 工具通用映射泛型生成器（`WebMCPComposableReturn<K>`）**：
+   - 杜绝在沙箱模式早退分支中使用 `as any` 逃避类型检查，亦彻底消除为满足推导而手写 8~10 行 `undefined` 字段的空对象样板代码；
+   - 在 `src/types/index.ts` 集中抽象映射泛型：
+     ```ts
+     export type WebMCPTool = ReturnType<typeof useWebMCP>
+     export type WebMCPComposableReturn<K extends string = never> = {
+       isSupported: Ref<boolean>
+     } & {
+       [P in K]?: WebMCPTool
+     }
+     ```
+   - 各业务 Composable 仅需声明对应的 Tool Key 联合（如 `UseShelfWebMCPReturn = WebMCPComposableReturn<'searchComicsTool' | ...>`），早退分支 1 行代码 `return { isSupported: ref(false) }` 自动满足可选属性契约，消费端解构兼具 100% 强类型智能补全与可选值安全守卫；
+2. **非 DOM 响应式变量正本清源铁律（Anti-Hungarian Notation & Single Source of Truth）**：
+   - 严禁对页码、时间戳等纯逻辑数值变量附加 `*El` 伪 DOM 匈牙利后缀（避免误读为 `HTMLElement`）；
+   - 彻底废除函数体内 `const lastReadPage = progressEl` 的局部影子赋值缝合模式；
+   - 变量命名全面以正统语义的 `lastReadPage` 为单一事实源，仅在最终 `return` 导出对象中为第三方或遗留代码提供 `@deprecated` 兼容桥梁。
+
 ---
 
 ## 5. 历史演进里程碑归档索引（Historical Milestones Archive）

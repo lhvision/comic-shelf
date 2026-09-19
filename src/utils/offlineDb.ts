@@ -393,11 +393,11 @@ export async function deleteCachedComicDetail(source: string, sourceId: string):
           store.delete(r.key)
         }
       }
-      resolve()
     }
     req.onerror = () => resolve()
     tx.oncomplete = () => resolve()
     tx.onerror = () => resolve()
+    tx.onabort = () => resolve()
   } catch {
     resolve()
   }
@@ -432,11 +432,11 @@ export async function removeOfflineActionsForComic(
           store.delete(r.id)
         }
       }
-      resolve()
     }
     req.onerror = () => resolve()
     tx.oncomplete = () => resolve()
     tx.onerror = () => resolve()
+    tx.onabort = () => resolve()
   } catch {
     resolve()
   }

@@ -31,8 +31,10 @@ export interface UseComicDetailActionsOptions {
   detail: Ref<ComicDetail | null>
   /** 章节列表 */
   chapters: Ref<Chapter[]>
-  /** 阅读进度全局页码 */
-  progressEl: Ref<number>
+  /** 阅读进度全局页码（推荐） */
+  lastReadPage?: Ref<number>
+  /** @deprecated 请优先使用语义明确的 `lastReadPage` */
+  progressEl?: Ref<number>
   /** 全局页码到所属章节映射函数 */
   chapterForPage: (page: number) => string | null | undefined
   /** 重新加载详情回调 */
@@ -46,7 +48,8 @@ export interface UseComicDetailActionsOptions {
 }
 
 export function useComicDetailActions(options: UseComicDetailActionsOptions) {
-  const { source, sourceId, detail, chapters, progressEl, chapterForPage, load } = options
+  const { source, sourceId, detail, chapters, chapterForPage, load } = options
+  const lastReadPage = options.lastReadPage ?? options.progressEl ?? ref(0)
   const router = useRouter()
   const store = useLibraryStore()
   const { toast } = useToast()
@@ -145,7 +148,7 @@ export function useComicDetailActions(options: UseComicDetailActionsOptions) {
     goUpFromDetail(source.value, sourceId.value)
   }
 
-  function startReading(page = progressEl.value || 1) {
+  function startReading(page = lastReadPage.value || 1) {
     const chapterId = chapterForPage(page)
     const path = chapterId
       ? `/comic/${source.value}/${sourceId.value}/read/${page}?chapter=${encodeURIComponent(chapterId)}`

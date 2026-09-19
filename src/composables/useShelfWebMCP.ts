@@ -11,6 +11,7 @@
  *    离开书架页面时工具自动销毁，避免在详情或阅读器中误触全局书架重置。
  */
 
+import { ref } from 'vue'
 import { useWebMCP } from '@vueuse/core'
 import type { Router } from 'vue-router'
 import { api } from '@/api/client'
@@ -27,17 +28,33 @@ export interface UseShelfWebMCPOptions {
   router: Router
 }
 
+import type { WebMCPComposableReturn } from '@/types'
+
+export type UseShelfWebMCPReturn = WebMCPComposableReturn<
+  | 'searchComicsTool'
+  | 'searchDialogueTool'
+  | 'searchImageTool'
+  | 'pickRandomTool'
+  | 'openComicTool'
+  | 'readComicTool'
+  | 'importComicTool'
+>
+
 /**
  * 在书架视图生命周期内注册 WebMCP 淘书、检索与直达全功能工具集
  */
-export function useShelfWebMCP(options: UseShelfWebMCPOptions) {
+export function useShelfWebMCP(options: UseShelfWebMCPOptions): UseShelfWebMCPReturn {
   const { router } = options
   const shelfState = useShelfState()
   const store = useLibraryStore()
   const { canWrite, isDirectPass } = useAuth()
 
   // 单本沙箱临时受访者：彻底关停 WebMCP，避免外部自动化脚本穿透与高频抓取
-  if (isDirectPass.value) return
+  if (isDirectPass.value) {
+    return {
+      isSupported: ref(false),
+    }
+  }
 
   // 工具 1: 书架多维淘书与全字段检索
   const searchComicsTool = useWebMCP({

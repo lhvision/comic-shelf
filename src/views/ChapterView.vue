@@ -55,7 +55,7 @@ const { detail, loading, load } = useComicDetail({
 
 const {
   chapters,
-  progressEl,
+  lastReadPage,
   activeChapterLabel,
   visiblePages,
   remainingPages,
@@ -103,7 +103,7 @@ const {
   chapterId,
   chapters,
   detail,
-  progressEl,
+  lastReadPage,
   caching,
   runningChapterId,
   cacheChapter,

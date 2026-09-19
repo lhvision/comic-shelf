@@ -216,6 +216,7 @@ export function useAuth() {
           toast(msg, 'error')
           const cleanUrl = new URL(window.location.href)
           cleanUrl.searchParams.delete('token')
+          cleanUrl.searchParams.delete('temp_token')
           window.history.replaceState({}, '', cleanUrl.pathname + cleanUrl.search + cleanUrl.hash)
         }
       } else {
