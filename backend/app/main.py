@@ -7,6 +7,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import posixpath
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -356,9 +357,16 @@ async def auth_and_security_middleware(request: Request, call_next):
         # Single-Book Sandbox constraint for temporary direct-pass readers
         _uid, _name, role = get_user_context(request)
         if _uid.startswith("direct:"):
-            _, allowed_src, allowed_sid = _uid.split(":", 2)
+            parts = _uid.split(":", 2)
+            if len(parts) < 3 or not parts[1] or not parts[2]:
+                return JSONResponse(
+                    status_code=403,
+                    content={"detail": "临时直达通行证格式非法"},
+                )
+            allowed_src, allowed_sid = parts[1], parts[2]
+            norm_path = posixpath.normpath(path)
             allowed_prefix = f"/api/library/{allowed_src}/{allowed_sid}"
-            if path != allowed_prefix and not path.startswith(f"{allowed_prefix}/"):
+            if norm_path != allowed_prefix and not norm_path.startswith(f"{allowed_prefix}/"):
                 return JSONResponse(
                     status_code=403,
                     content={"detail": "临时直达通行证仅限阅读指定画集，禁止访问书库全景"},

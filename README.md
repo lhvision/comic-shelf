@@ -248,6 +248,7 @@ $COMIC_SHELF_DATA/
 ├── jm_html_domain.json                  # 禁漫网页域名 6 小时缓存
 ├── jm_session.json                      # 禁漫 AVS 会话凭据与 Cookies 缓存（0o600 私有安全权限）
 ├── picacg_session.json                  # 哔咔会话凭据与 JWT 缓存（0o600 私有安全权限）
+├── discovery/                           # 官方榜单数据分源落盘（{source}_{timeframe}.json，封面纯内存代理零落盘）
 ├── imsearch/                            # 识图索引与特征库（centroids.bin / invlists.bin / imsearch.db）
 └── library/
     └── <source>/                         # provider key：jm / pica / local

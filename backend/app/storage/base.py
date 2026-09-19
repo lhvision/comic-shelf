@@ -509,15 +509,35 @@ class ComicStoreBase:
 
     def load_discovery_feed(self, timeframe: str, source: str = "jm") -> DiscoveryFeed | None:
         path = self.discovery_path(timeframe, source)
+        legacy_migrated = False
+        legacy_path = None
         if not path.exists() and source == "jm":
-            legacy_path = self.discovery_dir() / f"{self._safe(timeframe)}.json"
-            if legacy_path.exists():
-                path = legacy_path
+            candidate = self.discovery_dir() / f"{self._safe(timeframe)}.json"
+            if candidate.exists():
+                path = candidate
+                legacy_path = candidate
+                legacy_migrated = True
         if not path.exists():
             return None
         try:
             data = json.loads(path.read_text(encoding="utf-8"))
-            return DiscoveryFeed.model_validate(data)
+            feed = DiscoveryFeed.model_validate(data)
+            if legacy_migrated and legacy_path:
+                self.save_discovery_feed(feed)
+                try:
+                    legacy_path.unlink(missing_ok=True)
+                except Exception:
+                    pass
+            # Auto-heal legacy picacomic.com domain to canonical picawang.com
+            if feed.source == "picacg":
+                pica_healed = False
+                for it in feed.items:
+                    if it.url and ("picacomic.com/comic/" in it.url):
+                        it.url = f"https://picawang.com/comic/{it.source_id}"
+                        pica_healed = True
+                if pica_healed:
+                    self.save_discovery_feed(feed)
+            return feed
         except Exception:
             return None
 

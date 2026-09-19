@@ -143,5 +143,9 @@ describe('useDiscovery', () => {
     expect(feed.value?.source).toBe('picacg')
     expect(feed.value?.items[0]?.title).toBe('PicAcg Daily Top')
     expect(spy).toHaveBeenCalledTimes(2)
+
+    // 3. Call loadRanking with undefined timeframe and refresh=true
+    await loadRanking(undefined, true)
+    expect(spy).toHaveBeenLastCalledWith('picacg', 'day', true, expect.any(Object))
   })
 })

@@ -117,6 +117,8 @@ export const api = {
   // === 5. 发现榜单 (Discovery) ===
   /** 获取官方发现排行榜数据（日榜、周榜、月榜） */
   discoveryRanking: discovery.discoveryRanking,
+  /** 构造发现作品封面图片直连代理 URL（内存代理，按需加载，零磁盘占用） */
+  discoveryCoverUrl: discovery.discoveryCoverUrl,
 
   // === 6. 视觉搜图与台词全文检索 (Search) ===
   /** 查询以图搜图服务引擎的就绪状态与特征索引总量 */

@@ -34,9 +34,9 @@ export function useDiscovery() {
     refresh?: boolean,
   ): Promise<void>
   async function loadRanking(
-    arg1: 'jm' | 'picacg' | DiscoveryTimeframe = source.value,
-    arg2: DiscoveryTimeframe | boolean = timeframe.value,
-    arg3 = false,
+    arg1?: 'jm' | 'picacg' | DiscoveryTimeframe,
+    arg2?: DiscoveryTimeframe | boolean,
+    arg3?: boolean,
   ): Promise<void> {
     if (activeAbortController) {
       activeAbortController.abort()
@@ -48,13 +48,13 @@ export function useDiscovery() {
     let tf: DiscoveryTimeframe = timeframe.value
     let refresh = false
 
-    if (arg1 === 'week' || arg1 === 'month' || arg1 === 'day') {
-      tf = arg1
-      if (typeof arg2 === 'boolean') refresh = arg2
-    } else {
-      if (arg1 === 'jm' || arg1 === 'picacg') src = arg1
+    if (arg1 === 'jm' || arg1 === 'picacg') {
+      src = arg1
       if (arg2 === 'week' || arg2 === 'month' || arg2 === 'day') tf = arg2
       if (typeof arg3 === 'boolean') refresh = arg3
+    } else {
+      if (arg1 === 'week' || arg1 === 'month' || arg1 === 'day') tf = arg1
+      if (typeof arg2 === 'boolean') refresh = arg2
     }
 
     source.value = src

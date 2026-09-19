@@ -223,10 +223,22 @@ describe('api client query assembly', () => {
     await api.discoveryRanking('day', true)
     expect(getCalledUrl(fetchMock)).toBe('/api/discovery/ranking?timeframe=day&refresh=true')
 
+    // With undefined timeframe and refresh=true
+    fetchMock.mockClear()
+    await api.discoveryRanking(undefined, true)
+    expect(getCalledUrl(fetchMock)).toBe('/api/discovery/ranking?timeframe=week&refresh=true')
+
     // With explicit source
     fetchMock.mockClear()
     await api.discoveryRanking('picacg', 'week', false)
     expect(getCalledUrl(fetchMock)).toBe('/api/discovery/ranking?source=picacg&timeframe=week')
+
+    // With explicit source, undefined timeframe, and refresh=true
+    fetchMock.mockClear()
+    await api.discoveryRanking('picacg', undefined, true)
+    expect(getCalledUrl(fetchMock)).toBe(
+      '/api/discovery/ranking?source=picacg&timeframe=week&refresh=true',
+    )
   })
 
   it('assembles coverFileUrl and chapterCoverUrl via buildQueryString', () => {

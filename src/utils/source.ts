@@ -41,6 +41,7 @@ export const SOURCE_MAP: Record<string, SourceMeta> = {
     shortName: '哔咔',
     badge: 'PICA',
     idLabel: '哔咔 ID',
+    externalUrl: (sourceId) => `https://picawang.com/comic/${sourceId}`,
   },
   local: {
     key: 'local',
@@ -98,4 +99,13 @@ export function getSourceBadge(source?: string): string {
  */
 export function getSourceIdLabel(source?: string): string {
   return getSourceMeta(source).idLabel
+}
+
+/**
+ * 获取图源原站外部直达链接（若该图源不支持则返回 undefined）。
+ */
+export function getSourceExternalUrl(source?: string, sourceId?: string): string | undefined {
+  if (!sourceId) return undefined
+  const meta = getSourceMeta(source)
+  return meta.externalUrl ? meta.externalUrl(sourceId) : undefined
 }

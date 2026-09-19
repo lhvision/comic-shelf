@@ -1465,6 +1465,45 @@
   1. PicAcg 排行榜固定附带 `ct="VC"`，单元测试中通过 Mock 请求全面校验参数装配；
   2. 统一使用 `src/utils/source.ts` 标准元数据字典管理多源标签、路由与原站直达链接。
 
+### 126. 外部图源 Web 阅读器与 API 移动端域名分流漂移陷阱 (PicAcg Canonical Web Domain Drift & Auto-Healing Trap)
+
+- **本质**：
+  1. **移动端反代与网页端分流断裂**：哔咔（PicAcg）原官方域名 `picacomic.com` 仅用于移动客户端 API 及部分内部反代，在公共互联网浏览器中访问 `https://www.picacomic.com/comic/{id}` 会出现无法解析、证书脱靶或重定向失败；真正面向现代浏览器可读的 Web 镜像统一为 `https://picawang.com/comic/{id}`；
+  2. **历史落盘缓存域名污染**：在引入 `picawang.com` 之前，若榜单已拉取并缓存至 `data/discovery/picacg_{timeframe}.json`，前端读取旧缓存时仍会渲染失效的 `picacomic.com` 链接，导致用户点击“原站预览”报错；
+  3. **多源外链收敛缺失**：若外部链接的拼装散落在各组件内部，更正域名需修改多个文件，极易漏改或测试脱节。
+- **红线与防误伤**：
+  - **不要**将用于移动端 API 签名的网关域名直接暴露给浏览器前端作为跳转外链；
+  - **不要**在各视图与卡片组件中自行手写外部站点的 URL 模板字符串；
+- **放行/改用**：
+  1. **图源字典单一真理源**：在 `src/utils/source.ts` 的 `SOURCE_MAP.picacg` 显式声明 `externalUrl: (sourceId) => 'https://picawang.com/comic/' + sourceId`，并导出统一的 `getSourceExternalUrl(source, sourceId)`；
+  2. **存储层无感自愈（Auto-Healing）**：在 `backend/app/storage/base.py` 的 `load_discovery_feed` 中加入自愈逻辑：检测到条目中含旧版 `picacomic.com/comic/` 时，自动纠偏重写为 `picawang.com` 并原子回写磁盘。
+
+### 127. 榜单高频轮替临时图片落盘引发孤儿碎片与磁盘膨胀 (Discovery Transient Cover Disk Leakage & Scheme A In-Memory Proxy)
+
+- **本质**：
+  1. **生命周期不对称**：书架藏书（`backend/data/library/`）是永久归档，封面与画页持久化有明确归属；而发现页官方排行榜（`data/discovery/`）是 12 小时高频轮动的外部数据。若为排行榜所有漫画自动下载封面图片落盘，每期榜单淘汰的作品其图片将永久残留在磁盘，形成无主孤儿文件（Orphan Cache Leakage）；
+  2. **非馆长主观意图流量浪费**：用户翻阅排行榜可能仅为了淘书或浏览前几名，无差别后台全量抓取数十本甚至数百本漫画的封面不仅占用 NAS 存储，还会触发上游 CDN 频控封禁；
+  3. **直连防盗链与 CORS 阻断**：直接让前端 `<img>` 标签加载远端 CDN 地址（如 `storage-b.picacomic.com`）会被浏览器的跨域策略或第三方的防盗链机制（Referer 校验）阻断导致大面积挂图。
+- **红线与防误伤**：
+  - **严禁**将发现排行榜中未收录作品的临时封面写入 `backend/data/` 物理磁盘；
+  - **严禁**在发现页卡片加载时无节制并发预拉全量卡片封面；
+- **放行/改用**：
+  1. **方案 A 按需触发（Opt-In Viewing）**：前端卡片默认展示轻量矢量占位（0 网络请求、0 流量）；仅在卡片包含封面地址且馆长显式点击「查看封面」时，才单卡展开并呈现收起/重试交互；
+  2. **纯内存 LRU 代理路由（Memory-Only Proxy）**：后端设立 `GET /api/discovery/cover` 端点（`require_curator` 保护），配备上限 100 张、TTL 3600 秒的线程安全内存缓存；下期榜单更迭后旧条目随内存自然逐出，磁盘保持 100% 零残留；
+  3. **SSRF 主机白名单与候选分流容灾**：代理下载前经由 `_validate_download_host` 拦截非法内网 IP 与非受信域名，结合多候选分流节点轮询重试。
+
+### 128. FastAPI Query 参数直接在单测调用时的对象类型断层 (FastAPI Parameter Direct Call Type Coercion Trap)
+
+- **本质**：
+  1. **运行时依赖注入 vs 普通 Python 函数调用**：在 FastAPI 路由签名中声明 `cover_url: str | None = Query(default=None)` 时，HTTP 请求进入 ASGI 管线会由 FastAPI 解析 Query 字符串注入给参数；
+  2. **直接函数调用时的默认值陷阱**：在编写轻量级 Python 单元测试直接调用 `discovery_cover(req, source, source_id)` 时，未显式传递的 `cover_url` 形参并不会自动变成 `None`，而是获取到函数定义签名上的默认值——即 `fastapi.params.Query` 实例对象！
+  3. **隐式类型坍塌异常**：若路由代码内部直接调用 `(cover_url or "").strip()`，Python 运行时会抛出致命异常：`AttributeError: 'Query' object has no attribute 'strip'`，导致单测报错阻断。
+- **红线与防误伤**：
+  - **不要**在直接单元测试能够调用的内部路由函数中对可能未传的 `Query()` 默认对象直接调用字符串方法；
+- **放行/改用**：
+  1. **参数签名声明标准化**：对非必填查询参数采用类型标注与默认值 `cover_url: str | None = None`（FastAPI 会自动推导为 Optional Query 参数）；
+  2. **强类型安全防御**：函数体内部使用 `cover_url.strip() if isinstance(cover_url, str) else ""`，完美兼容 FastAPI 注入环境与单测直接调用环境。
+
 ---
 
 ## 🚦 交付门禁（四步必跑）

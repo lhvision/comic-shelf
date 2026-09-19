@@ -55,11 +55,12 @@ async function cancelReturn() {
 async function handleConfirmReturn() {
   if (loggingOut.value) return
   loggingOut.value = true
+  const wasDirectPass = isDirectPass.value
   try {
     await logout()
     isOpen.value = false
     isConfirming.value = false
-    toast(isDirectPass.value ? '已退出单本阅读' : '已交还借阅凭证，设备席位已释放', 'info')
+    toast(wasDirectPass ? '已退出单本阅读' : '已交还借阅凭证，设备席位已释放', 'info')
   } catch {
     toast('注销失败，请稍后重试', 'error')
   } finally {

@@ -97,7 +97,7 @@ export function useDiscoveryWebMCP(options: UseDiscoveryWebMCPOptions) {
           ? targetTf
           : timeframe.value
 
-      if (targetSrc || targetTf || refresh) {
+      if (targetSrc || targetTf || refresh || !feed.value) {
         await loadRanking(activeSrc, activeTf, Boolean(refresh))
       }
 
@@ -112,6 +112,7 @@ export function useDiscoveryWebMCP(options: UseDiscoveryWebMCPOptions) {
 
       return {
         success: true,
+        source: activeSrc,
         timeframe: timeframe.value,
         total: items.length,
         items: items.map((it) => ({

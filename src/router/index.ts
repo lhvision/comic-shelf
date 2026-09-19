@@ -90,8 +90,12 @@ const router = createRouter({
 })
 
 router.beforeEach((to) => {
-  const { isDirectPass, directPassComic } = useAuth()
-  if (isDirectPass.value && directPassComic.value) {
+  const { isDirectPass, directPassComic, logout } = useAuth()
+  if (isDirectPass.value) {
+    if (!directPassComic.value) {
+      void logout()
+      return '/'
+    }
     const { source, sourceId } = directPassComic.value
     // 单本沙箱模式：严格锁定读者仅能访问本作（详情、阅读器、章节子路由）
     const isTargetComic =

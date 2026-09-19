@@ -7,7 +7,7 @@
  * 2. 支持强制刷新缓存获取最新排行动态。
  */
 
-import { request, type RequestOptions } from '../core/http'
+import { BASE, buildQueryString, getStoredToken, request, type RequestOptions } from '../core/http'
 import type { DiscoveryFeed, DiscoveryTimeframe } from '@/types'
 
 /**
@@ -41,15 +41,15 @@ export async function discoveryRanking(
   let refresh = false
   let options: RequestOptions | undefined
 
-  if (arg1 === 'week' || arg1 === 'month' || arg1 === 'day') {
-    timeframe = arg1
-    if (typeof arg2 === 'boolean') refresh = arg2
-    if (typeof arg3 === 'object' && arg3 !== null) options = arg3 as RequestOptions
-  } else {
-    if (arg1 === 'jm' || arg1 === 'picacg') source = arg1
+  if (arg1 === 'jm' || arg1 === 'picacg') {
+    source = arg1
     if (arg2 === 'week' || arg2 === 'month' || arg2 === 'day') timeframe = arg2
     if (typeof arg3 === 'boolean') refresh = arg3
     if (typeof arg4 === 'object' && arg4 !== null) options = arg4
+  } else {
+    if (arg1 === 'week' || arg1 === 'month' || arg1 === 'day') timeframe = arg1
+    if (typeof arg2 === 'boolean') refresh = arg2
+    if (typeof arg3 === 'object' && arg3 !== null) options = arg3 as RequestOptions
   }
 
   return request<DiscoveryFeed>(
@@ -64,4 +64,23 @@ export async function discoveryRanking(
       },
     },
   )
+}
+
+/**
+ * 构造发现页作品封面直连 URL（内存代理，按需加载，零磁盘占用）
+ *
+ * @param source 图源平台标识（如 'jm' | 'picacg'）
+ * @param sourceId 图源作品唯一 ID
+ * @param coverUrl 可选的远端封面原图地址（若提供则直接传递避免后端重复检索）
+ * @returns 代理访问 URL
+ */
+export function discoveryCoverUrl(source: string, sourceId: string, coverUrl?: string): string {
+  const token = getStoredToken()
+  const qs = buildQueryString({
+    source,
+    source_id: sourceId,
+    cover_url: coverUrl || undefined,
+    token: token || undefined,
+  })
+  return `${BASE}/discovery/cover?${qs}`
 }

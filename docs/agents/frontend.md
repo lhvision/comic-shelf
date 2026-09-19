@@ -500,7 +500,13 @@ graph TD
   - **二级标签（时段维度）**：动态绑定对应站点的时段特色语义：
     - 禁漫（JM）：`本周必看`（周榜）/ `本月热门`（月榜）/ `今日精选`（日榜）；
     - 哔咔（PicAcg）：`7天热门`（周榜）/ `30天热门`（月榜）/ `24小时榜`（日榜）；
-- **状态解耦与换源平滑衔接**：`useDiscovery` 独立追踪 `source` 与 `timeframe` 状态，请求时带 `AbortController` 竞态取消；换源时自动清空历史源 feed（`if (feed.value?.source !== src) feed.value = null`）平滑过渡至骨架屏；父级标签变更监听杜绝 `modelValue === key` 假阳性守卫拦截（避坑 #124）；卡片（`DiscoveryCard`）根据 `getSourceShortName` 与 `getSourceBadge` 动态渲染原站跳转外链与来源印章。
+- **状态解耦与换源平滑衔接**：`useDiscovery` 独立追踪 `source` 与 `timeframe` 状态，请求时带 `AbortController` 竞态取消；换源时自动清空历史源 feed（`if (feed.value?.source !== src) feed.value = null`）平滑过渡至骨架屏；父级标签变更监听杜绝 `modelValue === key` 假阳性守卫拦截（避坑 #124）；卡片（`DiscoveryCard`）根据 `getSourceShortName` 与 `getSourceBadge` 动态渲染原站跳转外链与来源印章；外链统一通过 `getSourceExternalUrl(source, sourceId)` 生成规范化 Web 阅读器链接（如哔咔标准外链 `https://picawang.com/comic/{source_id}`）。
+- **方案 A 按需查看封面交互体系（Scheme A On-Demand Cover Viewing）**：
+  - **默认状态（零开销）**：卡片默认保持轻量几何与排版 ID 占位，绝不主动发起图片网络请求；
+  - **按需触发（Opt-In）**：当条目带有封面数据（`item.cover_url`）时，卡片右上角渲染 `〔 查看封面 〕` 悬浮触发微件（`<AppIcon name="eye" size="xs" />`）；
+  - **平滑加载与收起**：点击触发后通过 `discoveryCoverUrl(source, sourceId, coverUrl)` 调用后端纯内存代理端点；加载过程中呈现旋转动画与骨架覆盖层，图片完全就绪后淡入展示；封面展开状态下提供高对比度 `〔 收起封面 〕`（`<AppIcon name="eye-off" size="xs" />`）半透明悬浮胶囊，可随时一键折叠回占位；
+  - **网络容错与重试**：遇到网络异常时呈现专属错误覆盖层与重试按钮；
+  - **条目切换自重置**：卡片监听 `props.item.id` 变动，换源或切榜时自动将 `showCover`、`coverLoading` 与 `coverError` 归零，杜绝不同漫画卡片复用时内容残留。
 
 ### 16.3 单本沙箱前端闭环与零虚假能力契约（Zero False Affordance）
 

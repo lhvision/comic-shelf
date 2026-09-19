@@ -10,6 +10,7 @@ import {
   getSourceShortName,
   getSourceBadge,
   getSourceIdLabel,
+  getSourceExternalUrl,
   SOURCE_MAP,
 } from '@/utils/source'
 
@@ -48,5 +49,15 @@ describe('source utility', () => {
   it('defaults to jm when source is omitted or empty', () => {
     expect(getSourceMeta()).toEqual(SOURCE_MAP.jm)
     expect(getSourceMeta('')).toEqual(SOURCE_MAP.jm)
+  })
+
+  it('resolves external url correctly for sources supporting external links', () => {
+    expect(getSourceExternalUrl('jm', '123456')).toBe('https://18comic.vip/album/123456')
+    expect(getSourceExternalUrl('picacg', '6aa41d3bf7e21a74faf94e42')).toBe(
+      'https://picawang.com/comic/6aa41d3bf7e21a74faf94e42',
+    )
+    expect(getSourceExternalUrl('local', 'my_comic')).toBeUndefined()
+    expect(getSourceExternalUrl('unknown', '123')).toBeUndefined()
+    expect(getSourceExternalUrl('jm', '')).toBeUndefined()
   })
 })

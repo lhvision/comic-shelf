@@ -262,15 +262,21 @@ JmImageTool.decode_and_save(num, source_image, save_path)
 
 ### 4.9 官方发现与排行榜模块化架构（Discovery Multi-Source Architecture）
 
-- **多图源分级端点**：`GET /api/discovery/ranking` 端点接收 `source: str = Query(default="jm", pattern="^(jm|picacg)$")` 与 `timeframe`（`day` / `week` / `month`）；
-- **物理隔离存储布局**：
+- **多图源分级端点**：`GET /api/discovery/ranking` 端点接收 `source` 与 `timeframe`（`day` / `week` / `month`）；
+  - 遵循开闭原则（OCP）：采用统一常量 `SUPPORTED_DISCOVERY_SOURCES = ("jm", "picacg")` 与正则守卫 `DISCOVERY_SOURCE_PATTERN`，便于未来挂载更多外部源；
+- **物理隔离存储布局与原子迁移**：
   - 榜单数据按图源与时段分源落盘：`backend/data/discovery/{source}_{timeframe}.json`；
-  - 具备平滑容错与向前兼容：读取时若分源文件尚不存在，自动降级读取遗留的单源历史缓存（`discovery/{timeframe}.json`）；
+  - **原子迁移与旧缓存自愈**：读取时若分源文件不存在，自动读取遗留单源缓存（`discovery/{timeframe}.json`）并原子落盘为 `jm_{timeframe}.json`，随后安全销毁旧文件；
+  - **规范化外链域名自动修复**：加载旧版哔咔发现缓存时，自动将历史移动端外链（`picacomic.com/comic/`）智能替换为标准 Web 阅读器域名（`picawang.com/comic/{source_id}`）；
 - **PicAcg 榜单适配**：
   - 适配器调用哔咔 App 原生排行榜 REST 接口（`/comics/leaderboard`）；
   - 携带必要分类过滤参数 `ct=VC`（浏览量榜）以通过哔咔移动端 API 的严格校验；
   - 时段映射契约：`day` 映射为 `H24`（24小时榜）、`week` 映射为 `D7`（7天热门）、`month` 映射为 `D30`（30天热门）；
   - 封面缩略图前缀智能规整（自动嗅探 `static/` 相对路径防 404 挂图）。
+- **方案 A 榜单封面纯内存代理（Scheme A In-Memory Cover Proxying）**：
+  - 端点：`GET /api/discovery/cover`（受 `require_curator` 权限保护）；
+  - **零磁盘冗余机制（Zero Disk Waste）**：发现页属于高频流转榜单，严禁将未收录的临时条目图片下载落盘。后端采用线程安全的内存 LRU 缓存（上限 100 份、TTL 3600 秒），当榜单轮换或自然淘汰时，相关内存随之释放，磁盘保持绝对纯净；
+  - **多 CDN 自动容灾与 SSRF 防护**：通过 `_validate_download_host` 校验远端主机名，并在候选 CDN 节点（`PICA_STORAGE_FALLBACKS`）中依次重试。
 
 ### 4.10 服务端 MCP 架构与传输流控规范（MCP Server & Transport Protocols）
 
@@ -318,7 +324,8 @@ JmImageTool.decode_and_save(num, source_image, save_path)
 - `GET /api/settings/download-concurrency` / `PUT /api/settings/download-concurrency`（获取与修改下载并发数）
 - `GET /api/settings/guest-privacy` / `PUT /api/settings/guest-privacy`（获取与修改新藏书访客默认隐藏设置）
 - `GET /api/events/stream`（单向系统事件流 SSE，广播构建版本、书库变动与任务进度）
-- `GET /api/discovery/ranking`（发现页与排行榜数据：周榜/月榜/日榜/总榜，支持 `time_type` 与分类筛选）
+- `GET /api/discovery/ranking`（发现页与排行榜数据：周榜/月榜/日榜，支持 `source` 与 `timeframe` 筛选）
+- `GET /api/discovery/cover`（发现榜单封面纯内存代理，按需加载，零磁盘落盘，带 LRU 内存缓存与 SSRF 防护）
 - `GET /api/library`（基于 SQLite `comics_index` 影子索引的毫秒级受控分页与多维筛选，参数支持 `page`, `page_size`, `status`, `favorite`, `source`, `q`, `tag`, `sort`, `ids`, `offset`；动态 JOIN 各用户独立阅读进度与喜欢）
 - `GET /api/library/facets`（藏书全貌聚合统计与高频前 30 标签，返回 `total_books`, `total_pages`, `cached_pages` 与高频标签元组）
 - `POST /api/library/import` `{id, source, prefetch_covers, prefetch_all, refresh}`（`refresh=true` 走增量，章节未变则复用旧 remote；已重新装订画卷禁止 refresh 覆盖）

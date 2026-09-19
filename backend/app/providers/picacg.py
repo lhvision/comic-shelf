@@ -629,12 +629,29 @@ class PicacgProvider(ComicProvider):
         if not file_server or not path:
             return None
 
-        candidate_urls: list[str] = [f"{file_server}/static/{path}"]
-        parsed = urlparse(candidate_urls[0])
+        if path.startswith("static/"):
+            target_url = f"{file_server}/{path}"
+        else:
+            target_url = f"{file_server}/static/{path}"
+
+        return self.download_cover_by_url(target_url)
+
+
+    def download_cover_by_url(self, cover_url: str) -> bytes | None:
+        """Downloads cover image bytes directly from a verified cover URL with candidate CDN fallbacks."""
+        if not cover_url or not cover_url.strip():
+            return None
+        parsed = urlparse(cover_url.strip())
         if parsed.scheme not in ("http", "https"):
             return None
-        original_host = (parsed.hostname or "").lower()
 
+        original_host = (parsed.hostname or "").lower()
+        try:
+            _validate_download_host(original_host)
+        except ValueError:
+            return None
+
+        candidate_urls: list[str] = [cover_url.strip()]
         for fallback_host in PICA_STORAGE_FALLBACKS:
             if fallback_host != original_host:
                 candidate_urls.append(parsed._replace(netloc=fallback_host).geturl())
@@ -654,7 +671,7 @@ class PicacgProvider(ComicProvider):
                 if resp.status_code == 200 and len(resp.content) >= 100 and is_valid_image(resp.content):
                     return bytes(resp.content)
             except Exception as exc:
-                logger.debug(f"下载哔咔官方封面分流节点异常 ({sanitize_proxy_url(url)}): {exc}")
+                logger.debug(f"下载哔咔发现封面分流节点异常 ({sanitize_proxy_url(url)}): {exc}")
 
         return None
 
@@ -755,7 +772,7 @@ class PicacgProvider(ComicProvider):
                 cover_url = f"{file_server}/static/{thumb_path}"
             else:
                 cover_url = ""
-            url = f"https://picacomic.com/comic/{source_id}"
+            url = f"https://picawang.com/comic/{source_id}"
 
             items.append(
                 DiscoveryItem(

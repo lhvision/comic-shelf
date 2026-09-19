@@ -94,8 +94,8 @@ const isDirectPass = computed(() => authenticated.value && userId.value.startsWi
 const directPassComic = computed<{ source: string; sourceId: string } | null>(() => {
   if (!isDirectPass.value) return null
   const parts = userId.value.split(':')
-  if (parts.length >= 3) {
-    return { source: parts[1] || '', sourceId: parts[2] || '' }
+  if (parts.length >= 3 && parts[1] && parts[2]) {
+    return { source: parts[1], sourceId: parts.slice(2).join(':') }
   }
   return null
 })
