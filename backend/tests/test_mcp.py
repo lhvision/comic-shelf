@@ -399,6 +399,16 @@ def test_http_direct_rpc_and_sandbox_middleware():
         resp_ok = asyncio.run(auth_and_security_middleware(req_ok, dummy_call_next))
         assert next_called is True
 
+        # 2b-2. Requesting metadata outside single-book sandbox (e.g. /api/providers) -> 403 Forbidden
+        next_called = False
+        req_providers = make_mock_request(
+            path="/api/providers",
+            query_params={"temp_token": temp_token},
+        )
+        resp_providers = asyncio.run(auth_and_security_middleware(req_providers, dummy_call_next))
+        assert next_called is False
+        assert resp_providers.status_code == 403
+
         # 2c. Requesting shelf index /api/library with temp_token -> 403 Forbidden (Blocked from seeing full library)
         next_called = False
         req_blocked_shelf = make_mock_request(

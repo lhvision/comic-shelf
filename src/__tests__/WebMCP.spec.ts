@@ -74,14 +74,14 @@ describe('WebMCP Composables', () => {
           toggleFavorite: toggleFavoriteMock,
         })
         expect(mcp).toBeDefined()
-        expect(mcp.jumpTool).toBeDefined()
-        expect(mcp.turnTool).toBeDefined()
-        expect(mcp.modeTool).toBeDefined()
-        expect(mcp.fitTool).toBeDefined()
-        expect(mcp.autoTurnTool).toBeDefined()
-        expect(mcp.favTool).toBeDefined()
-        expect(mcp.locateBubbleTool).toBeDefined()
-        expect(mcp.jumpChapterTool).toBeDefined()
+        expect(mcp!.jumpTool).toBeDefined()
+        expect(mcp!.turnTool).toBeDefined()
+        expect(mcp!.modeTool).toBeDefined()
+        expect(mcp!.fitTool).toBeDefined()
+        expect(mcp!.autoTurnTool).toBeDefined()
+        expect(mcp!.favTool).toBeDefined()
+        expect(mcp!.locateBubbleTool).toBeDefined()
+        expect(mcp!.jumpChapterTool).toBeDefined()
       })
       scope.stop()
     })
@@ -544,6 +544,15 @@ describe('WebMCP Composables', () => {
           title: 'Updated Title',
         },
       })
+      vi.spyOn(api, 'createDirectPass').mockResolvedValue({
+        token: 'mock-temp-token-xyz',
+        source: 'jm',
+        source_id: '523607',
+        page_index: 15,
+        expires_at: 1700007200,
+        expires_in: 7200,
+        direct_url: '/comic/jm/523607/read/15?temp_token=mock-temp-token-xyz',
+      })
 
       try {
         const scope = effectScope()
@@ -571,6 +580,7 @@ describe('WebMCP Composables', () => {
         const getInfo = registeredTools['detail_get_comic_info']
         const toggleFav = registeredTools['detail_toggle_favorite']
         const updateMeta = registeredTools['detail_update_metadata']
+        const createDirectPass = registeredTools['detail_create_direct_pass']
 
         expect(startReading).toBeDefined()
         expect(cacheAll).toBeDefined()
@@ -579,6 +589,7 @@ describe('WebMCP Composables', () => {
         expect(getInfo).toBeDefined()
         expect(toggleFav).toBeDefined()
         expect(updateMeta).toBeDefined()
+        expect(createDirectPass).toBeDefined()
 
         // 1. Start reading from last read
         await startReading!({})
@@ -630,6 +641,24 @@ describe('WebMCP Composables', () => {
             content: expect.arrayContaining([
               expect.objectContaining({
                 text: expect.stringContaining('Updated Title'),
+              }),
+            ]),
+          }),
+        )
+
+        // 9. Create direct pass
+        const directPassRes = await createDirectPass!({ page: 15, ttl_seconds: 3600 })
+        expect(api.createDirectPass).toHaveBeenCalledWith({
+          source: 'jm',
+          source_id: '523607',
+          page_index: 15,
+          ttl_seconds: 3600,
+        })
+        expect(directPassRes).toEqual(
+          expect.objectContaining({
+            content: expect.arrayContaining([
+              expect.objectContaining({
+                text: expect.stringContaining('mock-temp-token-xyz'),
               }),
             ]),
           }),
@@ -716,7 +745,7 @@ describe('WebMCP Composables', () => {
           limit: 5,
           category: 'Comedy',
         })
-        expect(loadRankingMock).toHaveBeenCalledWith('month', true)
+        expect(loadRankingMock).toHaveBeenCalledWith('jm', 'month', true)
         expect(res).toEqual(
           expect.objectContaining({
             content: expect.arrayContaining([
@@ -729,7 +758,7 @@ describe('WebMCP Composables', () => {
 
         // 2. Switch timeframe
         await switchTimeframe!({ timeframe: 'day' })
-        expect(loadRankingMock).toHaveBeenCalledWith('day', false)
+        expect(loadRankingMock).toHaveBeenCalledWith('jm', 'day', false)
 
         // 3. Ingest comic and navigate
         await ingestComic!({ source_id: '888888', open_after: true })
@@ -790,8 +819,8 @@ describe('WebMCP Composables', () => {
         scope.run(() => {
           // 1. Shelf
           const shelfMcp = useShelfWebMCP({ router: mockRouter })
-          expect(shelfMcp.searchComicsTool).toBeDefined()
-          expect(shelfMcp.importComicTool).toBeUndefined()
+          expect(shelfMcp!.searchComicsTool).toBeDefined()
+          expect(shelfMcp!.importComicTool).toBeUndefined()
 
           // 2. Detail
           const mockDetail = createPlaceholderDetail({
@@ -825,10 +854,11 @@ describe('WebMCP Composables', () => {
             lastRead: ref(1),
             router: mockRouter,
           })
-          expect(detailMcp.startReadingTool).toBeDefined()
-          expect(detailMcp.cacheAllTool).toBeUndefined()
-          expect(detailMcp.cacheChapterTool).toBeUndefined()
-          expect(detailMcp.updateMetadataTool).toBeUndefined()
+          expect(detailMcp!.startReadingTool).toBeDefined()
+          expect(detailMcp!.cacheAllTool).toBeUndefined()
+          expect(detailMcp!.cacheChapterTool).toBeUndefined()
+          expect(detailMcp!.updateMetadataTool).toBeUndefined()
+          expect(detailMcp!.createDirectPassTool).toBeUndefined()
 
           // 3. Discovery
           const discoveryMcp = useDiscoveryWebMCP({
@@ -838,8 +868,8 @@ describe('WebMCP Composables', () => {
             ingestComic: vi.fn<() => Promise<void>>().mockResolvedValue(undefined),
             router: mockRouter,
           })
-          expect(discoveryMcp.getRankingTool).toBeDefined()
-          expect(discoveryMcp.ingestComicTool).toBeUndefined()
+          expect(discoveryMcp!.getRankingTool).toBeDefined()
+          expect(discoveryMcp!.ingestComicTool).toBeUndefined()
         })
 
         await nextTick()
@@ -850,6 +880,7 @@ describe('WebMCP Composables', () => {
         expect(registeredTools['detail_start_reading']).toBeDefined()
         expect(registeredTools['detail_cache_all_pages']).toBeUndefined()
         expect(registeredTools['detail_update_metadata']).toBeUndefined()
+        expect(registeredTools['detail_create_direct_pass']).toBeUndefined()
         expect(registeredTools['discovery_get_ranking']).toBeDefined()
         expect(registeredTools['discovery_ingest_comic']).toBeUndefined()
 
@@ -858,6 +889,128 @@ describe('WebMCP Composables', () => {
         auth.authRequired.value = prevAuthRequired
         auth.role.value = prevRole
         auth.authenticated.value = prevAuth
+        // @ts-expect-error restore
+        window.document.modelContext = originalModelContext
+      }
+    })
+
+    it('completely shuts down all WebMCP registration for single-book sandbox temporary sessions (Zero MCP Attack Surface)', async () => {
+      const registeredTools: Record<string, (args: unknown) => Promise<unknown>> = {}
+      const registerToolMock = vi.fn<
+        (toolDef: { name: string; execute: (args: unknown) => Promise<unknown> }) => void
+      >((toolDef) => {
+        registeredTools[toolDef.name] = toolDef.execute
+      })
+
+      // @ts-expect-error mock window.document
+      const originalModelContext = window.document.modelContext
+      // @ts-expect-error mock window.document
+      window.document.modelContext = {
+        registerTool: registerToolMock,
+      }
+
+      const { useAuth } = await import('@/composables/useAuth')
+      const auth = useAuth()
+      const prevAuthRequired = auth.authRequired.value
+      const prevRole = auth.role.value
+      const prevAuth = auth.authenticated.value
+      const prevUserId = auth.userId.value
+
+      auth.authRequired.value = true
+      auth.role.value = 'guest'
+      auth.authenticated.value = true
+      auth.userId.value = 'direct:jm:523607'
+
+      expect(auth.isDirectPass.value).toBe(true)
+
+      const routerPushMock = vi.fn<() => Promise<void>>().mockResolvedValue(undefined)
+      const mockRouter = { push: routerPushMock } as unknown as Router
+
+      try {
+        const scope = effectScope()
+        scope.run(() => {
+          // 1. Shelf
+          const shelfMcp = useShelfWebMCP({ router: mockRouter })
+          expect(shelfMcp).toBeUndefined()
+
+          // 2. Detail
+          const mockDetail = createPlaceholderDetail({
+            source: 'jm',
+            source_id: '523607',
+            display_id: '523607',
+            title: 'Direct Pass Comic',
+            page_count: 10,
+            authors: [],
+            works: [],
+            actors: [],
+            tags: [],
+            favorite: false,
+            views: '0',
+            likes: '0',
+            uploaded_at: '',
+            published_at: '',
+            updated_at: '',
+            imported_at: '',
+            cover_paths: [],
+            cached_pages: 0,
+            cover_count: 1,
+            chapter_titles: [],
+            last_page: 0,
+          })
+          const detailMcp = useComicDetailWebMCP({
+            source: computed(() => 'jm'),
+            sourceId: computed(() => '523607'),
+            detail: shallowRef(mockDetail),
+            chapters: computed(() => []),
+            lastRead: ref(1),
+            router: mockRouter,
+          })
+          expect(detailMcp).toBeUndefined()
+
+          // 3. Reader
+          const readerMcp = useReaderWebMCP({
+            currentPage: ref(1),
+            pageCount: computed(() => 10),
+            settings: {
+              mode: 'vertical',
+              direction: 'ltr',
+              fit: 'width',
+              pagesPerView: 1,
+              seamless: true,
+              theme: 'dark',
+              autoTurn: false,
+              autoTurnInterval: 5,
+              brightness: 100,
+            } as unknown as ReaderSettings,
+            goToPage: vi.fn<(page: number) => void>(),
+            prevGroup: vi.fn<() => void>(),
+            nextGroup: vi.fn<() => void>(),
+          })
+          expect(readerMcp).toBeUndefined()
+
+          // 4. Discovery
+          const discoveryMcp = useDiscoveryWebMCP({
+            timeframe: ref('week'),
+            feed: shallowRef(null),
+            loadRanking: vi.fn<() => Promise<void>>().mockResolvedValue(undefined),
+            ingestComic: vi.fn<() => Promise<void>>().mockResolvedValue(undefined),
+            router: mockRouter,
+          })
+          expect(discoveryMcp).toBeUndefined()
+        })
+
+        await nextTick()
+
+        // Absolutely zero tools registered on document.modelContext!
+        expect(registerToolMock).not.toHaveBeenCalled()
+        expect(Object.keys(registeredTools).length).toBe(0)
+
+        scope.stop()
+      } finally {
+        auth.authRequired.value = prevAuthRequired
+        auth.role.value = prevRole
+        auth.authenticated.value = prevAuth
+        auth.userId.value = prevUserId
         // @ts-expect-error restore
         window.document.modelContext = originalModelContext
       }

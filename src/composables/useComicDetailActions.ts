@@ -53,6 +53,8 @@ export function useComicDetailActions(options: UseComicDetailActionsOptions) {
   const { setActiveCover } = useCoverTransition()
   const { goUpFromDetail } = useHierarchicalNavigation()
 
+  const { isDirectPass } = useAuth()
+
   if (options.lastRead) {
     useComicDetailWebMCP({
       source,
@@ -133,8 +135,6 @@ export function useComicDetailActions(options: UseComicDetailActionsOptions) {
       toast(e instanceof Error ? e.message : String(e), 'error')
     }
   }
-
-  const { isDirectPass } = useAuth()
 
   function goBack() {
     if (isDirectPass.value) {

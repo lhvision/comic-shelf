@@ -34,7 +34,10 @@ export function useShelfWebMCP(options: UseShelfWebMCPOptions) {
   const { router } = options
   const shelfState = useShelfState()
   const store = useLibraryStore()
-  const { canWrite } = useAuth()
+  const { canWrite, isDirectPass } = useAuth()
+
+  // 单本沙箱临时受访者：彻底关停 WebMCP，避免外部自动化脚本穿透与高频抓取
+  if (isDirectPass.value) return
 
   // 工具 1: 书架多维淘书与全字段检索
   const searchComicsTool = useWebMCP({

@@ -14,6 +14,7 @@
 import { type ComputedRef, type Ref } from 'vue'
 import type { RouteLocationNormalizedLoaded, Router } from 'vue-router'
 import { useWebMCP } from '@vueuse/core'
+import { useAuth } from '@/composables/useAuth'
 import type { FitMode, ReaderMode, ReaderSettings } from '@/composables/useReaderSettings'
 
 /**
@@ -52,6 +53,11 @@ export interface UseReaderWebMCPOptions {
  * 在阅读器挂载期间注册 WebMCP 浏览器端交互全功能工具集
  */
 export function useReaderWebMCP(options: UseReaderWebMCPOptions) {
+  const { isDirectPass } = useAuth()
+
+  // 单本沙箱临时受访者：彻底关停 WebMCP，避免外部自动化脚本穿透与高频抓取
+  if (isDirectPass.value) return
+
   const {
     currentPage,
     pageCount,

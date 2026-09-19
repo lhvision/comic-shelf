@@ -58,7 +58,7 @@
 | `src/composables/useCoverTransition.ts`            | 书架卡片与详情 Hero 共享封面形变（`comic-cover-active`）动态类名与过渡时机调度                                                                                                           |
 | `src/composables/useBrandIcon.ts`                  | 品牌与动态多态矢量图标映射与解析器                                                                                                                                                       |
 | `src/composables/useShelfWebMCP.ts`                | 书架首页 WebMCP 工具注册：淘书检索、台词全文匹配、以图搜图、直达画页高亮、本子收录、详情直达与随机翻阅（双轨鉴权防护）                                                                   |
-| `src/composables/useComicDetailWebMCP.ts`          | 漫画详情 WebMCP 工具注册：阅读启动、全本/单话离线缓存调度、章节专注页切换、元数据获取/编辑与红心标记（双轨鉴权防护）                                                                     |
+| `src/composables/useComicDetailWebMCP.ts`          | 漫画详情 WebMCP 工具注册：阅读启动、全本/单话离线缓存调度、章节专注页切换、元数据获取/编辑、单本沙箱通行证签发与红心标记（双轨鉴权防护）                                                 |
 | `src/composables/useReaderWebMCP.ts`               | 阅读器视口 WebMCP 工具注册：精准跳页、步进翻页（多步）、排版模式/分屏/日漫方向/无缝连续切换、缩放适配、自动翻页、气泡高亮与跨话切章                                                      |
 | `src/composables/useDiscoveryWebMCP.ts`            | 发现页 WebMCP 工具注册：官方排行榜拉取、周/月/日榜切换、漫画一键收录与详情直达（双轨鉴权防护）                                                                                           |
 | `src/__tests__/testUtils.ts`                       | 前端通用单测工具集：`withSetup` Composable 宿主上下文注入挂载、Pinia 自动初始化与 `flushAsync` 助手                                                                                      |
@@ -518,6 +518,9 @@ graph TD
   5. **章节列表缓存按钮**：`<AppButton v-if="canWrite && ..." />` 物理隐藏；
   6. **借阅凭证浮层**：移除“复制入馆链接（换设备看）”入口与 PIN 码引导，印章更新为 `〔 单本沙箱 〕`；
   7. **末页完读卡片**：隐藏“返回书架”按钮，跨本推荐数组彻底置空；
-  8. **防二次扩散（URL Sanitation）**：直达链接 `?token=...` 验证成功后，前端立即触发 `window.history.replaceState` 清除 URL 里的 token 参数。
+  8. **防二次扩散（URL Sanitation）**：直达链接 `?token=...` 验证成功后，前端立即触发 `window.history.replaceState` 清除 URL 里的 token 参数；
+  9. **顶栏图源请求静默收拢（Consolidated Guard）**：`AppHeader.vue` 中的 `fetchProviders()` 在入口处直接以 `if (isDirectPass.value) return` 单一守卫阻断，彻底消除对非沙箱接口（`/api/providers`）的越权网络请求与控制台 403 噪音；
+  10. **WebMCP 浏览器端上下文休眠（WebMCP Dormancy）**：所有 WebMCP 交互钩子（`useShelfWebMCP`、`useDiscoveryWebMCP`、`useComicDetailWebMCP`、`useReaderWebMCP`）在函数入口以 `if (isDirectPass.value) return` 彻底休眠，杜绝外部浏览器插件或自动化 Agent 穿透沙箱边界；
+  11. **单本直达签发弹窗（DirectPassModal.vue）**：馆长专属“纸间藏书借阅笺”隐喻弹窗，严守 Cowen-4 黄金认知时效选项（2h/24h/3d/7d）、原生 ARIA RadioGroup 键盘焦点流转与起始页码越界实时校验。
 - **路由级沙箱强制钳位（Router Navigation Guard）**：
   - 在 `router.beforeEach` 中，单本读者只要尝试访问非本作路径（无论是手动改 URL 还是脚本触发），全自动强制无感重定向回当前单本详情页（`/comic/${source}/${sourceId}`）。

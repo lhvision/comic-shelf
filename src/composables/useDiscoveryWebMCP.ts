@@ -40,7 +40,10 @@ export interface UseDiscoveryWebMCPOptions {
  */
 export function useDiscoveryWebMCP(options: UseDiscoveryWebMCPOptions) {
   const { source, timeframe, feed, loadRanking, ingestComic, router } = options
-  const { canWrite } = useAuth()
+  const { canWrite, isDirectPass } = useAuth()
+
+  // 单本沙箱临时受访者：彻底关停 WebMCP，避免外部自动化脚本穿透与高频抓取
+  if (isDirectPass.value) return
 
   // 工具 1: 获取官方精选排行榜
   const getRankingTool = useWebMCP({

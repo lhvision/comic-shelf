@@ -111,6 +111,7 @@ function onNavClick(item: NavItem) {
 }
 
 async function fetchProviders() {
+  if (isDirectPass.value) return
   try {
     providers.value = await api.providers()
   } catch {

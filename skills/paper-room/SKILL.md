@@ -76,7 +76,7 @@ metadata:
   `search_by_image`（识图）, `search_by_dialogue`（台词 FTS5）, `query_shelf`（多维检索）, `get_comic_detail`（章节目录元数据）, `recommend_unread`（未读淘书）, `create_direct_pass`（沙箱票据）, `get_shelf_stats`（全库统计）
 - **前端视口操作面 (Frontend WebMCP)**:
   - `书架 (useShelfWebMCP)`: `shelf_search_comics`, `shelf_search_dialogue`, `shelf_search_image`, `shelf_read_comic`, `shelf_pick_random`, `shelf_open_comic`, `shelf_import_comic`
-  - `详情 (useComicDetailWebMCP)`: `detail_start_reading`, `detail_cache_all_pages`, `detail_cache_chapter`, `detail_open_chapter`, `detail_get_comic_info`, `detail_toggle_favorite`
+  - `详情 (useComicDetailWebMCP)`: `detail_start_reading`, `detail_cache_all_pages`, `detail_cache_chapter`, `detail_open_chapter`, `detail_get_comic_info`, `detail_toggle_favorite`, `detail_update_metadata`, `detail_create_direct_pass`
   - `阅读器 (useReaderWebMCP)`: `reader_jump_to_page`, `reader_turn_page`, `reader_switch_mode`, `reader_switch_fit`, `reader_toggle_auto_turn`, `reader_locate_bubble`, `reader_jump_chapter`
   - `发现 (useDiscoveryWebMCP)`: `discovery_get_ranking`, `discovery_switch_timeframe`, `discovery_ingest_comic`
 
@@ -84,12 +84,13 @@ metadata:
 
 ## 🚫 反模式与避坑红线 (Anti-Patterns)
 
-| 严禁做法 (Anti-Pattern)            | 正确做法 (Correct Pattern)                           |
-| :--------------------------------- | :--------------------------------------------------- |
-| 对外直接输出无 Token 的内网链接    | 调用 `create_direct_pass` 签发临时 2h 单本沙箱链接   |
-| 在非阅读器页面调用 `reader_*` 工具 | 检查当前视口，优先调用 `shelf_read_comic` 导航直达   |
-| 外部再次对 JM 画页做反混淆解密     | 纸间后端已自动完成解密保存，直接按标准 WebP 读取     |
-| 一次性拉取全量藏书详情             | 使用 `query_shelf` 分页或 `get_shelf_stats` 聚合统计 |
+| 严禁做法 (Anti-Pattern)                 | 正确做法 (Correct Pattern)                                              |
+| :-------------------------------------- | :---------------------------------------------------------------------- |
+| 对外直接输出无 Token 的内网链接         | 调用 `create_direct_pass` 签发临时 2h 单本沙箱链接                      |
+| 在单本沙箱（isDirectPass）下注册 WebMCP | 单本沙箱读者全面休眠 WebMCP 注册，严格防范外部 Agent 越权渗透与高频探测 |
+| 在非阅读器页面调用 `reader_*` 工具      | 检查当前视口，优先调用 `shelf_read_comic` 导航直达                      |
+| 外部再次对 JM 画页做反混淆解密          | 纸间后端已自动完成解密保存，直接按标准 WebP 读取                        |
+| 一次性拉取全量藏书详情                  | 使用 `query_shelf` 分页或 `get_shelf_stats` 聚合统计                    |
 
 ---
 

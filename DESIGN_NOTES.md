@@ -42,6 +42,7 @@
    - [§70 卡片悬浮位移迟滞保护、无浏览量零裸露与多标签复合筛选交互架构](#sec-70)
    - [§71 Vue 3.5/3.6 现代语法演进、模板引用强类型化与零胶水双向绑定架构](#sec-71)
    - [§72 阅读器双页开本排布（2 | 1 日漫开本）、分屏跨话横幅判定与设置项按需收敛体系](#sec-72)
+   - [§73 单本沙箱借阅笺弹窗、四档黄金时效单选组与设计 Token 零失真契约](#sec-73)
 5. [历史演进里程碑归档索引（Historical Milestones Archive）](#5-历史演进里程碑归档索引historical-milestones-archive)
 
 ---
@@ -669,6 +670,24 @@
 4. **单行本章末衬页嗅探与双页洁净（Separator Blank Page Cleansing & Dual-Page Purity）**：
    - 日漫单行本为维持实体跨章扉页始终位于特定版面（奇偶对齐），出版商在章末往往留有单色纯黑或纯白衬页。在电子化解包入库时若未过滤，双页模式下全章最后一幕右侧将突兀拼接一块死黑无意义图像；
    - 本地 PDF 导入管道（`backend/app/storage/pdf.py`）增加章末纯色衬页智能截断嗅探，对于灰度标准差接近 0 的章末衬页自动剥离，保障双页合订本正文分镜原汁原味与末页收尾的视觉纯净。
+
+### <a id="sec-73"></a>§73 单本沙箱借阅笺弹窗、四档黄金时效单选组与设计 Token 零失真契约（Single-Book Sandbox Bookplate Modal, 4-Choice ARIA RadioGroup & Zero-Token-Drift Architecture）
+
+针对单本专属沙箱临时分享、古籍借阅笺实体隐喻及原子设计 Token 零失真演进：
+
+1. **古籍图书借阅笺实体纸质隐喻（Bookplate & Library Card Metaphor）**：
+   - 杜绝生硬的 Web 网络时效与云盘式分享弹窗，将单本通行证重构为典雅的「纸间借阅笺」；
+   - 结果面板采用虚线装订压痕（`1px dashed var(--line-strong)`）、书籍题眉、起阅画页戳印（`SINGLE-BOOK SANDBOX`）与温润墨韵底色，配合一键直达与地址栏参数自动脱敏；
+2. **四档黄金认知时效与无障碍单选组（4-Choice ARIA RadioGroup）**：
+   - 严格遵循 Cowan 认知负荷法则（Working Memory ≤ 4），将原先杂乱冗余的 5 档时长精简收敛为 4 档黄金时效（2 小时速览、24 小时推荐、3 天数日、7 天长效）；
+   - 父容器挂载 `role="radiogroup"`，各选项卡片挂载 `role="radio"` 与 `:aria-checked`；
+   - 支持键盘左右上下方向键（←/→/↑/↓）循环聚焦切换，并配以高对比朱砂激活态（`var(--accent)` 描边与 `var(--accent-soft)` 印泥淡底）；
+3. **设计 Token 严守铁律与虚构排查（Zero Token Hallucination）**：
+   - 严禁在样式中捏造未经声明的通用 CSS Token（如 `--color-vermilion`, `--color-surface`, `--radius-sm`）；
+   - 全面收敛至 `tokens.css` 单源：纸张底色 `--paper-0/1/2`、墨色 `--ink-0/1/2`、朱砂品牌色 `--accent/accent-soft/accent-strong/accent-contrast`、圆角 `--radius-1/2`，杜绝样式计算失效导致的“不可点/无响应”假死事故；
+4. **实时边界防御与键盘加速通道（Live Page Clamp & Instant Enter Ingress）**：
+   - 起始页码输入框内嵌在组合边框容器中，提供实时范围校验（1 ~ 全书总页数）与动态非法高亮；
+   - 支持在输入框按下 Enter 键直接触发立即签发，生成成功后自动平滑聚焦「复制直达链接」按钮，为高效馆长打通零鼠标极速借阅流。
 
 ---
 

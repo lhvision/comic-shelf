@@ -253,9 +253,10 @@ JmImageTool.decode_and_save(num, source_image, save_path)
 - **单本沙箱临时直达通行证（Single-Book Direct Pass & Sandbox Boundary）**：
   - **凭证契约**：上下文标识为 `_uid = f"direct:{source}:{source_id}"`，角色为 `guest`，由 `create_direct_pass` 签发（默认 2 小时有效，最长 7 天）；
   - **沙箱绝对物理隔离**：单本读者被严格约束在指定的单一作品中：
-    - 访问书架全库（`GET /api/library`）或全貌统计（`/api/library/facets`）立即响应 HTTP 403 阻断，前端阅读器完成页亦禁止加载书库；
+    - 访问书架全库（`GET /api/library`）、全站图源清单（`GET /api/providers`）、以图搜图（`/api/search/image`）、分镜台词检索（`/api/dialogue/search`）或全貌统计（`/api/library/facets`）立即响应 HTTP 403 阻断；
     - 尝试访问其他作品的元数据、画页或封面立即响应 HTTP 403；
-    - 所有非单本范围内的修改、删除、全本离线缓存等写操作一律拦截（HTTP 403）；仅放行针对该单本自身的阅读进度（`PUT /progress`）与喜欢标记（`PATCH /favorite`）；
+    - 所有非单本范围内的修改、删除、全本离线缓存等写操作一律拦截（HTTP 403）；仅放行针对该单本自身的阅读进度（`PUT /progress`）与喜欢标记（`PATCH /favorite`），且数据按 `direct:{source}:{source_id}` 用户隔离存储，绝不污染全局；
+    - 客户端 WebMCP 上下文全部静默关停，顶栏 `fetchProviders` 静默阻断，杜绝外部 Agent 探测与控制台 403 噪音；
   - **防抓取与复合滑动窗口频控（Composite Rate Limiting Guard）**：
     - 在全局中间件 `auth_and_security_middleware` 中，针对画页二进制端点（`/file`、`/thumbnail`）实施 180 页/分钟频控；
     - 针对 `direct:` 用户采用 `rate_key = f"{_uid}:{client_ip}"` 复合键，杜绝临时直达链接被公开分享到外部社区后，恶意爬虫多线程高并发刷取全本画页导致宿主机带宽与磁盘 I/O 耗尽。

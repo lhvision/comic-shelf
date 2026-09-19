@@ -59,7 +59,10 @@ export function useComicDetailWebMCP(options: UseComicDetailWebMCPOptions) {
     toggleFavorite,
     activeChapterId,
   } = options
-  const { canWrite } = useAuth()
+  const { canWrite, isDirectPass } = useAuth()
+
+  // 单本沙箱临时受访者：彻底关停 WebMCP，避免外部自动化脚本穿透与高频抓取
+  if (isDirectPass.value) return
 
   // 工具 1: 启动漫画阅读
   const startReadingTool = useWebMCP({
@@ -363,6 +366,71 @@ export function useComicDetailWebMCP(options: UseComicDetailWebMCPOptions) {
       })
     : undefined
 
+  // 工具 8: 签发单本沙箱临时直达阅读通行证（仅馆长权限注册）
+  const createDirectPassTool = canWrite.value
+    ? useWebMCP({
+        name: 'detail_create_direct_pass',
+        description:
+          '为当前漫画签发单本沙箱临时直达阅读通行证（Single-Book Sandbox Direct Pass）。生成的链接携带独立单本临时令牌（temp_token），受访者只能阅读当前漫画的指定页与后续章节，无法访问书架其他私密典藏或执行任何写操作与配置修改。',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            page: {
+              type: 'number',
+              description:
+                '指定直达阅读的起始全局页码（从 1 开始的正整数，默认从第 1 页或上次阅读进度开启）',
+            },
+            ttl_seconds: {
+              type: 'number',
+              description:
+                '通行证有效时长（秒），默认 7200 秒（2小时），取值范围 60 ~ 604800 秒（7天）',
+            },
+          },
+        },
+        async execute(args) {
+          const { page, ttl_seconds } = (args ?? {}) as {
+            page?: number
+            ttl_seconds?: number
+          }
+
+          let targetPage = 1
+          if (typeof page === 'number' && page >= 1) {
+            targetPage = Math.floor(page)
+          } else if (lastRead.value > 1) {
+            targetPage = lastRead.value
+          }
+
+          const validTtl =
+            typeof ttl_seconds === 'number' && ttl_seconds > 0
+              ? Math.min(Math.max(Math.floor(ttl_seconds), 60), 604800)
+              : 7200
+
+          const res = await api.createDirectPass({
+            source: source.value,
+            source_id: sourceId.value,
+            page_index: targetPage,
+            ttl_seconds: validTtl,
+          })
+
+          const origin =
+            typeof window !== 'undefined' && window.location?.origin ? window.location.origin : ''
+          const fullUrl = origin ? `${origin}${res.direct_url}` : res.direct_url
+          const hours = Math.round((res.expires_in / 3600) * 10) / 10
+
+          return {
+            success: true,
+            message: `已为漫画《${detail.value?.meta.title || sourceId.value}》成功签发单本沙箱直达链接（有效时长：${hours} 小时，起始页码：第 ${res.page_index} 页）`,
+            token: res.token,
+            direct_url: res.direct_url,
+            full_url: fullUrl,
+            page_index: res.page_index,
+            expires_at: res.expires_at,
+            expires_in: res.expires_in,
+          }
+        },
+      })
+    : undefined
+
   return {
     isSupported: startReadingTool.isSupported,
     startReadingTool,
@@ -372,5 +440,6 @@ export function useComicDetailWebMCP(options: UseComicDetailWebMCPOptions) {
     getInfoTool,
     favTool,
     updateMetadataTool,
+    createDirectPassTool,
   }
 }

@@ -23,6 +23,7 @@ import PageIndexGrid from '@/components/detail/PageIndexGrid.vue'
 import EditMetadataModal from '@/components/detail/EditMetadataModal.vue'
 import AppendPagesModal from '@/components/detail/AppendPagesModal.vue'
 import ReplacePagesModal from '@/components/detail/ReplacePagesModal.vue'
+import DirectPassModal from '@/components/detail/DirectPassModal.vue'
 import type { CacheJob } from '@/types'
 
 /**
@@ -123,6 +124,7 @@ const {
 
 const isMulti = computed(() => (chapters.value?.length ?? 0) > 1)
 const initialAppendType = ref<'current' | 'new'>('current')
+const directPassOpen = ref(false)
 
 const cachePercent = computed(() => {
   if (!detail.value) return 0
@@ -189,6 +191,7 @@ onMounted(() => {
           }
         "
         @replace-pages="replaceOpen = true"
+        @share-direct="directPassOpen = true"
       />
 
       <ChapterIndex
@@ -261,6 +264,15 @@ onMounted(() => {
             store.load()
           }
         "
+      />
+
+      <DirectPassModal
+        v-model:open="directPassOpen"
+        :source="source"
+        :source-id="sourceId"
+        :title="detail.meta.title"
+        :page-count="detail.meta.page_count"
+        :last-read="progressEl"
       />
     </template>
   </div>

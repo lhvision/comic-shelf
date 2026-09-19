@@ -41,6 +41,7 @@ const emit = defineEmits<{
   editMetadata: []
   appendPages: []
   replacePages: []
+  shareDirect: []
 }>()
 
 /** 移除确认弹窗开合 */
@@ -51,6 +52,11 @@ const ackRemove = ref(false)
 const moreOptions = computed<DropdownOption[]>(() => {
   const list: DropdownOption[] = []
   if (props.canWrite) {
+    list.push({
+      key: 'share_direct',
+      label: '签发单本直达…',
+      hint: '临时沙箱',
+    })
     list.push({
       key: 'replace_pages',
       label: '重新装订…',
@@ -71,6 +77,8 @@ function onMoreSelect(option: DropdownOption) {
     requestRemove()
   } else if (option.key === 'replace_pages') {
     emit('replacePages')
+  } else if (option.key === 'share_direct') {
+    emit('shareDirect')
   }
 }
 
@@ -142,6 +150,16 @@ function prefetchReader() {
         @click="emit('editMetadata')"
       >
         编辑资料
+      </AppButton>
+
+      <AppButton
+        v-if="canWrite"
+        variant="ghost"
+        type="button"
+        title="签发单本沙箱临时直达阅读链接"
+        @click="emit('shareDirect')"
+      >
+        分享单本…
       </AppButton>
 
       <AppButton
