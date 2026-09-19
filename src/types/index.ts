@@ -314,6 +314,7 @@ export interface DiscoveryItem {
 }
 
 export interface DiscoveryFeed {
+  source?: string
   timeframe: DiscoveryTimeframe
   updated_at: string
   items: DiscoveryItem[]

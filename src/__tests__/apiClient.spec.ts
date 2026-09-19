@@ -222,6 +222,11 @@ describe('api client query assembly', () => {
     fetchMock.mockClear()
     await api.discoveryRanking('day', true)
     expect(getCalledUrl(fetchMock)).toBe('/api/discovery/ranking?timeframe=day&refresh=true')
+
+    // With explicit source
+    fetchMock.mockClear()
+    await api.discoveryRanking('picacg', 'week', false)
+    expect(getCalledUrl(fetchMock)).toBe('/api/discovery/ranking?source=picacg&timeframe=week')
   })
 
   it('assembles coverFileUrl and chapterCoverUrl via buildQueryString', () => {

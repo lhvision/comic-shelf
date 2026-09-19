@@ -3,6 +3,9 @@ import { nextTick } from 'vue'
 import { useCoverTransition } from '@/composables/useCoverTransition'
 import { withResolvers } from '@/utils/promise'
 
+import { useShelfState } from '@/composables/useShelfState'
+import { useAuth } from '@/composables/useAuth'
+
 let hasPreScrolled = false
 let isPopStateNavigation = false
 
@@ -63,6 +66,13 @@ const router = createRouter({
     },
   ],
   scrollBehavior(to, from, savedPosition) {
+    // 若返回书架页面，优先还原书架全景上下文记忆中的滚动坐标（Shelf Context Memory）
+    if (to.name === 'library') {
+      const { shelfScrollY } = useShelfState()
+      if (shelfScrollY.value > 0) {
+        return { top: shelfScrollY.value, behavior: 'instant' }
+      }
+    }
     if (savedPosition) {
       return savedPosition
     }
@@ -77,6 +87,21 @@ const router = createRouter({
     }
     return { top: 0 }
   },
+})
+
+router.beforeEach((to) => {
+  const { isDirectPass, directPassComic } = useAuth()
+  if (isDirectPass.value && directPassComic.value) {
+    const { source, sourceId } = directPassComic.value
+    // 单本沙箱模式：严格锁定读者仅能访问本作（详情、阅读器、章节子路由）
+    const isTargetComic =
+      (to.name === 'comic-detail' || to.name === 'reader' || to.name === 'comic-chapter') &&
+      to.params.source === source &&
+      to.params.sourceId === sourceId
+    if (!isTargetComic) {
+      return `/comic/${source}/${sourceId}`
+    }
+  }
 })
 
 router.beforeResolve(async (to, from) => {

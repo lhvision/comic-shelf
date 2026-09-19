@@ -24,7 +24,7 @@ interface NavItem {
 const route = useRoute()
 const router = useRouter()
 const providers = ref<ProviderInfo[]>(DEFAULT_PROVIDERS)
-const { authRequired, isGuest, canWrite, logout } = useAuth()
+const { authRequired, isGuest, canWrite, logout, isDirectPass } = useAuth()
 const { brandIcon } = useBrandIcon()
 const { openModal: openGuestModal } = useGuestPasses()
 const guestModalEverOpened = ref(false)
@@ -92,6 +92,7 @@ function isActive(item: NavItem) {
 }
 
 function goLibrary() {
+  if (isDirectPass.value) return
   resetAllShelfState()
   if (route.path === '/' && !route.query.source) {
     window.scrollTo({ top: 0, behavior: 'smooth' })
@@ -125,7 +126,13 @@ onAuthSuccess(fetchProviders)
 <template>
   <header class="site-header">
     <div class="header-left">
-      <button class="brand" type="button" @click="goLibrary" aria-label="回到全部收藏">
+      <button
+        v-if="!isDirectPass"
+        class="brand"
+        type="button"
+        @click="goLibrary"
+        aria-label="回到全部收藏"
+      >
         <img class="brand-mark" :src="brandIcon" alt="" aria-hidden="true" />
         <span>
           <strong>纸间</strong>
@@ -133,7 +140,16 @@ onAuthSuccess(fetchProviders)
         </span>
       </button>
 
+      <div v-else class="brand brand--sandbox" aria-label="纸间 · 单本沙箱">
+        <img class="brand-mark" :src="brandIcon" alt="" aria-hidden="true" />
+        <span>
+          <strong>纸间</strong>
+          <small>Paper Room · 沙箱</small>
+        </span>
+      </div>
+
       <nav
+        v-if="!isDirectPass"
         ref="navScrollEl"
         class="site-nav"
         :class="{
@@ -166,8 +182,10 @@ onAuthSuccess(fetchProviders)
     </div>
 
     <div class="header-right">
-      <p class="header-note">本地优先 · 缓存后不再访问远端</p>
-      <StoragePopover />
+      <p class="header-note">
+        {{ isDirectPass ? '单本沙箱阅览 · 本地独占' : '本地优先 · 缓存后不再访问远端' }}
+      </p>
+      <StoragePopover v-if="!isDirectPass" />
       <button
         v-if="canWrite"
         type="button"
@@ -249,6 +267,15 @@ onAuthSuccess(fetchProviders)
 
 .brand:hover .brand-mark {
   rotate: -6deg;
+}
+
+.brand--sandbox {
+  cursor: default;
+  user-select: none;
+}
+
+.brand--sandbox:hover .brand-mark {
+  rotate: none;
 }
 
 .brand strong {

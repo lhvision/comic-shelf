@@ -32,11 +32,11 @@ export function useReaderCompletion(options: UseReaderCompletionOptions) {
   const { source, sourceId, detail, total, lastRead } = options
   const router = useRouter()
   const libraryStore = useLibraryStore()
-  const { userId } = useAuth()
+  const { userId, isDirectPass } = useAuth()
   const { broadcastLocalChange } = useSystemEvents()
 
   onMounted(() => {
-    if (libraryStore.items.length === 0 && !userId.value.startsWith('direct:')) {
+    if (libraryStore.items.length === 0 && !isDirectPass.value) {
       void libraryStore.load()
     }
   })
@@ -52,11 +52,12 @@ export function useReaderCompletion(options: UseReaderCompletionOptions) {
     }
   })
 
-  const { recommendations } = useReaderRecommendations(
+  const { recommendations: rawRecommendations } = useReaderRecommendations(
     recommendTarget,
     computed(() => libraryStore.items),
     3,
   )
+  const recommendations = computed(() => (isDirectPass.value ? [] : rawRecommendations.value))
 
   function onReaderCompleted() {
     const finalPage = detail.value?.meta.page_count ?? total.value
@@ -85,7 +86,11 @@ export function useReaderCompletion(options: UseReaderCompletionOptions) {
   }
 
   function onBackToShelf() {
-    void router.push('/')
+    if (isDirectPass.value) {
+      void router.push(`/comic/${source.value}/${sourceId.value}`)
+    } else {
+      void router.push('/')
+    }
   }
 
   return {

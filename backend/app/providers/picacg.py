@@ -25,7 +25,7 @@ from ..config import (
     PICA_PROXY,
 )
 from ..gate import download_gate
-from ..models import Chapter, ComicMeta, FetchedComic, PageRecord, RemotePage
+from ..models import Chapter, ComicMeta, DiscoveryItem, FetchedComic, PageRecord, RemotePage
 from .base import ComicProvider
 
 logger = logging.getLogger(__name__)
@@ -710,3 +710,66 @@ class PicacgProvider(ComicProvider):
         raise RuntimeError(
             f"哔咔画页下载失败 (第 {page.index} 页): 遍历 {len(candidate_urls)} 个分流节点均无法获取。最后异常: {safe_last_error}"
         )
+
+    def fetch_ranking(
+        self,
+        timeframe: str = "week",
+        page: int = 1,
+        limit: int = 50,
+    ) -> list[DiscoveryItem]:
+        """Fetches PicAcg leaderboard / trending comics.
+        timeframe: 'day' (H24), 'week' (D7), 'month' (D30)
+        """
+        tt_map = {
+            "day": "H24",
+            "week": "D7",
+            "month": "D30",
+            "H24": "H24",
+            "D7": "D7",
+            "D30": "D30",
+        }
+        tt_val = tt_map.get(timeframe, "D7")
+        try:
+            data = self._request("GET", "comics/leaderboard", params={"tt": tt_val, "ct": "VC"})
+        except Exception as exc:
+            safe_err = sanitize_proxy_url(str(exc))
+            logger.warning(f"获取哔咔排行榜失败 (tt={tt_val}): {safe_err}")
+            raise RuntimeError(f"获取哔咔排行榜失败: {safe_err}") from exc
+
+        comics = data.get("data", {}).get("comics", [])
+        items: list[DiscoveryItem] = []
+        for c in comics:
+            source_id = str(c.get("_id") or "").strip()
+            if not source_id:
+                continue
+            title = (c.get("title") or f"PicAcg_{source_id}").strip()
+            author = (c.get("author") or "").strip()
+            cats = c.get("categories") or []
+            category = str(cats[0]).strip() if cats else ""
+            thumb = c.get("thumb") or {}
+            file_server = (thumb.get("fileServer") or "").rstrip("/")
+            thumb_path = (thumb.get("path") or "").lstrip("/")
+            if thumb_path.startswith("static/"):
+                cover_url = f"{file_server}/{thumb_path}" if file_server else ""
+            elif file_server and thumb_path:
+                cover_url = f"{file_server}/static/{thumb_path}"
+            else:
+                cover_url = ""
+            url = f"https://picacomic.com/comic/{source_id}"
+
+            items.append(
+                DiscoveryItem(
+                    id=f"picacg_{source_id}",
+                    source_id=source_id,
+                    source=self.key,
+                    title=title,
+                    author=author,
+                    category=category,
+                    cover_url=cover_url,
+                    url=url,
+                )
+            )
+            if len(items) >= limit:
+                break
+
+        return items

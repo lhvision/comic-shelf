@@ -12,6 +12,9 @@ import AppTextClamp from '@/components/AppTextClamp.vue'
 import AppButton from '@/components/AppButton.vue'
 import AppIcon from '@/components/AppIcon.vue'
 import { coverSrcset } from '@/api/client'
+import { useAuth } from '@/composables/useAuth'
+
+const { isDirectPass } = useAuth()
 
 withDefaults(
   defineProps<{
@@ -62,9 +65,11 @@ useIntersectionObserver(
         <h2 class="end-title">本子翻完了</h2>
         <p class="end-sub">
           {{
-            recommendations && recommendations.length > 0
-              ? '合上书卷，墨香犹在。接下来想读哪一本？'
-              : '合上书卷，墨香犹在。当前藏书均已翻阅完毕。'
+            isDirectPass
+              ? '合上书卷，墨香犹在。本作已翻阅完毕。'
+              : recommendations && recommendations.length > 0
+                ? '合上书卷，墨香犹在。接下来想读哪一本？'
+                : '合上书卷，墨香犹在。当前藏书均已翻阅完毕。'
           }}
         </p>
       </header>
@@ -154,6 +159,7 @@ useIntersectionObserver(
           <span>回到详情</span>
         </AppButton>
         <AppButton
+          v-if="!isDirectPass"
           variant="ghost"
           theme="reader"
           size="md"

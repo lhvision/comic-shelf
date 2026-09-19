@@ -494,6 +494,7 @@ class DiscoveryItem(BaseModel):
 
 
 class DiscoveryFeed(BaseModel):
+    source: str = "jm"  # "jm" | "picacg"
     timeframe: str  # "week" | "month" | "day"
     updated_at: str = ""
     items: list[DiscoveryItem] = Field(default_factory=list)

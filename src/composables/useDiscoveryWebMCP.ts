@@ -13,6 +13,7 @@
 import { type Ref, type ShallowRef } from 'vue'
 import { useWebMCP } from '@vueuse/core'
 import type { Router } from 'vue-router'
+import type { useDiscovery } from '@/composables/useDiscovery'
 import { useAuth } from '@/composables/useAuth'
 import type { DiscoveryFeed, DiscoveryItem, DiscoveryTimeframe } from '@/types'
 
@@ -20,12 +21,14 @@ import type { DiscoveryFeed, DiscoveryItem, DiscoveryTimeframe } from '@/types'
  * `useDiscoveryWebMCP` 依赖项契约
  */
 export interface UseDiscoveryWebMCPOptions {
+  /** 当前选中的图源模块 */
+  source?: Ref<'jm' | 'picacg'>
   /** 当前选中的时间跨度 */
   timeframe: Ref<DiscoveryTimeframe>
   /** 排行榜数据 Ref */
   feed: ShallowRef<DiscoveryFeed | null>
   /** 加载排行榜方法 */
-  loadRanking: (tf?: DiscoveryTimeframe, refresh?: boolean) => Promise<void>
+  loadRanking: ReturnType<typeof useDiscovery>['loadRanking']
   /** 收录漫画方法 */
   ingestComic: (item: DiscoveryItem) => Promise<void>
   /** 路由实例 */
@@ -36,22 +39,27 @@ export interface UseDiscoveryWebMCPOptions {
  * 在发现视图挂载期间注册 WebMCP 排行榜交互工具集
  */
 export function useDiscoveryWebMCP(options: UseDiscoveryWebMCPOptions) {
-  const { timeframe, feed, loadRanking, ingestComic, router } = options
+  const { source, timeframe, feed, loadRanking, ingestComic, router } = options
   const { canWrite } = useAuth()
 
   // 工具 1: 获取官方精选排行榜
   const getRankingTool = useWebMCP({
     name: 'discovery_get_ranking',
     description:
-      '获取禁漫官方精选与排行数据。返回榜单列表、作品标题、作者、分类标签及是否已收录在本地书库的状态',
+      '获取官方精选与排行数据（支持禁漫与哔咔）。返回榜单列表、作品标题、作者、分类标签及是否已收录在本地书库的状态',
     inputSchema: {
       type: 'object',
       properties: {
+        source: {
+          type: 'string',
+          enum: ['jm', 'picacg'],
+          description: '图源模块：jm 为禁漫天堂，picacg 为哔咔漫画（默认当前选中图源）',
+        },
         timeframe: {
           type: 'string',
           enum: ['week', 'month', 'day'],
           description:
-            '榜单时间跨度：week（本周必看/周榜）、month（本月热门/月榜）、day（今日精选/日榜）',
+            '榜单时间跨度：week（本周必看/7天热门）、month（本月热门/30天热门）、day（今日精选/24小时榜）',
         },
         refresh: {
           type: 'boolean',
@@ -69,21 +77,28 @@ export function useDiscoveryWebMCP(options: UseDiscoveryWebMCPOptions) {
     },
     async execute(args) {
       const {
+        source: targetSrc,
         timeframe: targetTf,
         refresh,
         limit,
         category,
       } = (args ?? {}) as {
+        source?: 'jm' | 'picacg'
         timeframe?: DiscoveryTimeframe
         refresh?: boolean
         limit?: number
         category?: string
       }
 
-      if (targetTf === 'week' || targetTf === 'month' || targetTf === 'day') {
-        await loadRanking(targetTf, Boolean(refresh))
-      } else if (refresh) {
-        await loadRanking(timeframe.value, true)
+      const activeSrc =
+        targetSrc === 'jm' || targetSrc === 'picacg' ? targetSrc : (source?.value ?? 'jm')
+      const activeTf =
+        targetTf === 'week' || targetTf === 'month' || targetTf === 'day'
+          ? targetTf
+          : timeframe.value
+
+      if (targetSrc || targetTf || refresh) {
+        await loadRanking(activeSrc, activeTf, Boolean(refresh))
       }
 
       let items = feed.value?.items || []
@@ -133,7 +148,7 @@ export function useDiscoveryWebMCP(options: UseDiscoveryWebMCPOptions) {
         throw new Error('参数 "timeframe" 必须为 "week"、"month" 或 "day"。')
       }
 
-      await loadRanking(targetTf, false)
+      await loadRanking(source?.value ?? 'jm', targetTf, false)
       return {
         success: true,
         message: `已切换至 ${targetTf === 'week' ? '周榜（本周必看）' : targetTf === 'month' ? '月榜（本月热门）' : '日榜（今日精选）'}`,
@@ -238,9 +253,40 @@ export function useDiscoveryWebMCP(options: UseDiscoveryWebMCPOptions) {
     },
   })
 
+  // 工具 5: 切换排行榜图源模块
+  const switchSourceTool = useWebMCP({
+    name: 'discovery_switch_source',
+    description: '切换官方精选榜单的数据源（禁漫天堂 / 哔咔漫画）',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        source: {
+          type: 'string',
+          enum: ['jm', 'picacg'],
+          description: '目标图源：jm 为禁漫天堂，picacg 为哔咔漫画',
+        },
+      },
+      required: ['source'],
+    },
+    async execute(args) {
+      const { source: targetSource } = (args ?? {}) as { source?: 'jm' | 'picacg' }
+      if (targetSource !== 'jm' && targetSource !== 'picacg') {
+        throw new Error('参数 "source" 必须为 "jm" 或 "picacg"。')
+      }
+
+      await loadRanking(targetSource, timeframe.value, false)
+      return {
+        success: true,
+        message: `已切换至 ${targetSource === 'picacg' ? '哔咔漫画' : '禁漫天堂'}排行榜`,
+        source: targetSource,
+      }
+    },
+  })
+
   return {
     isSupported: getRankingTool.isSupported,
     getRankingTool,
+    switchSourceTool,
     switchTimeframeTool,
     ingestComicTool,
     openDetailTool,

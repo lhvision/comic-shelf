@@ -5,6 +5,7 @@ import AppIcon from '@/components/AppIcon.vue'
 import AppTextClamp from '@/components/AppTextClamp.vue'
 import AppChip from '@/components/AppChip.vue'
 import type { DiscoveryItem } from '@/types'
+import { getSourceBadge, getSourceShortName } from '@/utils/source'
 
 const props = defineProps<{
   item: DiscoveryItem
@@ -30,7 +31,7 @@ const libraryRoute = computed(() => `/comic/${props.item.source}/${props.item.so
         target="_blank"
         rel="noopener noreferrer"
         class="cover-visual cover-link"
-        :title="`在禁漫原站查看《${item.title}》`"
+        :title="`在${getSourceShortName(item.source)}原站查看《${item.title}》`"
       >
         <div class="cover-placeholder">
           <span class="cover-pattern-id">{{ item.id }}</span>
@@ -62,9 +63,9 @@ const libraryRoute = computed(() => `/comic/${props.item.source}/${props.item.so
         target="_blank"
         rel="noopener noreferrer"
         class="source-stamp"
-        title="在禁漫原站打开"
+        :title="`在${getSourceShortName(item.source)}原站打开`"
       >
-        <span>JM</span>
+        <span>{{ getSourceBadge(item.source) }}</span>
         <AppIcon name="external-link" size="xs" />
       </a>
       <span v-else class="id-stamp">{{ item.id }}</span>

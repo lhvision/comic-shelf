@@ -37,7 +37,7 @@ const route = useRoute()
 const router = useRouter()
 const store = useLibraryStore()
 const { toast } = useToast()
-const { canWrite } = useAuth()
+const { canWrite, isDirectPass } = useAuth()
 const { isOnline } = useOfflineSync()
 
 const source = computed(() => String(route.params.source))
@@ -147,6 +147,7 @@ onMounted(() => {
     <template v-else-if="detail">
       <div class="detail-hero surface">
         <AppButton
+          v-if="!isDirectPass"
           class="detail-back"
           shape="circle"
           variant="ghost"

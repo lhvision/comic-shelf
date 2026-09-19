@@ -5,6 +5,7 @@ import type { ComicMeta } from '@/types'
 import AppIcon from '@/components/AppIcon.vue'
 import AppTextClamp from '@/components/AppTextClamp.vue'
 import AppChip from '@/components/AppChip.vue'
+import { getSourceIdLabel } from '@/utils/source'
 
 const props = defineProps<{
   meta: ComicMeta
@@ -24,14 +25,8 @@ watch(
   },
 )
 
-const SOURCE_ID_LABELS: Record<string, string> = {
-  jm: '禁漫车号',
-  picacg: '哔咔 ID',
-  local: '自建编号',
-}
-
 const fieldRows = computed(() => {
-  const idLabel = SOURCE_ID_LABELS[props.meta.source] ?? '画卷编号'
+  const idLabel = getSourceIdLabel(props.meta.source)
   const rows = [
     { label: idLabel, value: props.meta.display_id, mono: true },
     { label: '作品', value: props.meta.works.join(' / ') || '—' },

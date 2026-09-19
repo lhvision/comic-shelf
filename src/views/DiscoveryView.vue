@@ -8,16 +8,27 @@ import AppIcon from '@/components/AppIcon.vue'
 import { useDiscovery } from '@/composables/useDiscovery'
 import { useDiscoveryWebMCP } from '@/composables/useDiscoveryWebMCP'
 import { useAuth } from '@/composables/useAuth'
+import { getSourceBadge, getSourceName, getSourceShortName } from '@/utils/source'
 import type { DiscoveryItem, DiscoveryTimeframe } from '@/types'
 
 const router = useRouter()
 const { canWrite } = useAuth()
 
 // Composable top-level destructuring (DESIGN_NOTES §13)
-const { timeframe, feed, loading, refreshing, error, ingestingMap, loadRanking, ingestComic } =
-  useDiscovery()
+const {
+  source,
+  timeframe,
+  feed,
+  loading,
+  refreshing,
+  error,
+  ingestingMap,
+  loadRanking,
+  ingestComic,
+} = useDiscovery()
 
 useDiscoveryWebMCP({
+  source,
   timeframe,
   feed,
   loadRanking,
@@ -25,24 +36,48 @@ useDiscoveryWebMCP({
   router,
 })
 
-const tabs: { key: DiscoveryTimeframe; label: string; sub: string }[] = [
-  { key: 'week', label: '本周必看', sub: '周榜' },
-  { key: 'month', label: '本月热门', sub: '月榜' },
-  { key: 'day', label: '今日精选', sub: '日榜' },
+const sourceTabs: { key: 'jm' | 'picacg'; label: string; sub: string }[] = [
+  { key: 'jm', label: getSourceName('jm'), sub: getSourceBadge('jm') },
+  { key: 'picacg', label: getSourceName('picacg'), sub: getSourceBadge('picacg') },
 ]
+
+const timeframeTabs = computed(() => {
+  if (source.value === 'picacg') {
+    return [
+      { key: 'week' as const, label: '7天热门', sub: '周榜' },
+      { key: 'month' as const, label: '30天热门', sub: '月榜' },
+      { key: 'day' as const, label: '24小时榜', sub: '日榜' },
+    ]
+  }
+  return [
+    { key: 'week' as const, label: '本周必看', sub: '周榜' },
+    { key: 'month' as const, label: '本月热门', sub: '月榜' },
+    { key: 'day' as const, label: '今日精选', sub: '日榜' },
+  ]
+})
+
+const pageSubtitle = computed(
+  () =>
+    `实时连接${getSourceShortName(source.value)}官方精选与排行，快速发现热门新刊并一键收录至本地书库`,
+)
 
 const items = computed<DiscoveryItem[]>(() => feed.value?.items || [])
 const inLibraryCount = computed(() => items.value.filter((it) => it.in_library).length)
 const totalCount = computed(() => items.value.length)
 
+function selectSource(src: 'jm' | 'picacg') {
+  if (loading.value || refreshing.value) return
+  void loadRanking(src, timeframe.value, false)
+}
+
 function selectTab(tf: DiscoveryTimeframe) {
-  if (timeframe.value === tf && !loading.value) return
-  void loadRanking(tf, false)
+  if (loading.value || refreshing.value) return
+  void loadRanking(source.value, tf, false)
 }
 
 function refreshCurrent() {
   if (refreshing.value || loading.value) return
-  void loadRanking(timeframe.value, true)
+  void loadRanking(source.value, timeframe.value, true)
 }
 
 onMounted(() => {
@@ -50,7 +85,7 @@ onMounted(() => {
     void router.replace('/')
     return
   }
-  void loadRanking(timeframe.value, false)
+  void loadRanking(source.value, timeframe.value, false)
 })
 </script>
 
@@ -63,19 +98,29 @@ onMounted(() => {
           <span class="pill pill--accent">馆长专属雷达</span>
         </div>
         <p class="page-subtitle">
-          实时连接禁漫官方精选与排行，快速发现热门新刊并一键收录至本地书库
+          {{ pageSubtitle }}
         </p>
       </div>
 
       <div class="discovery-controls">
-        <SegmentedTabs
-          v-model="timeframe"
-          :items="tabs"
-          size="md"
-          :disabled="loading || refreshing"
-          aria-label="榜单周期"
-          @change="selectTab"
-        />
+        <div class="tabs-group">
+          <SegmentedTabs
+            v-model="source"
+            :items="sourceTabs"
+            size="md"
+            :disabled="loading || refreshing"
+            aria-label="图源榜单"
+            @change="selectSource"
+          />
+          <SegmentedTabs
+            v-model="timeframe"
+            :items="timeframeTabs"
+            size="md"
+            :disabled="loading || refreshing"
+            aria-label="榜单周期"
+            @change="selectTab"
+          />
+        </div>
 
         <div class="meta-action-bar">
           <span v-if="feed?.updated_at" class="update-time"> 更新于 {{ feed.updated_at }} </span>
@@ -186,6 +231,13 @@ onMounted(() => {
   align-items: center;
   justify-content: space-between;
   gap: var(--space-4);
+  flex-wrap: wrap;
+}
+
+.tabs-group {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
   flex-wrap: wrap;
 }
 

@@ -25,6 +25,7 @@
 - **远端会话保活与自愈重登（Remote Session Lifecycle & Self-Healing Auth）**：馆长在系统级凭据配置（如 `.env`）下，后端启动或首次请求时通过客户端接口自动置换出 Session Cookies 并持久化到本地（如 `jm_session.json`）。遇 401/403 会话失效或登录失效提示时，系统底层自动静默重新登录换取新凭据并无缝重试，对业务层保持透明。
 - **多图源统一会话安全持久化（Unified Provider Secure Session Persistence）**：系统针对第三方漫画平台（如哔咔 `picacg_session.json`、禁漫 `jm_session.json` 以及未来新增鉴权图源）所建立的基础设施级安全凭据存储规范。所有持久化统一由基类 `ComicProvider.save_secure_session` 管理，采用独立进程加纳秒级时间戳生成防冲突临时文件，在 `os.open` 创建瞬间赋予 `0o600` 私有 POSIX 权限（消灭非 root 用户在共享存储或 NAS 宿主机上的微秒级可读 TOCTOU 窗口），写入完成后使用 `os.replace` 原子覆盖，兼顾极致数据完整性与宿主机级别隔离安全。
 - **多 CDN 动态轮换降级（Multi-CDN Dynamic Failover）**：图源画页下载阶段的弹性容灾范式。系统内置官方多组 CDN 域名候选集群；当主用图片域名发生超时、连接中断或 WAF/拦截页伪装（非图像魔数）时，自动在可用 CDN 候选池中平滑轮换重试，杜绝单点死锁并保障离线落盘成功率。
+- **全站统一图源字典（Unified Source Dictionary & SSOT Metadata）**：系统针对多图源架构（禁漫 `jm`、哔咔 `picacg`、本地自建 `local` 及未来扩展源）设立的前后端统一元数据字典规范（`src/utils/source.ts`）。收敛图源全称、简称、印章徽标、标识名（车号/ID/自建编号）与原站外链生成逻辑，消除各组件散落的三元表达式与局部硬编码映射，支撑未知源全大写优雅降级与快速扩展。
 - **收录（Import）**：把一本作品"放进纸间"的动作。规则：先查本地 `album.json`，命中则 `from_cache=true` 绝不请求远端；首次收录缓存前 4 页做封面。本地自建漫画收录时优先通过硬链接（Hardlink）实现零拷贝秒级收录（跨卷自动回退至物理复制）；即时生成主封面供书架秒级呈现，其余辅助封面与多话章节封面交由后台守护线程异步转码，绝不阻塞收录响应。
 - **服务端本地化（Server-side Caching / Cachify）**：把页面图片下载到服务器本地磁盘（`backend/data/library/`，对应 `cached_pages` / `cache_complete`）。图片必须走解密工具，禁止直接保存下载字节；本地自建漫画页面在导入时即为 100% 本地化。此概念属于后端存储范畴，严格区别于移动/浏览器端的离线运行状态。
 - **批次增量预缓存（Paged Batch Prefetch / Stepped Server-side Caching）**：针对单本总页数超出单次下载配额上限（`MAX_PREFETCH`，默认 600 页）的超长连载漫画，在触发全本本地化时建立的步进式顺延调度机制。系统通过探查磁盘与元数据，按全局页码从小到大提取未缓存（`cached === false`）画页切片取前 N 页执行下载；单批完成后全书若尚未全部就绪，维持未终态并支持馆长在详情页再次点击“缓存全部”顺延下一批，直至全本 100% 本地化。与远端发布新章节时的「增量更新（Incremental Refresh）」严格解耦。
@@ -186,7 +187,7 @@
 - **防重复发放预警（Anti-Duplicate Safeguard）**：馆长在访客簿分发或复制已被激活使用的通行证时触发的警示反馈，避免误将同一借阅凭据发放给不同好友导致设备互踢。
 - **置换频次熔断锁（Eviction Cooling Lock）**：针对脚本高频切 UA 刷设备恶性挤人的防御机制。当单张通行证在 5 分钟内连续发生置换超过 3 次，系统判定为设备争抢异常并启动 10 分钟置换冷却锁：当前已在线设备正常使用，新设备尝试置换时被 HTTP 429 拦截。
 - **访客阅览速率限流（Guest Rate Limiting / Token Bucket）**：针对持有有效凭证的爬虫多线程拖图攻击的中间件级防护。针对 `guest` 角色分配每分钟 180 页 + 100 页瞬时突发容量的内存令牌桶，超额触发 HTTP 429，在保障人类高速翻阅、大跨度拖拽与预加载的同时秒级阻断批量爬虫。
-- **单本沙箱临时通行证（Single-Book Direct Pass）**：由外部智能体（MCP）或馆长为特定单部漫画签发的高熵临时阅读凭据（`direct:{source}:{source_id}`）。在满足外链分享（如群聊淘书、名对白推荐）免密阅读的同时，施加绝对物理沙箱隔离：访问全库书架与统计直接 403 阻断，跨本访问阻断，所有写操作一律拦截；并在画页二进制端点实施基于 `_uid + client_ip` 复合限流（180 页/分钟），杜绝直达链接被爬虫暴破滥用。
+- **单本沙箱临时通行证（Single-Book Direct Pass）**：由外部智能体（MCP）或馆长为特定单部漫画签发的高熵临时阅读凭据（`direct:{source}:{source_id}`）。在满足外链分享（如群聊淘书、名对白推荐）免密阅读的同时，施加绝对物理沙箱隔离：访问全库书架与统计直接 403 阻断，跨本访问阻断，所有写操作一律拦截；并在画页二进制端点实施基于 `_uid + client_ip` 复合限流（180 页/分钟），杜绝直达链接被爬虫暴破滥用。前端视图层严格贯彻“零误导入口（Zero False Affordance）”契约，物理剥离详情返回、顶栏书架导航与储存管理入口，品牌印章降级为静态展示，结合全局路由守卫（Router Navigation Guard）将读者牢牢锚定在单一作品中。
 - **机器专属令牌与最小特权契约（Machine Token & Dedicated Machine Role）**：由环境变量 `COMIC_SHELF_MACHINE_TOKEN` 声明的内网机器调用凭据，在鉴权层被授予专有的 `"machine"` 角色。专司外部自动化流水线（如 Paper Studio 本地建卷、OCR 伴生台词同步、智能体 MCP 工具调用），严格阻断整本删除与通行证管理等高危管理员操作，实现凭证边界最小特权化。
 - **服务端 MCP 注册表分发（Server-Side MCP Registry Dispatch）**：纸间服务端原生的三模 MCP 协议实现（SSE、直接 RPC、本地 Stdio 管道），通过解耦的 `TOOL_HANDLERS` 与 `RESOURCE_HANDLERS` 注册表统一派发，内置 50 个最大并发 SSE 会话熔断与 JSON-RPC 2.0 批量请求防护。
 - **新藏书默认隐身策略（Default Hide for New Imports）**：全局安全性偏好配置（`guest_hide_new_comics`）。开启后新收录或导入的藏书元数据默认打上 `hidden_from_guest: true`，须由馆长核验并确认适合借阅后主动解除隐藏，杜绝私人藏书漏标外泄。

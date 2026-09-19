@@ -1428,6 +1428,43 @@
   1. 局域网调试优先使用 `chrome://flags/#unsafely-treat-insecure-origin-as-secure` 声明来源为安全上下文；
   2. 局域网生产部署全面推进 HTTPS 终结。
 
+### 123. 路由过渡前置滚顶污染 HTML5 历史快照导致书架返回归零 (Pre-Navigation Scroll Mutation Corrupting HTML5 History Popstate)
+
+- **本质**：
+  1. **HTML5 History 的快照时机陷阱**：在基于 View Transitions 或单页路由进行页面跳转时，如果在前置钩子（如 `router.beforeResolve`、导航守卫或点击事件触发时）过早调用 `window.scrollTo(0, 0)`，此时浏览器尚未完成当前路由的退出与快照保存。这一突变直接将当前页面（如书架首页 `/`）在 `window.history.state` 中的纵向滚动偏移量强行改写为 `{ scroll: { x: 0, y: 0 } }`；
+  2. **Vue Router `scrollBehavior` 的假阳性**：当读者在漫画详情页点击“返回书架”或按下浏览器后退键时，Vue Router 接收到的 `savedPosition` 是已被污染的 `{ top: 0 }`。若 `router.options.scrollBehavior` 单纯信任 `savedPosition` 或默认兜底 `{ top: 0 }`，读者先前的滚动位置将被彻底丢弃，每次返回书架都重置回最顶部；
+  3. **单例状态物理兜底架构**：书架会话单例状态机（`useShelfState`）在滚动时通过防抖监听真实写入 `shelfScrollY`。在 `router.scrollBehavior` 中，针对返回书架路由（`to.name === 'library'`）施加最高优先级防御：只要 `useShelfState().shelfScrollY.value > 0`，强行返回 `{ top: shelfScrollY.value, behavior: 'instant' }`，对齐 View Transitions 并在首屏瞬间锚定，彻底免疫浏览器历史快照污染。
+- **红线与防误伤**：
+  - **不要**在路由跳转尚未完成离开（beforeResolve / beforeRouteLeave）之前裸调 `window.scrollTo(0, 0)`；
+  - **不要**在 `scrollBehavior` 中直接将 `savedPosition` 视为绝对可信源而忽略书架持久化的 `shelfScrollY`；
+- **放行/改用**：
+  1. 路由滚顶操作必须交由 `router.options.scrollBehavior` 在目标路由渲染阶段统一调度；
+  2. 核心列表/书架视图必须具备状态单例锚点（如 `useShelfState().shelfScrollY`），在返回时优先使用单例记忆实现精确复原。
+
+### 124. SegmentedTabs 双向绑定与 `@change` 守卫冲突导致 Tab 切换被吞 (Two-way v-model Mutating modelValue Ahead of Change Event Causing Early Return)
+
+- **本质**：
+  1. **事件触发时序差异**：在支持双向绑定的自定义组件（如 `SegmentedTabs`）中，点击非当前项时，组件内部的 `onSelect(key)` 会先执行 `modelValue.value = key`（直接通过 `defineModel` 更新父组件绑定的 ref），紧接着才触发 `emit('change', key)`；
+  2. **父组件假性守卫反噬**：若父组件在 `@change="onTabChange"` 处理函数中习惯性编写 `if (source.value === key) return` 作为“防重复点击”守卫，由于第 1 步已先行修改了 `source.value`，当函数执行时 `source.value === key` 恒等于 `true`，导致父组件的数据加载方法（如 `loadRanking`）被静默拦截并直接 `return`，使得点击 Tab 界面有高亮切换动画却完全无法触发数据拉取；
+  3. **防御机制收敛**：`SegmentedTabs` 内部本身已包含 `if (modelValue.value === key) return` 的前置判断（点击当前激活项本就不会触发 `emit('change')`）。父组件的 `@change` 监听器严禁使用 `modelValue === key` 作为判定条件，只需防重判定进行中的网络请求（如 `if (loading.value || refreshing.value) return`）。
+- **红线与防误伤**：
+  - **不要**在接收 `defineModel` 组件 `@change` 事件的处理函数中编写 `if (state.value === val) return` 防重复守卫；
+- **放行/改用**：
+  1. 信任子组件的变动分发，仅校验请求并发状态（`loading` / `refreshing`）；
+  2. 切换图源时主动重置过期 `feed`（`if (feed.value?.source !== src) feed.value = null`），确保骨架屏在换源时平滑衔接。
+
+### 125. 外部 Provider 榜单接口隐式必填参数遗漏 (PicAcg Leaderboard Missing Required Query Parameter `ct=VC`)
+
+- **本质**：
+  1. **上游移动端 API 契约严苛性**：哔咔漫画（PicAcg）官方排行榜接口（`/comics/leaderboard`）除时间跨度参数 `tt`（`H24` / `D7` / `D30`）外，必须同时携带类别/分类过滤参数 `ct`（通常为 `VC` 代表 View Count 浏览榜），且签名计算必须包含该 query string；
+  2. **隐式校验报错阻断**：若仅传 `params={"tt": tt_val}`，上游服务器会直接抛出 HTTP 400 `{"code": 400, "error": "1002", "message": "validation error", "detail": "ct is required"}`。该异常被后端捕获并转换为 502 抛向前端，导致榜单无法拉取；
+  3. **画页与缩略图前缀兼容**：PicAcg 的 `thumb.path` 既可能为 `tobeimg/...`，也可能为已带 `static/...` 的路径，必须执行智能前缀规范化（`thumb_path.startswith("static/")`），避免拼接出 `static/static/` 导致 404 挂图。
+- **红线与防误伤**：
+  - **不要**在调用外部非公开移动端反向工程 API 时仅凭直觉传参，必须核对抓包协议与第三方开源客户端契约；
+- **放行/改用**：
+  1. PicAcg 排行榜固定附带 `ct="VC"`，单元测试中通过 Mock 请求全面校验参数装配；
+  2. 统一使用 `src/utils/source.ts` 标准元数据字典管理多源标签、路由与原站直达链接。
+
 ---
 
 ## 🚦 交付门禁（四步必跑）

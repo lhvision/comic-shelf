@@ -255,12 +255,24 @@ JmImageTool.decode_and_save(num, source_image, save_path)
   - **沙箱绝对物理隔离**：单本读者被严格约束在指定的单一作品中：
     - 访问书架全库（`GET /api/library`）或全貌统计（`/api/library/facets`）立即响应 HTTP 403 阻断，前端阅读器完成页亦禁止加载书库；
     - 尝试访问其他作品的元数据、画页或封面立即响应 HTTP 403；
-    - 所有修改、收藏、缓存与删除等写操作一律拦截；
+    - 所有非单本范围内的修改、删除、全本离线缓存等写操作一律拦截（HTTP 403）；仅放行针对该单本自身的阅读进度（`PUT /progress`）与喜欢标记（`PATCH /favorite`）；
   - **防抓取与复合滑动窗口频控（Composite Rate Limiting Guard）**：
     - 在全局中间件 `auth_and_security_middleware` 中，针对画页二进制端点（`/file`、`/thumbnail`）实施 180 页/分钟频控；
     - 针对 `direct:` 用户采用 `rate_key = f"{_uid}:{client_ip}"` 复合键，杜绝临时直达链接被公开分享到外部社区后，恶意爬虫多线程高并发刷取全本画页导致宿主机带宽与磁盘 I/O 耗尽。
 
-### 4.9 服务端 MCP 架构与传输流控规范（MCP Server & Transport Protocols）
+### 4.9 官方发现与排行榜模块化架构（Discovery Multi-Source Architecture）
+
+- **多图源分级端点**：`GET /api/discovery/ranking` 端点接收 `source: str = Query(default="jm", pattern="^(jm|picacg)$")` 与 `timeframe`（`day` / `week` / `month`）；
+- **物理隔离存储布局**：
+  - 榜单数据按图源与时段分源落盘：`backend/data/discovery/{source}_{timeframe}.json`；
+  - 具备平滑容错与向前兼容：读取时若分源文件尚不存在，自动降级读取遗留的单源历史缓存（`discovery/{timeframe}.json`）；
+- **PicAcg 榜单适配**：
+  - 适配器调用哔咔 App 原生排行榜 REST 接口（`/comics/leaderboard`）；
+  - 携带必要分类过滤参数 `ct=VC`（浏览量榜）以通过哔咔移动端 API 的严格校验；
+  - 时段映射契约：`day` 映射为 `H24`（24小时榜）、`week` 映射为 `D7`（7天热门）、`month` 映射为 `D30`（30天热门）；
+  - 封面缩略图前缀智能规整（自动嗅探 `static/` 相对路径防 404 挂图）。
+
+### 4.10 服务端 MCP 架构与传输流控规范（MCP Server & Transport Protocols）
 
 - **三模服务端通信架构**：
   - **SSE 传输（`GET /api/mcp/sse`、`GET /mcp/sse`）**：面向局域网 NAS / 远程 Agent（如 Claude Desktop / Cursor），采用标准 Server-Sent Events 流式握手；

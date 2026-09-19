@@ -175,6 +175,7 @@ def library_facets(
 @router.get("/api/discovery/ranking", response_model=DiscoveryFeed)
 def discovery_ranking(
     request: Request,
+    source: str = Query(default="jm", pattern="^(jm|picacg)$"),
     timeframe: str = Query(default="week", pattern="^(week|month|day)$"),
     refresh: bool = False,
 ) -> DiscoveryFeed:
@@ -182,7 +183,7 @@ def discovery_ranking(
     require_curator(request)
 
     now_ts = time.time()
-    cached_feed = store.load_discovery_feed(timeframe)
+    cached_feed = store.load_discovery_feed(timeframe, source=source)
     feed: DiscoveryFeed | None = None
 
     if not refresh and cached_feed is not None:
@@ -194,10 +195,11 @@ def discovery_ranking(
             feed = cached_feed
 
     if feed is None:
-        provider = get_provider("jm")
+        provider = get_provider(source)
         try:
             items = provider.fetch_ranking(timeframe=timeframe)
             feed = DiscoveryFeed(
+                source=source,
                 timeframe=timeframe,
                 updated_at=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
                 items=items,

@@ -7,6 +7,7 @@ import { useLibraryStore } from '@/stores/library'
 import type { DiscoveryFeed, DiscoveryItem, DiscoveryTimeframe } from '@/types'
 
 export function useDiscovery() {
+  const source = ref<'jm' | 'picacg'>('jm')
   const timeframe = ref<DiscoveryTimeframe>('week')
   const feed = shallowRef<DiscoveryFeed | null>(null)
   const loading = ref(false)
@@ -26,14 +27,41 @@ export function useDiscovery() {
     }
   })
 
-  async function loadRanking(tf: DiscoveryTimeframe = timeframe.value, refresh = false) {
+  async function loadRanking(timeframe?: DiscoveryTimeframe, refresh?: boolean): Promise<void>
+  async function loadRanking(
+    source: 'jm' | 'picacg',
+    timeframe?: DiscoveryTimeframe,
+    refresh?: boolean,
+  ): Promise<void>
+  async function loadRanking(
+    arg1: 'jm' | 'picacg' | DiscoveryTimeframe = source.value,
+    arg2: DiscoveryTimeframe | boolean = timeframe.value,
+    arg3 = false,
+  ): Promise<void> {
     if (activeAbortController) {
       activeAbortController.abort()
     }
     const controller = new AbortController()
     activeAbortController = controller
 
+    let src: 'jm' | 'picacg' = source.value
+    let tf: DiscoveryTimeframe = timeframe.value
+    let refresh = false
+
+    if (arg1 === 'week' || arg1 === 'month' || arg1 === 'day') {
+      tf = arg1
+      if (typeof arg2 === 'boolean') refresh = arg2
+    } else {
+      if (arg1 === 'jm' || arg1 === 'picacg') src = arg1
+      if (arg2 === 'week' || arg2 === 'month' || arg2 === 'day') tf = arg2
+      if (typeof arg3 === 'boolean') refresh = arg3
+    }
+
+    source.value = src
     timeframe.value = tf
+    if (feed.value && feed.value.source !== src) {
+      feed.value = null
+    }
     if (refresh) {
       refreshing.value = true
     } else {
@@ -42,7 +70,7 @@ export function useDiscovery() {
     error.value = null
 
     try {
-      const data = await api.discoveryRanking(tf, refresh, { signal: controller.signal })
+      const data = await api.discoveryRanking(src, tf, refresh, { signal: controller.signal })
       if (activeAbortController === controller) {
         feed.value = data
       }
@@ -97,6 +125,7 @@ export function useDiscovery() {
   }
 
   return {
+    source,
     timeframe,
     feed,
     loading,

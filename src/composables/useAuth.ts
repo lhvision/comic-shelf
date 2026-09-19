@@ -91,6 +91,14 @@ const canWrite = computed(
 )
 const isGuest = computed(() => authenticated.value && role.value === 'guest')
 const isDirectPass = computed(() => authenticated.value && userId.value.startsWith('direct:'))
+const directPassComic = computed<{ source: string; sourceId: string } | null>(() => {
+  if (!isDirectPass.value) return null
+  const parts = userId.value.split(':')
+  if (parts.length >= 3) {
+    return { source: parts[1] || '', sourceId: parts[2] || '' }
+  }
+  return null
+})
 
 // Register 401 listener once at module level with auto-reconnect attempt
 let isReauthenticating = false
@@ -430,6 +438,7 @@ export function useAuth() {
     canWrite,
     isGuest,
     isDirectPass,
+    directPassComic,
     checking,
     submitting,
     errorMessage,

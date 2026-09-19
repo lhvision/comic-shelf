@@ -202,7 +202,7 @@ onMounted(() => {
           </AppButton>
 
           <AppButton
-            v-if="activeChapterCached < activeChapterTotal"
+            v-if="canWrite && activeChapterCached < activeChapterTotal"
             class="action-btn action-btn-cache"
             variant="secondary"
             size="sm"

@@ -15,6 +15,7 @@ import { nextTick, ref, useTemplateRef, watch } from 'vue'
 import AppIcon from '@/components/AppIcon.vue'
 import type { DialogueSearchItem } from '@/types'
 import { coverFileUrl } from '@/api/client'
+import { getSourceShortName } from '@/utils/source'
 
 const focusedIndex = defineModel<number>('focusedIndex', { default: -1 })
 
@@ -105,14 +106,8 @@ function parseSnippetTokens(raw: string): Array<{ text: string; isMark: boolean 
   return tokens
 }
 
-const sourceLabels: Record<string, string> = {
-  jm: '禁漫',
-  picacg: '哔咔',
-  local: '本地',
-}
-
 function getSourceLabel(source: string): string {
-  return sourceLabels[source] ?? source.toUpperCase()
+  return getSourceShortName(source)
 }
 
 function onSelect(item: DialogueSearchItem) {

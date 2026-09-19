@@ -66,6 +66,7 @@ def test_visibility_filtering():
 
 def test_discovery_models():
     feed = DiscoveryFeed(
+        source="jm",
         timeframe="week",
         updated_at="2026-08-26 00:00:00",
         items=[
@@ -81,10 +82,84 @@ def test_discovery_models():
         ],
     )
     assert len(feed.items) == 1
+    assert feed.source == "jm"
     assert feed.items[0].in_library is False
+
+    feed_pica = DiscoveryFeed(
+        source="picacg",
+        timeframe="day",
+        updated_at="2026-09-19 12:00:00",
+        items=[
+            DiscoveryItem(
+                id="pica_654321",
+                source_id="654321",
+                source="picacg",
+                title="PicAcg Top 1",
+                author="Pica Artist",
+                category="Pica Cat",
+                in_library=True,
+            )
+        ],
+    )
+    assert feed_pica.source == "picacg"
+    assert feed_pica.items[0].in_library is True
+
+    jm_path = main_mod.store.discovery_path("week", "jm")
+    pica_path = main_mod.store.discovery_path("week", "picacg")
+    assert jm_path != pica_path
+    assert "jm_week.json" in str(jm_path)
+    assert "picacg_week.json" in str(pica_path)
+
+
+def test_picacg_ranking_fetch():
+    from app.providers.picacg import PicacgProvider
+    from app.routers.library import discovery_ranking
+
+    provider = PicacgProvider()
+    mock_data = {
+        "code": 200,
+        "message": "success",
+        "data": {
+            "comics": [
+                {
+                    "_id": "6aa41d3bf7e21a74faf94e42",
+                    "title": "测试哔咔周榜作品",
+                    "author": "测试画师",
+                    "categories": ["同人"],
+                    "thumb": {
+                        "fileServer": "https://storage-b.picacomic.com",
+                        "path": "tobeimg/sample.jpg",
+                    },
+                }
+            ]
+        },
+    }
+
+    original_request = provider._request
+    captured_params = {}
+
+    def mock_req(method, endpoint, params=None, **kwargs):
+        captured_params.update(params or {})
+        return mock_data
+
+    provider._request = mock_req  # type: ignore[assignment]
+    try:
+        items = provider.fetch_ranking("week")
+        assert len(items) == 1
+        assert items[0].id == "picacg_6aa41d3bf7e21a74faf94e42"
+        assert items[0].source == "picacg"
+        assert items[0].title == "测试哔咔周榜作品"
+        assert items[0].category == "同人"
+        assert items[0].cover_url == "https://storage-b.picacomic.com/static/tobeimg/sample.jpg"
+        # Verify required ct parameter is passed to prevent 400 validation error
+        assert captured_params.get("tt") == "D7"
+        assert captured_params.get("ct") == "VC"
+    finally:
+        provider._request = original_request
 
 
 if __name__ == "__main__":
     test_visibility_filtering()
     test_discovery_models()
+    test_picacg_ranking_fetch()
     print("Visibility & Discovery unit tests passed successfully!")

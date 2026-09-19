@@ -11,24 +11,54 @@ import { request, type RequestOptions } from '../core/http'
 import type { DiscoveryFeed, DiscoveryTimeframe } from '@/types'
 
 /**
- * 获取官方发现排行榜数据（支持日榜、周榜、月榜）
+ * 获取官方发现排行榜数据（支持禁漫、哔咔以及日榜、周榜、月榜）
  *
+ * @param source 图源模块（'jm' | 'picacg'，默认 'jm'）
  * @param timeframe 时间维度（'day' | 'week' | 'month'，默认 'week'）
  * @param refresh 是否强制穿透缓存请求远端最新数据（默认 false）
  * @param options 可选的请求配置
  * @returns 包含榜单作品列表与更新时间的 DiscoveryFeed 对象
  */
 export async function discoveryRanking(
-  timeframe: DiscoveryTimeframe = 'week',
-  refresh = false,
+  timeframe?: DiscoveryTimeframe,
+  refresh?: boolean,
   options?: RequestOptions,
+): Promise<DiscoveryFeed>
+export async function discoveryRanking(
+  source: 'jm' | 'picacg',
+  timeframe?: DiscoveryTimeframe,
+  refresh?: boolean,
+  options?: RequestOptions,
+): Promise<DiscoveryFeed>
+export async function discoveryRanking(
+  arg1?: 'jm' | 'picacg' | DiscoveryTimeframe,
+  arg2?: DiscoveryTimeframe | boolean,
+  arg3?: boolean | RequestOptions,
+  arg4?: RequestOptions,
 ): Promise<DiscoveryFeed> {
+  let source: 'jm' | 'picacg' | undefined
+  let timeframe: DiscoveryTimeframe = 'week'
+  let refresh = false
+  let options: RequestOptions | undefined
+
+  if (arg1 === 'week' || arg1 === 'month' || arg1 === 'day') {
+    timeframe = arg1
+    if (typeof arg2 === 'boolean') refresh = arg2
+    if (typeof arg3 === 'object' && arg3 !== null) options = arg3 as RequestOptions
+  } else {
+    if (arg1 === 'jm' || arg1 === 'picacg') source = arg1
+    if (arg2 === 'week' || arg2 === 'month' || arg2 === 'day') timeframe = arg2
+    if (typeof arg3 === 'boolean') refresh = arg3
+    if (typeof arg4 === 'object' && arg4 !== null) options = arg4
+  }
+
   return request<DiscoveryFeed>(
     '/discovery/ranking',
     { signal: options?.signal },
     {
       ...options,
       params: {
+        source,
         timeframe,
         refresh: refresh ? 'true' : undefined,
       },

@@ -8,7 +8,7 @@ import { useAuth } from '@/composables/useAuth'
 import { useToast } from '@/composables/useToast'
 import { formatDirectLink } from '@/utils/url'
 
-const { username, logout, getStoredToken } = useAuth()
+const { username, logout, getStoredToken, isDirectPass } = useAuth()
 const { toast } = useToast()
 const { copy, copied } = useClipboard({ copiedDuring: 1500 })
 
@@ -59,7 +59,7 @@ async function handleConfirmReturn() {
     await logout()
     isOpen.value = false
     isConfirming.value = false
-    toast('已交还借阅凭证，设备席位已释放', 'info')
+    toast(isDirectPass.value ? '已退出单本阅读' : '已交还借阅凭证，设备席位已释放', 'info')
   } catch {
     toast('注销失败，请稍后重试', 'error')
   } finally {
@@ -108,22 +108,29 @@ async function handleConfirmReturn() {
             <span class="card-subtitle font-mono">READER PASS</span>
           </div>
 
-          <span class="status-seal">〔 持证阅览 〕</span>
+          <span class="status-seal">{{ isDirectPass ? '〔 单本沙箱 〕' : '〔 持证阅览 〕' }}</span>
         </header>
 
         <!-- 读者信息卡 -->
         <div class="reader-card__body">
           <div class="reader-plate">
-            <span class="plate-label">持证读者</span>
+            <span class="plate-label">{{ isDirectPass ? '沙箱阅览' : '持证读者' }}</span>
             <strong class="plate-name">{{ displayName }}</strong>
           </div>
 
           <div class="privilege-note">
-            <AppIcon name="heart" size="xs" class="note-icon" />
-            <span class="note-text">专属书架已就绪 · 个人收藏与阅读进度已独立绑定</span>
+            <AppIcon :name="isDirectPass ? 'book-open' : 'heart'" size="xs" class="note-icon" />
+            <span class="note-text">
+              {{
+                isDirectPass
+                  ? '单本专属阅览 · 阅读进度独立保存在本作'
+                  : '专属书架已就绪 · 个人收藏与阅读进度已独立绑定'
+              }}
+            </span>
           </div>
 
           <AppButton
+            v-if="!isDirectPass"
             variant="ghost"
             size="sm"
             block
@@ -141,10 +148,23 @@ async function handleConfirmReturn() {
 
         <!-- 底部交还操作 -->
         <footer class="reader-card__footer">
-          <div v-if="isConfirming" class="confirm-box" role="group" aria-label="确认交还借阅凭证">
+          <div
+            v-if="isConfirming"
+            class="confirm-box"
+            role="group"
+            :aria-label="isDirectPass ? '确认退出单本阅读' : '确认交还借阅凭证'"
+          >
             <div class="confirm-header">
-              <span class="confirm-title">确定交还借阅凭证？</span>
-              <p class="confirm-desc">交还后将释放本设备席位，后续仍可凭原口令随时入座。</p>
+              <span class="confirm-title">{{
+                isDirectPass ? '确定退出当前阅读？' : '确定交还借阅凭证？'
+              }}</span>
+              <p class="confirm-desc">
+                {{
+                  isDirectPass
+                    ? '退出后将清空本次临时会话，回到门禁页面。'
+                    : '交还后将释放本设备席位，后续仍可凭原口令随时入座。'
+                }}
+              </p>
             </div>
             <div class="confirm-actions">
               <AppButton
@@ -155,7 +175,7 @@ async function handleConfirmReturn() {
                 :disabled="loggingOut"
                 @click="cancelReturn"
               >
-                暂不交还
+                {{ isDirectPass ? '继续阅读' : '暂不交还' }}
               </AppButton>
               <AppButton
                 variant="danger"
@@ -164,7 +184,7 @@ async function handleConfirmReturn() {
                 :loading="loggingOut"
                 @click="handleConfirmReturn"
               >
-                确认释放席位
+                {{ isDirectPass ? '确认退出' : '确认释放席位' }}
               </AppButton>
             </div>
           </div>
@@ -178,7 +198,7 @@ async function handleConfirmReturn() {
             class="btn-return-pass"
             @click="handlePromptReturn"
           >
-            <span>交还借阅凭证</span>
+            <span>{{ isDirectPass ? '退出单本阅读' : '交还借阅凭证' }}</span>
           </AppButton>
         </footer>
       </div>

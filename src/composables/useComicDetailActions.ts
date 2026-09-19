@@ -14,6 +14,7 @@ import { useToast } from '@/composables/useToast'
 import { useCoverTransition } from '@/composables/useCoverTransition'
 import { useHierarchicalNavigation } from '@/composables/useHierarchicalNavigation'
 import { useComicDetailWebMCP } from '@/composables/useComicDetailWebMCP'
+import { useAuth } from '@/composables/useAuth'
 import { api } from '@/api/client'
 import {
   getDetailScrollPosition,
@@ -133,7 +134,13 @@ export function useComicDetailActions(options: UseComicDetailActionsOptions) {
     }
   }
 
+  const { isDirectPass } = useAuth()
+
   function goBack() {
+    if (isDirectPass.value) {
+      toast('单本专属阅览：当前处于沙箱阅读模式，已保持在本作品', 'info')
+      return
+    }
     setActiveCover(source.value, sourceId.value)
     goUpFromDetail(source.value, sourceId.value)
   }

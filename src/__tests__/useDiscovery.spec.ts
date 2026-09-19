@@ -87,4 +87,61 @@ describe('useDiscovery', () => {
 
     expect(item.in_library).toBe(true)
   })
+
+  it('switches between jm and picacg sources and clears stale feed', async () => {
+    const jmFeed: DiscoveryFeed = {
+      source: 'jm',
+      timeframe: 'week',
+      updated_at: '2026-08-26 00:00:00',
+      items: [
+        {
+          id: 'jm_1001',
+          source_id: '1001',
+          source: 'jm',
+          title: 'JM Manga',
+          author: 'Artist A',
+          category: 'Single',
+          in_library: false,
+        },
+      ],
+    }
+
+    const picaFeed: DiscoveryFeed = {
+      source: 'picacg',
+      timeframe: 'day',
+      updated_at: '2026-09-19 12:00:00',
+      items: [
+        {
+          id: 'picacg_6aa41d',
+          source_id: '6aa41d',
+          source: 'picacg',
+          title: 'PicAcg Daily Top',
+          author: 'Artist P',
+          category: 'Doujin',
+          in_library: false,
+        },
+      ],
+    }
+
+    const spy = vi.spyOn(api, 'discoveryRanking').mockImplementation(async (src, _tf) => {
+      if (src === 'picacg') return picaFeed
+      return jmFeed
+    })
+
+    const { source, timeframe, feed, loadRanking } = useDiscovery()
+
+    // 1. Load JM weekly
+    await loadRanking('jm', 'week', false)
+    expect(source.value).toBe('jm')
+    expect(feed.value?.source).toBe('jm')
+    expect(feed.value?.items[0]?.title).toBe('JM Manga')
+
+    // 2. Switch to PicAcg daily
+    await loadRanking('picacg', 'day', false)
+    expect(source.value).toBe('picacg')
+    expect(timeframe.value).toBe('day')
+    expect(feed.value?.source).toBe('picacg')
+    expect(feed.value?.items[0]?.title).toBe('PicAcg Daily Top')
+    expect(spy).toHaveBeenCalledTimes(2)
+  })
 })

@@ -504,11 +504,15 @@ class ComicStoreBase:
         p.mkdir(parents=True, exist_ok=True)
         return p
 
-    def discovery_path(self, timeframe: str) -> Path:
-        return self.discovery_dir() / f"{self._safe(timeframe)}.json"
+    def discovery_path(self, timeframe: str, source: str = "jm") -> Path:
+        return self.discovery_dir() / f"{self._safe(source)}_{self._safe(timeframe)}.json"
 
-    def load_discovery_feed(self, timeframe: str) -> DiscoveryFeed | None:
-        path = self.discovery_path(timeframe)
+    def load_discovery_feed(self, timeframe: str, source: str = "jm") -> DiscoveryFeed | None:
+        path = self.discovery_path(timeframe, source)
+        if not path.exists() and source == "jm":
+            legacy_path = self.discovery_dir() / f"{self._safe(timeframe)}.json"
+            if legacy_path.exists():
+                path = legacy_path
         if not path.exists():
             return None
         try:
@@ -518,5 +522,6 @@ class ComicStoreBase:
             return None
 
     def save_discovery_feed(self, feed: DiscoveryFeed) -> None:
-        path = self.discovery_path(feed.timeframe)
+        src = getattr(feed, "source", "jm") or "jm"
+        path = self.discovery_path(feed.timeframe, src)
         _write_json_atomic(path, feed.model_dump())
