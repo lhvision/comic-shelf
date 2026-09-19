@@ -1518,6 +1518,19 @@
   2. **在途任务安全熔断与主动避让**：`store.delete` 先调用 `cancel_job` 标记熔断；`prefetch` 批处理循环中增加 `album_path.exists()` 实时侦测，一旦发现作品已删即刻 `break` 安全退出，`finally` 块发现作品已销毁时静默放弃对齐与广播；
   3. **前端离线存储秒级清理**：`offlineDb.ts` 导出 `deleteCachedComicDetail` 与 `removeOfflineActionsForComic`，在作品被主动移除或收到 `delete` 事件广播时，秒级同步清理 IndexedDB 快照与未决操作队列。
 
+### 130. 通用服务端 MCP 工具过度暴露与概率性越权反模式 (Overexposed Server MCP Tools & Probabilistic Privilege Escalation Trap)
+
+- **本质**：
+  1. **确定性门禁 vs 概率性大模型决策（Deterministic vs Probabilistic Gating）**：大模型（LLM）行为天然具备概率性与幻觉特征。若在通用服务端 MCP（供 Claude Desktop、Cursor 或通用 Agent 挂载的 `/mcp/sse` 与 stdio）中暴露非幂等或高开销写操作（如添加入库 `import_comic`、全本缓存 `cache_all` 或删除藏书 `delete_comic`），即便在建立连接时通过了馆长口令认证，大模型在漫长对话、歧义讨论或间接提示词注入（Prompt Injection）下仍可能误判意图触发工具调用，造成私有书库被意外写入或 NAS 带宽与存储被异常消耗；
+  2. **会话通道无法精细区分说话人（Identity Blindness）**：通用 MCP 管道建立后由大模型全权支配工具箱，无法识别具体某句话的真实人类来源（例如在共享终端、多人群聊或代理转发中，大模型无法对即时发言人执行动态 RBAC 白名单校验）。
+- **红线与防误伤**：
+  - **严禁**在通用服务端 MCP（`backend/app/routers/mcp.py`）中注册具有破坏性、非幂等或重型资源开销的写工具（添加入库、批量离线缓存、元数据篡改、藏书删除等）；
+  - **严禁**依赖大模型自身的“意图理解”或 Prompt 提示词自律来把守特权操作防线。
+- **放行/改用**：
+  1. **服务端 MCP 坚守“纯只读雷达与沙箱外链签发”定位**：服务端 MCP 仅暴露安全无副作用的原子工具（搜图 `search_by_image`、台词检索 `search_by_dialogue`、书架查询 `query_shelf`、单本沙箱票据 `create_direct_pass` 等），赋予任意接入的外部 Agent 物理级 0 破坏力；
+  2. **机器人私聊硬编码确定性门禁（Bot Code Deterministic Enforcement）**：外部机器人（如 QQ / 飞书 Bot）若需支持私聊推书入库，必须由机器人自身代码在调用接口前执行 CPU 级确定性身份校验（`if (sender_id !== CURATOR_ID) return`），校验通过后直接调用纸间后端标准 REST API（`POST /api/library/import`），将特权彻底锁死在确定性代码中；
+  3. **人类终极把关（Human-in-the-loop）**：高危与重度写操作严格收敛于馆长亲自登录的 Web 界面，保持私人书库的绝对纯净。
+
 ---
 
 ## 🚦 交付门禁（四步必跑）

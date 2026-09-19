@@ -325,11 +325,11 @@ _原理：若希望在 Cloudflare 开启常态「Under Attack 模式（五秒盾
 2. 填写规则参数：
    - **Rule name**：`paper-room-auth-bypass-attack`
    - **When incoming requests match...（自定义匹配表达式）**：
-     点击右上角的 `Edit expression`，粘贴以下表达式（将 `comic.yourdomain.com` 替换为你的实际子域名）：
+     点击右上角的 `Edit expression`，粘贴以下表达式（将 `comic.yourdomain.com` 替换为你的实际子域名；若配置了自定义 Cookie 环境变量，请将包含的 Cookie 名相应替换）：
      ```text
      http.host eq "comic.yourdomain.com" and (http.cookie contains "comic_shelf_token" or http.cookie contains "comic_shelf_device")
      ```
-     _提示：若在容器环境变量中设置了自定义 Cookie 键名（如 `COMIC_SHELF_COOKIE_NAME="your_custom_cookie"`），请将表达式中的 `comic_shelf_token` 相应替换为你的私有名称，彻底隐匿开源特征。_
+     _💡 环境变量对齐提示：若你在容器环境变量中自定义了 `COMIC_SHELF_COOKIE_NAME` 或 `COMIC_SHELF_DEVICE_COOKIE_NAME`（如 `COMIC_SHELF_COOKIE_NAME="my_token"`、`COMIC_SHELF_DEVICE_COOKIE_NAME="my_dev"`），请务必将表达式中的 `comic_shelf_token` 与 `comic_shelf_device` 替换为你的实际私有名称（如 `http.cookie contains "my_token" or http.cookie contains "my_dev"`），实现 100% 吻合与开源特征隐匿。_
    - **Choose action（采取的操作）**：选择 **`Skip`（跳过）**；
    - 勾选跳过的 WAF 组件：
      - [x] 所有其余自定义规则
@@ -342,26 +342,28 @@ _原理：若希望在 Cloudflare 开启常态「Under Attack 模式（五秒盾
 3. 点击右下角 **Deploy（部署）**。
    > 💡 **重要排序提示**：若在 Cloudflare WAF 中配置了额外的恶意 IP 黑名单（Block）或地区封锁规则，请务必将其拖拽置于规则 6.6 之上（优先级高于 6.6），避免恶意 IP 凭借伪造该 Cookie 绕过基础 IP 防御。
 
-### 6.7 配置 Cloudflare WAF 边缘鉴权与防盗链规则（封堵无痕/未登录窃取 Edge 缓存）
+### 6.7 配置 Cloudflare WAF 边缘鉴权与防盗链规则（封堵无痕/未登录窃取 Edge 缓存，兼容单本沙箱）
 
-_原理：虽然未鉴权的访客无法通过口令进入主界面，但若合法用户在外部浏览过某本漫画，Cloudflare Anycast 边缘缓存节点已驻留了封面与画质切片（Edge TTL: 1 个月）。由于 Cloudflare 边缘缓存命中时默认不向源站回源（Bypass Origin Auth），无痕窗口或未登录访客直接敲入图片直链仍可能命中边缘缓存获取图片。通过配置此 WAF 自定义规则，Cloudflare 在查询边缘缓存前**直接校验用户 Cookie**，无凭证者在 Anycast 边缘被**直接阻断（Block 403）**，彻底实现真正的私有相册级安全。_
+_原理：虽然未鉴权的访客无法通过口令进入主界面，但若合法用户在外部浏览过某本漫画，Cloudflare Anycast 边缘缓存节点已驻留了封面与画质切片（Edge TTL: 1 个月）。由于 Cloudflare 边缘缓存命中时默认不向源站回源（Bypass Origin Auth），无痕窗口或未登录访客直接敲入图片直链仍可能命中边缘缓存获取图片。通过配置此 WAF 自定义规则，Cloudflare 在查询边缘缓存前**直接校验用户凭证（Cookie 或临时单本沙箱票据 Query）**，无凭证者在 Anycast 边缘被**直接阻断（Block 403）**，彻底实现真正的私有相册级安全。_
 
 1. 左侧菜单点击 **Security（安全性）** ➔ **WAF** ➔ **Custom Rules（自定义规则）** ➔ 点击 **Create rule**。
 2. 填写规则参数：
    - **Rule name**：`paper-room-media-auth-gate`
    - **When incoming requests match...（自定义匹配表达式）**：
-     点击右上角的 `Edit expression`，粘贴以下表达式（将 `comic.yourdomain.com` 替换为你的实际漫画子域名）：
+     点击右上角的 `Edit expression`，粘贴以下表达式（将 `comic.yourdomain.com` 与 Cookie 变量名替换为你自身的实际配置）：
      ```text
-     http.host eq "comic.yourdomain.com" and starts_with(http.request.uri.path, "/api/library/") and not (http.cookie contains "comic_shelf_token" or http.cookie contains "comic_shelf_device")
+     http.host eq "comic.yourdomain.com" and starts_with(http.request.uri.path, "/api/library/") and not (http.cookie contains "comic_shelf_token" or http.cookie contains "comic_shelf_device" or http.request.uri.query contains "temp_token=")
      ```
-     _提示：若在 6.6 中自定义了 Cookie 键名（如 `your_custom_token`），这里的 `comic_shelf_token` 也需同步替换为对应名称。_
+     _💡 环境变量与单本沙箱（Direct Pass）适配细则：_
+     - **自定义 Cookie 替换**：若你在环境变量中设置了 `COMIC_SHELF_COOKIE_NAME="my_token"` 和 `COMIC_SHELF_DEVICE_COOKIE_NAME="my_dev"`，请将表达式相应替换为 `not (http.cookie contains "my_token" or http.cookie contains "my_dev" or http.request.uri.query contains "temp_token=")`；
+     - **为什么必须带 `or http.request.uri.query contains "temp_token="`**：外部群聊机器人（QQ/飞书 Bot）发放单本沙箱免密阅读链接时，群友首次在手机点击打开，前端尚在异步登录换取 Cookie 的几十毫秒竞态缝隙中，页面图片可能已并行发出。追加该放行条件可彻底根治首屏因尚无 Cookie 而被 Cloudflare 边缘节点误杀 403 的假死现象；进入源站后，纸间后端会自动核验 `temp_token` 的真实有效性与单本沙箱边界，安全毫无缺口。
    - **Choose action（采取的操作）**：选择 **Block（阻止）**。
 3. 点击右下角 **Deploy（部署）**。
 4. **规则顺序与清理缓存（核心红线）**：
    - 在 WAF 规则列表中，务必确保规则按以下**优先级严格排序**：
      1. **第 1 条**：`paper-room-pwa-waf-skip`（放行 Service Worker 与前端静态资产）；
      2. **第 2 条**：`paper-room-auth-bypass-attack`（放行持有 Cookie 的已登录读者跳过安全级别质询）；
-     3. **第 3 条**：`paper-room-media-auth-gate`（阻断无 Cookie 的外部请求触碰媒体缓存）。
+     3. **第 3 条**：`paper-room-media-auth-gate`（阻断无 Cookie 且无有效 temp_token 的外部请求触碰媒体缓存）。
    - 规则生效后，进入 **Caching ➔ Configuration ➔ Purge Cache**，点击 **Purge Everything**，清空之前在无鉴权保护状态下缓存的历史图片。
 
 > ⚠️ **高危配置避坑红线（血泪教训）**：

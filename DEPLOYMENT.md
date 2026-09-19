@@ -148,8 +148,8 @@ docker run -d \
 | `COMIC_SHELF_ALLOWED_DIRS`              | 🔵 **直扫NAS外部目录时必设** | _(留空)_             | **允许从服务器本地路径扫描导入的额外根目录白名单**（安全沙箱放行）。用于将 NAS 现有图库目录或挂载盘快速录入纸间。多个路径在 Linux/macOS 使用冒号 `:` 分隔，Windows 使用分号 `;` 分隔（例：`/mnt/tank/comics:/mnt/media/downloads`）。 |
 | `COMIC_SHELF_ENABLE_HOTLINK_PROTECTION` | ⚪ **默认已开启**            | `true`               | **图片防盗链保护**。基于现代浏览器 `Sec-Fetch-Site: cross-site` 与 `Referer` 拦截，彻底杜绝外站把纸间当图床跨站盗图。                                                                                                                 |
 | `COMIC_SHELF_TRUST_FORWARDED_HEADERS`   | ⚪ **默认已开启**            | `true`               | **反向代理 IP 请求头信任**。控制是否解析 `X-Forwarded-For`、`X-Real-IP` 等请求头确定客户端 IP。经由 Nginx/Cloudflare/Caddy 反代部署时保持 `true`；若直接将 Uvicorn 裸端口暴露于公网且无前端代理，建议设为 `false` 防范 IP 伪造。      |
-| `COMIC_SHELF_COOKIE_NAME`               | ⚪ **可选自定义**            | `comic_shelf_token`  | **通行证 Cookie 键名**。支持自定义 Cookie 名称（如 `my_vault_token`），彻底隐匿开源默认键名，配合 Cloudflare WAF 实现私有化免检。                                                                                                     |
-| `COMIC_SHELF_DEVICE_COOKIE_NAME`        | ⚪ **可选自定义**            | `comic_shelf_device` | **设备认证 Cookie 键名**。支持自定义设备 Cookie 名称（如 `my_vault_device`）。                                                                                                                                                        |
+| `COMIC_SHELF_COOKIE_NAME`               | ⚪ **可选自定义**            | `comic_shelf_token`  | **通行证 Cookie 键名**。支持自定义 Cookie 名称（如 `my_vault_token`），彻底隐匿开源默认键名，配合 Cloudflare WAF 与单本沙箱 `temp_token` 实现高强度私有免检与零裂图秒开（详见 `docs/HOMELAB_NETWORKING_GUIDE.md` §6.6 与 §6.7）。     |
+| `COMIC_SHELF_DEVICE_COOKIE_NAME`        | ⚪ **可选自定义**            | `comic_shelf_device` | **设备认证 Cookie 键名**。支持自定义设备 Cookie 名称（如 `my_vault_device`），配合 Cloudflare WAF 规则实现免检通行。                                                                                                                  |
 
 ### 3.2 基础服务与持久化配置
 
