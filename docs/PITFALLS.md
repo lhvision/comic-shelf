@@ -1574,6 +1574,18 @@
   1. **正本清源单一事实源（Single Source of Truth）**：核心响应式变量直接声明为正统语义的 `lastReadPage = computed(...)`，函数内部所有文案、跳转与计算全链路直达该正统变量；
   2. **只在导出边界声明向后兼容别名**：若下游存在第三方或未及时重构的调用方，仅在 Composable 的最终 `return` 对象中导出别名并挂载 JSDoc 注解（`progressEl: lastReadPage /** @deprecated */`），并推动消费层在本次迭代中彻底对齐。
 
+### 134. tempfile.mkstemp 0600 权限锁死与 NAS 跨卷原子写入陷阱 (mkstemp 0600 Permission Lock & Cross-Volume Atomic Write Trap)
+
+- **本质**：
+  1. **mkstemp 底层强制 0600 权限锁死**：Python 的 `tempfile.mkstemp` 底层出于多用户系统安全考虑，强制创建仅当前 UID 可读写的 `0600` 文件。在 Docker 容器以 root 运行写入挂载的 NAS / SMB 共享存储时，生成的文件在 Windows/WSL 或其他普通用户访问时会直接触发 `Permission denied`（`-?????????` 乱码与无法读取）；
+  2. **跨挂载点导致 os.replace 丧失原子性或报错 EXDEV**：若将临时文件写在系统默认的 `/tmp` 目录而目标位于挂载的 `/mnt/nas_manga` 数据卷，`os.replace` 会因为跨物理设备/跨挂载卷触发 `EXDEV (Invalid cross-device link)` 崩溃，或退化为不可靠的非原子文件复制。
+- **红线与防误伤**：
+  - **严禁**在需要多端/NAS 共享持久化的存储层使用 `tempfile.mkstemp`；
+  - **严禁**将用于原子替换的临时文件创建在与目标文件不同的父目录或不同挂载卷下。
+- **放行/改用**：
+  1. **父目录就近隐藏文件 + 纳秒级 PID 隔离**：在目标文件同目录下创建隐藏临时文件（如 `path.parent / f".{path.name}.tmp.{os.getpid()}_{time.time_ns()}"`），通过标准 `open(..., "wb")` 自然继承宿主系统的 `umask`（`0644`/`0666`），彻底杜绝权限锁死；
+  2. **严格同卷原子刷盘与替换**：写入后执行 `f.flush()` 与 `os.fsync(f.fileno())` 确保物理落盘，再通过 `os.replace` 在同卷下毫秒级原子切换指针，并在 `finally` 中保证临时文件 `unlink(missing_ok=True)` 零残留。
+
 ---
 
 ## 🚦 交付门禁（四步必跑）

@@ -5,7 +5,7 @@ import json
 import logging
 import os
 import re
-import tempfile
+import time
 from pathlib import Path
 from typing import Any
 
@@ -26,18 +26,22 @@ CURRENT_DECODE_VERSION = 2
 def _write_json_atomic(path: Path, data: Any) -> None:
     """Writes a JSON document atomically using a temporary file and atomic swap."""
     path.parent.mkdir(parents=True, exist_ok=True)
-    fd, tmp = None, None
+    temp_file: Path | None = None
     try:
-        fd, tmp_name = tempfile.mkstemp(prefix=f".{path.name}.", dir=str(path.parent))
-        tmp = Path(tmp_name)
-        with os.fdopen(fd, "w", encoding="utf-8") as f:
-            json.dump(data, f, ensure_ascii=False, indent=2)
+        payload = json.dumps(data, ensure_ascii=False, indent=2).encode("utf-8")
+        temp_file = path.parent / f".{path.name}.tmp.{os.getpid()}_{time.time_ns()}"
+        with open(temp_file, "wb") as f:
+            f.write(payload)
             f.flush()
             os.fsync(f.fileno())
-        os.replace(tmp, path)
+        os.replace(temp_file, path)
+        temp_file = None
     finally:
-        if tmp is not None and tmp.exists():
-            tmp.unlink(missing_ok=True)
+        if temp_file is not None and temp_file.exists():
+            try:
+                temp_file.unlink(missing_ok=True)
+            except OSError:
+                pass
 
 
 def _is_path_allowed(path: Path) -> bool:

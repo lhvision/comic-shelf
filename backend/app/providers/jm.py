@@ -24,7 +24,7 @@ from ..config import (
 )
 from ..gate import download_gate
 from ..models import Chapter, ComicMeta, DiscoveryItem, FetchedComic, RemotePage
-from .base import ComicProvider
+from .base import ComicProvider, format_count
 
 logger = logging.getLogger("paper_room.provider.jm")
 
@@ -508,20 +508,12 @@ class JMProvider(ComicProvider):
             or "album_missing" in album_resp.text
             or "/error/" in getattr(album_resp, "url", "")
         ):
-            if not JM_USERNAME:
-                raise ValueError(
-                    f"禁漫车号 JM{jm_id} 不存在、已被下架，或属于受权限保护的漫画（如需登录请在 .env 中配置 JM_USERNAME 与 JM_PASSWORD）"
-                )
             raise ValueError(f"禁漫车号 JM{jm_id} 不存在或已被下架")
 
         try:
             detail = JmcomicText.analyse_jm_album_html(album_resp.text)
         except Exception as exc:
             if "album_id" in str(exc) or "pattern_html_album_" in str(exc):
-                if not JM_USERNAME:
-                    raise ValueError(
-                        f"禁漫车号 JM{jm_id} 页面解析失败（可能不存在或属于需登录查看的受限作品，请在 .env 配置 JM_USERNAME 与 JM_PASSWORD 后重试）"
-                    ) from exc
                 raise ValueError(f"禁漫车号 JM{jm_id} 页面解析失败（可能不存在或已被删除）") from exc
             raise
         uploader = self._parse_uploader(album_resp.text)
@@ -745,8 +737,8 @@ class JMProvider(ComicProvider):
             page_count=page_count,
             published_at=pub_date,
             updated_at=update_date,
-            views=str(getattr(detail, "views", "") or ""),
-            likes=str(getattr(detail, "likes", "") or ""),
+            views=format_count(getattr(detail, "views", "") or ""),
+            likes=format_count(getattr(detail, "likes", "") or ""),
             comment_count=int(getattr(detail, "comment_count", 0) or 0),
             cover_count=min(COVER_COUNT, page_count) if page_count else COVER_COUNT,
             source_url=source_url or f"https://18comic.vip/album/{jm_id}",

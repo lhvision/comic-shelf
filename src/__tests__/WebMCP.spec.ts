@@ -579,7 +579,6 @@ describe('WebMCP Composables', () => {
         const openChapter = registeredTools['detail_open_chapter']
         const getInfo = registeredTools['detail_get_comic_info']
         const toggleFav = registeredTools['detail_toggle_favorite']
-        const updateMeta = registeredTools['detail_update_metadata']
         const createDirectPass = registeredTools['detail_create_direct_pass']
 
         expect(startReading).toBeDefined()
@@ -588,7 +587,6 @@ describe('WebMCP Composables', () => {
         expect(openChapter).toBeDefined()
         expect(getInfo).toBeDefined()
         expect(toggleFav).toBeDefined()
-        expect(updateMeta).toBeDefined()
         expect(createDirectPass).toBeDefined()
 
         // 1. Start reading from last read
@@ -633,20 +631,7 @@ describe('WebMCP Composables', () => {
         await toggleFav!({ favorite: false })
         expect(toggleFavMock).toHaveBeenCalled()
 
-        // 8. Update metadata
-        const updateRes = await updateMeta!({ title: 'Updated Title' })
-        expect(api.updateMetadata).toHaveBeenCalledWith('jm', '523607', { title: 'Updated Title' })
-        expect(updateRes).toEqual(
-          expect.objectContaining({
-            content: expect.arrayContaining([
-              expect.objectContaining({
-                text: expect.stringContaining('Updated Title'),
-              }),
-            ]),
-          }),
-        )
-
-        // 9. Create direct pass
+        // 8. Create direct pass
         const directPassRes = await createDirectPass!({ page: 15, ttl_seconds: 3600 })
         expect(api.createDirectPass).toHaveBeenCalledWith({
           source: 'jm',

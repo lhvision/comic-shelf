@@ -2,17 +2,10 @@ import { describe, it, expect } from 'vite-plus/test'
 import {
   isDef,
   isNil,
-  isBoolean,
-  isFunction,
   isNumber,
   isFiniteNumber,
-  isPositiveNumber,
-  isNonNegativeNumber,
-  isInteger,
   isString,
-  isNonEmptyString,
   isArray,
-  isNonEmptyArray,
   isPlainObject,
   isEmpty,
   isBrowser,
@@ -42,16 +35,6 @@ describe('is utility module (Type Guards & Predicates)', () => {
       expect(isNil(0)).toBe(false)
       expect(isNil('')).toBe(false)
     })
-
-    it('isBoolean & isFunction', () => {
-      expect(isBoolean(true)).toBe(true)
-      expect(isBoolean(false)).toBe(true)
-      expect(isBoolean('true')).toBe(false)
-
-      expect(isFunction(() => {})).toBe(true)
-      expect(isFunction(Math.max)).toBe(true)
-      expect(isFunction({})).toBe(false)
-    })
   })
 
   describe('Number Guards', () => {
@@ -66,44 +49,19 @@ describe('is utility module (Type Guards & Predicates)', () => {
       expect(isFiniteNumber(Number.NEGATIVE_INFINITY)).toBe(false)
       expect(isFiniteNumber(Number.NaN)).toBe(false)
     })
-
-    it('isPositiveNumber, isNonNegativeNumber, isInteger', () => {
-      expect(isPositiveNumber(1)).toBe(true)
-      expect(isPositiveNumber(0)).toBe(false)
-      expect(isPositiveNumber(-1)).toBe(false)
-
-      expect(isNonNegativeNumber(0)).toBe(true)
-      expect(isNonNegativeNumber(10)).toBe(true)
-      expect(isNonNegativeNumber(-0.1)).toBe(false)
-
-      expect(isInteger(10)).toBe(true)
-      expect(isInteger(0)).toBe(true)
-      expect(isInteger(10.5)).toBe(false)
-    })
   })
 
-  describe('String Guards', () => {
-    it('isString & isNonEmptyString', () => {
+  describe('String & Collection Guards', () => {
+    it('isString', () => {
       expect(isString('')).toBe(true)
       expect(isString('hello')).toBe(true)
       expect(isString(123)).toBe(false)
-
-      expect(isNonEmptyString('hello')).toBe(true)
-      expect(isNonEmptyString('')).toBe(false)
-      expect(isNonEmptyString('   ')).toBe(false)
-      expect(isNonEmptyString(null)).toBe(false)
     })
-  })
 
-  describe('Array & Object Guards', () => {
-    it('isArray & isNonEmptyArray', () => {
+    it('isArray', () => {
       expect(isArray([])).toBe(true)
       expect(isArray([1, 2])).toBe(true)
       expect(isArray({})).toBe(false)
-
-      expect(isNonEmptyArray([1])).toBe(true)
-      expect(isNonEmptyArray([])).toBe(false)
-      expect(isNonEmptyArray(null)).toBe(false)
     })
 
     it('isPlainObject', () => {

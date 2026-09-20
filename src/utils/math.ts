@@ -15,95 +15,31 @@
  */
 
 /**
- * 原生 Math.sumPrecise 的 Polyfill 降级实现（基于 Neumaier 补偿算法）。
- * 处理 NaN、±Infinity、-0 以及极端浮点运算。
- */
-function polyfillSumPrecise(items: Iterable<number>): number {
-  if (items == null) {
-    throw new TypeError('sumPrecise: 入参不能为空或未定义')
-  }
-  if (typeof (items as unknown as Record<symbol, unknown>)[Symbol.iterator] !== 'function') {
-    throw new TypeError('sumPrecise: 入参必须为可迭代对象 (Iterable)')
-  }
-
-  let sum = 0
-  let compensation = 0 // Neumaier 补偿累加器
-  let hasNonZero = false
-  let allNegZero = true
-  let zeroCount = 0
-
-  for (const value of items) {
-    const num = Number(value)
-
-    // 任意元素为 NaN，直接返回 NaN
-    if (Number.isNaN(num)) {
-      return Number.NaN
-    }
-
-    // 任意元素为 ±Infinity，处理正负无穷大相消逻辑
-    if (!Number.isFinite(num)) {
-      if (sum === Number.POSITIVE_INFINITY && num === Number.NEGATIVE_INFINITY) return Number.NaN
-      if (sum === Number.NEGATIVE_INFINITY && num === Number.POSITIVE_INFINITY) return Number.NaN
-      sum = num
-      hasNonZero = true
-      continue
-    }
-
-    // 零（包含 -0 与 +0）的符号处理
-    if (num === 0) {
-      zeroCount++
-      if (!Object.is(num, -0)) {
-        allNegZero = false
-      }
-      continue
-    }
-
-    hasNonZero = true
-
-    // Neumaier 补偿求和核心（二阶无损累加）
-    const t = sum + num
-    if (Math.abs(sum) >= Math.abs(num)) {
-      compensation += sum - t + num
-    } else {
-      compensation += num - t + sum
-    }
-    sum = t
-  }
-
-  // 全为零（含 -0 与空集合）的情况
-  if (!hasNonZero) {
-    if (zeroCount > 0 && allNegZero) {
-      return -0
-    }
-    return 0
-  }
-
-  // 存在非有限值时直接返回
-  if (!Number.isFinite(sum)) {
-    return sum
-  }
-
-  return sum + compensation
-}
-
-/**
- * 对可迭代的数值序列执行高精度浮点求和（渐进增强）。
- * 优先调用原生 Math.sumPrecise，若未实现则回退至 Neumaier 补偿算法。
+ * 对可迭代的数值序列求和。
+ * 优先调用原生 Math.sumPrecise，若未实现则回退至简单累加。
  *
- * @param iterable 可迭代的数值集合（Array, Set, Generator 等）
+ * @param iterable 可迭代的数值集合
  * @returns 累加求和结果
  */
 export function sumPrecise(iterable: Iterable<number>): number {
+  if (iterable == null) {
+    throw new TypeError('sumPrecise: 入参不能为空或未定义')
+  }
   const mathObj = Math as unknown as { sumPrecise?: (it: Iterable<number>) => number }
   if (typeof mathObj.sumPrecise === 'function') {
     return mathObj.sumPrecise(iterable)
   }
-  return polyfillSumPrecise(iterable)
+  let sum = 0
+  for (const value of iterable) {
+    const num = Number(value)
+    if (Number.isNaN(num)) return Number.NaN
+    sum += num
+  }
+  return sum
 }
 
 /**
- * 依据指定属性提取函数，对集合项进行高精流式求和。
- * 内部通过惰性生成器迭代取值，零中间临时数组分配，杜绝 GC 内存颠簸。
+ * 依据指定属性提取函数，对集合项进行求和。
  * 防御性支持传入 null / undefined 空集合，安全返回 0。
  *
  * @template T 集合元素类型
@@ -116,12 +52,11 @@ export function sumBy<T>(
   iteratee: (item: T) => number,
 ): number {
   if (!items) return 0
-  function* generateValues(): Generator<number, void, unknown> {
-    for (const item of items!) {
-      yield iteratee(item)
-    }
+  let sum = 0
+  for (const item of items) {
+    sum += iteratee(item)
   }
-  return sumPrecise(generateValues())
+  return sum
 }
 
 /**

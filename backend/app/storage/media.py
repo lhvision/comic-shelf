@@ -6,8 +6,8 @@ import json
 import logging
 import os
 import shutil
-import tempfile
 import threading
+import time
 from pathlib import Path
 from typing import Any, BinaryIO, Callable
 
@@ -78,13 +78,8 @@ class ComicStoreMediaMixin:
             num = JmImageTool.get_num_by_url(page.scramble_id, url)
             if num != 0:
                 target.parent.mkdir(parents=True, exist_ok=True)
-                fd, tmp_name = tempfile.mkstemp(
-                    prefix=f".{target.name}.decode.",
-                    suffix=page.ext or ".webp",
-                    dir=str(target.parent),
-                )
-                os.close(fd)
-                tmp_path = Path(tmp_name)
+                ext = page.ext or ".webp"
+                tmp_path = target.parent / f".{target.name}.decode.{os.getpid()}_{time.time_ns()}{ext}"
                 try:
                     source = JmImageTool.open_image(str(target))
                     try:

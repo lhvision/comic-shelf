@@ -310,82 +310,7 @@ export function useComicDetailWebMCP(
     },
   })
 
-  // 工具 7: 编辑漫画典藏资料与元数据（仅馆长权限注册）
-  const updateMetadataTool = canWrite.value
-    ? useWebMCP({
-        name: 'detail_update_metadata',
-        description:
-          '就地编辑当前漫画的典藏资料与元数据。支持修改标题、作者、分类标签列表、4张展示封面页码序号（cover_indices）以及故事简介',
-        inputSchema: {
-          type: 'object',
-          properties: {
-            title: {
-              type: 'string',
-              description: '更新后的漫画标题',
-            },
-            authors: {
-              type: 'array',
-              items: { type: 'string' },
-              description: '更新后的作者列表',
-            },
-            tags: {
-              type: 'array',
-              items: { type: 'string' },
-              description: '更新后的分类题材标签列表',
-            },
-            description: {
-              type: 'string',
-              description: '更新后的故事简介与剧情介绍',
-            },
-            cover_indices: {
-              type: 'array',
-              items: { type: 'number' },
-              description: '自定义 4 张封面的全局页码序号（例如 [1, 10, 25, 50]）',
-            },
-          },
-        },
-        async execute(args) {
-          const payload = (args ?? {}) as {
-            title?: string
-            authors?: string[]
-            tags?: string[]
-            description?: string
-            cover_indices?: number[]
-          }
-
-          if (
-            !payload.title &&
-            !payload.authors &&
-            !payload.tags &&
-            !payload.description &&
-            !payload.cover_indices
-          ) {
-            throw new Error(
-              '请至少提供一个需要修改的元数据字段（title / authors / tags / description / cover_indices）。',
-            )
-          }
-
-          const updated = await api.updateMetadata(source.value, sourceId.value, payload)
-          if (detail.value) {
-            detail.value = updated
-          }
-
-          return {
-            success: true,
-            message: `已成功更新漫画《${updated.meta.title}》的元数据资料`,
-            meta: {
-              title: updated.meta.title,
-              authors: updated.meta.authors,
-              tags: updated.meta.tags,
-              description: updated.meta.description,
-              cover_indices: updated.meta.cover_indices,
-            },
-          }
-        },
-      })
-    : undefined
-
-  // 工具 8: 签发单本沙箱临时直达阅读通行证（仅馆长权限注册）
+  // 工具 7: 签发单本沙箱临时直达阅读通行证（仅馆长权限注册）
   const createDirectPassTool = canWrite.value
     ? useWebMCP({
         name: 'detail_create_direct_pass',
@@ -460,7 +385,6 @@ export function useComicDetailWebMCP(
     openChapterTool,
     getInfoTool,
     favTool,
-    updateMetadataTool,
     createDirectPassTool,
   }
 }

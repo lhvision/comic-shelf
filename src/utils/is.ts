@@ -50,22 +50,8 @@ export function isNil(val: unknown): val is null | undefined {
   return val === null || val === undefined
 }
 
-/**
- * 判定值是否为布尔类型。
- */
-export function isBoolean(val: unknown): val is boolean {
-  return typeof val === 'boolean'
-}
-
-/**
- * 判定值是否为函数。
- */
-export function isFunction(val: unknown): val is (...args: unknown[]) => unknown {
-  return typeof val === 'function'
-}
-
 /* ==========================================================================
-   2. 数值守卫（Number Guards）
+   2. 基础类型守卫（Type Guards）
    ========================================================================== */
 
 /**
@@ -83,31 +69,6 @@ export function isFiniteNumber(val: unknown): val is number {
 }
 
 /**
- * 判定值是否为严格正数（> 0 的有限数）。
- */
-export function isPositiveNumber(val: unknown): val is number {
-  return isFiniteNumber(val) && val > 0
-}
-
-/**
- * 判定值是否为非负数（>= 0 的有限数）。
- */
-export function isNonNegativeNumber(val: unknown): val is number {
-  return isFiniteNumber(val) && val >= 0
-}
-
-/**
- * 判定值是否为整数。
- */
-export function isInteger(val: unknown): val is number {
-  return typeof val === 'number' && Number.isInteger(val)
-}
-
-/* ==========================================================================
-   3. 字符串守卫（String Guards）
-   ========================================================================== */
-
-/**
  * 判定值是否为字符串。
  */
 export function isString(val: unknown): val is string {
@@ -115,28 +76,10 @@ export function isString(val: unknown): val is string {
 }
 
 /**
- * 判定值是否为非空且去除首尾空白后仍有内容的字符串。
- */
-export function isNonEmptyString(val: unknown): val is string {
-  return typeof val === 'string' && val.trim().length > 0
-}
-
-/* ==========================================================================
-   4. 集合与对象守卫（Array & Object Guards）
-   ========================================================================== */
-
-/**
  * 判定值是否为数组。
  */
 export function isArray<T = unknown>(val: unknown): val is T[] {
   return Array.isArray(val)
-}
-
-/**
- * 判定值是否为非空数组（长度 > 0），并收窄为非空元组。
- */
-export function isNonEmptyArray<T = unknown>(val: unknown): val is [T, ...T[]] {
-  return Array.isArray(val) && val.length > 0
 }
 
 /**

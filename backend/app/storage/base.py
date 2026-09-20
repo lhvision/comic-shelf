@@ -28,6 +28,7 @@ from ..models import (
     PageRecord,
     RemotePage,
 )
+from ..providers.base import format_count
 from .utils import (
     CURRENT_DECODE_VERSION,
     _SAFE,
@@ -318,6 +319,21 @@ class ComicStoreBase:
         # Auto-heal: If PicAcg comic lacks cover_indices, backfill dual-source cover mapping
         if meta.source == "picacg" and not meta.cover_indices and meta.page_count:
             meta.cover_indices = ([1] + list(range(1, meta.cover_count)))[: meta.cover_count]
+
+        # Auto-heal: Format raw numeric views / likes if present (e.g. '12222' -> '12k')
+        if meta.views or meta.likes:
+            orig_views = meta.views
+            orig_likes = meta.likes
+            heal_views = format_count(meta.views)
+            heal_likes = format_count(meta.likes)
+            if heal_views != orig_views or heal_likes != orig_likes:
+                meta.views = heal_views
+                meta.likes = heal_likes
+                _write_json_atomic(path, meta.model_dump())
+                try:
+                    mtime = path.stat().st_mtime
+                except Exception:
+                    pass
 
         # Auto-heal: If comic has chapters but first chapter start > 1 (orphaned flat pages 1..start-1 exist)
         if meta.chapters and meta.pages and meta.chapters[0].start > 1:
