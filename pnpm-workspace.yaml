@@ -12,7 +12,7 @@ overrides:
   '@vue/server-renderer': 'rc'
   '@vue/shared': 'rc'
   '@vue/compat': 'rc'
-  vite: 'catalog:'
+  vite@*: 'catalog:'
 
 peerDependencyRules:
   allowAny:
@@ -22,8 +22,8 @@ peerDependencyRules:
     vite: '*'
 catalog:
   vue: rc
-  vite: npm:@voidzero-dev/vite-plus-core@0.3.0
-  vite-plus: 0.3.0
+  vite: npm:@voidzero-dev/vite-plus-core@0.3.3
+  vite-plus: 0.3.3
 allowBuilds:
   '@ffmpeg-installer/linux-x64': true
   puppeteer: true
