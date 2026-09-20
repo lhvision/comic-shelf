@@ -929,7 +929,8 @@
   - **放行/改用**：
     1. **只读查询与写入彻底解耦**：`/cache` 进度查询端点严格作为纯内存只读快照读取，禁止在查询路径触发同步落盘写入；
     2. **单遍扫描集合匹配（Single-Pass `os.scandir` Set Intersection）**：`reconcile_cached_pages` 采用单次 `os.scandir` 扫描目标目录将磁盘已有文件名存入 `Set`，画页判定退化为内存 $O(1)$ 查找，系统调用从 1000 次暴跌为 1 次；
-    3. **双重原子守卫（Double-Checked Locking & Atomic Guard）**：仅在发现磁盘与元数据存在差异时，才获取 `_cache_guard` 锁执行落盘，写入采用临时文件原子替换（Atomic Rename），彻底杜绝脏写。
+    3. **读取修正与持久化分离**：详情页缓存对账、缓存校验、计数格式化和目录重建只更新内存中的查询结果；后台下载更新缓存标记时，先获取漫画锁并读取最新元数据，再只合并匹配画页的标记，避免覆盖标题、隐藏状态或已替换的画页。
+    4. **物理迁移失败回退**：需要移动旧版平铺画页的章节修复与元数据编辑共用漫画锁；移动失败或 `album.json` 写回失败时回退已移动文件，保留原路径供读取。封面与缩略图先取得原图，再持画页锁生成派生图片；缓存标记写回放在画页锁之外，避免与元数据编辑反向等待。
 
 ### 89. 翻页模式大跨度跳转阈值与正反候选页探测陷阱 (Paged Reader Large Jump Threshold & Bidirectional Probe Candidates)
 
@@ -1239,7 +1240,7 @@
 ### 112. 领域断言契约错位、跨层反向类型依赖与工具投机性泛化陷阱 (Domain Contract Divergence, Inverted Worker Type Dependency & Speculative Generality Trap)
 
 - **本质**：
-  1. **领域多态契约假设与真实结构脱节（Domain Field Divergence）**：在为领域对象（如漫画）实现通用状态守卫（如 `isMultiChapterComic`）时，直觉假设输入形如 `{ chapters: [...] }`。但书架摘要 `LibrarySummary` 真实字段是 `chapter_titles?: string[]`，而漫画详情 `ComicDetail` 章节列表位于嵌套的 `meta.chapters?: Chapter[]`。若入参未做多态解包与字段嗅探，传入标准的领域对象时会静默永远返回 `false`，埋下高危隐蔽缺陷；
+  1. **领域多态契约假设与真实结构脱节（Domain Field Divergence）**：在为领域对象（如漫画）实现通用状态守卫（如判断漫画是否包含多章）时，直觉假设输入形如 `{ chapters: [...] }`。但书架摘要 `LibrarySummary` 真实字段是 `chapter_titles?: string[]`，而漫画详情 `ComicDetail` 章节列表位于嵌套的 `meta.chapters?: Chapter[]`。若入参未做多态解包与字段嗅探，传入标准的领域对象时会静默永远返回 `false`，埋下高危隐蔽缺陷；
   2. **Worker 共享底层纯函数反向依赖上层 Composable（Inverted Dependency across Layers）**：`src/utils/libraryFilterCore.ts` 既是主线程也是后台 Web Worker（`libraryFilter.worker.ts`）的过滤/排序算法核心。若直接从上层 `@/composables/useLibraryFilter` 反向导入 `SortKey` 类型，导致底层纯算法与上层 Vue 响应式状态机逻辑产生倒置耦合，破坏依赖倒置（DIP）原则；
   3. **单源工具库与组件孤岛判定断层（Fragmented Predicates & Speculative Generality）**：建立基础断言库与高精代数工具（`src/utils/is.ts` 与 `src/utils/math.ts`）后，若未能将组件层（如 `ReaderView`、`AppProgressBar`、`ImportPanel`、`ComicGrid`）中散落的手写判定与冗余中转重导出（`export { formatBytes }`）彻底收敛，既产生工具死代码，又破坏了单一事实来源（Single Source of Truth）。
 - **红线与防误伤**：
@@ -1578,13 +1579,13 @@
 
 - **本质**：
   1. **mkstemp 底层强制 0600 权限锁死**：Python 的 `tempfile.mkstemp` 底层出于多用户系统安全考虑，强制创建仅当前 UID 可读写的 `0600` 文件。在 Docker 容器以 root 运行写入挂载的 NAS / SMB 共享存储时，生成的文件在 Windows/WSL 或其他普通用户访问时会直接触发 `Permission denied`（`-?????????` 乱码与无法读取）；
-  2. **跨挂载点导致 os.replace 丧失原子性或报错 EXDEV**：若将临时文件写在系统默认的 `/tmp` 目录而目标位于挂载的 `/mnt/nas_manga` 数据卷，`os.replace` 会因为跨物理设备/跨挂载卷触发 `EXDEV (Invalid cross-device link)` 崩溃，或退化为不可靠的非原子文件复制。
+  2. **跨挂载点导致 os.replace 丧失原子性或报错 EXDEV**：若将临时文件写在系统默认的 `/tmp` 目录而目标位于挂载的 `/mnt/nas_manga` 数据卷，`os.replace` 会因为跨物理设备/跨挂载卷报 `EXDEV (Invalid cross-device link)`，不会自动退化为复制。
 - **红线与防误伤**：
   - **严禁**在需要多端/NAS 共享持久化的存储层使用 `tempfile.mkstemp`；
   - **严禁**将用于原子替换的临时文件创建在与目标文件不同的父目录或不同挂载卷下。
 - **放行/改用**：
   1. **父目录就近隐藏文件 + 纳秒级 PID 隔离**：在目标文件同目录下创建隐藏临时文件（如 `path.parent / f".{path.name}.tmp.{os.getpid()}_{time.time_ns()}"`），通过标准 `open(..., "wb")` 自然继承宿主系统的 `umask`（`0644`/`0666`），彻底杜绝权限锁死；
-  2. **严格同卷原子刷盘与替换**：写入后执行 `f.flush()` 与 `os.fsync(f.fileno())` 确保物理落盘，再通过 `os.replace` 在同卷下毫秒级原子切换指针，并在 `finally` 中保证临时文件 `unlink(missing_ok=True)` 零残留。
+  2. **严格同卷原子刷盘与替换**：写入后执行 `f.flush()` 与 `os.fsync(f.fileno())` 请求刷盘，再通过 `os.replace` 在同卷下原子替换单个文件；正常退出路径清理临时文件。单文件替换不等于多文件事务，也不保证强杀、断电或存储故障时无残留；保障与备份处理见 [部署指南 §11](../DEPLOYMENT.md#11-本地书库的并发与故障恢复边界)。
 
 ---
 

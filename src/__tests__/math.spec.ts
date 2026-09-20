@@ -1,8 +1,26 @@
-import { describe, it, expect } from 'vite-plus/test'
+import { afterEach, describe, it, expect, vi } from 'vite-plus/test'
 import { sumPrecise, sumBy, clamp, round, toFiniteNumber } from '@/utils/math'
 
 describe('math utility module', () => {
   describe('sumPrecise', () => {
+    afterEach(() => vi.unstubAllGlobals())
+
+    it('uses native sumPrecise when available', () => {
+      const nativeSum = vi.fn<(values: Iterable<number>) => number>(() => 0.6)
+      vi.stubGlobal('Math', Object.create(Math, { sumPrecise: { value: nativeSum } }))
+      const values = [0.1, 0.2, 0.3]
+
+      expect(sumPrecise(values)).toBe(0.6)
+      expect(nativeSum).toHaveBeenCalledWith(values)
+    })
+
+    it('falls back to ordinary addition when native sumPrecise is unavailable', () => {
+      vi.stubGlobal('Math', Object.create(Math, { sumPrecise: { value: undefined } }))
+
+      expect(sumPrecise([1024, 2048, 512])).toBe(3584)
+      expect(sumPrecise([0.1, 0.2, 0.3])).toBe(0.6000000000000001)
+    })
+
     it('accurately sums integer arrays', () => {
       expect(sumPrecise([1, 2, 3, 4, 5, 6])).toBe(21)
       expect(sumPrecise([])).toBe(0)

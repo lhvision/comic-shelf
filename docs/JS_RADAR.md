@@ -57,14 +57,14 @@
 | **`Intl.Collator`**                         |  24+   |   29+   |  10+   |    ✅ Baseline 2020     |            ✅ 已落地（`useLibraryFilter.ts` 中文拼音极速排序引擎）            |
 | **`WeakMap` 弱引用缓存模式**                |  36+   |   6+    |   8+   |       ✅ Baseline       |        ✅ 已落地（`useLibraryFilter.ts` 藏书全文字段小写搜索索引缓存）        |
 | **Module Web Workers (`type: 'module'`)**   |  80+   |  114+   |  15+   |    ✅ Baseline 2023     |  ✅ 已落地（`useLibraryFilter.ts` / `libraryFilter.worker.ts` 万级检索卸载）  |
-| **`Math.sumPrecise()` 高精求和**            |  135+  | Nightly | 18.2TP | 🔶 Newly Available 2025 |      ✅ 已落地（`src/utils/math.ts` 门面 + 书库统计/离线容量/基准跑分）       |
+| **`Math.sumPrecise()` 高精求和**            |  135+  | Nightly | 18.2TP | 🔶 Newly Available 2025 |             ✅ 已落地（`src/utils/math.ts` 门面 + 离线容量统计）              |
 | **WebMCP (`document.modelContext`)**        | 140+OT |   ❌    |   ❌   |  🔶 Origin Trial 2026   | ✅ 已落地（`useReaderWebMCP` / `useShelfWebMCP`，VueUse 15 生命周期安全降级） |
 | **Import Attributes (`with { type }`)**     |  125+  |  137+   | 17.2+  |    ✅ Baseline 2024     |                  📋 路线图（模块化 JSON 元数据与多语言字典）                  |
 | **OPFS (`getDirectory()`)**                 |  86+   |  111+   | 15.2+  |    ✅ Baseline 2023     |  📋 储备特性（单体大文件流式落盘/整本离线包/字体；网络图片走 CacheStorage）   |
 | **Iterator Helpers (`.map()/.take()`)**     |  122+  |  131+   | 18.4+  |    ✅ Baseline 2025     |                  📋 路线图（IndexedDB 游标与分批上传流水线）                  |
 | **`using` (Explicit Resource Mgmt)**        |  134+  |  141+   |   TP   | 🔶 Newly Available 2025 |                📋 路线图（Canvas Context / ObjectURL 作用域）                 |
 | **`Temporal API`**                          |  144+  |  139+   |   TP   | 🔶 Newly Available 2026 |                ⚠️ 审慎评估（待 iOS 稳定版就绪前暂不全量采用）                 |
-| **Vue 3.6 Vapor Mode (`<template vapor>`)** | 全支持 | 全支持  | 全支持 |      🔶 Vue 3.6 RC      |             ✅ 局部探针已落地（`PageTile.vue` / `/vapor-canary`）             |
+| **Vue 3.6 Vapor Mode (`<template vapor>`)** | 全支持 | 全支持  | 全支持 |      🔶 Vue 3.6 RC      |                      ✅ 局部探针已落地（`PageTile.vue`）                      |
 | **Vue `useTemplateRef()` 模板引用**         | 全支持 | 全支持  | 全支持 |     ✅ Vue 3.5+ GA      |     ✅ 已落地（全站 20+ 组件模板引用强类型化，彻底消灭 `ref(null)` 样板）     |
 | **Vue `defineModel()` 声明式双向绑定**      | 全支持 | 全支持  | 全支持 |     ✅ Vue 3.4+ GA      |    ✅ 已落地（`Modal` / `AppPopover` / `TagFilterBar` 等双向绑定胶水清零）    |
 | **WICG HTML-in-Canvas (`drawElement`)**     |  155+  |   ❌    |   ❌   |      🧪 WICG Draft      |          ⚠️ 前瞻雷达（严禁用于长列表；储备于未来富排版气泡/AVG合图）          |
@@ -634,7 +634,6 @@ WICG HTML-in-Canvas 旨在允许 Web 开发者直接将 HTML DOM 子树的排版
 **本项目落地位置**：
 
 - `src/components/detail/PageTile.vue`（详情页与章节页画卷索引缩略图高密度探针）
-- `src/views/VaporCanaryView.vue`（`/vapor-canary` 横向跑分基准沙盒探针）
 - `docs/adr/0023-vue-3-6-vapor-mode-local-probe-and-progressive-enhancement.md`
 - `docs/PITFALLS.md` §97（Vapor 模式禁忌原语与避坑防线）
 
@@ -660,7 +659,6 @@ Vue 3.6 Vapor Mode 汲取了 SolidJS 的编译期优化思想，将 SFC 单文�
 - `src/composables/useLibraryFilter.ts`（全书页码与本地化缓存页码统计）
 - `src/composables/useLocalWorkshop.ts`（多章节拆帧图片总数统计）
 - `src/composables/useOfflineStorage.ts`（离线缓存资产字节容量规约）
-- `src/composables/useVaporBenchmark.ts`（高精帧耗时累加与基准跑分）
 - `src/utils/progress.ts`（进度条亚像素截断与浮点百分比统一基于 `round` + `EPSILON` 规约）
 
 #### 核心机制与解决的反模式
@@ -677,9 +675,9 @@ Vue 3.6 Vapor Mode 汲取了 SolidJS 的编译期优化思想，将 SFC 单文�
 1. **无法逆转 IEEE 754 底层物理表示限制**：
    `Math.sumPrecise([0.1, 0.2])` 的结果**依然是** `0.30000000000000004`。这是由于 `0.1` 与 `0.2` 转换为二进制浮点数时本身就是近似值，`Math.sumPrecise` 解决的是**求和累加顺序与中间精度丢失**，而不是十进制 Arbitrary Precision 运算。对于 UI 展示，必须配合 `round(val, decimals)` 或 `truncateProgressFloat`。
 2. **零原型污染与平滑降级（`src/utils/math.ts`）**：
-   纸间杜绝直接向全局 `Math` 挂载猴子补丁（Monkey Patch）。通过 `sumPrecise` 门面检测，在不支持的宿主中无缝退回 Neumaier 补偿算法（Compensated Summation），并完备处理 `NaN`、`±Infinity` 与 `-0` 边界。
+   纸间通过 `sumPrecise` 运行时检测并优先调用原生 `Math.sumPrecise`，不修改全局 `Math`。未支持的宿主使用普通累加降级，不保证与原生实现相同的浮点精度或负零语义。该入口保留为 Web 前沿特性的渐进增强实践。
 3. **`sumBy` 零分配流式聚合**：
-   针对业务中常见的对象数组求和（如 `item.page_count`），封装 `sumBy(list, item => item.page_count)`，内部通过惰性生成器直接驱动 `sumPrecise`，**彻底消除调用端手写 `.map()` 分配临时数组导致的堆内存抖动与 GC 压力**。
+   `sumBy(list, item => item.page_count)` 直接遍历集合累加，用于页数等整数统计，不创建中间数组，也不调用 `sumPrecise`。
 
 ---
 
@@ -692,7 +690,7 @@ Vue 3.6 Vapor Mode 汲取了 SolidJS 的编译期优化思想，将 SFC 单文�
   - `src/composables/useReaderWebMCP.ts`（阅读器视口：精准跳页、步进翻页、排版/分屏/日漫方向切换、缩放适配、自动翻页、气泡呼吸高亮与跨话切章）
   - `src/composables/useDiscoveryWebMCP.ts`（发现与排行视口：榜单数据拉取、周/月/日榜切换、漫画一键收录与详情直达）
   - 挂载点视图：`src/views/LibraryView.vue`、`src/views/ComicDetailView.vue`、`src/views/ChapterView.vue`、`src/views/ReaderView.vue`、`src/views/DiscoveryView.vue`
-  - `src/__tests__/WebMCP.spec.ts`（模拟上下文执行单测，覆盖全部 23 项工具）
+  - `src/__tests__/WebMCP.spec.ts`（模拟上下文执行单测，覆盖视口工具与权限隔离）
 - **底层依赖**：VueUse 15 `useWebMCP`
 
 #### 核心机制与架构优势
@@ -748,7 +746,7 @@ Vue 3.6 Vapor Mode 汲取了 SolidJS 的编译期优化思想，将 SFC 单文�
 - [x] **Phase 2: Vue 3.6 Vapor Mode 局部探针与渐进增强（2026-09 已完成首批闭环）**
   - 全局依赖锁定 `vue@3.6.0-rc.8`，全站默认成熟 VDOM；
   - 高密度生产叶子探针 `PageTile.vue`（`<template vapor>` + 原生链接直驱）接入画页索引网格；
-  - 落地 `/vapor-canary` 独立基准跑分沙盒，实现挂载/响应式补丁/内存直观测量；
+  - 独立基准沙盒已于 2026-09-20 下线，历史测量结果保留在 ADR 0023；
   - 固化 ADR 0023 与 `docs/PITFALLS.md` §97 禁忌原语防线。
 - [x] **Phase 3: 高精代数规约与单源工具下沉（2026-09 已完成）**
   - 在 `src/utils/math.ts` 落地 `sumPrecise`、`sumBy`、`clamp`、`round`、`toFiniteNumber`；

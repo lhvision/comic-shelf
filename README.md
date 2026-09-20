@@ -167,6 +167,8 @@ vp build                               # 生产打包
 
 纸间支持 Docker Compose 一键启动或 NAS（TrueNAS Scale / Unraid / 群晖）图形化部署，开箱即用：
 
+API 固定单工作进程，同一书库只运行一个 API 实例；下载和图片处理仍可在线程内并发。存储异常回退范围与备份处理见 [并发与故障恢复边界](DEPLOYMENT.md#11-本地书库的并发与故障恢复边界)。
+
 ```bash
 # 方式 1：双容器一键启动（含以图搜图，需 CPU 支持 AVX2）
 docker compose up -d --build
@@ -185,9 +187,9 @@ docker compose up -d --no-deps --build paper-room
 >
 > - 🔴 **公网 / VPS 部署唯一必配**：设置容器环境变量 `COMIC_SHELF_SECRET="你的管理密码"`（可在 `docker-compose.yml` 的 `environment` 节直接填入，或在 NAS 图形界面添加；纯内网家庭环境直接留空免密）；
 > - 🟡 **存储持久化生命线**：将宿主机存储卷映射至容器内的 `/app/data`（所有漫画原图、元数据与搜图索引均保存在此处）；
-> - 🟢 **其余所有 20 个环境变量**：全部内置生产级默认值（8000 端口、3 路防封下载并发、4 路缩略图限流等），初次部署完全不用改动。
+> - 🟢 **其余环境变量**：内置默认值（8000 端口、3 路防封下载并发、4 路缩略图限流等），初次部署通常无需调整。
 >
-> 📖 **完整部署指引与参数字典**：包含 TrueNAS Scale、Unraid、群晖 NAS 挂载配置、22 个环境变量详解、反向代理与权限排查，请参阅 **[DEPLOYMENT.md](DEPLOYMENT.md)**。
+> 📖 **完整部署指引与参数字典**：包含 TrueNAS Scale、Unraid、群晖 NAS 挂载配置、环境变量详解、反向代理与权限排查，请参阅 **[DEPLOYMENT.md](DEPLOYMENT.md)**。
 
 ---
 
@@ -272,18 +274,18 @@ $COMIC_SHELF_DATA/
 
 纸间拥有完备的接口定义与系统设计文档体系：
 
-| 文档                                                           | 内容与定位                                                                                                            |
-| :------------------------------------------------------------- | :-------------------------------------------------------------------------------------------------------------------- |
-| **交互式 API 文档**                                            | 启动服务后浏览器直接访问 `http://localhost:8000/docs`（Swagger UI）或 `/redoc` 查看全部实时端点、请求模型与参数定义   |
-| **[CONTEXT.md](CONTEXT.md)**                                   | 纸间领域模型与术语表（单一语义源，核心概念、收藏夹状态、阅读器与基础设施定义）                                        |
-| **[DEPLOYMENT.md](DEPLOYMENT.md)**                             | 生产容器化部署全景：Docker Compose、TrueNAS Scale / Unraid / 群晖 NAS 挂载配置、22 个环境变量详解、反向代理与权限排查 |
-| **[docs/PITFALLS.md](docs/PITFALLS.md)**                       | 错题本与避坑红线速查表（历史故障复盘、高频反模式与避坑红线速查，提交前必读）                                          |
-| **[docs/CSS_RADAR.md](docs/CSS_RADAR.md)**                     | CSS 前瞻技术雷达（已落地特性用法、渐进增强降级方案与前沿规范追踪）                                                    |
-| **[docs/JS_RADAR.md](docs/JS_RADAR.md)**                       | JavaScript 前瞻技术雷达（原生异步承诺管线、AbortSignal 规范与集合运算）                                               |
-| **[docs/agents/architecture.md](docs/agents/architecture.md)** | 后端架构设计、数据存储模型、Provider 扩展体系、安全门禁与 SSE 单向事件流                                              |
-| **[docs/agents/frontend.md](docs/agents/frontend.md)**         | 前端视图与 Composable 地图、阅读器分页与手势、PWA 离线缓存与性能策略                                                  |
-| **[DESIGN_NOTES.md](DESIGN_NOTES.md)**                         | 纸间设计系统规范（Living Design System）、品牌哲学、色彩/组件层级与核心设计定律（历史演进见 `docs/design-archive/`）  |
-| **[docs/adr/](docs/adr/)**                                     | 架构决策记录（Architecture Decision Records，涵盖系统重大架构抉择，ADR 0001 ~ 0023）                                  |
+| 文档                                                           | 内容与定位                                                                                                           |
+| :------------------------------------------------------------- | :------------------------------------------------------------------------------------------------------------------- |
+| **交互式 API 文档**                                            | 启动服务后浏览器直接访问 `http://localhost:8000/docs`（Swagger UI）或 `/redoc` 查看全部实时端点、请求模型与参数定义  |
+| **[CONTEXT.md](CONTEXT.md)**                                   | 纸间领域模型与术语表（单一语义源，核心概念、收藏夹状态、阅读器与基础设施定义）                                       |
+| **[DEPLOYMENT.md](DEPLOYMENT.md)**                             | 生产容器化部署全景：Docker Compose、TrueNAS Scale / Unraid / 群晖 NAS 挂载配置、环境变量详解、反向代理与权限排查     |
+| **[docs/PITFALLS.md](docs/PITFALLS.md)**                       | 错题本与避坑红线速查表（历史故障复盘、高频反模式与避坑红线速查，提交前必读）                                         |
+| **[docs/CSS_RADAR.md](docs/CSS_RADAR.md)**                     | CSS 前瞻技术雷达（已落地特性用法、渐进增强降级方案与前沿规范追踪）                                                   |
+| **[docs/JS_RADAR.md](docs/JS_RADAR.md)**                       | JavaScript 前瞻技术雷达（原生异步承诺管线、AbortSignal 规范与集合运算）                                              |
+| **[docs/agents/architecture.md](docs/agents/architecture.md)** | 后端架构设计、数据存储模型、Provider 扩展体系、安全门禁与 SSE 单向事件流                                             |
+| **[docs/agents/frontend.md](docs/agents/frontend.md)**         | 前端视图与 Composable 地图、阅读器分页与手势、PWA 离线缓存与性能策略                                                 |
+| **[DESIGN_NOTES.md](DESIGN_NOTES.md)**                         | 纸间设计系统规范（Living Design System）、品牌哲学、色彩/组件层级与核心设计定律（历史演进见 `docs/design-archive/`） |
+| **[docs/adr/](docs/adr/)**                                     | 架构决策记录（Architecture Decision Records，涵盖系统重大架构抉择，ADR 0001 ~ 0023）                                 |
 
 ---
 

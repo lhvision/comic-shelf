@@ -420,7 +420,7 @@ def main() -> int:
     parser.add_argument("--min-score", type=float, default=0.5, help="OCR 置信度过滤阈值（默认 0.5，过滤拟声词噪点）")
     parser.add_argument("--force", action="store_true", help="强制重新提取已存在的 OCR 伴生文件")
     parser.add_argument("--limit", type=int, default=0, help="最多处理漫画册数（0 为无限制）")
-    parser.add_argument("--api-url", help="NAS 纸间服务 API 地址（如 http://192.168.31.233:8000），处理完毕后自动远程通知入库")
+    parser.add_argument("--api-url", help="NAS 纸间服务 API 地址（如 http://192.168.1.100:8000），处理完毕后自动远程通知入库")
     parser.add_argument("--token", help="纸间 Machine API Token 认证口令")
     parser.add_argument("--sync-local", action="store_true", help="处理完成后直接同步本地 SQLite 索引（同机/本地测试适用）")
     parser.add_argument("--status", action="store_true", help="仅查看书库 OCR 伴生文件覆盖统计")

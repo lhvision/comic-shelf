@@ -537,13 +537,6 @@ describe('WebMCP Composables', () => {
       const cacheChapterMock = vi.fn<(id: string) => Promise<void>>().mockResolvedValue(undefined)
       const toggleFavMock = vi.fn<() => Promise<void>>().mockResolvedValue(undefined)
 
-      vi.spyOn(api, 'updateMetadata').mockResolvedValue({
-        ...mockDetail,
-        meta: {
-          ...mockDetail.meta,
-          title: 'Updated Title',
-        },
-      })
       vi.spyOn(api, 'createDirectPass').mockResolvedValue({
         token: 'mock-temp-token-xyz',
         source: 'jm',
@@ -842,7 +835,6 @@ describe('WebMCP Composables', () => {
           expect(detailMcp.startReadingTool).toBeDefined()
           expect(detailMcp.cacheAllTool).toBeUndefined()
           expect(detailMcp.cacheChapterTool).toBeUndefined()
-          expect(detailMcp.updateMetadataTool).toBeUndefined()
           expect(detailMcp.createDirectPassTool).toBeUndefined()
 
           // 3. Discovery
@@ -864,7 +856,6 @@ describe('WebMCP Composables', () => {
         expect(registeredTools['shelf_import_comic']).toBeUndefined()
         expect(registeredTools['detail_start_reading']).toBeDefined()
         expect(registeredTools['detail_cache_all_pages']).toBeUndefined()
-        expect(registeredTools['detail_update_metadata']).toBeUndefined()
         expect(registeredTools['detail_create_direct_pass']).toBeUndefined()
         expect(registeredTools['discovery_get_ranking']).toBeDefined()
         expect(registeredTools['discovery_ingest_comic']).toBeUndefined()

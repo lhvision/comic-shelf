@@ -18,30 +18,34 @@ logger = logging.getLogger(__name__)
 class ComicStoreChapterMixin:
     """Provides chapter organization, directory migration, and title editing operations."""
 
-    def _migrate_flat_to_chapter(self: Any, meta: ComicMeta, first_chapter_id: str) -> None:
-        """Migrate flat pages/ and thumbs/ files to pages/<first_chapter_id>/
-        when a previously single-chapter comic is updated to multi-chapter."""
+    def _migrate_flat_to_chapter(self: Any, meta: ComicMeta, first_chapter_id: str) -> list[tuple[Path, Path]]:
+        """Move legacy flat pages and thumbnails into a chapter directory.
+
+        Returns (original, destination) pairs so the caller can undo the moves
+        if metadata persistence fails. A failed move rolls back this migration.
+        """
         safe_chap = self._safe(first_chapter_id)
-
-        pages_dir = self.pages_dir(meta.source, meta.source_id)
-        if pages_dir.exists():
-            target_dir = pages_dir / safe_chap
-            target_dir.mkdir(parents=True, exist_ok=True)
-            for item in list(pages_dir.iterdir()):
-                if item.is_file():
-                    dest = target_dir / item.name
-                    if not dest.exists():
-                        item.rename(dest)
-
-        thumbs_dir = self.thumbs_dir(meta.source, meta.source_id)
-        if thumbs_dir.exists():
-            target_thumb_dir = thumbs_dir / safe_chap
-            target_thumb_dir.mkdir(parents=True, exist_ok=True)
-            for item in list(thumbs_dir.iterdir()):
-                if item.is_file():
-                    dest = target_thumb_dir / item.name
-                    if not dest.exists():
-                        item.rename(dest)
+        moved: list[tuple[Path, Path]] = []
+        try:
+            for directory in (
+                self.pages_dir(meta.source, meta.source_id),
+                self.thumbs_dir(meta.source, meta.source_id),
+            ):
+                if not directory.exists():
+                    continue
+                target_dir = directory / safe_chap
+                target_dir.mkdir(parents=True, exist_ok=True)
+                for item in list(directory.iterdir()):
+                    if item.is_file():
+                        destination = target_dir / item.name
+                        if not destination.exists():
+                            item.rename(destination)
+                            moved.append((item, destination))
+        except OSError:
+            for original, destination in reversed(moved):
+                destination.replace(original)
+            raise
+        return moved
 
     def update_chapter_title(self: Any, source: str, source_id: str, chapter_id: str, new_title: str) -> ComicMeta:
         with self._lock_for(source, source_id):

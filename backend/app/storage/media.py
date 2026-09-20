@@ -21,7 +21,6 @@ from ..config import (
     COVER_WIDTH,
     PAGE_THUMB_QUALITY,
     PAGE_THUMB_WIDTH,
-    TMP_DIR,
 )
 from ..models import Chapter, ComicMeta, FetchedComic, RemotePage
 from .utils import CURRENT_DECODE_VERSION, _write_json_atomic
@@ -104,61 +103,124 @@ class ComicStoreMediaMixin:
         self._invalidate_cache(meta.source, meta.source_id)
 
     def update_page_cached(self: Any, meta: ComicMeta, index: int, cached: bool) -> None:
-        for page in meta.pages:
-            if page.index == index:
-                page.cached = cached
-                break
-        album_path = self.album_path(meta.source, meta.source_id)
-        _write_json_atomic(album_path, meta.model_dump())
-        try:
-            mtime = album_path.stat().st_mtime
-        except Exception:
-            mtime = 0.0
-        with self._cache_guard:
-            self._meta_cache[(meta.source, meta.source_id)] = (mtime, meta)
-            self._fetched_cache.pop((meta.source, meta.source_id), None)
-        try:
-            from ..db import update_comic_cached_pages
-            update_comic_cached_pages(meta.source, meta.source_id, self.cached_page_count(meta))
-        except Exception:
-            pass
+        """Persist a page flag on the latest album without overwriting user edits.
+
+        Updates the caller's snapshot for download progress, then merges only
+        the flag whose page index, filename and chapter still match the album.
+        """
+        with self._lock_for(meta.source, meta.source_id):
+            page = next((page for page in meta.pages if page.index == index), None)
+            if page is None:
+                return
+            page.cached = cached
+            latest = self.load_meta(meta.source, meta.source_id)
+            if latest is None:
+                return
+            current = next((p for p in latest.pages if p.index == index), None)
+            if current is None or (current.file, current.chapter) != (page.file, page.chapter):
+                return
+            latest = latest.model_copy(deep=True)
+            next(p for p in latest.pages if p.index == index).cached = cached
+            album_path = self.album_path(meta.source, meta.source_id)
+            try:
+                _write_json_atomic(album_path, latest.model_dump())
+            except OSError as exc:
+                logger.warning("Could not persist page cache for %s/%s: %s", meta.source, meta.source_id, exc)
+                return
+            with self._cache_guard:
+                self._meta_cache[(meta.source, meta.source_id)] = (album_path.stat().st_mtime, latest)
+                self._fetched_cache.pop((meta.source, meta.source_id), None)
+            try:
+                from ..db import update_comic_cached_pages
+                update_comic_cached_pages(meta.source, meta.source_id, self.cached_page_count(latest))
+            except Exception:
+                pass
+
+    def _download_revision(self: Any, source: str, source_id: str) -> tuple[int, ...]:
+        """Identify the archive and remote descriptor file for an in-flight download.
+
+        Metadata edits and cache flags do not change this revision. Replacing
+        pages, refreshing URLs, or deleting/recreating the archive does.
+        Caller must hold the comic lock; a missing archive raises OSError.
+        """
+        directory = self.comic_dir(source, source_id).stat()
+        remote_path = self.remote_path(source, source_id)
+        remote = remote_path.stat() if remote_path.exists() else None
+        return (directory.st_dev, directory.st_ino,
+                remote.st_ino if remote else 0,
+                remote.st_mtime_ns if remote else 0,
+                remote.st_size if remote else 0)
 
     def ensure_page(self: Any, fetched: FetchedComic, index: int) -> Path:
-        """Guarantees that a page exists on disk, downloading and decoding it on-demand if missing."""
-        meta = fetched.meta
-        target = self.page_path(meta, index)
-        if target.exists():
-            page = next((p for p in meta.pages if p.index == index), None)
-            if page is not None and not page.cached:
-                self.update_page_cached(meta, index, True)
-            return target
+        """Download a missing page and commit it only while its archive is current.
 
-        page = next((p for p in fetched.remote_pages if p.index == index), None)
-        if page is None:
-            raise KeyError(f"页 {index} 不存在（共 {meta.page_count} 页）")
+        Network I/O holds only the page lock. The commit holds the comic lock,
+        rechecks the archive revision and never replaces an existing page.
+        Stale downloads raise FileNotFoundError without modifying the archive.
+        """
+        meta = fetched.meta
+        with self._lock_for(meta.source, meta.source_id):
+            latest = self.load_meta(meta.source, meta.source_id)
+            if latest is None:
+                raise FileNotFoundError("漫画已删除，取消画页下载")
+            current = next((p for p in latest.pages if p.index == index), None)
+            if current is None:
+                raise FileNotFoundError("画页已删除，取消下载")
+            target = self.page_path(latest, index)
+            if target.exists():
+                if not current.cached:
+                    self.update_page_cached(latest, index, True)
+                return target
+            page = next((p for p in fetched.remote_pages if p.index == index), None)
+            if page is None:
+                raise KeyError(f"页 {index} 不存在（共 {meta.page_count} 页）")
+            if latest.custom_pages or not page.url:
+                raise FileNotFoundError(f"本地页面文件不存在：{target}")
+            # Metadata owns the local path; legacy remote descriptors can still
+            # name the flat layout after a local chapter migration.
+            page_identity = (current.file, current.chapter)
+            # A queued job may already contain outdated URLs before it starts.
+            current_bundle = self.load_fetched(meta.source, meta.source_id)
+            if current_bundle and current_bundle.remote_pages:
+                remote_page = next((p for p in current_bundle.remote_pages if p.index == index), None)
+                if remote_page != page:
+                    raise FileNotFoundError("画页来源已变更，取消旧下载")
+            revision = self._download_revision(meta.source, meta.source_id)
+            page = page.model_copy(deep=True)
 
         with self._lock_for_page(meta.source, meta.source_id, index):
             if target.exists():
                 return target
-
-            if not page.url:
-                raise FileNotFoundError(f"本地页面文件不存在：{target}")
-
             from ..providers.registry import get_provider
+            data = get_provider(meta.source).download_page(fetched, page)
 
-            provider = get_provider(meta.source)
-            data = provider.download_page(fetched, page)
-
-            TMP_DIR.mkdir(parents=True, exist_ok=True)
-            tmp_path = TMP_DIR / f"{meta.source}_{meta.source_id}_{index:05d}.part"
-            try:
-                tmp_path.write_bytes(data)
+        # No page lock may be held here: chapter edits acquire comic then page locks.
+        with self._lock_for(meta.source, meta.source_id):
+            latest = self.load_meta(meta.source, meta.source_id)
+            if latest is None or revision != self._download_revision(meta.source, meta.source_id):
+                raise FileNotFoundError("漫画画卷已变更，取消旧下载")
+            current = next((p for p in latest.pages if p.index == index), None)
+            if (latest.custom_pages or current is None
+                    or (current.file, current.chapter) != page_identity):
+                raise FileNotFoundError("画页已变更，取消旧下载")
+            target = self.page_path(latest, index)
+            if not target.exists():
                 target.parent.mkdir(parents=True, exist_ok=True)
-                os.replace(tmp_path, target)
-            finally:
-                tmp_path.unlink(missing_ok=True)
-
-            self.update_page_cached(meta, index, True)
+                tmp_path = target.with_name(f".{target.name}.download.{os.getpid()}_{time.time_ns()}")
+                try:
+                    with tmp_path.open("xb") as output:
+                        output.write(data)
+                        output.flush()
+                        os.fsync(output.fileno())
+                    os.replace(tmp_path, target)
+                finally:
+                    tmp_path.unlink(missing_ok=True)
+            self.update_page_cached(latest, index, True)
+            # Keep a running job's progress snapshot in sync.
+            for record in meta.pages:
+                if record.index == index and (record.file, record.chapter) == page_identity:
+                    record.cached = True
+                    break
             return target
 
     def cached_page_count(self: Any, meta: ComicMeta) -> int:
@@ -174,7 +236,6 @@ class ComicStoreMediaMixin:
             return self.cached_page_count(meta)
 
         existing_by_dir: dict[Path, set[str]] = {}
-        changed = False
 
         for page in meta.pages:
             if page.cached:
@@ -195,23 +256,7 @@ class ComicStoreMediaMixin:
 
             if page.file in existing_by_dir[parent_dir]:
                 page.cached = True
-                changed = True
 
-        if changed:
-            album_path = self.album_path(meta.source, meta.source_id)
-            with self._cache_guard:
-                _write_json_atomic(album_path, meta.model_dump())
-                try:
-                    mtime = album_path.stat().st_mtime
-                except Exception:
-                    mtime = 0.0
-                self._meta_cache[(meta.source, meta.source_id)] = (mtime, meta)
-                self._fetched_cache.pop((meta.source, meta.source_id), None)
-            try:
-                from ..db import update_comic_cached_pages
-                update_comic_cached_pages(meta.source, meta.source_id, self.cached_page_count(meta))
-            except Exception:
-                pass
         return self.cached_page_count(meta)
 
     @staticmethod
@@ -329,16 +374,21 @@ class ComicStoreMediaMixin:
             else:
                 if width and 0 < width <= COVER_THUMB_WIDTH:
                     base_cover = get_path("jpg", None)
-                    if not (base_cover.exists() and base_cover.stat().st_size > 0):
-                        if fetched is None:
-                            raise FileNotFoundError(error_msg)
-                        page_path = self.ensure_page(fetched, page_index)
-                        self._save_cover(page_path, base_cover)
-                    return self.scale_cover(base_cover, target, target_width=width)
+                    if base_cover.exists() and base_cover.stat().st_size > 0:
+                        return self.scale_cover(base_cover, target, target_width=width)
 
-            if fetched is None:
-                raise FileNotFoundError(error_msg)
-            page_path = self.ensure_page(fetched, page_index)
+        if fetched is None:
+            raise FileNotFoundError(error_msg)
+        # Download and update metadata before holding the rendering lock.
+        page_path = self.ensure_page(fetched, page_index)
+        with self._lock_for_page(meta.source, meta.source_id, page_index):
+            if target.exists() and target.stat().st_size > 0:
+                return target
+            if not wants_webp and width and 0 < width <= COVER_THUMB_WIDTH:
+                base_cover = get_path("jpg", None)
+                if not (base_cover.exists() and base_cover.stat().st_size > 0):
+                    self._save_cover(page_path, base_cover)
+                return self.scale_cover(base_cover, target, target_width=width)
             fmt = "WEBP" if wants_webp else "JPEG"
             target_width = width or COVER_WIDTH
             self._save_cover(page_path, target, target_width=target_width, fmt=fmt)
@@ -440,7 +490,11 @@ class ComicStoreMediaMixin:
                         except Exception:
                             pass
 
-                page_path = self.ensure_page(fetched, index)
+        page_path = self.ensure_page(fetched, index)
+        with self._lock_for_page(meta.source, meta.source_id, index):
+            with self._thumb_semaphore:
+                if target.exists() and target.stat().st_size > 0:
+                    return target
                 with Image.open(page_path) as img:
                     img = ImageOps.exif_transpose(img)
                     if getattr(img, "is_animated", False):

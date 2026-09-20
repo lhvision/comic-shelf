@@ -1,8 +1,8 @@
 # ADR 0023 — Vue 3.6 Vapor Mode 局部探针与双模渐进增强架构
 
 - **日期**：2026-09-14
-- **状态**：Accepted
-- **关联**：演进 `pnpm-workspace.yaml`、`package.json`、`vite.config.ts`、`src/components/library/ComicGrid.vue`、`src/views/VaporCanaryView.vue`，对齐 `CONTEXT.md` 响应式底座哲学、`docs/PITFALLS.md` §97 与 ADR 0022（依赖固化切片）
+- **状态**：Accepted（2026-09-20 更新：独立基准沙盒已下线，生产探针继续保留）
+- **关联**：演进 `pnpm-workspace.yaml`、`package.json`、`vite.config.ts`、`src/components/library/ComicGrid.vue`、`src/components/detail/PageTile.vue`，对齐 `CONTEXT.md` 响应式底座哲学、`docs/PITFALLS.md` §97 与 ADR 0022（依赖固化切片）
 
 ## 背景
 
@@ -28,8 +28,8 @@
 ### 2. 探针推进范式：基准跑分先行 + 生产原子叶子组件闭环
 
 - **双阶推进路线**：
-  1. **第一阶段（基准跑分沙盒探针 Benchmark Canary）**：
-     - 构建独立测试视图 `src/views/VaporCanaryView.vue`，挂载于路由 `/vapor-canary`；
+  1. **第一阶段（历史基准跑分沙盒探针，现已下线）**：
+     - 曾构建独立测试视图及路由，相关实现已在提交 `66651c1` 中移除；
      - 模拟纸间典型高密度负载：1,000 ~ 3,000 个节点的高密度批量挂载、60fps 高频进度/计数微粒响应式补丁更新、节点清空与堆内存测量；
      - 横向比对 VDOM 与 Vapor 的微秒级渲染延迟与 GC 垃圾回收压力，产出可复制的量化性能卡片。
   2. **第二阶段（首个生产级叶子组件闭环）**：
@@ -111,7 +111,7 @@ function handleClick(e: MouseEvent) {
 
 ### 3. 沙盒实测基准跑分数据
 
-在真机环境（/vapor-canary 基准沙盒）测得客观对比数据：
+以下为独立基准沙盒下线前的真机测量记录，仅作历史参考，当前应用不再提供该测试入口：
 
 | 时间     | 模式  | 节点数 | 初始挂载     | 响应式补丁 (帧率)     | 节点卸载    | JS 堆内存   |
 | :------- | :---- | :----- | :----------- | :-------------------- | :---------- | :---------- |
@@ -136,13 +136,13 @@ function handleClick(e: MouseEvent) {
 
 ## 演进与下线计划（Iteration & Sunset Plan）
 
-1. **沙盒生命周期与代码隔离**：
-   - `/vapor-canary` 基准沙盒采用路由级按需动态导入（`() => import('@/views/VaporCanaryView.vue')`），构建为 9.37 kB 独立 chunk，不进入全站主导航，严密防范首屏资源污染；
-   - 状态机 `useVaporBenchmark` 在各测试轮次切换时具备严格的内存与计时指标清空机制，杜绝脏状态累积。
+1. **沙盒下线（2026-09-20 已完成）**：
+   - 提交 `66651c1` 已删除独立基准视图、路由、状态机及两种模式的对照组件，减少实验代码的维护负担；
+   - 本文保留历史测量数据，当前生产探针为 `PageTile.vue`。
 2. **渐进式迁移与准出路线**：
    - **阶段 1（当前探针）**：以 `PageTile.vue` 作为叶子高密度生产探针，验证无虚树渲染与原生 `<a>` 路由跳转；
    - **阶段 2（Vue 3.6 GA）**：待 Vue 3.6 正式发布且 CJS/ESM 双模导出彻底平稳后，依据跑分评估是否将目录 item 或发现流展示卡片按需引入 `<template vapor>`；
-   - **阶段 3（沙盒归档/下线）**：全站核心叶子组件完成评测沉淀后，可将沙盒收敛为内部诊断面板（置于 `import.meta.env.DEV` 门禁后）或移入归档基准用例。
+   - **沙盒归档/下线（已完成）**：历史结果保留于本文，后续评测按具体需求开展。
 3. **依赖治理与升级契约（Catalog-First）**：
    - 全面引入 `pnpm-workspace.yaml` 中的 `catalog.default.vue: rc` 统筹声明；
    - 子包与主应用 `package.json` 统一使用 `"vue": "catalog:"`；
@@ -154,4 +154,4 @@ function handleClick(e: MouseEvent) {
 1. **依赖底座就绪**：`pnpm-workspace.yaml` 与 `package.json` 全面对齐 Vue 3.6 RC，增量 `pnpm type-check` 0 错误；
 2. **高密度生产探针落地**：`PageTile.vue` 成功转为无虚树直驱，详情页长章节展开时 100% 消除缩略图卡片的 VNode 树分配；
 3. **图标单源规范坚守**：坚守红线 12，杜绝微粒图标过度碎片化引发的 Bridge Thrashing；
-4. **基准沙盒可度量**：`/vapor-canary` 提供了可重复检验的微秒级跑分工具，持续指导未来组件渐进增强。
+4. **历史基准留档**：保留沙盒下线前的测量结果，作为后续组件评测的参考。

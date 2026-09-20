@@ -52,7 +52,6 @@ export type UseComicDetailWebMCPReturn = WebMCPComposableReturn<
   | 'openChapterTool'
   | 'getInfoTool'
   | 'favTool'
-  | 'updateMetadataTool'
   | 'createDirectPassTool'
 >
 

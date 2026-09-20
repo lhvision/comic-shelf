@@ -30,7 +30,6 @@ if __name__ == "__main__":
     parser.add_argument("--host", default=os.getenv("COMIC_SHELF_HOST", "127.0.0.1"), help="Host to bind")
     parser.add_argument("--port", type=int, default=int(os.getenv("COMIC_SHELF_PORT", "8000")), help="Port to bind")
     parser.add_argument("--reload", action="store_true", default=os.getenv("COMIC_SHELF_RELOAD", "").lower() in {"1", "true", "yes"}, help="Auto-reload on code change")
-    parser.add_argument("--workers", type=int, default=int(os.getenv("COMIC_SHELF_WORKERS", "1")), help="Number of worker processes")
     args = parser.parse_args()
 
     access_log_env = os.getenv("COMIC_SHELF_ACCESS_LOG", "true").lower()
@@ -60,7 +59,8 @@ if __name__ == "__main__":
         reload_dirs=reload_dirs,
         reload_includes=reload_includes,
         reload_excludes=reload_excludes,
-        workers=args.workers if not args.reload else None,
+        # Comic locks, caches and background jobs are process-local.
+        workers=1,
         timeout_keep_alive=30,
         timeout_graceful_shutdown=3,
         backlog=2048,
@@ -68,4 +68,3 @@ if __name__ == "__main__":
         log_config=log_config,
         access_log=enable_access_log,
     )
-

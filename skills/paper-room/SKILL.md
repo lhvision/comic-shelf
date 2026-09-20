@@ -76,7 +76,7 @@ metadata:
   `search_by_image`（识图）, `search_by_dialogue`（台词 FTS5）, `query_shelf`（多维检索）, `get_comic_detail`（章节目录元数据）, `recommend_unread`（未读淘书）, `create_direct_pass`（沙箱票据）, `get_shelf_stats`（全库统计）
 - **前端视口操作面 (Frontend WebMCP)**:
   - `书架 (useShelfWebMCP)`: `shelf_search_comics`, `shelf_search_dialogue`, `shelf_search_image`, `shelf_read_comic`, `shelf_pick_random`, `shelf_open_comic`, `shelf_import_comic`
-  - `详情 (useComicDetailWebMCP)`: `detail_start_reading`, `detail_cache_all_pages`, `detail_cache_chapter`, `detail_open_chapter`, `detail_get_comic_info`, `detail_toggle_favorite`, `detail_update_metadata`, `detail_create_direct_pass`
+  - `详情 (useComicDetailWebMCP)`: `detail_start_reading`, `detail_cache_all_pages`, `detail_cache_chapter`, `detail_open_chapter`, `detail_get_comic_info`, `detail_toggle_favorite`, `detail_create_direct_pass`
   - `阅读器 (useReaderWebMCP)`: `reader_jump_to_page`, `reader_turn_page`, `reader_switch_mode`, `reader_switch_fit`, `reader_toggle_auto_turn`, `reader_locate_bubble`, `reader_jump_chapter`
   - `发现 (useDiscoveryWebMCP)`: `discovery_get_ranking`, `discovery_switch_timeframe`, `discovery_ingest_comic`
 

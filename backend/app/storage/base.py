@@ -7,6 +7,7 @@ import logging
 import os
 import shutil
 import threading
+import uuid
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Any
@@ -138,8 +139,8 @@ class ComicStoreBase:
     def reconcile_cached_pages(self, meta: ComicMeta) -> int:
         return self.cached_page_count(meta)
 
-    def _migrate_flat_to_chapter(self, meta: ComicMeta, first_chapter_id: str) -> None:
-        pass
+    def _migrate_flat_to_chapter(self, meta: ComicMeta, first_chapter_id: str) -> list[tuple[Path, Path]]:
+        return []
 
     def _migrate_decode_v2(
         self,
@@ -218,205 +219,215 @@ class ComicStoreBase:
     # persistence
     # ------------------------------------------------------------------
     def save_fetched(self, fetched: FetchedComic, refresh: bool = False) -> ComicMeta:
-        """Atomically persists comic metadata and remote page descriptors to disk."""
-        meta = fetched.meta
+        """Save metadata and page descriptors under the comic lock.
 
-        existing_bundle = self.load_fetched(meta.source, meta.source_id)
-        existing = existing_bundle.meta if existing_bundle is not None else None
+        Preserve local visibility on refresh and restore both JSON files and
+        migrated paths if a write fails. This is exception rollback, not a
+        multi-file transaction across process crashes or power loss.
+        """
+        with self._lock_for(fetched.meta.source, fetched.meta.source_id):
+            meta = fetched.meta
 
-        if refresh and existing is not None:
-            if existing.custom_pages:
-                meta.custom_pages = True
-                meta.pages = existing.pages
-                meta.chapters = existing.chapters
-                meta.page_count = existing.page_count
+            existing_bundle = self.load_fetched(meta.source, meta.source_id)
+            existing = existing_bundle.meta if existing_bundle is not None else None
 
-            meta.imported_at = existing.imported_at or meta.imported_at
-            meta.favorite = existing.favorite
+            if refresh and existing is not None:
+                if existing.custom_pages:
+                    meta.custom_pages = True
+                    meta.pages = existing.pages
+                    meta.chapters = existing.chapters
+                    meta.page_count = existing.page_count
+                    fetched.remote_pages = existing_bundle.remote_pages
 
-            # 单章节升级多章节时，自动将平铺旧文件迁移至首话子目录
-            if not existing.chapters and meta.chapters:
-                self._migrate_flat_to_chapter(meta, meta.chapters[0].id)
+                meta.imported_at = existing.imported_at or meta.imported_at
+                meta.favorite = existing.favorite
+                meta.hidden_from_guest = existing.hidden_from_guest
 
-            for page in meta.pages:
-                target = self._chapter_page_path(meta, page)
-                try:
-                    page.cached = target.exists() and target.stat().st_size > 0
-                except Exception:
-                    page.cached = False
+            album_path = self.album_path(meta.source, meta.source_id)
+            remote_path = self.remote_path(meta.source, meta.source_id)
+            album_path.parent.mkdir(parents=True, exist_ok=True)
+            backup_dir = album_path.parent / f".save-{uuid.uuid4().hex}"
+            backup_dir.mkdir()
+            paths = (remote_path, album_path)
+            try:
+                for path in paths:
+                    if path.exists():
+                        shutil.copy2(path, backup_dir / path.name)
+            except OSError:
+                shutil.rmtree(backup_dir)
+                raise
 
-        _write_json_atomic(self.album_path(meta.source, meta.source_id), meta.model_dump())
-        _write_json_atomic(
-            self.remote_path(meta.source, meta.source_id),
-            {
-                "decode_version": CURRENT_DECODE_VERSION,
-                "remote_pages": [p.model_dump() for p in fetched.remote_pages],
-            },
-        )
-        self._invalidate_cache(meta.source, meta.source_id)
-        return meta
+            moved: list[tuple[Path, Path]] = []
+            try:
+                if refresh and existing is not None:
+                    if not existing.chapters and meta.chapters:
+                        moved = self._migrate_flat_to_chapter(meta, meta.chapters[0].id)
+                    for page in meta.pages:
+                        target = self._chapter_page_path(meta, page)
+                        page.cached = target.exists() and target.stat().st_size > 0
+
+                _write_json_atomic(remote_path, {
+                    "decode_version": CURRENT_DECODE_VERSION,
+                    "remote_pages": [p.model_dump() for p in fetched.remote_pages],
+                })
+                _write_json_atomic(album_path, meta.model_dump())
+            except Exception:
+                # If rollback itself fails, keep .save-* for manual recovery.
+                with self._cache_guard:
+                    self._meta_cache.pop((meta.source, meta.source_id), None)
+                    self._fetched_cache.pop((meta.source, meta.source_id), None)
+                for original, destination in reversed(moved):
+                    destination.replace(original)
+                for path in paths:
+                    backup = backup_dir / path.name
+                    if backup.exists():
+                        backup.replace(path)
+                    else:
+                        path.unlink(missing_ok=True)
+                shutil.rmtree(backup_dir)
+                raise
+            shutil.rmtree(backup_dir)
+            self._invalidate_cache(meta.source, meta.source_id)
+            return meta
 
     def load_meta(self, source: str, source_id: str, verify_cache: bool = False) -> ComicMeta | None:
         """Loads comic metadata from memory cache or album.json with self-healing support."""
-        path = self.album_path(source, source_id)
-        if not path.exists():
-            return None
+        with self._lock_for(source, source_id):
+            path = self.album_path(source, source_id)
+            if not path.exists():
+                return None
 
-        try:
-            mtime = path.stat().st_mtime
-        except Exception:
-            return None
-
-        if not verify_cache:
-            with self._cache_guard:
-                cached = self._meta_cache.get((source, source_id))
-                if cached is not None and cached[0] == mtime:
-                    return cached[1]
-
-        try:
-            meta = ComicMeta.model_validate(json.loads(path.read_text(encoding="utf-8")))
-        except Exception:
-            return None
-
-        if verify_cache:
-            changed = False
-            for page in meta.pages:
-                actual = self._chapter_page_path(meta, page).exists()
-                if page.cached != actual:
-                    page.cached = actual
-                    changed = True
-            if changed:
-                _write_json_atomic(path, meta.model_dump())
-                try:
-                    mtime = path.stat().st_mtime
-                except Exception:
-                    pass
-
-        if (
-            not meta.chapters
-            and meta.pages
-            and any(page.chapter for page in meta.pages)
-        ):
-            raw_chapters = (meta.raw or {}).get("chapters") or []
-            if raw_chapters:
-                rebuilt: list[Chapter] = []
-                for ordinal, item in enumerate(raw_chapters, start=1):
-                    try:
-                        chapter = Chapter.model_validate(item)
-                    except Exception:
-                        continue
-                    chapter.title = " ".join(str(chapter.title).split())
-                    chapter.index = ordinal
-                    rebuilt.append(chapter)
-                if rebuilt:
-                    meta.chapters = rebuilt
-                    _write_json_atomic(path, meta.model_dump())
-                    try:
-                        mtime = path.stat().st_mtime
-                    except Exception:
-                        pass
-
-        # Auto-heal: If PicAcg comic lacks cover_indices, backfill dual-source cover mapping
-        if meta.source == "picacg" and not meta.cover_indices and meta.page_count:
-            meta.cover_indices = ([1] + list(range(1, meta.cover_count)))[: meta.cover_count]
-
-        # Auto-heal: Format raw numeric views / likes if present (e.g. '12222' -> '12k')
-        if meta.views or meta.likes:
-            orig_views = meta.views
-            orig_likes = meta.likes
-            heal_views = format_count(meta.views)
-            heal_likes = format_count(meta.likes)
-            if heal_views != orig_views or heal_likes != orig_likes:
-                meta.views = heal_views
-                meta.likes = heal_likes
-                _write_json_atomic(path, meta.model_dump())
-                try:
-                    mtime = path.stat().st_mtime
-                except Exception:
-                    pass
-
-        # Auto-heal: If comic has chapters but first chapter start > 1 (orphaned flat pages 1..start-1 exist)
-        if meta.chapters and meta.pages and meta.chapters[0].start > 1:
-            orphaned_count = meta.chapters[0].start - 1
-            first_id = "c1"
-            c1 = Chapter(id=first_id, index=1, title="第 1 话", page_count=orphaned_count, start=1)
-            self._migrate_flat_to_chapter(meta, first_id)
-            for p in meta.pages:
-                if p.index < meta.chapters[0].start:
-                    p.chapter = first_id
-            new_chapters = [c1]
-            for idx, ch in enumerate(meta.chapters, start=2):
-                ch.index = idx
-                new_chapters.append(ch)
-            meta.chapters = new_chapters
-            _write_json_atomic(path, meta.model_dump())
             try:
                 mtime = path.stat().st_mtime
             except Exception:
-                pass
+                return None
 
-        with self._cache_guard:
-            self._meta_cache[(source, source_id)] = (mtime, meta)
-        return meta
+            if not verify_cache:
+                with self._cache_guard:
+                    cached = self._meta_cache.get((source, source_id))
+                    if cached is not None and cached[0] == mtime:
+                        return cached[1]
+
+            try:
+                meta = ComicMeta.model_validate(json.loads(path.read_text(encoding="utf-8")))
+            except Exception:
+                return None
+
+            if verify_cache:
+                for page in meta.pages:
+                    page.cached = self._chapter_page_path(meta, page).exists()
+
+            if (
+                not meta.chapters
+                and meta.pages
+                and any(page.chapter for page in meta.pages)
+            ):
+                raw_chapters = (meta.raw or {}).get("chapters") or []
+                if raw_chapters:
+                    rebuilt: list[Chapter] = []
+                    for ordinal, item in enumerate(raw_chapters, start=1):
+                        try:
+                            chapter = Chapter.model_validate(item)
+                        except Exception:
+                            continue
+                        chapter.title = " ".join(str(chapter.title).split())
+                        chapter.index = ordinal
+                        rebuilt.append(chapter)
+                    if rebuilt:
+                        meta.chapters = rebuilt
+
+            # Auto-heal: If PicAcg comic lacks cover_indices, backfill dual-source cover mapping
+            if meta.source == "picacg" and not meta.cover_indices and meta.page_count:
+                meta.cover_indices = ([1] + list(range(1, meta.cover_count)))[: meta.cover_count]
+
+            # Auto-heal: If comic has chapters but first chapter start > 1 (orphaned flat pages 1..start-1 exist)
+            if meta.chapters and meta.pages and meta.chapters[0].start > 1:
+                healed = meta.model_copy(deep=True)
+                orphaned_count = healed.chapters[0].start - 1
+                existing_ids = {chapter.id for chapter in healed.chapters}
+                ordinal = 1
+                while f"c{ordinal}" in existing_ids:
+                    ordinal += 1
+                first_id = f"c{ordinal}"
+                first = Chapter(id=first_id, index=1, title="第 1 话", page_count=orphaned_count, start=1)
+                for page in healed.pages:
+                    if page.index <= orphaned_count:
+                        page.chapter = first_id
+                healed.chapters.insert(0, first)
+                for index, chapter in enumerate(healed.chapters, start=1):
+                    chapter.index = index
+                moved: list[tuple[Path, Path]] = []
+                try:
+                    moved = self._migrate_flat_to_chapter(healed, first_id)
+                    _write_json_atomic(path, healed.model_dump())
+                except OSError as exc:
+                    for original, destination in reversed(moved):
+                        destination.replace(original)
+                    logger.warning("Deferred chapter repair for %s/%s: %s", source, source_id, exc)
+                else:
+                    meta = healed
+                    mtime = path.stat().st_mtime
+
+            # Display-only normalization must not rewrite a stale snapshot or require write access.
+            meta.views = format_count(meta.views)
+            meta.likes = format_count(meta.likes)
+
+            with self._cache_guard:
+                self._meta_cache[(source, source_id)] = (mtime, meta)
+            return meta
 
     def load_fetched(self, source: str, source_id: str, verify_cache: bool = False) -> FetchedComic | None:
         """Loads both metadata and remote page descriptors, executing self-healing decode migrations if needed."""
-        meta = self.load_meta(source, source_id, verify_cache=verify_cache)
-        if meta is None:
-            return None
+        with self._lock_for(source, source_id):
+            meta = self.load_meta(source, source_id, verify_cache=verify_cache)
+            if meta is None:
+                return None
 
-        remote_path = self.remote_path(source, source_id)
-        album_path = self.album_path(source, source_id)
-        try:
-            album_mtime = album_path.stat().st_mtime
-            remote_mtime = remote_path.stat().st_mtime if remote_path.exists() else 0.0
-        except Exception:
-            album_mtime, remote_mtime = 0.0, 0.0
-
-        if not verify_cache:
-            with self._cache_guard:
-                cached = self._fetched_cache.get((source, source_id))
-                if cached is not None and cached[0] == album_mtime and cached[1] == remote_mtime:
-                    return cached[2]
-
-        pages: list[RemotePage] = []
-        data: dict = {}
-        if remote_path.exists():
+            remote_path = self.remote_path(source, source_id)
+            album_path = self.album_path(source, source_id)
             try:
-                data = json.loads(remote_path.read_text(encoding="utf-8"))
-                pages = [RemotePage.model_validate(p) for p in data.get("remote_pages", [])]
+                album_mtime = album_path.stat().st_mtime
+                remote_mtime = remote_path.stat().st_mtime if remote_path.exists() else 0.0
             except Exception:
-                data = {}
-                pages = []
+                album_mtime, remote_mtime = 0.0, 0.0
 
-        if pages and any(not page.scramble_id for page in pages):
-            scramble_id = str(
-                (meta.raw or {}).get("album", {}).get("scramble_id") or ""
-            )
-            for page in pages:
-                if not page.scramble_id:
-                    page.scramble_id = scramble_id
-            data["remote_pages"] = [page.model_dump() for page in pages]
+            if not verify_cache:
+                with self._cache_guard:
+                    cached = self._fetched_cache.get((source, source_id))
+                    if cached is not None and cached[0] == album_mtime and cached[1] == remote_mtime:
+                        return cached[2]
+
+            pages: list[RemotePage] = []
+            data: dict = {}
             if remote_path.exists():
-                _write_json_atomic(remote_path, data)
                 try:
-                    remote_mtime = remote_path.stat().st_mtime
+                    data = json.loads(remote_path.read_text(encoding="utf-8"))
+                    pages = [RemotePage.model_validate(p) for p in data.get("remote_pages", [])]
                 except Exception:
-                    pass
+                    data = {}
+                    pages = []
 
-        version = int(data.get("decode_version", 1) or 1)
-        if version < CURRENT_DECODE_VERSION:
-            with self._lock_for(source, source_id):
+            if pages and any(not page.scramble_id for page in pages):
+                scramble_id = str(
+                    (meta.raw or {}).get("album", {}).get("scramble_id") or ""
+                )
+                for page in pages:
+                    if not page.scramble_id:
+                        page.scramble_id = scramble_id
+                data["remote_pages"] = [page.model_dump() for page in pages]
+
+            version = int(data.get("decode_version", 1) or 1)
+            if version < CURRENT_DECODE_VERSION:
                 self._migrate_decode_v2(meta, pages, remote_path, data)
                 try:
                     remote_mtime = remote_path.stat().st_mtime
                 except Exception:
                     pass
 
-        fetched = FetchedComic(meta=meta, remote_pages=pages)
-        with self._cache_guard:
-            self._fetched_cache[(source, source_id)] = (album_mtime, remote_mtime, fetched)
-        return fetched
+            fetched = FetchedComic(meta=meta, remote_pages=pages)
+            with self._cache_guard:
+                self._fetched_cache[(source, source_id)] = (album_mtime, remote_mtime, fetched)
+            return fetched
 
     # ------------------------------------------------------------------
     # library queries & summary helpers
@@ -462,52 +473,58 @@ class ComicStoreBase:
             cancel_job(source, source_id)
         except Exception:
             pass
-        target = self.comic_dir(source, source_id)
-        existed = target.exists()
-        if existed:
-            shutil.rmtree(target)
-        self._invalidate_cache(source, source_id)
-        db_purged = False
-        try:
-            from ..db import purge_comic_db_records
-            db_purged = bool(purge_comic_db_records(source, source_id))
-        except Exception as e:
-            logger.exception("Failed to purge comic db records for %s/%s: %s", source, source_id, e)
-        return existed or db_purged
+        with self._lock_for(source, source_id):
+            target = self.comic_dir(source, source_id)
+            existed = target.exists()
+            if existed:
+                shutil.rmtree(target)
+            self._invalidate_cache(source, source_id)
+            db_purged = False
+            try:
+                from ..db import purge_comic_db_records
+                db_purged = bool(purge_comic_db_records(source, source_id))
+            except Exception as e:
+                logger.exception("Failed to purge comic db records for %s/%s: %s", source, source_id, e)
+            return existed or db_purged
 
     def update_metadata(self, source: str, source_id: str, updates: dict[str, Any]) -> ComicMeta:
-        meta = self.load_meta(source, source_id)
-        if meta is None:
-            raise HTTPException(status_code=404, detail="漫画不存在")
+        with self._lock_for(source, source_id):
+            meta = self.load_meta(source, source_id)
+            if meta is None:
+                raise HTTPException(status_code=404, detail="漫画不存在")
+            meta = meta.model_copy(deep=True)
 
-        for field in ("title", "authors", "works", "actors", "tags", "description", "uploader", "hidden_from_guest", "custom_pages"):
-            if field in updates and updates[field] is not None:
-                setattr(meta, field, updates[field])
+            for field in ("title", "authors", "works", "actors", "tags", "description", "uploader", "hidden_from_guest", "custom_pages"):
+                if field in updates and updates[field] is not None:
+                    setattr(meta, field, updates[field])
 
-        meta.updated_at = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            meta.updated_at = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
+            if "cover_indices" in updates and updates["cover_indices"] is not None:
+                raw_indices = updates["cover_indices"]
+                max_p = max(1, meta.page_count)
+                valid_indices: list[int] = []
+                for slot_i, item in enumerate(raw_indices, start=1):
+                    default_slot = min(slot_i, max_p)
+                    try:
+                        val = int(item)
+                        if val < 1:
+                            val = 1
+                        elif val > max_p:
+                            val = default_slot
+                        valid_indices.append(val)
+                    except (ValueError, TypeError):
+                        valid_indices.append(default_slot)
+                meta.cover_indices = valid_indices[:4]
+                # Clean old covers so they get regenerated from the new indices
+                covers_dir = self.covers_dir(source, source_id)
+                if covers_dir.exists():
+                    for f in list(covers_dir.iterdir()):
+                        if f.is_file() and f.suffix.lower() in {".jpg", ".jpeg", ".webp"}:
+                            f.unlink(missing_ok=True)
+            _write_json_atomic(self.album_path(source, source_id), meta.model_dump())
+            self._invalidate_cache(source, source_id)
         if "cover_indices" in updates and updates["cover_indices"] is not None:
-            raw_indices = updates["cover_indices"]
-            max_p = max(1, meta.page_count)
-            valid_indices: list[int] = []
-            for slot_i, item in enumerate(raw_indices, start=1):
-                default_slot = min(slot_i, max_p)
-                try:
-                    val = int(item)
-                    if val < 1:
-                        val = 1
-                    elif val > max_p:
-                        val = default_slot
-                    valid_indices.append(val)
-                except (ValueError, TypeError):
-                    valid_indices.append(default_slot)
-            meta.cover_indices = valid_indices[:4]
-            # Clean old covers so they get regenerated from the new indices
-            covers_dir = self.covers_dir(source, source_id)
-            if covers_dir.exists():
-                for f in list(covers_dir.iterdir()):
-                    if f.is_file() and f.suffix.lower() in {".jpg", ".jpeg", ".webp"}:
-                        f.unlink(missing_ok=True)
             # Regenerate covers with active pre-warming (both 720px & 360px WEBP + JPEG)
             fetched = self.load_fetched(source, source_id)
             if fetched is not None:
@@ -518,8 +535,6 @@ class ComicStoreBase:
                     except Exception:
                         pass
 
-        _write_json_atomic(self.album_path(source, source_id), meta.model_dump())
-        self._invalidate_cache(source, source_id)
         return meta
 
     # ------------------------------------------------------------------

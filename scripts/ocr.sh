@@ -153,7 +153,7 @@ case "$ACTION" in
     echo "     --min-score <float>  - OCR 置信度过滤阈值 (默认 0.5，过滤拟声词与背景噪点)"
     echo "     --force              - 强制重新处理已存在的伴生文件"
     echo "     --limit <N>          - 最多处理册数"
-    echo "     --api-url <URL>      - 远程 NAS 纸间 API 地址 (如 http://192.168.31.233:8000)，处理后自动通知入库"
+    echo "     --api-url <URL>      - 远程 NAS 纸间 API 地址 (如 http://192.168.1.100:8000)，处理后自动通知入库"
     echo "     --token <TOKEN>      - 纸间 Machine API Token"
     echo "     --sync-local         - 处理完毕后直接同步本地 SQLite 索引"
     echo "  sync [options]          - 将已存在的伴生文件全量/增量扫入 SQLite FTS5"

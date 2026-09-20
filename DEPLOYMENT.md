@@ -163,6 +163,8 @@ docker run -d \
 
 ### 3.3 性能调优与并发控制（低配 NAS / 进阶调优）
 
+API 工作进程数固定为 1，不属于可调参数；这里的下载与缩略图并发均在同一 API 进程内协调。运行约束见 [并发与故障恢复边界](#11-本地书库的并发与故障恢复边界)。
+
 | 环境变量                               | 默认值 | 说明                                                                                                                                                          |
 | :------------------------------------- | :----- | :------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `COMIC_SHELF_MAX_CONCURRENT_DOWNLOADS` | `3`    | **远端图片下载并发数**。JM 官方 CDN 对高并发极为敏感，建议维持在 `2`~`4`，避免触发风控或请求超时。                                                            |
@@ -174,7 +176,6 @@ docker run -d \
 | `COMIC_SHELF_COVER_THUMB_WIDTH`        | `360`  | 书架阶梯封面 1x 缩略图宽度（px，默认 360 配合 HTML5 srcset 降低低密设备内存开销）。                                                                           |
 | `COMIC_SHELF_COVER_QUALITY`            | `80`   | 大封面 JPEG 质量（默认 80 兼顾微秒级传输与典藏画质）。                                                                                                        |
 | `COMIC_SHELF_COVER_COUNT`              | `4`    | 每本漫画默认生成的封面预览张数。                                                                                                                              |
-| `COMIC_SHELF_WORKERS`                  | `1`    | Uvicorn 工作进程数。多核服务器可适当调大。                                                                                                                    |
 | `COMIC_SHELF_LOG_LEVEL`                | `info` | 后端运行日志级别（可选 `debug`, `info`, `warning`, `error`）。                                                                                                |
 | `COMIC_SHELF_ACCESS_LOG`               | `true` | 是否开启 Uvicorn 请求访问日志。默认已内置高频探针静音过滤（`/api/health` 与搜图状态 200 正常时不输出）；若需彻底关闭访问日志可设为 `false`。                  |
 
@@ -357,10 +358,10 @@ backend/data/
 
    ```bash
    # 批量对指定漫画跑 OCR，并在完成后自动通过 API 通知远程 NAS 入库：
-   bash scripts/ocr.sh run --source jm --id 1059521 --api-url http://192.168.31.233:8000 --token "你的MachineToken"
+   bash scripts/ocr.sh run --source jm --id 1059521 --api-url http://192.168.1.100:8000 --token "你的MachineToken"
 
    # 全库扫描处理（自动跳过已有伴生文件的画页，支持 --limit 限定册数）：
-   bash scripts/ocr.sh run --limit 10 --api-url http://192.168.31.233:8000 --token "你的MachineToken"
+   bash scripts/ocr.sh run --limit 10 --api-url http://192.168.1.100:8000 --token "你的MachineToken"
    ```
 
 3. **宿主机 / NAS 终端一键增量同步已存在的伴生文件**：
@@ -709,8 +710,8 @@ curl -X POST "http://<NAS_IP>:8000/api/mcp/rpc" \
 
 纸间对浏览器端 WebMCP 工具同样进行了安全分层：
 
-- **全员可用（馆长 / 访客 / 单本直达）**：阅读器视口控制（跳页、步进翻页、排版/分屏/日漫方向切换、画面自适应、自动翻页、对白气泡呼吸高亮、跨话切章）与只读检索（书架多维筛选、台词全文检索、以图搜图、随机淘书、榜单浏览）。
-- **馆长专属（Curator Only）**：远端/本地漫画收录（`shelf_import_comic` / `discovery_ingest_comic`）、全本/单话离线预缓存下载（`detail_cache_all_pages` / `detail_cache_chapter`）、漫画典藏元数据就地修改（`detail_update_metadata`）。对于访客会话，前端在注册层直接掐断（`undefined` 不注册进 `document.modelContext`，浏览器 AI Agent 零感知零污染）；若直接向后端 API 发起未授权写入，后端安全中间件将严格执行 403 权限阻断。
+- **馆长与普通访客可用**：阅读器视口控制（跳页、步进翻页、排版/分屏/日漫方向切换、画面自适应、自动翻页、对白气泡呼吸高亮、跨话切章）与只读检索（书架多维筛选、台词全文检索、以图搜图、随机淘书、榜单浏览）。单本直达会话关闭全部 WebMCP 工具注册，仅通过受限阅读界面操作。
+- **馆长专属（Curator Only）**：远端/本地漫画收录（`shelf_import_comic` / `discovery_ingest_comic`）、全本/单话离线预缓存下载（`detail_cache_all_pages` / `detail_cache_chapter`）。对于访客会话，前端在注册层直接掐断（`undefined` 不注册进 `document.modelContext`，浏览器 AI Agent 零感知零污染）；若直接向后端 API 发起未授权写入，后端安全中间件将严格执行 403 权限阻断。
 
 ---
 
@@ -721,3 +722,25 @@ curl -X POST "http://<NAS_IP>:8000/api/mcp/rpc" \
 - `package.json` 使用 `vite-plus` 与 `vite` override；
 - `Dockerfile` 构建阶段直接使用 `pnpm build` 调用本地打包器；
 - Docker 部署环境无需额外安装 `vp` CLI。
+
+## 11. 本地书库的并发与故障恢复边界
+
+API 启动器 `backend/server.py` 固定使用一个工作进程，不提供进程数配置。同一书库只运行一个 API 实例；不要通过直接运行 Uvicorn 多 worker 或多个容器共享同一书库绕过限制。请求线程、下载并发和 OCR 工作线程仍可并发执行。
+
+旧配置 `COMIC_SHELF_WORKERS` 已移除，残留值不影响启动；`WEB_CONCURRENCY` 也不会覆盖固定值。旧启动命令中的 `--workers` 会报未知参数，需要删除。开发热重载仍可使用，它的监控进程不等于多个 API worker 同时写库。
+
+| 场景                                           | 当前保障                                                                                   |
+| :--------------------------------------------- | :----------------------------------------------------------------------------------------- |
+| 远端刷新                                       | 保留本地 `hidden_from_guest` 隐藏设置。                                                    |
+| 下载期间刷新、重新装订或删除                   | 提交原图前在漫画锁内复核画卷状态；过期下载取消，不覆盖现有画页，不重建已删除漫画。         |
+| 读取计数、缓存校验、从 `raw.chapters` 重建目录 | 只修正内存结果，不因这些修正要求磁盘写权限；需要实际解密或移动图片的旧数据迁移仍涉及写入。 |
+| `save_fetched` 保存两份 JSON、升级平铺目录     | 保存旧元数据副本；可捕获的异常触发 JSON 与本次移动文件的回退。回退也可能因存储故障失败。   |
+| 多实例、断电、强杀进程                         | 不提供跨进程协调或跨文件的自动事务恢复。                                                   |
+
+`.save-<随机编号>/` 位于对应漫画目录，仅保存该次保存前存在的 `album.json` 与 `remote.json`，不是图片或 SQLite 的完整备份。保存成功或回退成功后会清理；回退失败、清理失败或进程中断可能留下目录。没有启动时自动恢复流程，不能仅凭目录存在就判断本次保存成功或失败。
+
+发现残留备份时，先停止 API，保留漫画目录和 `.save-*` 的副本，再对照日志、当前 JSON 与实际画页路径核对。回退中途失败可能已经恢复了其中一个 JSON，备份也可能不完整；不要直接批量覆盖或删除。涉及画页内容缺失时优先使用整库快照恢复。
+
+上述回退不覆盖所有写操作：重新装订的目录替换、删除章节、删除漫画不具备图片与元数据的整体事务，处理中途出现 I/O 故障仍可能需要人工恢复。重要书库应保留 NAS 快照或独立备份；当前不引入事务日志和崩溃恢复系统。
+
+针对性验证：`pnpm test:py storage_metadata server_workers auth` 覆盖刷新权限保留、旧下载失效、保存失败回退、回退失败备份保留、固定单 worker 与鉴权。它不替代真实 NAS/SMB 断电测试。

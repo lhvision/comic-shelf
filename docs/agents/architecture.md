@@ -183,6 +183,13 @@ JmImageTool.decode_and_save(num, source_image, save_path)
   然后删除旧封面，让封面从成品图重建。
 - 不要随便把 `CURRENT_DECODE_VERSION` 改成 2 以上；只有图片管线变更时才加迁移逻辑。
 
+### 存储并发与保存边界
+
+- `backend/server.py` 固定单 API worker；漫画锁、缓存和后台任务均为进程内状态，同一书库不支持多个写实例。
+- 下载网络 I/O 不持漫画锁；原图提交前重新获取漫画锁，校验目录及远端描述版本，并检查当前画页路径和重新装订保护。不要只校验缓存标记而漏掉图片替换。
+- `save_fetched` 在刷新时保留本地隐藏状态，并在保存前备份两份 JSON；可捕获的失败会回退本次迁移与 JSON。这个保障不等于断电事务，也不覆盖删除或重新装订的全部步骤。
+- 验证对应 `backend/tests/test_storage_metadata.py` 与 `backend/tests/test_server_workers.py`；运维处理见 [部署指南 §11](../../DEPLOYMENT.md#11-本地书库的并发与故障恢复边界)。
+
 ### 4.5 多章节不变量
 
 - **全局页码拍平**：`ComicMeta.pages` 按全书拍平（1..`page_count`），每页带 `chapter`。
@@ -193,7 +200,7 @@ JmImageTool.decode_and_save(num, source_image, save_path)
   `pages/<chapter>/<file>`。
 - **旧多章缓存本地回填（不重新下载）**：曾在某个窗口导入的多章缓存，页面带 `chapter`
   但没有 `ComicMeta.chapters`（只落在 `raw.chapters`）。读取时用 `raw.chapters` 本地重建
-  `chapters`（压平标题空白）并原位修复 `album.json`，和 v1→v2 迁移同一哲学——不碰远端。
+  `chapters`（压平标题空白），仅修正内存结果，不为目录重建写回 `album.json`，不请求远端。
 - **Provider 边界**：章节概念只存在于 provider 的 `fetch()`（读 `album.episode_list`）；
   storage / API 只认 `Chapter{id,index,title,page_count,start}`，不感知禁漫具体字段。
 - **画页物理文件名单源事实（PageRecord.file 契约）**：无论是单章节扁平目录（`pages/<file>`）还是多章节子目录（`pages/<chapter>/<file>`），磁盘上的物理文件名统一以 `PageRecord.file` 为唯一真理（存储解析器强制使用 `Path(page.file).name` 防越权沙箱校验）。多章节内部画页在物理磁盘上是话内局域序号（如 `00001.webp`），而 `page.index` 是全书全局扁平页码（如 `15`），**严禁**在存储路径解析器中依据全局页码合成物理路径（如 `f"{page.index:05d}{ext}"`）。
