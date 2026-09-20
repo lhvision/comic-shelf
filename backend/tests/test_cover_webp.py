@@ -112,6 +112,19 @@ class TestWebPCover(unittest.TestCase):
             self.assertEqual(im.format, "WEBP")
             self.assertEqual(im.width, 360)
 
+    def test_resolve_cover_page_index_clamps_out_of_range(self):
+        meta = ComicMeta(
+            source="local",
+            source_id="clamp",
+            display_id="LOC_clamp",
+            title="clamp",
+            page_count=12,
+            cover_count=4,
+            cover_indices=[1, 5, 10, 99],
+        )
+        self.assertEqual(self.store._resolve_cover_page_index(meta, 1), 1)
+        self.assertEqual(self.store._resolve_cover_page_index(meta, 4), 12)
+
     def test_cover_indices_active_prewarming(self):
         fetched = self._setup_sample_comic("local", "c3")
         meta = fetched.meta

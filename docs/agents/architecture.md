@@ -204,7 +204,7 @@ JmImageTool.decode_and_save(num, source_image, save_path)
 - **Provider 边界**：章节概念只存在于 provider 的 `fetch()`（读 `album.episode_list`）；
   storage / API 只认 `Chapter{id,index,title,page_count,start}`，不感知禁漫具体字段。
 - **画页物理文件名单源事实（PageRecord.file 契约）**：无论是单章节扁平目录（`pages/<file>`）还是多章节子目录（`pages/<chapter>/<file>`），磁盘上的物理文件名统一以 `PageRecord.file` 为唯一真理（存储解析器强制使用 `Path(page.file).name` 防越权沙箱校验）。多章节内部画页在物理磁盘上是话内局域序号（如 `00001.webp`），而 `page.index` 是全书全局扁平页码（如 `15`），**严禁**在存储路径解析器中依据全局页码合成物理路径（如 `f"{page.index:05d}{ext}"`）。
-- **封面归属与全生命周期预热**：封面默认取全局前 `cover_count` 页（或馆长指定的 `cover_indices`）。在导入作品（`import_comic`）、元数据更新（`update_metadata`）、重新装订（`rebind_archive`）与后台异步预热（`prefetch_comic`/`prefetch_chapter`）时，系统均同步预热生成 720px 基准图与 360px 缩略图的双模（WebP + JPEG）物理缓存。封面与画页端点严格遵守 HTTP 状态语义（底层画页缺失、自定义装订缺失或未导入时响应 404 Not Found，严禁误抛 502）。
+- **封面归属与全生命周期预热**：封面默认取全局前 `cover_count` 页（或馆长指定的 `cover_indices`）。路径导入创建时允许暂存越界页码（页数当时未知）；`_resolve_cover_page_index` 读取时夹到 `1..page_count`，`update_metadata` 写入时同样纠偏。在导入作品（`import_comic`）、元数据更新（`update_metadata`）、重新装订（`rebind_archive`）与后台异步预热（`prefetch_comic`/`prefetch_chapter`）时，系统均同步预热生成 720px 基准图与 360px 缩略图的双模（WebP + JPEG）物理缓存。封面与画页端点严格遵守 HTTP 状态语义（底层画页缺失、自定义装订缺失或未导入时响应 404 Not Found，严禁误抛 502）。
 
 ### 4.6 全源画卷重新装订与复合章节智能分话（ADR 0020）
 

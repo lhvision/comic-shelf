@@ -23,6 +23,23 @@ export interface UseLocalWorkshopOptions {
   dropAreaRef?: Readonly<Ref<HTMLElement | null>> | Ref<HTMLElement | null>
 }
 
+/**
+ * 封面页码上限：暂存 PDF 用总页数；路径导入未知页数时不封顶；网页上传用已暂存张数。
+ *
+ * @param stagedPdfTotalPages 暂存 PDF 的总页数；无 PDF 时传 `null`
+ * @param mode 工坊当前模式
+ * @param stagedFilesCount 已暂存图片张数（上传模式）
+ */
+export function resolveCoverMaxPage(
+  stagedPdfTotalPages: number | null,
+  mode: 'upload' | 'path',
+  stagedFilesCount: number,
+): number | null {
+  if (stagedPdfTotalPages != null) return stagedPdfTotalPages
+  if (mode === 'path') return null
+  return stagedFilesCount || 1
+}
+
 export function useLocalWorkshop(options: UseLocalWorkshopOptions = {}) {
   const router = useRouter()
   const store = useLibraryStore()
@@ -258,11 +275,13 @@ export function useLocalWorkshop(options: UseLocalWorkshopOptions = {}) {
   /**
    * 封面页码上限。路径导入时尚未知道画页总数，传 `null` 表示不封顶，避免被卡成 1/1/1/1。
    */
-  const coverMaxPage = computed<number | null>(() => {
-    if (stagedPdfMeta.value) return stagedPdfMeta.value.total_pages
-    if (mode.value === 'path') return null
-    return totalStagedFilesCount.value || 1
-  })
+  const coverMaxPage = computed<number | null>(() =>
+    resolveCoverMaxPage(
+      stagedPdfMeta.value ? stagedPdfMeta.value.total_pages : null,
+      mode.value,
+      totalStagedFilesCount.value,
+    ),
+  )
 
   const currentChapterFiles = computed<File[]>({
     get: () =>

@@ -59,11 +59,27 @@ describe('CoverIndicesPicker', () => {
       },
     })
     const inputs = wrapper.findAll('input')
+    expect(inputs[0]!.attributes('max')).toBeUndefined()
     await inputs[0]!.setValue(25)
     await inputs[0]!.trigger('blur')
     const emitted = wrapper.emitted('update:modelValue')!
     const lastEmit = emitted[emitted.length - 1]![0] as number[]
     expect(lastEmit[0]).toBe(25)
     expect(wrapper.text()).toContain('页数未知')
+  })
+
+  it('does not clamp when maxPage is omitted', async () => {
+    const wrapper = mount(CoverIndicesPicker, {
+      props: {
+        modelValue: [1, 2, 3, 4],
+      },
+    })
+    const inputs = wrapper.findAll('input')
+    expect(inputs[0]!.attributes('max')).toBeUndefined()
+    await inputs[0]!.setValue(25)
+    await inputs[0]!.trigger('blur')
+    const emitted = wrapper.emitted('update:modelValue')!
+    const lastEmit = emitted[emitted.length - 1]![0] as number[]
+    expect(lastEmit[0]).toBe(25)
   })
 })

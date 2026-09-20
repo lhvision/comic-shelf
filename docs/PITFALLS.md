@@ -1587,6 +1587,15 @@
   1. **父目录就近隐藏文件 + 纳秒级 PID 隔离 + `O_EXCL`**：在目标文件同目录下创建隐藏临时文件（如 `path.parent / f".{path.name}.tmp.{os.getpid()}_{time.time_ns()}"`），用 `os.open(..., O_CREAT|O_EXCL|O_WRONLY, 0o666)` 继承宿主 `umask`（`0644`/`0666`），既避免 `mkstemp` 的 0600 锁死，也挡住同名 symlink 抢写；
   2. **严格同卷原子刷盘与替换**：写入后执行 `f.flush()` 与 `os.fsync(f.fileno())` 请求刷盘，再通过 `os.replace` 在同卷下原子替换单个文件；正常退出路径清理临时文件。单文件替换不等于多文件事务，也不保证强杀、断电或存储故障时无残留；保障与备份处理见 [部署指南 §11](../DEPLOYMENT.md#11-本地书库的并发与故障恢复边界)。
 
+### 135. 路径导入封面选择器被未知页数锁成 1/1/1/1 (Unknown Page Count Cover Picker Clamp Trap)
+
+- **本质**：把「还没有暂存文件」当成「这本书只有 1 页」。`totalStagedFilesCount || 1` 或 `CoverIndicesPicker` 默认 `maxPage: 1` 会给路径导入加上 HTML `max=1`，blur 纠偏后再把四槽打成 1/1/1/1。
+- **复现场景**：自建工坊切到「服务器目录导入」，封面页码无法填写实际画页（如 25）。
+- **红线与防误伤**：
+  - **不要**用上传暂存张数的 `|| 1` 回退去封顶路径导入；
+  - **不要**给 `CoverIndicesPicker` 默认 `maxPage: 1`（省略 prop 必须表示未知页数、不封顶）；
+  - **放行/改用**路径模式传 `maxPage=null`；已知页数（上传张数、PDF 总页、编辑资料的 `page_count`）才封顶。越界页码创建时原样写入，读取封面由 `_resolve_cover_page_index` 夹到 `1..page_count`。
+
 ---
 
 ## 🚦 交付门禁（四步必跑）

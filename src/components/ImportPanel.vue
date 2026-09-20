@@ -87,7 +87,7 @@ const PANEL_HINTS: Record<string, string> = {
   jm: '输入禁漫车号。首次收录会读取元数据并缓存前 4 页做封面；之后永远先读本地，不再打扰远端。',
   picacg: '输入哔咔 24 位 ID，或直接粘贴网页分享链接（如 picawang.com/comic/5ebe...）。',
   local:
-    '输入服务器目录（如 public/tiya-frames 或 /comics）一键扫描收录；未填车号时用文件夹或文件名作本地标识，同卷优先硬链接零拷贝。',
+    '输入服务器目录（如 public/tiya-frames 或 /comics）一键扫描收录；未填车号时用文件夹或文件名作本地标识，同卷优先硬链接零拷贝。白名单见 COMIC_SHELF_ALLOWED_DIRS。',
 }
 
 const panelTitle = computed(() => PANEL_TITLES[activeTab.value] ?? '收录作品')
