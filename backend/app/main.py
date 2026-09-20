@@ -27,6 +27,7 @@ from .auth import (
     is_machine,
 )
 from .config import ENABLE_DOCS, LIBRARY_DIR
+from .storage.utils import acquire_library_writer_lock
 from .db import (
     clean_expired_direct_passes,
     get_all_indexed_mtimes,
@@ -125,10 +126,10 @@ def _migrate_existing_favorites_to_db() -> None:
         legacy_favs = []
         if LIBRARY_DIR.exists():
             for s_dir in LIBRARY_DIR.iterdir():
-                if not s_dir.is_dir():
+                if not s_dir.is_dir() or s_dir.name.startswith("."):
                     continue
                 for c_dir in s_dir.iterdir():
-                    if not c_dir.is_dir():
+                    if not c_dir.is_dir() or c_dir.name.startswith("."):
                         continue
                     meta = store.load_meta(s_dir.name, c_dir.name)
                     if meta and getattr(meta, "favorite", False):
@@ -148,10 +149,10 @@ def sync_library_index(store: ComicStore) -> None:
         disk_keys: set[tuple[str, str]] = set()
 
         for source_dir in store.root.iterdir():
-            if not source_dir.is_dir():
+            if not source_dir.is_dir() or source_dir.name.startswith("."):
                 continue
             for comic_dir in source_dir.iterdir():
-                if not comic_dir.is_dir():
+                if not comic_dir.is_dir() or comic_dir.name.startswith("."):
                     continue
                 source, source_id = source_dir.name, comic_dir.name
                 disk_keys.add((source, source_id))
@@ -203,16 +204,24 @@ def sync_library_index(store: ComicStore) -> None:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    lock_fd = acquire_library_writer_lock(LIBRARY_DIR)
     try:
-        init_db()
-        clean_expired_direct_passes()
-        _migrate_existing_favorites_to_db()
-        sync_library_index(store)
-        store._cleanup_staged_pdfs(max_age_seconds=0)
-    except Exception as exc:
-        logger.warning("Startup initialization error: %s", exc)
-    yield
-    shutdown_events()
+        try:
+            init_db()
+            clean_expired_direct_passes()
+            _migrate_existing_favorites_to_db()
+        except Exception as exc:
+            logger.warning("Startup initialization error: %s", exc)
+        store.recover_interrupted_saves()
+        try:
+            sync_library_index(store)
+            store._cleanup_staged_pdfs(max_age_seconds=0)
+        except Exception as exc:
+            logger.warning("Startup initialization error: %s", exc)
+        yield
+    finally:
+        os.close(lock_fd)
+        shutdown_events()
 
 
 app = FastAPI(

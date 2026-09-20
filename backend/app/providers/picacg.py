@@ -26,7 +26,8 @@ from ..config import (
 )
 from ..gate import download_gate
 from ..models import Chapter, ComicMeta, DiscoveryItem, FetchedComic, PageRecord, RemotePage
-from .base import ComicProvider, format_count
+from ..formatting import format_count
+from .base import ComicProvider
 
 logger = logging.getLogger(__name__)
 

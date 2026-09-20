@@ -185,10 +185,10 @@ JmImageTool.decode_and_save(num, source_image, save_path)
 
 ### 存储并发与保存边界
 
-- `backend/server.py` 固定单 API worker；漫画锁、缓存和后台任务均为进程内状态，同一书库不支持多个写实例。
+- `backend/server.py` 固定单 API worker；启动时对书库目录加 `library/.writer.lock` 排他锁。漫画锁、缓存和后台任务均为进程内状态，同一书库不支持多个写实例。
 - 下载网络 I/O 不持漫画锁；原图提交前重新获取漫画锁，校验目录及远端描述版本，并检查当前画页路径和重新装订保护。不要只校验缓存标记而漏掉图片替换。
-- `save_fetched` 在刷新时保留本地隐藏状态，并在保存前备份两份 JSON；可捕获的失败会回退本次迁移与 JSON。这个保障不等于断电事务，也不覆盖删除或重新装订的全部步骤。
-- 验证对应 `backend/tests/test_storage_metadata.py` 与 `backend/tests/test_server_workers.py`；运维处理见 [部署指南 §11](../../DEPLOYMENT.md#11-本地书库的并发与故障恢复边界)。
+- `save_fetched` 在刷新时保留本地隐藏状态，并在保存前把 JSON 备份进 `library/.work/.save-*`；可捕获的失败会回退本次迁移与 JSON。进程中断且残留 `.in-progress` 时，下次启动把上一份 JSON 复制回去，若备份里有装订/暂存建卷前的画页目录也一并还原；恢复失败则启动失败。删除整本先改名进 `library/.work/.deleted-*`。启动只 `iterdir` `.work`，不遍历漫画目录。追加画页不回滚已写入的文件。路径 PDF 首次导入没有旧画页可还原，中断后按首次保存清掉半成品目录。
+- 验证对应 `backend/tests/test_storage_metadata.py`、`backend/tests/test_replace_pages.py` 与 `backend/tests/test_server_workers.py`；运维处理见 [部署指南 §11](../../DEPLOYMENT.md#11-本地书库的并发与故障恢复边界)。不引入 WAL 或跨文件事务。
 
 ### 4.5 多章节不变量
 
@@ -240,11 +240,11 @@ JmImageTool.decode_and_save(num, source_image, save_path)
   - 物理删除该章节目录 `pages/<chapter_id>/`；
   - **连续单调自愈重排（核心）**：自动重编全书剩余章节的 `start` 与各页全局 `index`，保证全书页码 $1 \dots N$ 严格单调递增，不留断层；
   - 自动重新生成受影响章节的封面与整本封面。
-- **临时暂存区物理释放、冷启动清扫与原子替换**：
+- **临时暂存区物理释放、冷启动清扫与目录切换**：
   - 上传取消或重设时调用 `DELETE /api/library/local/staged-pdf/{staging_token}` 物理删除暂存工作区；
   - 后台常驻 1 小时自动 TTL 清理任务，所有内部解包操作包裹 `try...finally` 保障零孤儿文件泄露；
   - FastAPI 启动 `lifespan` 钩入立即清扫（`_cleanup_staged_pdfs(max_age_seconds=0)`），根治服务异常关机残留；
-  - 暂存分步建卷（`create_from_staged_pdf`）采用 `_lock_for` 互斥保护，页面先组装在临时隔离目录再由 `_atomic_swap_dir` 原子替换，章节起始页严格绑定后端权威单调写入计数器 `chap_start_page = global_idx`。
+  - 暂存分步建卷（`create_from_staged_pdf`）采用 `_lock_for` 互斥保护，页面先组装在 `library/.work/.tmp_create_pages-*` 再由 `_replace_live_with_staging` 切到目标目录（旧目录进 `.work/.save-*`），章节起始页严格绑定后端权威单调写入计数器 `chap_start_page = global_idx`。
 - **安全拦截守卫**：`MAX_PDF_PAGES = 5000` 拦截解压炸弹；Web 上传 1GB 上限 + 1MB 分块流式落盘防 OOM；密码加密 PDF 友好阻断；slug 碰撞校验返回 409 Conflict。
 
 ### 4.8 权限角色、机器令牌与单本沙箱隔离规范（Role Matrix & Sandbox Isolation）

@@ -45,7 +45,7 @@
 6. **六层安全防护与自愈隔离机制（Six-Layer Security Hardening & Lifecycle Isolation）**：
    - **路径与沙箱安全**：`staging_token` 严格受控于 32 位十六进制正则；服务端路径受限于 `COMIC_SHELF_ALLOWED_DIRS` 白名单与软链接穿透保护；
    - **解压炸弹与 OOM 防护**：`MAX_PDF_PAGES = 5000` 刚性上限拦截；Web 上传采用 1GB 上限与 1MB 流式分块写入；探测加密 PDF 友好拦截；光栅化渲染尺寸 3500px 熔断限制；
-   - **并发互斥与原子目录交换（Atomic Staging Swap）**：`create_from_staged_pdf` 采用 `_lock_for("local", source_id)` 全局并发锁并实施 slug 碰撞检查（409 Conflict）；文件组装先落盘于 `.tmp_create_pages_<token>` 临时区，生成完毕后通过 `_atomic_swap_dir` 原子替换目标目录，失败自动回滚，彻底杜绝半拉子残缺卷；
+   - **并发互斥与目录切换（Staging Swap）**：`create_from_staged_pdf` 采用 `_lock_for("local", source_id)` 全局并发锁并实施 slug 碰撞检查（409 Conflict）；文件组装先落盘于 `library/.work/.tmp_create_pages-*`，生成完毕后通过 `_replace_live_with_staging` 把旧目录放进 `.work/.save-*` 再切换，进程内失败回退，启动时按 `.in-progress` 恢复。这不是跨文件事务；崩溃恢复边界见 [部署指南 §11](../../DEPLOYMENT.md#11-本地书库的并发与故障恢复边界)；
    - **全生命周期与冷启动清理**：暴露 `DELETE /api/library/local/staged-pdf/{staging_token}` 物理释放接口；后台常驻 1 小时自动 TTL 垃圾回收；FastAPI 启动 `lifespan` 钩入无条件清扫（`max_age_seconds=0`），宿主机异常重启后残存孤儿暂存零泄漏；所有解包调用收敛于 `try...finally` 清理保底；
    - **权威后端单调索引指针（Monotonic Page Invariant）**：无论客户端传入何种章节 `start`，后端一律以内部全局递增写入计数器 `chap_start_page = global_idx` 强制约束，捍卫核心不变量 #3；
    - **删除断层自愈（Self-Healing Page Re-indexing）**：删除指定章节（`DELETE /api/library/{source}/{source_id}/chapters/{chapter_id}`）时，全书剩余章节与全局单调页号自动无缝压实连续重排（$1 \dots N$），绝不留空洞或错页；整本删除（`DELETE /api/library/{source}/{source_id}`）连带清除本地图片、SQLite 索引与全文检索台词。

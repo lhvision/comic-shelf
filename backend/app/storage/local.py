@@ -146,24 +146,6 @@ class ComicStoreLocalMixin:
                 detail=f"图片文件损坏或不是有效图片（{filename}）：{exc}",
             ) from exc
 
-    @staticmethod
-    def _atomic_swap_dir(staging_dir: Path, target_dir: Path, backup_name: str = ".pages_old") -> None:
-        """Atomically replace target_dir with staging_dir, falling back to backup on failure."""
-        backup_dir = target_dir.parent / backup_name
-        if backup_dir.exists():
-            shutil.rmtree(backup_dir, ignore_errors=True)
-        if target_dir.exists():
-            target_dir.rename(backup_dir)
-
-        try:
-            staging_dir.rename(target_dir)
-            shutil.rmtree(backup_dir, ignore_errors=True)
-        except Exception:
-            if backup_dir.exists() and not target_dir.exists():
-                backup_dir.rename(target_dir)
-            shutil.rmtree(staging_dir, ignore_errors=True)
-            raise
-
     def _schedule_initial_and_auxiliary_covers(self: Any, meta: ComicMeta, fetched: FetchedComic) -> None:
         """Generates primary cover synchronously and schedules auxiliary and chapter covers in background."""
         source_id = meta.source_id
@@ -570,8 +552,10 @@ class ComicStoreLocalMixin:
             target_pages_dir = self.pages_dir("local", source_id)
             comic_dir = self.comic_dir("local", source_id)
             comic_dir.mkdir(parents=True, exist_ok=True)
-            staging_work_dir = comic_dir / f".tmp_create_pages_{int(time.time() * 1000)}"
-            staging_work_dir.mkdir(parents=True, exist_ok=True)
+            album_path = self.album_path("local", source_id)
+            remote_path = self.remote_path("local", source_id)
+            backup_dir = self._begin_metadata_backup(album_path, remote_path)
+            staging_work_dir = self._new_work_item(".tmp_create_pages")
 
             pages: list[PageRecord] = []
             remote_pages: list[RemotePage] = []
@@ -630,8 +614,11 @@ class ComicStoreLocalMixin:
                         remote_pages.append(RemotePage(index=global_idx, url="", file=dest_name, ext=ext, chapter=""))
                         global_idx += 1
 
-                self._atomic_swap_dir(staging_work_dir, target_pages_dir)
+                self._replace_live_with_staging(backup_dir, staging_work_dir, target_pages_dir)
             except Exception:
+                self._rollback_metadata_backup(
+                    backup_dir, (remote_path, album_path), "local", source_id
+                )
                 shutil.rmtree(staging_work_dir, ignore_errors=True)
                 raise
             finally:
@@ -661,7 +648,11 @@ class ComicStoreLocalMixin:
             )
 
             fetched = FetchedComic(meta=meta, remote_pages=remote_pages)
-            self.save_fetched(fetched, refresh=False)
+            try:
+                self.save_fetched(fetched, refresh=False, backup_dir=backup_dir)
+            except Exception:
+                shutil.rmtree(staging_work_dir, ignore_errors=True)
+                raise
 
             self._schedule_initial_and_auxiliary_covers(meta, fetched)
             return meta
@@ -893,7 +884,7 @@ class ComicStoreLocalMixin:
                 logger.warning("Failed to generate cover for new chapter %s: %s", new_chap_id, e)
 
         meta.updated_at = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        self.save_fetched(fetched, refresh=True)
+        self.save_fetched(fetched, refresh=False)
         return meta
 
     def append_pages(
@@ -1144,16 +1135,15 @@ class ComicStoreLocalMixin:
                         fetched.remote_pages = rebuilt_remote
                         meta.page_count = len(meta.pages)
 
+                if source != "local":
+                    meta.custom_pages = True
+
+                meta.updated_at = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                self.save_fetched(fetched, refresh=False)
+                return meta
             finally:
                 for d in pdf_temp_dirs:
                     shutil.rmtree(d, ignore_errors=True)
-
-            if source != "local":
-                meta.custom_pages = True
-
-            meta.updated_at = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            self.save_fetched(fetched, refresh=True)
-            return meta
 
     def replace_pages(
         self: Any,
@@ -1213,11 +1203,7 @@ class ComicStoreLocalMixin:
                 if not valid_items:
                     raise HTTPException(status_code=400, detail="未提供有效的图片或 PDF 画卷文件")
 
-                comic_dir = self.pages_dir(source, source_id).parent
-                staging_dir = comic_dir / ".tmp_replace"
-                if staging_dir.exists():
-                    shutil.rmtree(staging_dir, ignore_errors=True)
-                staging_dir.mkdir(parents=True, exist_ok=True)
+                staging_dir = self._new_work_item(".tmp_replace")
 
                 for _idx, (filename, _ext, content_or_path) in enumerate(valid_items, start=1):
                     try:
@@ -1246,19 +1232,18 @@ class ComicStoreLocalMixin:
                         staged_names.append((dest_name, ext))
 
                     chap_dir = target_pages_dir / self._safe(target_chapter)
-                    backup_chap_dir = target_pages_dir / f".tmp_chap_old_{self._safe(target_chapter)}"
-                    if backup_chap_dir.exists():
-                        shutil.rmtree(backup_chap_dir, ignore_errors=True)
-
-                    if chap_dir.exists():
-                        chap_dir.rename(backup_chap_dir)
-
+                    album_path = self.album_path(source, source_id)
+                    remote_path = self.remote_path(source, source_id)
+                    backup_dir = self._begin_metadata_backup(album_path, remote_path)
+                    installed = False
                     try:
-                        staging_dir.rename(chap_dir)
-                        shutil.rmtree(backup_chap_dir, ignore_errors=True)
+                        self._replace_live_with_staging(backup_dir, staging_dir, chap_dir)
+                        installed = True
                     except Exception:
-                        if backup_chap_dir.exists() and not chap_dir.exists():
-                            backup_chap_dir.rename(chap_dir)
+                        if not installed:
+                            self._rollback_metadata_backup(
+                                backup_dir, (remote_path, album_path), source, source_id
+                            )
                         shutil.rmtree(staging_dir, ignore_errors=True)
                         raise
 
@@ -1292,6 +1277,13 @@ class ComicStoreLocalMixin:
                     meta.page_count = len(meta.pages)
                     meta.custom_pages = True
 
+                    meta.updated_at = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                    try:
+                        self.save_fetched(fetched, refresh=False, backup_dir=backup_dir)
+                    except Exception:
+                        shutil.rmtree(staging_dir, ignore_errors=True)
+                        raise
+
                     chap_thumbs_dir = self.thumbs_dir(source, source_id) / self._safe(target_chapter)
                     if chap_thumbs_dir.exists():
                         shutil.rmtree(chap_thumbs_dir, ignore_errors=True)
@@ -1309,9 +1301,6 @@ class ComicStoreLocalMixin:
                                 self.ensure_webp_cover(meta, fetched, i, COVER_THUMB_WIDTH)
                             except Exception as e:
                                 logger.warning("Failed to regenerate cover %d for %s/%s: %s", i, source, source_id, e)
-
-                    meta.updated_at = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                    self.save_fetched(fetched, refresh=True)
                     return meta
 
                 else:
@@ -1369,7 +1358,20 @@ class ComicStoreLocalMixin:
                             shutil.rmtree(staging_dir, ignore_errors=True)
                             raise
 
-                        self._atomic_swap_dir(staging_dir, target_pages_dir)
+                        album_path = self.album_path(source, source_id)
+                        remote_path = self.remote_path(source, source_id)
+                        backup_dir = self._begin_metadata_backup(album_path, remote_path)
+                        installed = False
+                        try:
+                            self._replace_live_with_staging(backup_dir, staging_dir, target_pages_dir)
+                            installed = True
+                        except Exception:
+                            if not installed:
+                                self._rollback_metadata_backup(
+                                    backup_dir, (remote_path, album_path), source, source_id
+                                )
+                            shutil.rmtree(staging_dir, ignore_errors=True)
+                            raise
 
                         meta.pages = rebuilt_pages
                         fetched.remote_pages = rebuilt_remote
@@ -1387,7 +1389,20 @@ class ComicStoreLocalMixin:
                                 dest_path.write_bytes(content_or_path)
                             staged_names.append((dest_name, ext))
 
-                        self._atomic_swap_dir(staging_dir, target_pages_dir)
+                        album_path = self.album_path(source, source_id)
+                        remote_path = self.remote_path(source, source_id)
+                        backup_dir = self._begin_metadata_backup(album_path, remote_path)
+                        installed = False
+                        try:
+                            self._replace_live_with_staging(backup_dir, staging_dir, target_pages_dir)
+                            installed = True
+                        except Exception:
+                            if not installed:
+                                self._rollback_metadata_backup(
+                                    backup_dir, (remote_path, album_path), source, source_id
+                                )
+                            shutil.rmtree(staging_dir, ignore_errors=True)
+                            raise
 
                         new_pages = [
                             PageRecord(index=i, file=dest_name, ext=ext, cached=True, chapter="")
@@ -1405,6 +1420,12 @@ class ComicStoreLocalMixin:
                     meta.custom_pages = True
                     meta.cover_count = min(4, meta.page_count)
                     meta.cover_indices = []
+                    meta.updated_at = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                    try:
+                        self.save_fetched(fetched, refresh=False, backup_dir=backup_dir)
+                    except Exception:
+                        shutil.rmtree(staging_dir, ignore_errors=True)
+                        raise
 
                     thumbs_dir = self.thumbs_dir(source, source_id)
                     covers_dir = self.covers_dir(source, source_id)
@@ -1427,9 +1448,6 @@ class ComicStoreLocalMixin:
                             self.ensure_webp_cover(meta, fetched, i, COVER_THUMB_WIDTH)
                         except Exception as e:
                             logger.warning("Failed to regenerate cover %d for %s/%s: %s", i, source, source_id, e)
-
-                    meta.updated_at = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                    self.save_fetched(fetched, refresh=True)
                     return meta
             finally:
                 for d in pdf_temp_dirs:

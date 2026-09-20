@@ -23,25 +23,58 @@ IMAGE_EXTS = frozenset({".jpg", ".jpeg", ".png", ".webp", ".gif", ".avif", ".bmp
 CURRENT_DECODE_VERSION = 2
 
 
-def _write_json_atomic(path: Path, data: Any) -> None:
-    """Writes a JSON document atomically using a temporary file and atomic swap."""
+def _write_bytes_atomic(path: Path, payload: bytes) -> None:
+    """Write bytes via an exclusive same-directory temp file and os.replace."""
     path.parent.mkdir(parents=True, exist_ok=True)
     temp_file: Path | None = None
+    fd: int | None = None
     try:
-        payload = json.dumps(data, ensure_ascii=False, indent=2).encode("utf-8")
         temp_file = path.parent / f".{path.name}.tmp.{os.getpid()}_{time.time_ns()}"
-        with open(temp_file, "wb") as f:
+        fd = os.open(str(temp_file), os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o666)
+        with os.fdopen(fd, "wb") as f:
+            fd = None
             f.write(payload)
             f.flush()
             os.fsync(f.fileno())
         os.replace(temp_file, path)
         temp_file = None
     finally:
+        if fd is not None:
+            os.close(fd)
         if temp_file is not None and temp_file.exists():
             try:
                 temp_file.unlink(missing_ok=True)
             except OSError:
                 pass
+
+
+def _write_json_atomic(path: Path, data: Any) -> None:
+    """Writes a JSON document atomically using a temporary file and atomic swap."""
+    _write_bytes_atomic(path, json.dumps(data, ensure_ascii=False, indent=2).encode("utf-8"))
+
+
+def acquire_library_writer_lock(library_dir: Path) -> int:
+    """Take an exclusive file lock so only one API process can write a library.
+
+    The returned descriptor must stay open until the process stops serving.
+    """
+    import fcntl
+
+    library_dir.mkdir(parents=True, exist_ok=True)
+    lock_path = library_dir / ".writer.lock"
+    fd = os.open(lock_path, os.O_CREAT | os.O_RDWR, 0o644)
+    try:
+        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except BlockingIOError as exc:
+        os.close(fd)
+        raise RuntimeError(
+            "书库已有正在运行的 API 实例。同一书库只能由一个写入进程使用，"
+            "请不要使用多个 Uvicorn worker 或多个容器挂载同一目录。"
+        ) from exc
+    os.ftruncate(fd, 0)
+    os.write(fd, str(os.getpid()).encode("ascii"))
+    os.fsync(fd)
+    return fd
 
 
 def _is_path_allowed(path: Path) -> bool:

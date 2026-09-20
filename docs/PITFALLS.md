@@ -1263,7 +1263,7 @@
   5. **上传 PDF 追加/替换场景下分话探测传入目录而非文件路径陷阱（Directory Passed as PDF Path in Append/Replace）**：在 `append_pages` / `replace_pages` 接收前端上传的 `UploadFile` PDF 时，解包后若误将解压产物临时目录路径传给 `detect_pdf_chapters`（该函数期望输入的是 PDF 文件路径或 bytes，由 `pymupdf.open()` 打开），会因 `fitz.open(dir_path)` 抛异常并静默回退至单章节导入，破坏多话探测；必须在临时 PDF 文件（`tmp_pdf`）解压后但在 `os.unlink()` 删除前，将真实文件路径传入分话探测器；
   6. **无界 OCR 扫描引发 Cloudflare 524 超时与 DoS 拒绝服务陷阱（Unbounded OCR 524 Timeout）**：对于大体积（如 500-1000 页）且无内置目录书签（TOC）的合订本 PDF，若开启 RapidOCR 逐页探测章节，每页 OCR 耗时 200-500ms，整书将阻塞 2-5 分钟，瞬间击穿 Cloudflare 100s（HTTP 524 Gateway Timeout）或 Nginx 网关超时。必须设置扫描步长采样与探测硬上限（`MAX_OCR_SCAN_PAGES = 40`），并在 TOC 提取到 $\ge 2$ 章节时立即短路退出（Early Return），杜绝无意义的全本 OCR 慢速扫描；
   7. **客户端分话起始页偏移信任与全局单调页号脱节断层（Client Chapter Start Divergence）**：在暂存分步建卷（`create_from_staged_pdf`）与单本 PDF 自动切分（`_import_single_pdf`）中，若盲目信任前端提交或探测器返回的相对 `c_start`，在跨卷拼接或多次追加时会导致章节 `start` 与底层全局单调索引（`PageRecord.index = 1..N`）产生偏移，打破核心不变量 #3。后端必须以全局累计写盘指针 `chap_start_page = global_idx` 为唯一真理源强行绑定 `Chapter.start`；
-  8. **暂存生成画卷非原子组装导致半拉子孤儿卷与并发竞态（Non-Atomic Staging Ingest & Concurrency Collision）**：在 `create_from_staged_pdf` 中，若直接向最终漫画目录逐页生成或未加锁，一旦中途失败（磁盘满、进程崩溃），会留下残缺的损坏漫画，且可能引发目录并发冲突。必须：(1) 对 `(source, comic_slug)` 加全局锁；(2) 先向 `.tmp_create_pages_<token>` 组装完整散图再通过 `_atomic_swap_dir` 原子重命名切换；(3) 校验 slug 碰撞并返回 409 Conflict；(4) FastAPI 服务冷启动时立即触发 `_cleanup_staged_pdfs(max_age_seconds=0)` 彻底清除宿主机断电遗留的残余暂存文件。
+  8. **暂存生成画卷非原子组装导致半拉子孤儿卷与并发竞态（Non-Atomic Staging Ingest & Concurrency Collision）**：在 `create_from_staged_pdf` 中，若直接向最终漫画目录逐页生成或未加锁，一旦中途失败（磁盘满、进程崩溃），会留下残缺的损坏漫画，且可能引发目录并发冲突。必须：(1) 对 `(source, comic_slug)` 加全局锁；(2) 先在 `library/.work/.tmp_create_pages-*` 组装完整散图，再通过 `_replace_live_with_staging` 把旧目录放进 `.work/.save-*` 后切换；(3) 校验 slug 碰撞并返回 409 Conflict；(4) FastAPI 服务冷启动时立即触发 `_cleanup_staged_pdfs(max_age_seconds=0)` 彻底清除宿主机断电遗留的残余暂存文件。进程内失败回退与启动恢复边界见 [部署指南 §11](../DEPLOYMENT.md#11-本地书库的并发与故障恢复边界)。
 - **红线与防误伤**：
   - **不要**在存在多卷 PDF 的目录导入判定中仅因存在非图片子目录就直接抛弃 PDF 聚类；
   - **不要**在删除章节后保留跳跃断开的全局页号，全书 `PageRecord.index` 必须从 1 开始严格单调连续；
@@ -1584,7 +1584,7 @@
   - **严禁**在需要多端/NAS 共享持久化的存储层使用 `tempfile.mkstemp`；
   - **严禁**将用于原子替换的临时文件创建在与目标文件不同的父目录或不同挂载卷下。
 - **放行/改用**：
-  1. **父目录就近隐藏文件 + 纳秒级 PID 隔离**：在目标文件同目录下创建隐藏临时文件（如 `path.parent / f".{path.name}.tmp.{os.getpid()}_{time.time_ns()}"`），通过标准 `open(..., "wb")` 自然继承宿主系统的 `umask`（`0644`/`0666`），彻底杜绝权限锁死；
+  1. **父目录就近隐藏文件 + 纳秒级 PID 隔离 + `O_EXCL`**：在目标文件同目录下创建隐藏临时文件（如 `path.parent / f".{path.name}.tmp.{os.getpid()}_{time.time_ns()}"`），用 `os.open(..., O_CREAT|O_EXCL|O_WRONLY, 0o666)` 继承宿主 `umask`（`0644`/`0666`），既避免 `mkstemp` 的 0600 锁死，也挡住同名 symlink 抢写；
   2. **严格同卷原子刷盘与替换**：写入后执行 `f.flush()` 与 `os.fsync(f.fileno())` 请求刷盘，再通过 `os.replace` 在同卷下原子替换单个文件；正常退出路径清理临时文件。单文件替换不等于多文件事务，也不保证强杀、断电或存储故障时无残留；保障与备份处理见 [部署指南 §11](../DEPLOYMENT.md#11-本地书库的并发与故障恢复边界)。
 
 ---

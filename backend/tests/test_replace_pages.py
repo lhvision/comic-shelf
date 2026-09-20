@@ -1,6 +1,7 @@
 import shutil
 import tempfile
 import unittest
+from unittest.mock import patch
 from pathlib import Path
 from PIL import Image
 import io
@@ -51,6 +52,63 @@ class TestReplacePages(unittest.TestCase):
         fetched = FetchedComic(meta=meta, remote_pages=[])
         self.store.save_fetched(fetched)
         return fetched
+
+    def test_second_replace_persists_new_pages(self):
+        self._setup_sample_comic("test", "123")
+        img_a = self._create_sample_img("green")
+        img_b = self._create_sample_img("yellow")
+        self.store.replace_pages("test", "123", files=[("a.jpg", img_a)])
+        new_meta = self.store.replace_pages("test", "123", files=[("b.jpg", img_b), ("c.jpg", img_b)])
+        self.assertEqual(new_meta.page_count, 2)
+        saved = self.store.load_meta("test", "123")
+        self.assertEqual(saved.page_count, 2)
+        pages_dir = self.store.pages_dir("test", "123")
+        self.assertTrue((pages_dir / "00001.jpg").exists())
+        self.assertTrue((pages_dir / "00002.jpg").exists())
+        self.assertFalse((pages_dir / "00003.webp").exists())
+
+    def test_replace_write_failure_restores_original_pages(self):
+        self._setup_sample_comic("test", "123")
+        original = (self.store.pages_dir("test", "123") / "00001.webp").read_bytes()
+        img = self._create_sample_img("green")
+        with patch("app.storage.base._write_json_atomic", side_effect=OSError("disk full")):
+            with self.assertRaises(OSError):
+                self.store.replace_pages("test", "123", files=[("01.jpg", img)])
+        pages_dir = self.store.pages_dir("test", "123")
+        self.assertEqual((pages_dir / "00001.webp").read_bytes(), original)
+        self.assertFalse((pages_dir / "00001.jpg").exists())
+        meta = self.store.load_meta("test", "123")
+        self.assertEqual(meta.page_count, 4)
+        self.assertEqual(list((self.store.root / ".work").glob(".save-*")), [])
+
+    def test_recover_restores_pages_after_crashed_replace(self):
+        self._setup_sample_comic("test", "123")
+        pages = self.store.pages_dir("test", "123")
+        original = (pages / "00001.webp").read_bytes()
+        original_album = self.store.album_path("test", "123").read_bytes()
+        work = self.store.root / ".work"
+        work.mkdir(exist_ok=True)
+        backup = work / ".save-crash"
+        backup.mkdir()
+        (backup / "comic.rel").write_text("test\n123\n", encoding="utf-8")
+        (backup / "album.json").write_bytes(original_album)
+        remote = self.store.remote_path("test", "123")
+        if remote.exists():
+            (backup / "remote.json").write_bytes(remote.read_bytes())
+        (backup / ".in-progress").write_bytes(b"")
+        pages.rename(backup / "replaced")
+        (backup / "replaced.rel").write_text("pages\n")
+        pages.mkdir()
+        (pages / "00001.jpg").write_bytes(self._create_sample_img("green"))
+        self.store.album_path("test", "123").write_text(
+            ComicMeta(source="test", source_id="123", display_id="x", title="New", page_count=1).model_dump_json()
+        )
+        with patch("app.db.upsert_comic_index"):
+            self.store.recover_interrupted_saves()
+        self.assertEqual((self.store.pages_dir("test", "123") / "00001.webp").read_bytes(), original)
+        self.assertFalse((self.store.pages_dir("test", "123") / "00001.jpg").exists())
+        self.assertEqual(self.store.album_path("test", "123").read_bytes(), original_album)
+        self.assertFalse(backup.exists())
 
     def test_full_replacement_success(self):
         self._setup_sample_comic("test", "123")
@@ -281,6 +339,26 @@ class TestReplacePages(unittest.TestCase):
         # Chapter 2 thumbnail MUST still be preserved!
         self.assertTrue((thumbs_c2 / "00001.webp").exists())
         self.assertEqual((thumbs_c2 / "00001.webp").read_bytes(), b"c2_thumb")
+
+    def test_second_append_persists_new_pages(self):
+        self._setup_sample_comic("picacg", "append-twice")
+        img = self._create_sample_img("pink")
+        self.store.append_pages(
+            source_id="append-twice",
+            source="picacg",
+            files=[("new_01.webp", img)],
+            new_chapter_title="第 2 话",
+        )
+        new_meta = self.store.append_pages(
+            source_id="append-twice",
+            source="picacg",
+            files=[("new_02.webp", img)],
+            new_chapter_title="第 3 话",
+        )
+        saved = self.store.load_meta("picacg", "append-twice")
+        self.assertEqual(new_meta.page_count, 6)
+        self.assertEqual(saved.page_count, 6)
+        self.assertEqual(len(saved.chapters), 3)
 
     def test_append_pages_to_remote_comic_sets_custom_pages(self):
         fetched = self._setup_sample_comic("picacg", "5f80b1234567890abcdef999")

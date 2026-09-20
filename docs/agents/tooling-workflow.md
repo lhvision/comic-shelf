@@ -9,7 +9,7 @@
 - 日常命令：`vp install / dev / check / test / build / preview`。
 - 后端环境：提供 `pnpm setup:py` 一键初始化 `.venv`；`pnpm api` 自动探测 Python 虚拟环境并热重载。
 - 已提供统一单容器部署：`Dockerfile`、`docker-compose.yml`，说明见 `DEPLOYMENT.md`。
-- API 启动器固定 `workers=1`，无 worker 数量配置；同一书库仅运行一个 API 实例。下载/图片处理并发仍由现有线程门禁控制。异常回退与恢复边界见 [部署指南 §11](../../DEPLOYMENT.md#11-本地书库的并发与故障恢复边界)。
+- API 启动器固定 `workers=1`，启动时对 `library/.writer.lock` 加排他锁；同一书库仅运行一个 API 实例。下载/图片处理并发仍由现有线程门禁控制。异常回退与恢复边界见 [部署指南 §11](../../DEPLOYMENT.md#11-本地书库的并发与故障恢复边界)。
 - 不建议迁 Nuxt：私人本地工具无 SEO/SSR 需求，SPA + FastAPI 单容器更简单；
   Python 后端必须保留（jmcomic 是 Python 库）。
 

@@ -26,6 +26,7 @@ class ComicStoreChapterMixin:
         """
         safe_chap = self._safe(first_chapter_id)
         moved: list[tuple[Path, Path]] = []
+        created_dirs: list[Path] = []
         try:
             for directory in (
                 self.pages_dir(meta.source, meta.source_id),
@@ -34,7 +35,10 @@ class ComicStoreChapterMixin:
                 if not directory.exists():
                     continue
                 target_dir = directory / safe_chap
+                existed = target_dir.exists()
                 target_dir.mkdir(parents=True, exist_ok=True)
+                if not existed:
+                    created_dirs.append(target_dir)
                 for item in list(directory.iterdir()):
                     if item.is_file():
                         destination = target_dir / item.name
@@ -44,6 +48,11 @@ class ComicStoreChapterMixin:
         except OSError:
             for original, destination in reversed(moved):
                 destination.replace(original)
+            for created in reversed(created_dirs):
+                try:
+                    created.rmdir()
+                except OSError:
+                    pass
             raise
         return moved
 
@@ -57,6 +66,8 @@ class ComicStoreChapterMixin:
             if chapter is None:
                 raise HTTPException(status_code=404, detail=f"未找到章节：{chapter_id}")
 
+            meta = meta.model_copy(deep=True)
+            chapter = next(c for c in meta.chapters if c.id == chapter_id)
             chapter.title = new_title.strip() or f"第 {chapter.index} 话"
             if source != "local":
                 meta.custom_pages = True
@@ -71,25 +82,19 @@ class ComicStoreChapterMixin:
             if fetched is None:
                 raise HTTPException(status_code=404, detail="本子还没有导入本地书库")
 
-            meta = fetched.meta
+            meta = fetched.meta.model_copy(deep=True)
+            remote_pages = [page.model_copy(deep=True) for page in fetched.remote_pages]
             chapter = next((c for c in meta.chapters if c.id == chapter_id), None)
             if chapter is None:
                 raise HTTPException(status_code=404, detail=f"未找到章节：{chapter_id}")
 
             safe_cid = self._safe(chapter_id)
             chap_dir = self.pages_dir(source, source_id) / safe_cid
-            if chap_dir.exists():
-                shutil.rmtree(chap_dir, ignore_errors=True)
-
             thumb_dir = self.thumbs_dir(source, source_id) / safe_cid
-            if thumb_dir.exists():
-                shutil.rmtree(thumb_dir, ignore_errors=True)
-
             chap_cover = self.chapter_cover_path(meta, chapter)
-            chap_cover.unlink(missing_ok=True)
 
             meta.pages = [p for p in meta.pages if p.chapter != chapter_id]
-            fetched.remote_pages = [rp for rp in fetched.remote_pages if rp.chapter != chapter_id]
+            remote_pages = [rp for rp in remote_pages if rp.chapter != chapter_id]
             meta.chapters = [c for c in meta.chapters if c.id != chapter_id]
 
             reindexed_pages: list[PageRecord] = []
@@ -113,7 +118,7 @@ class ComicStoreChapterMixin:
                     reindexed_pages.append(p)
                     global_idx += 1
 
-            for rp in fetched.remote_pages:
+            for rp in remote_pages:
                 matching_p = next((p for p in reindexed_pages if p.chapter == rp.chapter and p.file == rp.file), None)
                 if matching_p is not None:
                     rp.index = matching_p.index
@@ -121,16 +126,32 @@ class ComicStoreChapterMixin:
 
             meta.pages = reindexed_pages
             meta.page_count = len(reindexed_pages)
-            fetched.remote_pages = reindexed_remote
             if source != "local":
                 meta.custom_pages = True
             meta.updated_at = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-            _write_json_atomic(self.album_path(source, source_id), meta.model_dump())
-            remote_data = {
-                "decode_version": CURRENT_DECODE_VERSION,
-                "remote_pages": [rp.model_dump() for rp in fetched.remote_pages],
-            }
-            _write_json_atomic(self.remote_path(source, source_id), remote_data)
+            album_path = self.album_path(source, source_id)
+            remote_path = self.remote_path(source, source_id)
+            backup_dir = self._begin_metadata_backup(album_path, remote_path)
+            try:
+                _write_json_atomic(album_path, meta.model_dump())
+                _write_json_atomic(
+                    remote_path,
+                    {
+                        "decode_version": CURRENT_DECODE_VERSION,
+                        "remote_pages": [rp.model_dump() for rp in reindexed_remote],
+                    },
+                )
+                self._finish_metadata_backup(backup_dir)
+            except Exception:
+                self._rollback_metadata_backup(
+                    backup_dir, (remote_path, album_path), source, source_id
+                )
+                raise
             self._invalidate_cache(source, source_id)
+            if chap_dir.exists():
+                shutil.rmtree(chap_dir, ignore_errors=True)
+            if thumb_dir.exists():
+                shutil.rmtree(thumb_dir, ignore_errors=True)
+            chap_cover.unlink(missing_ok=True)
             return meta

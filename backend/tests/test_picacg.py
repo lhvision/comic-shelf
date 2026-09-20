@@ -93,6 +93,7 @@ class TestPicacgProvider(unittest.TestCase):
 
         self.assertEqual(format_count(3389119), "3.4M")
         self.assertEqual(format_count("77951"), "78k")
+        self.assertEqual(format_count("12,222"), "12k")
         self.assertEqual(format_count(1200), "1.2k")
         self.assertEqual(format_count(950), "950")
         self.assertEqual(format_count(0), "0")

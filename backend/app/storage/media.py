@@ -23,7 +23,7 @@ from ..config import (
     PAGE_THUMB_WIDTH,
 )
 from ..models import Chapter, ComicMeta, FetchedComic, RemotePage
-from .utils import CURRENT_DECODE_VERSION, _write_json_atomic
+from .utils import CURRENT_DECODE_VERSION, _write_bytes_atomic, _write_json_atomic
 
 logger = logging.getLogger(__name__)
 
@@ -159,69 +159,78 @@ class ComicStoreMediaMixin:
         Stale downloads raise FileNotFoundError without modifying the archive.
         """
         meta = fetched.meta
-        with self._lock_for(meta.source, meta.source_id):
-            latest = self.load_meta(meta.source, meta.source_id)
-            if latest is None:
-                raise FileNotFoundError("漫画已删除，取消画页下载")
-            current = next((p for p in latest.pages if p.index == index), None)
-            if current is None:
-                raise FileNotFoundError("画页已删除，取消下载")
-            target = self.page_path(latest, index)
-            if target.exists():
-                if not current.cached:
-                    self.update_page_cached(latest, index, True)
-                return target
-            page = next((p for p in fetched.remote_pages if p.index == index), None)
-            if page is None:
-                raise KeyError(f"页 {index} 不存在（共 {meta.page_count} 页）")
-            if latest.custom_pages or not page.url:
-                raise FileNotFoundError(f"本地页面文件不存在：{target}")
-            # Metadata owns the local path; legacy remote descriptors can still
-            # name the flat layout after a local chapter migration.
-            page_identity = (current.file, current.chapter)
-            # A queued job may already contain outdated URLs before it starts.
-            current_bundle = self.load_fetched(meta.source, meta.source_id)
-            if current_bundle and current_bundle.remote_pages:
-                remote_page = next((p for p in current_bundle.remote_pages if p.index == index), None)
-                if remote_page != page:
-                    raise FileNotFoundError("画页来源已变更，取消旧下载")
-            revision = self._download_revision(meta.source, meta.source_id)
-            page = page.model_copy(deep=True)
+        owner = False
+        waiter: threading.Event | None = None
+        try:
+            while True:
+                with self._lock_for(meta.source, meta.source_id):
+                    latest = self.load_meta(meta.source, meta.source_id)
+                    if latest is None:
+                        raise FileNotFoundError("漫画已删除，取消画页下载")
+                    current = next((p for p in latest.pages if p.index == index), None)
+                    if current is None:
+                        raise FileNotFoundError("画页已删除，取消下载")
+                    target = self.page_path(latest, index)
+                    if target.exists():
+                        if not current.cached:
+                            self.update_page_cached(latest, index, True)
+                        return target
+                    page = next((p for p in fetched.remote_pages if p.index == index), None)
+                    if page is None:
+                        raise KeyError(f"页 {index} 不存在（共 {meta.page_count} 页）")
+                    if latest.custom_pages or not page.url:
+                        raise FileNotFoundError(f"本地页面文件不存在：{target}")
+                    # Metadata owns the local path; legacy remote descriptors can still
+                    # name the flat layout after a local chapter migration.
+                    page_identity = (current.file, current.chapter)
+                    # A queued job may already contain outdated URLs before it starts.
+                    current_bundle = self.load_fetched(meta.source, meta.source_id)
+                    if current_bundle and current_bundle.remote_pages:
+                        remote_page = next(
+                            (p for p in current_bundle.remote_pages if p.index == index), None
+                        )
+                        if remote_page is None or (
+                            remote_page.url,
+                            remote_page.file,
+                            remote_page.chapter or "",
+                        ) != (page.url, page.file, page.chapter or ""):
+                            raise FileNotFoundError("画页来源已变更，取消旧下载")
+                    revision = self._download_revision(meta.source, meta.source_id)
+                    page = page.model_copy(deep=True)
+                    waiter, owner = self._claim_page_download(meta.source, meta.source_id, index)
+                    if owner:
+                        break
+                waiter.wait()
+                waiter = None
 
-        with self._lock_for_page(meta.source, meta.source_id, index):
-            if target.exists():
-                return target
-            from ..providers.registry import get_provider
-            data = get_provider(meta.source).download_page(fetched, page)
+            with self._lock_for_page(meta.source, meta.source_id, index):
+                if target.exists():
+                    return target
+                from ..providers.registry import get_provider
+                data = get_provider(meta.source).download_page(fetched, page)
 
-        # No page lock may be held here: chapter edits acquire comic then page locks.
-        with self._lock_for(meta.source, meta.source_id):
-            latest = self.load_meta(meta.source, meta.source_id)
-            if latest is None or revision != self._download_revision(meta.source, meta.source_id):
-                raise FileNotFoundError("漫画画卷已变更，取消旧下载")
-            current = next((p for p in latest.pages if p.index == index), None)
-            if (latest.custom_pages or current is None
-                    or (current.file, current.chapter) != page_identity):
-                raise FileNotFoundError("画页已变更，取消旧下载")
-            target = self.page_path(latest, index)
-            if not target.exists():
-                target.parent.mkdir(parents=True, exist_ok=True)
-                tmp_path = target.with_name(f".{target.name}.download.{os.getpid()}_{time.time_ns()}")
-                try:
-                    with tmp_path.open("xb") as output:
-                        output.write(data)
-                        output.flush()
-                        os.fsync(output.fileno())
-                    os.replace(tmp_path, target)
-                finally:
-                    tmp_path.unlink(missing_ok=True)
-            self.update_page_cached(latest, index, True)
-            # Keep a running job's progress snapshot in sync.
-            for record in meta.pages:
-                if record.index == index and (record.file, record.chapter) == page_identity:
-                    record.cached = True
-                    break
-            return target
+            # No page lock may be held here: chapter edits acquire comic then page locks.
+            with self._lock_for(meta.source, meta.source_id):
+                latest = self.load_meta(meta.source, meta.source_id)
+                if latest is None or revision != self._download_revision(meta.source, meta.source_id):
+                    raise FileNotFoundError("漫画画卷已变更，取消旧下载")
+                current = next((p for p in latest.pages if p.index == index), None)
+                if (latest.custom_pages or current is None
+                        or (current.file, current.chapter) != page_identity):
+                    raise FileNotFoundError("画页已变更，取消旧下载")
+                target = self.page_path(latest, index)
+                if not target.exists():
+                    _write_bytes_atomic(target, data)
+                self.update_page_cached(latest, index, True)
+                # Keep a running job's progress snapshot in sync.
+                for record in meta.pages:
+                    if record.index == index and (record.file, record.chapter) == page_identity:
+                        record.cached = True
+                        break
+                return target
+        finally:
+            if owner and waiter is not None:
+                self._release_page_download(meta.source, meta.source_id, index, waiter)
 
     def cached_page_count(self: Any, meta: ComicMeta) -> int:
         return sum(1 for page in meta.pages if page.cached)

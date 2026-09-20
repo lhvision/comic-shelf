@@ -6,11 +6,16 @@ import io
 import os
 from pathlib import Path
 import runpy
+import subprocess
 import sys
+import tempfile
 import unittest
 from unittest.mock import patch
 
-SERVER = Path(__file__).resolve().parent.parent / "server.py"
+BACKEND_DIR = Path(__file__).resolve().parent.parent
+SERVER = BACKEND_DIR / "server.py"
+if str(BACKEND_DIR) not in sys.path:
+    sys.path.insert(0, str(BACKEND_DIR))
 
 
 class TestServerWorkers(unittest.TestCase):
@@ -33,6 +38,34 @@ class TestServerWorkers(unittest.TestCase):
         self.assertEqual(error.exception.code, 2)
         self.assertIn("unrecognized arguments: --workers 2", output.getvalue())
         run.assert_not_called()
+
+    def test_library_lock_rejects_a_second_process(self) -> None:
+        from app.storage.utils import acquire_library_writer_lock
+
+        with tempfile.TemporaryDirectory() as tmp:
+            library = Path(tmp) / "library"
+            fd = acquire_library_writer_lock(library)
+            try:
+                script = (
+                    "import sys\n"
+                    f"sys.path.insert(0, {str(BACKEND_DIR)!r})\n"
+                    "from pathlib import Path\n"
+                    "from app.storage.utils import acquire_library_writer_lock\n"
+                    "try:\n"
+                    f"    acquire_library_writer_lock(Path({str(library)!r}))\n"
+                    "except RuntimeError:\n"
+                    "    raise SystemExit(2)\n"
+                    "raise SystemExit(0)\n"
+                )
+                result = subprocess.run(
+                    [sys.executable, "-c", script],
+                    capture_output=True,
+                    text=True,
+                    check=False,
+                )
+                self.assertEqual(result.returncode, 2, result.stderr)
+            finally:
+                os.close(fd)
 
 
 if __name__ == "__main__":

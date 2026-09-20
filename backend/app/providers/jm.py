@@ -24,7 +24,8 @@ from ..config import (
 )
 from ..gate import download_gate
 from ..models import Chapter, ComicMeta, DiscoveryItem, FetchedComic, RemotePage
-from .base import ComicProvider, format_count
+from ..formatting import format_count
+from .base import ComicProvider
 
 logger = logging.getLogger("paper_room.provider.jm")
 

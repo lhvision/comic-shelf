@@ -2,7 +2,9 @@
 from __future__ import annotations
 
 import json
+import os
 import sys
+import time
 import tempfile
 import threading
 import unittest
@@ -34,6 +36,14 @@ class TestStorageMetadata(unittest.TestCase):
         )
         self.path.write_text(meta.model_dump_json(), encoding="utf-8")
 
+    def _work_save(self, name: str = ".save-crash") -> Path:
+        work = self.store.root / ".work"
+        work.mkdir(exist_ok=True)
+        backup = work / name
+        backup.mkdir()
+        (backup / "comic.rel").write_text("jm\n12345\n", encoding="utf-8")
+        return backup
+
     def test_legacy_counts_remain_readable_when_storage_is_unwritable(self) -> None:
         original = self.path.read_bytes()
         with patch(
@@ -48,25 +58,37 @@ class TestStorageMetadata(unittest.TestCase):
         self.assertEqual(self.path.read_bytes(), original)
 
     def test_legacy_count_read_does_not_overwrite_a_concurrent_metadata_update(self) -> None:
-        read_text = Path.read_text
-        update_pending = True
+        original_read = Path.read_text
+        reading = threading.Event()
+        resume_read = threading.Event()
+        edit_done = threading.Event()
 
-        def read_then_update(path: Path, *args, **kwargs) -> str:
-            nonlocal update_pending
-            snapshot = read_text(path, *args, **kwargs)
-            if path == self.path and update_pending:
-                update_pending = False
-                # Deterministically interleave a writer after the reader took its snapshot.
-                self.store.update_metadata(
-                    "jm", "12345", {"title": "Edited", "hidden_from_guest": True}
-                )
+        def blocked_read(path: Path, *args, **kwargs) -> str:
+            snapshot = original_read(path, *args, **kwargs)
+            if path == self.path:
+                reading.set()
+                if not resume_read.wait(5):
+                    raise TimeoutError("metadata read was not resumed")
             return snapshot
 
-        # Isolate the metadata write from the unrelated SQLite index refresh.
+        def edit() -> None:
+            self.store.update_metadata(
+                "jm", "12345", {"title": "Edited", "hidden_from_guest": True}
+            )
+            edit_done.set()
+
         with patch.object(self.store, "_invalidate_cache"), patch.object(
-            Path, "read_text", read_then_update
-        ):
-            self.assertIsNotNone(self.store.load_meta("jm", "12345"))
+            Path, "read_text", blocked_read
+        ), ThreadPoolExecutor(max_workers=2) as pool:
+            reader = pool.submit(self.store.load_meta, "jm", "12345")
+            try:
+                self.assertTrue(reading.wait(5))
+                editing = pool.submit(edit)
+                self.assertFalse(edit_done.wait(0.05))
+            finally:
+                resume_read.set()
+            self.assertIsNotNone(reader.result(timeout=5))
+            editing.result(timeout=5)
 
         saved = json.loads(self.path.read_text(encoding="utf-8"))
         self.assertEqual(saved["title"], "Edited")
@@ -138,6 +160,8 @@ class TestStorageMetadata(unittest.TestCase):
         self.assertEqual(meta.pages[0].chapter, "")
         self.assertEqual(self.store.page_path(meta, 1).read_bytes(), b"cached-page")
         self.assertEqual((thumbs / "00001.webp").read_bytes(), b"thumbnail")
+        self.assertFalse((self.store.pages_dir("jm", "12345") / "c1").exists())
+        self.assertFalse((thumbs / "c1").exists())
 
     def test_orphan_repair_and_metadata_edit_are_serialized(self) -> None:
         self._write_pages(orphaned=True)
@@ -325,7 +349,7 @@ class TestStorageMetadata(unittest.TestCase):
                 self.assertEqual(remote_path.read_bytes(), original_remote)
                 self.assertEqual(page_path.read_bytes(), b"original-page")
                 self.assertFalse((page_path.parent / "new" / page_path.name).exists())
-                self.assertEqual(list(self.path.parent.glob(".save-*")), [])
+                self.assertEqual(list((self.store.root / ".work").glob(".save-*")), [])
 
     def test_failed_initial_save_does_not_leave_half_an_archive(self) -> None:
         fetched = self._write_remote_comic()
@@ -346,19 +370,19 @@ class TestStorageMetadata(unittest.TestCase):
     def test_rollback_failure_keeps_original_metadata_backup(self) -> None:
         fetched = self._write_remote_comic()
         original = self.path.read_bytes()
-        replace = Path.replace
+        real_copy2 = __import__("shutil").copy2
 
-        def fail_restore(path: Path, target: Path) -> Path:
-            if path.parent.name.startswith(".save-"):
+        def fail_copy(src, dst, *args, **kwargs):
+            if Path(src).parent.name.startswith(".save-"):
                 raise PermissionError("restore denied")
-            return replace(path, target)
+            return real_copy2(src, dst, *args, **kwargs)
 
-        with patch("app.storage.base._write_json_atomic", side_effect=OSError("disk full")), patch.object(
-            Path, "replace", fail_restore
+        with patch("app.storage.base._write_json_atomic", side_effect=OSError("disk full")), patch(
+            "app.storage.base.shutil.copy2", fail_copy
         ):
             with self.assertRaises(PermissionError):
                 self.store.save_fetched(fetched, refresh=True)
-        backups = list(self.path.parent.glob(".save-*/album.json"))
+        backups = list((self.store.root / ".work").glob(".save-*/album.json"))
         self.assertEqual(len(backups), 1)
         self.assertEqual(backups[0].read_bytes(), original)
 
@@ -413,6 +437,231 @@ class TestStorageMetadata(unittest.TestCase):
                     self.assertFalse(self.path.parent.exists())
                 else:
                     self.assertEqual(remote_path.read_bytes(), remote_before)
+
+    def _persist_rebuilt_chapters(self) -> ComicMeta:
+        self._write_pages()
+        loaded = self.store.load_meta("jm", "12345")
+        assert loaded is not None
+        self.path.write_text(loaded.model_dump_json(), encoding="utf-8")
+        self.store._meta_cache.clear()
+        self.store._fetched_cache.clear()
+        return loaded
+
+    def test_failed_chapter_rename_is_not_persisted_by_cache_flag_write(self) -> None:
+        original = self._persist_rebuilt_chapters()
+        with patch("app.storage.chapters._write_json_atomic", side_effect=OSError("disk full")):
+            with self.assertRaises(OSError):
+                self.store.update_chapter_title("jm", "12345", "c1", "Hijacked")
+        self.assertEqual(self.store.load_meta("jm", "12345").chapters[0].title, original.chapters[0].title)
+        with patch("app.db.update_comic_cached_pages"):
+            self.store.update_page_cached(self.store.load_meta("jm", "12345"), 1, True)
+        saved = ComicMeta.model_validate_json(self.path.read_text())
+        self.assertEqual(saved.chapters[0].title, original.chapters[0].title)
+        self.assertTrue(saved.pages[0].cached)
+
+    def test_failed_chapter_delete_keeps_files_and_metadata(self) -> None:
+        self._persist_rebuilt_chapters()
+        target = self.store.page_path(self.store.load_meta("jm", "12345"), 2)
+        with patch("app.storage.chapters._write_json_atomic", side_effect=OSError("disk full")):
+            with self.assertRaises(OSError):
+                self.store.delete_chapter("jm", "12345", "c2")
+        self.assertTrue(target.exists())
+        saved = self.store.load_meta("jm", "12345")
+        self.assertEqual([chapter.id for chapter in saved.chapters], ["c1", "c2"])
+        self.assertEqual(self.store.page_path(saved, 2).read_bytes(), b"cached-page")
+
+    def test_atomic_json_write_creates_temp_exclusively(self) -> None:
+        path = self.path.parent / "exclusive.json"
+        flags_seen: list[int] = []
+        real_open = os.open
+
+        def spy(name: str | bytes | os.PathLike[str], flags: int, *args, **kwargs) -> int:
+            flags_seen.append(flags)
+            return real_open(name, flags, *args, **kwargs)
+
+        with patch("app.storage.utils.os.open", spy):
+            _write_json_atomic(path, {"ok": True})
+        self.assertTrue(flags_seen)
+        self.assertTrue(flags_seen[0] & os.O_EXCL)
+        self.assertTrue(flags_seen[0] & os.O_CREAT)
+        self.assertEqual(json.loads(path.read_text(encoding="utf-8")), {"ok": True})
+
+    def test_delete_renames_then_forgets_leftovers(self) -> None:
+        target = self.path.parent
+        work = self.store.root / ".work"
+        work.mkdir(exist_ok=True)
+        trash = work / ".deleted-dead"
+        with patch("app.db.upsert_comic_index"), patch("app.db.purge_comic_db_records"):
+            target.rename(trash)
+            self.store.recover_interrupted_saves()
+        self.assertFalse(trash.exists())
+        self.assertFalse(target.exists())
+
+    def test_recover_removes_unfinished_first_save(self) -> None:
+        self.path.unlink()
+        remote = self.store.remote_path("jm", "12345")
+        remote.unlink(missing_ok=True)
+        backup = self._work_save()
+        (backup / ".in-progress").write_bytes(b"")
+        pages = self.store.pages_dir("jm", "12345")
+        pages.mkdir(parents=True, exist_ok=True)
+        (pages / "00001.webp").write_bytes(b"new")
+        (backup / "replaced.rel").write_text("pages\n0\n")
+        with patch("app.db.upsert_comic_index"), patch("app.db.purge_comic_db_records"):
+            self.store.recover_interrupted_saves()
+        self.assertFalse(self.path.parent.exists())
+
+    def test_recover_deletes_backup_from_a_finished_save(self) -> None:
+        leftover = self._work_save(".save-deadbeef")
+        (leftover / "album.json").write_text("{}", encoding="utf-8")
+        with patch("app.db.upsert_comic_index"), patch("app.db.purge_comic_db_records"):
+            self.store.recover_interrupted_saves()
+        self.assertFalse(leftover.exists())
+
+    def test_recover_restores_interrupted_save_and_flattens_pages(self) -> None:
+        fetched = self._write_remote_comic()
+        original_album = self.path.read_bytes()
+        original_remote = self.store.remote_path("jm", "12345").read_bytes()
+        page = self.store.pages_dir("jm", "12345") / "00001.webp"
+        page.parent.mkdir(parents=True, exist_ok=True)
+        page.write_bytes(b"original-page")
+        chapter_dir = page.parent / "new"
+        chapter_dir.mkdir()
+        page.replace(chapter_dir / page.name)
+        backup = self._work_save()
+        (backup / "album.json").write_bytes(original_album)
+        (backup / "remote.json").write_bytes(original_remote)
+        (backup / ".in-progress").write_bytes(b"")
+        self.path.write_text(
+            ComicMeta(
+                source="jm", source_id="12345", display_id="JM12345", title="New",
+                chapters=[Chapter(id="new", index=1, start=1, page_count=1)],
+            ).model_dump_json(),
+            encoding="utf-8",
+        )
+        with patch("app.db.upsert_comic_index"):
+            self.store.recover_interrupted_saves()
+        self.assertEqual(self.path.read_bytes(), original_album)
+        self.assertEqual(self.store.remote_path("jm", "12345").read_bytes(), original_remote)
+        self.assertEqual(page.read_bytes(), b"original-page")
+        self.assertFalse(chapter_dir.exists())
+        self.assertFalse(backup.exists())
+
+    def test_recover_restores_interrupted_chapter_delete(self) -> None:
+        original = self._persist_rebuilt_chapters()
+        target = self.store.page_path(original, 2)
+        backup = self._work_save()
+        (backup / "album.json").write_bytes(self.path.read_bytes())
+        (backup / ".in-progress").write_bytes(b"")
+        deleted = original.model_copy(deep=True)
+        deleted.pages = [page for page in deleted.pages if page.chapter != "c2"]
+        deleted.chapters = [chapter for chapter in deleted.chapters if chapter.id != "c2"]
+        self.path.write_text(deleted.model_dump_json(), encoding="utf-8")
+        self.store._meta_cache.clear()
+        with patch("app.db.upsert_comic_index"):
+            self.store.recover_interrupted_saves()
+        saved = self.store.load_meta("jm", "12345")
+        self.assertEqual([chapter.id for chapter in saved.chapters], ["c1", "c2"])
+        self.assertTrue(target.exists())
+        self.assertFalse(backup.exists())
+
+    def test_recover_retries_after_partial_restore(self) -> None:
+        self._write_remote_comic()
+        original_album = self.path.read_bytes()
+        original_remote = self.store.remote_path("jm", "12345").read_bytes()
+        backup = self._work_save()
+        (backup / "album.json").write_bytes(original_album)
+        (backup / "remote.json").write_bytes(original_remote)
+        (backup / ".in-progress").write_bytes(b"")
+        self.path.write_text(
+            ComicMeta(source="jm", source_id="12345", display_id="JM12345", title="New").model_dump_json(),
+            encoding="utf-8",
+        )
+        self.store.remote_path("jm", "12345").write_text(
+            '{"decode_version": 2, "remote_pages": []}', encoding="utf-8"
+        )
+        self.path.write_bytes(original_album)
+        with patch("app.db.upsert_comic_index"):
+            self.store.recover_interrupted_saves()
+        self.assertEqual(self.path.read_bytes(), original_album)
+        self.assertEqual(self.store.remote_path("jm", "12345").read_bytes(), original_remote)
+        self.assertFalse(backup.exists())
+
+    def test_recover_removes_tmp_work_without_scanning_pages(self) -> None:
+        self._write_remote_comic()
+        pages = self.store.pages_dir("jm", "12345")
+        pages.mkdir(parents=True, exist_ok=True)
+        kept = pages / "00001.webp"
+        kept.write_bytes(b"keep")
+        extra = pages / "00002.webp"
+        extra.write_bytes(b"orphan")
+        work = self.store.root / ".work"
+        work.mkdir(exist_ok=True)
+        staging = work / ".tmp_create_pages_1"
+        staging.mkdir()
+        (staging / "x.webp").write_bytes(b"staged")
+        json_tmp = self.path.parent / ".album.json.tmp.1_1"
+        json_tmp.write_bytes(b"{")
+        with patch("app.db.upsert_comic_index"):
+            self.store.recover_interrupted_saves()
+        self.assertEqual(kept.read_bytes(), b"keep")
+        self.assertTrue(extra.exists())
+        self.assertFalse(staging.exists())
+        self.assertTrue(json_tmp.exists())
+
+    def test_recover_failure_keeps_backup_and_raises(self) -> None:
+        leftover = self._work_save()
+        (leftover / "album.json").write_bytes(self.path.read_bytes())
+        (leftover / ".in-progress").write_bytes(b"")
+        original = self.path.read_bytes()
+        with patch("app.storage.base.shutil.copy2", side_effect=OSError("disk full")):
+            with self.assertRaises(RuntimeError):
+                self.store.recover_interrupted_saves()
+        self.assertTrue((leftover / ".in-progress").exists())
+        self.assertEqual(self.path.read_bytes(), original)
+
+    def test_scramble_id_heal_does_not_cancel_download(self) -> None:
+        fetched = self._write_remote_comic()
+        fetched.meta.raw = {"album": {"scramble_id": "220980"}}
+        self.path.write_text(fetched.meta.model_dump_json(), encoding="utf-8")
+        target = self.store.page_path(fetched.meta, 1)
+        target.unlink(missing_ok=True)
+        image = create_sample_image()
+        with patch("app.providers.registry.get_provider") as provider, patch(
+            "app.db.update_comic_cached_pages"
+        ), patch("app.db.upsert_comic_index"):
+            provider.return_value.download_page.return_value = image
+            self.assertEqual(self.store.ensure_page(fetched, 1).read_bytes(), image)
+
+    def test_concurrent_ensure_page_downloads_once(self) -> None:
+        fetched = self._write_remote_comic()
+        target = self.store.page_path(fetched.meta, 1)
+        target.unlink(missing_ok=True)
+        started, resume = threading.Event(), threading.Event()
+        calls: list[int] = []
+
+        def download(*_args) -> bytes:
+            calls.append(1)
+            started.set()
+            if not resume.wait(5):
+                raise TimeoutError("download was not resumed")
+            return create_sample_image()
+
+        with patch("app.providers.registry.get_provider") as provider, patch(
+            "app.db.update_comic_cached_pages"
+        ), patch("app.db.upsert_comic_index"), ThreadPoolExecutor(max_workers=2) as pool:
+            provider.return_value.download_page.side_effect = download
+            first = pool.submit(self.store.ensure_page, fetched, 1)
+            self.assertTrue(started.wait(5))
+            second = pool.submit(self.store.ensure_page, fetched, 1)
+            deadline = time.monotonic() + 2
+            while time.monotonic() < deadline and not second.running():
+                time.sleep(0.01)
+            resume.set()
+            first.result(timeout=5)
+            second.result(timeout=5)
+        self.assertEqual(sum(calls), 1)
+        self.assertTrue(target.exists())
 
 
 if __name__ == "__main__":
