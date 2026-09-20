@@ -9,6 +9,7 @@ import { useSystemEvents } from '@/composables/useSystemEvents'
 import { useUploadQueue } from '@/composables/useUploadQueue'
 import { filterImageFiles, isPdfFile, naturalSortFiles } from '@/composables/useFileStaging'
 import { sumBy } from '@/utils/math'
+import { formatLocalImportToast } from '@/utils/format'
 import type { ComicDetail, LocalChapterInput, PdfInspectResponse } from '@/types'
 
 export interface StagedChapter {
@@ -254,6 +255,15 @@ export function useLocalWorkshop(options: UseLocalWorkshopOptions = {}) {
     return sumBy(chapters.value, (ch) => ch.files.length)
   })
 
+  /**
+   * 封面页码上限。路径导入时尚未知道画页总数，传 `null` 表示不封顶，避免被卡成 1/1/1/1。
+   */
+  const coverMaxPage = computed<number | null>(() => {
+    if (stagedPdfMeta.value) return stagedPdfMeta.value.total_pages
+    if (mode.value === 'path') return null
+    return totalStagedFilesCount.value || 1
+  })
+
   const currentChapterFiles = computed<File[]>({
     get: () =>
       isMulti.value ? (chapters.value[activeChapterIdx.value]?.files ?? []) : singleFiles.value,
@@ -288,7 +298,7 @@ export function useLocalWorkshop(options: UseLocalWorkshopOptions = {}) {
     }
   }
 
-  async function finishImport(comic: ComicDetail, successMessage: string): Promise<void> {
+  async function finishImport(comic: ComicDetail, kindLabel?: string): Promise<void> {
     const sourceId = comic.meta.source_id
     await store.load()
     broadcastLocalChange({
@@ -297,7 +307,7 @@ export function useLocalWorkshop(options: UseLocalWorkshopOptions = {}) {
       source_id: sourceId,
       timestamp: Date.now(),
     })
-    toast(successMessage, 'info')
+    toast(formatLocalImportToast(comic.meta, kindLabel), 'info')
     void router.replace(`/comic/${comic.meta.source}/${sourceId}`)
   }
 
@@ -337,7 +347,7 @@ export function useLocalWorkshop(options: UseLocalWorkshopOptions = {}) {
             })
           })(),
         })
-        await finishImport(created, `PDF 漫画《${created.meta.title}》已成功收录！`)
+        await finishImport(created, 'PDF 漫画')
       } catch (err) {
         toast(err instanceof Error ? err.message : String(err), 'error')
       } finally {
@@ -357,7 +367,7 @@ export function useLocalWorkshop(options: UseLocalWorkshopOptions = {}) {
           path: serverPath.value.trim(),
           ...buildCommonMetadata('本地导入'),
         })
-        await finishImport(res, '本地目录已收录')
+        await finishImport(res)
       } catch (err) {
         toast(err instanceof Error ? err.message : String(err), 'error')
       } finally {
@@ -397,7 +407,7 @@ export function useLocalWorkshop(options: UseLocalWorkshopOptions = {}) {
         await uploadFiles(sourceId, singleFiles.value, '', '')
       }
 
-      await finishImport(created, `自建图集《${created.meta.title}》已成功收录！`)
+      await finishImport(created)
     } catch (err) {
       toast(err instanceof Error ? err.message : String(err), 'error')
     } finally {
@@ -431,6 +441,7 @@ export function useLocalWorkshop(options: UseLocalWorkshopOptions = {}) {
     removeChapter,
     clearCurrentStaged,
     totalStagedFilesCount,
+    coverMaxPage,
     chapterRanges,
     isUploading,
     progress,

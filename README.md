@@ -30,6 +30,8 @@
   - 支持收录本地图片合集与视频拆帧（如 `public/tiya-frames`）作为自建漫画，与禁漫元数据、阅读器、以图搜图 100% 格式对齐；
   - 网页端多图上传采用 3 路受限并发队列（`useUploadQueue`），平稳保护服务器 IO；
   - 支持服务器本地路径秒级直扫导入（0 网络带宽开销，需通过 `COMIC_SHELF_ALLOWED_DIRS` 白名单放行）；
+  - **本地标识双轨（ADR 0027）**：未填车号时，路径导入用文件夹名或 PDF 文件名（如 `2899054` → `LOC_2899054`），网页上传 / 暂存 PDF 用收录时刻；自填撞车 409，推断名撞车加 `_1`。成功提示带出车号；工坊路径说明写明规则；
+  - 路径导入时封面页码按实际画页填写（页数未知不封顶），读取封面时仍夹到 `1..page_count`；
   - 支持单话/多章节增量追加新页面。
 - **典藏资料与封面编排（`EditMetadataModal`）**：
   - 馆长可就地修改作品标题、作者、叙述，全站标签自由增删；
@@ -254,7 +256,7 @@ $COMIC_SHELF_DATA/
 ├── imsearch/                            # 识图索引与特征库（centroids.bin / invlists.bin / imsearch.db）
 └── library/
     └── <source>/                         # provider key：jm / pica / local
-        └── <source_id>/                  # 禁漫车号、哔咔 ID 或自建 ID（如 523607 / 5822... / LOC_tiya-frames）
+        └── <source_id>/                  # 禁漫车号、哔咔 ID 或自建 source_id（如 523607 / 5ebe... / tiya-frames）；本地印章为 LOC_{source_id}
             ├── album.json                # 元数据 + favorite + pages[].cached + chapters[] + cover_indices[]
             ├── remote.json               # 远端 URL + scramble_id + decode_version
             ├── pages/00001.webp          # 单章节：已解密拼好的成品页（扁平）
@@ -285,7 +287,7 @@ $COMIC_SHELF_DATA/
 | **[docs/agents/architecture.md](docs/agents/architecture.md)** | 后端架构设计、数据存储模型、Provider 扩展体系、安全门禁与 SSE 单向事件流                                             |
 | **[docs/agents/frontend.md](docs/agents/frontend.md)**         | 前端视图与 Composable 地图、阅读器分页与手势、PWA 离线缓存与性能策略                                                 |
 | **[DESIGN_NOTES.md](DESIGN_NOTES.md)**                         | 纸间设计系统规范（Living Design System）、品牌哲学、色彩/组件层级与核心设计定律（历史演进见 `docs/design-archive/`） |
-| **[docs/adr/](docs/adr/)**                                     | 架构决策记录（Architecture Decision Records，涵盖系统重大架构抉择，ADR 0001 ~ 0023）                                 |
+| **[docs/adr/](docs/adr/)**                                     | 架构决策记录（Architecture Decision Records，涵盖系统重大架构抉择，ADR 0001 ~ 0027）                                 |
 
 ---
 

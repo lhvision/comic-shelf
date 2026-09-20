@@ -8,14 +8,14 @@
 | `src/views/DiscoveryView.vue`                      | 发现页视图编排：分段榜单切换、分类筛选、榜单卡片网格与一键收录                                                                                                                           |
 | `src/views/ComicDetailView.vue`                    | 详情视图编排：封面流 / 元数据 / 操作栏 / 章节目录 / 页面索引                                                                                                                             |
 | `src/views/ChapterView.vue`                        | 章节子路由：某话章节头（本话缓存进度/重命名/删除管理）+ 该话 PageIndexGrid                                                                                                               |
-| `src/views/CreateComicView.vue`                    | 自建图集工坊：单话/多章节多图拖拽暂存、PDF 智能分话预检确认、服务器路径导入、元数据与封面编排                                                                                            |
+| `src/views/CreateComicView.vue`                    | 自建图集工坊：单话/多章节多图拖拽暂存、PDF 智能分话预检确认、服务器路径导入、元数据与封面编排；路径说明含本地标识双轨（ADR 0027）                                                        |
 | `src/views/ReaderView.vue`                         | 阅读器视图编排：模式切换、DOM 分屏挂载、HUD / 顶栏 / 设置面板接线                                                                                                                        |
 | `src/composables/useAuth.ts`                       | 访问鉴权与门禁状态机：Cookie/Token 会话、状态探测、401 拦截联动                                                                                                                          |
 | `src/composables/useGuestPasses.ts`                | 访客通行证名册管理状态机：登记印发、Token 密钥换新、有效期延长、启停与设备踢除联动                                                                                                       |
 | `src/composables/useDiscovery.ts`                  | 发现页排行榜状态机：双图源（禁漫 JM / 哔咔 PicAcg）模块化切换、分时段榜单拉取、分类过滤与收录状态追踪                                                                                    |
 | `src/composables/useUploadQueue.ts`                | 受限并发批量上传队列控制器（3 路 Worker 并发、细粒度进度与取消支持）                                                                                                                     |
 | `src/composables/useFileStaging.ts`                | 多图与画页/PDF 暂存：自然文件名数字排序、格式过滤（支持 allowPdf）、`useFileDialog` + `useDropZone` 聚合                                                                                 |
-| `src/composables/useLocalWorkshop.ts`              | 自建漫画工坊状态机：服务器本地路径扫描、白名单过滤、单话/多章节模式切换、PDF 双轨分话预览与隔离工作区管理                                                                                |
+| `src/composables/useLocalWorkshop.ts`              | 自建漫画工坊状态机：服务器本地路径扫描、白名单过滤、单话/多章节模式切换、PDF 双轨分话预览、空车号双轨分配与收录成功 toast（含 `display_id`）                                             |
 | `src/composables/useLibrarySync.ts`                | 书架筛选与流式分页协同：内存单例驱动、250ms 防抖拉取服务端分页、全貌统计联动与 SSE 跨端变动感知（0 路由写入，彻底释放顶栏导航原生调度）                                                  |
 | `src/composables/useLibraryFilter.ts`              | 书架检索与多维筛选：双轨自适应（小书库同步 / 万级藏书 Web Worker 卸载）、模糊搜索、标签频率统计、多模式排序、阅读状态单选三态与以图搜图映射                                              |
 | `src/utils/libraryFilterCore.ts`                   | 书架多维检索与复合排序核心纯函数（主线程与 Web Worker 共享，弱引用小写缓存与自然拼音排序）                                                                                               |
@@ -96,7 +96,7 @@
 | `src/components/detail/ReplacePagesModal.vue`      | 画页重新装订弹窗（全源支持，支持整本重装订或单话靶向替换、复合文件名智能切分、重新装订三层保护提示）                                                                                     |
 | `src/components/discovery/DiscoveryCard.vue`       | 榜单漫画卡片：排名徽章、原站外链、分类胶囊与一键收录/在库直达                                                                                                                            |
 | `src/components/form/TagManager.vue`               | 交互式标签管理器（Chip 展示、Enter/空格添加、SVG 居中删除、热门快选推荐）                                                                                                                |
-| `src/components/form/CoverIndicesPicker.vue`       | 4 张封面展示页码选定器（4 槽位数值输入、实时越界纠偏与默认值安全回退）                                                                                                                   |
+| `src/components/form/CoverIndicesPicker.vue`       | 4 张封面展示页码选定器（`v-for` 四槽、`maxPage=null` 时不封顶以支持路径导入、实时越界纠偏）                                                                                              |
 | `src/components/detail/ChapterIndex.vue`           | 章节目录整段：head + 分批卡片网格（首屏 24 话增量折叠、受控步进展开/收起、展开记忆）                                                                                                     |
 | `src/components/detail/PageIndexGrid.vue`          | 画页索引网格：平铺画页卡片流 + 末尾独立 +余 N 纸签卡，受控步进展开与平滑回滚收整                                                                                                         |
 | `src/components/detail/PageTile.vue`               | 单页索引独立画页瓦片：缩略图渐进呈现、多选/操作插槽与尾格余量徽印解耦                                                                                                                    |

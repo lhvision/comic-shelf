@@ -28,6 +28,7 @@ const {
   tags,
   serverPath,
   coverIndices,
+  coverMaxPage,
   submitting,
   activeChapterIdx,
   chapters,
@@ -278,7 +279,7 @@ const {
               <div class="path-guide">
                 <h3>
                   <AppIcon name="book-open" size="xs" />
-                  <span>路径识别与分话规则：</span>
+                  <span>路径识别、分话与标识规则：</span>
                 </h3>
                 <ul>
                   <li>
@@ -293,6 +294,11 @@ const {
                   <li>
                     <strong>多话合集</strong>：目录下包含子文件夹或多个
                     <code>.pdf</code> 文件，自动拆分为多章节。
+                  </li>
+                  <li>
+                    <strong>本地标识</strong>：车号栏留空时，用文件夹名或 PDF 文件名作标识（如
+                    <code>2899054</code> → 印章 <code>LOC_2899054</code>）；无法得到可用
+                    slug（如纯中文名）时改用收录时刻；已存在则加 <code>_1</code>。
                   </li>
                 </ul>
               </div>
@@ -382,7 +388,7 @@ const {
 
           <div class="field-group">
             <label class="form-label">封面展示页码 (Cover Pages · 轮播 4 张)</label>
-            <CoverIndicesPicker v-model="coverIndices" :max-page="totalStagedFilesCount || 1" />
+            <CoverIndicesPicker v-model="coverIndices" :max-page="coverMaxPage" />
           </div>
 
           <div class="field-group">

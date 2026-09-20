@@ -1311,13 +1311,13 @@
 
 - **本质**：
   1. **Flexbox 单子项空间坍塌（Space-Between Single-Child Clumping）**：在卡片脚部（`.card-foot`）声明 `display: flex; justify-content: space-between;`。当漫画有浏览量（`comic.views` 存在）时，左侧为观看次数，右侧为 `<CacheProgress>` 缓存进度条，呈现标准两极排布；但本地自建或无浏览量的漫画由于 `v-if="comic.views"` 导致左侧元素不挂载。在 CSS Flexbox 规范中，仅含 1 个子项的 `space-between` 容器行为退化为 `flex-start`（靠左对齐），导致进度条突兀地弹回左侧，与右侧有浏览量的卡片在书架上形成参差不齐的严重视觉撕裂。解决之道：为进度条赋予 `.card-progress { margin-left: auto; }`，无论左侧是否存在元数据，进度条始终刚性锚定在右下角；并在 `@container (max-width: 220px)` 纵向排列时将 `margin-left` 复位为 0；
-  2. **本地自建车号 LOC_loc\_ 双重前缀口吃（Local Display ID Prefix Stutter）**：本地上传未指定 ID 时，后端曾默认生成 `source_id = f"loc_{YYYYMMDD_HHMMSS}"`，随后在拼接 `display_id` 时再次拼装 `f"LOC_{source_id}"`，导致车号变成难看的 `LOC_loc_...` 叠字口吃，破坏封面图书馆借阅印章的简洁性。解决之道：规范化 ID 生成，`source_id` 剥离内置 `loc_` 统一为时间戳格式；`LocalProvider.normalize_id()` 与 `display_id()` 剥离冗余 `loc_` 前缀，确立单源格式标准。
+  2. **本地自建车号 LOC_loc\_ 双重前缀口吃（Local Display ID Prefix Stutter）**：本地上传未指定 ID 时，后端曾默认生成 `source_id = f"loc_{YYYYMMDD_HHMMSS}"`，随后在拼接 `display_id` 时再次拼装 `f"LOC_{source_id}"`，导致车号变成难看的 `LOC_loc_...` 叠字口吃，破坏封面图书馆借阅印章的简洁性。解决之道：`source_id` 不再内置 `loc_` 前缀；`LocalProvider.normalize_id()` 与 `display_id()` 剥离冗余 `loc_`，印章只加一层 `LOC_`。空车号分配见 ADR 0027（上传走时钟，路径导入走文件夹名），不要把「剥离前缀」理解成「一律时间戳」。
 - **红线与防误伤**：
   - **不要**在子元素数量动态变化的 `justify-content: space-between` 容器中依赖默认排列来锚定右侧操作/状态项；
   - **不要**在本地自建漫画生成逻辑中硬编码 `loc_` 前缀造成与车号 `LOC_` 的重复嵌套；
 - **放行/改用**：
   1. **状态项右对齐刚性锁**：使用 `.card-progress { margin-left: auto; }` 确保右侧项恒定靠右对齐；
-  2. **时序清晰自解释车号**：未提供自定义 ID 时生成 `YYYYMMDD_HHMMSS`，格式化为 `LOC_YYYYMMDD_HHMMSS`。
+  2. **本地标识双轨**：网页上传 / 暂存 PDF 未填车号时用 `YYYYMMDD_HHMMSS`；服务器路径导入未填车号时用文件夹名或 PDF 文件名（sanitize 失败才退回时钟），印章统一 `LOC_{source_id}`。不要把「一律时间戳」写回术语表。
 
 ### 117. 外部创作平台 API 契约与本地分卷暂存流水线解耦、URL 响应式污染与深层直达失衡 (Machine API Contract Preservation, Bookshelf Deep-Link URL SSOT & Staging Pipeline Isolation)
 

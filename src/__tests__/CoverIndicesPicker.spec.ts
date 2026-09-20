@@ -50,4 +50,20 @@ describe('CoverIndicesPicker', () => {
     const lastEmit = emitted[emitted.length - 1]![0] as number[]
     expect(lastEmit[1]).toBe(2)
   })
+
+  it('does not clamp high page numbers when maxPage is null', async () => {
+    const wrapper = mount(CoverIndicesPicker, {
+      props: {
+        modelValue: [1, 2, 3, 4],
+        maxPage: null,
+      },
+    })
+    const inputs = wrapper.findAll('input')
+    await inputs[0]!.setValue(25)
+    await inputs[0]!.trigger('blur')
+    const emitted = wrapper.emitted('update:modelValue')!
+    const lastEmit = emitted[emitted.length - 1]![0] as number[]
+    expect(lastEmit[0]).toBe(25)
+    expect(wrapper.text()).toContain('页数未知')
+  })
 })

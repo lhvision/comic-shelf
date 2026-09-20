@@ -1,11 +1,21 @@
 <script setup lang="ts">
+/**
+ * @file CoverIndicesPicker.vue
+ * @description 本地收录与元数据编辑用的 4 槽封面页码选择器。
+ *
+ * Props：
+ * - `maxPage`：已知画页总数时封顶；传 `null` 表示页数未知（服务器路径导入），只校验 ≥ 1。
+ */
 import { computed, ref, watch } from 'vue'
+
+const COVER_SLOT_LABELS = ['第 1 张 (主封)', '第 2 张', '第 3 张', '第 4 张'] as const
 
 const modelValue = defineModel<number[]>({ default: () => [1, 2, 3, 4] })
 
 const props = withDefaults(
   defineProps<{
-    maxPage?: number
+    /** 画页上限；`null` 表示不封顶 */
+    maxPage?: number | null
     hint?: string
   }>(),
   {
@@ -14,60 +24,59 @@ const props = withDefaults(
   },
 )
 
-const cover1 = ref(1)
-const cover2 = ref(2)
-const cover3 = ref(3)
-const cover4 = ref(4)
+const covers = ref([1, 2, 3, 4])
 
-const effectiveMax = computed(() => Math.max(1, props.maxPage || 1))
+/** 已知页数时的上限；路径导入未知页数时为 `null`。 */
+const maxPageCap = computed<number | null>(() =>
+  props.maxPage == null ? null : Math.max(1, props.maxPage || 1),
+)
+const inputMax = computed(() => maxPageCap.value ?? undefined)
+const coverHint = computed(() => {
+  if (props.hint) return props.hint
+  const cap = maxPageCap.value
+  if (cap == null) {
+    return '服务器目录导入时页数未知，请按实际画页填写页码（最小为 1）；超出实际页数的封面在收录后不会生效。'
+  }
+  return `指定 1 ~ ${cap} P 的页码序号（超出或小于 1 会自动恢复有效序号），书架与详情页轮播将按此顺序展示这 4 页作为封面。`
+})
 
 watch(
   modelValue,
   (val) => {
     const list = val || []
-    const next1 = list[0] ?? 1
-    const next2 = list[1] ?? Math.min(2, effectiveMax.value)
-    const next3 = list[2] ?? Math.min(3, effectiveMax.value)
-    const next4 = list[3] ?? Math.min(4, effectiveMax.value)
-
-    if (
-      cover1.value !== next1 ||
-      cover2.value !== next2 ||
-      cover3.value !== next3 ||
-      cover4.value !== next4
-    ) {
-      cover1.value = next1
-      cover2.value = next2
-      cover3.value = next3
-      cover4.value = next4
-    }
+    const cap = maxPageCap.value
+    const fallback = (slot: number) => (cap == null ? slot : Math.min(slot, cap))
+    const next = [
+      list[0] ?? 1,
+      list[1] ?? fallback(2),
+      list[2] ?? fallback(3),
+      list[3] ?? fallback(4),
+    ]
+    if (covers.value.some((n, i) => n !== next[i])) covers.value = next
   },
   { immediate: true, deep: true },
 )
 
 function emitChange() {
-  modelValue.value = [cover1.value, cover2.value, cover3.value, cover4.value]
+  modelValue.value = [...covers.value]
 }
 
-watch([cover1, cover2, cover3, cover4], () => {
-  emitChange()
-})
+watch(covers, emitChange, { deep: true })
 
-function normalizeCover(slot: 1 | 2 | 3 | 4) {
-  const maxP = effectiveMax.value
-  const defaultSlotVal = Math.min(slot, maxP)
-  const refMap = { 1: cover1, 2: cover2, 3: cover3, 4: cover4 }
-  const r = refMap[slot]
-  const val = Number(r.value)
-
-  if (isNaN(val) || val < 1 || !Number.isFinite(val)) {
-    r.value = slot === 1 ? 1 : defaultSlotVal
-  } else if (val > maxP) {
-    r.value = defaultSlotVal
+function normalizeCover(index: number) {
+  const slot = index + 1
+  const cap = maxPageCap.value
+  const fallback = cap == null ? slot : Math.min(slot, cap)
+  const val = Number(covers.value[index])
+  let next: number
+  if (Number.isNaN(val) || val < 1 || !Number.isFinite(val)) {
+    next = index === 0 ? 1 : fallback
+  } else if (cap != null && val > cap) {
+    next = fallback
   } else {
-    r.value = Math.floor(val)
+    next = Math.floor(val)
   }
-
+  if (covers.value[index] !== next) covers.value[index] = next
   emitChange()
 }
 </script>
@@ -75,61 +84,20 @@ function normalizeCover(slot: 1 | 2 | 3 | 4) {
 <template>
   <div class="cover-indices-picker">
     <div class="covers-grid">
-      <div class="cover-slot">
-        <span class="cover-slot__label">第 1 张 (主封)</span>
+      <div v-for="(label, index) in COVER_SLOT_LABELS" :key="label" class="cover-slot">
+        <span class="cover-slot__label">{{ label }}</span>
         <input
-          v-model.number="cover1"
+          v-model.number="covers[index]"
           class="field-input cover-input"
           type="number"
           min="1"
-          :max="effectiveMax"
-          @blur="normalizeCover(1)"
-          @change="normalizeCover(1)"
-        />
-      </div>
-      <div class="cover-slot">
-        <span class="cover-slot__label">第 2 张</span>
-        <input
-          v-model.number="cover2"
-          class="field-input cover-input"
-          type="number"
-          min="1"
-          :max="effectiveMax"
-          @blur="normalizeCover(2)"
-          @change="normalizeCover(2)"
-        />
-      </div>
-      <div class="cover-slot">
-        <span class="cover-slot__label">第 3 张</span>
-        <input
-          v-model.number="cover3"
-          class="field-input cover-input"
-          type="number"
-          min="1"
-          :max="effectiveMax"
-          @blur="normalizeCover(3)"
-          @change="normalizeCover(3)"
-        />
-      </div>
-      <div class="cover-slot">
-        <span class="cover-slot__label">第 4 张</span>
-        <input
-          v-model.number="cover4"
-          class="field-input cover-input"
-          type="number"
-          min="1"
-          :max="effectiveMax"
-          @blur="normalizeCover(4)"
-          @change="normalizeCover(4)"
+          :max="inputMax"
+          @blur="normalizeCover(index)"
+          @change="normalizeCover(index)"
         />
       </div>
     </div>
-    <span class="covers-hint">
-      {{
-        hint ||
-        `指定 1 ~ ${effectiveMax} P 的页码序号（超出或小于 1 会自动恢复有效序号），书架与详情页轮播将按此顺序展示这 4 页作为封面。`
-      }}
-    </span>
+    <span class="covers-hint">{{ coverHint }}</span>
   </div>
 </template>
 

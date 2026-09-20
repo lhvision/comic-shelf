@@ -13,9 +13,11 @@
 ## 核心概念
 
 - **本子（Comic / Book）**：书库里的一条漫画作品记录。用户视角的"一本"。
-- **车号（display_id）**：作品在来源站点的唯一编号（如禁漫 `523607`，本地自建自定义 `LOC_tiya-frames` 或自动时间戳 `LOC_20260918_143025`），是"放进纸间"时用户需要输入或生成的标识。`display_id` 与 `source` 组合才是全局唯一；本地自建在生成车号印章时自动剥离冗余 `loc_` 前缀，消除 `LOC_loc_` 叠字口吃。
+- **车号（display_id）**：作品面向馆长的编号印章（禁漫如 `523607`，哔咔如 `PICA_<objectid>`，本地自建如自填 `LOC_tiya-frames`、路径推断 `LOC_2899054` 或时钟 `LOC_20260918_143025`）。`display_id` 与 `source` 组合才是全局唯一；本地自建生成印章时自动剥离冗余 `loc_` 前缀，消除 `LOC_loc_` 叠字口吃。
 - **来源（Source / Provider）**：作品的远端或本地出处（`jm` 禁漫、`local` 本地自建/本地目录导入、`picacg` 哔咔）。每个来源有独立的 `short_label`、编号格式、数据目录 `library/<source>/<source_id>/`。
-- **本地自建漫画（Local Comic）**：由用户直接上传图片文件或指定服务器已有文件夹（如视频拆帧目录）收录生成的作品。`source = "local"`，无远端依赖，直接持久化于 `library/local/<source_id>/`。未指定 ID 时系统自动分配基于时间排序且带冲突重试的单调唯一标识（`YYYYMMDD_HHMMSS`），由 `LocalProvider.generate_id()` 与 `display_id()` 统一调度。
+- **本地自建漫画（Local Comic）**：由用户直接上传图片文件或指定服务器已有文件夹（如视频拆帧目录）收录生成的作品。`source = "local"`，无远端依赖，直接持久化于 `library/local/<source_id>/`。
+- **本地标识（Local source_id）**：本地自建作品的目录名与路由键，不是禁漫车号。馆长自填则规范化后采用；未填时，服务器路径导入优先用文件夹名或 PDF 文件名（纯数字如 `2899054` 仍合法；sanitize 成空串才改用收录时刻），网页上传与暂存 PDF 直接用收录时刻 `YYYYMMDD_HHMMSS`。自填标识撞车拒绝收录；路径推断或时钟标识撞车自动加 `_1` 后缀，同一路径再导入是另一本，不按来源路径去重。
+- **本地标题兜底（Local Title Fallback）**：快捷导入或 API 未填标题时，标题用原始文件夹名或 PDF 文件名（可含中文），与已经 sanitize 的本地标识不必相同。自建工坊标题为必填，不走这条兜底。
 - **哔咔漫画（PicAcg Comic）**：由哔咔数据源收录的作品。`source = "picacg"`，使用 24 位十六进制 ObjectId 标识；逆向协议与端点单一权威参考 `https://github.com/wgh136/PicaComic`；画卷原生为标准 JPEG/PNG 格式，不设切片混淆但需分流鉴权；封面策略首图优先采用官方 `thumb` 并转码 720px/360px WebP，续接正文前 3 页构成书架 4 叠牌展开。
 - **禁漫漫画（JMComic）**：由禁漫天堂数据源收录的作品。`source = "jm"`，车号格式为 `JM\d{5,8}`；画卷采用官方动态切片反混淆算法（`JmImageTool.get_num_by_url()`），下载后必须就地解码为连续完整图片落盘；支持多卷多话章节扁平映射与章节子路由；支持凭据鉴权解析受限画卷入库。
 - **受限画卷鉴权解析（Restricted Comic Album Fetching）**：针对禁漫平台中标记为需登录、特定敏感题材或作者作品的鉴权抓取能力。通过已认证的会话凭据（如 `AVS` 会话 Cookies）穿透平台访客限制，将原本返回 404/下架假象的受限车号完整解析入库。

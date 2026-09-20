@@ -1,7 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from 'vite-plus/test'
-import { mount } from '@vue/test-utils'
+import { mount, flushPromises } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
 import ImportPanel from '@/components/ImportPanel.vue'
+import type { ComicDetail } from '@/types'
 
 vi.mock('vue-router', async (importOriginal) => {
   const actual = await importOriginal<typeof import('vue-router')>()
@@ -21,7 +22,13 @@ vi.mock('@/api/client', async (importOriginal) => {
       ...actual.api,
       importLocalPath: vi.fn<
         () => Promise<{
-          meta: { source: string; source_id: string; title: string; page_count: number }
+          meta: {
+            source: string
+            source_id: string
+            display_id: string
+            title: string
+            page_count: number
+          }
         }>
       >(),
       getSettings: vi
@@ -172,5 +179,33 @@ describe('ImportPanel Component', () => {
     // Click again to collapse
     await bar.trigger('click')
     expect(wrapper.classes()).toContain('is-mobile-collapsed')
+  })
+
+  it('toasts allocated display_id after local path import', async () => {
+    const { api } = await import('@/api/client')
+    vi.mocked(api.importLocalPath).mockResolvedValue({
+      meta: {
+        source: 'local',
+        source_id: '2899054',
+        display_id: 'LOC_2899054',
+        title: '2899054',
+        page_count: 12,
+      },
+    } as ComicDetail)
+
+    const pinia = createPinia()
+    const wrapper = mount(ImportPanel, {
+      global: {
+        plugins: [pinia],
+      },
+    })
+
+    const tabs = wrapper.findAll('.panel-tab')
+    await tabs[2]?.trigger('click')
+    await wrapper.get('input[aria-label="服务器本地目录路径"]').setValue('/data/2899054')
+    await wrapper.get('form.import-form').trigger('submit')
+    await flushPromises()
+
+    expect(mockToast).toHaveBeenCalledWith('已收录《2899054》（LOC_2899054，共 12 页）', 'info')
   })
 })

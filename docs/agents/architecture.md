@@ -313,7 +313,7 @@ JmImageTool.decode_and_save(num, source_image, save_path)
 | `backend/app/models.py`             | 通用模型：`ComicMeta`（含 `Chapter`/`chapters`）/ `PageRecord.chapter` / `RemotePage` / `FetchedComic`                      |
 | `backend/app/providers/base.py`     | Provider 接口                                                                                                               |
 | `backend/app/providers/jm.py`       | JM HTML 元数据、上传者解析、**多章节 episode 逐话拉取**、图片下载 + 解密                                                    |
-| `backend/app/providers/local.py`    | 本地自建、外部白名单目录扫描、视频拆帧与多章节追加、重新装订                                                                |
+| `backend/app/providers/local.py`    | 本地自建、外部白名单目录扫描、视频拆帧与多章节追加、重新装订；`normalize_id` / `generate_id` / `display_id`（ADR 0027）     |
 | `backend/app/providers/picacg.py`   | 哔咔 App REST 接口签名（HMAC-SHA256）、车号宽容清洗、多章节分卷映射与 3-CDN 容灾下载                                        |
 | `backend/app/providers/registry.py` | `{"jm": JMProvider(), "local": LocalProvider(), "picacg": PicacgProvider()}` 注册表                                         |
 | `backend/app/routers/mcp.py`        | 模型上下文协议（MCP）服务端路由（SSE流式、消息派发、直接RPC、7大工具、3大资源、2大Prompts）                                 |
@@ -337,9 +337,9 @@ JmImageTool.decode_and_save(num, source_image, save_path)
 - `GET /api/library`（基于 SQLite `comics_index` 影子索引的毫秒级受控分页与多维筛选，参数支持 `page`, `page_size`, `status`, `favorite`, `source`, `q`, `tag`, `sort`, `ids`, `offset`；动态 JOIN 各用户独立阅读进度与喜欢）
 - `GET /api/library/facets`（藏书全貌聚合统计与高频前 30 标签，返回 `total_books`, `total_pages`, `cached_pages` 与高频标签元组）
 - `POST /api/library/import` `{id, source, prefetch_covers, prefetch_all, refresh}`（`refresh=true` 走增量，章节未变则复用旧 remote；已重新装订画卷禁止 refresh 覆盖）
-- `POST /api/library/local/create`（自建工坊创建本地图集/多章节元数据骨架；作为 Paper Studio 外部创作平台 Machine API 规范契约长期保留）
+- `POST /api/library/local/create`（自建工坊创建本地图集/多章节元数据骨架；未填 `id` 时分配时钟 `source_id`；作为 Paper Studio 外部创作平台 Machine API 规范契约长期保留）
 - `POST /api/library/local/create-from-staged-pdf`（从隔离区暂存 PDF 页面原子收录为本地多章节漫画，带章节草案与页码重排）
-- `POST /api/library/local/import-path`（扫描服务器本地目录或单个/多卷 PDF 文件秒级收录）
+- `POST /api/library/local/import-path`（扫描服务器本地目录或单个/多卷 PDF 文件秒级收录；未填 `id` 时用路径名作 `source_id`，见 ADR 0027）
 - `POST /api/library/local/inspect-pdf`（接收上传 PDF 并在隔离工作区预解包分析，返回双轨探测章节草案与 staging_token）
 - `DELETE /api/library/local/staged-pdf/{staging_token}`（物理释放暂存解包隔离区）
 - `POST /api/library/{source}/{id}/upload-pages`（支持全源，向指定漫画分批上传图片或 PDF 增量追加画页或创建新章节，兼容 `/local/{id}/upload-pages`）
