@@ -141,15 +141,16 @@ docker run -d \
 
 ### 3.1 核心权限与安全配置（必看）
 
-| 环境变量                                | 必填等级                     | 默认值               | 说明                                                                                                                                                                                                                                  |
-| :-------------------------------------- | :--------------------------- | :------------------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `COMIC_SHELF_SECRET`                    | 🔴 **公网必设** / 内网免密   | _(留空)_             | **馆长访问口令**。留空则为局域网免密模式；公网或多用户部署强烈建议设置。输入此口令后获得全站收录、编辑元数据、删除、全量缓存等全部读写管理权限。                                                                                      |
-| `COMIC_SHELF_MACHINE_TOKEN`             | ⚪ **局域网应用/Bot可选**    | _(留空)_             | **内网机器与自动化专用密钥 (Machine API Token)**。供局域网内其他应用（飞书 Bot、AI Agent、微服务等）通过 `X-Machine-Token` 或 Bearer Token 调用 MCP 与 REST API，与网页端馆长密码完全解耦互不干扰。                                   |
-| `COMIC_SHELF_ALLOWED_DIRS`              | 🔵 **直扫NAS外部目录时必设** | _(留空)_             | **允许从服务器本地路径扫描导入的额外根目录白名单**（安全沙箱放行）。用于将 NAS 现有图库目录或挂载盘快速录入纸间。多个路径在 Linux/macOS 使用冒号 `:` 分隔，Windows 使用分号 `;` 分隔（例：`/mnt/tank/comics:/mnt/media/downloads`）。 |
-| `COMIC_SHELF_ENABLE_HOTLINK_PROTECTION` | ⚪ **默认已开启**            | `true`               | **图片防盗链保护**。基于现代浏览器 `Sec-Fetch-Site: cross-site` 与 `Referer` 拦截，彻底杜绝外站把纸间当图床跨站盗图。                                                                                                                 |
-| `COMIC_SHELF_TRUST_FORWARDED_HEADERS`   | ⚪ **默认已开启**            | `true`               | **反向代理 IP 请求头信任**。控制是否解析 `X-Forwarded-For`、`X-Real-IP` 等请求头确定客户端 IP。经由 Nginx/Cloudflare/Caddy 反代部署时保持 `true`；若直接将 Uvicorn 裸端口暴露于公网且无前端代理，建议设为 `false` 防范 IP 伪造。      |
-| `COMIC_SHELF_COOKIE_NAME`               | ⚪ **可选自定义**            | `comic_shelf_token`  | **通行证 Cookie 键名**。支持自定义 Cookie 名称（如 `my_vault_token`），彻底隐匿开源默认键名，配合 Cloudflare WAF 与单本沙箱 `temp_token` 实现高强度私有免检与零裂图秒开（详见 `docs/HOMELAB_NETWORKING_GUIDE.md` §6.6 与 §6.7）。     |
-| `COMIC_SHELF_DEVICE_COOKIE_NAME`        | ⚪ **可选自定义**            | `comic_shelf_device` | **设备认证 Cookie 键名**。支持自定义设备 Cookie 名称（如 `my_vault_device`），配合 Cloudflare WAF 规则实现免检通行。                                                                                                                  |
+| 环境变量                                | 必填等级                     | 默认值               | 说明                                                                                                                                                                                                                                                                                 |
+| :-------------------------------------- | :--------------------------- | :------------------- | :----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `COMIC_SHELF_SECRET`                    | 🔴 **公网必设** / 内网免密   | _(留空)_             | **馆长访问口令**。留空则为局域网免密模式；公网或多用户部署强烈建议设置。输入此口令后获得全站收录、编辑元数据、删除、全量缓存等全部读写管理权限。                                                                                                                                     |
+| `COMIC_SHELF_MACHINE_TOKEN`             | ⚪ **局域网应用/Bot可选**    | _(留空)_             | **内网机器与自动化专用密钥 (Machine API Token)**。供局域网内其他应用（飞书 Bot、OCR 流水线、微服务等）通过 `X-Machine-Token` 或 Bearer Token 调用 REST API 与入库同步，与网页端馆长密码完全解耦互不干扰。配了 `COMIC_SHELF_MCP_TOKEN` 后，这把密钥不再能开 MCP。                     |
+| `COMIC_SHELF_MCP_TOKEN`                 | ⚪ **接外部智能体时建议设**  | _(留空)_             | **MCP 子凭据**：只解锁 `/api/mcp` 与 MCP 工具，交给 Claude/Cursor/Bot 后可随时换掉，不牵连站长登录与 OCR 流水线。**一旦设置，机器密钥在 MCP 面立即失效**（只剩馆长口令与这把子凭据）。MCP 工具仍是馆长级可见（含对访客隐藏的本），但 `create_direct_pass` 拒绝为隐藏本签发公开链接。 |
+| `COMIC_SHELF_ALLOWED_DIRS`              | 🔵 **直扫NAS外部目录时必设** | _(留空)_             | **允许从服务器本地路径扫描导入的额外根目录白名单**（安全沙箱放行）。用于将 NAS 现有图库目录或挂载盘快速录入纸间。多个路径在 Linux/macOS 使用冒号 `:` 分隔，Windows 使用分号 `;` 分隔（例：`/mnt/tank/comics:/mnt/media/downloads`）。                                                |
+| `COMIC_SHELF_ENABLE_HOTLINK_PROTECTION` | ⚪ **默认已开启**            | `true`               | **图片防盗链保护**。基于现代浏览器 `Sec-Fetch-Site: cross-site` 与 `Referer` 拦截，彻底杜绝外站把纸间当图床跨站盗图。                                                                                                                                                                |
+| `COMIC_SHELF_TRUST_FORWARDED_HEADERS`   | ⚪ **默认已开启**            | `true`               | **反向代理 IP 请求头信任**。控制是否解析 `X-Forwarded-For`、`X-Real-IP` 等请求头确定客户端 IP。经由 Nginx/Cloudflare/Caddy 反代部署时保持 `true`；若直接将 Uvicorn 裸端口暴露于公网且无前端代理，建议设为 `false` 防范 IP 伪造。                                                     |
+| `COMIC_SHELF_COOKIE_NAME`               | ⚪ **可选自定义**            | `comic_shelf_token`  | **通行证 Cookie 键名**。支持自定义 Cookie 名称（如 `my_vault_token`），彻底隐匿开源默认键名，配合 Cloudflare WAF 与单本沙箱 `temp_token` 实现高强度私有免检与零裂图秒开（详见 `docs/HOMELAB_NETWORKING_GUIDE.md` §6.6 与 §6.7）。                                                    |
+| `COMIC_SHELF_DEVICE_COOKIE_NAME`        | ⚪ **可选自定义**            | `comic_shelf_device` | **设备认证 Cookie 键名**。支持自定义设备 Cookie 名称（如 `my_vault_device`），配合 Cloudflare WAF 规则实现免检通行。                                                                                                                                                                 |
 
 ### 3.2 基础服务与持久化配置
 
@@ -342,27 +343,74 @@ backend/data/
 纸间支持 **“高性能算力机提取 OCR + 低功耗 NAS 存储与服务”** 的算存分离架构（Compute-Storage Decoupling）。
 高性能电脑（带 GPU/多核 CPU）通过挂载 `/mnt/nas_manga` 跑 OCR 并生成伴生文件 `{index}.ocr.json`，处理完成后通知 NAS 更新 `comic_dialogues.db` 中的 SQLite FTS5 索引：
 
-1. **高性能机一键状态巡检与依赖安装**：
+1. **高性能机一键状态巡检与依赖安装**（**默认即 GPU**，不需要记 `--gpu`）：
 
    ```bash
-   # 查看当前书库 OCR 伴生覆盖率、GPU 加速状态与 FTS5 索引条目：
-   pnpm ocr status
-   # 或
-   bash scripts/ocr.sh status
+   # 巡检：OCR 伴生覆盖率 + 宿主显卡 + 本轮默认算力线 + 两条线各自的"会话级"实际推理设备 + FTS5 条目
+   pnpm ocr status              # 等价于 bash scripts/ocr.sh status
 
-   # 首次运行一键安装 OCR 算力依赖（仅算力机需安装，NAS 读者端无需安装）：
+   # 装依赖：检测到 NVIDIA 显卡 → 在项目内建 .venv-ocr/（已 gitignore，约 1.7GB）并装 GPU 栈；
+   # 没检测到卡 → 只往应用 .venv 里装 CPU 依赖。装完 GPU 环境后，run/test/status 自动优先用它。
    bash scripts/ocr.sh install
+   # 明确只要 CPU（无卡机、或与宿主争卡时）：
+   bash scripts/ocr.sh install --cpu
+   # 环境想放到别处（外置盘/NAS 挂载）：COMIC_SHELF_OCR_VENV=/path/to/env bash scripts/ocr.sh install
    ```
+
+   回落是**显式**的：`.venv-ocr` 不存在时 `run` 会打一行 `⚠️ 检测到宿主有 NVIDIA 显卡，但 GPU 算力环境
+未创建，本轮按 CPU 跑` 并给出建环境的命令；`--gpu` 而环境缺失或直接拒绝（exit 1），绝不静默降级。
+
+   > ⚠️ **不要**手动把 `onnxruntime-gpu` 与 CPU 版 `onnxruntime` 混装进同一个环境：两个 wheel
+   > 共用 `site-packages/onnxruntime/` 目录，覆盖安装会留下混合文件，`get_available_providers()`
+   > 照样列出 CUDA 但推理静默退回 CPU。`install` 已按"先删目录再装 GPU 版"的顺序处理，
+   > 原理与实测数据见 `docs/PITFALLS.md` #137。
 
 2. **高性能机批量提取 OCR 伴生文件并通知 NAS**：
 
    ```bash
+   # 默认就走 GPU（v6 实测 94 页/分），推荐把线程数给到 4：
+   pnpm ocr run --source jm --workers 4
+
+   # 强制回落应用的 CPU 线：
+   bash scripts/ocr.sh run --cpu --source jm
+
    # 批量对指定漫画跑 OCR，并在完成后自动通过 API 通知远程 NAS 入库：
    bash scripts/ocr.sh run --source jm --id 1059521 --api-url http://192.168.1.100:8000 --token "你的MachineToken"
 
    # 全库扫描处理（自动跳过已有伴生文件的画页，支持 --limit 限定册数）：
    bash scripts/ocr.sh run --limit 10 --api-url http://192.168.1.100:8000 --token "你的MachineToken"
    ```
+
+   > `--workers` 在 CPU 线上**不要超过 2**：单个引擎内部已吃满多核，加线程只是在抢核。v6 的同页对照
+   > （`jm/1249304` 全 153 页，两点差法扣掉模型加载，走 `ocr.sh lines` 离线 harness）：
+   > CPU 2 线程 **37.3 页/分**、4 线程反而掉到 **32.4 页/分**，GPU 4 线程 **239 页/分**（GPU:CPU ≈ 6:1）。
+   > 而全库异构 1764 页走 `ocr.sh run`（含写盘、分辨率更高：全库中位 √面积 1430px vs 这本 1152px）
+   > 实测约 94 页/分——**两个口径不许互相冒充**，估算成本按"要跑的那批页长什么样"选。
+   > 复测必须走 `bash scripts/ocr.sh lines ...`：直接 `.venv-ocr/bin/python scripts/ocr_lines.py --gpu`
+   > 会漏掉 `LD_LIBRARY_PATH`，`libcublasLt.so.13` 找不到就静默退回 CPU，量出来的"GPU"和 CPU 同带
+   > （本轮实测踩过，见 `docs/PITFALLS.md` #137）。
+
+   **引擎只剩一条线：`rapidocr` 3.x + PP-OCRv6 small**（官方列明该单模型覆盖简中/繁中/日文，
+   `tiny` 不含日文所以必须用 `small`）。旧的 v3 轨道（`rapidocr-onnxruntime`）已整体删除：它
+   6623 字的字符表里**只有 5 个假名**，日文与繁体常被强行写成"形似汉字的乱码"（`這` → `遣`、
+   `歡` 直接丢），只要那条路还开着，"忘了带参数"就能把乱码灌进语料且无人察觉。切换的实测收益
+   （真库单本 `jm/319445` 全 22 页）：字数 **+24.7%**（1083 → 1351）、假名 2 → 48；GPU 4 线程
+   94 页/分（v3 同机 129 页/分），全库 1764 页跑一轮约 25–35 分钟。历史 v3 侧车仍然合法，
+   `engine_track` 字段留着做溯源。
+
+   改气泡聚类判据之前，先用离线实验台（推理只跑一次，之后本地迭代，绝不写 `backend/data`）：
+
+   ```bash
+   # 1) dump 指定画页的原始识别行到 /tmp/paper-room-ocr-lines
+   bash scripts/ocr.sh lines --source jm --id 319445 --pages 10 --out /tmp/prl
+   # 2) 改完 scripts/ocr_worker.py 的 cluster_blocks 后，不跑推理直接量效果：
+   #    打印气泡数 / 字数 / 气泡面积分布 / 疑似误并清单
+   bash scripts/ocr.sh lines --recluster /tmp/prl
+   ```
+
+   判据落地后要覆盖现网侧车就 `bash scripts/ocr.sh run --source jm --id <id> --force`，
+   随后 `bash scripts/ocr.sh sync` 重灌索引。侧车里的 `engine: rapidocr` 是
+   `is_valid_ocr_sidecar` 的合法性标记，改不得——改了会让新侧车被当成脏缓存无限重提。
 
 3. **宿主机 / NAS 终端一键增量同步已存在的伴生文件**：
 
@@ -375,8 +423,78 @@ backend/data/
 
 4. **单张画页快速测试与气泡聚类预览**：
    ```bash
-   bash scripts/ocr.sh test /path/to/page.webp
+   bash scripts/ocr.sh test /path/to/page.webp          # 默认走 GPU 环境
+   bash scripts/ocr.sh test --cpu /path/to/page.webp    # 强制用应用 CPU 环境做对照
    ```
+   要看"GPU 到底有没有生效"用 `bash scripts/ocr.sh status`（按 Det/Cls/Rec 三段各建一次会话验证）；
+   `test` 只负责出气泡，环境没装好时 worker 的预检会把跑批挡下来，而不是静默按 CPU 跑。
+
+#### 5.1.1 PDF 扉页自动分话：按 ADR 0024 保持**可选**，默认不装
+
+上面整套流水线的前提是**算存分离**：NAS 容器不做法向推理，只收 `{index}.ocr.json` 并重建 SQLite FTS5。
+`backend/app/storage/pdf.py::_extract_chapters_from_ocr`（导入 PDF 且**没有**电子书签时的第二轨分话探测）
+按 ADR 0024 的口径是"该包属可选依赖，未安装时本轨自动跳过"，因此 `rapidocr` **不在** `backend/requirements.txt` 里，
+别顺手加进来——它只服务"无书签 PDF 要自动切话"这一件事，代价是镜像多 33MB（PP-OCRv6 的三个 `.onnx` 就在包里，
+不需要联网下模型）。
+
+缺它时的行为：该 PDF 平铺成单章，导入照常完成，日志打一行 **WARNING**「跳过 PDF 扉页自动分话」。
+（这里必须是 warning：uvicorn 默认不给 root logger 设级别，info 会被整条丢掉，就变成"没人知道为什么没有话目录"。）
+
+经常在 NAS 上导入无书签 PDF、想要自动分话的话，加一行就够（CPU 版 `onnxruntime` 已随语义腿在场）：
+
+```bash
+# backend/requirements.txt 追加：
+rapidocr>=3.9.2
+```
+
+#### 5.1.2 语义检索「按意思找台词」（可选能力，默认不启用）
+
+台词检索有两条腿：FTS5 关键词（默认就有，简繁字形无关）与向量语义（要自己装两步）。
+语义这条腿解决**字面完全不通**的查询——搜「告白」拿到「我喜欢你」、搜「脸红」拿到「满脸通红」。
+为什么做成独立出口、不与关键词混排，见 ADR 0028。
+
+它不进 `backend/requirements.txt`：为了一句问题的在线编码（2ms）要每台机器多背约 70MB，
+而模型文件本身还得单独放一次。不装就是没有这条腿，其余功能一律不受影响。
+
+| 项目           | 实测值（真库 6254 条向量 / 512 维，CPU）                                                                                                                                                                               |
+| :------------- | :--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 运行时         | `onnxruntime`(CPU) + `tokenizers` ≈ 70MB；模型 23MB（量化 `bge-small-zh-v1.5`，ONNX，**不需要 torch**）                                                                                                                |
+| 模型体积       | 23MB（量化 `bge-small-zh-v1.5`，ONNX，**不需要 torch**）                                                                                                                                                               |
+| 整库编码一次   | 41 秒（184 行/秒），落库 12.8MB 向量                                                                                                                                                                                   |
+| 每次搜索的代价 | 模型侧 2ms（只编码那一句问题）；**整条请求实测 250~300ms**，大头不在模型，在把命中气泡的原文回表（FTS5 的 UNINDEXED 列没有索引，候选池 50 页 = 264ms）。向量矩阵已进程内缓存，剩下这笔是已知待办，见 HANDOVER 议题 B。 |
+| 不装时的行为   | 关键词检索完全不受影响；`/api/search/dialogue-semantic` 返回 `available=false` + `reason=encoder_unavailable`                                                                                                          |
+
+```bash
+# 0) 装运行时（必须是 CPU 版 onnxruntime，别与 GPU 版混装：错题本 #140）
+pip install "onnxruntime>=1.20" "tokenizers>=0.21" -i https://pypi.tuna.tsinghua.edu.cn/simple
+# Debian slim 基座还要系统库 libstdc++6（libonnxruntime.so 直链它，缺了 import 就失败）；
+# 自建镜像时在 Dockerfile 的 pip 层后补一层：
+#   RUN apt-get update && apt-get install -y --no-install-recommends libstdc++6 \
+#       && rm -rf /var/lib/apt/lists/* && pip install "onnxruntime>=1.20" "tokenizers>=0.21"
+
+# 1) 放模型（DATA_DIR/models 会随 backend/data/ 一起被备份与挂载卷带走，容器重建不丢）
+mkdir -p backend/data/models/bge-small-zh-v1.5
+# 国内直连 huggingface.co 不通，走镜像：
+curl -L https://hf-mirror.com/Xenova/bge-small-zh-v1.5/resolve/main/onnx/model_quantized.onnx \
+     -o backend/data/models/bge-small-zh-v1.5/model.onnx
+curl -L https://hf-mirror.com/Xenova/bge-small-zh-v1.5/resolve/main/tokenizer.json \
+     -o backend/data/models/bge-small-zh-v1.5/tokenizer.json
+# 想放别处：COMIC_SHELF_EMBED_DIR=/mnt/nas_manga/models/bge-small-zh-v1.5（两个文件名保持不变）
+
+# 2) 建一次全库向量（装完必须跑一次，否则状态一直是 vectors_missing）
+curl -X POST http://127.0.0.1:8000/api/search/dialogue-vectors/rebuild \
+     -H "Authorization: Bearer $COMIC_SHELF_SECRET"
+
+# 3) 验证：这句与库里任何台词都没有共同字，能返回内容就是通了
+curl "http://127.0.0.1:8000/api/search/dialogue-semantic?q=告白&limit=3" \
+     -H "Authorization: Bearer $COMIC_SHELF_SECRET"
+```
+
+日常**不用再手动重建**：`*/ocr/sync` 每同步一本就顺手重编那一本。只有两种情况需要手动跑第 2 步——
+第一次装模型，以及换模型（状态会报 `dim_mismatch`，新旧向量维度不同不能混着算余弦）。
+
+> ⚠️ 语义出口的 `similarity` 是余弦、跨查询可比；关键词出口的 `rank_score` 是**本次候选池内**归一、
+> 且排序掺了本人的收藏与阅读进度。两个数不是一回事，**不要混排、不要互当阈值用**（ADR 0028 决策一）。
 
 ---
 
@@ -385,7 +503,7 @@ backend/data/
 纸间采用 **多阶段构建（Multi-stage Build）** 严格控制生产镜像体积：
 
 - **Node.js 编译阶段（打包后完全丢弃）**：使用轻量 `node:22-alpine` 仅执行前端构建（`pnpm build`），**Node.js、pnpm 及庞大的 `node_modules` 均不会打包进最终镜像**；已内置 BuildKit 物理缓存挂载（`--mount=type=cache,id=paper-room-pnpm`），即使代码更新拉取了新的依赖包，已有依赖 100% 从宿主机磁盘复用，秒级极速装配；
-- **最终生产镜像**：仅基于官方精简镜像 `python:3.12-slim`，安装纯 Python 运行时依赖（同样内置 pip cache 挂载），附带约 2MB 的前端静态成品，镜像极小、拉取速度极快。
+- **最终生产镜像**：仅基于官方精简镜像 `python:3.12-slim`，安装纯 Python 运行时依赖（同样内置 pip cache 挂载），附带约 2MB 的前端静态成品，镜像极小、拉取速度极快。台词 OCR 与语义检索的推理依赖**都不在这张基础依赖表里**（前者在算力机、后者见 §5.1.2），要就在自己的构建里加一层。
 
 ### 6.1 本地打包构建与测试
 
@@ -577,13 +695,14 @@ docker push yourname/paper-room:v1.0.0
 
 - **免密部署**（家庭纯内网未配置 `COMIC_SHELF_SECRET`）：
   - SSE 握手链接：`http://<NAS_IP>:8000/api/mcp/sse`
-- **带密码部署**（已配置 `COMIC_SHELF_SECRET` 或专用 `MACHINE_TOKEN`）：
+- **带密码部署**（已配置 `COMIC_SHELF_SECRET`，或专用的 `COMIC_SHELF_MCP_TOKEN`）：
   - **方式 A（标准 Headers 鉴权，推荐）**：
     - 链接：`http://<NAS_IP>:8000/api/mcp/sse`
-    - 标头：`Authorization: Bearer <你的管理密码或MACHINE_TOKEN>`
+    - 标头：`Authorization: Bearer <COMIC_SHELF_MCP_TOKEN>`
   - **方式 B（Query 参数鉴权，适合不支持自定义 Headers 的客户端）**：
-    - 链接：`http://<NAS_IP>:8000/api/mcp/sse?token=<你的管理密码或MACHINE_TOKEN>`
-    - 服务端会自动将 Token 继承至消息回传端点，零断流。
+    - 链接：`http://<NAS_IP>:8000/api/mcp/sse?token=<COMIC_SHELF_MCP_TOKEN>`
+    - 服务端返回的消息回传端点**只携带 `session_id`**（`/api/mcp/messages?session_id=...`），不再把凭据抄回 URL；活会话凭 `session_id` 即可续话，同样零断流。
+    - 但查询串本身会进 uvicorn 与反代的访问日志，所以这条路**只放子凭据，绝不要放站长口令**。
 
 #### 2. Claude Desktop 客户端配置
 
@@ -595,7 +714,7 @@ docker push yourname/paper-room:v1.0.0
     "paper-room": {
       "url": "http://192.168.1.100:8000/api/mcp/sse",
       "headers": {
-        "Authorization": "Bearer 你的COMIC_SHELF_SECRET或MACHINE_TOKEN"
+        "Authorization": "Bearer 你的COMIC_SHELF_MCP_TOKEN"
       }
     }
   }
@@ -603,7 +722,7 @@ docker push yourname/paper-room:v1.0.0
 ```
 
 > 💡 **提示**：若你的客户端版本暂未开放 `headers` 配置项，可直接改用带有 Query 参数的链接：
-> `"url": "http://192.168.1.100:8000/api/mcp/sse?token=你的管理密码"`
+> `"url": "http://192.168.1.100:8000/api/mcp/sse?token=你的COMIC_SHELF_MCP_TOKEN"`（查询串会进访问日志，务必只放子凭据）
 
 #### 3. Cursor / 其它 MCP 客户端配置
 
@@ -667,18 +786,52 @@ curl -X POST "http://<NAS_IP>:8000/api/mcp/rpc" \
 
 ---
 
-### 9.5 安全防护、角色分工与权限矩阵（双轨 Token 体系）
+### 9.5 安全防护、角色分工与权限矩阵（三轨 Token 体系）
 
-纸间在认证层实现了基于**最小特权原则（Principle of Least Privilege）**的分层双轨鉴权体系，两者各司其职、互不冲突：
+纸间在认证层实现了基于**最小特权原则（Principle of Least Privilege）**的分层三轨鉴权体系，各司其职、只在 MCP 那一道门上有一次覆盖关系：
 
-| 鉴权凭证                        | 授予角色                       | 适用场景                                                | 权限边界与安全约束                                                                                                                                                                                          |
-| :------------------------------ | :----------------------------- | :------------------------------------------------------ | :---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **`COMIC_SHELF_SECRET`**        | `curator`（馆长 / 超级管理员） | 馆长个人管理、本地/远程 Claude Desktop 调试             | **全站最高绝对特权**：支持全量 MCP 工具、管理后台登入、访客通行证派发/禁用、彻底删除藏书、全站配置修改。                                                                                                    |
-| **`COMIC_SHELF_MACHINE_TOKEN`** | `machine`（外部机器 / 微服务） | 飞书 Bot、AI 漫画工坊（Paper Studio）、NAS 定时同步脚本 | **受限最小特权沙箱**：仅开放 MCP 数据工具调用、单本沙箱签发（`create_direct_pass`）及标准推书入库（`POST /api/library/local/create`）；**严格禁止访问通行证名册、禁止彻底删除漫画、禁止越权修改系统密钥**。 |
+| 鉴权凭证                        | 授予角色                       | 适用场景                                             | 权限边界与安全约束                                                                                                                                                                                                          |
+| :------------------------------ | :----------------------------- | :--------------------------------------------------- | :-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **`COMIC_SHELF_SECRET`**        | `curator`（馆长 / 超级管理员） | 馆长个人管理、本地/远程 Claude Desktop 调试          | **全站最高绝对特权**：支持全量 MCP 工具、管理后台登入、访客通行证派发/禁用、彻底删除藏书、全站配置修改。                                                                                                                    |
+| **`COMIC_SHELF_MCP_TOKEN`**     | 仅 MCP 面通行                  | 交给外部智能体（Claude / Cursor / Bot 配置里的这把） | **只解锁 `/api/mcp` 与 MCP 工具**，碰不到任何 REST 管理端点。MCP 工具内部按馆长级取数（含对访客隐藏的本），但 `create_direct_pass` 硬拒绝为隐藏本签发公开链接。换掉这一行即可撤销已外发的钥匙。                             |
+| **`COMIC_SHELF_MACHINE_TOKEN`** | `machine`（外部机器 / 微服务） | OCR 算力机、Paper Studio、NAS 定时同步脚本           | **受限最小特权沙箱**：本地导入与建本（`POST /api/library/local/*`）、伴生同步（`*/ocr/sync`）；**严格禁止访问通行证名册、禁止彻底删除漫画、禁止越权修改系统密钥**。一旦配了 `COMIC_SHELF_MCP_TOKEN`，这把密钥不再能开 MCP。 |
 
-- **为什么 MCP 端点两者都支持？**
-  MCP 既可能由“馆长本人的 AI 客户端（Curator 身份）”使用，也可能由“飞书机器人 / 外部智能体（Machine 身份）”调用。MCP 路由底层统一对两者放行数据查询与单本签发能力；但一旦外部请求尝试执行敏感管理或破坏性操作，`machine` 角色会被立即拦截，杜绝因外部脚本或 Bot 配置泄露导致全库被删的风险。
-- **连接池过载防护**：SSE 活跃会话设上限 `_MAX_MCP_SESSIONS = 50`，超限自动返回 503，防止客户端异常断连泄漏连接池。
+#### 1. 选型速查：谁该拿哪把
+
+| 调用方                                               | 发哪把                            | 备注                                                                    |
+| :--------------------------------------------------- | :-------------------------------- | :---------------------------------------------------------------------- |
+| OCR 算力机（`ocr.sh run --api-url … --token …`）     | `COMIC_SHELF_MACHINE_TOKEN`       | 这条流水线只调 `*/ocr/sync`，**根本不经过 MCP**，设不设子凭据都不影响它 |
+| Paper Studio、NAS 定时同步脚本等内网自动写库任务     | `COMIC_SHELF_MACHINE_TOKEN`       | 建本与上传画页走 `POST /api/library/local/*`                            |
+| 外部智能体（Claude / Cursor / 飞书 Bot 的 MCP 配置） | `COMIC_SHELF_MCP_TOKEN`           | 只需 MCP；它拿不到任何 REST 写端点                                      |
+| 馆长自己的浏览器                                     | `COMIC_SHELF_SECRET`              | 登录后由 HttpOnly Cookie 承载，不必手填 token                           |
+| 朋友与群友阅读                                       | 访客通行证 / `create_direct_pass` | **不是这三把里的任何一把**：限时、限单本、可单独注销                    |
+
+#### 2. MCP 那道门的准入名单（三轨之间唯一的重叠）
+
+| `COMIC_SHELF_MCP_TOKEN` | 站长口令 | 机器密钥               | 子凭据 |
+| :---------------------- | :------- | :--------------------- | :----- |
+| 留空（默认，向后兼容）  | ✅       | ✅                     | —      |
+| 已设置                  | ✅       | ❌ **当场失效（401）** | ✅     |
+
+一句话规则：**子凭据一旦存在，就把机器密钥从 MCP 名单里挤出去**；机器密钥的其他三条路（`*/ocr/sync`、`/api/library/local/*`、`/api/search/dialogue-context`）不受任何影响。
+
+两条运维红线：
+
+1. **两把不许填同一个值**——代码不校验，同值等于两把钥匙没分家，撤销收益归零；
+2. 设子凭据的那一刻，原先拿机器密钥调 MCP 的客户端会开始 401，必须换成子凭据（这是刻意的，不是 bug）。
+
+#### 3. 泄露时换谁（撤销半径）
+
+| 泄露的钥匙                  | 攻击面                                                     | 要动什么                                                    |
+| :-------------------------- | :--------------------------------------------------------- | :---------------------------------------------------------- |
+| `COMIC_SHELF_MCP_TOKEN`     | 全库可见性（含隐藏本）+ 签发达本直达链接（隐藏本已被否决） | 改一行 env + 重启 API：NAS 流水线与站长登录**毫无感觉**     |
+| `COMIC_SHELF_MACHINE_TOKEN` | 往库里写东西 + 读；（未设子凭据时还能顺手开 MCP）          | 换它要连所有挂载该值的脚本、Bot、定时任务一起改，并逐个重启 |
+| `COMIC_SHELF_SECRET`        | 全站：删本、通行证名册、系统配置                           | 全站重登。这就是外部智能体绝不该拿到它的原因                |
+
+- **为什么 MCP 不能算"最小特权"通道？** MCP 工具的取数视角天生是馆长级（要能命中隐藏本、要读个人收藏与阅读进度来排序），所以只能靠"另发一把可单独撤销的钥匙"来缩小泄露后果，而不是靠削减工具能力——后者会让智能体连本该查的东西都查不到。
+- **连接池过载防护**：SSE 活跃会话设上限 `_MAX_MCP_SESSIONS = 50`，超限自动返回 429，防止客户端异常断连泄漏连接池。
+- **已收口的两条**：SSE 握手不再把调用方凭据抄进 `/api/mcp/messages` 的 URL（活会话凭 `session_id` 续话，反代日志里不再出现长效密钥）；MCP 的鉴权失败已与 `/api/auth/login` 共用同一把 IP 锁（60 秒窗口内 10 次失败锁 5 分钟，锁定期内连站长口令也返回 429）。
+- **仍然存在的敞口**：入站请求仍接受 `?token=`（`extract_token` 第 4 档，为不支持自定义 Headers 的客户端与画页 `<img>` 保留），走这条路时凭据会进访问日志——**所以只放子凭据**。stdio 通道（`python3 backend/app/mcp_server.py`）零鉴权，属"能 spawn 即馆长"的本机设计。MCP 工具调用本身没有独立频控（只有 50 会话与队列上限兜底），大量并发检索会与书架请求抢同一份 SQLite 连接。
 
 ---
 

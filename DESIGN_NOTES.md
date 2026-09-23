@@ -450,6 +450,11 @@
 - **时序同步与加载期防夭折门禁（Image Ready Gate）**：
   1. 通过 `ComicPageImage` 的插槽向外透传 `:ready="!loading && !failed"` 状态；
   2. 仅当大图完成网络下载与 `@load` 解码渲染上屏后，才触发 2.2 秒 `@keyframes breathing-pulse` 动效，彻底杜绝大图加载期将高亮动画在骨架屏背后消耗殆尽的体验断层。
+- **同页多气泡一次描全（Sibling Bubble Outlining）与 URL 参数契约**：
+  1. `bubble_box` 语义恒定为「代表格」——承载定位、台词 callout 与 `useReaderHydration` 的落点计算；同页其余命中格走**独立的** `bubble_boxes`（`;` 分隔），只做静态描边。绝不把多格塞进 `bubble_box`：`parseBubbleBox` 严格只收 4 个数，混入会让既有跳转与 WebMCP 遥控整体判 null；
+  2. 封顶必须**双侧**执行：后端 `MAX_PAGE_BOXES` 截 `other_boxes`，前端 `parseBubbleBoxes` 再 `slice(0, MAX_HIGHLIGHT_BOXES - 1)`。URL 是用户可手改、MCP 可直接投喂的外部输入边界，只在前端或只在后端夹都会被灌满屏；
+  3. 描边压在任意漫画底图上（深色场、密网点、纯白气泡都可能遇到），只靠半透明朱砂在暗场等于没画，须配一道暗色外键线 + 一道亮色内键线；这两道键线刻意**不随主题翻转**——它们要对的是图片，不是纸面；
+  4. ⚠️ `useReaderBubble` 的 `watch` 源数组**只可追加、回调严禁按位置解构**：插入 `bubble_boxes` 后若回调仍写 `([box, b1, b2])`，尾部的 `highlight_bubble` 会静默掉出触发条件，导致 `?page=42&highlight_bubble=1` 这条无 box 的遥控 URL 渲染出基准假框却**永不自愈、参数永不擦除**。回调一律 `route.query.xxx` 按名读取。
 - **无障碍与边界防碰撞防护**：
   1. 全链路声明 `pointer-events: none`，翻页触控、双击缩放与滚动交互零感穿透；
   2. 顶部分镜（`ymin < 0.12`）微标胶囊自适应翻转至气泡框下方，右侧分镜（`xmin > 0.65`）自适应靠右对齐；
@@ -479,11 +484,21 @@
 - **纯声明式分镜高亮与零 XSS（Tokenized Declarative Highlight）**：
   1. 废除 `v-html` 潜在漏洞，构建专属 `parseSnippetTokens` 结构化切分器，将后端 `<mark>` 标签安全解析为 `{ text: string, isMark: boolean }[]`；
   2. 命中字词采用朱砂印泥金墨质感微标（`background: color-mix(in oklab, var(--accent) 22%, transparent); color: var(--accent-strong)`），行内优雅高亮。
+- **页级聚合展示契约（Page-Granularity Result Aggregation）**：
+  1. **检索单元是气泡，展示单元必须是页**：FTS5 一行 = 一个 OCR 气泡，高频词下同一页的多个命中会并排刷屏。后端 `search_dialogues` 按 `(source, source_id, page_index)` 聚合，**一行 = 一页**，`snippet`/`text`/`box`/`bubble_id` 取该页相关度最高的「代表句」，`bubble_count` 标注该页命中几处；
+  2. **聚合粒度由「用户点下去要跳到哪里」决定**，不由数据长相决定：聚到作品级会毁掉直达跳转，那不是搜索是导航；
+  3. **2 字短词没有 bm25，但有同向的近似分**：trigram 只产 3 字符 token，实测任何 2 字串走 `MATCH` 恒 0 行（`可爱*`、`"可爱"`、`"可爱"*` 全部返回 0——**「前缀改写救两字词」这条路在本项目栈上不成立**）。这类查询落到 `LIKE` 扫描，后端改按 `词频 ÷ 文本长度` 排序，即 bm25 中真正区分候选的那两项（IDF 对单次查询是常数，除掉不影响顺序）。因此两条路径的代表句与 `bubble_count` 都可信，无需「不可信就不上报」的抑制；
+  4. ⚠️ **响应模型的默认值会伪造后端省略**：可选字段若写成 `bubble_count: int = 1` 这类必填带默认值，`response_model` 会在 HTTP 边界把后端刻意 `pop` 掉的字段补回默认值，db 层单测完全抓不到。契约口径必须用 `model_dump()` 断言锁死；
+  5. **诚实预告优先于完美功能**：命中数标注必须同时携带 `aria-describedby` 说明文案与 `title`，且**文案里的数字必须与画面对得上**——阅读器最多描出 `MAX_HIGHLIGHT_BOXES`（6）格，命中数超过上限时须写「命中 N 处，只描出最相关 6 格」，严禁沿用「仅高亮代表句那一格」这类已被实现推翻的旧口径；覆盖层 `aria-label` 只报「描出几格」，绝不冒用后端 `bubble_count`（封顶时两者不等）；
+  6. **命中数是本行唯一新增信号**，视觉权重须提到 `var(--accent-strong)` + `600`，但刻意不加底色，避免与 `.page-tag` 抢层级；
+  7. `total` 恒等于返回的**页数**（后端未做全库 `COUNT`），徽标必须写「命中 N 页」而非裸数字，否则会读成条数；
+  8. **顶到坑位上限时留谁，不再由偶然次序决定**：实测 `老师` 候选池 100 页里前 20 名的相关度**全部打平在 1.0**（2 字 `LIKE` 的 `词频 ÷ 文本长度` 是个很粗的比值），旧写法截断等于按 `(source, page_index)` 蒙。现由后端在页级聚合后叠加四类业务信号（热度 / 收藏 / 完读率 / 最近阅读，权重与推导见 ADR 0017 决策 9），**只抬升不压低、合计封顶 0.5**：相关度差得远的翻不了盘，无信号时抬升为 0、顺序退回纯相关度。前端契约侧只有两条要记：新增的 `rank_score` 是 **0..1 的纯相关度**（池内 min-max，跨查询不可比，也**不含**业务信号抬升），以及**只有顺序随身份变**——同一页的 `bubble_count`/`text`/`rank_score` 与访客或馆长身份无关（错题本 #139）。
 - **WAI-ARIA Combobox 标准与键盘无障碍视口对齐（Accessible Viewport Tracking）**：
   1. 宿主输入框完整声明 `role="combobox"`、`aria-autocomplete="list"`、`aria-controls` 与 `aria-activedescendant`；浮层声明 `role="listbox"` 与带唯一 ID 的 `role="option"`；
-  2. 键盘上下方向键导航时，监听 `focusedIndex` 并执行 `scrollIntoView({ block: 'nearest', behavior: 'smooth' })`，彻底消除长列表盲人摸象式盲航；
-  3. 回车键支持智能首项兜底（未手动选中时默认直达最佳匹配项），兑现“输入回车即达分镜”交互承诺；
-  4. 移动端防护：限制浮层高度在软键盘呼出时不挤压遮挡（`max-height: min(16rem, 38dvh)`），触控按钮判定热区统一满足 `≥ 44×44px`。
+  2. **`role="listbox"` 的子节点只能是 `role="option"`**：浮层内的辅助说明（如页级命中的 `aria-describedby` 目标 `.visually-hidden` 节点）必须挂在列表容器**之外**，否则破坏 listbox 语义；原生 `title` 属鼠标专属，键盘与读屏用户拿不到，不可作为唯一的预期管理通道；
+  3. 键盘上下方向键导航时，监听 `focusedIndex` 并执行 `scrollIntoView({ block: 'nearest', behavior: 'smooth' })`，彻底消除长列表盲人摸象式盲航；
+  4. 回车键支持智能首项兜底（未手动选中时默认直达最佳匹配项），兑现“输入回车即达分镜”交互承诺；
+  5. 移动端防护：限制浮层高度在软键盘呼出时不挤压遮挡（`max-height: min(16rem, 38dvh)`），触控按钮判定热区统一满足 `≥ 44×44px`。
 
 ### <a id="sec-65"></a>§65 搜索框快捷指令中枢、命令胶囊化与书架过滤冻结体系（Search Slash Commands & Frozen Shelf Decoupling Architecture）
 

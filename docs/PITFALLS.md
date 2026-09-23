@@ -1596,6 +1596,145 @@
   - **不要**给 `CoverIndicesPicker` 默认 `maxPage: 1`（省略 prop 必须表示未知页数、不封顶）；
   - **放行/改用**路径模式传 `maxPage=null`；已知页数（上传张数、PDF 总页、编辑资料的 `page_count`）才封顶。越界页码创建时原样写入，读取封面由 `_resolve_cover_page_index` 夹到 `1..page_count`。
 
+### 136. 常驻 --reload 开发服务在保存瞬间对真库执行破坏性迁移 (Live Reloader Applies Destructive FTS Migration on Save)
+
+- **本质**：
+  1. `comic_dialogues_fts` 的加列迁移挂在 `init_db()` → `init_dialogue_db()` → `_migrate_dialogue_schema()` 上，而 `init_db()` 由 FastAPI 的 `lifespan` 在启动时调用。本地 `pnpm dev:all`（`backend/server.py --reload`）常驻时，**保存 `backend/app/db.py` 的那一瞬间**服务热重载，直接对真实 `backend/data/comic_dialogues.db` 执行 `DROP TABLE` + 重建 + `DELETE FROM comic_ocr_sync_meta`，派生索引当场清零；
+  2. 这道破坏**测试全绿也照不出来**：台词用例一律 `tempfile.mkdtemp()` + `set_db_path(temp)` 隔离（个别用例只会在环境给的 `DATA_DIR` 下落一个空 `comic_shelf.db`，并不跑 `init_db`），于是「加一列」看起来是安全的增量改动，实际已经在开发机上把索引清空，直到某次台词检索返空才暴露。
+- **红线与防误伤**：
+  - **改 `_CREATE_DIALOGUES_FTS` / `_migrate_dialogue_schema` 前先确认没有 `--reload` 服务在跑**：`ps -eo pid,etime,cmd | grep "server.py --reload"`；
+  - **严禁**把 `comic_dialogues_fts` 当作有状态原件——它是 `pages/*.ocr.json` 的派生索引，随时可重灌；真正不可丢的是侧伴生文件与原图（见核心不变量 1）；
+  - 迁移落地后**不许只凭单测签收**，必须核验真库并立刻重灌。
+- **放行/改用**：
+  1. **迁移判据写成列集合包含判断**（`_DIALOGUE_COLUMNS <= columns` 才 no-op），使重建只发生在真正缺列的第一次，之后每次热重载都是幂等空转；
+  2. **重建自带回填**：`_migrate_dialogue_schema` 返回是否重建，`init_dialogue_db` 在重建后立即 `backfill_dialogue_index()` 遍历书库重灌，不需要人工介入；留一个只清表不回填的中间态，等于把"搜索忽然全空"留给未来某一天；
+  3. **人工重灌**（回填失败或改了分类规则时用）：`python scripts/sync_ocr.py --no-cleanup --source jm --id <id>`（`--no-cleanup` 防顺手清掉其他本子的索引）；
+  4. **重灌 ≠ 重识别**：`sync_ocr.py --force` 只把现有 `.ocr.json` 重新灌进索引，不会重新跑 OCR。缺 `order`（阅读顺序）这类**只有识别阶段才产出的字段**，必须 `bash scripts/ocr.sh` 带 `--force` 重识别；`is_valid_ocr_sidecar` 目前仍把缺 `order` 的旧伴生文件判为合法，增量不会自动补齐，别指望它自愈；
+  5. **核验三连**：`select count(*) from comic_dialogues_fts`、按 `kind` 分组计数、`select count(*) from comic_ocr_sync_meta`（元数据应当是回填后的真实 mtime，而不是残留的假高值或空表）。
+
+---
+
+### 137. OCR 算力机 GPU 的三段静默失效链 (Silent GPU Fallback Chain in the OCR Compute Worker)
+
+- **本质**：想给台词 OCR 上 CUDA，有三个各自独立、且**全都只掉速度不掉报错**的坑，串起来会让人以为"这台机器 GPU 没效果"：
+  1. CPU 版 `onnxruntime` 与 `onnxruntime-gpu` 两个 wheel **共用同一个 `site-packages/onnxruntime/` 目录**，后装的只覆盖同名文件、留下混合目录。此时 `get_available_providers()` **依然列出 `CUDAExecutionProvider`**，但会话创建静默退回 CPU——providers 列表不是证据。我们的 CPU 基线（`requirements-ocr.txt`）显式装 `onnxruntime`（`rapidocr` 3.x 自己不声明任何推理后端），所以 GPU 安装必须先卸干净再装 GPU 版；
+  2. GPU 版还要 CUDA 13 / cuDNN 9 的 `.so`，这些不在宿主上而在 PyPI 的 `nvidia-*` wheel 里（ORT 1.30 用 `onnxruntime-gpu[cuda,cudnn]` extras 声明，**包名不带 `-cu13` 后缀**）。没把 venv 内的 `nvidia/*/lib` 挂进 `LD_LIBRARY_PATH` 时，报错是 `Failed to load library .../libonnxruntime_providers_cuda.so: libcublasLt.so.13`，然后照样退回 CPU；
+  3. WSL2 的 `nvidia-smi` 在 `/usr/lib/wsl/lib` 且不在 `PATH`，`scripts/ocr.sh status` 旧版只用 `command -v nvidia-smi` 探测，会把带 RTX 4070 Ti 的机器报成"⚪ 纯 CPU 宿主机"，连人带脚本一起骗。
+- **实测数据**（本机 8 核 + 4070 Ti，`jm` 1764 页全量；**以下两组吞吐是 v3 引擎时代、走 `ocr.sh run` 落盘测的，只能用来支撑"CPU 别加线程"和"GPU 才是主线"这两条定性结论，别当 v6 的成本预算**——v6 单模型更大，现网口径见 `DEPLOYMENT.md` §5.1，那里还有一条"复测必须走 `ocr.sh`，直接起 python 会静默丢 CUDA"的同类翻车记录）：
+  - CPU **2 线程 59.5 页/分**，**4 线程反而掉到 44.7 页/分**（单引擎内部已吃满多核，加线程只是在抢核）；
+  - GPU 2/4 线程 83.8 / 85.7 页/分，实跑整批 129 页/分（CPU 那轮实跑约 26–33 页/分）；
+  - 同 10 页 CPU vs GPU：**165 行识别结果逐行的文本与置信度（两位小数）完全一致** → 已产出的 CPU 侧车不必为一致性重跑，混批存放可接受；
+  - 分类后语料规模：`kind=dialogue` 7139 / `paratext` 637（8.2% 被判为版权页与前后记，索引里有、检索里无）。
+- **红线与防误伤**：
+  - **严禁**拿 `get_available_providers()` 当"GPU 生效"的结论，必须真建一次 `InferenceSession` 看 `get_providers()[0]`；
+  - **两个弱判据叠加不等于强判据**：`cuda_ready()`（编译期 providers 列表）与"捕获依赖的降级警告"各自都有盲区，而且盲区不重合——配置里 `use_cuda: false` 时依赖**根本不去试 CUDA、一句警告都不发**，于是 `--gpu` + GPU 构建 + 未翻转的配置 = 横幅写 GPU、整批跑 CPU。判据必须按"谁决定实际设备"来铺：`--gpu` 要求下先校验配置三段是否真打开，再以会话/警告为准；
+  - **严禁**在同一环境里让 CPU 版与 GPU 版 `onnxruntime` 并存，也不要指望 `pip uninstall` 能收拾 `--prefix` 装出来的环境；
+  - **严禁**让"用不上 GPU"变成静默降级：`--gpu` 而环境缺失或直接 `exit 1`，自动回落 CPU 必须打一行原因和修复命令；带卡机器上 **CPU 不得作为默认算力线**（默认值错一次，每个后来人都慢 4 倍还以为显卡没用）。
+  - CPU 线不要靠加 `--workers` 提速。
+- **放行/改用**：全部收敛进仓库脚本，别再手搓个人目录：
+  1. `bash scripts/ocr.sh install` → 检测到 NVIDIA 显卡就建项目内 `.venv-ocr/`（已 gitignore）：先装 CPU 基线，再**整目录删除** `site-packages/onnxruntime` 后装 `scripts/requirements-ocr-gpu.txt`，最后做会话级自检；只要 CPU 依赖用 `install --cpu`；
+  2. `bash scripts/ocr.sh run --source jm --workers 4` → **默认即 GPU**（`.venv-ocr` 存在就优先），自动按 venv 现算 `LD_LIBRARY_PATH`（不落绝对路径），并把 `--gpu` 透传给 worker 的 `cuda_ready()` 预检；`--cpu` 显式回落；
+  3. `bash scripts/ocr.sh status` → 修好的 WSL2 显卡探测 + 本轮默认算力线 + CPU/GPU 两条线的会话级实际设备；
+  4. **`rapidocr-onnxruntime` 的 `use_cuda` 是假通道**（该包已从仓库整体删除，此段只留作为什么）：1.2.3 的
+     `update_det_params` 会对所有 `det_*` 键去前缀，而 `update_cls_params` / `update_rec_params`
+     只对 `*_model_path` 白名单去前缀 —— 于是 `cls_use_cuda=True` 变成一个无效新键、真正生效的
+     `use_cuda` 仍是 false，**只有检测段上了 GPU，分类与识别仍在 CPU，且一句报错都没有**。当年只能
+     靠 `install` 改包内 `config.yaml` 绕过。现在唯一的引擎是 `rapidocr` 3.x，CUDA 走真参数
+     `EngineConfig.onnxruntime.use_cuda`（官方参数页写明），配置文件翻转那套代码已随之删除。
+  5. `onnxruntime` 在 WSL2 上会打 `No registered plugin EP device found for 'CUDAExecutionProvider'`
+     ——这是 C++ 侧的插件探测噪声，会话首个 EP 仍是 `CUDAExecutionProvider`，**看到它别判定 GPU 失败**，
+     要判就建一次会话读 `get_providers()[0]`（`ocr.sh status` 就是这么做的）。
+
+---
+
+### 138. `git clean -xdf` 会把整个书库连同派生索引一起删掉 (git clean -x Deletes the Library Itself)
+
+- **本质**：`.gitignore` 把 `backend/data/**` 整段忽略（书库内容与用户状态本来就不该进版本库），而 `git clean -x` 的语义正是"连 ignored 文件一起删"。于是这条在别的仓库里只是清缓存的常用命令，在这里是**删库**命令。
+- **实测证据**（`git clean -xdn` dry-run，本机）：
+  ```
+  Would remove backend/data/     ← 原图 + album.json + 1764 个 *.ocr.json + comic_shelf.db + comic_dialogues.db
+  Would remove .venv/  .venv-ocr/  .env  .agents/  .claude/  .codex/
+  ```
+- **红线与防误伤**：
+  - 本仓库**禁止** `git clean -x*`（含 `-xdf`、`-fdx`、`clean -x` 配 `--dry-run` 忘删掉的情况）；要清未跟踪文件只能不带 `-x`：`git clean -df`；
+  - 需要清构建/环境产物时点名删：`rm -rf .venv-ocr dist node_modules/.vite`，不要顺手清 ignored；
+  - 与核心不变量 1（严禁删 `backend/data/`）同源：`backend/data` 不是"可再生的输出目录"，原图与 `album.json` 是这份收藏唯一的原件。
+- **放行/改用**：真要重置环境，走 `bash scripts/ocr.sh install`（幂等重建算力环境），不要靠 clean。台词索引属于可再生派生物，误删了按 #136 的核验三连重灌即可；原图与侧车删了就没了。
+
+### 139. 台词索引的两处"静默不一致"：写删键分叉与计数随身份变 (Silent Inconsistencies in the Dialogue Index)
+
+- **本质**：两处都不报错、单看代码也像有意设计，只有把两个身份或两个入口放在一起比才发现。
+  1. **写库键与删除键不是同一个**：`sync_comic_dialogues` 用正则把 `source/source_id` 洗成安全名去**定位目录**，但写 `comic_dialogues_fts`、`comic_ocr_sync_meta` 时用的仍是**调用方原样传入**的 id；而重建后的自动回填与 `ocr_worker` 用的是**磁盘目录名**。于是传一个脏 id（HTTP 路径参数、`album.json` 字段都可能是脏的）就变成"读对目录、写错 key"，删书时按另一个键删，留下一份永远查不到也删不掉的孤儿台词；
+  2. **`bubble_count` 随访问者身份变**：候选池 `fetch_limit` 原来写成 `访客 min(max(limit*5,50),200) : 馆长 min(limit*3,150)`。`bubble_count` 是"池内命中格数"，池不同 → 同一本书同一页，访客页面上显示"3 处命中"、馆长显示"2 处命中"（馆长池小时被截）。访客池反而更大是早期为了补偿访客侧 `hidden_from_guest` 过滤的候选损耗，但这个补偿把口径打坏了。
+- **红线与防误伤**：
+  - 同一张表的键**必须只有一个生成函数**：定位、写入、元数据、删除四条路径共用 `_dialogue_key()`，新增出口时不要就地再 `re.sub` 一遍；
+  - 任何"计数/命中数"类字段不得依赖访问者身份分档；身份只影响**可见范围**（过滤哪些本子），不影响**已可见结果的统计口径**；
+  - **归一化字段的标尺也算统计口径**（2026-09-22 业务信号排序落地时踩到的镜像面）：`rank_score` 是池内 min-max，若 min/max 从"过滤后的可见页"里取，一旦占住端点的那本对访客隐藏，同一页在两种身份下就会报出不同分数——不报错、不泄漏内容，只让"这个数是多少"随身份漂移。标尺必须取**未做身份过滤的候选行**极值（`diag_rows`），可见性只删行、不动尺；
+  - 改动这两处时，`backend/tests/test_dialogue_fts.py` 里两条用例（脏 id 写删往返、访客/馆长结果全等）会红，别把断言改回旧行为；
+  - 访客侧比较结果前必须先把测试书 `upsert_comic_index` 登记进影子索引：未收录的书对访客本来就被过滤掉，那是**对的**不等，别拿它当本条口径的证据。
+- **放行/改用**：`fetch_limit` 统一为 `min(max(limit*5,50),200)`（实测 7776 行、200 行候选池下 2 字 LIKE 兜底 7–15 ms，代价可忽略）；`purge_comic_db_records` 里删语料的 `except: pass` 改 `logger.warning`——静默失败留下的孤儿比一条警告难查得多。
+
+### 140. 只删包目录不卸发行版：pip 报"已满足"，留下 import 即失败的空壳环境 (Directory Deleted, Metadata Left Behind)
+
+- **本质**：`scripts/ocr.sh install` 的 GPU 分支要处理"CPU 与 GPU 两个 wheel 共用 `site-packages/onnxruntime/`"这个事实，原写法是 `rm -rf $site/onnxruntime $site/onnxruntime-*.dist-info` 再 `pip install -r requirements-ocr-gpu.txt`。但 `onnxruntime-gpu` 的发行版目录名是 `onnxruntime_gpu-1.30.0.dist-info`（下划线），**不匹配** `onnxruntime-*.dist-info` 这个 glob → 包目录被删、GPU 的 dist-info 还在 → pip 只看 dist-info 就回 `Requirement already satisfied`，一个文件都不装。
+- **症状**：`install` 一路走到自检才炸（旧版自检不查 import 时甚至一路绿）；此后任何 `run`/`test` 都死在 `ModuleNotFoundError: No module named 'onnxruntime'`，而 `pip list` 明明写着 `onnxruntime-gpu 1.30.0`。**`pip list` 与 `pip check` 都查不出这种环境**：它们读的是元数据，不是文件。
+- **红线与防误伤**：
+  - 要动共用包目录，就**先 `pip uninstall -y onnxruntime onnxruntime-gpu`、再删目录、再装**：uninstall 让 pip 的"已满足"判断回到事实，删目录保证不留 CPU 侧残留，两步缺一不可；
+  - 装完必须 `import` 一次并打印包文件的真实路径，别把"pip 返回 0"当成"包装上了"；
+  - 任何"删 A 的目录、而 A 与 B 共用那个目录"的结构，glob 要同时覆盖 `-` 与 `_` 两种发行版命名（wheel 规范化会把 `-` 变成 `_`）；
+  - 这个坑是**重跑 `install` 才触发的**：首次安装时目录本来就不存在，看不出问题。凡是"幂等重装"路径，都要单独跑一遍验证。
+
+### 141. 一行噪声替整页定性：已单独丢弃的行不该有页级判据的权力 (A Discarded Line Should Not Characterize a Page)
+
+- **本质**：`classify_dialogue_kind` 的尾页护栏原本写成 `credit_page = any(_PARATEXT_RE.search(t) or _is_noise_line(t) for t in page_texts)`。而命中 `_is_noise_line` 的行在函数开头就 `return None`、根本不入库——**它自己都不进语料，却有权利把整页判成副文本**。水印与页码在正文页上同样普遍存在，于是"这页恰好有一行被 OCR 成 `888`"就等价于"这页所有台词搜不到"。
+- **症状**：不报错、不崩溃，只是读者在剧情尾页搜不到话。真库实测误杀 **60 页 / 119 行**（例：`jm/319445` p21 是剧情收尾，因侧车里那行把 `？？？` 认成 `888` 的噪声，整页判副文本）。
+- **红线与防误伤**：
+  - **两级规则（逐行判定 + 整页结论）里，第二级的证据集合必须先按第一级的结果过滤**：被丢弃、未入库的行不得参与页级定性；
+  - 写 `any(特征)` 之前先问一句"这个特征在正常页上出现的频率有多高"——水印接近 100%，它就没有区分力，只有负作用；
+  - 判据改动只需**重灌**（`scripts/sync_ocr.py --force`，秒级，不重跑 OCR）。当初把分类放在入库侧而非 OCR 侧，就是为了"改判据的成本低到敢改"。
+- **验证口径**：改动前后各跑一次 `SELECT kind, COUNT(*) FROM comic_dialogues_fts GROUP BY kind`——本次 7139/637 → 7258/518，**行数合计不变**（只改分类，不增删语料），再对被误杀那页直接 `search_dialogues` 确认可搜。
+
+### 142. 相对间距 + 传递闭包 = 整页糊成一个气泡：链条式误并 (Relative Gaps Plus Transitive Closure Swallow the Page)
+
+- **本质**：`cluster_blocks` 的两条邻近判据全部是**相对盒子自身尺寸**的（`gap_x < 1.5×列宽`、`gap_y < 1.2×行高`），而并查集取的是**传递闭包**。于是"大框够得着大框"永远成立：A 连 B、B 连 C，A 与 C 隔半页也进同一组；再叠上一竖一横两条规则可以各走一次，链条就能在页面上拐角接力。检测框本身没错——`jm/1022074` p66 的 15 条原始行位置与字号都分得清清楚楚，**责任 100% 在我们的后处理**。
+- **症状**：不报错，只是文本"合成了句子"。全库 8432 气泡中 55 个可疑（26 个落在正文中段），`jm/1022074` p66 一个气泡吃掉 **50.5% 页面积**、内容是 `惠老师你缠得老师那么紧的话……章咻噜噜噜林哼啊`（对白 + 拟声词 + 单字噪声），阅读器高亮框盖住半页；封面页更夸张（p1/p2 出现 98% 与 99.8%）。
+- **三道否决闸（缺一仍会糊）**：
+  - **同向才许同组**：一竖一横不许直接 union，切断"拐角接力"；
+  - **笔画粗细比 ≤ 2**：竖排比列宽、横排比行高。拟声词与标题的字号常是台词的 2~3 倍（`章` 列宽 141 vs 台词 50），这一条专门把它们挡在对白之外；
+  - **合并后外接框 ≤ 20% 页面积**：必须由 `union` 时按**分量外接框**判定——任何只看"成对距离"的上限都会被传递闭包绕过，这是本条最反直觉的地方。
+- **方法论（省掉一整轮 GPU）**：聚类是纯后处理，改它不该重跑推理。用 `bash scripts/ocr.sh lines --source jm --id <id>` 把原始识别行 dump 到临时目录（201 页 ≈3 分钟），之后每一版判据都在本地 `ocr.sh lines --recluster <目录>` 秒级评估，调好了才落一次 GPU。
+- **验证口径**：201 页对照——气泡 1188→1583、**字数 21066 一字不差**（只重新分组，不增删文本）、疑似误并 23→1、面积 >35% 的 22 个归零。端到端：`你缠得那么紧` 的高亮面积 50.5%→0.9%，`咻噜噜噜` 独立成条不再污染对白。
+
+### 143. 把"大图降采样"当免费提速杠杆：默认早降过了，再降就掉台词 (The Downscaling Lever Was Already Pulled)
+
+- **假设（错的）**：`Det.limit_type=min` + `limit_side_len=736` 只在短边不足时放大，3000×4331 的原图进 det 完全不降采样，耗时随像素面积走 → 改 `max/1600` 能把全库成本砍一半。
+- **事实**：`rapidocr/main.py:286` 在进检测之前就按 `Global.use_preprocess_img=true` + `Global.max_side_len=2000`（3.9.2 默认值）把整页压到最长边 2000，**rec 的裁剪图也来自这张已压过的图**；319445 的 3000×4339 到 det 手里已经是 1376×1984。而 `Det.limit_type` 只有在 `min` 时才读配置里的 `limit_side_len`，取 `max` 走的是 960/1500/2000 三档硬编码（`ch_ppocr_det/main.py:70`），配 1600 根本不生效——所以首轮实验里 `max` 与基线的识别结果**逐字相同**（478 串 0 增 0 减），时间差纯属噪声。
+- **真杠杆与其代价（实测）**：能动的只有 `Global.max_side_len`。2000→1600 省约 25%，但整句日文台词 `たら泣いちゃうよ` 直接消失；→1280 省约 40%，`「是喔「好的」` 退化成乱码 `)んね先生`。**台词检索产品不该为省一轮全库约一小时的成本丢台词**，故否决此项，配置保持默认。
+- **红线**：
+  - 判断"某个配置是否生效"必须打印它**真正作用到的中间量**（这里是 det 的实际输入 H×W），只看端到端耗时会把噪声读成结论；
+  - 聚合计数（块数、字数）会掩盖单句丢失——本次 1600 档"总字数只差 10"，却是丢了一整句台词。**必须逐串 diff 才能谈质量**；
+  - 顺带结案"换 Rust 引擎"：Rust 侧确有可用的全链实现（`oar-ocr`、`ocr-rs` 跑同一份 PP-OCRv6 ONNX、同一个 CUDA EP），但耗时九成以上在 ONNXRuntime 的 GPU kernel 内，换语言只赚预处理与 GIL 的边角；而 #142 那类文本缺陷根本不由引擎产生（引擎只给原始行），换语言一分收益都拿不到，却要把聚类、阅读顺序与侧车契约全部重写重验。
+
+### 144. 裸 MagicMock 当 Request：`state` 的自动属性让鉴权用例全绿却什么都没验 (A Bare MagicMock Request Short-Circuits Identity Resolution)
+
+- **本质**：`get_user_context()` 的第一行是 `if hasattr(request.state, "user_context"): return request.state.user_context`（真实 Starlette 拿它做请求内缓存）。而 `MagicMock().state.user_context` **自动就存在**，于是替身带着一个假身份走进每一道鉴权：`is_curator`/`can_read` 读到的是一个 Mock，既不是 `"admin"` 也不是任何真身份——**鉴权结果取决于比较运算碰巧怎么走，不取决于凭据**。
+- **症状**：给 `/api/events/stream` 补 `can_read` 门禁时，`test_events.py` 原本"能连上、能收到事件"的用例当场 401 才暴露：这条路径的身份解析从来没被真正穿过，旧用例验的只是"生成器能跑"。
+- **红线**：
+  - 请求替身必须把 `state` 挂成普通对象（`req.state = type("State", (), {})()`），并给 `headers`/`cookies`/`query_params` 配真的 `get`，照 `backend/tests/helpers.py::make_mock_request` 或 `test_events.py::make_request` 抄，**别裸 `MagicMock()`**；
+  - 新加鉴权判据后如果旧用例仍然全绿，要做一次变异验证（把判据故意改坏，看用例是否报红），否则你不知道它在断言什么；
+  - 涉及中间件与身份链路的出口，优先用 `fastapi.testclient.TestClient` 走真 ASGI 栈（见 `backend/tests/test_dialogue_http_stack.py`），替身只留给纯函数单测；
+  - 但 **TestClient 读不了无限流**：`with client.stream("GET", "/api/mcp/sse")` 里 `iter_lines()` 会卡在同一个 portal 上（连接不结束就不返回），甚至把后续请求一起堵死。SSE 的握手内容（如 endpoint 事件）改用直接 `await` handler + `anext(response.body_iterator)` 断言，`TestClient` 只负责验真路由绑定与状态码那一半。
+
+### 145. 常驻 `--reload` 把半截迁移灌进真库：新列全 NULL，而 `sync_meta` 认定它已经同步好了 (A Hot-Reloaded Migration Leaves the New Column NULL and Self-Certifies as Synced)
+
+- **本质**：`init_dialogue_db()` 的迁移是"缺列就整表重建 + 就地回填"（见 #136），重建用的是**当前进程已加载的代码**。开发时 `pnpm dev:all` 里的 `backend/server.py --reload` 常驻，**每次保存 .py 都会重启一次**——如果一次改动的保存顺序是"先加列、后改 INSERT"，中间那次重启就会用**旧的 9 列 INSERT** 往**新的 10 列表**里回填，新列拿到 NULL；紧接着它把 `comic_ocr_sync_meta.last_synced_mtime` 写成真实 mtime，等于**给这具半成品索引盖了"已同步"的章**。之后再重启，schema 已经对得上，`rebuilt=False`，回填再也不跑；`ocr.sh sync` 走 mtime 增量比对，也全部跳过。
+- **症状**：台词检索**整体**返回空，但 `SELECT count(*) FROM comic_dialogues_fts` 行数正常、`comic_ocr_sync_meta` 也在；单看接口像"没人搜得到"，看库像"数据都在"。真库实测：8095 行 `text_norm` 全 NULL。
+- **红线**：
+  - 给派生索引加列时，**先改写入侧、再改 schema**（或一步改完再保存），别让中间态落在会被热重载的文件上；改 FTS/派生库这种"重建即全量回填"的结构前，先确认常驻服务是否会自动重启（`ps -ef | grep server.py`），必要时应停掉 reload 再改；
+  - 迁移完成后**必须验新列非空**，不能只看行数：`SELECT count(*) FROM <t> WHERE <新列> IS NULL OR <新列>=''` 应为 0；行数不变而新列全空，就是这条坑；
+  - 修复手段是**绕开增量元数据强制重灌**（台词库直接 `db.backfill_dialogue_index()`，它按 `force=True` 逐本重灌，真库 8095 行实测 0.8s），不要手删 `backend/data/` 下任何文件；
+  - 用脚本验真库时记得 `set_db_path()` 会**按主库文件名反推台词库路径**（`comic_shelf.db → comic_dialogues.db`），所以 `set_dialogue_db_path()` 必须放在 `set_db_path()` **之后**，否则迁移会写到另一个文件、你以为在验的那份其实没动过。
+
 ---
 
 ## 🚦 交付门禁（四步必跑）

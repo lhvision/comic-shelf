@@ -98,8 +98,8 @@
   基于 SQLite FTS5 全文索引在全站漫画分镜中检索台词对白，并返回匹配漫画、具体画页与气泡归一化坐标。
 - `shelf_search_image({ image_base64 })`：
   通过传入图片的 Base64 编码数据在全库中进行视觉向量特征匹配，精准定位到所属漫画、画页及相似度评分。
-- `shelf_read_comic({ source, source_id, page?, fromBeginning?, chapter_id?, bubble_box?, bubble_text? })`：
-  直接从书架打开指定漫画并跳转到特定画页阅读，可附带章节、强制首开与对白气泡坐标进行朱砂色呼吸光效高亮。
+- `shelf_read_comic({ source, source_id, page?, fromBeginning?, chapter_id?, bubble_box?, other_boxes?, bubble_text? })`：
+  直接从书架打开指定漫画并跳转到特定画页阅读，可附带章节、强制首开、代表格坐标与同页其余命中格（`other_boxes`，最多 5 组静态描边）进行朱砂色呼吸光效高亮。
 - `shelf_import_comic({ id?, source_id?, source?, local_path?, prefetch_all?, prefetch_covers?, favorite?, tags?, open_after? })`：
   将远端或服务器本地漫画收录导入至书架（支持省略 `source` 自动智能推断图源、支持后台全本离线预缓存、初始喜欢标记、自定义标签追加与导入后自动直达详情页）。**【仅馆长权限】**
 - `shelf_pick_random({ favoritesOnly?, source?, openReader? })`：
@@ -260,6 +260,7 @@ WebMCP 作为运行在浏览器宿主内的模型上下文通道，遵循**最�
   "bubbles": [
     {
       "id": 1,
+      "order": 1,
       "box": [0.12, 0.45, 0.28, 0.68],
       "text": "这就是最后的波纹吗……",
       "confidence": 0.98,
@@ -271,8 +272,8 @@ WebMCP 作为运行在浏览器宿主内的模型上下文通道，遵循**最�
 ```
 
 - **归一化百分比坐标**：`box` 统一采用 `[ymin, xmin, ymax, xmax]` ∈ [0.0, 1.0]，与原图分辨率解耦，纯 CSS 原生百分比自适应，杜绝缩略图与原图尺寸换算开销；
-- **台词全文索引表（`comic_dialogues_fts`）**：纸间后端基于 SQLite FTS5 原生 `tokenize='trigram'` 构建倒排索引，0 依赖秒级模糊匹配中日文无空格文本；
-- **气泡呼吸高亮（Breathing Bubble Overlay）**：读者从搜索下拉点击台词命中直达阅读器对应页码（`?page=42&bubble=1`），画卷视口在该气泡坐标浮现朱砂金色半透明高亮框呼吸 2 秒淡出，零 DOM 重排且不扰乱主阅读流。
+- **台词全文索引表（`comic_dialogues_fts`）**：纸间后端基于 SQLite FTS5 原生 `tokenize='trigram'` 构建倒排索引，0 依赖秒级模糊匹配中日文无空格文本；除 `text` 外全部 `UNINDEXED`，含 `reading_order`（页内阅读顺序）与 `kind`（`dialogue` 台词 / `paratext` 副文本；水印与页码等噪声不入库），检索侧固定只取 `dialogue`；
+- **气泡呼吸高亮（Breathing Bubble Overlay）**：读者从搜索下拉点击台词命中直达阅读器对应页码（`?page=42&bubble_box=...&bubble_boxes=a;b&highlight_bubble=1`，一行代表一整页），画卷视口在该气泡坐标浮现朱砂金色半透明高亮框呼吸 2 秒淡出，代表格呼吸、同页其余格静态描边，零 DOM 重排且不扰乱主阅读流。
 
 ### 6. 服务间认证凭据与推送 Webhook（Machine-to-Machine Auth）
 
@@ -285,8 +286,8 @@ WebMCP 作为运行在浏览器宿主内的模型上下文通道，遵循**最�
 1. **伴生文件被动感知与幽灵索引清理（Sidecar Ingestion Sync & Ghost Index Mitigation）**：
    - 外部 Studio 产出 `{index}.ocr.json` 后，通过 `POST /api/library/:source/:source_id/ocr/sync` 或 CLI `pnpm ocr:sync` 增量同步进 SQLite FTS5，避免每次重启全盘轮询卡死；
    - 漫画被删除或重新装订（Re-binding）时，联动事务原子清空该作品所有 FTS5 记录，彻底杜绝“搜得出台词但画页不存在或页码错位”的幽灵索引。
-2. **简繁双向互通归一化（Simplified/Traditional Bidirectional Search）**：
-   - 汉化组多为港台或民间繁体，读者常输入简体；在检索层对关键词进行双向展开匹配，确保无论输繁搜简还是输简搜繁均 100% 召回。
+2. **简繁双向互通归一化（Simplified/Traditional Bidirectional Search）**：✅ 已落地并升级（2026-09-23）
+   - 汉化组多为港台或民间繁体，读者常输入简体。**台词出口改为索引侧归一**：`comic_dialogues_fts.text_norm` 在写入时折成简体字形，倒排只建这一列，查询侧单次归一，繁简混排行不再漏召回（真库 735 条原本搜不到的行现在 100% 可命中，展示与高亮仍保留页面原字形）；书架元数据出口因写入侧无法规范，继续走查询侧多组 `LIKE` OR 补偿。详见 ADR 0017「决策 2 · 修订」。
 3. **气泡级多行文本几何聚类（Bubble-level Line Clustering）**：
    - 严禁把原始 OCR 吐出的碎片行直接存为独立气泡；外部管线必须按几何欧氏距离与排版流向聚类为完整对白句子，输出包围整个气泡的单个 `box`。
 4. **主流引擎聚焦与开源语料冷启动（Engine Diversity Fallback & Open Corpus Cold Start）**：
