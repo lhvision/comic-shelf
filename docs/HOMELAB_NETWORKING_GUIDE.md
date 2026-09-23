@@ -380,6 +380,8 @@ _原理：虽然未鉴权的访客无法通过口令进入主界面，但若合�
 
 ### 6.8 配置 Cloudflare 专属源站通信印章与 NPM 准入门禁（彻底封杀公网 IP 嗅探直连，实现零信任闭环）
 
+> ⚠️ **公网部署必配，不是可选加固。** 纸间的登录与 MCP 失败锁按客户端 IP 记账，而 IP 取自 `CF-Connecting-IP` / `X-Forwarded-For`（`COMIC_SHELF_TRUST_FORWARDED_HEADERS` 默认开启）。源站只要能被直连，这两个头就能随手伪造：每次换一个 IP，锁永远不触发；或者冒用馆长的 IP，把馆长锁在门外。只有保证回源流量全部经过 Cloudflare（它会覆写这两个头），记下的 IP 才可信。
+
 _原理：虽然公网域名 `comic.yourdomain.com` 受到 Cloudflare 严密保护，但家庭宽带的公网 IP 若曾被网络扫描器（如 Shodan/Censys）记录，攻击者可能尝试直接扫描 `https://<家庭公网IP>:38443` 绕过 Cloudflare WAF。通过利用 Cloudflare Transform Rules 在向源站转发时注入私有请求头（`X-Origin-Secret`），并在 NPM 代理主机的 Advanced 选项卡中进行印章与内网白名单校验，即可实现：**仅放行持合法印章的回源流量与家庭局域网 Wi-Fi 直连，一切外部公网 IP 直连探测在 NPM 网关层直接返回 403 Forbidden 击落**。_
 
 #### 步骤 1：在 Cloudflare 后台配置 Transform Rule 注入专属通信印章
@@ -544,3 +546,4 @@ Mac mini（尤其是 Apple Silicon M 系列芯片）待机功耗极低（4~8W）
 2. **SNI 精准分发与扫描拦截**：NPM 作为单一网关，对任何直接扫描公网 IP 或未知 Host 的请求直接切断，内网其他服务对公网完全隐身。
 3. **管理后台不对外暴露**：NPM 的管理后台（`30020`）与 `ddns-go` 的管理后台（`9876`）仅限局域网访问，**严禁**在路由器上为它们配置公网端口转发。
 4. **凭证与配置备份**：定期备份 `letsencrypt` 证书目录与 Cloudflare API Token，以便灾难恢复时秒级重建。
+5. **回源印章必配**：公网部署必须完成 6.8 节。否则能直连源站的人可以伪造来源 IP，登录与 MCP 的失败锁对他形同虚设。

@@ -1620,20 +1620,20 @@
   1. CPU 版 `onnxruntime` 与 `onnxruntime-gpu` 两个 wheel **共用同一个 `site-packages/onnxruntime/` 目录**，后装的只覆盖同名文件、留下混合目录。此时 `get_available_providers()` **依然列出 `CUDAExecutionProvider`**，但会话创建静默退回 CPU——providers 列表不是证据。我们的 CPU 基线（`requirements-ocr.txt`）显式装 `onnxruntime`（`rapidocr` 3.x 自己不声明任何推理后端），所以 GPU 安装必须先卸干净再装 GPU 版；
   2. GPU 版还要 CUDA 13 / cuDNN 9 的 `.so`，这些不在宿主上而在 PyPI 的 `nvidia-*` wheel 里（ORT 1.30 用 `onnxruntime-gpu[cuda,cudnn]` extras 声明，**包名不带 `-cu13` 后缀**）。没把 venv 内的 `nvidia/*/lib` 挂进 `LD_LIBRARY_PATH` 时，报错是 `Failed to load library .../libonnxruntime_providers_cuda.so: libcublasLt.so.13`，然后照样退回 CPU；
   3. WSL2 的 `nvidia-smi` 在 `/usr/lib/wsl/lib` 且不在 `PATH`，`scripts/ocr.sh status` 旧版只用 `command -v nvidia-smi` 探测，会把带 RTX 4070 Ti 的机器报成"⚪ 纯 CPU 宿主机"，连人带脚本一起骗。
-- **实测数据**（本机 8 核 + 4070 Ti，`jm` 1764 页全量；**以下两组吞吐是 v3 引擎时代、走 `ocr.sh run` 落盘测的，只能用来支撑"CPU 别加线程"和"GPU 才是主线"这两条定性结论，别当 v6 的成本预算**——v6 单模型更大，现网口径见 `DEPLOYMENT.md` §5.1，那里还有一条"复测必须走 `ocr.sh`，直接起 python 会静默丢 CUDA"的同类翻车记录）：
+- **实测数据**（本机 8 核 + 4070 Ti，`jm` 1764 页全量；**以下两组吞吐是 v3 引擎时代、走 `ocr.sh run` 落盘测的，只能用来支撑"CPU 别加线程"和"GPU 才是主线"这两条定性结论，别当 v6 的成本预算**——v6 单模型更大，现网口径见 `DEPLOYMENT.md` §5.1，那里还有一条"复测必须走 `ocr.sh`，直接起 python 会丢 CUDA"的同类翻车记录，如今这一步会当场报错）：
   - CPU **2 线程 59.5 页/分**，**4 线程反而掉到 44.7 页/分**（单引擎内部已吃满多核，加线程只是在抢核）；
   - GPU 2/4 线程 83.8 / 85.7 页/分，实跑整批 129 页/分（CPU 那轮实跑约 26–33 页/分）；
   - 同 10 页 CPU vs GPU：**165 行识别结果逐行的文本与置信度（两位小数）完全一致** → 已产出的 CPU 侧车不必为一致性重跑，混批存放可接受；
   - 分类后语料规模：`kind=dialogue` 7139 / `paratext` 637（8.2% 被判为版权页与前后记，索引里有、检索里无）。
 - **红线与防误伤**：
   - **严禁**拿 `get_available_providers()` 当"GPU 生效"的结论，必须真建一次 `InferenceSession` 看 `get_providers()[0]`；
-  - **两个弱判据叠加不等于强判据**：`cuda_ready()`（编译期 providers 列表）与"捕获依赖的降级警告"各自都有盲区，而且盲区不重合——配置里 `use_cuda: false` 时依赖**根本不去试 CUDA、一句警告都不发**，于是 `--gpu` + GPU 构建 + 未翻转的配置 = 横幅写 GPU、整批跑 CPU。判据必须按"谁决定实际设备"来铺：`--gpu` 要求下先校验配置三段是否真打开，再以会话/警告为准；
+  - **两个弱判据叠加不等于强判据**：`cuda_ready()`（编译期 providers 列表）与"捕获依赖的降级警告"各自都有盲区。后者到 rapidocr 3.x 干脆失效：降级改走 logging，又被 `Global.log_level=error` 静音，v3 时代留下的 warnings 捕获成了死代码，绕开 `ocr.sh` 直接跑 `ocr_worker.py --gpu` 时横幅写 GPU、整批跑 CPU。现在唯一的判据是 `build_engine(True)`：建完引擎逐段读 Det/Cls/Rec 会话的 `get_providers()[0]`，任一段不是 CUDA 就抛错；`cuda_ready()` 只留作提前说明原因的预检；
   - **严禁**在同一环境里让 CPU 版与 GPU 版 `onnxruntime` 并存，也不要指望 `pip uninstall` 能收拾 `--prefix` 装出来的环境；
   - **严禁**让"用不上 GPU"变成静默降级：`--gpu` 而环境缺失或直接 `exit 1`，自动回落 CPU 必须打一行原因和修复命令；带卡机器上 **CPU 不得作为默认算力线**（默认值错一次，每个后来人都慢 4 倍还以为显卡没用）。
   - CPU 线不要靠加 `--workers` 提速。
 - **放行/改用**：全部收敛进仓库脚本，别再手搓个人目录：
   1. `bash scripts/ocr.sh install` → 检测到 NVIDIA 显卡就建项目内 `.venv-ocr/`（已 gitignore）：先装 CPU 基线，再**整目录删除** `site-packages/onnxruntime` 后装 `scripts/requirements-ocr-gpu.txt`，最后做会话级自检；只要 CPU 依赖用 `install --cpu`；
-  2. `bash scripts/ocr.sh run --source jm --workers 4` → **默认即 GPU**（`.venv-ocr` 存在就优先），自动按 venv 现算 `LD_LIBRARY_PATH`（不落绝对路径），并把 `--gpu` 透传给 worker 的 `cuda_ready()` 预检；`--cpu` 显式回落；
+  2. `bash scripts/ocr.sh run --source jm --workers 4` → **默认即 GPU**（`.venv-ocr` 存在就优先），自动按 venv 现算 `LD_LIBRARY_PATH`（不落绝对路径），并把 `--gpu` 透传给 worker，由 `build_engine(True)` 的三段会话自检把关；`--cpu` 显式回落；
   3. `bash scripts/ocr.sh status` → 修好的 WSL2 显卡探测 + 本轮默认算力线 + CPU/GPU 两条线的会话级实际设备；
   4. **`rapidocr-onnxruntime` 的 `use_cuda` 是假通道**（该包已从仓库整体删除，此段只留作为什么）：1.2.3 的
      `update_det_params` 会对所有 `det_*` 键去前缀，而 `update_cls_params` / `update_rec_params`
@@ -1665,7 +1665,7 @@
 
 - **本质**：两处都不报错、单看代码也像有意设计，只有把两个身份或两个入口放在一起比才发现。
   1. **写库键与删除键不是同一个**：`sync_comic_dialogues` 用正则把 `source/source_id` 洗成安全名去**定位目录**，但写 `comic_dialogues_fts`、`comic_ocr_sync_meta` 时用的仍是**调用方原样传入**的 id；而重建后的自动回填与 `ocr_worker` 用的是**磁盘目录名**。于是传一个脏 id（HTTP 路径参数、`album.json` 字段都可能是脏的）就变成"读对目录、写错 key"，删书时按另一个键删，留下一份永远查不到也删不掉的孤儿台词；
-  2. **`bubble_count` 随访问者身份变**：候选池 `fetch_limit` 原来写成 `访客 min(max(limit*5,50),200) : 馆长 min(limit*3,150)`。`bubble_count` 是"池内命中格数"，池不同 → 同一本书同一页，访客页面上显示"3 处命中"、馆长显示"2 处命中"（馆长池小时被截）。访客池反而更大是早期为了补偿访客侧 `hidden_from_guest` 过滤的候选损耗，但这个补偿把口径打坏了。
+  2. **`bubble_count` 随访问者身份变**：候选池 `fetch_limit` 原来写成 `访客 min(max(limit*5,50),200) : 馆长 min(limit*3,150)`。`bubble_count` 是"池内命中气泡数"，池不同 → 同一本书同一页，访客页面上显示"3 处命中"、馆长显示"2 处命中"（馆长池小时被截）。访客池反而更大是早期为了补偿访客侧 `hidden_from_guest` 过滤的候选损耗，但这个补偿把口径打坏了。
 - **红线与防误伤**：
   - 同一张表的键**必须只有一个生成函数**：定位、写入、元数据、删除四条路径共用 `_dialogue_key()`，新增出口时不要就地再 `re.sub` 一遍；
   - 任何"计数/命中数"类字段不得依赖访问者身份分档；身份只影响**可见范围**（过滤哪些本子），不影响**已可见结果的统计口径**；
@@ -1709,7 +1709,7 @@
 
 - **假设（错的）**：`Det.limit_type=min` + `limit_side_len=736` 只在短边不足时放大，3000×4331 的原图进 det 完全不降采样，耗时随像素面积走 → 改 `max/1600` 能把全库成本砍一半。
 - **事实**：`rapidocr/main.py:286` 在进检测之前就按 `Global.use_preprocess_img=true` + `Global.max_side_len=2000`（3.9.2 默认值）把整页压到最长边 2000，**rec 的裁剪图也来自这张已压过的图**；319445 的 3000×4339 到 det 手里已经是 1376×1984。而 `Det.limit_type` 只有在 `min` 时才读配置里的 `limit_side_len`，取 `max` 走的是 960/1500/2000 三档硬编码（`ch_ppocr_det/main.py:70`），配 1600 根本不生效——所以首轮实验里 `max` 与基线的识别结果**逐字相同**（478 串 0 增 0 减），时间差纯属噪声。
-- **真杠杆与其代价（实测）**：能动的只有 `Global.max_side_len`。2000→1600 省约 25%，但整句日文台词 `たら泣いちゃうよ` 直接消失；→1280 省约 40%，`「是喔「好的」` 退化成乱码 `)んね先生`。**台词检索产品不该为省一轮全库约一小时的成本丢台词**，故否决此项，配置保持默认。
+- **真杠杆与其代价（实测）**：能动的只有 `Global.max_side_len`。2000→1600 省约 25%，但整句日文台词 `たら泣いちゃうよ` 直接消失；→1280 省约 40%，`「是喔「好的」` 退化成乱码 `)んね先生`。**台词检索产品不该为省下全库一轮几分钟的 GPU 时间丢台词**（全库一轮的现行估算见 `DEPLOYMENT.md` §5.1），故否决此项，配置保持默认。
 - **红线**：
   - 判断"某个配置是否生效"必须打印它**真正作用到的中间量**（这里是 det 的实际输入 H×W），只看端到端耗时会把噪声读成结论；
   - 聚合计数（块数、字数）会掩盖单句丢失——本次 1600 档"总字数只差 10"，却是丢了一整句台词。**必须逐串 diff 才能谈质量**；
@@ -1734,6 +1734,15 @@
   - 迁移完成后**必须验新列非空**，不能只看行数：`SELECT count(*) FROM <t> WHERE <新列> IS NULL OR <新列>=''` 应为 0；行数不变而新列全空，就是这条坑；
   - 修复手段是**绕开增量元数据强制重灌**（台词库直接 `db.backfill_dialogue_index()`，它按 `force=True` 逐本重灌，真库 8095 行实测 0.8s），不要手删 `backend/data/` 下任何文件；
   - 用脚本验真库时记得 `set_db_path()` 会**按主库文件名反推台词库路径**（`comic_shelf.db → comic_dialogues.db`），所以 `set_dialogue_db_path()` 必须放在 `set_db_path()` **之后**，否则迁移会写到另一个文件、你以为在验的那份其实没动过。
+
+### 146. FTS5 trigram 的两条硬边界：两字查询没有 token，`bm25()` 不认别名 (Trigram Yields No Tokens for Two-Character Queries, and bm25() Rejects Table Aliases)
+
+- **本质**：trigram 分词只产出 3 字及以上的 token。两字查询（`可爱`、`老师`）无论写成 `可爱*`、`"可爱"` 还是 `"可爱"*`，`MATCH` 一律 0 行——"前缀改写救两字词"在本项目栈不成立，只能落到 `LIKE` 扫描。另一条：`bm25()` 的入参必须写完整虚拟表名（`bm25(comic_dialogues_fts)`），写 `FROM` 里的别名会报错。
+- **症状**：两字高频词要么搜不到，要么排序全凭偶然；语料量级很小时 bm25 绝对值可低到 1e-6 量级，候选之间只在小数点后第六位分化。
+- **红线**：
+  - 两字分支按 `词频 ÷ 文本长度` 排序——这正是 bm25 里真正区分候选的两项（IDF 对单次查询是常数，除掉不影响顺序）；要给两字词真正的倒排加速，唯一出路是另建 bigram/单字侧表，不是改写查询；
+  - bm25 返回负数、越相关越负，取负后才与两字分支同向，业务信号才加得起来；
+  - 相关度归一只能在本次候选池内取 min/max（口径见 #139），写死满分常数必然失效。
 
 ---
 

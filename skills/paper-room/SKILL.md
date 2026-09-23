@@ -74,8 +74,8 @@ metadata:
 
 ## 🛠️ MCP 核心工具全景 (Tools Quick Reference)
 
-- **服务端数据面 (Server MCP)**:
-  `search_by_image`（识图）, `search_by_dialogue`（台词 FTS5）, `query_shelf`（多维检索）, `get_comic_detail`（章节目录元数据）, `recommend_unread`（未读淘书）, `create_direct_pass`（沙箱票据）, `get_shelf_stats`（全库统计）
+- **服务端数据面 (Server MCP，9 工具 / 2 提示词)**:
+  `search_by_image`（识图）, `search_by_dialogue`（台词 FTS5）, `search_by_meaning`（按意思找台词，分数只在同一次查询内比高低）, `query_shelf`（多维检索）, `get_comic_detail`（章节目录元数据）, `recommend_unread`（未读淘书）, `create_direct_pass`（沙箱票据）, `get_shelf_stats`（全库统计）, `get_story_context`（按剧情原序取原始台词）；提示词 `find_comic_by_scene`（凭场景线索找本）、`recommend_comic`（按口味推荐）
 - **前端视口操作面 (Frontend WebMCP)**:
   - `书架 (useShelfWebMCP)`: `shelf_search_comics`, `shelf_search_dialogue`, `shelf_search_image`, `shelf_read_comic`, `shelf_pick_random`, `shelf_open_comic`, `shelf_import_comic`
   - `详情 (useComicDetailWebMCP)`: `detail_start_reading`, `detail_cache_all_pages`, `detail_cache_chapter`, `detail_open_chapter`, `detail_get_comic_info`, `detail_toggle_favorite`, `detail_create_direct_pass`

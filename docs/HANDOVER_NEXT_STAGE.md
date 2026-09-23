@@ -7,19 +7,19 @@
 
 ## 一、已落地基线（不再是议题）
 
-| 能力                                           | 出口                                                                                     | 关键约束与出处                                                                                                                                                                                                                                                                                 |
-| :--------------------------------------------- | :--------------------------------------------------------------------------------------- | :--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 台词全文检索（简繁互通 + 页级聚合 + 气泡坐标） | `GET /api/search/dialogue`；MCP `search_by_dialogue`                                     | FTS5 虚拟表在**独立库** `backend/data/comic_dialogues.db`（`tokenize='trigram'`，含 `kind`/`reading_order` 列）；加列只能整表重建，重建后自动回填；2 字查询产不出 trigram，只能走 `LIKE` + 词频密度近似排序。[ADR 0017](adr/0017-comic-dialogue-fts-and-bubble-overlay.md)                     |
-| 排序质量（截断留谁）                           | 同上 + `rank_score` 字段透出                                                             | `rank_score` 语义固定为**候选池内 min-max 归一的纯相关度**，四类业务信号（热度/收藏/完读/最近阅读）只抬升不压低、合计封顶 0.5；**只有顺序随身份变**，`rank_score`/`bubble_count`/`text` 同一页必须逐字一致。错题本 #139                                                                        |
-| 剧情取料出口                                   | `GET /api/search/dialogue-context`；MCP `get_story_context`                              | 馆长与 Machine 专属，吐**原始态**文本（无 `<mark>`、无 snippet），按阅读原序截断                                                                                                                                                                                                               |
-| 台词 OCR 算力线                                | `bash scripts/ocr.sh {status\|run\|sync\|install\|test\|lines}`                          | **只剩一条线**：`rapidocr` 3.x + PP-OCRv6 **small**（`tiny` 不含日文）；默认 GPU，`--cpu` 显式回落。v3 轨道（`rapidocr-onnxruntime`）已整体删除——它 6623 字字符表里只有 5 个假名。错题本 #137/#143                                                                                             |
-| 气泡聚类                                       | `scripts/ocr_worker.py::cluster_blocks`                                                  | 三道否决闸：同向、笔画粗细比 ≤2、**合并后外接框 ≤20% 页面积**（面积必须按分量整体判，成对距离会被 union-find 传递闭包绕过）。验证口径是"字数守恒"。错题本 #142                                                                                                                                 |
-| 判据离线迭代                                   | `bash scripts/ocr.sh lines`（dump 原始行 / `--recluster` 重聚类）                        | 侧车**不存**原始行（阅读器每页要解析，体积翻倍不划算），这个 dump 是唯一离线复现入口；只写 `/tmp`，绝不碰 `backend/data`                                                                                                                                                                       |
-| 语料分类                                       | `sync_comic_dialogues` 的 `classify_dialogue_kind`                                       | `dialogue` / `paratext`（入库但不进台词检索，为取料与语义召回保留） / `noise`（水印页码，不入库）。只用页位 + 文本特征，**不用几何轮廓判据**（实测误伤 41% 真台词）。ADR 0017 决策 7                                                                                                           |
-| 阅读器气泡高亮                                 | URL 参数 `bubble_box` / `bubble_boxes` / `bubble_text`                                   | 归一化百分比坐标 + Aspect-Ratio Lock 贴紧；高亮走坐标，不持久化 bubble id，所以重排 `order` 不影响已分享的直达链接                                                                                                                                                                             |
-| MCP Server + 官方 Skill                        | `backend/app/routers/mcp.py`（8 工具 / 3 资源 / 1 提示词）、`skills/paper-room/SKILL.md` | 三条 HTTP 路由均自带 `_require_mcp_auth`，只认馆长口令或 **`COMIC_SHELF_MCP_TOKEN` 子凭据**（配了子凭据后机器密钥不再能开 MCP），访客与匿名进不来；工具内部取数仍是馆长级，但 `create_direct_pass` 硬拒绝为隐藏本签发（见议题 D）。SSE 自带 `no-cache, no-transform` + `X-Accel-Buffering: no` |
-| 单本沙箱临时直达凭据                           | MCP `create_direct_pass`、`POST /api/auth/direct-pass`                                   | 中间件按通行证前缀锁作用域，画页 `Token + IP` 复合滑窗 180 页/分钟                                                                                                                                                                                                                             |
-| 已过鉴权的 `/api` 响应统一 `no-store`          | `auth_and_security_middleware` 收尾                                                      | 处理器自写的缓存头不被覆盖；链路出口由 `backend/tests/test_dialogue_http_stack.py` 用真 HTTP 请求锁死                                                                                                                                                                                          |
+| 能力                                           | 出口                                                                                     | 关键约束与出处                                                                                                                                                                                                                                                                                                                                                         |
+| :--------------------------------------------- | :--------------------------------------------------------------------------------------- | :--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 台词全文检索（简繁互通 + 页级聚合 + 气泡坐标） | `GET /api/search/dialogue`；MCP `search_by_dialogue`                                     | FTS5 虚拟表在**独立库** `backend/data/comic_dialogues.db`（`tokenize='trigram'`，含 `kind`/`reading_order` 列）；加列只能整表重建，重建后自动回填；2 字查询产不出 trigram，只能走 `LIKE` + 词频密度近似排序。[ADR 0017](adr/0017-comic-dialogue-fts-and-bubble-overlay.md)                                                                                             |
+| 排序质量（截断留谁）                           | 同上 + `rank_score` 字段透出                                                             | `rank_score` 语义固定为**候选池内 min-max 归一的纯相关度**，四类业务信号（热度/收藏/完读/最近阅读）只抬升不压低、合计封顶 0.5；**只有顺序随身份变**，`rank_score`/`bubble_count`/`text` 同一页必须逐字一致。错题本 #139                                                                                                                                                |
+| 剧情取料出口                                   | `GET /api/search/dialogue-context`；MCP `get_story_context`                              | 馆长与 Machine 专属，吐**原始态**文本（无 `<mark>`、无 snippet），按阅读原序截断                                                                                                                                                                                                                                                                                       |
+| 台词 OCR 算力线                                | `bash scripts/ocr.sh {status\|run\|sync\|install\|test\|lines}`                          | **只剩一条线**：`rapidocr` 3.x + PP-OCRv6 **small**（`tiny` 不含日文）；默认 GPU，`--cpu` 显式回落。v3 轨道（`rapidocr-onnxruntime`）已整体删除——它 6623 字字符表里只有 5 个假名。错题本 #137/#143                                                                                                                                                                     |
+| 气泡聚类                                       | `scripts/ocr_worker.py::cluster_blocks`                                                  | 三道否决闸：同向、笔画粗细比 ≤2、**合并后外接框 ≤20% 页面积**（面积必须按分量整体判，成对距离会被 union-find 传递闭包绕过）。验证口径是"字数守恒"。错题本 #142                                                                                                                                                                                                         |
+| 判据离线迭代                                   | `bash scripts/ocr.sh lines`（dump 原始行 / `--recluster` 重聚类）                        | 侧车**不存**原始行（阅读器每页要解析，体积翻倍不划算），这个 dump 是唯一离线复现入口；只写 `/tmp`，绝不碰 `backend/data`                                                                                                                                                                                                                                               |
+| 语料分类                                       | `sync_comic_dialogues` 的 `classify_dialogue_kind`                                       | `dialogue` / `paratext`（入库但不进台词检索，为取料与语义召回保留） / `noise`（水印页码，不入库）。只用页位 + 文本特征，**不用几何轮廓判据**（实测误伤 41% 真台词）。ADR 0017 决策 7                                                                                                                                                                                   |
+| 阅读器气泡高亮                                 | URL 参数 `bubble_box` / `bubble_boxes` / `bubble_text`                                   | 归一化百分比坐标 + Aspect-Ratio Lock 贴紧；高亮走坐标，不持久化 bubble id，所以重排 `order` 不影响已分享的直达链接                                                                                                                                                                                                                                                     |
+| MCP Server + 官方 Skill                        | `backend/app/routers/mcp.py`（9 工具 / 3 资源 / 2 提示词）、`skills/paper-room/SKILL.md` | 三条 HTTP 路由均自带 `_require_mcp_auth`：认馆长口令与 **`COMIC_SHELF_MCP_TOKEN` 子凭据**（配了子凭据后机器密钥不再能开 MCP；子凭据只在配了 `COMIC_SHELF_SECRET` 时生效），访客与匿名进不来；工具内部取数仍是馆长级，但 `create_direct_pass` 硬拒绝为隐藏本签发（见议题 D）。工具与资源处理器在线程池里跑。SSE 自带 `no-cache, no-transform` + `X-Accel-Buffering: no` |
+| 单本沙箱临时直达凭据                           | MCP `create_direct_pass`、`POST /api/auth/direct-pass`                                   | 中间件按通行证前缀锁作用域，画页 `Token + IP` 复合滑窗 180 页/分钟                                                                                                                                                                                                                                                                                                     |
+| 已过鉴权的 `/api` 响应统一 `no-store`          | `auth_and_security_middleware` 收尾                                                      | 处理器自写的缓存头不被覆盖；链路出口由 `backend/tests/test_dialogue_http_stack.py` 用真 HTTP 请求锁死                                                                                                                                                                                                                                                                  |
 
 ---
 
@@ -30,6 +30,7 @@
 - 藏书 **48 本 / 3033 页**；有 OCR 伴生 **43 本 / 1764 页**（页覆盖率 58.2%）。
 - 侧车来源：`engine_track=v6` **201 页 / 5 本**；legacy（v3 时代产物，无 `engine_track` 字段）**1563 页 / 38 本**。
 - FTS 索引 **8095 行**：`dialogue` 7544 / `paratext` 551，覆盖 43 本 1658 页。
+- 语义向量 **6254 条 / 12.8MB**（`paratext` 与 <4 字短句不建向量）。
 - 两批侧车的缺陷签名对照（同一判据扫盘）：
   - `>35%` 页面积的气泡：legacy **29 个（20 本）**、v6 **0 个**；
   - 每百页含日文假名的气泡数：legacy **13.4**、v6 **57.7**（两批书目不同，只作量级参考）；
@@ -37,19 +38,19 @@
 - 吞吐（同机 RTX 4070 Ti / 8 核，**两个口径分开看，别互相冒充**，详见 `DEPLOYMENT.md` §5.1）：
   - 全库异构 1764 页走 `ocr.sh run`（含写盘）：v6 GPU 4 线程 **94 页/分**（v3 同机同口径 129 页/分）；
   - 同页 marginal（`jm/1249304` 153 页，离线 dump harness 扣掉模型加载）：GPU 4 线程 **239 页/分**、CPU 2 线程 **37.3**、CPU 4 线程反而 **32.4** → GPU:CPU ≈ 6:1，CPU 加线程无收益的定性结论在 v6 依然成立。
-  - 复测踩坑：绕开 `ocr.sh` 直接 `.venv-ocr/bin/python scripts/ocr_lines.py --gpu` 会漏挂 `LD_LIBRARY_PATH`，`libcublasLt.so.13` 缺失即静默退回 CPU——本轮第一组"GPU 34 页/分"就是这么来的，与 #137 同一条坑。
-- 本机环境：`.venv-ocr` 已就绪，`status` 报 🟢 CUDA 生效（Det,Cls,Rec）；应用 `.venv` **没有** rapidocr 3.x，故 `run --cpu` 与 PDF 扉页分话在本机停用（预检会清晰报错，不静默降级）。
+  - 复测踩坑：绕开 `ocr.sh` 直接 `.venv-ocr/bin/python scripts/ocr_lines.py --gpu` 会漏挂 `LD_LIBRARY_PATH`，`libcublasLt.so.13` 缺失即静默退回 CPU——本轮第一组"GPU 34 页/分"就是这么来的，与 #137 同一条坑。现已由 `build_engine(True)` 的三段会话自检挡住：退回 CPU 会当场报错，不再静默。
+- 本机环境：`.venv-ocr` 已就绪，`status` 报 🟢 引擎可用、Det/Cls/Rec 三段会话都在 CUDA 上；应用 `.venv` **没有** rapidocr 3.x，故 `run --cpu` 与 PDF 扉页分话在本机停用（预检会清晰报错，不静默降级）。
 
 ---
 
 ## 三、质量门禁（本次实测全绿）
 
-- **Python 后端**：`bash scripts/test_py.sh`（等价 `pnpm test:py`）全绿——24 个 `backend/tests/test_*.py` 套件 + `backend/check_backend.py` 动态 AST 巡检。本轮新增两份：
+- **Python 后端**：`bash scripts/test_py.sh`（等价 `pnpm test:py`）全绿——25 个 `backend/tests/test_*.py` 套件 + `backend/check_backend.py` 动态 AST 巡检。跑时把 `COMIC_SHELF_DATA` 指到临时目录，就不会碰真书库：`test_visibility_discovery` 已改用临时库与临时发现页缓存，`test_imsearch` 在书库里没有 `jm/1242163` 时跳过那一条断言。重点用例：
   - `backend/tests/test_dialogue_http_stack.py`：真 HTTP 穿中间件栈，锁 `rank_score` 活着走出响应模型、`no-store` 落地、未授权 401；lifespan 写锁落在临时书库（不抢开发实例的锁）。
-  - `backend/tests/test_ocr_lines.py`：离线实验台——`_images` 的 `--source`/`--pages` 作用域、dump 只写 `--out` 且按 `DEFAULT_MIN_SCORE` 过滤、`--recluster` **不构造任何推理引擎**且字数守恒。
+  - `backend/tests/test_ocr_lines.py`：离线实验台——选书的 `--source`/`--pages` 作用域与分章节目录递归、dump 只写 `--out`（分章节的本文件名带章节）、`--image` 不写盘、`--recluster` **不构造任何推理引擎**且字数守恒。
 - **前端**：`bash -lc 'vp check'`（格式化 + lint + type-check）与 `bash -lc 'pnpm type-check'`（`vue-tsc --build` 增量，验 Vue 模板绑定）均 0 错误。
 - **Shell**：`bash -n scripts/ocr.sh`（本仓库踩过的坑：往 shell 里嵌 python heredoc 时把终止符吞掉，会让整个子命令 `command not found`）。
-- **UI 评审快照**：`.impeccable/critique/` 最新三份对应页级聚合、两字近似排序、同页其余格描边。
+- **UI 评审快照**：`.impeccable/critique/` 最新三份对应页级聚合、两字近似排序、同页其余命中气泡描边。
 - 文档同步：`DEPLOYMENT.md` §5.1（算力线与离线实验台）、`CONTEXT.md`（气泡聚类词条）、`docs/PITFALLS.md` #137/#142/#143。
 
 ---
@@ -67,8 +68,8 @@
 三条 decided：模型与算力放本机（量化 `bge-small-zh-v1.5` 23MB，CPU 编码 184 行/秒、查询 2ms，
 不必挪到算力机）、向量存台词专库新表 `comic_dialogue_vectors`（不与识图 sidecar 混库）、
 **不与 `rank_score` 融合**（语义出口独立返回 `similarity`，见 ADR 0028）。
-出口：`GET /api/search/dialogue-semantic` + MCP `search_by_meaning`；向量随 `*/ocr/sync` 每本顺带重编，
-全量重建走 `POST /api/search/dialogue-vectors/rebuild`。真库 6254 条向量、12.8MB、`paratext` 与 <4 字短句不建向量。
+出口：`GET /api/search/dialogue-semantic` + MCP `search_by_meaning`，结果按页去重（每页只留最相似的那个气泡），空结果一律带 `reason`（含 `query_too_short`）；向量随 `*/ocr/sync` 每本顺带重编（编码失败只记日志，不影响关键词入库），
+全量重建走 `POST /api/search/dialogue-vectors/rebuild`（仅馆长）。`paratext` 与 <4 字短句不建向量，条数见 §二。
 
 实测质量（要诚实看）：`脸红`→`满脸通红`(0.63)、`今天天气不错`→`真是好天气！雨过天晴了呢！`(0.67)、
 `久别重逢`→`与老师相见交换着信语`(0.51) 这类**字面零重合**的查询都能落对；但 `告白`、`分手` 这类
@@ -91,26 +92,28 @@
 - 回归核对：735 条简体输入 100% 命中自己那行；繁体原文照抄、日文行照抄（108/108）、日文汉字换简体（28/28）均不受损；6 条查询合计 51ms。
 - ⚠️ 本轮踩到一条新坑并已入错题本 **#145**：常驻 `--reload` 的 dev server 会在"先加列、后改 INSERT"的中间态自动重启，把新列全 NULL 灌进真库，且 `comic_ocr_sync_meta` 被写成已同步——迁移后必须验新列非空，不能只看行数。
 
-### 议题 D：MCP 与匿名面的凭据暴露面（2026-09-23 安全审计）—— 八项已收口，两项待拍
+### 议题 D：MCP 与匿名面的凭据暴露面（2026-09-23 安全审计，09-24 复审）—— 十项已收口，三项留作后续
 
-审计口径：`_require_mcp_auth` 本身没有漏（`mcp.py:993/1047/1073` 三条路由全覆盖，访客挡得住），问题在**授权粒度与旁路**：
+审计口径：`_require_mcp_auth` 本身没有漏（`mcp_sse_endpoint` / `mcp_messages_endpoint` / `mcp_direct_rpc_endpoint` 三条路由全覆盖，访客挡得住），问题在**授权粒度与旁路**：
 
-**已收口（2026-09-23 本轮，用例见 `test_mcp.py::test_mcp_scoped_credential_and_hidden_book_refusal`、`test_mcp.py::test_mcp_handshake_url_is_credential_free_and_failures_get_locked`、`test_events.py` 第 8 步、`test_auth.py` 2f'）**：
+**已收口（用例见 `test_mcp.py::test_mcp_scoped_credential_and_hidden_book_refusal`、`test_mcp.py::test_mcp_handshake_url_is_credential_free_and_failures_get_locked`、`test_mcp.py::test_mcp_handlers_run_off_event_loop`、`test_events.py` 第 8 步、`test_auth.py` 2f' 与 `test_access_log_redacts_query_credentials`）**：
 
-1. ✅ **MCP 子凭据 `COMIC_SHELF_MCP_TOKEN`**：`_require_mcp_auth` 现在只认馆长口令 + 这把子凭据；**一旦配置，机器密钥在 MCP 面立即失效**（撤销半径缩到单个 agent，不用换站长口令也不用重启 NAS 流水线）。未配置时行为与老版本逐字一致。
-2. ✅ **`create_direct_pass` 查 `hidden_from_guest`**（`mcp.py:611-624`）：MCP 通道拒绝为"对访客隐藏"的本子签发公开直达链接，工具描述里也写死了"请勿重试"，人真要分享走 Web 端。
+1. ✅ **MCP 子凭据 `COMIC_SHELF_MCP_TOKEN`**：`_require_mcp_auth` 认馆长口令 + 这把子凭据；**一旦配置，机器密钥在 MCP 面立即失效**。换它不用动站长口令，也不用重启 NAS 流水线，但所有 agent 共用这一把，换它就是全部断开。只在配了 `COMIC_SHELF_SECRET` 时生效；未配置时行为与老版本逐字一致。
+2. ✅ **`create_direct_pass` 查 `hidden_from_guest`**（`_tool_create_direct_pass`）：MCP 通道拒绝为"对访客隐藏"的本子签发公开直达链接，工具描述里也写死了"请勿重试"，人真要分享走 Web 端。
 3. ✅ **`/api/health` 不再报宿主机路径**（`system.py`），只留 `ok`/`providers`/`auth_required`。
 4. ✅ **`/api/events/stream` 自带 `can_read` 门禁**：全站中间件对该前缀提前放行，长连接不能被拦截器打断，所以门禁落在处理器里。payload **故意保留** `source`/`source_id` —— 前端任务态（`beginTask`/`endTask` 的缓存与导入自旋）就靠它对齐，粗化会打断 UI。
 5. ✅ **stdio 通道零鉴权已在 `DEPLOYMENT.md` §9.5 写死**："能 spawn 这个进程 = 馆长权限"。
 6. ✅ **Skill 侧补了凭据最小化规则**（`skills/paper-room/SKILL.md` IRON LAW 5 与 Red Flag 末条），并明确"本节不是安全边界"。
-
-7. ✅ **握手 URL 不再携带凭据**：SSE 返回的 `/api/mcp/messages?session_id=...` 只带 `session_id`（服务端每连接新发的 128bit 随机值，断连即回收），活会话凭它续话；只有认不出会话时才要求出示凭据，顺带堵掉"用 401/404 差别探测会话是否存在"。
-8. ✅ **MCP 鉴权失败计数**：与 `/api/auth/login` 共用 `abuse.py` 的 IP 锁（60 秒内 10 次失败 → 锁 5 分钟，锁定期连站长口令也返回 429 + `Retry-After: 300`）。
+7. ✅ **握手 URL 不再携带凭据**：SSE 握手返回 `/api/mcp/messages?session_id=...`，只带 `session_id`（服务端每连接新发的 128bit 随机值，断连即回收），活会话凭它续话。认不出的会话**直接 404**，不验凭据也不计失败：否则服务一重启，客户端拿旧会话号续话，几条消息就把自己的 IP 锁住。128bit 的会话号猜不到，"用 401/404 差别探测会话"的顾虑不成立。
+8. ✅ **MCP 鉴权失败计数**：与 `/api/auth/login` 同一套规则（60 秒内 10 次失败 → 锁 5 分钟，`Retry-After: 300`），但**单独记在 `mcp:<ip>` 键下**，配错凭据的 agent 不会连带锁死同 IP 的馆长网页登录。登录成功一律不再清零计数：原先手握直达票据的人每试 9 次，就能用自己那张票清零一次。401 文案固定，不再随是否配了子凭据变化。
+9. ✅ **访问日志打码**：`server.py` 的 `QuietAccessLogFilter` 把请求行里 `token` / `temp_token` / `session_id` 的值换成 `***`，其余参数原样保留。纯服务端改动，不碰任何客户端。
+10. ✅ **工具不再占事件循环**：处理器全是同步阻塞调用（识图 urllib 超时 10 秒、SQLite、向量运算），服务又只有一个 worker；现在 `execute_tool` / `read_resource` 统一 `asyncio.to_thread`，与 REST 识图端点同一做法。
 
 **仍敞着的（下轮再拍）**：
 
-- ⏳ **入站 `?token=` 仍然接受**（`extract_token` 第 4 档）：为不支持自定义 Headers 的客户端与画页 `<img>` 保留，走这条路时凭据本身仍会进访问日志——口径是"只放子凭据"。要彻底堵掉，得给 MCP 单独做只认 header 的凭据提取器，或在 uvicorn 访问日志里剥掉查询串，两者都会动到既有客户端。
-- ⏳ **MCP 工具无独立频控**：只有 50 会话与队列上限兜底，外部 agent 疯狂检索会与书架请求抢同一份 SQLite 连接。
+- ⏳ **入站 `?token=` 仍然接受**（`extract_token` 第 4 档，为不支持自定义 Headers 的客户端保留）：uvicorn 日志已打码，但 NPM 等反代的日志照记。要彻底堵掉，得让 MCP 只从请求头取子凭据，代价是只能在 URL 里填凭据的客户端（`DEPLOYMENT.md` §9.2 方式 B）会失效。等确认自用客户端都支持自定义 Headers 再做。
+- ⏳ **MCP 工具无独立频控**：线程池只解决"一次慢调用卡住全站"，不限次数；`/api/mcp/rpc` 也没有会话与队列上限。外部 agent 疯狂检索仍会与书架请求抢同一份 SQLite 连接。现成的最小方案是在 `execute_tool` 入口调 `abuse.check_guest_rate_limit("mcp")`，代价是与访客翻页共用限流参数。
+- ⏳ **失败锁记下的 IP 可不可信取决于部署**：`COMIC_SHELF_TRUST_FORWARDED_HEADERS` 默认开，`get_client_ip` 直接信任 `CF-Connecting-IP` / XFF 第一段。经 Cloudflare 且源站不能直连时没问题；源站能直连，这两个头就能伪造，可以每次换 IP 永不触发锁，也可以冒用馆长 IP 把馆长锁在门外。本轮只把 `docs/HOMELAB_NETWORKING_GUIDE.md` §6.8 回源印章列为公网部署必配项，默认值不改：改成 false 会让所有走 Cloudflare 的部署都得手动再打开。
 
 ### 议题 E：CPU 算力线 —— ✅ 已结案（2026-09-23 决定**不装**）
 
@@ -118,7 +121,7 @@
 
 部署侧本来也不需要它：OCR 引擎只活在 `scripts/`（`ocr_worker.py` / `ocr_lines.py`），Docker 镜像只 `pip install backend/requirements.txt`，**NAS 容器从不做法向推理**；算力机把 `{index}.ocr.json` 写进挂载卷再调 `*/ocr/sync`，NAS 只重建 SQLite FTS5。
 
-服务进程这边**不装任何图像/文本推理的必需依赖**：PDF 扉页自动分话要的 `rapidocr` 按 ADR 0024 是可选依赖（未装则该轨自动跳过，日志一行 WARNING，该书平铺成单章）；语义检索要的 `onnxruntime`+`tokenizers` 也不进 `backend/requirements.txt`（为一句查询的 2ms 让每台部署背 70MB 不值）。两者都不装时功能照常，只是少两条腿，加装方法见 `DEPLOYMENT.md` §5.1.1 / §5.1.2。
+服务进程这边**不装任何图像/文本推理的必需依赖**：PDF 扉页自动分话要的 `rapidocr` 按 ADR 0024 是可选依赖（未装则该轨自动跳过，日志一行 WARNING，该书平铺成单章）；语义检索要的 `onnxruntime`+`tokenizers`（numpy 随 onnxruntime 一起装）也不进 `backend/requirements.txt`（为一句查询的 2ms 让每台部署背 70MB 不值）。两者都不装时功能照常，只是少两条腿（`embedding.py` 连 numpy 都是用到才导入，基础镜像里 `*/ocr/sync` 与关键词检索不受影响），加装方法见 `DEPLOYMENT.md` §5.1.1 / §5.1.2。
 
 ### 已结案、别再提的三条
 

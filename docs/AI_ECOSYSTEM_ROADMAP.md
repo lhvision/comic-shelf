@@ -99,7 +99,7 @@
 - `shelf_search_image({ image_base64 })`：
   通过传入图片的 Base64 编码数据在全库中进行视觉向量特征匹配，精准定位到所属漫画、画页及相似度评分。
 - `shelf_read_comic({ source, source_id, page?, fromBeginning?, chapter_id?, bubble_box?, other_boxes?, bubble_text? })`：
-  直接从书架打开指定漫画并跳转到特定画页阅读，可附带章节、强制首开、代表格坐标与同页其余命中格（`other_boxes`，最多 5 组静态描边）进行朱砂色呼吸光效高亮。
+  直接从书架打开指定漫画并跳转到特定画页阅读，可附带章节、强制首开、代表气泡坐标与同页其余命中气泡（`other_boxes`，最多 5 组静态描边）进行朱砂色呼吸光效高亮。
 - `shelf_import_comic({ id?, source_id?, source?, local_path?, prefetch_all?, prefetch_covers?, favorite?, tags?, open_after? })`：
   将远端或服务器本地漫画收录导入至书架（支持省略 `source` 自动智能推断图源、支持后台全本离线预缓存、初始喜欢标记、自定义标签追加与导入后自动直达详情页）。**【仅馆长权限】**
 - `shelf_pick_random({ favoritesOnly?, source?, openReader? })`：
@@ -272,8 +272,8 @@ WebMCP 作为运行在浏览器宿主内的模型上下文通道，遵循**最�
 ```
 
 - **归一化百分比坐标**：`box` 统一采用 `[ymin, xmin, ymax, xmax]` ∈ [0.0, 1.0]，与原图分辨率解耦，纯 CSS 原生百分比自适应，杜绝缩略图与原图尺寸换算开销；
-- **台词全文索引表（`comic_dialogues_fts`）**：纸间后端基于 SQLite FTS5 原生 `tokenize='trigram'` 构建倒排索引，0 依赖秒级模糊匹配中日文无空格文本；除 `text` 外全部 `UNINDEXED`，含 `reading_order`（页内阅读顺序）与 `kind`（`dialogue` 台词 / `paratext` 副文本；水印与页码等噪声不入库），检索侧固定只取 `dialogue`；
-- **气泡呼吸高亮（Breathing Bubble Overlay）**：读者从搜索下拉点击台词命中直达阅读器对应页码（`?page=42&bubble_box=...&bubble_boxes=a;b&highlight_bubble=1`，一行代表一整页），画卷视口在该气泡坐标浮现朱砂金色半透明高亮框呼吸 2 秒淡出，代表格呼吸、同页其余格静态描边，零 DOM 重排且不扰乱主阅读流。
+- **台词全文索引表（`comic_dialogues_fts`）**：纸间后端基于 SQLite FTS5 原生 `tokenize='trigram'` 构建倒排索引，0 依赖秒级模糊匹配中日文无空格文本；倒排只建在 `text_norm`（写入时统一折成简体字形）上，其余列全部 `UNINDEXED`，含 `reading_order`（页内阅读顺序）与 `kind`（`dialogue` 台词 / `paratext` 副文本；水印与页码等噪声不入库），检索侧固定只取 `dialogue`；
+- **气泡呼吸高亮（Breathing Bubble Overlay）**：读者从搜索下拉点击台词命中直达阅读器对应页码（`?page=42&bubble_box=...&bubble_boxes=a;b&highlight_bubble=1`，一行代表一整页），画卷视口在该气泡坐标浮现朱砂金色半透明高亮框呼吸 2 秒淡出，代表气泡呼吸、同页其余命中气泡静态描边，零 DOM 重排且不扰乱主阅读流。
 
 ### 6. 服务间认证凭据与推送 Webhook（Machine-to-Machine Auth）
 
