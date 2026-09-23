@@ -142,11 +142,7 @@
 
 ---
 
-## 六、工作区与备份状态
+## 六、工作区状态
 
-- 分支 `main`，工作区应当只有本次交接涉及的改动；未 push 的提交以 `git log origin/main..HEAD --oneline` 为准（**push 需要用户明确授权**）。
-- 临时备份（`/tmp`，重启即失，长期留存需挪盘）：
-  - `/tmp/ocr-sidecar-v6-presplit`——聚类治理前的 201 页 v6 侧车，用于"字数守恒"对照；
-  - `/tmp/ocr_raw`——那 201 页的原始识别行 dump，可离线重聚类；
-  - `/tmp/cpu-throughput`——吞吐复测的 dump 产物与逐页日志。
-- 回退点：`backup/pre-squash-20260923`（19 个修补提交合并前的原始链）。
+- 本轮改动已按 OCR 算力线 / 台词后端 / MCP 与鉴权 / 前端 / 文档分组提交在分支 `feat/dialogue-pipeline`，尚未合入 `main`；未 push 的提交以 `git log origin/main..HEAD --oneline` 为准（**push 需要用户明确授权**）。
+- 早先记在这里的 `/tmp` 备份（v6 预拆分侧车、原始识别行 dump、吞吐复测产物）与回退点 `backup/pre-squash-20260923` 均已不存在，不要再按它们找回旧状态；原始识别行需要时用 `bash scripts/ocr.sh lines` 重新导出。
