@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+import math
 import re
 import secrets
 import sqlite3
@@ -21,6 +22,7 @@ from .abuse import (
     record_eviction_and_check_lock,
 )
 from .config import DATA_DIR
+from .zh_conv import to_simplified
 
 logger = logging.getLogger(__name__)
 
@@ -244,25 +246,99 @@ def init_db(db_path: Path | None = None) -> None:
     init_dialogue_db(_DIALOGUE_DB_PATH)
 
 
+_CREATE_DIALOGUES_FTS = """
+    CREATE VIRTUAL TABLE IF NOT EXISTS comic_dialogues_fts USING fts5(
+        source UNINDEXED,
+        source_id UNINDEXED,
+        page_index UNINDEXED,
+        bubble_id UNINDEXED,
+        text UNINDEXED,
+        lang UNINDEXED,
+        box_json UNINDEXED,
+        reading_order UNINDEXED,
+        kind UNINDEXED,
+        text_norm,
+        tokenize='trigram'
+    );
+"""
+
+# 倒排只建在 text_norm（写入侧折成简体字形）上，text 退为 UNINDEXED 的原文副本：
+# 查繁查简都命中，返回的仍是页面上那套字形（zh_conv 逐字符 1:1，偏移不变）。
+# 新增列只能追加在末尾：FTS5 不支持 ALTER ADD COLUMN，缺列即整表重建（见 _migrate_dialogue_schema）。
+_DIALOGUE_COLUMNS = {
+    "source",
+    "source_id",
+    "page_index",
+    "bubble_id",
+    "text",
+    "lang",
+    "box_json",
+    "reading_order",
+    "kind",
+    "text_norm",
+}
+
+
+def _migrate_dialogue_schema(conn: sqlite3.Connection) -> bool:
+    """FTS5 虚拟表不支持 ALTER TABLE ADD COLUMN，缺任何一列都只能整表重建。
+
+    comic_dialogues_fts 是 pages/*.ocr.json 的派生索引，删表不丢原始数据。但必须
+    在同一事务里清空 comic_ocr_sync_meta：sync_comic_dialogues 靠 mtime 比对做增量，
+    元数据若留着，重灌会被静默跳过，台词检索从此永远返回空。
+
+    Returns:
+        True 表示确实重建了表，调用方必须回填，否则台词检索静默返 0、与「无匹配」不可区分。
+    """
+    columns = {row[1] for row in conn.execute("PRAGMA table_info(comic_dialogues_fts)")}
+    if not columns or _DIALOGUE_COLUMNS <= columns:
+        return False
+
+    missing = sorted(_DIALOGUE_COLUMNS - columns)
+    conn.execute("DROP TABLE comic_dialogues_fts")
+    conn.execute(_CREATE_DIALOGUES_FTS)
+    conn.execute("DELETE FROM comic_ocr_sync_meta")
+    logger.warning(
+        "Rebuilt comic_dialogues_fts to add %s and reset OCR sync metadata; dialogue index is empty until backfill",
+        missing,
+    )
+    return True
+
+
+def backfill_dialogue_index() -> int:
+    """整表重建后遍历书库，把所有带伴生 OCR 文件的漫画重灌回索引。
+
+    删表本身不丢数据，但没人回填的话，索引会一直空着，而空索引与「这本书没有这句台词」
+    在接口上长得一模一样——只会表现成"搜索忽然搜不到了"。常驻 --reload 的开发服务保存
+    文件就会触发一次重建（见 docs/PITFALLS.md #136），所以回填必须挂在重建的下一步。
+    """
+    library_dir = DATA_DIR / "library"
+    if not library_dir.is_dir():
+        return 0
+
+    total = 0
+    for source_dir in sorted(p for p in library_dir.iterdir() if p.is_dir()):
+        for comic_dir in sorted(p for p in source_dir.iterdir() if p.is_dir()):
+            pages_dir = comic_dir / "pages"
+            if not pages_dir.is_dir() or not any(pages_dir.glob("**/*.ocr.json")):
+                continue
+            try:
+                total += sync_comic_dialogues(source_dir.name, comic_dir.name, force=True)
+            except Exception as exc:
+                logger.warning("台词索引回填失败 %s/%s: %s", source_dir.name, comic_dir.name, exc)
+    return total
+
+
 def init_dialogue_db(dialogue_db_path: Path | None = None) -> None:
-    """初始化独立的台词全文检索专库 (comic_dialogues.db)。"""
+    """初始化独立的台词全文检索专库 (comic_dialogues.db)，并在整表重建后就地回填。"""
     if dialogue_db_path is not None:
         set_dialogue_db_path(dialogue_db_path)
 
     _DIALOGUE_DB_PATH.parent.mkdir(parents=True, exist_ok=True)
+    rebuilt = False
     with get_dialogue_db() as conn:
         conn.executescript(
-            """
-            CREATE VIRTUAL TABLE IF NOT EXISTS comic_dialogues_fts USING fts5(
-                source UNINDEXED,
-                source_id UNINDEXED,
-                page_index UNINDEXED,
-                bubble_id UNINDEXED,
-                text,
-                lang UNINDEXED,
-                box_json UNINDEXED,
-                tokenize='trigram'
-            );
+            f"""
+            {_CREATE_DIALOGUES_FTS}
 
             CREATE TABLE IF NOT EXISTS comic_ocr_sync_meta (
                 source TEXT NOT NULL,
@@ -272,9 +348,25 @@ def init_dialogue_db(dialogue_db_path: Path | None = None) -> None:
                 updated_at INTEGER NOT NULL DEFAULT 0,
                 PRIMARY KEY (source, source_id)
             );
+
+            CREATE TABLE IF NOT EXISTS comic_dialogue_vectors (
+                source TEXT NOT NULL,
+                source_id TEXT NOT NULL,
+                page_index INTEGER NOT NULL,
+                bubble_id TEXT NOT NULL,
+                dim INTEGER NOT NULL,
+                vec BLOB NOT NULL,
+                updated_at INTEGER NOT NULL DEFAULT 0,
+                PRIMARY KEY (source, source_id, page_index, bubble_id)
+            );
             """
         )
+        rebuilt = _migrate_dialogue_schema(conn)
         conn.commit()
+
+    if rebuilt:
+        restored = backfill_dialogue_index()
+        logger.warning("comic_dialogues_fts 重建完毕，已回填 %d 条台词", restored)
 
 
 # ----------------------------------------------------------------------
@@ -881,8 +973,10 @@ def purge_comic_db_records(source: str, source_id: str) -> bool:
 
     try:
         delete_comic_dialogues(source, source_id)
-    except Exception:
-        pass
+    except Exception as exc:
+        # 语料删不掉不该让删书失败，但必须出声：静默吞掉会留下永远查不到的孤儿台词行，
+        # 比留一条警告难查得多（孤儿还会被台词检索命中，却连书名都拼不出来）。
+        logger.warning("清理台词索引失败 %s/%s: %s", source, source_id, exc)
 
     return purged
 
@@ -998,20 +1092,28 @@ def query_library_index(
 
     if q and q.strip():
         raw_q = q.strip()
-        escaped_q = raw_q.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
-        needle = f"%{escaped_q}%"
-        params["needle"] = needle
-        conditions.append(
-            """(
-                ci.title LIKE :needle ESCAPE '\\'
-                OR ci.display_id LIKE :needle ESCAPE '\\'
-                OR ci.authors_json LIKE :needle ESCAPE '\\'
-                OR ci.works_json LIKE :needle ESCAPE '\\'
-                OR ci.actors_json LIKE :needle ESCAPE '\\'
-                OR ci.tags_json LIKE :needle ESCAPE '\\'
-                OR ci.chapter_titles_json LIKE :needle ESCAPE '\\'
+        # 简繁双向归一：台词检索一直展开变体，书架这条只 LIKE 原样输入，于是"这本的元数据恰好
+        # 存的是简体还是繁体"决定了搜得到搜不到（实测 jm 库里「咲恋」命中 1 本、「咲戀」命中 4 本，
+        # 合起来 5 本谁都不全）。汉化组混用两套字形，元数据侧无法规范，只能在查询侧补偿。
+        from .zh_conv import expand_search_variants
+
+        groups = []
+        for i, v in enumerate([v for v in expand_search_variants(raw_q) if v]):
+            p_key = f"needle_{i}"
+            params[p_key] = f"%{_escape_like(v)}%"
+            groups.append(
+                f"""(
+                ci.title LIKE :{p_key} ESCAPE '\\'
+                OR ci.display_id LIKE :{p_key} ESCAPE '\\'
+                OR ci.authors_json LIKE :{p_key} ESCAPE '\\'
+                OR ci.works_json LIKE :{p_key} ESCAPE '\\'
+                OR ci.actors_json LIKE :{p_key} ESCAPE '\\'
+                OR ci.tags_json LIKE :{p_key} ESCAPE '\\'
+                OR ci.chapter_titles_json LIKE :{p_key} ESCAPE '\\'
             )"""
-        )
+            )
+        if groups:
+            conditions.append("(" + " OR ".join(groups) + ")")
 
     if ids and ids.strip():
         id_list = [item.strip() for item in ids.split(",") if item.strip()][:120]
@@ -1152,26 +1254,153 @@ def get_library_facets(is_curator: bool, source: str | None = None) -> dict[str,
 # 台词全文索引（comic_dialogues_fts）同步与检索
 # ----------------------------------------------------------------------
 
-def _make_snippet(text: str, terms: list[str], max_chars: int = 60) -> str:
-    """为检索命中文本生成高亮标记与摘要片段。保持纯文本切片并包裹 <mark> 标签，由前台安全声明式解析。"""
-    if not text:
+# 阅读器一次最多画几格（代表格 + 其余格）。高频词下单页可命中十余气泡，
+# 全带进 URL 会撑到 500+ 字符并糊满画面，超出部分只计入 bubble_count 不画框。
+MAX_PAGE_BOXES = 6
+
+def _normalize_box(raw: Any) -> list[float] | None:
+    """把侧车里的 box 收敛成 4 个有限数值，形状不对就整条判废。
+
+    只写 `len(box) == 4` 是不够的：4 键 dict 同样长度为 4，嵌套四点表也是 4 项，它们能
+    穿过这里、死在响应模型的 list[float] 校验上——一行脏侧车就会让整个检索端点 500。
+    """
+    if not isinstance(raw, list) or len(raw) != 4:
+        return None
+    out: list[float] = []
+    for v in raw:
+        if isinstance(v, bool) or not isinstance(v, (int, float)):
+            return None
+        f = float(v)
+        if not math.isfinite(f):
+            return None
+        out.append(f)
+    return out
+
+
+def _coerce_order_index(raw: Any, fallback: int) -> int:
+    """把侧车里可能畸形（浮点、字符串、1e999、dict）的序号收敛成正整数。"""
+    try:
+        n = int(raw)
+    except (TypeError, ValueError, OverflowError):
+        return fallback
+    return n if n >= 0 else fallback
+
+
+def _make_snippet(raw: str, norm: str, needle: str, max_chars: int = 60) -> str:
+    """摘要与高亮：在归一列里定位，按 1:1 偏移切回原文再加 `<mark>`。
+
+    Args:
+        raw: 入库时保留的**原文**（页面上那套字形），也是最终展示的内容。
+        norm: 该行的归一文本（`to_simplified(raw)`），只用来定位。
+        needle: 归一后的查询串，与 norm 同一套字形。
+        max_chars: 定位失败时前缀摘要的长度。
+
+    Returns:
+        带 `<mark>` 的纯文本片段，前后按需补 `...`；由前台安全声明式解析，不拼 HTML。
+
+    `to_simplified` 是逐字符 1:1 映射（str.translate + 单字符表），长度与字符位置都不变，
+    所以 norm 上求出的下标可以原样切在 raw 上：繁体页显示繁体、简体页显示简体，高亮还套得准。
+    原来拿简繁变体去原文里正则找的做法在"一简对多繁"上没有落点（简体「头发」的繁体写法表里
+    只有「頭發」，可语料是「頭髮」），只能退化成不高亮的前缀。
+    """
+    if not raw:
         return ""
-    if not terms:
-        return text[:max_chars] + ("..." if len(text) > max_chars else "")
-    valid_terms = [re.escape(t.strip()) for t in terms if t.strip()]
-    if not valid_terms:
-        return text[:max_chars] + ("..." if len(text) > max_chars else "")
-    pattern = "(" + "|".join(valid_terms) + ")"
-    m = re.search(pattern, text, re.IGNORECASE)
-    if not m:
-        return text[:max_chars] + ("..." if len(text) > max_chars else "")
-    start = max(0, m.start() - 15)
-    end = min(len(text), m.end() + 35)
-    sub = text[start:end]
-    highlighted = re.sub(pattern, r"<mark>\1</mark>", sub, flags=re.IGNORECASE)
-    prefix = "..." if start > 0 else ""
-    suffix = "..." if end < len(text) else ""
-    return f"{prefix}{highlighted}{suffix}"
+    start = norm.find(needle) if needle else -1
+    if start < 0:
+        return raw[:max_chars] + ("..." if len(raw) > max_chars else "")
+    end = start + len(needle)
+    head = max(0, start - 15)
+    tail = min(len(raw), end + 35)
+    marked = f"{raw[head:start]}<mark>{raw[start:end]}</mark>{raw[end:tail]}"
+    prefix = "..." if head > 0 else ""
+    suffix = "..." if tail < len(raw) else ""
+    return f"{prefix}{marked}{suffix}"
+
+
+DIALOGUE_KIND = "dialogue"
+PARATEXT_KIND = "paratext"
+
+# 封面/书名页与版权页总在书头，后记/作者社媒/活动通告总在书尾。这两段位置信息
+# 比任何几何判据都准：实测在 501 条语料上，页位 + 特征词能抓住全部 17 条已知脏数据，
+# 只误伤 1 条真台词；而"文字外面有没有闭合气泡框"的轮廓判据要陪葬 41% 的真台词
+# （气泡内腔常与整页白底漏成一片，且矩形旁白框同样是闭合轮廓，几何上分不开）。
+FRONT_MATTER_PAGES = 2
+BACK_MATTER_PAGES = 4
+# 短篇整本都是正文，位置规则对它没有意义；册页数不足此数时只认特征词。
+MIN_PAGES_FOR_POSITION_RULE = 10
+# 后记是成段的长文，正文页平均每句只有十来字，用它兜住没有特征词的后记页
+BACK_MATTER_MEAN_LINE_CHARS = 25
+
+# 水印与页码：汉化组站点名被 OCR 成了十几种变体（jmcomic/mcomic/imcomic/nenic…），
+# 逐个匹配是打地鼠。真台词一定有中日文字形，纯拉丁/数字且极短的就是噪声。
+_CJK_RE = re.compile(r"[぀-ヿ一-鿿＀-￯]")
+NOISE_MAX_CHARS = 12
+# 刻意不收「我是」「禁止」这类会出现在真台词里的宽词（例：「既然老哥这么喜欢嵌字的话」）
+_PARATEXT_RE = re.compile(
+    r"(图源|翻校|嵌字|扫图|校对|压制|汉化|翻译|仅供|转载|商业|邮箱|@[A-Za-z0-9]"
+    r"|https?://|www\.|pixiv|fanbox|twitter|comiket|comic\s*market|qq群|群号|加群|微博"
+    r"|后记|前言|附录|presented by|凳行|尧行|印刷)",
+    re.IGNORECASE,
+)
+
+
+def _is_noise_line(text: str) -> bool:
+    return not _CJK_RE.search(text) and len(text) <= NOISE_MAX_CHARS
+
+
+def classify_dialogue_kind(
+    page_index: int,
+    page_count: int,
+    page_texts: list[str],
+    text: str,
+) -> str | None:
+    """判定一条 OCR 文本的语料类别。
+
+    Args:
+        page_index: 全书拍平后的全局页号（1 起）。
+        page_count: 该漫画总页数；取不到时传 0，位置规则自动失效。
+        page_texts: 同一页上的全部文本，用于判断整页是否像后记。
+        text: 待判定的单条文本。
+
+    Returns:
+        'dialogue' 分镜台词、'paratext' 书名页/版权页/后记等副文本，
+        None 表示纯噪声（水印、页码），不该进索引。
+    """
+    if _is_noise_line(text):
+        return None
+    if _PARATEXT_RE.search(text):
+        return PARATEXT_KIND
+
+    if page_count >= MIN_PAGES_FOR_POSITION_RULE:
+        if page_index <= FRONT_MATTER_PAGES:
+            return PARATEXT_KIND
+        if page_index > page_count - BACK_MATTER_PAGES and page_texts:
+            mean_line_chars = sum(len(t) for t in page_texts) / len(page_texts)
+            long_form_page = mean_line_chars >= BACK_MATTER_MEAN_LINE_CHARS
+            # 噪声行（水印、页码）不能当"这页是副文本"的证据：它本来就单独不入库，而正文页上
+            # 同样满是水印。真库实测这个 or 分支把 26 页剧情尾页整页判成副文本，台词从检索里消失
+            # （例：jm/319445 p21 只因侧车里有一行被认成 "888" 的 "？？？" 就整页搜不到）。
+            credit_page = any(_PARATEXT_RE.search(t) for t in page_texts)
+            if long_form_page or credit_page:
+                return PARATEXT_KIND
+
+    return DIALOGUE_KIND
+
+
+def _dialogue_key(source: str, source_id: str) -> tuple[str, str]:
+    """台词库的统一主键清洗：与存储层 `comic_dir()` 定位目录用的是同一套字符集。
+
+    写行、增量元数据查表、删除三处必须走同一个函数，否则任一处用了未清洗的入参，
+    同一本书就会在索引里挂到两个键上，删除时只清得掉一个。
+    """
+
+    def clean(v: object) -> str:
+        s = re.sub(r"[^a-zA-Z0-9_\-\.]+", "_", str(v)).strip("._") or "_"
+        while ".." in s:
+            s = s.replace("..", "_")
+        return s
+
+    return clean(source), clean(source_id)
 
 
 def sync_comic_dialogues(source: str, source_id: str, force: bool = False) -> int:
@@ -1181,6 +1410,8 @@ def sync_comic_dialogues(source: str, source_id: str, force: bool = False) -> in
     1. Strictly sanitizes directory path symbols and bounds traversal within DATA_DIR.
     2. Atomically clears prior index rows for this comic before inserting new records.
 
+    入库时按 classify_dialogue_kind 打上 kind：副文本只登记不检索，水印与页码直接丢弃。
+
     Args:
         source: Provider key (e.g., 'jm', 'picacg', 'local').
         source_id: Unique comic identifier.
@@ -1189,12 +1420,11 @@ def sync_comic_dialogues(source: str, source_id: str, force: bool = False) -> in
     Returns:
         The total number of dialogue bubble records indexed.
     """
-    safe_source = re.sub(r"[^a-zA-Z0-9_\-\.]+", "_", source).strip("._") or "_"
-    safe_id = re.sub(r"[^a-zA-Z0-9_\-\.]+", "_", source_id).strip("._") or "_"
-    while ".." in safe_id:
-        safe_id = safe_id.replace("..", "_")
-    while ".." in safe_source:
-        safe_source = safe_source.replace("..", "_")
+    safe_source, safe_id = _dialogue_key(source, source_id)
+    # 台词库只有一个键：清洗后的 (source, source_id)。曾经只拿清洗键去找目录、写库仍用原样
+    # 入参，调用方一传未清洗的 id 就变成"读对目录、写错 key"，删书按清洗键删不到那份行，
+    # 留下永远查不到的孤儿语料。这里统一，使写库/查元数据/删除与存储层定位目录用的是同一个键。
+    source, source_id = safe_source, safe_id
 
     data_resolved = DATA_DIR.resolve()
     candidates = [
@@ -1225,6 +1455,7 @@ def sync_comic_dialogues(source: str, source_id: str, force: bool = False) -> in
 
     # 读取 album.json 以便建立多章节全局页号映射
     page_map: dict[str, int] = {}
+    page_count = 0
     album_candidates = []
     if target_dir is not None:
         if target_dir.name == "pages":
@@ -1239,7 +1470,12 @@ def sync_comic_dialogues(source: str, source_id: str, force: bool = False) -> in
                 continue
             if ac_resolved.is_file():
                 meta_dict = json.loads(ac_resolved.read_text(encoding="utf-8"))
-                for p in meta_dict.get("pages", []):
+                pages = meta_dict.get("pages", [])
+                try:
+                    page_count = int(meta_dict.get("page_count") or len(pages))
+                except (TypeError, ValueError, OverflowError):
+                    page_count = len(pages)
+                for p in pages:
                     idx_val = p.get("index")
                     f_val = p.get("file", "")
                     chap_val = p.get("chapter", "")
@@ -1252,7 +1488,7 @@ def sync_comic_dialogues(source: str, source_id: str, force: bool = False) -> in
         except Exception:
             pass
 
-    records: list[tuple[str, str, int, int | str, str, str, str]] = []
+    records: list[tuple[str, str, int, int | str, str, str, str, int, str, str]] = []
     for f in ocr_files:
         try:
             payload = json.loads(f.read_text(encoding="utf-8"))
@@ -1265,12 +1501,12 @@ def sync_comic_dialogues(source: str, source_id: str, force: bool = False) -> in
         if payload.get("page_index") is not None:
             try:
                 page_idx = int(payload["page_index"])
-            except (ValueError, TypeError):
+            except (ValueError, TypeError, OverflowError):
                 pass
         elif payload.get("page") is not None:
             try:
                 page_idx = int(payload["page"])
-            except (ValueError, TypeError):
+            except (ValueError, TypeError, OverflowError):
                 pass
 
         if page_idx is None:
@@ -1291,17 +1527,43 @@ def sync_comic_dialogues(source: str, source_id: str, force: bool = False) -> in
         if not isinstance(bubbles, list):
             continue
 
+        # 副文本判定要看整页：后记页上的单句可能很短，但它旁边的长句会暴露整页性质
+        page_texts = [str(b.get("text", "")).strip() for b in bubbles if isinstance(b, dict)]
+        page_texts = [t for t in page_texts if t]
+
         for b_idx, b in enumerate(bubbles, start=1):
             if not isinstance(b, dict):
                 continue
             text = str(b.get("text", "")).strip()
             if not text:
                 continue
+            kind = classify_dialogue_kind(page_idx, page_count, page_texts, text)
+            if kind is None:
+                continue
             bubble_id = b.get("id", b_idx)
+            if isinstance(bubble_id, bool) or not isinstance(bubble_id, (int, str)):
+                bubble_id = b_idx
             lang = b.get("lang") or top_lang
-            box = b.get("box", [])
+            # 形状不合法的 box 存空数组：宁可丢坐标，不能让一行脏侧车毒化整条检索链路
+            box = _normalize_box(b.get("box")) or []
             box_json = json.dumps(box, ensure_ascii=False)
-            records.append((source, source_id, page_idx, bubble_id, text, str(lang), box_json))
+            # 旧伴生文件没有 order，只能退回数组下标（其顺序为检测模型输出，并非阅读顺序）；
+            # 这类文件需用 ocr_worker --force 重跑，才能拿到真正的 reading_order
+            reading_order = _coerce_order_index(b.get("order"), b_idx)
+            records.append(
+                (
+                    source,
+                    source_id,
+                    page_idx,
+                    bubble_id,
+                    text,
+                    str(lang),
+                    box_json,
+                    reading_order,
+                    kind,
+                    to_simplified(text),
+                )
+            )
 
     latest_mtime: float = 0.0
     for f in ocr_files:
@@ -1335,8 +1597,8 @@ def sync_comic_dialogues(source: str, source_id: str, force: bool = False) -> in
             conn.executemany(
                 """
                 INSERT INTO comic_dialogues_fts (
-                    source, source_id, page_index, bubble_id, text, lang, box_json
-                ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                    source, source_id, page_index, bubble_id, text, lang, box_json, reading_order, kind, text_norm
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 records,
             )
@@ -1348,11 +1610,17 @@ def sync_comic_dialogues(source: str, source_id: str, force: bool = False) -> in
             """,
             (source, source_id, latest_mtime, len(records), int(time.time())),
         )
-        return len(records)
+
+    # 向量重建放在 FTS 事务**外面**：编码一条对白最慢也就几十毫秒整本，但模型冷启动那次
+    # 会摸到秒级，扣着写锁做这件事会把同一本书的关键词入库一起卡住。
+    embed_comic_dialogues(source, source_id)
+    return len(records)
 
 
 def delete_comic_dialogues(source: str, source_id: str) -> None:
     """删除指定漫画的所有台词全文索引与增量元数据。"""
+    # 入参清洗与写入端对齐：调用方可能拿 URL 参数或 album.json 字段来删，不洗就删不掉
+    source, source_id = _dialogue_key(source, source_id)
     with get_dialogue_db() as conn:
         conn.execute(
             "DELETE FROM comic_dialogues_fts WHERE source = ? AND source_id = ?",
@@ -1362,10 +1630,297 @@ def delete_comic_dialogues(source: str, source_id: str) -> None:
             "DELETE FROM comic_ocr_sync_meta WHERE source = ? AND source_id = ?",
             (source, source_id),
         )
+        conn.execute(
+            "DELETE FROM comic_dialogue_vectors WHERE source = ? AND source_id = ?",
+            (source, source_id),
+        )
+
+
+def _dialogue_comics_meta_map(keys: list[tuple[str, str]], user_id: str) -> dict[tuple[str, str], sqlite3.Row]:
+    """跨库轻量关联：一次拿回这些书的元数据、访客隐藏标记与本人的收藏/阅读进度。
+
+    关键词检索与语义检索共用同一份关联，两边返回的书名/封面/作者才不会长得不一样。
+    收藏与进度走 LEFT JOIN 一次取全（与 `query_comics` 同一套写法）：候选池最多 200 行、
+    去重后是十几到几十个键，SQLite 侧的开销全在这几条 JOIN 上，省不掉。
+    """
+    comics_map: dict[tuple[str, str], sqlite3.Row] = {}
+    if not keys:
+        return comics_map
+    where_or = " OR ".join(["(ci.source = ? AND ci.source_id = ?)"] * len(keys))
+    flat_params: list[str] = [p for k in keys for p in k]
+    sql_ci = f"""
+        SELECT
+            ci.source,
+            ci.source_id,
+            ci.display_id,
+            ci.title,
+            ci.cover_indices_json,
+            ci.authors_json,
+            ci.hidden_from_guest,
+            ci.page_count,
+            ci.views,
+            ci.likes,
+            (uf.user_id IS NOT NULL) AS is_favorite,
+            COALESCE(urp.last_page, 0) AS last_page,
+            urp.updated_at AS progress_at
+        FROM comics_index ci
+        LEFT JOIN user_favorites uf
+            ON uf.source = ci.source AND uf.source_id = ci.source_id AND uf.user_id = ?
+        LEFT JOIN user_reading_progress urp
+            ON urp.source = ci.source AND urp.source_id = ci.source_id AND urp.user_id = ?
+        WHERE {where_or}
+    """
+    with get_db() as shelf_conn:
+        for row in shelf_conn.execute(sql_ci, [user_id, user_id, *flat_params]).fetchall():
+            comics_map[(row["source"], row["source_id"])] = row
+    return comics_map
+
+
+def embed_comic_dialogues(source: str, source_id: str) -> int:
+    """把一本书的对白行重编成语义向量写进 `comic_dialogue_vectors`。
+
+    Returns:
+        实际写入的向量条数。编码器不可用（没放模型）时返回 0 且不动已有数据——
+        语义检索是增量能力，不能因为缺模型把关键词链路一起打断。
+    """
+    from . import embedding
+
+    dim = embedding.dim()
+    if dim is None:
+        return 0
+    source, source_id = _dialogue_key(source, source_id)
+    with get_dialogue_db() as conn:
+        rows = conn.execute(
+            "SELECT page_index, bubble_id, text FROM comic_dialogues_fts"
+            " WHERE source = :source AND source_id = :source_id AND kind = :kind"
+            "  AND length(text) >= :min_chars",
+            {
+                "source": source,
+                "source_id": source_id,
+                "kind": DIALOGUE_KIND,
+                "min_chars": embedding.MIN_EMBED_CHARS,
+            },
+        ).fetchall()
+        if not rows:
+            conn.execute(
+                "DELETE FROM comic_dialogue_vectors WHERE source = ? AND source_id = ?",
+                (source, source_id),
+            )
+            return 0
+        vectors = embedding.encode_documents([r["text"] for r in rows])
+        if vectors is None:
+            return 0
+        now = int(time.time())
+        conn.execute(
+            "DELETE FROM comic_dialogue_vectors WHERE source = ? AND source_id = ?",
+            (source, source_id),
+        )
+        conn.executemany(
+            "INSERT INTO comic_dialogue_vectors (source, source_id, page_index, bubble_id, dim, vec, updated_at)"
+            " VALUES (?, ?, ?, ?, ?, ?, ?)",
+            [
+                (source, source_id, int(r["page_index"]), str(r["bubble_id"]), dim,
+                 vectors[i].tobytes(), now)
+                for i, r in enumerate(rows)
+            ],
+        )
+    return len(rows)
+
+
+def rebuild_dialogue_vectors() -> dict[str, Any]:
+    """全库重建台词向量：编码器就绪时把每条对白重新过一遍模型。"""
+    from . import embedding
+
+    dim = embedding.dim()
+    if dim is None:
+        return {"ok": False, "reason": "encoder_unavailable", "encoded": 0, "comics": 0}
+    with get_dialogue_db() as conn:
+        books = conn.execute(
+            "SELECT DISTINCT source, source_id FROM comic_dialogues_fts WHERE kind = :kind",
+            {"kind": DIALOGUE_KIND},
+        ).fetchall()
+    encoded = 0
+    for b in books:
+        try:
+            encoded += embed_comic_dialogues(b["source"], b["source_id"])
+        except Exception as exc:
+            logger.warning("台词向量重建失败 %s/%s: %s", b["source"], b["source_id"], exc)
+    logger.info("台词向量重建完成：%d 本 / %d 条", len(books), encoded)
+    return {"ok": True, "reason": "", "encoded": encoded, "comics": len(books), "dim": dim}
+
+
+def dialogue_vector_status() -> dict[str, Any]:
+    """语义检索这条腿现在能不能走，以及为什么不能。"""
+    from . import embedding
+
+    dim = embedding.dim()
+    with get_dialogue_db() as conn:
+        row = conn.execute(
+            "SELECT count(*) AS n, count(DISTINCT dim) AS dims, max(dim) AS dim FROM comic_dialogue_vectors"
+        ).fetchone()
+    stored = int(row["n"] or 0)
+    stored_dim = int(row["dim"] or 0) if stored else 0
+    if dim is None:
+        reason = "encoder_unavailable"
+    elif stored == 0:
+        reason = "vectors_missing"
+    elif row["dims"] > 1 or stored_dim != dim:
+        # 换过模型（维度不同）却没重建：新旧向量混在一堆里算余弦，分数会莫名其妙
+        reason = "dim_mismatch"
+    else:
+        reason = ""
+    return {"available": reason == "", "reason": reason, "vectors": stored, "dim": stored_dim or (dim or 0)}
+
+
+_VECTOR_CACHE: tuple[Any, ...] | None = None
+
+
+def _vector_store(dim: int) -> tuple[list[tuple[str, str, int, str]], Any]:
+    """取回 (键列表, 向量矩阵)，进程内缓存。
+
+    不缓存的话每次检索都要重读 6254 条 BLOB 再 np.stack，真库实测 350ms——模型编码那句
+    问题只用 2ms，剩下的全是这件事。缓存戳子是 (行数, 最大 updated_at, 维度)，同步与重建都
+    会推进它，所以读不到过期向量；台词库路径本身也在戳子里，测试与"换库"不会读到上一个库的矩阵。
+    整体一次性赋值，不留"半个新矩阵被别的线程看见"的窗口。
+    """
+    global _VECTOR_CACHE
+    with get_dialogue_db() as conn:
+        stamp_row = conn.execute(
+            "SELECT count(*) AS n, max(updated_at) AS u FROM comic_dialogue_vectors WHERE dim = ?",
+            (dim,),
+        ).fetchone()
+        stamp = (str(_DIALOGUE_DB_PATH), int(stamp_row["n"] or 0), int(stamp_row["u"] or 0), dim)
+        if _VECTOR_CACHE is not None and _VECTOR_CACHE[0] == stamp:
+            return _VECTOR_CACHE[1], _VECTOR_CACHE[2]
+        rows = conn.execute(
+            "SELECT source, source_id, page_index, bubble_id, vec FROM comic_dialogue_vectors WHERE dim = ?",
+            (dim,),
+        ).fetchall()
+
+    import numpy as np
+
+    keys = [(r["source"], r["source_id"], int(r["page_index"]), str(r["bubble_id"])) for r in rows]
+    matrix = (
+        np.stack([np.frombuffer(r["vec"], dtype=np.float32) for r in rows])
+        if rows
+        else np.zeros((0, dim), dtype=np.float32)
+    )
+    _VECTOR_CACHE = (stamp, keys, matrix)
+    return keys, matrix
+
+
+def search_dialogues_semantic(
+    query: str,
+    source: str | None = None,
+    limit: int = 20,
+    is_guest: bool = False,
+    user_id: str = "",
+) -> list[dict[str, Any]]:
+    """按意思找台词：把问题编码成向量，与语料向量取余弦近邻。
+
+    与 `search_dialogues` 的三点关键区别，刻意不共用出口模型：
+    1. 检索单元与返回单元都是**气泡**（语义没有"字面命中区间"可高亮，故不吐 snippet）；
+    2. 分数是 `similarity`（余弦，0..1，跨查询可比），不复用 `rank_score`（池内 min-max 归一，
+       换一次查询就换一把尺子，两种口径写进同一个字段必然被下游误读）；
+    3. 顺序不掺业务信号：关键词那套信号融合依赖 bm25/LIKE 的字面分，语义分掺进去只会掩盖
+       "这本你读过"与"这句意思像"两件事。
+    访客隐藏本与未收录本的过滤规则与关键词出口一致。
+    """
+    from . import embedding
+
+    clean_query = (query or "").strip()
+    if len(clean_query) < 2:
+        return []
+    qv = embedding.encode_query(clean_query)
+    if qv is None:
+        return []
+
+    if not isinstance(limit, int):
+        try:
+            limit = int(limit)
+        except Exception:
+            limit = 20
+    limit = max(1, min(limit, 100))
+    fetch_limit = min(max(limit * 5, 50), 200)
+
+    keys_all, matrix = _vector_store(int(qv.shape[0]))
+    if matrix.shape[0] == 0:
+        return []
+    import numpy as np
+
+    sims = matrix @ qv
+    order = np.argsort(-sims, kind="stable")
+    hits: list[tuple[tuple[str, str, int, str], float]] = []
+    for i in order:
+        key = keys_all[int(i)]
+        if source and key[0] != source:
+            continue
+        hits.append((key, float(sims[int(i)])))
+        if len(hits) >= fetch_limit:
+            break
+
+    book_keys = sorted({(k[0], k[1]) for k, _ in hits})
+    comics_map = _dialogue_comics_meta_map(book_keys, user_id)
+
+    # 原文按气泡回表：向量表只存坐标外的最小信息，文本/框仍以 FTS 那行为准，
+    # 避免两个表说同一句话的不同版本。
+    want = {k[:3] for k, _ in hits}
+    texts: dict[tuple[str, str, int, str], sqlite3.Row] = {}
+    if want:
+        clause = " OR ".join(["(f.source = ? AND f.source_id = ? AND f.page_index = ?)"] * len(want))
+        flat: list[Any] = [p for k in want for p in k]
+        with get_dialogue_db() as conn:
+            for r in conn.execute(
+                f"SELECT f.source, f.source_id, f.page_index, f.bubble_id, f.text, f.lang, f.box_json"
+                f" FROM comic_dialogues_fts f WHERE ({clause}) AND f.kind = ?",
+                [*flat, DIALOGUE_KIND],
+            ).fetchall():
+                texts[(r["source"], r["source_id"], int(r["page_index"]), str(r["bubble_id"]))] = r
+
+    results: list[dict[str, Any]] = []
+    for key, sim in hits:
+        r = texts.get(key)
+        if r is None:
+            continue
+        ci = comics_map.get((key[0], key[1]))
+        if is_guest and (ci is None or ci["hidden_from_guest"]):
+            continue
+        box = _normalize_box(json.loads(r["box_json"])) if r["box_json"] else []
+        cover_indices = _safe_json_list(ci["cover_indices_json"]) if ci else []
+        results.append(
+            {
+                "source": key[0],
+                "source_id": key[1],
+                "display_id": (ci["display_id"] if ci and ci["display_id"] else key[1]),
+                "title": (ci["title"] if ci and ci["title"] else key[1]),
+                "page_index": key[2],
+                "bubble_id": r["bubble_id"],
+                "text": r["text"] or "",
+                "box": box or [],
+                "lang": r["lang"] or "zh",
+                "cover": f"/api/library/{key[0]}/{key[1]}/covers/{cover_indices[0] if cover_indices else 0}/file",
+                "authors": _safe_json_list(ci["authors_json"]) if ci else [],
+                "similarity": round(sim, 4),
+            }
+        )
+        if len(results) >= limit:
+            break
+    return results
+
+
+def _safe_json_list(raw: Any) -> list[Any]:
+    """元数据里的 JSON 数组字段：脏值一律退化成空表，不为了它把整次检索打断。"""
+    if not raw:
+        return []
+    try:
+        value = json.loads(raw)
+    except Exception:
+        return []
+    return value if isinstance(value, list) else []
 
 
 def cleanup_orphan_comic_dialogues(data_dir: Path | None = None) -> int:
-    """清理已从磁盘物理删除但仍残留在 FTS5 与元数据中的孤儿对白索引。"""
+    """清理已从磁盘物理删除但仍残留在 FTS5、向量与元数据中的孤儿对白索引。"""
     if data_dir is None:
         data_dir = DATA_DIR
     data_resolved = data_dir.resolve()
@@ -1381,6 +1936,9 @@ def cleanup_orphan_comic_dialogues(data_dir: Path | None = None) -> int:
             if not any(c.is_dir() for c in candidates):
                 conn.execute("DELETE FROM comic_dialogues_fts WHERE source = ? AND source_id = ?", (src, sid))
                 conn.execute("DELETE FROM comic_ocr_sync_meta WHERE source = ? AND source_id = ?", (src, sid))
+                conn.execute(
+                    "DELETE FROM comic_dialogue_vectors WHERE source = ? AND source_id = ?", (src, sid)
+                )
                 cleaned += 1
                 logger.info(f"Cleaned orphan dialogue index for deleted comic {src}/{sid}")
     return cleaned
@@ -1391,33 +1949,69 @@ def _escape_like(text: str) -> str:
     return text.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
 
 
+def _parse_metric_count(value: Any) -> int | None:
+    """把 provider 侧的 "209K" / "9.9M" / "102" / "" 解析成整数；解析不出来回报 None。
+
+    `comics_index.views` / `likes` 是上游站点的展示字符串，不是数字列（实测形态只有
+    `''`、`999`、`9K`/`99k`、`999K`、`9.9M`），所以热度这一路必须自己认格式：认不出就当
+    "没有这个信号"，绝不当成 0 —— 本地导入的本子没有站点热度，把它们算成 0 阅读量等于替它们编一个。
+    """
+    text = str(value or "").strip().replace(",", "")
+    if not text:
+        return None
+    m = re.fullmatch(r"(\d+(?:\.\d+)?)([km]?)", text, re.IGNORECASE)
+    if not m:
+        return None
+    multiplier = {"": 1, "k": 1_000, "m": 1_000_000}[m.group(2).lower()]
+    return int(float(m.group(1)) * multiplier)
+
+
 def search_dialogues(
     query: str,
     source: str | None = None,
     limit: int = 20,
     is_guest: bool = False,
+    user_id: str = "",
 ) -> list[dict[str, Any]]:
-    """Searches the dialogue FTS index with simplified/traditional expansion and guest filtering.
+    """Search the dialogue FTS index, ordered by relevance fused with library signals and
+    aggregated to page level.
 
     Short queries (< 2 chars) are blocked immediately to prevent unindexed table scans.
+    Only `dialogue` rows surface here: 书名页/版权页/后记等副文本照样入库（kind='paratext'，
+    供取料与语义召回使用），但它们不是台词，不该出现在台词检索结果里。
 
     Args:
         query: Full-text search string (expanded to simplified and traditional forms).
         source: Optional source filter.
-        limit: Maximum number of dialogue matches to return (1..100, default 20).
+        limit: Maximum number of matched pages to return (1..100, default 20).
         is_guest: When True, filters out dialogue results from hidden_from_guest comics.
+        user_id: Viewer identity used **for ordering only** — its favorites/reading progress
+            feed the business signals below. Empty string or a user with no history simply
+            yields zero lift, which is the "无信号退回纯相关度" case.
 
     Returns:
-        List of matched dialogue records with text snippet, highlight, and bubble bounding box.
+        One entry per matched page (at most `limit`), each carrying the page's best-scoring
+        bubble as the representative snippet/box, `other_boxes` with up to `MAX_PAGE_BOXES - 1`
+        further matched bubbles on that page for the reader to outline at once, plus
+        `bubble_count` — how many bubbles on that page matched within the fetched candidate
+        pool (not a corpus-wide total) — and `rank_score`, the representative bubble's relevance
+        min-max normalized **within this candidate pool** (0..1, higher is more relevant; only
+        comparable inside one query, never across queries).
+        3+ 字符的查询走 text_norm 上的 trigram 倒排并按 bm25 排序；2 字查询产不出任何
+        trigram token，只能落到 LIKE 兜底（按 词频 ÷ 文本长度 近似排序，即 bm25 中真正
+        区分候选的那两项）。两条都在归一列上比，所以繁简输入命中同一批语料。
+
+        截断留谁由 `rank_score` 加业务信号决定（推导见 `_rank_dialogue_pages` 与 ADR 0017 决策 9）。
+        **只有顺序随身份变**：`rank_score` 与 `bubble_count` 这类计数字段与访客/馆长无关（错题本 #139）。
     """
     clean_query = query.strip()
     # 短词全表扫描防爆守卫：少于 2 个字符直接阻断，杜绝无索引全表扫描
     if len(clean_query) < 2:
         return []
 
-    from .zh_conv import expand_search_variants
-
-    variants = expand_search_variants(clean_query)
+    # 只认一个归一 needle：写入侧已折成简体，查询走同一张 1:1 表自然汇合，
+    # 不再把一条查询炸成三个 MATCH 项，也不必拿变体去原文里碰高亮落点（见 _make_snippet）。
+    needle = to_simplified(clean_query)
     if not isinstance(limit, int):
         try:
             limit = int(limit)
@@ -1425,14 +2019,19 @@ def search_dialogues(
             limit = 20
     limit = max(1, min(limit, 100))
 
-    match_variants = [v for v in variants if len(v) >= 3]
     diag_rows: list[sqlite3.Row] = []
-    fetch_limit = min(max(limit * 5, 50), 200) if is_guest else min(limit * 3, 150)
+    # 候选池不再按身份分档（原来访客 5x/200、馆长 3x/150）：bubble_count 是池内计数，
+    # 池大小不同就等于同一本书同一页在两种身份下报出不同的命中数，而访客池本来就更大更完整。
+    fetch_limit = min(max(limit * 5, 50), 200)
 
     with get_dialogue_db() as conn:
-        if match_variants:
-            match_terms = ['"' + v.replace('"', '""') + '"' for v in match_variants]
-            match_expr = " OR ".join(match_terms)
+        if len(needle) >= 3:
+            # 只有走 MATCH 的这一支有 bm25 分数可用；trigram 索引键是三字窗口，
+            # 故 2 字 needle 进不了倒排、只能落到下面 LIKE 兜底。
+            # bm25 返回负数且越相关越负，升序即为最相关在前，写成 DESC 就反了；这里取负
+            # 换成"越大越相关"，与 LIKE 那条的近似分同向，后面融合业务信号时才加得起来。
+            # 摘要不再交给 SQL snippet()：命中的是归一列， Marks 落不到原文上，
+            # 统一由展示侧的 _make_snippet 在原文里定位。
             sql_match = """
                 SELECT
                     f.source,
@@ -1440,20 +2039,24 @@ def search_dialogues(
                     f.page_index,
                     f.bubble_id,
                     f.text,
+                    f.text_norm,
                     f.lang,
                     f.box_json,
-                    snippet(comic_dialogues_fts, 4, '<mark>', '</mark>', '...', 20) as snippet_text
+                    -bm25(comic_dialogues_fts) AS rank_score
                 FROM comic_dialogues_fts f
-                WHERE comic_dialogues_fts MATCH :match_expr
+                WHERE f.text_norm MATCH :needle
+                  AND f.kind = :kind
                   AND (:source IS NULL OR f.source = :source)
+                ORDER BY rank_score DESC, f.page_index, f.bubble_id
                 LIMIT :fetch_limit
             """
             try:
                 diag_rows = conn.execute(
                     sql_match,
                     {
-                        "match_expr": match_expr,
+                        "needle": '"' + needle.replace('"', '""') + '"',
                         "source": source,
+                        "kind": DIALOGUE_KIND,
                         "fetch_limit": fetch_limit,
                     },
                 ).fetchall()
@@ -1461,17 +2064,24 @@ def search_dialogues(
                 diag_rows = []
 
         if not diag_rows and len(clean_query) >= 2:
-            like_clauses = []
+            # :like 是带通配的匹配式，:term 是要数出现次数的原串——两者不能共用一个绑定，
+            # 拿 "%喜欢%" 去 replace 永远替不掉，词频恒为 0，整条兜底路径就退化成按行号排。
             params: dict[str, Any] = {
+                "like": f"%{_escape_like(needle)}%",
+                "term": needle,
                 "source": source,
+                "kind": DIALOGUE_KIND,
                 "fetch_limit": fetch_limit,
             }
-            for i, v in enumerate(variants):
-                param_name = f"like_{i}"
-                like_clauses.append(f"f.text LIKE :{param_name} ESCAPE '\\'")
-                params[param_name] = f"%{_escape_like(v)}%"
-
-            where_text = " OR ".join(like_clauses)
+            # trigram 只会产出 3 字符 token，2 字查询产不出任何 token（MATCH 恒 0 行），
+            # 也没有 bm25 分数可算。这里手工补上 bm25 中真正参与候选排序的那两项：
+            # 词频 ÷ 文本长度。IDF 对同一次查询是常数，除掉它不影响顺序，故省略。
+            # 词频按字符数计（length 差值 = 出现次数 × needle 长度），needle 单条即可，
+            # 因为比的是归一列。
+            like_rank = (
+                "(CAST(length(f.text_norm) - length(replace(f.text_norm, :term, '')) AS REAL)"
+                " / max(length(f.text_norm), 1))"
+            )
             sql_like = f"""
                 SELECT
                     f.source,
@@ -1479,12 +2089,16 @@ def search_dialogues(
                     f.page_index,
                     f.bubble_id,
                     f.text,
+                    f.text_norm,
                     f.lang,
                     f.box_json,
-                    '' as snippet_text
+                    {like_rank} AS rank_score
                 FROM comic_dialogues_fts f
-                WHERE ({where_text})
+                WHERE (f.text_norm LIKE :like ESCAPE '\\')
+                  AND f.kind = :kind
                   AND (:source IS NULL OR f.source = :source)
+                ORDER BY {like_rank} DESC,
+                         f.page_index, f.bubble_id
                 LIMIT :fetch_limit
             """
             diag_rows = conn.execute(sql_like, params).fetchall()
@@ -1492,23 +2106,17 @@ def search_dialogues(
     if not diag_rows:
         return []
 
-    # 跨库轻量关联：从 comic_shelf.db 查询对应漫画的元数据与访客隐藏标记
+    # 跨库轻量关联：从 comic_shelf.db 查询对应漫画的元数据、访客隐藏标记与本人的收藏/阅读进度。
+    # 收藏与进度走 LEFT JOIN 一次拿全（与 query_comics 同一套关联写法），多一次往返换不起：
+    # 候选池最多 200 行、去重后是十几到几十个键，SQLite 侧的开销全在这几条 JOIN 上。
     unique_keys = list({(r["source"], r["source_id"]) for r in diag_rows})
-    comics_map: dict[tuple[str, str], sqlite3.Row] = {}
+    comics_map = _dialogue_comics_meta_map(unique_keys, user_id)
 
-    if unique_keys:
-        where_or = " OR ".join(["(source = ? AND source_id = ?)"] * len(unique_keys))
-        flat_params: list[str] = [p for k in unique_keys for p in k]
-        sql_ci = f"""
-            SELECT source, source_id, display_id, title, cover_indices_json, authors_json, hidden_from_guest
-            FROM comics_index
-            WHERE {where_or}
-        """
-        with get_db() as shelf_conn:
-            for row in shelf_conn.execute(sql_ci, flat_params).fetchall():
-                comics_map[(row["source"], row["source_id"])] = row
-
-    results: list[dict[str, Any]] = []
+    # 聚合到页：diag_rows 已按相关度降序，某页首次出现的那条即该页最高分代表句，
+    # 之后再出现的同页气泡只累加命中数，不另起一行（检索单元是气泡，展示单元是页）。
+    # bubble_count 因此是候选池（fetch_limit 行）内的计数，不是全库该页命中总数。
+    # 这里不按 limit 收口：聚完的全部页才是排名的候选集，先截断再融合等于让 bm25 独裁。
+    page_hits: dict[tuple[str, str, int], dict[str, Any]] = {}
     for r in diag_rows:
         src, sid = r["source"], r["source_id"]
         ci = comics_map.get((src, sid))
@@ -1517,10 +2125,11 @@ def search_dialogues(
         if is_guest and not ci:
             continue
 
-        box = []
+        page_idx = int(r["page_index"])
+        box: list[float] = []
         if r["box_json"]:
             try:
-                box = json.loads(r["box_json"])
+                box = _normalize_box(json.loads(r["box_json"])) or []
             except Exception:
                 box = []
 
@@ -1541,31 +2150,220 @@ def search_dialogues(
                 authors = []
 
         raw_text = r["text"] or ""
-        snip = r["snippet_text"] if "snippet_text" in r.keys() and r["snippet_text"] else ""
-        if not snip or "<mark>" not in snip:
-            snip = _make_snippet(raw_text, variants)
+        snip = _make_snippet(raw_text, r["text_norm"] or "", needle)
 
         display_id = ci["display_id"] if ci and ci["display_id"] else sid
         title = ci["title"] if ci and ci["title"] else sid
 
-        results.append({
+        key = (src, sid, page_idx)
+        hit = page_hits.get(key)
+        if hit is not None:
+            hit["bubble_count"] += 1
+            # 同页其余命中格按相关度顺序补足，供阅读器一次画全；上限外的高频页只多算计数
+            extra: list[list[float]] = hit["other_boxes"]
+            if box and len(extra) < MAX_PAGE_BOXES - 1:
+                extra.append(box)
+            continue
+        page_hits[key] = {
             "source": src,
             "source_id": sid,
             "display_id": display_id,
             "title": title,
-            "page_index": int(r["page_index"]),
+            "page_index": page_idx,
             "bubble_id": r["bubble_id"],
+            "bubble_count": 1,
             "text": raw_text,
             "snippet": snip,
             "box": box,
+            "other_boxes": [],
             "lang": r["lang"] or "zh",
             "cover": cover,
             "authors": authors,
-        })
-        if len(results) >= limit:
-            break
+            "rank_score": float(r["rank_score"]),
+        }
 
-    return results
+    pages = list(page_hits.values())
+    # 归一标尺取候选行的原始极值：diag_rows 只由 SQL 决定、不含任何身份过滤，所以这把尺子
+    # 对馆长与访客是同一把。若改用"过滤后的页集合"取 min/max，隐藏本占住池内最低分时访客的整表
+    # rank_score 都会跟着平移——那正是错题本 #139「计数字段不得按身份分档」的镜像面。
+    pool_lo = min(float(r["rank_score"]) for r in diag_rows)
+    pool_hi = max(float(r["rank_score"]) for r in diag_rows)
+    return _rank_dialogue_pages(pages, comics_map, pool_lo, pool_hi)[:limit]
+
+
+# 业务信号权重：四项合计封顶 0.5，也就是相关度差 0.5 以上翻不了盘（见 _rank_dialogue_pages）
+DIALOGUE_SIGNAL_WEIGHTS = {"heat": 0.15, "favorite": 0.15, "finished": 0.10, "recent": 0.10}
+# "最近阅读"的衰减窗口：30 天前读过的就不再算新
+DIALOGUE_RECENT_WINDOW_DAYS = 30.0
+
+
+def _comic_signals(ci: sqlite3.Row | None, now: float) -> tuple[float | None, float, float, float]:
+    """从 comics_index 的一行读出四项业务信号的原始值：热度原始分、完读率、收藏、最近阅读衰减。
+
+    返回的热度是 `log10(1+views) + log10(1+likes)` 的未归一原始值，`None` 表示这本没有热度可谈
+    （本地导入的本子 views/likes 都是空串）；后三项天然是 0..1，不需要再归一。
+    """
+    if ci is None:
+        return None, 0.0, 0.0, 0.0
+    views = _parse_metric_count(ci["views"])
+    likes = _parse_metric_count(ci["likes"])
+    heat = None if (views is None and likes is None) else math.log10(1 + (views or 0)) + math.log10(1 + (likes or 0))
+    page_count = int(ci["page_count"] or 0)
+    last_page = int(ci["last_page"] or 0)
+    finished = min(1.0, last_page / page_count) if page_count > 0 and last_page > 0 else 0.0
+    favorite = 1.0 if ci["is_favorite"] else 0.0
+    progress_at = ci["progress_at"]
+    recent = 0.0
+    if progress_at:
+        days = max(0.0, (now - float(progress_at)) / 86400.0)
+        recent = max(0.0, 1.0 - days / DIALOGUE_RECENT_WINDOW_DAYS)
+    return heat, finished, favorite, recent
+
+
+def _rank_dialogue_pages(
+    pages: list[dict[str, Any]],
+    comics_map: dict[tuple[str, str], sqlite3.Row],
+    pool_lo: float,
+    pool_hi: float,
+    now: float | None = None,
+) -> list[dict[str, Any]]:
+    """先把相关度按候选池极值 min-max 归一，再叠业务信号，按最终分降序回报（同分保持原次序）。
+
+    为什么必须叠：实测 2 字查询（`老师` / `喜欢`）候选池 95~100 页里，前 20 名的相关度分**全部
+    打平**在 1.0——因为 LIKE 兜底用的"词频 ÷ 文本长度"是个很粗的比值，一堆气泡算出同一个数。
+    这时"截断留谁"完全由 `(source, page_index)` 的偶然次序决定，等于没有排序。
+
+    `pool_lo` / `pool_hi` 必须是**未做身份过滤的候选行**极值（调用方给），归一结果才与访客/馆长
+    身份无关；页级代表分恒落在该区间内，所以 `rank_score` 稳定在 0..1。
+
+    四项信号（权重见 `DIALOGUE_SIGNAL_WEIGHTS`）：热度取 `views`/`likes` 对数后在**本次池内出现过的
+    那些书**之间 min-max（跨池、跨查询的绝对值没有可比性）；完读率与收藏来自本人的阅读进度与收藏；
+    最近阅读按 30 天线性衰减。全部是非负抬升且合计 ≤ 0.5，所以业务信号只在相关度接近时决定成败，
+    不会把一本明显不相关的本子顶上来；没有任何信号时抬升恒为 0，顺序就退回纯相关度。
+    """
+    if not pages:
+        return pages
+    if now is None:
+        now = time.time()
+
+    span = pool_hi - pool_lo
+    for p in pages:
+        # 两条检索路径的原始分量纲完全不同（MATCH 支是取负后的 bm25，LIKE 支是词频÷文本长度），
+        # 只有先在同一池内归一，才加得动后面那些 0..1 的信号
+        p["rank_score"] = 1.0 if span <= 0 else (p["rank_score"] - pool_lo) / span
+
+    weights = DIALOGUE_SIGNAL_WEIGHTS
+    book_signals: dict[tuple[str, str], tuple[float | None, float, float, float]] = {}
+    for p in pages:
+        key = (p["source"], p["source_id"])
+        book_signals.setdefault(key, _comic_signals(comics_map.get(key), now))
+    heat_values = [s[0] for s in book_signals.values() if s[0] is not None]
+    heat_lo = min(heat_values) if heat_values else 0.0
+    heat_span = (max(heat_values) - heat_lo) if heat_values else 0.0
+
+    ranked: list[tuple[float, int, dict[str, Any]]] = []
+    for i, p in enumerate(pages):
+        heat, finished, favorite, recent = book_signals[(p["source"], p["source_id"])]
+        heat_norm = 0.0 if heat is None or heat_span <= 0 else (heat - heat_lo) / heat_span
+        lift = (
+            weights["heat"] * heat_norm
+            + weights["favorite"] * favorite
+            + weights["finished"] * finished
+            + weights["recent"] * recent
+        )
+        ranked.append((p["rank_score"] + lift, i, p))
+    # 显式带原次序做第二键：sort 稳定，但这里要的是"同分 = 归一前谁先到谁在前"
+    ranked.sort(key=lambda t: (-t[0], t[1]))
+    return [t[2] for t in ranked]
+
+
+STORY_CONTEXT_MAX_LINES = 400
+STORY_CONTEXT_MAX_PAGES = 200
+
+
+def get_story_context(
+    source: str,
+    source_id: str,
+    page_start: int,
+    page_end: int,
+    budget_lines: int = 120,
+) -> dict[str, Any]:
+    """按页码区间取原始台词物料，供下游生成管线使用（与台词检索同为一份索引的另一个出口）。
+
+    人用出口（search_dialogues）要相关度排序、要 `<mark>` 高亮、要压成 20 页给人眼挑；
+    管线要的恰好相反：按 `(page_index, reading_order)` 的剧情原序给连续切片，装原始
+    `text`。三条边界纪律刻意向人用出口反向：**不收关键词**、**不吐展示态字段**、
+    **撞预算必须回报 truncated**（否则模型会把自己拿到的片段当成全书）。
+    气泡坐标与台词分两份返回、靠 `line_id` 关联：读坐标的是渲染层，不是模型。
+
+    注意 `reading_order` 是稳定序号而不是连号：2C 之后噪声行（水印、页码）不入库，
+    同一页的序号会出现空洞（如 1,2,3,4,5,7,8），下游不得假定连续或据此判断缺行。
+    `speaker` 目前无任何数据来源（OCR 只给文本与气泡框，`album.json` 的 `actors`
+    是全书级），因此不吐该字段，也不拿空串占位。
+
+    Args:
+        source: 图源平台标识（如 'jm' | 'local' | 'picacg'）。
+        source_id: 作品唯一 ID；与 source 组成复合键，单靠它不唯一定位一本书。
+        page_start: 起始全局页号（1 起，含）。
+        page_end: 结束全局页号（含）。
+        budget_lines: 预算行数，即本次最多返回多少条台词。
+
+    Returns:
+        {'lines': [{'line_id', 'page_index', 'reading_order', 'text'}],
+         'boxes': [{'line_id', 'box'}],
+         'truncated': bool, 'budget_lines': int}
+        `truncated` 为真表示预算用尽、区间内还有未返回的行。
+    """
+    p0 = max(1, int(page_start))
+    p1 = max(p0, int(page_end))
+    # 区间上限先夹页号，再夹预算：一次取料最多跨 200 页 / 400 行，杜绝"整本书一把梭"
+    p1 = min(p1, p0 + STORY_CONTEXT_MAX_PAGES - 1)
+    budget = max(1, min(int(budget_lines), STORY_CONTEXT_MAX_LINES))
+
+    with get_dialogue_db() as conn:
+        rows = conn.execute(
+            """
+            SELECT page_index, bubble_id, reading_order, text, box_json
+            FROM comic_dialogues_fts
+            WHERE source = :source AND source_id = :source_id
+              AND page_index BETWEEN :p0 AND :p1
+              AND kind = :kind
+            ORDER BY page_index, reading_order, bubble_id
+            LIMIT :cap
+            """,
+            {
+                "source": source,
+                "source_id": source_id,
+                "p0": p0,
+                "p1": p1,
+                "kind": DIALOGUE_KIND,
+                "cap": budget + 1,
+            },
+        ).fetchall()
+
+    truncated = len(rows) > budget
+    lines: list[dict[str, Any]] = []
+    boxes: list[dict[str, Any]] = []
+    for r in rows[:budget]:
+        page_index = int(r["page_index"])
+        line_id = f"{page_index}:{r['bubble_id']}"
+        lines.append(
+            {
+                "line_id": line_id,
+                "page_index": page_index,
+                "reading_order": int(r["reading_order"]),
+                "text": r["text"],
+            }
+        )
+        try:
+            raw_box = json.loads(r["box_json"]) if r["box_json"] else []
+        except Exception:
+            raw_box = []
+        box = _normalize_box(raw_box)
+        if box:
+            boxes.append({"line_id": line_id, "box": box})
+
+    return {"lines": lines, "boxes": boxes, "truncated": truncated, "budget_lines": budget}
 
 
 def create_direct_pass(

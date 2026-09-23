@@ -562,6 +562,12 @@ def test_comics_index_and_pagination():
     assert total_wildcard == 0
     assert len(items_wildcard) == 0
 
+    # 简繁双向归一：c1 的章节标题存的是简体「第 1 话」，用繁体「第 1 話」也必须命中。
+    # 台词检索一直展开变体，书架这条以前只 LIKE 原样输入 —— 于是"元数据恰好存了哪种字形"
+    # 决定搜不搜得到（真库实测「咲恋」1 本 / 「咲戀」4 本，合起来 5 本谁都不全）。
+    items_trad, total_trad = db_mod.query_library_index("u1", is_curator=True, q="第 1 話")
+    assert total_trad == 1 and items_trad[0]["source_id"] == "c1", f"书架关键词搜索没做简繁归一: {total_trad}"
+
     # Favorite filter
     items_fav, total_fav = db_mod.query_library_index("u1", is_curator=True, favorite=True)
     assert total_fav == 1

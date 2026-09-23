@@ -507,12 +507,16 @@ class DialogueSearchItem(BaseModel):
     title: str = ""
     page_index: int
     bubble_id: int | str = 0
+    bubble_count: int | None = None
     text: str
     snippet: str = ""
     box: list[float] = Field(default_factory=list)
+    other_boxes: list[list[float]] = Field(default_factory=list)
     lang: str = "zh"
     cover: str = ""
     authors: list[str] = Field(default_factory=list)
+    # 刻意不带默认值：写成 `= 0.0` 会在后端漏发时伪造出"相关度最低"（DESIGN_NOTES §64.4）
+    rank_score: float
 
 
 class DialogueSearchResponse(BaseModel):
@@ -520,9 +524,74 @@ class DialogueSearchResponse(BaseModel):
     total: int = 0
 
 
+class SemanticDialogueItem(BaseModel):
+    """语义检索的一条命中：**气泡**级，不带 snippet。
+
+    与 `DialogueSearchItem` 分开建模是有意的——语义命中没有"字面命中区间"可高亮，
+    分数也不是同一个口径（`similarity` 是余弦，跨查询可比；`rank_score` 是池内
+    min-max 归一，换一次查询就换一把尺子）。合成一个模型迟早被下游当成同一个数用。
+    """
+
+    source: str
+    source_id: str
+    display_id: str = ""
+    title: str = ""
+    page_index: int
+    bubble_id: int | str = 0
+    text: str
+    box: list[float] = Field(default_factory=list)
+    lang: str = "zh"
+    cover: str = ""
+    authors: list[str] = Field(default_factory=list)
+    similarity: float
+
+
+class SemanticDialogueResponse(BaseModel):
+    results: list[SemanticDialogueItem] = Field(default_factory=list)
+    total: int = 0
+    # 空结果分两种，调用方必须能区分："没有意思相近的台词" 与 "这台机器没装语义编码器"
+    available: bool = True
+    reason: str = ""
+
+
+class DialogueVectorsResponse(BaseModel):
+    ok: bool = True
+    reason: str = ""
+    encoded: int = 0
+    comics: int = 0
+    dim: int = 0
+
+
 class OcrSyncResponse(BaseModel):
     ok: bool = True
     count: int = 0
+
+
+class StoryContextLine(BaseModel):
+    """一行原始台词。line_id 是 "页号:气泡号"，用于把 boxes 数组对回对应行。"""
+
+    line_id: str
+    page_index: int
+    reading_order: int
+    text: str
+
+
+class StoryContextBox(BaseModel):
+    line_id: str
+    box: list[float] = Field(default_factory=list)
+
+
+class StoryContextResponse(BaseModel):
+    """台词取料出口的响应：按剧情原序的连续切片，不带相关度、高亮等展示态字段。"""
+
+    source: str
+    source_id: str
+    title: str = ""
+    requested_pages: list[int] = Field(default_factory=list)
+    lines: list[StoryContextLine] = Field(default_factory=list)
+    boxes: list[StoryContextBox] = Field(default_factory=list)
+    truncated: bool = False
+    budget_lines: int = 0
 
 
 
