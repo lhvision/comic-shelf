@@ -28,9 +28,13 @@ const emit = defineEmits<{
 const menuListRef = useTemplateRef<HTMLElement>('menuListRef')
 
 watch(focusedIndex, async (idx) => {
-  if (idx === undefined || idx < 0 || !menuListRef.value) return
+  if (idx === undefined || idx < 0) return
   await nextTick()
-  const activeEl = menuListRef.value.querySelector<HTMLElement>(`#cmd-opt-${idx}`)
+  // ref 必须在 nextTick 之后再取：选中指令时 open 会同时置 false，
+  // v-if 整块卸载会把 ref 抹成 null，在 await 之前判空挡不住
+  const list = menuListRef.value
+  if (!list) return
+  const activeEl = list.querySelector<HTMLElement>(`#cmd-opt-${idx}`)
   if (activeEl && typeof activeEl.scrollIntoView === 'function') {
     activeEl.scrollIntoView({ block: 'nearest' })
   }

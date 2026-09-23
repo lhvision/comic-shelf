@@ -100,4 +100,44 @@ describe('ReaderBubbleOverlay component', () => {
 
     expect(wrapper.find('.bubble-callout').exists()).toBe(false)
   })
+
+  it('outlines the remaining same-page hits as static sibling frames', () => {
+    const wrapper = mount(ReaderBubbleOverlay, {
+      props: {
+        pageIndex: 16,
+        imageReady: true,
+        targetBubble: {
+          page: 16,
+          box: [0.4288, 0.1573, 0.5077, 0.2156],
+          text: '老师',
+          others: [
+            [0.6066, 0.2615, 0.7077, 0.2927],
+            [0.03, 0.1, 0.2, 0.3],
+          ],
+        },
+      },
+    })
+
+    const ghosts = wrapper.findAll('.reader-bubble-ghost')
+    expect(ghosts).toHaveLength(2)
+    expect(ghosts[0]?.attributes('style')).toContain('top: 60.66%')
+    // 代表格仍只有一个，callout 也只挂在代表格上——siblings 不许抢主体
+    expect(wrapper.findAll('.reader-bubble-box')).toHaveLength(1)
+    expect(wrapper.findAll('.bubble-callout')).toHaveLength(1)
+    // aria 只报画了几格，不冒用后端的命中总数（封顶时两者不等）
+    expect(wrapper.attributes('aria-label')).toBe('命中对白：老师（同页一并描出 2 处气泡）')
+  })
+
+  it('renders no sibling layer for a single-hit page', () => {
+    const wrapper = mount(ReaderBubbleOverlay, {
+      props: {
+        pageIndex: 5,
+        imageReady: true,
+        targetBubble: { page: 5, box: [0.15, 0.3, 0.25, 0.8], text: '独句' },
+      },
+    })
+
+    expect(wrapper.find('.reader-bubble-others').exists()).toBe(false)
+    expect(wrapper.attributes('aria-label')).toBe('命中对白：独句')
+  })
 })

@@ -13,6 +13,7 @@ import { computed, ref, shallowRef, watch, type Ref, type ComputedRef } from 'vu
 import { useDebounceFn, tryOnScopeDispose } from '@vueuse/core'
 import type { Router } from 'vue-router'
 import { api } from '@/api/client'
+import { serializeBubbleBox, serializeBubbleBoxes } from '@/composables/useReaderBubble'
 import type { DialogueSearchItem } from '@/types'
 
 export interface UseDialogueSearchOptions {
@@ -20,7 +21,7 @@ export interface UseDialogueSearchOptions {
   source?: Ref<string | undefined> | ComputedRef<string | undefined>
   /** 防抖延迟时间（毫秒，默认 300ms） */
   debounceMs?: number
-  /** 单次检索结果上限（默认 20 条） */
+  /** 单次检索返回的命中页上限（默认 20 页，后端聚合到页级后一条结果 = 一页） */
   limit?: number
 }
 
@@ -29,7 +30,7 @@ export interface UseDialogueSearchReturn {
   query: Ref<string>
   /** 命中的台词搜索结果列表 */
   results: Ref<DialogueSearchItem[]>
-  /** 命中总条数 */
+  /** 命中页数（后端未做全库 COUNT，恒等于本页返回的 results 长度） */
   total: Ref<number>
   /** 是否正在后台检索 */
   isSearching: Ref<boolean>
@@ -229,13 +230,14 @@ export function useDialogueSearch(options: UseDialogueSearchOptions = {}): UseDi
    */
   const navigateToResult = (item: DialogueSearchItem, router: Router) => {
     close()
-    const boxParam =
-      Array.isArray(item.box) && item.box.length === 4
-        ? item.box.map((v) => Number(v).toFixed(4)).join(',')
-        : undefined
+    const boxParam = serializeBubbleBox(item.box)
 
     const queryObj: Record<string, string> = {}
     if (boxParam) queryObj.bubble_box = boxParam
+    // 同页其余命中格分号串接随跳转一起带走：高亮是 2.8 秒一次性、参数随后即被
+    // dismissBubble 从 URL 抹掉，事后无法补取，必须一次带全
+    const otherParam = serializeBubbleBoxes(item.other_boxes)
+    if (otherParam) queryObj.bubble_boxes = otherParam
     if (item.text) queryObj.bubble_text = item.text
 
     void router.push({

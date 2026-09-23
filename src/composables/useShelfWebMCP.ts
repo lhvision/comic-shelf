@@ -16,6 +16,11 @@ import { useWebMCP } from '@vueuse/core'
 import type { Router } from 'vue-router'
 import { api } from '@/api/client'
 import { useAuth } from '@/composables/useAuth'
+import {
+  MAX_HIGHLIGHT_BOXES,
+  serializeBubbleBox,
+  serializeBubbleBoxes,
+} from '@/composables/useReaderBubble'
 import { useShelfState } from '@/composables/useShelfState'
 import { useLibraryStore } from '@/stores/library'
 import type { ReadingStatus, SortKey } from '@/types'
@@ -204,6 +209,9 @@ export function useShelfWebMCP(options: UseShelfWebMCPOptions): UseShelfWebMCPRe
           page_index: item.page_index,
           dialogue_text: item.text,
           bubble_box: item.box,
+          bubble_count: item.bubble_count ?? 1,
+          other_boxes: item.other_boxes ?? [],
+          rank_score: item.rank_score ?? 0,
         })),
       }
     },
@@ -362,6 +370,14 @@ export function useShelfWebMCP(options: UseShelfWebMCPOptions): UseShelfWebMCPRe
           items: { type: 'number' },
           description: '可选的对白气泡归一化坐标 [ymin, xmin, ymax, xmax]（0..1 范围）',
         },
+        other_boxes: {
+          type: 'array',
+          items: { type: 'array', items: { type: 'number' } },
+          // 与后端 MAX_PAGE_BOXES、前端 MAX_HIGHLIGHT_BOXES 同一个数：三处各写死一次
+          // 迟早漂移，这里至少由常量导出，改封顶只需改 MAX_HIGHLIGHT_BOXES 一处
+          maxItems: MAX_HIGHLIGHT_BOXES - 1,
+          description: `可选：同页其余命中气泡坐标列表（最多 ${MAX_HIGHLIGHT_BOXES - 1} 组），阅读器只作静态描边`,
+        },
         bubble_text: {
           type: 'string',
           description: '可选的对白台词文本片段',
@@ -370,16 +386,25 @@ export function useShelfWebMCP(options: UseShelfWebMCPOptions): UseShelfWebMCPRe
       required: ['source', 'source_id'],
     },
     async execute(args) {
-      const { source, source_id, page, fromBeginning, chapter_id, bubble_box, bubble_text } =
-        (args ?? {}) as {
-          source?: string
-          source_id?: string
-          page?: number
-          fromBeginning?: boolean
-          chapter_id?: string
-          bubble_box?: number[]
-          bubble_text?: string
-        }
+      const {
+        source,
+        source_id,
+        page,
+        fromBeginning,
+        chapter_id,
+        bubble_box,
+        other_boxes,
+        bubble_text,
+      } = (args ?? {}) as {
+        source?: string
+        source_id?: string
+        page?: number
+        fromBeginning?: boolean
+        chapter_id?: string
+        bubble_box?: number[]
+        other_boxes?: number[][]
+        bubble_text?: string
+      }
       if (!source || !source_id) {
         throw new Error('参数 "source" 与 "source_id" 均为必填项。')
       }
@@ -389,13 +414,18 @@ export function useShelfWebMCP(options: UseShelfWebMCPOptions): UseShelfWebMCPRe
       if (chapter_id) {
         queryObj.chapter = chapter_id
       }
-      if (Array.isArray(bubble_box) && bubble_box.length === 4) {
-        queryObj.bubble_box = bubble_box.map((v) => Number(v).toFixed(4)).join(',')
+      const boxParam = serializeBubbleBox(bubble_box)
+      if (boxParam) {
+        queryObj.bubble_box = boxParam
+      }
+      const others = serializeBubbleBoxes(other_boxes)
+      if (others) {
+        queryObj.bubble_boxes = others
       }
       if (bubble_text) {
         queryObj.bubble_text = bubble_text
       }
-      if (bubble_box || bubble_text) {
+      if (boxParam || bubble_text || others) {
         queryObj.highlight_bubble = '1'
       }
 

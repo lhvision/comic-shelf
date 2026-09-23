@@ -13,6 +13,8 @@
  * 3. 视觉质感：
  *    - 温润朱砂金墨色线框与琥珀朱砂微底（oklch(0.59 0.17 38) 与暖金调和，绝无紫蓝渐变与廉价毛玻璃）；
  *    - 优雅 2 秒呼吸脉冲动效（@keyframes breathing-pulse），随后自然淡出；
+ *    - `targetBubble.others`（同页其余命中气泡）只画 1px 静态细描边，走 `ghost-mark` 同一条
+ *      2.2s 时间轴与代表格同时淡出，不带 callout、不带光晕，避免与检索主体抢视觉焦点；
  * 4. 无障碍与交互安全：
  *    - 全程声明 `pointer-events: none`，零阻碍点击、翻页与画卷滚动；
  *    - 适配屏幕阅读器可访问性（role="status", aria-live="polite"）；
@@ -22,7 +24,7 @@
 
 import { computed } from 'vue'
 import { clamp, round } from '@/utils/math'
-import type { TargetBubble } from '@/composables/useReaderBubble'
+import type { BubbleBox, TargetBubble } from '@/composables/useReaderBubble'
 
 export type { TargetBubble }
 
@@ -52,9 +54,8 @@ const isMatched = computed(() => {
   )
 })
 
-const boxStyle = computed(() => {
-  if (!isMatched.value || !props.targetBubble) return {}
-  const [ymin, xmin, ymax, xmax] = props.targetBubble.box
+function boxToPercentStyle(box: BubbleBox) {
+  const [ymin, xmin, ymax, xmax] = box
 
   const top = round(clamp(ymin * 100, 0, 100), 4)
   const left = round(clamp(xmin * 100, 0, 100), 4)
@@ -67,6 +68,26 @@ const boxStyle = computed(() => {
     height: `${height}%`,
     width: `${width}%`,
   }
+}
+
+const boxStyle = computed(() => {
+  if (!isMatched.value || !props.targetBubble) return {}
+  return boxToPercentStyle(props.targetBubble.box)
+})
+
+/** 同页其余命中格：只作静态描边，不参与定位与 callout */
+const otherBoxes = computed<BubbleBox[]>(() =>
+  isMatched.value ? (props.targetBubble?.others ?? []) : [],
+)
+
+const otherStyles = computed(() => otherBoxes.value.map((b) => boxToPercentStyle(b)))
+
+const ariaLabel = computed(() => {
+  // 只报"画了几格"，不报"命中几处"：覆盖层拿不到后端的 bubble_count，
+  // 且描边框封顶 6 格，用"命中"措辞会在高频页谎报总数
+  const extra = otherBoxes.value.length
+  const scope = extra > 0 ? `（同页一并描出 ${extra} 处气泡）` : ''
+  return bubbleText.value ? `命中对白：${bubbleText.value}${scope}` : `台词气泡高亮位置${scope}`
 })
 
 const bubbleText = computed(() => props.targetBubble?.text?.trim() || '')
@@ -91,12 +112,15 @@ const calloutClasses = computed(() => {
     class="reader-bubble-overlay"
     role="status"
     aria-live="polite"
-    :aria-label="bubbleText ? `命中对白：${bubbleText}` : '台词气泡高亮位置'"
+    :aria-label="ariaLabel"
   >
     <div class="reader-bubble-box" :style="boxStyle">
       <div v-if="bubbleText" class="bubble-callout" :class="calloutClasses">
         <span class="bubble-callout-text">{{ bubbleText }}</span>
       </div>
+    </div>
+    <div v-if="otherStyles.length > 0" class="reader-bubble-others" aria-hidden="true">
+      <div v-for="(style, i) in otherStyles" :key="i" class="reader-bubble-ghost" :style="style" />
     </div>
   </div>
 </template>
@@ -130,6 +154,45 @@ const calloutClasses = computed(() => {
     inset 0 0 12px color-mix(in oklab, var(--accent) 15%, transparent);
   animation: breathing-pulse 2.2s cubic-bezier(0.22, 1, 0.36, 1) forwards;
   will-change: transform, opacity;
+}
+
+/* 同页其余命中格：静态细描边、无底纹无光晕，不与代表格的呼吸抢焦点 */
+.reader-bubble-others {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.reader-bubble-ghost {
+  position: absolute;
+  box-sizing: border-box;
+  pointer-events: none;
+  border-radius: var(--radius-1);
+  border: 1px solid color-mix(in oklab, var(--accent) 70%, transparent);
+  /* 内外各一道对比键线：描边压在任意漫画底图上（深色场、密网点、纯白气泡都可能遇到），
+     只靠半透明朱砂在暗场几乎不可见。这两道刻意不随主题翻转——它们要对的是图片，不是纸面 */
+  box-shadow:
+    0 0 0 1px rgb(0 0 0 / 55%),
+    inset 0 0 0 1px rgb(255 255 255 / 40%);
+  animation: ghost-mark 2.2s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+  will-change: opacity;
+}
+
+/* 与代表格同一条 2.2s 时间轴：同时出现、同时淡出 */
+@keyframes ghost-mark {
+  0% {
+    opacity: 0;
+  }
+  16% {
+    opacity: 1;
+  }
+  84% {
+    opacity: 0.5;
+  }
+  100% {
+    opacity: 0;
+    visibility: hidden;
+  }
 }
 
 /* 命中台词微标胶囊 */
@@ -218,6 +281,10 @@ const calloutClasses = computed(() => {
   .reader-bubble-box {
     animation: breathing-static 2s linear forwards;
     transform: none !important;
+  }
+
+  .reader-bubble-ghost {
+    animation: breathing-static 2s linear forwards;
   }
 
   @keyframes breathing-static {

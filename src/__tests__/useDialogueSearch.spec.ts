@@ -163,4 +163,35 @@ describe('useDialogueSearch', () => {
     })
     scope.stop()
   })
+
+  it('passes same-page sibling boxes as bubble_boxes when navigating', () => {
+    const scope = effectScope()
+    scope.run(() => {
+      const { navigateToResult } = useDialogueSearch()
+      const mockRouter = { push: vi.fn<(to: unknown) => Promise<unknown>>() }
+
+      navigateToResult(
+        {
+          source: 'jm',
+          source_id: '1206348',
+          title: '测试漫画',
+          page_index: 16,
+          text: '老师',
+          box: [0.4288, 0.1573, 0.5077, 0.2156],
+          other_boxes: [[0.6066, 0.2615, 0.7077, 0.2927]],
+        },
+        mockRouter as unknown as Router,
+      )
+
+      expect(mockRouter.push).toHaveBeenCalledWith({
+        path: '/comic/jm/1206348/read/16',
+        query: {
+          bubble_box: '0.4288,0.1573,0.5077,0.2156',
+          bubble_boxes: '0.6066,0.2615,0.7077,0.2927',
+          bubble_text: '老师',
+        },
+      })
+    })
+    scope.stop()
+  })
 })

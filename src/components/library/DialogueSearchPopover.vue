@@ -8,11 +8,14 @@
  * 2. 纯声明式解析分镜台词高亮片段，零 v-html，杜绝 XSS 注入风险；
  * 3. 严格符合 WAI-ARIA Combobox / Listbox 无障碍标准契约；
  * 4. 键盘焦点自动同步视口滚动跟随（scrollIntoView），杜绝视口盲航；
- * 5. 封面自适应防崩退化与典藏朱砂金墨分镜导引指示。
+ * 5. 封面自适应防崩退化与典藏朱砂金墨分镜导引指示；
+ * 6. 一行一页：后端已把同页多个命中气泡聚合成一条，行间展示的是该页最高分的代表句，
+ *    同页命中超过一处时在微信息行标注「N 处命中」，单命中不重复宣告。
  */
 
 import { nextTick, ref, useTemplateRef, watch } from 'vue'
 import AppIcon from '@/components/AppIcon.vue'
+import { MAX_HIGHLIGHT_BOXES } from '@/composables/useReaderBubble'
 import type { DialogueSearchItem } from '@/types'
 import { coverFileUrl } from '@/api/client'
 import { getSourceShortName } from '@/utils/source'
@@ -54,9 +57,13 @@ function getItemCoverUrl(item: DialogueSearchItem): string {
  * 监听键盘导航索引变化，驱动列表视口平滑对齐跟随
  */
 watch(focusedIndex, async (idx) => {
-  if (idx === undefined || idx < 0 || !listContainerRef.value) return
+  if (idx === undefined || idx < 0) return
   await nextTick()
-  const items = listContainerRef.value.querySelectorAll('.result-item')
+  // ref 必须在 nextTick 之后再取：回车选中会先 close() 卸载 v-if 块，
+  // 在 await 之前判空挡不住随后到来的 null
+  const list = listContainerRef.value
+  if (!list) return
+  const items = list.querySelectorAll('.result-item')
   const activeEl = items[idx] as HTMLElement | undefined
   if (activeEl) {
     activeEl.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: 'smooth' })
@@ -114,6 +121,19 @@ function onSelect(item: DialogueSearchItem) {
   emit('select', item)
 }
 
+/**
+ * 同页多命中的预期管理：报出的两个数必须都对得上画面。
+ * 用「至少」是因为 `bubble_count` 是候选池（fetch_limit 行）内的计数，
+ * 极端高频页会少报；行内保持简洁，保留口径只在这里说
+ */
+function hitCountTitle(item: DialogueSearchItem): string {
+  const total = item.bubble_count ?? 1
+  const drawn = Math.min(total, MAX_HIGHLIGHT_BOXES)
+  return drawn >= total
+    ? `这一页至少命中 ${total} 处，进入阅读器全部描出`
+    : `这一页至少命中 ${total} 处，阅读器只描出最相关的 ${drawn} 格`
+}
+
 function onMouseEnterItem(index: number) {
   focusedIndex.value = index
 }
@@ -133,9 +153,7 @@ function onMouseEnterItem(index: number) {
         <div class="head-title">
           <AppIcon name="search" size="xs" class="head-icon" />
           <span class="head-text">分镜台词检索</span>
-          <span v-if="results.length > 0" class="head-badge">
-            {{ total > results.length ? `${results.length}/${total}` : total }}
-          </span>
+          <span v-if="results.length > 0" class="head-badge">命中 {{ total }} 页</span>
         </div>
         <button
           type="button"
@@ -166,7 +184,7 @@ function onMouseEnterItem(index: number) {
         <div
           v-for="(item, idx) in results"
           :id="`dialogue-opt-${idx}`"
-          :key="`${item.source}-${item.source_id}-${item.page_index}-${item.bubble_id ?? idx}`"
+          :key="`${item.source}-${item.source_id}-${item.page_index}`"
           class="result-item"
           :class="{ 'is-focused': focusedIndex === idx }"
           role="option"
@@ -208,13 +226,18 @@ function onMouseEnterItem(index: number) {
               </template>
             </div>
 
-            <!-- 分镜微信息 -->
-            <div class="item-meta">
+            <!-- 分镜微信息：单命中不重复宣告，只有同页多处命中才占这一行 -->
+            <div
+              v-if="(item.bubble_count ?? 1) > 1 || (item.authors && item.authors.length > 0)"
+              class="item-meta"
+            >
               <span
-                v-if="item.bubble_id !== undefined && item.bubble_id !== null"
-                class="meta-item"
+                v-if="(item.bubble_count ?? 1) > 1"
+                class="meta-item meta-hit"
+                aria-describedby="dialogue-hit-note"
+                :title="hitCountTitle(item)"
               >
-                气泡 #{{ item.bubble_id }}
+                {{ item.bubble_count }} 处命中
               </span>
               <span v-if="item.authors && item.authors.length > 0" class="meta-item author">
                 {{ item.authors.slice(0, 2).join(' / ') }}
@@ -248,8 +271,13 @@ function onMouseEnterItem(index: number) {
       </div>
 
       <!-- 底部提示栏 -->
+      <p v-if="results.length > 0" id="dialogue-hit-note" class="visually-hidden">
+        一行代表一页。标注「N
+        处命中」表示这一页有多句台词命中；进入阅读器后，相关度最高的那一句呼吸高亮，
+        其余命中气泡最多再描出 {{ MAX_HIGHLIGHT_BOXES - 1 }} 格。
+      </p>
       <div class="popover-footer">
-        <span class="footer-tip">↑↓ 选择 · 回车直达画页 · 进入阅读器自动朱砂金墨高亮</span>
+        <span class="footer-tip">上下键选择 · 回车直达画页 · 阅读器描出该页命中气泡</span>
       </div>
     </div>
   </Transition>
@@ -535,6 +563,12 @@ function onMouseEnterItem(index: number) {
   font-size: var(--text-caption);
   color: var(--ink-2);
   font-family: var(--font-mono);
+}
+
+/* 命中数是本行唯一的新增信号，提到朱砂色；不加底色，避免与 .page-tag 抢层级 */
+.meta-hit {
+  color: var(--accent-strong);
+  font-weight: 600;
 }
 
 .item-action {
