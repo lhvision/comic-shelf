@@ -1,4 +1,5 @@
 import sys
+import tempfile
 from pathlib import Path
 from unittest.mock import MagicMock
 
@@ -10,9 +11,16 @@ from app.models import ComicMeta, DiscoveryFeed, DiscoveryItem
 from app.storage import ComicStore
 import app.auth as auth_mod
 import app.main as main_mod
+import app.storage.base as storage_base_mod
 
 
 import app.db as db_mod
+
+# 整个模块跑在临时数据目录里：下面要签一张口令已知的访客通行证（guest-secret-456），
+# 还要写发现页缓存。落进真库就是一张谁都能用的有效访客证，落进真 discovery/ 就是拿假榜单盖掉真缓存
+_temp_dir = Path(tempfile.mkdtemp(prefix="test_visibility_"))
+db_mod.init_db(_temp_dir / "comic_shelf.db")
+storage_base_mod.DATA_DIR = _temp_dir
 
 
 def make_mock_request(path="/api/library", token=""):
