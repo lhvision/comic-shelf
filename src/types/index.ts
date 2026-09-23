@@ -403,13 +403,8 @@ export interface ReadingProgressInfo {
 }
 
 /**
- * 台词检索的单条结果：粒度是「页」而非「气泡」。
- *
- * 后端把同页的多个命中气泡聚合成一条。3 字以上走 FTS5 倒排，代表句取该页 bm25 最高的气泡；
- * 2 字查询产不出任何 trigram token（实测 MATCH 恒 0 行），只能落到 LIKE 扫描，后端改用
- * 「词频 ÷ 文本长度」这个近似分排序——它正是 bm25 中真正区分候选的那两项。两条路径都带
- * `bubble_count`（候选池内该页命中的气泡数，非全库总数）。全库检索都按相关度先排序再截断，
- * 所以代表句与计数都可信。
+ * 台词检索的单条结果：一条是一页，不是一个气泡。
+ * `text` / `box` 属于该页相关度最高的代表气泡，同页其余命中气泡只给坐标（`other_boxes`）。
  */
 export interface DialogueSearchItem {
   source: string
@@ -418,24 +413,18 @@ export interface DialogueSearchItem {
   title: string
   page_index: number
   bubble_id?: number | string
-  /** 该页命中气泡数（候选池内计数）；`null` 仅出现在旧响应缺字段时 */
+  /** 该页命中的气泡数，没有坐标的也计入；是候选池内计数，高频页可能少报 */
   bubble_count?: number | null
   text: string
   snippet?: string
   box: number[]
-  /** 同页其余命中气泡的归一化坐标（最多 5 组），供阅读器一次描全 */
-  other_boxes?: number[][]
+  /** 同页其余命中气泡的归一化坐标，不含代表气泡与没有坐标的命中；条数有封顶 */
+  other_boxes: number[][]
   lang?: string
   cover?: string
   authors?: string[]
-  /**
-   * 该页代表气泡的相关度，0..1，越大越相关。
-   *
-   * 只在**本次结果的候选池内**归一，因此只能解释"这一页在本次结果里排第几"，
-   * 换一次查询或换一个池，绝对值就没有可比性（3 字以上取负 bm25，2 字 LIKE 取词频÷文本长度，
-   * 两条路径量纲本就不同）。
-   */
-  rank_score?: number
+  /** 代表气泡的台词相关度，0..1，越大越相关；只在本次结果内比高低，不能跨查询比较 */
+  rank_score: number
 }
 
 export interface DialogueSearchResponse {

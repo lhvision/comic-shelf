@@ -14,9 +14,11 @@ describe('DialogueSearchPopover', () => {
     text: '老师请快看这个孩子',
     snippet: '...<mark>老师</mark>请快看这个孩子...',
     box: [0.1, 0.2, 0.3, 0.4],
+    other_boxes: [],
     lang: 'zh',
     cover: '/covers/jm/1059521.jpg',
     authors: ['测试画师'],
+    rank_score: 1,
   }
 
   const mockItems: DialogueSearchItem[] = [mockItem]
@@ -91,6 +93,31 @@ describe('DialogueSearchPopover', () => {
     expect(wrapper.find('.meta-item').text()).toContain('3 处命中')
     // 计数单位必须是「页」，否则用户会读成气泡/词条数
     expect(wrapper.find('.head-badge').text()).toBe('命中 1 页')
+  })
+
+  it('keeps the listbox to options only and describes multi-hit rows from outside it', () => {
+    const wrapper = mount(DialogueSearchPopover, {
+      props: {
+        open: true,
+        results: [mockItem, { ...mockItem, page_index: 4, bubble_count: 3 }],
+        total: 2,
+        isSearching: false,
+        query: '老师',
+      },
+    })
+
+    // listbox 挂在结果列表上：头部的关闭按钮、底栏与说明节点都不能落进去
+    expect(wrapper.find('.dialogue-popover').attributes('role')).toBeUndefined()
+    const listbox = wrapper.find('[role="listbox"]')
+    expect(listbox.attributes('id')).toBe('dialogue-search-listbox')
+    expect(listbox.classes()).toContain('results-list')
+    expect(listbox.find('#dialogue-hit-note').exists()).toBe(false)
+    expect(wrapper.find('#dialogue-hit-note').exists()).toBe(true)
+
+    // 说明挂在 option 本身（读屏随 activedescendant 念它），且只给多命中的那一行
+    const options = listbox.findAll('[role="option"]')
+    expect(options[0]?.attributes('aria-describedby')).toBeUndefined()
+    expect(options[1]?.attributes('aria-describedby')).toBe('dialogue-hit-note')
   })
 
   it('emits select event when clicking a result item', async () => {

@@ -9,7 +9,7 @@
  * 4. 封装聚焦、失焦与外部点击关闭 (onClickOutside) 逻辑，彻底下沉视图胶水代码。
  */
 
-import { nextTick, ref, watch, type ComputedRef, type Ref } from 'vue'
+import { computed, nextTick, ref, watch, type ComputedRef, type Ref } from 'vue'
 import { onClickOutside } from '@vueuse/core'
 import type { Router } from 'vue-router'
 import {
@@ -70,6 +70,11 @@ export interface UseShelfSearchReturn {
   dialogueQuery: Ref<string>
   /** 台词结果列表键盘高亮索引 */
   dialogueFocusedIndex: Ref<number>
+  /**
+   * 台词结果 listbox 此刻是否真的渲染着（浮层展开、不在检索、无错且有结果）。
+   * 输入框的 aria-expanded 与 aria-controls 据此成对设置，免得指向不存在的节点
+   */
+  isDialogueListboxShown: ComputedRef<boolean>
   /** 选中特定快捷指令 */
   handleSelectCommand: (cmd: SearchCommandDef) => void
   /** 清除当前指令胶囊切回常规搜索 */
@@ -106,6 +111,15 @@ export function useShelfSearch(options: UseShelfSearchOptions): UseShelfSearchRe
     navigatePrev: prevDialogueResult,
     navigateToResult: rawNavigateToResult,
   } = useDialogueSearch({ source: activeSource })
+
+  // 与 DialogueSearchPopover 的 v-if 链同一判据：加载、报错、空结果时浮层开着，listbox 却不存在
+  const isDialogueListboxShown = computed(
+    () =>
+      isDialogueOpen.value &&
+      !isDialogueSearching.value &&
+      !dialogueError.value &&
+      dialogueResults.value.length > 0,
+  )
 
   const navigateToResult = (item: DialogueSearchItem, routerInstance?: Router) => {
     rawNavigateToResult(item, routerInstance || router)
@@ -244,6 +258,7 @@ export function useShelfSearch(options: UseShelfSearchOptions): UseShelfSearchRe
     dialogueError,
     dialogueQuery,
     dialogueFocusedIndex,
+    isDialogueListboxShown,
     handleSelectCommand,
     handleClearCommand,
     closeCommandMenu,

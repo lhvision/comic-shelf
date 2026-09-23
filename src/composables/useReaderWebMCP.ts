@@ -394,9 +394,15 @@ export function useReaderWebMCP(options: UseReaderWebMCPOptions): UseReaderWebMC
 
       if (router && route) {
         const boxStr = Array.isArray(box) && box.length === 4 ? box.join(',') : undefined
+        // 上一次高亮还没被 dismissBubble 抹掉的气泡参数不属于这次定位：原样合并会把
+        // 旧的代表气泡、同页其余命中气泡与台词一起叠到新页上
+        const baseQuery = { ...route.query }
+        delete baseQuery.bubble_box
+        delete baseQuery.bubble_boxes
+        delete baseQuery.bubble_text
         await router.replace({
           query: {
-            ...route.query,
+            ...baseQuery,
             page: String(targetPage),
             ...(boxStr ? { bubble_box: boxStr } : {}),
             ...(text ? { bubble_text: text } : {}),

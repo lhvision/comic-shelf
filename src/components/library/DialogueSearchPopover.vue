@@ -20,15 +20,25 @@ import type { DialogueSearchItem } from '@/types'
 import { coverFileUrl } from '@/api/client'
 import { getSourceShortName } from '@/utils/source'
 
+/** 键盘高亮的结果行下标，-1 表示无高亮；与宿主输入框的 aria-activedescendant 同源 */
 const focusedIndex = defineModel<number>('focusedIndex', { default: -1 })
 
 const props = withDefaults(
   defineProps<{
+    /** 是否展开浮层 */
     open: boolean
+    /** 页级命中结果：一条即一页，行内展示该页代表气泡的台词 */
     results: DialogueSearchItem[]
+    /**
+     * 头部「命中 N 页」里的 N：本次返回的页数，恒等于 `results.length`。
+     * 后端不做全库计数，结果被 limit 截断时小于真实命中页数
+     */
     total: number
+    /** 是否正在检索；为真时列表让位给加载态 */
     isSearching: boolean
+    /** 检索失败文案，空串表示无错 */
     error?: string
+    /** 当前检索词，决定短词提示与空状态文案 */
     query: string
   }>(),
   {
@@ -37,7 +47,9 @@ const props = withDefaults(
 )
 
 const emit = defineEmits<{
+  /** 选中一页命中结果，由宿主负责直达阅读器 */
   select: [item: DialogueSearchItem]
+  /** 用户点了关闭按钮 */
   close: []
 }>()
 
@@ -128,10 +140,11 @@ function onSelect(item: DialogueSearchItem) {
  */
 function hitCountTitle(item: DialogueSearchItem): string {
   const total = item.bubble_count ?? 1
-  const drawn = Math.min(total, MAX_HIGHLIGHT_BOXES)
+  // 描出几处只能数带坐标的框：bubble_count 把没有坐标的命中气泡也算了进去
+  const drawn = Math.min(1 + item.other_boxes.length, MAX_HIGHLIGHT_BOXES)
   return drawn >= total
     ? `这一页至少命中 ${total} 处，进入阅读器全部描出`
-    : `这一页至少命中 ${total} 处，阅读器只描出最相关的 ${drawn} 格`
+    : `这一页至少命中 ${total} 处，阅读器只描出最相关的 ${drawn} 处`
 }
 
 function onMouseEnterItem(index: number) {
@@ -141,13 +154,7 @@ function onMouseEnterItem(index: number) {
 
 <template>
   <Transition name="popover-fade">
-    <div
-      v-if="open"
-      id="dialogue-search-popover"
-      class="dialogue-popover"
-      role="listbox"
-      aria-label="分镜台词搜索结果"
-    >
+    <div v-if="open" class="dialogue-popover">
       <!-- 头部：命中状态与快捷提示 -->
       <div class="popover-head">
         <div class="head-title">
@@ -179,8 +186,16 @@ function onMouseEnterItem(index: number) {
         <span>{{ error }}</span>
       </div>
 
-      <!-- 命中的对白列表 -->
-      <div v-else-if="results.length > 0" ref="listContainerRef" class="results-list" tabindex="-1">
+      <!-- 命中的对白列表：listbox 只包 option，头部、状态与说明节点都在它外面 -->
+      <div
+        v-else-if="results.length > 0"
+        id="dialogue-search-listbox"
+        ref="listContainerRef"
+        class="results-list"
+        role="listbox"
+        aria-label="分镜台词搜索结果"
+        tabindex="-1"
+      >
         <div
           v-for="(item, idx) in results"
           :id="`dialogue-opt-${idx}`"
@@ -189,6 +204,7 @@ function onMouseEnterItem(index: number) {
           :class="{ 'is-focused': focusedIndex === idx }"
           role="option"
           :aria-selected="focusedIndex === idx"
+          :aria-describedby="(item.bubble_count ?? 1) > 1 ? 'dialogue-hit-note' : undefined"
           @click="onSelect(item)"
           @mouseenter="onMouseEnterItem(idx)"
         >
@@ -234,7 +250,6 @@ function onMouseEnterItem(index: number) {
               <span
                 v-if="(item.bubble_count ?? 1) > 1"
                 class="meta-item meta-hit"
-                aria-describedby="dialogue-hit-note"
                 :title="hitCountTitle(item)"
               >
                 {{ item.bubble_count }} 处命中
@@ -274,7 +289,7 @@ function onMouseEnterItem(index: number) {
       <p v-if="results.length > 0" id="dialogue-hit-note" class="visually-hidden">
         一行代表一页。标注「N
         处命中」表示这一页有多句台词命中；进入阅读器后，相关度最高的那一句呼吸高亮，
-        其余命中气泡最多再描出 {{ MAX_HIGHLIGHT_BOXES - 1 }} 格。
+        其余命中气泡最多再描出 {{ MAX_HIGHLIGHT_BOXES - 1 }} 处。
       </p>
       <div class="popover-footer">
         <span class="footer-tip">上下键选择 · 回车直达画页 · 阅读器描出该页命中气泡</span>

@@ -109,11 +109,6 @@ describe('useReaderBubble', () => {
       const flooded = Array.from({ length: 20 }, (_, i) => `0.1,0.2,0.3,0.4${i % 10}`).join(';')
       expect(parseBubbleBoxes(flooded)).toHaveLength(MAX_HIGHLIGHT_BOXES - 1)
     })
-
-    it('caps the serialized side too, so maxItems is not the only guard', () => {
-      const many = Array.from({ length: 20 }, (_, i) => [0.1, 0.2, 0.3, 0.401 + i / 1000])
-      expect(serializeBubbleBoxes(many).split(';')).toHaveLength(MAX_HIGHLIGHT_BOXES - 1)
-    })
   })
 
   describe('useReaderBubble composable', () => {
@@ -200,7 +195,7 @@ describe('useReaderBubble', () => {
       })
       const { targetBubble } = useReaderBubble(route)
 
-      // 代表格语义不变：仍是定位与 callout 的那一格，siblings 只是叠加
+      // 代表气泡语义不变：仍是定位与 callout 的那一个，同页其余命中气泡只是叠加
       expect(targetBubble.value?.box).toEqual([0.4288, 0.1573, 0.5077, 0.2156])
       expect(targetBubble.value?.others).toEqual([
         [0.6066, 0.2615, 0.7077, 0.2927],
@@ -236,14 +231,14 @@ describe('useReaderBubble', () => {
     })
 
     it('promotes the first valid sibling when the representative is missing or malformed', () => {
-      // 弹层承诺了「这一页命中 N 处」，代表格缺失/畸形都不能让同页其余格跟着消失
+      // 弹层承诺了「这一页命中 N 处」，代表气泡缺失/畸形都不能让同页其余命中气泡跟着消失
       const noRep = createMockRoute({
         page: '3',
         bubble_boxes: '0.1,0.2,0.3,0.4;0.5,0.6,0.7,0.8',
       })
       const promoted = useReaderBubble(noRep).targetBubble.value
       expect(promoted?.box).toEqual([0.1, 0.2, 0.3, 0.4])
-      // 被提升的那一格不能再重复描一遍静态边
+      // 被提升的那个气泡不能再重复描一遍静态边
       expect(promoted?.others).toEqual([[0.5, 0.6, 0.7, 0.8]])
 
       const badRep = createMockRoute({
@@ -253,6 +248,22 @@ describe('useReaderBubble', () => {
         bubble_boxes: '0.5,0.6,0.7,0.8',
       })
       expect(useReaderBubble(badRep).targetBubble.value?.box).toEqual([0.5, 0.6, 0.7, 0.8])
+    })
+
+    it('drops the representative text when a sibling stands in for its box', () => {
+      // 代表句不在顶替上来的框里：callout 与读屏都不许把它标到别的气泡上
+      const route = createMockRoute({
+        page: '3',
+        bubble_box: '0.1,0.2',
+        bubble_boxes: '0.5,0.6,0.7,0.8;0.1,0.2,0.3,0.4',
+        bubble_text: '老师',
+      })
+
+      expect(useReaderBubble(route).targetBubble.value).toEqual({
+        page: 3,
+        box: [0.5, 0.6, 0.7, 0.8],
+        others: [[0.1, 0.2, 0.3, 0.4]],
+      })
     })
 
     it('falls back to the placeholder box only when no valid coordinate exists at all', () => {

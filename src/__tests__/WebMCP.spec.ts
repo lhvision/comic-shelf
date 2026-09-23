@@ -190,6 +190,19 @@ describe('WebMCP Composables', () => {
           }),
         })
 
+        // 上一次直达的气泡参数还没熄灭就换页定位：旧页的框与台词不许叠到新页上
+        mockRoute.query = {
+          page: '3',
+          bubble_box: '0.5,0.5,0.6,0.6',
+          bubble_boxes: '0.7,0.7,0.8,0.8',
+          bubble_text: '旧台词',
+          highlight_bubble: '1',
+        }
+        await locateExecute!({ page: 20, box: [0.1, 0.2, 0.3, 0.4] })
+        expect(routerReplaceMock).toHaveBeenLastCalledWith({
+          query: { page: '20', bubble_box: '0.1,0.2,0.3,0.4', highlight_bubble: '1' },
+        })
+
         // Jump chapter
         const chapterExecute = registeredTools['reader_jump_chapter']
         expect(chapterExecute).toBeDefined()
@@ -243,6 +256,9 @@ describe('WebMCP Composables', () => {
             page_index: 5,
             text: 'Found dialogue',
             box: [0.1, 0.2, 0.3, 0.4],
+            bubble_count: 3,
+            other_boxes: [[0.5, 0.6, 0.7, 0.8]],
+            rank_score: 0.87,
           },
         ],
       })
@@ -324,6 +340,33 @@ describe('WebMCP Composables', () => {
             ]),
           }),
         )
+        // 页级字段原样透传给 agent，不替后端补默认值
+        const toPayload = (res: unknown) =>
+          JSON.parse((res as { content: Array<{ text: string }> }).content[0]!.text)
+        expect(toPayload(dialogueRes).matches[0]).toEqual(
+          expect.objectContaining({
+            bubble_count: 3,
+            other_boxes: [[0.5, 0.6, 0.7, 0.8]],
+            rank_score: 0.87,
+          }),
+        )
+        vi.mocked(api.searchDialogue).mockResolvedValueOnce({
+          total: 1,
+          results: [
+            {
+              source: 'jm',
+              source_id: '123456',
+              title: 'Sample Comic',
+              page_index: 6,
+              text: 'No count',
+              box: [],
+              other_boxes: [],
+              rank_score: 1,
+            },
+          ],
+        })
+        const noCountRes = await dialogueExecute!({ query: 'No count' })
+        expect(toPayload(noCountRes).matches[0]).not.toHaveProperty('bubble_count')
 
         // 3. Test pick random and enter reader
         await randomExecute!({ openReader: true })
@@ -343,6 +386,7 @@ describe('WebMCP Composables', () => {
           source_id: '123456',
           page: 5,
           bubble_box: [0.1, 0.2, 0.3, 0.4],
+          other_boxes: [[0.5, 0.6, 0.7, 0.8]],
           bubble_text: 'Found dialogue',
         })
         expect(routerPushMock).toHaveBeenCalledWith({
@@ -350,6 +394,7 @@ describe('WebMCP Composables', () => {
           query: {
             page: '5',
             bubble_box: '0.1000,0.2000,0.3000,0.4000',
+            bubble_boxes: '0.5000,0.6000,0.7000,0.8000',
             bubble_text: 'Found dialogue',
             highlight_bubble: '1',
           },

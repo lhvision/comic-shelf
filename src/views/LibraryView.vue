@@ -167,6 +167,7 @@ const {
   dialogueError,
   dialogueQuery,
   dialogueFocusedIndex,
+  isDialogueListboxShown,
   handleSelectCommand,
   handleClearCommand,
   closeDialogueSearch,
@@ -275,19 +276,19 @@ watch([() => store.error, imageSearch.error], ([err1, err2]) => {
               role="combobox"
               aria-label="搜索书架藏书或输入 / 唤出快捷命令"
               aria-autocomplete="list"
-              :aria-expanded="isCommandMenuOpen || isDialogueOpen"
+              :aria-expanded="isCommandMenuOpen || isDialogueListboxShown"
               aria-haspopup="listbox"
               :aria-controls="
                 isCommandMenuOpen
                   ? 'search-command-menu'
-                  : isDialogueOpen
-                    ? 'dialogue-search-popover'
+                  : isDialogueListboxShown
+                    ? 'dialogue-search-listbox'
                     : undefined
               "
               :aria-activedescendant="
                 isCommandMenuOpen && commandFilteredCommands.length > 0
                   ? `cmd-opt-${commandMenuFocusedIndex}`
-                  : isDialogueOpen && dialogueResults.length > 0 && dialogueFocusedIndex >= 0
+                  : isDialogueListboxShown && dialogueFocusedIndex >= 0
                     ? `dialogue-opt-${dialogueFocusedIndex}`
                     : undefined
               "

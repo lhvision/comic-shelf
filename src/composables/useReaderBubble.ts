@@ -31,7 +31,7 @@ export interface TargetBubble {
   box: BubbleBox
   /** 命中对白文本摘要（可选） */
   text?: string
-  /** 同页其余命中气泡，仅静态描边；代表格本身不在其中 */
+  /** 同页其余命中气泡，仅静态描边；代表气泡本身不在其中 */
   others?: BubbleBox[]
 }
 
@@ -53,7 +53,7 @@ export interface UseReaderBubbleReturn {
 export const DEFAULT_BUBBLE_BOX: BubbleBox = [0.12, 0.45, 0.28, 0.68]
 
 /**
- * 一页最多描几格（代表格 + 其余格）。与后端 `MAX_PAGE_BOXES` 同值：后端按此封顶
+ * 一页最多描几处（代表气泡 + 同页其余命中气泡）。与后端 `MAX_PAGE_BOXES` 同值：后端按此封顶
  * `other_boxes`，前端再按此封顶一次，防手改 URL 或 MCP 直接投喂超长参数刷出满屏框
  */
 export const MAX_HIGHLIGHT_BOXES = 6
@@ -95,13 +95,13 @@ export function parseBubbleBox(raw: unknown): BubbleBox | null {
 }
 
 /**
- * 解析 bubble_boxes 参数：同页其余命中气泡，`;` 分隔的多个四点坐标
+ * 解析 bubble_boxes 参数：同页其余命中气泡，`;` 分隔的多个归一化矩形
  * @param raw URL query 原始值
  * @returns 合法气泡矩形数组，最多 `MAX_HIGHLIGHT_BOXES - 1` 组；
  *          单个畸形段被丢弃而不是整条放弃
  */
 export function parseBubbleBoxes(raw: unknown): BubbleBox[] {
-  if (typeof raw !== 'string' || !raw.trim()) return []
+  if (typeof raw !== 'string') return []
   return raw
     .split(';')
     .map((seg) => parseBubbleBox(seg))
@@ -112,7 +112,7 @@ export function parseBubbleBoxes(raw: unknown): BubbleBox[] {
 /**
  * 气泡坐标 → URL 参数文本（4 位小数，逗号分隔）。与 parseBubbleBox 成对，
  * 编解码的合法性校验只留这一处定义，避免浮点位数与判废标准在两个方向上漂移
- * @param box 四点归一化坐标
+ * @param box 归一化矩形 [ymin, xmin, ymax, xmax]
  * @returns 编码后的参数文本；含非有限数值或点数不足时返回 null，由调用方决定跳过
  */
 export function serializeBubbleBox(box: number[] | undefined): string | null {
@@ -123,14 +123,11 @@ export function serializeBubbleBox(box: number[] | undefined): string | null {
 }
 
 /**
- * 同页其余气泡 → `bubble_boxes` 参数文本（`;` 分隔），非法段直接丢弃。
- * 与 parseBubbleBoxes 对称封顶：`maxItems` 只是 schema 声明、不构成运行时保证，
- * 不夹就会让 MCP 拼出画面封顶而地址栏不封顶的超长 URL
+ * 同页其余命中气泡 → `bubble_boxes` 参数文本（`;` 分隔），非法段直接丢弃
  * @param boxes 后端 other_boxes 原始值
  */
 export function serializeBubbleBoxes(boxes: number[][] | undefined): string {
   return (boxes ?? [])
-    .slice(0, MAX_HIGHLIGHT_BOXES - 1)
     .map(serializeBubbleBox)
     .filter((s): s is string => s !== null)
     .join(';')
@@ -239,8 +236,8 @@ export function useReaderBubble(
 
     const siblingBoxes = parseBubbleBoxes(route.query.bubble_boxes)
 
-    // 代表格畸形时不能让同页其余格跟着消失（弹层已按「N 处命中」承诺过）：
-    // 提升第一格合法坐标作代表格，剩余仍作静态描边；一格合法坐标都没有时，
+    // 代表气泡坐标畸形时不能让同页其余命中气泡跟着消失（弹层已按「N 处命中」承诺过）：
+    // 提升第一个合法坐标顶替代表气泡，剩余仍作静态描边；一个合法坐标都没有时，
     // 才退回 highlight 标记要求的兜底框
     if (!parsedBox && siblingBoxes.length === 0 && !isHighlightRequested) {
       return null
@@ -248,6 +245,9 @@ export function useReaderBubble(
 
     const box = parsedBox ?? siblingBoxes[0] ?? DEFAULT_BUBBLE_BOX
     const others = parsedBox ? siblingBoxes : siblingBoxes.slice(1)
+    // 顶替上来的是另一个气泡，代表句并不在这个框里：此时不挂台词，
+    // 否则 callout 与读屏会把代表句标到别的气泡上
+    const isStandIn = !parsedBox && siblingBoxes.length > 0
 
     const rawText =
       typeof route.query.bubble_text === 'string'
@@ -256,7 +256,7 @@ export function useReaderBubble(
           ? route.query.text
           : undefined
 
-    const text = rawText ? rawText.trim() : undefined
+    const text = rawText && !isStandIn ? rawText.trim() : undefined
 
     return {
       page,

@@ -121,10 +121,10 @@ describe('ReaderBubbleOverlay component', () => {
     const ghosts = wrapper.findAll('.reader-bubble-ghost')
     expect(ghosts).toHaveLength(2)
     expect(ghosts[0]?.attributes('style')).toContain('top: 60.66%')
-    // 代表格仍只有一个，callout 也只挂在代表格上——siblings 不许抢主体
+    // 代表气泡仍只有一个，callout 也只挂在代表气泡上——同页其余命中气泡不许抢主体
     expect(wrapper.findAll('.reader-bubble-box')).toHaveLength(1)
     expect(wrapper.findAll('.bubble-callout')).toHaveLength(1)
-    // aria 只报画了几格，不冒用后端的命中总数（封顶时两者不等）
+    // aria 只报描出几处，不冒用后端的命中总数（封顶时两者不等）
     expect(wrapper.attributes('aria-label')).toBe('命中对白：老师（同页一并描出 2 处气泡）')
   })
 
@@ -137,7 +137,7 @@ describe('ReaderBubbleOverlay component', () => {
       },
     })
 
-    expect(wrapper.find('.reader-bubble-others').exists()).toBe(false)
+    expect(wrapper.find('.reader-bubble-ghost').exists()).toBe(false)
     expect(wrapper.attributes('aria-label')).toBe('命中对白：独句')
   })
 })

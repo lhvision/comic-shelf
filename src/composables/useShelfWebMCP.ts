@@ -209,9 +209,9 @@ export function useShelfWebMCP(options: UseShelfWebMCPOptions): UseShelfWebMCPRe
           page_index: item.page_index,
           dialogue_text: item.text,
           bubble_box: item.box,
-          bubble_count: item.bubble_count ?? 1,
-          other_boxes: item.other_boxes ?? [],
-          rank_score: item.rank_score ?? 0,
+          bubble_count: item.bubble_count,
+          other_boxes: item.other_boxes,
+          rank_score: item.rank_score,
         })),
       }
     },
@@ -373,8 +373,8 @@ export function useShelfWebMCP(options: UseShelfWebMCPOptions): UseShelfWebMCPRe
         other_boxes: {
           type: 'array',
           items: { type: 'array', items: { type: 'number' } },
-          // 与后端 MAX_PAGE_BOXES、前端 MAX_HIGHLIGHT_BOXES 同一个数：三处各写死一次
-          // 迟早漂移，这里至少由常量导出，改封顶只需改 MAX_HIGHLIGHT_BOXES 一处
+          // 前端这份与阅读器解析侧共用 MAX_HIGHLIGHT_BOXES；后端 MAX_PAGE_BOXES（检索结果与
+          // MCP 直达链接的封顶）同值但互不引用，改封顶要前后端各改一处
           maxItems: MAX_HIGHLIGHT_BOXES - 1,
           description: `可选：同页其余命中气泡坐标列表（最多 ${MAX_HIGHLIGHT_BOXES - 1} 组），阅读器只作静态描边`,
         },

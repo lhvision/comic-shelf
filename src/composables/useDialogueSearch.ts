@@ -234,7 +234,7 @@ export function useDialogueSearch(options: UseDialogueSearchOptions = {}): UseDi
 
     const queryObj: Record<string, string> = {}
     if (boxParam) queryObj.bubble_box = boxParam
-    // 同页其余命中格分号串接随跳转一起带走：高亮是 2.8 秒一次性、参数随后即被
+    // 同页其余命中气泡用分号串接、随跳转一起带走：高亮是 2.8 秒一次性、参数随后即被
     // dismissBubble 从 URL 抹掉，事后无法补取，必须一次带全
     const otherParam = serializeBubbleBoxes(item.other_boxes)
     if (otherParam) queryObj.bubble_boxes = otherParam

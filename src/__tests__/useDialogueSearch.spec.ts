@@ -54,8 +54,10 @@ describe('useDialogueSearch', () => {
           text: '老师请快看这个孩子',
           snippet: '...<mark>老师</mark>请快看这个孩子...',
           box: [0.1, 0.2, 0.3, 0.4],
+          other_boxes: [],
           lang: 'zh',
           cover: '/covers/jm/1059521.jpg',
+          rank_score: 1,
         },
       ],
       total: 1,
@@ -107,10 +109,11 @@ describe('useDialogueSearch', () => {
     scope.run(() => {
       const { results, focusedIndex, navigateNext, navigatePrev } = useDialogueSearch()
 
+      const page = { box: [0, 0, 0, 0], other_boxes: [], rank_score: 1 }
       results.value = [
-        { source: 'jm', source_id: '1', title: 'A', page_index: 1, text: 'A', box: [0, 0, 0, 0] },
-        { source: 'jm', source_id: '2', title: 'B', page_index: 2, text: 'B', box: [0, 0, 0, 0] },
-        { source: 'jm', source_id: '3', title: 'C', page_index: 3, text: 'C', box: [0, 0, 0, 0] },
+        { ...page, source: 'jm', source_id: '1', title: 'A', page_index: 1, text: 'A' },
+        { ...page, source: 'jm', source_id: '2', title: 'B', page_index: 2, text: 'B' },
+        { ...page, source: 'jm', source_id: '3', title: 'C', page_index: 3, text: 'C' },
       ]
 
       expect(focusedIndex.value).toBe(-1)
@@ -148,6 +151,8 @@ describe('useDialogueSearch', () => {
         page_index: 5,
         text: '久违的与老师外出',
         box: [0.04571, 0.04689, 0.19972, 0.13751],
+        other_boxes: [],
+        rank_score: 1,
       }
 
       navigateToResult(item, mockRouter as unknown as Router)
@@ -179,6 +184,7 @@ describe('useDialogueSearch', () => {
           text: '老师',
           box: [0.4288, 0.1573, 0.5077, 0.2156],
           other_boxes: [[0.6066, 0.2615, 0.7077, 0.2927]],
+          rank_score: 1,
         },
         mockRouter as unknown as Router,
       )
