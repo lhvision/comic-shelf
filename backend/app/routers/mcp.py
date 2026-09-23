@@ -11,8 +11,7 @@ import base64
 import json
 import logging
 import secrets
-import time
-from typing import Any, AsyncGenerator, Awaitable, Callable
+from typing import Any, AsyncGenerator, Callable
 from urllib.parse import quote, urlencode
 
 from fastapi import APIRouter, HTTPException, Query, Request, Response
@@ -28,7 +27,6 @@ from ..config import MCP_TOKEN
 from ..db import (
     MAX_PAGE_BOXES,
     create_direct_pass,
-    dialogue_vector_status,
     get_library_facets,
     get_story_context,
     query_library_index,
@@ -110,11 +108,13 @@ MCP_TOOLS: list[dict[str, Any]] = [
         "name": "search_by_meaning",
         "description": (
             "按「意思」找台词：字面完全不通时的第二条腿（搜「告白」能拿到「我喜欢你」、搜「脸红」能拿到"
-            "「满脸通红」）。返回**气泡**级命中，带页码与归一化坐标，可直接拿去阅读器描边。"
-            "分数是 `similarity`（余弦，跨查询可比），**与 search_by_dialogue 的 `rank_score` 不是一个口径**，"
-            "不要混排、不要互相当阈值用。字面命中优先用 search_by_dialogue（更快更准），本工具用于换种说法"
-            "也说得出、或需要近似表达素材的场景。语义腿未就绪时返回 `available=false` 与原因"
-            "（未装模型 / 向量待重建），那是环境状态，重试无用。"
+            "「满脸通红」）。一页一条，取该页意思最近的那个气泡，带页码与归一化坐标，可直接拿去阅读器描边。"
+            "分数是 `similarity`（余弦相似度，-1..1），**只在同一次查询的结果之间比高低**：真命中与噪声的"
+            "分数区间重叠，没有可用的绝对阈值，能检索时总会返回最近的若干条，相关与否要读台词自己判断。"
+            "它与 search_by_dialogue 的 `rank_score` 不是一个口径，不要混排、不要互相当阈值用。"
+            "字面命中优先用 search_by_dialogue（更快更准），本工具用于换种说法也说得出、或需要近似表达素材的场景。"
+            "`reason` 非空表示这次没有真正检索：`query_too_short` 换个完整点的说法再查；"
+            "`encoder_unavailable` / `vectors_missing` / `dim_mismatch`（此时 `available=false`）是环境状态，重试无用。"
         ),
         "inputSchema": {
             "type": "object",
@@ -359,7 +359,7 @@ MCP_PROMPTS: list[dict[str, Any]] = [
 # ----------------------------------------------------------------------
 # Tool Execution Registry & Modular Handlers
 # ----------------------------------------------------------------------
-async def _tool_search_by_image(arguments: dict[str, Any]) -> dict[str, Any]:
+def _tool_search_by_image(arguments: dict[str, Any]) -> dict[str, Any]:
     raw_b64 = str(arguments.get("image_base64", ""))
     if not raw_b64:
         raise ValueError("image_base64 不能为空")
@@ -428,7 +428,7 @@ def _bubble_query(d: dict[str, Any]) -> dict[str, str]:
     return query
 
 
-async def _tool_search_by_dialogue(arguments: dict[str, Any]) -> dict[str, Any]:
+def _tool_search_by_dialogue(arguments: dict[str, Any]) -> dict[str, Any]:
     text = str(arguments.get("text", "")).strip()
     if not text:
         raise ValueError("text 台词关键词不能为空")
@@ -449,7 +449,7 @@ async def _tool_search_by_dialogue(arguments: dict[str, Any]) -> dict[str, Any]:
             "authors": d.get("authors", []),
             "page_index": d["page_index"],
             "bubble_id": d.get("bubble_id"),
-            # 检索单元是气泡、展示单元是页：一行代表一整页，同页命中数与其余格一并给出
+            # 检索单元是气泡、展示单元是页：一行代表一整页，同页命中数与同页其余命中气泡一并给出
             "bubble_count": d.get("bubble_count"),
             "text": d["text"],
             "snippet": d.get("snippet", d["text"]),
@@ -474,57 +474,49 @@ async def _tool_search_by_dialogue(arguments: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-async def _tool_search_by_meaning(arguments: dict[str, Any]) -> dict[str, Any]:
+def _tool_search_by_meaning(arguments: dict[str, Any]) -> dict[str, Any]:
     meaning = str(arguments.get("meaning", "")).strip()
     if not meaning:
         raise ValueError("meaning 语义描述不能为空")
-    status = dialogue_vector_status()
-    if not status["available"]:
-        # 语义腿没装/没建是环境状态，不是查询错误：把 reason 原样交回去，比抛异常更能让
-        # 调用方改走 search_by_dialogue，而不是拿同一个问题反复重试。
-        hint = {
-            "encoder_unavailable": "本机未放置语义编码器模型，只有关键词检索可用",
-            "vectors_missing": "模型已就绪但台词向量还没建，请调用 POST /api/search/dialogue-vectors/rebuild",
-            "dim_mismatch": "台词向量是别的模型编的（维度不一致），需重建向量库",
-        }.get(status["reason"], status["reason"])
-        return {
-            "content": [{"type": "text", "text": json.dumps(
-                {"query": meaning, "available": False, "reason": status["reason"], "hint": hint},
-                ensure_ascii=False, indent=2)}],
-            "isError": False,
-        }
-    hits = search_dialogues_semantic(
+    out = search_dialogues_semantic(
         query=meaning,
         source=arguments.get("source"),
-        limit=int(arguments.get("limit", 5)),
+        limit=max(1, min(int(arguments.get("limit", 5)), 50)),
         is_guest=False,
         user_id="curator",
     )
     payload = []
-    for h in hits:
+    for h in out["results"]:
         url = f"/comic/{h['source']}/{h['source_id']}/read/{h['page_index']}"
         query = _bubble_query(h)
         if query:
             url = f"{url}?{urlencode(query)}"
         payload.append({**h, "reader_url": url})
+    body: dict[str, Any] = {
+        "query": meaning,
+        "available": out["available"],
+        "reason": out["reason"],
+        "total_matched": len(payload),
+        "scoring": "similarity 为余弦相似度，-1..1，只在同一次查询内比高低，没有可用的绝对阈值；"
+        "与 search_by_dialogue 的 rank_score 不同口径，禁止混排",
+        "hits": payload,
+    }
+    if out["reason"]:
+        # 没走检索时把原因讲成人话交回去：环境状态重试无用，该改走 search_by_dialogue；
+        # 问题太短则是换个说法就能查，两种都不能让调用方误读成"库里没有"
+        body["hint"] = {
+            "encoder_unavailable": "本机未放置语义编码器模型，只有关键词检索可用",
+            "vectors_missing": "模型已就绪但台词向量还没建，需要馆长调用 POST /api/search/dialogue-vectors/rebuild",
+            "dim_mismatch": "台词向量是别的模型编的（维度不一致），需要馆长重建向量库",
+            "query_too_short": "问题不足 2 个字，换一个完整点的说法再查",
+        }.get(out["reason"], out["reason"])
     return {
-        "content": [
-            {
-                "type": "text",
-                "text": json.dumps({
-                    "query": meaning,
-                    "available": True,
-                    "total_matched": len(payload),
-                    "scoring": "similarity 为余弦距离，跨查询可比；与 search_by_dialogue 的 rank_score 不同口径，禁止混排",
-                    "hits": payload,
-                }, ensure_ascii=False, indent=2),
-            }
-        ],
+        "content": [{"type": "text", "text": json.dumps(body, ensure_ascii=False, indent=2)}],
         "isError": False,
     }
 
 
-async def _tool_query_shelf(arguments: dict[str, Any]) -> dict[str, Any]:
+def _tool_query_shelf(arguments: dict[str, Any]) -> dict[str, Any]:
     keyword = arguments.get("keyword")
     tag = arguments.get("tag")
     tags = arguments.get("tags")
@@ -586,7 +578,7 @@ async def _tool_query_shelf(arguments: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-async def _tool_get_comic_detail(arguments: dict[str, Any]) -> dict[str, Any]:
+def _tool_get_comic_detail(arguments: dict[str, Any]) -> dict[str, Any]:
     source = str(arguments.get("source", "")).strip()
     source_id = str(arguments.get("source_id", "")).strip()
     if not source or not source_id:
@@ -643,7 +635,7 @@ async def _tool_get_comic_detail(arguments: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-async def _tool_recommend_unread(arguments: dict[str, Any]) -> dict[str, Any]:
+def _tool_recommend_unread(arguments: dict[str, Any]) -> dict[str, Any]:
     limit = max(1, min(int(arguments.get("limit", 5)), 20))
     tag = arguments.get("tag")
     source = arguments.get("source")
@@ -687,7 +679,7 @@ async def _tool_recommend_unread(arguments: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-async def _tool_create_direct_pass(arguments: dict[str, Any]) -> dict[str, Any]:
+def _tool_create_direct_pass(arguments: dict[str, Any]) -> dict[str, Any]:
     source = str(arguments.get("source", "")).strip()
     source_id = str(arguments.get("source_id", "")).strip()
     page_index = max(1, int(arguments.get("page_index", 1)))
@@ -704,7 +696,7 @@ async def _tool_create_direct_pass(arguments: dict[str, Any]) -> dict[str, Any]:
         }
 
     # 直达链接是给访客看的，隐藏本就别从智能体这条路上漏出去；要真分享，由人在 Web 端点一下
-    if getattr(meta, "hidden_from_guest", False):
+    if meta.hidden_from_guest:
         raise ValueError(f"作品 {source}/{source_id} 已标记为对访客隐藏，MCP 通道拒绝为其签发直达阅读链接")
 
     safe_page = min(page_index, max(1, meta.page_count))
@@ -739,7 +731,7 @@ async def _tool_create_direct_pass(arguments: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-async def _tool_get_shelf_stats(arguments: dict[str, Any]) -> dict[str, Any]:
+def _tool_get_shelf_stats(arguments: dict[str, Any]) -> dict[str, Any]:
     facets = get_library_facets(is_curator=True)
     stats = facets.get("stats", {})
     im_status = check_imsearch_status()
@@ -763,7 +755,7 @@ async def _tool_get_shelf_stats(arguments: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-async def _tool_get_story_context(arguments: dict[str, Any]) -> dict[str, Any]:
+def _tool_get_story_context(arguments: dict[str, Any]) -> dict[str, Any]:
     source = str(arguments.get("source", "")).strip()
     source_id = str(arguments.get("source_id", "")).strip()
     if not source or not source_id:
@@ -790,7 +782,7 @@ async def _tool_get_story_context(arguments: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-TOOL_HANDLERS: dict[str, Callable[[dict[str, Any]], Awaitable[dict[str, Any]]]] = {
+TOOL_HANDLERS: dict[str, Callable[[dict[str, Any]], dict[str, Any]]] = {
     "search_by_image": _tool_search_by_image,
     "search_by_dialogue": _tool_search_by_dialogue,
     "search_by_meaning": _tool_search_by_meaning,
@@ -812,7 +804,9 @@ async def execute_tool(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
             "isError": True,
         }
     try:
-        return await handler(arguments)
+        # 工具里全是同步阻塞调用（识图 urllib 超时 10 秒、SQLite、numpy），服务又只有一个 worker：
+        # 留在事件循环上跑，一次慢调用就卡住全站请求与所有 SSE。与 REST 识图端点一样丢进线程池
+        return await asyncio.to_thread(handler, arguments)
     except Exception as exc:
         logger.warning("MCP tool execution error for '%s': %s", name, exc)
         return {
@@ -824,7 +818,7 @@ async def execute_tool(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
 # ----------------------------------------------------------------------
 # Resource Content Provider Registry
 # ----------------------------------------------------------------------
-async def _read_shelf_stats() -> dict[str, Any]:
+def _read_shelf_stats() -> dict[str, Any]:
     facets = get_library_facets(is_curator=True)
     return {
         "contents": [
@@ -837,7 +831,7 @@ async def _read_shelf_stats() -> dict[str, Any]:
     }
 
 
-async def _read_shelf_providers() -> dict[str, Any]:
+def _read_shelf_providers() -> dict[str, Any]:
     return {
         "contents": [
             {
@@ -849,7 +843,7 @@ async def _read_shelf_providers() -> dict[str, Any]:
     }
 
 
-async def _read_shelf_recent() -> dict[str, Any]:
+def _read_shelf_recent() -> dict[str, Any]:
     items, _ = query_library_index(
         user_id="curator",
         is_curator=True,
@@ -879,7 +873,7 @@ async def _read_shelf_recent() -> dict[str, Any]:
     }
 
 
-RESOURCE_HANDLERS: dict[str, Callable[[], Awaitable[dict[str, Any]]]] = {
+RESOURCE_HANDLERS: dict[str, Callable[[], dict[str, Any]]] = {
     "shelf://stats": _read_shelf_stats,
     "shelf://providers": _read_shelf_providers,
     "shelf://recent": _read_shelf_recent,
@@ -891,7 +885,8 @@ async def read_resource(uri: str) -> dict[str, Any]:
     handler = RESOURCE_HANDLERS.get(uri)
     if not handler:
         raise ValueError(f"Resource not found: {uri}")
-    return await handler()
+    # 同 execute_tool：资源读取也是同步 SQLite 查询，不能占着事件循环
+    return await asyncio.to_thread(handler)
 
 
 # ----------------------------------------------------------------------
@@ -1066,11 +1061,14 @@ def _require_mcp_auth(request: Request) -> None:
     配了子凭据就不再认机器密钥：那把钥匙同时握在 OCR 流水线手里（入库与伴生同步都要用），
     外发到智能体配置里等于连"往库里写东西"一起交出去，而且换它得连流水线一起重启。
 
-    失败尝试与 `/api/auth/login` 共用同一把 IP 锁：全站中间件对 `/api/mcp` 是提前放行的，
-    这里不计数就没有任何东西挡得住对着密钥的反复猜测。
+    失败尝试走与 `/api/auth/login` 同一套 IP 锁规则，但单独记在 `mcp:<ip>` 键下：全站中间件对
+    `/api/mcp` 是提前放行的，这里不计数就没有任何东西挡得住对着密钥的反复猜测；而与网页登录共用
+    一个计数的话，一个配错凭据、不停重连的智能体会把同 IP 的馆长网页登录一起锁死。
     """
     ip = get_client_ip(request)
-    if is_ip_login_locked(ip):
+    # 取不到 IP 时保持空键（abuse 对空键不计数），免得所有无 IP 请求挤进同一个 "mcp:" 桶互相锁死
+    key = f"mcp:{ip}" if ip else ""
+    if is_ip_login_locked(key):
         raise HTTPException(
             status_code=429,
             detail="MCP 凭据尝试过于频繁，该网络地址已临时锁定 5 分钟，请稍后再试",
@@ -1086,15 +1084,14 @@ def _require_mcp_auth(request: Request) -> None:
             granted = is_machine(request)
 
     if granted:
-        clear_ip_login_failures(ip)
+        clear_ip_login_failures(key)
         return
 
-    record_ip_login_failure_and_check_lock(ip)
+    record_ip_login_failure_and_check_lock(key)
     raise HTTPException(
         status_code=401,
-        detail="未授权访问：MCP 接口需要馆长口令"
-        + ("或 MCP 子凭据" if MCP_TOKEN else " / 机器密钥")
-        + " (Curator or MCP Credential Required)",
+        # 文案固定：若随是否配置子凭据而变，匿名者凭一次 401 就能摸清机器密钥在 MCP 面还灵不灵
+        detail="未授权访问：MCP 接口需要馆长口令或 MCP 凭据 (Curator or MCP Credential Required)",
         headers={"WWW-Authenticate": "Bearer"},
     )
 
@@ -1175,8 +1172,9 @@ async def mcp_messages_endpoint(
         queue = _mcp_sessions.get(session_id)
 
     if queue is None:
-        # 认不出活会话时先要凭据，再报 404：不让匿名请求拿 401/404 的差别探测 session 存在性
-        _require_mcp_auth(request)
+        # 直接 404，不验凭据也不计失败：会话表只在内存里，服务一重启客户端手里的旧 session_id 全部作废，
+        # 而续话本就不带凭据——在这里验凭据，断线后每条消息都会记成一次失败，几条就把该 IP 锁住。
+        # session_id 是 128bit 随机值，拿 401/404 的差别去猜活会话并不现实
         raise HTTPException(status_code=404, detail="MCP session not found or expired")
 
     try:

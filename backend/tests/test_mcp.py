@@ -599,7 +599,7 @@ def test_mcp_scoped_credential_and_hidden_book_refusal():
         assert rpc({"Authorization": "Bearer super-secret-curator-key"}).status_code == 200
 
         args = {"source": "local", "source_id": "mcp_test_comic", "page_index": 3}
-        minted = asyncio.run(mcp_mod._tool_create_direct_pass(args))
+        minted = mcp_mod._tool_create_direct_pass(args)
         assert minted["isError"] is False
         assert json.loads(minted["content"][0]["text"])["token"], "可见本被误伤，签不出链接"
 
@@ -612,7 +612,7 @@ def test_mcp_scoped_credential_and_hidden_book_refusal():
 
         with patch.object(mcp_mod.store, "load_meta", side_effect=hidden):
             try:
-                asyncio.run(mcp_mod._tool_create_direct_pass(args))
+                mcp_mod._tool_create_direct_pass(args)
                 assert False, "对访客隐藏的本子仍然经 MCP 签出了直达阅读链接"
             except ValueError as exc:
                 assert "隐藏" in str(exc), exc
@@ -626,8 +626,10 @@ def test_mcp_scoped_credential_and_hidden_book_refusal():
 
 
 def test_mcp_handshake_url_is_credential_free_and_failures_get_locked():
-    """握手 URL 不许回显凭据；活会话凭 session_id 续话；反复试错要进 IP 锁。"""
+    """握手 URL 不许回显凭据；活会话凭 session_id 续话；认不出的会话直接 404；反复试错要进 IP 锁。"""
     from fastapi import HTTPException
+
+    import app.abuse as abuse_mod
 
     tmp_dir = setup_test_env()
     auth_mod.AUTH_SECRET = "super-secret-curator-key"
@@ -673,19 +675,21 @@ def test_mcp_handshake_url_is_credential_free_and_failures_get_locked():
         )
         assert ok.status_code == 202, f"活会话续话被拒: {ok.status_code}"
 
-        # 3. 认不出的 session 又拿不出凭据 → 401（不给匿名者用 401/404 差别探测会话是否存在）
+        # 3. 认不出的 session 直接 404，不验凭据也不计失败：服务重启后客户端拿旧 session_id 续话，
+        #    不该几条消息就把自己的 IP 锁住
         try:
             await mcp_messages_endpoint(
                 from_ip(make_mock_request(path="/api/mcp/messages", method="POST", json_body=payload), stranger_ip),
                 "deadbeefdeadbeefdeadbeefdeadbeef",
             )
-            assert False, "匿名请求不该拿到 404"
+            assert False, "认不出的会话应当 404"
         except HTTPException as exc:
-            assert exc.status_code == 401, exc.status_code
+            assert exc.status_code == 404, exc.status_code
+        assert f"mcp:{stranger_ip}" not in abuse_mod._login_failed_history, "认不出的会话被记成了凭据失败"
 
         await gen.aclose()
 
-        # 4. 反复试错要撞锁：与 /api/auth/login 共用同一把 IP 锁（10 次/60 秒 → 锁 5 分钟）
+        # 4. 反复试错要撞锁：与 /api/auth/login 同一套规则（10 次/60 秒 → 锁 5 分钟），但分开计数
         for i in range(10):
             try:
                 await mcp_direct_rpc_endpoint(
@@ -719,15 +723,76 @@ def test_mcp_handshake_url_is_credential_free_and_failures_get_locked():
         except HTTPException as exc:
             assert exc.status_code == 429, exc.status_code
             assert exc.headers.get("Retry-After") == "300"
+        # 配错凭据的智能体不许连带锁掉同 IP 的馆长网页登录
+        assert not abuse_mod.is_ip_login_locked(agent_ip), "MCP 试错锁到了同 IP 的 /api/auth/login"
 
     try:
         asyncio.run(flow())
         print("  ✓ MCP credential-free handshake and failure lockout passed")
     finally:
-        clear_ip_login_failures(agent_ip)
-        clear_ip_login_failures(stranger_ip)
+        clear_ip_login_failures(f"mcp:{agent_ip}")
         auth_mod.AUTH_SECRET = ""
         shutil.rmtree(tmp_dir, ignore_errors=True)
+
+
+def test_mcp_handlers_run_off_event_loop():
+    """工具与资源都是同步阻塞调用，必须丢进线程池：服务只有一个 worker，占着事件循环就卡住全站与所有 SSE。"""
+    import threading
+    from unittest.mock import patch
+
+    seen: list[threading.Thread] = []
+
+    def probe(*_args):
+        seen.append(threading.current_thread())
+        return {"content": [], "isError": False}
+
+    with patch.dict(mcp_mod.TOOL_HANDLERS, {"get_shelf_stats": probe}), patch.dict(
+        mcp_mod.RESOURCE_HANDLERS, {"shelf://stats": probe}
+    ):
+        asyncio.run(execute_tool("get_shelf_stats", {}))
+        asyncio.run(mcp_mod.read_resource("shelf://stats"))
+    assert len(seen) == 2 and threading.main_thread() not in seen, "MCP 处理器仍在事件循环线程上同步执行"
+    print("  ✓ MCP handlers run off the event loop passed")
+
+
+def test_mcp_search_by_meaning_forwards_reason():
+    """语义工具必须把 available / reason 原样交给 agent：没走检索与"库里没有"在回包上要长得不一样。"""
+    from unittest.mock import patch
+
+    calls: list[dict] = []
+
+    def fake(**kwargs):
+        calls.append(kwargs)
+        return fake.out
+
+    def run(args: dict) -> dict:
+        res = asyncio.run(execute_tool("search_by_meaning", args))
+        assert res["isError"] is False, res
+        return json.loads(res["content"][0]["text"])
+
+    with patch.object(mcp_mod, "search_dialogues_semantic", fake):
+        fake.out = {"results": [], "available": False, "reason": "encoder_unavailable"}
+        off = run({"meaning": "告白"})
+        assert off["available"] is False and off["reason"] == "encoder_unavailable" and off["hint"], off
+
+        fake.out = {"results": [], "available": True, "reason": "query_too_short"}
+        short = run({"meaning": "告"})
+        assert short["available"] is True and short["reason"] == "query_too_short" and short["hint"], short
+
+        fake.out = {
+            "results": [{
+                "source": "local", "source_id": "mcp_test_comic", "page_index": 3, "bubble_id": 1,
+                "text": "我喜欢你", "box": [0.1, 0.2, 0.3, 0.4], "similarity": 0.8123,
+            }],
+            "available": True,
+            "reason": "",
+        }
+        ok = run({"meaning": "告白", "limit": 500})
+        assert ok["reason"] == "" and "hint" not in ok and ok["total_matched"] == 1, ok
+        assert ok["hits"][0]["reader_url"].startswith("/comic/local/mcp_test_comic/read/3?"), ok["hits"][0]
+        assert "跨查询可比" not in ok["scoring"] and "余弦相似度" in ok["scoring"], ok["scoring"]
+    assert calls[-1]["limit"] == 50, f"limit 没按 schema 夹到 50: {calls[-1]}"
+    print("  ✓ MCP search_by_meaning forwards available/reason passed")
 
 
 if __name__ == "__main__":
@@ -744,4 +809,6 @@ if __name__ == "__main__":
     print("  ✓ MCP HTTP direct RPC and Single-Book Sandbox passed")
     test_mcp_scoped_credential_and_hidden_book_refusal()
     test_mcp_handshake_url_is_credential_free_and_failures_get_locked()
+    test_mcp_handlers_run_off_event_loop()
+    test_mcp_search_by_meaning_forwards_reason()
     print("All MCP Server tests passed successfully!")

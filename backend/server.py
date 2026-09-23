@@ -1,10 +1,14 @@
 import argparse
 import logging
 import os
+import re
 
 from pathlib import Path
 
 import uvicorn
+
+# 分享直达链接的票据（?token= / ?temp_token=）、只能在 URL 里填凭据的 MCP 客户端与 MCP 会话号都可能出现在请求行里
+_SECRET_QUERY = re.compile(r"([?&](?:token|temp_token|session_id)=)[^&]*")
 
 
 class QuietAccessLogFilter(logging.Filter):
@@ -22,6 +26,10 @@ class QuietAccessLogFilter(logging.Filter):
                     return False
             except (IndexError, ValueError, TypeError):
                 pass
+            # 访问日志默认记完整请求行并长期留存：凭据类参数的值打码，其余参数原样保留便于排障
+            args = list(record.args)
+            args[2] = _SECRET_QUERY.sub(r"\1***", str(args[2]))
+            record.args = tuple(args)
         return True
 
 

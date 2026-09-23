@@ -525,11 +525,11 @@ class DialogueSearchResponse(BaseModel):
 
 
 class SemanticDialogueItem(BaseModel):
-    """语义检索的一条命中：**气泡**级，不带 snippet。
+    """语义检索的一条命中：一页一条，取该页相似度最高的气泡，不带 snippet。
 
     与 `DialogueSearchItem` 分开建模是有意的——语义命中没有"字面命中区间"可高亮，
-    分数也不是同一个口径（`similarity` 是余弦，跨查询可比；`rank_score` 是池内
-    min-max 归一，换一次查询就换一把尺子）。合成一个模型迟早被下游当成同一个数用。
+    分数也不是同一个口径（`similarity` 是余弦相似度，-1..1，只在同一次查询内比高低；
+    `rank_score` 是池内 min-max 归一，换一次查询就换一把尺子）。合成一个模型迟早被下游当成同一个数用。
     """
 
     source: str
@@ -549,7 +549,8 @@ class SemanticDialogueItem(BaseModel):
 class SemanticDialogueResponse(BaseModel):
     results: list[SemanticDialogueItem] = Field(default_factory=list)
     total: int = 0
-    # 空结果分两种，调用方必须能区分："没有意思相近的台词" 与 "这台机器没装语义编码器"
+    # 没有分数下限，能检索时总有结果，"这次没走检索"只能看 reason：
+    # encoder_unavailable / vectors_missing / dim_mismatch（available=False）、query_too_short（available=True）
     available: bool = True
     reason: str = ""
 

@@ -428,6 +428,29 @@ def test_quiet_access_log_filter():
     assert f.filter(rec_img_200) is True
 
 
+def test_access_log_redacts_query_credentials():
+    """访问日志长期留存：请求行里凭据类查询参数的值必须打码，其余参数一个字都不能动。"""
+    import logging
+    from server import QuietAccessLogFilter
+
+    rec = logging.LogRecord(
+        "uvicorn.access", logging.INFO, "", 0,
+        '%s - "%s %s HTTP/%s" %d',
+        (
+            "10.0.0.3",
+            "POST",
+            "/api/mcp/messages?session_id=abc123&token=s3cret&page=2&temp_token=t0k&my_token=keep",
+            "1.1",
+            202,
+        ),
+        None,
+    )
+    assert QuietAccessLogFilter().filter(rec) is True
+    line = rec.getMessage()
+    assert "abc123" not in line and "s3cret" not in line and "t0k" not in line, f"凭据进了访问日志: {line}"
+    assert "/api/mcp/messages?session_id=***&token=***&page=2&temp_token=***&my_token=keep" in line, line
+
+
 def test_stepped_covers():
     from PIL import Image
     from app.storage import ComicStore
@@ -516,6 +539,7 @@ if __name__ == "__main__":
     test_guest_visibility_and_discovery_auth()
     test_auth_and_security_middleware()
     test_quiet_access_log_filter()
+    test_access_log_redacts_query_credentials()
     test_stepped_covers()
     test_custom_cookie_names()
     print("All backend auth, middleware & hotlink protection tests passed!")

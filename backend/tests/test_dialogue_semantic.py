@@ -24,6 +24,8 @@ from tests.test_dialogue_fts import make_comic_item
 # 「告白」与「我喜欢你」没有任何共同字符，只有向量能把它们拉到一起。
 SEMANTIC = {
     "我喜欢你": (1.0, 0.0),
+    # 与「告白」也近、但不如「我喜欢你」近：同页两句都像时，代表句必须是最像的那句
+    "我也喜欢你": (0.9, 0.1),
     "告白": (0.98, 0.02),
     "今天天气不错": (0.02, 1.0),
     "外面下雨了吧": (0.0, 1.0),
@@ -108,15 +110,37 @@ def test_semantic_vectors_built_with_sync_and_searchable():
 
             # 字面完全不通：「告白」与「我喜欢你」没有一个共同字符，关键词出口必然 0 命中
             assert db_mod.search_dialogues("告白", source="local") == [], "前提不成立：关键词竟然搜到了"
-            hits = db_mod.search_dialogues_semantic("告白", source="local", limit=10)
+            out = db_mod.search_dialogues_semantic("告白", source="local", limit=10)
+            assert out["available"] is True and out["reason"] == "", out
+            hits = out["results"]
             assert [h["text"] for h in hits] == ["我喜欢你", "今天天气不错"], hits
             assert hits[0]["similarity"] > 0.99 and hits[1]["similarity"] < 0.1, hits
             assert hits[0]["page_index"] == 1 and hits[0]["box"], hits[0]
             # 语义命中没有字面区间可高亮，也不该借用 rank_score 那把池内标尺
             assert "snippet" not in hits[0] and "rank_score" not in hits[0], hits[0].keys()
 
-            weather = db_mod.search_dialogues_semantic("今天天气不错", source="local", limit=10)
+            weather = db_mod.search_dialogues_semantic("今天天气不错", source="local", limit=10)["results"]
             assert weather[0]["text"] == "今天天气不错" and weather[0]["similarity"] > 0.99, weather
+    finally:
+        shutil.rmtree(temp_dir, ignore_errors=True)
+
+
+def test_semantic_one_row_per_page_and_short_query():
+    """同一页的几句不许挤占前几名：一页只留最像的那句；问题太短要明说，不能装成"库里没有"。"""
+    temp_dir = Path(tempfile.mkdtemp())
+    try:
+        _setup(temp_dir)
+        dims, docs, query = _patched_encoder()
+        with dims, docs, query:
+            _comic(temp_dir, "c_page", [(1, "我也喜欢你"), (1, "我喜欢你"), (2, "今天天气不错")])
+            assert _vector_count("c_page") == 3, "同页两句都该建向量，去重发生在检索时"
+
+            out = db_mod.search_dialogues_semantic("告白", source="local", limit=10)
+            got = [(h["page_index"], h["text"]) for h in out["results"]]
+            assert got == [(1, "我喜欢你"), (2, "今天天气不错")], f"同页命中没按页去重、或代表句不是最像的那句: {got}"
+
+            short = db_mod.search_dialogues_semantic("告", source="local")
+            assert short == {"results": [], "available": True, "reason": "query_too_short"}, short
     finally:
         shutil.rmtree(temp_dir, ignore_errors=True)
 
@@ -133,9 +157,9 @@ def test_semantic_guest_filter_and_delete_hook():
             db_mod.upsert_comic_index(make_comic_item("local", "c_pub", "公开本"))
             db_mod.upsert_comic_index(make_comic_item("local", "c_hidden", "隐藏本", hidden_from_guest=1))
 
-            curator = db_mod.search_dialogues_semantic("告白", limit=10)
+            curator = db_mod.search_dialogues_semantic("告白", limit=10)["results"]
             assert {h["source_id"] for h in curator} == {"c_pub", "c_hidden"}, curator
-            guest = db_mod.search_dialogues_semantic("告白", limit=10, is_guest=True)
+            guest = db_mod.search_dialogues_semantic("告白", limit=10, is_guest=True)["results"]
             assert {h["source_id"] for h in guest} == {"c_pub"}, "访客看到了隐藏本的台词"
 
             db_mod.delete_comic_dialogues("local", "c_pub")
@@ -156,7 +180,9 @@ def test_semantic_degrades_without_encoder():
             assert _vector_count("c_none") == 0, "没有编码器却留下了向量"
             status = db_mod.dialogue_vector_status()
             assert not status["available"] and status["reason"] == "encoder_unavailable", status
-            assert db_mod.search_dialogues_semantic("告白") == []
+            # 检索函数自己认状态：调用方不先查 status 也拿不到一个装成"没找到"的空列表
+            off = db_mod.search_dialogues_semantic("告白")
+            assert off == {"results": [], "available": False, "reason": "encoder_unavailable"}, off
             rebuilt = db_mod.rebuild_dialogue_vectors()
             assert rebuilt["ok"] is False and rebuilt["reason"] == "encoder_unavailable", rebuilt
     finally:
@@ -175,6 +201,8 @@ def test_semantic_reports_stale_vector_store():
                 conn.execute("DELETE FROM comic_dialogue_vectors")
             status = db_mod.dialogue_vector_status()
             assert not status["available"] and status["reason"] == "vectors_missing", status
+            stale = db_mod.search_dialogues_semantic("告白")
+            assert stale["available"] is False and stale["reason"] == "vectors_missing", stale
 
             db_mod.embed_comic_dialogues("local", "c_stale")
             with db_mod.get_dialogue_db() as conn:
@@ -257,6 +285,7 @@ def test_semantic_http_endpoints_through_middleware():
 if __name__ == "__main__":
     print("Running dialogue semantic retrieval tests...")
     test_semantic_vectors_built_with_sync_and_searchable()
+    test_semantic_one_row_per_page_and_short_query()
     test_semantic_guest_filter_and_delete_hook()
     test_semantic_degrades_without_encoder()
     test_semantic_reports_stale_vector_store()

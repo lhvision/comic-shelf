@@ -8,7 +8,6 @@ from urllib.parse import quote
 from fastapi import APIRouter, HTTPException, Request, Response
 
 from ..abuse import (
-    clear_ip_login_failures,
     clear_pin_failures,
     is_ip_login_locked,
     is_pin_locked,
@@ -115,18 +114,18 @@ def auth_login(req: LoginRequest, request: Request, response: Response) -> Login
     ip = get_client_ip(request)
     if is_ip_login_locked(ip):
         raise HTTPException(status_code=429, detail="口令尝试过于频繁，该网络地址已临时锁定 5 分钟，请稍后再试")
+    # 登录成功一律不清零失败计数，只等 60 秒窗口自然过期：否则手握直达票据或访客证的人每试 9 次
+    # 就用自己那张票登录一次把计数清掉，对馆长口令可以无限试下去
 
     is_sec = is_request_secure(request)
     secret = req.secret.strip()
     if AUTH_SECRET and secrets.compare_digest(secret, AUTH_SECRET):
-        clear_ip_login_failures(ip)
         set_auth_cookie(response, AUTH_SECRET, secure=is_sec)
         clear_device_cookie(response, secure=is_sec)  # Clean up any lingering guest device session
         return LoginResponse(ok=True, token=AUTH_SECRET, role="admin", username="馆长", user_id="curator")
 
     dp = get_direct_pass(secret)
     if dp is not None:
-        clear_ip_login_failures(ip)
         set_auth_cookie(response, dp["token"], secure=is_sec, max_age=dp.get("expires_in", 7200))
         clear_device_cookie(response, secure=is_sec)
         return LoginResponse(
@@ -174,7 +173,6 @@ def auth_login(req: LoginRequest, request: Request, response: Response) -> Login
                     raise HTTPException(status_code=429, detail=msg)
                 raise HTTPException(status_code=400, detail=msg)
 
-            clear_ip_login_failures(ip)
             set_auth_cookie(response, claimed["token"], secure=is_sec, max_age=_calc_pass_cookie_ttl(claimed))
             set_device_cookie(response, dev["device_token"], secure=is_sec)
             return LoginResponse(
@@ -197,7 +195,6 @@ def auth_login(req: LoginRequest, request: Request, response: Response) -> Login
                 touch_device_active(dev["id"], ip)
 
         if dev is not None:
-            clear_ip_login_failures(ip)
             set_auth_cookie(response, pass_item["token"], secure=is_sec, max_age=_calc_pass_cookie_ttl(pass_item))
             set_device_cookie(response, dev["device_token"], secure=is_sec)
             return LoginResponse(
@@ -232,7 +229,6 @@ def auth_login(req: LoginRequest, request: Request, response: Response) -> Login
             raise HTTPException(status_code=401, detail="PIN 码错误，请重新输入")
 
         clear_pin_failures(pass_item["id"], ip)
-        clear_ip_login_failures(ip)
 
         try:
             dev = register_guest_device(pass_item["id"], user_agent=ua, ip=ip)

@@ -5,7 +5,6 @@ from typing import Any
 from fastapi import APIRouter, Request
 
 from ..auth import is_auth_required, require_curator
-from ..config import DATA_DIR, LIBRARY_DIR
 from ..gate import (
     _env_explicit,
     get_download_concurrency,

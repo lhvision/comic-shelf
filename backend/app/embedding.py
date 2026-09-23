@@ -5,7 +5,8 @@
 语料向量也直接在本机算，不必像画页 OCR 那样走算存分离。
 
 模型缺失时所有函数返回 `None` 而不是抛异常：语义召回是增量能力，装不上模型的环境必须照常
-提供关键词检索（与 `storage/pdf.py` 的扉页分话同一套降级口径）。
+提供关键词检索（与 `storage/pdf.py` 的扉页分话同一套降级口径）。numpy 同样用到才导入：
+基础镜像不带它，模块级导入会让 `*/ocr/sync` 在关键词入库之后抛 500；缺了它就按编码器不可用处理。
 """
 from __future__ import annotations
 
@@ -13,10 +14,12 @@ import logging
 import os
 import threading
 from pathlib import Path
-
-import numpy as np
+from typing import TYPE_CHECKING
 
 from .config import DATA_DIR
+
+if TYPE_CHECKING:
+    import numpy as np
 
 logger = logging.getLogger(__name__)
 
@@ -77,7 +80,12 @@ def _load():
 
 
 def _feed(sess, encoded):
-    """把 tokenizers 的输出铺成 numpy 批次，并按模型实际声明的输入组装 feed。"""
+    """把 tokenizers 的输出铺成 numpy 批次，并按模型实际声明的输入组装 feed。
+
+    `_load` 的探针也走这里，所以缺 numpy 会在它的 try 里被接住，记成编码器不可用。
+    """
+    import numpy as np
+
     n = max(len(e.ids) for e in encoded)
     ids = np.zeros((len(encoded), n), dtype="int64")
     mask = np.zeros((len(encoded), n), dtype="int64")
@@ -101,6 +109,8 @@ def encode_documents(texts: list[str], batch: int = 64) -> np.ndarray | None:
     sess, tok = _load()
     if sess is None or not texts:
         return None
+    import numpy as np
+
     out = np.empty((len(texts), _DIM or 0), dtype=np.float32)
     for i in range(0, len(texts), batch):
         chunk = texts[i : i + batch]
@@ -119,6 +129,8 @@ def encode_query(text: str) -> np.ndarray | None:
     sess, tok = _load()
     if sess is None:
         return None
+    import numpy as np
+
     encoded = tok.encode_batch([QUERY_INSTRUCTION + clean])
     cls = sess.run(None, _feed(sess, encoded))[0][:, 0, :]
     return (cls[0] / max(float(np.linalg.norm(cls[0])), 1e-9)).astype(np.float32)

@@ -8,7 +8,6 @@ from fastapi import APIRouter, File, HTTPException, Query, Request, UploadFile
 from ..auth import can_read, get_current_user_id, is_curator, is_machine, require_curator
 from ..db import (
     STORY_CONTEXT_MAX_LINES,
-    dialogue_vector_status,
     get_story_context,
     rebuild_dialogue_vectors,
     search_dialogues,
@@ -99,33 +98,29 @@ def search_dialogue_semantic_endpoint(
 
     空结果必须能分辨原因，所以响应带 `available`/`reason`：
     `encoder_unavailable` = 这台机器没放语义模型（关键词检索不受影响）、
-    `vectors_missing` / `dim_mismatch` = 向量库落后或换过模型，需调下比重建接口。
+    `vectors_missing` / `dim_mismatch` = 向量库落后或换过模型，需要调一次重建接口、
+    `query_too_short` = 问题不足 2 个字（语义腿是好的）。
     """
     if not can_read(request):
         raise HTTPException(status_code=401, detail="未授权访问，需要提供有效的通行口令")
-    status = dialogue_vector_status()
-    if not status["available"]:
-        return SemanticDialogueResponse(results=[], total=0, available=False, reason=status["reason"])
-
-    results = search_dialogues_semantic(
+    out = search_dialogues_semantic(
         query=q if isinstance(q, str) else "",
         source=source.strip() if isinstance(source, str) and source.strip() else None,
         limit=limit if isinstance(limit, int) else 20,
         is_guest=not is_curator(request),
         user_id=get_current_user_id(request),
     )
-    return SemanticDialogueResponse(results=results, total=len(results))
+    return SemanticDialogueResponse(total=len(out["results"]), **out)
 
 
 @router.post("/api/search/dialogue-vectors/rebuild", response_model=DialogueVectorsResponse)
 def rebuild_dialogue_vectors_endpoint(request: Request) -> DialogueVectorsResponse:
-    """全库重编台词向量（真库 7544 行实测 CPU 41 秒）。只对馆长与 Machine Token 开放。
+    """全库重编台词向量（整库在 CPU 上要跑几十秒）。只对馆长开放：机器密钥的这个 POST 在全站中间件就被 403 挡下。
 
     日常不需要手动调：`*/ocr/sync` 每同步一本就顺手重编那一本。要跑它的只有两种情况——
     第一次装模型，以及换了模型（维度对不上，`reason` 会报 `dim_mismatch`）。
     """
-    if not (is_curator(request) or is_machine(request)):
-        require_curator(request)
+    require_curator(request)
     status = rebuild_dialogue_vectors()
     return DialogueVectorsResponse(**status)
 

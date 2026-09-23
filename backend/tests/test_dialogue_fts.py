@@ -1229,6 +1229,51 @@ def test_dialogue_index_backfills_after_rebuild():
         shutil.rmtree(temp_dir, ignore_errors=True)
 
 
+def test_half_synced_rows_resynced_on_startup():
+    """错题本 #145：列是齐的、行却是旧 INSERT 写的（新列为 NULL），元数据还说已同步——启动时必须认出来按书重灌。"""
+    temp_dir = Path(tempfile.mkdtemp())
+    try:
+        config_mod.DATA_DIR = temp_dir
+        db_mod.DATA_DIR = temp_dir
+        shelf_db = temp_dir / "comic_shelf.db"
+        db_mod.set_db_path(shelf_db)
+        db_mod.init_db(shelf_db)
+
+        text = "半截迁移的书也得搜得到"
+        pages_dir = temp_dir / "library" / "jm" / "88003" / "pages"
+        pages_dir.mkdir(parents=True)
+        (pages_dir / "00002.ocr.json").write_text(
+            json.dumps(
+                {"version": 1, "bubbles": [{"id": 1, "order": 1, "box": [0.2, 0.1, 0.4, 0.5], "text": text}]},
+                ensure_ascii=False,
+            ),
+            encoding="utf-8",
+        )
+        # 常驻的旧进程拿旧 INSERT 往新表里写：kind / text_norm / reading_order 全是 NULL，
+        # 列却是齐的，整表重建不会触发；元数据又记着"已最新"，增量同步也会跳过它
+        with db_mod.get_dialogue_db() as conn:
+            conn.execute(
+                "INSERT INTO comic_dialogues_fts (source, source_id, page_index, bubble_id, text, lang, box_json)"
+                " VALUES ('jm', '88003', 2, 1, ?, 'zh', '[0.2, 0.1, 0.4, 0.5]')",
+                (text,),
+            )
+            conn.execute("INSERT OR REPLACE INTO comic_ocr_sync_meta VALUES ('jm', '88003', 9e12, 1, 0)")
+        assert db_mod.search_dialogues("也得搜得到", source="jm") == [], "前提不成立：新列为 NULL 的行本就搜得到"
+
+        db_mod.init_dialogue_db()
+
+        hits = db_mod.search_dialogues("也得搜得到", source="jm")
+        assert [h["source_id"] for h in hits] == ["88003"], f"半截迁移的书没被重灌: {hits}"
+        with db_mod.get_dialogue_db() as conn:
+            nulls = conn.execute(
+                "SELECT count(*) FROM comic_dialogues_fts WHERE kind IS NULL OR text_norm IS NULL"
+            ).fetchone()[0]
+        assert nulls == 0, "重灌后仍留着新列为 NULL 的行"
+        print("  ✓ Half-synced dialogue rows resynced on startup passed")
+    finally:
+        shutil.rmtree(temp_dir, ignore_errors=True)
+
+
 def test_dialogue_key_normalization_roundtrip():
     """脏 id 进来时，写库、增量元数据、删除必须落在同一个清洗键上，不许留下删不掉的孤儿。"""
     temp_dir = Path(tempfile.mkdtemp())
@@ -1347,6 +1392,43 @@ def test_dialogue_context_http_endpoint():
         shutil.rmtree(temp_dir, ignore_errors=True)
 
 
+def test_ascii_case_folding_and_unparsable_query():
+    """LIKE 与 trigram 都不分 ASCII 大小写，词频与高亮也得跟着不分；FTS5 解析不了的查询回空不回 500。"""
+    temp_dir = Path(tempfile.mkdtemp())
+    try:
+        temp_db = temp_dir / "test_case.db"
+        db_mod.set_db_path(temp_db)
+        db_mod.init_db(temp_db)
+        config_mod.DATA_DIR = temp_dir
+        db_mod.DATA_DIR = temp_dir
+
+        pages_dir = temp_dir / "library" / "local" / "comic_case" / "pages"
+        pages_dir.mkdir(parents=True)
+        # 页序偏向稀的那句、词频偏向密的那句：词频若恒为 0，两页同分就会按页号排。
+        # 第 1 页以 OK 收尾是给下面的 NUL 查询设的套：LIKE 会在 NUL 处截断模式串，
+        # 旧的 LIKE 兜底拿 "%ok" 去扫就会误中这一句
+        for page, text in ((1, "我觉得这样也OK"), (2, "OK啦")):
+            (pages_dir / f"{page:05d}.ocr.json").write_text(
+                json.dumps(
+                    {"version": 1, "bubbles": [{"id": 1, "box": [0.1, 0.1, 0.4, 0.4], "text": text}]},
+                    ensure_ascii=False,
+                ),
+                encoding="utf-8",
+            )
+        assert db_mod.sync_comic_dialogues("local", "comic_case") == 2
+
+        res = db_mod.search_dialogues("ok", source="local", limit=10)
+        assert [r["page_index"] for r in res] == [2, 1], f"两字查询的词频没折大小写: {res}"
+        assert res[0]["rank_score"] > res[1]["rank_score"], res
+        assert "<mark>OK</mark>" in res[0]["snippet"], f"命中了 OK 却高亮不出来: {res[0]['snippet']}"
+
+        # 3 字以上 MATCH 为空就是真没有，不再拿 LIKE 全表重扫；NUL 让 FTS5 解析失败，也只当无命中
+        assert db_mod.search_dialogues("ok\x00啦", source="local") == []
+        print("  ✓ ASCII case folding and unparsable query passed")
+    finally:
+        shutil.rmtree(temp_dir, ignore_errors=True)
+
+
 if __name__ == "__main__":
     print("Running dialogue FTS & API unit tests...")
     test_dialogue_fts_lifecycle()
@@ -1364,6 +1446,8 @@ if __name__ == "__main__":
     test_story_context_export_slice()
     test_dirty_sidecar_values_stay_contained()
     test_dialogue_index_backfills_after_rebuild()
+    test_half_synced_rows_resynced_on_startup()
     test_dialogue_key_normalization_roundtrip()
     test_dialogue_context_http_endpoint()
+    test_ascii_case_folding_and_unparsable_query()
     print("All dialogue FTS & API unit tests passed successfully!")

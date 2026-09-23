@@ -7,6 +7,7 @@ import math
 import re
 import secrets
 import sqlite3
+import string
 import threading
 import time
 from contextlib import contextmanager
@@ -294,9 +295,13 @@ def _migrate_dialogue_schema(conn: sqlite3.Connection) -> bool:
         return False
 
     missing = sorted(_DIALOGUE_COLUMNS - columns)
+    # get_dialogue_db 是默认事务模式，DDL 不会隐式开事务，DROP 与 CREATE 会各自自动提交。
+    # 不显式 BEGIN 的话，中途崩掉会留下"新表已建、元数据仍说已同步"，下次启动列齐了不再重建
+    conn.execute("BEGIN")
     conn.execute("DROP TABLE comic_dialogues_fts")
     conn.execute(_CREATE_DIALOGUES_FTS)
     conn.execute("DELETE FROM comic_ocr_sync_meta")
+    conn.commit()
     logger.warning(
         "Rebuilt comic_dialogues_fts to add %s and reset OCR sync metadata; dialogue index is empty until backfill",
         missing,
@@ -329,7 +334,7 @@ def backfill_dialogue_index() -> int:
 
 
 def init_dialogue_db(dialogue_db_path: Path | None = None) -> None:
-    """初始化独立的台词全文检索专库 (comic_dialogues.db)，并在整表重建后就地回填。"""
+    """初始化独立的台词全文检索专库 (comic_dialogues.db)，整表重建后就地回填，新列为 NULL 的书按书重灌。"""
     if dialogue_db_path is not None:
         set_dialogue_db_path(dialogue_db_path)
 
@@ -362,11 +367,27 @@ def init_dialogue_db(dialogue_db_path: Path | None = None) -> None:
             """
         )
         rebuilt = _migrate_dialogue_schema(conn)
+        # 错题本 #145：热重载拿旧 INSERT 往新表里回填，新列是 NULL，元数据却已认定同步完成。
+        # 列齐了不会触发重建，只能按行把这些书认出来：清掉它们的元数据，下面逐本重灌
+        half_synced = conn.execute(
+            "SELECT DISTINCT source, source_id FROM comic_dialogues_fts WHERE kind IS NULL OR text_norm IS NULL"
+        ).fetchall()
+        conn.executemany(
+            "DELETE FROM comic_ocr_sync_meta WHERE source = ? AND source_id = ?",
+            [(r["source"], r["source_id"]) for r in half_synced],
+        )
         conn.commit()
 
     if rebuilt:
         restored = backfill_dialogue_index()
         logger.warning("comic_dialogues_fts 重建完毕，已回填 %d 条台词", restored)
+    for r in half_synced:
+        try:
+            sync_comic_dialogues(r["source"], r["source_id"], force=True)
+        except Exception as exc:
+            logger.warning("台词索引半截迁移重灌失败 %s/%s: %s", r["source"], r["source_id"], exc)
+    if half_synced:
+        logger.warning("发现 %d 本台词索引新列为 NULL（错题本 #145），已按书重灌", len(half_synced))
 
 
 # ----------------------------------------------------------------------
@@ -1254,9 +1275,14 @@ def get_library_facets(is_curator: bool, source: str | None = None) -> dict[str,
 # 台词全文索引（comic_dialogues_fts）同步与检索
 # ----------------------------------------------------------------------
 
-# 阅读器一次最多画几格（代表格 + 其余格）。高频词下单页可命中十余气泡，
+# 阅读器一次最多画几个气泡（代表气泡 + 同页其余命中气泡）。高频词下单页可命中十余气泡，
 # 全带进 URL 会撑到 500+ 字符并糊满画面，超出部分只计入 bubble_count 不画框。
 MAX_PAGE_BOXES = 6
+
+# 只折 ASCII 大小写，与 LIKE 和 SQLite lower() 同一口径。不用 str.lower()：它会把个别字符
+# 变长（'İ' → 'i̇'），折完的下标就对不回原文了
+_ASCII_LOWER = str.maketrans(string.ascii_uppercase, string.ascii_lowercase)
+
 
 def _normalize_box(raw: Any) -> list[float] | None:
     """把侧车里的 box 收敛成 4 个有限数值，形状不对就整条判废。
@@ -1302,10 +1328,11 @@ def _make_snippet(raw: str, norm: str, needle: str, max_chars: int = 60) -> str:
     所以 norm 上求出的下标可以原样切在 raw 上：繁体页显示繁体、简体页显示简体，高亮还套得准。
     原来拿简繁变体去原文里正则找的做法在"一简对多繁"上没有落点（简体「头发」的繁体写法表里
     只有「頭發」，可语料是「頭髮」），只能退化成不高亮的前缀。
+    定位不分 ASCII 大小写：trigram 与 LIKE 都不分，搜 `ok` 命中了 `OK` 就得高亮得出来。
     """
     if not raw:
         return ""
-    start = norm.find(needle) if needle else -1
+    start = norm.translate(_ASCII_LOWER).find(needle.translate(_ASCII_LOWER)) if needle else -1
     if start < 0:
         return raw[:max_chars] + ("..." if len(raw) > max_chars else "")
     end = start + len(needle)
@@ -1378,7 +1405,7 @@ def classify_dialogue_kind(
             mean_line_chars = sum(len(t) for t in page_texts) / len(page_texts)
             long_form_page = mean_line_chars >= BACK_MATTER_MEAN_LINE_CHARS
             # 噪声行（水印、页码）不能当"这页是副文本"的证据：它本来就单独不入库，而正文页上
-            # 同样满是水印。真库实测这个 or 分支把 26 页剧情尾页整页判成副文本，台词从检索里消失
+            # 同样满是水印。真库实测这个 or 分支把一批剧情尾页整页判成副文本，台词从检索里消失
             # （例：jm/319445 p21 只因侧车里有一行被认成 "888" 的 "？？？" 就整页搜不到）。
             credit_page = any(_PARATEXT_RE.search(t) for t in page_texts)
             if long_form_page or credit_page:
@@ -1613,7 +1640,11 @@ def sync_comic_dialogues(source: str, source_id: str, force: bool = False) -> in
 
     # 向量重建放在 FTS 事务**外面**：编码一条对白最慢也就几十毫秒整本，但模型冷启动那次
     # 会摸到秒级，扣着写锁做这件事会把同一本书的关键词入库一起卡住。
-    embed_comic_dialogues(source, source_id)
+    # 失败只记日志：关键词已经提交，可选的语义腿出错不能把这次同步报成 500
+    try:
+        embed_comic_dialogues(source, source_id)
+    except Exception as exc:
+        logger.warning("台词向量重编失败 %s/%s: %s", source, source_id, exc)
     return len(records)
 
 
@@ -1680,41 +1711,42 @@ def embed_comic_dialogues(source: str, source_id: str) -> int:
     """把一本书的对白行重编成语义向量写进 `comic_dialogue_vectors`。
 
     Returns:
-        实际写入的向量条数。编码器不可用（没放模型）时返回 0 且不动已有数据——
-        语义检索是增量能力，不能因为缺模型把关键词链路一起打断。
+        实际写入的向量条数。编码器不可用（没放模型、缺 numpy）时返回 0，不打断关键词链路——
+        语义检索是增量能力。
     """
     from . import embedding
 
     dim = embedding.dim()
-    if dim is None:
-        return 0
     source, source_id = _dialogue_key(source, source_id)
     with get_dialogue_db() as conn:
-        rows = conn.execute(
-            "SELECT page_index, bubble_id, text FROM comic_dialogues_fts"
-            " WHERE source = :source AND source_id = :source_id AND kind = :kind"
-            "  AND length(text) >= :min_chars",
-            {
-                "source": source,
-                "source_id": source_id,
-                "kind": DIALOGUE_KIND,
-                "min_chars": embedding.MIN_EMBED_CHARS,
-            },
-        ).fetchall()
-        if not rows:
-            conn.execute(
-                "DELETE FROM comic_dialogue_vectors WHERE source = ? AND source_id = ?",
-                (source, source_id),
-            )
-            return 0
-        vectors = embedding.encode_documents([r["text"] for r in rows])
-        if vectors is None:
-            return 0
-        now = int(time.time())
+        rows: list[sqlite3.Row] = []
+        if dim is not None:
+            rows = conn.execute(
+                "SELECT page_index, bubble_id, text FROM comic_dialogues_fts"
+                " WHERE source = :source AND source_id = :source_id AND kind = :kind"
+                "  AND length(text) >= :min_chars",
+                {
+                    "source": source,
+                    "source_id": source_id,
+                    "kind": DIALOGUE_KIND,
+                    "min_chars": embedding.MIN_EMBED_CHARS,
+                },
+            ).fetchall()
+        try:
+            vectors = embedding.encode_documents([r["text"] for r in rows]) if rows else None
+        except Exception as exc:
+            # 编码中途出错按编码器不可用处理：旧向量同样对不上刚重写的 FTS 行，要一起删掉
+            logger.warning("台词向量编码失败 %s/%s: %s", source, source_id, exc)
+            vectors = None
+        # 编不出新向量（编码器不可用、或这本书已没有可编的对白）就把旧的一并删掉：
+        # FTS 行刚被重写，留着它们就是相似度按旧文本算、展示的却是新文本
         conn.execute(
             "DELETE FROM comic_dialogue_vectors WHERE source = ? AND source_id = ?",
             (source, source_id),
         )
+        if vectors is None:
+            return 0
+        now = int(time.time())
         conn.executemany(
             "INSERT INTO comic_dialogue_vectors (source, source_id, page_index, bubble_id, dim, vec, updated_at)"
             " VALUES (?, ?, ?, ?, ?, ?, ?)",
@@ -1749,14 +1781,20 @@ def rebuild_dialogue_vectors() -> dict[str, Any]:
     return {"ok": True, "reason": "", "encoded": encoded, "comics": len(books), "dim": dim}
 
 
-def dialogue_vector_status() -> dict[str, Any]:
-    """语义检索这条腿现在能不能走，以及为什么不能。"""
+def _vector_status() -> tuple[dict[str, Any], tuple[Any, ...]]:
+    """语义腿的状态与向量矩阵的缓存戳子，一次扫描同时给出。
+
+    语义请求两样都要，分开查就是对向量表的两遍全表扫（每行都带一段 BLOB）。可用时全表只有
+    一种维度且等于编码器维度，所以这一行的行数与最大 updated_at 就是戳子；台词库路径也在
+    戳子里，测试与"换库"不会读到上一个库的矩阵。
+    """
     from . import embedding
 
     dim = embedding.dim()
     with get_dialogue_db() as conn:
         row = conn.execute(
-            "SELECT count(*) AS n, count(DISTINCT dim) AS dims, max(dim) AS dim FROM comic_dialogue_vectors"
+            "SELECT count(*) AS n, count(DISTINCT dim) AS dims, max(dim) AS dim, max(updated_at) AS u"
+            " FROM comic_dialogue_vectors"
         ).fetchone()
     stored = int(row["n"] or 0)
     stored_dim = int(row["dim"] or 0) if stored else 0
@@ -1769,29 +1807,29 @@ def dialogue_vector_status() -> dict[str, Any]:
         reason = "dim_mismatch"
     else:
         reason = ""
-    return {"available": reason == "", "reason": reason, "vectors": stored, "dim": stored_dim or (dim or 0)}
+    status = {"available": reason == "", "reason": reason, "vectors": stored, "dim": stored_dim or (dim or 0)}
+    return status, (str(_DIALOGUE_DB_PATH), stored, int(row["u"] or 0), stored_dim)
+
+
+def dialogue_vector_status() -> dict[str, Any]:
+    """语义检索这条腿现在能不能走，以及为什么不能。"""
+    return _vector_status()[0]
 
 
 _VECTOR_CACHE: tuple[Any, ...] | None = None
 
 
-def _vector_store(dim: int) -> tuple[list[tuple[str, str, int, str]], Any]:
-    """取回 (键列表, 向量矩阵)，进程内缓存。
+def _vector_store(stamp: tuple[Any, ...], dim: int) -> tuple[list[tuple[str, str, int, str]], Any]:
+    """取回 (键列表, 向量矩阵)，按 `_vector_status` 给的戳子做进程内缓存。
 
-    不缓存的话每次检索都要重读 6254 条 BLOB 再 np.stack，真库实测 350ms——模型编码那句
-    问题只用 2ms，剩下的全是这件事。缓存戳子是 (行数, 最大 updated_at, 维度)，同步与重建都
-    会推进它，所以读不到过期向量；台词库路径本身也在戳子里，测试与"换库"不会读到上一个库的矩阵。
+    不缓存的话每次检索都要重读全部 BLOB 再 np.stack，真库实测 350ms——模型编码那句
+    问题只用 2ms，剩下的全是这件事。同步与重建都会推进戳子，所以读不到过期向量。
     整体一次性赋值，不留"半个新矩阵被别的线程看见"的窗口。
     """
     global _VECTOR_CACHE
+    if _VECTOR_CACHE is not None and _VECTOR_CACHE[0] == stamp:
+        return _VECTOR_CACHE[1], _VECTOR_CACHE[2]
     with get_dialogue_db() as conn:
-        stamp_row = conn.execute(
-            "SELECT count(*) AS n, max(updated_at) AS u FROM comic_dialogue_vectors WHERE dim = ?",
-            (dim,),
-        ).fetchone()
-        stamp = (str(_DIALOGUE_DB_PATH), int(stamp_row["n"] or 0), int(stamp_row["u"] or 0), dim)
-        if _VECTOR_CACHE is not None and _VECTOR_CACHE[0] == stamp:
-            return _VECTOR_CACHE[1], _VECTOR_CACHE[2]
         rows = conn.execute(
             "SELECT source, source_id, page_index, bubble_id, vec FROM comic_dialogue_vectors WHERE dim = ?",
             (dim,),
@@ -1815,25 +1853,36 @@ def search_dialogues_semantic(
     limit: int = 20,
     is_guest: bool = False,
     user_id: str = "",
-) -> list[dict[str, Any]]:
+) -> dict[str, Any]:
     """按意思找台词：把问题编码成向量，与语料向量取余弦近邻。
 
     与 `search_dialogues` 的三点关键区别，刻意不共用出口模型：
-    1. 检索单元与返回单元都是**气泡**（语义没有"字面命中区间"可高亮，故不吐 snippet）；
-    2. 分数是 `similarity`（余弦，0..1，跨查询可比），不复用 `rank_score`（池内 min-max 归一，
-       换一次查询就换一把尺子，两种口径写进同一个字段必然被下游误读）；
+    1. 检索单元是气泡、返回单元是页：每页只留相似度最高的那个气泡，免得同一页的几句挤占
+       前几名（语义没有"字面命中区间"可高亮，故不吐 snippet）；
+    2. 分数是 `similarity`（余弦相似度，-1..1），只在同一次查询的结果之间比高低——真命中与
+       噪声的分数区间重叠，跨查询比较与绝对阈值都不成立；也不复用 `rank_score`（池内
+       min-max 归一，换一次查询就换一把尺子，两种口径写进同一个字段必然被下游误读）；
     3. 顺序不掺业务信号：关键词那套信号融合依赖 bm25/LIKE 的字面分，语义分掺进去只会掩盖
        "这本你读过"与"这句意思像"两件事。
     访客隐藏本与未收录本的过滤规则与关键词出口一致。
+
+    Returns:
+        `{"results": [...], "available": bool, "reason": str}`。没有分数下限，能检索时总会给出
+        最近的若干页，所以"没走检索"只能靠 `reason` 说：`encoder_unavailable` /
+        `vectors_missing` / `dim_mismatch` 时 `available` 为 False（这台机器走不了语义腿）；
+        `query_too_short` 时 `available` 为 True（腿是好的，问题太短）；正常检索为空串。
     """
     from . import embedding
 
+    status, stamp = _vector_status()
+    if not status["available"]:
+        return {"results": [], "available": False, "reason": status["reason"]}
     clean_query = (query or "").strip()
     if len(clean_query) < 2:
-        return []
+        return {"results": [], "available": True, "reason": "query_too_short"}
     qv = embedding.encode_query(clean_query)
     if qv is None:
-        return []
+        return {"results": [], "available": False, "reason": "encoder_unavailable"}
 
     if not isinstance(limit, int):
         try:
@@ -1843,18 +1892,19 @@ def search_dialogues_semantic(
     limit = max(1, min(limit, 100))
     fetch_limit = min(max(limit * 5, 50), 200)
 
-    keys_all, matrix = _vector_store(int(qv.shape[0]))
-    if matrix.shape[0] == 0:
-        return []
+    keys_all, matrix = _vector_store(stamp, int(qv.shape[0]))
     import numpy as np
 
     sims = matrix @ qv
     order = np.argsort(-sims, kind="stable")
+    # order 已按相似度降序：某页第一次出现的气泡就是这一页的代表，同页之后的气泡直接跳过
     hits: list[tuple[tuple[str, str, int, str], float]] = []
+    pages: set[tuple[str, str, int]] = set()
     for i in order:
         key = keys_all[int(i)]
-        if source and key[0] != source:
+        if (source and key[0] != source) or key[:3] in pages:
             continue
+        pages.add(key[:3])
         hits.append((key, float(sims[int(i)])))
         if len(hits) >= fetch_limit:
             break
@@ -1864,11 +1914,10 @@ def search_dialogues_semantic(
 
     # 原文按气泡回表：向量表只存坐标外的最小信息，文本/框仍以 FTS 那行为准，
     # 避免两个表说同一句话的不同版本。
-    want = {k[:3] for k, _ in hits}
     texts: dict[tuple[str, str, int, str], sqlite3.Row] = {}
-    if want:
-        clause = " OR ".join(["(f.source = ? AND f.source_id = ? AND f.page_index = ?)"] * len(want))
-        flat: list[Any] = [p for k in want for p in k]
+    if pages:
+        clause = " OR ".join(["(f.source = ? AND f.source_id = ? AND f.page_index = ?)"] * len(pages))
+        flat: list[Any] = [p for k in pages for p in k]
         with get_dialogue_db() as conn:
             for r in conn.execute(
                 f"SELECT f.source, f.source_id, f.page_index, f.bubble_id, f.text, f.lang, f.box_json"
@@ -1885,7 +1934,6 @@ def search_dialogues_semantic(
         ci = comics_map.get((key[0], key[1]))
         if is_guest and (ci is None or ci["hidden_from_guest"]):
             continue
-        box = _normalize_box(json.loads(r["box_json"])) if r["box_json"] else []
         cover_indices = _safe_json_list(ci["cover_indices_json"]) if ci else []
         results.append(
             {
@@ -1896,7 +1944,8 @@ def search_dialogues_semantic(
                 "page_index": key[2],
                 "bubble_id": r["bubble_id"],
                 "text": r["text"] or "",
-                "box": box or [],
+                # 与关键词出口同理：写入口已归一，读侧不再重复校验
+                "box": json.loads(r["box_json"]),
                 "lang": r["lang"] or "zh",
                 "cover": f"/api/library/{key[0]}/{key[1]}/covers/{cover_indices[0] if cover_indices else 0}/file",
                 "authors": _safe_json_list(ci["authors_json"]) if ci else [],
@@ -1905,7 +1954,7 @@ def search_dialogues_semantic(
         )
         if len(results) >= limit:
             break
-    return results
+    return {"results": results, "available": True, "reason": ""}
 
 
 def _safe_json_list(raw: Any) -> list[Any]:
@@ -1998,7 +2047,7 @@ def search_dialogues(
         min-max normalized **within this candidate pool** (0..1, higher is more relevant; only
         comparable inside one query, never across queries).
         3+ 字符的查询走 text_norm 上的 trigram 倒排并按 bm25 排序；2 字查询产不出任何
-        trigram token，只能落到 LIKE 兜底（按 词频 ÷ 文本长度 近似排序，即 bm25 中真正
+        trigram token，只能走 LIKE 扫描（按 词频 ÷ 文本长度 近似排序，即 bm25 中真正
         区分候选的那两项）。两条都在归一列上比，所以繁简输入命中同一批语料。
 
         截断留谁由 `rank_score` 加业务信号决定（推导见 `_rank_dialogue_pages` 与 ADR 0017 决策 9）。
@@ -2027,7 +2076,8 @@ def search_dialogues(
     with get_dialogue_db() as conn:
         if len(needle) >= 3:
             # 只有走 MATCH 的这一支有 bm25 分数可用；trigram 索引键是三字窗口，
-            # 故 2 字 needle 进不了倒排、只能落到下面 LIKE 兜底。
+            # 故 2 字 needle 进不了倒排、只能走下面的 LIKE。3 字以上 MATCH 为空就是真没有：
+            # trigram 覆盖全部三字子串，LIKE 再扫一遍全表也只会同样 0 行。
             # bm25 返回负数且越相关越负，升序即为最相关在前，写成 DESC 就反了；这里取负
             # 换成"越大越相关"，与 LIKE 那条的近似分同向，后面融合业务信号时才加得起来。
             # 摘要不再交给 SQL snippet()：命中的是归一列， Marks 落不到原文上，
@@ -2061,14 +2111,16 @@ def search_dialogues(
                     },
                 ).fetchall()
             except sqlite3.OperationalError:
+                # 含 NUL 这类 FTS5 解析不了的查询：当作无命中，不让检索端点 500
                 diag_rows = []
-
-        if not diag_rows and len(clean_query) >= 2:
+        else:
             # :like 是带通配的匹配式，:term 是要数出现次数的原串——两者不能共用一个绑定，
-            # 拿 "%喜欢%" 去 replace 永远替不掉，词频恒为 0，整条兜底路径就退化成按行号排。
+            # 拿 "%喜欢%" 去 replace 永远替不掉，词频恒为 0，整条路径就退化成按行号排。
+            # LIKE 不分 ASCII 大小写而 replace() 分，所以两边都折成小写再数：否则搜 `ok`
+            # 命中了 `OK`，词频却是 0。SQLite 自带的 lower() 只折 ASCII，长度不变。
             params: dict[str, Any] = {
                 "like": f"%{_escape_like(needle)}%",
-                "term": needle,
+                "term": needle.translate(_ASCII_LOWER),
                 "source": source,
                 "kind": DIALOGUE_KIND,
                 "fetch_limit": fetch_limit,
@@ -2079,7 +2131,7 @@ def search_dialogues(
             # 词频按字符数计（length 差值 = 出现次数 × needle 长度），needle 单条即可，
             # 因为比的是归一列。
             like_rank = (
-                "(CAST(length(f.text_norm) - length(replace(f.text_norm, :term, '')) AS REAL)"
+                "(CAST(length(f.text_norm) - length(replace(lower(f.text_norm), :term, '')) AS REAL)"
                 " / max(length(f.text_norm), 1))"
             )
             sql_like = f"""
@@ -2126,28 +2178,11 @@ def search_dialogues(
             continue
 
         page_idx = int(r["page_index"])
-        box: list[float] = []
-        if r["box_json"]:
-            try:
-                box = _normalize_box(json.loads(r["box_json"])) or []
-            except Exception:
-                box = []
-
-        cover_indices = []
-        if ci and ci["cover_indices_json"]:
-            try:
-                cover_indices = json.loads(ci["cover_indices_json"])
-            except Exception:
-                cover_indices = []
-        first_idx = cover_indices[0] if cover_indices else 0
-        cover = f"/api/library/{src}/{sid}/covers/{first_idx}/file"
-
-        authors = []
-        if ci and ci["authors_json"]:
-            try:
-                authors = json.loads(ci["authors_json"])
-            except Exception:
-                authors = []
+        # 唯一的写入口 sync_comic_dialogues 已把 box 归一成 4 个有限数值或空表，读侧不再重复校验
+        box: list[float] = json.loads(r["box_json"])
+        cover_indices = _safe_json_list(ci["cover_indices_json"]) if ci else []
+        cover = f"/api/library/{src}/{sid}/covers/{cover_indices[0] if cover_indices else 0}/file"
+        authors = _safe_json_list(ci["authors_json"]) if ci else []
 
         raw_text = r["text"] or ""
         snip = _make_snippet(raw_text, r["text_norm"] or "", needle)
@@ -2159,7 +2194,7 @@ def search_dialogues(
         hit = page_hits.get(key)
         if hit is not None:
             hit["bubble_count"] += 1
-            # 同页其余命中格按相关度顺序补足，供阅读器一次画全；上限外的高频页只多算计数
+            # 同页其余命中气泡按相关度顺序补足，供阅读器一次画全；上限外的高频页只多算计数
             extra: list[list[float]] = hit["other_boxes"]
             if box and len(extra) < MAX_PAGE_BOXES - 1:
                 extra.append(box)
@@ -2230,7 +2265,7 @@ def _rank_dialogue_pages(
     """先把相关度按候选池极值 min-max 归一，再叠业务信号，按最终分降序回报（同分保持原次序）。
 
     为什么必须叠：实测 2 字查询（`老师` / `喜欢`）候选池 95~100 页里，前 20 名的相关度分**全部
-    打平**在 1.0——因为 LIKE 兜底用的"词频 ÷ 文本长度"是个很粗的比值，一堆气泡算出同一个数。
+    打平**在 1.0——因为 LIKE 那条用的"词频 ÷ 文本长度"是个很粗的比值，一堆气泡算出同一个数。
     这时"截断留谁"完全由 `(source, page_index)` 的偶然次序决定，等于没有排序。
 
     `pool_lo` / `pool_hi` 必须是**未做身份过滤的候选行**极值（调用方给），归一结果才与访客/馆长
@@ -2355,11 +2390,7 @@ def get_story_context(
                 "text": r["text"],
             }
         )
-        try:
-            raw_box = json.loads(r["box_json"]) if r["box_json"] else []
-        except Exception:
-            raw_box = []
-        box = _normalize_box(raw_box)
+        box = json.loads(r["box_json"])
         if box:
             boxes.append({"line_id": line_id, "box": box})
 
