@@ -187,15 +187,29 @@ def _extract_chapters_from_toc(
     return chapters if len(chapters) >= 1 else None
 
 
+def _ocr_lines(ocr: Any, payload: bytes) -> list[str]:
+    """取一版识别结果的文本行。rapidocr 3.x 返回 RapidOCROutput（txts/boxes/scores 并列）。"""
+    out = ocr(payload)
+    return [str(t).strip() for t in (getattr(out, "txts", None) or []) if str(t).strip()]
+
+
 def _extract_chapters_from_ocr(
     doc: pymupdf.Document, total_pages: int, doc_title: str = ""
 ) -> list[dict[str, Any]] | None:
     """Heuristically detects chapter boundaries using local RapidOCR on contents pages & chapter title cards."""
     try:
-        from rapidocr_onnxruntime import RapidOCR
+        # rapidocr 3.x（PP-OCRv6 small 是其包内默认）：目录页与扉页多为繁体/日文汉字，
+        # 旧 rapidocr-onnxruntime 的字符表会把它们认成形似汉字的乱码，分话因此漏判。
+        from rapidocr import RapidOCR
         ocr = RapidOCR()
     except Exception as exc:
-        logger.info("RapidOCR not available for PDF chapter detection: %s", exc)
+        # 必须用 warning：uvicorn 默认不给 root logger 设级别，info 会被整条丢掉，
+        # 于是"镜像里没带推理依赖"就变成"PDF 进来没有话目录"而没人知道为什么（错题本 #137/#145）。
+        logger.warning(
+            "跳过 PDF 扉页自动分话（rapidocr/onnxruntime 不可用：%s）。"
+            "台词检索不受影响，只是这本书会平铺成单章；要保留分话请在镜像里装上这两个包，见 DEPLOYMENT.md §5.1。",
+            exc,
+        )
         return None
 
     chap_pattern = re.compile(
@@ -216,13 +230,12 @@ def _extract_chapters_from_ocr(
             continue
         try:
             base_img = doc.extract_image(imgs[0][0])
-            res, _ = ocr(base_img["image"])
+            lines = _ocr_lines(ocr, base_img["image"])
         except Exception:
             continue
-        if not res:
+        if not lines:
             continue
 
-        lines = [r[1].strip() for r in res if r[1].strip()]
         matched_lines = [l for l in lines if chap_pattern.match(l) or extra_pattern.match(l)]
         if len(matched_lines) >= 3:
             contents_page_found = True
@@ -277,14 +290,11 @@ def _extract_chapters_from_ocr(
                 continue
             try:
                 base_img = doc.extract_image(imgs[0][0])
-                res, _ = ocr(base_img["image"])
+                lines = _ocr_lines(ocr, base_img["image"])
             except Exception:
                 continue
-            if not res:
-                continue
 
-            for _, text, _ in res:
-                t = text.strip()
+            for t in lines:
                 if len(t) <= 20 and not any(p in t for p in ("，", "。", "！", "？", "…", "的", "不是", "她是")):
                     m = chap_pattern.match(t)
                     if m and not t.startswith("第一次") and not t.startswith("第二天") and not t.startswith("第1名"):

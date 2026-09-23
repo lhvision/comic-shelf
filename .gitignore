@@ -49,6 +49,8 @@ __screenshots__/
 # Python backend
 __pycache__/
 *.pyc
+.venv
+.venv-ocr/
 backend/data/library/
 backend/data/tmp/
 backend/data/imsearch/

@@ -1,0 +1,21 @@
+# 纸间 · OCR 算力机 GPU 加速依赖（本项目的默认算力线）
+#
+# 这份文件是 requirements-ocr.txt 的 **增量**，不单独安装：
+#   bash scripts/ocr.sh install        # 检测到 NVIDIA 显卡即装本文件，之后 run/test 默认走 GPU
+# 由该命令负责建环境并按顺序装，顺序错了 CUDA 会静默失效（见下）。
+#
+# 为什么不能和 requirements-ocr.txt 一起 pip install：
+# CPU 基线里装的 `onnxruntime` 与这里的 `onnxruntime-gpu` **共用同一个
+# site-packages/onnxruntime/ 目录**，后装的只覆盖同名文件、留下混合目录。此时
+# get_available_providers() 依然列出 CUDAExecutionProvider，但会话创建静默退回 CPU——
+# providers 列表不是证据（见 docs/PITFALLS.md 第 137、140 条）。必须先卸干净两个发行版、
+# 连目录一起删掉，再装这一份。
+#
+# [cuda] 拉 CUDA 13 运行库（cublas / cuBLASLt / nvrtc / cufft / curand / nvjitlink），
+# [cudnn] 拉 cuDNN 9。这些 .so 不在宿主上，装完后必须由 ocr.sh 把 venv 内的
+# nvidia/*/lib 追加到 LD_LIBRARY_PATH 才找得到。
+#
+# 历史上这里还要补一份名为 `onnxruntime` 的假发行版元数据，因为 rapidocr-onnxruntime
+# 声明 `Requires-Dist: onnxruntime`，pip 会认定环境缺包并把 CPU wheel 拉回来覆盖 GPU 版。
+# 那个包已从仓库移除，而 rapidocr 3.x 不声明任何推理后端，所以不再需要这份元数据。
+onnxruntime-gpu[cuda,cudnn]==1.30.0

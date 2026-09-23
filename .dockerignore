@@ -1,6 +1,7 @@
 node_modules/
 dist/
 .venv/
+.venv-ocr/
 backend/data/
 backend/tests/
 backend/__pycache__/

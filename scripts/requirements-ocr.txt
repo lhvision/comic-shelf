@@ -1,3 +1,13 @@
 # 纸间 · 高性能机 OCR 伴生提取依赖（仅在执行 OCR Worker 的算力机上安装，读者端无需安装）
-rapidocr_onnxruntime>=1.2.3
+#
+# 引擎只有一条线：rapidocr 3.x + PP-OCRv6 small。官方列明该单模型覆盖简中/繁中/日文
+# （tiny 不含日文，所以必须用 small），同页字数比旧的 v3 轨道实测 +29%、假名覆盖 5 → 169。
+# v3（rapidocr-onnxruntime）已从仓库整体删除：它 6623 字的字符表里只有 5 个假名，日文与
+# 繁体会被强行"音译"成形似汉字的乱码，而"忘了带参数"就能把乱码灌进语料且无人察觉。
 pillow>=10.0.0
+rapidocr>=3.9.2
+# rapidocr 3.x 把推理后端留给使用者自己挑——onnxruntime / openvino / tensorrt 都不在它的
+# Requires-Dist 里，只装 rapidocr 会得到一个 import 即失败的环境。CPU 线必须显式装它；
+# 带卡的算力机随后换装 GPU 构建（两个 wheel 共用 site-packages/onnxruntime/，必须先卸
+# 再装，原因见 requirements-ocr-gpu.txt 与错题本 #140）。
+onnxruntime>=1.20

@@ -16,6 +16,7 @@ import os
 import sys
 import threading
 import time
+import warnings
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 import urllib.request
@@ -27,10 +28,17 @@ try:
 except ImportError:
     Image = None
 
+# 唯一引擎：rapidocr 3.x（PP-OCRv6）。曾经的 v3 轨道（rapidocr-onnxruntime）已删除——
+# 它的字符表 6623 字里只有 5 个假名，日文与繁体会被强行写成形似汉字的乱码，而"忘了带
+# --engine"就会把这些乱码灌进语料且无人察觉。只装它一个包的推理后端见 requirements-ocr.txt。
 try:
-    from rapidocr_onnxruntime import RapidOCR
+    from rapidocr import ModelType as V6ModelType
+    from rapidocr import OCRVersion as V6OCRVersion
+    from rapidocr import RapidOCR as RapidOCRV6
 except ImportError:
-    RapidOCR = None
+    RapidOCRV6 = None
+    V6ModelType = None
+    V6OCRVersion = None
 
 
 def resolve_data_dir(custom_path: Optional[str] = None) -> Path:
@@ -56,18 +64,77 @@ def resolve_data_dir(custom_path: Optional[str] = None) -> Path:
     return Path("backend/data").resolve()
 
 
+def sort_bubbles_by_reading_order(
+    bubbles: List[Dict[str, Any]],
+) -> List[Dict[str, Any]]:
+    """按整页阅读顺序排定气泡：竖排页自右向左分栏，横排页自上而下分行。
+
+    box 为归一化 [ymin, xmin, ymax, xmax]。
+    """
+    if len(bubbles) <= 1:
+        return list(bubbles)
+
+    vertical = sum(1 for b in bubbles if b["orientation"] == "vertical") * 2 >= len(bubbles)
+    sweep_lo, sweep_hi, cross = (1, 3, 0) if vertical else (0, 2, 1)
+
+    # 竖排从右往左读，扫描轴取 xmin 降序；横排从上往下读，取 ymin 升序
+    if vertical:
+        ordered = sorted(bubbles, key=lambda b: (-b["box"][sweep_lo], b["box"][cross]))
+    else:
+        ordered = sorted(bubbles, key=lambda b: (b["box"][sweep_lo], b["box"][cross]))
+
+    # 扫描轴上大幅重叠的气泡并入同一栏/同一行，栏内再按交叉轴排。
+    # 少了这一步，左右错落的分栏会被单轴排序打散成 Z 字形。
+    bands: List[List[Dict[str, Any]]] = []
+    band_lo = band_hi = 0.0
+    for b in ordered:
+        lo, hi = b["box"][sweep_lo], b["box"][sweep_hi]
+        if bands:
+            min_extent = min(band_hi - band_lo, hi - lo)
+            if min(band_hi, hi) - max(band_lo, lo) > min_extent * 0.5:
+                bands[-1].append(b)
+                band_lo, band_hi = min(band_lo, lo), max(band_hi, hi)
+                continue
+        band_lo, band_hi = lo, hi
+        bands.append([b])
+
+    out: List[Dict[str, Any]] = []
+    for band in bands:
+        out.extend(sorted(band, key=lambda b: b["box"][cross]))
+    return out
+
+
+# 置信度低于此值的识别行直接丢弃（拟声词噪点、水印残块）
+DEFAULT_MIN_SCORE = 0.5
+# 同一气泡内多行的笔画粗细差上限（竖排比列宽、横排比行高）
+BUBBLE_THICKNESS_RATIO = 2.0
+# 单个气泡外接框占整页面积的上限，超过即判定为链条式误并
+BUBBLE_MAX_PAGE_AREA = 0.20
+
+
 def cluster_blocks(
     blocks: List[Dict[str, Any]], img_w: int, img_h: int
 ) -> List[Dict[str, Any]]:
     """
     气泡级多行文本几何聚类算法 (Bubble-level Line Clustering)
     根据几何间距与重合度，将属于同一气泡的多行文字聚合为一条完整对白，并计算归一化坐标 [ymin, xmin, ymax, xmax]
+    输出的气泡数组按整页阅读顺序排列，每个气泡带 1 起的 id 与 order。
+
+    邻近判据之外还有三道否决闸，缺一道就会把整页糊成一个气泡（详见错题本 #142）：
+    横竖不同的行不许同组（否则链条能在页面上拐角）、笔画粗细差 2 倍不许同组
+    （拟声词与标题字号常是台词的 2~3 倍）、合并后的外接框占页面积有硬上限
+    （间距判据是相对盒子自身的，大框之间可以无限手拉手，只有绝对面积上限能断链）。
     """
     n = len(blocks)
     if n == 0:
         return []
 
     parent = list(range(n))
+    # comp[root] = [ymin, xmin, ymax, xmax]：该分量当前的外接框，用于合并后的面积上限判定
+    comp: Dict[int, List[float]] = {
+        i: [b["ymin"], b["xmin"], b["ymax"], b["xmax"]] for i, b in enumerate(blocks)
+    }
+    area_cap = img_w * img_h * BUBBLE_MAX_PAGE_AREA
 
     def find(i: int) -> int:
         if parent[i] == i:
@@ -77,17 +144,34 @@ def cluster_blocks(
 
     def union(i: int, j: int) -> None:
         pi, pj = find(i), find(j)
-        if pi != pj:
-            parent[pi] = pj
+        if pi == pj:
+            return
+        a, b = comp[pi], comp[pj]
+        merged = [min(a[0], b[0]), min(a[1], b[1]), max(a[2], b[2]), max(a[3], b[3])]
+        if (merged[2] - merged[0]) * (merged[3] - merged[1]) > area_cap:
+            return
+        parent[pi] = pj
+        comp[pj] = merged
+        del comp[pi]
 
     for i in range(n):
         bi = blocks[i]
         wi = bi["xmax"] - bi["xmin"]
         hi = bi["ymax"] - bi["ymin"]
+        vi = hi > wi * 1.1
         for j in range(i + 1, n):
             bj = blocks[j]
             wj = bj["xmax"] - bj["xmin"]
             hj = bj["ymax"] - bj["ymin"]
+            vj = hj > wj * 1.1
+
+            # 一竖一横不许同组：链条一旦允许拐角，整页面的字就会全部连成一体
+            if vi != vj:
+                continue
+            # 竖排比列宽、横排比行高：拟声词/标题这类大号字与台词的"笔画粗细"差得很远
+            ti, tj = (wi, wj) if vi else (hi, hj)
+            if max(ti, tj) > min(ti, tj) * BUBBLE_THICKNESS_RATIO:
+                continue
 
             # 1. 竖排文本邻近探测（漫画标准：分镜气泡内多列纵排文本从右向左排列）
             gap_x = max(0, max(bi["xmin"], bj["xmin"]) - min(bi["xmax"], bj["xmax"]))
@@ -119,7 +203,6 @@ def cluster_blocks(
         groups.setdefault(root, []).append(blocks[i])
 
     results: List[Dict[str, Any]] = []
-    bubble_id = 1
     for _, g_blocks in groups.items():
         # 判断该气泡是否偏竖排
         v_count = sum(
@@ -147,7 +230,6 @@ def cluster_blocks(
 
         results.append(
             {
-                "id": bubble_id,
                 "box": [round(ymin, 4), round(xmin, 4), round(ymax, 4), round(xmax, 4)],
                 "text": full_text,
                 "confidence": round(avg_score, 2),
@@ -155,22 +237,63 @@ def cluster_blocks(
                 "type": "dialogue",
             }
         )
-        bubble_id += 1
 
-    return results
+    bubbles = sort_bubbles_by_reading_order(results)
+    for order, b in enumerate(bubbles, start=1):
+        b["id"] = order
+        b["order"] = order
+    return bubbles
 
 
 _thread_local = threading.local()
 
+# --gpu 开关，由 main() 依命令行参数写入，只负责"必须用上 CUDA，否则直接退出"
+USE_GPU = False
+# 侧车里记录产出引擎，供混跑后溯源（历史数据里有 v3 与更早无此字段的文件）
+ENGINE_TRACK = "v6"
+
+
+def cuda_ready() -> Tuple[bool, str]:
+    """判定 CUDA 是否真能用上。
+
+    rapidocr 的启用条件是 `use_cuda and get_device()=='GPU' and 'CUDAExecutionProvider'
+    in get_available_providers()`，任一不满足都会**静默**退回 CPU；而只装 CPU 版
+    onnxruntime 时后两项都不成立，所以这里提前判定，别等跑完几小时才发现是白跑。
+    """
+    try:
+        import onnxruntime as ort
+    except ImportError as exc:
+        return False, f"当前环境未安装 onnxruntime: {exc}"
+    if ort.get_device() != "GPU":
+        return False, "onnxruntime 未报告 GPU 设备（多半装成了 CPU 版 onnxruntime）"
+    if "CUDAExecutionProvider" not in ort.get_available_providers():
+        return False, "onnxruntime 缺少 CUDAExecutionProvider（GPU 构建或 CUDA/cuDNN 运行库未装）"
+    return True, ""
+
 
 def get_engine() -> Any:
-    """每个线程独享一个 RapidOCR 推理引擎实例，杜绝多线程状态竞争"""
+    """每个线程独享一个 OCR 推理引擎实例，杜绝多线程状态竞争"""
     if not hasattr(_thread_local, "engine"):
-        if RapidOCR is not None:
-            _thread_local.engine = RapidOCR()
-        else:
-            _thread_local.engine = None
+        _thread_local.engine = build_engine(USE_GPU)
     return _thread_local.engine
+
+
+def build_engine(use_gpu: bool) -> Any:
+    """构造 PP-OCRv6 引擎。CUDA 走 `EngineConfig.onnxruntime.use_cuda` 真通道——
+    旧 v3 轨道那个"传参不生效、只能改包内 config.yaml"的假通道已随包一起删除。
+
+    模型固定 small：官方 model_list 列明 tiny 不含日文，而本语料是简繁日三体混排。
+    """
+    if RapidOCRV6 is None:
+        raise RuntimeError("该环境未安装 rapidocr 3.x（跑 bash scripts/ocr.sh install 补装）")
+    params = {
+        "Rec.ocr_version": V6OCRVersion.PPOCRV6,
+        "Rec.model_type": V6ModelType.SMALL,
+        "Global.log_level": "error",
+    }
+    if use_gpu:
+        params["EngineConfig.onnxruntime.use_cuda"] = True
+    return RapidOCRV6(params=params)
 
 
 def is_valid_ocr_sidecar(out_path: Path) -> bool:
@@ -194,11 +317,40 @@ def is_valid_ocr_sidecar(out_path: Path) -> bool:
         return False
 
 
+def run_engine(engine: Any, img_path: Path) -> List[Tuple[Any, str, float]]:
+    """把引擎返回拍平成 `[(box, text, score), ...]`，行序即检测器的输出序。
+
+    `rapidocr` 3.x 返回 `RapidOCROutput` 对象，`boxes`/`txts`/`scores` 是三个并列字段。
+    两个坑必须在这一层挡掉：boxes 是 numpy 数组、对它做真值判断会抛
+    "The truth value of an array with more than one element is ambiguous"（所以不能写
+    `getattr(...) or []`）；boxes 里的角点是 float32、直接进侧车会让 json.dumps 抛
+    "Object of type float32 is not JSON serializable"。
+    """
+    out = engine(str(img_path))
+    if isinstance(out, tuple):
+        # 只可能是有人又把 v3 引擎接回来（它返回 (results, elapse)）。宁可当场抛错，也不能
+        # 让下面按对象取属性取到 None、被 process_image 吞成"这一页 0 气泡"。
+        raise TypeError("引擎返回的是元组，疑似 rapidocr-onnxruntime(v3)；本 worker 只支持 rapidocr 3.x")
+    texts = getattr(out, "txts", None)
+    if texts is None:
+        return []
+    boxes = getattr(out, "boxes", None)
+    scores = getattr(out, "scores", None)
+    boxes = list(boxes) if boxes is not None else []
+    scores = list(scores) if scores is not None else []
+    rows: List[Tuple[Any, str, float]] = []
+    for i, text in enumerate(texts):
+        raw_box = boxes[i] if i < len(boxes) else []
+        box = [[float(pt[0]), float(pt[1])] for pt in raw_box]
+        rows.append((box, str(text), float(scores[i]) if i < len(scores) else 1.0))
+    return rows
+
+
 def process_image(
     img_path: Path,
     out_path: Path,
     force: bool = False,
-    min_score: float = 0.5,
+    min_score: float = DEFAULT_MIN_SCORE,
     engine: Optional[Any] = None,
 ) -> Optional[int]:
     """处理单张画页的 OCR 提取与写入伴生文件。
@@ -226,7 +378,7 @@ def process_image(
         return 0
 
     try:
-        raw_results, _ = engine(str(img_path))
+        raw_results = run_engine(engine, img_path)
     except Exception as e:
         print(f"⚠️ OCR 推理失败 {img_path.name}: {e}", file=sys.stderr)
         return 0
@@ -259,7 +411,10 @@ def process_image(
     payload = {
         "version": 1,
         "lang": "zh",
+        # engine 字段是 `is_valid_ocr_sidecar` 认的合法性标记，缺它会被当脏缓存无限重提；
+        # engine_track 只作溯源——历史上有一批 v3 侧车与更早的无此字段文件混在库里。
         "engine": "rapidocr",
+        "engine_track": ENGINE_TRACK,
         "bubbles": bubbles,
     }
 
@@ -406,26 +561,47 @@ def get_library_stats(data_dir: Path) -> Dict[str, Any]:
     return stats
 
 
-def main() -> int:
+def build_arg_parser() -> argparse.ArgumentParser:
+    """构造 worker 命令行。单列成函数是为了让"默认轨道/默认阈值"这类契约能被单测钉住。"""
     parser = argparse.ArgumentParser(
         description="纸间 (Paper Room) · 高性能机漫画台词 OCR 提取与伴生处理 Worker",
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
-    parser.add_argument("--workers", type=int, default=2, help="并发推理线程数（默认 2，推荐 2~4 充分释放多核算力）")
+    parser.add_argument(
+        "--workers",
+        type=int,
+        default=2,
+        help="并发推理线程数（默认 2。CPU 模式别往上加：单引擎已吃满多核，v6 同页实测 2 线程 37.3 页/分、"
+        "4 线程反而掉到 32.4；GPU 模式给 4。全库口径与复测方法见 DEPLOYMENT.md §5.1）",
+    )
+    parser.add_argument(
+        "--gpu",
+        action="store_true",
+        help="要求用 CUDA 推理：环境用不上 CUDA 时直接报错退出，而不是静默按 CPU 跑完大批量"
+        "（GPU 环境由 bash scripts/ocr.sh install 创建，之后 run/test 默认就带上本参数）",
+    )
     parser.add_argument("--data-dir", help="指定漫画数据目录（默认智能探测 NAS 或本地目录）")
     parser.add_argument("--source", choices=["jm", "local", "picacg"], help="限定数据源")
     parser.add_argument("--id", help="限定单本漫画 ID（如 1059521）")
     parser.add_argument("--page", help="限定处理特定页码（支持单页 3、列表 1,3,5、范围 10-20）")
     parser.add_argument("--image", help="直接指定单张画页图片路径进行定向提取")
-    parser.add_argument("--min-score", type=float, default=0.5, help="OCR 置信度过滤阈值（默认 0.5，过滤拟声词噪点）")
+    parser.add_argument(
+        "--min-score",
+        type=float,
+        default=DEFAULT_MIN_SCORE,
+        help=f"OCR 置信度过滤阈值（默认 {DEFAULT_MIN_SCORE}，过滤拟声词噪点）",
+    )
     parser.add_argument("--force", action="store_true", help="强制重新提取已存在的 OCR 伴生文件")
     parser.add_argument("--limit", type=int, default=0, help="最多处理漫画册数（0 为无限制）")
     parser.add_argument("--api-url", help="NAS 纸间服务 API 地址（如 http://192.168.1.100:8000），处理完毕后自动远程通知入库")
     parser.add_argument("--token", help="纸间 Machine API Token 认证口令")
     parser.add_argument("--sync-local", action="store_true", help="处理完成后直接同步本地 SQLite 索引（同机/本地测试适用）")
     parser.add_argument("--status", action="store_true", help="仅查看书库 OCR 伴生文件覆盖统计")
+    return parser
 
-    args = parser.parse_args()
+
+def main() -> int:
+    args = build_arg_parser().parse_args()
     data_dir = resolve_data_dir(args.data_dir)
 
     print(f"📁 目标漫画数据目录: {data_dir}")
@@ -446,16 +622,44 @@ def main() -> int:
         print("=" * 56)
         return 0
 
-    if RapidOCR is None or Image is None:
-        print("❌ 错误: 当前 Python 环境缺少 OCR 必要依赖 (rapidocr_onnxruntime / Pillow)。", file=sys.stderr)
+    # 依赖预检：只剩一条引擎线，缺包就说清楚缺哪个
+    if RapidOCRV6 is None or Image is None:
+        print("❌ 错误: 当前 Python 环境缺少 OCR 必要依赖 (rapidocr>=3.9 / Pillow)。", file=sys.stderr)
         print("💡 请在算力机上运行一键安装命令:", file=sys.stderr)
         print("   bash scripts/ocr.sh install (或 pip install -r scripts/requirements-ocr.txt)", file=sys.stderr)
+        print("   注：只装过旧 v3 依赖的 CPU 环境必须重跑一次 install 才会拿到 rapidocr 3.x", file=sys.stderr)
         return 1
 
+    global USE_GPU
+    # 要求 GPU 就必须真用上，否则宁可拒跑——静默按 CPU 跑完几千页是这套脚本最贵的失败方式。
+    if args.gpu:
+        ok, reason = cuda_ready()
+        if not ok:
+            print(f"❌ 错误: 命令行指定了 --gpu，但当前环境用不上 CUDA: {reason}", file=sys.stderr)
+            print("💡 请重跑 bash scripts/ocr.sh install 重建 GPU 环境（或显式改用 --cpu 跑）", file=sys.stderr)
+            return 1
+        USE_GPU = True
+    else:
+        # 环境装的是 GPU 构建却没带 --gpu，几乎只可能是绕开 ocr.sh 直接调解释器
+        # （这时 LD_LIBRARY_PATH 没挂上，推理会悄悄退回 CPU）。不挡路，但要说出来。
+        if cuda_ready()[0]:
+            print("⚠️ 该环境的 onnxruntime 是 GPU 构建，却没带 --gpu：本次按 CPU 跑。"
+                  "批量提取请用 bash scripts/ocr.sh run，它会自动带上 --gpu。", file=sys.stderr)
+
     # 初始化 OCR 引擎（主线程预热验证）
-    print(f"⚡ 正在初始化 RapidOCR 深度学习推理引擎 (并发线程数: {args.workers})...")
+    device = "GPU · CUDAExecutionProvider" if USE_GPU else "CPU 多核"
+    print(f"⚡ 正在初始化 RapidOCR 深度学习推理引擎 (推理设备: {device} · 并发线程数: {args.workers})...")
     t0 = time.time()
-    get_engine()
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        get_engine()
+        # 要求 GPU 时以"会话建完有没有警告"为准，而不是 cuda_ready() 的 providers 列表：
+        # 那个列表只证明 wheel 编译进了 CUDA EP，缺 .so 时它照样列出、会话却静默退回 CPU。
+        fell_back = next((str(w.message).splitlines()[0] for w in caught if "CUDAExecutionProvider" in str(w.message)), None)
+    if fell_back:
+        print(f"❌ 错误: 要求使用 CUDA，但引擎建会话时退回 CPU：{fell_back}", file=sys.stderr)
+        print("💡 请用 bash scripts/ocr.sh run ... 启动（它会把 venv 内的 nvidia/*/lib 挂进 LD_LIBRARY_PATH）", file=sys.stderr)
+        return 1
     print(f"✅ OCR 引擎初始化就绪 ({time.time() - t0:.2f}s)")
 
     # 1. 单张画页定向处理模式
