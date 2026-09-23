@@ -28,11 +28,9 @@ router = APIRouter(tags=["system"])
 
 @router.get("/api/health")
 def health() -> dict[str, Any]:
-    """Basic health check and runtime storage paths information."""
+    """Liveness probe. 这个端点在免鉴权白名单里，所以只报能力、不报宿主机路径。"""
     return {
         "ok": True,
-        "data_dir": str(DATA_DIR),
-        "library": str(LIBRARY_DIR),
         "providers": [p["key"] for p in provider_list()],
         "auth_required": is_auth_required(),
     }

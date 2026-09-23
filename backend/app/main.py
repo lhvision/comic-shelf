@@ -381,7 +381,14 @@ async def auth_and_security_middleware(request: Request, call_next):
                     content={"detail": "临时直达通行证仅限阅读指定画集，禁止访问书库全景"},
                 )
 
-    return await call_next(request)
+    response = await call_next(request)
+    # 走到这里 = 已过鉴权的 /api 请求。这类响应的内容随身份而变（喜欢、阅读进度、台词检索的
+    # 个性化排序），不声明缓存头就等于允许任何前置共享缓存把一个人的视图端给另一个人。
+    # 处理器自己写过的（封面/画页的 private, max-age=3600、媒体的 immutable）一律不覆盖；
+    # SSE 与 /api/mcp 在本中间件顶部提前 return，不经过这里。
+    if path.startswith("/api/") and "cache-control" not in response.headers:
+        response.headers["Cache-Control"] = "no-store"
+    return response
 
 
 # ----------------------------------------------------------------------

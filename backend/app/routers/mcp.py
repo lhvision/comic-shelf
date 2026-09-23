@@ -13,17 +13,27 @@ import logging
 import secrets
 import time
 from typing import Any, AsyncGenerator, Awaitable, Callable
-from urllib.parse import quote
+from urllib.parse import quote, urlencode
 
 from fastapi import APIRouter, HTTPException, Query, Request, Response
 from fastapi.responses import JSONResponse, StreamingResponse
 
-from ..auth import is_curator, is_machine
+from ..abuse import (
+    clear_ip_login_failures,
+    is_ip_login_locked,
+    record_ip_login_failure_and_check_lock,
+)
+from ..auth import extract_token, get_client_ip, is_curator, is_machine
+from ..config import MCP_TOKEN
 from ..db import (
+    MAX_PAGE_BOXES,
     create_direct_pass,
+    dialogue_vector_status,
     get_library_facets,
+    get_story_context,
     query_library_index,
     search_dialogues,
+    search_dialogues_semantic,
 )
 from ..imsearch import check_imsearch_status, search_imsearch
 from ..providers import provider_list
@@ -70,7 +80,12 @@ MCP_TOOLS: list[dict[str, Any]] = [
     },
     {
         "name": "search_by_dialogue",
-        "description": "基于 SQLite FTS5 (Trigram 倒排索引) 在全库漫画分镜中全文检索台词对白与名场面，返回命中漫画、画页页码、对白气泡归一化坐标与高亮上下文。",
+        "description": (
+            "基于 SQLite FTS5 (Trigram 倒排索引) 在全库漫画分镜中全文检索台词对白与名场面，返回命中漫画、"
+            "画页页码、对白气泡归一化坐标与高亮上下文。排序是相关度（`rank_score`，本次候选池内 0..1 归一）"
+            "叠加馆长本人的收藏/完读率/最近阅读/站内热度后的结果——**顺序带个人视角，命中数不带**；"
+            "要按纯文本相关度取料，请按 `rank_score` 自行重排。"
+        ),
         "inputSchema": {
             "type": "object",
             "properties": {
@@ -89,6 +104,36 @@ MCP_TOOLS: list[dict[str, Any]] = [
                 },
             },
             "required": ["text"],
+        },
+    },
+    {
+        "name": "search_by_meaning",
+        "description": (
+            "按「意思」找台词：字面完全不通时的第二条腿（搜「告白」能拿到「我喜欢你」、搜「脸红」能拿到"
+            "「满脸通红」）。返回**气泡**级命中，带页码与归一化坐标，可直接拿去阅读器描边。"
+            "分数是 `similarity`（余弦，跨查询可比），**与 search_by_dialogue 的 `rank_score` 不是一个口径**，"
+            "不要混排、不要互相当阈值用。字面命中优先用 search_by_dialogue（更快更准），本工具用于换种说法"
+            "也说得出、或需要近似表达素材的场景。语义腿未就绪时返回 `available=false` 与原因"
+            "（未装模型 / 向量待重建），那是环境状态，重试无用。"
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "meaning": {
+                    "type": "string",
+                    "description": "想要表达的意思或场景，例如「告白」「被打败后认输」「久别重逢」",
+                },
+                "source": {
+                    "type": "string",
+                    "description": "可选限定特定图源平台（如 'jm' | 'picacg' | 'local'）",
+                },
+                "limit": {
+                    "type": "integer",
+                    "description": "返回的最大条数（1~50，默认 5）",
+                    "default": 5,
+                },
+            },
+            "required": ["meaning"],
         },
     },
     {
@@ -185,7 +230,7 @@ MCP_TOOLS: list[dict[str, Any]] = [
     },
     {
         "name": "create_direct_pass",
-        "description": "为指定漫画签发单本沙箱临时直达阅读 Token 与链接（默认 2 小时有效），读者无需全站登录即可安全阅读该作品并精准直达指定页码。",
+        "description": "为指定漫画签发单本沙箱临时直达阅读 Token 与链接（默认 2 小时有效），读者无需全站登录即可安全阅读该作品并精准直达指定页码。已标记「对访客隐藏」的作品会被拒绝签发，请勿重试。",
         "inputSchema": {
             "type": "object",
             "properties": {
@@ -217,6 +262,43 @@ MCP_TOOLS: list[dict[str, Any]] = [
         "inputSchema": {
             "type": "object",
             "properties": {},
+        },
+    },
+    {
+        "name": "get_story_context",
+        "description": (
+            "取料出口：按「作品 + 页码区间」拉取原始台词流，供漫画分镜、动漫脚本、游戏对话等下游"
+            "生成管线使用。顺序严格按剧情推进（页码 + 页内阅读顺序），不做相关度排序，不带 <mark> "
+            "展示态标签；行数由 budget_lines 预算决定，撞预算回报 truncated=true 供下游决定是否续取。"
+            "入参不接受关键词（要按台词找本子请用 search_by_dialogue）。返回分两份：lines 交给模型、"
+            "boxes 交给渲染层，靠 line_id 关联——气泡坐标是画上去用的，塞进 prompt 只会成为噪声。"
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "source": {
+                    "type": "string",
+                    "description": "图源平台标识（如 'jm' | 'picacg' | 'local'）",
+                },
+                "source_id": {
+                    "type": "string",
+                    "description": "作品 ID（与 source 组成复合键，单独不唯一定位一本书）",
+                },
+                "page_start": {
+                    "type": "integer",
+                    "description": "起始全局页号（1-indexed，含）",
+                },
+                "page_end": {
+                    "type": "integer",
+                    "description": "结束全局页号（含）；单次最多跨 200 页",
+                },
+                "budget_lines": {
+                    "type": "integer",
+                    "description": "预算行数，本次最多返回多少条台词（默认 120，上限 400）",
+                    "default": 120,
+                },
+            },
+            "required": ["source", "source_id", "page_start", "page_end"],
         },
     },
 ]
@@ -322,6 +404,30 @@ async def _tool_search_by_image(arguments: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _bubble_query(d: dict[str, Any]) -> dict[str, str]:
+    """把一页命中拼成阅读器认得的高亮参数。
+
+    阅读器只解析 `bubble_box` / `bubble_boxes` / `bubble_text` / `highlight_bubble=1|true`；
+    历史版本在这里拼的是 `?bubble=<气泡 id>`，数字 id 不被解析，等于签发了一个
+    永远不高亮的直达链接。坐标必须与前端 useDialogueSearch 的编码逐字对齐。
+    """
+    def encode(box: list[float]) -> str:
+        return ",".join(f"{float(v):.4f}" for v in box)
+
+    query: dict[str, str] = {}
+    box = d.get("box") or []
+    if len(box) == 4:
+        query["bubble_box"] = encode(box)
+    others = [b for b in (d.get("other_boxes") or []) if isinstance(b, list) and len(b) == 4]
+    if others:
+        query["bubble_boxes"] = ";".join(encode(b) for b in others[: MAX_PAGE_BOXES - 1])
+    if d.get("text"):
+        query["bubble_text"] = str(d["text"])
+    if query:
+        query["highlight_bubble"] = "1"
+    return query
+
+
 async def _tool_search_by_dialogue(arguments: dict[str, Any]) -> dict[str, Any]:
     text = str(arguments.get("text", "")).strip()
     if not text:
@@ -329,10 +435,13 @@ async def _tool_search_by_dialogue(arguments: dict[str, Any]) -> dict[str, Any]:
     source = arguments.get("source")
     limit = int(arguments.get("limit", 5))
 
-    diag_results = search_dialogues(query=text, source=source, limit=limit, is_guest=False)
+    diag_results = search_dialogues(query=text, source=source, limit=limit, is_guest=False, user_id="curator")
     hits = []
     for d in diag_results:
-        bubble_param = f"?bubble={d.get('bubble_id')}" if d.get("bubble_id") else ""
+        query = _bubble_query(d)
+        url = f"/comic/{d['source']}/{d['source_id']}/read/{d['page_index']}"
+        if query:
+            url = f"{url}?{urlencode(query)}"
         hits.append({
             "source": d["source"],
             "source_id": d["source_id"],
@@ -340,10 +449,14 @@ async def _tool_search_by_dialogue(arguments: dict[str, Any]) -> dict[str, Any]:
             "authors": d.get("authors", []),
             "page_index": d["page_index"],
             "bubble_id": d.get("bubble_id"),
+            # 检索单元是气泡、展示单元是页：一行代表一整页，同页命中数与其余格一并给出
+            "bubble_count": d.get("bubble_count"),
             "text": d["text"],
             "snippet": d.get("snippet", d["text"]),
             "box": d.get("box", []),
-            "reader_url": f"/comic/{d['source']}/{d['source_id']}/read/{d['page_index']}{bubble_param}",
+            "other_boxes": d.get("other_boxes", []),
+            "rank_score": d.get("rank_score", 0.0),
+            "reader_url": url,
         })
 
     return {
@@ -354,6 +467,56 @@ async def _tool_search_by_dialogue(arguments: dict[str, Any]) -> dict[str, Any]:
                     "query": text,
                     "total_matched": len(hits),
                     "hits": hits,
+                }, ensure_ascii=False, indent=2),
+            }
+        ],
+        "isError": False,
+    }
+
+
+async def _tool_search_by_meaning(arguments: dict[str, Any]) -> dict[str, Any]:
+    meaning = str(arguments.get("meaning", "")).strip()
+    if not meaning:
+        raise ValueError("meaning 语义描述不能为空")
+    status = dialogue_vector_status()
+    if not status["available"]:
+        # 语义腿没装/没建是环境状态，不是查询错误：把 reason 原样交回去，比抛异常更能让
+        # 调用方改走 search_by_dialogue，而不是拿同一个问题反复重试。
+        hint = {
+            "encoder_unavailable": "本机未放置语义编码器模型，只有关键词检索可用",
+            "vectors_missing": "模型已就绪但台词向量还没建，请调用 POST /api/search/dialogue-vectors/rebuild",
+            "dim_mismatch": "台词向量是别的模型编的（维度不一致），需重建向量库",
+        }.get(status["reason"], status["reason"])
+        return {
+            "content": [{"type": "text", "text": json.dumps(
+                {"query": meaning, "available": False, "reason": status["reason"], "hint": hint},
+                ensure_ascii=False, indent=2)}],
+            "isError": False,
+        }
+    hits = search_dialogues_semantic(
+        query=meaning,
+        source=arguments.get("source"),
+        limit=int(arguments.get("limit", 5)),
+        is_guest=False,
+        user_id="curator",
+    )
+    payload = []
+    for h in hits:
+        url = f"/comic/{h['source']}/{h['source_id']}/read/{h['page_index']}"
+        query = _bubble_query(h)
+        if query:
+            url = f"{url}?{urlencode(query)}"
+        payload.append({**h, "reader_url": url})
+    return {
+        "content": [
+            {
+                "type": "text",
+                "text": json.dumps({
+                    "query": meaning,
+                    "available": True,
+                    "total_matched": len(payload),
+                    "scoring": "similarity 为余弦距离，跨查询可比；与 search_by_dialogue 的 rank_score 不同口径，禁止混排",
+                    "hits": payload,
                 }, ensure_ascii=False, indent=2),
             }
         ],
@@ -540,6 +703,10 @@ async def _tool_create_direct_pass(arguments: dict[str, Any]) -> dict[str, Any]:
             "isError": True,
         }
 
+    # 直达链接是给访客看的，隐藏本就别从智能体这条路上漏出去；要真分享，由人在 Web 端点一下
+    if getattr(meta, "hidden_from_guest", False):
+        raise ValueError(f"作品 {source}/{source_id} 已标记为对访客隐藏，MCP 通道拒绝为其签发直达阅读链接")
+
     safe_page = min(page_index, max(1, meta.page_count))
     res = create_direct_pass(
         source=source,
@@ -596,14 +763,43 @@ async def _tool_get_shelf_stats(arguments: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+async def _tool_get_story_context(arguments: dict[str, Any]) -> dict[str, Any]:
+    source = str(arguments.get("source", "")).strip()
+    source_id = str(arguments.get("source_id", "")).strip()
+    if not source or not source_id:
+        raise ValueError("source 与 source_id 不能为空")
+    try:
+        page_start = int(arguments["page_start"])
+        page_end = int(arguments["page_end"])
+    except (KeyError, TypeError, ValueError):
+        raise ValueError("page_start 与 page_end 必须是整数页号")
+    budget = int(arguments.get("budget_lines", 120))
+
+    ctx = get_story_context(source, source_id, page_start, page_end, budget_lines=budget)
+    payload = {
+        "source": source,
+        "source_id": source_id,
+        "requested_pages": [page_start, page_end],
+        **ctx,
+    }
+    return {
+        "content": [
+            {"type": "text", "text": json.dumps(payload, ensure_ascii=False, indent=2)}
+        ],
+        "isError": False,
+    }
+
+
 TOOL_HANDLERS: dict[str, Callable[[dict[str, Any]], Awaitable[dict[str, Any]]]] = {
     "search_by_image": _tool_search_by_image,
     "search_by_dialogue": _tool_search_by_dialogue,
+    "search_by_meaning": _tool_search_by_meaning,
     "query_shelf": _tool_query_shelf,
     "get_comic_detail": _tool_get_comic_detail,
     "recommend_unread": _tool_recommend_unread,
     "create_direct_pass": _tool_create_direct_pass,
     "get_shelf_stats": _tool_get_shelf_stats,
+    "get_story_context": _tool_get_story_context,
 }
 
 
@@ -865,13 +1061,42 @@ async def process_jsonrpc_request(req_data: Any) -> Any:
 
 
 def _require_mcp_auth(request: Request) -> None:
-    """Enforces curator-level or machine authentication on HTTP/SSE MCP endpoints."""
-    if not (is_curator(request) or is_machine(request)):
+    """MCP 面只认馆长口令，外加一把可单独撤销的子凭据 `COMIC_SHELF_MCP_TOKEN`。
+
+    配了子凭据就不再认机器密钥：那把钥匙同时握在 OCR 流水线手里（入库与伴生同步都要用），
+    外发到智能体配置里等于连"往库里写东西"一起交出去，而且换它得连流水线一起重启。
+
+    失败尝试与 `/api/auth/login` 共用同一把 IP 锁：全站中间件对 `/api/mcp` 是提前放行的，
+    这里不计数就没有任何东西挡得住对着密钥的反复猜测。
+    """
+    ip = get_client_ip(request)
+    if is_ip_login_locked(ip):
         raise HTTPException(
-            status_code=401,
-            detail="未授权访问：MCP 接口需要馆长有效口令或机器密钥 (Curator or Machine Token Required)",
-            headers={"WWW-Authenticate": "Bearer"},
+            status_code=429,
+            detail="MCP 凭据尝试过于频繁，该网络地址已临时锁定 5 分钟，请稍后再试",
+            headers={"Retry-After": "300"},
         )
+
+    granted = is_curator(request)
+    if not granted:
+        if MCP_TOKEN:
+            token = extract_token(request)
+            granted = bool(token) and secrets.compare_digest(token, MCP_TOKEN)
+        else:
+            granted = is_machine(request)
+
+    if granted:
+        clear_ip_login_failures(ip)
+        return
+
+    record_ip_login_failure_and_check_lock(ip)
+    raise HTTPException(
+        status_code=401,
+        detail="未授权访问：MCP 接口需要馆长口令"
+        + ("或 MCP 子凭据" if MCP_TOKEN else " / 机器密钥")
+        + " (Curator or MCP Credential Required)",
+        headers={"WWW-Authenticate": "Bearer"},
+    )
 
 
 # ----------------------------------------------------------------------
@@ -898,9 +1123,10 @@ async def mcp_sse_endpoint(request: Request) -> StreamingResponse:
         queue: asyncio.Queue[str | None] = asyncio.Queue(maxsize=100)
         _mcp_sessions[session_id] = queue
 
-    token_param = request.query_params.get("token") or request.query_params.get("temp_token")
-    token_suffix = f"&token={quote(token_param, safe='')}" if token_param else ""
-    message_endpoint_url = f"/api/mcp/messages?session_id={session_id}{token_suffix}"
+    # 刻意不把调用方自带的凭据拼进下面这个 URL：uvicorn 与反代访问日志默认记完整查询串，
+    # 那样站长口令/机器密钥会在日志里长期留存。session_id 是服务端每次连接新发的 128bit
+    # 随机值、断连即回收，它的保密等级就等于一次性会话票据，不需要再叠一层长效凭据。
+    message_endpoint_url = f"/api/mcp/messages?session_id={session_id}"
 
     async def sse_stream() -> AsyncGenerator[str, None]:
         try:
@@ -940,12 +1166,17 @@ async def mcp_messages_endpoint(
     request: Request,
     session_id: str = Query(..., description="Active MCP SSE session ID"),
 ) -> Response:
-    """Receives JSON-RPC 2.0 requests for an established MCP SSE session."""
-    _require_mcp_auth(request)
+    """Receives JSON-RPC 2.0 requests for an established MCP SSE session.
+
+    续话只需持有活会话的 `session_id`（服务端每连接新发、断连即回收），不再要求重出示长
+    效凭据——这正是把凭据从 URL 里拿掉后，只按 URL 回话的客户端仍能工作的原因。
+    """
     async with _sessions_lock:
         queue = _mcp_sessions.get(session_id)
 
-    if not queue:
+    if queue is None:
+        # 认不出活会话时先要凭据，再报 404：不让匿名请求拿 401/404 的差别探测 session 存在性
+        _require_mcp_auth(request)
         raise HTTPException(status_code=404, detail="MCP session not found or expired")
 
     try:

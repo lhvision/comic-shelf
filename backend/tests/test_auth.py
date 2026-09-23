@@ -1,5 +1,6 @@
 import sys
 import asyncio
+import json
 from pathlib import Path
 from unittest.mock import MagicMock
 
@@ -256,14 +257,20 @@ def test_auth_and_security_middleware():
     mid_dev_token = mid_dev["device_token"]
 
     async def run_cases():
+        # 中间件会往经过它的响应上补缓存头，所以 mock 必须交还真 Response 对象：
+        # 用字符串当响应测不到这段行为，而且每个用例都要换一个新对象，
+        # 否则上一个用例写进去的 no-store 会让下一个用例误判"头本来就有"
+        def ok_response(**headers):
+            return Response(content=b"{}", headers=headers or None)
+
         # Case 1: Open access (no secret configured)
         auth_mod.AUTH_SECRET = ""
-        call_next = AsyncMock(return_value="OK")
+        call_next = AsyncMock(return_value=ok_response())
 
         req_post = make_mock_request("/api/library/import")
         req_post.method = "POST"
         res = await auth_and_security_middleware(req_post, call_next)
-        assert res == "OK", "Open access should allow POST /api/library/import"
+        assert res is not None, "Open access should allow POST /api/library/import"
 
         # Case 2: Protected mode (Curator + Guest Pass)
         auth_mod.AUTH_SECRET = "curator-key-888"
@@ -287,41 +294,70 @@ def test_auth_and_security_middleware():
 
         # 2c. Curator POST /api/library/import -> OK
         call_next.reset_mock()
+        passthrough = ok_response()
+        call_next.return_value = passthrough
         req_curator_post = make_mock_request(
             "/api/library/import",
             headers={"Authorization": "Bearer curator-key-888"},
         )
         req_curator_post.method = "POST"
         res_ok = await auth_and_security_middleware(req_curator_post, call_next)
-        assert res_ok == "OK"
+        assert res_ok is passthrough
 
         # 2d. Guest GET /api/library -> OK
         call_next.reset_mock()
+        passthrough = ok_response()
+        call_next.return_value = passthrough
         req_guest_get = make_mock_request(
             "/api/library",
             headers={"X-Device-Token": mid_dev_token},
         )
         req_guest_get.method = "GET"
         res_get_ok = await auth_and_security_middleware(req_guest_get, call_next)
-        assert res_get_ok == "OK"
+        assert res_get_ok is passthrough
+        # 内容随身份而变的 /api 响应必须不可被共享缓存复用（书架带喜欢/进度，台词检索带个性化排序）
+        assert passthrough.headers["cache-control"] == "no-store", "已过鉴权的 /api 响应没补 no-store"
 
         # 2e. Image search POST is allowed for guest
         call_next.reset_mock()
+        passthrough = ok_response()
+        call_next.return_value = passthrough
         req_img_search = make_mock_request(
             "/api/search/image",
             headers={"X-Device-Token": mid_dev_token},
         )
         req_img_search.method = "POST"
         res_search_ok = await auth_and_security_middleware(req_img_search, call_next)
-        assert res_search_ok == "OK"
+        assert res_search_ok is passthrough
+
+        # 2e'. 处理器自己写过的缓存头一律不覆盖（封面/画页靠 private,max-age 才不用每页重拉）
+        call_next.reset_mock()
+        cached = ok_response(**{"Cache-Control": "private, max-age=3600"})
+        call_next.return_value = cached
+        req_cover = make_mock_request(
+            "/api/library/jm/1/pages/1/file",
+            headers={"Authorization": "Bearer curator-key-888"},
+        )
+        req_cover.method = "GET"
+        res_cached = await auth_and_security_middleware(req_cover, call_next)
+        assert res_cached is cached
+        assert res_cached.headers["cache-control"] == "private, max-age=3600", "中间件覆盖了处理器的缓存策略"
 
         # 2f. Public endpoints bypass auth
         for pub_path in ("/api/auth/status", "/api/health", "/api/auth/login", "/api/auth/claim", "/api/auth/logout"):
             call_next.reset_mock()
+            call_next.return_value = ok_response()
             req_pub = make_mock_request(pub_path)
             req_pub.method = "POST" if "login" in pub_path or "claim" in pub_path or "logout" in pub_path else "GET"
             res_pub = await auth_and_security_middleware(req_pub, call_next)
-            assert res_pub == "OK", f"Endpoint {pub_path} should bypass middleware"
+            assert res_pub is not None, f"Endpoint {pub_path} should bypass middleware"
+
+        # 2f'. 免鉴权的 /api/health 不得报出宿主机路径（开源仓库 + 公网反代下等于送地图）
+        from app.routers.system import health
+
+        probe = json.dumps(health())
+        assert "/home" not in probe and "backend/data" not in probe, f"health 泄露宿主机路径: {probe}"
+        assert "auth_required" in probe and "providers" in probe, "health 丢掉了巡检字段"
         # 2g. Image binary endpoints with static extension aliases trigger hotlink check
         for img_ext_path in (
             "/api/library/jm/1/covers/1/file.jpg",

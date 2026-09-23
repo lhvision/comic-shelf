@@ -12,7 +12,7 @@
     "ocr": "bash scripts/ocr.sh",
     "ocr:sync": "bash scripts/ocr.sh sync",
     "build": "run-p type-check \"build-only {@}\" --",
-    "setup:py": "python3 -m venv .venv && .venv/bin/pip install -r backend/requirements.txt",
+    "setup:py": "python3 -m venv .venv && .venv/bin/pip install -r backend/requirements.txt && .venv/bin/pip install 'httpx2>=2.13'",
     "preview": "vp preview",
     "api": "bash scripts/api.sh",
     "test:unit": "vp test",

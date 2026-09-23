@@ -17,6 +17,7 @@ if str(BACKEND_DIR) not in sys.path:
 import app.auth as auth_mod
 import app.config as config_mod
 import app.db as db_mod
+import app.routers.mcp as mcp_mod
 from app.db import (
     create_direct_pass,
     get_direct_pass,
@@ -25,6 +26,7 @@ from app.db import (
     set_dialogue_db_path,
     upsert_comic_index,
 )
+from app.abuse import clear_ip_login_failures
 from app.main import auth_and_security_middleware, store
 from app.models import ComicMeta
 from app.routers.mcp import (
@@ -33,6 +35,8 @@ from app.routers.mcp import (
     MCP_TOOLS,
     execute_tool,
     mcp_direct_rpc_endpoint,
+    mcp_messages_endpoint,
+    mcp_sse_endpoint,
     process_jsonrpc_request,
 )
 
@@ -160,6 +164,7 @@ def test_mcp_protocol_initialize_and_tools():
             "recommend_unread",
             "create_direct_pass",
             "get_shelf_stats",
+            "get_story_context",
         }
         assert expected_tools.issubset(tool_names)
 
@@ -482,14 +487,261 @@ def test_http_direct_rpc_and_sandbox_middleware():
         shutil.rmtree(tmp_dir, ignore_errors=True)
 
 
+def test_mcp_dialogue_deep_link_and_story_context():
+    """MCP 臂必须被断言：台词直达链接要真能高亮，取料出口要守三条边界纪律。"""
+    tmp_dir = setup_test_env()
+    old_data_dir = db_mod.DATA_DIR
+    try:
+        db_mod.DATA_DIR = tmp_dir
+        comic_dir = tmp_dir / "library" / "local" / "mcp_test_comic"
+        pages = comic_dir / "pages"
+        pages.mkdir(parents=True, exist_ok=True)
+        (comic_dir / "album.json").write_text(
+            json.dumps({"source": "local", "source_id": "mcp_test_comic", "page_count": 20}),
+            encoding="utf-8",
+        )
+        (pages / "00005.ocr.json").write_text(
+            json.dumps({
+                "version": 1,
+                "engine": "rapidocr",
+                "bubbles": [
+                    {"id": 1, "order": 1, "box": [0.1, 0.1, 0.2, 0.4], "text": "老师我真的很喜欢你"},
+                    {"id": 2, "order": 2, "box": [0.3, 0.2, 0.4, 0.6], "text": "我也最喜欢你了老师"},
+                    {"id": 3, "order": 3, "box": [0.5, 0.3, 0.6, 0.7], "text": "今天天气不错啊"},
+                ],
+            }, ensure_ascii=False),
+            encoding="utf-8",
+        )
+        assert db_mod.sync_comic_dialogues("local", "mcp_test_comic") == 3
+
+        # 1. 台词直达链接：阅读器只认 bubble_box / bubble_boxes / highlight_bubble，
+        #    历史版本在这里拼 ?bubble=<气泡 id>，签发的链接永远画不出高亮框
+        res = asyncio.run(execute_tool("search_by_dialogue", {"text": "喜欢你", "limit": 5}))
+        assert res["isError"] is False
+        payload = json.loads(res["content"][0]["text"])
+        assert payload["total_matched"] == 1, f"同页两句命中应聚合成一行: {payload}"
+        hit = payload["hits"][0]
+        url = hit["reader_url"]
+        from urllib.parse import parse_qs, urlsplit
+
+        params = parse_qs(urlsplit(url).query)
+        assert {"bubble_box", "bubble_boxes", "highlight_bubble"} <= set(params), (
+            f"直达链接参数不全，点进去不会有高亮: {url}"
+        )
+        assert "bubble" not in params, f"已废弃的气泡 id 参数不得再签发: {url}"
+        assert params["highlight_bubble"] == ["1"]
+        assert hit["bubble_count"] == 2 and len(hit["other_boxes"]) == 1
+
+        # 2. 取料出口：按页码+阅读顺序出原始台词流，不收关键词、不带展示态、撞预算要回报
+        ctx = asyncio.run(execute_tool("get_story_context", {
+            "source": "local", "source_id": "mcp_test_comic",
+            "page_start": 5, "page_end": 6, "budget_lines": 2,
+        }))
+        assert ctx["isError"] is False
+        cp = json.loads(ctx["content"][0]["text"])
+        assert [ln["text"] for ln in cp["lines"]] == ["老师我真的很喜欢你", "我也最喜欢你了老师"]
+        assert cp["truncated"] is True
+        assert cp["requested_pages"] == [5, 6]
+        assert "<mark>" not in ctx["content"][0]["text"], "展示态标签不得进入取料物料"
+        assert "snippet" not in cp["lines"][0]
+        assert [b["line_id"] for b in cp["boxes"]] == [ln["line_id"] for ln in cp["lines"]]
+
+        # 3. 边界：缺页号、非整数页号都要明确报错，而不是静默返回空物料
+        bad = asyncio.run(execute_tool("get_story_context", {
+            "source": "local", "source_id": "mcp_test_comic", "page_start": "abc", "page_end": 6,
+        }))
+        assert bad["isError"] is True
+        missing = asyncio.run(execute_tool("get_story_context", {"source": "local"}))
+        assert missing["isError"] is True
+    finally:
+        db_mod.DATA_DIR = old_data_dir
+        shutil.rmtree(tmp_dir, ignore_errors=True)
+
+
+def test_mcp_scoped_credential_and_hidden_book_refusal():
+    """子凭据只开 MCP 且启用即挡机器密钥；对访客隐藏的本子不许经 MCP 变成公开链接。"""
+    from unittest.mock import patch
+
+    from fastapi import HTTPException
+
+    tmp_dir = setup_test_env()
+    auth_mod.AUTH_SECRET = "super-secret-curator-key"
+    config_mod.MACHINE_TOKEN = "dedicated-machine-key"
+    auth_mod.MACHINE_TOKEN = "dedicated-machine-key"
+
+    def rpc(headers):
+        req = make_mock_request(
+            path="/api/mcp/rpc",
+            method="POST",
+            headers=headers,
+            json_body={
+                "jsonrpc": "2.0",
+                "id": 7,
+                "method": "tools/call",
+                "params": {"name": "get_shelf_stats", "arguments": {}},
+            },
+        )
+        return asyncio.run(mcp_direct_rpc_endpoint(req))
+
+    try:
+        mcp_mod.MCP_TOKEN = ""
+        assert rpc({"X-Machine-Token": "dedicated-machine-key"}).status_code == 200, (
+            "没启用子凭据时机器密钥必须照旧能开 MCP"
+        )
+
+        mcp_mod.MCP_TOKEN = "agent-scoped-key"
+        try:
+            rpc({"X-Machine-Token": "dedicated-machine-key"})
+            assert False, "启用 MCP_TOKEN 后机器密钥仍打得开 MCP，等于两把钥匙共享一套权限"
+        except HTTPException as exc:
+            assert exc.status_code == 401
+        assert rpc({"Authorization": "Bearer agent-scoped-key"}).status_code == 200
+        assert rpc({"Authorization": "Bearer super-secret-curator-key"}).status_code == 200
+
+        args = {"source": "local", "source_id": "mcp_test_comic", "page_index": 3}
+        minted = asyncio.run(mcp_mod._tool_create_direct_pass(args))
+        assert minted["isError"] is False
+        assert json.loads(minted["content"][0]["text"])["token"], "可见本被误伤，签不出链接"
+
+        orig_load = mcp_mod.store.load_meta
+
+        def hidden(source, source_id):
+            meta = orig_load(source, source_id)
+            meta.hidden_from_guest = True
+            return meta
+
+        with patch.object(mcp_mod.store, "load_meta", side_effect=hidden):
+            try:
+                asyncio.run(mcp_mod._tool_create_direct_pass(args))
+                assert False, "对访客隐藏的本子仍然经 MCP 签出了直达阅读链接"
+            except ValueError as exc:
+                assert "隐藏" in str(exc), exc
+        print("  ✓ MCP scoped credential and hidden-book mint refusal passed")
+    finally:
+        mcp_mod.MCP_TOKEN = ""
+        auth_mod.AUTH_SECRET = ""
+        auth_mod.MACHINE_TOKEN = ""
+        config_mod.MACHINE_TOKEN = ""
+        shutil.rmtree(tmp_dir, ignore_errors=True)
+
+
+def test_mcp_handshake_url_is_credential_free_and_failures_get_locked():
+    """握手 URL 不许回显凭据；活会话凭 session_id 续话；反复试错要进 IP 锁。"""
+    from fastapi import HTTPException
+
+    tmp_dir = setup_test_env()
+    auth_mod.AUTH_SECRET = "super-secret-curator-key"
+    agent_ip = "203.0.113.9"
+    stranger_ip = "203.0.113.10"
+
+    def from_ip(req, ip):
+        req.client = type("Client", (), {"host": ip})()
+        return req
+
+    async def flow():
+        # 1. 客户端用查询串上来了，服务端也不许把它抄回握手 URL（反代日志会长期留着它）
+        sse_req = from_ip(
+            make_mock_request(
+                path="/api/mcp/sse",
+                headers={"Authorization": "Bearer super-secret-curator-key"},
+                query_params={"token": "super-secret-curator-key"},
+            ),
+            agent_ip,
+        )
+        resp = await mcp_sse_endpoint(sse_req)
+        gen = resp.body_iterator
+        handshake = await anext(gen)
+        assert "session_id=" in handshake, f"握手没给出消息端点: {handshake}"
+        assert "token=" not in handshake, f"握手 URL 回显了凭据，会进访问日志: {handshake}"
+        session_id = handshake.split("session_id=")[1].strip().split("&")[0]
+
+        payload = {
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "tools/call",
+            "params": {"name": "get_shelf_stats", "arguments": {}},
+        }
+        # 2. 只带 session_id、不带任何凭据也认（凭据已从 URL 拿掉，这是唯一能续话的路径）
+        ok = await mcp_messages_endpoint(
+            from_ip(
+                make_mock_request(
+                    path="/api/mcp/messages", method="POST", json_body=payload, query_params={"session_id": session_id}
+                ),
+                agent_ip,
+            ),
+            session_id,
+        )
+        assert ok.status_code == 202, f"活会话续话被拒: {ok.status_code}"
+
+        # 3. 认不出的 session 又拿不出凭据 → 401（不给匿名者用 401/404 差别探测会话是否存在）
+        try:
+            await mcp_messages_endpoint(
+                from_ip(make_mock_request(path="/api/mcp/messages", method="POST", json_body=payload), stranger_ip),
+                "deadbeefdeadbeefdeadbeefdeadbeef",
+            )
+            assert False, "匿名请求不该拿到 404"
+        except HTTPException as exc:
+            assert exc.status_code == 401, exc.status_code
+
+        await gen.aclose()
+
+        # 4. 反复试错要撞锁：与 /api/auth/login 共用同一把 IP 锁（10 次/60 秒 → 锁 5 分钟）
+        for i in range(10):
+            try:
+                await mcp_direct_rpc_endpoint(
+                    from_ip(
+                        make_mock_request(
+                            path="/api/mcp/rpc",
+                            method="POST",
+                            headers={"Authorization": "Bearer guess-me-maybe"},
+                            json_body=payload,
+                        ),
+                        agent_ip,
+                    )
+                )
+                assert False, f"第 {i + 1} 次错凭据本该 401"
+            except HTTPException as exc:
+                assert exc.status_code == 401, (i, exc.status_code)
+
+        try:
+            await mcp_direct_rpc_endpoint(
+                from_ip(
+                    make_mock_request(
+                        path="/api/mcp/rpc",
+                        method="POST",
+                        headers={"Authorization": "Bearer super-secret-curator-key"},
+                        json_body=payload,
+                    ),
+                    agent_ip,
+                )
+            )
+            assert False, "锁还没生效：错凭据试了 10 次仍然没人管"
+        except HTTPException as exc:
+            assert exc.status_code == 429, exc.status_code
+            assert exc.headers.get("Retry-After") == "300"
+
+    try:
+        asyncio.run(flow())
+        print("  ✓ MCP credential-free handshake and failure lockout passed")
+    finally:
+        clear_ip_login_failures(agent_ip)
+        clear_ip_login_failures(stranger_ip)
+        auth_mod.AUTH_SECRET = ""
+        shutil.rmtree(tmp_dir, ignore_errors=True)
+
+
 if __name__ == "__main__":
     print("Running MCP Server unit tests...")
     test_mcp_protocol_initialize_and_tools()
     print("  ✓ MCP initialize and tools/list passed")
     test_mcp_tool_execution()
     print("  ✓ MCP tool execution and direct pass creation passed")
+    test_mcp_dialogue_deep_link_and_story_context()
+    print("  ✓ MCP dialogue deep link and story-context export passed")
     test_mcp_resources_and_prompts()
     print("  ✓ MCP resources and prompts passed")
     test_http_direct_rpc_and_sandbox_middleware()
     print("  ✓ MCP HTTP direct RPC and Single-Book Sandbox passed")
+    test_mcp_scoped_credential_and_hidden_book_refusal()
+    test_mcp_handshake_url_is_credential_free_and_failures_get_locked()
     print("All MCP Server tests passed successfully!")

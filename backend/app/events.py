@@ -7,7 +7,7 @@ from typing import Any, AsyncGenerator
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import StreamingResponse
 
-from .auth import get_client_ip
+from .auth import can_read, get_client_ip
 
 router = APIRouter(prefix="/api/events", tags=["events"])
 
@@ -108,6 +108,11 @@ async def sse_event_stream(request: Request) -> StreamingResponse:
 
     Zero polling, 0 CPU idle load, per-IP connection limits and native auto-reconnect support.
     """
+    # 该前缀在全站鉴权中间件里是提前放行的（长连接不能被拦截器打断），所以门禁得自己做：
+    # 事件里带着"刚收录了哪本书"，匿名旁听等于持续读取私密书架。
+    if not can_read(request):
+        raise HTTPException(status_code=401, detail="事件流需要有效的通行口令或访客设备会话")
+
     client_ip = get_client_ip(request)
     loop = asyncio.get_running_loop()
 
