@@ -206,26 +206,31 @@ class TestGPURuntime(unittest.TestCase):
     """CUDA 通道契约（错题本 #137 记的 v3 假通道已随那个包一起删除）"""
 
     @staticmethod
-    def _fake_v6(captured):
-        """造一个替身引擎，把 build_engine 传给 rapidocr 的 params 扣下来。"""
+    def _fake_rapidocr(captured, cpu_part=None):
+        """造一个替身引擎：扣下 build_engine 传给 rapidocr 的 params；三段会话默认都在 CUDA 上，
+        `cpu_part` 指定的那段模拟"缺 .so 静默退回 CPU"。"""
+        from types import SimpleNamespace
         from unittest import mock
+
+        def part(name):
+            providers = ["CPUExecutionProvider"] if name == cpu_part else ["CUDAExecutionProvider", "CPUExecutionProvider"]
+            return SimpleNamespace(session=SimpleNamespace(session=SimpleNamespace(get_providers=lambda: providers)))
 
         class Fake:
             def __init__(self, params=None):
                 captured["params"] = dict(params or {})
+                self.text_det, self.text_cls, self.text_rec = part("det"), part("cls"), part("rec")
 
         return (
-            mock.patch.object(ocr_worker, "RapidOCRV6", Fake),
-            mock.patch.object(ocr_worker, "V6OCRVersion", mock.MagicMock(PPOCRV6="v6")),
-            mock.patch.object(ocr_worker, "V6ModelType", mock.MagicMock(SMALL="small")),
+            mock.patch.object(ocr_worker, "RapidOCR", Fake),
+            mock.patch.object(ocr_worker, "OCRVersion", mock.MagicMock(PPOCRV6="v6")),
+            mock.patch.object(ocr_worker, "ModelType", mock.MagicMock(SMALL="small")),
         )
 
     def test_gpu_flag_uses_the_real_channel(self):
         """要求 GPU 必须走 `EngineConfig.onnxruntime.use_cuda`；不要求时不许偷开。"""
-        from unittest import mock
-
         captured = {}
-        patches = self._fake_v6(captured)
+        patches = self._fake_rapidocr(captured)
         with patches[0], patches[1], patches[2]:
             ocr_worker.build_engine(True)
             self.assertTrue(captured["params"]["EngineConfig.onnxruntime.use_cuda"])
@@ -233,11 +238,33 @@ class TestGPURuntime(unittest.TestCase):
             ocr_worker.build_engine(False)
             self.assertNotIn("EngineConfig.onnxruntime.use_cuda", captured["params"])
 
+    def test_gpu_request_fails_when_any_session_falls_back_to_cpu(self):
+        """providers 列表与会话创建都不报错、只有会话实际落在哪才算数：任一段退回 CPU 就必须抛错，
+        否则横幅印着 GPU、整批实际跑 CPU（审查实测过的静默降级）。"""
+        for part in ("det", "cls", "rec"):
+            patches = self._fake_rapidocr({}, cpu_part=part)
+            with patches[0], patches[1], patches[2]:
+                with self.assertRaises(RuntimeError) as ctx:
+                    ocr_worker.build_engine(True)
+                self.assertIn(part.capitalize(), str(ctx.exception), "报错必须指明是哪一段没在 GPU 上")
+                # 不要求 GPU 时不做这道校验：CPU 线本来就该跑在 CPU 上
+                ocr_worker.build_engine(False)
+
+    def test_min_score_goes_to_the_engine(self):
+        """阈值必须交给引擎：引擎出结果前先按 Global.text_score 滤一遍，事后再滤只能调高、调不低。"""
+        captured = {}
+        patches = self._fake_rapidocr(captured)
+        with patches[0], patches[1], patches[2]:
+            ocr_worker.build_engine(False, 0.3)
+            self.assertEqual(captured["params"]["Global.text_score"], 0.3)
+            ocr_worker.build_engine(False)
+            self.assertEqual(captured["params"]["Global.text_score"], ocr_worker.DEFAULT_MIN_SCORE)
+
     def test_missing_engine_raises_instead_of_returning_none(self):
         """缺包必须抛错：返回 None 会被上层当成"这页 0 气泡"，整本书安静跑完结果全空。"""
         from unittest import mock
 
-        with mock.patch.object(ocr_worker, "RapidOCRV6", None):
+        with mock.patch.object(ocr_worker, "RapidOCR", None):
             with self.assertRaises(RuntimeError):
                 ocr_worker.build_engine(False)
 
@@ -305,12 +332,6 @@ class TestEngineAdapter(unittest.TestCase):
         json.dumps(rows[0][0])
         self.assertEqual(rows[0][0], [[1.5, 2.5], [3.5, 4.5]])
 
-    def test_tuple_output_is_rejected_not_swallowed(self):
-        """v3 那种 (results, elapse) 返回值必须当场报错：按对象取属性会拿到 None，
-        于是整本书"安静地跑完、结果全空"，这是本轮踩过的那类失败。"""
-        with self.assertRaises(TypeError):
-            run_engine(lambda _p: ([([[0.0, 0.0], [1.0, 1.0]], "老句子", 0.8)], [0.1]), Path("x.webp"))
-
     def test_empty_v6_result_yields_no_rows(self):
         class Empty:
             txts = None
@@ -318,6 +339,17 @@ class TestEngineAdapter(unittest.TestCase):
             scores = None
 
         self.assertEqual(run_engine(lambda _p: Empty(), Path("x.webp")), [])
+
+    def test_rows_to_blocks_drops_blank_text_but_not_low_scores(self):
+        """空白文本丢掉、角点收成外接框；低分行原样保留——门槛归引擎，这里再滤一遍阈值就调不低了。"""
+        rows = [
+            ([[10.0, 20.0], [90.0, 20.0], [90.0, 60.0], [10.0, 60.0]], " 台词 ", 0.31),
+            ([[0.0, 0.0], [1.0, 1.0]], "   ", 0.99),
+        ]
+        self.assertEqual(
+            ocr_worker.rows_to_blocks(rows),
+            [{"text": "台词", "score": 0.31, "xmin": 10.0, "xmax": 90.0, "ymin": 20.0, "ymax": 60.0}],
+        )
 
 
 class TestCommandLine(unittest.TestCase):

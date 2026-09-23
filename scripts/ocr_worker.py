@@ -16,7 +16,6 @@ import os
 import sys
 import threading
 import time
-import warnings
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 import urllib.request
@@ -32,13 +31,11 @@ except ImportError:
 # 它的字符表 6623 字里只有 5 个假名，日文与繁体会被强行写成形似汉字的乱码，而"忘了带
 # --engine"就会把这些乱码灌进语料且无人察觉。只装它一个包的推理后端见 requirements-ocr.txt。
 try:
-    from rapidocr import ModelType as V6ModelType
-    from rapidocr import OCRVersion as V6OCRVersion
-    from rapidocr import RapidOCR as RapidOCRV6
+    from rapidocr import ModelType, OCRVersion, RapidOCR
 except ImportError:
-    RapidOCRV6 = None
-    V6ModelType = None
-    V6OCRVersion = None
+    RapidOCR = None
+    ModelType = None
+    OCRVersion = None
 
 
 def resolve_data_dir(custom_path: Optional[str] = None) -> Path:
@@ -104,7 +101,8 @@ def sort_bubbles_by_reading_order(
     return out
 
 
-# 置信度低于此值的识别行直接丢弃（拟声词噪点、水印残块）
+# 识别置信度下限（滤掉拟声词噪点、水印残块）。直接交给引擎的 `Global.text_score`：引擎出结果前
+# 就按它丢弃低分行，事后再滤一遍只能把门槛调高、调不低
 DEFAULT_MIN_SCORE = 0.5
 # 同一气泡内多行的笔画粗细差上限（竖排比列宽、横排比行高）
 BUBBLE_THICKNESS_RATIO = 2.0
@@ -249,16 +247,19 @@ _thread_local = threading.local()
 
 # --gpu 开关，由 main() 依命令行参数写入，只负责"必须用上 CUDA，否则直接退出"
 USE_GPU = False
+# --min-score，同样由 main() 写入，各线程建引擎时带上
+MIN_SCORE = DEFAULT_MIN_SCORE
 # 侧车里记录产出引擎，供混跑后溯源（历史数据里有 v3 与更早无此字段的文件）
 ENGINE_TRACK = "v6"
 
 
 def cuda_ready() -> Tuple[bool, str]:
-    """判定 CUDA 是否真能用上。
+    """预检 GPU 构建装没装上，用不上时说明原因。
 
     rapidocr 的启用条件是 `use_cuda and get_device()=='GPU' and 'CUDAExecutionProvider'
     in get_available_providers()`，任一不满足都会**静默**退回 CPU；而只装 CPU 版
     onnxruntime 时后两项都不成立，所以这里提前判定，别等跑完几小时才发现是白跑。
+    providers 列表是编译期的，这里通过不代表会话真在 GPU 上，那一关由 `build_engine(True)` 把。
     """
     try:
         import onnxruntime as ort
@@ -274,26 +275,40 @@ def cuda_ready() -> Tuple[bool, str]:
 def get_engine() -> Any:
     """每个线程独享一个 OCR 推理引擎实例，杜绝多线程状态竞争"""
     if not hasattr(_thread_local, "engine"):
-        _thread_local.engine = build_engine(USE_GPU)
+        _thread_local.engine = build_engine(USE_GPU, MIN_SCORE)
     return _thread_local.engine
 
 
-def build_engine(use_gpu: bool) -> Any:
+def build_engine(use_gpu: bool, min_score: float = DEFAULT_MIN_SCORE) -> Any:
     """构造 PP-OCRv6 引擎。CUDA 走 `EngineConfig.onnxruntime.use_cuda` 真通道——
     旧 v3 轨道那个"传参不生效、只能改包内 config.yaml"的假通道已随包一起删除。
 
     模型固定 small：官方 model_list 列明 tiny 不含日文，而本语料是简繁日三体混排。
+
+    要求 GPU 时，建完逐段读会话实际跑在哪个 provider 上，任一段不在 CUDA 就抛错。这是 GPU 的
+    唯一判据：缺 .so 时 providers 列表照样列出 CUDA，建会话也不报错，只是静默退回 CPU；依赖
+    报"退回 CPU"用的是 logging，又被下面的 log_level=error 静音。
     """
-    if RapidOCRV6 is None:
+    if RapidOCR is None:
         raise RuntimeError("该环境未安装 rapidocr 3.x（跑 bash scripts/ocr.sh install 补装）")
     params = {
-        "Rec.ocr_version": V6OCRVersion.PPOCRV6,
-        "Rec.model_type": V6ModelType.SMALL,
+        "Rec.ocr_version": OCRVersion.PPOCRV6,
+        "Rec.model_type": ModelType.SMALL,
         "Global.log_level": "error",
+        "Global.text_score": min_score,
     }
     if use_gpu:
         params["EngineConfig.onnxruntime.use_cuda"] = True
-    return RapidOCRV6(params=params)
+    engine = RapidOCR(params=params)
+    if use_gpu:
+        for label, part in (("Det", engine.text_det), ("Cls", engine.text_cls), ("Rec", engine.text_rec)):
+            providers = part.session.session.get_providers()
+            if not providers or providers[0] != "CUDAExecutionProvider":
+                raise RuntimeError(
+                    f"要求 GPU，但 {label} 段会话跑在 {providers}：多半是 CPU 版 onnxruntime 覆盖了 GPU 版，"
+                    "或 LD_LIBRARY_PATH 没带上 venv 内的 nvidia/*/lib（经 bash scripts/ocr.sh 启动会自动挂进去）"
+                )
+    return engine
 
 
 def is_valid_ocr_sidecar(out_path: Path) -> bool:
@@ -327,10 +342,6 @@ def run_engine(engine: Any, img_path: Path) -> List[Tuple[Any, str, float]]:
     "Object of type float32 is not JSON serializable"。
     """
     out = engine(str(img_path))
-    if isinstance(out, tuple):
-        # 只可能是有人又把 v3 引擎接回来（它返回 (results, elapse)）。宁可当场抛错，也不能
-        # 让下面按对象取属性取到 None、被 process_image 吞成"这一页 0 气泡"。
-        raise TypeError("引擎返回的是元组，疑似 rapidocr-onnxruntime(v3)；本 worker 只支持 rapidocr 3.x")
     texts = getattr(out, "txts", None)
     if texts is None:
         return []
@@ -346,11 +357,35 @@ def run_engine(engine: Any, img_path: Path) -> List[Tuple[Any, str, float]]:
     return rows
 
 
+def rows_to_blocks(rows: List[Tuple[Any, str, float]]) -> List[Dict[str, Any]]:
+    """识别行 → 聚类输入：丢掉空白文本，角点收成外接框。
+
+    不再按置信度过滤：低分行已由引擎按 `Global.text_score` 滤掉（见 `build_engine`）。
+    """
+    blocks: List[Dict[str, Any]] = []
+    for box, text, score in rows:
+        text_str = str(text).strip()
+        if not text_str:
+            continue
+        xs = [p[0] for p in box]
+        ys = [p[1] for p in box]
+        blocks.append(
+            {
+                "text": text_str,
+                "score": float(score),
+                "xmin": min(xs),
+                "xmax": max(xs),
+                "ymin": min(ys),
+                "ymax": max(ys),
+            }
+        )
+    return blocks
+
+
 def process_image(
     img_path: Path,
     out_path: Path,
     force: bool = False,
-    min_score: float = DEFAULT_MIN_SCORE,
     engine: Optional[Any] = None,
 ) -> Optional[int]:
     """处理单张画页的 OCR 提取与写入伴生文件。
@@ -367,8 +402,6 @@ def process_image(
 
     if engine is None:
         engine = get_engine()
-    if engine is None:
-        return 0
 
     try:
         with Image.open(img_path) as im:
@@ -383,30 +416,7 @@ def process_image(
         print(f"⚠️ OCR 推理失败 {img_path.name}: {e}", file=sys.stderr)
         return 0
 
-    blocks: List[Dict[str, Any]] = []
-    if raw_results:
-        for item in raw_results:
-            box, text, score = item
-            score_f = float(score)
-            if score_f < min_score:
-                continue
-            text_str = str(text).strip()
-            if not text_str:
-                continue
-            xs = [p[0] for p in box]
-            ys = [p[1] for p in box]
-            blocks.append(
-                {
-                    "text": text_str,
-                    "score": score_f,
-                    "xmin": min(xs),
-                    "xmax": max(xs),
-                    "ymin": min(ys),
-                    "ymax": max(ys),
-                }
-            )
-
-    bubbles = cluster_blocks(blocks, w, h)
+    bubbles = cluster_blocks(rows_to_blocks(raw_results), w, h)
 
     payload = {
         "version": 1,
@@ -589,7 +599,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
         "--min-score",
         type=float,
         default=DEFAULT_MIN_SCORE,
-        help=f"OCR 置信度过滤阈值（默认 {DEFAULT_MIN_SCORE}，过滤拟声词噪点）",
+        help=f"识别置信度下限，直接交给引擎（默认 {DEFAULT_MIN_SCORE}，调低调高都生效；过滤拟声词噪点）",
     )
     parser.add_argument("--force", action="store_true", help="强制重新提取已存在的 OCR 伴生文件")
     parser.add_argument("--limit", type=int, default=0, help="最多处理漫画册数（0 为无限制）")
@@ -623,14 +633,15 @@ def main() -> int:
         return 0
 
     # 依赖预检：只剩一条引擎线，缺包就说清楚缺哪个
-    if RapidOCRV6 is None or Image is None:
+    if RapidOCR is None or Image is None:
         print("❌ 错误: 当前 Python 环境缺少 OCR 必要依赖 (rapidocr>=3.9 / Pillow)。", file=sys.stderr)
         print("💡 请在算力机上运行一键安装命令:", file=sys.stderr)
         print("   bash scripts/ocr.sh install (或 pip install -r scripts/requirements-ocr.txt)", file=sys.stderr)
         print("   注：只装过旧 v3 依赖的 CPU 环境必须重跑一次 install 才会拿到 rapidocr 3.x", file=sys.stderr)
         return 1
 
-    global USE_GPU
+    global USE_GPU, MIN_SCORE
+    MIN_SCORE = args.min_score
     # 要求 GPU 就必须真用上，否则宁可拒跑——静默按 CPU 跑完几千页是这套脚本最贵的失败方式。
     if args.gpu:
         ok, reason = cuda_ready()
@@ -650,15 +661,11 @@ def main() -> int:
     device = "GPU · CUDAExecutionProvider" if USE_GPU else "CPU 多核"
     print(f"⚡ 正在初始化 RapidOCR 深度学习推理引擎 (推理设备: {device} · 并发线程数: {args.workers})...")
     t0 = time.time()
-    with warnings.catch_warnings(record=True) as caught:
-        warnings.simplefilter("always")
+    # GPU 用不上时 build_engine 当场抛错：在主线程先撞上，不等线程池里一页页各自失败
+    try:
         get_engine()
-        # 要求 GPU 时以"会话建完有没有警告"为准，而不是 cuda_ready() 的 providers 列表：
-        # 那个列表只证明 wheel 编译进了 CUDA EP，缺 .so 时它照样列出、会话却静默退回 CPU。
-        fell_back = next((str(w.message).splitlines()[0] for w in caught if "CUDAExecutionProvider" in str(w.message)), None)
-    if fell_back:
-        print(f"❌ 错误: 要求使用 CUDA，但引擎建会话时退回 CPU：{fell_back}", file=sys.stderr)
-        print("💡 请用 bash scripts/ocr.sh run ... 启动（它会把 venv 内的 nvidia/*/lib 挂进 LD_LIBRARY_PATH）", file=sys.stderr)
+    except RuntimeError as exc:
+        print(f"❌ 错误: {exc}", file=sys.stderr)
         return 1
     print(f"✅ OCR 引擎初始化就绪 ({time.time() - t0:.2f}s)")
 
@@ -671,7 +678,7 @@ def main() -> int:
         out_p = img_p.with_name(f"{img_p.stem}.ocr.json")
         print(f"🎯 单张画页定向处理: {img_p.name}")
         t1 = time.time()
-        res = process_image(img_p, out_p, force=args.force, min_score=args.min_score)
+        res = process_image(img_p, out_p, force=args.force)
         if res is None:
             print(f"⚡ 画页伴生文件已是最新且合法，无需更新 ({out_p.name})。如需强制重提请加 --force")
         else:
@@ -765,7 +772,7 @@ def main() -> int:
         workers_count = max(1, min(args.workers, len(pending_pages)))
         with concurrent.futures.ThreadPoolExecutor(max_workers=workers_count) as executor:
             future_to_page = {
-                executor.submit(process_image, img_p, out_p, args.force, args.min_score): (img_p, out_p)
+                executor.submit(process_image, img_p, out_p, args.force): (img_p, out_p)
                 for img_p, out_p in pending_pages
             }
             done_count = 0

@@ -1,12 +1,14 @@
 """气泡聚类判据的离线实验台。
 
-两个模式：
+三个模式：
 1. dump（默认）：把指定画页的**原始识别行**（未聚类）导出成 JSON。推理只跑一次，
    之后调 `cluster_blocks` 的判据就在本地秒级迭代，不必每改一版就烧一轮 GPU。
 2. `--recluster`：读回这些 dump，用**当前代码里的**聚类算法重跑，打印气泡数、字数
    与气泡面积分布，用来判断一版判据改动是拆开了误并、还是把真气泡也拆碎了。
+3. `--image`：只识别一张图并打印聚类后的气泡，不写任何文件（`ocr.sh test` 走这里）。
 
 侧车本身不存原始行（体积要考虑阅读器每页解析），所以这个 dump 就是唯一的离线复现入口。
+引擎构造、置信度门槛与画页清单全部直接用 worker 的，实验台量到的就是实跑的那一套。
 """
 
 from __future__ import annotations
@@ -14,31 +16,22 @@ from __future__ import annotations
 import argparse
 import json
 import sys
-import threading
+import time
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
-from typing import Any
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+from scripts import ocr_worker  # noqa: E402
 from scripts.ocr_worker import (  # noqa: E402
     DEFAULT_MIN_SCORE,
-    build_engine,
     cluster_blocks,
+    collect_comic_pages,
+    get_engine,
     resolve_data_dir,
+    rows_to_blocks,
     run_engine,
 )
-
-_tls = threading.local()
-
-
-def _engine() -> Any:
-    if not hasattr(_tls, "engine"):
-        _tls.engine = build_engine(_tls_gpu)
-    return _tls.engine
-
-
-_tls_gpu = False
 
 
 def _images(data_dir: Path, source: str | None, source_id: str | None, limit_pages: int) -> list[Path]:
@@ -52,14 +45,8 @@ def _images(data_dir: Path, source: str | None, source_id: str | None, limit_pag
         books = sorted(root.glob("*/*"))
     imgs: list[Path] = []
     for book in books:
-        pages = book / "pages"
-        if not pages.is_dir():
-            continue
-        found = [
-            p
-            for p in sorted(pages.iterdir())
-            if p.suffix.lower() in (".webp", ".jpg", ".jpeg", ".png")
-        ]
+        # 画页清单与 worker 同源：分章节的本把图放在 pages/ 下的子目录里，只扫一层会整本漏掉
+        found = [img for img, _ in collect_comic_pages(book)]
         imgs.extend(found[:limit_pages] if limit_pages else found)
     return imgs
 
@@ -67,29 +54,15 @@ def _images(data_dir: Path, source: str | None, source_id: str | None, limit_pag
 def _dump_one(img: Path, out_dir: Path) -> tuple[str, str]:
     from PIL import Image
 
-    dst = out_dir / f"{img.parent.parent.name}_{img.name.rsplit('.', 1)[0]}.json"
+    # 文件名取「书号_pages 下的相对路径」：分章节的本多一层子目录，只取上两级会让各话的同名页撞成一个文件
+    pages_dir = next(p for p in img.parents if p.name == "pages")
+    stem = "_".join(img.relative_to(pages_dir).with_suffix("").parts)
+    dst = out_dir / f"{pages_dir.parent.name}_{stem}.json"
     if dst.exists():
         return dst.name, "已存在，跳过"
     with Image.open(img) as im:
         w, h = im.size
-    blocks = []
-    for box, text, score in run_engine(_engine(), img):
-        text_str = str(text).strip()
-        score_f = float(score)
-        if not text_str or score_f < DEFAULT_MIN_SCORE:
-            continue
-        xs = [pt[0] for pt in box]
-        ys = [pt[1] for pt in box]
-        blocks.append(
-            {
-                "text": text_str,
-                "score": score_f,
-                "xmin": min(xs),
-                "xmax": max(xs),
-                "ymin": min(ys),
-                "ymax": max(ys),
-            }
-        )
+    blocks = rows_to_blocks(run_engine(get_engine(), img))
     dst.write_text(
         json.dumps({"image": str(img), "w": w, "h": h, "blocks": blocks}, ensure_ascii=False),
         encoding="utf-8",
@@ -105,10 +78,40 @@ def cmd_dump(args: argparse.Namespace) -> int:
         return 1
     out_dir = Path(args.out)
     out_dir.mkdir(parents=True, exist_ok=True)
-    print(f"🧪 dump {len(imgs)} 页原始识别行 → {out_dir} (推理设备: {'GPU' if _tls_gpu else 'CPU'})")
-    with ThreadPoolExecutor(max_workers=args.workers) as ex:
+    print(f"🧪 dump {len(imgs)} 页原始识别行 → {out_dir} (推理设备: {'GPU' if ocr_worker.USE_GPU else 'CPU'})")
+    # CPU 上单引擎已吃满多核，多开线程只会抢核变慢，默认与 worker 一样给 2
+    workers = args.workers or (4 if ocr_worker.USE_GPU else 2)
+    with ThreadPoolExecutor(max_workers=workers) as ex:
         for name, info in ex.map(lambda p: _dump_one(p, out_dir), imgs):
             print(f"  {name}: {info}")
+    return 0
+
+
+def cmd_image(args: argparse.Namespace) -> int:
+    """单页试跑：与 run 同一套引擎构造、置信度门槛与聚类，只打印，不写盘。"""
+    from PIL import Image
+
+    img = Path(args.image)
+    if not img.is_file():
+        print(f"❌ 错误: 图片不存在 ({img})", file=sys.stderr)
+        return 1
+    try:
+        engine = get_engine()
+    except RuntimeError as exc:
+        print(f"❌ 错误: {exc}", file=sys.stderr)
+        return 1
+    with Image.open(img) as im:
+        w, h = im.size
+    t0 = time.perf_counter()
+    rows = run_engine(engine, img)
+    cost = time.perf_counter() - t0
+    bubbles = cluster_blocks(rows_to_blocks(rows), w, h)
+    print(f"🔧 推理设备: {'GPU' if ocr_worker.USE_GPU else 'CPU'}")
+    print(f"📐 图像尺寸: {w}x{h}, 推理耗时: {cost:.2f}s, 识别行 {len(rows)} 行（引擎已滤掉置信度 <{DEFAULT_MIN_SCORE} 的行）")
+    print(f"💬 气泡几何聚类后获得: {len(bubbles)} 处对白")
+    for b in bubbles:
+        print(f"  - [{b['id']}] {b['orientation']} (置信度: {b['confidence']}) 归一化坐标: {b['box']}")
+        print(f'    对白内容: "{b["text"]}"')
     return 0
 
 
@@ -132,7 +135,7 @@ def cmd_recluster(args: argparse.Namespace) -> int:
             chars += ln
             buckets["<=10%" if area <= 0.1 else "10-20%" if area <= 0.2 else "20-35%" if area <= 0.35 else ">35%"] += 1
             # 可疑合并：框很大而字很少，说明把分散在页面各处的行串成了一串
-            if (area > 0.45 and ln < 200) or (area > 0.25 and ln < 60) or area > 0.35:
+            if (area > 0.25 and ln < 60) or area > 0.35:
                 suspects += 1
                 worst.append((area, f.name, b["order"], b["text"]))
         total_pages += 1
@@ -145,21 +148,23 @@ def cmd_recluster(args: argparse.Namespace) -> int:
 
 
 def main() -> int:
-    global _tls_gpu
-    parser = argparse.ArgumentParser(description="气泡聚类离线实验台（dump 原始行 / 离线重聚类）")
+    parser = argparse.ArgumentParser(description="气泡聚类离线实验台（dump 原始行 / 离线重聚类 / 单页试跑）")
     parser.add_argument("--data-dir", help="漫画数据目录（默认智能探测）")
     parser.add_argument("--source", help="数据源 (jm)")
     parser.add_argument("--id", help="漫画 ID，配合 --source 限定单本")
     parser.add_argument("--pages", type=int, default=0, help="每本最多取多少页（0 为全部）")
     parser.add_argument("--out", default="/tmp/paper-room-ocr-lines", help="dump 输出目录")
-    parser.add_argument("--workers", type=int, default=4, help="dump 时的并发线程数（GPU 建议 4）")
-    parser.add_argument("--gpu", action="store_true", help="dump 时用 CUDA 推理")
+    parser.add_argument("--workers", type=int, default=0, help="dump 时的并发线程数（默认 GPU 4、CPU 2）")
+    parser.add_argument("--gpu", action="store_true", help="用 CUDA 推理；三段会话任一不在 GPU 上就直接报错")
     parser.add_argument("--recluster", help="不跑推理：读该目录下的 dump，用当前聚类算法重跑并打印分布")
+    parser.add_argument("--image", help="只识别这一张图并打印聚类后的气泡，不写任何文件")
     args = parser.parse_args()
 
     if args.recluster:
         return cmd_recluster(args)
-    _tls_gpu = args.gpu
+    ocr_worker.USE_GPU = args.gpu
+    if args.image:
+        return cmd_image(args)
     return cmd_dump(args)
 
 

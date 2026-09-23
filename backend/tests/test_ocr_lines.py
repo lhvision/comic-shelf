@@ -19,7 +19,7 @@ for p in (str(root_dir), str(backend_dir)):
     if p not in sys.path:
         sys.path.insert(0, p)
 
-from scripts import ocr_lines
+from scripts import ocr_lines, ocr_worker
 
 
 def _png(path: Path, size: tuple[int, int] = (40, 60)) -> Path:
@@ -38,11 +38,20 @@ def _row(text: str, x0: float, y0: float, x1: float, y1: float, score: float = 0
     return (_box(x0, y0, x1, y1), text, score)
 
 
+def _files(root: Path) -> list[Path]:
+    return sorted(p.relative_to(root) for p in root.rglob("*") if p.is_file())
+
+
 class TestImagesScan(unittest.TestCase):
     def setUp(self):
         self.tmp = Path(tempfile.mkdtemp())
         self.data_dir = self.tmp / "data"
-        for src, sid, names in (("jm", "a", ("00001.webp", "00002.webp")), ("local", "b", ("00001.png",))):
+        for src, sid, names in (
+            ("jm", "a", ("00001.webp", "00002.webp")),
+            ("local", "b", ("00001.png",)),
+            # 分章节的本：画页在 pages/ 下的子目录里
+            ("local", "c", ("c1/00001.png", "c2/00001.png")),
+        ):
             for n in names:
                 _png(self.data_dir / "library" / src / sid / "pages" / n)
         # 非图片文件与缺 pages 目录的本都不得进清单
@@ -54,43 +63,62 @@ class TestImagesScan(unittest.TestCase):
 
     def test_scope_and_cap(self):
         all_imgs = ocr_lines._images(self.data_dir, None, None, 0)
-        self.assertEqual(len(all_imgs), 3, f"全库清单应只含图片: {all_imgs}")
+        self.assertEqual(len(all_imgs), 5, f"全库清单应只含图片: {all_imgs}")
         self.assertEqual(len(ocr_lines._images(self.data_dir, "jm", None, 0)), 2, "只给 --source 却扫到了别的源")
         self.assertEqual(len(ocr_lines._images(self.data_dir, "jm", "a", 1)), 1, "--pages 没有截断每本页数")
+        self.assertEqual(len(ocr_lines._images(self.data_dir, "local", "c", 0)), 2, "分章节子目录里的画页被漏扫")
         self.assertEqual(ocr_lines._images(self.data_dir, "jm", "missing", 0), [])
 
 
 class TestDump(unittest.TestCase):
-    def test_dump_keeps_only_credible_rows_and_writes_outside_the_library(self):
+    def test_dump_drops_blank_rows_and_writes_outside_the_library(self):
         """dump 只落临时目录：绝不能把实验产物写进 backend/data 现网侧车。"""
         tmp = Path(tempfile.mkdtemp())
         try:
-            img = _png(tmp / "data" / "library" / "jm" / "a" / "pages" / "00001.webp", (800, 1200))
+            pages = tmp / "data" / "library" / "jm" / "a" / "pages"
+            img = _png(pages / "00001.webp", (800, 1200))
+            chapter_img = _png(pages / "c2" / "00001.webp")
             out_dir = tmp / "dump"
             out_dir.mkdir()
-            before = sorted(p.relative_to(tmp / "data") for p in (tmp / "data").rglob("*") if p.is_file())
-            rows = [
-                _row("有效台词", 10, 10, 90, 40),
-                _row("低分噪声", 10, 60, 90, 90, score=ocr_lines.DEFAULT_MIN_SCORE - 0.1),
-                _row("   ", 10, 100, 90, 130),
-            ]
+            before = _files(tmp / "data")
+            rows = [_row("有效台词", 10, 10, 90, 40), _row("   ", 10, 100, 90, 130)]
             with (
-                mock.patch.object(ocr_lines, "_engine", return_value=object()),
+                mock.patch.object(ocr_lines, "get_engine", return_value=object()),
                 mock.patch.object(ocr_lines, "run_engine", return_value=rows),
             ):
                 name, info = ocr_lines._dump_one(img, out_dir)
                 self.assertEqual(ocr_lines._dump_one(img, out_dir)[1], "已存在，跳过", "重跑必须跳过已 dump 的页")
+                # 各话的同名页不许撞成同一个文件，否则后一话会被当成"已存在"整话跳过
+                self.assertEqual(ocr_lines._dump_one(chapter_img, out_dir)[0], "a_c2_00001.json")
 
             self.assertEqual(info, "1 行")
-            self.assertEqual(
-                sorted(p.name for p in out_dir.glob("*.json")), ["a_00001.json"], f"输出文件名不对: {name}"
-            )
+            self.assertEqual(name, "a_00001.json")
             dumped = json.loads((out_dir / "a_00001.json").read_text(encoding="utf-8"))
             self.assertEqual((dumped["w"], dumped["h"]), (800, 1200), "页面尺寸没按原图记录，聚类比例会全错")
             self.assertEqual([b["text"] for b in dumped["blocks"]], ["有效台词"])
             self.assertEqual(dumped["blocks"][0]["xmin"], 10)
-            after = sorted(p.relative_to(tmp / "data") for p in (tmp / "data").rglob("*") if p.is_file())
-            self.assertEqual(after, before, "dump 往数据目录里写了东西")
+            self.assertEqual(_files(tmp / "data"), before, "dump 往数据目录里写了东西")
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
+
+
+class TestImage(unittest.TestCase):
+    def test_image_prints_bubbles_and_writes_nothing(self):
+        """`ocr.sh test` 走这里：只打印聚类结果，画页旁边不许多出侧车或任何文件。"""
+        tmp = Path(tempfile.mkdtemp())
+        try:
+            img = _png(tmp / "pages" / "00001.webp", (1000, 1000))
+            before = _files(tmp)
+            buf = io.StringIO()
+            with (
+                mock.patch.object(ocr_lines, "get_engine", return_value=object()),
+                mock.patch.object(ocr_lines, "run_engine", return_value=[_row("老师", 100, 60, 120, 120)]),
+                redirect_stdout(buf),
+            ):
+                rc = ocr_lines.cmd_image(argparse.Namespace(image=str(img)))
+            self.assertEqual(rc, 0)
+            self.assertIn("老师", buf.getvalue())
+            self.assertEqual(_files(tmp), before, "单页试跑往磁盘写了东西")
         finally:
             shutil.rmtree(tmp, ignore_errors=True)
 
@@ -127,7 +155,7 @@ class TestRecluster(unittest.TestCase):
                 raise AssertionError("recluster 模式不许构造推理引擎")
 
             buf = io.StringIO()
-            with mock.patch.object(ocr_lines, "build_engine", side_effect=boom), redirect_stdout(buf):
+            with mock.patch.object(ocr_worker, "build_engine", side_effect=boom), redirect_stdout(buf):
                 rc = ocr_lines.cmd_recluster(argparse.Namespace(recluster=str(src)))
             out = buf.getvalue()
             self.assertEqual(rc, 0)

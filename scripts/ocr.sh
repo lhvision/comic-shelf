@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # 纸间 · 高性能机漫画台词 OCR 提取与伴生处理一键运维脚本
-# 支持命令: status | run | sync | install | test
+# 支持命令: status | run | sync | install | test | lines
 #
 # 算力环境两条线（**默认走 GPU**，没有卡的机器才回落 CPU，回落时脚本会说明原因）：
 #   GPU（默认）   本脚本创建的项目内 .venv-ocr/，装 requirements-ocr.txt + requirements-ocr-gpu.txt
@@ -105,67 +105,24 @@ export_cuda_ld() {
   export LD_LIBRARY_PATH="${ld}${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
 }
 
-# 探测某个解释器里 OCR 推理到底跑在哪（调用方负责先 export_cuda_ld）。
-# 注意: get_available_providers() 只证明 wheel 编译进了 CUDA EP，.so 缺失或装了
-# CPU 版时它会照样列出 CUDA —— 只有真建一次会话才算数。
+# 按生产路径真建一次引擎，结论只认 build_engine：缺包抛错，GPU 线三段会话任一不在 CUDA 上也抛错
+# （get_available_providers() 只证明 wheel 编译进了 CUDA EP，.so 缺失时照样列出，不算数）。
+# 调用方负责先 export_cuda_ld。ORT 在 pybind 层打的告警早于任何日志级别设置，只能整段吞掉 stderr。
 probe_engine_device() {
-  local py="$1" label="$2"
+  local py="$1" label="$2" use_gpu=False msg
   if [ ! -x "$py" ]; then
     echo "   - 推理引擎 [$label]: ⚪ 环境不存在"
     return 0
   fi
-  # ORT 在 pybind 层就打了 "No registered plugin EP device found" 的告警，早于 sess_options
-  # 的 log_severity_level，只能整体吞掉：判定结论由我们自己按段打印。
-  "$py" - "$label" <<'PY' 2>/dev/null
-import sys
-
-TIP = "   - 推理引擎 [%s]: " % sys.argv[1]
-
-try:
-    import onnxruntime as ort
-except ImportError:
-    print(TIP + "⚠️ 未安装 onnxruntime（bash scripts/ocr.sh install）")
-    raise SystemExit(0)
-
-if ort.get_device() != "GPU" or "CUDAExecutionProvider" not in ort.get_available_providers():
-    print(TIP + "⚪ %s 模式 (providers=%s)" % (ort.get_device(), ort.get_available_providers()))
-    raise SystemExit(0)
-
-# providers 列表只证明 wheel 编译进了 CUDA EP，.so 缺失或装了 CPU 版时它会照样列出，
-# 必须真按生产路径建一次引擎、读每个会话的第一个 provider，才能断言三段都在 GPU 上。
-try:
-    from scripts.ocr_worker import build_engine
-except ImportError:
-    print(TIP + "🟡 有 CUDA 构建，但 worker 不可导入，无法做会话级验证")
-    raise SystemExit(0)
-
-try:
-    eng = build_engine(True)
-except Exception as exc:
-    print(TIP + "🟡 有 CUDA 构建，但引擎建不起来: %s" % exc)
-    raise SystemExit(0)
-
-PARTS = {"text_det": "Det", "text_cls": "Cls", "text_rec": "Rec"}
-bad, on_gpu = [], []
-for attr, label in PARTS.items():
-    sub = getattr(eng, attr, None)
-    sess = getattr(getattr(sub, "session", None), "session", None)
-    if sess is None:
-        continue
-    got = sess.get_providers()
-    if got and got[0].startswith("CUDA"):
-        on_gpu.append(label)
-    else:
-        bad.append("%s->%s" % (label, got))
-
-if bad:
-    print(TIP + "⚠️ CUDA 构建在，但 %s 没跑在 GPU 上：多半是 CPU 版 onnxruntime 覆盖了 GPU 版"
-              "（见 scripts/requirements-ocr-gpu.txt）或 LD_LIBRARY_PATH 没带上 venv 内的 nvidia/*/lib"
-              % ", ".join(bad))
-    raise SystemExit(1)
-else:
-    print(TIP + "🟢 CUDA 生效 (会话段: %s)" % ",".join(on_gpu))
-PY
+  [ "$label" = "GPU" ] && use_gpu=True
+  if msg="$("$py" -c "from scripts.ocr_worker import build_engine
+try: build_engine($use_gpu)
+except Exception as exc: print(exc); raise SystemExit(1)" 2>/dev/null)"; then
+    echo "   - 推理引擎 [$label]: 🟢 引擎可用$([ "$use_gpu" = True ] && echo '，Det/Cls/Rec 三段会话都在 CUDA 上')"
+  else
+    echo "   - 推理引擎 [$label]: ⚠️ ${msg:-引擎建不起来（解释器异常退出）}"
+    return 1
+  fi
 }
 
 # 显卡状态播报：探测逻辑复用 host_gpu_smi，避免"PATH 里没有 nvidia-smi"被当成没显卡
@@ -209,33 +166,32 @@ cmd_status() {
   "$(resolve_python)" scripts/ocr_worker.py --data-dir "$DATA_DIR" --status
 }
 
-cmd_run() {
-  local py gpu_arg=()
-  # resolve_python 在 $( ) 子 shell 里执行，MODE 必须由父 shell 先定好，否则
-  # 后面 [ "$MODE" = gpu ] 永远不成立，GPU 环境会被当成 CPU 用（不挂 LD、不传 --gpu）。
+# run/lines/test 共用：定算力线、取解释器；GPU 线挂上 CUDA 库并把 --gpu 透传给脚本——
+# 显式写 --gpu 还是自动选中 GPU 环境都带上，GPU 实际用不上时由 build_engine 当场报错。
+# resolve_mode 必须在当前 shell 先跑：resolve_python 在 $( ) 子 shell 里执行，在那里定下的 MODE
+# 传不回来，后面 [ "$MODE" = gpu ] 永远不成立，GPU 环境会被当成 CPU 用（不挂 LD、不传 --gpu）。
+run_py() {
+  local script="$1" py gpu_arg=()
+  shift
   resolve_mode
   py="$(resolve_python)"
   if [ "$MODE" = "gpu" ]; then
     export_cuda_ld "$py"
-    # 无论用户显式写 --gpu 还是脚本自动选中 GPU 环境，都把 --gpu 透传给 worker，
-    # 让它的 cuda_ready() 预检兜住"环境声称有 GPU 但实际用不上"这种情况。
     gpu_arg=(--gpu)
   fi
-  echo "🚀 开始执行漫画台词 OCR 批量提取 (目标目录: $DATA_DIR · 解释器: $py)..."
-  "$py" scripts/ocr_worker.py --data-dir "$DATA_DIR" ${gpu_arg+"${gpu_arg[@]}"} ${@+"$@"}
+  "$py" "$script" ${gpu_arg+"${gpu_arg[@]}"} ${@+"$@"}
+}
+
+cmd_run() {
+  resolve_mode
+  echo "🚀 开始执行漫画台词 OCR 批量提取 (目标目录: $DATA_DIR · 算力线: $MODE)..."
+  run_py scripts/ocr_worker.py --data-dir "$DATA_DIR" ${@+"$@"}
 }
 
 # 聚类判据的离线实验台：dump 画页的原始识别行 / 读回 dump 重跑当前聚类。
 # 改 cluster_blocks 的判据不必再"每改一版烧一轮 GPU"——推理只跑一次，之后都在本地量。
 cmd_lines() {
-  local py gpu_arg=()
-  resolve_mode
-  py="$(resolve_python)"
-  if [ "$MODE" = "gpu" ]; then
-    export_cuda_ld "$py"
-    gpu_arg=(--gpu)
-  fi
-  "$py" scripts/ocr_lines.py --data-dir "$DATA_DIR" ${gpu_arg+"${gpu_arg[@]}"} ${@+"$@"}
+  run_py scripts/ocr_lines.py --data-dir "$DATA_DIR" ${@+"$@"}
 }
 
 cmd_sync() {
@@ -298,27 +254,14 @@ cmd_install() {
       ;;
   esac
 
-  # Debian/Ubuntu 把 ensurepip 拆进了 python3-venv 包，缺它的机器建出来的 venv 没有 pip。
-  # pip 是纯 Python 包，同版本解释器下可直接从已有环境复用；根治办法仍是 apt install python3-venv。
+  # Debian/Ubuntu 把 ensurepip 拆进了 python3.X-venv 包，缺它时上面只能建出一个没有 pip 的 venv。
+  # 根治就是装上这个包，不从应用环境拷 pip 凑合
   if ! "$vpy" -m pip --version >/dev/null 2>&1; then
-    if ! "$PYTHON" -m pip --version >/dev/null 2>&1; then
-      echo "❌ 错误: 宿主 Python 既无 ensurepip 也无 pip，无法引导算力环境。" >&2
-      echo "💡 建议: sudo apt install python3-venv python3-pip 后重试" >&2
-      exit 1
-    fi
-    local src_site
-    src_site="$("$PYTHON" -c 'import sysconfig; print(sysconfig.get_paths()["purelib"])')"
-    local pip_pkg
-    pip_pkg="$(find "$src_site" -maxdepth 1 -name 'pip' -type d -print -quit)"
-    local pip_info
-    pip_info="$(find "$src_site" -maxdepth 1 -name 'pip-*.dist-info' -type d -print -quit)"
-    if [ -z "$pip_pkg" ] || [ -z "$pip_info" ]; then
-      echo "❌ 错误: 在 $src_site 找不到可复用的 pip 包" >&2
-      echo "💡 建议: sudo apt install python3-venv 后重试" >&2
-      exit 1
-    fi
-    echo "   (venv 无 pip，复用 $pip_pkg 引导；建议顺手 apt install python3-venv)"
-    cp -r "$pip_pkg" "$pip_info" "$site/"
+    local venv_pkg
+    venv_pkg="$("$PYTHON" -c 'import sys; print("python%d.%d-venv" % sys.version_info[:2])')"
+    echo "❌ 错误: $OCR_VENV 里没有 pip（宿主 Python 缺 ensurepip）。" >&2
+    echo "💡 建议: sudo apt install $venv_pkg 后重跑 bash scripts/ocr.sh install" >&2
+    exit 1
   fi
   "$vpy" -m pip install --upgrade pip >/dev/null
 
@@ -354,13 +297,7 @@ cmd_install() {
 }
 
 cmd_test() {
-  local py target_img="${1:-}"
-  resolve_mode
-  py="$(resolve_python)"
-  if [ "$MODE" = "gpu" ]; then
-    export_cuda_ld "$py"
-  fi
-
+  local target_img="${1:-}"
   if [ -z "$target_img" ]; then
     # 自动探测第一张画页用于测试
     target_img="$(find "$DATA_DIR/library" -type f \( -name "*.webp" -o -name "*.jpg" -o -name "*.png" \) 2>/dev/null | head -n 1 || true)"
@@ -373,68 +310,8 @@ cmd_test() {
   fi
 
   echo "🧪 正在对单张测试画页运行 OCR 识别: $target_img"
-  # 路径一律经 argv 传给子进程，不做字符串内插：文件名里一个单引号就能让整段 Python
-  # 语法崩掉，再进一步可以拼出任意 Python 语句（run 那边的 --image 本来就走 argv）。
-  "$py" - "$target_img" "$MODE" <<'PY'
-import sys
-import time
-from pathlib import Path
-
-from PIL import Image
-
-# 测试口必须复用 worker 的引擎构造、返回结构适配与置信度过滤，否则会变成"test 看着对、
-# 实跑却是另一套"：这里曾自己 import v3 并裸解元组，默认轨道换成 v6 后当场对不上。
-from scripts.ocr_worker import (
-    DEFAULT_MIN_SCORE,
-    ENGINE_TRACK,
-    build_engine,
-    cluster_blocks,
-    cuda_ready,
-    run_engine,
-)
-
-img, mode = sys.argv[1], sys.argv[2]
-use_gpu = mode == "gpu"
-if use_gpu and not cuda_ready()[0]:
-    print("⚠️ 该环境用不上 CUDA，本次按 CPU 跑", file=sys.stderr)
-    use_gpu = False
-engine = build_engine(use_gpu)
-
-path = Path(img)
-with Image.open(path) as im:
-    w, h = im.size
-t0 = time.perf_counter()
-raw = run_engine(engine, path)
-cost = time.perf_counter() - t0
-print(f"🔧 引擎轨道: {ENGINE_TRACK} · 推理设备: {'GPU' if use_gpu else 'CPU'}")
-print(f"📐 图像尺寸: {w}x{h}, 推理耗时: {cost:.2f}s, 检出基础字块: {len(raw)} 个")
-
-blocks = []
-for box, text, score in raw:
-    score_f = float(score)
-    text_str = str(text).strip()
-    if score_f < DEFAULT_MIN_SCORE or not text_str:
-        continue
-    xs = [p[0] for p in box]
-    ys = [p[1] for p in box]
-    blocks.append(
-        {
-            "text": text_str,
-            "score": score_f,
-            "xmin": min(xs),
-            "xmax": max(xs),
-            "ymin": min(ys),
-            "ymax": max(ys),
-        }
-    )
-print(f"🚦 置信度 <{DEFAULT_MIN_SCORE} 过滤后剩 {len(blocks)} 行")
-
-bubbles = cluster_blocks(blocks, w, h)
-print(f"💬 气泡几何聚类后获得: {len(bubbles)} 处对白")
-for b in bubbles:
-    print(f"  - [{b['id']}] {b['orientation']} (置信度: {b['confidence']}) 归一化坐标: {b['box']}")
-    print("    对白内容: \"%s\"" % b["text"])
-PY
+  # 与 run 同一套引擎构造、置信度门槛与聚类，只打印、不写盘
+  run_py scripts/ocr_lines.py --image "$target_img"
 }
 
 ACTION="${1:-status}"
@@ -495,19 +372,20 @@ case "$ACTION" in
     echo "     --id <comic_id>      - 限定单本漫画 ID"
     echo "     --page <pages>       - 限定提取特定页码 (如 --page 3 或 --page 1,3,5 或 --page 10-20)"
     echo "     --image <path>       - 直接指定单张画页图片路径进行单页处理"
-    echo "     --min-score <float>  - OCR 置信度过滤阈值 (默认 0.5，过滤拟声词与背景噪点)"
+    echo "     --min-score <float>  - 识别置信度下限，直接交给引擎 (默认 0.5，调低调高都生效；过滤拟声词与背景噪点)"
     echo "     --force              - 强制重新处理已存在的伴生文件"
     echo "     --limit <N>          - 最多处理册数"
     echo "     --api-url <URL>      - 远程 NAS 纸间 API 地址 (如 http://192.168.1.100:8000)，处理后自动通知入库"
     echo "     --token <TOKEN>      - 纸间 Machine API Token"
     echo "     --sync-local         - 处理完毕后直接同步本地 SQLite 索引"
     echo "  sync [options]          - 将已存在的伴生文件全量/增量扫入 SQLite FTS5"
-    echo "  test [image]            - 针对单张画页运行测试并输出格式化气泡（走的是 run 同一套引擎与过滤）"
+    echo "  test [image]            - 单张画页试跑并打印气泡（与 run 同一套引擎与过滤，只打印不写盘）"
     echo "  lines [options]         - 气泡聚类判据的离线实验台，改 cluster_blocks 前先用它："
     echo "     --source <src> [--id <id>] [--pages N] [--out DIR]"
     echo "                            - dump 该批画页的**原始识别行**到 DIR（默认 /tmp/paper-room-ocr-lines），"
     echo "                              只跑一次推理，**绝不写 backend/data**；省掉 --id 即该源全部画页"
     echo "     --recluster DIR       - 不跑推理：读回 dump，用当前聚类重跑并打印气泡数/字数/面积分布/疑似误并"
+    echo "     --image <path>        - 只识别这一张并打印聚类后的气泡，不写任何文件（test 走的就是它）"
     echo ""
     echo "  示例: bash scripts/ocr.sh install                      # 有卡即装 GPU 环境"
     echo "        bash scripts/ocr.sh run --source jm --workers 4  # 默认就走 GPU"
