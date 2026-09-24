@@ -15,6 +15,7 @@ import { ref, type ComputedRef, type Ref } from 'vue'
 import type { RouteLocationNormalizedLoaded, Router } from 'vue-router'
 import { useWebMCP } from '@vueuse/core'
 import { useAuth } from '@/composables/useAuth'
+import { serializeBubbleBox } from '@/composables/useReaderBubble'
 import type { FitMode, ReaderMode, ReaderSettings } from '@/composables/useReaderSettings'
 
 /**
@@ -375,7 +376,7 @@ export function useReaderWebMCP(options: UseReaderWebMCPOptions): UseReaderWebMC
         },
         text: {
           type: 'string',
-          description: '气泡内的对白台词文本片段',
+          description: '气泡内的对白台词文本片段（仅在提供合法 box 时随高亮显示）',
         },
       },
       required: ['page'],
@@ -392,28 +393,38 @@ export function useReaderWebMCP(options: UseReaderWebMCPOptions): UseReaderWebMC
       }
       goToPage(targetPage)
 
+      // 坐标缺失或非法时只翻页，不写高亮参数：否则阅读器会退回默认框，画出一个并不存在的气泡
+      const boxStr = serializeBubbleBox(box)
       if (router && route) {
-        const boxStr = Array.isArray(box) && box.length === 4 ? box.join(',') : undefined
-        // 上一次高亮还没被 dismissBubble 抹掉的气泡参数不属于这次定位：原样合并会把
-        // 旧的代表气泡、同页其余命中气泡与台词一起叠到新页上
+        // 上一次高亮还没被 dismissBubble 抹掉的气泡参数（含旧别名 text/bubble）不属于这次定位：
+        // 原样合并会把旧的代表气泡、同页其余命中气泡与台词一起叠到新页上
         const baseQuery = { ...route.query }
         delete baseQuery.bubble_box
         delete baseQuery.bubble_boxes
         delete baseQuery.bubble_text
+        delete baseQuery.highlight_bubble
+        delete baseQuery.text
+        delete baseQuery.bubble
         await router.replace({
           query: {
             ...baseQuery,
             page: String(targetPage),
-            ...(boxStr ? { bubble_box: boxStr } : {}),
-            ...(text ? { bubble_text: text } : {}),
-            highlight_bubble: '1',
+            ...(boxStr
+              ? {
+                  bubble_box: boxStr,
+                  ...(text ? { bubble_text: text } : {}),
+                  highlight_bubble: '1',
+                }
+              : {}),
           },
         })
       }
 
       return {
         success: true,
-        message: `已聚焦至第 ${targetPage} 页的气泡分镜${text ? `：“${text}”` : ''}`,
+        message: boxStr
+          ? `已聚焦至第 ${targetPage} 页的气泡分镜${text ? `：“${text}”` : ''}`
+          : `已翻到第 ${targetPage} 页（未提供有效气泡坐标，未高亮）`,
         page: targetPage,
         box,
         text,

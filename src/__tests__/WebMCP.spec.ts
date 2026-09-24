@@ -184,24 +184,30 @@ describe('WebMCP Composables', () => {
         expect(routerReplaceMock).toHaveBeenCalledWith({
           query: expect.objectContaining({
             page: '12',
-            bubble_box: '0.1,0.2,0.3,0.4',
+            bubble_box: '0.1000,0.2000,0.3000,0.4000',
             bubble_text: 'Hello World',
             highlight_bubble: '1',
           }),
         })
 
-        // 上一次直达的气泡参数还没熄灭就换页定位：旧页的框与台词不许叠到新页上
+        // 上一次直达的气泡参数（含旧别名 text/bubble）还没熄灭就换页定位：旧页的框与台词不许叠到新页上
         mockRoute.query = {
           page: '3',
           bubble_box: '0.5,0.5,0.6,0.6',
           bubble_boxes: '0.7,0.7,0.8,0.8',
           bubble_text: '旧台词',
+          text: '旧别名台词',
+          bubble: '1',
           highlight_bubble: '1',
         }
         await locateExecute!({ page: 20, box: [0.1, 0.2, 0.3, 0.4] })
         expect(routerReplaceMock).toHaveBeenLastCalledWith({
-          query: { page: '20', bubble_box: '0.1,0.2,0.3,0.4', highlight_bubble: '1' },
+          query: { page: '20', bubble_box: '0.1000,0.2000,0.3000,0.4000', highlight_bubble: '1' },
         })
+
+        // 没给坐标只翻页：不能写高亮开关让阅读器画出默认假框，也不挂台词
+        await locateExecute!({ page: 21, text: '无框台词' })
+        expect(routerReplaceMock).toHaveBeenLastCalledWith({ query: { page: '21' } })
 
         // Jump chapter
         const chapterExecute = registeredTools['reader_jump_chapter']
