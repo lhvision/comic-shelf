@@ -3,6 +3,7 @@ Implements ADR 0008.
 """
 from __future__ import annotations
 
+import hashlib
 import threading
 import time
 
@@ -222,6 +223,7 @@ _LOGIN_MAX_FAILED_ATTEMPTS = 10       # max 10 failed attempts per IP
 _LOGIN_LOCK_SECONDS = 300.0           # 5 minutes lock
 
 _login_failed_history: dict[str, list[float]] = {}  # ip -> timestamps
+_login_failed_creds: dict[str, dict[str, float]] = {}  # ip -> {凭据指纹: 计数时刻}
 _login_ip_locks: dict[str, float] = {}             # ip -> locked_until
 _login_mutex = threading.RLock()
 
@@ -239,8 +241,12 @@ def is_ip_login_locked(ip: str) -> bool:
         return False
 
 
-def record_ip_login_failure_and_check_lock(ip: str) -> bool:
-    """Records an invalid secret login attempt. Returns True if IP is now locked."""
+def record_ip_login_failure_and_check_lock(ip: str, credential: str = "") -> bool:
+    """Records an invalid secret login attempt. Returns True if IP is now locked.
+
+    同一个错误凭据在计数窗口内只计一次：改口令后旧 Cookie 会随每个请求重放，逐次计数会把馆长
+    自己锁在门外；爆破要换不同的值，照常逐个计数。
+    """
     if not ip:
         return False
     now = time.time()
@@ -249,8 +255,17 @@ def record_ip_login_failure_and_check_lock(ip: str) -> bool:
         if locked_until > now:
             return True
 
-        history = _login_failed_history.setdefault(ip, [])
         cutoff = now - _LOGIN_ATTEMPT_WINDOW_SECONDS
+        if credential:
+            fp = hashlib.sha256(credential.encode("utf-8")).hexdigest()[:16]
+            seen = {k: t for k, t in _login_failed_creds.get(ip, {}).items() if t > cutoff}
+            if fp in seen:
+                _login_failed_creds[ip] = seen
+                return False
+            seen[fp] = now
+            _login_failed_creds[ip] = seen
+
+        history = _login_failed_history.setdefault(ip, [])
         history = [t for t in history if t > cutoff]
         history.append(now)
         _login_failed_history[ip] = history
@@ -267,5 +282,6 @@ def clear_ip_login_failures(ip: str) -> None:
     with _login_mutex:
         _login_ip_locks.pop(ip, None)
         _login_failed_history.pop(ip, None)
+        _login_failed_creds.pop(ip, None)
 
 

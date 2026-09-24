@@ -19,7 +19,7 @@ metadata:
 2. **访客沙箱隔离**：向外部读者或群聊分享漫画一律调用 `create_direct_pass` 签发 2 小时临时阅读票据，严禁暴露馆长密钥与全站视图。
 3. **视口生命周期感知**：前端 WebMCP 工具强绑定当前活动页面（Vue Scope），离开页面时自动注销。调用报错时引导用户导航至对应页面，严禁盲目死循环重试。
 4. **重操作确认门禁**：执行全量离线缓存（`detail_cache_all_pages`）或外部新漫画收录（`shelf_import_comic`）前，必须向用户确认。
-5. **凭据最小化**：接入纸间只用 `COMIC_SHELF_MCP_TOKEN` 那把子凭据；严禁把馆长口令 `COMIC_SHELF_SECRET` 或机器密钥写进 agent 配置、回复正文或任何 URL 查询串。`create_direct_pass` 对标记「对访客隐藏」的作品会直接拒绝，不要换路径绕行。
+5. **凭据最小化**：接入纸间只用 `COMIC_SHELF_MCP_TOKEN` 那把子凭据；严禁把馆长口令 `COMIC_SHELF_SECRET` 或机器密钥写进 agent 配置、回复正文或任何 URL 查询串（机器密钥只给 OCR 流水线用，本就进不了 MCP）。`create_direct_pass` 对标记「对访客隐藏」的作品会直接拒绝，不要换路径绕行。
 
 ### 🚩 Red Flag Signals (出现以下情况立即中止并自查)
 

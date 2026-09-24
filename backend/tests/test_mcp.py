@@ -344,7 +344,9 @@ def test_http_direct_rpc_and_sandbox_middleware():
         assert rpc_json["id"] == 42
         assert "result" in rpc_json
 
-        # 1c. Direct JSON-RPC endpoint with X-Machine-Token -> 200 OK
+        # 1c. Direct JSON-RPC endpoint with X-Machine-Token -> 401：机器密钥只给 OCR 流水线用
+        from fastapi import HTTPException
+
         config_mod.MACHINE_TOKEN = "dedicated-machine-key"
         auth_mod.MACHINE_TOKEN = "dedicated-machine-key"
         req_rpc_machine = make_mock_request(
@@ -361,11 +363,12 @@ def test_http_direct_rpc_and_sandbox_middleware():
                 },
             },
         )
-        rpc_machine_resp = asyncio.run(mcp_direct_rpc_endpoint(req_rpc_machine))
-        assert rpc_machine_resp.status_code == 200
-        rpc_machine_json = json.loads(rpc_machine_resp.body.decode("utf-8"))
-        assert rpc_machine_json["id"] == 99
-        assert "result" in rpc_machine_json
+        try:
+            asyncio.run(mcp_direct_rpc_endpoint(req_rpc_machine))
+            assert False, "机器密钥打开了 MCP，按馆长视角能读到隐藏本台词"
+        except HTTPException as exc:
+            assert exc.status_code == 401
+        clear_ip_login_failures("mcp:127.0.0.1")
         auth_mod.MACHINE_TOKEN = ""
         config_mod.MACHINE_TOKEN = ""
 
@@ -571,15 +574,18 @@ def test_mcp_dialogue_deep_link_and_story_context():
 
 
 def test_mcp_scoped_credential_and_hidden_book_refusal():
-    """子凭据只开 MCP 且启用即挡机器密钥；对访客隐藏的本子不许经 MCP 变成公开链接。"""
+    """机器密钥永远进不了 MCP（有无子凭据都一样）；对访客隐藏的本子不许经 MCP 变成公开链接。"""
     from unittest.mock import patch
 
     from fastapi import HTTPException
+
+    import app.abuse as abuse_mod
 
     tmp_dir = setup_test_env()
     auth_mod.AUTH_SECRET = "super-secret-curator-key"
     config_mod.MACHINE_TOKEN = "dedicated-machine-key"
     auth_mod.MACHINE_TOKEN = "dedicated-machine-key"
+    clear_ip_login_failures("mcp:127.0.0.1")
 
     def rpc(headers):
         req = make_mock_request(
@@ -596,17 +602,19 @@ def test_mcp_scoped_credential_and_hidden_book_refusal():
         return asyncio.run(mcp_direct_rpc_endpoint(req))
 
     try:
-        mcp_mod.MCP_TOKEN = ""
-        assert rpc({"X-Machine-Token": "dedicated-machine-key"}).status_code == 200, (
-            "没启用子凭据时机器密钥必须照旧能开 MCP"
-        )
+        for scoped in ("", "agent-scoped-key"):
+            mcp_mod.MCP_TOKEN = scoped
+            clear_ip_login_failures("mcp:127.0.0.1")
+            try:
+                rpc({"X-Machine-Token": "dedicated-machine-key"})
+                assert False, f"MCP_TOKEN={scoped!r} 时机器密钥仍打得开 MCP，能按馆长视角读到隐藏本"
+            except HTTPException as exc:
+                assert exc.status_code == 401
+            assert len(abuse_mod._login_failed_history.get("mcp:127.0.0.1", [])) == 1, (
+                "机器密钥被拒却没记 mcp:<ip> 失败，挡不住对 MCP 的反复猜测"
+            )
+        clear_ip_login_failures("mcp:127.0.0.1")
 
-        mcp_mod.MCP_TOKEN = "agent-scoped-key"
-        try:
-            rpc({"X-Machine-Token": "dedicated-machine-key"})
-            assert False, "启用 MCP_TOKEN 后机器密钥仍打得开 MCP，等于两把钥匙共享一套权限"
-        except HTTPException as exc:
-            assert exc.status_code == 401
         assert rpc({"Authorization": "Bearer agent-scoped-key"}).status_code == 200
         assert rpc({"Authorization": "Bearer super-secret-curator-key"}).status_code == 200
 
@@ -701,7 +709,7 @@ def test_mcp_handshake_url_is_credential_free_and_failures_get_locked():
 
         await gen.aclose()
 
-        # 4. 反复试错要撞锁：与 /api/auth/login 同一套规则（10 次/60 秒 → 锁 5 分钟），但分开计数
+        # 4. 反复试错要撞锁：与 /api/auth/login 同一套规则（10 个不同的错凭据/60 秒 → 锁 5 分钟），但分开计数
         for i in range(10):
             if i == 9:
                 # 猜到第 9 次时用正确凭据成功一次：成功不许清零计数，否则可以无限猜下去
@@ -722,7 +730,7 @@ def test_mcp_handshake_url_is_credential_free_and_failures_get_locked():
                         make_mock_request(
                             path="/api/mcp/rpc",
                             method="POST",
-                            headers={"Authorization": "Bearer guess-me-maybe"},
+                            headers={"Authorization": f"Bearer guess-me-maybe-{i}"},
                             json_body=payload,
                         ),
                         agent_ip,
@@ -744,7 +752,7 @@ def test_mcp_handshake_url_is_credential_free_and_failures_get_locked():
                     agent_ip,
                 )
             )
-            assert False, "锁还没生效：错凭据试了 10 次（中间夹一次成功）仍然没人管"
+            assert False, "锁还没生效：10 个不同的错凭据（中间夹一次成功）仍然没人管"
         except HTTPException as exc:
             assert exc.status_code == 429, exc.status_code
             assert exc.headers.get("Retry-After") == "300"

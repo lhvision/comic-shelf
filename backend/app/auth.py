@@ -213,19 +213,24 @@ def enforce_credential_attempts(request: Request) -> None:
     """对带凭据的请求执行与 `/api/auth/login` 同一套 IP 锁（同一个计数键）。
 
     已锁定的 IP 带任何凭据都回 429，连正确口令也不例外（否则锁期内照样能继续试）。
-    凭据对不上任何身份（馆长口令、机器密钥、直达票据、访客证都不是）记一次失败。
+    凭据对不上任何身份（馆长口令、机器密钥、直达票据、访客证都不是）记一次失败；
+    同一个错误凭据在窗口内只计一次，改口令后旧 Cookie 反复重放不会锁 IP。
     只带设备令牌的访客请求不在此列：设备令牌是随机长串，不是爆破目标。
     """
     if not is_auth_required():
         return
-    # Cookie 也要计数：请求头可以伪造，放过它等于开了爆破旁路（代价是改口令后旧 Cookie 可能短暂锁 IP）
-    if not (extract_token(request) or request.headers.get("x-machine-token", "").strip()):
+    # Cookie 也要计数：请求头可以伪造，放过它等于开了爆破旁路
+    token = extract_token(request)
+    x_machine = request.headers.get("x-machine-token", "").strip()
+    if not (token or x_machine):
         return
     ip = get_client_ip(request)
     locked = is_ip_login_locked(ip)
     if not locked:
         get_user_context(request)
-        locked = getattr(request.state, "bad_credential", False) and record_ip_login_failure_and_check_lock(ip)
+        locked = getattr(request.state, "bad_credential", False) and record_ip_login_failure_and_check_lock(
+            ip, f"{token}\0{x_machine}"
+        )
     if locked:
         raise HTTPException(
             status_code=429,

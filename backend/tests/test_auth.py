@@ -584,6 +584,39 @@ def test_rest_credential_bruteforce_lockout():
         clear_ip_login_failures(ip)
 
 
+def test_same_bad_credential_counted_once():
+    """改口令后旧 Cookie 随每个请求重放：同一个错误凭据窗口内只计一次，不能把馆长自己锁在门外。"""
+    from app.abuse import clear_ip_login_failures
+    from app.main import auth_and_security_middleware
+    from unittest.mock import AsyncMock
+
+    ip = "203.0.113.9"
+    auth_mod.AUTH_SECRET = "curator-key-888"
+    clear_ip_login_failures(ip)
+
+    def req(cookies=None, bearer=""):
+        headers = {"CF-Connecting-IP": ip, **({"Authorization": f"Bearer {bearer}"} if bearer else {})}
+        r = make_mock_request("/api/library", headers=headers, cookies=cookies)
+        r.method = "GET"
+        r.url.scheme = "http"
+        return r
+
+    async def run_cases():
+        call_next = AsyncMock(side_effect=lambda _r: Response(content=b"{}"))
+        statuses = [
+            (await auth_and_security_middleware(req(cookies={auth_mod.COOKIE_NAME: "old-secret"}), call_next)).status_code
+            for _ in range(12)
+        ]
+        assert statuses == [401] * 12, f"同一个旧 Cookie 被逐次计数，锁住了本 IP: {statuses}"
+        fresh = await auth_and_security_middleware(req(bearer="curator-key-888"), call_next)
+        assert fresh.status_code == 200, "旧 Cookie 重放之后，新口令进不来"
+
+    try:
+        asyncio.run(run_cases())
+    finally:
+        clear_ip_login_failures(ip)
+
+
 def test_unauthorized_clears_stale_cookie():
     """401 时清掉失效的登录 Cookie，免得浏览器带着它把每张画页都算成一次失败。"""
     from app.main import auth_and_security_middleware
@@ -613,6 +646,7 @@ if __name__ == "__main__":
     test_guest_visibility_and_discovery_auth()
     test_auth_and_security_middleware()
     test_rest_credential_bruteforce_lockout()
+    test_same_bad_credential_counted_once()
     test_unauthorized_clears_stale_cookie()
     test_quiet_access_log_filter()
     test_access_log_redacts_query_credentials()

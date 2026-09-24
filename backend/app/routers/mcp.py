@@ -21,7 +21,7 @@ from ..abuse import (
     is_ip_login_locked,
     record_ip_login_failure_and_check_lock,
 )
-from ..auth import extract_token, get_client_ip, is_curator, is_machine
+from ..auth import extract_token, get_client_ip, is_curator
 from ..config import MCP_TOKEN
 from ..db import (
     MAX_PAGE_BOXES,
@@ -1071,8 +1071,9 @@ async def process_jsonrpc_request(req_data: Any) -> Any:
 def _require_mcp_auth(request: Request) -> None:
     """MCP 面只认馆长口令，外加一把可单独撤销的子凭据 `COMIC_SHELF_MCP_TOKEN`。
 
-    配了子凭据就不再认机器密钥：那把钥匙同时握在 OCR 流水线手里（入库与伴生同步都要用），
-    外发到智能体配置里等于连"往库里写东西"一起交出去，而且换它得连流水线一起重启。
+    不认机器密钥：那把钥匙同时握在 OCR 流水线手里（入库与伴生同步都要用），外发到智能体配置里
+    等于连"往库里写东西"一起交出去，换它得连流水线一起重启；而 MCP 工具按馆长视角取料，
+    机器密钥进来就能读到隐藏本台词。
 
     失败尝试走与 `/api/auth/login` 同一套 IP 锁规则，但单独记在 `mcp:<ip>` 键下：全站中间件对
     `/api/mcp` 是提前放行的，这里不计数就没有任何东西挡得住对着密钥的反复猜测；而与网页登录共用
@@ -1089,22 +1090,20 @@ def _require_mcp_auth(request: Request) -> None:
         )
 
     granted = is_curator(request)
-    if not granted:
-        if MCP_TOKEN:
-            token = extract_token(request)
-            granted = bool(token) and secrets.compare_digest(token, MCP_TOKEN)
-        else:
-            granted = is_machine(request)
+    token = extract_token(request)
+    if not granted and MCP_TOKEN:
+        granted = bool(token) and secrets.compare_digest(token, MCP_TOKEN)
 
     if granted:
         # 成功不清零计数（同 /api/auth/login）：否则手握 MCP 凭据的人每猜 9 次馆长口令
         # 就用自己的凭据成功一次把计数清掉，可以无限试下去
         return
 
-    record_ip_login_failure_and_check_lock(key)
+    # 同一个错误凭据窗口内只计一次：配错凭据、不停重连的智能体不会把自己锁死
+    record_ip_login_failure_and_check_lock(key, f"{token}\0{request.headers.get('x-machine-token', '').strip()}")
     raise HTTPException(
         status_code=401,
-        # 文案固定：若随是否配置子凭据而变，匿名者凭一次 401 就能摸清机器密钥在 MCP 面还灵不灵
+        # 文案固定：若随是否配置子凭据而变，匿名者凭一次 401 就能摸清这台服务配没配子凭据
         detail="未授权访问：MCP 接口需要馆长口令或 MCP 凭据 (Curator or MCP Credential Required)",
         headers={"WWW-Authenticate": "Bearer"},
     )

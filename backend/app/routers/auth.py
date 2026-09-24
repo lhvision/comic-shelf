@@ -140,10 +140,10 @@ def auth_login(req: LoginRequest, request: Request, response: Response) -> Login
     pass_item = get_guest_pass_by_token(secret)
     if pass_item is not None:
         if not pass_item["is_active"]:
-            record_ip_login_failure_and_check_lock(ip)
+            record_ip_login_failure_and_check_lock(ip, secret)
             raise HTTPException(status_code=401, detail="该访客通行证已被停用")
         if pass_item["is_expired"]:
-            record_ip_login_failure_and_check_lock(ip)
+            record_ip_login_failure_and_check_lock(ip, secret)
             raise HTTPException(status_code=401, detail="通行证已过期，请联系馆长续期")
 
         ua = request.headers.get("user-agent", "")
@@ -250,7 +250,7 @@ def auth_login(req: LoginRequest, request: Request, response: Response) -> Login
             is_claimed=True,
         )
 
-    if record_ip_login_failure_and_check_lock(ip):
+    if record_ip_login_failure_and_check_lock(ip, secret):
         raise HTTPException(status_code=429, detail="口令尝试过于频繁，该网络地址已临时锁定 5 分钟，请稍后再试")
     raise HTTPException(status_code=401, detail="通行口令错误，请重试")
 

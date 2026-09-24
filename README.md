@@ -126,7 +126,7 @@
   - **9 大原子数据工具**：`search_by_image`（局部特征识图）、`search_by_dialogue`（台词倒排全文检索）、`search_by_meaning`（按意思找台词，字面不通也能召回）、`query_shelf`（多维藏书筛选）、`get_comic_detail`（完整元数据与章节）、`recommend_unread`（智能未读书籍淘选）、`create_direct_pass`（单本沙箱免密直达凭据签发）、`get_shelf_stats`（书架聚合统计）、`get_story_context`（按页码区间取原始台词流，供分镜/脚本/对话生成管线）；
   - **单本沙箱临时直达凭据（Single-Book Sandbox Pass）**：外部智能体定位名场面后，可一键签发带 TTL（默认 2 小时，最长 7 天）的高熵临时阅读 Token 与直达链接（`/comic/{source}/{id}/read/{page}?temp_token={token}`）；访客点开链接自动静默免密登入并锁定在单本沙箱中，**严格禁止窥探书架全景与其他作品（HTTP 403 阻断）**，写操作一律拦截；配备画页 `Token + IP` 复合滑动窗口频控（180 页/分钟），杜绝外链滥用抓取；
   - **前端原生 WebMCP 视口控制**：基于 VueUse 15 `useWebMCP` 规范，在书架、详情、发现与阅读器四大核心页面向 Chrome 原生 `document.modelContext` 声明式注册交互控制工具（支持翻页/跳页/章节跳转/排版切换/缓存触发），非兼容浏览器自动优雅空跑；
-  - **内网机器专属密钥（Machine API Token）与 MCP 子凭据分轨鉴权**：支持配置 `COMIC_SHELF_MACHINE_TOKEN` 供局域网应用与自动化流水线调用 REST API 与入库同步；另有 `COMIC_SHELF_MCP_TOKEN` 专供外部智能体解锁 MCP 工具（需同时配置 `COMIC_SHELF_SECRET` 才生效），可随时更换撤销，一旦设置机器密钥即不再能开 MCP，与网页端馆长密码完全解耦互不干扰；
+  - **内网机器专属密钥（Machine API Token）与 MCP 子凭据分轨鉴权**：支持配置 `COMIC_SHELF_MACHINE_TOKEN` 供局域网应用与自动化流水线调用 REST API 与入库同步；另有 `COMIC_SHELF_MCP_TOKEN` 专供外部智能体解锁 MCP 工具（需同时配置 `COMIC_SHELF_SECRET` 才生效），可随时更换撤销；机器密钥进不了 MCP，与网页端馆长密码完全解耦互不干扰；
   - **客户端配置指南**：关于局域网 NAS（TrueNAS/群晖）SSE 模式直连、Claude Desktop / Cursor 配置模板与本机 Stdio 管道集成，请参阅 **[DEPLOYMENT.md §9 MCP 智能体配置与连接指南](DEPLOYMENT.md#9-mcpmodel-context-protocol智能体配置与连接指南)**。
 - **分级离线缓存体系与安全边界**：基于 Workbox 实现 App Shell 核心资产预缓存 + 漫画画页 Cache-First（最大 3000 篇目 LRU 淘汰）；日常清理仅释放画页缓存、保留元数据快照；彻底重置才清空所有 DB；**绝对不触碰服务器已下载珍藏数据（`backend/data/`）**。
 

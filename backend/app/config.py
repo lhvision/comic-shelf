@@ -63,7 +63,7 @@ AUTH_SECRET = os.getenv("COMIC_SHELF_SECRET", os.getenv("COMIC_SHELF_AUTH_TOKEN"
 MACHINE_TOKEN = os.getenv("COMIC_SHELF_MACHINE_TOKEN", os.getenv("MACHINE_API_TOKEN", "")).strip()
 
 # MCP 子凭据：交给外部智能体（Claude/Cursor/Bot）的那把钥匙，可随时更换而不牵连其他通道。
-# 留空 = MCP 沿用馆长口令或机器密钥（老行为）；一旦设置，机器密钥在 MCP 面即失效。
+# 留空 = MCP 只认馆长口令；机器密钥任何时候都进不了 MCP。
 MCP_TOKEN = os.getenv("COMIC_SHELF_MCP_TOKEN", "").strip()
 
 # Trust reverse-proxy headers (CF-Connecting-IP, X-Forwarded-For) for client IP detection
