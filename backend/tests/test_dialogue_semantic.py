@@ -168,6 +168,24 @@ def test_semantic_guest_filter_and_delete_hook():
         shutil.rmtree(temp_dir, ignore_errors=True)
 
 
+def test_semantic_guest_hidden_books_do_not_eat_quota():
+    """隐藏本的高分页多于候选池时，访客仍要拿满 limit 条公开结果。"""
+    temp_dir = Path(tempfile.mkdtemp())
+    try:
+        _setup(temp_dir)
+        dims, docs, query = _patched_encoder()
+        with dims, docs, query:
+            _comic(temp_dir, "c_hidden", [(p, "我喜欢你") for p in range(1, 61)])
+            _comic(temp_dir, "c_pub", [(p, "我也喜欢你") for p in range(1, 4)])
+            db_mod.upsert_comic_index(make_comic_item("local", "c_pub", "公开本"))
+            db_mod.upsert_comic_index(make_comic_item("local", "c_hidden", "隐藏本", hidden_from_guest=1))
+
+            guest = db_mod.search_dialogues_semantic("告白", limit=3, is_guest=True)["results"]
+            assert [(h["source_id"], h["page_index"]) for h in guest] == [("c_pub", p) for p in (1, 2, 3)], guest
+    finally:
+        shutil.rmtree(temp_dir, ignore_errors=True)
+
+
 def test_semantic_degrades_without_encoder():
     """没放模型时必须干净地退回"只有关键词"，不能抛异常、也不能留下半套向量。"""
     temp_dir = Path(tempfile.mkdtemp())
@@ -297,6 +315,7 @@ if __name__ == "__main__":
     test_semantic_vectors_built_with_sync_and_searchable()
     test_semantic_one_row_per_page_and_short_query()
     test_semantic_guest_filter_and_delete_hook()
+    test_semantic_guest_hidden_books_do_not_eat_quota()
     test_semantic_degrades_without_encoder()
     test_semantic_reports_stale_vector_store()
     test_rebuild_vectors_counts_whole_library()

@@ -312,9 +312,7 @@ def _migrate_dialogue_schema(conn: sqlite3.Connection) -> bool:
 def backfill_dialogue_index() -> int:
     """整表重建后遍历书库，把所有带伴生 OCR 文件的漫画重灌回索引。
 
-    删表本身不丢数据，但没人回填的话，索引会一直空着，而空索引与「这本书没有这句台词」
-    在接口上长得一模一样——只会表现成"搜索忽然搜不到了"。常驻 --reload 的开发服务保存
-    文件就会触发一次重建（见 docs/PITFALLS.md #136），所以回填必须挂在重建的下一步。
+    空索引与「这本书没有这句台词」在接口上无法区分，所以回填必须紧跟重建（错题本 #136）。
     """
     library_dir = DATA_DIR / "library"
     if not library_dir.is_dir():
@@ -367,8 +365,7 @@ def init_dialogue_db(dialogue_db_path: Path | None = None) -> None:
             """
         )
         rebuilt = _migrate_dialogue_schema(conn)
-        # 错题本 #145：热重载拿旧 INSERT 往新表里回填，新列是 NULL，元数据却已认定同步完成。
-        # 列齐了不会触发重建，只能按行把这些书认出来：清掉它们的元数据，下面逐本重灌
+        # 列齐了不会触发重建，只能按行认出热重载用旧 INSERT 回填的半成品（错题本 #145）：清掉它们的元数据，下面逐本重灌
         half_synced = conn.execute(
             "SELECT DISTINCT source, source_id FROM comic_dialogues_fts WHERE kind IS NULL OR text_norm IS NULL"
         ).fetchall()
@@ -995,8 +992,7 @@ def purge_comic_db_records(source: str, source_id: str) -> bool:
     try:
         delete_comic_dialogues(source, source_id)
     except Exception as exc:
-        # 语料删不掉不该让删书失败，但必须出声：静默吞掉会留下永远查不到的孤儿台词行，
-        # 比留一条警告难查得多（孤儿还会被台词检索命中，却连书名都拼不出来）。
+        # 语料删不掉不该让删书失败，但必须留警告：孤儿台词行仍会被检索命中，却拼不出书名
         logger.warning("清理台词索引失败 %s/%s: %s", source, source_id, exc)
 
     return purged
@@ -1113,9 +1109,7 @@ def query_library_index(
 
     if q and q.strip():
         raw_q = q.strip()
-        # 简繁双向归一：台词检索一直展开变体，书架这条只 LIKE 原样输入，于是"这本的元数据恰好
-        # 存的是简体还是繁体"决定了搜得到搜不到（实测 jm 库里「咲恋」命中 1 本、「咲戀」命中 4 本，
-        # 合起来 5 本谁都不全）。汉化组混用两套字形，元数据侧无法规范，只能在查询侧补偿。
+        # 汉化组元数据简繁混用、无法规范，书架检索只能在查询侧展开简繁变体（ADR 0017 2026-09-23 修订）
         from .zh_conv import expand_search_variants
 
         groups = []
@@ -1275,8 +1269,7 @@ def get_library_facets(is_curator: bool, source: str | None = None) -> dict[str,
 # 台词全文索引（comic_dialogues_fts）同步与检索
 # ----------------------------------------------------------------------
 
-# 阅读器一次最多画几个气泡（代表气泡 + 同页其余命中气泡）。高频词下单页可命中十余气泡，
-# 全带进 URL 会撑到 500+ 字符并糊满画面，超出部分只计入 bubble_count 不画框。
+# 阅读器一次最多画几个气泡（代表气泡 + 同页其余命中气泡）；超出的只计入 bubble_count，免得撑长 URL、糊满画面
 MAX_PAGE_BOXES = 6
 
 # 只折 ASCII 大小写，与 LIKE 和 SQLite lower() 同一口径。不用 str.lower()：它会把个别字符
@@ -1287,8 +1280,7 @@ _ASCII_LOWER = str.maketrans(string.ascii_uppercase, string.ascii_lowercase)
 def _normalize_box(raw: Any) -> list[float] | None:
     """把侧车里的 box 收敛成 4 个有限数值，形状不对就整条判废。
 
-    只写 `len(box) == 4` 是不够的：4 键 dict 同样长度为 4，嵌套四点表也是 4 项，它们能
-    穿过这里、死在响应模型的 list[float] 校验上——一行脏侧车就会让整个检索端点 500。
+    只判长度拦不住 4 键 dict 与嵌套四点表，放过去会在响应模型校验时让检索端点 500。
     """
     if not isinstance(raw, list) or len(raw) != 4:
         return None
@@ -1324,11 +1316,8 @@ def _make_snippet(raw: str, norm: str, needle: str, max_chars: int = 60) -> str:
     Returns:
         带 `<mark>` 的纯文本片段，前后按需补 `...`；由前台安全声明式解析，不拼 HTML。
 
-    `to_simplified` 是逐字符 1:1 映射（str.translate + 单字符表），长度与字符位置都不变，
-    所以 norm 上求出的下标可以原样切在 raw 上：繁体页显示繁体、简体页显示简体，高亮还套得准。
-    原来拿简繁变体去原文里正则找的做法在"一简对多繁"上没有落点（简体「头发」的繁体写法表里
-    只有「頭發」，可语料是「頭髮」），只能退化成不高亮的前缀。
-    定位不分 ASCII 大小写：trigram 与 LIKE 都不分，搜 `ok` 命中了 `OK` 就得高亮得出来。
+    `to_simplified` 是逐字符 1:1 映射，norm 上的下标可原样切回 raw（ADR 0017 2026-09-23 修订）。
+    定位不分 ASCII 大小写，与 trigram、LIKE 同一口径。
     """
     if not raw:
         return ""
@@ -1347,10 +1336,7 @@ def _make_snippet(raw: str, norm: str, needle: str, max_chars: int = 60) -> str:
 DIALOGUE_KIND = "dialogue"
 PARATEXT_KIND = "paratext"
 
-# 封面/书名页与版权页总在书头，后记/作者社媒/活动通告总在书尾。这两段位置信息
-# 比任何几何判据都准：实测在 501 条语料上，页位 + 特征词能抓住全部 17 条已知脏数据，
-# 只误伤 1 条真台词；而"文字外面有没有闭合气泡框"的轮廓判据要陪葬 41% 的真台词
-# （气泡内腔常与整页白底漏成一片，且矩形旁白框同样是闭合轮廓，几何上分不开）。
+# 书名页与版权页在书头，后记与通告在书尾：页位 + 特征词比几何轮廓判据可靠（ADR 0017 决策 7）
 FRONT_MATTER_PAGES = 2
 BACK_MATTER_PAGES = 4
 # 短篇整本都是正文，位置规则对它没有意义；册页数不足此数时只认特征词。
@@ -1358,11 +1344,10 @@ MIN_PAGES_FOR_POSITION_RULE = 10
 # 后记是成段的长文，正文页平均每句只有十来字，用它兜住没有特征词的后记页
 BACK_MATTER_MEAN_LINE_CHARS = 25
 
-# 水印与页码：汉化组站点名被 OCR 成了十几种变体（jmcomic/mcomic/imcomic/nenic…），
-# 逐个匹配是打地鼠。真台词一定有中日文字形，纯拉丁/数字且极短的就是噪声。
+# 水印与页码：真台词一定有中日文字形，纯拉丁/数字且极短的就是噪声（站点名的 OCR 变体列举不完）
 _CJK_RE = re.compile(r"[぀-ヿ一-鿿＀-￯]")
 NOISE_MAX_CHARS = 12
-# 刻意不收「我是」「禁止」这类会出现在真台词里的宽词（例：「既然老哥这么喜欢嵌字的话」）
+# 刻意不收「我是」「禁止」这类真台词里也常见的宽词
 _PARATEXT_RE = re.compile(
     r"(图源|翻校|嵌字|扫图|校对|压制|汉化|翻译|仅供|转载|商业|邮箱|@[A-Za-z0-9]"
     r"|https?://|www\.|pixiv|fanbox|twitter|comiket|comic\s*market|qq群|群号|加群|微博"
@@ -1404,9 +1389,7 @@ def classify_dialogue_kind(
         if page_index > page_count - BACK_MATTER_PAGES and page_texts:
             mean_line_chars = sum(len(t) for t in page_texts) / len(page_texts)
             long_form_page = mean_line_chars >= BACK_MATTER_MEAN_LINE_CHARS
-            # 噪声行（水印、页码）不能当"这页是副文本"的证据：它本来就单独不入库，而正文页上
-            # 同样满是水印。真库实测这个 or 分支把一批剧情尾页整页判成副文本，台词从检索里消失
-            # （例：jm/319445 p21 只因侧车里有一行被认成 "888" 的 "？？？" 就整页搜不到）。
+            # 噪声行不能替整页定性：它本就不入库，正文页上同样满是水印（ADR 0017 决策 7 的 09-22 修正）
             credit_page = any(_PARATEXT_RE.search(t) for t in page_texts)
             if long_form_page or credit_page:
                 return PARATEXT_KIND
@@ -1448,9 +1431,7 @@ def sync_comic_dialogues(source: str, source_id: str, force: bool = False) -> in
         The total number of dialogue bubble records indexed.
     """
     safe_source, safe_id = _dialogue_key(source, source_id)
-    # 台词库只有一个键：清洗后的 (source, source_id)。曾经只拿清洗键去找目录、写库仍用原样
-    # 入参，调用方一传未清洗的 id 就变成"读对目录、写错 key"，删书按清洗键删不到那份行，
-    # 留下永远查不到的孤儿语料。这里统一，使写库/查元数据/删除与存储层定位目录用的是同一个键。
+    # 找目录、写库、查元数据、删除统一用清洗后的键，否则会留下删不掉的孤儿语料（见 _dialogue_key）
     source, source_id = safe_source, safe_id
 
     data_resolved = DATA_DIR.resolve()
@@ -1479,6 +1460,29 @@ def sync_comic_dialogues(source: str, source_id: str, force: bool = False) -> in
                 ocr_files = sorted(pages_sub.glob("**/*.ocr.json"))
             else:
                 ocr_files = sorted(target_dir.glob("*.ocr.json"))
+
+    latest_mtime: float = 0.0
+    for f in ocr_files:
+        try:
+            mt = f.stat().st_mtime
+            if mt > latest_mtime:
+                latest_mtime = mt
+        except OSError:
+            pass
+
+    # 增量检查放在解析之前：OCR 文件自上次入库以来没变就直接返回已有计数，不读不解析
+    if not force:
+        with get_dialogue_db() as conn:
+            row = conn.execute(
+                "SELECT last_synced_mtime, dialogue_count FROM comic_ocr_sync_meta WHERE source = ? AND source_id = ?",
+                (source, source_id),
+            ).fetchone()
+            if row:
+                stored_mtime = float(row["last_synced_mtime"])
+                stored_count = int(row["dialogue_count"])
+                # 当 OCR 文件未变动（或原本就无 OCR 文件且已同步记录为 0）时直接命中增量缓存
+                if stored_mtime >= latest_mtime and (latest_mtime > 0 or stored_count == 0):
+                    return stored_count
 
     # 读取 album.json 以便建立多章节全局页号映射
     page_map: dict[str, int] = {}
@@ -1592,29 +1596,6 @@ def sync_comic_dialogues(source: str, source_id: str, force: bool = False) -> in
                 )
             )
 
-    latest_mtime: float = 0.0
-    for f in ocr_files:
-        try:
-            mt = f.stat().st_mtime
-            if mt > latest_mtime:
-                latest_mtime = mt
-        except OSError:
-            pass
-
-    # 增量检查：若非 force 模式，比对元数据表；若 OCR 文件自上次入库以来未发生任何变动，直接返回已有计数（0 毫秒跳过）
-    if not force:
-        with get_dialogue_db() as conn:
-            row = conn.execute(
-                "SELECT last_synced_mtime, dialogue_count FROM comic_ocr_sync_meta WHERE source = ? AND source_id = ?",
-                (source, source_id),
-            ).fetchone()
-            if row:
-                stored_mtime = float(row["last_synced_mtime"])
-                stored_count = int(row["dialogue_count"])
-                # 当 OCR 文件未变动（或原本就无 OCR 文件且已同步记录为 0）时直接命中增量缓存
-                if stored_mtime >= latest_mtime and (latest_mtime > 0 or stored_count == 0):
-                    return stored_count
-
     with get_dialogue_db() as conn:
         conn.execute(
             "DELETE FROM comic_dialogues_fts WHERE source = ? AND source_id = ?",
@@ -1638,8 +1619,7 @@ def sync_comic_dialogues(source: str, source_id: str, force: bool = False) -> in
             (source, source_id, latest_mtime, len(records), int(time.time())),
         )
 
-    # 向量重建放在 FTS 事务**外面**：编码一条对白最慢也就几十毫秒整本，但模型冷启动那次
-    # 会摸到秒级，扣着写锁做这件事会把同一本书的关键词入库一起卡住。
+    # 向量重建放在 FTS 事务**外面**：模型冷启动可达秒级，扣着写锁会卡住关键词入库。
     # 失败只记日志：关键词已经提交，可选的语义腿出错不能把这次同步报成 500
     try:
         embed_comic_dialogues(source, source_id)
@@ -1665,14 +1645,14 @@ def delete_comic_dialogues(source: str, source_id: str) -> None:
             "DELETE FROM comic_dialogue_vectors WHERE source = ? AND source_id = ?",
             (source, source_id),
         )
+    _bump_vector_version()
 
 
 def _dialogue_comics_meta_map(keys: list[tuple[str, str]], user_id: str) -> dict[tuple[str, str], sqlite3.Row]:
     """跨库轻量关联：一次拿回这些书的元数据、访客隐藏标记与本人的收藏/阅读进度。
 
     关键词检索与语义检索共用同一份关联，两边返回的书名/封面/作者才不会长得不一样。
-    收藏与进度走 LEFT JOIN 一次取全（与 `query_comics` 同一套写法）：候选池最多 200 行、
-    去重后是十几到几十个键，SQLite 侧的开销全在这几条 JOIN 上，省不掉。
+    收藏与进度走 LEFT JOIN 一次取全，与 `query_comics` 同一套写法。
     """
     comics_map: dict[tuple[str, str], sqlite3.Row] = {}
     if not keys:
@@ -1744,19 +1724,19 @@ def embed_comic_dialogues(source: str, source_id: str) -> int:
             "DELETE FROM comic_dialogue_vectors WHERE source = ? AND source_id = ?",
             (source, source_id),
         )
-        if vectors is None:
-            return 0
-        now = int(time.time())
-        conn.executemany(
-            "INSERT INTO comic_dialogue_vectors (source, source_id, page_index, bubble_id, dim, vec, updated_at)"
-            " VALUES (?, ?, ?, ?, ?, ?, ?)",
-            [
-                (source, source_id, int(r["page_index"]), str(r["bubble_id"]), dim,
-                 vectors[i].tobytes(), now)
-                for i, r in enumerate(rows)
-            ],
-        )
-    return len(rows)
+        if vectors is not None:
+            now = int(time.time())
+            conn.executemany(
+                "INSERT INTO comic_dialogue_vectors (source, source_id, page_index, bubble_id, dim, vec, updated_at)"
+                " VALUES (?, ?, ?, ?, ?, ?, ?)",
+                [
+                    (source, source_id, int(r["page_index"]), str(r["bubble_id"]), dim,
+                     vectors[i].tobytes(), now)
+                    for i, r in enumerate(rows)
+                ],
+            )
+    _bump_vector_version()
+    return len(rows) if vectors is not None else 0
 
 
 def rebuild_dialogue_vectors() -> dict[str, Any]:
@@ -1782,19 +1762,18 @@ def rebuild_dialogue_vectors() -> dict[str, Any]:
 
 
 def _vector_status() -> tuple[dict[str, Any], tuple[Any, ...]]:
-    """语义腿的状态与向量矩阵的缓存戳子，一次扫描同时给出。
+    """语义腿的状态与向量矩阵的缓存戳子，一次查询同时给出。
 
-    语义请求两样都要，分开查就是对向量表的两遍全表扫（每行都带一段 BLOB）。可用时全表只有
-    一种维度且等于编码器维度，所以这一行的行数与最大 updated_at 就是戳子；台词库路径也在
-    戳子里，测试与"换库"不会读到上一个库的矩阵。
+    戳子是 (台词库路径, 进程内写入版本号, 维度)：库路径让测试与"换库"读不到上一个库的矩阵；
+    版本号由每次写/删向量表后推进（只有服务进程写这张表，且是单 worker），同一秒内重编、
+    条数不变也不会读到旧矩阵。
     """
     from . import embedding
 
     dim = embedding.dim()
     with get_dialogue_db() as conn:
         row = conn.execute(
-            "SELECT count(*) AS n, count(DISTINCT dim) AS dims, max(dim) AS dim, max(updated_at) AS u"
-            " FROM comic_dialogue_vectors"
+            "SELECT count(*) AS n, count(DISTINCT dim) AS dims, max(dim) AS dim FROM comic_dialogue_vectors"
         ).fetchone()
     stored = int(row["n"] or 0)
     stored_dim = int(row["dim"] or 0) if stored else 0
@@ -1808,7 +1787,7 @@ def _vector_status() -> tuple[dict[str, Any], tuple[Any, ...]]:
     else:
         reason = ""
     status = {"available": reason == "", "reason": reason, "vectors": stored, "dim": stored_dim or (dim or 0)}
-    return status, (str(_DIALOGUE_DB_PATH), stored, int(row["u"] or 0), stored_dim)
+    return status, (str(_DIALOGUE_DB_PATH), _VECTOR_VERSION, stored_dim)
 
 
 def dialogue_vector_status() -> dict[str, Any]:
@@ -1817,13 +1796,19 @@ def dialogue_vector_status() -> dict[str, Any]:
 
 
 _VECTOR_CACHE: tuple[Any, ...] | None = None
+_VECTOR_VERSION = 0
+
+
+def _bump_vector_version() -> None:
+    """向量表写入或删除提交之后调用；必须在提交后推进，否则并发读者会把旧矩阵记在新版本号下。"""
+    global _VECTOR_VERSION
+    _VECTOR_VERSION += 1
 
 
 def _vector_store(stamp: tuple[Any, ...], dim: int) -> tuple[list[tuple[str, str, int, str]], Any]:
     """取回 (键列表, 向量矩阵)，按 `_vector_status` 给的戳子做进程内缓存。
 
-    不缓存的话每次检索都要重读全部 BLOB 再 np.stack，真库实测 350ms——模型编码那句
-    问题只用 2ms，剩下的全是这件事。同步与重建都会推进戳子，所以读不到过期向量。
+    不缓存的话每次检索都要重读全部 BLOB 再 np.stack，这是语义检索里最大的一笔开销。
     整体一次性赋值，不留"半个新矩阵被别的线程看见"的窗口。
     """
     global _VECTOR_CACHE
@@ -1856,14 +1841,8 @@ def search_dialogues_semantic(
 ) -> dict[str, Any]:
     """按意思找台词：把问题编码成向量，与语料向量取余弦近邻。
 
-    与 `search_dialogues` 的三点关键区别，刻意不共用出口模型：
-    1. 检索单元是气泡、返回单元是页：每页只留相似度最高的那个气泡，免得同一页的几句挤占
-       前几名（语义没有"字面命中区间"可高亮，故不吐 snippet）；
-    2. 分数是 `similarity`（余弦相似度，-1..1），只在同一次查询的结果之间比高低——真命中与
-       噪声的分数区间重叠，跨查询比较与绝对阈值都不成立；也不复用 `rank_score`（池内
-       min-max 归一，换一次查询就换一把尺子，两种口径写进同一个字段必然被下游误读）；
-    3. 顺序不掺业务信号：关键词那套信号融合依赖 bm25/LIKE 的字面分，语义分掺进去只会掩盖
-       "这本你读过"与"这句意思像"两件事。
+    与 `search_dialogues` 刻意分成两个出口（ADR 0028）：每页只留最相似的气泡、不吐 snippet；
+    分数是 `similarity`（余弦，只在同一次查询内比高低），不复用 `rank_score`，也不掺业务信号。
     访客隐藏本与未收录本的过滤规则与关键词出口一致。
 
     Returns:
@@ -1884,34 +1863,42 @@ def search_dialogues_semantic(
     if qv is None:
         return {"results": [], "available": False, "reason": "encoder_unavailable"}
 
-    if not isinstance(limit, int):
-        try:
-            limit = int(limit)
-        except Exception:
-            limit = 20
-    limit = max(1, min(limit, 100))
+    limit = max(1, min(int(limit), 100))
     fetch_limit = min(max(limit * 5, 50), 200)
 
     keys_all, matrix = _vector_store(stamp, int(qv.shape[0]))
     import numpy as np
 
-    sims = matrix @ qv
-    order = np.argsort(-sims, kind="stable")
-    # order 已按相似度降序：某页第一次出现的气泡就是这一页的代表，同页之后的气泡直接跳过
+    # 书级过滤先于取前 K：访客隐藏本若等到取完才剔除，会白占名额让访客拿到的结果少于 limit
+    book_keys = sorted({(k[0], k[1]) for k in keys_all if not source or k[0] == source})
+    comics_map = _dialogue_comics_meta_map(book_keys, user_id)
+    allowed = {
+        b for b in book_keys
+        if not is_guest or (comics_map.get(b) is not None and not comics_map[b]["hidden_from_guest"])
+    }
+    mask = np.fromiter(((k[0], k[1]) in allowed for k in keys_all), dtype=bool, count=len(keys_all))
+    sims = np.where(mask, matrix @ qv, -np.inf)
+    valid = int(mask.sum())
+
+    # 同页只留相似度最高的气泡；按页去重后不够数就把 K 翻倍重取，直到够数或候选取尽
     hits: list[tuple[tuple[str, str, int, str], float]] = []
     pages: set[tuple[str, str, int]] = set()
-    for i in order:
-        key = keys_all[int(i)]
-        if (source and key[0] != source) or key[:3] in pages:
-            continue
-        pages.add(key[:3])
-        hits.append((key, float(sims[int(i)])))
-        if len(hits) >= fetch_limit:
+    k = min(fetch_limit, valid)
+    while k > 0:
+        # 先按下标排再稳定排序：同分时保持入库顺序，与全量 argsort 的结果一致
+        top = np.sort(np.argpartition(-sims, k - 1)[:k])
+        hits, pages = [], set()
+        for i in top[np.argsort(-sims[top], kind="stable")]:
+            key = keys_all[int(i)]
+            if key[:3] in pages:
+                continue
+            pages.add(key[:3])
+            hits.append((key, float(sims[int(i)])))
+            if len(hits) >= fetch_limit:
+                break
+        if len(hits) >= fetch_limit or k >= valid:
             break
-
-    book_keys = sorted({(k[0], k[1]) for k, _ in hits})
-    comics_map = _dialogue_comics_meta_map(book_keys, user_id)
-
+        k = min(k * 2, valid)
     # 原文按气泡回表：向量表只存坐标外的最小信息，文本/框仍以 FTS 那行为准，
     # 避免两个表说同一句话的不同版本。
     texts: dict[tuple[str, str, int, str], sqlite3.Row] = {}
@@ -1932,23 +1919,17 @@ def search_dialogues_semantic(
         if r is None:
             continue
         ci = comics_map.get((key[0], key[1]))
-        if is_guest and (ci is None or ci["hidden_from_guest"]):
-            continue
-        cover_indices = _safe_json_list(ci["cover_indices_json"]) if ci else []
         results.append(
             {
                 "source": key[0],
                 "source_id": key[1],
-                "display_id": (ci["display_id"] if ci and ci["display_id"] else key[1]),
-                "title": (ci["title"] if ci and ci["title"] else key[1]),
+                **_dialogue_book_fields(key[0], key[1], ci),
                 "page_index": key[2],
                 "bubble_id": r["bubble_id"],
                 "text": r["text"] or "",
                 # 与关键词出口同理：写入口已归一，读侧不再重复校验
                 "box": json.loads(r["box_json"]),
                 "lang": r["lang"] or "zh",
-                "cover": f"/api/library/{key[0]}/{key[1]}/covers/{cover_indices[0] if cover_indices else 0}/file",
-                "authors": _safe_json_list(ci["authors_json"]) if ci else [],
                 "similarity": round(sim, 4),
             }
         )
@@ -1966,6 +1947,17 @@ def _safe_json_list(raw: Any) -> list[Any]:
     except Exception:
         return []
     return value if isinstance(value, list) else []
+
+
+def _dialogue_book_fields(src: str, sid: str, ci: sqlite3.Row | None) -> dict[str, Any]:
+    """台词检索结果里按书派生的字段，关键词与语义两个出口共用；元数据缺失时退回书号本身。"""
+    cover_indices = _safe_json_list(ci["cover_indices_json"]) if ci else []
+    return {
+        "display_id": ci["display_id"] if ci and ci["display_id"] else sid,
+        "title": ci["title"] if ci and ci["title"] else sid,
+        "cover": f"/api/library/{src}/{sid}/covers/{cover_indices[0] if cover_indices else 0}/file",
+        "authors": _safe_json_list(ci["authors_json"]) if ci else [],
+    }
 
 
 def cleanup_orphan_comic_dialogues(data_dir: Path | None = None) -> int:
@@ -1990,6 +1982,8 @@ def cleanup_orphan_comic_dialogues(data_dir: Path | None = None) -> int:
                 )
                 cleaned += 1
                 logger.info(f"Cleaned orphan dialogue index for deleted comic {src}/{sid}")
+    if cleaned:
+        _bump_vector_version()
     return cleaned
 
 
@@ -2001,9 +1995,8 @@ def _escape_like(text: str) -> str:
 def _parse_metric_count(value: Any) -> int | None:
     """把 provider 侧的 "209K" / "9.9M" / "102" / "" 解析成整数；解析不出来回报 None。
 
-    `comics_index.views` / `likes` 是上游站点的展示字符串，不是数字列（实测形态只有
-    `''`、`999`、`9K`/`99k`、`999K`、`9.9M`），所以热度这一路必须自己认格式：认不出就当
-    "没有这个信号"，绝不当成 0 —— 本地导入的本子没有站点热度，把它们算成 0 阅读量等于替它们编一个。
+    `comics_index.views` / `likes` 是上游站点的展示字符串，不是数字列。认不出就当"没有这个信号"，
+    绝不当成 0：本地导入的本子没有站点热度，算成 0 阅读量等于替它们编一个。
     """
     text = str(value or "").strip().replace(",", "")
     if not text:
@@ -2030,7 +2023,7 @@ def search_dialogues(
     供取料与语义召回使用），但它们不是台词，不该出现在台词检索结果里。
 
     Args:
-        query: Full-text search string (expanded to simplified and traditional forms).
+        query: Full-text search string (folded once by `to_simplified`, matching the indexed `text_norm`).
         source: Optional source filter.
         limit: Maximum number of matched pages to return (1..100, default 20).
         is_guest: When True, filters out dialogue results from hidden_from_guest comics.
@@ -2044,33 +2037,27 @@ def search_dialogues(
         further matched bubbles on that page for the reader to outline at once, plus
         `bubble_count` — how many bubbles on that page matched within the fetched candidate
         pool (not a corpus-wide total) — and `rank_score`, the representative bubble's relevance
-        min-max normalized **within this candidate pool** (0..1, higher is more relevant; only
-        comparable inside one query, never across queries).
+        min-max normalized **within the caller-visible rows of this candidate pool** (0..1, higher
+        is more relevant; only comparable inside one query, never across queries).
         3+ 字符的查询走 text_norm 上的 trigram 倒排并按 bm25 排序；2 字查询产不出任何
         trigram token，只能走 LIKE 扫描（按 词频 ÷ 文本长度 近似排序，即 bm25 中真正
         区分候选的那两项）。两条都在归一列上比，所以繁简输入命中同一批语料。
 
         截断留谁由 `rank_score` 加业务信号决定（推导见 `_rank_dialogue_pages` 与 ADR 0017 决策 9）。
-        **只有顺序随身份变**：`rank_score` 与 `bubble_count` 这类计数字段与访客/馆长无关（错题本 #139）。
+        `bubble_count` 与身份无关；`rank_score` 的标尺只取调用者看得见的行，访客与馆长可能拿到
+        不同的分数与顺序（错题本 #139 的保密例外）。
     """
     clean_query = query.strip()
     # 短词全表扫描防爆守卫：少于 2 个字符直接阻断，杜绝无索引全表扫描
     if len(clean_query) < 2:
         return []
 
-    # 只认一个归一 needle：写入侧已折成简体，查询走同一张 1:1 表自然汇合，
-    # 不再把一条查询炸成三个 MATCH 项，也不必拿变体去原文里碰高亮落点（见 _make_snippet）。
+    # 只认一个归一 needle：写入侧已折成简体，查询走同一张 1:1 表自然汇合（ADR 0017 2026-09-23 修订）
     needle = to_simplified(clean_query)
-    if not isinstance(limit, int):
-        try:
-            limit = int(limit)
-        except Exception:
-            limit = 20
-    limit = max(1, min(limit, 100))
+    limit = max(1, min(int(limit), 100))
 
     diag_rows: list[sqlite3.Row] = []
-    # 候选池不再按身份分档（原来访客 5x/200、馆长 3x/150）：bubble_count 是池内计数，
-    # 池大小不同就等于同一本书同一页在两种身份下报出不同的命中数，而访客池本来就更大更完整。
+    # 候选池不按身份分档：bubble_count 是池内计数，池大小不同，同一页在两种身份下的命中数就不同
     fetch_limit = min(max(limit * 5, 50), 200)
 
     with get_dialogue_db() as conn:
@@ -2078,10 +2065,8 @@ def search_dialogues(
             # 只有走 MATCH 的这一支有 bm25 分数可用；trigram 索引键是三字窗口，
             # 故 2 字 needle 进不了倒排、只能走下面的 LIKE。3 字以上 MATCH 为空就是真没有：
             # trigram 覆盖全部三字子串，LIKE 再扫一遍全表也只会同样 0 行。
-            # bm25 返回负数且越相关越负，升序即为最相关在前，写成 DESC 就反了；这里取负
-            # 换成"越大越相关"，与 LIKE 那条的近似分同向，后面融合业务信号时才加得起来。
-            # 摘要不再交给 SQL snippet()：命中的是归一列， Marks 落不到原文上，
-            # 统一由展示侧的 _make_snippet 在原文里定位。
+            # bm25 越相关越负，这里取负换成"越大越相关"，与 LIKE 那条同向，才能叠业务信号。
+            # 命中的是归一列，摘要由 _make_snippet 在原文上定位，不用 SQL snippet()。
             sql_match = """
                 SELECT
                     f.source,
@@ -2114,10 +2099,8 @@ def search_dialogues(
                 # 含 NUL 这类 FTS5 解析不了的查询：当作无命中，不让检索端点 500
                 diag_rows = []
         else:
-            # :like 是带通配的匹配式，:term 是要数出现次数的原串——两者不能共用一个绑定，
-            # 拿 "%喜欢%" 去 replace 永远替不掉，词频恒为 0，整条路径就退化成按行号排。
-            # LIKE 不分 ASCII 大小写而 replace() 分，所以两边都折成小写再数：否则搜 `ok`
-            # 命中了 `OK`，词频却是 0。SQLite 自带的 lower() 只折 ASCII，长度不变。
+            # :like 是带通配的匹配式，:term 是数出现次数的原串，不能共用一个绑定。
+            # LIKE 不分 ASCII 大小写而 replace() 分，所以两边都折成小写再数（lower() 只折 ASCII，长度不变）。
             params: dict[str, Any] = {
                 "like": f"%{_escape_like(needle)}%",
                 "term": needle.translate(_ASCII_LOWER),
@@ -2125,11 +2108,8 @@ def search_dialogues(
                 "kind": DIALOGUE_KIND,
                 "fetch_limit": fetch_limit,
             }
-            # trigram 只会产出 3 字符 token，2 字查询产不出任何 token（MATCH 恒 0 行），
-            # 也没有 bm25 分数可算。这里手工补上 bm25 中真正参与候选排序的那两项：
-            # 词频 ÷ 文本长度。IDF 对同一次查询是常数，除掉它不影响顺序，故省略。
-            # 词频按字符数计（length 差值 = 出现次数 × needle 长度），needle 单条即可，
-            # 因为比的是归一列。
+            # 2 字查询没有 bm25 可用，手工补上其中真正区分候选的两项：词频 ÷ 文本长度
+            # （IDF 对同一次查询是常数，省略）。词频按字符数计：length 差值 = 出现次数 × needle 长度。
             like_rank = (
                 "(CAST(length(f.text_norm) - length(replace(lower(f.text_norm), :term, '')) AS REAL)"
                 " / max(length(f.text_norm), 1))"
@@ -2158,9 +2138,6 @@ def search_dialogues(
     if not diag_rows:
         return []
 
-    # 跨库轻量关联：从 comic_shelf.db 查询对应漫画的元数据、访客隐藏标记与本人的收藏/阅读进度。
-    # 收藏与进度走 LEFT JOIN 一次拿全（与 query_comics 同一套关联写法），多一次往返换不起：
-    # 候选池最多 200 行、去重后是十几到几十个键，SQLite 侧的开销全在这几条 JOIN 上。
     unique_keys = list({(r["source"], r["source_id"]) for r in diag_rows})
     comics_map = _dialogue_comics_meta_map(unique_keys, user_id)
 
@@ -2182,15 +2159,6 @@ def search_dialogues(
         page_idx = int(r["page_index"])
         # 唯一的写入口 sync_comic_dialogues 已把 box 归一成 4 个有限数值或空表，读侧不再重复校验
         box: list[float] = json.loads(r["box_json"])
-        cover_indices = _safe_json_list(ci["cover_indices_json"]) if ci else []
-        cover = f"/api/library/{src}/{sid}/covers/{cover_indices[0] if cover_indices else 0}/file"
-        authors = _safe_json_list(ci["authors_json"]) if ci else []
-
-        raw_text = r["text"] or ""
-        snip = _make_snippet(raw_text, r["text_norm"] or "", needle)
-
-        display_id = ci["display_id"] if ci and ci["display_id"] else sid
-        title = ci["title"] if ci and ci["title"] else sid
 
         key = (src, sid, page_idx)
         hit = page_hits.get(key)
@@ -2201,21 +2169,19 @@ def search_dialogues(
             if box and len(extra) < MAX_PAGE_BOXES - 1:
                 extra.append(box)
             continue
+        raw_text = r["text"] or ""
         page_hits[key] = {
             "source": src,
             "source_id": sid,
-            "display_id": display_id,
-            "title": title,
+            **_dialogue_book_fields(src, sid, ci),
             "page_index": page_idx,
             "bubble_id": r["bubble_id"],
             "bubble_count": 1,
             "text": raw_text,
-            "snippet": snip,
+            "snippet": _make_snippet(raw_text, r["text_norm"] or "", needle),
             "box": box,
             "other_boxes": [],
             "lang": r["lang"] or "zh",
-            "cover": cover,
-            "authors": authors,
             "rank_score": float(r["rank_score"]),
         }
 
@@ -2268,12 +2234,11 @@ def _rank_dialogue_pages(
 ) -> list[dict[str, Any]]:
     """先把相关度按候选池极值 min-max 归一，再叠业务信号，按最终分降序回报（同分保持原次序）。
 
-    为什么必须叠：实测 2 字查询（`老师` / `喜欢`）候选池 95~100 页里，前 20 名的相关度分**全部
-    打平**在 1.0——因为 LIKE 那条用的"词频 ÷ 文本长度"是个很粗的比值，一堆气泡算出同一个数。
-    这时"截断留谁"完全由 `(source, page_index)` 的偶然次序决定，等于没有排序。
+    为什么必须叠：2 字查询的"词频 ÷ 文本长度"很粗，前几十名常整片打平，不叠信号的话截断留谁
+    只由偶然次序决定（ADR 0017 决策 9）。
 
-    `pool_lo` / `pool_hi` 必须是**未做身份过滤的候选行**极值（调用方给），归一结果才与访客/馆长
-    身份无关；页级代表分恒落在该区间内，所以 `rank_score` 稳定在 0..1。
+    `pool_lo` / `pool_hi` 是调用者**看得见的候选行**的极值（调用方已按身份过滤，理由见调用处），
+    页级代表分恒落在该区间内，所以 `rank_score` 稳定在 0..1。
 
     四项信号（权重见 `DIALOGUE_SIGNAL_WEIGHTS`）：热度取 `views`/`likes` 对数后在**本次池内出现过的
     那些书**之间 min-max（跨池、跨查询的绝对值没有可比性）；完读率与收藏来自本人的阅读进度与收藏；
@@ -2329,16 +2294,8 @@ def get_story_context(
 ) -> dict[str, Any]:
     """按页码区间取原始台词物料，供下游生成管线使用（与台词检索同为一份索引的另一个出口）。
 
-    人用出口（search_dialogues）要相关度排序、要 `<mark>` 高亮、要压成 20 页给人眼挑；
-    管线要的恰好相反：按 `(page_index, reading_order)` 的剧情原序给连续切片，装原始
-    `text`。三条边界纪律刻意向人用出口反向：**不收关键词**、**不吐展示态字段**、
-    **撞预算必须回报 truncated**（否则模型会把自己拿到的片段当成全书）。
-    气泡坐标与台词分两份返回、靠 `line_id` 关联：读坐标的是渲染层，不是模型。
-
-    注意 `reading_order` 是稳定序号而不是连号：2C 之后噪声行（水印、页码）不入库，
-    同一页的序号会出现空洞（如 1,2,3,4,5,7,8），下游不得假定连续或据此判断缺行。
-    `speaker` 目前无任何数据来源（OCR 只给文本与气泡框，`album.json` 的 `actors`
-    是全书级），因此不吐该字段，也不拿空串占位。
+    按 `(page_index, reading_order)` 的剧情原序给连续切片：不收关键词、不吐展示态字段，撞预算必须回报
+    `truncated`；`reading_order` 有空洞、不输出 `speaker`。边界纪律与已知限制见 ADR 0017 决策 8。
 
     Args:
         source: 图源平台标识（如 'jm' | 'local' | 'picacg'）。
