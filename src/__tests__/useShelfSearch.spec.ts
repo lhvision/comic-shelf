@@ -2,7 +2,7 @@ import { describe, it, expect, vi } from 'vite-plus/test'
 import { computed, effectScope, nextTick, ref } from 'vue'
 import type { Router } from 'vue-router'
 import { useShelfSearch } from '@/composables/useShelfSearch'
-import type { LibrarySummary } from '@/types'
+import type { DialogueSearchItem, LibrarySummary } from '@/types'
 
 describe('useShelfSearch', () => {
   it('initializes and orchestrates shelfSearch and dialogueQuery isolation', async () => {
@@ -67,6 +67,47 @@ describe('useShelfSearch', () => {
       await nextTick()
       expect(searchActiveCommand.value).toBeNull()
       expect(dialogueQuery.value).toBe('')
+    })
+    scope.stop()
+  })
+
+  it('reports the dialogue listbox as shown only when results are actually rendered', () => {
+    const scope = effectScope()
+    scope.run(() => {
+      const {
+        isDialogueOpen,
+        isDialogueSearching,
+        dialogueError,
+        dialogueResults,
+        isDialogueListboxShown,
+      } = useShelfSearch({
+        activeSource: computed(() => 'local'),
+        shelfSearch: ref(''),
+        filteredItems: computed<LibrarySummary[]>(() => []),
+        allItems: computed<LibrarySummary[]>(() => []),
+        router: { push: vi.fn<() => Promise<void>>() } as unknown as Router,
+        toast: vi.fn<(msg: string, tone?: 'info' | 'error' | 'success') => number>(),
+      })
+
+      // 输入框的 aria-expanded 据此设置：浮层开着但 listbox 不存在时必须为假，否则指向空节点
+      isDialogueOpen.value = true
+      expect(isDialogueListboxShown.value).toBe(false)
+
+      dialogueResults.value = [
+        { source: 'local', source_id: 'a', page_index: 1 } as DialogueSearchItem,
+      ]
+      expect(isDialogueListboxShown.value).toBe(true)
+
+      isDialogueSearching.value = true
+      expect(isDialogueListboxShown.value).toBe(false)
+      isDialogueSearching.value = false
+
+      dialogueError.value = '检索失败'
+      expect(isDialogueListboxShown.value).toBe(false)
+      dialogueError.value = ''
+
+      isDialogueOpen.value = false
+      expect(isDialogueListboxShown.value).toBe(false)
     })
     scope.stop()
   })

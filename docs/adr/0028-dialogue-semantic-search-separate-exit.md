@@ -13,7 +13,7 @@
 
 **三、语料向量在本机算，不挪到算力机。** 算存分离的前提是"画页推理很贵"（1764 页按 94 页/分约 19 分钟 GPU），而文本编码实测 **184 行/秒（CPU）**，整库 7544 行 41 秒、单本约 1 秒。为这点开销新增一种伴生文件格式、再让 NAS 跨 SMB 读它，是用协议复杂度换不存在的瓶颈。所以向量的产出挂在 `sync_comic_dialogues` 尾部（每同步一本顺手重编那一本，新书不会静默落后），只有全量重建是显式动作（`POST /api/search/dialogue-vectors/rebuild`，仅馆长：全站中间件本就不放 Machine Token 调这个写端点）。查询编码必须在服务进程里做——问题什么时候来是不可预知的，这也是模型体积被卡在 23MB 的原因（单条查询 CPU 2ms）。
 
-降级口径与扉页分话一致：模型不在（或缺 `onnxruntime` / numpy），`dim()` 返回 `None`。此时同步照常写关键词索引，但不写向量，并删掉这本书的旧向量——FTS 行刚被重写，留着旧向量就是相似度按旧文本算、展示的却是新文本；编码本身出错也只记日志，不把这次同步报成失败。检索返回空结果并带 `available=false`、`reason=encoder_unavailable`，**关键词链路一切照常**。空结果一律带 `reason`，因为"库里没有意思相近的台词"和"这台机器没装模型"在响应体上必须长得不一样（`vectors_missing` / `dim_mismatch` 同理，前者是向量落后，后者是换了模型没重建）；查询短到编不出意思时报 `query_too_short`，这时 `available` 仍为 true。
+降级口径与扉页分话一致：模型不在（或缺 `onnxruntime` / numpy），`dim()` 返回 `None`。此时同步照常写关键词索引，但不写向量，并删掉这本书的旧向量——FTS 行刚被重写，留着旧向量就是相似度按旧文本算、展示的却是新文本；编码本身出错也只记日志，不把这次同步报成失败。检索返回空结果并带 `available=false`、`reason=encoder_unavailable`，**关键词链路一切照常**。没走检索时一律带 `reason`，因为"库里没有意思相近的台词"和"这台机器没装模型"在响应体上必须长得不一样（`vectors_missing` / `dim_mismatch` 同理，前者是向量落后，后者是换了模型没重建）；查询短到编不出意思时报 `query_too_short`，这时 `available` 仍为 true。
 
 **运行时同样是可选的**：`onnxruntime` + `tokenizers`（约 70MB，numpy 随 onnxruntime 一起装）不进 `backend/requirements.txt`，按 `DEPLOYMENT.md` §5.1.2 那条 `pip install` 自行加装。服务端连 numpy 都是用到才导入，基础镜像不带它也能照常同步与检索关键词。这两包只为"线上编码那一句问题"的 2ms 服务，不该让每台部署为一条可选能力多背体积；基础镜像因此维持原样。
 

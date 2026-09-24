@@ -2169,6 +2169,7 @@ def search_dialogues(
     # bubble_count 因此是候选池（fetch_limit 行）内的计数，不是全库该页命中总数。
     # 这里不按 limit 收口：聚完的全部页才是排名的候选集，先截断再融合等于让 bm25 独裁。
     page_hits: dict[tuple[str, str, int], dict[str, Any]] = {}
+    visible_scores: list[float] = []
     for r in diag_rows:
         src, sid = r["source"], r["source_id"]
         ci = comics_map.get((src, sid))
@@ -2176,6 +2177,7 @@ def search_dialogues(
             continue
         if is_guest and not ci:
             continue
+        visible_scores.append(float(r["rank_score"]))
 
         page_idx = int(r["page_index"])
         # 唯一的写入口 sync_comic_dialogues 已把 box 归一成 4 个有限数值或空表，读侧不再重复校验
@@ -2218,11 +2220,13 @@ def search_dialogues(
         }
 
     pages = list(page_hits.values())
-    # 归一标尺取候选行的原始极值：diag_rows 只由 SQL 决定、不含任何身份过滤，所以这把尺子
-    # 对馆长与访客是同一把。若改用"过滤后的页集合"取 min/max，隐藏本占住池内最低分时访客的整表
-    # rank_score 都会跟着平移——那正是错题本 #139「计数字段不得按身份分档」的镜像面。
-    pool_lo = min(float(r["rank_score"]) for r in diag_rows)
-    pool_hi = max(float(r["rank_score"]) for r in diag_rows)
+    if not pages:
+        return []
+    # 归一标尺只取调用者看得见的那些候选行的极值：若把隐藏本的行也算进去，访客看到的最高分
+    # 一旦低于 1.0，就等于告诉他"某本对你隐藏的书里有更贴切的这句话"（错题本 #139 的保密例外）。
+    # 代价是同一句查询，访客与馆长拿到的 rank_score 可能不同；它本就只在本次候选内部可比。
+    pool_lo = min(visible_scores)
+    pool_hi = max(visible_scores)
     return _rank_dialogue_pages(pages, comics_map, pool_lo, pool_hi)[:limit]
 
 
@@ -2346,12 +2350,15 @@ def get_story_context(
     Returns:
         {'lines': [{'line_id', 'page_index', 'reading_order', 'text'}],
          'boxes': [{'line_id', 'box'}],
-         'truncated': bool, 'budget_lines': int}
-        `truncated` 为真表示预算用尽、区间内还有未返回的行。
+         'truncated': bool, 'budget_lines': int, 'requested_pages': [p0, p1]}
+        `truncated` 为真表示区间内还有没返回的内容：要么预算用尽，要么页跨度被夹到 200 页。
+        `requested_pages` 是实际覆盖的页区间，跨度被夹时比请求的短，下游据它接着往后取。
     """
+    source, source_id = _dialogue_key(source, source_id)
     p0 = max(1, int(page_start))
     p1 = max(p0, int(page_end))
     # 区间上限先夹页号，再夹预算：一次取料最多跨 200 页 / 400 行，杜绝"整本书一把梭"
+    pages_clamped = p1 > p0 + STORY_CONTEXT_MAX_PAGES - 1
     p1 = min(p1, p0 + STORY_CONTEXT_MAX_PAGES - 1)
     budget = max(1, min(int(budget_lines), STORY_CONTEXT_MAX_LINES))
 
@@ -2376,7 +2383,7 @@ def get_story_context(
             },
         ).fetchall()
 
-    truncated = len(rows) > budget
+    truncated = len(rows) > budget or pages_clamped
     lines: list[dict[str, Any]] = []
     boxes: list[dict[str, Any]] = []
     for r in rows[:budget]:
@@ -2394,7 +2401,13 @@ def get_story_context(
         if box:
             boxes.append({"line_id": line_id, "box": box})
 
-    return {"lines": lines, "boxes": boxes, "truncated": truncated, "budget_lines": budget}
+    return {
+        "lines": lines,
+        "boxes": boxes,
+        "truncated": truncated,
+        "budget_lines": budget,
+        "requested_pages": [p0, p1],
+    }
 
 
 def create_direct_pass(

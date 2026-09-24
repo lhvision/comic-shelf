@@ -7,7 +7,7 @@ from typing import Any, AsyncGenerator
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import StreamingResponse
 
-from .auth import can_read, get_client_ip
+from .auth import can_read, enforce_credential_attempts, get_client_ip, get_current_user_id
 
 router = APIRouter(prefix="/api/events", tags=["events"])
 
@@ -110,8 +110,12 @@ async def sse_event_stream(request: Request) -> StreamingResponse:
     """
     # 该前缀在全站鉴权中间件里是提前放行的（长连接不能被拦截器打断），所以门禁得自己做：
     # 事件里带着"刚收录了哪本书"，匿名旁听等于持续读取私密书架。
+    enforce_credential_attempts(request)
     if not can_read(request):
         raise HTTPException(status_code=401, detail="事件流需要有效的通行口令或访客设备会话")
+    # 直达票据只许看那一本：事件广播的是全库（含隐藏本）的书号，不能让分享出去的链接持续旁听
+    if get_current_user_id(request).startswith("direct:"):
+        raise HTTPException(status_code=403, detail="临时直达通行证仅限阅读指定画集，不能订阅书库事件")
 
     client_ip = get_client_ip(request)
     loop = asyncio.get_running_loop()

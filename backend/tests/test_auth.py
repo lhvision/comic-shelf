@@ -533,11 +533,87 @@ def test_custom_cookie_names():
         auth_mod.DEVICE_COOKIE_NAME = orig_dev_cookie
 
 
+def test_rest_credential_bruteforce_lockout():
+    """任何 /api 接口都会拿 token 比馆长口令：猜错必须计入与登录同一个 IP 锁，锁住后连正确口令也挡。"""
+    from app.abuse import clear_ip_login_failures
+    from app.main import auth_and_security_middleware
+    from unittest.mock import AsyncMock
+
+    ip = "203.0.113.7"
+    auth_mod.AUTH_SECRET = "curator-key-888"
+    clear_ip_login_failures(ip)
+
+    guest = db_mod.create_guest_pass("LockGuest", expires_days=30, custom_token="lock-guest-token")
+    dev = db_mod.register_guest_device(guest["id"], user_agent="LockDevice")
+
+    def req(**headers):
+        r = make_mock_request("/api/library", headers={"CF-Connecting-IP": ip, **headers})
+        r.method = "GET"
+        return r
+
+    async def run_cases():
+        call_next = AsyncMock(side_effect=lambda _r: Response(content=b"{}"))
+
+        # 真凭据（访客证 + 设备、馆长口令）不计失败
+        for _ in range(12):
+            ok = await auth_and_security_middleware(
+                req(Authorization="Bearer lock-guest-token", **{"X-Device-Token": dev["device_token"]}), call_next
+            )
+            assert ok.status_code == 200
+        assert (await auth_and_security_middleware(req(Authorization="Bearer curator-key-888"), call_next)).status_code == 200
+
+        # 持有访客设备会话的人拿 token 猜馆长口令：身份仍是访客，但这次猜测要记账
+        guessing_guest = req(Authorization="Bearer guess-0", **{"X-Device-Token": dev["device_token"]})
+        assert (await auth_and_security_middleware(guessing_guest, call_next)).status_code == 200
+        assert guessing_guest.state.bad_credential is True
+
+        statuses = []
+        for i in range(1, 12):
+            res = await auth_and_security_middleware(req(Authorization=f"Bearer guess-{i}"), call_next)
+            statuses.append(res.status_code)
+        assert statuses[:8] == [401] * 8 and statuses[-1] == 429, f"错误口令没有计入 IP 锁: {statuses}"
+
+        # 锁期内连正确口令也回 429，否则锁住的 IP 还能继续试
+        locked = await auth_and_security_middleware(req(Authorization="Bearer curator-key-888"), call_next)
+        assert locked.status_code == 429
+        assert locked.headers.get("retry-after") == "300"
+
+    try:
+        asyncio.run(run_cases())
+    finally:
+        clear_ip_login_failures(ip)
+
+
+def test_unauthorized_clears_stale_cookie():
+    """401 时清掉失效的登录 Cookie，免得浏览器带着它把每张画页都算成一次失败。"""
+    from app.main import auth_and_security_middleware
+    from app.abuse import clear_ip_login_failures
+    from unittest.mock import AsyncMock
+
+    auth_mod.AUTH_SECRET = "curator-key-888"
+    r = make_mock_request(
+        "/api/library",
+        headers={"CF-Connecting-IP": "203.0.113.8"},
+        cookies={auth_mod.COOKIE_NAME: "old-secret"},
+    )
+    r.method = "GET"
+    r.url.scheme = "http"
+    try:
+        res = asyncio.run(auth_and_security_middleware(r, AsyncMock()))
+        assert res.status_code == 401
+        cleared = [v.decode("latin-1") for k, v in res.raw_headers if k == b"set-cookie"]
+        assert any(c.startswith(f"{auth_mod.COOKIE_NAME}=") and "Max-Age=0" in c for c in cleared), cleared
+    finally:
+        clear_ip_login_failures("203.0.113.8")
+
+
 if __name__ == "__main__":
     test_auth_logic()
     test_hotlink_protection()
     test_guest_visibility_and_discovery_auth()
     test_auth_and_security_middleware()
+    test_rest_credential_bruteforce_lockout()
+    test_unauthorized_clears_stale_cookie()
     test_quiet_access_log_filter()
     test_access_log_redacts_query_credentials()
     test_stepped_covers()

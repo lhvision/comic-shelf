@@ -124,6 +124,18 @@ async def run_events_tests():
         await sse_event_stream(make_request(cookies={auth_mod.COOKIE_NAME: "stream-secret"}))
         assert get_active_listener_count() == 1, "网页端 Cookie 会话被事件流门禁挡住，实时流会静默失效"
         shutdown_events()
+
+        # 直达票据只许看那一本：事件广播的是全库书号（含隐藏本），分享出去的链接不能持续旁听
+        from unittest.mock import patch
+
+        direct = {"source": "jm", "source_id": "1"}
+        with patch.object(auth_mod, "get_direct_pass", lambda t: direct if t == "direct-tok" else None):
+            try:
+                await sse_event_stream(make_request(authorization="Bearer direct-tok"))
+                assert False, "直达票据订阅到了书库事件"
+            except HTTPException as exc:
+                assert exc.status_code == 403, f"直达票据应收到 403，实际 {exc.status_code}"
+        assert get_active_listener_count() == 0
     finally:
         auth_mod.AUTH_SECRET = ""
 

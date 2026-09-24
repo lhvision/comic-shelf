@@ -86,6 +86,7 @@ public/avatars/
 # Temporary local test assets & screenshots
 /*.png
 /*.jpg
+/*.JPG
 /*.jpeg
 *.pdf
 

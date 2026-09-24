@@ -3,7 +3,7 @@ name: paper-room
 description: '纸间 (Paper Room) 本地漫画收藏馆智能体协同与决策指南。当用户需要以图搜图、分镜识图找漫画、台词全文检索、名对白定位、书架筛选过滤、淘书与题材推荐、阅读器遥控（翻页/跳页/排版切换/气泡高亮聚焦）、一键收录漫画、或生成单本沙箱直达分享链接时使用。触发词包括：以图搜图、搜这本漫画出处、找台词、这句台词出自哪里、翻到下一页、阅读器切换瀑布流、推荐未读漫画、签发单本阅读链接、阅读器遥控、漫画详情。'
 metadata:
   author: lhvision
-  version: '1.3.0'
+  version: '1.4.0'
   tags: ['comic-shelf', 'mcp', 'webmcp', 'agent-skill', 'image-search', 'dialogue-fts']
 ---
 
@@ -52,11 +52,19 @@ metadata:
 
 ### 2. 台词全文检索 / 气泡定位 (Dialogue Search)
 
-1. 提取关键词，调用服务端 MCP `search_by_dialogue(text, limit=5)`；
+1. 提取关键词，调用服务端 MCP `search_by_dialogue(text, limit=5)`（`limit` 上限 50，`text` 不超过 200 字、至少 2 字）；每条结果是一整页，带 `bubble_count`（同页命中数）、`box` 与 `other_boxes`（同页其余命中气泡）和现成的 `reader_url`；
 2. **命中台词记录**：
    - **书架视口**：调用 WebMCP `shelf_read_comic({ source, source_id, page, bubble_box })` 直达阅读器并触发朱砂金色气泡呼吸光效；
    - **阅读器视口**：调用 WebMCP `reader_locate_bubble({ page, box })` 聚焦气泡；
-3. **未命中**：自动回退调用 `query_shelf(keyword=...)` 进行作品名/作者模糊兜底。
+   - **外部聊天**：直接给 `reader_url` 不够（需要登录），走 `create_direct_pass`；
+3. **字面未命中**：改用 `search_by_meaning(meaning, limit=5)` 按意思找（用户记得大意、记不清原话时直接用它）。它的 `similarity` 只在同一次查询的结果之间比高低，没有"命中阈值"，相关与否要读台词判断；`reason` 非空表示这次没真正检索（`query_too_short` 换个完整说法；`encoder_unavailable` 等是环境状态，别重试）；
+4. **两条腿都落空**：再回退 `query_shelf(keyword=...)` 做作品名/作者模糊兜底。
+
+### 2.1 按剧情取台词原文 (Story Context)
+
+- 需要连续读一段剧情（总结、续写、找前因后果）时，用 `get_story_context(source, source_id, page_start, page_end, budget_lines)`：按页码与阅读顺序给原始台词，不带高亮；
+- **`truncated=true` 表示没取完**（行预算撞顶或页跨度被夹到 200 页），按返回的 `requested_pages` 接着往后取，不要把片段当全书；
+- 书不在库里会返回 `isError`，这和"这本没有台词"（`lines` 为空）是两回事。
 
 ### 3. 淘书推荐与作品管理 (Browse & Management)
 

@@ -272,11 +272,21 @@ def test_semantic_http_endpoints_through_middleware():
                 assert off.json()["reason"] == "encoder_unavailable", off.json()
 
                 rebuild = "/api/search/dialogue-vectors/rebuild"
-                guest_forbidden = client.post(rebuild, headers={"Authorization": "Bearer semi-secret"})
-                assert guest_forbidden.status_code == 200, guest_forbidden.text
-                assert guest_forbidden.json()["encoded"] == 1, guest_forbidden.json()
+                curator_rebuild = client.post(rebuild, headers={"Authorization": "Bearer semi-secret"})
+                assert curator_rebuild.status_code == 200, curator_rebuild.text
+                assert curator_rebuild.json()["encoded"] == 1, curator_rebuild.json()
                 assert client.post(rebuild).status_code == 401
+
+                # 整库重编只归馆长：机器密钥与访客都是 403（ADR 0028）
+                auth_mod.MACHINE_TOKEN = "semi-machine"
+                machine = client.post(rebuild, headers={"X-Machine-Token": "semi-machine"})
+                assert machine.status_code == 403, machine.text
+                guest_pass = db_mod.create_guest_pass("SemiGuest", expires_days=1)
+                device = db_mod.register_guest_device(guest_pass["id"])
+                guest = client.post(rebuild, headers={"X-Device-Token": device["device_token"]})
+                assert guest.status_code == 403, guest.text
     finally:
+        auth_mod.MACHINE_TOKEN = ""
         main_mod.store.root = old_root
         main_mod.LIBRARY_DIR = old_library
         shutil.rmtree(temp_dir, ignore_errors=True)

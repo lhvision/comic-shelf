@@ -4,6 +4,7 @@ from urllib.parse import urlparse
 
 from fastapi import HTTPException, Request, Response
 
+from .abuse import is_ip_login_locked, record_ip_login_failure_and_check_lock
 from .config import (
     AUTH_SECRET,
     COOKIE_NAME,
@@ -94,6 +95,9 @@ def get_user_context(request: Request) -> tuple[str, str, str]:
 
     token = extract_token(request)
     device_token = extract_device_token(request)
+    # 带了凭据却对不上任何身份时记一笔，交给 enforce_credential_attempts 计 IP 失败：
+    # 任何 /api 请求都会拿 token 比馆长口令与机器密钥，不计数就等于开放在线爆破
+    request.state.bad_credential = False
 
     # 1. Curator or Machine token check
     x_machine = request.headers.get("x-machine-token", "").strip()
@@ -102,7 +106,14 @@ def get_user_context(request: Request) -> tuple[str, str, str]:
         request.state.user_context = ctx
         return ctx
 
-    if MACHINE_TOKEN and ((token and secrets.compare_digest(token, MACHINE_TOKEN)) or (x_machine and secrets.compare_digest(x_machine, MACHINE_TOKEN))):
+    machine_by_token = bool(MACHINE_TOKEN and token and secrets.compare_digest(token, MACHINE_TOKEN))
+    machine_by_header = bool(MACHINE_TOKEN and x_machine and secrets.compare_digest(x_machine, MACHINE_TOKEN))
+    if x_machine and not machine_by_header:
+        request.state.bad_credential = True
+    if machine_by_token or machine_by_header:
+        # 靠请求头认成机器时，同带的 token 就是一次没猜中的馆长口令
+        if token and not machine_by_token:
+            request.state.bad_credential = True
         ctx = ("machine", "Paper Studio", "machine")
         request.state.user_context = ctx
         return ctx
@@ -111,6 +122,8 @@ def get_user_context(request: Request) -> tuple[str, str, str]:
     if device_token:
         dev = get_device_by_token(device_token)
         if dev is not None:
+            if token and not secrets.compare_digest(token, dev.get("pass_token") or ""):
+                request.state.bad_credential = True
             now = int(time.time())
             if not dev["pass_is_active"]:
                 ctx = ("anonymous", "已停用", "unauthorized")
@@ -128,6 +141,8 @@ def get_user_context(request: Request) -> tuple[str, str, str]:
             return ctx
         else:
             # Device token was provided but evicted or deleted
+            if token and get_direct_pass(token) is None and get_guest_pass_by_token(token) is None:
+                request.state.bad_credential = True
             ctx = ("anonymous", "设备已失效或已被踢下线", "unauthorized")
             request.state.user_context = ctx
             return ctx
@@ -158,6 +173,8 @@ def get_user_context(request: Request) -> tuple[str, str, str]:
             request.state.user_context = ctx
             return ctx
 
+    if token:
+        request.state.bad_credential = True
     ctx = ("anonymous", "未授权", "unauthorized")
     request.state.user_context = ctx
     return ctx
@@ -190,6 +207,31 @@ def is_authenticated(request: Request) -> bool:
 def can_read(request: Request) -> bool:
     """True if caller is allowed to browse and read comics."""
     return is_authenticated(request)
+
+
+def enforce_credential_attempts(request: Request) -> None:
+    """对带凭据的请求执行与 `/api/auth/login` 同一套 IP 锁（同一个计数键）。
+
+    已锁定的 IP 带任何凭据都回 429，连正确口令也不例外（否则锁期内照样能继续试）。
+    凭据对不上任何身份（馆长口令、机器密钥、直达票据、访客证都不是）记一次失败。
+    只带设备令牌的访客请求不在此列：设备令牌是随机长串，不是爆破目标。
+    """
+    if not is_auth_required():
+        return
+    # Cookie 也要计数：请求头可以伪造，放过它等于开了爆破旁路（代价是改口令后旧 Cookie 可能短暂锁 IP）
+    if not (extract_token(request) or request.headers.get("x-machine-token", "").strip()):
+        return
+    ip = get_client_ip(request)
+    locked = is_ip_login_locked(ip)
+    if not locked:
+        get_user_context(request)
+        locked = getattr(request.state, "bad_credential", False) and record_ip_login_failure_and_check_lock(ip)
+    if locked:
+        raise HTTPException(
+            status_code=429,
+            detail="口令尝试过于频繁，该网络地址已临时锁定 5 分钟，请稍后再试",
+            headers={"Retry-After": "300"},
+        )
 
 
 def get_user_role(request: Request) -> str:

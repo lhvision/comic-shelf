@@ -18,7 +18,6 @@ from fastapi import APIRouter, HTTPException, Query, Request, Response
 from fastapi.responses import JSONResponse, StreamingResponse
 
 from ..abuse import (
-    clear_ip_login_failures,
     is_ip_login_locked,
     record_ip_login_failure_and_check_lock,
 )
@@ -45,6 +44,8 @@ PROTOCOL_VERSION = "2024-11-05"
 SERVER_NAME = "paper-room-mcp"
 SERVER_VERSION = "0.1.0"
 _MAX_MCP_SESSIONS = 50
+# 台词两条腿的查询长度上限，与 REST 出口的 `q` 一致
+_MAX_QUERY_CHARS = 200
 
 # ----------------------------------------------------------------------
 # In-memory SSE session queues for bidirectional MCP over SSE
@@ -432,8 +433,10 @@ def _tool_search_by_dialogue(arguments: dict[str, Any]) -> dict[str, Any]:
     text = str(arguments.get("text", "")).strip()
     if not text:
         raise ValueError("text 台词关键词不能为空")
+    if len(text) > _MAX_QUERY_CHARS:
+        raise ValueError(f"text 不能超过 {_MAX_QUERY_CHARS} 字")
     source = arguments.get("source")
-    limit = int(arguments.get("limit", 5))
+    limit = max(1, min(int(arguments.get("limit", 5)), 50))
 
     diag_results = search_dialogues(query=text, source=source, limit=limit, is_guest=False, user_id="curator")
     hits = []
@@ -478,6 +481,8 @@ def _tool_search_by_meaning(arguments: dict[str, Any]) -> dict[str, Any]:
     meaning = str(arguments.get("meaning", "")).strip()
     if not meaning:
         raise ValueError("meaning 语义描述不能为空")
+    if len(meaning) > _MAX_QUERY_CHARS:
+        raise ValueError(f"meaning 不能超过 {_MAX_QUERY_CHARS} 字")
     out = search_dialogues_semantic(
         query=meaning,
         source=arguments.get("source"),
@@ -767,13 +772,16 @@ def _tool_get_story_context(arguments: dict[str, Any]) -> dict[str, Any]:
         raise ValueError("page_start 与 page_end 必须是整数页号")
     budget = int(arguments.get("budget_lines", 120))
 
+    # 与 REST 出口一样先确认书在库里：否则 agent 分不清"没这本书"和"这本没台词"
+    meta = store.load_meta(source, source_id)
+    if not meta:
+        return {
+            "content": [{"type": "text", "text": f"作品不存在或尚未收录: {source}/{source_id}"}],
+            "isError": True,
+        }
+
     ctx = get_story_context(source, source_id, page_start, page_end, budget_lines=budget)
-    payload = {
-        "source": source,
-        "source_id": source_id,
-        "requested_pages": [page_start, page_end],
-        **ctx,
-    }
+    payload = {"source": source, "source_id": source_id, "title": meta.title, **ctx}
     return {
         "content": [
             {"type": "text", "text": json.dumps(payload, ensure_ascii=False, indent=2)}
@@ -997,7 +1005,12 @@ async def _process_single_jsonrpc_request(req_data: Any) -> dict[str, Any] | Non
                             "role": "user",
                             "content": {
                                 "type": "text",
-                                "text": f"请使用 search_by_dialogue 或 search_by_image 工具在纸间漫画库中查找以下线索对应的漫画作品与具体页码：\n\n【线索】：{clue}",
+                                "text": (
+                                    "请在纸间漫画库中查找以下线索对应的漫画作品与具体页码：记得原话先用 search_by_dialogue，"
+                                    "只记得大意或字面没命中时用 search_by_meaning，有截图用 search_by_image；"
+                                    "定位到本子后要看前后剧情再用 get_story_context 取那几页的台词。\n\n"
+                                    f"【线索】：{clue}"
+                                ),
                             },
                         }
                     ],
@@ -1084,7 +1097,8 @@ def _require_mcp_auth(request: Request) -> None:
             granted = is_machine(request)
 
     if granted:
-        clear_ip_login_failures(key)
+        # 成功不清零计数（同 /api/auth/login）：否则手握 MCP 凭据的人每猜 9 次馆长口令
+        # 就用自己的凭据成功一次把计数清掉，可以无限试下去
         return
 
     record_ip_login_failure_and_check_lock(key)

@@ -951,11 +951,11 @@ def test_dialogue_business_signal_ranking():
         shutil.rmtree(temp_dir, ignore_errors=True)
 
 
-def test_dialogue_rank_score_scale_is_identity_free():
-    """归一标尺与身份无关：占住池内最低分的那本是隐藏本时，访客的整表 rank_score 不许平移。
+def test_dialogue_rank_score_scale_hides_hidden_books():
+    """归一标尺只取调用者看得见的行：隐藏本占住池内最高分时，访客的最高分仍须是 1.0。
 
-    这是错题本 #139「计数字段不得按身份分档」的镜像面——`rank_score` 是归一化字段，只要 min/max
-    从"过滤后的可见页"里取，隐藏本一旦占住端点，同一页在两种身份下就会报出不同的相关度。
+    若标尺连隐藏行一起取，访客看到的最高分低于 1.0 就等于泄露"某本隐藏书里有更贴切的这句"。
+    这是错题本 #139「数值与身份无关」的保密例外：宁可同一页在两种身份下分数不同。
     """
     temp_dir = Path(tempfile.mkdtemp())
     try:
@@ -965,12 +965,12 @@ def test_dialogue_rank_score_scale_is_identity_free():
         config_mod.DATA_DIR = temp_dir
         db_mod.DATA_DIR = temp_dir
 
-        # 三本文字长度递增 → 相关度严格递减；垫底那本对访客隐藏
+        # 三本文字长度递增 → 相关度严格递减；最相关的那本对访客隐藏
         long_line = "他在心里反复排练着喜欢你这句话，可是到了嘴边却变成了别的话题，那天夜里下了很大的雨。"
         for sid, text, hidden in (
-            ("scale_hi", "我喜欢你", 0),
+            ("scale_hidden", "我喜欢你", 1),
             ("scale_mid", "我真的好喜欢你啊", 0),
-            ("scale_hidden", long_line, 1),
+            ("scale_lo", long_line, 0),
         ):
             pages_dir = temp_dir / "library" / "local" / sid / "pages"
             pages_dir.mkdir(parents=True)
@@ -986,19 +986,18 @@ def test_dialogue_rank_score_scale_is_identity_free():
 
         curator = db_mod.search_dialogues("喜欢你", source="local", limit=10)
         guest = db_mod.search_dialogues("喜欢你", source="local", limit=10, is_guest=True)
-        assert {r["source_id"] for r in curator} == {"scale_hi", "scale_mid", "scale_hidden"}
+        assert {r["source_id"] for r in curator} == {"scale_hidden", "scale_mid", "scale_lo"}
         assert "scale_hidden" not in {r["source_id"] for r in guest}, "隐藏本漏给了访客"
 
         cs = {r["source_id"]: r["rank_score"] for r in curator}
         gs = {r["source_id"]: r["rank_score"] for r in guest}
-        assert cs["scale_hi"] == 1.0 and cs["scale_hidden"] == 0.0, f"池内端点没归到 1/0: {cs}"
-        assert 0.0 < cs["scale_mid"] < 1.0, f"前提不成立：中间那本必须是池内非端点，否则下面的等式没有鉴别力: {cs}"
-        assert gs["scale_mid"] == cs["scale_mid"], (
-            f"同一页的相关度随身份变了（访客 {gs['scale_mid']} vs 馆长 {cs['scale_mid']}），"
-            "说明归一标尺取到了过滤后的可见页"
+        assert cs["scale_hidden"] == 1.0 and 0.0 < cs["scale_mid"] < 1.0, (
+            f"前提不成立：隐藏本须是馆长池内最高分、可见最高分须低于 1.0，否则下面没有鉴别力: {cs}"
         )
-        assert gs["scale_hi"] == 1.0
-        print("  ✓ rank_score scale stays identical across identities passed")
+        assert gs == {"scale_mid": 1.0, "scale_lo": 0.0}, (
+            f"访客的分数被隐藏本拉低了，等于泄露隐藏书里有更贴切的同句: {gs}"
+        )
+        print("  ✓ rank_score scale ignores books hidden from the caller passed")
     finally:
         shutil.rmtree(temp_dir, ignore_errors=True)
 
@@ -1074,6 +1073,12 @@ def test_story_context_export_slice():
         assert len(tight["lines"]) == 3
         assert tight["truncated"] is True
         assert len(tight["boxes"]) == 3
+
+        # 页跨度超 200 被夹：行数没撞预算也要回报 truncated，并回显实际覆盖到的页区间
+        wide = db_mod.get_story_context("local", "comic_ctx", 1, 500)
+        assert wide["truncated"] is True, "页跨度被静默夹短，下游会把片段当全书"
+        assert wide["requested_pages"] == [1, 200]
+        assert ctx["requested_pages"] == [12, 13]
 
         # 页区间外的内容不得混入；区间外没有的行返回空而非报错
         empty = db_mod.get_story_context("local", "comic_ctx", 30, 31)
@@ -1387,6 +1392,22 @@ def test_dialogue_context_http_endpoint():
         assert [l.model_dump().keys() for l in resp.lines] == [{"line_id", "page_index", "reading_order", "text"}] * 2, (
             "取料出口不得吐 <mark>、snippet 等展示态字段"
         )
+
+        # 机器密钥与访客一样看不到隐藏本：取料不能成为它唯一能读隐藏本台词的口子
+        from app.routers import common as common_router
+
+        hidden_meta = SimpleNamespace(title="隐藏本", hidden_from_guest=True)
+        with mock.patch.object(search_router, "is_curator", lambda r: False), \
+            mock.patch.object(search_router, "is_machine", lambda r: True), \
+            mock.patch.object(common_router, "is_curator", lambda r: False), \
+            mock.patch.object(common_router.store, "load_meta", lambda s, i: hidden_meta):
+            try:
+                search_router.dialogue_context_endpoint(
+                    request=object(), source="local", source_id="comic_http", page_start=1, page_end=9, budget_lines=10
+                )
+                raise AssertionError("机器密钥读到了隐藏本的台词")
+            except HTTPException as exc:
+                assert exc.status_code == 404, f"隐藏本对机器密钥应表现为不存在，实际 {exc.status_code}"
         print("  ✓ Story-context HTTP endpoint gating passed")
     finally:
         shutil.rmtree(temp_dir, ignore_errors=True)
@@ -1440,7 +1461,7 @@ if __name__ == "__main__":
     test_page_level_aggregation()
     test_dialogue_heat_parsing()
     test_dialogue_business_signal_ranking()
-    test_dialogue_rank_score_scale_is_identity_free()
+    test_dialogue_rank_score_scale_hides_hidden_books()
     test_classify_dialogue_kind_rules()
     test_paratext_indexed_but_excluded_from_search()
     test_story_context_export_slice()

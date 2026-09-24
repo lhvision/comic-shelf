@@ -154,19 +154,13 @@ def dialogue_context_endpoint(
     """按页码区间导出原始台词流：不做关键词过滤、不带高亮态，按 (页号, 阅读顺序) 剧情原序返回。
 
     与 `/api/search/dialogue` 是同一份索引的两个出口，那个给人看（要 bm25 排序、要 `<mark>`、
-    要压成 20 页），这个给取料用（要连续切片与原始 text）。因此只对馆长与 Machine Token 开放：
-    一次能批量拉走整本对白，不该出现在访客态。隐藏本也不按访客口径过滤（与 MCP 同名工具一致），
-    书库里没有这本书才 404。
+    要压成 20 页），这个给取料用（要连续切片与原始 text）。因此只对馆长和 Machine Token 开放：
+    一次能批量拉走整本对白，不该出现在访客态。机器密钥与访客一样看不到隐藏本（与它在其他接口上的
+    口径一致）；只有馆长能取隐藏本。书不存在或对调用者不可见一律 404。
     """
     if not (is_curator(request) or is_machine(request)):
         require_curator(request)
-    meta = _require_meta(source, source_id)
+    meta = _require_meta(source, source_id, request)
 
     ctx = get_story_context(source, source_id, page_start, page_end, budget_lines=budget_lines)
-    return StoryContextResponse(
-        source=source,
-        source_id=source_id,
-        title=meta.title,
-        requested_pages=[page_start, page_end],
-        **ctx,
-    )
+    return StoryContextResponse(source=source, source_id=source_id, title=meta.title, **ctx)

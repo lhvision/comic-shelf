@@ -252,15 +252,17 @@ JmImageTool.decode_and_save(num, source_image, save_path)
 - **四态权限角色模型（Role Matrix）**：
   1. `admin`（馆长）：由 `COMIC_SHELF_SECRET` 鉴权，拥有全库浏览、收录、元数据修改、访客通行证派发与高危物理删除（`DELETE`）等全权权限；
   2. `machine`（机器专属流水线）：由 `MACHINE_TOKEN`（`COMIC_SHELF_MACHINE_TOKEN`）鉴权，遵循**最小特权原则（Least Privilege）**：
-     - 允许调用自动化创作端点（`POST /api/library/local/create`）、增量画页追加（`/upload-pages`）、OCR 台词同步（`/ocr/sync`）与 MCP 服务端全部工具；
+     - 允许调用自动化创作端点（`POST /api/library/local/create`）、增量画页追加（`/upload-pages`）、OCR 台词同步（`/ocr/sync`）与台词取料（`/api/search/dialogue-context`）；未配置 `COMIC_SHELF_MCP_TOKEN` 时兼作 MCP 入口，配置后就进不了 MCP；
+     - 与访客一样看不到对访客隐藏的书（读接口经 `_require_meta(..., request)` 过滤）；
      - **严格禁止**执行全库物理删除（`DELETE /api/library/...`）、删除章节、注销访客通行证或注销设备会话等高危破坏性端点（HTTP 403 阻断）；
      - 支持请求头 `Authorization: Bearer <TOKEN>`、`X-Machine-Token: <TOKEN>` 或 Query 参数 `token=<TOKEN>`；
   3. `guest`（访客）：持有专属通行证并绑定自设 PIN 码的读者，仅限只读已授权藏书；
   4. `unauthorized`：未鉴权或通行证过期，严格阻断（HTTP 401）。
+- **凭据爆破计数**：`enforce_credential_attempts` 在全站中间件与事件流入口执行，带了凭据却对不上任何身份就记一次 IP 失败，与 `/api/auth/login` 共用计数（60 秒 10 次 → 锁 5 分钟）；已锁定的 IP 带任何凭据都回 429。401 响应顺手清掉失效的登录 Cookie。事件流拒绝直达票据身份订阅。
 - **单本沙箱临时直达通行证（Single-Book Direct Pass & Sandbox Boundary）**：
   - **凭证契约**：上下文标识为 `_uid = f"direct:{source}:{source_id}"`，角色为 `guest`，由 `create_direct_pass` 签发（默认 2 小时有效，最长 7 天）；
   - **沙箱绝对物理隔离**：单本读者被严格约束在指定的单一作品中：
-    - 访问书架全库（`GET /api/library`）、全站图源清单（`GET /api/providers`）、以图搜图（`/api/search/image`）、分镜台词检索（`/api/dialogue/search`）或全貌统计（`/api/library/facets`）立即响应 HTTP 403 阻断；
+    - 访问书架全库（`GET /api/library`）、全站图源清单（`GET /api/providers`）、以图搜图（`/api/search/image`）、分镜台词检索（`/api/search/dialogue*`）或全貌统计（`/api/library/facets`）立即响应 HTTP 403 阻断；
     - 尝试访问其他作品的元数据、画页或封面立即响应 HTTP 403；
     - 所有非单本范围内的修改、删除、全本离线缓存等写操作一律拦截（HTTP 403）；仅放行针对该单本自身的阅读进度（`PUT /progress`）与喜欢标记（`PATCH /favorite`），且数据按 `direct:{source}:{source_id}` 用户隔离存储，绝不污染全局；
     - 客户端 WebMCP 上下文全部静默关停，顶栏 `fetchProviders` 静默阻断，杜绝外部 Agent 探测与控制台 403 噪音；
@@ -290,7 +292,7 @@ JmImageTool.decode_and_save(num, source_image, save_path)
 
 - **三模服务端通信架构**：
   - **SSE 传输（`GET /api/mcp/sse`、`GET /mcp/sse`）**：面向局域网 NAS / 远程 Agent（如 Claude Desktop / Cursor），采用标准 Server-Sent Events 流式握手；
-    - **Token 链路继承**：客户端使用 Query 参数 `?token=...` 握手时，下发的 `message_endpoint_url` 自动拼接转义后的 `&token={quote(token)}`，保障不支持自定义 Header 的 SSE 客户端正常回传消息；
+    - **握手 URL 不带凭据**：下发的 `message_endpoint_url` 只含 `session_id`（每连接新发的 128bit 随机值），续话端点凭它认会话、不再验凭据；握手与 `/api/mcp/rpc` 由 `_require_mcp_auth` 验馆长口令或 MCP 子凭据，失败计入 `mcp:<ip>` 锁，成功不清零；
     - **并发会话熔断（Connection Throttling）**：内存会话队列设硬上限 `_MAX_MCP_SESSIONS = 50`，超限响应 HTTP 429 Too Many Requests，防止长连接泄漏；
   - **消息上行传输（`POST /api/mcp/messages`、`POST /mcp/messages`）**：接收与 SSE 会话绑定的 JSON-RPC 2.0 请求；
   - **无状态直接 RPC（`POST /api/mcp/rpc`、`POST /mcp`）**：面向飞书 Bot Webhook、微服务或单次调用的无状态端点；
@@ -355,6 +357,11 @@ JmImageTool.decode_and_save(num, source_image, save_path)
 - `GET /api/library/{source}/{id}/covers/{n}/file`（封面取 `cover_indices` 或前 N 页，带防盗链校验，支持 `Accept: image/webp` 内容协商、360 规格 `?w=360` 与 `.{ext}` 别名，带 `Vary: Accept`；资源缺失响应 404，由 `_serve_negotiated_image` 统一服务）
 - `GET /api/library/{source}/{id}/chapters/{chapterId}/cover`（章节封面端点，带防盗链校验，支持 WebP 内容协商与 360 规格，支持 `.{ext}` 别名；资源缺失响应 404）
 - `GET /api/search/image/status`（以图搜图 Sidecar 服务健康探测）
+- `GET /api/search/dialogue?q=`（台词关键词检索，按页聚合，`rank_score` 为调用者可见候选内的归一相关度；`q` ≤200 字，不足 2 字不检索）
+- `GET /api/search/dialogue-semantic?q=`（台词语义召回，独立 `similarity`，没走检索时带 `reason`，ADR 0028）
+- `GET /api/search/dialogue-context`（按页区间取原始台词物料，仅馆长与机器密钥；机器密钥看不到隐藏本；页跨度 ≤200、行预算 ≤400，撞顶回报 `truncated`）
+- `POST /api/search/dialogue-vectors/rebuild`（全库重新编码台词向量，仅馆长）
+- `POST /api/library/{source}/{id}/ocr/sync`（把 OCR 伴生侧车同步进台词库并重编该书向量，馆长或机器密钥）
 - `GET /api/curator/passes`（馆长获取访客名册列表）
 - `POST /api/curator/passes` `{username, expires_days, custom_token}`（馆长登记印发专属通行证）
 - `PATCH /api/curator/passes/{id}` `{username, is_active, extend_days, reset_token}`（通行证续期、密钥换新、启停）
@@ -391,7 +398,7 @@ JmImageTool.decode_and_save(num, source_image, save_path)
 
 - **核心书库**：采用 **文件系统分片 + 原子 JSON（`album.json` / `remote.json`）+ 内存二级缓存（`_meta_cache`）**，保持本地优先与自包含，脱离数据库亦可独立迁移与阅读。
 - **状态与通行证**：采用 **轻量 SQLite WAL（`comic_shelf.db`）**，管理动态访客通行证（`guest_passes`）、按用户红心收藏（`user_favorites`）、跨端阅读进度（`user_reading_progress`）以及藏书元数据影子索引（`comics_index`），体积小巧（~5MB），备份极速。
-- **台词全文检索专库**：采用 **独立 SQLite WAL 专库（`comic_dialogues.db`）**，管理 `comic_dialogues_fts`（Trigram FTS5 倒排索引）与伴生同步元数据（`comic_ocr_sync_meta`）。与主库实现写事务与存储容量的双重物理隔离，彻底根治万级十万级下批量建索引导致的写锁冲突。
+- **台词全文检索专库**：采用 **独立 SQLite WAL 专库（`comic_dialogues.db`）**，管理 `comic_dialogues_fts`（Trigram FTS5 倒排索引）、语义向量表（`comic_dialogue_vectors`）与伴生同步元数据（`comic_ocr_sync_meta`）。与主库实现写事务与存储容量的双重物理隔离，彻底根治万级十万级下批量建索引导致的写锁冲突。
 - **识图模块**：采用 **SQLite（`imsearch.db`）+ 二进制倒排索引（`invlists.bin`）**。
 
 ### 7.2 性能表现与规模分层评估

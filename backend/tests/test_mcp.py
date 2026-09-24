@@ -553,6 +553,18 @@ def test_mcp_dialogue_deep_link_and_story_context():
         assert bad["isError"] is True
         missing = asyncio.run(execute_tool("get_story_context", {"source": "local"}))
         assert missing["isError"] is True
+        # 书不在库里要明说，不能回一份空物料让 agent 误以为"这本没台词"
+        ghost = asyncio.run(execute_tool("get_story_context", {
+            "source": "local", "source_id": "no_such_comic", "page_start": 1, "page_end": 2,
+        }))
+        assert ghost["isError"] is True and "不存在" in ghost["content"][0]["text"]
+        assert cp["title"] == "MCP 测试漫画特刊"
+
+        # 4. 查询长度与 REST 的 q 同为 200 字上限
+        too_long = asyncio.run(execute_tool("search_by_dialogue", {"text": "喜" * 201}))
+        assert too_long["isError"] is True
+        too_long = asyncio.run(execute_tool("search_by_meaning", {"meaning": "喜" * 201}))
+        assert too_long["isError"] is True
     finally:
         db_mod.DATA_DIR = old_data_dir
         shutil.rmtree(tmp_dir, ignore_errors=True)
@@ -691,6 +703,19 @@ def test_mcp_handshake_url_is_credential_free_and_failures_get_locked():
 
         # 4. 反复试错要撞锁：与 /api/auth/login 同一套规则（10 次/60 秒 → 锁 5 分钟），但分开计数
         for i in range(10):
+            if i == 9:
+                # 猜到第 9 次时用正确凭据成功一次：成功不许清零计数，否则可以无限猜下去
+                await mcp_direct_rpc_endpoint(
+                    from_ip(
+                        make_mock_request(
+                            path="/api/mcp/rpc",
+                            method="POST",
+                            headers={"Authorization": "Bearer super-secret-curator-key"},
+                            json_body=payload,
+                        ),
+                        agent_ip,
+                    )
+                )
             try:
                 await mcp_direct_rpc_endpoint(
                     from_ip(
@@ -719,7 +744,7 @@ def test_mcp_handshake_url_is_credential_free_and_failures_get_locked():
                     agent_ip,
                 )
             )
-            assert False, "锁还没生效：错凭据试了 10 次仍然没人管"
+            assert False, "锁还没生效：错凭据试了 10 次（中间夹一次成功）仍然没人管"
         except HTTPException as exc:
             assert exc.status_code == 429, exc.status_code
             assert exc.headers.get("Retry-After") == "300"

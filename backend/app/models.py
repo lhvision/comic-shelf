@@ -549,7 +549,7 @@ class SemanticDialogueItem(BaseModel):
 class SemanticDialogueResponse(BaseModel):
     results: list[SemanticDialogueItem] = Field(default_factory=list)
     total: int = 0
-    # 没有分数下限，能检索时总有结果，"这次没走检索"只能看 reason：
+    # 没有分数下限；"这次没走检索"只能看 reason。走了检索也可能返回空列表、reason 为空（source 或访客可见性过滤后没剩下）：
     # encoder_unavailable / vectors_missing / dim_mismatch（available=False）、query_too_short（available=True）
     available: bool = True
     reason: str = ""
@@ -588,6 +588,7 @@ class StoryContextResponse(BaseModel):
     source: str
     source_id: str
     title: str = ""
+    # 实际覆盖的页区间：跨度被夹到 200 页时比请求的短（同时 truncated=True），下游据它接着往后取
     requested_pages: list[int] = Field(default_factory=list)
     lines: list[StoryContextLine] = Field(default_factory=list)
     boxes: list[StoryContextBox] = Field(default_factory=list)

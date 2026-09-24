@@ -20,13 +20,16 @@ from .abuse import check_guest_rate_limit
 from .auth import (
     can_read,
     check_hotlink_protection,
+    clear_auth_cookie,
+    enforce_credential_attempts,
     get_client_ip,
     get_user_context,
     is_curator,
     is_guest,
     is_machine,
+    is_request_secure,
 )
-from .config import ENABLE_DOCS, LIBRARY_DIR
+from .config import COOKIE_NAME, ENABLE_DOCS, LIBRARY_DIR
 from .storage.utils import acquire_library_writer_lock
 from .db import (
     clean_expired_direct_passes,
@@ -269,6 +272,14 @@ PUBLIC_AUTH_PATHS = frozenset({
 })
 
 
+def _unauthorized(request: Request, detail: str) -> JSONResponse:
+    """401 时顺手清掉失效的登录 Cookie：浏览器否则会带着它把每张画页都当一次失败尝试，几秒就锁死本 IP。"""
+    resp = JSONResponse(status_code=401, content={"detail": detail}, headers={"WWW-Authenticate": "Bearer"})
+    if request.cookies.get(COOKIE_NAME):
+        clear_auth_cookie(resp, secure=is_request_secure(request))
+    return resp
+
+
 @app.middleware("http")
 async def auth_and_security_middleware(request: Request, call_next):
     path = request.url.path
@@ -285,6 +296,11 @@ async def auth_and_security_middleware(request: Request, call_next):
         or path == "/openapi.json"
     ):
         return await call_next(request)
+
+    try:
+        enforce_credential_attempts(request)
+    except HTTPException as exc:
+        return JSONResponse(status_code=exc.status_code, content={"detail": exc.detail}, headers=exc.headers)
 
     # Check hotlink protection for image binary endpoints (including static extension aliases)
     clean_stem = path
@@ -347,21 +363,13 @@ async def auth_and_security_middleware(request: Request, call_next):
                     content={"detail": "访客模式下禁止执行修改操作，请先解锁馆长权限"},
                 )
             else:
-                return JSONResponse(
-                    status_code=401,
-                    content={"detail": "未授权访问，需要提供有效的通行口令"},
-                    headers={"WWW-Authenticate": "Bearer"},
-                )
+                return _unauthorized(request, "未授权访问，需要提供有效的通行口令")
     else:
         # Read or guest-allowed mutation: require valid curator or guest token
         if not can_read(request):
             _uid, _name, role = get_user_context(request)
             detail = "通行证已过期，请联系馆长续期" if role == "expired" else "未授权访问，需要提供有效的通行口令"
-            return JSONResponse(
-                status_code=401,
-                content={"detail": detail},
-                headers={"WWW-Authenticate": "Bearer"},
-            )
+            return _unauthorized(request, detail)
 
         # Single-Book Sandbox constraint for temporary direct-pass readers
         _uid, _name, role = get_user_context(request)
