@@ -362,6 +362,12 @@ def init_dialogue_db(dialogue_db_path: Path | None = None) -> None:
                 updated_at INTEGER NOT NULL DEFAULT 0,
                 PRIMARY KEY (source, source_id, page_index, bubble_id)
             );
+
+            CREATE TABLE IF NOT EXISTS comic_dialogue_vectors_version (
+                id INTEGER PRIMARY KEY CHECK (id = 1),
+                version INTEGER NOT NULL
+            );
+            INSERT OR IGNORE INTO comic_dialogue_vectors_version (id, version) VALUES (1, 0);
             """
         )
         rebuilt = _migrate_dialogue_schema(conn)
@@ -1645,7 +1651,7 @@ def delete_comic_dialogues(source: str, source_id: str) -> None:
             "DELETE FROM comic_dialogue_vectors WHERE source = ? AND source_id = ?",
             (source, source_id),
         )
-    _bump_vector_version()
+        _bump_vector_version(conn)
 
 
 def _dialogue_comics_meta_map(keys: list[tuple[str, str]], user_id: str) -> dict[tuple[str, str], sqlite3.Row]:
@@ -1735,7 +1741,7 @@ def embed_comic_dialogues(source: str, source_id: str) -> int:
                     for i, r in enumerate(rows)
                 ],
             )
-    _bump_vector_version()
+        _bump_vector_version(conn)
     return len(rows) if vectors is not None else 0
 
 
@@ -1764,16 +1770,18 @@ def rebuild_dialogue_vectors() -> dict[str, Any]:
 def _vector_status() -> tuple[dict[str, Any], tuple[Any, ...]]:
     """语义腿的状态与向量矩阵的缓存戳子，一次查询同时给出。
 
-    戳子是 (台词库路径, 进程内写入版本号, 维度)：库路径让测试与"换库"读不到上一个库的矩阵；
-    版本号由每次写/删向量表后推进（只有服务进程写这张表，且是单 worker），同一秒内重编、
-    条数不变也不会读到旧矩阵。
+    戳子是 (台词库路径, 写入版本号, 维度)：库路径让测试与"换库"读不到上一个库的矩阵；
+    版本号记在库里，和向量写在同一个事务里推进，所以 `ocr.sh sync` 这类别的进程写完，
+    服务不重启也能看到新矩阵，同一秒内重编、条数不变也不会读到旧矩阵。
     """
     from . import embedding
 
     dim = embedding.dim()
     with get_dialogue_db() as conn:
         row = conn.execute(
-            "SELECT count(*) AS n, count(DISTINCT dim) AS dims, max(dim) AS dim FROM comic_dialogue_vectors"
+            "SELECT count(*) AS n, count(DISTINCT dim) AS dims, max(dim) AS dim,"
+            " (SELECT version FROM comic_dialogue_vectors_version) AS version"
+            " FROM comic_dialogue_vectors"
         ).fetchone()
     stored = int(row["n"] or 0)
     stored_dim = int(row["dim"] or 0) if stored else 0
@@ -1787,7 +1795,7 @@ def _vector_status() -> tuple[dict[str, Any], tuple[Any, ...]]:
     else:
         reason = ""
     status = {"available": reason == "", "reason": reason, "vectors": stored, "dim": stored_dim or (dim or 0)}
-    return status, (str(_DIALOGUE_DB_PATH), _VECTOR_VERSION, stored_dim)
+    return status, (str(_DIALOGUE_DB_PATH), row["version"], stored_dim)
 
 
 def dialogue_vector_status() -> dict[str, Any]:
@@ -1796,13 +1804,11 @@ def dialogue_vector_status() -> dict[str, Any]:
 
 
 _VECTOR_CACHE: tuple[Any, ...] | None = None
-_VECTOR_VERSION = 0
 
 
-def _bump_vector_version() -> None:
-    """向量表写入或删除提交之后调用；必须在提交后推进，否则并发读者会把旧矩阵记在新版本号下。"""
-    global _VECTOR_VERSION
-    _VECTOR_VERSION += 1
+def _bump_vector_version(conn: sqlite3.Connection) -> None:
+    """写或删向量的事务里调用：版本号与向量一起提交，读者不会把旧矩阵记在新版本号下。"""
+    conn.execute("UPDATE comic_dialogue_vectors_version SET version = version + 1")
 
 
 def _vector_store(stamp: tuple[Any, ...], dim: int) -> tuple[list[tuple[str, str, int, str]], Any]:
@@ -1982,8 +1988,8 @@ def cleanup_orphan_comic_dialogues(data_dir: Path | None = None) -> int:
                 )
                 cleaned += 1
                 logger.info(f"Cleaned orphan dialogue index for deleted comic {src}/{sid}")
-    if cleaned:
-        _bump_vector_version()
+        if cleaned:
+            _bump_vector_version(conn)
     return cleaned
 
 
