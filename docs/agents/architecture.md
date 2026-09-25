@@ -66,7 +66,7 @@ flowchart TD
             DiagDB[("comic_dialogues.db<br/>• FTS5 Trigram 倒排全文索引<br/>• OCR 识别台词与气泡归一化坐标")]
         end
         ImsearchSidecar["imsearch 识图 Sidecar (:8765)<br/>(ORB 特征点 + 倒排向量索引)"]
-        DataDir["本地持久化存储 (backend/data/library/)<br/>• album.json (通用元数据)<br/>• pages/ (已解密成品画页)<br/>• covers/ (大封面与360px缩略图)"]
+        DataDir["本地持久化存储 (backend/data/library/)<br/>• album.json (领域元数据)<br/>• remote.json (永久摄取清单)<br/>• pages/ (已解密成品画页)<br/>• covers/ (大封面与360px缩略图)"]
     end
 
     WebUI -->|Direct HTTP / SWR| AuthMiddleware
@@ -140,11 +140,19 @@ flowchart TD
 
 ## 4. 关键不变量（改代码前必读）
 
-### 4.1 本地优先
+### 4.1 本地优先与元数据双轨（album.json 与 remote.json）
 
-- `POST /api/library/import` 先查 `album.json`；命中则 `from_cache=true`，**不请求远端**。
-- 只有显式 `refresh=true` 才更新元数据。
-- 图片按需懒下载；`POST .../cache` 才批量缓存。
+- **双轨分工不变量**：
+  - `album.json`（领域元数据 / Domain Metadata）：面向读者与前端的纯净数据（标题、作者、分话目录、页码、阅读进度、各页宽高与缓存标记 `cached: true`），**绝不包含爬虫下载 URL、Header 或解密参数**。
+  - `remote.json`（摄取清单 / Ingestion Manifest）：记录作品初次收录时的原始远端下载凭据（`RemotePage.url`、`headers`、`scramble_id`、`chapter`）及解密版本号 `decode_version`。
+- **永久伴生与不可删除不变量（Permanent Ingestion Manifest）**：
+  - **下载完成后绝对禁止删除 `remote.json`**：它并非临时下载队列，而是长期核心资产。它是多章节增量追更（ADR 0029）实现旧章节 0 网络开销复用的唯一基准，也是图片就地解密自愈（`_migrate_decode_v2`）与坏页靶向补拉的技术依赖。
+  - **重新装订保护隔离**：作品被馆长执行重新装订（`custom_pages=True`）后，`remote.json` 原样冻结作为原始档案，调度层依据旗标自动短路远端追更，绝不物理擦除。
+  - **整库数据根本与打包迁移**：`backend/data/` 目录为全站数据资产的根本。无论是备份、归档还是跨服务器迁移，整个 `backend/data/` 目录整体打包压缩转移（含所有图片、`album.json` 与 `remote.json`），绝不为了所谓的“脱敏”剥离损坏数据血缘。
+- **命中与缓存规则**：
+  - `POST /api/library/import` 先查 `album.json`；命中则 `from_cache=true`，**不请求远端**。
+  - 只有显式 `refresh=true` 才更新元数据。
+  - 图片按需懒下载；`POST .../cache` 才批量缓存。
 
 ### 4.2 JM 图片必须解密
 

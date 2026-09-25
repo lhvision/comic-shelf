@@ -14,7 +14,7 @@
 
 ## 不变量
 
-1. 本地优先：import 先查 `album.json`（命中即 `from_cache=true`，不请求远端）；图片懒下载；不得删除 `backend/data/`。
+1. 本地优先：import 先查 `album.json`（命中即 `from_cache=true`，不请求远端）；图片懒下载；不得删除 `backend/data/` 及 `remote.json`（摄取清单为追更与解密自愈基石，下载完成亦永久伴生保留）。
 2. JM 图片必须经 `JmImageTool.get_num_by_url()` + `decode_and_save()`，不直接存下载字节。
 3. 多章节页码按全书拍平为 1..`page_count`，每页带 `chapter`；阅读器、封面、API 都用全局页号。
 4. `views/*.vue` 只做布局（脚本 ≤150 行），状态下沉到 `src/composables/`；Composable 返回的 Ref 在 `<script setup>` 顶层解构，只解构实际用到的项；新增模块必须编写完整 JSDoc。
