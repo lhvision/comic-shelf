@@ -57,7 +57,7 @@
 | `src/composables/useViewTransition.ts`             | 全局与局域视图过渡门面封装：`Promise.withResolvers` + `Promise.try`、异常自动捕获兜底与抢占自愈                                                                                                                                    |
 | `src/composables/useCoverTransition.ts`            | 书架卡片与详情 Hero 共享封面形变（`comic-cover-active`）动态类名与过渡时机调度                                                                                                                                                     |
 | `src/composables/useBrandIcon.ts`                  | 品牌与动态多态矢量图标映射与解析器                                                                                                                                                                                                 |
-| `src/composables/useShelfWebMCP.ts`                | 书架首页 WebMCP 工具注册：淘书检索、台词全文匹配、以图搜图、直达画页高亮、本子收录、详情直达与随机翻阅（双轨鉴权防护）                                                                                                             |
+| `src/composables/useShelfWebMCP.ts`                | 书架首页 WebMCP 工具注册：淘书检索、台词全文匹配、以图搜图、直达画页高亮、单本与批量收录（1.5s安全间隔串行/单本隔离容错）、详情直达与随机翻阅（双轨鉴权防护）                                                                      |
 | `src/composables/useComicDetailWebMCP.ts`          | 漫画详情 WebMCP 工具注册：阅读启动、全本/单话离线缓存调度、章节专注页切换、元数据获取/编辑、单本沙箱通行证签发与红心标记（双轨鉴权防护）                                                                                           |
 | `src/composables/useReaderWebMCP.ts`               | 阅读器视口 WebMCP 工具注册：精准跳页、步进翻页（多步）、排版模式/分屏/日漫方向/无缝连续切换、缩放适配、自动翻页、气泡高亮与跨话切章                                                                                                |
 | `src/composables/useDiscoveryWebMCP.ts`            | 发现页 WebMCP 工具注册：官方排行榜拉取、周/月/日榜切换、漫画一键收录与详情直达（双轨鉴权防护）                                                                                                                                     |
@@ -91,7 +91,7 @@
 | `src/components/BackToTop.vue`                     | 正圆暖纸印章回到顶部微件（VueUse `useWindowScroll` 视口监听）                                                                                                                                                                      |
 | `src/components/CacheProgress.vue`                 | 实时缓存进度条与后台任务状态指示                                                                                                                                                                                                   |
 | `src/components/ToastStack.vue`                    | 全局轻量水墨印章通知堆叠容器（挂载于根视口，自适应多通道 Toast 消息排队）                                                                                                                                                          |
-| `src/components/detail/EditMetadataModal.vue`      | 典藏资料与标签编排弹窗（实时修改标题、作者、4 张封面展示页码、标签增删）                                                                                                                                                           |
+| `src/components/detail/EditMetadataModal.vue`      | 典藏资料与标签编排弹窗（实时修改标题、作者、4 张封面展示页码、标签增删、非本地多章节作品自动追更巡检周期配置）                                                                                                                     |
 | `src/components/detail/AppendPagesModal.vue`       | 画页增量追加弹窗（全源支持，追加至已有话或新建分话、复合文件名智能切分、支持网页上传/服务器路径）                                                                                                                                  |
 | `src/components/detail/ReplacePagesModal.vue`      | 画页重新装订弹窗（全源支持，支持整本重装订或单话靶向替换、复合文件名智能切分、重新装订三层保护提示）                                                                                                                               |
 | `src/components/discovery/DiscoveryCard.vue`       | 榜单漫画卡片：排名徽章、原站外链、分类胶囊与一键收录/在库直达                                                                                                                                                                      |
@@ -529,3 +529,17 @@ graph TD
   11. **单本直达签发弹窗（DirectPassModal.vue）**：馆长专属“纸间藏书借阅笺”隐喻弹窗，严守 Cowen-4 黄金认知时效选项（2h/24h/3d/7d）、原生 ARIA RadioGroup 键盘焦点流转与起始页码越界实时校验。
 - **路由级沙箱强制钳位（Router Navigation Guard）**：
   - 在 `router.beforeEach` 中，单本读者只要尝试访问非本作路径（无论是手动改 URL 还是脚本触发），全自动强制无感重定向回当前单本详情页（`/comic/${source}/${sourceId}`）。
+
+### 16.4 多章节追更巡检与 WebMCP 批量收录前端契约（Auto-Update & Batch Import）
+
+- **多章节追更状态感知（MetadataPanel.vue）**：
+  - **展示条件**：仅当作品为多章节且图源非本地（`chapters.length > 1 && source !== 'local'`）时渲染追更行与徽章；单话作品与本地导入作品完全不呈现；
+  - **断更熔断状态**：当 `updated_at` / `published_at`（或 `imported_at`）距今超过 30 天时，自动标注 `〔 已断更 〕` 徽章，文案提示 `超过 1 个月未更新（已暂停巡检）`；
+  - **活跃追更状态**：未断更且未重装订时，标注 `〔 追更中 〕` 徽章，显示当前巡检周期（如 `每 15 天巡检`）；
+  - **重新装订豁免**：若作品被馆长重新装订（`custom_pages: true`），状态显示 `已重新装订保护（跳过远端追更）`，杜绝覆盖。
+- **追更周期设置（EditMetadataModal.vue）**：
+  - 仅对非本地多章节作品展示追更下拉选框：`15 天（默认）` / `7 天` / `30 天` / `关闭`；保存后联动更新后端与数据库影子索引。
+- **WebMCP 批量收录规范（useShelfWebMCP.ts）**：
+  - **工具标识**：`shelf_batch_import_comics`；
+  - **输入兼容**：`items` 接受车号/ID 字符串数组，或包含换行符/逗号的多行纯文本；
+  - **防护不变量**：以 `1.5 秒` 安全间隔串行排队防风控；单本失败隔离容错；已存在藏书命中缓存标记 `skipped`；返回 `{ total, succeeded, skipped, failed, results }` 报告。

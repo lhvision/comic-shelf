@@ -301,6 +301,18 @@ JmImageTool.decode_and_save(num, source_image, save_path)
   - 协议路由与具体工具/资源实现解耦：工具执行由 `TOOL_HANDLERS` 字典映射，资源读取由 `RESOURCE_HANDLERS` 字典映射，杜绝庞大单体 `if/elif` 堆砌；
   - 支持完整的 JSON-RPC 2.0 批量请求数组（Batch Requests）及针对非法入参的标准化错误格式（`-32600 Invalid Request`）。
 
+### 4.11 多章节自动追更巡检与断更熔断不变量（ADR 0029）
+
+- **自动追更准入边界**：仅当藏书满足 `len(chapters) > 1`（多章节作品）且 `source != 'local'`（排除本地自建源）且 `custom_pages == false`（未受重新装订保护）时，才允许参与后台周期性追更巡检。
+- **单 Worker 串行守护协程**：在 FastAPI `lifespan` 挂载单一后台异步协程，按 1 小时为周期进行唤醒扫描；到期项（`now - last_auto_checked_at >= auto_update_interval_days * 86400`，默认 15 天）进入单并发串行探测队列，每本之间强制休眠 3~5 秒，单批最多探测 10 本。增量探测复用 `provider.fetch(..., existing=existing)`，仅读单页 HTML 校验话数，0 画页网络开销。
+- **30 天断更熔断与自愈**：作品远端更新日期（`updated_at`，缺失回退 `published_at`）距今超过 30 天（1 个月）自动判定为「已断更/已完结」，自动暂停定时巡检；馆长手动刷新若远端更新时间进入 30 天内，自愈重置并恢复自动追更。
+- **阅读状态与缓存自愈**：追更到新章节后，若作品原处于「已读」状态，必须自愈回退为「在读」重新浮现于书架案头；若原处于「全本缓存」状态，自动投递新章节画页离线预缓存任务，否则仅追加元数据。
+
+### 4.12 WebMCP 批量收录契约与串行防风控规范（ADR 0029）
+
+- **保持 UI 纯粹性**：书架 Web 界面不堆砌复杂的多选复选框，维持阅览室极简心流；批量收录仅作为 `useShelfWebMCP` 的 `shelf_batch_import_comics` 工具面向 AI 智能体开放。
+- **单本隔离容错与结构化交付**：支持传入车号数组或多行纯文本输入（自动正则提取有效车号）；逐本串行收录并保持 1.5 秒安全间隔；单本遇到 404 或网络波动时隔离捕获并记录至 `failed` 清单，绝不中断其余条目的收录；已存在条目命中本地缓存秒级跳过；最终向 Agent 交付 `{ total, succeeded, skipped, failed, results }` 结构化报告。
+
 ## 5. 后端文件地图
 
 | 文件                                | 职责                                                                                                                        |

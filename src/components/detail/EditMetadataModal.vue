@@ -3,6 +3,7 @@ import { ref, watch } from 'vue'
 import Modal from '@/components/Modal.vue'
 import AppButton from '@/components/AppButton.vue'
 import AppIcon from '@/components/AppIcon.vue'
+import AppDropdown, { type DropdownOption } from '@/components/AppDropdown.vue'
 import TagManager from '@/components/form/TagManager.vue'
 import CoverIndicesPicker from '@/components/form/CoverIndicesPicker.vue'
 import { useLibraryStore } from '@/stores/library'
@@ -34,7 +35,15 @@ const description = ref('')
 const tags = ref<string[]>([])
 const coverIndices = ref<number[]>([1, 2, 3, 4])
 const hiddenFromGuest = ref(false)
+const autoUpdateIntervalDays = ref(15)
 const saving = ref(false)
+
+const autoUpdateOptions: DropdownOption<number>[] = [
+  { key: 15, label: '每 15 天巡检一次（默认）' },
+  { key: 7, label: '每 7 天巡检一次' },
+  { key: 30, label: '每 30 天巡检一次' },
+  { key: 0, label: '关闭自动追更巡检' },
+]
 
 watch(
   () => props.open,
@@ -48,6 +57,7 @@ watch(
       description.value = props.meta.description || ''
       tags.value = [...(props.meta.tags || [])]
       hiddenFromGuest.value = Boolean(props.meta.hidden_from_guest)
+      autoUpdateIntervalDays.value = props.meta.auto_update_interval_days ?? 15
 
       const pCount = Math.max(1, props.meta.page_count || 1)
       const existing = props.meta.cover_indices || []
@@ -77,6 +87,7 @@ async function save() {
 
   saving.value = true
   try {
+    const isMultiRemote = (props.meta.chapters?.length ?? 0) > 1 && props.meta.source !== 'local'
     const updated = await api.updateMetadata(props.meta.source, props.meta.source_id, {
       title: title.value.trim(),
       works: parseList(works.value),
@@ -87,6 +98,7 @@ async function save() {
       tags: tags.value,
       cover_indices: coverIndices.value,
       hidden_from_guest: hiddenFromGuest.value,
+      auto_update_interval_days: isMultiRemote ? autoUpdateIntervalDays.value : undefined,
     })
     await store.load()
     toast('资料与设置已更新', 'info')
@@ -217,6 +229,23 @@ async function save() {
           </div>
         </label>
       </div>
+
+      <div
+        v-if="(meta?.chapters?.length ?? 0) > 1 && meta?.source !== 'local'"
+        class="field-group auto-update-box"
+      >
+        <label class="form-label">多章节自动追更巡检 (Auto-Update)</label>
+        <AppDropdown
+          v-model="autoUpdateIntervalDays"
+          :options="autoUpdateOptions"
+          block
+          size="md"
+        />
+        <p class="field-tip">
+          仅对非本地多章节作品生效。若远端已超过 1
+          个月未更新，系统将自动判定为断更并暂停自动巡检（可手动点击“刷新资料”恢复）。
+        </p>
+      </div>
     </form>
 
     <template #footer>
@@ -300,5 +329,19 @@ async function save() {
   .grid-2 {
     grid-template-columns: 1fr;
   }
+}
+
+.auto-update-box {
+  padding: var(--space-3);
+  border: 1px dashed var(--line);
+  border-radius: var(--radius-2);
+  background: var(--paper-1);
+}
+
+.field-tip {
+  margin: 0;
+  font-size: var(--text-xs);
+  color: var(--ink-2);
+  line-height: 1.4;
 }
 </style>

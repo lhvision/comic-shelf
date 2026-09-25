@@ -5,7 +5,7 @@ import hashlib
 import json
 import threading
 import time
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, Query, Request, Response
@@ -16,6 +16,7 @@ from ..db import (
     get_user_progress,
     is_user_favorite,
     query_library_index,
+    record_comic_auto_checked,
     set_user_favorite,
     set_user_progress,
 )
@@ -353,11 +354,16 @@ def import_comic(req: ImportRequest) -> ImportResult:
     except Exception as exc:
         raise HTTPException(status_code=502, detail=f"从来源获取漫画失败：{exc}") from exc
 
-    fetched.meta.cover_count = max(1, min(req.prefetch_covers or fetched.meta.cover_count, fetched.meta.page_count))
-    if not req.refresh and existing is None and get_guest_hide_new_comics():
+    now_iso = ""
+    if req.refresh:
+        now_iso = datetime.now(timezone.utc).isoformat()
+        fetched.meta.last_auto_checked_at = now_iso
+    elif existing is None and get_guest_hide_new_comics():
         fetched.meta.hidden_from_guest = True
     meta = store.save_fetched(fetched, refresh=req.refresh)
     fetched.meta = meta
+    if req.refresh and now_iso:
+        record_comic_auto_checked(req.source, source_id, now_iso)
 
     broadcast_event(
         "library_changed",

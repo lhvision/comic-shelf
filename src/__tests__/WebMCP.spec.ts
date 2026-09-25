@@ -530,6 +530,121 @@ describe('WebMCP Composables', () => {
         window.document.modelContext = originalModelContext
       }
     })
+
+    it('handles batch comic import with error isolation, deduplication and skipped cache items', async () => {
+      const registeredTools: Record<string, (args: unknown) => Promise<unknown>> = {}
+      const registerToolMock = vi.fn<
+        (toolDef: { name: string; execute: (args: unknown) => Promise<unknown> }) => void
+      >((toolDef) => {
+        registeredTools[toolDef.name] = toolDef.execute
+      })
+
+      // @ts-expect-error mock window.document
+      const originalModelContext = window.document.modelContext
+      // @ts-expect-error mock window.document
+      window.document.modelContext = {
+        registerTool: registerToolMock,
+      }
+
+      const routerPushMock = vi.fn<() => Promise<void>>().mockResolvedValue(undefined)
+      const mockRouter = {
+        push: routerPushMock,
+      } as unknown as Router
+
+      const importComicMock = vi
+        .fn<typeof api.importComic>()
+        .mockResolvedValueOnce({
+          meta: createPlaceholderDetail({
+            source: 'jm',
+            source_id: '111111',
+            display_id: '111111',
+            title: 'Comic One',
+            page_count: 50,
+            authors: [],
+            works: [],
+            actors: [],
+            tags: [],
+            favorite: false,
+            views: '0',
+            likes: '0',
+            uploaded_at: '',
+            published_at: '',
+            updated_at: '',
+            imported_at: '',
+            cover_paths: [],
+            cached_pages: 0,
+            cover_count: 1,
+            chapter_titles: [],
+            last_page: 0,
+          }).meta,
+          from_cache: false,
+          prefetched: 0,
+          warnings: [],
+        })
+        .mockResolvedValueOnce({
+          meta: createPlaceholderDetail({
+            source: 'jm',
+            source_id: '222222',
+            display_id: '222222',
+            title: 'Comic Two',
+            page_count: 40,
+            authors: [],
+            works: [],
+            actors: [],
+            tags: [],
+            favorite: false,
+            views: '0',
+            likes: '0',
+            uploaded_at: '',
+            published_at: '',
+            updated_at: '',
+            imported_at: '',
+            cover_paths: [],
+            cached_pages: 0,
+            cover_count: 1,
+            chapter_titles: [],
+            last_page: 0,
+          }).meta,
+          from_cache: true,
+          prefetched: 0,
+          warnings: [],
+        })
+        .mockRejectedValueOnce(new Error('404 Not Found'))
+
+      vi.spyOn(api, 'importComic').mockImplementation(importComicMock)
+
+      try {
+        const scope = effectScope()
+        scope.run(() => {
+          useShelfWebMCP({ router: mockRouter, throttleDelayMs: 0 })
+        })
+
+        expect(registeredTools['shelf_batch_import_comics']).toBeDefined()
+
+        const batchRes = (await registeredTools['shelf_batch_import_comics']!({
+          items: ['JM111111', 'JM222222', 'JM333333'],
+        })) as {
+          content: Array<{ text: string }>
+        }
+
+        const firstContent = batchRes.content[0]
+        expect(firstContent).toBeDefined()
+        const parsed = JSON.parse(firstContent?.text ?? '{}')
+        expect(parsed.total).toBe(3)
+        expect(parsed.succeeded).toBe(1)
+        expect(parsed.skipped).toBe(1)
+        expect(parsed.failed).toBe(1)
+        expect(parsed.results[0].status).toBe('success')
+        expect(parsed.results[1].status).toBe('skipped')
+        expect(parsed.results[2].status).toBe('failed')
+        expect(parsed.results[2].error).toContain('404')
+
+        scope.stop()
+      } finally {
+        // @ts-expect-error restore
+        window.document.modelContext = originalModelContext
+      }
+    })
   })
 
   describe('useComicDetailWebMCP', () => {

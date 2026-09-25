@@ -11,6 +11,7 @@ import string
 import threading
 import time
 from contextlib import contextmanager
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Iterator
 
@@ -212,6 +213,8 @@ def init_db(db_path: Path | None = None) -> None:
                 imported_at TEXT NOT NULL DEFAULT '',
                 hidden_from_guest INTEGER NOT NULL DEFAULT 0,
                 mtime REAL NOT NULL DEFAULT 0.0,
+                auto_update_interval_days INTEGER NOT NULL DEFAULT 15,
+                last_auto_checked_at TEXT NOT NULL DEFAULT '',
                 PRIMARY KEY (source, source_id)
             );
             CREATE INDEX IF NOT EXISTS idx_comics_index_imported ON comics_index(imported_at DESC);
@@ -241,6 +244,13 @@ def init_db(db_path: Path | None = None) -> None:
             conn.execute("ALTER TABLE guest_passes ADD COLUMN pin_hash TEXT NOT NULL DEFAULT ''")
         if "pin_salt" not in cols:
             conn.execute("ALTER TABLE guest_passes ADD COLUMN pin_salt TEXT NOT NULL DEFAULT ''")
+
+        # Migrations for comics_index: auto_update_interval_days, last_auto_checked_at
+        c_cols = [r["name"] for r in conn.execute("PRAGMA table_info(comics_index)").fetchall()]
+        if "auto_update_interval_days" not in c_cols:
+            conn.execute("ALTER TABLE comics_index ADD COLUMN auto_update_interval_days INTEGER NOT NULL DEFAULT 15")
+        if "last_auto_checked_at" not in c_cols:
+            conn.execute("ALTER TABLE comics_index ADD COLUMN last_auto_checked_at TEXT NOT NULL DEFAULT ''")
         conn.commit()
 
     # 初始化并确保独立的台词专库 (comic_dialogues.db) 就绪
@@ -924,6 +934,26 @@ def set_user_progress(
 
 def upsert_comic_index(item: dict[str, Any]) -> None:
     """插入或更新漫画影子索引记录。"""
+    item = dict(item)
+    item.setdefault("authors_json", "[]")
+    item.setdefault("works_json", "[]")
+    item.setdefault("actors_json", "[]")
+    item.setdefault("tags_json", "[]")
+    item.setdefault("chapter_titles_json", "[]")
+    item.setdefault("page_count", 0)
+    item.setdefault("cached_pages", 0)
+    item.setdefault("cover_count", 4)
+    item.setdefault("cover_indices_json", "[]")
+    item.setdefault("views", "")
+    item.setdefault("likes", "")
+    item.setdefault("uploaded_at", "")
+    item.setdefault("published_at", "")
+    item.setdefault("updated_at", "")
+    item.setdefault("imported_at", "")
+    item.setdefault("hidden_from_guest", 0)
+    item.setdefault("mtime", 0.0)
+    item.setdefault("auto_update_interval_days", 15)
+    item.setdefault("last_auto_checked_at", "")
     with get_db() as conn:
         conn.execute(
             """
@@ -932,13 +962,13 @@ def upsert_comic_index(item: dict[str, Any]) -> None:
                 authors_json, works_json, actors_json, tags_json, chapter_titles_json,
                 page_count, cached_pages, cover_count, cover_indices_json,
                 views, likes, uploaded_at, published_at, updated_at, imported_at,
-                hidden_from_guest, mtime
+                hidden_from_guest, mtime, auto_update_interval_days, last_auto_checked_at
             ) VALUES (
                 :source, :source_id, :display_id, :title,
                 :authors_json, :works_json, :actors_json, :tags_json, :chapter_titles_json,
                 :page_count, :cached_pages, :cover_count, :cover_indices_json,
                 :views, :likes, :uploaded_at, :published_at, :updated_at, :imported_at,
-                :hidden_from_guest, :mtime
+                :hidden_from_guest, :mtime, :auto_update_interval_days, :last_auto_checked_at
             ) ON CONFLICT(source, source_id) DO UPDATE SET
                 display_id = excluded.display_id,
                 title = excluded.title,
@@ -958,7 +988,9 @@ def upsert_comic_index(item: dict[str, Any]) -> None:
                 updated_at = excluded.updated_at,
                 imported_at = excluded.imported_at,
                 hidden_from_guest = excluded.hidden_from_guest,
-                mtime = excluded.mtime
+                mtime = excluded.mtime,
+                auto_update_interval_days = excluded.auto_update_interval_days,
+                last_auto_checked_at = excluded.last_auto_checked_at
             """,
             item,
         )
@@ -1029,6 +1061,68 @@ def update_comic_cached_pages(source: str, source_id: str, cached_pages: int) ->
         conn.execute(
             "UPDATE comics_index SET cached_pages = ? WHERE source = ? AND source_id = ?",
             (cached_pages, source, source_id),
+        )
+        conn.commit()
+
+
+def get_comics_due_for_auto_update(max_count: int = 10) -> list[dict[str, Any]]:
+    """获取所有已到期需要进行自动追更巡检的非本地多章节漫画。
+
+    过滤条件：
+    1. 来源非 local（仅限远端图源）；
+    2. auto_update_interval_days > 0（未关闭自动追更）；
+    3. chapter_titles_json 话数 > 1（必须为多章节作品）；
+    4. 当前时间距离上次检查时间 >= auto_update_interval_days * 86400。
+    """
+    with get_db() as conn:
+        rows = conn.execute(
+            """
+            SELECT source, source_id, display_id, title, updated_at, published_at,
+                   auto_update_interval_days, last_auto_checked_at, chapter_titles_json
+            FROM comics_index
+            WHERE source != 'local'
+              AND auto_update_interval_days > 0
+            """
+        ).fetchall()
+
+        now_ts = time.time()
+        candidates: list[dict[str, Any]] = []
+        for r in rows:
+            try:
+                chaps = json.loads(r["chapter_titles_json"] or "[]")
+                if len(chaps) <= 1:
+                    continue
+            except Exception:
+                continue
+
+            interval_days = int(r["auto_update_interval_days"])
+            last_checked = str(r["last_auto_checked_at"] or "")
+            last_ts = 0.0
+            if last_checked:
+                try:
+                    s = last_checked.strip()
+                    if s.endswith("Z"):
+                        s = s[:-1] + "+00:00"
+                    last_ts = datetime.fromisoformat(s).timestamp()
+                except Exception:
+                    try:
+                        last_ts = float(last_checked)
+                    except Exception:
+                        last_ts = 0.0
+
+            if (now_ts - last_ts) >= (interval_days * 86400):
+                candidates.append(dict(r))
+                if len(candidates) >= max_count:
+                    break
+        return candidates
+
+
+def record_comic_auto_checked(source: str, source_id: str, checked_at: str) -> None:
+    """更新指定漫画在影子索引中的上次自动巡检时间戳。"""
+    with get_db() as conn:
+        conn.execute(
+            "UPDATE comics_index SET last_auto_checked_at = ? WHERE source = ? AND source_id = ?",
+            (checked_at, source, source_id),
         )
         conn.commit()
 

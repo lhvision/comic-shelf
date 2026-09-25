@@ -50,6 +50,10 @@ export interface ComicMeta {
   raw: Record<string, unknown>
   /** Chapter/section list for multi-chapter albums; empty for single-chapter. */
   chapters?: Chapter[]
+  /** 自动追更巡检周期天数（0 表示关闭，默认 15） */
+  auto_update_interval_days?: number
+  /** 上次由后台自动追更巡检的时间戳 */
+  last_auto_checked_at?: string
 }
 
 export interface LibrarySummary {
@@ -223,6 +227,7 @@ export interface MetadataUpdatePayload {
   uploader?: string
   cover_indices?: number[]
   hidden_from_guest?: boolean
+  auto_update_interval_days?: number
 }
 
 export interface LocalChapterInput {

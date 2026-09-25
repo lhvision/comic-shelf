@@ -4,6 +4,7 @@ Assembles modular routers, security middleware, and SPA static hosting.
 """
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import os
@@ -17,6 +18,7 @@ from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import JSONResponse
 
 from .abuse import check_guest_rate_limit
+from .auto_update import auto_update_loop
 from .auth import (
     can_read,
     check_hotlink_protection,
@@ -197,6 +199,8 @@ def sync_library_index(store: ComicStore) -> None:
                     "imported_at": meta.imported_at,
                     "hidden_from_guest": 1 if getattr(meta, "hidden_from_guest", False) else 0,
                     "mtime": mtime,
+                    "auto_update_interval_days": getattr(meta, "auto_update_interval_days", 15),
+                    "last_auto_checked_at": getattr(meta, "last_auto_checked_at", ""),
                 })
 
         for source, source_id in set(existing_mtimes.keys()) - disk_keys:
@@ -208,6 +212,7 @@ def sync_library_index(store: ComicStore) -> None:
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     lock_fd = acquire_library_writer_lock(LIBRARY_DIR)
+    auto_update_task: asyncio.Task | None = None
     try:
         try:
             init_db()
@@ -221,8 +226,18 @@ async def lifespan(app: FastAPI):
             store._cleanup_staged_pdfs(max_age_seconds=0)
         except Exception as exc:
             logger.warning("Startup initialization error: %s", exc)
+
+        # Mount periodic auto-update inspection loop for multi-chapter comics (ADR 0029)
+        auto_update_task = asyncio.create_task(auto_update_loop(store))
+
         yield
     finally:
+        if auto_update_task is not None:
+            auto_update_task.cancel()
+            try:
+                await auto_update_task
+            except asyncio.CancelledError:
+                pass
         os.close(lock_fd)
         shutdown_events()
 

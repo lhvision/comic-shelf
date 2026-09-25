@@ -31,6 +31,8 @@ import type { ReadingStatus, SortKey } from '@/types'
 export interface UseShelfWebMCPOptions {
   /** 路由实例，用于页面跳转 */
   router: Router
+  /** 批量收录单本执行间隔（默认 1500ms） */
+  throttleDelayMs?: number
 }
 
 import type { WebMCPComposableReturn } from '@/types'
@@ -43,13 +45,14 @@ export type UseShelfWebMCPReturn = WebMCPComposableReturn<
   | 'openComicTool'
   | 'readComicTool'
   | 'importComicTool'
+  | 'batchImportComicsTool'
 >
 
 /**
  * 在书架视图生命周期内注册 WebMCP 淘书、检索与直达全功能工具集
  */
 export function useShelfWebMCP(options: UseShelfWebMCPOptions): UseShelfWebMCPReturn {
-  const { router } = options
+  const { router, throttleDelayMs = 1500 } = options
   const shelfState = useShelfState()
   const store = useLibraryStore()
   const { canWrite, isDirectPass } = useAuth()
@@ -680,6 +683,202 @@ export function useShelfWebMCP(options: UseShelfWebMCPOptions): UseShelfWebMCPRe
       })
     : undefined
 
+  // 工具 8: 批量收录/导入新漫画至本地书库（仅馆长权限注册）
+  const batchImportComicsTool = canWrite.value
+    ? useWebMCP({
+        name: 'shelf_batch_import_comics',
+        description:
+          '批量收录导入多部漫画至本地书库。支持传入车号列表（数组或换行/逗号分隔文本，如 ["JM523607", "JM123456"] 或多行车号）；内部以 1.5 秒安全间隔串行执行防风控；单本失败隔离容错，返回结构化汇总报告',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            items: {
+              description:
+                '待收录的漫画车号、作品 ID 或分享链接列表。支持字符串数组或包含多个车号的多行纯文本',
+              oneOf: [{ type: 'array', items: { type: 'string' } }, { type: 'string' }],
+            },
+            source: {
+              type: 'string',
+              enum: ['jm', 'picacg', 'local'],
+              description: '可选的统一图源 Provider。若省略，将对每项根据格式自动智能推断',
+            },
+            prefetch_all: {
+              type: 'boolean',
+              description: '收录后是否在后台启动全本离线预缓存任务（默认 false）',
+            },
+            prefetch_covers: {
+              type: 'number',
+              description: '首次收录时即时预热的封面张数（默认 4）',
+            },
+            favorite: {
+              type: 'boolean',
+              description: '收录成功后是否自动加入红心喜欢（默认 false）',
+            },
+            tags: {
+              type: 'array',
+              items: { type: 'string' },
+              description: '可选为收录漫画追加的初始自定义分类标签列表',
+            },
+          },
+          required: ['items'],
+        },
+        async execute(args) {
+          const {
+            items: rawInput,
+            source: rawSource,
+            prefetch_all = false,
+            prefetch_covers = 4,
+            favorite = false,
+            tags = [],
+          } = (args ?? {}) as {
+            items?: string[] | string
+            source?: 'jm' | 'picacg' | 'local'
+            prefetch_all?: boolean
+            prefetch_covers?: number
+            favorite?: boolean
+            tags?: string[]
+          }
+
+          let candidateList: string[] = []
+          if (Array.isArray(rawInput)) {
+            candidateList = rawInput.map((s) => String(s).trim()).filter(Boolean)
+          } else if (typeof rawInput === 'string') {
+            candidateList = rawInput
+              .split(/[\n,;，；\t]+/)
+              .map((s) => s.trim())
+              .filter(Boolean)
+          }
+
+          const items = Array.from(new Set(candidateList))
+          if (items.length === 0) {
+            throw new Error('未提供有效的漫画车号或作品标识列表（items 不能为空）。')
+          }
+
+          const results: Array<{
+            id: string
+            status: 'success' | 'skipped' | 'failed'
+            title?: string
+            source?: string
+            source_id?: string
+            page_count?: number
+            error?: string
+          }> = []
+
+          for (let i = 0; i < items.length; i++) {
+            const inputVal = items[i]
+            if (!inputVal) continue
+
+            if (i > 0 && throttleDelayMs > 0) {
+              await new Promise((resolve) => setTimeout(resolve, throttleDelayMs))
+            }
+
+            try {
+              let finalSource: 'jm' | 'picacg' | 'local' = rawSource || 'jm'
+              let finalId: string = inputVal
+
+              if (!rawSource) {
+                if (
+                  inputVal.startsWith('/') ||
+                  inputVal.startsWith('./') ||
+                  inputVal.startsWith('public/')
+                ) {
+                  finalSource = 'local'
+                } else if (
+                  inputVal.includes('picacomic') ||
+                  inputVal.includes('picawang') ||
+                  /^[0-9a-fA-F]{24}$/.test(inputVal)
+                ) {
+                  finalSource = 'picacg'
+                  const hexMatch = inputVal.match(/[0-9a-fA-F]{24}/)
+                  if (hexMatch) {
+                    finalId = hexMatch[0]
+                  }
+                } else {
+                  finalSource = 'jm'
+                }
+              }
+
+              let importedSource: string = finalSource
+              let importedSourceId: string = finalId
+              let importedTitle: string = finalId
+              let pageCount = 0
+              let fromCache = false
+
+              if (finalSource === 'local') {
+                const res = await api.importLocalPath({ path: finalId })
+                importedSource = res.meta.source
+                importedSourceId = res.meta.source_id
+                importedTitle = res.meta.title
+                pageCount = res.meta.page_count
+                fromCache = false
+              } else {
+                const result = await store.importComic({
+                  id: finalId,
+                  source: finalSource,
+                  prefetch_covers: typeof prefetch_covers === 'number' ? prefetch_covers : 4,
+                  prefetch_all: Boolean(prefetch_all),
+                })
+                importedSource = result.meta.source
+                importedSourceId = result.meta.source_id
+                importedTitle = result.meta.title
+                pageCount = result.meta.page_count
+                fromCache = result.from_cache
+              }
+
+              if (favorite) {
+                try {
+                  await api.setFavorite(importedSource, importedSourceId, true)
+                  store.setFavoriteLocal(importedSource, importedSourceId, true)
+                } catch {
+                  // 忽略非关键错误
+                }
+              }
+
+              if (Array.isArray(tags) && tags.length > 0) {
+                try {
+                  const detailRes = await api.detail(importedSource, importedSourceId)
+                  const mergedTags = Array.from(new Set([...(detailRes.meta.tags || []), ...tags]))
+                  await api.updateMetadata(importedSource, importedSourceId, { tags: mergedTags })
+                } catch {
+                  // 忽略非关键错误
+                }
+              }
+
+              results.push({
+                id: inputVal,
+                status: fromCache ? 'skipped' : 'success',
+                title: importedTitle,
+                source: importedSource,
+                source_id: importedSourceId,
+                page_count: pageCount,
+              })
+            } catch (err) {
+              results.push({
+                id: inputVal,
+                status: 'failed',
+                error: err instanceof Error ? err.message : String(err),
+              })
+            }
+          }
+
+          await store.load()
+
+          const succeeded = results.filter((r) => r.status === 'success').length
+          const skipped = results.filter((r) => r.status === 'skipped').length
+          const failed = results.filter((r) => r.status === 'failed').length
+
+          return {
+            total: items.length,
+            succeeded,
+            skipped,
+            failed,
+            message: `批量收录完成：共 ${items.length} 本，成功 ${succeeded} 本，跳过已存在 ${skipped} 本，失败 ${failed} 本。`,
+            results,
+          }
+        },
+      })
+    : undefined
+
   return {
     isSupported: searchComicsTool.isSupported,
     searchComicsTool,
@@ -689,5 +888,6 @@ export function useShelfWebMCP(options: UseShelfWebMCPOptions): UseShelfWebMCPRe
     openComicTool,
     readComicTool,
     importComicTool,
+    batchImportComicsTool,
   }
 }

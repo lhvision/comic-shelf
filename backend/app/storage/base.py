@@ -432,6 +432,8 @@ class ComicStoreBase:
                         "imported_at": meta.imported_at,
                         "hidden_from_guest": 1 if getattr(meta, "hidden_from_guest", False) else 0,
                         "mtime": mtime,
+                        "auto_update_interval_days": getattr(meta, "auto_update_interval_days", 15),
+                        "last_auto_checked_at": getattr(meta, "last_auto_checked_at", ""),
                     })
             else:
                 from ..db import purge_comic_db_records
@@ -472,6 +474,8 @@ class ComicStoreBase:
                 meta.imported_at = existing.imported_at or meta.imported_at
                 meta.favorite = existing.favorite
                 meta.hidden_from_guest = existing.hidden_from_guest
+                meta.auto_update_interval_days = getattr(existing, "auto_update_interval_days", 15)
+                meta.last_auto_checked_at = getattr(meta, "last_auto_checked_at", "") or getattr(existing, "last_auto_checked_at", "")
 
             album_path = self.album_path(meta.source, meta.source_id)
             remote_path = self.remote_path(meta.source, meta.source_id)
@@ -717,7 +721,7 @@ class ComicStoreBase:
                 raise HTTPException(status_code=404, detail="漫画不存在")
             meta = meta.model_copy(deep=True)
 
-            for field in ("title", "authors", "works", "actors", "tags", "description", "uploader", "hidden_from_guest", "custom_pages"):
+            for field in ("title", "authors", "works", "actors", "tags", "description", "uploader", "hidden_from_guest", "custom_pages", "auto_update_interval_days"):
                 if field in updates and updates[field] is not None:
                     setattr(meta, field, updates[field])
 

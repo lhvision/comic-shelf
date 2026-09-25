@@ -83,6 +83,14 @@ class ComicMeta(BaseModel):
         default_factory=list,
         description="Chapter/section list for multi-chapter albums; empty for single-chapter",
     )
+    auto_update_interval_days: int = Field(
+        default=15,
+        description="Auto update check interval in days for multi-chapter comics; 0 disables auto update",
+    )
+    last_auto_checked_at: str = Field(
+        default="",
+        description="ISO timestamp when the comic was last checked by the auto-update worker",
+    )
 
     @property
     def is_multi_chapter(self) -> bool:
@@ -395,6 +403,7 @@ class MetadataUpdateRequest(BaseModel):
     cover_indices: list[int] | None = None
     hidden_from_guest: bool | None = None
     custom_pages: bool | None = None
+    auto_update_interval_days: int | None = None
 
 
 class LocalChapterInput(BaseModel):

@@ -56,7 +56,36 @@ const fieldRows = computed(() => {
       mono: false,
     })
   }
+  if (isMultiRemote.value) {
+    rows.push({
+      label: '追更状态',
+      value: autoUpdateLabel.value,
+      mono: false,
+    })
+  }
   return rows
+})
+
+const isMultiRemote = computed(() => {
+  return (props.meta.chapters?.length ?? 0) > 1 && props.meta.source !== 'local'
+})
+
+const isHiatus = computed(() => {
+  if (!isMultiRemote.value) return false
+  const dateStr = props.meta.updated_at || props.meta.published_at || props.meta.imported_at
+  if (!dateStr || !dateStr.trim()) return false
+  const parsed = Date.parse(dateStr.replace(' ', 'T'))
+  if (Number.isNaN(parsed)) return false
+  return Date.now() - parsed > 30 * 86400 * 1000
+})
+
+const autoUpdateLabel = computed(() => {
+  if (!isMultiRemote.value) return ''
+  if (props.meta.custom_pages) return '已重新装订保护（跳过远端追更）'
+  if (isHiatus.value) return '超过 1 个月未更新（已暂停巡检）'
+  const interval = props.meta.auto_update_interval_days ?? 15
+  if (interval === 0) return '已关闭自动巡检'
+  return `自动追更中（每 ${interval} 天巡检）`
 })
 </script>
 
@@ -71,6 +100,22 @@ const fieldRows = computed(() => {
           title="画卷已由馆长重新装订，已开启远端覆盖保护"
         >
           重新装订
+        </span>
+        <span
+          v-if="isMultiRemote && isHiatus"
+          class="hiatus-badge"
+          title="作品已超过 1 个月未更新，自动巡检已暂停。如需更新请在操作栏点击“刷新资料”。"
+        >
+          已断更
+        </span>
+        <span
+          v-else-if="
+            isMultiRemote && !meta.custom_pages && (meta.auto_update_interval_days ?? 15) > 0
+          "
+          class="auto-update-badge"
+          :title="`多章节连载作品，每 ${meta.auto_update_interval_days ?? 15} 天自动巡检追更`"
+        >
+          追更中
         </span>
       </div>
       <AppTextClamp
@@ -209,6 +254,28 @@ const fieldRows = computed(() => {
 }
 
 .custom-pages-badge {
+  padding: var(--space-1) var(--space-2);
+  border: 1px solid var(--accent);
+  border-radius: var(--radius-1);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--accent);
+  background: var(--accent-soft);
+  white-space: nowrap;
+}
+
+.hiatus-badge {
+  padding: var(--space-1) var(--space-2);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-1);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--ink-2);
+  background: var(--paper-2);
+  white-space: nowrap;
+}
+
+.auto-update-badge {
   padding: var(--space-1) var(--space-2);
   border: 1px solid var(--accent);
   border-radius: var(--radius-1);
