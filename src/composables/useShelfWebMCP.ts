@@ -31,7 +31,7 @@ import type { ReadingStatus, SortKey } from '@/types'
 export interface UseShelfWebMCPOptions {
   /** 路由实例，用于页面跳转 */
   router: Router
-  /** 批量收录单本执行间隔（默认 1500ms） */
+  /** 批量收录单本执行间隔（默认 5000ms） */
   throttleDelayMs?: number
 }
 
@@ -48,11 +48,13 @@ export type UseShelfWebMCPReturn = WebMCPComposableReturn<
   | 'batchImportComicsTool'
 >
 
+const DEFAULT_THROTTLE_DELAY_MS = 5000
+
 /**
  * 在书架视图生命周期内注册 WebMCP 淘书、检索与直达全功能工具集
  */
 export function useShelfWebMCP(options: UseShelfWebMCPOptions): UseShelfWebMCPReturn {
-  const { router, throttleDelayMs = 1500 } = options
+  const { router, throttleDelayMs = DEFAULT_THROTTLE_DELAY_MS } = options
   const shelfState = useShelfState()
   const store = useLibraryStore()
   const { canWrite, isDirectPass } = useAuth()
@@ -736,7 +738,7 @@ export function useShelfWebMCP(options: UseShelfWebMCPOptions): UseShelfWebMCPRe
     ? useWebMCP({
         name: 'shelf_batch_import_comics',
         description:
-          '批量收录导入多部漫画至本地书库。支持传入车号列表（数组或换行/逗号分隔文本，如 ["JM523607", "JM123456"] 或多行车号）；内部以 1.5 秒安全间隔串行执行防风控；单本失败隔离容错，返回结构化汇总报告',
+          '批量收录导入多部漫画至本地书库。支持传入车号列表（数组或换行/逗号分隔文本，如 ["JM523607", "JM123456"] 或多行车号）；内部以 5 秒安全间隔串行执行防风控；单本失败隔离容错，返回结构化汇总报告',
         inputSchema: {
           type: 'object',
           properties: {

@@ -80,7 +80,7 @@ metadata:
 
 - **藏书淘选**：调用 `recommend_unread(tag=...)` 或 `query_shelf(status='unread', favorite=true)`；
 - **书架操作**：调用 WebMCP `shelf_pick_random()`（随机开卷）或 `shelf_open_comic()`；
-- **单本/批量收录**：调用 WebMCP `shelf_import_comic({ id: ... })` 或 `shelf_batch_import_comics({ items: "JM111111, JM222222" })`（上限 50 本，内部 1.5s 安全间隔串行防风控）；
+- **单本/批量收录**：调用 WebMCP `shelf_import_comic({ id: ... })` 或 `shelf_batch_import_comics({ items: "JM111111, JM222222" })`（上限 50 本，内部 5s 安全间隔串行防风控）；
 - **详情与章节**：调用 WebMCP `detail_start_reading()`、`detail_open_chapter({ chapter_id })`、`detail_toggle_favorite()`；
 - **发现与榜单**：调用 WebMCP `discovery_get_ranking({ timeframe })` 查榜，`discovery_switch_timeframe` 切榜，`discovery_switch_source` 切换榜源，`discovery_open_detail` 查看榜单详情，`discovery_ingest_comic()` 或 `shelf_import_comic()` 收录。
 

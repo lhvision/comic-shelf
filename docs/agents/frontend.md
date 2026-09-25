@@ -541,4 +541,4 @@ graph TD
 - **WebMCP 批量收录规范（useShelfWebMCP.ts）**：
   - **工具标识**：`shelf_batch_import_comics`；
   - **输入兼容**：`items` 接受车号/ID 字符串数组，或包含换行符/逗号的多行纯文本；
-  - **防护不变量**：以 `1.5 秒` 安全间隔串行排队防风控，单次最多 50 本；单本失败隔离容错；已存在藏书命中缓存标记 `skipped`，不改动其红心与标签；红心或标签没有生效时写入该条 `warnings`，汇总 `message` 标明有警告的本数；返回 `{ total, succeeded, skipped, failed, results }` 报告。
+  - **防护不变量**：以 `5 秒` 安全间隔串行排队防风控，单次最多 50 本；单本失败隔离容错；已存在藏书命中缓存标记 `skipped`，不改动其红心与标签；红心或标签没有生效时写入该条 `warnings`，汇总 `message` 标明有警告的本数；返回 `{ total, succeeded, skipped, failed, results }` 报告。
