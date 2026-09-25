@@ -524,6 +524,22 @@ describe('WebMCP Composables', () => {
           }),
         )
 
+        // 已在书库中：不改红心与标签，返回值必须如实说明，不能照抄请求里的 favorite
+        vi.mocked(api.importComic).mockResolvedValueOnce({
+          from_cache: true,
+          prefetched: 0,
+          warnings: [],
+          meta: mockImportDetail.meta,
+        })
+        setFavSpy.mockClear()
+        const cachedRes = (await importComicExecute!({ id: '999999', favorite: true })) as {
+          content: Array<{ text: string }>
+        }
+        expect(setFavSpy).not.toHaveBeenCalled()
+        const cachedComic = JSON.parse(cachedRes.content[0]?.text ?? '{}').comic
+        expect(cachedComic.favorite).toBe(false)
+        expect(cachedComic.warnings).toEqual(['已在书库中，未改动已有的红心与标签'])
+
         scope.stop()
       } finally {
         // @ts-expect-error restore
@@ -612,6 +628,7 @@ describe('WebMCP Composables', () => {
         .mockRejectedValueOnce(new Error('404 Not Found'))
 
       vi.spyOn(api, 'importComic').mockImplementation(importComicMock)
+      const setFavSpy = vi.spyOn(api, 'setFavorite').mockResolvedValue({ ok: true, favorite: true })
 
       try {
         const scope = effectScope()
@@ -623,6 +640,7 @@ describe('WebMCP Composables', () => {
 
         const batchRes = (await registeredTools['shelf_batch_import_comics']!({
           items: ['JM111111', 'JM222222', 'JM333333'],
+          favorite: true,
         })) as {
           content: Array<{ text: string }>
         }
@@ -638,6 +656,11 @@ describe('WebMCP Composables', () => {
         expect(parsed.results[1].status).toBe('skipped')
         expect(parsed.results[2].status).toBe('failed')
         expect(parsed.results[2].error).toContain('404')
+        // 跳过的条目不加红心，并在明细与汇总里都说明
+        expect(setFavSpy).toHaveBeenCalledTimes(1)
+        expect(setFavSpy).toHaveBeenCalledWith('jm', '111111', true)
+        expect(parsed.results[1].warnings).toEqual(['已在书库中，未改动已有的红心与标签'])
+        expect(parsed.message).toContain('其中 1 本有警告')
 
         scope.stop()
       } finally {

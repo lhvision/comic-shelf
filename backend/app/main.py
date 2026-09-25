@@ -9,6 +9,7 @@ import json
 import logging
 import os
 import posixpath
+import threading
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -18,7 +19,7 @@ from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import JSONResponse
 
 from .abuse import check_guest_rate_limit
-from .auto_update import auto_update_loop
+from .auto_update import auto_update_worker
 from .auth import (
     can_read,
     check_hotlink_protection,
@@ -31,7 +32,7 @@ from .auth import (
     is_machine,
     is_request_secure,
 )
-from .config import COOKIE_NAME, ENABLE_DOCS, LIBRARY_DIR
+from .config import COOKIE_NAME, ENABLE_AUTO_UPDATE, ENABLE_DOCS, LIBRARY_DIR
 from .storage.utils import acquire_library_writer_lock
 from .db import (
     clean_expired_direct_passes,
@@ -212,7 +213,8 @@ def sync_library_index(store: ComicStore) -> None:
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     lock_fd = acquire_library_writer_lock(LIBRARY_DIR)
-    auto_update_task: asyncio.Task | None = None
+    auto_update_stop_event = threading.Event()
+    auto_update_thread: threading.Thread | None = None
     try:
         try:
             init_db()
@@ -227,17 +229,22 @@ async def lifespan(app: FastAPI):
         except Exception as exc:
             logger.warning("Startup initialization error: %s", exc)
 
-        # Mount periodic auto-update inspection loop for multi-chapter comics (ADR 0029)
-        auto_update_task = asyncio.create_task(auto_update_loop(store))
+        # Start periodic auto-update inspection thread for multi-chapter comics (ADR 0029)
+        if ENABLE_AUTO_UPDATE:
+            auto_update_thread = threading.Thread(
+                target=auto_update_worker,
+                args=(store, auto_update_stop_event),
+                name="auto-update",
+                daemon=True,
+            )
+            auto_update_thread.start()
 
         yield
     finally:
-        if auto_update_task is not None:
-            auto_update_task.cancel()
-            try:
-                await auto_update_task
-            except asyncio.CancelledError:
-                pass
+        # 巡检线程写完手上这本才能放写锁，否则新起的实例会和它同时写书库
+        auto_update_stop_event.set()
+        if auto_update_thread is not None:
+            await asyncio.to_thread(auto_update_thread.join)
         os.close(lock_fd)
         shutdown_events()
 

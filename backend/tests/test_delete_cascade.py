@@ -64,6 +64,8 @@ class TestDeleteCascade(unittest.TestCase):
             "imported_at": "",
             "hidden_from_guest": 0,
             "mtime": 12345.0,
+            "auto_update_interval_days": 15,
+            "last_auto_checked_at": "",
         })
 
         # 2. Add user favorite, progress, direct pass

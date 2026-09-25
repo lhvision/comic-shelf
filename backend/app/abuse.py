@@ -226,6 +226,7 @@ _login_failed_history: dict[str, list[float]] = {}  # ip -> timestamps
 _login_failed_creds: dict[str, dict[str, float]] = {}  # ip -> {凭据指纹: 计数时刻}
 _login_ip_locks: dict[str, float] = {}             # ip -> locked_until
 _login_mutex = threading.RLock()
+_last_login_prune_time: float = 0.0
 
 
 def is_ip_login_locked(ip: str) -> bool:
@@ -244,7 +245,7 @@ def is_ip_login_locked(ip: str) -> bool:
 
 
 def _prune_stale_login_tracking(now: float) -> None:
-    """清理已过窗口且未锁定的冷 IP 历史与过期锁，防止长时间运行下字典无界增长。
+    """清理已过窗口的冷 IP 历史与过期锁，防止长时间运行下字典无界增长。
     调用者需持有 `_login_mutex`。
     """
     # 0. 清理已到期的 IP 锁
@@ -258,8 +259,7 @@ def _prune_stale_login_tracking(now: float) -> None:
         if not h or h[-1] <= cutoff
     ]
     for k in stale_ips:
-        if _login_ip_locks.get(k, 0.0) <= now:
-            _login_failed_history.pop(k, None)
+        _login_failed_history.pop(k, None)
 
     stale_cred_ips = [
         k for k, c in _login_failed_creds.items()
@@ -275,11 +275,13 @@ def record_ip_login_failure_and_check_lock(ip: str, credential: str = "") -> boo
     同一个错误凭据在计数窗口内只计一次：改口令后旧 Cookie 会随每个请求重放，逐次计数会把馆长
     自己锁在门外；爆破要换不同的值，照常逐个计数。
     """
+    global _last_login_prune_time
     if not ip:
         return False
     now = time.time()
     with _login_mutex:
-        if len(_login_failed_history) > 100 or len(_login_failed_creds) > 100:
+        if (len(_login_failed_history) > 100 or len(_login_failed_creds) > 100) and (now - _last_login_prune_time > 10.0):
+            _last_login_prune_time = now
             _prune_stale_login_tracking(now)
 
         locked_until = _login_ip_locks.get(ip, 0.0)

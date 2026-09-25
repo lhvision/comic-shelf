@@ -403,7 +403,7 @@ class MetadataUpdateRequest(BaseModel):
     cover_indices: list[int] | None = None
     hidden_from_guest: bool | None = None
     custom_pages: bool | None = None
-    auto_update_interval_days: int | None = None
+    auto_update_interval_days: int | None = Field(default=None, ge=0, le=365)
 
 
 class LocalChapterInput(BaseModel):

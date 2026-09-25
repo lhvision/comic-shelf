@@ -94,6 +94,8 @@ def setup_test_env():
         "imported_at": "2026-01-01T00:00:00Z",
         "hidden_from_guest": 0,
         "mtime": 100.0,
+        "auto_update_interval_days": 15,
+        "last_auto_checked_at": "",
     }
     upsert_comic_index(mock_meta)
 

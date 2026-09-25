@@ -860,8 +860,8 @@
 
 ### 147. 长耗时计算或物理 I/O 霸占 SQLite 事务：并发线程与跨进程写锁饿死下游
 
-- **症状**：同步 OCR 伴生台词或后台清扫时，整个服务瞬间卡顿，前端读者翻页、保存阅读进度或点赞红心大面积报 `sqlite3.OperationalError: database is locked`。
-- **根因**：在 `with get_dialogue_db() as conn:` 事务包裹期间执行了 CPU 密集的 ONNX 向量推理（`embedding.encode_documents`）或耗时的文件系统孤儿扫描（`is_dir()` 探测），导致写锁被长时间独占，阻塞其他工作线程与连接。
+- **症状**：同步 OCR 伴生台词或后台清扫时，并发的另一路台词写入（同步、清扫）等写锁超过 `busy_timeout`（5 秒）报 `sqlite3.OperationalError: database is locked`（注：台词库开着 WAL，全文检索等只读查询不受写锁影响；阅读进度与红心位于主库 `comic_shelf.db`，与 `dialogues.db` 独立互不影响）。
+- **根因**：在 `with get_dialogue_db() as conn:` 事务上下文期间执行 CPU 密集的 ONNX 向量推理（`embedding.encode_documents`）或耗时的文件系统孤儿扫描（`is_dir()` 探测），一旦事务进入写入阶段便会霸占台词库写锁并饿死并发写入线程。
 - **红线**：严禁在 SQLite 事务上下文内部执行耗时超过 5ms 的 CPU 密集计算（如神经网络推理、特征编码）或物理文件系统 I/O 遍历；必须采用「读出数据 → 退出事务 → 纯内存计算/磁盘检测 → 开启事务批量写入」三段式架构，事务内只留纯 SQL 执行。
 
 ### 148. 无界内存防爆破追踪与 Vue Router 数组查询参数穿透

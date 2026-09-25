@@ -309,17 +309,17 @@ JmImageTool.decode_and_save(num, source_image, save_path)
   - 协议路由与具体工具/资源实现解耦：工具执行由 `TOOL_HANDLERS` 字典映射，资源读取由 `RESOURCE_HANDLERS` 字典映射，杜绝庞大单体 `if/elif` 堆砌；
   - 支持完整的 JSON-RPC 2.0 批量请求数组（Batch Requests）及针对非法入参的标准化错误格式（`-32600 Invalid Request`）。
 
-### 4.11 多章节自动追更巡检与断更熔断不变量（ADR 0029）
+### 4.11 多章节自动追更巡检不变量（ADR 0029）
 
-- **自动追更准入边界**：仅当藏书满足 `len(chapters) > 1`（多章节作品）且 `source != 'local'`（排除本地自建源）且 `custom_pages == false`（未受重新装订保护）时，才允许参与后台周期性追更巡检。
-- **单 Worker 串行守护协程**：在 FastAPI `lifespan` 挂载单一后台异步协程，按 1 小时为周期进行唤醒扫描；到期项（`now - last_auto_checked_at >= auto_update_interval_days * 86400`，默认 15 天）进入单并发串行探测队列，每本之间强制休眠 3~5 秒，单批最多探测 10 本。增量探测复用 `provider.fetch(..., existing=existing)`，仅读单页 HTML 校验话数，0 画页网络开销。
-- **30 天断更熔断与自愈**：作品远端更新日期（`updated_at`，缺失回退 `published_at`）距今超过 30 天（1 个月）自动判定为「已断更/已完结」，自动暂停定时巡检；馆长手动刷新若远端更新时间进入 30 天内，自愈重置并恢复自动追更。
+- **自动追更准入边界**：仅当藏书满足 `len(chapters) > 1`（多章节作品）且 `source != 'local'`（排除本地自建源）且 `custom_pages == false`（未受重新装订保护）时，才向远端探测；不满足的到期项跳过探测，但照样写入 `last_auto_checked_at`，防止永远占住每轮名额。
+- **单线程串行巡检与关停顺序**：受 `COMIC_SHELF_ENABLE_AUTO_UPDATE` 控制（默认开启）；FastAPI `lifespan` 启动单一后台线程 `auto_update_worker`，开机宽限 30 秒后每小时唤醒扫描一次；到期项（`now - last_auto_checked_at >= auto_update_interval_days * 86400`，默认 15 天，0 为关闭）串行处理，每本之间休眠 3 秒，单轮最多 10 本。增量探测复用 `provider.fetch(..., existing=existing)`，章节未变时不抓画页（JM 只发一个详情请求）。关停时先置位 `stop_event`，再 join 线程，最后才释放书库写锁。
+- **馆长资料不被覆盖**：只有探测到新章节或新增页才写盘，且只把 `chapters`、`pages`、`page_count`（远端 `updated_at` 非空时一并）合并进现有 meta，标题、标签、简介等馆长编辑保持原样。合并基底必须是写盘时在作品锁内重读的最新 meta（`ComicStore.save_auto_update`），不能用抓取前的快照：抓取要几秒，期间馆长的编辑不能被旧快照盖掉，期间被删的作品也不能被写回来。无新内容只记录 `last_auto_checked_at`。收录与手动刷新同样写入巡检时间，新收录的作品不会立即到期。
 - **阅读状态与缓存自愈**：追更到新章节后，若作品原处于「已读」状态，必须自愈回退为「在读」重新浮现于书架案头；若原处于「全本缓存」状态，自动投递新章节画页离线预缓存任务，否则仅追加元数据。
 
 ### 4.12 WebMCP 批量收录契约与串行防风控规范（ADR 0029）
 
 - **保持 UI 纯粹性**：书架 Web 界面不堆砌复杂的多选复选框，维持阅览室极简心流；批量收录仅作为 `useShelfWebMCP` 的 `shelf_batch_import_comics` 工具面向 AI 智能体开放。
-- **单本隔离容错与结构化交付**：支持传入车号数组或多行纯文本输入（自动正则提取有效车号）；逐本串行收录并保持 1.5 秒安全间隔；单本遇到 404 或网络波动时隔离捕获并记录至 `failed` 清单，绝不中断其余条目的收录；已存在条目命中本地缓存秒级跳过；最终向 Agent 交付 `{ total, succeeded, skipped, failed, results }` 结构化报告。
+- **单本隔离容错与结构化交付**：支持传入车号数组或多行纯文本输入（自动正则提取有效车号）；逐本串行收录并保持 1.5 秒安全间隔，单次最多 50 本；单本遇到 404 或网络波动时隔离捕获并记录至 `failed` 清单，绝不中断其余条目的收录；已存在条目命中本地缓存秒级跳过，不改动其红心与标签；红心或标签没有生效时如实写入该条 `warnings`，汇总 `message` 标明有警告的本数；最终向 Agent 交付 `{ total, succeeded, skipped, failed, results }` 结构化报告。
 
 ## 5. 后端文件地图
 

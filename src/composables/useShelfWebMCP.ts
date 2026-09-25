@@ -503,6 +503,120 @@ export function useShelfWebMCP(options: UseShelfWebMCPOptions): UseShelfWebMCPRe
     },
   })
 
+  // Helper: 单本收录底层逻辑（由 shelf_import_comic 与 shelf_batch_import_comics 共享）
+  async function importOneComic(opts: {
+    inputVal: string
+    rawSource?: 'jm' | 'picacg' | 'local'
+    prefetch_all?: boolean
+    prefetch_covers?: number
+    favorite?: boolean
+    tags?: string[]
+  }): Promise<{
+    source: string
+    source_id: string
+    title: string
+    page_count: number
+    from_cache: boolean
+    favorite: boolean
+    warnings?: string[]
+  }> {
+    const {
+      inputVal,
+      rawSource,
+      prefetch_all = false,
+      prefetch_covers = 4,
+      favorite = false,
+      tags = [],
+    } = opts
+
+    // 智能识别图源 Provider
+    let finalSource: 'jm' | 'picacg' | 'local' = rawSource || 'jm'
+    let finalId = inputVal
+
+    if (!rawSource) {
+      if (inputVal.startsWith('/') || inputVal.startsWith('./') || inputVal.startsWith('public/')) {
+        finalSource = 'local'
+      } else if (
+        inputVal.includes('picacomic') ||
+        inputVal.includes('picawang') ||
+        /^[0-9a-fA-F]{24}$/.test(inputVal)
+      ) {
+        finalSource = 'picacg'
+        const hexMatch = inputVal.match(/[0-9a-fA-F]{24}/)
+        if (hexMatch) {
+          finalId = hexMatch[0]
+        }
+      } else {
+        finalSource = 'jm'
+      }
+    }
+
+    let importedSource: string = finalSource
+    let importedSourceId = finalId
+    let importedTitle = finalId
+    let pageCount = 0
+    let fromCache = false
+
+    if (finalSource === 'local') {
+      const res = await api.importLocalPath({ path: finalId })
+      importedSource = res.meta.source
+      importedSourceId = res.meta.source_id
+      importedTitle = res.meta.title
+      pageCount = res.meta.page_count
+      fromCache = false
+    } else {
+      const result = await store.importComic({
+        id: finalId,
+        source: finalSource,
+        prefetch_covers: typeof prefetch_covers === 'number' ? prefetch_covers : 4,
+        prefetch_all: Boolean(prefetch_all),
+      })
+      importedSource = result.meta.source
+      importedSourceId = result.meta.source_id
+      importedTitle = result.meta.title
+      pageCount = result.meta.page_count
+      fromCache = result.from_cache
+    }
+
+    const warnings: string[] = []
+    let favorited = false
+
+    // 仅在非本地缓存跳过的新收录条目上执行后续标记与追加标签（已存在条目保持原样，不篡改已有元数据）
+    if (!fromCache) {
+      if (favorite) {
+        try {
+          await api.setFavorite(importedSource, importedSourceId, true)
+          store.setFavoriteLocal(importedSource, importedSourceId, true)
+          favorited = true
+        } catch (err) {
+          warnings.push(`标记喜欢失败: ${err instanceof Error ? err.message : String(err)}`)
+        }
+      }
+
+      if (Array.isArray(tags) && tags.length > 0) {
+        try {
+          const detailRes = await api.detail(importedSource, importedSourceId)
+          const mergedTags = Array.from(new Set([...(detailRes.meta.tags || []), ...tags]))
+          await api.updateMetadata(importedSource, importedSourceId, { tags: mergedTags })
+        } catch (err) {
+          warnings.push(`追加标签失败: ${err instanceof Error ? err.message : String(err)}`)
+        }
+      }
+    } else if (favorite || (Array.isArray(tags) && tags.length > 0)) {
+      warnings.push('已在书库中，未改动已有的红心与标签')
+    }
+
+    return {
+      source: importedSource,
+      source_id: importedSourceId,
+      title: importedTitle,
+      page_count: pageCount,
+      from_cache: fromCache,
+      favorite: favorited,
+      warnings: warnings.length > 0 ? warnings : undefined,
+    }
+  }
+
   // 工具 7: 收录/导入新漫画至本地书库（仅馆长权限注册）
   const importComicTool = canWrite.value
     ? useWebMCP({
@@ -581,102 +695,36 @@ export function useShelfWebMCP(options: UseShelfWebMCPOptions): UseShelfWebMCPRe
             throw new Error('请提供漫画车号、作品 ID 或本地路径（id / source_id / local_path）。')
           }
 
-          // 智能识别图源 Provider
-          let finalSource: 'jm' | 'picacg' | 'local' = rawSource || 'jm'
-          let finalId = inputVal
+          const res = await importOneComic({
+            inputVal,
+            rawSource: local_path ? 'local' : rawSource,
+            prefetch_all,
+            prefetch_covers,
+            favorite,
+            tags,
+          })
 
-          if (!rawSource) {
-            if (
-              local_path ||
-              inputVal.startsWith('/') ||
-              inputVal.startsWith('./') ||
-              inputVal.startsWith('public/')
-            ) {
-              finalSource = 'local'
-            } else if (
-              inputVal.includes('picacomic') ||
-              inputVal.includes('picawang') ||
-              /^[0-9a-fA-F]{24}$/.test(inputVal)
-            ) {
-              finalSource = 'picacg'
-              // 提取 24 位 hex ID
-              const hexMatch = inputVal.match(/[0-9a-fA-F]{24}/)
-              if (hexMatch) {
-                finalId = hexMatch[0]
-              }
-            } else {
-              finalSource = 'jm'
-            }
-          }
+          await store.load()
 
-          let importedSource: string = finalSource
-          let importedSourceId = finalId
-          let importedTitle = finalId
-          let pageCount = 0
-          let fromCache = false
-
-          if (finalSource === 'local') {
-            const res = await api.importLocalPath({ path: finalId })
-            await store.load()
-            importedSource = res.meta.source
-            importedSourceId = res.meta.source_id
-            importedTitle = res.meta.title
-            pageCount = res.meta.page_count
-            fromCache = false
-          } else {
-            const result = await store.importComic({
-              id: finalId,
-              source: finalSource,
-              prefetch_covers: typeof prefetch_covers === 'number' ? prefetch_covers : 4,
-              prefetch_all: Boolean(prefetch_all),
-            })
-            importedSource = result.meta.source
-            importedSourceId = result.meta.source_id
-            importedTitle = result.meta.title
-            pageCount = result.meta.page_count
-            fromCache = result.from_cache
-          }
-
-          // 后续动作 1: 标记喜欢
-          if (favorite) {
-            try {
-              await api.setFavorite(importedSource, importedSourceId, true)
-              store.setFavoriteLocal(importedSource, importedSourceId, true)
-            } catch {
-              // 忽略非关键错误
-            }
-          }
-
-          // 后续动作 2: 追加自定义标签
-          if (Array.isArray(tags) && tags.length > 0) {
-            try {
-              const detailRes = await api.detail(importedSource, importedSourceId)
-              const mergedTags = Array.from(new Set([...(detailRes.meta.tags || []), ...tags]))
-              await api.updateMetadata(importedSource, importedSourceId, { tags: mergedTags })
-              await store.load()
-            } catch {
-              // 忽略非关键错误
-            }
-          }
-
-          // 后续动作 3: 自动跳转详情页
+          // 后续动作: 自动跳转详情页
           if (open_after) {
             await router.push({
               name: 'comic-detail',
-              params: { source: importedSource, sourceId: importedSourceId },
+              params: { source: res.source, sourceId: res.source_id },
             })
           }
 
           return {
             success: true,
-            message: `已成功收录漫画《${importedTitle}》（${importedSource}/${importedSourceId}，共 ${pageCount} 页）`,
+            message: `已成功收录漫画《${res.title}》（${res.source}/${res.source_id}，共 ${res.page_count} 页）`,
             comic: {
-              source: importedSource,
-              source_id: importedSourceId,
-              title: importedTitle,
-              page_count: pageCount,
-              from_cache: fromCache,
-              favorite: Boolean(favorite),
+              source: res.source,
+              source_id: res.source_id,
+              title: res.title,
+              page_count: res.page_count,
+              from_cache: res.from_cache,
+              favorite: res.favorite,
+              warnings: res.warnings,
             },
           }
         },
@@ -753,6 +801,11 @@ export function useShelfWebMCP(options: UseShelfWebMCPOptions): UseShelfWebMCPRe
           if (items.length === 0) {
             throw new Error('未提供有效的漫画车号或作品标识列表（items 不能为空）。')
           }
+          if (items.length > 50) {
+            throw new Error(
+              `单次批量收录上限为 50 本（当前提交 ${items.length} 本），请分批提交以避免图源风控。`,
+            )
+          }
 
           const results: Array<{
             id: string
@@ -761,6 +814,7 @@ export function useShelfWebMCP(options: UseShelfWebMCPOptions): UseShelfWebMCPRe
             source?: string
             source_id?: string
             page_count?: number
+            warnings?: string[]
             error?: string
           }> = []
 
@@ -773,84 +827,23 @@ export function useShelfWebMCP(options: UseShelfWebMCPOptions): UseShelfWebMCPRe
             }
 
             try {
-              let finalSource: 'jm' | 'picacg' | 'local' = rawSource || 'jm'
-              let finalId: string = inputVal
-
-              if (!rawSource) {
-                if (
-                  inputVal.startsWith('/') ||
-                  inputVal.startsWith('./') ||
-                  inputVal.startsWith('public/')
-                ) {
-                  finalSource = 'local'
-                } else if (
-                  inputVal.includes('picacomic') ||
-                  inputVal.includes('picawang') ||
-                  /^[0-9a-fA-F]{24}$/.test(inputVal)
-                ) {
-                  finalSource = 'picacg'
-                  const hexMatch = inputVal.match(/[0-9a-fA-F]{24}/)
-                  if (hexMatch) {
-                    finalId = hexMatch[0]
-                  }
-                } else {
-                  finalSource = 'jm'
-                }
-              }
-
-              let importedSource: string = finalSource
-              let importedSourceId: string = finalId
-              let importedTitle: string = finalId
-              let pageCount = 0
-              let fromCache = false
-
-              if (finalSource === 'local') {
-                const res = await api.importLocalPath({ path: finalId })
-                importedSource = res.meta.source
-                importedSourceId = res.meta.source_id
-                importedTitle = res.meta.title
-                pageCount = res.meta.page_count
-                fromCache = false
-              } else {
-                const result = await store.importComic({
-                  id: finalId,
-                  source: finalSource,
-                  prefetch_covers: typeof prefetch_covers === 'number' ? prefetch_covers : 4,
-                  prefetch_all: Boolean(prefetch_all),
-                })
-                importedSource = result.meta.source
-                importedSourceId = result.meta.source_id
-                importedTitle = result.meta.title
-                pageCount = result.meta.page_count
-                fromCache = result.from_cache
-              }
-
-              if (favorite) {
-                try {
-                  await api.setFavorite(importedSource, importedSourceId, true)
-                  store.setFavoriteLocal(importedSource, importedSourceId, true)
-                } catch {
-                  // 忽略非关键错误
-                }
-              }
-
-              if (Array.isArray(tags) && tags.length > 0) {
-                try {
-                  const detailRes = await api.detail(importedSource, importedSourceId)
-                  const mergedTags = Array.from(new Set([...(detailRes.meta.tags || []), ...tags]))
-                  await api.updateMetadata(importedSource, importedSourceId, { tags: mergedTags })
-                } catch {
-                  // 忽略非关键错误
-                }
-              }
+              const res = await importOneComic({
+                inputVal,
+                rawSource,
+                prefetch_all,
+                prefetch_covers,
+                favorite,
+                tags,
+              })
 
               results.push({
                 id: inputVal,
-                status: fromCache ? 'skipped' : 'success',
-                title: importedTitle,
-                source: importedSource,
-                source_id: importedSourceId,
-                page_count: pageCount,
+                status: res.from_cache ? 'skipped' : 'success',
+                title: res.title,
+                source: res.source,
+                source_id: res.source_id,
+                page_count: res.page_count,
+                warnings: res.warnings,
               })
             } catch (err) {
               results.push({
@@ -866,13 +859,14 @@ export function useShelfWebMCP(options: UseShelfWebMCPOptions): UseShelfWebMCPRe
           const succeeded = results.filter((r) => r.status === 'success').length
           const skipped = results.filter((r) => r.status === 'skipped').length
           const failed = results.filter((r) => r.status === 'failed').length
+          const warned = results.filter((r) => r.warnings?.length).length
 
           return {
             total: items.length,
             succeeded,
             skipped,
             failed,
-            message: `批量收录完成：共 ${items.length} 本，成功 ${succeeded} 本，跳过已存在 ${skipped} 本，失败 ${failed} 本。`,
+            message: `批量收录完成：共 ${items.length} 本，成功 ${succeeded} 本，跳过已存在 ${skipped} 本，失败 ${failed} 本${warned > 0 ? `，其中 ${warned} 本有警告（见 results[].warnings）` : ''}。`,
             results,
           }
         },

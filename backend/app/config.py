@@ -56,6 +56,9 @@ IMSEARCH_URL = os.getenv("COMIC_SHELF_IMSEARCH_URL", "http://localhost:8765").rs
 
 ENABLE_DOCS = os.getenv("COMIC_SHELF_ENABLE_DOCS", "false").lower() in ("1", "true", "yes")
 
+# Multi-chapter comic auto-update background polling loop (ADR 0029)
+ENABLE_AUTO_UPDATE = os.getenv("COMIC_SHELF_ENABLE_AUTO_UPDATE", "true").lower() in ("1", "true", "yes")
+
 # Curator key for full access (blank = open access, non-blank = protected)
 AUTH_SECRET = os.getenv("COMIC_SHELF_SECRET", os.getenv("COMIC_SHELF_AUTH_TOKEN", "")).strip()
 

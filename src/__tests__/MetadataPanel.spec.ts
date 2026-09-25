@@ -143,4 +143,40 @@ describe('MetadataPanel', () => {
     const content = wrapper.find('.description-content')
     expect(content.classes()).toContain('is-clamped')
   })
+
+  it('renders auto-update badge for remote multi-chapter comics and respects re-bound protection', () => {
+    // 1. 普通多章节远程作品 -> 追更中
+    const multiMeta = makeMeta({
+      source: 'jm',
+      chapters: [
+        { id: 'c1', index: 1, title: '第 1 话', page_count: 10, start: 1 },
+        { id: 'c2', index: 2, title: '第 2 话', page_count: 10, start: 11 },
+      ],
+      auto_update_interval_days: 15,
+    })
+    const w1 = mount(MetadataPanel, { props: { meta: multiMeta } })
+    expect(w1.find('.auto-update-badge').exists()).toBe(true)
+    expect(w1.find('.auto-update-badge').text()).toBe('追更中')
+    expect(w1.text()).toContain('自动追更中（每 15 天巡检）')
+
+    // 2. 重新装订作品 -> 重新装订保护，不显示追更中
+    const reboundMeta = makeMeta({
+      ...multiMeta,
+      custom_pages: true,
+    })
+    const w2 = mount(MetadataPanel, { props: { meta: reboundMeta } })
+    expect(w2.find('.custom-pages-badge').exists()).toBe(true)
+    expect(w2.find('.custom-pages-badge').text()).toBe('重新装订')
+    expect(w2.find('.auto-update-badge').exists()).toBe(false)
+    expect(w2.text()).toContain('已重新装订保护（跳过远端追更）')
+
+    // 3. 关闭自动追更 (interval = 0)
+    const disabledMeta = makeMeta({
+      ...multiMeta,
+      auto_update_interval_days: 0,
+    })
+    const w3 = mount(MetadataPanel, { props: { meta: disabledMeta } })
+    expect(w3.find('.auto-update-badge').exists()).toBe(false)
+    expect(w3.text()).toContain('已关闭自动巡检')
+  })
 })

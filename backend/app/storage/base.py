@@ -505,6 +505,44 @@ class ComicStoreBase:
             self._invalidate_cache(meta.source, meta.source_id)
             return meta
 
+    def record_auto_checked(self, source: str, source_id: str, checked_at: str) -> None:
+        """Atomically updates last_auto_checked_at in album.json, cache, and DB index under lock."""
+        with self._lock_for(source, source_id):
+            meta = self.load_meta(source, source_id)
+            if meta is not None:
+                meta_copy = meta.model_copy(deep=True)
+                meta_copy.last_auto_checked_at = checked_at
+                p = self.album_path(source, source_id)
+                _write_json_atomic(p, meta_copy.model_dump())
+                try:
+                    mtime = p.stat().st_mtime
+                except Exception:
+                    mtime = 0.0
+                with self._cache_guard:
+                    self._meta_cache[(source, source_id)] = (mtime, meta_copy)
+        from ..db import record_comic_auto_checked
+        record_comic_auto_checked(source, source_id, checked_at)
+
+    def save_auto_update(self, fetched: FetchedComic, checked_at: str) -> ComicMeta | None:
+        """巡检发现新章节时写盘：只换章节与画页，其余资料以锁内重读的最新版为准。
+
+        抓取要花几秒，期间馆长可能改了资料或删了这本；删了就返回 None，不再写回来。
+        """
+        source, source_id = fetched.meta.source, fetched.meta.source_id
+        with self._lock_for(source, source_id):
+            latest = self.load_meta(source, source_id)
+            if latest is None:
+                return None
+            merged = latest.model_copy(deep=True)
+            merged.chapters = fetched.meta.chapters
+            merged.pages = fetched.meta.pages
+            merged.page_count = fetched.meta.page_count
+            if fetched.meta.updated_at:
+                merged.updated_at = fetched.meta.updated_at
+            merged.last_auto_checked_at = checked_at
+            fetched.meta = merged
+            return self.save_fetched(fetched, refresh=True)
+
     def load_meta(self, source: str, source_id: str, verify_cache: bool = False) -> ComicMeta | None:
         """Loads comic metadata from memory cache or album.json with self-healing support."""
         with self._lock_for(source, source_id):

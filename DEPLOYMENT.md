@@ -179,6 +179,7 @@ API 工作进程数固定为 1，不属于可调参数；这里的下载与缩�
 | `COMIC_SHELF_COVER_QUALITY`            | `80`   | 大封面 JPEG 质量（默认 80 兼顾微秒级传输与典藏画质）。                                                                                                        |
 | `COMIC_SHELF_COVER_COUNT`              | `4`    | 每本漫画默认生成的封面预览张数。                                                                                                                              |
 | `COMIC_SHELF_LOG_LEVEL`                | `info` | 后端运行日志级别（可选 `debug`, `info`, `warning`, `error`）。                                                                                                |
+| `COMIC_SHELF_ENABLE_AUTO_UPDATE`       | `true` | 是否开启多章节连载后台自动追更巡检。设为 `false` 可完全关闭后台自动探测。每本漫画的更新周期可在元数据面板单独设置或设为 `0` 禁用。                            |
 | `COMIC_SHELF_ACCESS_LOG`               | `true` | 是否开启 Uvicorn 请求访问日志。默认已内置高频探针静音过滤（`/api/health` 与搜图状态 200 正常时不输出）；若需彻底关闭访问日志可设为 `false`。                  |
 
 ### 3.4 哔咔漫画（PicAcg Provider）配置（可选）

@@ -934,26 +934,6 @@ def set_user_progress(
 
 def upsert_comic_index(item: dict[str, Any]) -> None:
     """插入或更新漫画影子索引记录。"""
-    item = dict(item)
-    item.setdefault("authors_json", "[]")
-    item.setdefault("works_json", "[]")
-    item.setdefault("actors_json", "[]")
-    item.setdefault("tags_json", "[]")
-    item.setdefault("chapter_titles_json", "[]")
-    item.setdefault("page_count", 0)
-    item.setdefault("cached_pages", 0)
-    item.setdefault("cover_count", 4)
-    item.setdefault("cover_indices_json", "[]")
-    item.setdefault("views", "")
-    item.setdefault("likes", "")
-    item.setdefault("uploaded_at", "")
-    item.setdefault("published_at", "")
-    item.setdefault("updated_at", "")
-    item.setdefault("imported_at", "")
-    item.setdefault("hidden_from_guest", 0)
-    item.setdefault("mtime", 0.0)
-    item.setdefault("auto_update_interval_days", 15)
-    item.setdefault("last_auto_checked_at", "")
     with get_db() as conn:
         conn.execute(
             """

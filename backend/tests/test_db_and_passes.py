@@ -442,6 +442,8 @@ def test_comics_index_and_pagination():
         "imported_at": "2026-01-01T10:00:00",
         "hidden_from_guest": 0,
         "mtime": 100.0,
+        "auto_update_interval_days": 15,
+        "last_auto_checked_at": "",
     })
 
     db_mod.upsert_comic_index({
@@ -466,6 +468,8 @@ def test_comics_index_and_pagination():
         "imported_at": "2026-01-02T10:00:00",
         "hidden_from_guest": 0,
         "mtime": 200.0,
+        "auto_update_interval_days": 15,
+        "last_auto_checked_at": "",
     })
 
     db_mod.upsert_comic_index({
@@ -490,6 +494,8 @@ def test_comics_index_and_pagination():
         "imported_at": "2026-01-03T10:00:00",
         "hidden_from_guest": 1,
         "mtime": 300.0,
+        "auto_update_interval_days": 15,
+        "last_auto_checked_at": "",
     })
 
     # Set reading progress: c2 is reading (page 10 / 30), c3 is completed (page 15 / 15)

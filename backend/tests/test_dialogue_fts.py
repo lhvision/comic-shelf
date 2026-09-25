@@ -67,6 +67,8 @@ def make_comic_item(source: str, source_id: str, title: str, hidden_from_guest: 
         "imported_at": "2026-01-01",
         "hidden_from_guest": hidden_from_guest,
         "mtime": 100.0,
+        "auto_update_interval_days": 15,
+        "last_auto_checked_at": "",
     }
 
 

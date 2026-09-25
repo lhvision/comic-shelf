@@ -2,74 +2,36 @@
 
 Implements ADR 0029:
 - Periodic auto-update inspection for non-local multi-chapter comics.
-- 30-day hiatus detection and throttling: skips remote inspection if updated_at > 30 days ago.
+- Merges remote chapter additions while strictly preserving curator-edited metadata.
+- Re-bound protection (ADR 0020): skips comics with custom_pages and records check timestamp.
 - Preserves reading status and self-heals from completed to reading.
 - Auto-triggers background prefetch if the comic was previously fully cached.
 - Throttles requests with 3s delays between inspections to avoid upstream rate limiting.
+- Graceful shutdown integration via threading.Event.
 """
 from __future__ import annotations
 
-import asyncio
 import logging
+import threading
 import time
 from datetime import datetime, timezone
 from typing import Any
 
-from .db import get_comics_due_for_auto_update, record_comic_auto_checked
+from .db import get_comics_due_for_auto_update
 from .events import broadcast_event
 from .jobs import start_job
-from .models import ComicMeta
 from .providers import get_provider
 from .routers.common import _prefetch_worker
 from .storage import ComicStore
-from .storage.utils import _write_json_atomic
 
 logger = logging.getLogger("paper_room.auto_update")
-
-
-def parse_comic_date(date_str: str) -> datetime | None:
-    """Parses various date and timestamp formats from remote providers or local records."""
-    if not date_str or not str(date_str).strip():
-        return None
-    s = str(date_str).strip()
-    if s.endswith("Z"):
-        s = s[:-1] + "+00:00"
-    try:
-        return datetime.fromisoformat(s)
-    except Exception:
-        pass
-    for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d", "%Y/%m/%d", "%Y.%m.%d"):
-        try:
-            return datetime.strptime(s, fmt)
-        except Exception:
-            pass
-    return None
-
-
-def is_comic_in_hiatus(meta_or_date: str | ComicMeta, max_inactive_days: int = 30) -> bool:
-    """Checks whether the comic has had no remote updates in over 30 days (1 month).
-
-    Comics judged as in hiatus are paused from automatic background inspection to save
-    network bandwidth and prevent upstream anti-bot triggers.
-    """
-    if isinstance(meta_or_date, ComicMeta):
-        date_str = meta_or_date.updated_at or meta_or_date.published_at or meta_or_date.imported_at
-    else:
-        date_str = str(meta_or_date)
-
-    dt = parse_comic_date(date_str)
-    if dt is None:
-        return False
-
-    now = datetime.now(dt.tzinfo) if dt.tzinfo else datetime.now()
-    diff_seconds = (now - dt).total_seconds()
-    return diff_seconds > (max_inactive_days * 86400)
 
 
 def run_auto_update_cycle(
     store: ComicStore,
     max_check: int = 10,
     sleep_seconds: float = 3.0,
+    stop_event: threading.Event | None = None,
 ) -> dict[str, Any]:
     """Executes a single pass of auto-update inspections across eligible multi-chapter comics.
 
@@ -77,46 +39,39 @@ def run_auto_update_cycle(
     """
     candidates = get_comics_due_for_auto_update(max_count=max_check)
     if not candidates:
-        return {"total_due": 0, "checked": 0, "updated": 0, "hiatus": 0, "errors": []}
+        return {"total_due": 0, "checked": 0, "updated": 0, "errors": []}
 
     logger.info("Starting auto-update cycle for %d candidate comics", len(candidates))
     checked_count = 0
     updated_count = 0
-    hiatus_count = 0
     errors: list[dict[str, str]] = []
 
     for idx, cand in enumerate(candidates):
+        if stop_event is not None and stop_event.is_set():
+            logger.info("Auto-update cycle stopped by stop event")
+            break
+
+        if idx > 0 and sleep_seconds > 0:
+            if stop_event is not None:
+                if stop_event.wait(sleep_seconds):
+                    break
+            else:
+                time.sleep(sleep_seconds)
+
         source = cand["source"]
         source_id = cand["source_id"]
+        checked_at = datetime.now(timezone.utc).isoformat()
 
         try:
             meta = store.load_meta(source, source_id)
-            if meta is None:
+            if meta is None or meta.source == "local" or len(meta.chapters) <= 1:
+                store.record_auto_checked(source, source_id, checked_at)
                 continue
 
-            # Must be non-local multi-chapter
-            if meta.source == "local" or len(meta.chapters) <= 1:
-                continue
-
-            # Respect re-bound protection (ADR 0020)
+            # Respect re-bound protection (ADR 0020) and record check to prevent starvation
             if meta.custom_pages:
                 logger.info("Skipping auto-update for %s/%s: re-bound protection active", source, source_id)
-                continue
-
-            checked_at = datetime.now(timezone.utc).isoformat()
-
-            # Hiatus detection: skip if remote hasn't updated in > 30 days
-            if is_comic_in_hiatus(meta, max_inactive_days=30):
-                hiatus_count += 1
-                logger.info(
-                    "Comic %s/%s is in hiatus (> 30 days without update, last: %s); skipping auto-check",
-                    source,
-                    source_id,
-                    meta.updated_at or meta.published_at,
-                )
-                meta.last_auto_checked_at = checked_at
-                _write_json_atomic(store.album_path(source, source_id), meta.model_dump())
-                record_comic_auto_checked(source, source_id, checked_at)
+                store.record_auto_checked(source, source_id, checked_at)
                 continue
 
             # Remote incremental fetch
@@ -130,15 +85,15 @@ def run_auto_update_cycle(
 
             provider = get_provider(source)
             fetched = provider.fetch(source_id, existing=cached_bundle)
-            fetched.meta.last_auto_checked_at = checked_at
 
             new_chapters_count = len(fetched.meta.chapters) - prev_chaps
             has_new_content = new_chapters_count > 0 or fetched.meta.page_count > prev_pages
 
-            saved_meta = store.save_fetched(fetched, refresh=True)
-            record_comic_auto_checked(source, source_id, checked_at)
-
             if has_new_content:
+                # 馆长编辑过的资料不动，只并入章节与画页；抓取期间被删的作品不写回
+                saved_meta = store.save_auto_update(fetched, checked_at)
+                if saved_meta is None:
+                    continue
                 updated_count += 1
                 logger.info(
                     "Auto-update detected %d new chapters (%d -> %d pages) for %s/%s",
@@ -164,19 +119,17 @@ def run_auto_update_cycle(
                     start_job(
                         source,
                         source_id,
-                        lambda job: _prefetch_worker(job, fetched, fetched.meta.cover_count, True),
+                        lambda job, f=fetched: _prefetch_worker(job, f, f.meta.cover_count, True),
                     )
-
-            if idx < len(candidates) - 1 and sleep_seconds > 0:
-                time.sleep(sleep_seconds)
+            else:
+                # No new chapters/pages: do not overwrite curator metadata, only record checked timestamp
+                store.record_auto_checked(source, source_id, checked_at)
 
         except Exception as exc:
             logger.warning("Auto-update failed for %s/%s: %s", source, source_id, exc)
             errors.append({"source": source, "source_id": source_id, "error": str(exc)})
-            # Record checked timestamp so a broken/failing comic doesn't loop infinitely
             try:
-                checked_at = datetime.now(timezone.utc).isoformat()
-                record_comic_auto_checked(source, source_id, checked_at)
+                store.record_auto_checked(source, source_id, checked_at)
             except Exception:
                 pass
 
@@ -184,32 +137,26 @@ def run_auto_update_cycle(
         "total_due": len(candidates),
         "checked": checked_count,
         "updated": updated_count,
-        "hiatus": hiatus_count,
         "errors": errors,
     }
 
 
-async def auto_update_loop(store: ComicStore, interval_seconds: int = 3600) -> None:
-    """Asyncio background daemon loop running periodic auto-update cycles.
+def auto_update_worker(
+    store: ComicStore,
+    stop_event: threading.Event,
+    interval_seconds: int = 3600,
+) -> None:
+    """后台巡检线程：开机宽限 30 秒后，每 ``interval_seconds`` 秒跑一轮。
 
-    Wakes up every ``interval_seconds`` (default 1 hour) to inspect due comics.
+    ``stop_event`` 置位后把手上这本处理完就返回；lifespan 要 join 本线程之后才释放书库写锁。
     """
-    logger.info("Auto-update background daemon started (check interval: %ds)", interval_seconds)
-    # Grace period after server boot before starting first auto-update pass
-    try:
-        await asyncio.sleep(30)
-    except asyncio.CancelledError:
+    logger.info("Auto-update background worker started (check interval: %ds)", interval_seconds)
+    if stop_event.wait(30):
         return
-
     while True:
         try:
-            await asyncio.to_thread(run_auto_update_cycle, store)
-        except asyncio.CancelledError:
-            break
-        except Exception as exc:
-            logger.exception("Unexpected error in auto_update_loop: %s", exc)
-
-        try:
-            await asyncio.sleep(interval_seconds)
-        except asyncio.CancelledError:
-            break
+            run_auto_update_cycle(store, stop_event=stop_event)
+        except Exception:
+            logger.exception("Unexpected error in auto-update worker")
+        if stop_event.wait(interval_seconds):
+            return
