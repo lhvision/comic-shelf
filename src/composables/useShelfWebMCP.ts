@@ -733,6 +733,9 @@ export function useShelfWebMCP(options: UseShelfWebMCPOptions): UseShelfWebMCPRe
       })
     : undefined
 
+  // 批量收录单例互斥锁：防止并发调用导致风控节流失效与竞态冲突
+  let isBatchRunning = false
+
   // 工具 8: 批量收录/导入新漫画至本地书库（仅馆长权限注册）
   const batchImportComicsTool = canWrite.value
     ? useWebMCP({
@@ -773,98 +776,108 @@ export function useShelfWebMCP(options: UseShelfWebMCPOptions): UseShelfWebMCPRe
           required: ['items'],
         },
         async execute(args) {
-          const {
-            items: rawInput = '',
-            source: rawSource,
-            prefetch_all = false,
-            prefetch_covers = 4,
-            favorite = false,
-            tags = [],
-          } = (args ?? {}) as {
-            items?: string
-            source?: 'jm' | 'picacg' | 'local'
-            prefetch_all?: boolean
-            prefetch_covers?: number
-            favorite?: boolean
-            tags?: string[]
-          }
-
-          const candidateList = String(rawInput ?? '')
-            .split(/[\n,;，；\t]+/)
-            .map((s) => s.trim())
-            .filter(Boolean)
-
-          const items = Array.from(new Set(candidateList))
-          if (items.length === 0) {
-            throw new Error('未提供有效的漫画车号或作品标识列表（items 不能为空）。')
-          }
-          if (items.length > 50) {
+          if (isBatchRunning) {
             throw new Error(
-              `单次批量收录上限为 50 本（当前提交 ${items.length} 本），请分批提交以避免图源风控。`,
+              '当前已有批量收录任务正在执行中，请等待其执行完成，严禁并发请求以防图源风控。',
             )
           }
-
-          const results: Array<{
-            id: string
-            status: 'success' | 'skipped' | 'failed'
-            title?: string
-            source?: string
-            source_id?: string
-            page_count?: number
-            warnings?: string[]
-            error?: string
-          }> = []
-
-          for (let i = 0; i < items.length; i++) {
-            const inputVal = items[i]
-            if (!inputVal) continue
-
-            if (i > 0 && throttleDelayMs > 0) {
-              await new Promise((resolve) => setTimeout(resolve, throttleDelayMs))
+          isBatchRunning = true
+          try {
+            const {
+              items: rawInput = '',
+              source: rawSource,
+              prefetch_all = false,
+              prefetch_covers = 4,
+              favorite = false,
+              tags = [],
+            } = (args ?? {}) as {
+              items?: string
+              source?: 'jm' | 'picacg' | 'local'
+              prefetch_all?: boolean
+              prefetch_covers?: number
+              favorite?: boolean
+              tags?: string[]
             }
 
-            try {
-              const res = await importOneComic({
-                inputVal,
-                rawSource,
-                prefetch_all,
-                prefetch_covers,
-                favorite,
-                tags,
-              })
+            const candidateList = String(rawInput ?? '')
+              .split(/[\n,;，；\t]+/)
+              .map((s) => s.trim())
+              .filter(Boolean)
 
-              results.push({
-                id: inputVal,
-                status: res.from_cache ? 'skipped' : 'success',
-                title: res.title,
-                source: res.source,
-                source_id: res.source_id,
-                page_count: res.page_count,
-                warnings: res.warnings,
-              })
-            } catch (err) {
-              results.push({
-                id: inputVal,
-                status: 'failed',
-                error: err instanceof Error ? err.message : String(err),
-              })
+            const items = Array.from(new Set(candidateList))
+            if (items.length === 0) {
+              throw new Error('未提供有效的漫画车号或作品标识列表（items 不能为空）。')
             }
-          }
+            if (items.length > 50) {
+              throw new Error(
+                `单次批量收录上限为 50 本（当前提交 ${items.length} 本），请分批提交以避免图源风控。`,
+              )
+            }
 
-          await store.load()
+            const results: Array<{
+              id: string
+              status: 'success' | 'skipped' | 'failed'
+              title?: string
+              source?: string
+              source_id?: string
+              page_count?: number
+              warnings?: string[]
+              error?: string
+            }> = []
 
-          const succeeded = results.filter((r) => r.status === 'success').length
-          const skipped = results.filter((r) => r.status === 'skipped').length
-          const failed = results.filter((r) => r.status === 'failed').length
-          const warned = results.filter((r) => r.warnings?.length).length
+            for (let i = 0; i < items.length; i++) {
+              const inputVal = items[i]
+              if (!inputVal) continue
 
-          return {
-            total: items.length,
-            succeeded,
-            skipped,
-            failed,
-            message: `批量收录完成：共 ${items.length} 本，成功 ${succeeded} 本，跳过已存在 ${skipped} 本，失败 ${failed} 本${warned > 0 ? `，其中 ${warned} 本有警告（见 results[].warnings）` : ''}。`,
-            results,
+              if (i > 0 && throttleDelayMs > 0) {
+                await new Promise((resolve) => setTimeout(resolve, throttleDelayMs))
+              }
+
+              try {
+                const res = await importOneComic({
+                  inputVal,
+                  rawSource,
+                  prefetch_all,
+                  prefetch_covers,
+                  favorite,
+                  tags,
+                })
+
+                results.push({
+                  id: inputVal,
+                  status: res.from_cache ? 'skipped' : 'success',
+                  title: res.title,
+                  source: res.source,
+                  source_id: res.source_id,
+                  page_count: res.page_count,
+                  warnings: res.warnings,
+                })
+              } catch (err) {
+                results.push({
+                  id: inputVal,
+                  status: 'failed',
+                  error: err instanceof Error ? err.message : String(err),
+                })
+              }
+            }
+
+            await store.load()
+
+            const succeeded = results.filter((r) => r.status === 'success').length
+            const skipped = results.filter((r) => r.status === 'skipped').length
+            const failed = results.filter((r) => r.status === 'failed').length
+            const warned = results.filter((r) => r.warnings?.length).length
+
+            return {
+              total: items.length,
+              succeeded,
+              skipped,
+              failed,
+              message: `批量收录完成：共 ${items.length} 本，成功 ${succeeded} 本，跳过已存在 ${skipped} 本，失败 ${failed} 本${warned > 0 ? `，其中 ${warned} 本有警告（见 results[].warnings）` : ''}。`,
+              results,
+            }
+          } finally {
+            isBatchRunning = false
           }
         },
       })

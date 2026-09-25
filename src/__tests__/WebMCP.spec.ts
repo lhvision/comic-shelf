@@ -671,6 +671,17 @@ describe('WebMCP Composables', () => {
         const textParsed = JSON.parse(textBatchRes.content[0]?.text ?? '{}')
         expect(textParsed.total).toBe(3)
 
+        // 验证并发调用互斥锁（Fail-Fast）拦截
+        const pendingFirst = registeredTools['shelf_batch_import_comics']!({
+          items: 'JM111111',
+        })
+        await expect(
+          registeredTools['shelf_batch_import_comics']!({
+            items: 'JM222222',
+          }),
+        ).rejects.toThrow('当前已有批量收录任务正在执行中')
+        await pendingFirst
+
         scope.stop()
       } finally {
         // @ts-expect-error restore

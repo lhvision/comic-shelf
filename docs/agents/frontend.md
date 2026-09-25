@@ -57,7 +57,7 @@
 | `src/composables/useViewTransition.ts`             | 全局与局域视图过渡门面封装：`Promise.withResolvers` + `Promise.try`、异常自动捕获兜底与抢占自愈                                                                                                                                    |
 | `src/composables/useCoverTransition.ts`            | 书架卡片与详情 Hero 共享封面形变（`comic-cover-active`）动态类名与过渡时机调度                                                                                                                                                     |
 | `src/composables/useBrandIcon.ts`                  | 品牌与动态多态矢量图标映射与解析器                                                                                                                                                                                                 |
-| `src/composables/useShelfWebMCP.ts`                | 书架首页 WebMCP 工具注册：淘书检索、台词全文匹配、以图搜图、直达画页高亮、单本与批量收录（1.5s安全间隔串行/单本隔离容错）、详情直达与随机翻阅（双轨鉴权防护）                                                                      |
+| `src/composables/useShelfWebMCP.ts`                | 书架首页 WebMCP 工具注册：淘书检索、台词全文匹配、以图搜图、直达画页高亮、单本与批量收录（5s安全间隔串行/单例互斥防并发/单本隔离容错）、详情直达与随机翻阅（双轨鉴权防护）                                                         |
 | `src/composables/useComicDetailWebMCP.ts`          | 漫画详情 WebMCP 工具注册：阅读启动、全本/单话离线缓存调度、章节专注页切换、元数据获取、单本沙箱通行证签发与红心标记（双轨鉴权防护）                                                                                                |
 | `src/composables/useReaderWebMCP.ts`               | 阅读器视口 WebMCP 工具注册：精准跳页、步进翻页（多步）、排版模式/分屏/日漫方向/无缝连续切换、缩放适配、自动翻页、气泡高亮、跨话切章与红心收藏                                                                                      |
 | `src/composables/useDiscoveryWebMCP.ts`            | 发现页 WebMCP 工具注册：官方排行榜拉取、周/月/日榜切换、图源切换、榜单详情与漫画收录（双轨鉴权防护）                                                                                                                               |
@@ -541,4 +541,4 @@ graph TD
 - **WebMCP 批量收录规范（useShelfWebMCP.ts）**：
   - **工具标识**：`shelf_batch_import_comics`；
   - **输入兼容**：`items` 接受车号/ID 字符串数组，或包含换行符/逗号的多行纯文本；
-  - **防护不变量**：以 `5 秒` 安全间隔串行排队防风控，单次最多 50 本；单本失败隔离容错；已存在藏书命中缓存标记 `skipped`，不改动其红心与标签；红心或标签没有生效时写入该条 `warnings`，汇总 `message` 标明有警告的本数；返回 `{ total, succeeded, skipped, failed, results }` 报告。
+  - **防护不变量**：以 `5 秒` 安全间隔串行排队防风控，单次最多 50 本；单例互斥锁快速失败（Fail-Fast）拦截并发调用；单本失败隔离容错；已存在藏书命中缓存标记 `skipped`，不改动其红心与标签；红心或标签没有生效时写入该条 `warnings`，汇总 `message` 标明有警告的本数；返回 `{ total, succeeded, skipped, failed, results }` 报告。

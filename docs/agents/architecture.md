@@ -319,7 +319,7 @@ JmImageTool.decode_and_save(num, source_image, save_path)
 ### 4.12 WebMCP 批量收录契约与串行防风控规范（ADR 0029）
 
 - **保持 UI 纯粹性**：书架 Web 界面不堆砌复杂的多选复选框，维持阅览室极简心流；批量收录仅作为 `useShelfWebMCP` 的 `shelf_batch_import_comics` 工具面向 AI 智能体开放。
-- **单本隔离容错与结构化交付**：支持传入车号数组或多行纯文本输入（自动正则提取有效车号）；逐本串行收录并保持 5 秒安全间隔，单次最多 50 本；单本遇到 404 或网络波动时隔离捕获并记录至 `failed` 清单，绝不中断其余条目的收录；已存在条目命中本地缓存秒级跳过，不改动其红心与标签；红心或标签没有生效时如实写入该条 `warnings`，汇总 `message` 标明有警告的本数；最终向 Agent 交付 `{ total, succeeded, skipped, failed, results }` 结构化报告。
+- **单本隔离容错与结构化交付**：支持传入车号数组或多行纯文本输入（自动正则提取有效车号）；逐本串行收录并保持 5 秒安全间隔，执行单例互斥锁快速失败（Fail-Fast）拦截并发，单次最多 50 本；单本遇到 404 或网络波动时隔离捕获并记录至 `failed` 清单，绝不中断其余条目的收录；已存在条目命中本地缓存秒级跳过，不改动其红心与标签；红心或标签没有生效时如实写入该条 `warnings`，汇总 `message` 标明有警告的本数；最终向 Agent 交付 `{ total, succeeded, skipped, failed, results }` 结构化报告。
 
 ## 5. 后端文件地图
 
