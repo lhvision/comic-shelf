@@ -419,6 +419,55 @@ class TestAutoUpdateEngine(unittest.TestCase):
 
         self.assertEqual(lock_seen, ["held"])
 
+    def test_import_and_refresh_sets_last_auto_checked_at(self):
+        """收录与手动刷新都必须写入 last_auto_checked_at，防止新收录的作品立即到期。"""
+        import app.routers.library as lib_router
+        from app.models import ImportRequest
+
+        chapters = [
+            Chapter(id="c1", index=1, title="第 1 话", page_count=2, start=1),
+            Chapter(id="c2", index=2, title="第 2 话", page_count=2, start=3),
+        ]
+        pages = [
+            PageRecord(index=1, file="00001.webp", ext=".webp", chapter="c1"),
+            PageRecord(index=2, file="00002.webp", ext=".webp", chapter="c1"),
+            PageRecord(index=3, file="00001.webp", ext=".webp", chapter="c2"),
+            PageRecord(index=4, file="00002.webp", ext=".webp", chapter="c2"),
+        ]
+        remote = ComicMeta(
+            source="jm",
+            source_id="new_import_comic",
+            display_id="JM_new_import_comic",
+            title="新收录漫画",
+            page_count=4,
+            chapters=chapters,
+            pages=pages,
+            auto_update_interval_days=15,
+        )
+        mock_provider = MagicMock()
+        mock_provider.normalize_id.return_value = "new_import_comic"
+        mock_provider.fetch.return_value = FetchedComic(meta=remote, remote_pages=[])
+
+        with patch.object(lib_router, "store", self.store), \
+                patch("app.routers.library.get_provider", return_value=mock_provider), \
+                patch("app.routers.library.start_job"), \
+                patch("app.routers.library.broadcast_event"):
+            # 1. 首次收录 (refresh=False)
+            res1 = lib_router.import_comic(ImportRequest(source="jm", id="new_import_comic", refresh=False))
+            self.assertTrue(bool(res1.meta.last_auto_checked_at))
+            reloaded1 = self.store.load_meta("jm", "new_import_comic")
+            self.assertEqual(reloaded1.last_auto_checked_at, res1.meta.last_auto_checked_at)
+
+            # 新收录作品由于刚写了巡检时间，绝不能立即进入待巡检队列
+            due = get_comics_due_for_auto_update(max_count=10)
+            self.assertEqual(len(due), 0)
+
+            # 2. 手动刷新 (refresh=True)
+            res2 = lib_router.import_comic(ImportRequest(source="jm", id="new_import_comic", refresh=True))
+            self.assertTrue(bool(res2.meta.last_auto_checked_at))
+            reloaded2 = self.store.load_meta("jm", "new_import_comic")
+            self.assertEqual(reloaded2.last_auto_checked_at, res2.meta.last_auto_checked_at)
+
 
 if __name__ == "__main__":
     unittest.main()

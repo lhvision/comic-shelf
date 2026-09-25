@@ -537,7 +537,7 @@ class ComicStoreBase:
             merged.chapters = fetched.meta.chapters
             merged.pages = fetched.meta.pages
             merged.page_count = fetched.meta.page_count
-            if fetched.meta.updated_at:
+            if fetched.meta.updated_at and fetched.meta.updated_at != "0":
                 merged.updated_at = fetched.meta.updated_at
             merged.last_auto_checked_at = checked_at
             fetched.meta = merged
