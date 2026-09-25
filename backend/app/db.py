@@ -1704,9 +1704,9 @@ def embed_comic_dialogues(source: str, source_id: str) -> int:
 
     dim = embedding.dim()
     source, source_id = _dialogue_key(source, source_id)
-    with get_dialogue_db() as conn:
-        rows: list[sqlite3.Row] = []
-        if dim is not None:
+    rows: list[sqlite3.Row] = []
+    if dim is not None:
+        with get_dialogue_db() as conn:
             rows = conn.execute(
                 "SELECT page_index, bubble_id, text FROM comic_dialogues_fts"
                 " WHERE source = :source AND source_id = :source_id AND kind = :kind"
@@ -1718,14 +1718,15 @@ def embed_comic_dialogues(source: str, source_id: str) -> int:
                     "min_chars": embedding.MIN_EMBED_CHARS,
                 },
             ).fetchall()
-        try:
-            vectors = embedding.encode_documents([r["text"] for r in rows]) if rows else None
-        except Exception as exc:
-            # 编码中途出错按编码器不可用处理：旧向量同样对不上刚重写的 FTS 行，要一起删掉
-            logger.warning("台词向量编码失败 %s/%s: %s", source, source_id, exc)
-            vectors = None
-        # 编不出新向量（编码器不可用、或这本书已没有可编的对白）就把旧的一并删掉：
-        # FTS 行刚被重写，留着它们就是相似度按旧文本算、展示的却是新文本
+    try:
+        vectors = embedding.encode_documents([r["text"] for r in rows]) if rows else None
+    except Exception as exc:
+        # 编码中途出错按编码器不可用处理：旧向量同样对不上刚重写的 FTS 行，要一起删掉
+        logger.warning("台词向量编码失败 %s/%s: %s", source, source_id, exc)
+        vectors = None
+    # 编不出新向量（编码器不可用、或这本书已没有可编的对白）就把旧的一并删掉：
+    # FTS 行刚被重写，留着它们就是相似度按旧文本算、展示的却是新文本
+    with get_dialogue_db() as conn:
         conn.execute(
             "DELETE FROM comic_dialogue_vectors WHERE source = ? AND source_id = ?",
             (source, source_id),
@@ -1971,26 +1972,32 @@ def cleanup_orphan_comic_dialogues(data_dir: Path | None = None) -> int:
     if data_dir is None:
         data_dir = DATA_DIR
     data_resolved = data_dir.resolve()
-    cleaned = 0
     with get_dialogue_db() as conn:
         rows = conn.execute("SELECT DISTINCT source, source_id FROM comic_dialogues_fts").fetchall()
-        for r in rows:
-            src, sid = r["source"], r["source_id"]
-            candidates = [
-                data_resolved / "library" / src / sid,
-                data_resolved / src / sid,
-            ]
-            if not any(c.is_dir() for c in candidates):
-                conn.execute("DELETE FROM comic_dialogues_fts WHERE source = ? AND source_id = ?", (src, sid))
-                conn.execute("DELETE FROM comic_ocr_sync_meta WHERE source = ? AND source_id = ?", (src, sid))
-                conn.execute(
-                    "DELETE FROM comic_dialogue_vectors WHERE source = ? AND source_id = ?", (src, sid)
-                )
-                cleaned += 1
-                logger.info(f"Cleaned orphan dialogue index for deleted comic {src}/{sid}")
-        if cleaned:
-            _bump_vector_version(conn)
-    return cleaned
+
+    to_delete: list[tuple[str, str]] = []
+    for r in rows:
+        src, sid = r["source"], r["source_id"]
+        candidates = [
+            data_resolved / "library" / src / sid,
+            data_resolved / src / sid,
+        ]
+        if not any(c.is_dir() for c in candidates):
+            to_delete.append((src, sid))
+
+    if not to_delete:
+        return 0
+
+    with get_dialogue_db() as conn:
+        for src, sid in to_delete:
+            conn.execute("DELETE FROM comic_dialogues_fts WHERE source = ? AND source_id = ?", (src, sid))
+            conn.execute("DELETE FROM comic_ocr_sync_meta WHERE source = ? AND source_id = ?", (src, sid))
+            conn.execute(
+                "DELETE FROM comic_dialogue_vectors WHERE source = ? AND source_id = ?", (src, sid)
+            )
+            logger.info("Cleaned orphan dialogue index for deleted comic %s/%s", src, sid)
+        _bump_vector_version(conn)
+    return len(to_delete)
 
 
 def _escape_like(text: str) -> str:

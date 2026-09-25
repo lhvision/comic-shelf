@@ -238,7 +238,35 @@ def is_ip_login_locked(ip: str) -> bool:
             return True
         elif locked_until > 0.0:
             del _login_ip_locks[ip]
+            _login_failed_history.pop(ip, None)
+            _login_failed_creds.pop(ip, None)
         return False
+
+
+def _prune_stale_login_tracking(now: float) -> None:
+    """清理已过窗口且未锁定的冷 IP 历史与过期锁，防止长时间运行下字典无界增长。
+    调用者需持有 `_login_mutex`。
+    """
+    # 0. 清理已到期的 IP 锁
+    stale_locks = [k for k, locked_until in _login_ip_locks.items() if locked_until <= now]
+    for k in stale_locks:
+        _login_ip_locks.pop(k, None)
+
+    cutoff = now - _LOGIN_ATTEMPT_WINDOW_SECONDS
+    stale_ips = [
+        k for k, h in _login_failed_history.items()
+        if not h or h[-1] <= cutoff
+    ]
+    for k in stale_ips:
+        if _login_ip_locks.get(k, 0.0) <= now:
+            _login_failed_history.pop(k, None)
+
+    stale_cred_ips = [
+        k for k, c in _login_failed_creds.items()
+        if not c or max(c.values(), default=0.0) <= cutoff
+    ]
+    for k in stale_cred_ips:
+        _login_failed_creds.pop(k, None)
 
 
 def record_ip_login_failure_and_check_lock(ip: str, credential: str = "") -> bool:
@@ -251,6 +279,9 @@ def record_ip_login_failure_and_check_lock(ip: str, credential: str = "") -> boo
         return False
     now = time.time()
     with _login_mutex:
+        if len(_login_failed_history) > 100 or len(_login_failed_creds) > 100:
+            _prune_stale_login_tracking(now)
+
         locked_until = _login_ip_locks.get(ip, 0.0)
         if locked_until > now:
             return True
@@ -277,6 +308,11 @@ def record_ip_login_failure_and_check_lock(ip: str, credential: str = "") -> boo
 
 
 def clear_ip_login_failures(ip: str) -> None:
+    """清理特定 IP 的失败尝试记录与锁定状态。
+
+    注意：生产环境下登录成功一律不清零失败计数（防止利用有效凭据清零后无限猜测），
+    本函数仅保留给单测隔离 (For test isolation) 与显式管理运维场景使用。
+    """
     if not ip:
         return
     with _login_mutex:

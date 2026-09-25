@@ -64,8 +64,9 @@ export const MAX_HIGHLIGHT_BOXES = 6
  * @returns 经过范围校验的 [ymin, xmin, ymax, xmax]，非法则返回 null
  */
 export function parseBubbleBox(raw: unknown): BubbleBox | null {
-  if (typeof raw !== 'string') return null
-  const cleaned = raw.replace(/[[\]]/g, '').trim()
+  const str = Array.isArray(raw) ? raw[0] : raw
+  if (typeof str !== 'string') return null
+  const cleaned = str.replace(/[[\]]/g, '').trim()
   if (!cleaned) return null
 
   const parts = cleaned.split(/[\s,]+/).map((v) => Number.parseFloat(v))
@@ -101,8 +102,9 @@ export function parseBubbleBox(raw: unknown): BubbleBox | null {
  *          单个畸形段被丢弃而不是整条放弃
  */
 export function parseBubbleBoxes(raw: unknown): BubbleBox[] {
-  if (typeof raw !== 'string') return []
-  return raw
+  const str = Array.isArray(raw) ? raw[0] : raw
+  if (typeof str !== 'string') return []
+  return str
     .split(';')
     .map((seg) => parseBubbleBox(seg))
     .filter((b): b is BubbleBox => b !== null)

@@ -60,11 +60,23 @@ describe('useReaderBubble', () => {
       expect(parseBubbleBox('')).toBeNull()
       expect(parseBubbleBox(null)).toBeNull()
     })
+
+    it('handles duplicate query parameter arrays by picking the first element', () => {
+      expect(parseBubbleBox(['0.1,0.2,0.3,0.4', '0.5,0.6,0.7,0.8'])).toEqual([0.1, 0.2, 0.3, 0.4])
+      expect(parseBubbleBox([])).toBeNull()
+    })
   })
 
   describe('parseBubbleBoxes / serializeBubbleBoxes', () => {
     it('parses semicolon-joined sibling boxes and drops only the malformed segment', () => {
       expect(parseBubbleBoxes('0.1,0.2,0.3,0.4;junk;0.5,0.6,0.7,0.8')).toEqual([
+        [0.1, 0.2, 0.3, 0.4],
+        [0.5, 0.6, 0.7, 0.8],
+      ])
+    })
+
+    it('handles duplicate query parameter arrays for sibling boxes', () => {
+      expect(parseBubbleBoxes(['0.1,0.2,0.3,0.4;0.5,0.6,0.7,0.8', '0.9,0.9,1.0,1.0'])).toEqual([
         [0.1, 0.2, 0.3, 0.4],
         [0.5, 0.6, 0.7, 0.8],
       ])
