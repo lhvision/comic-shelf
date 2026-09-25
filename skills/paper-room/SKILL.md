@@ -1,10 +1,20 @@
 ---
 name: paper-room
-description: '纸间 (Paper Room) 本地漫画收藏馆智能体协同与决策指南。当用户需要以图搜图、分镜识图找漫画、台词全文检索、名对白定位、书架筛选过滤、淘书与题材推荐、阅读器遥控（翻页/跳页/排版切换/气泡高亮聚焦）、一键收录漫画、或生成单本沙箱直达分享链接时使用。触发词包括：以图搜图、搜这本漫画出处、找台词、这句台词出自哪里、翻到下一页、阅读器切换瀑布流、推荐未读漫画、签发单本阅读链接、阅读器遥控、漫画详情。'
+description: '纸间 (Paper Room) 本地漫画收藏馆智能体协同与决策指南。当用户需要以图搜图、分镜识图找漫画、台词全文检索、语义找对白、名对白定位、书架筛选过滤、淘书与题材推荐、阅读器遥控（翻页/跳页/排版切换/气泡高亮聚焦）、一键收录/批量收录漫画、或生成单本沙箱直达分享链接时使用。触发词包括：以图搜图、搜这本漫画出处、找台词、按语义找台词、这句台词出自哪里、翻到下一页、阅读器切换瀑布流、推荐未读漫画、批量收录漫画、签发单本阅读链接、阅读器遥控、漫画详情。'
 metadata:
   author: lhvision
-  version: '1.4.0'
-  tags: ['comic-shelf', 'mcp', 'webmcp', 'agent-skill', 'image-search', 'dialogue-fts']
+  version: '1.5.0'
+  tags:
+    [
+      'comic-shelf',
+      'mcp',
+      'webmcp',
+      'agent-skill',
+      'image-search',
+      'dialogue-fts',
+      'semantic-search',
+      'batch-import',
+    ]
 ---
 
 # 纸间 · 智能体协同与决策指南 (Paper Room Agent Skill)
@@ -18,7 +28,7 @@ metadata:
 1. **零全库遍历**：严禁无条件并发全库扫描，多维检索必须使用 `query_shelf` 分页或 `get_shelf_stats` 统计。
 2. **访客沙箱隔离**：向外部读者或群聊分享漫画一律调用 `create_direct_pass` 签发 2 小时临时阅读票据，严禁暴露馆长密钥与全站视图。
 3. **视口生命周期感知**：前端 WebMCP 工具强绑定当前活动页面（Vue Scope），离开页面时自动注销。调用报错时引导用户导航至对应页面，严禁盲目死循环重试。
-4. **重操作确认门禁**：执行全量离线缓存（`detail_cache_all_pages`）或外部新漫画收录（`shelf_import_comic`）前，必须向用户确认。
+4. **重操作确认门禁**：执行全量离线缓存（`detail_cache_all_pages`）或外部新漫画收录（单本 `shelf_import_comic` / 批量 `shelf_batch_import_comics`）前，必须向用户确认（列出待收录车号与本数）。
 5. **凭据最小化**：接入纸间只用 `COMIC_SHELF_MCP_TOKEN` 那把子凭据；严禁把馆长口令 `COMIC_SHELF_SECRET` 或机器密钥写进 agent 配置、回复正文或任何 URL 查询串（机器密钥只给 OCR 流水线用，本就进不了 MCP）。`create_direct_pass` 对标记「对访客隐藏」的作品会直接拒绝，不要换路径绕行。
 
 ### 🚩 Red Flag Signals (出现以下情况立即中止并自查)
@@ -70,13 +80,15 @@ metadata:
 
 - **藏书淘选**：调用 `recommend_unread(tag=...)` 或 `query_shelf(status='unread', favorite=true)`；
 - **书架操作**：调用 WebMCP `shelf_pick_random()`（随机开卷）或 `shelf_open_comic()`；
+- **单本/批量收录**：调用 WebMCP `shelf_import_comic({ id: ... })` 或 `shelf_batch_import_comics({ items: "JM111111, JM222222" })`（上限 50 本，内部 1.5s 安全间隔串行防风控）；
 - **详情与章节**：调用 WebMCP `detail_start_reading()`、`detail_open_chapter({ chapter_id })`、`detail_toggle_favorite()`；
-- **发现与榜单**：调用 WebMCP `discovery_get_ranking({ timeframe })` 查榜，`discovery_ingest_comic()` 或 `shelf_import_comic()` 收录。
+- **发现与榜单**：调用 WebMCP `discovery_get_ranking({ timeframe })` 查榜，`discovery_switch_timeframe` 切榜，`discovery_switch_source` 切换榜源，`discovery_open_detail` 查看榜单详情，`discovery_ingest_comic()` 或 `shelf_import_comic()` 收录。
 
 ### 4. 阅读器微操 (Reader Remote Control)
 
 - **排版与缩放**：`reader_switch_mode({ mode: 'waterfall' | 'single' | 'double' | 'horizontal' | 'manga_rtl' })`，`reader_switch_fit({ fit: 'fit_width' | 'fit_height' | 'fit_both' | 'original' })`；
-- **翻页与跳章**：`reader_turn_page({ direction })`，`reader_toggle_auto_turn({ enable, interval_seconds })`，`reader_jump_chapter({ direction })`。
+- **翻页与跳章**：`reader_turn_page({ direction })`，`reader_toggle_auto_turn({ enable, interval_seconds })`，`reader_jump_chapter({ direction })`；
+- **收藏红心**：`reader_toggle_favorite({ favorite })`。
 
 ---
 
@@ -85,10 +97,10 @@ metadata:
 - **服务端数据面 (Server MCP，9 工具 / 2 提示词)**:
   `search_by_image`（识图）, `search_by_dialogue`（台词 FTS5）, `search_by_meaning`（按意思找台词，分数只在同一次查询内比高低）, `query_shelf`（多维检索）, `get_comic_detail`（章节目录元数据）, `recommend_unread`（未读淘书）, `create_direct_pass`（沙箱票据）, `get_shelf_stats`（全库统计）, `get_story_context`（按剧情原序取原始台词）；提示词 `find_comic_by_scene`（凭场景线索找本）、`recommend_comic`（按口味推荐）
 - **前端视口操作面 (Frontend WebMCP)**:
-  - `书架 (useShelfWebMCP)`: `shelf_search_comics`, `shelf_search_dialogue`, `shelf_search_image`, `shelf_read_comic`, `shelf_pick_random`, `shelf_open_comic`, `shelf_import_comic`
+  - `书架 (useShelfWebMCP)`: `shelf_search_comics`, `shelf_search_dialogue`, `shelf_search_image`, `shelf_read_comic`, `shelf_pick_random`, `shelf_open_comic`, `shelf_import_comic`, `shelf_batch_import_comics`
   - `详情 (useComicDetailWebMCP)`: `detail_start_reading`, `detail_cache_all_pages`, `detail_cache_chapter`, `detail_open_chapter`, `detail_get_comic_info`, `detail_toggle_favorite`, `detail_create_direct_pass`
-  - `阅读器 (useReaderWebMCP)`: `reader_jump_to_page`, `reader_turn_page`, `reader_switch_mode`, `reader_switch_fit`, `reader_toggle_auto_turn`, `reader_locate_bubble`, `reader_jump_chapter`
-  - `发现 (useDiscoveryWebMCP)`: `discovery_get_ranking`, `discovery_switch_timeframe`, `discovery_ingest_comic`
+  - `阅读器 (useReaderWebMCP)`: `reader_jump_to_page`, `reader_turn_page`, `reader_switch_mode`, `reader_switch_fit`, `reader_toggle_auto_turn`, `reader_locate_bubble`, `reader_jump_chapter`, `reader_toggle_favorite`
+  - `发现 (useDiscoveryWebMCP)`: `discovery_get_ranking`, `discovery_switch_timeframe`, `discovery_switch_source`, `discovery_open_detail`, `discovery_ingest_comic`
 
 ---
 

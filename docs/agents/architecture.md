@@ -46,7 +46,7 @@ flowchart TD
     end
 
     subgraph AppLayer["FastAPI 领域路由层 (Application Routers)"]
-        MCPServer["MCP 服务端路由 (routers/mcp.py)<br/>• 7大核心工具 / 3大资源 / 2大提示词<br/>• SSE / HTTP RPC / Stdio 管道"]
+        MCPServer["MCP 服务端路由 (routers/mcp.py)<br/>• 9大核心工具 / 3大资源 / 2大提示词<br/>• SSE / HTTP RPC / Stdio 管道"]
         AuthRouter["认证与通行证 (routers/auth.py)<br/>• 访客簿 / PIN认领 / 单本临时直达"]
         LibraryRouter["书架检索与导入 (routers/library.py)<br/>• 影子索引分页 / 分面聚合 / 排行榜"]
         MediaRouter["媒体流式推流 (routers/media.py)<br/>• WebP内容协商 / 双模封面 / 懒下载"]
@@ -338,7 +338,7 @@ JmImageTool.decode_and_save(num, source_image, save_path)
 | `backend/app/providers/local.py`    | 本地自建、外部白名单目录扫描、视频拆帧与多章节追加、重新装订；`normalize_id` / `generate_id` / `display_id`（ADR 0027）     |
 | `backend/app/providers/picacg.py`   | 哔咔 App REST 接口签名（HMAC-SHA256）、车号宽容清洗、多章节分卷映射与 3-CDN 容灾下载                                        |
 | `backend/app/providers/registry.py` | `{"jm": JMProvider(), "local": LocalProvider(), "picacg": PicacgProvider()}` 注册表                                         |
-| `backend/app/routers/mcp.py`        | 模型上下文协议（MCP）服务端路由（SSE流式、消息派发、直接RPC、7大工具、3大资源、2大Prompts）                                 |
+| `backend/app/routers/mcp.py`        | 模型上下文协议（MCP）服务端路由（SSE流式、消息派发、直接RPC、9大工具、3大资源、2大Prompts）                                 |
 | `backend/app/mcp_server.py`         | MCP 原生 Stdio 命令行模式运行入口（标准管道集成）                                                                           |
 | `backend/app/imsearch.py`           | 局部特征识图客户端（ORB 特征匹配、健康探测、路径解析）                                                                      |
 | `backend/app/config.py`             | 数据目录、访问密钥、防盗链开关、封面尺寸、识图服务地址配置                                                                  |

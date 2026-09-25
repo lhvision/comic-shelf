@@ -741,9 +741,9 @@ export function useShelfWebMCP(options: UseShelfWebMCPOptions): UseShelfWebMCPRe
           type: 'object',
           properties: {
             items: {
+              type: 'string',
               description:
-                '待收录的漫画车号、作品 ID 或分享链接列表。支持字符串数组或包含多个车号的多行纯文本',
-              oneOf: [{ type: 'array', items: { type: 'string' } }, { type: 'string' }],
+                '待收录的漫画车号、作品 ID 或分享链接列表。支持以换行、逗号或分号分隔的纯文本（例如 "JM523607, JM123456" 或多行粘贴）',
             },
             source: {
               type: 'string',
@@ -772,14 +772,14 @@ export function useShelfWebMCP(options: UseShelfWebMCPOptions): UseShelfWebMCPRe
         },
         async execute(args) {
           const {
-            items: rawInput,
+            items: rawInput = '',
             source: rawSource,
             prefetch_all = false,
             prefetch_covers = 4,
             favorite = false,
             tags = [],
           } = (args ?? {}) as {
-            items?: string[] | string
+            items?: string
             source?: 'jm' | 'picacg' | 'local'
             prefetch_all?: boolean
             prefetch_covers?: number
@@ -787,15 +787,10 @@ export function useShelfWebMCP(options: UseShelfWebMCPOptions): UseShelfWebMCPRe
             tags?: string[]
           }
 
-          let candidateList: string[] = []
-          if (Array.isArray(rawInput)) {
-            candidateList = rawInput.map((s) => String(s).trim()).filter(Boolean)
-          } else if (typeof rawInput === 'string') {
-            candidateList = rawInput
-              .split(/[\n,;，；\t]+/)
-              .map((s) => s.trim())
-              .filter(Boolean)
-          }
+          const candidateList = String(rawInput ?? '')
+            .split(/[\n,;，；\t]+/)
+            .map((s) => s.trim())
+            .filter(Boolean)
 
           const items = Array.from(new Set(candidateList))
           if (items.length === 0) {

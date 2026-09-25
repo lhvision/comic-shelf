@@ -662,6 +662,15 @@ describe('WebMCP Composables', () => {
         expect(parsed.results[1].warnings).toEqual(['已在书库中，未改动已有的红心与标签'])
         expect(parsed.message).toContain('其中 1 本有警告')
 
+        // 验证对多行与逗号分隔纯文本输入的兼容性
+        const textBatchRes = (await registeredTools['shelf_batch_import_comics']!({
+          items: 'JM111111\nJM222222, JM333333',
+        })) as {
+          content: Array<{ text: string }>
+        }
+        const textParsed = JSON.parse(textBatchRes.content[0]?.text ?? '{}')
+        expect(textParsed.total).toBe(3)
+
         scope.stop()
       } finally {
         // @ts-expect-error restore
