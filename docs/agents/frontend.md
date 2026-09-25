@@ -335,7 +335,7 @@
 
 ## 10. VueUse 优先与 Vue 3.5/3.6 现代语法零胶水代码规范（Modern Vue & Zero-Glue Architecture）
 
-- **查阅门禁**：新增交互组件、修改表单或重构状态逻辑前，必须查阅 `vueuse-functions` skill，严禁重复手写已有 VueUse composable 的样板代码。
+- **查阅门禁**：新增交互组件、修改表单或重构状态逻辑前，必须查阅 `vueuse-functions` skill，严禁重复手写已有 VueUse composable 的样板代码；也不要在终端反复跑 Node 脚本试探函数用法与选项。
 - **模板引用全面现代化（`useTemplateRef` 强制门禁）**：
   - 严禁在 `<script setup>` 中手写 `const el = ref<HTMLElement | null>(null)` 作为模板 DOM 引用或子组件引用；
   - 必须统一使用 Vue 3.5+ 原生 `useTemplateRef<T>('el')`（如 `useTemplateRef<HTMLDialogElement>('dialogEl')`、`useTemplateRef<InstanceType<typeof AppTooltip>>('tooltipRef')`），彻底实现模板字符串 ref 与内部变量绑定的强类型解耦；
@@ -464,6 +464,11 @@ graph TD
    })
    ```
 2. **内部按需解构**：在高阶 Composable 函数体头部根据业务调度需要就地精准解构，彻底消除视图层的胶水样板代码。
+
+### 14.3 契约注释与精准解构
+
+- 新增或重构 Composable、子组件时写完整 JSDoc/TSDoc：文件职责、入参、返回值；组件写明 Props 与 Emits 的业务含义。
+- 视图只解构模板和方法实际用到的 Ref 与函数。多余的声明由两道检查拦住：`.ts` 走 oxlint 的 `no-unused-vars`（`vite.config.ts`）；`.vue` 由 `pnpm type-check` 按 `tsconfig.app.json` 的 `noUnusedLocals` / `noUnusedParameters` 检查，oxlint 对 `.vue` 关掉了这条规则，免得误报模板 ref。错题本 #23、#99。
 
 ## 15. 打包分块、长效缓存与异步分流契约（ADR 0022）
 

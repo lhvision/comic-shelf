@@ -416,3 +416,9 @@ JmImageTool.decode_and_save(num, source_image, save_path)
   - **元数据检索瓶颈**：全量 JSON 无法全驻留内存（需数以十 GB），必须引入 **嵌入式 B-Tree 索引（SQLite / DuckDB / RocksDB）**，书架列表改为 SQL 分页游标；
   - **以图搜图瓶颈**：单机 SQLite 与单机 Faiss 无法承载数亿特征点，需迁移至分布式向量数据库（如 Milvus / Qdrant）与分布式任务队列。
 - **设计定位备忘**：纸间品牌定位为「本地优先的个人漫画收藏夹」（个人阅览室），避免为了千万级泛化爬虫场景过早引入重型数据库抽象，遵循当前极简无依赖的高效设计。
+
+## 8. 后端测试
+
+- 改了 Python 就跑 `pnpm test:py`（`scripts/test_py.sh`）：先跑 `backend/check_backend.py` 动态 AST 巡检（语法、导入、未定义符号），再跑 `backend/tests/test_*.py` 全部套件，要求全绿。
+- 只跑某一个套件：`pnpm test:py <文件名关键词>`，如 `pnpm test:py auth`。
+- 中间件全链路（鉴权、`no-store`、401）由 `backend/tests/test_dialogue_http_stack.py` 这类用例用真 HTTP 请求锁住，改中间件或路由后必须一起过。

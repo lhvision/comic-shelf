@@ -281,18 +281,17 @@ $COMIC_SHELF_DATA/
 
 纸间拥有完备的接口定义与系统设计文档体系：
 
-| 文档                                                           | 内容与定位                                                                                                           |
-| :------------------------------------------------------------- | :------------------------------------------------------------------------------------------------------------------- |
-| **交互式 API 文档**                                            | 启动服务后浏览器直接访问 `http://localhost:8000/docs`（Swagger UI）或 `/redoc` 查看全部实时端点、请求模型与参数定义  |
-| **[CONTEXT.md](CONTEXT.md)**                                   | 纸间领域模型与术语表（单一语义源，核心概念、收藏夹状态、阅读器与基础设施定义）                                       |
-| **[DEPLOYMENT.md](DEPLOYMENT.md)**                             | 生产容器化部署全景：Docker Compose、TrueNAS Scale / Unraid / 群晖 NAS 挂载配置、环境变量详解、反向代理与权限排查     |
-| **[docs/PITFALLS.md](docs/PITFALLS.md)**                       | 错题本与避坑红线速查表（历史故障复盘、高频反模式与避坑红线速查，提交前必读）                                         |
-| **[docs/CSS_RADAR.md](docs/CSS_RADAR.md)**                     | CSS 前瞻技术雷达（已落地特性用法、渐进增强降级方案与前沿规范追踪）                                                   |
-| **[docs/JS_RADAR.md](docs/JS_RADAR.md)**                       | JavaScript 前瞻技术雷达（原生异步承诺管线、AbortSignal 规范与集合运算）                                              |
-| **[docs/agents/architecture.md](docs/agents/architecture.md)** | 后端架构设计、数据存储模型、Provider 扩展体系、安全门禁与 SSE 单向事件流                                             |
-| **[docs/agents/frontend.md](docs/agents/frontend.md)**         | 前端视图与 Composable 地图、阅读器分页与手势、PWA 离线缓存与性能策略                                                 |
-| **[DESIGN_NOTES.md](DESIGN_NOTES.md)**                         | 纸间设计系统规范（Living Design System）、品牌哲学、色彩/组件层级与核心设计定律（历史演进见 `docs/design-archive/`） |
-| **[docs/adr/](docs/adr/)**                                     | 架构决策记录（Architecture Decision Records，涵盖系统重大架构抉择，ADR 0001 ~ 0027）                                 |
+| 文档                                                           | 内容与定位                                                                                                                                   |
+| :------------------------------------------------------------- | :------------------------------------------------------------------------------------------------------------------------------------------- |
+| **交互式 API 文档**                                            | 服务运行时的 `/docs`（Swagger UI）与 `/redoc`，由 FastAPI 自动生成；默认关闭，设 `COMIC_SHELF_ENABLE_DOCS=true` 才开放，公网部署建议保持关闭 |
+| **[CONTEXT.md](CONTEXT.md)**                                   | 纸间领域模型与术语表（单一语义源，核心概念、收藏夹状态、阅读器与基础设施定义）                                                               |
+| **[DEPLOYMENT.md](DEPLOYMENT.md)**                             | 生产容器化部署全景：Docker Compose、TrueNAS Scale / Unraid / 群晖 NAS 挂载配置、环境变量详解、反向代理与权限排查                             |
+| **[docs/PITFALLS.md](docs/PITFALLS.md)**                       | 错题本（每条“症状 / 根因 / 红线”，按编号或关键词查）                                                                                         |
+| **[CSS / JS 技术雷达](docs/CSS_RADAR.md)**                     | [CSS 技术雷达](docs/CSS_RADAR.md) 与 [JS 技术雷达](docs/JS_RADAR.md)（浏览器兼容性快查表、已落地特性的用法与降级方案）                       |
+| **[docs/agents/architecture.md](docs/agents/architecture.md)** | 后端架构设计、数据存储模型、Provider 扩展体系、安全门禁与 SSE 单向事件流                                                                     |
+| **[docs/agents/frontend.md](docs/agents/frontend.md)**         | 前端视图与 Composable 地图、阅读器分页与手势、PWA 离线缓存与性能策略                                                                         |
+| **[DESIGN_NOTES.md](DESIGN_NOTES.md)**                         | 纸间设计系统规范（Living Design System）、品牌哲学、色彩/组件层级与核心设计定律                                                              |
+| **[docs/adr/](docs/adr/)**                                     | 架构决策记录（Architecture Decision Records，涵盖系统重大架构抉择）                                                                          |
 
 ---
 

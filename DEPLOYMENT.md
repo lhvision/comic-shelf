@@ -458,39 +458,77 @@ onnxruntime>=1.20
 它不进 `backend/requirements.txt`：为了一句问题的在线编码（2ms）要每台机器多背约 70MB，
 而模型文件本身还得单独放一次。不装就是没有这条腿，其余功能一律不受影响。
 
-| 项目           | 实测值（真库 6254 条向量 / 512 维，CPU）                                                                                                                                                                               |
-| :------------- | :--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 运行时         | `onnxruntime`(CPU，会连带装上 numpy) + `tokenizers` ≈ 70MB                                                                                                                                                             |
-| 模型体积       | 23MB（量化 `bge-small-zh-v1.5`，ONNX，**不需要 torch**）                                                                                                                                                               |
-| 整库编码一次   | 41 秒（184 行/秒），落库 12.8MB 向量                                                                                                                                                                                   |
-| 每次搜索的代价 | 模型侧 2ms（只编码那一句问题）；**整条请求实测 250~300ms**，大头不在模型，在把命中气泡的原文回表（FTS5 的 UNINDEXED 列没有索引，候选池 50 页 = 264ms）。向量矩阵已进程内缓存，剩下这笔是已知待办，见 HANDOVER 议题 B。 |
-| 不装时的行为   | 关键词检索与 `*/ocr/sync` 入库完全不受影响（向量那一步只记一行日志）；`/api/search/dialogue-semantic` 返回 `available=false` + `reason=encoder_unavailable`                                                            |
+| 项目           | 实测值（真库 6254 条向量 / 512 维，CPU）                                                                                                                                                                                                                 |
+| :------------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 运行时         | `onnxruntime`(CPU，会连带装上 numpy) + `tokenizers` ≈ 70MB                                                                                                                                                                                               |
+| 模型体积       | 23MB（量化 `bge-small-zh-v1.5`，ONNX，**不需要 torch**）                                                                                                                                                                                                 |
+| 整库编码一次   | 41 秒（184 行/秒），落库 12.8MB 向量                                                                                                                                                                                                                     |
+| 每次搜索的代价 | 模型侧 2ms（只编码那一句问题）；**整条请求实测 250~300ms**，大头不在模型，在把命中气泡的原文回表（FTS5 的 UNINDEXED 列没有索引，候选池 50 页 = 264ms）。向量矩阵已进程内缓存，剩下这笔是已知待办，见 `docs/HANDOVER_NEXT_STAGE.md`“语义检索的性能待办”。 |
+| 不装时的行为   | 关键词检索与 `*/ocr/sync` 入库完全不受影响（向量那一步只记一行日志）；`/api/search/dialogue-semantic` 返回 `available=false` + `reason=encoder_unavailable`                                                                                              |
+
+### 🛠️ 如何在 NAS 或本地服务上启用语义检索（按需启用指南）
+
+#### 第一步：放置模型文件（随数据卷持久化，仅 24MB）
+
+模型文件放在数据持久化挂载目录的 `models/` 下，容器重建或升级**绝不丢失**：
+
+> 💡 **宿主机路径对应规则**：
+> 如果你的 Docker 映射为 `-v /volume1/docker/comic-shelf:/app/data`（或 Compose 默认的 `./backend/data:/app/data`），
+> 那么模型目录即为宿主机上的 `/volume1/docker/comic-shelf/models/bge-small-zh-v1.5/`。
 
 ```bash
-# 0) 装运行时（必须是 CPU 版 onnxruntime，别与 GPU 版混装：错题本 #140）
-pip install "onnxruntime>=1.20" "tokenizers>=0.21" -i https://pypi.tuna.tsinghua.edu.cn/simple
-# Debian slim 基座还要系统库 libstdc++6（libonnxruntime.so 直链它，缺了 import 就失败）；
-# 自建镜像时在 Dockerfile 的 pip 层后补一层：
-#   RUN apt-get update && apt-get install -y --no-install-recommends libstdc++6 \
-#       && rm -rf /var/lib/apt/lists/* && pip install "onnxruntime>=1.20" "tokenizers>=0.21"
-
-# 1) 放模型（DATA_DIR/models 会随 backend/data/ 一起被备份与挂载卷带走，容器重建不丢）
+# 1) 进入数据持久化目录（开发机为 backend/data/，NAS 为对应的宿主机真实挂载路径）
 mkdir -p backend/data/models/bge-small-zh-v1.5
-# 国内直连 huggingface.co 不通，走镜像：
-curl -L https://hf-mirror.com/Xenova/bge-small-zh-v1.5/resolve/main/onnx/model_quantized.onnx \
-     -o backend/data/models/bge-small-zh-v1.5/model.onnx
-curl -L https://hf-mirror.com/Xenova/bge-small-zh-v1.5/resolve/main/tokenizer.json \
-     -o backend/data/models/bge-small-zh-v1.5/tokenizer.json
-# 想放别处：COMIC_SHELF_EMBED_DIR=/mnt/nas_manga/models/bge-small-zh-v1.5（两个文件名保持不变）
+cd backend/data/models/bge-small-zh-v1.5
 
-# 2) 建一次全库向量（装完必须跑一次，否则状态一直是 vectors_missing；只认馆长口令，Machine Token 会被 403）
+# 2) 下载模型权重与分词配置（二选一：curl 或 wget，国内直连 HuggingFace 镜像）：
+# 选项 A: curl
+curl -L https://hf-mirror.com/Xenova/bge-small-zh-v1.5/resolve/main/onnx/model_quantized.onnx -o model.onnx
+curl -L https://hf-mirror.com/Xenova/bge-small-zh-v1.5/resolve/main/tokenizer.json -o tokenizer.json
+
+# 选项 B: wget（若 NAS 终端没有 curl）
+wget -O model.onnx https://hf-mirror.com/Xenova/bge-small-zh-v1.5/resolve/main/onnx/model_quantized.onnx
+wget -O tokenizer.json https://hf-mirror.com/Xenova/bge-small-zh-v1.5/resolve/main/tokenizer.json
+# 想放别处可配置环境变量：COMIC_SHELF_EMBED_DIR=/mnt/nas_manga/models/bge-small-zh-v1.5
+```
+
+#### 第二步：安装轻量 CPU 推理运行时（约 70MB）
+
+根据你的部署形态，选择以下**任一方式**即可（必须是 CPU 版 onnxruntime，严禁与 GPU 版混装：错题本 #140）：
+
+- **方式 A（已运行 Docker 容器，最快捷）**：
+  通过宿主机终端（或群晖 Container Manager / Portainer 等 Web 界面的「终端机」中打开 bash）执行一条命令在线补装，即刻生效：
+  ```bash
+  docker exec -it paper-room bash -c "apt-get update && apt-get install -y --no-install-recommends libstdc++6 && pip install 'onnxruntime>=1.20' 'tokenizers>=0.21' -i https://pypi.tuna.tsinghua.edu.cn/simple"
+  ```
+  _(注：Debian slim 基座需底层 `libstdc++6` 支持，故命令中一并包含系统库安装)_
+- **方式 B（自建 Docker 镜像，永久固化）**：
+  若在本地或 NAS 编译镜像，在 `Dockerfile` 的 pip 安装层后追加系统底层库与推理包：
+  ```dockerfile
+  RUN apt-get update && apt-get install -y --no-install-recommends libstdc++6 \
+      && rm -rf /var/lib/apt/lists/* \
+      && pip install "onnxruntime>=1.20" "tokenizers>=0.21" -i https://pypi.tuna.tsinghua.edu.cn/simple
+  ```
+- **方式 C（纯 Python 本地/开发机/宿主机环境）**：
+  激活虚拟环境直接执行：
+  ```bash
+  pip install "onnxruntime>=1.20" "tokenizers>=0.21" -i https://pypi.tuna.tsinghua.edu.cn/simple
+  ```
+
+#### 第三步：建立/同步向量与验证
+
+```bash
+# 1) 建一次全库向量（只在首次启用或换模型时跑一次；后续 ocr/sync 同步漫画时会自动增量编码单本）：
+# 若未设置 COMIC_SHELF_SECRET（局域网免密），可去掉 -H 头：
 curl -X POST http://127.0.0.1:8000/api/search/dialogue-vectors/rebuild \
      -H "Authorization: Bearer $COMIC_SHELF_SECRET"
 
-# 3) 验证：这句与库里任何台词都没有共同字，能返回内容就是通了
+# 2) 验证检索（输入无字面共同字的语义短语，能返回结果即代表全链路通畅）：
 curl "http://127.0.0.1:8000/api/search/dialogue-semantic?q=告白&limit=3" \
      -H "Authorization: Bearer $COMIC_SHELF_SECRET"
 ```
+
+> 💡 **算存分离极速技巧**：如果已经在开发机/PC 上跑过台词同步，开发机生成的 `backend/data/comic_dialogues.db` 里已经包含了算好的全库向量。直接将该 `.db` 文件覆盖到 NAS 的数据目录，NAS 就连上述建库时间都省了，启动即可秒级使用！
 
 日常**不用再手动重建**：`*/ocr/sync` 每同步一本就顺手重编那一本。只有两种情况需要手动跑第 2 步——
 第一次装模型，以及换模型（状态会报 `dim_mismatch`，新旧向量维度不同不能混着算余弦）。

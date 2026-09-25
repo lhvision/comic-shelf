@@ -33,7 +33,7 @@
 
 遇到重量级 UI 任务时，Agent 必须通过标准指令语法按序具象推进：
 
-> **Playbook 加载基准**：Agent 必须从系统提示词的 `<skills>` 列表中读取 `impeccable` 的基准目录 `<impeccable-dir>`，并在各步骤使用 `view_file` 打开对应文档。
+> **Playbook 加载基准**：Agent 先找到 `impeccable` skill 的目录 `<impeccable-dir>`，在各步骤读取对应文档。
 
 ### 1. 对齐与约束：`/impeccable init`
 
@@ -43,7 +43,7 @@
 
 ### 2. 方案与底线：`/impeccable craft <target>`
 
-- **强制加载底线规范**：必须首先调用 `view_file` 读取 `<impeccable-dir>/reference/craft-floor.md`（掌握触控尺寸底线、排版层级与对比度要求）；
+- **强制加载底线规范**：必须先读取 `<impeccable-dir>/reference/craft-floor.md`（掌握触控尺寸底线、排版层级与对比度要求）；
 - **起稿前强制关卡**：在写任何 `.vue`/`.css` 代码前，严禁直接实现；必须先在对话中梳理：**设计 Brief → 布局基调 → 关键交互**，提出 2~3 个方向供人类确认，拍板后才起稿。
 
 ### 3. 双轨隔离挑刺：`/impeccable critique <target>`
@@ -51,8 +51,8 @@
 利用“AI 挑刺别人的能力远强于自我审查”的特性，**必须物理隔离评审上下文**：
 
 - **A 轨（主观·独立设计总监）**：
-  - **必须调用 `invoke_subagent` 起独立子代理**（Role: `Design Director`）；
-  - **Subagent 派发指令契约**：Prompt 中必须显式要求：_“请首先使用 `view_file` 读取 `<impeccable-dir>/reference/critique.md`，严格按照其 10 项 Nielsen 可用性评分标准与认知负荷检测逻辑审查目标代码，必须挑出至少 1~2 项实质性 P1 缺陷，严禁全打满分（40/40）的虚假汇报”_；
+  - **必须派一个独立子代理（独立上下文）评审**（角色：`Design Director`）；
+  - **子代理派发指令契约**：Prompt 中必须显式要求：_“请先读取 `<impeccable-dir>/reference/critique.md`，严格按照其 10 项 Nielsen 可用性评分标准与认知负荷检测逻辑审查目标代码，必须挑出至少 1~2 项实质性 P1 缺陷，严禁全打满分（40/40）的虚假汇报”_；
 - **B 轨（客观·机器规则扫描）**：
   - 必须在终端运行 `pnpm detect:slop <target-file>`，通过确定性规则扫描排除显性 Slop 与格式漏洞；
 - **分级归类**：整理为 **P0（阻断）/ P1（缺陷）/ P2（体验）** 清单；刻意保留的取舍写进 `.impeccable/critique/ignore.md`。
@@ -81,6 +81,6 @@
 Agent 在声明任务完成前，必须核对以下红线：
 
 1. **严禁口头走流程**：对话里写了“我执行了 Impeccable”，但 `.impeccable/critique/` 没生成文件的，判定为任务未完成；
-2. **严禁自导自演假评审**：Critique 阶段必须使用 `invoke_subagent` 起独立子代理评审，严禁在同一会话中自己量自己的尺子；
+2. **严禁自导自演假评审**：Critique 阶段必须派一个独立子代理（独立上下文）评审，严禁在同一会话中自己量自己的尺子；
 3. **严禁无瑕疵满分快照**：全新或重构组件若出现 40/40 满分且无任何 P1 待办，判定为敷衍应付；
 4. **严禁绝对系统路径**：落盘与检测工具必须走 `pnpm critique write` / `pnpm detect:slop` 跨平台代理，严禁硬编码本机路径。

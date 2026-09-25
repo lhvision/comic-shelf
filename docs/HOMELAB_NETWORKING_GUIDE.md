@@ -514,7 +514,7 @@ Mac mini（尤其是 Apple Silicon M 系列芯片）待机功耗极低（4~8W）
 ### 2. 纸间服务与数据迁移
 
 1. **数据拷贝与外接硬盘柜挂载**：
-   - 鉴于漫画原图、360px 缩略图、以图搜图索引以及后续 AI 手稿矢量层（`.layers.json`）体量巨大（数百 GB 至数 TB），推荐 Mac mini 通过**雷电 4 或高速 USB-C (10Gbps+) 外接多盘位大容量硬盘柜（DAS / RAID 柜）**，格式化为 APFS 挂载至 `/Volumes/ComicStorage/data`；
+   - 鉴于漫画原图、360px 缩略图与以图搜图索引体量巨大（数百 GB 至数 TB），推荐 Mac mini 通过**雷电 4 或高速 USB-C (10Gbps+) 外接多盘位大容量硬盘柜（DAS / RAID 柜）**，格式化为 APFS 挂载至 `/Volumes/ComicStorage/data`；
    - **冷热存储分工**：外接大容量硬盘柜专供 `library/` 原图仓库与离线归档；Mac mini 内置极速 SSD 则留给 macOS 系统、Docker 运行时、SQLite 数据库与 MLX 本地 AI 大模型权重；
    - 将 TrueNAS 或历史服务器上的数据持久化目录完整同步至外接硬盘柜中。
 2. **启动主容器**：

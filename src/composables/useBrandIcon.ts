@@ -29,7 +29,7 @@ export interface UseBrandIconReturn {
  * 2. 供顶栏（AppHeader）与门禁看板（GateView）展示当前会话的看板娘形象；
  * 3. 将选中的头像同步到浏览器当前标签页的 Favicon 中。
  *
- * 【架构防御红线】（Pitfall 72 / iOS PWA 稳定性防线）：
+ * 【架构防御红线】（错题本 #72 / iOS PWA 稳定性防线）：
  * 严禁使用 `link[rel*='icon']` 等包含匹配选择器！
  * `'apple-touch-icon'` 包含 `'icon'` 子串，通配选择会导致 `<link rel="apple-touch-icon">`
  * 被动态覆写为 WebP 格式的随机头像，引发 iOS Safari 在「添加到主屏幕」时图标频繁漂移、

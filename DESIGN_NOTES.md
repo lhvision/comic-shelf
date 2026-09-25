@@ -2,7 +2,6 @@
 
 > **文档性质**：纸间设计系统单一真相源（Single Source of Truth）。
 > 每次涉及 UI/UX 组件新建、视图重构与视觉打磨前**必读**。
-> 历史演进日志（§01 – §52 次迭代记录）已归档至 [`docs/design-archive/MILESTONES_01_TO_52.md`](docs/design-archive/MILESTONES_01_TO_52.md)。
 
 ---
 
@@ -43,7 +42,6 @@
    - [§71 Vue 3.5/3.6 现代语法演进、模板引用强类型化与零胶水双向绑定架构](#sec-71)
    - [§72 阅读器双页开本排布（2 | 1 日漫开本）、分屏跨话横幅判定与设置项按需收敛体系](#sec-72)
    - [§73 单本沙箱借阅笺弹窗、四档黄金时效单选组与设计 Token 零失真契约](#sec-73)
-5. [历史演进里程碑归档索引（Historical Milestones Archive）](#5-历史演进里程碑归档索引historical-milestones-archive)
 
 ---
 
@@ -151,6 +149,7 @@
 
 - 全站图标统一收敛至 `src/components/icons/`（如 `IconClose.vue`, `IconCheck.vue`, `IconArrowLeft.vue`, `IconBookmark.vue`）；
 - 所有图标原子组件基于 `BaseIcon.vue`（规范 `size="1em"` 与 `viewBox="0 0 24 24"`）；
+- 静态场景直接 `import { IconXxx }`，动态场景用 `<AppIcon :name="..." />`，不要在单个组件里堆 `v-if/v-else-if` 切换图标；
 - 严禁在模板中内联书写未封装的 SVG 或 Unicode 字符。
 
 ### 3.3 视口渲染性能与预算（Rendering Budget）
@@ -725,19 +724,3 @@
    - 严禁对页码、时间戳等纯逻辑数值变量附加 `*El` 伪 DOM 匈牙利后缀（避免误读为 `HTMLElement`）；
    - 彻底废除函数体内 `const lastReadPage = progressEl` 的局部影子赋值缝合模式；
    - 变量命名全面以正统语义的 `lastReadPage` 为单一事实源，仅在最终 `return` 导出对象中为第三方或遗留代码提供 `@deprecated` 兼容桥梁。
-
----
-
-## 5. 历史演进里程碑归档索引（Historical Milestones Archive）
-
-本项目 1 至 52 次历史设计评审、挑刺分析与重构推演记录已完整收录于归档文档：
-
-📂 **[`docs/design-archive/MILESTONES_01_TO_52.md`](docs/design-archive/MILESTONES_01_TO_52.md)**
-
-| 历史小节范围  | 核心主题与代表性里程碑                                                        | 对应归档定位                                                                                                                                                            |
-| :------------ | :---------------------------------------------------------------------------- | :---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **§01 – §04** | 纸间品牌哲学起步、初版代码评审、设计系统对齐与端适配                          | [归档 §01–§04](docs/design-archive/MILESTONES_01_TO_52.md#1-frontend-design-脑前区思考)                                                                                 |
-| **§05 – §15** | 实时缓存进度、并发控制、多章节切片、危险操作门禁与 §13 顶层解构定律           | [归档 §05–§15](docs/design-archive/MILESTONES_01_TO_52.md#5-live-cache后台缓存实时进度critique--polish--adapt)                                                          |
-| **§16 – §27** | 物理纸本质感升级、Loading 插画、双口令门禁、View Transitions 与错题本体系     | [归档 §16–§27](docs/design-archive/MILESTONES_01_TO_52.md#16-全局组件与-ui-质感系统性升级纸质典藏物理感拒绝-8-bit-割裂)                                                 |
-| **§28 – §39** | 48 图预算增量加载、Popover/Anchor 浮层、PWA 离线存储与意图预热                | [归档 §28–§39](docs/design-archive/MILESTONES_01_TO_52.md#28-高并发冷热加载优化--多章节缓存-ui-体系化--文本截断与-hover-提示grill-with-docs-确认--impeccable-2345-规范) |
-| **§40 – §52** | 访客借阅证、Lighthouse 审计治理、移动端阅读器重构、暗室弹窗与滚动驱动双轨架构 | [归档 §40–§52](docs/design-archive/MILESTONES_01_TO_52.md#40-访客通行证唯一使用lru-多设备漫游与防重发放预警impeccable--adr-0007)                                        |

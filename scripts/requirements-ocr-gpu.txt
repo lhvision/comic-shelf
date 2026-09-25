@@ -8,7 +8,7 @@
 # CPU 基线里装的 `onnxruntime` 与这里的 `onnxruntime-gpu` **共用同一个
 # site-packages/onnxruntime/ 目录**，后装的只覆盖同名文件、留下混合目录。此时
 # get_available_providers() 依然列出 CUDAExecutionProvider，但会话创建静默退回 CPU——
-# providers 列表不是证据（见 docs/PITFALLS.md 第 137、140 条）。必须先卸干净两个发行版、
+# providers 列表不是证据（见错题本 #137、#140）。必须先卸干净两个发行版、
 # 连目录一起删掉，再装这一份。
 #
 # [cuda] 拉 CUDA 13 运行库（cublas / cuBLASLt / nvrtc / cufft / curand / nvjitlink），

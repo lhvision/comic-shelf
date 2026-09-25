@@ -47,7 +47,7 @@ if [ -z "$PYTHON" ]; then
 fi
 
 # 宿主有没有 NVIDIA 卡。WSL2 的 nvidia-smi 不在 PATH 里、只存在于 /usr/lib/wsl/lib，
-# 只查 command -v 会把带 4070 Ti 的机器误判成"纯 CPU 宿主机"（本项目踩过）。
+# 只查 command -v 会把带显卡的机器误判成"纯 CPU 宿主机"（本项目踩过）。
 host_gpu_smi() {
   if command -v nvidia-smi >/dev/null 2>&1; then
     echo "nvidia-smi"
