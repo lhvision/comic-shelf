@@ -721,7 +721,7 @@ describe('WebMCP Composables', () => {
 
         const batchRes = (await registeredTools['shelf_batch_import_comics']!({
           source: 'jm',
-          items: ['JM111111', 'JM222222', 'JM333333'],
+          items: 'JM111111, JM222222, JM333333',
           favorite: true,
         })) as {
           content: Array<{ text: string }>

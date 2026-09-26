@@ -870,6 +870,12 @@
 - **根因**：防爆破记录（`_login_failed_history` / `_login_failed_creds`）只在失败时追加但未设常态化 TTL 批量驱逐，过期键无限驻留内存；Vue Router 解析 `?bubble=1&bubble=2` 时将值解析为数组，而清洗函数假定只接收纯字符串，导致类型断言失败整条丢弃。
 - **红线**：所有基于内存字典的限流/防爆破容器必须内置带容量触发的 TTL 惰性清扫（`_prune_stale_login_tracking`）；前端解析 URL 查询参数（如 `parseBubbleBox`）必须前置考虑数组入参（`Array.isArray(raw) ? raw[0] : raw`），确保参数容错性。
 
+### 149. WebMCP inputSchema 滥用 `oneOf` 多态联合：Chrome DevTools 检查面板输入控件直接报废无法输入
+
+- **症状**：在 Chrome DevTools 的 WebMCP / Model Context 调试面板中测试工具（如 `shelf_batch_import_comics`）时，参数输入框（如 `items`）无法渲染、不可聚焦输入或直接报错，导致调试者完全无法从浏览器 DevTools 中测试该工具。
+- **根因**：Chrome DevTools 对注入到 `document.modelContext` 的 JSON Schema 解析器不支持复杂的 `oneOf` / `anyOf` 多态类型（例如 `oneOf: [{ type: 'string' }, { type: 'array' }]`），遇到多态 Schema 时表单自动生成器崩溃或将字段视作不支持的复合对象而置灰/静默忽略。
+- **红线**：面向浏览器 `useWebMCP` / `document.modelContext` 注册的工具，参数 `inputSchema` 必须保持基础扁平标量（如纯 `type: 'string'`），严禁使用 `oneOf`；如需同时支持数组与分隔文本，一律将 Schema 声明为 `type: 'string'`，在 `execute(args)` 执行层内部自行 `Array.isArray(raw) ? ... : String(raw).split(...)` 兼容，兼顾 DevTools UI 渲染与程序化调用的双向兼容。
+
 ---
 
 ## 🚦 交付门禁

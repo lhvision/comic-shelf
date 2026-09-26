@@ -740,7 +740,7 @@ export function useShelfWebMCP(options: UseShelfWebMCPOptions): UseShelfWebMCPRe
     ? useWebMCP({
         name: 'shelf_batch_import_comics',
         description:
-          '批量收录导入多部漫画至本地书库。单次批量严格同源，必须显式指定统一图源 Provider（jm、picacg 或 local）；支持传入车号列表（数组或换行/逗号分隔文本，如 ["JM523607", "JM123456"] 或多行车号）；内部以 5 秒安全间隔串行执行防风控；单本失败隔离容错，返回结构化汇总报告',
+          '批量收录导入多部漫画至本地书库。单次批量严格同源，必须显式指定统一图源 Provider（jm、picacg 或 local）；支持传入以换行、逗号或分号分隔的车号列表纯文本（例如 "JM523607, JM123456" 或多行粘贴）；内部以 5 秒安全间隔串行执行防风控；单本失败隔离容错，返回结构化汇总报告',
         inputSchema: {
           type: 'object',
           properties: {
@@ -751,21 +751,9 @@ export function useShelfWebMCP(options: UseShelfWebMCPOptions): UseShelfWebMCPRe
                 '必须显式指定的统一图源 Provider（"jm"、"picacg" 或 "local"）。单次批量严格同源，严禁省略以避免跨平台车号冲突',
             },
             items: {
-              oneOf: [
-                {
-                  type: 'string',
-                  description:
-                    '待收录的漫画车号、作品 ID 或分享链接列表。支持以换行、逗号或分号分隔的纯文本（例如 "JM523607, JM123456" 或多行粘贴）',
-                },
-                {
-                  type: 'array',
-                  items: { type: 'string' },
-                  description:
-                    '待收录的漫画车号或作品 ID 字符串列表（例如 ["JM523607", "JM123456"]）',
-                },
-              ],
+              type: 'string',
               description:
-                '待收录的漫画车号、作品 ID 或分享链接列表。支持数组或换行/逗号分隔的纯文本',
+                '待收录的漫画车号、作品 ID 或分享链接列表。支持以换行、逗号或分号分隔的纯文本（例如 "JM523607, JM123456" 或多行粘贴）',
             },
             prefetch_all: {
               type: 'boolean',
@@ -794,13 +782,6 @@ export function useShelfWebMCP(options: UseShelfWebMCPOptions): UseShelfWebMCPRe
             )
           }
           isBatchRunning = true
-          const handleBeforeUnload = (e: BeforeUnloadEvent) => {
-            e.preventDefault()
-            e.returnValue = ''
-          }
-          if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
-            window.addEventListener('beforeunload', handleBeforeUnload)
-          }
           try {
             const {
               items: rawInput = '',
@@ -810,7 +791,7 @@ export function useShelfWebMCP(options: UseShelfWebMCPOptions): UseShelfWebMCPRe
               favorite = false,
               tags = [],
             } = (args ?? {}) as {
-              items?: string | string[]
+              items?: string
               source?: ComicSource
               prefetch_all?: boolean
               prefetch_covers?: number
@@ -824,11 +805,8 @@ export function useShelfWebMCP(options: UseShelfWebMCPOptions): UseShelfWebMCPRe
               )
             }
 
-            const candidateList = (
-              Array.isArray(rawInput)
-                ? rawInput.map(String)
-                : String(rawInput ?? '').split(/[\n,;，；\t]+/)
-            )
+            const candidateList = String(rawInput ?? '')
+              .split(/[\n,;，；\t]+/)
               .map((s) =>
                 s
                   .trim()
@@ -910,9 +888,6 @@ export function useShelfWebMCP(options: UseShelfWebMCPOptions): UseShelfWebMCPRe
               results,
             }
           } finally {
-            if (typeof window !== 'undefined' && typeof window.removeEventListener === 'function') {
-              window.removeEventListener('beforeunload', handleBeforeUnload)
-            }
             isBatchRunning = false
           }
         },

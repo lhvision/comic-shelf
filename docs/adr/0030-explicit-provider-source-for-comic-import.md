@@ -38,7 +38,7 @@
 
 1. **Schema 结构化约束**：
    - `shelf_import_comic` 的 `inputSchema.required` 显式声明 `['source']`，并指明 `source_id` 与 `local_path` 仅作为兼容别名，推荐使用 `id`；
-   - `shelf_batch_import_comics` 的 `inputSchema.required` 显式声明 `['items', 'source']`，其中 `items` 声明为 `oneOf` 联合类型，原生兼容纯文本与字符串数组。
+   - `shelf_batch_import_comics` 的 `inputSchema.required` 显式声明 `['items', 'source']`，其中 `items` 严格保持单纯文本 Schema（`type: 'string'`），以规避 Chrome DevTools WebMCP 面板与客户端对多态 `oneOf` Schema 的控件渲染缺陷；支持换行、逗号或分号分隔的纯文本。
 2. **运行时防御性阻断**：
    - 若调用方因上下文脱节或旧脚本遗漏 `source`，运行时在最前端立即抛出具象中文异常：
      `"收录漫画必须显式指定来源 Provider (source: "jm" | "picacg" | "local")，为杜绝多平台车号冲突，系统已不再提供隐式猜测。"`；
@@ -53,8 +53,6 @@
    - 候选车号切分自动容错剥离 Markdown 序号与列表标记（如 `1. JM...`、`2) JM...`、`- JM...`），提升复制粘贴鲁棒性；
    - 批次执行过程中，由具体 Provider 的 `normalize_id` 执行单项车号规整与校验；
    - 若某单项车号不符合当前声明的 `source` 规范，该项标记为 `status: 'failed'` 并记录原因，批次内其余合法车号继续执行，绝不因单条手误导致整批 50 本任务中断。
-3. **长任务页面防误关保护**：
-   - 批量任务执行期间自动挂载浏览器 `beforeunload` 监听器，并在 `finally` 阶段保证安全解绑，防止执行期间用户或浏览器误刷新中断长任务。
 
 ## 效果与收益
 
