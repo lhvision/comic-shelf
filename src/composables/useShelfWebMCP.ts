@@ -23,10 +23,9 @@ import {
 } from '@/composables/useReaderBubble'
 import { useShelfState } from '@/composables/useShelfState'
 import { useLibraryStore } from '@/stores/library'
-import type { ReadingStatus, SortKey } from '@/types'
+import type { ComicSource, ReadingStatus, SortKey } from '@/types'
 
-const ALLOWED_SOURCES = ['jm', 'picacg', 'local'] as const
-type AllowedSource = (typeof ALLOWED_SOURCES)[number]
+const ALLOWED_SOURCES = ['jm', 'picacg', 'local'] as const satisfies readonly ComicSource[]
 
 /**
  * `useShelfWebMCP` 依赖项契约
@@ -534,7 +533,7 @@ export function useShelfWebMCP(options: UseShelfWebMCPOptions): UseShelfWebMCPRe
       tags = [],
     } = opts
 
-    if (!rawSource || !ALLOWED_SOURCES.includes(rawSource as AllowedSource)) {
+    if (!rawSource || !ALLOWED_SOURCES.includes(rawSource as ComicSource)) {
       throw new Error(
         '收录漫画必须显式指定来源 Provider (source: "jm" | "picacg" | "local")，为杜绝多平台车号冲突，系统已不再提供隐式猜测。',
       )
@@ -628,12 +627,12 @@ export function useShelfWebMCP(options: UseShelfWebMCPOptions): UseShelfWebMCPRe
             },
             source_id: {
               type: 'string',
-              description: '与 id 等效的漫画唯一作品标识符（若传入则优先使用）',
+              description: '（兼容别名，推荐使用 id）与 id 等效的漫画唯一作品标识符',
             },
             local_path: {
               type: 'string',
               description:
-                '若导入服务器本地已有文件夹或 PDF 文件，可传入本地路径（与 id 等效，此时 source 必须为 "local"）',
+                '（兼容别名，推荐使用 id）若导入服务器本地已有文件夹或 PDF 文件，可传入本地路径（此时 source 必须为 "local"）',
             },
             prefetch_all: {
               type: 'boolean',
@@ -682,13 +681,13 @@ export function useShelfWebMCP(options: UseShelfWebMCPOptions): UseShelfWebMCPRe
             open_after?: boolean
           }
 
-          if (!rawSource || !ALLOWED_SOURCES.includes(rawSource as AllowedSource)) {
+          if (!rawSource || !ALLOWED_SOURCES.includes(rawSource as ComicSource)) {
             throw new Error(
               '收录漫画必须显式指定来源 Provider (source: "jm" | "picacg" | "local")，为杜绝多平台车号冲突，系统已不再提供隐式猜测。',
             )
           }
 
-          if (local_path && rawSource !== 'local' && !id && !source_id) {
+          if (local_path && rawSource !== 'local') {
             throw new Error('传入 local_path 本地路径时，图源 source 必须为 "local"。')
           }
 
@@ -752,9 +751,21 @@ export function useShelfWebMCP(options: UseShelfWebMCPOptions): UseShelfWebMCPRe
                 '必须显式指定的统一图源 Provider（"jm"、"picacg" 或 "local"）。单次批量严格同源，严禁省略以避免跨平台车号冲突',
             },
             items: {
-              type: 'string',
+              oneOf: [
+                {
+                  type: 'string',
+                  description:
+                    '待收录的漫画车号、作品 ID 或分享链接列表。支持以换行、逗号或分号分隔的纯文本（例如 "JM523607, JM123456" 或多行粘贴）',
+                },
+                {
+                  type: 'array',
+                  items: { type: 'string' },
+                  description:
+                    '待收录的漫画车号或作品 ID 字符串列表（例如 ["JM523607", "JM123456"]）',
+                },
+              ],
               description:
-                '待收录的漫画车号、作品 ID 或分享链接列表。支持以换行、逗号或分号分隔的纯文本（例如 "JM523607, JM123456" 或多行粘贴）',
+                '待收录的漫画车号、作品 ID 或分享链接列表。支持数组或换行/逗号分隔的纯文本',
             },
             prefetch_all: {
               type: 'boolean',
@@ -783,6 +794,13 @@ export function useShelfWebMCP(options: UseShelfWebMCPOptions): UseShelfWebMCPRe
             )
           }
           isBatchRunning = true
+          const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+            e.preventDefault()
+            e.returnValue = ''
+          }
+          if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
+            window.addEventListener('beforeunload', handleBeforeUnload)
+          }
           try {
             const {
               items: rawInput = '',
@@ -792,23 +810,31 @@ export function useShelfWebMCP(options: UseShelfWebMCPOptions): UseShelfWebMCPRe
               favorite = false,
               tags = [],
             } = (args ?? {}) as {
-              items?: string
-              source?: 'jm' | 'picacg' | 'local'
+              items?: string | string[]
+              source?: ComicSource
               prefetch_all?: boolean
               prefetch_covers?: number
               favorite?: boolean
               tags?: string[]
             }
 
-            if (!rawSource || !ALLOWED_SOURCES.includes(rawSource as AllowedSource)) {
+            if (!rawSource || !ALLOWED_SOURCES.includes(rawSource as ComicSource)) {
               throw new Error(
                 '收录漫画必须显式指定来源 Provider (source: "jm" | "picacg" | "local")，为杜绝多平台车号冲突，系统已不再提供隐式猜测。',
               )
             }
 
-            const candidateList = String(rawInput ?? '')
-              .split(/[\n,;，；\t]+/)
-              .map((s) => s.trim())
+            const candidateList = (
+              Array.isArray(rawInput)
+                ? rawInput.map(String)
+                : String(rawInput ?? '').split(/[\n,;，；\t]+/)
+            )
+              .map((s) =>
+                s
+                  .trim()
+                  .replace(/^(?:[-*•]\s*|\d+[.、)）]\s*)/, '')
+                  .trim(),
+              )
               .filter(Boolean)
 
             const items = Array.from(new Set(candidateList))
@@ -884,6 +910,9 @@ export function useShelfWebMCP(options: UseShelfWebMCPOptions): UseShelfWebMCPRe
               results,
             }
           } finally {
+            if (typeof window !== 'undefined' && typeof window.removeEventListener === 'function') {
+              window.removeEventListener('beforeunload', handleBeforeUnload)
+            }
             isBatchRunning = false
           }
         },

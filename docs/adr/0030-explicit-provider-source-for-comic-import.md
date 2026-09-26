@@ -28,17 +28,17 @@
    - 任何层级的收录操作必须显式传入 `source`（枚举 `['jm', 'picacg', 'local']`）。
 2. **后端 API 与前端类型定义严格同步**：
    - 服务端 `backend/app/models.py` 中 `ImportRequest.source` 移除 `= "jm"` 默认值，改为严格必填字段 `source: str`，杜绝任何历史偏袒；
-   - 前端 `src/types/index.ts` 中 `ImportRequest.source?: string` 收敛为 `source: string`。
+   - 前端 `src/types/index.ts` 导出统一字面量类型 `ComicSource = 'jm' | 'picacg' | 'local'`，并将 `ImportRequest.source` 升级为非空强类型约束。
 3. **本地自建图集规范化**：
-   - 本地图集收录一律声明 `source: 'local'`，路径通过 `id` 传入（保留 `local_path` 兼容同义别名）。
+   - 本地图集收录一律声明 `source: 'local'`，路径通过 `id` 传入（保留 `local_path` 兼容同义别名，且非 local 图源传入 `local_path` 严格互斥拦截）。
 4. **职责归位与冗余代码剥离**：
    - 前端彻底移除对特定图源标识符的局部正则嗅探（如原先冗余的哔咔 24 位 Hex 提取）及中间转接变量，输入透传至后端，统一由对应 Provider 的 `normalize_id` 担当规范化唯一真理源。
 
 ### 二、WebMCP 工具双重门禁与友好报错
 
 1. **Schema 结构化约束**：
-   - `shelf_import_comic` 的 `inputSchema.required` 显式声明 `['source']`；
-   - `shelf_batch_import_comics` 的 `inputSchema.required` 显式声明 `['items', 'source']`。
+   - `shelf_import_comic` 的 `inputSchema.required` 显式声明 `['source']`，并指明 `source_id` 与 `local_path` 仅作为兼容别名，推荐使用 `id`；
+   - `shelf_batch_import_comics` 的 `inputSchema.required` 显式声明 `['items', 'source']`，其中 `items` 声明为 `oneOf` 联合类型，原生兼容纯文本与字符串数组。
 2. **运行时防御性阻断**：
    - 若调用方因上下文脱节或旧脚本遗漏 `source`，运行时在最前端立即抛出具象中文异常：
      `"收录漫画必须显式指定来源 Provider (source: "jm" | "picacg" | "local")，为杜绝多平台车号冲突，系统已不再提供隐式猜测。"`；
@@ -49,9 +49,12 @@
 1. **单批次严格同源（Homogeneous Batch）**：
    - 一次 `shelf_batch_import_comics` 任务严格锁定单一 `source`，批次内部 5 秒防风控节流与状态统计在同源上下文中有序推进；
    - 若调用者持有混合来源清单，必须由上层智能体负责按图源分组，拆分为多次同源批量任务发起。
-2. **格式校验与单项错误隔离**：
+2. **格式校验、输入清洗与单项错误隔离**：
+   - 候选车号切分自动容错剥离 Markdown 序号与列表标记（如 `1. JM...`、`2) JM...`、`- JM...`），提升复制粘贴鲁棒性；
    - 批次执行过程中，由具体 Provider 的 `normalize_id` 执行单项车号规整与校验；
    - 若某单项车号不符合当前声明的 `source` 规范，该项标记为 `status: 'failed'` 并记录原因，批次内其余合法车号继续执行，绝不因单条手误导致整批 50 本任务中断。
+3. **长任务页面防误关保护**：
+   - 批量任务执行期间自动挂载浏览器 `beforeunload` 监听器，并在 `finally` 阶段保证安全解绑，防止执行期间用户或浏览器误刷新中断长任务。
 
 ## 效果与收益
 

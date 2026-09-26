@@ -127,9 +127,12 @@ export interface ComicDetail {
   cover_paths: string[]
 }
 
+/** 支持的漫画图源 Provider 标识符 */
+export type ComicSource = 'jm' | 'picacg' | 'local'
+
 export interface ImportRequest {
   id: string
-  source: string
+  source: ComicSource | (string & {})
   prefetch_covers?: number
   prefetch_all?: boolean
   refresh?: boolean

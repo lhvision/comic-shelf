@@ -113,7 +113,7 @@
 - `shelf_import_comic({ source, id?, source_id?, local_path?, prefetch_all?, prefetch_covers?, favorite?, tags?, open_after? })`：
   将远端或服务器本地漫画收录导入至书架（必须显式指定 `source` 图源 Provider 以杜绝多平台车号冲突；支持后台全本离线预缓存、初始喜欢标记、自定义标签追加与导入后自动直达详情页）。**【仅馆长权限】**
 - `shelf_batch_import_comics({ source, items, prefetch_all?, prefetch_covers?, favorite?, tags? })`：
-  批量收录导入多部漫画至本地书库（必须显式指定统一 `source` 图源 Provider，单批次严格同源；支持纯文本多行/逗号分隔车号，上限 50 本，内部 5s 安全间隔串行防风控；单本失败隔离容错）。**【仅馆长权限】**
+  批量收录导入多部漫画至本地书库（必须显式指定统一 `source` 图源 Provider，单批次严格同源；支持纯文本多行/逗号分隔或字符串数组，智能容错剥离 Markdown 列表点与序号，上限 50 本，内部 5s 安全间隔串行防风控并附带页面防误关保护；单本失败隔离容错）。**【仅馆长权限】**
 - `shelf_pick_random({ favoritesOnly?, source?, openReader? })`：
   从当前书架藏书中随机淘选一本漫画，支持限定已标记喜欢或特定图源，并可选择直达详情页或直接进入阅读器。
 - `shelf_open_comic({ source, source_id, chapter_id? })`：

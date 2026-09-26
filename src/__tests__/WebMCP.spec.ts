@@ -530,6 +530,20 @@ describe('WebMCP Composables', () => {
           '传入 local_path 本地路径时，图源 source 必须为 "local"',
         )
 
+        // 传入 local_path 且附带 id 但 source 不为 local 时同样必须阻断
+        const conflictLocalWithIdRes = (await importComicExecute!({
+          id: '523607',
+          local_path: 'public/frames',
+          source: 'jm',
+        })) as {
+          content: Array<{ text: string }>
+          isError?: boolean
+        }
+        expect(conflictLocalWithIdRes.isError).toBe(true)
+        expect(conflictLocalWithIdRes.content[0]?.text).toContain(
+          '传入 local_path 本地路径时，图源 source 必须为 "local"',
+        )
+
         const importRes = await importComicExecute!({
           id: '999999',
           source: 'jm',
@@ -730,15 +744,18 @@ describe('WebMCP Composables', () => {
         expect(parsed.results[1].warnings).toEqual(['已在书库中，未改动已有的红心与标签'])
         expect(parsed.message).toContain('其中 1 本有警告')
 
-        // 验证对多行与逗号分隔纯文本输入的兼容性
+        // 验证对多行、逗号分隔及 Markdown 序号/列表前缀纯文本输入的兼容与清洗
         const textBatchRes = (await registeredTools['shelf_batch_import_comics']!({
           source: 'jm',
-          items: 'JM111111\nJM222222, JM333333',
+          items: '1. JM111111\n2. JM222222, - JM333333',
         })) as {
           content: Array<{ text: string }>
         }
         const textParsed = JSON.parse(textBatchRes.content[0]?.text ?? '{}')
         expect(textParsed.total).toBe(3)
+        expect(textParsed.results[0].id).toBe('JM111111')
+        expect(textParsed.results[1].id).toBe('JM222222')
+        expect(textParsed.results[2].id).toBe('JM333333')
 
         // 验证并发调用互斥锁（Fail-Fast）拦截
         const pendingFirst = registeredTools['shelf_batch_import_comics']!({
