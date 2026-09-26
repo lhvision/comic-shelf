@@ -117,6 +117,15 @@ describe('useShelfState composable', () => {
       shelf.hydrateFromQuery({ sort: 'cached' })
       expect(shelf.sortBy.value).toBe('cached')
     })
+
+    it('hydrates slash command mode via cmd', () => {
+      shelf.hydrateFromQuery({ cmd: 'dialogue' })
+      expect(shelf.searchActiveCommand.value).toBe('dialogue')
+      expect(shelf.hasActiveFilters.value).toBe(true)
+
+      shelf.hydrateFromQuery({ cmd: 'author' })
+      expect(shelf.searchActiveCommand.value).toBe('author')
+    })
   })
 
   describe('buildShareUrl', () => {

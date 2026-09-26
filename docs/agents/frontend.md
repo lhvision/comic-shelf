@@ -21,6 +21,7 @@
 | `src/utils/libraryFilterCore.ts`                   | 书架多维检索与复合排序核心纯函数（主线程与 Web Worker 共享，弱引用小写缓存与自然拼音排序）                                                                                                                                         |
 | `src/workers/libraryFilter.worker.ts`              | 书架海量检索专用 Web Worker 线程（常驻内存快照、接收微量查询参数、向主线程回传轻量 ID 数组）                                                                                                                                       |
 | `src/composables/useSearchCommands.ts`             | 快捷指令中枢与命令胶囊状态机：斜杠触发、模糊过滤、键盘选中、模式切换与列表冻结                                                                                                                                                     |
+| `src/composables/useSearchHistory.ts`              | 搜索历史状态机：端侧 localStorage 驱动、最多 8 条 LRU 淘汰、快捷指令（/台词、/作者、/车号）徽标沉淀、防重复置顶、单条移除与一键清空                                                                                                |
 | `src/composables/useDialogueSearch.ts`             | 分镜台词全文检索状态机：短词防爆守卫、防抖请求、**结果粒度是页不是气泡**（`bubble_count` 为候选池内命中数、`>1` 才显示）、直达时一次性带齐 `bubble_box`＋`bubble_boxes`＋`bubble_text`（编解码复用 `useReaderBubble`，两侧各封顶） |
 | `src/composables/useShelfState.ts`                 | 书架会话上下文记忆单例：跨路由纵向视口滚动锚定（免疫浏览器历史快照归零）、展开批次、归档专匣开闭、筛选条件保持、单向 URL 深层水合（hydrateFromQuery）与直达分享链接构建（buildShareUrl）                                           |
 | `src/composables/usePaginationFold.ts`             | 画卷与书架分批折叠展开状态机：受控步进铺开（24页/12本）、60本安全刹车、显式余量徽印计算与平滑滚顶自愈                                                                                                                              |
@@ -84,6 +85,7 @@
 | `src/components/AppPopover.vue`                    | 现代顶层锚定交互浮层（自动碰撞翻转、轻量失焦关闭、Invoker Commands API 声明式触发器与焦点归还）                                                                                                                                    |
 | `src/components/library/SearchCommandChip.vue`     | 朱砂印章式快捷命令胶囊：视觉前缀提示、独立关闭按钮与无障碍状态展示                                                                                                                                                                 |
 | `src/components/library/SearchCommandMenu.vue`     | 斜杠快捷指令选择面板：Combobox 键盘导航、指令描述与分类高亮                                                                                                                                                                        |
+| `src/components/library/SearchHistoryMenu.vue`     | 搜索历史最近搜索浮层：水墨纸质面板、快捷指令印章徽记区分、单条删除与 Listbox 键盘导航                                                                                                                                              |
 | `src/components/library/DialogueSearchPopover.vue` | 台词检索结果浮层：一页一行的分镜卡片、高亮片段安全渲染、`命中 N 页 / N 处命中` 计数（候选池内下界，「至少」只写在 `title` 里）、直达阅读器锚定与读屏预期说明                                                                       |
 | `src/components/StoragePopover.vue`                | 阅览室设备与离线存储管理浮层（3px平直刻度槽/分项账单/双级清理/两步确认）                                                                                                                                                           |
 | `src/components/ReaderPassPopover.vue`             | 访客借阅证浮层：读者身份印章展开、专属阅读统计与平滑交还凭证退出                                                                                                                                                                   |
@@ -247,6 +249,18 @@
   `ChapterView` 与 `ComicDetailView` 均通过 `useSystemEvents` 监听 `lastLibraryEvent`（服务端 `library_changed` SSE 事件流与同源多标签页 `BroadcastChannel` 本地事件通道）。
   - **按需长连接拉起**：当触发后台缓存或导入时，通过 `beginTask` 动态建立长连接；全部任务完成后延迟 5 秒（`TASK_TEARDOWN_COOLDOWN_MS = 5000`）防抖注销，常态浏览保持 0 pending 请求；
   - **跨标签页零流量直达**：本标签页完成操作时，调用 `broadcastLocalChange` 向其他同源标签页同步，接收端收到匹配当前漫画的事件后自动执行后台静默对账（`load(true, true)`）。
+
+## 6.5 书架检索状态驻留与搜索历史体系
+
+- **检索状态跨路由驻留（Session Retention）**：
+  读者在书架使用常规关键词过滤、快捷指令（`/台词`、`/作者`、`/车号`）或以图搜图完成检索后，点击漫画进入阅读器或详情页，返回书架时通过 `useShelfState` 保持的 `search`、`searchActiveCommand` 与 `useImageSearch` 结果完整还原退出前的检索态。修复初次挂载时 `useShelfSearch` 内部 immediate watcher 将空值刷入 `shelfSearch` 导致的意外清空 Bug。
+- **搜索历史沉淀机制（Search History & `useSearchHistory`）**：
+  - **存储契约**：遵循项目标准前缀，由纯端侧 `localStorage['comic-shelf:search-history:v1']` 驱动，保持本地优先与读者隐私隔离；对外部脏数据执行 `Number.isFinite` 与受控指令枚举严密自愈；
+  - **容量与淘汰**：严格执行 8 条上限的 LRU 淘汰策略，重复搜索关键词自动置顶，超出自动剔除最旧记录；
+  - **沉淀触发点与语法防御**：仅在按下回车键（`Enter`）、点击书架某本漫画卡片进入详情/阅读、或在台词结果中点击条目直达分镜时记录，彻底隔绝打字过程中的拼音中间态垃圾数据；未激活指令模式下的斜杠指令语法（如 `/` 或 `/未知指令`）严格拦截不沉淀，杜绝误录导致书架过滤置空的死循环；
+  - **快捷指令区分**：带参指令（`/台词`、`/车号`、`/作者`）同步沉淀为带印章标签的历史项（如 `[台词] xxx`），点击一键切回对应指令胶囊并填词；无参即时动作（`/随机`）不沉淀；
+  - **多意图浮层防冲突原则**：仅在输入框聚焦且内容为空时展开 `SearchHistoryMenu.vue`；一旦键入字符或 `/`，历史浮层立刻隐藏，让位给即时筛选与快捷指令选单；
+  - **无障碍与触控保障**：遵循 WAI-ARIA Combobox / Listbox 规范，浮层内部辅助按钮设置 `tabindex="-1"` 排除 Tab 焦点序列，由输入框按 `Delete` 键集中调度单条删除；按 `Tab` 键向后失焦时自动平滑收起浮层；移动端删除按钮通过伪类扩展至 44×44px 触控热区，杜绝误触。
 
 ## 7. 阅读器当前行为
 

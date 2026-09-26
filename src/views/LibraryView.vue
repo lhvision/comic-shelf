@@ -19,6 +19,7 @@ import ImageSearchChip from '@/components/library/ImageSearchChip.vue'
 import DialogueSearchPopover from '@/components/library/DialogueSearchPopover.vue'
 import SearchCommandChip from '@/components/library/SearchCommandChip.vue'
 import SearchCommandMenu from '@/components/library/SearchCommandMenu.vue'
+import SearchHistoryMenu from '@/components/library/SearchHistoryMenu.vue'
 import ThemeSelect from '@/components/ThemeSelect.vue'
 import AppButton from '@/components/AppButton.vue'
 import AppIcon from '@/components/AppIcon.vue'
@@ -167,16 +168,26 @@ const {
   dialogueError,
   dialogueQuery,
   dialogueFocusedIndex,
-  isDialogueListboxShown,
+  historyFocusedIndex,
+  searchHistory,
+  isHistoryListboxShown,
+  isComboboxExpanded,
+  activeComboboxControls,
+  activeComboboxActivedescendant,
   handleSelectCommand,
   handleClearCommand,
   closeDialogueSearch,
+  handleSelectHistory,
+  handleRemoveHistory,
+  handleClearHistory,
+  commitSearchHistory,
   onSearchFocus,
   onSearchKeydown,
   navigateToResult,
 } = useShelfSearch({
   activeSource,
   shelfSearch: search,
+  shelfCommand: shelf.searchActiveCommand,
   filteredItems: filtered,
   allItems: computed(() => store.items || []),
   router,
@@ -199,8 +210,10 @@ watch(activeSource, (newSource, oldSource) => {
 onMounted(() => {
   // 仅在初始挂载时单向恢复 URL 参数（SSOT 保持内存驱动，杜绝交互过程高频 replace 污染导航）
   const hasHydrated = shelf.hydrateFromQuery(route.query)
-  if (hasHydrated && shelf.search.value && !searchInput.value) {
-    searchInput.value = shelf.search.value
+  if (hasHydrated) {
+    if (shelf.search.value && !searchInput.value) {
+      searchInput.value = shelf.search.value
+    }
   }
   if (shelf.shelfScrollY.value > 0) {
     nextTick(() => window.scrollTo({ top: shelf.shelfScrollY.value, behavior: 'instant' }))
@@ -224,7 +237,10 @@ function onFavoriteToggled(source: string, sourceId: string, favorite: boolean) 
   })
 }
 
-const openComic = (s: string, id: string) => router.push(`/comic/${s}/${id}`)
+const openComic = (s: string, id: string) => {
+  commitSearchHistory()
+  void router.push(`/comic/${s}/${id}`)
+}
 
 watch([() => store.error, imageSearch.error], ([err1, err2]) => {
   const err = err1 || err2
@@ -276,24 +292,13 @@ watch([() => store.error, imageSearch.error], ([err1, err2]) => {
               role="combobox"
               aria-label="搜索书架藏书或输入 / 唤出快捷命令"
               aria-autocomplete="list"
-              :aria-expanded="isCommandMenuOpen || isDialogueListboxShown"
+              :aria-expanded="isComboboxExpanded"
               aria-haspopup="listbox"
-              :aria-controls="
-                isCommandMenuOpen
-                  ? 'search-command-menu'
-                  : isDialogueListboxShown
-                    ? 'dialogue-search-listbox'
-                    : undefined
-              "
-              :aria-activedescendant="
-                isCommandMenuOpen && commandFilteredCommands.length > 0
-                  ? `cmd-opt-${commandMenuFocusedIndex}`
-                  : isDialogueListboxShown && dialogueFocusedIndex >= 0
-                    ? `dialogue-opt-${dialogueFocusedIndex}`
-                    : undefined
-              "
+              :aria-controls="activeComboboxControls"
+              :aria-activedescendant="activeComboboxActivedescendant"
               :placeholder="searchPlaceholder"
               @focus="onSearchFocus"
+              @click="onSearchFocus"
               @keydown="onSearchKeydown"
             />
             <AppButton
@@ -318,6 +323,16 @@ watch([() => store.error, imageSearch.error], ([err1, err2]) => {
             :open="isCommandMenuOpen"
             :commands="commandFilteredCommands"
             @select="handleSelectCommand"
+          />
+
+          <!-- 搜索历史选单浮层 -->
+          <SearchHistoryMenu
+            v-model:focused-index="historyFocusedIndex"
+            :open="isHistoryListboxShown"
+            :history="searchHistory"
+            @select="handleSelectHistory"
+            @remove="handleRemoveHistory"
+            @clear="handleClearHistory"
           />
 
           <!-- 分镜台词检索浮层（专注台词模式呈现） -->

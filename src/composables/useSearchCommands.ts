@@ -65,6 +65,8 @@ export const AVAILABLE_COMMANDS: SearchCommandDef[] = [
 ]
 
 export interface UseSearchCommandsOptions {
+  initialInput?: string
+  activeCommand?: Ref<SearchCommandType | null>
   onRandom?: () => void
   /**
    * 关联外部浮层开闭状态探测。若外部浮层当前处于展开态，
@@ -91,8 +93,8 @@ export interface UseSearchCommandsReturn {
 }
 
 export function useSearchCommands(options: UseSearchCommandsOptions = {}): UseSearchCommandsReturn {
-  const rawInput = ref('')
-  const activeCommand = ref<SearchCommandType | null>(null)
+  const rawInput = ref(options.initialInput ?? '')
+  const activeCommand = options.activeCommand ?? ref<SearchCommandType | null>(null)
   const isMenuOpen = ref(false)
   const menuFocusedIndex = ref(0)
 

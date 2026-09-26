@@ -42,6 +42,8 @@
    - [§71 Vue 3.5/3.6 现代语法演进、模板引用强类型化与零胶水双向绑定架构](#sec-71)
    - [§72 阅读器双页开本排布（2 | 1 日漫开本）、分屏跨话横幅判定与设置项按需收敛体系](#sec-72)
    - [§73 单本沙箱借阅笺弹窗、四档黄金时效单选组与设计 Token 零失真契约](#sec-73)
+   - [§74 WebMCP 通用泛型映射、多态组合式函数返回契约与命名洁净架构](#sec-74)
+   - [§75 搜索历史沉淀、状态跨页驻留与多意图浮层防冲突架构](#sec-75)
 
 ---
 
@@ -724,3 +726,26 @@
    - 严禁对页码、时间戳等纯逻辑数值变量附加 `*El` 伪 DOM 匈牙利后缀（避免误读为 `HTMLElement`）；
    - 彻底废除函数体内 `const lastReadPage = progressEl` 的局部影子赋值缝合模式；
    - 变量命名全面以正统语义的 `lastReadPage` 为单一事实源，仅在最终 `return` 导出对象中为第三方或遗留代码提供 `@deprecated` 兼容桥梁。
+
+### <a id="sec-75"></a>§75 搜索历史沉淀、状态跨页驻留与多意图浮层防冲突架构（Search History, State Retention & Multi-Intent Popover Decoupling Architecture）
+
+针对书架多维淘书检索输入框的会话级状态保持、端侧历史词沉淀及多浮层互斥设计：
+
+1. **跨路由检索状态驻留（Session-level State Retention）**：
+   - 彻底修复从书架点击漫画进入详情/阅读器后返回时搜索框被意外擦除的问题；
+   - `useShelfState` 统一纳入 `searchActiveCommand` 响应式状态，在会话生命周期内单例保持当前激活的指令胶囊（如 `/台词`、`/作者`、`/车号`）及检索词；
+   - 调整 `useShelfSearch` 的 watcher 触发时序，杜绝初次挂载时将空字符串强制覆写全局书架状态；以图搜图（`useImageSearch`）搜图结果与预览胶囊在会话内跨页往返完整保留。
+2. **端侧轻量搜索历史沉淀（Lightweight Client-Side Search History）**：
+   - 遵循项目全局命名规范，基于端侧 `localStorage['comic-shelf:search-history:v1']` 驱动，保持读者隐私绝对隔离，0 服务端开销；
+   - 严格遵循 LRU 淘汰机制，上限设定为 8 条；重复检索自动置顶，超出自动淘汰最旧项；
+   - **严格防抖、语法防御与拼音中间态隔离**：仅在按下 `Enter` 确认搜索、点击书架漫画卡片进入详情/阅读、或点击台词浮层命中条目直达分镜时沉淀有效关键词，杜绝输入过程中的拼音中间态垃圾数据；未激活指令模式下的斜杠指令语法（如 `/` 或 `/未知指令`）严格拦截不沉淀，杜绝误录导致书架过滤置空的死循环。
+3. **快捷指令多态沉淀与印章标签（Slash Command History with Ink Seals）**：
+   - 带参数指令（`/台词`、`/作者`、`/车号`）同步收纳进历史，在历史浮层中以专属朱砂微标呈现（如 `[台词] xxx`）；点击一键切回该指令专注模式并填词重搜；
+   - 过滤无参数即时动作（`/随机` 抽一本），防范空指令污染历史。
+4. **多意图浮层零冲突调度（Zero-Collision Multi-Intent Popover Hierarchy）**：
+   - **空态显式唤醒**：仅在输入框聚焦（Focus）且当前内容为空（`searchInput.trim() === ''`）且未处于命令胶囊模式时展示 `SearchHistoryMenu.vue`；
+   - **键入即刻避让**：读者一旦开始键入任何字符或 `/`，历史浮层即刻隐藏，无缝让位给即时筛选列表与快捷指令选单（`SearchCommandMenu.vue`）；
+   - **无障碍、全键盘契约与触控防护**：严格遵循 WAI-ARIA Combobox / Listbox 规范，浮层内部按键配置 `tabindex="-1"` 排除 Tab 焦点序列；支持 `↑` / `↓` 方向键高亮选词、`Enter` 填词提交、`Delete` 键单条删除、`Tab` 键向后失焦自动平滑关闭；移动端删除按钮通过 `::after` 扩展至 44×44px 规范触控热区，杜绝触屏误触父级跳转。
+5. **Combobox 候选列表与通用 Top-layer Popover 的架构正交防线（Combobox Listbox vs Generic Popover Orthogonality）**：
+   - **机制冲突与不复用原因**：通用弹出层 `AppPopover.vue` 基于 HTML 原生 `popover="auto"` 运行于浏览器的 Top-layer（顶层画布），带有底层的原生 Light Dismiss 机制。在实时打字的搜索输入框（Combobox）中，用户高频键入文本或呼出输入法（IME）时，焦点处于普通 DOM 层，浏览器底层的 Popover API 会误判为外部交互而引发浮层闪退；此外原生 `popover="auto"` 的 ESC 监听会强行抢占搜索框专属的三级阶梯式退出（退浮层 -> 清文本 -> 销胶囊）。
+   - **架构归位原则**：严格将「按钮触发的独立 Top-layer 富面板（`AppPopover`）」与「表单复合输入内联候选列表（Combobox Listbox，如 `SearchCommandMenu`、`SearchHistoryMenu`）」解耦为两个正交模式；各搜索浮层保持内聚独立与满宽几何贴合，不引入多余的 Slot Shell 抽象层，坚守轻量、直观与高维护性。

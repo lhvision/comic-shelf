@@ -111,4 +111,177 @@ describe('useShelfSearch', () => {
     })
     scope.stop()
   })
+
+  it('preserves existing shelfSearch and shelfCommand across mounts (session retention)', () => {
+    const scope = effectScope()
+    scope.run(() => {
+      const shelfSearch = ref('魔女')
+      const shelfCommand = ref<'author' | null>('author')
+
+      const { searchInput, searchActiveCommand } = useShelfSearch({
+        activeSource: computed(() => 'local'),
+        shelfSearch,
+        shelfCommand,
+        filteredItems: computed<LibrarySummary[]>(() => []),
+        allItems: computed<LibrarySummary[]>(() => []),
+        router: { push: vi.fn<() => Promise<void>>() } as unknown as Router,
+        toast: vi.fn<(msg: string, tone?: 'info' | 'error' | 'success') => number>(),
+      })
+
+      // 验证未被空初态擦除
+      expect(searchInput.value).toBe('魔女')
+      expect(searchActiveCommand.value).toBe('author')
+      expect(shelfSearch.value).toBe('魔女')
+    })
+    scope.stop()
+  })
+
+  it('manages search history visibility and selection', async () => {
+    const scope = effectScope()
+    await scope.run(async () => {
+      const shelfSearch = ref('')
+      const router = { push: vi.fn<() => Promise<void>>() } as unknown as Router
+      const toast = vi.fn<(msg: string, tone?: 'info' | 'error' | 'success') => number>()
+
+      const {
+        searchInput,
+        isHistoryOpen,
+        isHistoryListboxShown,
+        searchHistory,
+        onSearchFocus,
+        handleSelectHistory,
+        handleClearHistory,
+        commitSearchHistory,
+      } = useShelfSearch({
+        activeSource: computed(() => 'local'),
+        shelfSearch,
+        filteredItems: computed<LibrarySummary[]>(() => []),
+        allItems: computed<LibrarySummary[]>(() => []),
+        router,
+        toast,
+      })
+
+      handleClearHistory()
+      expect(searchHistory.value.length).toBe(0)
+
+      // 1. 无历史时聚焦不展开
+      onSearchFocus()
+      expect(isHistoryOpen.value).toBe(false)
+
+      // 2. 模拟用户输入并回车提交搜索
+      searchInput.value = '东方'
+      commitSearchHistory()
+      expect(searchHistory.value.length).toBe(1)
+      expect(searchHistory.value[0]?.query).toBe('东方')
+
+      // 3. 清空输入框后重新聚焦，展开历史选单
+      searchInput.value = ''
+      await nextTick()
+      onSearchFocus()
+      expect(isHistoryOpen.value).toBe(true)
+      expect(isHistoryListboxShown.value).toBe(true)
+
+      // 4. 输入字符时历史选单自动隐藏
+      searchInput.value = '新词'
+      await nextTick()
+      expect(isHistoryOpen.value).toBe(false)
+      expect(isHistoryListboxShown.value).toBe(false)
+
+      // 5. 点击历史项快速填词
+      searchInput.value = ''
+      await nextTick()
+      handleSelectHistory(searchHistory.value[0]!)
+      await nextTick()
+      expect(searchInput.value).toBe('东方')
+      expect(shelfSearch.value).toBe('东方')
+    })
+    scope.stop()
+  })
+
+  it('computes clean combobox ARIA attributes reactively without template nested ternaries', async () => {
+    const scope = effectScope()
+    await scope.run(async () => {
+      const shelfSearch = ref('')
+      const router = { push: vi.fn<() => Promise<void>>() } as unknown as Router
+      const toast = vi.fn<(msg: string, tone?: 'info' | 'error' | 'success') => number>()
+
+      const {
+        searchInput,
+        isComboboxExpanded,
+        activeComboboxControls,
+        activeComboboxActivedescendant,
+        isCommandMenuOpen,
+        commandMenuFocusedIndex,
+        isHistoryOpen,
+        historyFocusedIndex,
+        searchHistory,
+        onSearchKeydown,
+        commitSearchHistory,
+        handleClearHistory,
+      } = useShelfSearch({
+        activeSource: computed(() => 'local'),
+        shelfSearch,
+        filteredItems: computed<LibrarySummary[]>(() => []),
+        allItems: computed<LibrarySummary[]>(() => []),
+        router,
+        toast,
+      })
+
+      handleClearHistory()
+
+      // 初态：无浮层展开
+      expect(isComboboxExpanded.value).toBe(false)
+      expect(activeComboboxControls.value).toBeUndefined()
+      expect(activeComboboxActivedescendant.value).toBeUndefined()
+
+      // 1. 输入 / 唤醒快捷指令选单
+      searchInput.value = '/'
+      await nextTick()
+      expect(isCommandMenuOpen.value).toBe(true)
+      expect(isComboboxExpanded.value).toBe(true)
+      expect(activeComboboxControls.value).toBe('search-command-menu')
+      expect(activeComboboxActivedescendant.value).toBe(`cmd-opt-${commandMenuFocusedIndex.value}`)
+
+      // 2. 存在历史记录时，空输入框按下向下键唤醒历史浮层
+      searchInput.value = '测试词条'
+      commitSearchHistory()
+      expect(searchHistory.value.length).toBe(1)
+
+      searchInput.value = ''
+      await nextTick()
+      expect(isHistoryOpen.value).toBe(false)
+
+      // 按下 ArrowDown 主动唤醒历史浮层
+      onSearchKeydown(new KeyboardEvent('keydown', { key: 'ArrowDown' }))
+      expect(isHistoryOpen.value).toBe(true)
+      expect(isComboboxExpanded.value).toBe(true)
+      expect(activeComboboxControls.value).toBe('search-history-menu')
+      expect(activeComboboxActivedescendant.value).toBe(`history-opt-${historyFocusedIndex.value}`)
+
+      // 3. 键盘按下 Delete 键删除当前高亮的历史项
+      onSearchKeydown(new KeyboardEvent('keydown', { key: 'Delete' }))
+      expect(searchHistory.value.length).toBe(0)
+      expect(isHistoryOpen.value).toBe(false)
+      expect(isComboboxExpanded.value).toBe(false)
+
+      // 4. 输入未决指令（如 /abc）时 commitSearchHistory 不入库
+      searchInput.value = '/abc'
+      commitSearchHistory()
+      expect(searchHistory.value.length).toBe(0)
+
+      // 5. 键盘按 Tab 键可平滑收起历史浮层
+      searchInput.value = '测试项'
+      commitSearchHistory()
+      expect(searchHistory.value.length).toBe(1)
+      searchInput.value = ''
+      await nextTick()
+
+      onSearchKeydown(new KeyboardEvent('keydown', { key: 'ArrowDown' }))
+      expect(isHistoryOpen.value).toBe(true)
+
+      onSearchKeydown(new KeyboardEvent('keydown', { key: 'Tab' }))
+      expect(isHistoryOpen.value).toBe(false)
+    })
+    scope.stop()
+  })
 })

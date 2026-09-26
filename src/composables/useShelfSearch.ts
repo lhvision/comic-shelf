@@ -1,12 +1,13 @@
 /**
  * @file useShelfSearch.ts
- * @description 书架搜索栏联动、快捷指令与分镜台词检索顶层编排 Composable。
+ * @description 书架搜索栏联动、快捷指令、分镜台词检索与搜索历史顶层编排 Composable。
  *
  * 核心职责：
  * 1. 意图分流与状态解耦：台词搜索模式冻结书架常规过滤，常规搜索模式清空台词 FTS 状态；
- * 2. 编排快捷指令选单 (`useSearchCommands`) 与台词检索浮层 (`useDialogueSearch`)；
+ * 2. 编排快捷指令选单 (`useSearchCommands`)、台词检索浮层 (`useDialogueSearch`) 与搜索历史 (`useSearchHistory`)；
  * 3. 集中调度键盘事件（WAI-ARIA Combobox / Listbox 导航、IME 组合保护、阶梯式 Escape 退出）；
- * 4. 封装聚焦、失焦与外部点击关闭 (onClickOutside) 逻辑，彻底下沉视图胶水代码。
+ * 4. 封装聚焦、失焦与外部点击关闭 (onClickOutside) 逻辑，彻底下沉视图胶水代码；
+ * 5. 跨路由会话级状态保持：无缝恢复退出前的检索词与指令模式，杜绝被空值误重置。
  */
 
 import { computed, nextTick, ref, watch, type ComputedRef, type Ref } from 'vue'
@@ -14,10 +15,12 @@ import { onClickOutside } from '@vueuse/core'
 import type { Router } from 'vue-router'
 import {
   useSearchCommands,
+  AVAILABLE_COMMANDS,
   type SearchCommandDef,
   type SearchCommandType,
 } from '@/composables/useSearchCommands'
 import { useDialogueSearch } from '@/composables/useDialogueSearch'
+import { useSearchHistory, type SearchHistoryItem } from '@/composables/useSearchHistory'
 import type { DialogueSearchItem, LibrarySummary } from '@/types'
 
 export interface UseShelfSearchOptions {
@@ -25,6 +28,8 @@ export interface UseShelfSearchOptions {
   activeSource: ComputedRef<string>
   /** 书架网格常规过滤关键词 Ref */
   shelfSearch: Ref<string>
+  /** 当前激活的快捷指令模式 Ref（用于跨路由会话保持） */
+  shelfCommand?: Ref<SearchCommandType | null>
   /** 当前已过滤的藏书列表（供随机抽选使用） */
   filteredItems: ComputedRef<LibrarySummary[]>
   /** 书库全量藏书列表（供随机抽选备用） */
@@ -75,6 +80,20 @@ export interface UseShelfSearchReturn {
    * 输入框的 aria-expanded 与 aria-controls 据此成对设置，免得指向不存在的节点
    */
   isDialogueListboxShown: ComputedRef<boolean>
+  /** 搜索历史选单是否展开 */
+  isHistoryOpen: Ref<boolean>
+  /** 搜索历史当前键盘高亮索引 */
+  historyFocusedIndex: Ref<number>
+  /** 搜索历史列表数据 */
+  searchHistory: Ref<SearchHistoryItem[]>
+  /** 搜索历史 listbox 此刻是否渲染（历史展开、无指令选单、无台词浮层、有历史项且输入框为空） */
+  isHistoryListboxShown: ComputedRef<boolean>
+  /** Combobox 整体是否处于展开态（快捷指令 / 台词列表 / 搜索历史 任一浮层处于渲染展开态） */
+  isComboboxExpanded: ComputedRef<boolean>
+  /** 当前激活的 Combobox 下拉容器 DOM ID（未展开时为 undefined） */
+  activeComboboxControls: ComputedRef<string | undefined>
+  /** 当前激活的 Combobox 选项 DOM ID（未激活时为 undefined） */
+  activeComboboxActivedescendant: ComputedRef<string | undefined>
   /** 选中特定快捷指令 */
   handleSelectCommand: (cmd: SearchCommandDef) => void
   /** 清除当前指令胶囊切回常规搜索 */
@@ -83,6 +102,16 @@ export interface UseShelfSearchReturn {
   closeCommandMenu: () => void
   /** 关闭台词检索浮层 */
   closeDialogueSearch: () => void
+  /** 选中特定搜索历史项 */
+  handleSelectHistory: (item: SearchHistoryItem) => void
+  /** 移除指定历史项 */
+  handleRemoveHistory: (id: string) => void
+  /** 清空全部搜索历史 */
+  handleClearHistory: () => void
+  /** 关闭搜索历史浮层 */
+  closeHistory: () => void
+  /** 显式提交当前搜索关键词入历史（回车或点击漫画卡片时触发） */
+  commitSearchHistory: () => void
   /** 搜索框获取焦点交互 */
   onSearchFocus: () => void
   /** 搜索框全局键盘交互事件分流 */
@@ -96,6 +125,26 @@ export function useShelfSearch(options: UseShelfSearchOptions): UseShelfSearchRe
 
   const searchContainerRef = options.searchContainerRef ?? ref<HTMLElement | null>(null)
   const searchInputRef = options.searchInputRef ?? ref<HTMLInputElement | null>(null)
+
+  const { history: searchHistory, addHistory, removeHistory, clearHistory } = useSearchHistory()
+  const isHistoryOpen = ref(false)
+  const historyFocusedIndex = ref(0)
+
+  const openHistory = () => {
+    if (
+      searchHistory.value.length > 0 &&
+      !searchInput.value.trim() &&
+      searchActiveCommand.value === null
+    ) {
+      isHistoryOpen.value = true
+      historyFocusedIndex.value = 0
+    }
+  }
+
+  const closeHistory = () => {
+    isHistoryOpen.value = false
+    historyFocusedIndex.value = 0
+  }
 
   const {
     query: dialogueQuery,
@@ -121,7 +170,25 @@ export function useShelfSearch(options: UseShelfSearchOptions): UseShelfSearchRe
       dialogueResults.value.length > 0,
   )
 
+  const isHistoryListboxShown = computed(
+    () =>
+      isHistoryOpen.value &&
+      searchHistory.value.length > 0 &&
+      !isCommandMenuOpen.value &&
+      !isDialogueOpen.value &&
+      !searchInput.value.trim() &&
+      searchActiveCommand.value === null,
+  )
+
+  const commitSearchHistory = () => {
+    const query = searchInput.value.trim()
+    if (query && (searchActiveCommand.value !== null || !query.startsWith('/'))) {
+      addHistory(query, searchActiveCommand.value)
+    }
+  }
+
   const navigateToResult = (item: DialogueSearchItem, routerInstance?: Router) => {
+    commitSearchHistory()
     rawNavigateToResult(item, routerInstance || router)
   }
 
@@ -138,7 +205,9 @@ export function useShelfSearch(options: UseShelfSearchOptions): UseShelfSearchRe
     closeMenu: closeCommandMenu,
     handleKeydown: handleCommandKeydown,
   } = useSearchCommands({
-    isDropdownOpen: isDialogueOpen,
+    initialInput: shelfSearch.value,
+    activeCommand: options.shelfCommand,
+    isDropdownOpen: computed(() => isDialogueOpen.value || isHistoryOpen.value),
     onRandom: () => {
       const list = filteredItems.value.length > 0 ? filteredItems.value : allItems.value || []
       if (list.length === 0) {
@@ -153,6 +222,30 @@ export function useShelfSearch(options: UseShelfSearchOptions): UseShelfSearchRe
         )
       }
     },
+  })
+
+  const isComboboxExpanded = computed(
+    () => isCommandMenuOpen.value || isDialogueListboxShown.value || isHistoryListboxShown.value,
+  )
+
+  const activeComboboxControls = computed<string | undefined>(() => {
+    if (isCommandMenuOpen.value) return 'search-command-menu'
+    if (isDialogueListboxShown.value) return 'dialogue-search-listbox'
+    if (isHistoryListboxShown.value) return 'search-history-menu'
+    return undefined
+  })
+
+  const activeComboboxActivedescendant = computed<string | undefined>(() => {
+    if (isCommandMenuOpen.value && commandFilteredCommands.value.length > 0) {
+      return `cmd-opt-${commandMenuFocusedIndex.value}`
+    }
+    if (isDialogueListboxShown.value && dialogueFocusedIndex.value >= 0) {
+      return `dialogue-opt-${dialogueFocusedIndex.value}`
+    }
+    if (isHistoryListboxShown.value && historyFocusedIndex.value >= 0) {
+      return `history-opt-${historyFocusedIndex.value}`
+    }
+    return undefined
   })
 
   // 意图分流与状态解耦：
@@ -181,12 +274,24 @@ export function useShelfSearch(options: UseShelfSearchOptions): UseShelfSearchRe
           shelfSearch.value = inputVal
         }
       }
+      if (inputVal.trim()) {
+        closeHistory()
+      } else if (
+        cmdVal === null &&
+        searchInputRef.value &&
+        typeof document !== 'undefined' &&
+        document.activeElement === searchInputRef.value &&
+        searchHistory.value.length > 0
+      ) {
+        openHistory()
+      }
     },
     { immediate: true },
   )
 
   function handleSelectCommand(cmd: SearchCommandDef) {
     selectCommand(cmd)
+    closeHistory()
     void nextTick(() => {
       searchInputRef.value?.focus()
     })
@@ -199,6 +304,40 @@ export function useShelfSearch(options: UseShelfSearchOptions): UseShelfSearchRe
     })
   }
 
+  function handleSelectHistory(item: SearchHistoryItem) {
+    closeHistory()
+    if (item.command) {
+      const def = AVAILABLE_COMMANDS.find((c) => c.id === item.command)
+      if (def) {
+        selectCommand(def)
+      } else {
+        searchActiveCommand.value = item.command
+      }
+      searchInput.value = item.query
+    } else {
+      clearCommand()
+      searchInput.value = item.query
+    }
+    commitSearchHistory()
+    void nextTick(() => {
+      searchInputRef.value?.focus()
+    })
+  }
+
+  function handleRemoveHistory(id: string) {
+    removeHistory(id)
+    if (searchHistory.value.length === 0) {
+      closeHistory()
+    } else if (historyFocusedIndex.value >= searchHistory.value.length) {
+      historyFocusedIndex.value = Math.max(0, searchHistory.value.length - 1)
+    }
+  }
+
+  function handleClearHistory() {
+    clearHistory()
+    closeHistory()
+  }
+
   function onSearchFocus() {
     if (searchActiveCommand.value === 'dialogue') {
       if (dialogueQuery.value.trim()) {
@@ -206,17 +345,92 @@ export function useShelfSearch(options: UseShelfSearchOptions): UseShelfSearchRe
       }
     } else if (searchInput.value.startsWith('/')) {
       openCommandMenu()
+    } else if (
+      !searchInput.value.trim() &&
+      searchActiveCommand.value === null &&
+      searchHistory.value.length > 0
+    ) {
+      openHistory()
     }
   }
 
   onClickOutside(searchContainerRef, () => {
     closeDialogueSearch()
     closeCommandMenu()
+    closeHistory()
   })
 
   function onSearchKeydown(e: KeyboardEvent) {
     if (handleCommandKeydown(e)) {
       return
+    }
+
+    // 搜索历史浮层键盘交互
+    if (isHistoryOpen.value && isHistoryListboxShown.value) {
+      if (e.key === 'ArrowDown') {
+        e.preventDefault()
+        if (searchHistory.value.length > 0) {
+          if (historyFocusedIndex.value < searchHistory.value.length - 1) {
+            historyFocusedIndex.value++
+          } else {
+            historyFocusedIndex.value = 0
+          }
+        }
+        return
+      }
+      if (e.key === 'ArrowUp') {
+        e.preventDefault()
+        if (searchHistory.value.length > 0) {
+          if (historyFocusedIndex.value > 0) {
+            historyFocusedIndex.value--
+          } else {
+            historyFocusedIndex.value = searchHistory.value.length - 1
+          }
+        }
+        return
+      }
+      if (e.key === 'Delete') {
+        const item = searchHistory.value[historyFocusedIndex.value]
+        if (item) {
+          e.preventDefault()
+          handleRemoveHistory(item.id)
+        }
+        return
+      }
+      if (e.key === 'Enter') {
+        const item = searchHistory.value[historyFocusedIndex.value]
+        if (item) {
+          e.preventDefault()
+          handleSelectHistory(item)
+          return
+        }
+      }
+      if (e.key === 'Escape') {
+        e.preventDefault()
+        closeHistory()
+        return
+      }
+      if (e.key === 'Tab') {
+        closeHistory()
+      }
+    }
+
+    // 当输入框内容为空且未展开任何浮层时，按下向下方向键可主动唤起历史浮层
+    if (
+      e.key === 'ArrowDown' &&
+      !isHistoryOpen.value &&
+      !searchInput.value.trim() &&
+      searchActiveCommand.value === null &&
+      searchHistory.value.length > 0
+    ) {
+      e.preventDefault()
+      openHistory()
+      return
+    }
+
+    if (e.key === 'Enter' && !e.isComposing) {
+      commitSearchHistory()
+      closeHistory()
     }
 
     if (searchActiveCommand.value === 'dialogue' && isDialogueOpen.value) {
@@ -259,10 +473,22 @@ export function useShelfSearch(options: UseShelfSearchOptions): UseShelfSearchRe
     dialogueQuery,
     dialogueFocusedIndex,
     isDialogueListboxShown,
+    isHistoryOpen,
+    historyFocusedIndex,
+    searchHistory,
+    isHistoryListboxShown,
+    isComboboxExpanded,
+    activeComboboxControls,
+    activeComboboxActivedescendant,
     handleSelectCommand,
     handleClearCommand,
     closeCommandMenu,
     closeDialogueSearch,
+    handleSelectHistory,
+    handleRemoveHistory,
+    handleClearHistory,
+    closeHistory,
+    commitSearchHistory,
     onSearchFocus,
     onSearchKeydown,
     navigateToResult,

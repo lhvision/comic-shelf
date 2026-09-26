@@ -13,6 +13,7 @@ import { computed, ref } from 'vue'
 import { createGlobalState } from '@vueuse/core'
 import type { SortKey } from '@/composables/useLibraryFilter'
 import type { ReadingStatus } from '@/types'
+import type { SearchCommandType } from '@/composables/useSearchCommands'
 
 export const DEFAULT_SHELF_BATCH = 12
 
@@ -30,6 +31,8 @@ export const useShelfState = createGlobalState(() => {
 
   /** 搜索关键词输入内容 */
   const search = ref('')
+  /** 当前激活的搜索快捷指令模式（null 为常规搜索） */
+  const searchActiveCommand = ref<SearchCommandType | null>(null)
   /** 当前选中的多标签集合（空数组表示全部） */
   const activeTags = ref<string[]>([])
   /** 是否只看已加入喜欢的藏书 */
@@ -48,6 +51,7 @@ export const useShelfState = createGlobalState(() => {
       favoritesOnly.value ||
       readingStatus.value !== 'all' ||
       Boolean(search.value.trim()) ||
+      searchActiveCommand.value !== null ||
       sortBy.value !== 'recent',
   )
 
@@ -72,6 +76,7 @@ export const useShelfState = createGlobalState(() => {
   /** 重置所有检索与筛选条件 */
   function resetShelfFilters(): void {
     search.value = ''
+    searchActiveCommand.value = null
     activeTags.value = []
     favoritesOnly.value = false
     readingStatus.value = 'all'
@@ -149,6 +154,12 @@ export const useShelfState = createGlobalState(() => {
       hydrated = true
     }
 
+    // 6. 恢复快捷指令模式 (cmd: dialogue | id | author)
+    if (query.cmd === 'dialogue' || query.cmd === 'id' || query.cmd === 'author') {
+      searchActiveCommand.value = query.cmd
+      hydrated = true
+    }
+
     return hydrated
   }
 
@@ -170,6 +181,9 @@ export const useShelfState = createGlobalState(() => {
     }
     if (search.value.trim()) {
       params.set('q', search.value.trim())
+    }
+    if (searchActiveCommand.value) {
+      params.set('cmd', searchActiveCommand.value)
     }
     if (activeTags.value.length > 0) {
       params.set('tags', activeTags.value.join(','))
@@ -195,6 +209,7 @@ export const useShelfState = createGlobalState(() => {
     archiveUnfoldCount,
     unifiedUnfoldCount,
     search,
+    searchActiveCommand,
     activeTags,
     favoritesOnly,
     readingStatus,
