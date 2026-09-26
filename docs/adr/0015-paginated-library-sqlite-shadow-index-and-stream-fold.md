@@ -155,17 +155,23 @@ CREATE INDEX IF NOT EXISTS idx_comics_index_title ON comics_index(title);
 
 ---
 
-### 4. 全貌统计（Facets）进程级内存缓存与防击穿保护（2026-09 修订）
+### 4. 全貌统计（Facets）增量快照落表与进程级内存双重加速（2026-09 修订）
 
-针对万级书库下高频请求 `/api/library/facets` 引发全库 `tags_json` 反复执行 `json_each` 虚拟表解包与 Hash 聚合的问题，确立双端闭环内存缓存方案：
+针对万级（1~~5 万本）书库下高频请求 `/api/library/facets` 引发全库 `tags_json` 反复执行 `json_each` 虚拟表解包与 Hash 聚合（冷查耗时高达 1~~5 秒）的问题，确立**增量持久化快照落表 + 进程级内存缓存**方案：
 
-1. **服务端进程级内存缓存（0 I/O 读与即时一致性）**：
-   - 内存中维护带 `(is_curator, source)` 物理隔离维度的字典缓存，读操作 99.9% 场景耗时降至 0.005ms（零数据库查询）；
-   - 写入事件（收录、追更、改标签、删除）执行 `invalidate_facets_cache()` 精准标记失效时间戳，下一次读取自然重算并缓存；
-   - 后台单页缓存推进仅更新数据库计数值，待后台任务完成时统一触发失效，从源头杜绝单页下载高频无效失效；
-   - 防击穿与时序安全：采用 Double-Checked Locking 避免并发计算风暴（Cache Stampede），时间戳严格锚定计算发起前以规避 TOCTOU 脏读覆写竞态；
-   - 权限与安全兜底：支持 `bypass_cache=true` 仅限馆长强制重算；来源参数合法性校验配合 FIFO 淘汰保障容量受控。
-2. **前端热门标签对齐全馆真实分布**：
+1. **增量持久化快照表（O(1) 毫秒级直接点查）**：
+   - 数据库建立 `library_stats_snapshot`（按 `admin:all`、`admin:{source}`、`guest:all`、`guest:{source}` 细分作用域记录总书数、总页数与缓存页）与 `library_tag_counts`（各标签计数，附复合索引 `(scope, cnt DESC, tag ASC)`）；
+   - **新增入库**：做加法（总书数 +1、总页数 +pages、各标签计数 +1）；
+   - **删除藏书**：做减法（总书数 -1、总页数 -pages、各标签计数 -1，计数归零自动剔除）；
+   - **编辑装订/可见性切换**：做标签差集与页数差量更新；
+   - **单页缓存推进**：原子维护快照 `cached_pages`（耗时 <0.1ms）；
+   - 查询时无需全表扫描与 `json_each` 解包，直接点查索引 `LIMIT 30`，查询耗时恒定在 **0.1ms** 级别。
+2. **服务端进程级内存缓存（0 I/O 读与防击穿保护）**：
+   - 内存中维护带 `(is_curator, source)` 物理隔离维度的字典缓存，未写变动时 0ms 纯内存命中；
+   - 写操作发生后标记失效时间戳，首次读取点查增量快照表并回填内存；
+   - 采用 Double-Checked Locking 避免并发计算风暴（Cache Stampede），时间戳严格锚定计算发起前以规避 TOCTOU 脏读覆写竞态；
+   - 异常自愈兜底：支持 `bypass_cache=true` 时执行全量扫描自愈重建快照落表。
+3. **前端热门标签对齐全馆真实分布**：
    - `TagManager.vue` 热门快选从当前页 24 本对齐至全馆聚合的 `store.facets?.top_tags`，彻底打通本地上传与编辑标签的热门推荐体验。
 
 ---

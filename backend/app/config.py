@@ -58,6 +58,7 @@ ENABLE_DOCS = os.getenv("COMIC_SHELF_ENABLE_DOCS", "false").lower() in ("1", "tr
 
 # Multi-chapter comic auto-update background polling loop (ADR 0029)
 ENABLE_AUTO_UPDATE = os.getenv("COMIC_SHELF_ENABLE_AUTO_UPDATE", "true").lower() in ("1", "true", "yes")
+AUTO_UPDATE_INTERVAL_SECONDS = int(os.getenv("COMIC_SHELF_AUTO_UPDATE_INTERVAL_SECONDS", "172800"))  # 172800s = 2 days
 
 # Curator key for full access (blank = open access, non-blank = protected)
 AUTH_SECRET = os.getenv("COMIC_SHELF_SECRET", os.getenv("COMIC_SHELF_AUTH_TOKEN", "")).strip()

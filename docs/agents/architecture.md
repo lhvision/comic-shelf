@@ -312,7 +312,7 @@ JmImageTool.decode_and_save(num, source_image, save_path)
 ### 4.11 多章节自动追更巡检不变量（ADR 0029）
 
 - **自动追更准入边界**：仅当藏书满足 `len(chapters) > 1`（多章节作品）且 `source != 'local'`（排除本地自建源）且 `custom_pages == false`（未受重新装订保护）时，才向远端探测；不满足的到期项跳过探测，但照样写入 `last_auto_checked_at`，防止永远占住每轮名额。
-- **单线程串行巡检与关停顺序**：受 `COMIC_SHELF_ENABLE_AUTO_UPDATE` 控制（默认开启）；FastAPI `lifespan` 启动单一后台线程 `auto_update_worker`，开机宽限 30 秒后每小时唤醒扫描一次；到期项（`now - last_auto_checked_at >= auto_update_interval_days * 86400`，默认 15 天，0 为关闭）串行处理，每本之间休眠 3 秒，单轮最多 10 本。增量探测复用 `provider.fetch(..., existing=existing)`，章节未变时不抓画页（JM 只发一个详情请求）。关停时先置位 `stop_event`，再 join 线程，最后才释放书库写锁。
+- **单线程串行巡检与关停顺序**：受 `COMIC_SHELF_ENABLE_AUTO_UPDATE` 控制（默认开启）；FastAPI `lifespan` 启动单一后台线程 `auto_update_worker`，开机宽限 30 秒后每 2 天（默认 172800 秒，支持 `COMIC_SHELF_AUTO_UPDATE_INTERVAL_SECONDS` 自定义）唤醒扫描一次；到期项（`now - last_auto_checked_at >= auto_update_interval_days * 86400`，默认 15 天，0 为关闭）串行处理，每本之间休眠 3 秒，单轮最多 10 本。增量探测复用 `provider.fetch(..., existing=existing)`，章节未变时不抓画页（JM 只发一个详情请求）。关停时先置位 `stop_event`，再 join 线程，最后才释放书库写锁。
 - **馆长资料不被覆盖**：只有探测到新章节或新增页才写盘，且只把 `chapters`、`pages`、`page_count`（远端 `updated_at` 非空时一并）合并进现有 meta，标题、标签、简介等馆长编辑保持原样。合并基底必须是写盘时在作品锁内重读的最新 meta（`ComicStore.save_auto_update`），不能用抓取前的快照：抓取要几秒，期间馆长的编辑不能被旧快照盖掉，期间被删的作品也不能被写回来。无新内容只记录 `last_auto_checked_at`。收录与手动刷新同样写入巡检时间，新收录的作品不会立即到期。
 - **阅读状态与缓存自愈**：追更到新章节后，若作品原处于「已读」状态，必须自愈回退为「在读」重新浮现于书架案头；若原处于「全本缓存」状态，自动投递新章节画页离线预缓存任务，否则仅追加元数据。
 
@@ -329,7 +329,8 @@ JmImageTool.decode_and_save(num, source_image, save_path)
 | `backend/app/routers/`              | 模块化路由包（`auth.py`, `library.py`, `media.py`, `chapters.py`, `local_comic.py`, `search.py`, `system.py`, `common.py`） |
 | `backend/app/storage/`              | 模块化存储包（Domain Mixin + Facade 模式：`base.py`, `media.py`, `chapters.py`, `local.py`, `prefetch.py`, `utils.py`）     |
 | `backend/app/auth.py`               | 鉴权校验、Cookie 会话管理、Sec-Fetch-Site 与 Referer 防盗链校验                                                             |
-| `backend/app/db.py`                 | SQLite 会话存储与 WAL 模式持久化                                                                                            |
+| `backend/app/db.py`                 | SQLite 会话存储与 WAL 模式持久化；藏书影子索引、台词 FTS、增量分面快照表（`library_stats_snapshot`、`library_tag_counts`）  |
+| `backend/app/diagnostics.py`        | 入库全链路耗时诊断日志工具，密码/代理凭据自动脱敏与 5MB 滚动轮转（落盘至 `backend/data/import_diagnostic.log`）             |
 | `backend/app/gate.py`               | 运行时下载并发控制闸门（支持环境变量锁定与设置持久化）                                                                      |
 | `backend/app/jobs.py`               | 后台异步缓存任务执行器与进度追踪                                                                                            |
 | `backend/app/models.py`             | 通用模型：`ComicMeta`（含 `Chapter`/`chapters`）/ `PageRecord.chapter` / `RemotePage` / `FetchedComic`                      |
@@ -357,7 +358,7 @@ JmImageTool.decode_and_save(num, source_image, save_path)
 - `GET /api/discovery/ranking`（发现页与排行榜数据：周榜/月榜/日榜，支持 `source` 与 `timeframe` 筛选）
 - `GET /api/discovery/cover`（发现榜单封面纯内存代理，按需加载，零磁盘落盘，带 LRU 内存缓存与 SSRF 防护）
 - `GET /api/library`（基于 SQLite `comics_index` 影子索引的毫秒级受控分页与多维筛选，参数支持 `page`, `page_size`, `status`, `favorite`, `source`, `q`, `tag`, `sort`, `ids`, `offset`；动态 JOIN 各用户独立阅读进度与喜欢）
-- `GET /api/library/facets`（藏书全貌聚合统计与高频前 30 标签，返回 `total_books`, `total_pages`, `cached_pages` 与高频标签元组；内置带 Double-checked locking 与 TOCTOU 竞态保护的进程级内存缓存，支持 `bypass_cache=true` 仅限馆长强制重算）
+- `GET /api/library/facets`（藏书全貌聚合统计与高频前 30 标签，基于 `library_stats_snapshot` 与 `library_tag_counts` 增量快照表与进程级内存双重加速，点查耗时恒定为 0.1ms；写入操作增量差量维护，彻底根除万级书库下的 `json_each` 扫库；支持 `bypass_cache=true` 全量重建快照落表自愈）
 - `POST /api/library/import` `{id, source, prefetch_covers, prefetch_all, refresh}`（`refresh=true` 走增量，章节未变则复用旧 remote；已重新装订画卷禁止 refresh 覆盖）
 - `POST /api/library/local/create`（自建工坊创建本地图集/多章节元数据骨架；未填 `id` 时分配时钟 `source_id`；作为 Paper Studio 外部创作平台 Machine API 规范契约长期保留）
 - `POST /api/library/local/create-from-staged-pdf`（从隔离区暂存 PDF 页面原子收录为本地多章节漫画，带章节草案与页码重排）

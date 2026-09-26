@@ -24,6 +24,7 @@ from ..config import (
 )
 from ..gate import download_gate
 from ..models import Chapter, ComicMeta, DiscoveryItem, FetchedComic, RemotePage
+from ..diagnostics import log_import_diag
 from ..formatting import format_count
 from .base import ComicProvider
 
@@ -313,13 +314,17 @@ class JMProvider(ComicProvider):
     def resolve_html_domain(self) -> str:
         cached = self._cached_html_domain()
         if cached is not None:
+            log_import_diag("JM-DOMAIN", f"hit_cached={cached}")
             return cached
 
+        t_res_start = time.perf_counter()
         with self._lock:
             cached = self._cached_html_domain()
             if cached is not None:
+                log_import_diag("JM-DOMAIN", f"hit_cached_locked={cached}")
                 return cached
 
+            log_import_diag("JM-DOMAIN-RESOLVE", "probing redirect URL and candidate domains")
             domain = ""
             with curl_requests.Session(impersonate="chrome") as session:
                 proxies = self._get_control_proxies()
@@ -363,9 +368,13 @@ class JMProvider(ComicProvider):
                             continue
 
             if not domain:
+                res_ms = int((time.perf_counter() - t_res_start) * 1000)
+                log_import_diag("JM-DOMAIN-FAIL", f"duration_ms={res_ms}")
                 raise RuntimeError("无法找到可用的禁漫网页域名，请检查网络连接或配置 JM_PROXY")
 
             self._write_html_domain(domain)
+            res_ms = int((time.perf_counter() - t_res_start) * 1000)
+            log_import_diag("JM-DOMAIN-RESOLVED", f"domain={domain} duration_ms={res_ms}")
             return domain
 
     # ------------------------------------------------------------------
@@ -419,8 +428,11 @@ class JMProvider(ComicProvider):
     ) -> FetchedComic:
         from jmcomic import MissingAlbumPhotoException
 
+        t_api_start = time.perf_counter()
         api_client = self._make_api_client()
+        log_import_diag("JM-API-CLIENT-READY", f"jm_id={jm_id} client_init_ms={int((time.perf_counter()-t_api_start)*1000)}")
 
+        t_album_req = time.perf_counter()
         try:
             detail = api_client.get_album_detail(jm_id)
         except MissingAlbumPhotoException as e_missing:
@@ -435,11 +447,18 @@ class JMProvider(ComicProvider):
             else:
                 raise
 
+        album_ms = int((time.perf_counter() - t_album_req) * 1000)
+        episodes_cnt = len(detail.episode_list or [])
+        log_import_diag("JM-API-ALBUM-DETAIL", f"jm_id={jm_id} duration_ms={album_ms} episodes={episodes_cnt} page_count={getattr(detail, 'page_count', 0)}")
+
         def fetch_photo_api(pid: str):
             nonlocal api_client
+            t_ep = time.perf_counter()
             try:
                 photo = api_client.get_photo_detail(pid, fetch_album=False)
                 photo.from_album = detail
+                ep_ms = int((time.perf_counter() - t_ep) * 1000)
+                log_import_diag("JM-API-PHOTO", f"pid={pid} duration_ms={ep_ms} pages={len(photo.page_arr)}")
                 return photo
             except MissingAlbumPhotoException as e_ep_missing:
                 if JM_USERNAME and JM_PASSWORD:
@@ -449,6 +468,8 @@ class JMProvider(ComicProvider):
                     try:
                         photo = api_client.get_photo_detail(pid, fetch_album=False)
                         photo.from_album = detail
+                        ep_ms = int((time.perf_counter() - t_ep) * 1000)
+                        log_import_diag("JM-API-PHOTO-RETRY", f"pid={pid} duration_ms={ep_ms} pages={len(photo.page_arr)}")
                         return photo
                     except Exception:
                         raise e_ep_missing
@@ -475,7 +496,9 @@ class JMProvider(ComicProvider):
     ) -> FetchedComic:
         from jmcomic import JmcomicText
 
+        t_html_start = time.perf_counter()
         client = self._make_html_client()
+        log_import_diag("JM-HTML-CLIENT-READY", f"jm_id={jm_id} client_init_ms={int((time.perf_counter()-t_html_start)*1000)}")
 
         def _is_restricted(resp) -> bool:
             url_str = str(getattr(resp, "url", ""))
@@ -490,7 +513,11 @@ class JMProvider(ComicProvider):
                 or "请先登录" in text
             )
 
+        t_req = time.perf_counter()
         album_resp = client.get(f"/album/{jm_id}")
+        album_req_ms = int((time.perf_counter() - t_req) * 1000)
+        log_import_diag("JM-HTML-ALBUM-RESP", f"jm_id={jm_id} duration_ms={album_req_ms} status={getattr(album_resp, 'status_code', None)} len={len(getattr(album_resp, 'content', b''))}")
+
         if _is_restricted(album_resp):
             if JM_USERNAME and JM_PASSWORD:
                 logger.info("检测到受限车号 JM%s，尝试 HTML 会话自愈刷新重登并重试...", jm_id)
@@ -521,6 +548,7 @@ class JMProvider(ComicProvider):
 
         def fetch_photo_html(pid: str):
             nonlocal client
+            t_ep = time.perf_counter()
             photo_resp = client.get(f"/photo/{pid}")
             if _is_restricted(photo_resp):
                 if JM_USERNAME and JM_PASSWORD:
@@ -536,6 +564,8 @@ class JMProvider(ComicProvider):
                     raise ValueError(f"禁漫话数 {pid} 需登录后才能查看，当前账号无权访问或登录会话已失效")
             photo = JmcomicText.analyse_jm_photo_html(photo_resp.text)
             photo.from_album = detail
+            ep_ms = int((time.perf_counter() - t_ep) * 1000)
+            log_import_diag("JM-HTML-PHOTO", f"pid={pid} duration_ms={ep_ms} pages={len(photo.page_arr)}")
             return photo
 
         return self._assemble_fetched_comic(
@@ -777,20 +807,36 @@ class JMProvider(ComicProvider):
         existing: FetchedComic | None = None,
     ) -> FetchedComic:
         jm_id = self.normalize_id(raw_id)
+        t_jm_fetch = time.perf_counter()
+        log_import_diag("JM-FETCH-START", f"jm_id={jm_id} raw_id={raw_id}")
 
         # 1. 优先使用 API 客户端（针对受限画卷天然适配 AVS 凭据，无网页 CAPTCHA 与 album_missing 假拦截）
         try:
-            return self._fetch_via_api(jm_id, existing=existing)
+            fetched = self._fetch_via_api(jm_id, existing=existing)
+            total_ms = int((time.perf_counter() - t_jm_fetch) * 1000)
+            log_import_diag("JM-FETCH-SUCCESS", f"jm_id={jm_id} client=api total_ms={total_ms} pages={len(fetched.remote_pages)}")
+            return fetched
         except (ValueError, RuntimeError) as exc:
             # 若是明确的权限/账号配置错误，直接上浮明确提示，不再做无意义的 HTML 重试
             if "受权限保护" in str(exc) or "需登录查看" in str(exc):
+                total_ms = int((time.perf_counter() - t_jm_fetch) * 1000)
+                log_import_diag("JM-FETCH-AUTH-FAIL", f"jm_id={jm_id} total_ms={total_ms} error={exc}")
                 raise
+            total_ms = int((time.perf_counter() - t_jm_fetch) * 1000)
+            log_import_diag("JM-API-FAIL-DOWNGRADE", f"jm_id={jm_id} api_ms={total_ms} error={_mask_sensitive(exc)}")
             logger.warning("禁漫 API 客户端解析车号 JM%s 失败: %s，尝试降级到 HTML 网页解析...", jm_id, _mask_sensitive(exc))
         except Exception as exc:
+            total_ms = int((time.perf_counter() - t_jm_fetch) * 1000)
+            log_import_diag("JM-API-EXC-DOWNGRADE", f"jm_id={jm_id} api_ms={total_ms} error={_mask_sensitive(exc)}")
             logger.warning("禁漫 API 客户端解析车号 JM%s 异常: %s，尝试降级到 HTML 网页解析...", jm_id, _mask_sensitive(exc))
 
         # 2. 降级到既有的 HTML 网页客户端解析
-        return self._fetch_via_html(jm_id, existing=existing)
+        t_html_entry = time.perf_counter()
+        fetched = self._fetch_via_html(jm_id, existing=existing)
+        total_ms = int((time.perf_counter() - t_jm_fetch) * 1000)
+        html_ms = int((time.perf_counter() - t_html_entry) * 1000)
+        log_import_diag("JM-FETCH-SUCCESS", f"jm_id={jm_id} client=html total_ms={total_ms} html_ms={html_ms} pages={len(fetched.remote_pages)}")
+        return fetched
 
     @staticmethod
     def _is_image_bytes(content: bytes) -> bool:

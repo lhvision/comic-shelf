@@ -19,6 +19,7 @@ from ..db import (
     set_user_favorite,
     set_user_progress,
 )
+from ..diagnostics import log_import_diag
 from ..events import broadcast_event
 from ..gate import get_guest_hide_new_comics
 from ..jobs import start_job
@@ -325,16 +326,21 @@ def discovery_cover(
 @router.post("/api/library/import", response_model=ImportResult)
 def import_comic(req: ImportRequest) -> ImportResult:
     """Imports remote comic metadata into local library and initiates background page caching."""
+    t_start = time.perf_counter()
+    log_import_diag("IMPORT-START", f"source={req.source} id={req.id} refresh={req.refresh}")
     provider = get_provider(req.source)
     try:
         source_id = provider.normalize_id(req.id)
     except ValueError as exc:
+        log_import_diag("IMPORT-ERROR", f"source={req.source} id={req.id} stage=normalize_id error={exc}")
         raise HTTPException(status_code=400, detail=str(exc))
 
     if not req.refresh:
         cached = store.load_fetched(req.source, source_id)
         # Self-healing: if cached comic has 0 pages (broken historical record), bypass cache and re-fetch
         if cached is not None and cached.meta.page_count > 0:
+            elapsed_ms = int((time.perf_counter() - t_start) * 1000)
+            log_import_diag("IMPORT-HIT-CACHE", f"source={req.source} id={source_id} elapsed_ms={elapsed_ms}")
             return ImportResult(meta=cached.meta, from_cache=True, prefetched=0, warnings=[])
 
     # Metadata + URL discovery happen on the request thread: fast and necessary
@@ -350,13 +356,26 @@ def import_comic(req: ImportRequest) -> ImportResult:
                     detail="该漫画画页已由馆长重新装订保护，禁止远端重刷覆盖。如需更新元数据，请在详情页直接编辑资料。",
                 )
             existing = cached_bundle
+
+    t_fetch = time.perf_counter()
     try:
         fetched = provider.fetch(source_id, existing=existing)
     except ValueError as exc:
+        fetch_ms = int((time.perf_counter() - t_fetch) * 1000)
+        log_import_diag("IMPORT-FETCH-FAIL", f"source={req.source} id={source_id} fetch_ms={fetch_ms} error={exc}")
         raise HTTPException(status_code=404, detail=str(exc))
     except Exception as exc:
+        fetch_ms = int((time.perf_counter() - t_fetch) * 1000)
+        log_import_diag("IMPORT-FETCH-FAIL", f"source={req.source} id={source_id} fetch_ms={fetch_ms} error={exc}")
         raise HTTPException(status_code=502, detail=f"从来源获取漫画失败：{exc}") from exc
 
+    fetch_ms = int((time.perf_counter() - t_fetch) * 1000)
+    log_import_diag(
+        "IMPORT-FETCH-SUCCESS",
+        f"source={req.source} id={source_id} fetch_ms={fetch_ms} pages={len(fetched.remote_pages)} chapters={len(fetched.meta.chapters)}",
+    )
+
+    t_save = time.perf_counter()
     fetched.meta.cover_count = max(1, min(req.prefetch_covers or fetched.meta.cover_count, fetched.meta.page_count))
     now_iso = datetime.now(timezone.utc).isoformat()
     fetched.meta.last_auto_checked_at = now_iso
@@ -364,6 +383,8 @@ def import_comic(req: ImportRequest) -> ImportResult:
         fetched.meta.hidden_from_guest = True
     meta = store.save_fetched(fetched, refresh=req.refresh)
     fetched.meta = meta
+    save_ms = int((time.perf_counter() - t_save) * 1000)
+    log_import_diag("IMPORT-SAVE-SUCCESS", f"source={req.source} id={source_id} save_ms={save_ms}")
 
     broadcast_event(
         "library_changed",
@@ -376,6 +397,12 @@ def import_comic(req: ImportRequest) -> ImportResult:
         else (req.prefetch_covers or fetched.meta.cover_count)
     )
     start_job(req.source, source_id, lambda job: _prefetch_worker(job, fetched, cover_count, req.prefetch_all))
+
+    total_ms = int((time.perf_counter() - t_start) * 1000)
+    log_import_diag(
+        "IMPORT-COMPLETE",
+        f"source={req.source} id={source_id} total_ms={total_ms} fetch_ms={fetch_ms} save_ms={save_ms}",
+    )
 
     return ImportResult(
         meta=fetched.meta,

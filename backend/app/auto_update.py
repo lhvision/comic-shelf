@@ -17,6 +17,7 @@ import time
 from datetime import datetime, timezone
 from typing import Any
 
+from .config import AUTO_UPDATE_INTERVAL_SECONDS
 from .db import get_comics_due_for_auto_update
 from .events import broadcast_event
 from .jobs import start_job
@@ -144,7 +145,7 @@ def run_auto_update_cycle(
 def auto_update_worker(
     store: ComicStore,
     stop_event: threading.Event,
-    interval_seconds: int = 3600,
+    interval_seconds: int = AUTO_UPDATE_INTERVAL_SECONDS,
 ) -> None:
     """后台巡检线程：开机宽限 30 秒后，每 ``interval_seconds`` 秒跑一轮。
 

@@ -167,20 +167,21 @@ docker run -d \
 
 API 工作进程数固定为 1，不属于可调参数；这里的下载与缩略图并发均在同一 API 进程内协调。运行约束见 [并发与故障恢复边界](#11-本地书库的并发与故障恢复边界)。
 
-| 环境变量                               | 默认值 | 说明                                                                                                                                                          |
-| :------------------------------------- | :----- | :------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `COMIC_SHELF_MAX_CONCURRENT_DOWNLOADS` | `3`    | **远端图片下载并发数**。JM 官方 CDN 对高并发极为敏感，建议维持在 `2`~`4`，避免触发风控或请求超时。                                                            |
-| `COMIC_SHELF_THUMB_CONCURRENCY`        | `4`    | **缩略图处理并发门禁**。限制同时进行 Pillow 转换的 CPU worker 线程数。在单核/双核低配 NAS（如 J1900、ARM 盒子）上建议设为 `1` 或 `2`，防止冷访问时 CPU 跑满。 |
-| `COMIC_SHELF_MAX_PREFETCH`             | `600`  | **单批次预缓存画页上限**，保护磁盘与网络。超长漫画每次点击“缓存全部”会自动顺延下载未缓存的前 N 页，直至全部完成。                                             |
-| `COMIC_SHELF_PAGE_THUMB_WIDTH`         | `360`  | 详情页与子章节网格缩略图宽度（px）。                                                                                                                          |
-| `COMIC_SHELF_PAGE_THUMB_QUALITY`       | `78`   | 缩略图 JPEG 压缩质量（兼顾清晰度与微秒级传输）。                                                                                                              |
-| `COMIC_SHELF_COVER_WIDTH`              | `720`  | 书架与详情页大封面宽度（px，默认 720 完美匹配 2x 视网膜高清度）。                                                                                             |
-| `COMIC_SHELF_COVER_THUMB_WIDTH`        | `360`  | 书架阶梯封面 1x 缩略图宽度（px，默认 360 配合 HTML5 srcset 降低低密设备内存开销）。                                                                           |
-| `COMIC_SHELF_COVER_QUALITY`            | `80`   | 大封面 JPEG 质量（默认 80 兼顾微秒级传输与典藏画质）。                                                                                                        |
-| `COMIC_SHELF_COVER_COUNT`              | `4`    | 每本漫画默认生成的封面预览张数。                                                                                                                              |
-| `COMIC_SHELF_LOG_LEVEL`                | `info` | 后端运行日志级别（可选 `debug`, `info`, `warning`, `error`）。                                                                                                |
-| `COMIC_SHELF_ENABLE_AUTO_UPDATE`       | `true` | 是否开启多章节连载后台自动追更巡检。设为 `false` 可完全关闭后台自动探测。每本漫画的更新周期可在元数据面板单独设置或设为 `0` 禁用。                            |
-| `COMIC_SHELF_ACCESS_LOG`               | `true` | 是否开启 Uvicorn 请求访问日志。默认已内置高频探针静音过滤（`/api/health` 与搜图状态 200 正常时不输出）；若需彻底关闭访问日志可设为 `false`。                  |
+| 环境变量                                   | 默认值   | 说明                                                                                                                                                          |
+| :----------------------------------------- | :------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `COMIC_SHELF_MAX_CONCURRENT_DOWNLOADS`     | `3`      | **远端图片下载并发数**。JM 官方 CDN 对高并发极为敏感，建议维持在 `2`~`4`，避免触发风控或请求超时。                                                            |
+| `COMIC_SHELF_THUMB_CONCURRENCY`            | `4`      | **缩略图处理并发门禁**。限制同时进行 Pillow 转换的 CPU worker 线程数。在单核/双核低配 NAS（如 J1900、ARM 盒子）上建议设为 `1` 或 `2`，防止冷访问时 CPU 跑满。 |
+| `COMIC_SHELF_MAX_PREFETCH`                 | `600`    | **单批次预缓存画页上限**，保护磁盘与网络。超长漫画每次点击“缓存全部”会自动顺延下载未缓存的前 N 页，直至全部完成。                                             |
+| `COMIC_SHELF_PAGE_THUMB_WIDTH`             | `360`    | 详情页与子章节网格缩略图宽度（px）。                                                                                                                          |
+| `COMIC_SHELF_PAGE_THUMB_QUALITY`           | `78`     | 缩略图 JPEG 压缩质量（兼顾清晰度与微秒级传输）。                                                                                                              |
+| `COMIC_SHELF_COVER_WIDTH`                  | `720`    | 书架与详情页大封面宽度（px，默认 720 完美匹配 2x 视网膜高清度）。                                                                                             |
+| `COMIC_SHELF_COVER_THUMB_WIDTH`            | `360`    | 书架阶梯封面 1x 缩略图宽度（px，默认 360 配合 HTML5 srcset 降低低密设备内存开销）。                                                                           |
+| `COMIC_SHELF_COVER_QUALITY`                | `80`     | 大封面 JPEG 质量（默认 80 兼顾微秒级传输与典藏画质）。                                                                                                        |
+| `COMIC_SHELF_COVER_COUNT`                  | `4`      | 每本漫画默认生成的封面预览张数。                                                                                                                              |
+| `COMIC_SHELF_LOG_LEVEL`                    | `info`   | 后端运行日志级别（可选 `debug`, `info`, `warning`, `error`）。                                                                                                |
+| `COMIC_SHELF_ENABLE_AUTO_UPDATE`           | `true`   | 是否开启多章节连载后台自动追更巡检。设为 `false` 可完全关闭后台自动探测。每本漫画的更新周期可在元数据面板单独设置或设为 `0` 禁用。                            |
+| `COMIC_SHELF_AUTO_UPDATE_INTERVAL_SECONDS` | `172800` | 后台自动追更巡检轮询周期（秒）。默认 `172800`（2 天），防止对远端接口过于频繁唤醒。                                                                           |
+| `COMIC_SHELF_ACCESS_LOG`                   | `true`   | 是否开启 Uvicorn 请求访问日志。默认已内置高频探针静音过滤（`/api/health` 与搜图状态 200 正常时不输出）；若需彻底关闭访问日志可设为 `false`。                  |
 
 ### 3.4 哔咔漫画（PicAcg Provider）配置（可选）
 
