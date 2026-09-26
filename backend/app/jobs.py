@@ -86,6 +86,12 @@ def start_job(
                 job["running"] = False
                 job["done"] = True
                 job["finished_at"] = time.time()
+            try:
+                from .db import invalidate_facets_cache
+
+                invalidate_facets_cache()
+            except Exception:
+                pass
 
     threading.Thread(
         target=_run,

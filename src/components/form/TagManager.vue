@@ -10,6 +10,7 @@ const currentTags = defineModel<string[]>({ default: () => [] })
 const props = withDefaults(
   defineProps<{
     maxSuggestions?: number
+    source?: string
   }>(),
   {
     maxSuggestions: 15,
@@ -21,16 +22,17 @@ const newTagInput = ref('')
 
 onMounted(() => {
   if (!store.facets) {
-    void store.loadFacets()
+    void store.loadFacets(props.source)
   }
 })
 
 const popularTags = computed(() => {
+  const selected = currentTags.value ?? []
   // 优先直接使用后端聚合好的全馆最热门标签池（突破分页限制，覆盖全馆万本真实数据）
   if (store.facets?.top_tags && store.facets.top_tags.length > 0) {
     return store.facets.top_tags
       .map(([t]) => t)
-      .filter((t) => !currentTags.value.includes(t))
+      .filter((t) => !selected.includes(t))
       .slice(0, props.maxSuggestions)
   }
   // 降级兜底：从当前 store.items 提取
@@ -43,20 +45,21 @@ const popularTags = computed(() => {
   return Object.entries(counts)
     .sort((a, b) => b[1] - a[1])
     .map(([t]) => t)
-    .filter((t) => !currentTags.value.includes(t))
+    .filter((t) => !selected.includes(t))
     .slice(0, props.maxSuggestions)
 })
 
 function removeTag(index: number) {
-  const next = [...currentTags.value]
+  const next = [...(currentTags.value ?? [])]
   next.splice(index, 1)
   currentTags.value = next
 }
 
 function addTag(tagText: string) {
   const trimmed = tagText.trim().replace(/^#/, '')
-  if (trimmed && !currentTags.value.includes(trimmed)) {
-    currentTags.value = [...currentTags.value, trimmed]
+  const current = currentTags.value ?? []
+  if (trimmed && !current.includes(trimmed)) {
+    currentTags.value = [...current, trimmed]
   }
   newTagInput.value = ''
 }

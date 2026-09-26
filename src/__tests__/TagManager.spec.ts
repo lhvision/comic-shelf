@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vite-plus/test'
+import { describe, it, expect, beforeEach, vi } from 'vite-plus/test'
 import { mount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
 import { useLibraryStore } from '@/stores/library'
@@ -65,5 +65,18 @@ describe('TagManager', () => {
     expect(popularChips.length).toBe(2)
     expect(popularChips[0]!.text()).toContain('纯爱')
     expect(popularChips[1]!.text()).toContain('同人')
+  })
+
+  it('safely handles empty/undefined modelValue and calls loadFacets with source', () => {
+    const store = useLibraryStore()
+    store.facets = null
+    const loadSpy = vi.spyOn(store, 'loadFacets').mockResolvedValue()
+    const wrapper = mount(TagManager, {
+      props: {
+        source: 'local',
+      },
+    })
+    expect(loadSpy).toHaveBeenCalledWith('local')
+    expect(wrapper.findAll('.tag-chip').length).toBe(0)
   })
 })

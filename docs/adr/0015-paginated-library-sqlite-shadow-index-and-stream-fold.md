@@ -123,7 +123,7 @@ CREATE INDEX IF NOT EXISTS idx_comics_index_title ON comics_index(title);
 
 #### B. 全貌统计聚合：`GET /api/library/facets`
 
-- **Query 参数**：`source` (str, optional)
+- **Query 参数**：`source` (str, optional), `bypass_cache` (bool, optional, 仅限馆长强制跳过进程缓存重算)
 - **响应体**：
   ```json
   {
@@ -155,15 +155,16 @@ CREATE INDEX IF NOT EXISTS idx_comics_index_title ON comics_index(title);
 
 ---
 
-### 4. 全貌统计（Facets）进程级内存缓存与批量防抖（2026-09 修订）
+### 4. 全貌统计（Facets）进程级内存缓存与防击穿保护（2026-09 修订）
 
 针对万级书库下高频请求 `/api/library/facets` 引发全库 `tags_json` 反复执行 `json_each` 虚拟表解包与 Hash 聚合的问题，确立双端闭环内存缓存方案：
 
-1. **服务端进程级内存缓存（0 I/O 读）**：
+1. **服务端进程级内存缓存（0 I/O 读与即时一致性）**：
    - 内存中维护带 `(is_curator, source)` 物理隔离维度的字典缓存，读操作 99.9% 场景耗时降至 0.005ms（零数据库查询）；
-   - 写入事件（收录、追更、改标签、删除）仅执行 `invalidate_facets_cache()` 惰性时间戳标记（0.0001ms），零写事务阻塞；
-   - 施加 3.0 秒批量防抖保鲜窗口，确保高频连续收录或后台多任务下载时不触发并发聚合风暴；
-   - 权限与安全兜底：仅限馆长（Curator）允许传入 `bypass_cache=true` 强制重算，防范访客 DoS；来源参数强制校验阻断键膨胀。
+   - 写入事件（收录、追更、改标签、删除）执行 `invalidate_facets_cache()` 精准标记失效时间戳，下一次读取自然重算并缓存；
+   - 后台单页缓存推进仅更新数据库计数值，待后台任务完成时统一触发失效，从源头杜绝单页下载高频无效失效；
+   - 防击穿与时序安全：采用 Double-Checked Locking 避免并发计算风暴（Cache Stampede），时间戳严格锚定计算发起前以规避 TOCTOU 脏读覆写竞态；
+   - 权限与安全兜底：支持 `bypass_cache=true` 仅限馆长强制重算；来源参数合法性校验配合 FIFO 淘汰保障容量受控。
 2. **前端热门标签对齐全馆真实分布**：
    - `TagManager.vue` 热门快选从当前页 24 本对齐至全馆聚合的 `store.facets?.top_tags`，彻底打通本地上传与编辑标签的热门推荐体验。
 

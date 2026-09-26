@@ -393,7 +393,7 @@ const {
 
           <div class="field-group">
             <label class="form-label">分类标签 (Tags)</label>
-            <TagManager v-model="tags" />
+            <TagManager v-model="tags" source="local" />
           </div>
 
           <div class="field-group">

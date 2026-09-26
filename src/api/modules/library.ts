@@ -10,7 +10,13 @@
  * 5. 远端作品导入、作品删除、收藏状态切换与元数据编辑。
  */
 
-import { memoizedDetail, memoizedProviders, request, type RequestOptions } from '../core/http'
+import {
+  memoizedDetail,
+  memoizedProviders,
+  request,
+  type QueryParams,
+  type RequestOptions,
+} from '../core/http'
 import type {
   ComicDetail,
   ImportRequest,
@@ -68,17 +74,22 @@ export async function library(
  * 获取书架的聚合统计数据（Facets）
  *
  * @param source 可选按特定图源过滤
+ * @param bypassCache 是否跳过进程内存缓存强制重算（仅馆长有效）
  * @param options 可选的请求配置
  * @returns 统计数据（含 total, reading, completed, favorites 及 tags 列表）
  */
 export async function libraryFacets(
   source?: string,
+  bypassCache = false,
   options?: RequestOptions,
 ): Promise<LibraryFacetsResponse> {
+  const params: QueryParams = {}
+  if (source) params.source = source
+  if (bypassCache) params.bypass_cache = true
   return request<LibraryFacetsResponse>(
     '/library/facets',
     { signal: options?.signal },
-    { ...options, params: { source } },
+    { ...options, params: { ...params, ...options?.params } },
   )
 }
 

@@ -162,9 +162,9 @@ describe('api client query assembly', () => {
     )
     globalThis.fetch = fetchMock
 
-    await api.libraryFacets('picacg')
+    await api.libraryFacets('picacg', true)
     const calledUrl = getCalledUrl(fetchMock)
-    expect(calledUrl).toContain('/library/facets?source=picacg')
+    expect(calledUrl).toContain('/library/facets?source=picacg&bypass_cache=true')
   })
 
   it('assembles uploadPages and replaceComicPages query parameters via declarative object filtering', async () => {

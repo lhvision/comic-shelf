@@ -201,9 +201,9 @@ export const useLibraryStore = defineStore('library', () => {
     return false
   }
 
-  async function loadFacets(source?: string) {
+  async function loadFacets(source?: string, bypassCache = false) {
     try {
-      facets.value = await api.libraryFacets(source)
+      facets.value = await api.libraryFacets(source, bypassCache)
     } catch {
       // ignore
     }
@@ -463,8 +463,16 @@ export const useLibraryStore = defineStore('library', () => {
     return liveCache.value[liveCacheKey(item.source, item.source_id)]
   }
 
-  async function load(silent = false, params?: LibraryQueryParams, userId?: string) {
-    await Promise.all([loadItems(silent, false, params, userId), loadFacets(params?.source)])
+  async function load(
+    silent = false,
+    params?: LibraryQueryParams,
+    userId?: string,
+    bypassCache = false,
+  ) {
+    await Promise.all([
+      loadItems(silent, false, params, userId),
+      loadFacets(params?.source, bypassCache),
+    ])
     if (!isOffline.value) {
       await refreshLiveCache()
     }
