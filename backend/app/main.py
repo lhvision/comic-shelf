@@ -32,7 +32,7 @@ from .auth import (
     is_machine,
     is_request_secure,
 )
-from .config import AUTO_UPDATE_INTERVAL_SECONDS, COOKIE_NAME, ENABLE_AUTO_UPDATE, ENABLE_DOCS, LIBRARY_DIR
+from .config import COOKIE_NAME, ENABLE_AUTO_UPDATE, ENABLE_DOCS, LIBRARY_DIR
 from .storage.utils import acquire_library_writer_lock
 from .db import (
     clean_expired_direct_passes,

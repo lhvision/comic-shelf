@@ -6,7 +6,14 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from app.config import DATA_DIR
+from app.config import (
+    AUTH_SECRET,
+    DATA_DIR,
+    JM_PASSWORD,
+    MACHINE_TOKEN,
+    MCP_TOKEN,
+    PICA_PASSWORD,
+)
 
 import os
 import re
@@ -20,16 +27,15 @@ _PROXY_CRED_RE = re.compile(r"://([^:@\s]*):([^@\s]+)@")
 
 
 def _mask_diag_text(text: str) -> str:
-    """脱敏日志中的密码与凭据，防止敏感信息落盘。"""
+    """脱敏日志中的密码与凭据并规范换行，确保结构化日志严格保持单行契约。"""
     if not text:
         return ""
+    # 消除换行符，防止多行异常破坏日志单行格式
+    text = text.replace("\r\n", " ").replace("\n", " ").replace("\r", " ")
     masked = _PROXY_CRED_RE.sub(r"://\1:***@", text)
-    jm_pwd = os.getenv("JM_PASSWORD", "").strip()
-    if jm_pwd and len(jm_pwd) >= 4 and jm_pwd in masked:
-        masked = masked.replace(jm_pwd, "******")
-    auth_secret = os.getenv("COMIC_SHELF_SECRET", "").strip()
-    if auth_secret and len(auth_secret) >= 4 and auth_secret in masked:
-        masked = masked.replace(auth_secret, "******")
+    for secret in (JM_PASSWORD, PICA_PASSWORD, AUTH_SECRET, MACHINE_TOKEN, MCP_TOKEN):
+        if secret and len(secret) >= 4 and secret in masked:
+            masked = masked.replace(secret, "******")
     return masked
 
 
@@ -38,7 +44,7 @@ def get_diag_log_path() -> Path:
     return _DIAG_LOG_PATH
 
 
-def log_import_diag(category: str, message: str, **kwargs: Any) -> None:
+def log_import_diag(category: str, message: str = "", **kwargs: Any) -> None:
     """写入脱敏后的结构化入库排查日志到 backend/data/import_diagnostic.log。
 
     格式: [2026-09-27T03:30:15.123Z] [CATEGORY] message key=val ...
@@ -47,11 +53,15 @@ def log_import_diag(category: str, message: str, **kwargs: Any) -> None:
     clean_msg = _mask_diag_text(message)
     extra = ""
     if kwargs:
-        extra = " " + " ".join(f"{k}={_mask_diag_text(str(v))}" for k, v in kwargs.items())
-    line = f"[{now_str}] [{category}] {clean_msg}{extra}\n"
+        extra = " ".join(f"{k}={_mask_diag_text(str(v))}" for k, v in kwargs.items())
+    if clean_msg and extra:
+        content = f"{clean_msg} {extra}"
+    else:
+        content = clean_msg or extra
+    line = f"[{now_str}] [{category}] {content}\n"
 
     # 同步输出至标准日志，便于容器与终端观察
-    logger.info("[IMPORT-DIAG] [%s] %s%s", category, clean_msg, extra)
+    logger.info("[IMPORT-DIAG] [%s] %s", category, content)
 
     try:
         with _DIAG_LOCK:

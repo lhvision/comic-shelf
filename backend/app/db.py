@@ -1354,40 +1354,35 @@ def update_comic_cached_pages(source: str, source_id: str, cached_pages: int) ->
             "SELECT cached_pages, hidden_from_guest FROM comics_index WHERE source = ? AND source_id = ?",
             (source, source_id),
         ).fetchone()
-        if row:
-            old_cached = int(row["cached_pages"] or 0)
-            hidden = int(row["hidden_from_guest"] or 0)
-            d_cached = cached_pages - old_cached
-            if d_cached != 0:
-                conn.execute(
-                    "UPDATE comics_index SET cached_pages = ? WHERE source = ? AND source_id = ?",
-                    (cached_pages, source, source_id),
-                )
-                admin_scopes = ["admin:all"]
-                guest_scopes = ["guest:all"]
-                if source:
-                    admin_scopes.append(f"admin:{source}")
-                    guest_scopes.append(f"guest:{source}")
-                now_ts = time.time()
-                for sc in admin_scopes:
-                    conn.execute(
-                        "UPDATE library_stats_snapshot SET cached_pages = MAX(0, cached_pages + ?), updated_at = ? WHERE scope = ?",
-                        (d_cached, now_ts, sc),
-                    )
-                if hidden == 0:
-                    for sc in guest_scopes:
-                        conn.execute(
-                            "UPDATE library_stats_snapshot SET cached_pages = MAX(0, cached_pages + ?), updated_at = ? WHERE scope = ?",
-                            (d_cached, now_ts, sc),
-                        )
-                conn.commit()
-                invalidate_facets_cache()
-                return
+        if not row:
+            return
+        old_cached = int(row["cached_pages"] or 0)
+        hidden = int(row["hidden_from_guest"] or 0)
+        d_cached = cached_pages - old_cached
+        if d_cached == 0:
+            return
 
         conn.execute(
             "UPDATE comics_index SET cached_pages = ? WHERE source = ? AND source_id = ?",
             (cached_pages, source, source_id),
         )
+        admin_scopes = ["admin:all"]
+        guest_scopes = ["guest:all"]
+        if source:
+            admin_scopes.append(f"admin:{source}")
+            guest_scopes.append(f"guest:{source}")
+        now_ts = time.time()
+        for sc in admin_scopes:
+            conn.execute(
+                "UPDATE library_stats_snapshot SET cached_pages = MAX(0, cached_pages + ?), updated_at = ? WHERE scope = ?",
+                (d_cached, now_ts, sc),
+            )
+        if hidden == 0:
+            for sc in guest_scopes:
+                conn.execute(
+                    "UPDATE library_stats_snapshot SET cached_pages = MAX(0, cached_pages + ?), updated_at = ? WHERE scope = ?",
+                    (d_cached, now_ts, sc),
+                )
         conn.commit()
     invalidate_facets_cache()
 
