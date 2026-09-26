@@ -110,8 +110,10 @@
   通过传入图片的 Base64 编码数据在全库中进行视觉向量特征匹配，精准定位到所属漫画、画页及相似度评分。
 - `shelf_read_comic({ source, source_id, page?, fromBeginning?, chapter_id?, bubble_box?, other_boxes?, bubble_text? })`：
   直接从书架打开指定漫画并跳转到特定画页阅读，可附带章节、强制首开、代表气泡坐标与同页其余命中气泡（`other_boxes`，最多 5 组静态描边）进行朱砂色呼吸光效高亮。
-- `shelf_import_comic({ id?, source_id?, source?, local_path?, prefetch_all?, prefetch_covers?, favorite?, tags?, open_after? })`：
-  将远端或服务器本地漫画收录导入至书架（支持省略 `source` 自动智能推断图源、支持后台全本离线预缓存、初始喜欢标记、自定义标签追加与导入后自动直达详情页）。**【仅馆长权限】**
+- `shelf_import_comic({ source, id?, source_id?, local_path?, prefetch_all?, prefetch_covers?, favorite?, tags?, open_after? })`：
+  将远端或服务器本地漫画收录导入至书架（必须显式指定 `source` 图源 Provider 以杜绝多平台车号冲突；支持后台全本离线预缓存、初始喜欢标记、自定义标签追加与导入后自动直达详情页）。**【仅馆长权限】**
+- `shelf_batch_import_comics({ source, items, prefetch_all?, prefetch_covers?, favorite?, tags? })`：
+  批量收录导入多部漫画至本地书库（必须显式指定统一 `source` 图源 Provider，单批次严格同源；支持纯文本多行/逗号分隔车号，上限 50 本，内部 5s 安全间隔串行防风控；单本失败隔离容错）。**【仅馆长权限】**
 - `shelf_pick_random({ favoritesOnly?, source?, openReader? })`：
   从当前书架藏书中随机淘选一本漫画，支持限定已标记喜欢或特定图源，并可选择直达详情页或直接进入阅读器。
 - `shelf_open_comic({ source, source_id, chapter_id? })`：

@@ -493,8 +493,46 @@ describe('WebMCP Composables', () => {
 
         const importComicExecute = registeredTools['shelf_import_comic']
         expect(importComicExecute).toBeDefined()
+
+        // 缺少 source 时必须阻断并返回友好中文错误提示
+        const missingSourceRes = (await importComicExecute!({ id: '999999' })) as {
+          content: Array<{ text: string }>
+          isError?: boolean
+        }
+        expect(missingSourceRes.isError).toBe(true)
+        expect(missingSourceRes.content[0]?.text).toContain(
+          '收录漫画必须显式指定来源 Provider (source: "jm" | "picacg" | "local")',
+        )
+
+        // 传入非法 source 时必须阻断
+        const invalidSourceRes = (await importComicExecute!({
+          id: '999999',
+          source: 'unsupported',
+        })) as {
+          content: Array<{ text: string }>
+          isError?: boolean
+        }
+        expect(invalidSourceRes.isError).toBe(true)
+        expect(invalidSourceRes.content[0]?.text).toContain(
+          '收录漫画必须显式指定来源 Provider (source: "jm" | "picacg" | "local")',
+        )
+
+        // 传入 local_path 但 source 不为 local 时必须阻断
+        const conflictLocalRes = (await importComicExecute!({
+          local_path: 'public/frames',
+          source: 'jm',
+        })) as {
+          content: Array<{ text: string }>
+          isError?: boolean
+        }
+        expect(conflictLocalRes.isError).toBe(true)
+        expect(conflictLocalRes.content[0]?.text).toContain(
+          '传入 local_path 本地路径时，图源 source 必须为 "local"',
+        )
+
         const importRes = await importComicExecute!({
           id: '999999',
+          source: 'jm',
           prefetch_all: true,
           favorite: true,
           tags: ['NewTag'],
@@ -532,7 +570,11 @@ describe('WebMCP Composables', () => {
           meta: mockImportDetail.meta,
         })
         setFavSpy.mockClear()
-        const cachedRes = (await importComicExecute!({ id: '999999', favorite: true })) as {
+        const cachedRes = (await importComicExecute!({
+          id: '999999',
+          source: 'jm',
+          favorite: true,
+        })) as {
           content: Array<{ text: string }>
         }
         expect(setFavSpy).not.toHaveBeenCalled()
@@ -638,7 +680,33 @@ describe('WebMCP Composables', () => {
 
         expect(registeredTools['shelf_batch_import_comics']).toBeDefined()
 
+        // 验证缺失 source 时的阻断拦截与友好提示
+        const missingSourceBatchRes = (await registeredTools['shelf_batch_import_comics']!({
+          items: 'JM111111',
+        })) as {
+          content: Array<{ text: string }>
+          isError?: boolean
+        }
+        expect(missingSourceBatchRes.isError).toBe(true)
+        expect(missingSourceBatchRes.content[0]?.text).toContain(
+          '收录漫画必须显式指定来源 Provider (source: "jm" | "picacg" | "local")',
+        )
+
+        // 验证传入非法 source 时的快速阻断
+        const invalidSourceBatchRes = (await registeredTools['shelf_batch_import_comics']!({
+          source: 'unknown',
+          items: 'JM111111',
+        })) as {
+          content: Array<{ text: string }>
+          isError?: boolean
+        }
+        expect(invalidSourceBatchRes.isError).toBe(true)
+        expect(invalidSourceBatchRes.content[0]?.text).toContain(
+          '收录漫画必须显式指定来源 Provider (source: "jm" | "picacg" | "local")',
+        )
+
         const batchRes = (await registeredTools['shelf_batch_import_comics']!({
+          source: 'jm',
           items: ['JM111111', 'JM222222', 'JM333333'],
           favorite: true,
         })) as {
@@ -664,6 +732,7 @@ describe('WebMCP Composables', () => {
 
         // 验证对多行与逗号分隔纯文本输入的兼容性
         const textBatchRes = (await registeredTools['shelf_batch_import_comics']!({
+          source: 'jm',
           items: 'JM111111\nJM222222, JM333333',
         })) as {
           content: Array<{ text: string }>
@@ -673,13 +742,18 @@ describe('WebMCP Composables', () => {
 
         // 验证并发调用互斥锁（Fail-Fast）拦截
         const pendingFirst = registeredTools['shelf_batch_import_comics']!({
+          source: 'jm',
           items: 'JM111111',
         })
-        await expect(
-          registeredTools['shelf_batch_import_comics']!({
-            items: 'JM222222',
-          }),
-        ).rejects.toThrow('当前已有批量收录任务正在执行中')
+        const conflictRes = (await registeredTools['shelf_batch_import_comics']!({
+          source: 'jm',
+          items: 'JM222222',
+        })) as {
+          content: Array<{ text: string }>
+          isError?: boolean
+        }
+        expect(conflictRes.isError).toBe(true)
+        expect(conflictRes.content[0]?.text).toContain('当前已有批量收录任务正在执行中')
         await pendingFirst
 
         scope.stop()

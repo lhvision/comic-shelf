@@ -131,7 +131,7 @@ class FetchedComic(BaseModel):
 
 class ImportRequest(BaseModel):
     id: str
-    source: str = "jm"
+    source: str
     prefetch_covers: int = 4
     prefetch_all: bool = False
     refresh: bool = False

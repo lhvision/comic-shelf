@@ -129,7 +129,7 @@ export interface ComicDetail {
 
 export interface ImportRequest {
   id: string
-  source?: string
+  source: string
   prefetch_covers?: number
   prefetch_all?: boolean
   refresh?: boolean
