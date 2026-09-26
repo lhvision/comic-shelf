@@ -357,7 +357,7 @@ JmImageTool.decode_and_save(num, source_image, save_path)
 - `GET /api/discovery/ranking`（发现页与排行榜数据：周榜/月榜/日榜，支持 `source` 与 `timeframe` 筛选）
 - `GET /api/discovery/cover`（发现榜单封面纯内存代理，按需加载，零磁盘落盘，带 LRU 内存缓存与 SSRF 防护）
 - `GET /api/library`（基于 SQLite `comics_index` 影子索引的毫秒级受控分页与多维筛选，参数支持 `page`, `page_size`, `status`, `favorite`, `source`, `q`, `tag`, `sort`, `ids`, `offset`；动态 JOIN 各用户独立阅读进度与喜欢）
-- `GET /api/library/facets`（藏书全貌聚合统计与高频前 30 标签，返回 `total_books`, `total_pages`, `cached_pages` 与高频标签元组）
+- `GET /api/library/facets`（藏书全貌聚合统计与高频前 30 标签，返回 `total_books`, `total_pages`, `cached_pages` 与高频标签元组；内置带 3 秒批量防抖的进程级内存缓存，支持 `bypass_cache=true` 仅限馆长强制重算）
 - `POST /api/library/import` `{id, source, prefetch_covers, prefetch_all, refresh}`（`refresh=true` 走增量，章节未变则复用旧 remote；已重新装订画卷禁止 refresh 覆盖）
 - `POST /api/library/local/create`（自建工坊创建本地图集/多章节元数据骨架；未填 `id` 时分配时钟 `source_id`；作为 Paper Studio 外部创作平台 Machine API 规范契约长期保留）
 - `POST /api/library/local/create-from-staged-pdf`（从隔离区暂存 PDF 页面原子收录为本地多章节漫画，带章节草案与页码重排）

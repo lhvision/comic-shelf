@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useLibraryStore } from '@/stores/library'
 import AppButton from '@/components/AppButton.vue'
 import AppChip from '@/components/AppChip.vue'
@@ -19,7 +19,21 @@ const props = withDefaults(
 const store = useLibraryStore()
 const newTagInput = ref('')
 
+onMounted(() => {
+  if (!store.facets) {
+    void store.loadFacets()
+  }
+})
+
 const popularTags = computed(() => {
+  // 优先直接使用后端聚合好的全馆最热门标签池（突破分页限制，覆盖全馆万本真实数据）
+  if (store.facets?.top_tags && store.facets.top_tags.length > 0) {
+    return store.facets.top_tags
+      .map(([t]) => t)
+      .filter((t) => !currentTags.value.includes(t))
+      .slice(0, props.maxSuggestions)
+  }
+  // 降级兜底：从当前 store.items 提取
   const counts: Record<string, number> = {}
   for (const item of store.items) {
     for (const t of item.tags || []) {

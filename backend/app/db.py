@@ -34,6 +34,27 @@ _DB_PATH: Path = DEFAULT_DB_PATH
 DEFAULT_DIALOGUE_DB_PATH = DATA_DIR / "comic_dialogues.db"
 _DIALOGUE_DB_PATH: Path = DEFAULT_DIALOGUE_DB_PATH
 
+# ----------------------------------------------------------------------
+# 书架全貌聚合统计（Facets）进程级内存缓存与批量防抖
+# ----------------------------------------------------------------------
+_FACETS_DEBOUNCE_SECONDS = 3.0
+_facets_cache: dict[tuple[bool, str | None], tuple[float, dict[str, Any]]] = {}
+_facets_cache_lock = threading.Lock()
+_last_facets_invalidated_at: float = 0.0
+
+
+def invalidate_facets_cache(force: bool = False) -> None:
+    """使书架全貌聚合统计（Facets）缓存失效。
+
+    Args:
+        force: 若为 True，立即清空字典（绕过防抖保护，用于单测隔离或显式重置）。
+    """
+    global _last_facets_invalidated_at
+    with _facets_cache_lock:
+        _last_facets_invalidated_at = time.monotonic()
+        if force:
+            _facets_cache.clear()
+
 
 def set_db_path(path: Path) -> None:
     global _DB_PATH, _DIALOGUE_DB_PATH
@@ -42,6 +63,7 @@ def set_db_path(path: Path) -> None:
         _DIALOGUE_DB_PATH = path.parent / path.name.replace("comic_shelf", "comic_dialogues")
     else:
         _DIALOGUE_DB_PATH = path.parent / f"{path.stem}_dialogues.db"
+    invalidate_facets_cache(force=True)
 
 
 def get_db_path() -> Path:
@@ -975,6 +997,7 @@ def upsert_comic_index(item: dict[str, Any]) -> None:
             item,
         )
         conn.commit()
+    invalidate_facets_cache()
 
 
 def purge_comic_db_records(source: str, source_id: str) -> bool:
@@ -1013,6 +1036,9 @@ def purge_comic_db_records(source: str, source_id: str) -> bool:
         # 语料删不掉不该让删书失败，但必须留警告：孤儿台词行仍会被检索命中，却拼不出书名
         logger.warning("清理台词索引失败 %s/%s: %s", source, source_id, exc)
 
+    if purged:
+        invalidate_facets_cache()
+
     return purged
 
 
@@ -1043,6 +1069,7 @@ def update_comic_cached_pages(source: str, source_id: str, cached_pages: int) ->
             (cached_pages, source, source_id),
         )
         conn.commit()
+    invalidate_facets_cache()
 
 
 def get_comics_due_for_auto_update(max_count: int = 10) -> list[dict[str, Any]]:
@@ -1294,16 +1321,7 @@ def query_library_index(
         return [dict(r) for r in rows], total
 
 
-def get_library_facets(is_curator: bool, source: str | None = None) -> dict[str, Any]:
-    """Aggregates library statistics (total books, pages, cached pages) and top 30 most frequent tags.
-
-    Args:
-        is_curator: When False, excludes comics marked as hidden_from_guest from counts.
-        source: Optional source filter to scope facets to a single provider.
-
-    Returns:
-        Dict containing total_books, total_pages, cached_pages, and tags list with counts.
-    """
+def _compute_library_facets(is_curator: bool, source: str | None = None) -> dict[str, Any]:
     conditions: list[str] = []
     params: dict[str, Any] = {}
     if not is_curator:
@@ -1343,6 +1361,57 @@ def get_library_facets(is_curator: bool, source: str | None = None) -> dict[str,
             },
             "top_tags": [(str(r["tag"]), int(r["cnt"])) for r in tag_rows],
         }
+
+
+def get_library_facets(
+    is_curator: bool,
+    source: str | None = None,
+    bypass_cache: bool = False,
+) -> dict[str, Any]:
+    """Aggregates library statistics (total books, pages, cached pages) and top 30 most frequent tags.
+
+    具备进程级内存缓存与批量防抖保护：
+    1. 读操作：未发生写变动时 0ms 纯内存命中，彻底消除全表 json_each 扫库开销；
+    2. 写操作：仅更新失效时间戳，惰性求值；
+    3. 批量防抖：3 秒内若连续写入并发读，复用刚算好的数据以防并发风暴。
+
+    Args:
+        is_curator: When False, excludes comics marked as hidden_from_guest from counts.
+        source: Optional source filter to scope facets to a single provider.
+        bypass_cache: When True, bypasses in-memory cache and recomputes directly.
+
+    Returns:
+        Dict containing total_books, total_pages, cached_pages, and tags list with counts.
+    """
+    key = (is_curator, source)
+    now = time.monotonic()
+
+    if not bypass_cache:
+        with _facets_cache_lock:
+            if key in _facets_cache:
+                cached_at, cached_data = _facets_cache[key]
+                if cached_at >= _last_facets_invalidated_at:
+                    return {
+                        "stats": dict(cached_data["stats"]),
+                        "top_tags": list(cached_data["top_tags"]),
+                    }
+                if (now - cached_at) < _FACETS_DEBOUNCE_SECONDS:
+                    return {
+                        "stats": dict(cached_data["stats"]),
+                        "top_tags": list(cached_data["top_tags"]),
+                    }
+
+    result = _compute_library_facets(is_curator=is_curator, source=source)
+
+    with _facets_cache_lock:
+        if len(_facets_cache) >= 32:
+            _facets_cache.clear()
+        _facets_cache[key] = (time.monotonic(), result)
+
+    return {
+        "stats": dict(result["stats"]),
+        "top_tags": list(result["top_tags"]),
+    }
 
 
 # ----------------------------------------------------------------------

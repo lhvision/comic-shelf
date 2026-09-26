@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vite-plus/test'
 import { mount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
+import { useLibraryStore } from '@/stores/library'
 import TagManager from '@/components/form/TagManager.vue'
 
 describe('TagManager', () => {
@@ -43,5 +44,26 @@ describe('TagManager', () => {
     await input.trigger('keydown', { key: 'Enter' })
     expect(wrapper.emitted('update:modelValue')).toBeTruthy()
     expect(wrapper.emitted('update:modelValue')![0]![0]).toEqual(['全彩', '精选'])
+  })
+
+  it('displays popular tags from store.facets.top_tags when available', () => {
+    const store = useLibraryStore()
+    store.facets = {
+      stats: { total_books: 10, total_pages: 100, cached_pages: 50 },
+      top_tags: [
+        ['全彩', 5],
+        ['纯爱', 4],
+        ['同人', 3],
+      ],
+    }
+    const wrapper = mount(TagManager, {
+      props: {
+        modelValue: ['全彩'],
+      },
+    })
+    const popularChips = wrapper.findAll('.popular-chips .chip')
+    expect(popularChips.length).toBe(2)
+    expect(popularChips[0]!.text()).toContain('纯爱')
+    expect(popularChips[1]!.text()).toContain('同人')
   })
 })

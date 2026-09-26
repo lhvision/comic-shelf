@@ -165,10 +165,14 @@ def library(
 def library_facets(
     request: Request,
     source: str | None = Query(default=None, description="来源过滤"),
+    bypass_cache: bool = Query(default=False, description="是否跳过进程内存缓存强制重算"),
 ) -> LibraryFacetsResponse:
     """Aggregates bookshelf facets, reading status statistics, and top tags."""
+    if source:
+        _require_known_source(source)
     is_cur = is_curator(request)
-    data = get_library_facets(is_curator=is_cur, source=source)
+    can_bypass = is_cur and bypass_cache
+    data = get_library_facets(is_curator=is_cur, source=source, bypass_cache=can_bypass)
     return LibraryFacetsResponse(
         stats=LibraryStats(**data["stats"]),
         top_tags=data["top_tags"],
