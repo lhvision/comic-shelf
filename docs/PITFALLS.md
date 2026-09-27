@@ -886,7 +886,7 @@
 
 - **症状**：通过 JM API 客户端（`_fetch_via_api`）收录的漫画，`published_at` 与 `updated_at` 均落盘为空字符串 `""`；全书发布时间丢失，封面防缓存哈希 `?v=md5(updated_at)[:8]` 退化为全静态哈希。
 - **根因**：上游第三方库 `jmcomic` 的 `JmApiAdaptTool.post_adapt_album` 内部硬编码了 `for it in 'scramble_id', 'page_count', 'pub_date', 'update_date': fields[it] = '0'`，丢弃了官方 API 返回的 Unix 时间戳字段 `addtime`。
-- **红线**：JM API 解析必须优先从原始响应 JSON 中提取 `addtime`（通过 `_format_addtime` 格式化为 `YYYY-MM-DD` 挂载至 `detail.pub_date` 与各话 `photo.pub_date`，多章节以最新单话 `addtime` 推进全书 `updated_at`）；严禁在业务生产代码中 `import unittest.mock` 或 `isinstance(client, MagicMock)` 进行测试替身判断，分支降级必须依托标准异常兜底（`try ... except ...`）。
+- **红线**：JM API 解析必须优先从原始响应 JSON 中提取 `addtime`（通过 `_format_addtime` 格式化为 `YYYY-MM-DD` 挂载至 `detail.pub_date` 与各话 `photo.pub_date`，多章节以最新单话 `addtime` 推进全书 `updated_at`，增量更新时必须保留既有 `existing.meta.updated_at` 保证单调不倒退）；严禁在业务生产代码中 `import unittest.mock` 或 `isinstance(client, MagicMock)` 进行测试替身判断，分支降级必须依托标准异常兜底（`try ... except ...`）。
 
 ---
 

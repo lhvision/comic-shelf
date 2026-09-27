@@ -66,16 +66,23 @@ def _mask_sensitive(text: object) -> str:
     return s
 
 
+_TZ_TAIPEI = timezone(timedelta(hours=8))
+
+
 def _format_addtime(val: object) -> str:
     """Format Unix timestamp from JM API into YYYY-MM-DD (Asia/Taipei UTC+8)."""
     if not val:
         return ""
     try:
-        ts = int(str(val).strip())
+        s = str(val).strip()
+        if re.match(r"^\d{4}-\d{2}-\d{2}$", s):
+            return s
+        ts = int(float(s))
         if ts <= 0:
             return ""
-        tz_utc8 = timezone(timedelta(hours=8))
-        return datetime.fromtimestamp(ts, tz=tz_utc8).strftime("%Y-%m-%d")
+        if ts > 100_000_000_000:
+            ts //= 1000
+        return datetime.fromtimestamp(ts, tz=_TZ_TAIPEI).strftime("%Y-%m-%d")
     except Exception:
         return ""
 
@@ -459,10 +466,10 @@ class JMProvider(ComicProvider):
                 if hasattr(client, "API_ALBUM") and callable(getattr(client, "req_api", None)):
                     url = client.append_params_to_url(client.API_ALBUM, {"id": target_id})
                     resp = client.req_api(url)
-                    if hasattr(resp, "res_data") and isinstance(resp.res_data, dict):
-                        if not getattr(resp, "encoded_data", None) or resp.res_data.get("name") is None:
+                    raw_data = getattr(resp, "res_data", None)
+                    if isinstance(raw_data, dict):
+                        if not getattr(resp, "encoded_data", None) or raw_data.get("name") is None:
                             ExceptionTool.raise_missing(resp, target_id)
-                        raw_data = resp.res_data
                         detail_obj = JmApiAdaptTool.parse_entity(raw_data, JmAlbumDetail)
                         date_str = _format_addtime(raw_data.get("addtime"))
                         total_photos = int(raw_data.get("total_photos") or 0)
@@ -496,7 +503,8 @@ class JMProvider(ComicProvider):
 
         if album_pub_date:
             detail.pub_date = album_pub_date
-            detail.update_date = album_pub_date
+            if not (existing and existing.meta.updated_at):
+                detail.update_date = album_pub_date
         if album_page_count:
             detail.page_count = album_page_count
 
@@ -504,32 +512,32 @@ class JMProvider(ComicProvider):
         episodes_cnt = len(detail.episode_list or [])
         log_import_diag("JM-API-ALBUM-DETAIL", f"jm_id={jm_id} duration_ms={album_ms} episodes={episodes_cnt} page_count={getattr(detail, 'page_count', 0)}")
 
+        def _get_photo_detail(client, photo_id: str) -> tuple[Any, str]:
+            try:
+                if hasattr(client, "API_CHAPTER") and callable(getattr(client, "req_api", None)):
+                    url = client.append_params_to_url(client.API_CHAPTER, {"id": photo_id})
+                    resp = client.req_api(url)
+                    p_data = getattr(resp, "res_data", None)
+                    if isinstance(p_data, dict):
+                        if not getattr(resp, "encoded_data", None) or p_data.get("name") is None:
+                            ExceptionTool.raise_missing(resp, photo_id)
+                        photo_obj = JmApiAdaptTool.parse_entity(p_data, JmPhotoDetail)
+                        photo_obj.from_album = detail
+                        photo_obj.scramble_id = str(client.get_scramble_id(photo_id, getattr(detail, "album_id", None)) or "0")
+                        ep_date = _format_addtime(p_data.get("addtime"))
+                        return photo_obj, ep_date
+            except MissingAlbumPhotoException:
+                raise
+            except Exception:
+                pass
+
+            photo_obj = client.get_photo_detail(photo_id, fetch_album=False)
+            photo_obj.from_album = detail
+            return photo_obj, str(getattr(photo_obj, "pub_date", "") or "")
+
         def fetch_photo_api(pid: str):
             nonlocal api_client
             t_ep = time.perf_counter()
-
-            def _get_photo_detail(client, photo_id: str) -> tuple[Any, str]:
-                try:
-                    if hasattr(client, "API_CHAPTER") and callable(getattr(client, "req_api", None)):
-                        url = client.append_params_to_url(client.API_CHAPTER, {"id": photo_id})
-                        resp = client.req_api(url)
-                        if hasattr(resp, "res_data") and isinstance(resp.res_data, dict):
-                            if not getattr(resp, "encoded_data", None) or resp.res_data.get("name") is None:
-                                ExceptionTool.raise_missing(resp, photo_id)
-                            p_data = resp.res_data
-                            photo_obj = JmApiAdaptTool.parse_entity(p_data, JmPhotoDetail)
-                            photo_obj.from_album = detail
-                            photo_obj.scramble_id = str(client.get_scramble_id(photo_id, getattr(detail, "album_id", None)) or "0")
-                            ep_date = _format_addtime(p_data.get("addtime"))
-                            return photo_obj, ep_date
-                except MissingAlbumPhotoException:
-                    raise
-                except Exception:
-                    pass
-
-                photo_obj = client.get_photo_detail(photo_id, fetch_album=False)
-                photo_obj.from_album = detail
-                return photo_obj, str(getattr(photo_obj, "pub_date", "") or "")
 
             try:
                 photo, ep_date = _get_photo_detail(api_client, pid)
@@ -837,6 +845,8 @@ class JMProvider(ComicProvider):
         )
         if latest_ep_date and (not update_date or latest_ep_date > update_date):
             update_date = latest_ep_date
+        if existing and existing.meta.updated_at and existing.meta.updated_at > update_date:
+            update_date = existing.meta.updated_at
         effective_uploader = uploader or (existing.meta.uploader if existing else None)
 
         meta = ComicMeta(

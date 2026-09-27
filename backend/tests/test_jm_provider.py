@@ -540,6 +540,10 @@ class TestJMProvider(unittest.TestCase):
         self.assertEqual(_format_addtime(1641115378), "2022-01-02")
         self.assertEqual(_format_addtime("1650693900"), "2022-04-23")
         self.assertEqual(_format_addtime("1579188433"), "2020-01-16")
+        self.assertEqual(_format_addtime("1641115378.0"), "2022-01-02")
+        self.assertEqual(_format_addtime(1641115378.0), "2022-01-02")
+        self.assertEqual(_format_addtime("1641115378000"), "2022-01-02")
+        self.assertEqual(_format_addtime("2022-01-02"), "2022-01-02")
 
         # Invalid or empty values
         self.assertEqual(_format_addtime(""), "")
@@ -609,6 +613,153 @@ class TestJMProvider(unittest.TestCase):
                 self.assertEqual(comic.meta.updated_at, "2022-01-02")
                 self.assertEqual(comic.meta.page_count, 1)  # 1 remote page mocked
                 self.assertEqual(comic.meta.authors, ["甘露アメ"])
+        finally:
+            self.api_patcher.start()
+
+    def test_fetch_via_api_multi_chapter_date_progression(self) -> None:
+        self.api_patcher.stop()
+        try:
+            mock_api_client = MagicMock()
+            mock_api_client.API_ALBUM = "/album"
+            mock_api_client.API_CHAPTER = "/chapter"
+            mock_api_client.append_params_to_url.side_effect = lambda u, p: f"{u}?id={p.get('id')}"
+
+            album_resp = MagicMock()
+            album_resp.encoded_data = "some_b64"
+            album_resp.res_data = {
+                "id": 301699,
+                "name": "连载漫画",
+                "images": [],
+                "addtime": "1641115378",  # 2022-01-02
+                "description": "",
+                "total_views": "100",
+                "total_photos": 2,
+                "likes": "50",
+                "series": [
+                    {"id": "1001", "sort": "1", "name": "第 1 话"},
+                    {"id": "1002", "sort": "2", "name": "第 2 话"},
+                ],
+                "series_id": "0",
+                "comment_total": "5",
+                "author": ["甘露アメ"],
+                "tags": [],
+                "works": [],
+                "actors": [],
+                "related_list": [],
+                "liked": False,
+                "is_favorite": False,
+            }
+
+            chap1_resp = MagicMock()
+            chap1_resp.encoded_data = "some_b64"
+            chap1_resp.res_data = {
+                "id": 1001,
+                "name": "第 1 话",
+                "series": [{"id": "1001", "sort": "1", "name": "第 1 话"}],
+                "series_id": 301699,
+                "tags": "",
+                "addtime": "1641115378",  # 2022-01-02
+                "images": ["00001.webp"],
+                "is_favorite": False,
+                "liked": False,
+            }
+
+            chap2_resp = MagicMock()
+            chap2_resp.encoded_data = "some_b64"
+            chap2_resp.res_data = {
+                "id": 1002,
+                "name": "第 2 话",
+                "series": [{"id": "1002", "sort": "2", "name": "第 2 话"}],
+                "series_id": 301699,
+                "tags": "",
+                "addtime": "1650693900",  # 2022-04-23
+                "images": ["00002.webp"],
+                "is_favorite": False,
+                "liked": False,
+            }
+
+            def req_api_mock(url: str):
+                if "/album" in url:
+                    return album_resp
+                if "id=1001" in url:
+                    return chap1_resp
+                return chap2_resp
+
+            mock_api_client.req_api.side_effect = req_api_mock
+            mock_api_client.get_scramble_id.return_value = "220980"
+
+            with patch.object(self.provider, "_make_api_client", return_value=mock_api_client):
+                comic = self.provider.fetch("301699")
+                self.assertEqual(comic.meta.published_at, "2022-01-02")
+                self.assertEqual(comic.meta.updated_at, "2022-04-23")
+                self.assertEqual(comic.meta.page_count, 2)
+                self.assertEqual(len(comic.meta.chapters), 2)
+        finally:
+            self.api_patcher.start()
+
+    def test_fetch_via_api_incremental_preserves_existing_updated_at(self) -> None:
+        self.api_patcher.stop()
+        try:
+            from app.models import Chapter, ComicMeta, FetchedComic, RemotePage
+
+            existing = FetchedComic(
+                meta=ComicMeta(
+                    source="jm",
+                    source_id="301699",
+                    display_id="JM301699",
+                    title="测试漫画",
+                    published_at="2022-01-02",
+                    updated_at="2024-05-10",
+                    page_count=1,
+                    chapters=[],
+                ),
+                remote_pages=[
+                    RemotePage(
+                        index=1,
+                        url="http://img/1",
+                        file="00001.webp",
+                        ext=".webp",
+                        scramble_id="0",
+                        chapter="",
+                    )
+                ],
+            )
+
+            mock_api_client = MagicMock()
+            mock_api_client.API_ALBUM = "/album"
+            mock_api_client.append_params_to_url.side_effect = lambda u, p: f"{u}?id={p.get('id')}"
+
+            album_resp = MagicMock()
+            album_resp.encoded_data = "some_b64"
+            album_resp.res_data = {
+                "id": 301699,
+                "name": "测试漫画",
+                "images": [],
+                "addtime": "1641115378",  # 2022-01-02
+                "description": "测试简介",
+                "total_views": "100",
+                "total_photos": 1,
+                "likes": "50",
+                "series": [],
+                "series_id": "0",
+                "comment_total": "5",
+                "author": ["甘露アメ"],
+                "tags": [],
+                "works": [],
+                "actors": [],
+                "related_list": [],
+                "liked": False,
+                "is_favorite": False,
+            }
+
+            mock_api_client.req_api.return_value = album_resp
+            mock_api_client.get_scramble_id.return_value = "220980"
+
+            with patch.object(self.provider, "_make_api_client", return_value=mock_api_client):
+                comic = self.provider.fetch("301699", existing=existing)
+                # Ensure updated_at does not regress back to 2022-01-02
+                self.assertEqual(comic.meta.published_at, "2022-01-02")
+                self.assertEqual(comic.meta.updated_at, "2024-05-10")
         finally:
             self.api_patcher.start()
 
