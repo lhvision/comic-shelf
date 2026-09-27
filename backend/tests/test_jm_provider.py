@@ -532,6 +532,86 @@ class TestJMProvider(unittest.TestCase):
         finally:
             self.api_patcher.start()
 
+    def test_format_addtime(self) -> None:
+        from app.providers.jm import _format_addtime
+
+        # Valid timestamps in UTC+8
+        self.assertEqual(_format_addtime("1641115378"), "2022-01-02")
+        self.assertEqual(_format_addtime(1641115378), "2022-01-02")
+        self.assertEqual(_format_addtime("1650693900"), "2022-04-23")
+        self.assertEqual(_format_addtime("1579188433"), "2020-01-16")
+
+        # Invalid or empty values
+        self.assertEqual(_format_addtime(""), "")
+        self.assertEqual(_format_addtime(None), "")
+        self.assertEqual(_format_addtime("0"), "")
+        self.assertEqual(_format_addtime(-1), "")
+        self.assertEqual(_format_addtime("invalid"), "")
+
+    def test_fetch_via_api_preserves_addtime_and_total_photos(self) -> None:
+        self.api_patcher.stop()
+        try:
+            mock_api_client = MagicMock()
+            mock_api_client.API_ALBUM = "/album"
+            mock_api_client.API_CHAPTER = "/chapter"
+            mock_api_client.append_params_to_url.side_effect = lambda u, p: f"{u}?id={p.get('id')}"
+
+            # Mock raw response for album with addtime
+            album_resp = MagicMock()
+            album_resp.encoded_data = "some_b64"
+            album_resp.res_data = {
+                "id": 301699,
+                "name": "测试漫画",
+                "images": [],
+                "addtime": "1641115378",  # 2022-01-02
+                "description": "测试简介",
+                "total_views": "100",
+                "total_photos": 29,
+                "likes": "50",
+                "series": [],
+                "series_id": "0",
+                "comment_total": "5",
+                "author": ["甘露アメ"],
+                "tags": ["萝莉"],
+                "works": [],
+                "actors": [],
+                "related_list": [],
+                "liked": False,
+                "is_favorite": False,
+            }
+
+            # Mock raw response for chapter with addtime
+            chapter_resp = MagicMock()
+            chapter_resp.encoded_data = "some_b64"
+            chapter_resp.res_data = {
+                "id": 301699,
+                "name": "第 1 话",
+                "series": [],
+                "series_id": "0",
+                "tags": "萝莉",
+                "addtime": "1641115378",
+                "images": ["00001.webp"],
+                "is_favorite": False,
+                "liked": False,
+            }
+
+            def req_api_mock(url: str):
+                if "/album" in url:
+                    return album_resp
+                return chapter_resp
+
+            mock_api_client.req_api.side_effect = req_api_mock
+            mock_api_client.get_scramble_id.return_value = "220980"
+
+            with patch.object(self.provider, "_make_api_client", return_value=mock_api_client):
+                comic = self.provider.fetch("301699")
+                self.assertEqual(comic.meta.published_at, "2022-01-02")
+                self.assertEqual(comic.meta.updated_at, "2022-01-02")
+                self.assertEqual(comic.meta.page_count, 1)  # 1 remote page mocked
+                self.assertEqual(comic.meta.authors, ["甘露アメ"])
+        finally:
+            self.api_patcher.start()
+
 
 if __name__ == "__main__":
     unittest.main()

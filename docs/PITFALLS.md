@@ -882,6 +882,12 @@
 - **根因**：基础 HTTP 传输层（`src/api/core/http.ts`）为防连接池悬空默认设置了 15 秒短超时守护；普通短命 RPC 毫秒级返回不受影响，但远端收录（`POST /api/library/import`）需在请求线程内向图源逐话拉取各章节画页列表（受代理往返与防风控节流影响往往需要 30~90s），前端 `importComic` 未显式覆盖 `timeoutMs`，被 15s 兜底提前斩断。
 - **红线**：所有涉及批量外部 I/O 或多章节目录解析的业务 RPC 必须显式声明分级长超时（如 `importComic` 配 `180000` / 3分钟，`importLocalPath` 配 `120000` / 2分钟）；严禁在未评估业务执行窗口的情况下让长事务接口裸落到 15s 全局默认值。
 
+### 151. jmcomic API 适配层将日期硬编码为 '0'：追更与封面缓存失效机制静默退化
+
+- **症状**：通过 JM API 客户端（`_fetch_via_api`）收录的漫画，`published_at` 与 `updated_at` 均落盘为空字符串 `""`；全书发布时间丢失，封面防缓存哈希 `?v=md5(updated_at)[:8]` 退化为全静态哈希。
+- **根因**：上游第三方库 `jmcomic` 的 `JmApiAdaptTool.post_adapt_album` 内部硬编码了 `for it in 'scramble_id', 'page_count', 'pub_date', 'update_date': fields[it] = '0'`，丢弃了官方 API 返回的 Unix 时间戳字段 `addtime`。
+- **红线**：JM API 解析必须优先从原始响应 JSON 中提取 `addtime`（通过 `_format_addtime` 格式化为 `YYYY-MM-DD` 挂载至 `detail.pub_date` 与各话 `photo.pub_date`，多章节以最新单话 `addtime` 推进全书 `updated_at`）；严禁在业务生产代码中 `import unittest.mock` 或 `isinstance(client, MagicMock)` 进行测试替身判断，分支降级必须依托标准异常兜底（`try ... except ...`）。
+
 ---
 
 ## 🚦 交付门禁
