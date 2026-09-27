@@ -876,6 +876,12 @@
 - **根因**：Chrome DevTools 对注入到 `document.modelContext` 的 JSON Schema 解析器不支持复杂的 `oneOf` / `anyOf` 多态类型（例如 `oneOf: [{ type: 'string' }, { type: 'array' }]`），遇到多态 Schema 时表单自动生成器崩溃或将字段视作不支持的复合对象而置灰/静默忽略。
 - **红线**：面向浏览器 `useWebMCP` / `document.modelContext` 注册的工具，参数 `inputSchema` 必须保持基础扁平标量（如纯 `type: 'string'`），严禁使用 `oneOf`；如需同时支持数组与分隔文本，一律将 Schema 声明为 `type: 'string'`，在 `execute(args)` 执行层内部自行 `Array.isArray(raw) ? ... : String(raw).split(...)` 兼容，兼顾 DevTools UI 渲染与程序化调用的双向兼容。
 
+### 150. 长耗时业务 RPC 漏配超时：默认 15s 硬熔断击穿多章节远端目录拉取
+
+- **症状**：收录 20~50 话以上的多章节漫画时，前端固定在 15 秒报 `TimeoutError: 请求超时，请重试`，而此时服务端后端其实还在正常逐话拉取远端目录清单，导致用户误判为失败并重复提交。
+- **根因**：基础 HTTP 传输层（`src/api/core/http.ts`）为防连接池悬空默认设置了 15 秒短超时守护；普通短命 RPC 毫秒级返回不受影响，但远端收录（`POST /api/library/import`）需在请求线程内向图源逐话拉取各章节画页列表（受代理往返与防风控节流影响往往需要 30~90s），前端 `importComic` 未显式覆盖 `timeoutMs`，被 15s 兜底提前斩断。
+- **红线**：所有涉及批量外部 I/O 或多章节目录解析的业务 RPC 必须显式声明分级长超时（如 `importComic` 配 `180000` / 3分钟，`importLocalPath` 配 `120000` / 2分钟）；严禁在未评估业务执行窗口的情况下让长事务接口裸落到 15s 全局默认值。
+
 ---
 
 ## 🚦 交付门禁

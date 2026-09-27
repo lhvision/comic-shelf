@@ -385,7 +385,9 @@
 
 ## 11. 前端请求、缓存与生命周期取消规范（SWR & AbortController）
 
-- **集中式强类型请求层**：全站请求统一由 `src/api/client.ts` 导出，所有查询类方法必须支持可选的 `options?: RequestOptions`（透传 `signal?: AbortSignal`）。
+- **集中式强类型请求层与分级超时契约**：全站请求统一由 `src/api/client.ts` 导出，所有方法必须支持可选的 `options?: RequestOptions`（透传 `signal?: AbortSignal` 与 `timeoutMs?: number`）。
+  - **默认全局熔断**：普通查询 RPC 默认兜底 15 秒超时守护，杜绝长挂起 Socket 耗尽浏览器连接池；
+  - **长任务分级超时**：对于耗时较长的长任务接口（如远端多章节目录解析 `importComic` 默认 180s、本地服务端路径收录 `importLocalPath` 与画页上传 `uploadPages` 默认 120s、PDF 嗅探 `inspectPdf` 默认 180s），必须显式配置分级长超时，严禁因缺省超时导致前端在多章节网络同步期间过早熔断报错。
 - **SWR 静默回源（Stale-While-Revalidate）**：
   - 书架首页与详情页在内存中已有数据时，**绝不重置 `loading = true` 导致骨架屏闪烁**；
   - 必须优先展示已有卡片/元数据，后台静默对齐最新状态，仅在首次无数据或用户显式刷新时呈现骨架屏。

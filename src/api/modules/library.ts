@@ -114,17 +114,26 @@ export async function detail(
 }
 
 /**
- * 向书架导入远端作品（异步入库，触发详情缓存全量清空）
+ * 向书架导入远端作品（异步入库，触发详情缓存全量清空；默认 180s 宽裕超时适应多章节元数据解析）
  *
  * @param payload 导入请求载荷（含 source, source_id 等）
+ * @param options 可选的请求配置（如自定义超时与取消信号）
  * @returns 导入结果响应
  */
-export async function importComic(payload: ImportRequest): Promise<ImportResult> {
+export async function importComic(
+  payload: ImportRequest,
+  options?: RequestOptions,
+): Promise<ImportResult> {
   memoizedDetail.clear()
-  return request<ImportResult>('/library/import', {
-    method: 'POST',
-    body: JSON.stringify(payload),
-  })
+  return request<ImportResult>(
+    '/library/import',
+    {
+      method: 'POST',
+      body: JSON.stringify(payload),
+      signal: options?.signal,
+    },
+    { timeoutMs: 180000, ...options },
+  )
 }
 
 /**

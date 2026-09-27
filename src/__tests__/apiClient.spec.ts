@@ -254,4 +254,35 @@ describe('api client query assembly', () => {
       '/api/library/jm/12345/chapters/c1/cover.webp?w=720',
     )
   })
+
+  it('invokes importComic with default 180s timeout and supports options', async () => {
+    const fetchMock = vi.fn<typeof fetch>().mockImplementation(() =>
+      Promise.resolve(
+        mockJsonResponse({
+          meta: { source: 'jm', source_id: '123456' },
+          from_cache: false,
+          prefetched: 0,
+          warnings: [],
+        }),
+      ),
+    )
+    globalThis.fetch = fetchMock
+
+    await api.importComic({ source: 'jm', id: '123456' })
+
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    expect(getCalledUrl(fetchMock)).toBe('/api/library/import')
+    const init = fetchMock.mock.calls[0]?.[1]
+    expect(init?.method).toBe('POST')
+    expect(init?.body).toBe(JSON.stringify({ source: 'jm', id: '123456' }))
+
+    // Test with custom signal / options
+    fetchMock.mockClear()
+    const controller = new AbortController()
+    await api.importComic({ source: 'picacg', id: 'abcdef' }, { signal: controller.signal })
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    expect(getCalledUrl(fetchMock)).toBe('/api/library/import')
+    const init2 = fetchMock.mock.calls[0]?.[1]
+    expect(init2?.body).toBe(JSON.stringify({ source: 'picacg', id: 'abcdef' }))
+  })
 })
