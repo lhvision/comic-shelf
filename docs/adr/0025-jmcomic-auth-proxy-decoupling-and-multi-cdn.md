@@ -54,13 +54,20 @@
 - **日志与敏感凭据全链路脱敏**：新增 `_mask_sensitive` 正则过滤器，在记录日志前无差别将 `JM_PASSWORD` 与代理认证凭据清洗替换为 `***`，对短密码提供协议上下文保护，彻底避免第三方网络库异常文本泄漏明文密码；
 - **严格二进制魔数防伪验证**：单页载荷必须通过 JPEG (`\xff\xd8\xff`)、PNG、WebP (`RIFF....WEBP`)、GIF 或 AVIF 首字节魔数检测；若检测到上游 WAF / CDN 伪装的 HTML 拦截页，坚决不落盘并立即标记当前节点故障、轮换至下一个 CDN 节点重试，彻底落实错题本防范红线；解密分割数计算增加异常兜底，保障极端切片参数平滑回退。
 
-### 5. API 客户端优先拉取与 HTML 兜底降级决策 (API-First Dual-Track Retrieval)
+### 5. API 客户端优先拉取、网页 HTML 双日期探测与时序偏序不变式 (API-First Dual-Track Retrieval & Invariants)
 
 - **移动端 AVS 凭据与网页图形验证码错配壁垒**：禁漫官方移动端 App REST API 与网页 Web HTML 鉴权协议隔离。上游 `jmcomic` 的 `client.login()` 置换产出的是 App 端专属的 `AVS` Token。网页端访问受限作品（如车号 `1208546`）会强制要求图形验证码（CAPTCHA），不认 `AVS` Token，且未登录时直接 302 重定向至 `/error/album_missing`（页面提示“請先登入”）。旧有直接调用 `_make_html_client()` 的做法会导致即使后端配置了有效账号密码，HTML 客户端仍被重定向并判定为下架/404；
 - **API 优先客户端接入 (`_make_api_client` & `_fetch_via_api`)**：
   - 架构重构为 API 客户端优先。注入已登录并持久化的 `AVS` 凭据，直接向禁漫官方移动端 REST API 发起请求；
   - 移动端 API 原生信任 `AVS`，免图形验证码拦截，毫秒级直接获取受限画卷的完整页数与多章节数据；
-  - **原始 `addtime` 提取与真实发布/更新日期对齐**：上游 `jmcomic` 的 `JmApiAdaptTool.post_adapt_album` 存在将 `pub_date` 和 `update_date` 硬编码赋 `'0'` 的已知缺陷（见错题本第 151 条）。纸间在 `_fetch_via_api` 中优先读取移动端原始响应 JSON 中的 Unix 时间戳 `addtime`，转换为 `YYYY-MM-DD`（UTC+8），并将各章节最新更新时间同步递推至全书 `updated_at`，增量更新时保全既有更新时间避免时序倒退，确保馆藏追更判定与封面缓存哈希（`?v=md5(updated_at)[:8]`）具备真实时序基准；
+  - **原始 `addtime` 提取与尽力式 HTML 双日期探测**：
+    - 上游 `jmcomic` 的 `JmApiAdaptTool.post_adapt_album` 存在将 `pub_date` 和 `update_date` 硬编码赋 `'0'` 的已知缺陷（见错题本第 151 条）。纸间在 `_fetch_via_api` 中优先读取移动端原始响应 JSON 中的 Unix 时间戳 `addtime`（转换为 `YYYY-MM-DD`）；
+    - 然而禁漫 App API 仅序列化单个 `addtime`，一旦漫画被作者或管理修改编辑，官方将 `addtime` 覆写为最后修改日期，导致单本漫画的 `published_at` 漂移为更新时间；
+    - 因此引入尽力式网页双日期探测 `_try_extract_html_dates(jm_id)`，从 HTML 提取官方真实保留的 `上架日期` 与 `更新日期`。若遇网络受限或防爬拦截，平滑回退至 API `addtime`；
+  - **时序偏序不变式与惰性自愈**：
+    - `published_at`（上架日期）：单调不后移（`min(existing, pub_date)`），历史首发日期永不前推到未来；若探测到更早的真实首发日期，实施惰性自愈（Lazy Healing）；
+    - `updated_at`（更新日期）：单调不前移（`max(existing, update_date, latest_ep_date)`），多章节以最新单话时间推进；
+    - 偏序强约束：在全系统任意阶段确保 `published_at <= updated_at`，增量更新与详情页点击「刷新资料」时自动自愈，无需维护额外脚本；
   - 将画卷模型解析统一下沉至通用装配函数 `_assemble_fetched_comic()`，实现 API 实体与 HTML 实体的统一收敛；
 - **平滑 HTML 容灾兜底**：若 API 接口遭遇网络超时或官方 REST 契约变更，自动捕获并无缝降级至既有 `_fetch_via_html()`，兼顾极致抓取成功率与双轨容灾韧性。
 

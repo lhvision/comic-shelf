@@ -313,13 +313,25 @@ JmImageTool.decode_and_save(num, source_image, save_path)
 
 - **自动追更准入边界**：仅当藏书满足 `len(chapters) > 1`（多章节作品）且 `source != 'local'`（排除本地自建源）且 `custom_pages == false`（未受重新装订保护）时，才向远端探测；不满足的到期项跳过探测，但照样写入 `last_auto_checked_at`，防止永远占住每轮名额。
 - **单线程串行巡检与关停顺序**：受 `COMIC_SHELF_ENABLE_AUTO_UPDATE` 控制（默认开启）；FastAPI `lifespan` 启动单一后台线程 `auto_update_worker`，开机宽限 30 秒后每 2 天（默认 172800 秒，支持 `COMIC_SHELF_AUTO_UPDATE_INTERVAL_SECONDS` 自定义）唤醒扫描一次；到期项（`now - last_auto_checked_at >= auto_update_interval_days * 86400`，默认 15 天，0 为关闭）串行处理，每本之间休眠 3 秒，单轮最多 10 本。增量探测复用 `provider.fetch(..., existing=existing)`，章节未变时不抓画页（JM 只发一个详情请求）。关停时先置位 `stop_event`，再 join 线程，最后才释放书库写锁。
-- **馆长资料不被覆盖**：只有探测到新章节或新增页才写盘，且只把 `chapters`、`pages`、`page_count`（远端 `updated_at` 非空时一并）合并进现有 meta，标题、标签、简介等馆长编辑保持原样。合并基底必须是写盘时在作品锁内重读的最新 meta（`ComicStore.save_auto_update`），不能用抓取前的快照：抓取要几秒，期间馆长的编辑不能被旧快照盖掉，期间被删的作品也不能被写回来。无新内容只记录 `last_auto_checked_at`。收录与手动刷新同样写入巡检时间，新收录的作品不会立即到期。
+- **馆长资料不被覆盖与日期偏序自愈**：只有探测到新章节或新增页才写盘，且只把 `chapters`、`pages`、`page_count` 合并进现有 meta，同时应用**日期时序偏序不变式**（`published_at` 单调不后移 `min()` 且治愈历史哨兵 `"0"`，`updated_at` 单调不前移 `max()`，且始终满足 `published_at <= updated_at`），标题、标签、简介等馆长自定编辑保持原样。合并基底必须是写盘时在作品锁内重读的最新 meta（`ComicStore.save_auto_update`），不能用抓取前的快照：抓取要几秒，期间馆长的编辑不能被旧快照盖掉，期间被删的作品也不能被写回来。无新内容只记录 `last_auto_checked_at`。收录与手动刷新同样写入巡检时间，新收录的作品不会立即到期。
 - **阅读状态与缓存自愈**：追更到新章节后，若作品原处于「已读」状态，必须自愈回退为「在读」重新浮现于书架案头；若原处于「全本缓存」状态，自动投递新章节画页离线预缓存任务，否则仅追加元数据。
 
 ### 4.12 WebMCP 批量收录契约与串行防风控规范（ADR 0029）
 
 - **保持 UI 纯粹性**：书架 Web 界面不堆砌复杂的多选复选框，维持阅览室极简心流；批量收录仅作为 `useShelfWebMCP` 的 `shelf_batch_import_comics` 工具面向 AI 智能体开放。
 - **单本隔离容错与结构化交付**：支持传入车号数组或多行纯文本输入（自动正则提取有效车号）；逐本串行收录并保持 5 秒安全间隔，执行单例互斥锁快速失败（Fail-Fast）拦截并发，单次最多 50 本；单本遇到 404 或网络波动时隔离捕获并记录至 `failed` 清单，绝不中断其余条目的收录；已存在条目命中本地缓存秒级跳过，不改动其红心与标签；红心或标签没有生效时如实写入该条 `warnings`，汇总 `message` 标明有警告的本数；最终向 Agent 交付 `{ total, succeeded, skipped, failed, results }` 结构化报告。
+
+### 4.13 上架与更新日期时序偏序不变式（ADR 0025 / PITFALLS #151）
+
+- **双轨尽力式探测（Best-Effort Dual-Track Retrieval）**：
+  - 禁漫官方 App REST API 仅序列化单个 `addtime` 时间戳，在作品修整后直接覆写为更新日期，导致 `published_at`（上架日期）向后漂移失真；
+  - 核心抓取以移动端 REST API 为核心（`_fetch_via_api`）快速解析目录，同时向网页端发起 5 秒超时的尽力式轻量探测（`_try_extract_html_dates`），成功提取时采纳 HTML 保留的真实上架与更新日期；受限（CAPTCHA/需要登录/302）或网络故障时平滑降级使用 API `addtime` 兜底。
+- **时序偏序不变式（Partial Ordering Invariant）**：
+  - `published_at` 单调不后移：`pub_date = min(existing, pub_date)`（过滤历史 `"0"` 哨兵值），首发时间永不因源站修整而前推到未来；
+  - `updated_at` 单调不前移：`update_date = max(existing, update_date, latest_ep_date)`（过滤历史 `"0"` 哨兵值），更新时间永不发生时序倒退；
+  - 偏序强约束：全库任何阶段、任何时刻必须满足 `published_at <= updated_at`。
+- **惰性自愈与双层防线（Lazy Healing & Defense-in-Depth）**：
+  - 不维护额外的脱机修复脚本；在馆长点击详情页「刷新资料」或后台定时追更发现新章节时，由 Provider 组装层（`_assemble_fetched_comic`）与 Storage 存储层（`save_auto_update`）双层独立捍卫不变式，实现存量异常无感自愈。
 
 ## 5. 后端文件地图
 

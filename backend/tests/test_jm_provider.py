@@ -33,8 +33,16 @@ class TestJMProvider(unittest.TestCase):
             side_effect=RuntimeError("API Client mock disabled by default in test suite"),
         )
         self.api_patcher.start()
+        # 默认隔离 HTML 日期探测外联，防止离线单测向远端发起网页请求
+        self.html_dates_patcher = patch.object(
+            self.provider,
+            "_try_extract_html_dates",
+            return_value=("", ""),
+        )
+        self.html_dates_patcher.start()
 
     def tearDown(self) -> None:
+        self.html_dates_patcher.stop()
         self.api_patcher.stop()
         self.tmp_dir.cleanup()
 
@@ -522,9 +530,15 @@ class TestJMProvider(unittest.TestCase):
             mock_client = MagicMock()
             mock_client.get_album_detail.side_effect = MissingAlbumPhotoException("Missing album", {})
 
-            with patch.object(self.provider, "_make_api_client", return_value=mock_client), patch(
-                "app.providers.jm.JM_USERNAME", ""
-            ), patch("app.providers.jm.JM_PASSWORD", ""):
+            mock_html_client = MagicMock()
+            mock_resp = MagicMock()
+            mock_resp.url = "https://18comic.vip/login"
+            mock_resp.text = "<html>需登入後才能觀看</html>"
+            mock_html_client.get.return_value = mock_resp
+
+            with patch.object(self.provider, "_make_api_client", return_value=mock_client), patch.object(
+                self.provider, "_make_html_client", return_value=mock_html_client
+            ), patch("app.providers.jm.JM_USERNAME", ""), patch("app.providers.jm.JM_PASSWORD", ""):
                 with self.assertRaises(ValueError) as ctx:
                     self.provider.fetch("1208546")
                 self.assertIn("受权限保护（需登录查看）", str(ctx.exception))
@@ -761,6 +775,264 @@ class TestJMProvider(unittest.TestCase):
                 self.assertEqual(comic.meta.published_at, "2022-01-02")
                 self.assertEqual(comic.meta.updated_at, "2024-05-10")
         finally:
+            self.api_patcher.start()
+
+    def test_try_extract_html_dates_success(self) -> None:
+        self.html_dates_patcher.stop()
+        try:
+            mock_client = MagicMock()
+            mock_resp = MagicMock()
+            mock_resp.text = """
+            <div class="tag-block">
+                <span>上架日期 : 2025-10-01</span>
+                <span>更新日期 : 2025-10-03</span>
+            </div>
+            """
+            mock_client.get.return_value = mock_resp
+            with patch.object(self.provider, "_make_html_client", return_value=mock_client):
+                pub, upd = self.provider._try_extract_html_dates("1220124")
+                self.assertEqual(pub, "2025-10-01")
+                self.assertEqual(upd, "2025-10-03")
+
+            # Also test full-width colon support
+            mock_resp_fullwidth = MagicMock()
+            mock_resp_fullwidth.text = """
+            <div class="tag-block">
+                <span>上架日期 ： 2025-10-01</span>
+                <span>更新日期 ： 2025-10-03</span>
+            </div>
+            """
+            mock_client.get.return_value = mock_resp_fullwidth
+            with patch.object(self.provider, "_make_html_client", return_value=mock_client):
+                pub_fw, upd_fw = self.provider._try_extract_html_dates("1220124")
+                self.assertEqual(pub_fw, "2025-10-01")
+                self.assertEqual(upd_fw, "2025-10-03")
+        finally:
+            self.html_dates_patcher.start()
+
+    def test_try_extract_html_dates_failure_fallback(self) -> None:
+        self.html_dates_patcher.stop()
+        try:
+            mock_client = MagicMock()
+
+            # Case 1: Album missing
+            resp_missing = MagicMock()
+            resp_missing.text = "<html>album_missing error</html>"
+            mock_client.get.return_value = resp_missing
+            with patch.object(self.provider, "_make_html_client", return_value=mock_client):
+                pub, upd = self.provider._try_extract_html_dates("999999")
+                self.assertEqual(pub, "")
+                self.assertEqual(upd, "")
+
+            # Case 2: Requires login
+            resp_login = MagicMock()
+            resp_login.text = "<html>此本子需要登入後才能觀看</html>"
+            mock_client.get.return_value = resp_login
+            with patch.object(self.provider, "_make_html_client", return_value=mock_client):
+                pub, upd = self.provider._try_extract_html_dates("888888")
+                self.assertEqual(pub, "")
+                self.assertEqual(upd, "")
+
+            # Case 3: Network exception / timeout
+            mock_client.get.side_effect = TimeoutError("Connection timed out")
+            with patch.object(self.provider, "_make_html_client", return_value=mock_client):
+                pub, upd = self.provider._try_extract_html_dates("777777")
+                self.assertEqual(pub, "")
+                self.assertEqual(upd, "")
+        finally:
+            self.html_dates_patcher.start()
+
+    def test_fetch_via_api_uses_html_dates_when_available(self) -> None:
+        self.api_patcher.stop()
+        self.html_dates_patcher.stop()
+        try:
+            mock_api_client = MagicMock()
+            mock_api_client.API_ALBUM = "/album"
+            mock_api_client.API_CHAPTER = "/chapter"
+            mock_api_client.append_params_to_url.side_effect = lambda u, p: f"{u}?id={p.get('id')}"
+
+            album_resp = MagicMock()
+            album_resp.encoded_data = "some_b64"
+            # Upstream API addtime returns modified date (2025-10-03)
+            album_resp.res_data = {
+                "id": 1220124,
+                "name": "修改过的漫画",
+                "images": [],
+                "addtime": "1759453200",  # 2025-10-03
+                "description": "",
+                "total_views": "100",
+                "total_photos": 1,
+                "likes": "50",
+                "series": [],
+                "series_id": "0",
+                "comment_total": "5",
+                "author": ["作者A"],
+                "tags": [],
+                "works": [],
+                "actors": [],
+                "related_list": [],
+                "liked": False,
+                "is_favorite": False,
+            }
+
+            chapter_resp = MagicMock()
+            chapter_resp.encoded_data = "some_b64"
+            chapter_resp.res_data = {
+                "id": 1220124,
+                "name": "第 1 话",
+                "series": [],
+                "series_id": "0",
+                "tags": "",
+                "addtime": "1759453200",
+                "images": ["00001.webp"],
+                "is_favorite": False,
+                "liked": False,
+            }
+
+            def req_api_mock(url: str):
+                if "/album" in url:
+                    return album_resp
+                return chapter_resp
+
+            mock_api_client.req_api.side_effect = req_api_mock
+            mock_api_client.get_scramble_id.return_value = "0"
+
+            # HTML probe successfully extracts real published date
+            with patch.object(self.provider, "_make_api_client", return_value=mock_api_client), patch.object(
+                self.provider, "_try_extract_html_dates", return_value=("2025-10-01", "2025-10-03")
+            ):
+                comic = self.provider.fetch("1220124")
+                self.assertEqual(comic.meta.published_at, "2025-10-01")
+                self.assertEqual(comic.meta.updated_at, "2025-10-03")
+        finally:
+            self.html_dates_patcher.start()
+            self.api_patcher.start()
+
+    def test_date_monotonicity_and_ordering_invariants(self) -> None:
+        self.api_patcher.stop()
+        self.html_dates_patcher.stop()
+        try:
+            from app.models import Chapter, ComicMeta, FetchedComic, RemotePage
+
+            mock_api_client = MagicMock()
+            mock_api_client.API_ALBUM = "/album"
+            mock_api_client.API_CHAPTER = "/chapter"
+            mock_api_client.append_params_to_url.side_effect = lambda u, p: f"{u}?id={p.get('id')}"
+
+            # API reports addtime = 2025-10-05
+            album_resp = MagicMock()
+            album_resp.encoded_data = "some_b64"
+            album_resp.res_data = {
+                "id": 1220124,
+                "name": "测试漫画",
+                "images": [],
+                "addtime": "1759626000",  # 2025-10-05
+                "description": "",
+                "total_views": "100",
+                "total_photos": 1,
+                "likes": "50",
+                "series": [],
+                "series_id": "0",
+                "comment_total": "0",
+                "author": [],
+                "tags": [],
+                "works": [],
+                "actors": [],
+                "related_list": [],
+                "liked": False,
+                "is_favorite": False,
+            }
+            chapter_resp = MagicMock()
+            chapter_resp.encoded_data = "some_b64"
+            chapter_resp.res_data = {
+                "id": 1220124,
+                "name": "第 1 话",
+                "series": [],
+                "series_id": "0",
+                "tags": "",
+                "addtime": "1759626000",
+                "images": ["00001.webp"],
+                "is_favorite": False,
+                "liked": False,
+            }
+            mock_api_client.req_api.side_effect = lambda u: album_resp if "/album" in u else chapter_resp
+            mock_api_client.get_scramble_id.return_value = "0"
+
+            # 1. published_at monotonic non-increasing: existing is earlier 2025-09-01
+            # Even if probe returns 2025-10-01, published_at never moves forward to later date
+            existing_earlier = FetchedComic(
+                meta=ComicMeta(
+                    source="jm",
+                    source_id="1220124",
+                    display_id="JM1220124",
+                    title="测试漫画",
+                    published_at="2025-09-01",
+                    updated_at="2025-09-05",
+                    page_count=1,
+                    chapters=[],
+                ),
+                remote_pages=[RemotePage(index=1, url="http://img", file="00001.webp", ext=".webp", scramble_id="0", chapter="")],
+            )
+            with patch.object(self.provider, "_make_api_client", return_value=mock_api_client), patch.object(
+                self.provider, "_try_extract_html_dates", return_value=("2025-10-01", "2025-10-05")
+            ):
+                comic1 = self.provider.fetch("1220124", existing=existing_earlier)
+                self.assertEqual(comic1.meta.published_at, "2025-09-01")
+                self.assertEqual(comic1.meta.updated_at, "2025-10-05")
+
+            # 2. Lazy healing: existing published_at was corrupted to 2025-10-05
+            # Probe discovers true earlier published date 2025-10-01 -> heals to earlier date
+            existing_corrupted = FetchedComic(
+                meta=ComicMeta(
+                    source="jm",
+                    source_id="1220124",
+                    display_id="JM1220124",
+                    title="测试漫画",
+                    published_at="2025-10-05",
+                    updated_at="2025-10-05",
+                    page_count=1,
+                    chapters=[],
+                ),
+                remote_pages=[RemotePage(index=1, url="http://img", file="00001.webp", ext=".webp", scramble_id="0", chapter="")],
+            )
+            with patch.object(self.provider, "_make_api_client", return_value=mock_api_client), patch.object(
+                self.provider, "_try_extract_html_dates", return_value=("2025-10-01", "2025-10-05")
+            ):
+                comic2 = self.provider.fetch("1220124", existing=existing_corrupted)
+                self.assertEqual(comic2.meta.published_at, "2025-10-01")
+                self.assertEqual(comic2.meta.updated_at, "2025-10-05")
+
+            # 3. Partial ordering: published_at <= updated_at
+            # If pub_date is 2025-10-08 and update_date is 2025-10-05, updated_at must be raised to 2025-10-08
+            with patch.object(self.provider, "_make_api_client", return_value=mock_api_client), patch.object(
+                self.provider, "_try_extract_html_dates", return_value=("2025-10-08", "2025-10-05")
+            ):
+                comic3 = self.provider.fetch("1220124")
+                self.assertEqual(comic3.meta.published_at, "2025-10-08")
+                self.assertGreaterEqual(comic3.meta.updated_at, comic3.meta.published_at)
+
+            # 4. Sentinel '0' immunity: existing record with legacy '0' values must not poison comparisons
+            existing_sentinel = FetchedComic(
+                meta=ComicMeta(
+                    source="jm",
+                    source_id="1220124",
+                    display_id="JM1220124",
+                    title="测试漫画",
+                    published_at="0",
+                    updated_at="0",
+                    page_count=1,
+                    chapters=[],
+                ),
+                remote_pages=[RemotePage(index=1, url="http://img", file="00001.webp", ext=".webp", scramble_id="0", chapter="")],
+            )
+            with patch.object(self.provider, "_make_api_client", return_value=mock_api_client), patch.object(
+                self.provider, "_try_extract_html_dates", return_value=("2025-10-01", "2025-10-05")
+            ):
+                comic4 = self.provider.fetch("1220124", existing=existing_sentinel)
+                self.assertEqual(comic4.meta.published_at, "2025-10-01")
+                self.assertEqual(comic4.meta.updated_at, "2025-10-05")
+        finally:
+            self.html_dates_patcher.start()
             self.api_patcher.start()
 
 

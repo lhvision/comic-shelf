@@ -442,6 +442,25 @@ class JMProvider(ComicProvider):
                     return value
         return None
 
+    def _try_extract_html_dates(self, jm_id: str) -> tuple[str, str]:
+        """尽力式从 18comic 网页端提取精确的 (上架日期, 更新日期)。
+
+        若车号受限 (302/CAPTCHA/需要登入)、超时或网络失败，安全返回 ('', '')。
+        """
+        try:
+            client = self._make_html_client()
+            resp = client.get(f"/album/{jm_id}", timeout=5)
+            text = getattr(resp, "text", "")
+            if not text or "album_missing" in text or "需要登入" in text or "登入後才能" in text:
+                return "", ""
+            pub_m = re.search(r"上架日期\s*[:：]\s*([0-9]{4}-[0-9]{2}-[0-9]{2})", text)
+            upd_m = re.search(r"更新日期\s*[:：]\s*([0-9]{4}-[0-9]{2}-[0-9]{2})", text)
+            pub_date = pub_m.group(1).strip() if pub_m else ""
+            upd_date = upd_m.group(1).strip() if upd_m else ""
+            return pub_date, upd_date
+        except Exception:
+            return "", ""
+
     def _fetch_via_api(
         self,
         jm_id: str,
@@ -501,10 +520,17 @@ class JMProvider(ComicProvider):
             else:
                 raise
 
+        # 尽力式从网页端提取真实的 (上架日期, 更新日期)，弥补禁漫 API 在漫画修改后 addtime 漂移为更新日期的缺陷
+        html_pub, html_upd = self._try_extract_html_dates(jm_id)
+        if html_pub:
+            album_pub_date = html_pub
+
         if album_pub_date:
             detail.pub_date = album_pub_date
             if not (existing and existing.meta.updated_at):
                 detail.update_date = album_pub_date
+        if html_upd:
+            detail.update_date = html_upd
         if album_page_count:
             detail.page_count = album_page_count
 
@@ -630,8 +656,14 @@ class JMProvider(ComicProvider):
         except Exception as exc:
             if "album_id" in str(exc) or "pattern_html_album_" in str(exc):
                 raise ValueError(f"禁漫车号 JM{jm_id} 页面解析失败（可能不存在或已被删除）") from exc
-            raise
         uploader = self._parse_uploader(album_resp.text)
+        if not getattr(detail, "pub_date", "") or not getattr(detail, "update_date", ""):
+            pub_m = re.search(r"上架日期\s*[:：]\s*([0-9]{4}-[0-9]{2}-[0-9]{2})", album_resp.text)
+            upd_m = re.search(r"更新日期\s*[:：]\s*([0-9]{4}-[0-9]{2}-[0-9]{2})", album_resp.text)
+            if pub_m and not getattr(detail, "pub_date", ""):
+                detail.pub_date = pub_m.group(1).strip()
+            if upd_m and not getattr(detail, "update_date", ""):
+                detail.update_date = upd_m.group(1).strip()
 
         def fetch_photo_html(pid: str):
             nonlocal client
@@ -835,18 +867,29 @@ class JMProvider(ComicProvider):
         pub_date = (
             raw_pub_date
             if raw_pub_date and raw_pub_date != "0"
-            else (existing.meta.published_at if existing else "")
+            else (existing.meta.published_at if existing and existing.meta.published_at != "0" else "")
         )
+        # 上架日期单调不后移：若已有记录且更早，保留更早的首发时间（过滤历史 "0" 哨兵值）
+        if existing and existing.meta.published_at and existing.meta.published_at != "0" and pub_date:
+            if existing.meta.published_at < pub_date:
+                pub_date = existing.meta.published_at
+
         raw_update_date = str(getattr(detail, "update_date", "") or "").strip()
         update_date = (
             raw_update_date
             if raw_update_date and raw_update_date != "0"
-            else (existing.meta.updated_at if existing else "")
+            else (existing.meta.updated_at if existing and existing.meta.updated_at != "0" else "")
         )
         if latest_ep_date and (not update_date or latest_ep_date > update_date):
             update_date = latest_ep_date
-        if existing and existing.meta.updated_at and existing.meta.updated_at > update_date:
+        # 更新日期单调不前移：绝不回退已有更新时间（过滤历史 "0" 哨兵值）
+        if existing and existing.meta.updated_at and existing.meta.updated_at != "0" and existing.meta.updated_at > update_date:
             update_date = existing.meta.updated_at
+
+        # 时序偏序约束：published_at <= updated_at
+        if pub_date and (not update_date or pub_date > update_date):
+            update_date = pub_date
+
         effective_uploader = uploader or (existing.meta.uploader if existing else None)
 
         meta = ComicMeta(

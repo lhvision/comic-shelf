@@ -882,11 +882,18 @@
 - **根因**：基础 HTTP 传输层（`src/api/core/http.ts`）为防连接池悬空默认设置了 15 秒短超时守护；普通短命 RPC 毫秒级返回不受影响，但远端收录（`POST /api/library/import`）需在请求线程内向图源逐话拉取各章节画页列表（受代理往返与防风控节流影响往往需要 30~90s），前端 `importComic` 未显式覆盖 `timeoutMs`，被 15s 兜底提前斩断。
 - **红线**：所有涉及批量外部 I/O 或多章节目录解析的业务 RPC 必须显式声明分级长超时（如 `importComic` 配 `180000` / 3分钟，`importLocalPath` 配 `120000` / 2分钟）；严禁在未评估业务执行窗口的情况下让长事务接口裸落到 15s 全局默认值。
 
-### 151. jmcomic API 适配层将日期硬编码为 '0'：追更与封面缓存失效机制静默退化
+### 151. jmcomic API 适配层日期硬编码与 addtime 篡改漂移：追更、排序与首发时间失真
 
-- **症状**：通过 JM API 客户端（`_fetch_via_api`）收录的漫画，`published_at` 与 `updated_at` 均落盘为空字符串 `""`；全书发布时间丢失，封面防缓存哈希 `?v=md5(updated_at)[:8]` 退化为全静态哈希。
-- **根因**：上游第三方库 `jmcomic` 的 `JmApiAdaptTool.post_adapt_album` 内部硬编码了 `for it in 'scramble_id', 'page_count', 'pub_date', 'update_date': fields[it] = '0'`，丢弃了官方 API 返回的 Unix 时间戳字段 `addtime`。
-- **红线**：JM API 解析必须优先从原始响应 JSON 中提取 `addtime`（通过 `_format_addtime` 格式化为 `YYYY-MM-DD` 挂载至 `detail.pub_date` 与各话 `photo.pub_date`，多章节以最新单话 `addtime` 推进全书 `updated_at`，增量更新时必须保留既有 `existing.meta.updated_at` 保证单调不倒退）；严禁在业务生产代码中 `import unittest.mock` 或 `isinstance(client, MagicMock)` 进行测试替身判断，分支降级必须依托标准异常兜底（`try ... except ...`）。
+- **症状**：通过 JM API 客户端（`_fetch_via_api`）收录的漫画，`published_at` 与 `updated_at` 一旦被上游作者/管理员编辑或更新，官方 API `/album` 的 `addtime` 会直接被改写为最后修改日期，导致单本漫画的 `published_at`（上架日期）向后漂移变更为更新日期，首发时间失真，藏书按上架时间排序错乱。
+- **根因**：① 上游第三方库 `jmcomic` 的 `JmApiAdaptTool.post_adapt_album` 内部硬编码赋 `'0'`，丢弃了官方 API 返回的 `addtime`；② 禁漫 App REST API 自身数据模型缺陷，未独立提供 `created_at`，仅序列化单个 `addtime` 并在编辑时覆写；但禁漫网页端 HTML 仍清晰保留两项独立标签：`上架日期 : YYYY-MM-DD` 与 `更新日期 : YYYY-MM-DD`。
+- **红线**：
+  1. **双轨结合与尽力式探测**：以 API 客户端为核心快速解析目录与章节，同时尽力式向网页端发起轻量探测（`_try_extract_html_dates`），成功提取时采纳 HTML 中的真实上架与更新日期；若遇受限拦截（302/CAPTCHA/album_missing）或网络故障，平滑降级使用 API `addtime` 兜底；
+  2. **时序偏序不变式**：严格恪守 `CONTEXT.md` 领域定义：
+     - `published_at` 单调不后移：`pub_date = min(existing.meta.published_at, pub_date)`，历史首发日期永不前推到未来；
+     - `updated_at` 单调不前移：`update_date = max(existing.meta.updated_at, update_date, latest_ep_date)`，更新日期永不倒退；
+     - 偏序强约束：任何时刻均满足 `published_at <= updated_at`；
+  3. **单元测试网络隔离**：离线单测 `setUp` 中除 `_make_api_client` 外必须默认 patch `_try_extract_html_dates` 返回 `("", "")`，严禁单测离线执行时意外向远端发起真实 HTML 请求导致网络阻塞；
+  4. **惰性自愈自理**：依托增量收录、定时追更或用户点击详情页「刷新资料」时自动触发惰性自愈（Lazy Healing），由核心抓取流水线无感修正已有日期，无需额外维护脱机修复脚本。
 
 ---
 

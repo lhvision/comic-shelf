@@ -468,6 +468,167 @@ class TestAutoUpdateEngine(unittest.TestCase):
             reloaded2 = self.store.load_meta("jm", "new_import_comic")
             self.assertEqual(reloaded2.last_auto_checked_at, res2.meta.last_auto_checked_at)
 
+    def test_auto_update_heals_published_at_and_enforces_monotonicity(self):
+        """P0 regression test: When auto-update discovers an earlier true published_at
+
+        or later updated_at, it heals published_at and advances updated_at while preserving
+        monotonicity (published_at never moves forward, updated_at never regresses).
+        """
+        chapters = [
+            Chapter(id="c1", index=1, title="第 1 话", page_count=2, start=1),
+            Chapter(id="c2", index=2, title="第 2 话", page_count=2, start=3),
+        ]
+        pages = [
+            PageRecord(index=1, file="00001.webp", ext=".webp", cached=False, chapter="c1"),
+            PageRecord(index=2, file="00002.webp", ext=".webp", cached=False, chapter="c1"),
+            PageRecord(index=3, file="00001.webp", ext=".webp", cached=False, chapter="c2"),
+            PageRecord(index=4, file="00002.webp", ext=".webp", cached=False, chapter="c2"),
+        ]
+        # Existing comic has drifted published_at: 2025-10-05 and updated_at: 2025-10-05
+        meta = ComicMeta(
+            source="jm",
+            source_id="drifted_dates_comic",
+            display_id="JM_drifted",
+            title="测试追更漫画",
+            published_at="2025-10-05",
+            updated_at="2025-10-05",
+            page_count=4,
+            chapters=chapters,
+            pages=pages,
+            auto_update_interval_days=15,
+            last_auto_checked_at="",
+        )
+        fetched = FetchedComic(
+            meta=meta,
+            remote_pages=[
+                RemotePage(index=1, url="http://1", file="00001.webp", ext=".webp", chapter="c1"),
+                RemotePage(index=2, url="http://2", file="00002.webp", ext=".webp", chapter="c1"),
+                RemotePage(index=3, url="http://3", file="00001.webp", ext=".webp", chapter="c2"),
+                RemotePage(index=4, url="http://4", file="00002.webp", ext=".webp", chapter="c2"),
+            ],
+        )
+        self.store.save_fetched(fetched)
+
+        # Provider returns 3 chapters with true earlier published_at: 2025-10-01 and new update: 2026-03-01
+        new_chapters = list(chapters) + [
+            Chapter(id="c3", index=3, title="第 3 话", page_count=2, start=5)
+        ]
+        new_pages = list(pages) + [
+            PageRecord(index=5, file="00001.webp", ext=".webp", cached=False, chapter="c3"),
+            PageRecord(index=6, file="00002.webp", ext=".webp", cached=False, chapter="c3"),
+        ]
+        provider_meta = ComicMeta(
+            source="jm",
+            source_id="drifted_dates_comic",
+            display_id="JM_drifted",
+            title="测试追更漫画",
+            published_at="2025-10-01",  # Healed earlier date
+            updated_at="2026-03-01",    # New chapter date
+            page_count=6,
+            chapters=new_chapters,
+            pages=new_pages,
+            auto_update_interval_days=15,
+        )
+        mock_provider = MagicMock()
+        mock_provider.fetch.return_value = FetchedComic(
+            meta=provider_meta,
+            remote_pages=fetched.remote_pages + [
+                RemotePage(index=5, url="http://5", file="00001.webp", ext=".webp", chapter="c3"),
+                RemotePage(index=6, url="http://6", file="00002.webp", ext=".webp", chapter="c3"),
+            ],
+        )
+
+        with patch("app.auto_update.get_provider", return_value=mock_provider), \
+             patch("app.auto_update.broadcast_event"):
+            res = run_auto_update_cycle(self.store, max_check=10, sleep_seconds=0)
+            self.assertEqual(res["updated"], 1)
+
+        reloaded = self.store.load_meta("jm", "drifted_dates_comic")
+        # 1. published_at healed from 2025-10-05 to earlier 2025-10-01
+        self.assertEqual(reloaded.published_at, "2025-10-01")
+        # 2. updated_at advanced from 2025-10-05 to 2026-03-01
+        self.assertEqual(reloaded.updated_at, "2026-03-01")
+        # 3. Partial ordering holds
+        self.assertLessEqual(reloaded.published_at, reloaded.updated_at)
+
+    def test_auto_update_heals_legacy_zero_sentinel_dates(self):
+        """P1 regression test: When auto-update encounters legacy '0' sentinel dates
+
+        in existing record, it successfully heals published_at and updated_at
+        without getting trapped by falsy/dictionary-order anomalies.
+        """
+        chapters = [
+            Chapter(id="c1", index=1, title="第 1 话", page_count=2, start=1),
+            Chapter(id="c2", index=2, title="第 2 话", page_count=2, start=3),
+        ]
+        pages = [
+            PageRecord(index=1, file="00001.webp", ext=".webp", cached=False, chapter="c1"),
+            PageRecord(index=2, file="00002.webp", ext=".webp", cached=False, chapter="c1"),
+            PageRecord(index=3, file="00001.webp", ext=".webp", cached=False, chapter="c2"),
+            PageRecord(index=4, file="00002.webp", ext=".webp", cached=False, chapter="c2"),
+        ]
+        meta = ComicMeta(
+            source="jm",
+            source_id="zero_sentinel_comic",
+            display_id="JM_zero",
+            title="测试零值漫画",
+            published_at="0",
+            updated_at="0",
+            page_count=4,
+            chapters=chapters,
+            pages=pages,
+            auto_update_interval_days=15,
+            last_auto_checked_at="",
+        )
+        fetched = FetchedComic(
+            meta=meta,
+            remote_pages=[
+                RemotePage(index=1, url="http://1", file="00001.webp", ext=".webp", chapter="c1"),
+                RemotePage(index=2, url="http://2", file="00002.webp", ext=".webp", chapter="c1"),
+                RemotePage(index=3, url="http://3", file="00001.webp", ext=".webp", chapter="c2"),
+                RemotePage(index=4, url="http://4", file="00002.webp", ext=".webp", chapter="c2"),
+            ],
+        )
+        self.store.save_fetched(fetched)
+
+        # Provider returns 3 chapters with healed dates
+        new_chapters = list(chapters) + [
+            Chapter(id="c3", index=3, title="第 3 话", page_count=2, start=5)
+        ]
+        new_pages = list(pages) + [
+            PageRecord(index=5, file="00001.webp", ext=".webp", cached=False, chapter="c3"),
+            PageRecord(index=6, file="00002.webp", ext=".webp", cached=False, chapter="c3"),
+        ]
+        provider_meta = ComicMeta(
+            source="jm",
+            source_id="zero_sentinel_comic",
+            display_id="JM_zero",
+            title="测试零值漫画",
+            published_at="2025-10-01",
+            updated_at="2025-10-03",
+            page_count=6,
+            chapters=new_chapters,
+            pages=new_pages,
+            auto_update_interval_days=15,
+        )
+        mock_provider = MagicMock()
+        mock_provider.fetch.return_value = FetchedComic(
+            meta=provider_meta,
+            remote_pages=fetched.remote_pages + [
+                RemotePage(index=5, url="http://5", file="00001.webp", ext=".webp", chapter="c3"),
+                RemotePage(index=6, url="http://6", file="00002.webp", ext=".webp", chapter="c3"),
+            ],
+        )
+
+        with patch("app.auto_update.get_provider", return_value=mock_provider), \
+             patch("app.auto_update.broadcast_event"):
+            res = run_auto_update_cycle(self.store, max_check=10, sleep_seconds=0)
+            self.assertEqual(res["updated"], 1)
+
+        reloaded = self.store.load_meta("jm", "zero_sentinel_comic")
+        self.assertEqual(reloaded.published_at, "2025-10-01")
+        self.assertEqual(reloaded.updated_at, "2025-10-03")
+
 
 if __name__ == "__main__":
     unittest.main()
