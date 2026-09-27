@@ -125,6 +125,9 @@ describe('useShelfState composable', () => {
 
       shelf.hydrateFromQuery({ cmd: 'author' })
       expect(shelf.searchActiveCommand.value).toBe('author')
+
+      shelf.hydrateFromQuery({ cmd: 'tag' })
+      expect(shelf.searchActiveCommand.value).toBe('tag')
     })
   })
 

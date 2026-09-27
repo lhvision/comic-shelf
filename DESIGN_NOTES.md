@@ -507,14 +507,21 @@
 - **业务背景与交互心智痛点**：
   在引入 OCR 台词检索后，搜索框同时承担“书名/作者/标签过滤”与“台词 FTS5 检索”。读者输入长句台词时，书架本地过滤同步将网格中所有漫画过滤为 0 本（列表全空），打断了案头浏览心智。系统确立以显式指令分流与命令胶囊化为核心的解耦规范。
 - **快捷指令中枢（Slash Command Palette & `useSearchCommands`）**：
-  1. **语法触发与选单**：搜索框输入 `/` 时展开 `SearchCommandMenu.vue`，展示指令清单（`/台词`、`/车号`、`/作者`、`/随机`）；
-  2. **键盘导航与补全**：支持 `↑` / `↓` 视口跟随、`Tab` 或 `Enter` 快速补全，支持简写别名（`/d`、`/id`、`/a`、`/r`）；
-  3. **随手翻一本（/随机）**：即时从在读或未读藏书中随手翻阅一卷直达，辅以朱砂 Toast 提示，不改变搜索框输入态；
-  4. **层叠上下文与 Token 标尺隔离（Stacking Context Elevation & Zero Occlusion）**：搜索容器 `.search-container` 与 `.shelf-head` 统一挂载 `z-index: var(--z-dropdown)`（35），选单浮层 `SearchCommandMenu` 使用 `var(--z-dropdown)`，台词联想浮层 `DialogueSearchPopover` 使用 `var(--z-popover)`（60），确保在包含 `contain: layout`、`transform` 及印章徽记（`z-index: 2`）的下方封面卡片网格前绝对置顶且位于顶栏（`--z-header: 40`）下方，彻底根绝卡片穿透遮挡。
-- **命令胶囊化与网格过滤冻结（Command Chip & Frozen Shelf Grid）**：
-  1. **状态物理解耦**：选定 `/台词` 后，输入框左侧生成朱砂印章质感的专属胶囊 `〔 💬 台词 × 〕`（`SearchCommandChip.vue`）；
-  2. **网格 100% 冻结**：在胶囊专注模式下，底层书架过滤词被强制置空（`effectiveShelfSearch = ''`），书架藏书大网格完全不动，彻底消灭“列表变空”假象；
-  3. **退格键秒级自愈**：输入框内容为空时按退格键（`Backspace`）或点击胶囊 `×`，秒级退出专注模式切回常规书架搜索。
+  1. **默认占位符收敛**：常规模式占位符精炼为 `标题 / 车号 · 键入 / 唤出指令`，降低首屏干扰；
+  2. **语法触发与选单**：搜索框输入 `/` 时展开 `SearchCommandMenu.vue`，展示指令清单（`/台词`、`/车号`、`/作者`、`/标签`、`/随机`）；
+  3. **键盘导航与补全**：支持 `↑` / `↓` 视口跟随、`Tab` 或 `Enter` 快速补全，支持纯中文、拼音与全缩写别名：
+     - `/台词`（别名：`dialogue`, `d`, `tc`, `台词`）
+     - `/车号`（别名：`id`, `display_id`, `ch`, `车号`；剥离误导性的 `jm` 别名以贴合全源藏书架构）
+     - `/作者`（别名：`author`, `a`, `zuozhe`, `zz`, `作者`）
+     - `/标签`（别名：`tag`, `t`, `biaoqian`, `bq`, `标签`；水墨风 `IconTag` 标签印章，原 `/台词` 占用的 `t` 别名收拢让渡）
+     - `/随机`（别名：`random`, `r`, `suiji`, `sj`, `随机`）
+  4. **随手翻一本（/随机）**：即时从在读或未读藏书中随手翻阅一卷直达，辅以朱砂 Toast 提示，不改变搜索框输入态；
+  5. **层叠上下文与 Token 标尺隔离（Stacking Context Elevation & Zero Occlusion）**：搜索容器 `.search-container` 与 `.shelf-head` 统一挂载 `z-index: var(--z-dropdown)`（35），选单浮层 `SearchCommandMenu` 使用 `var(--z-dropdown)`，台词联想浮层 `DialogueSearchPopover` 使用 `var(--z-popover)`（60），确保在包含 `contain: layout`、`transform` 及印章徽记（`z-index: 2`）的下方封面卡片网格前绝对置顶且位于顶栏（`--z-header: 40`）下方，彻底根绝卡片穿透遮挡。
+- **命令胶囊化与字段限定检索（Command Chip & Scoped Field Search）**：
+  1. **状态物理解耦与胶囊化**：选定指令后，输入框左侧生成朱砂印章质感的专属胶囊（`SearchCommandChip.vue`）；
+  2. **网格 100% 冻结与字段隔离**：在 `/台词` 胶囊模式下，底层书架过滤词被强制置空（`shelfSearch = ''`），书架藏书大网格完全不动，彻底消灭“列表变空”假象；在 `/车号`、`/作者`、`/标签` 胶囊模式下，`scope` 锁定为对应字段，服务端与前端仅对限定字段执行精准包含过滤，彻底杜绝跨字段假阳性匹配；
+  3. **常规平白输入的 4 级相关度分层重排（Tiered Relevance Sorting）**：平白输入模式下保持全能匹配兜底（`scope="all"`），但前端与后端均引入**四级相关度分层重排**（Tier 0 标题/车号精准匹配 > Tier 1 标题包含 > Tier 2 作者包含 > Tier 3 标签/原作/角色/章节名包含；同 Tier 内维持既定排序规则）；
+  4. **退格键秒级自愈**：输入框内容为空时按退格键（`Backspace`）或点击胶囊 `×`，秒级退出专注模式切回常规书架搜索。
 - **短词全表扫描防爆守卫与双库解耦（Short-Query Guard & Dual DB Isolation）**：
   1. **短词前端设卡**：台词输入少于 2 个有效字符时前端不发起网络请求，浮层提示“请输入至少 2 个字以检索台词”；
   2. **后端无索引全表扫描物理拔除**：后端对 `< 2` 字符刚性拦截，彻底杜绝十万级数据下 Trigram 截断导致的裸 `LIKE %xx%` 扫表 CPU 占满隐患；

@@ -50,14 +50,38 @@ export function getSearchText(item: LibrarySummary): string {
   return cached
 }
 
+export type SearchScope = 'all' | 'id' | 'author' | 'tag'
+
 export interface FilterParams {
   activeSource: string
   search: string
+  searchScope?: SearchScope
   activeTags?: string[]
   favoritesOnly: boolean
   readingStatus: ReadingStatus
   sortBy: SortKey
   imageSearchMatches?: Record<string, number>
+}
+
+function getRelevanceTier(item: LibrarySummary, needle: string): number {
+  const title = (item.title || '').toLowerCase()
+  const displayId = (item.display_id || '').toLowerCase()
+  const sourceId = (item.source_id || '').toLowerCase()
+
+  // Tier 0: 完全匹配标题或车号
+  if (title === needle || displayId === needle || sourceId === needle) {
+    return 0
+  }
+  // Tier 1: 标题包含关键词
+  if (title.includes(needle)) {
+    return 1
+  }
+  // Tier 2: 作者包含关键词
+  if (Array.isArray(item.authors) && item.authors.some((a) => a.toLowerCase().includes(needle))) {
+    return 2
+  }
+  // Tier 3: 标签/原作/角色/章节标题等包含关键词
+  return 3
 }
 
 export function filterAndSortLibrary(
@@ -75,6 +99,7 @@ export function filterAndSortLibrary(
   const readingStatus = params.readingStatus
   const sortBy = params.sortBy
   const imageSearchMatches = params.imageSearchMatches
+  const searchScope = params.searchScope ?? 'all'
 
   let list = Array.isArray(items) ? items.filter(Boolean) : []
   if (activeSource) {
@@ -83,7 +108,24 @@ export function filterAndSortLibrary(
 
   list = list.filter((item) => {
     if (!item) return false
-    const matchSearch = needle.length === 0 || getSearchText(item).includes(needle)
+
+    let matchSearch = true
+    if (needle.length > 0) {
+      if (searchScope === 'id') {
+        const dId = (item.display_id || '').toLowerCase()
+        const sId = (item.source_id || '').toLowerCase()
+        matchSearch = dId.includes(needle) || sId.includes(needle)
+      } else if (searchScope === 'author') {
+        matchSearch =
+          Array.isArray(item.authors) && item.authors.some((a) => a.toLowerCase().includes(needle))
+      } else if (searchScope === 'tag') {
+        matchSearch =
+          Array.isArray(item.tags) && item.tags.some((t) => t.toLowerCase().includes(needle))
+      } else {
+        matchSearch = getSearchText(item).includes(needle)
+      }
+    }
+
     const matchTag = activeTags.every((t) => Array.isArray(item.tags) && item.tags.includes(t))
     const matchFavorite = !favoritesOnly || item.favorite
     const matchStatus =
@@ -104,8 +146,6 @@ export function filterAndSortLibrary(
     return matchSearch && matchTag && matchFavorite && matchStatus && matchImageSearch
   })
 
-  list = [...list]
-
   if (imageSearchMatches) {
     list.sort((a, b) => {
       const scoreA = imageSearchMatches[`${a.source}_${a.source_id}`] || 0
@@ -113,40 +153,49 @@ export function filterAndSortLibrary(
       return scoreB - scoreA
     })
   } else {
-    switch (sortBy) {
-      case 'title':
-        list.sort((a, b) => zhCollator.compare(a.title, b.title))
-        break
-      case 'pages':
-        list.sort((a, b) => b.page_count - a.page_count)
-        break
-      case 'cached':
-        list.sort(
-          (a, b) =>
-            b.cached_pages / Math.max(b.page_count, 1) - a.cached_pages / Math.max(a.page_count, 1),
-        )
-        break
-      default: {
-        const activeList: LibrarySummary[] = []
-        const completedList: LibrarySummary[] = []
-        const timeMap = new Map<LibrarySummary, number>()
-
-        for (const item of list) {
-          if (isCompletedComic(item)) {
-            completedList.push(item)
-          } else {
-            activeList.push(item)
-          }
-          timeMap.set(item, item.imported_at ? Date.parse(item.imported_at) || 0 : 0)
-        }
-
-        const sortByImportedDesc = (a: LibrarySummary, b: LibrarySummary) =>
-          (timeMap.get(b) ?? 0) - (timeMap.get(a) ?? 0)
-
-        activeList.sort(sortByImportedDesc)
-        completedList.sort(sortByImportedDesc)
-        list = [...activeList, ...completedList]
+    const timeMap = new Map<LibrarySummary, number>()
+    if (sortBy === 'recent' || (needle.length > 0 && searchScope === 'all')) {
+      for (const item of list) {
+        timeMap.set(item, item.imported_at ? Date.parse(item.imported_at) || 0 : 0)
       }
+    }
+
+    const compareBySortKey = (a: LibrarySummary, b: LibrarySummary): number => {
+      switch (sortBy) {
+        case 'title':
+          return zhCollator.compare(a.title, b.title)
+        case 'pages':
+          return b.page_count - a.page_count
+        case 'cached':
+          return (
+            b.cached_pages / Math.max(b.page_count, 1) - a.cached_pages / Math.max(a.page_count, 1)
+          )
+        default: {
+          const aCompleted = isCompletedComic(a) ? 1 : 0
+          const bCompleted = isCompletedComic(b) ? 1 : 0
+          if (aCompleted !== bCompleted) {
+            return aCompleted - bCompleted
+          }
+          return (timeMap.get(b) ?? 0) - (timeMap.get(a) ?? 0)
+        }
+      }
+    }
+
+    if (needle.length > 0 && searchScope === 'all') {
+      const tierMap = new Map<LibrarySummary, number>()
+      for (const item of list) {
+        tierMap.set(item, getRelevanceTier(item, needle))
+      }
+      list.sort((a, b) => {
+        const tierA = tierMap.get(a) ?? 3
+        const tierB = tierMap.get(b) ?? 3
+        if (tierA !== tierB) {
+          return tierA - tierB
+        }
+        return compareBySortKey(a, b)
+      })
+    } else {
+      list.sort(compareBySortKey)
     }
   }
 

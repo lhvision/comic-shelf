@@ -63,6 +63,7 @@ export async function library(
         favorite: params?.favorite ? 'true' : undefined,
         source: params?.source,
         q: (params?.q ?? params?.search)?.trim(),
+        scope: params?.scope !== 'all' ? params?.scope : undefined,
         tags: (params?.tags || params?.tag)?.trim(),
         sort: params?.sort !== 'recent' ? params?.sort : undefined,
       },

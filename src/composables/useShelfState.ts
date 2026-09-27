@@ -154,8 +154,13 @@ export const useShelfState = createGlobalState(() => {
       hydrated = true
     }
 
-    // 6. 恢复快捷指令模式 (cmd: dialogue | id | author)
-    if (query.cmd === 'dialogue' || query.cmd === 'id' || query.cmd === 'author') {
+    // 6. 恢复快捷指令模式 (cmd: dialogue | id | author | tag)
+    if (
+      query.cmd === 'dialogue' ||
+      query.cmd === 'id' ||
+      query.cmd === 'author' ||
+      query.cmd === 'tag'
+    ) {
       searchActiveCommand.value = query.cmd
       hydrated = true
     }

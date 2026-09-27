@@ -46,6 +46,11 @@ describe('useSearchHistory', () => {
     expect(history.value.length).toBe(2)
     expect(history.value[0]?.query).toBe('水龙敬')
     expect(history.value[0]?.command).toBe('author')
+
+    addHistory('纯爱', 'tag')
+    expect(history.value.length).toBe(3)
+    expect(history.value[0]?.query).toBe('纯爱')
+    expect(history.value[0]?.command).toBe('tag')
   })
 
   it('ignores random action command', () => {

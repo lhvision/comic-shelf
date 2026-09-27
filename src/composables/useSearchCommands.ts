@@ -11,7 +11,7 @@
 
 import { computed, ref, watch, type Ref } from 'vue'
 
-export type SearchCommandType = 'dialogue' | 'id' | 'author' | 'random'
+export type SearchCommandType = 'dialogue' | 'id' | 'author' | 'tag' | 'random'
 
 export interface SearchCommandDef {
   id: SearchCommandType
@@ -30,7 +30,7 @@ export const AVAILABLE_COMMANDS: SearchCommandDef[] = [
     name: '/台词',
     label: '台词',
     icon: 'message-square',
-    aliases: ['d', 't', 'dialogue', '台词', 'dc'],
+    aliases: ['d', 'dialogue', '台词', 'dc'],
     description: '检索分镜台词对白并直达画页分镜气泡',
     placeholder: '检索分镜（至少2字）…',
   },
@@ -39,7 +39,7 @@ export const AVAILABLE_COMMANDS: SearchCommandDef[] = [
     name: '/车号',
     label: '车号',
     icon: 'book-open',
-    aliases: ['id', 'c', 'chehao', '车号', 'jm'],
+    aliases: ['id', 'c', 'chehao', '车号', 'ch'],
     description: '按作品编号或车号精确匹配藏书',
     placeholder: '输入作品车号…',
   },
@@ -51,6 +51,15 @@ export const AVAILABLE_COMMANDS: SearchCommandDef[] = [
     aliases: ['a', 'zuozhe', '作者', 'aut'],
     description: '按作者姓名或社团筛选藏书',
     placeholder: '输入作者姓名…',
+  },
+  {
+    id: 'tag',
+    name: '/标签',
+    label: '标签',
+    icon: 'tag',
+    aliases: ['tag', 't', 'biaoqian', 'bq', '标签'],
+    description: '按题材或分类标签检索藏书',
+    placeholder: '输入题材标签…',
   },
   {
     id: 'random',
@@ -82,7 +91,6 @@ export interface UseSearchCommandsReturn {
   menuFocusedIndex: Ref<number>
   filteredCommands: Ref<SearchCommandDef[]>
   currentPlaceholder: Ref<string>
-  effectiveShelfSearch: Ref<string>
   selectCommand: (cmd: SearchCommandDef) => void
   clearCommand: () => void
   openMenu: () => void
@@ -128,23 +136,7 @@ export function useSearchCommands(options: UseSearchCommandsOptions = {}): UseSe
       const activeDef = AVAILABLE_COMMANDS.find((c) => c.id === activeCommand.value)
       return activeDef?.placeholder ?? '输入关键词检索…'
     }
-    return '标题 / 车号 / 作者 / 标签 · 输入 / 提示快捷命令'
-  })
-
-  /**
-   * 书架底层网格实际接收到的过滤检索词：
-   * 1. 常规模式：即原始输入 rawInput；
-   * 2. 台词模式：强制返回空字符串 ''，冻结书架网格过滤，彻底消除“一打台词列表全空”；
-   * 3. 车号/作者模式：传递 rawInput 进行精确过滤。
-   */
-  const effectiveShelfSearch = computed(() => {
-    if (activeCommand.value === 'dialogue') {
-      return ''
-    }
-    if (rawInput.value.startsWith('/')) {
-      return ''
-    }
-    return rawInput.value
+    return '标题 / 车号 · 键入 / 唤出指令'
   })
 
   const selectCommand = (cmd: SearchCommandDef) => {
@@ -288,7 +280,6 @@ export function useSearchCommands(options: UseSearchCommandsOptions = {}): UseSe
     menuFocusedIndex,
     filteredCommands,
     currentPlaceholder,
-    effectiveShelfSearch,
     selectCommand,
     clearCommand,
     openMenu,

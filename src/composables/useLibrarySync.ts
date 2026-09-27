@@ -14,13 +14,15 @@ import { useDebounceFn } from '@vueuse/core'
 import { useLibraryStore } from '@/stores/library'
 import { useSystemEvents } from '@/composables/useSystemEvents'
 import type { ReadingStatus, ImageSearchResultItem } from '@/types'
-import type { SortKey } from '@/composables/useLibraryFilter'
+import type { SortKey, SearchScope } from '@/composables/useLibraryFilter'
 
 export interface UseLibrarySyncOptions {
   /** 外部激活的数据源 Ref */
   activeSource: Ref<string>
   /** 外部搜索关键词 Ref */
   search: Ref<string>
+  /** 外部检索范围限制 Ref */
+  searchScope?: Ref<SearchScope>
   /** 外部选中多标签集合 Ref */
   activeTags: Ref<string[]>
   /** 外部只看喜欢 Ref */
@@ -48,6 +50,7 @@ export function useLibrarySync(options: UseLibrarySyncOptions): UseLibrarySyncRe
   const {
     activeSource,
     search,
+    searchScope,
     activeTags,
     favoritesOnly,
     readingStatus,
@@ -77,6 +80,7 @@ export function useLibrarySync(options: UseLibrarySyncOptions): UseLibrarySyncRe
     await store.loadItems(false, false, {
       source: activeSource.value || undefined,
       search: hasImageSearch ? undefined : search.value.trim() || undefined,
+      scope: hasImageSearch ? undefined : searchScope?.value,
       tags: tagsParam || undefined,
       favorite: favoritesOnly.value ? true : undefined,
       status: readingStatus.value,
@@ -89,7 +93,7 @@ export function useLibrarySync(options: UseLibrarySyncOptions): UseLibrarySyncRe
   }, debounceMs)
 
   watch(
-    [activeSource, search, activeTags, favoritesOnly, readingStatus, sortBy],
+    [activeSource, search, searchScope, activeTags, favoritesOnly, readingStatus, sortBy],
     () => {
       void fetchLibrary(true)
     },

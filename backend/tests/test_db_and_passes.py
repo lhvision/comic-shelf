@@ -563,6 +563,30 @@ def test_comics_index_and_pagination():
     assert total_chap == 1
     assert items_chap[0]["source_id"] == "c1"
 
+    # Scoped search: author
+    items_auth, total_auth = db_mod.query_library_index("u1", is_curator=True, q="Author A", scope="author")
+    assert total_auth == 1 and items_auth[0]["source_id"] == "c1"
+    _, total_auth_miss = db_mod.query_library_index("u1", is_curator=True, q="Alpha", scope="author")
+    assert total_auth_miss == 0
+
+    # Scoped search: tag
+    items_tag_scoped, total_tag_scoped = db_mod.query_library_index("u1", is_curator=True, q="全彩", scope="tag")
+    assert total_tag_scoped == 1 and items_tag_scoped[0]["source_id"] == "c1"
+    _, total_tag_miss = db_mod.query_library_index("u1", is_curator=True, q="Alpha", scope="tag")
+    assert total_tag_miss == 0
+
+    # Scoped search: id
+    items_id_scoped, total_id_scoped = db_mod.query_library_index("u1", is_curator=True, q="LOC_c2", scope="id")
+    assert total_id_scoped == 1 and items_id_scoped[0]["source_id"] == "c2"
+    _, total_id_miss = db_mod.query_library_index("u1", is_curator=True, q="Beta", scope="id")
+    assert total_id_miss == 0
+
+    # Scoped search: title_id
+    items_tid, total_tid = db_mod.query_library_index("u1", is_curator=True, q="Beta", scope="title_id")
+    assert total_tid == 1 and items_tid[0]["source_id"] == "c2"
+    _, total_tid_miss = db_mod.query_library_index("u1", is_curator=True, q="Author B", scope="title_id")
+    assert total_tid_miss == 0
+
     # Wildcard search with literal % and _: should not act as arbitrary match-all
     items_wildcard, total_wildcard = db_mod.query_library_index("u1", is_curator=True, q="%nonexistent%")
     assert total_wildcard == 0

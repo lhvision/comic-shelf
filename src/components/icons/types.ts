@@ -38,3 +38,4 @@ export type IconName =
   | 'play'
   | 'message-square'
   | 'film'
+  | 'tag'

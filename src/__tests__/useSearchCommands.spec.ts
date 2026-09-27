@@ -6,14 +6,12 @@ describe('useSearchCommands', () => {
   it('initializes with default empty state', () => {
     const scope = effectScope()
     scope.run(() => {
-      const { rawInput, activeCommand, isMenuOpen, menuFocusedIndex, effectiveShelfSearch } =
-        useSearchCommands()
+      const { rawInput, activeCommand, isMenuOpen, menuFocusedIndex } = useSearchCommands()
 
       expect(rawInput.value).toBe('')
       expect(activeCommand.value).toBeNull()
       expect(isMenuOpen.value).toBe(false)
       expect(menuFocusedIndex.value).toBe(0)
-      expect(effectiveShelfSearch.value).toBe('')
     })
     scope.stop()
   })
@@ -36,22 +34,19 @@ describe('useSearchCommands', () => {
     scope.stop()
   })
 
-  it('switches to dialogue command chip and freezes shelf filter', () => {
+  it('switches to dialogue command chip mode', () => {
     const scope = effectScope()
     scope.run(() => {
-      const { rawInput, activeCommand, effectiveShelfSearch, selectCommand, clearCommand } =
-        useSearchCommands()
+      const { rawInput, activeCommand, selectCommand, clearCommand } = useSearchCommands()
 
       const dialogueCmd = AVAILABLE_COMMANDS.find((c) => c.id === 'dialogue')!
       selectCommand(dialogueCmd)
 
       expect(activeCommand.value).toBe('dialogue')
       expect(rawInput.value).toBe('')
-      // 核心断言：台词模式下，书架接收到的搜索词必须始终为空字符串，彻底冻结网格过滤
-      expect(effectiveShelfSearch.value).toBe('')
 
       rawInput.value = '最后的波纹'
-      expect(effectiveShelfSearch.value).toBe('')
+      expect(rawInput.value).toBe('最后的波纹')
 
       clearCommand()
       expect(activeCommand.value).toBeNull()
@@ -175,13 +170,13 @@ describe('useSearchCommands', () => {
       const { rawInput, menuFocusedIndex, filteredCommands, navigateNext } = useSearchCommands()
 
       rawInput.value = '/'
-      expect(filteredCommands.value.length).toBe(4)
+      expect(filteredCommands.value.length).toBe(AVAILABLE_COMMANDS.length)
 
-      // 连续导航至最后一项 (索引 3)
-      navigateNext()
-      navigateNext()
-      navigateNext()
-      expect(menuFocusedIndex.value).toBe(3)
+      // 连续导航至最后一项
+      for (let i = 0; i < AVAILABLE_COMMANDS.length - 1; i++) {
+        navigateNext()
+      }
+      expect(menuFocusedIndex.value).toBe(AVAILABLE_COMMANDS.length - 1)
 
       // 继续键入 'dia'，候选命令缩减至 1 项 (索引上限变为 0)
       rawInput.value = '/dia'
@@ -189,6 +184,29 @@ describe('useSearchCommands', () => {
 
       expect(filteredCommands.value.length).toBe(1)
       expect(menuFocusedIndex.value).toBe(0)
+    })
+    scope.stop()
+  })
+
+  it('filters /标签 by alias t and bq and displays correct placeholder', () => {
+    const scope = effectScope()
+    scope.run(() => {
+      const { rawInput, filteredCommands, selectCommand, activeCommand, currentPlaceholder } =
+        useSearchCommands()
+
+      expect(currentPlaceholder.value).toBe('标题 / 车号 · 键入 / 唤出指令')
+
+      rawInput.value = '/t'
+      expect(filteredCommands.value.some((c) => c.id === 'tag')).toBe(true)
+
+      rawInput.value = '/bq'
+      expect(filteredCommands.value.some((c) => c.id === 'tag')).toBe(true)
+
+      const tagCmd = AVAILABLE_COMMANDS.find((c) => c.id === 'tag')!
+      selectCommand(tagCmd)
+
+      expect(activeCommand.value).toBe('tag')
+      expect(currentPlaceholder.value).toBe('输入题材标签…')
     })
     scope.stop()
   })

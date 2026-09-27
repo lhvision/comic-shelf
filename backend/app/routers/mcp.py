@@ -147,6 +147,12 @@ MCP_TOOLS: list[dict[str, Any]] = [
                     "type": "string",
                     "description": "标题、作者、作品或角色检索词",
                 },
+                "scope": {
+                    "type": "string",
+                    "enum": ["all", "title_id", "id", "author", "tag"],
+                    "description": "关键词检索范围限制（默认 all 全字段；可选 title_id 标题车号, id 仅车号, author 仅作者, tag 仅标签）",
+                    "default": "all",
+                },
                 "tag": {
                     "type": "string",
                     "description": "题材或分类标签（如 '纯爱', '全彩', '同人'）",
@@ -523,6 +529,7 @@ def _tool_search_by_meaning(arguments: dict[str, Any]) -> dict[str, Any]:
 
 def _tool_query_shelf(arguments: dict[str, Any]) -> dict[str, Any]:
     keyword = arguments.get("keyword")
+    scope = arguments.get("scope", "all")
     tag = arguments.get("tag")
     tags = arguments.get("tags")
     source = arguments.get("source")
@@ -541,6 +548,7 @@ def _tool_query_shelf(arguments: dict[str, Any]) -> dict[str, Any]:
         favorite=favorite,
         source=source,
         q=keyword,
+        scope=scope,
         tag=tag,
         tags=tags,
         sort=sort,

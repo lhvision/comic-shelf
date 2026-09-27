@@ -36,6 +36,7 @@ import IconPause from './IconPause.vue'
 import IconPlay from './IconPlay.vue'
 import IconMessageSquare from './IconMessageSquare.vue'
 import IconFilm from './IconFilm.vue'
+import IconTag from './IconTag.vue'
 import type { IconName, IconSize } from './types'
 
 export {
@@ -76,6 +77,7 @@ export {
   IconPlay,
   IconMessageSquare,
   IconFilm,
+  IconTag,
 }
 export type { IconSize, IconName }
 
@@ -116,4 +118,5 @@ export const ICON_MAP: Record<IconName, Component> = {
   play: IconPlay,
   'message-square': IconMessageSquare,
   film: IconFilm,
+  tag: IconTag,
 }

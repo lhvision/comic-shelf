@@ -43,7 +43,8 @@ export function isValidHistoryItem(item: unknown): item is SearchHistoryItem {
     candidate.command === null ||
     candidate.command === 'dialogue' ||
     candidate.command === 'id' ||
-    candidate.command === 'author'
+    candidate.command === 'author' ||
+    candidate.command === 'tag'
   return (
     typeof candidate.id === 'string' &&
     typeof candidate.query === 'string' &&

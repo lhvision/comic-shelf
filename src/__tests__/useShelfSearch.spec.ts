@@ -284,4 +284,78 @@ describe('useShelfSearch', () => {
     })
     scope.stop()
   })
+
+  it('synchronizes searchScope and shelfScope when switching commands', async () => {
+    const scope = effectScope()
+    await scope.run(async () => {
+      const shelfSearch = ref('')
+      const shelfScope = ref<'all' | 'id' | 'author' | 'tag'>('all')
+
+      const {
+        searchInput,
+        searchActiveCommand,
+        searchScope,
+        handleSelectCommand,
+        handleClearCommand,
+      } = useShelfSearch({
+        activeSource: computed(() => ''),
+        shelfSearch,
+        shelfScope,
+        filteredItems: computed(() => []),
+        allItems: computed(() => []),
+        router: { push: vi.fn<() => Promise<void>>() } as unknown as Router,
+        toast: vi.fn<(msg: string, tone?: 'info' | 'error' | 'success') => number>(),
+      })
+
+      // Default: all
+      expect(searchScope.value).toBe('all')
+      expect(shelfScope.value).toBe('all')
+
+      // 1. Select /author
+      handleSelectCommand({
+        id: 'author',
+        name: '/作者',
+        label: '作者',
+        icon: 'users',
+        aliases: ['a'],
+        description: '作者筛选',
+        placeholder: '输入作者',
+      })
+      await nextTick()
+      expect(searchActiveCommand.value).toBe('author')
+      expect(searchScope.value).toBe('author')
+
+      searchInput.value = '水龙敬'
+      await nextTick()
+      expect(shelfSearch.value).toBe('水龙敬')
+      expect(shelfScope.value).toBe('author')
+
+      // 2. Select /tag
+      handleSelectCommand({
+        id: 'tag',
+        name: '/标签',
+        label: '标签',
+        icon: 'tag',
+        aliases: ['tag'],
+        description: '标签筛选',
+        placeholder: '输入标签',
+      })
+      await nextTick()
+      expect(searchActiveCommand.value).toBe('tag')
+      expect(searchScope.value).toBe('tag')
+
+      searchInput.value = '纯爱'
+      await nextTick()
+      expect(shelfSearch.value).toBe('纯爱')
+      expect(shelfScope.value).toBe('tag')
+
+      // 3. Clear command
+      handleClearCommand()
+      await nextTick()
+      expect(searchActiveCommand.value).toBeNull()
+      expect(searchScope.value).toBe('all')
+      expect(shelfScope.value).toBe('all')
+    })
+    scope.stop()
+  })
 })

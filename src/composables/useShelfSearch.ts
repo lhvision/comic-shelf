@@ -21,6 +21,7 @@ import {
 } from '@/composables/useSearchCommands'
 import { useDialogueSearch } from '@/composables/useDialogueSearch'
 import { useSearchHistory, type SearchHistoryItem } from '@/composables/useSearchHistory'
+import type { SearchScope } from '@/composables/useLibraryFilter'
 import type { DialogueSearchItem, LibrarySummary } from '@/types'
 
 export interface UseShelfSearchOptions {
@@ -28,6 +29,8 @@ export interface UseShelfSearchOptions {
   activeSource: ComputedRef<string>
   /** 书架网格常规过滤关键词 Ref */
   shelfSearch: Ref<string>
+  /** 当前激活的检索范围限制 Ref */
+  shelfScope?: Ref<SearchScope>
   /** 当前激活的快捷指令模式 Ref（用于跨路由会话保持） */
   shelfCommand?: Ref<SearchCommandType | null>
   /** 当前已过滤的藏书列表（供随机抽选使用） */
@@ -53,6 +56,8 @@ export interface UseShelfSearchReturn {
   searchInput: Ref<string>
   /** 当前激活的快捷指令模式（null 为常规搜索） */
   searchActiveCommand: Ref<SearchCommandType | null>
+  /** 当前生效的检索范围限定 */
+  searchScope: ComputedRef<SearchScope>
   /** 搜索框动态占位文案 */
   searchPlaceholder: Ref<string>
   /** 快捷指令选单是否展开 */
@@ -248,6 +253,13 @@ export function useShelfSearch(options: UseShelfSearchOptions): UseShelfSearchRe
     return undefined
   })
 
+  const searchScope = computed<SearchScope>(() => {
+    if (searchActiveCommand.value === 'id') return 'id'
+    if (searchActiveCommand.value === 'author') return 'author'
+    if (searchActiveCommand.value === 'tag') return 'tag'
+    return 'all'
+  })
+
   // 意图分流与状态解耦：
   // 1. 台词专注模式：dialogueQuery 接收输入，书架常规 search 强制置空（保持书架网格 100% 冻结，不影响列表）；
   // 2. 键入 '/' 且未成命令：书架 search 保持空（防误过滤）；
@@ -258,6 +270,9 @@ export function useShelfSearch(options: UseShelfSearchOptions): UseShelfSearchRe
       if (cmdVal === 'dialogue') {
         dialogueQuery.value = inputVal
         shelfSearch.value = ''
+        if (options.shelfScope) {
+          options.shelfScope.value = 'all'
+        }
         if (inputVal.trim()) {
           openDialogueSearch()
         } else {
@@ -268,10 +283,16 @@ export function useShelfSearch(options: UseShelfSearchOptions): UseShelfSearchRe
         closeDialogueSearch()
         if (inputVal.startsWith('/')) {
           shelfSearch.value = ''
+          if (options.shelfScope) {
+            options.shelfScope.value = 'all'
+          }
           openCommandMenu()
         } else {
           closeCommandMenu()
           shelfSearch.value = inputVal
+          if (options.shelfScope) {
+            options.shelfScope.value = searchScope.value
+          }
         }
       }
       if (inputVal.trim()) {
@@ -461,6 +482,7 @@ export function useShelfSearch(options: UseShelfSearchOptions): UseShelfSearchRe
     searchInputRef,
     searchInput,
     searchActiveCommand,
+    searchScope,
     searchPlaceholder,
     isCommandMenuOpen,
     commandMenuFocusedIndex,

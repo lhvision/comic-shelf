@@ -26,6 +26,7 @@ const commandIcons: Record<SearchCommandType, string> = {
   dialogue: 'message-square',
   id: 'book-open',
   author: 'users',
+  tag: 'tag',
   random: 'refresh',
 }
 </script>

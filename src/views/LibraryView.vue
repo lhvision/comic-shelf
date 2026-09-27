@@ -117,6 +117,7 @@ useEventListener(window, 'paste', imageSearch.handlePaste)
 
 const {
   search,
+  searchScope,
   activeTags,
   favoritesOnly,
   readingStatus,
@@ -144,6 +145,7 @@ const {
 const { fetchLibrary } = useLibrarySync({
   activeSource,
   search,
+  searchScope,
   activeTags,
   favoritesOnly,
   readingStatus,
@@ -187,6 +189,7 @@ const {
 } = useShelfSearch({
   activeSource,
   shelfSearch: search,
+  shelfScope: searchScope,
   shelfCommand: shelf.searchActiveCommand,
   filteredItems: filtered,
   allItems: computed(() => store.items || []),

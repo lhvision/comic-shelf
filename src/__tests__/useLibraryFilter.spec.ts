@@ -599,4 +599,184 @@ describe('useLibraryFilter', () => {
     expect(filtered.value.length).toBe(2)
     expect(filtered.value.map((b) => b.source_id)).toEqual(['1', '2'])
   })
+
+  it('filters by scoped fields (id, author, tag) strictly when searchScope is provided', () => {
+    const testList: LibrarySummary[] = [
+      {
+        source: 'jm',
+        source_id: '101',
+        display_id: 'JM101',
+        title: '纯爱物语',
+        authors: ['水龙敬'],
+        works: [],
+        actors: [],
+        tags: ['治愈'],
+        favorite: false,
+        page_count: 20,
+        views: '0',
+        likes: '0',
+        uploaded_at: '',
+        published_at: '',
+        updated_at: '',
+        imported_at: '2026-01-01T00:00:00Z',
+        cover_paths: [],
+        cached_pages: 0,
+        cover_count: 1,
+        last_page: 0,
+      },
+      {
+        source: 'jm',
+        source_id: '102',
+        display_id: 'JM102',
+        title: '水龙敬精选集',
+        authors: ['其他作者'],
+        works: [],
+        actors: [],
+        tags: ['纯爱'],
+        favorite: false,
+        page_count: 25,
+        views: '0',
+        likes: '0',
+        uploaded_at: '',
+        published_at: '',
+        updated_at: '',
+        imported_at: '2026-01-02T00:00:00Z',
+        cover_paths: [],
+        cached_pages: 0,
+        cover_count: 1,
+        last_page: 0,
+      },
+    ]
+
+    const itemsRef = ref(testList)
+    const activeSourceRef = ref('')
+    const searchRef = ref('水龙敬')
+    const scopeRef = ref<'all' | 'id' | 'author' | 'tag'>('author')
+
+    const { filtered } = useLibraryFilter(itemsRef, activeSourceRef, undefined, {
+      search: searchRef,
+      searchScope: scopeRef,
+    })
+
+    // scope = 'author': only book 101 has author '水龙敬', book 102 only has it in title
+    expect(filtered.value.map((b) => b.source_id)).toEqual(['101'])
+
+    // scope = 'tag': searching '纯爱' only matches book 102 which has tag '纯爱'
+    searchRef.value = '纯爱'
+    scopeRef.value = 'tag'
+    expect(filtered.value.map((b) => b.source_id)).toEqual(['102'])
+
+    // scope = 'id': searching '101' matches book 101
+    searchRef.value = '101'
+    scopeRef.value = 'id'
+    expect(filtered.value.map((b) => b.source_id)).toEqual(['101'])
+  })
+
+  it('ranks search results by relevance tiers: title/id > author > tag when scope is all', () => {
+    const testList: LibrarySummary[] = [
+      {
+        source: 'jm',
+        source_id: '1',
+        display_id: 'JM1',
+        title: '无关作品',
+        authors: ['其他'],
+        works: [],
+        actors: [],
+        tags: ['魔女'], // Tier 3: tag match
+        favorite: false,
+        page_count: 20,
+        views: '0',
+        likes: '0',
+        uploaded_at: '',
+        published_at: '',
+        updated_at: '',
+        imported_at: '2026-01-03T00:00:00Z',
+        cover_paths: [],
+        cached_pages: 0,
+        cover_count: 1,
+        last_page: 0,
+      },
+      {
+        source: 'jm',
+        source_id: '2',
+        display_id: 'JM2',
+        title: '魔女的茶会', // Tier 1: title contains
+        authors: ['小明'],
+        works: [],
+        actors: [],
+        tags: ['日常'],
+        favorite: false,
+        page_count: 20,
+        views: '0',
+        likes: '0',
+        uploaded_at: '',
+        published_at: '',
+        updated_at: '',
+        imported_at: '2026-01-01T00:00:00Z',
+        cover_paths: [],
+        cached_pages: 0,
+        cover_count: 1,
+        last_page: 0,
+      },
+      {
+        source: 'jm',
+        source_id: '3',
+        display_id: 'JM3',
+        title: '魔女', // Tier 0: exact match
+        authors: ['小红'],
+        works: [],
+        actors: [],
+        tags: [],
+        favorite: false,
+        page_count: 20,
+        views: '0',
+        likes: '0',
+        uploaded_at: '',
+        published_at: '',
+        updated_at: '',
+        imported_at: '2026-01-02T00:00:00Z',
+        cover_paths: [],
+        cached_pages: 0,
+        cover_count: 1,
+        last_page: 0,
+      },
+      {
+        source: 'jm',
+        source_id: '4',
+        display_id: 'JM4',
+        title: '某个森林故事',
+        authors: ['魔女研究会'], // Tier 2: author match
+        works: [],
+        actors: [],
+        tags: [],
+        favorite: false,
+        page_count: 20,
+        views: '0',
+        likes: '0',
+        uploaded_at: '',
+        published_at: '',
+        updated_at: '',
+        imported_at: '2026-01-04T00:00:00Z',
+        cover_paths: [],
+        cached_pages: 0,
+        cover_count: 1,
+        last_page: 0,
+      },
+    ]
+
+    const itemsRef = ref(testList)
+    const activeSourceRef = ref('')
+    const searchRef = ref('魔女')
+
+    const { filtered } = useLibraryFilter(itemsRef, activeSourceRef, undefined, {
+      search: searchRef,
+    })
+
+    // Expected order:
+    // 3: Tier 0 (exact match '魔女')
+    // 2: Tier 1 (title contains '魔女')
+    // 4: Tier 2 (author contains '魔女')
+    // 1: Tier 3 (tag contains '魔女')
+    expect(filtered.value.map((b) => b.source_id)).toEqual(['3', '2', '4', '1'])
+  })
 })

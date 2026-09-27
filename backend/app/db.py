@@ -1458,6 +1458,7 @@ def query_library_index(
     favorite: bool = False,
     source: str | None = None,
     q: str | None = None,
+    scope: str = "all",
     tag: str | None = None,
     tags: list[str] | str | None = None,
     sort: str = "recent",
@@ -1475,6 +1476,7 @@ def query_library_index(
         favorite: When True, filters strictly to comics favorited by user_id.
         source: Optional provider filter (e.g., 'jm', 'local', 'picacg').
         q: Optional search query matched against title, authors, works, actors, and tags.
+        scope: Search scope ('all', 'title_id', 'id', 'author', 'tag').
         tag: Optional exact tag filter evaluated via json_each(tags_json).
         tags: Optional comma-separated or list of tags for multi-tag compound AND filtering.
         sort: Sort mode ('recent', 'uploaded', 'views', 'likes', 'pages', 'alpha').
@@ -1538,17 +1540,26 @@ def query_library_index(
         for i, v in enumerate([v for v in expand_search_variants(raw_q) if v]):
             p_key = f"needle_{i}"
             params[p_key] = f"%{_escape_like(v)}%"
-            groups.append(
-                f"""(
-                ci.title LIKE :{p_key} ESCAPE '\\'
-                OR ci.display_id LIKE :{p_key} ESCAPE '\\'
-                OR ci.authors_json LIKE :{p_key} ESCAPE '\\'
-                OR ci.works_json LIKE :{p_key} ESCAPE '\\'
-                OR ci.actors_json LIKE :{p_key} ESCAPE '\\'
-                OR ci.tags_json LIKE :{p_key} ESCAPE '\\'
-                OR ci.chapter_titles_json LIKE :{p_key} ESCAPE '\\'
-            )"""
-            )
+            if scope == "id":
+                groups.append(f"(ci.display_id LIKE :{p_key} ESCAPE '\\' OR ci.source_id LIKE :{p_key} ESCAPE '\\')")
+            elif scope == "author":
+                groups.append(f"(ci.authors_json LIKE :{p_key} ESCAPE '\\')")
+            elif scope == "tag":
+                groups.append(f"(ci.tags_json LIKE :{p_key} ESCAPE '\\')")
+            elif scope == "title_id":
+                groups.append(f"(ci.title LIKE :{p_key} ESCAPE '\\' OR ci.display_id LIKE :{p_key} ESCAPE '\\')")
+            else:
+                groups.append(
+                    f"""(
+                    ci.title LIKE :{p_key} ESCAPE '\\'
+                    OR ci.display_id LIKE :{p_key} ESCAPE '\\'
+                    OR ci.authors_json LIKE :{p_key} ESCAPE '\\'
+                    OR ci.works_json LIKE :{p_key} ESCAPE '\\'
+                    OR ci.actors_json LIKE :{p_key} ESCAPE '\\'
+                    OR ci.tags_json LIKE :{p_key} ESCAPE '\\'
+                    OR ci.chapter_titles_json LIKE :{p_key} ESCAPE '\\'
+                )"""
+                )
         if groups:
             conditions.append("(" + " OR ".join(groups) + ")")
 
@@ -1564,9 +1575,19 @@ def query_library_index(
 
     where_sql = ("WHERE " + " AND ".join(conditions)) if conditions else ""
 
-    order_sql = "ORDER BY ci.imported_at DESC, ci.source ASC, ci.source_id ASC"
+    relevance_order = ""
+    if q and q.strip() and scope == "all" and "needle_0" in params:
+        params["exact_q"] = raw_q
+        relevance_order = """CASE
+            WHEN ci.title = :exact_q OR ci.display_id = :exact_q OR ci.source_id = :exact_q THEN 0
+            WHEN ci.title LIKE :needle_0 ESCAPE '\\' THEN 1
+            WHEN ci.authors_json LIKE :needle_0 ESCAPE '\\' THEN 2
+            ELSE 3
+        END ASC, """
+
+    order_sql = f"ORDER BY {relevance_order}ci.imported_at DESC, ci.source ASC, ci.source_id ASC"
     if sort == "recent":
-        order_sql = """ORDER BY
+        order_sql = f"""ORDER BY {relevance_order}
             CASE
                 WHEN COALESCE(urp.last_page, 0) >= ci.page_count AND ci.page_count > 0 THEN 1
                 ELSE 0
@@ -1575,11 +1596,11 @@ def query_library_index(
             ci.source ASC,
             ci.source_id ASC"""
     elif sort == "title":
-        order_sql = "ORDER BY ci.title COLLATE NOCASE ASC, ci.imported_at DESC, ci.source ASC, ci.source_id ASC"
+        order_sql = f"ORDER BY {relevance_order}ci.title COLLATE NOCASE ASC, ci.imported_at DESC, ci.source ASC, ci.source_id ASC"
     elif sort == "pages":
-        order_sql = "ORDER BY ci.page_count DESC, ci.imported_at DESC, ci.source ASC, ci.source_id ASC"
+        order_sql = f"ORDER BY {relevance_order}ci.page_count DESC, ci.imported_at DESC, ci.source ASC, ci.source_id ASC"
     elif sort == "cached":
-        order_sql = "ORDER BY (CAST(ci.cached_pages AS REAL) / MAX(ci.page_count, 1)) DESC, ci.imported_at DESC, ci.source ASC, ci.source_id ASC"
+        order_sql = f"ORDER BY {relevance_order}(CAST(ci.cached_pages AS REAL) / MAX(ci.page_count, 1)) DESC, ci.imported_at DESC, ci.source ASC, ci.source_id ASC"
 
     count_sql = f"""
         SELECT COUNT(*) as cnt

@@ -6,13 +6,17 @@ import type {
   LibraryFacetsResponse,
   SortKey,
 } from '@/types'
-import { filterAndSortLibrary, type FilterParams } from '@/utils/libraryFilterCore'
+import {
+  filterAndSortLibrary,
+  type FilterParams,
+  type SearchScope,
+} from '@/utils/libraryFilterCore'
 import { isCompletedComic, isInProgressComic } from '@/utils/is'
 import { sumBy } from '@/utils/math'
 import type { WorkerInMessage, WorkerOutMessage } from '@/workers/libraryFilter.worker'
 
 export { isCompletedComic, isInProgressComic }
-export type { SortKey }
+export type { SortKey, SearchScope }
 
 /**
  * 触发 Web Worker 卸载计算的藏书规模阈值。
@@ -24,6 +28,8 @@ export const WORKER_THRESHOLD = 1000
 export interface UseLibraryFilterOptions {
   /** 外部共享的搜索关键词 Ref（用于跨路由状态记忆） */
   search?: Ref<string>
+  /** 外部共享的检索范围限定 Ref (all | id | author | tag) */
+  searchScope?: Ref<SearchScope>
   /** 外部共享的多标签集合 Ref */
   activeTags?: Ref<string[]>
   /** 外部共享的只看喜欢 Ref */
@@ -57,6 +63,7 @@ export function useLibraryFilter(
   options?: UseLibraryFilterOptions,
 ) {
   const search = options?.search ?? ref('')
+  const searchScope = options?.searchScope ?? ref<SearchScope>('all')
   const activeTags = options?.activeTags ?? ref<string[]>([])
   const favoritesOnly = options?.favoritesOnly ?? ref(false)
   const readingStatus = options?.readingStatus ?? ref<ReadingStatus>('all')
@@ -131,6 +138,7 @@ export function useLibraryFilter(
   const filterParams = computed<FilterParams>(() => ({
     activeSource: activeSource.value,
     search: search.value,
+    searchScope: searchScope.value,
     activeTags: activeTags.value,
     favoritesOnly: favoritesOnly.value,
     readingStatus: readingStatus.value,
@@ -241,6 +249,7 @@ export function useLibraryFilter(
 
   return {
     search,
+    searchScope,
     activeTags,
     favoritesOnly,
     readingStatus,
