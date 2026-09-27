@@ -159,6 +159,7 @@ export function useShelfSearch(options: UseShelfSearchOptions): UseShelfSearchRe
     error: dialogueError,
     isOpen: isDialogueOpen,
     focusedIndex: dialogueFocusedIndex,
+    executeSearch: executeDialogueSearch,
     open: openDialogueSearch,
     close: closeDialogueSearch,
     navigateNext: nextDialogueResult,
@@ -166,13 +167,9 @@ export function useShelfSearch(options: UseShelfSearchOptions): UseShelfSearchRe
     navigateToResult: rawNavigateToResult,
   } = useDialogueSearch({ source: activeSource })
 
-  // 与 DialogueSearchPopover 的 v-if 链同一判据：加载、报错、空结果时浮层开着，listbox 却不存在
+  // 与 DialogueSearchPopover 的 v-if 链同一判据：仅在无错且结果存在时渲染 listbox（刷新检索期间仍保留）
   const isDialogueListboxShown = computed(
-    () =>
-      isDialogueOpen.value &&
-      !isDialogueSearching.value &&
-      !dialogueError.value &&
-      dialogueResults.value.length > 0,
+    () => isDialogueOpen.value && !dialogueError.value && dialogueResults.value.length > 0,
   )
 
   const isHistoryListboxShown = computed(
@@ -469,6 +466,9 @@ export function useShelfSearch(options: UseShelfSearchOptions): UseShelfSearchRe
             e.preventDefault()
             navigateToResult(targetItem, router)
           }
+        } else if (dialogueQuery.value.trim().length >= 2) {
+          e.preventDefault()
+          void executeDialogueSearch()
         }
       } else if (e.key === 'Escape') {
         e.preventDefault()

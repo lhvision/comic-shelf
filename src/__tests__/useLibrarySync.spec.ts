@@ -53,7 +53,7 @@ describe('useLibrarySync composable', () => {
 
     expect(loadItemsSpy).toHaveBeenCalledWith(false, false, {
       source: 'jm',
-      search: undefined,
+      q: undefined,
       tags: '同人,全彩',
       favorite: true,
       status: 'reading',
@@ -100,7 +100,7 @@ describe('useLibrarySync composable', () => {
 
     expect(loadItemsSpy).toHaveBeenCalledWith(false, false, {
       source: undefined,
-      search: undefined,
+      q: undefined,
       tags: undefined,
       favorite: undefined,
       status: 'all',
@@ -154,7 +154,7 @@ describe('useLibrarySync composable', () => {
     // Should query page_size: 48 so the 48 loaded items don't shrink down to 24 on return
     expect(loadItemsSpy).toHaveBeenCalledWith(false, false, {
       source: undefined,
-      search: undefined,
+      q: undefined,
       tags: undefined,
       favorite: undefined,
       status: 'all',

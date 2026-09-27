@@ -71,6 +71,7 @@ export function useDialogueSearch(options: UseDialogueSearchOptions = {}): UseDi
   const error = ref('')
   const isOpen = ref(false)
   const focusedIndex = ref(-1)
+  const lastSearchedQuery = ref('')
 
   let abortController: AbortController | null = null
 
@@ -90,6 +91,7 @@ export function useDialogueSearch(options: UseDialogueSearchOptions = {}): UseDi
    * 执行后端检索核心逻辑
    */
   const executeSearch = async (overrideQuery?: string) => {
+    debouncedSearch.cancel()
     const rawQ = overrideQuery !== undefined ? overrideQuery : query.value
     const trimmed = rawQ.trim()
 
@@ -100,6 +102,7 @@ export function useDialogueSearch(options: UseDialogueSearchOptions = {}): UseDi
       total.value = 0
       isSearching.value = false
       error.value = ''
+      lastSearchedQuery.value = ''
       if (!trimmed) {
         isOpen.value = false
       }
@@ -125,6 +128,7 @@ export function useDialogueSearch(options: UseDialogueSearchOptions = {}): UseDi
       if (!controller.signal.aborted) {
         results.value = response.results ?? []
         total.value = response.total ?? results.value.length
+        lastSearchedQuery.value = trimmed
         // 关键整改：仅当检索命中有效台词，或用户已显式打开面板时才展示；
         // 自动检索 0 条时保持静默，绝不破坏性弹窗遮挡书架正常书名搜索
         if (results.value.length > 0 || isOpen.value) {
@@ -135,6 +139,7 @@ export function useDialogueSearch(options: UseDialogueSearchOptions = {}): UseDi
       if (controller.signal.aborted) return
       results.value = []
       total.value = 0
+      lastSearchedQuery.value = trimmed
       const msg = err instanceof Error ? err.message : String(err)
       error.value = msg || '检索分镜台词失败，请稍后重试'
     } finally {
@@ -155,15 +160,33 @@ export function useDialogueSearch(options: UseDialogueSearchOptions = {}): UseDi
    * 监听 query 变更，自动触发防抖检索
    */
   watch(query, (newVal) => {
-    if (!newVal.trim()) {
+    const trimmed = newVal.trim()
+    if (!trimmed) {
       abortCurrentRequest()
+      debouncedSearch.cancel()
       results.value = []
       total.value = 0
       isSearching.value = false
       error.value = ''
       isOpen.value = false
       focusedIndex.value = -1
+      lastSearchedQuery.value = ''
       return
+    }
+    if (trimmed.length < 2) {
+      abortCurrentRequest()
+      debouncedSearch.cancel()
+      results.value = []
+      total.value = 0
+      isSearching.value = false
+      error.value = ''
+      focusedIndex.value = -1
+      lastSearchedQuery.value = ''
+      return
+    }
+    // 当关键词发生变化且有效时，进入检索中状态，避免防抖期间短暂闪烁为未命中空状态
+    if (trimmed !== lastSearchedQuery.value) {
+      isSearching.value = true
     }
     void debouncedSearch()
   })
@@ -176,6 +199,7 @@ export function useDialogueSearch(options: UseDialogueSearchOptions = {}): UseDi
       results.value = []
       total.value = 0
       focusedIndex.value = -1
+      lastSearchedQuery.value = ''
       if (query.value.trim() && isOpen.value) {
         void executeSearch()
       }
@@ -183,9 +207,15 @@ export function useDialogueSearch(options: UseDialogueSearchOptions = {}): UseDi
   }
 
   const open = () => {
-    if (query.value.trim()) {
+    const trimmed = query.value.trim()
+    if (trimmed) {
       isOpen.value = true
-      if (results.value.length === 0 && !isSearching.value && query.value.trim().length >= 2) {
+      if (
+        results.value.length === 0 &&
+        !isSearching.value &&
+        trimmed.length >= 2 &&
+        lastSearchedQuery.value !== trimmed
+      ) {
         void executeSearch()
       }
     }
@@ -198,6 +228,7 @@ export function useDialogueSearch(options: UseDialogueSearchOptions = {}): UseDi
 
   const clear = () => {
     abortCurrentRequest()
+    debouncedSearch.cancel()
     query.value = ''
     results.value = []
     total.value = 0
@@ -205,6 +236,7 @@ export function useDialogueSearch(options: UseDialogueSearchOptions = {}): UseDi
     error.value = ''
     isOpen.value = false
     focusedIndex.value = -1
+    lastSearchedQuery.value = ''
   }
 
   const navigateNext = () => {
@@ -248,6 +280,7 @@ export function useDialogueSearch(options: UseDialogueSearchOptions = {}): UseDi
 
   tryOnScopeDispose(() => {
     abortCurrentRequest()
+    debouncedSearch.cancel()
   })
 
   return {

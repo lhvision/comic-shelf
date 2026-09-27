@@ -30,7 +30,7 @@ export const AVAILABLE_COMMANDS: SearchCommandDef[] = [
     name: '/台词',
     label: '台词',
     icon: 'message-square',
-    aliases: ['d', 'dialogue', '台词', 'dc'],
+    aliases: ['d', 'dialogue', '台词'],
     description: '检索分镜台词对白并直达画页分镜气泡',
     placeholder: '检索分镜（至少2字）…',
   },

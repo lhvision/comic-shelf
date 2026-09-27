@@ -85,7 +85,7 @@ describe('api client query assembly', () => {
       page: 2,
       page_size: 48,
       source: 'jm',
-      search: '同人',
+      q: '同人',
       tags: '纯爱,全彩',
       status: 'all', // Should be omitted since 'all' is default
       sort: 'recent', // Should be omitted since 'recent' is default

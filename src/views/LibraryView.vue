@@ -213,10 +213,8 @@ watch(activeSource, (newSource, oldSource) => {
 onMounted(() => {
   // 仅在初始挂载时单向恢复 URL 参数（SSOT 保持内存驱动，杜绝交互过程高频 replace 污染导航）
   const hasHydrated = shelf.hydrateFromQuery(route.query)
-  if (hasHydrated) {
-    if (shelf.search.value && !searchInput.value) {
-      searchInput.value = shelf.search.value
-    }
+  if (hasHydrated && shelf.search.value && !searchInput.value) {
+    searchInput.value = shelf.search.value
   }
   if (shelf.shelfScrollY.value > 0) {
     nextTick(() => window.scrollTo({ top: shelf.shelfScrollY.value, behavior: 'instant' }))

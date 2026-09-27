@@ -109,8 +109,8 @@ function onClickItem(item: SearchHistoryItem) {
               type="button"
               tabindex="-1"
               class="delete-btn"
-              :aria-label="`删除 ${item.query}`"
-              :title="`删除 ${item.query}`"
+              :aria-label="`删除 ${item.query} (Delete)`"
+              :title="`删除 ${item.query} (Delete)`"
               @click.stop="emit('remove', item.id)"
             >
               <AppIcon name="close" size="xs" />

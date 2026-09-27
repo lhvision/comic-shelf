@@ -587,6 +587,10 @@ def test_comics_index_and_pagination():
     _, total_tid_miss = db_mod.query_library_index("u1", is_curator=True, q="Author B", scope="title_id")
     assert total_tid_miss == 0
 
+    # Case-insensitive exact match in relevance tier 0
+    items_exact_ci, total_exact_ci = db_mod.query_library_index("u1", is_curator=True, q="loc_c2")
+    assert total_exact_ci == 1 and items_exact_ci[0]["source_id"] == "c2"
+
     # Wildcard search with literal % and _: should not act as arbitrary match-all
     items_wildcard, total_wildcard = db_mod.query_library_index("u1", is_curator=True, q="%nonexistent%")
     assert total_wildcard == 0

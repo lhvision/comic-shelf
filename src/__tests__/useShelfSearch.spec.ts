@@ -99,8 +99,15 @@ describe('useShelfSearch', () => {
       expect(isDialogueListboxShown.value).toBe(true)
 
       isDialogueSearching.value = true
-      expect(isDialogueListboxShown.value).toBe(false)
+      // 检索刷新期间列表继续保留在 DOM 中，避免视觉闪烁并维持 listbox 无障碍关联
+      expect(isDialogueListboxShown.value).toBe(true)
       isDialogueSearching.value = false
+
+      dialogueResults.value = []
+      expect(isDialogueListboxShown.value).toBe(false)
+      dialogueResults.value = [
+        { source: 'local', source_id: 'a', page_index: 1 } as DialogueSearchItem,
+      ]
 
       dialogueError.value = '检索失败'
       expect(isDialogueListboxShown.value).toBe(false)

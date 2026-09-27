@@ -95,7 +95,6 @@ export interface LibraryQueryParams {
   favorite?: boolean
   source?: string
   q?: string
-  search?: string
   scope?: string
   tag?: string
   tags?: string

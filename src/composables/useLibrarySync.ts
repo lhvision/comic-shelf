@@ -79,7 +79,7 @@ export function useLibrarySync(options: UseLibrarySyncOptions): UseLibrarySyncRe
       .join(',')
     await store.loadItems(false, false, {
       source: activeSource.value || undefined,
-      search: hasImageSearch ? undefined : search.value.trim() || undefined,
+      q: hasImageSearch ? undefined : search.value.trim() || undefined,
       scope: hasImageSearch ? undefined : searchScope?.value,
       tags: tagsParam || undefined,
       favorite: favoritesOnly.value ? true : undefined,
@@ -92,8 +92,11 @@ export function useLibrarySync(options: UseLibrarySyncOptions): UseLibrarySyncRe
     await store.loadFacets(activeSource.value || undefined)
   }, debounceMs)
 
+  const watchSources = searchScope
+    ? [activeSource, search, searchScope, activeTags, favoritesOnly, readingStatus, sortBy]
+    : [activeSource, search, activeTags, favoritesOnly, readingStatus, sortBy]
   watch(
-    [activeSource, search, searchScope, activeTags, favoritesOnly, readingStatus, sortBy],
+    watchSources,
     () => {
       void fetchLibrary(true)
     },

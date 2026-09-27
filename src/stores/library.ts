@@ -270,8 +270,9 @@ export const useLibraryStore = defineStore('library', () => {
 
       // 默认全量首页刷新时（非临时关键词搜索/标签细分），异步更新端侧 IndexedDB 快照镜像
       const isFilteredQuery = Boolean(
-        params?.search ||
+        params?.q ||
         params?.tag ||
+        params?.tags ||
         (params?.status && params.status !== 'all') ||
         params?.favorite ||
         params?.ids,

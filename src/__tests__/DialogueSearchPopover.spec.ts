@@ -154,6 +154,24 @@ describe('DialogueSearchPopover', () => {
     expect(wrapper.find('.loading-text').text()).toContain('正在翻寻分镜对白与台词')
   })
 
+  it('renders smooth top loading bar without unmounting results list when refreshing with existing results', () => {
+    const wrapper = mount(DialogueSearchPopover, {
+      props: {
+        open: true,
+        results: mockItems,
+        total: 1,
+        isSearching: true,
+        query: '老师',
+      },
+    })
+
+    // 已有结果时绝不全量卸载列表导致白屏闪烁
+    expect(wrapper.find('.head-loading-bar').exists()).toBe(true)
+    expect(wrapper.find('.popover-loading').exists()).toBe(false)
+    expect(wrapper.find('#dialogue-search-listbox').exists()).toBe(true)
+    expect(wrapper.find('#dialogue-search-listbox').classes()).toContain('is-refreshing')
+  })
+
   it('renders empty state when results is empty and not searching', () => {
     const wrapper = mount(DialogueSearchPopover, {
       props: {

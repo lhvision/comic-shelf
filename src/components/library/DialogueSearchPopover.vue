@@ -174,8 +174,11 @@ function onMouseEnterItem(index: number) {
         </button>
       </div>
 
-      <!-- 加载中微状态 -->
-      <div v-if="isSearching" class="popover-loading">
+      <!-- 顶层轻量进度指示条：已有结果时在后台静默刷新，不销毁列表防闪烁 -->
+      <div v-if="isSearching && results.length > 0" class="head-loading-bar" />
+
+      <!-- 加载中微状态：仅在尚无结果时占位呈现 -->
+      <div v-if="isSearching && results.length === 0" class="popover-loading">
         <div class="loading-bar" />
         <span class="loading-text">正在翻寻分镜对白与台词…</span>
       </div>
@@ -192,6 +195,7 @@ function onMouseEnterItem(index: number) {
         id="dialogue-search-listbox"
         ref="listContainerRef"
         class="results-list"
+        :class="{ 'is-refreshing': isSearching }"
         role="listbox"
         aria-label="分镜台词搜索结果"
         tabindex="-1"
@@ -375,6 +379,33 @@ function onMouseEnterItem(index: number) {
   border: 1px solid var(--line);
   padding: 0 4px;
   border-radius: 3px;
+}
+
+/* 顶部轻量进度指示条 */
+.head-loading-bar {
+  width: 100%;
+  height: 2px;
+  background: color-mix(in oklab, var(--accent) 25%, transparent);
+  position: relative;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+.head-loading-bar::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 40%;
+  background: var(--accent);
+  animation: bar-pulse 1.2s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+}
+
+/* 列表在后台刷新时平滑透明过渡，避免闪烁 */
+.results-list.is-refreshing {
+  opacity: 0.72;
+  transition: opacity var(--duration-1) var(--ease-out);
 }
 
 /* 加载状态 */

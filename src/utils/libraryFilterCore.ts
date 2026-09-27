@@ -50,7 +50,7 @@ export function getSearchText(item: LibrarySummary): string {
   return cached
 }
 
-export type SearchScope = 'all' | 'id' | 'author' | 'tag'
+export type SearchScope = 'all' | 'title_id' | 'id' | 'author' | 'tag'
 
 export interface FilterParams {
   activeSource: string
@@ -115,6 +115,11 @@ export function filterAndSortLibrary(
         const dId = (item.display_id || '').toLowerCase()
         const sId = (item.source_id || '').toLowerCase()
         matchSearch = dId.includes(needle) || sId.includes(needle)
+      } else if (searchScope === 'title_id') {
+        const title = (item.title || '').toLowerCase()
+        const dId = (item.display_id || '').toLowerCase()
+        const sId = (item.source_id || '').toLowerCase()
+        matchSearch = title.includes(needle) || dId.includes(needle) || sId.includes(needle)
       } else if (searchScope === 'author') {
         matchSearch =
           Array.isArray(item.authors) && item.authors.some((a) => a.toLowerCase().includes(needle))

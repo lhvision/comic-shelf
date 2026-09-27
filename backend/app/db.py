@@ -1579,7 +1579,7 @@ def query_library_index(
     if q and q.strip() and scope == "all" and "needle_0" in params:
         params["exact_q"] = raw_q
         relevance_order = """CASE
-            WHEN ci.title = :exact_q OR ci.display_id = :exact_q OR ci.source_id = :exact_q THEN 0
+            WHEN ci.title = :exact_q COLLATE NOCASE OR ci.display_id = :exact_q COLLATE NOCASE OR ci.source_id = :exact_q COLLATE NOCASE THEN 0
             WHEN ci.title LIKE :needle_0 ESCAPE '\\' THEN 1
             WHEN ci.authors_json LIKE :needle_0 ESCAPE '\\' THEN 2
             ELSE 3
