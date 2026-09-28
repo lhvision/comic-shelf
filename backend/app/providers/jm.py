@@ -38,11 +38,10 @@ try:
 except ImportError:
     pass
 
-_JM_REDIRECT_URL = "https://jm365.work/3YeBdF"
+_JM_PUBLISH_URL = "https://jmcomictt.site"
 _FALLBACK_HTML_DOMAINS = [
-    "comic18j-rita.cc",
     "18comic.vip",
-    "18comic.org",
+    "18comic.ink",
 ]
 _DOMAIN_TTL_SECONDS = 6 * 60 * 60
 _SESSION_TTL_SECONDS = 7 * 24 * 60 * 60
@@ -180,6 +179,17 @@ def _is_safe_remote_domain(domain: str) -> bool:
     return True
 
 
+def _is_valid_jm_html_response(resp: Any) -> bool:
+    """校验 HTTP 响应是否为真正的禁漫网页端站点（过滤假域名或 Nginx 默认欢迎页）。"""
+    if getattr(resp, "status_code", None) != 200:
+        return False
+    content = getattr(resp, "content", b"") or b""
+    if len(content) < 5000:
+        return False
+    text = getattr(resp, "text", "") or ""
+    return "18comic" in text or "禁漫" in text or "jmcomic" in text
+
+
 class JMProvider(ComicProvider):
     """禁漫天堂 provider.
 
@@ -280,6 +290,59 @@ class JMProvider(ComicProvider):
                     return cached
             return self._perform_login(option)
 
+    def _login_web(self, username: str, password: str) -> dict[str, str]:
+        """向当前有效 18comic 网页端发起真实 Web 表单登录，获取正牌网页端 Session Cookies。"""
+        try:
+            domain = self.resolve_html_domain()
+            login_url = f"https://{domain}/login"
+            headers = {
+                "User-Agent": (
+                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                    "AppleWebKit/537.36 (KHTML, like Gecko) "
+                    "Chrome/124.0 Safari/537.36"
+                ),
+                "X-Requested-With": "XMLHttpRequest",
+                "Referer": f"https://{domain}/",
+                "Origin": f"https://{domain}",
+            }
+            data = {
+                "username": username,
+                "password": password,
+                "submit_login": "1",
+                "login_remember": "on",
+            }
+            with curl_requests.Session(impersonate="chrome") as session:
+                proxies = self._get_control_proxies()
+                if proxies:
+                    session.proxies = proxies
+                try:
+                    session.get(f"https://{domain}/", headers=headers, timeout=8)
+                except Exception:
+                    pass
+
+                resp = session.post(login_url, data=data, headers=headers, timeout=10)
+                res_json: Any = {}
+                if getattr(resp, "status_code", 0) == 200:
+                    try:
+                        res_json = resp.json()
+                    except Exception:
+                        res_json = {}
+                session_cookies = {str(k): str(v) for k, v in session.cookies.get_dict().items()}
+                is_status_ok = isinstance(res_json, dict) and res_json.get("status") == 1
+                has_web_session = bool(
+                    session_cookies and any("sess" in k.lower() or "user" in k.lower() or "auth" in k.lower() for k in session_cookies)
+                )
+                if is_status_ok or has_web_session:
+                    logger.info("禁漫网页端 Web 登录成功，已取得真实网页 Session")
+                    return session_cookies
+                else:
+                    err_msg = res_json.get("errors") if isinstance(res_json, dict) else (getattr(resp, "text", "") or "")[:100]
+                    logger.warning("禁漫网页端 Web 登录未通过: %s", _mask_sensitive(err_msg))
+                    return {}
+        except Exception as e_web:
+            logger.warning("禁漫网页端 Web 登录过程异常: %s", _mask_sensitive(e_web))
+            return {}
+
     def _perform_login(self, option=None) -> dict[str, str] | None:
         if not JM_USERNAME or not JM_PASSWORD:
             return None
@@ -291,7 +354,7 @@ class JMProvider(ComicProvider):
             opt.client.postman.meta_data["proxies"] = control_proxies
 
             cookies: dict[str, str] = {}
-            # 优先尝试 API 客户端登录，失败则降级到 HTML 客户端登录
+            # 1. 移动端 API 客户端登录（保障 AVS 令牌，用于客户端接口与原图解码）
             try:
                 api_client = opt.build_jm_client(impl="api")
                 api_client.login(JM_USERNAME, JM_PASSWORD)
@@ -299,17 +362,15 @@ class JMProvider(ComicProvider):
                 if isinstance(meta_cookies, dict):
                     cookies.update({str(k): str(v) for k, v in meta_cookies.items()})
             except Exception as e_api:
-                logger.warning("禁漫 API 客户端登录失败，尝试 HTML 网页登录: %s", _mask_sensitive(e_api))
-                try:
-                    domain = self.resolve_html_domain()
-                    html_client = opt.new_jm_client(impl="html", domain_list=[domain])
-                    html_client.login(JM_USERNAME, JM_PASSWORD)
-                    meta_cookies = html_client.get_meta_data("cookies")
-                    if isinstance(meta_cookies, dict):
-                        cookies.update({str(k): str(v) for k, v in meta_cookies.items()})
-                except Exception as e_html:
-                    logger.warning("禁漫 HTML 网页登录亦失败: %s", _mask_sensitive(e_html))
-                    return None
+                logger.warning("禁漫 API 客户端登录失败: %s", _mask_sensitive(e_api))
+
+            # 2. 真实网页端 Web 登录（获取正牌 Web Session Cookies，穿透网页受限详情页）
+            try:
+                web_cookies = self._login_web(JM_USERNAME, JM_PASSWORD)
+                if web_cookies:
+                    cookies.update(web_cookies)
+            except Exception as e_web:
+                logger.warning("禁漫 Web 网页登录尝试失败: %s", _mask_sensitive(e_web))
 
             if cookies:
                 self._save_session_cache(cookies)
@@ -367,11 +428,11 @@ class JMProvider(ComicProvider):
                 if proxies:
                     session.proxies = proxies
 
+                # 1. 优先尝试从禁漫官方静态发布页动态解析最新的国际通用域名
                 try:
-                    resp = session.get(
-                        _JM_REDIRECT_URL,
-                        timeout=15,
-                        allow_redirects=True,
+                    pub_resp = session.get(
+                        _JM_PUBLISH_URL,
+                        timeout=5,
                         headers={
                             "User-Agent": (
                                 "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
@@ -380,13 +441,26 @@ class JMProvider(ComicProvider):
                             )
                         },
                     )
-                    parsed = urlparse(str(resp.url))
-                    cand_domain = parsed.hostname or ""
-                    if cand_domain and _is_safe_remote_domain(cand_domain):
-                        domain = cand_domain
+                    if getattr(pub_resp, "status_code", 0) == 200:
+                        pub_text = getattr(pub_resp, "text", "") or ""
+                        m_intl = re.search(r'class=[\"\']international[\"\'][^>]*>([\s\S]*?)</div>', pub_text)
+                        if m_intl:
+                            for cand in re.findall(r"([a-z0-9-]+\.[a-z0-9.-]+)", m_intl.group(1)):
+                                cand = cand.strip()
+                                if cand and _is_safe_remote_domain(cand):
+                                    try:
+                                        probe = session.get(f"https://{cand}/", timeout=4, allow_redirects=True)
+                                        if _is_valid_jm_html_response(probe):
+                                            cand_domain = urlparse(str(probe.url)).hostname or cand
+                                            if cand_domain and _is_safe_remote_domain(cand_domain):
+                                                domain = cand_domain
+                                                break
+                                    except Exception:
+                                        continue
                 except Exception:
-                    domain = ""
+                    pass
 
+                # 2. 若发布页未解析出可用域名，使用官方活跃域名列表兜底探测
                 if not domain:
                     for candidate in _FALLBACK_HTML_DOMAINS:
                         try:
@@ -395,7 +469,7 @@ class JMProvider(ComicProvider):
                                 timeout=4,
                                 allow_redirects=True,
                             )
-                            if probe.status_code == 200 and len(probe.content) > 1000:
+                            if _is_valid_jm_html_response(probe):
                                 cand_domain = urlparse(str(probe.url)).hostname or candidate
                                 if cand_domain and _is_safe_remote_domain(cand_domain):
                                     domain = cand_domain
@@ -470,34 +544,40 @@ class JMProvider(ComicProvider):
     @staticmethod
     def _is_login_required_response(resp: Any) -> bool:
         """判定 HTTP 响应是否被 18comic 登录墙拦截或重定向。"""
-        url_str = str(getattr(resp, "url", ""))
-        text = getattr(resp, "text", "")
+        url_str = str(getattr(resp, "url", "") or "")
+        text = getattr(resp, "text", "") or ""
         if "/login" in url_str:
             return True
+        # 若页面已完整渲染且包含上架/更新日期，评论区即便包含「聊天前請先登入唷」也绝非登录墙拦截
+        if len(text) > 10000 and ("上架日期" in text or "更新日期" in text):
+            return False
         return any(kw in text for kw in _JM_LOGIN_KEYWORDS)
 
     def _try_extract_html_dates(self, jm_id: str) -> tuple[str, str]:
         """尽力式从 18comic 网页端提取精确的 (上架日期, 更新日期)。
 
-        若遇到会话过期提示登录，且配置了账号密码，自动触发一次会话自愈重试；
-        若车号受限 (302/CAPTCHA)、超时或网络失败，安全降级返回 ('', '')。
+        优先从当前页面解析双日期；若受登录墙或假 404 弹窗阻挡，且配置了账号密码，
+        自动触发真实 Web 会话自愈重试；若车号受限或超时，安全降级返回 ('', '')。
         """
         try:
             client = self._make_html_client()
             resp = client.get(f"/album/{jm_id}", timeout=5)
-            url_str = str(getattr(resp, "url", ""))
             text = getattr(resp, "text", "")
-            if not text or "/error/" in url_str or "album_missing" in url_str or "album_missing" in text or self._is_login_required_response(resp):
-                if self._is_login_required_response(resp) and JM_USERNAME and JM_PASSWORD:
+            pub, upd = self._extract_html_dates(text)
+            if pub or upd:
+                return pub, upd
+
+            # 未提取到日期时，检查是否受限拦截且可自愈重登
+            if self._is_login_required_response(resp):
+                if JM_USERNAME and JM_PASSWORD:
                     logger.info("检测到车号 JM%s 网页端受限或需登录，尝试刷新 HTML 会话重试探测日期...", jm_id)
                     self._clear_session_cache()
                     client = self._make_html_client(force_refresh_session=True)
                     resp = client.get(f"/album/{jm_id}", timeout=5)
-                    if self._is_login_required_response(resp) or not getattr(resp, "text", ""):
-                        return "", ""
-                else:
-                    return "", ""
-            return self._extract_html_dates(getattr(resp, "text", ""))
+                    return self._extract_html_dates(getattr(resp, "text", ""))
+                return "", ""
+
+            return "", ""
         except Exception:
             return "", ""
 

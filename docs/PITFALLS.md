@@ -887,10 +887,11 @@
 - **症状**：通过 JM API 客户端（`_fetch_via_api`）收录的漫画，`published_at` 与 `updated_at` 一旦被上游作者/管理员编辑或更新，官方 API `/album` 的 `addtime` 会直接被改写为最后修改日期，导致单本漫画的 `published_at`（上架日期）向后漂移变更为更新日期，首发时间失真，藏书按上架时间排序错乱。
 - **根因**：① 上游第三方库 `jmcomic` 的 `JmApiAdaptTool.post_adapt_album` 内部硬编码赋 `'0'`，丢弃了官方 API 返回的 `addtime`；② 禁漫 App REST API 自身数据模型缺陷，未独立提供 `created_at`，仅序列化单个 `addtime` 并在编辑时覆写；但禁漫网页端 HTML 仍清晰保留两项独立标签：`上架日期 : YYYY-MM-DD` 与 `更新日期 : YYYY-MM-DD`。
 - **红线**：
-  1. **双轨结合、凭据自愈与首话兜底**：
+  1. **双轨结合、真实 Web 登录、假域名指纹拦截与首话兜底**：
      - 以 API 客户端为核心快速解析目录与章节，同时尽力式向网页端发起轻量探测（`_try_extract_html_dates`，单源复用静态纯函数 `_extract_html_dates`）；
-     - 若遭遇网页端提示登录且配置了账号密码，自动触发会话自愈重试一次，消除偶发未登录假受限；
-     - 若作品在网页端因强风控/验证码确实无法读取 HTML 双日期，API 模式自动回溯已拉取的首话（Chapter 1）`addtime` 作为早期首发时间参考（`min(album_addtime, chapter1_addtime)`），攻克受限作品首发日期漂移痛点；
+     - 域名解析（`resolve_html_domain`）移除失效的短链重定向（`jm365.work`）与废弃死域名（`comic18j-rita.cc`、`18comic.org`），改由官方长期静态发布页（`jmcomictt.site`）动态提取国际通用网域，并强制实行内容指纹校验（`_is_valid_jm_html_response`），彻底拦截 Nginx 默认欢迎页假站污染；
+     - 登录鉴权实行 API + Web 双轨持久化：不仅拉取移动端 API 的 AVS token，更通过真实 Web 表单协议向网页端发起异步登录（`_login_web`），取得正牌 Web Session Cookies 并注入 HTML 客户端，彻底攻克受限作品假 404“登入看看”拦截墙；
+     - 页面判定杜绝评论区“聊天前請先登入唷”误判，优先提取已渲染的双日期；若因极端风控无法读取 HTML，API 模式自动回溯已拉取的首话（Chapter 1）`addtime` 作为首发时间参考（`min(album_addtime, chapter1_addtime)`），构筑多重安全防线；
   2. **时序偏序不变式**：严格恪守 `CONTEXT.md` 领域定义：
      - `published_at` 单调不后移：`pub_date = min(existing.meta.published_at, pub_date)`，历史首发日期永不前推到未来；
      - `updated_at` 单调不前移：`update_date = max(existing.meta.updated_at, update_date, latest_ep_date)`，更新日期永不倒退；

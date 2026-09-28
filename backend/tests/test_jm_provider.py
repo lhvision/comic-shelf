@@ -1197,6 +1197,95 @@ class TestJMProvider(unittest.TestCase):
             self.html_dates_patcher.start()
             self.api_patcher.start()
 
+    def test_is_valid_jm_html_response(self) -> None:
+        """测试网页端域名探测能够准确过滤 Nginx 欢迎页等死域名，放行真正禁漫站点。"""
+        from app.providers.jm import _is_valid_jm_html_response
+
+        # 1. Nginx 默认欢迎页 (HTTP 200 但无禁漫特征)
+        resp_nginx = MagicMock()
+        resp_nginx.status_code = 200
+        resp_nginx.content = b"Welcome to nginx!" * 100  # 1700 bytes
+        resp_nginx.text = "Welcome to nginx!"
+        self.assertFalse(_is_valid_jm_html_response(resp_nginx))
+
+        # 2. 状态码非 200
+        resp_404 = MagicMock()
+        resp_404.status_code = 404
+        resp_404.content = b"18comic not found" * 500
+        resp_404.text = "18comic not found"
+        self.assertFalse(_is_valid_jm_html_response(resp_404))
+
+        # 3. 真实禁漫页面 (长度充足且包含 18comic 特征)
+        resp_valid = MagicMock()
+        resp_valid.status_code = 200
+        html_content = "<html><title>18comic 禁漫天堂</title><body>...</body></html>" * 200
+        resp_valid.content = html_content.encode("utf-8")
+        resp_valid.text = html_content
+        self.assertTrue(_is_valid_jm_html_response(resp_valid))
+
+    def test_is_login_required_response_avoids_comment_section_false_positive(self) -> None:
+        """测试正常详情页虽然在评论区包含 '聊天前請先登入唷'，但绝不误判为登录墙。"""
+        resp_detail = MagicMock()
+        resp_detail.url = "https://18comic.vip/album/1233916"
+        resp_detail.text = (
+            "<div><span>上架日期 : 2025-12-01</span><span>更新日期 : 2026-09-09</span></div>"
+            + "<div id='comments'><a href='#login-modal'>聊天前請先登入唷</a></div>"
+            + "A" * 20000
+        )
+        self.assertFalse(self.provider._is_login_required_response(resp_detail))
+
+    def test_perform_login_combines_api_and_web_cookies(self) -> None:
+        """测试 _perform_login 能够同时取得移动端 API cookies 与 Web 网页端 cookies。"""
+        mock_opt = MagicMock()
+        mock_api_c = MagicMock()
+        mock_api_c.get_meta_data.return_value = {"AVS": "api_token_123"}
+        mock_opt.build_jm_client.return_value = mock_api_c
+
+        with patch("app.providers.jm.JM_USERNAME", "test_user"), patch(
+            "app.providers.jm.JM_PASSWORD", "test_pass"
+        ), patch.object(self.provider, "_login_web", return_value={"PHPSESSID": "web_sess_456"}), patch.object(
+            self.provider, "_save_session_cache"
+        ) as mock_save:
+            cookies = self.provider._perform_login(mock_opt)
+            self.assertIsNotNone(cookies)
+            self.assertEqual(cookies.get("AVS"), "api_token_123")
+            self.assertEqual(cookies.get("PHPSESSID"), "web_sess_456")
+            mock_save.assert_called_once_with({"AVS": "api_token_123", "PHPSESSID": "web_sess_456"})
+
+    def test_is_valid_jm_html_response_handles_none_attributes(self) -> None:
+        """测试 _is_valid_jm_html_response 在 content 或 text 为 None 时的鲁棒性。"""
+        from app.providers.jm import _is_valid_jm_html_response
+
+        resp_none = MagicMock()
+        resp_none.status_code = 200
+        resp_none.content = None
+        resp_none.text = None
+        self.assertFalse(_is_valid_jm_html_response(resp_none))
+
+    def test_is_login_required_response_handles_none_attributes(self) -> None:
+        """测试 _is_login_required_response 在 text 或 url 为 None 时不抛异常。"""
+        resp_none = MagicMock()
+        resp_none.url = None
+        resp_none.text = None
+        self.assertFalse(self.provider._is_login_required_response(resp_none))
+
+    def test_login_web_handles_non_json_and_session_cookie(self) -> None:
+        """测试 _login_web 应对非 JSON 响应容错，以及检测 session cookie 作为次级成功判定。"""
+        mock_session = MagicMock()
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.json.side_effect = ValueError("Invalid JSON")
+        mock_resp.text = "<html>Cloudflare challenge or unknown HTML</html>"
+        mock_session.post.return_value = mock_resp
+        mock_session.cookies.get_dict.return_value = {"PHPSESSID": "valid_web_session_cookie"}
+
+        with patch("app.providers.jm.curl_requests.Session") as mock_sess_cls, patch.object(
+            self.provider, "resolve_html_domain", return_value="18comic.vip"
+        ):
+            mock_sess_cls.return_value.__enter__.return_value = mock_session
+            cookies = self.provider._login_web("test_user", "test_pass")
+            self.assertEqual(cookies.get("PHPSESSID"), "valid_web_session_cookie")
+
 
 if __name__ == "__main__":
     unittest.main()
