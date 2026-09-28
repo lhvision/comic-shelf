@@ -50,12 +50,15 @@ class TestJMProvider(unittest.TestCase):
         self.assertEqual(self.provider.normalize_id("523607"), "523607")
         self.assertEqual(self.provider.normalize_id("JM523607"), "523607")
         self.assertEqual(self.provider.normalize_id("  jm523607  "), "523607")
+        self.assertEqual(self.provider.normalize_id("123"), "123")
+        self.assertEqual(self.provider.normalize_id("JM123"), "123")
         self.assertEqual(self.provider.normalize_id("JM12345678"), "12345678")
+        self.assertEqual(self.provider.normalize_id("JM1234567890"), "1234567890")
 
         with self.assertRaises(ValueError):
-            self.provider.normalize_id("1234")  # too short
+            self.provider.normalize_id("12")  # too short (< 3 digits)
         with self.assertRaises(ValueError):
-            self.provider.normalize_id("JM1234567890")  # too long
+            self.provider.normalize_id("JM12345678901")  # too long (> 10 digits)
         with self.assertRaises(ValueError):
             self.provider.normalize_id("abc523607")  # invalid prefix
 

@@ -102,7 +102,7 @@ watch([id, localPath, activeTab], () => {
   warnings.value = []
 })
 
-const canSubmitJm = computed(() => /^(?:JM)?\d{5,8}$/i.test(id.value.trim()))
+const canSubmitJm = computed(() => /^(?:JM)?\d{3,10}$/i.test(id.value.trim()))
 const canSubmitPica = computed(() => /[0-9a-fA-F]{24}/.test(id.value.trim()))
 
 async function submitRemote(source: 'jm' | 'picacg') {

@@ -348,7 +348,7 @@ JmImageTool.decode_and_save(num, source_image, save_path)
 | `backend/app/jobs.py`               | 后台异步缓存任务执行器与进度追踪                                                                                            |
 | `backend/app/models.py`             | 通用模型：`ComicMeta`（含 `Chapter`/`chapters`）/ `PageRecord.chapter` / `RemotePage` / `FetchedComic`                      |
 | `backend/app/providers/base.py`     | Provider 接口                                                                                                               |
-| `backend/app/providers/jm.py`       | JM HTML 元数据、上传者解析、**多章节 episode 逐话拉取**、图片下载 + 解密                                                    |
+| `backend/app/providers/jm.py`       | JM HTML 元数据、上传者解析、车号规范化（支持 3~10 位数字）、**多章节 episode 逐话拉取**、图片下载 + 解密                    |
 | `backend/app/providers/local.py`    | 本地自建、外部白名单目录扫描、视频拆帧与多章节追加、重新装订；`normalize_id` / `generate_id` / `display_id`（ADR 0027）     |
 | `backend/app/providers/picacg.py`   | 哔咔 App REST 接口签名（HMAC-SHA256）、车号宽容清洗、多章节分卷映射与 3-CDN 容灾下载                                        |
 | `backend/app/providers/registry.py` | `{"jm": JMProvider(), "local": LocalProvider(), "picacg": PicacgProvider()}` 注册表                                         |

@@ -208,4 +208,36 @@ describe('ImportPanel Component', () => {
 
     expect(mockToast).toHaveBeenCalledWith('已收录《2899054》（LOC_2899054，共 12 页）', 'info')
   })
+
+  it('validates JM car number supporting 3 to 10 digits', async () => {
+    const pinia = createPinia()
+    const wrapper = mount(ImportPanel, {
+      global: {
+        plugins: [pinia],
+      },
+    })
+
+    const input = wrapper.get('input[aria-label="禁漫车号"]')
+    const submitBtn = wrapper.get('button.import-submit-btn')
+
+    // 2 digits: disabled
+    await input.setValue('12')
+    expect((submitBtn.element as HTMLButtonElement).disabled).toBe(true)
+
+    // 3 digits: enabled
+    await input.setValue('123')
+    expect((submitBtn.element as HTMLButtonElement).disabled).toBe(false)
+
+    // 3 digits with JM prefix: enabled
+    await input.setValue('JM123')
+    expect((submitBtn.element as HTMLButtonElement).disabled).toBe(false)
+
+    // 10 digits: enabled
+    await input.setValue('1234567890')
+    expect((submitBtn.element as HTMLButtonElement).disabled).toBe(false)
+
+    // 11 digits: disabled
+    await input.setValue('12345678901')
+    expect((submitBtn.element as HTMLButtonElement).disabled).toBe(true)
+  })
 })
