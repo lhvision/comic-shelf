@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import logging
 import re
+import time
 import urllib.error
 import urllib.request
 import uuid
@@ -15,6 +16,9 @@ logger = logging.getLogger("paper_room.imsearch")
 
 # Bypass local system/environment HTTP proxies (e.g. Clash, v2ray) for direct Sidecar communication
 _opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+
+_status_cache: dict[str, tuple[float, bool]] = {}  # base_url -> (timestamp, available)
+_STATUS_CACHE_TTL = 3.0  # seconds
 
 # Match library/<source>/<source_id>/covers/<num>.<ext>
 # or library/<source>/<source_id>/covers/chapters/<chapter_id>.<ext>
@@ -38,26 +42,35 @@ def parse_imsearch_path(raw_path: str) -> tuple[str, str, int, bool] | None:
     return None
 
 
-def check_imsearch_status(base_url: str = IMSEARCH_URL) -> dict[str, Any]:
-    """Check whether the external imsearch sidecar is reachable."""
+def check_imsearch_status(base_url: str = IMSEARCH_URL, use_cache: bool = True) -> dict[str, Any]:
+    """Check whether the external imsearch sidecar is reachable (cached with 3s TTL)."""
+    now = time.monotonic()
+    if use_cache:
+        cached = _status_cache.get(base_url)
+        if cached is not None and (now - cached[0]) < _STATUS_CACHE_TTL:
+            return {"available": cached[1]}
+
     try:
         req = urllib.request.Request(f"{base_url}/metrics", method="GET")
         with _opener.open(req, timeout=1.5) as resp:
-            return {"available": resp.status == 200, "url": base_url}
+            is_avail = resp.status == 200
+            _status_cache[base_url] = (now, is_avail)
+            return {"available": is_avail}
     except Exception as e:
         logger.debug("Imsearch sidecar not available: %s", e)
-        return {"available": False, "url": base_url}
+        _status_cache[base_url] = (now, False)
+        return {"available": False}
 
 
 def search_imsearch(
-    image_bytes: bytes, base_url: str = IMSEARCH_URL, filename: str = "query.jpg"
+    image_bytes: bytes, base_url: str = IMSEARCH_URL
 ) -> list[ImageSearchItem]:
     """Send image query to imsearch server and parse results."""
     try:
         boundary = f"----PaperRoomBoundary{uuid.uuid4().hex}"
         header = (
             f"--{boundary}\r\n"
-            f'Content-Disposition: form-data; name="file"; filename="{filename}"\r\n'
+            f'Content-Disposition: form-data; name="file"; filename="query.jpg"\r\n'
             f"Content-Type: image/jpeg\r\n\r\n"
         ).encode("utf-8")
         footer = f"\r\n--{boundary}--\r\n".encode("utf-8")

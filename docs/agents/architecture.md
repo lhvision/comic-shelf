@@ -388,7 +388,8 @@ JmImageTool.decode_and_save(num, source_image, save_path)
 - `GET /api/library/{source}/{id}/pages/{n}/thumbnail`（同上，支持 `.{ext}` 别名）
 - `GET /api/library/{source}/{id}/covers/{n}/file`（封面取 `cover_indices` 或前 N 页，带防盗链校验，支持 `Accept: image/webp` 内容协商、360 规格 `?w=360` 与 `.{ext}` 别名，带 `Vary: Accept`；资源缺失响应 404，由 `_serve_negotiated_image` 统一服务）
 - `GET /api/library/{source}/{id}/chapters/{chapterId}/cover`（章节封面端点，带防盗链校验，支持 WebP 内容协商与 360 规格，支持 `.{ext}` 别名；资源缺失响应 404）
-- `GET /api/search/image/status`（以图搜图 Sidecar 服务健康探测）
+- `GET /api/search/image/status`（以图搜图 Sidecar 服务健康探测，仅暴露 `{"available": bool}`，内置 3s TTL 缓存，不泄露内网地址）
+- `POST /api/search/image`（以图搜图，单图上限 15MB，带 Magic Bytes 校验、离线 503 快速失败与句柄闭环；过滤访客不可见藏书）
 - `GET /api/search/dialogue?q=`（台词关键词检索，按页聚合，`rank_score` 为调用者可见候选内的归一相关度；`q` ≤200 字，不足 2 字不检索）
 - `GET /api/search/dialogue-semantic?q=`（台词语义召回，独立 `similarity`，没走检索时带 `reason`，ADR 0028）
 - `GET /api/search/dialogue-context`（按页区间取原始台词物料，仅馆长与机器密钥；机器密钥看不到隐藏本；页跨度 ≤200、行预算 ≤400，撞顶回报 `truncated`）

@@ -54,5 +54,7 @@ services:
       - ./backend/data:/app/data
       - ./backend/data/imsearch:/root/.config/imsearch
     command: ['server', '--addr', '0.0.0.0:8765', '--nprobe', '32', '--count', '20']
+    # 识图引擎为内部 Sidecar，默认仅绑定宿主机环回 127.0.0.1 防范公网扫描；
+    # 容器间走 Docker 内部网络（http://imsearch:8765）安全互通。
     ports:
-      - '8765:8765'
+      - '127.0.0.1:8765:8765'

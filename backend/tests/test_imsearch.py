@@ -42,11 +42,16 @@ def test_check_imsearch_status():
         mock_resp.status = 200
         mock_open.return_value.__enter__.return_value = mock_resp
 
-        status = check_imsearch_status("http://localhost:8765")
+        status = check_imsearch_status("http://localhost:8765", use_cache=False)
         assert status["available"] is True
 
+        # Verify caching returns previous result without hitting opener again
+        cached = check_imsearch_status("http://localhost:8765", use_cache=True)
+        assert cached["available"] is True
+        assert mock_open.call_count == 1
+
         mock_open.side_effect = Exception("Connection refused")
-        status = check_imsearch_status("http://localhost:8765")
+        status = check_imsearch_status("http://localhost:8765", use_cache=False)
         assert status["available"] is False
 
 
@@ -75,40 +80,91 @@ def test_search_imsearch():
 
 
 def test_fastapi_endpoints():
+    from fastapi import HTTPException
     from app.routers.search import image_search, image_search_status, store
 
+    mock_req = MagicMock()
+    mock_req.headers.get = lambda k, default="": ""
+    mock_req.cookies.get = lambda k, default="": ""
+    mock_req.query_params.get = lambda k, default="": ""
+
     with patch("app.routers.search.check_imsearch_status") as mock_status:
-        mock_status.return_value = {"available": True, "url": "http://localhost:8765"}
+        mock_status.return_value = {"available": True}
         res = image_search_status()
         assert res.available is True
-        assert res.url == "http://localhost:8765"
 
-    # 端点会按书库里的 meta 过滤命中，这条断言只能对着真书跑；临时数据目录或别的机器上没有这本就跳过
-    if store.load_meta("jm", "1242163") is None:
-        print("  - skip image_search visibility filter: jm/1242163 is not in this library")
-        return
+        # Test 503 fast-fail when sidecar is unavailable
+        mock_status.return_value = {"available": False}
+        mock_offline = MagicMock()
+        mock_offline.close = AsyncMock()
+        try:
+            asyncio.run(image_search(mock_req, mock_offline))
+            assert False, "Should raise HTTPException 503 when sidecar is unavailable"
+        except HTTPException as exc:
+            assert exc.status_code == 503
 
-    with patch("app.routers.search.search_imsearch") as mock_search:
-        from app.models import ImageSearchItem
+        # Re-enable mock status for remaining checks
+        mock_status.return_value = {"available": True}
 
-        mock_search.return_value = [
-            ImageSearchItem(
-                source="jm", source_id="1242163", page_index=5, is_cover=False, score=0.94
-            )
-        ]
-        mock_upload = MagicMock()
-        mock_upload.filename = "test.jpg"
-        mock_upload.read = AsyncMock(return_value=b"fake-bytes")
+        # Test empty file rejection
+        mock_empty = MagicMock()
+        mock_empty.filename = "empty.jpg"
+        mock_empty.read = AsyncMock(return_value=b"")
+        mock_empty.close = AsyncMock()
+        try:
+            asyncio.run(image_search(mock_req, mock_empty))
+            assert False, "Should raise HTTPException for empty upload"
+        except HTTPException as exc:
+            assert exc.status_code == 400
+        assert mock_empty.close.call_count == 1
 
-        mock_req = MagicMock()
-        mock_req.headers.get = lambda k, default="": ""
-        mock_req.cookies.get = lambda k, default="": ""
-        mock_req.query_params.get = lambda k, default="": ""
+        # Test invalid format rejection
+        mock_invalid = MagicMock()
+        mock_invalid.filename = "bad.exe"
+        mock_invalid.read = AsyncMock(return_value=b"MZ\x90\x00not-an-image")
+        mock_invalid.close = AsyncMock()
+        try:
+            asyncio.run(image_search(mock_req, mock_invalid))
+            assert False, "Should raise HTTPException for invalid image format"
+        except HTTPException as exc:
+            assert exc.status_code == 400
+        assert mock_invalid.close.call_count == 1
 
-        res = asyncio.run(image_search(mock_req, mock_upload))
-        assert len(res) == 1
-        assert res[0].page_index == 5
-        assert res[0].score == 0.94
+        # Test oversized file rejection
+        mock_oversized = MagicMock()
+        mock_oversized.filename = "huge.jpg"
+        mock_oversized.read = AsyncMock(return_value=b"x" * (15 * 1024 * 1024 + 10))
+        mock_oversized.close = AsyncMock()
+        try:
+            asyncio.run(image_search(mock_req, mock_oversized))
+            assert False, "Should raise HTTPException for oversized upload"
+        except HTTPException as exc:
+            assert exc.status_code == 413
+        assert mock_oversized.close.call_count == 1
+
+        # 端点会按书库里的 meta 过滤命中，这条断言只能对着真书跑；临时数据目录或别的机器上没有这本就跳过
+        if store.load_meta("jm", "1242163") is None:
+            print("  - skip image_search visibility filter: jm/1242163 is not in this library")
+            return
+
+        with patch("app.routers.search.search_imsearch") as mock_search:
+            from app.models import ImageSearchItem
+
+            mock_search.return_value = [
+                ImageSearchItem(
+                    source="jm", source_id="1242163", page_index=5, is_cover=False, score=0.94
+                )
+            ]
+            mock_upload = MagicMock()
+            mock_upload.filename = "test.jpg"
+            mock_upload.read = AsyncMock(return_value=b"\xff\xd8\xff\xe0" + b"fake-bytes")
+            mock_upload.close = AsyncMock()
+
+            res = asyncio.run(image_search(mock_req, mock_upload))
+            assert len(res) == 1
+            assert res[0].page_index == 5
+            assert res[0].score == 0.94
+            assert mock_upload.close.call_count == 1
 
 
 if __name__ == "__main__":

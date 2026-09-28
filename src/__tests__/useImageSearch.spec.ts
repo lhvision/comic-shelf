@@ -29,7 +29,7 @@ describe('useImageSearch', () => {
     vi.mocked(fetch).mockResolvedValue({
       ok: true,
       status: 200,
-      json: async () => ({ available: true, url: 'http://localhost:8765' }),
+      json: async () => ({ available: true }),
     } as unknown as Response)
 
     const { isAvailable, checkStatus } = useImageSearch()

@@ -29,6 +29,20 @@ from .common import _require_known_source, _require_meta, store
 router = APIRouter(tags=["search"])
 
 
+MAX_SEARCH_IMAGE_SIZE = 15 * 1024 * 1024  # 15MB
+
+
+def is_valid_search_image(data: bytes) -> bool:
+    """Validate whether uploaded bytes match known image magic headers."""
+    return (
+        data.startswith(b"\xff\xd8\xff")  # JPEG
+        or data.startswith(b"\x89PNG\r\n\x1a\n")  # PNG
+        or (data.startswith(b"RIFF") and data[8:12] == b"WEBP")  # WebP
+        or data.startswith((b"GIF87a", b"GIF89a"))  # GIF
+        or data.startswith(b"BM")  # BMP
+    )
+
+
 @router.get("/api/search/image/status", response_model=ImageSearchStatusResponse)
 def image_search_status() -> ImageSearchStatusResponse:
     """Check availability of the imsearch sidecar container."""
@@ -39,18 +53,29 @@ def image_search_status() -> ImageSearchStatusResponse:
 @router.post("/api/search/image", response_model=list[ImageSearchItem])
 async def image_search(request: Request, file: UploadFile = File(...)) -> list[ImageSearchItem]:
     """Perform visual search by uploading a screenshot or cropped image."""
-    content = await file.read()
-    if not content:
-        raise HTTPException(status_code=400, detail="上传图片不能为空")
-    results = await asyncio.to_thread(search_imsearch, content, filename=file.filename or "query.jpg")
-    filtered: list[ImageSearchItem] = []
-    is_cur = is_curator(request)
-    for r in results:
-        m = store.load_meta(r.source, r.source_id)
-        if m is not None:
-            if is_cur or not getattr(m, "hidden_from_guest", False):
-                filtered.append(r)
-    return filtered
+    try:
+        if not check_imsearch_status()["available"]:
+            raise HTTPException(status_code=503, detail="以图搜图服务未启动或暂时不可用")
+
+        content = await file.read(MAX_SEARCH_IMAGE_SIZE + 1)
+        if len(content) > MAX_SEARCH_IMAGE_SIZE:
+            raise HTTPException(status_code=413, detail="上传图片体积超过 15MB 限制")
+        if not content:
+            raise HTTPException(status_code=400, detail="上传图片不能为空")
+        if not is_valid_search_image(content):
+            raise HTTPException(status_code=400, detail="不支持的图片格式，请上传 JPG、PNG 或 WebP 图片")
+
+        results = await asyncio.to_thread(search_imsearch, content)
+        filtered: list[ImageSearchItem] = []
+        is_cur = is_curator(request)
+        for r in results:
+            m = store.load_meta(r.source, r.source_id)
+            if m is not None:
+                if is_cur or not getattr(m, "hidden_from_guest", False):
+                    filtered.append(r)
+        return filtered
+    finally:
+        await file.close()
 
 
 @router.get("/api/search/dialogue", response_model=DialogueSearchResponse)

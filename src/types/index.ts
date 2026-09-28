@@ -193,7 +193,6 @@ export interface ImageSearchResultItem {
 
 export interface ImageSearchStatus {
   available: boolean
-  url?: string
 }
 
 export interface AuthStatus {

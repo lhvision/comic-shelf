@@ -271,7 +271,6 @@ class ImageSearchItem(BaseModel):
 
 class ImageSearchStatusResponse(BaseModel):
     available: bool
-    url: str
 
 
 class AuthStatusResponse(BaseModel):
