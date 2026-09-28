@@ -32,7 +32,12 @@ from ..db import (
     search_dialogues,
     search_dialogues_semantic,
 )
-from ..imsearch import check_imsearch_status, search_imsearch
+from ..imsearch import (
+    MAX_SEARCH_IMAGE_SIZE,
+    check_imsearch_status,
+    is_valid_search_image,
+    search_imsearch,
+)
 from ..providers import provider_list
 from .common import store
 
@@ -367,6 +372,12 @@ MCP_PROMPTS: list[dict[str, Any]] = [
 # Tool Execution Registry & Modular Handlers
 # ----------------------------------------------------------------------
 def _tool_search_by_image(arguments: dict[str, Any]) -> dict[str, Any]:
+    if not check_imsearch_status()["available"]:
+        return {
+            "content": [{"type": "text", "text": "以图搜图服务未启动或暂时不可用"}],
+            "isError": True,
+        }
+
     raw_b64 = str(arguments.get("image_base64", ""))
     if not raw_b64:
         raise ValueError("image_base64 不能为空")
@@ -377,19 +388,24 @@ def _tool_search_by_image(arguments: dict[str, Any]) -> dict[str, Any]:
     except Exception as e:
         raise ValueError(f"Base64 解码失败: {e}")
 
+    if len(img_bytes) > MAX_SEARCH_IMAGE_SIZE:
+        raise ValueError(f"图片体积超过 15MB 限制（当前 {len(img_bytes)} 字节）")
+    if not is_valid_search_image(img_bytes):
+        raise ValueError("不支持的图片格式，请提供 JPG、PNG、WebP、GIF 或 BMP 图片")
+
     limit = int(arguments.get("limit", 5))
     raw_results = search_imsearch(img_bytes)
 
     hits = []
     for item in raw_results[:limit]:
         meta = store.load_meta(item.source, item.source_id)
-        title = meta.title if meta else item.source_id
-        authors = meta.authors if meta else []
+        if not meta:
+            continue
         hits.append({
             "source": item.source,
             "source_id": item.source_id,
-            "title": title,
-            "authors": authors,
+            "title": meta.title,
+            "authors": meta.authors,
             "page_index": item.page_index,
             "is_cover": item.is_cover,
             "similarity_score": round(item.score, 4),

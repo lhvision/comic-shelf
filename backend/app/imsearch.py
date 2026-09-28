@@ -19,6 +19,21 @@ _opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
 
 _status_cache: dict[str, tuple[float, bool]] = {}  # base_url -> (timestamp, available)
 _STATUS_CACHE_TTL = 3.0  # seconds
+_STATUS_CACHE_MAX_ENTRIES = 16
+
+MAX_SEARCH_IMAGE_SIZE = 15 * 1024 * 1024  # 15MB
+
+
+def is_valid_search_image(data: bytes) -> bool:
+    """Validate whether uploaded bytes match known image magic headers."""
+    return (
+        data.startswith(b"\xff\xd8\xff")  # JPEG
+        or data.startswith(b"\x89PNG\r\n\x1a\n")  # PNG
+        or (data.startswith(b"RIFF") and data[8:12] == b"WEBP")  # WebP
+        or data.startswith((b"GIF87a", b"GIF89a"))  # GIF
+        or data.startswith(b"BM")  # BMP
+    )
+
 
 # Match library/<source>/<source_id>/covers/<num>.<ext>
 # or library/<source>/<source_id>/covers/chapters/<chapter_id>.<ext>
@@ -42,6 +57,12 @@ def parse_imsearch_path(raw_path: str) -> tuple[str, str, int, bool] | None:
     return None
 
 
+def _set_status_cache(base_url: str, entry: tuple[float, bool]) -> None:
+    if len(_status_cache) >= _STATUS_CACHE_MAX_ENTRIES:
+        _status_cache.clear()
+    _status_cache[base_url] = entry
+
+
 def check_imsearch_status(base_url: str = IMSEARCH_URL, use_cache: bool = True) -> dict[str, Any]:
     """Check whether the external imsearch sidecar is reachable (cached with 3s TTL)."""
     now = time.monotonic()
@@ -54,11 +75,11 @@ def check_imsearch_status(base_url: str = IMSEARCH_URL, use_cache: bool = True) 
         req = urllib.request.Request(f"{base_url}/metrics", method="GET")
         with _opener.open(req, timeout=1.5) as resp:
             is_avail = resp.status == 200
-            _status_cache[base_url] = (now, is_avail)
+            _set_status_cache(base_url, (now, is_avail))
             return {"available": is_avail}
     except Exception as e:
         logger.debug("Imsearch sidecar not available: %s", e)
-        _status_cache[base_url] = (now, False)
+        _set_status_cache(base_url, (now, False))
         return {"available": False}
 
 

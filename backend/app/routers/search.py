@@ -14,7 +14,12 @@ from ..db import (
     search_dialogues_semantic,
     sync_comic_dialogues,
 )
-from ..imsearch import check_imsearch_status, search_imsearch
+from ..imsearch import (
+    MAX_SEARCH_IMAGE_SIZE,
+    check_imsearch_status,
+    is_valid_search_image,
+    search_imsearch,
+)
 from ..models import (
     DialogueSearchResponse,
     DialogueVectorsResponse,
@@ -27,20 +32,6 @@ from ..models import (
 from .common import _require_known_source, _require_meta, store
 
 router = APIRouter(tags=["search"])
-
-
-MAX_SEARCH_IMAGE_SIZE = 15 * 1024 * 1024  # 15MB
-
-
-def is_valid_search_image(data: bytes) -> bool:
-    """Validate whether uploaded bytes match known image magic headers."""
-    return (
-        data.startswith(b"\xff\xd8\xff")  # JPEG
-        or data.startswith(b"\x89PNG\r\n\x1a\n")  # PNG
-        or (data.startswith(b"RIFF") and data[8:12] == b"WEBP")  # WebP
-        or data.startswith((b"GIF87a", b"GIF89a"))  # GIF
-        or data.startswith(b"BM")  # BMP
-    )
 
 
 @router.get("/api/search/image/status", response_model=ImageSearchStatusResponse)
@@ -63,7 +54,7 @@ async def image_search(request: Request, file: UploadFile = File(...)) -> list[I
         if not content:
             raise HTTPException(status_code=400, detail="上传图片不能为空")
         if not is_valid_search_image(content):
-            raise HTTPException(status_code=400, detail="不支持的图片格式，请上传 JPG、PNG 或 WebP 图片")
+            raise HTTPException(status_code=400, detail="不支持的图片格式，请上传 JPG、PNG、WebP、GIF 或 BMP 图片")
 
         results = await asyncio.to_thread(search_imsearch, content)
         filtered: list[ImageSearchItem] = []

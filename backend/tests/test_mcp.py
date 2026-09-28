@@ -2,12 +2,13 @@
 from __future__ import annotations
 
 import asyncio
+import base64
 import json
 import shutil
 import sys
 import tempfile
 from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 # Ensure backend package is importable
 BACKEND_DIR = Path(__file__).resolve().parent.parent
@@ -244,6 +245,39 @@ def test_mcp_tool_execution():
         assert dp is not None
         assert dp["source"] == "local"
         assert dp["source_id"] == "mcp_test_comic"
+
+        # 5. search_by_image
+        with patch("app.routers.mcp.check_imsearch_status") as mock_im_status:
+            # 5a. Offline sidecar
+            mock_im_status.return_value = {"available": False}
+            res_offline = asyncio.run(
+                execute_tool("search_by_image", {"image_base64": base64.b64encode(b"\xff\xd8\xff\xe0fake").decode()})
+            )
+            assert res_offline["isError"]
+            assert "以图搜图服务未启动" in res_offline["content"][0]["text"]
+
+            # 5b. Invalid format
+            mock_im_status.return_value = {"available": True}
+            res_bad_fmt = asyncio.run(
+                execute_tool("search_by_image", {"image_base64": base64.b64encode(b"not-an-image").decode()})
+            )
+            assert res_bad_fmt["isError"]
+            assert "不支持的图片格式" in res_bad_fmt["content"][0]["text"]
+
+            # 5c. Valid image with mocked search_imsearch
+            with patch("app.routers.mcp.search_imsearch") as mock_im_search:
+                from app.models import ImageSearchItem
+                mock_im_search.return_value = [
+                    ImageSearchItem(source="local", source_id="mcp_test_comic", page_index=1, is_cover=True, score=0.95)
+                ]
+                res_valid = asyncio.run(
+                    execute_tool("search_by_image", {"image_base64": base64.b64encode(b"\xff\xd8\xff\xe0fake").decode()})
+                )
+                assert not res_valid["isError"]
+                match_data = json.loads(res_valid["content"][0]["text"])
+                assert match_data["total_matched"] == 1
+                assert match_data["hits"][0]["source_id"] == "mcp_test_comic"
+                assert match_data["hits"][0]["title"] == "MCP 测试漫画特刊"
     finally:
         shutil.rmtree(tmp_dir, ignore_errors=True)
 
