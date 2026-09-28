@@ -887,13 +887,17 @@
 - **症状**：通过 JM API 客户端（`_fetch_via_api`）收录的漫画，`published_at` 与 `updated_at` 一旦被上游作者/管理员编辑或更新，官方 API `/album` 的 `addtime` 会直接被改写为最后修改日期，导致单本漫画的 `published_at`（上架日期）向后漂移变更为更新日期，首发时间失真，藏书按上架时间排序错乱。
 - **根因**：① 上游第三方库 `jmcomic` 的 `JmApiAdaptTool.post_adapt_album` 内部硬编码赋 `'0'`，丢弃了官方 API 返回的 `addtime`；② 禁漫 App REST API 自身数据模型缺陷，未独立提供 `created_at`，仅序列化单个 `addtime` 并在编辑时覆写；但禁漫网页端 HTML 仍清晰保留两项独立标签：`上架日期 : YYYY-MM-DD` 与 `更新日期 : YYYY-MM-DD`。
 - **红线**：
-  1. **双轨结合与尽力式探测**：以 API 客户端为核心快速解析目录与章节，同时尽力式向网页端发起轻量探测（`_try_extract_html_dates`），成功提取时采纳 HTML 中的真实上架与更新日期；若遇受限拦截（302/CAPTCHA/album_missing）或网络故障，平滑降级使用 API `addtime` 兜底；
+  1. **双轨结合、凭据自愈与首话兜底**：
+     - 以 API 客户端为核心快速解析目录与章节，同时尽力式向网页端发起轻量探测（`_try_extract_html_dates`，单源复用静态纯函数 `_extract_html_dates`）；
+     - 若遭遇网页端提示登录且配置了账号密码，自动触发会话自愈重试一次，消除偶发未登录假受限；
+     - 若作品在网页端因强风控/验证码确实无法读取 HTML 双日期，API 模式自动回溯已拉取的首话（Chapter 1）`addtime` 作为早期首发时间参考（`min(album_addtime, chapter1_addtime)`），攻克受限作品首发日期漂移痛点；
   2. **时序偏序不变式**：严格恪守 `CONTEXT.md` 领域定义：
      - `published_at` 单调不后移：`pub_date = min(existing.meta.published_at, pub_date)`，历史首发日期永不前推到未来；
      - `updated_at` 单调不前移：`update_date = max(existing.meta.updated_at, update_date, latest_ep_date)`，更新日期永不倒退；
      - 偏序强约束：任何时刻均满足 `published_at <= updated_at`；
   3. **单元测试网络隔离**：离线单测 `setUp` 中除 `_make_api_client` 外必须默认 patch `_try_extract_html_dates` 返回 `("", "")`，严禁单测离线执行时意外向远端发起真实 HTML 请求导致网络阻塞；
-  4. **惰性自愈自理**：依托增量收录、定时追更或用户点击详情页「刷新资料」时自动触发惰性自愈（Lazy Healing），由核心抓取流水线无感修正已有日期，无需额外维护脱机修复脚本。
+  4. **惰性自愈自理**：依托增量收录、定时追更或用户点击详情页「刷新资料」时自动触发惰性自愈（Lazy Healing），由核心抓取流水线无感修正已有日期，无需额外维护脱机修复脚本；
+  5. **详情页交互感知与防重入**：详情页「刷新资料」按钮必须通过 Composable 维护 `refreshing` 状态，绑定 `:loading` 并与后台缓存互斥禁用，文案动态切换为「刷新中…」；刷新完成后比对新旧日期，变动时精准反馈「已同步最新日期与版本」，杜绝静默假死感。
 
 ---
 

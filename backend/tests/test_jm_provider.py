@@ -261,6 +261,22 @@ class TestJMProvider(unittest.TestCase):
             self.assertIn("受权限保护（需登录查看）", str(ctx.exception))
             self.assertIn("JM_USERNAME", str(ctx.exception))
 
+    def test_fetch_restricted_album_modal_screen_guidance(self) -> None:
+        """测试网页端弹出「無效A漫連結/消失於無盡宇宙/看不到?登入看看」弹窗时，准确判定为受限需登录而非下架。"""
+        mock_client = MagicMock()
+        mock_resp = MagicMock()
+        mock_resp.url = "https://18comic.vip/error/album_missing"
+        mock_resp.text = "<html><div>錯誤: 無效A漫連結</div><div>此漫畫已消失於無盡宇宙中</div><button>看不到?登入看看</button></html>"
+        mock_client.get.return_value = mock_resp
+
+        with patch.object(self.provider, "_make_html_client", return_value=mock_client), patch(
+            "app.providers.jm.JM_USERNAME", ""
+        ), patch("app.providers.jm.JM_PASSWORD", ""):
+            with self.assertRaises(ValueError) as ctx:
+                self.provider.fetch("523607")
+            self.assertIn("受权限保护（需登录查看）", str(ctx.exception))
+            self.assertIn("JM_USERNAME", str(ctx.exception))
+
     def test_fetch_restricted_episode_guidance_when_anonymous(self) -> None:
         mock_client = MagicMock()
         mock_album_resp = MagicMock()
@@ -1031,6 +1047,147 @@ class TestJMProvider(unittest.TestCase):
                 comic4 = self.provider.fetch("1220124", existing=existing_sentinel)
                 self.assertEqual(comic4.meta.published_at, "2025-10-01")
                 self.assertEqual(comic4.meta.updated_at, "2025-10-05")
+        finally:
+            self.html_dates_patcher.start()
+            self.api_patcher.start()
+
+    def test_extract_html_dates_pure_function(self) -> None:
+        """测试静态方法 _extract_html_dates 的纯函数提取与容错。"""
+        # 1. 空输入
+        self.assertEqual(self.provider._extract_html_dates(""), ("", ""))
+        self.assertEqual(self.provider._extract_html_dates(None), ("", ""))
+
+        # 2. 半角冒号
+        html_half = "<div><span>上架日期 : 2024-05-01</span><span>更新日期 : 2025-06-15</span></div>"
+        self.assertEqual(self.provider._extract_html_dates(html_half), ("2024-05-01", "2025-06-15"))
+
+        # 3. 全角冒号与多余空白
+        html_full = "<div><span>上架日期　： 2023-11-20 </span><span>更新日期： 2024-01-05</span></div>"
+        self.assertEqual(self.provider._extract_html_dates(html_full), ("2023-11-20", "2024-01-05"))
+
+        # 4. 仅有上架日期
+        html_pub_only = "<div><span>上架日期: 2024-01-01</span></div>"
+        self.assertEqual(self.provider._extract_html_dates(html_pub_only), ("2024-01-01", ""))
+
+        # 5. 无匹配日期
+        html_none = "<div><p>这是一部没有任何日期的漫画介绍</p></div>"
+        self.assertEqual(self.provider._extract_html_dates(html_none), ("", ""))
+
+    def test_try_extract_html_dates_restricted_self_healing_with_credentials(self) -> None:
+        """测试受限作品在探测 HTML 日期时若遇到需要登录，能自动触发会话自愈重试。"""
+        self.html_dates_patcher.stop()
+        try:
+            mock_client1 = MagicMock()
+            mock_resp_fail = MagicMock()
+            mock_resp_fail.url = "https://18comic.vip/login"
+            mock_resp_fail.text = "<html>请先登录查看此作品</html>"
+            mock_client1.get.return_value = mock_resp_fail
+
+            mock_client2 = MagicMock()
+            mock_resp_succ = MagicMock()
+            mock_resp_succ.url = "https://18comic.vip/album/1208546"
+            mock_resp_succ.text = "<html><span>上架日期 : 2024-03-10</span><span>更新日期 : 2025-02-20</span></html>"
+            mock_client2.get.return_value = mock_resp_succ
+
+            with patch.object(self.provider, "_make_html_client", side_effect=[mock_client1, mock_client2]), patch(
+                "app.providers.jm.JM_USERNAME", "test_user"
+            ), patch("app.providers.jm.JM_PASSWORD", "test_pass"), patch.object(
+                self.provider, "_clear_session_cache"
+            ) as mock_clear:
+                pub, upd = self.provider._try_extract_html_dates("1208546")
+                self.assertEqual(pub, "2024-03-10")
+                self.assertEqual(upd, "2025-02-20")
+                mock_clear.assert_called_once()
+        finally:
+            self.html_dates_patcher.start()
+
+    def test_fetch_via_api_restricted_calibrates_with_first_episode_date(self) -> None:
+        """测试当 HTML 受限导致探测日期为空时，API 模式利用首话 addtime 校准被修改的上架时间。"""
+        self.api_patcher.stop()
+        self.html_dates_patcher.stop()
+        try:
+            from app.models import Chapter, ComicMeta, FetchedComic, RemotePage
+
+            mock_api_client = MagicMock()
+            mock_api_client.API_ALBUM = "/album"
+            mock_api_client.API_CHAPTER = "/chapter"
+            mock_api_client.append_params_to_url.side_effect = lambda u, p: f"{u}?id={p.get('id')}"
+
+            # 整本已被作者在 2025-10-05 修改过
+            album_resp = MagicMock()
+            album_resp.encoded_data = "some_b64"
+            album_resp.res_data = {
+                "id": 1220124,
+                "name": "受限多话漫画",
+                "images": [],
+                "addtime": "1759626000",  # 2025-10-05
+                "description": "",
+                "total_views": "100",
+                "total_photos": 2,
+                "likes": "50",
+                "series": [
+                    {"id": 1001, "name": "第 1 话", "sort": "1"},
+                    {"id": 1002, "name": "第 2 话", "sort": "2"},
+                ],
+                "series_id": "0",
+                "comment_total": "5",
+                "author": ["测试作者"],
+                "tags": [],
+                "works": [],
+                "actors": [],
+                "related_list": [],
+                "liked": False,
+                "is_favorite": False,
+            }
+
+            # 第 1 话发布于更早的 2024-01-01 (时间戳 1704067200)
+            chap1_resp = MagicMock()
+            chap1_resp.encoded_data = "some_b64"
+            chap1_resp.res_data = {
+                "id": 1001,
+                "name": "第 1 话",
+                "series": [],
+                "series_id": "0",
+                "tags": "",
+                "addtime": "1704067200",  # 2024-01-01
+                "images": ["00001.webp"],
+                "is_favorite": False,
+                "liked": False,
+            }
+
+            chap2_resp = MagicMock()
+            chap2_resp.encoded_data = "some_b64"
+            chap2_resp.res_data = {
+                "id": 1002,
+                "name": "第 2 话",
+                "series": [],
+                "series_id": "0",
+                "tags": "",
+                "addtime": "1759626000",  # 2025-10-05
+                "images": ["00002.webp"],
+                "is_favorite": False,
+                "liked": False,
+            }
+
+            def mock_req_api(url, *args, **kwargs):
+                if "/album" in url:
+                    return album_resp
+                elif "id=1001" in url:
+                    return chap1_resp
+                elif "id=1002" in url:
+                    return chap2_resp
+                return album_resp
+
+            mock_api_client.req_api.side_effect = mock_req_api
+
+            # 模拟网页端完全受限返回空 ("", "")
+            with patch.object(self.provider, "_make_api_client", return_value=mock_api_client), patch.object(
+                self.provider, "_try_extract_html_dates", return_value=("", "")
+            ):
+                comic = self.provider.fetch("1220124")
+                # published_at 成功利用第 1 话的 addtime 校准为 2024-01-01，而非整本漂移后的 2025-10-05
+                self.assertEqual(comic.meta.published_at, "2024-01-01")
+                self.assertEqual(comic.meta.updated_at, "2025-10-05")
         finally:
             self.html_dates_patcher.start()
             self.api_patcher.start()

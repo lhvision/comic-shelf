@@ -47,6 +47,20 @@ _FALLBACK_HTML_DOMAINS = [
 _DOMAIN_TTL_SECONDS = 6 * 60 * 60
 _SESSION_TTL_SECONDS = 7 * 24 * 60 * 60
 _PROXY_CRED_RE = re.compile(r"://([^:@\s]*):([^@\s]+)@")
+_JM_PUB_DATE_RE = re.compile(r"上架日期\s*[:：]\s*([0-9]{4}-[0-9]{2}-[0-9]{2})")
+_JM_UPD_DATE_RE = re.compile(r"更新日期\s*[:：]\s*([0-9]{4}-[0-9]{2}-[0-9]{2})")
+_JM_LOGIN_KEYWORDS = (
+    "需要登入",
+    "需要登录",
+    "登入後才能",
+    "登录后才能",
+    "請先登入",
+    "请先登录",
+    "登入看看",
+    "或是登入",
+    "消失於無盡宇宙",
+    "無效A漫連結",
+)
 
 
 def sanitize_proxy_url(text: str) -> str:
@@ -442,22 +456,48 @@ class JMProvider(ComicProvider):
                     return value
         return None
 
+    @staticmethod
+    def _extract_html_dates(html_text: str) -> tuple[str, str]:
+        """从 18comic 网页 HTML 文本中解析 (上架日期, 更新日期)。"""
+        if not html_text:
+            return "", ""
+        pub_m = _JM_PUB_DATE_RE.search(html_text)
+        upd_m = _JM_UPD_DATE_RE.search(html_text)
+        pub_date = pub_m.group(1).strip() if pub_m else ""
+        upd_date = upd_m.group(1).strip() if upd_m else ""
+        return pub_date, upd_date
+
+    @staticmethod
+    def _is_login_required_response(resp) -> bool:
+        """判定 HTTP 响应是否被 18comic 登录墙拦截或重定向。"""
+        url_str = str(getattr(resp, "url", ""))
+        text = getattr(resp, "text", "")
+        if "/login" in url_str:
+            return True
+        return any(kw in text for kw in _JM_LOGIN_KEYWORDS)
+
     def _try_extract_html_dates(self, jm_id: str) -> tuple[str, str]:
         """尽力式从 18comic 网页端提取精确的 (上架日期, 更新日期)。
 
-        若车号受限 (302/CAPTCHA/需要登入)、超时或网络失败，安全返回 ('', '')。
+        若遇到会话过期提示登录，且配置了账号密码，自动触发一次会话自愈重试；
+        若车号受限 (302/CAPTCHA)、超时或网络失败，安全降级返回 ('', '')。
         """
         try:
             client = self._make_html_client()
             resp = client.get(f"/album/{jm_id}", timeout=5)
+            url_str = str(getattr(resp, "url", ""))
             text = getattr(resp, "text", "")
-            if not text or "album_missing" in text or "需要登入" in text or "登入後才能" in text:
-                return "", ""
-            pub_m = re.search(r"上架日期\s*[:：]\s*([0-9]{4}-[0-9]{2}-[0-9]{2})", text)
-            upd_m = re.search(r"更新日期\s*[:：]\s*([0-9]{4}-[0-9]{2}-[0-9]{2})", text)
-            pub_date = pub_m.group(1).strip() if pub_m else ""
-            upd_date = upd_m.group(1).strip() if upd_m else ""
-            return pub_date, upd_date
+            if not text or "/error/" in url_str or "album_missing" in url_str or "album_missing" in text or self._is_login_required_response(resp):
+                if self._is_login_required_response(resp) and JM_USERNAME and JM_PASSWORD:
+                    logger.info("检测到车号 JM%s 网页端受限或需登录，尝试刷新 HTML 会话重试探测日期...", jm_id)
+                    self._clear_session_cache()
+                    client = self._make_html_client(force_refresh_session=True)
+                    resp = client.get(f"/album/{jm_id}", timeout=5)
+                    if self._is_login_required_response(resp) or not getattr(resp, "text", ""):
+                        return "", ""
+                else:
+                    return "", ""
+            return self._extract_html_dates(getattr(resp, "text", ""))
         except Exception:
             return "", ""
 
@@ -520,20 +560,6 @@ class JMProvider(ComicProvider):
             else:
                 raise
 
-        # 尽力式从网页端提取真实的 (上架日期, 更新日期)，弥补禁漫 API 在漫画修改后 addtime 漂移为更新日期的缺陷
-        html_pub, html_upd = self._try_extract_html_dates(jm_id)
-        if html_pub:
-            album_pub_date = html_pub
-
-        if album_pub_date:
-            detail.pub_date = album_pub_date
-            if not (existing and existing.meta.updated_at):
-                detail.update_date = album_pub_date
-        if html_upd:
-            detail.update_date = html_upd
-        if album_page_count:
-            detail.page_count = album_page_count
-
         album_ms = int((time.perf_counter() - t_album_req) * 1000)
         episodes_cnt = len(detail.episode_list or [])
         log_import_diag("JM-API-ALBUM-DETAIL", f"jm_id={jm_id} duration_ms={album_ms} episodes={episodes_cnt} page_count={getattr(detail, 'page_count', 0)}")
@@ -560,6 +586,30 @@ class JMProvider(ComicProvider):
             photo_obj = client.get_photo_detail(photo_id, fetch_album=False)
             photo_obj.from_album = detail
             return photo_obj, str(getattr(photo_obj, "pub_date", "") or "")
+
+        # 尽力式从网页端提取真实的 (上架日期, 更新日期)，弥补禁漫 API 在漫画修改后 addtime 漂移为更新日期的缺陷
+        api_album_date = album_pub_date
+        html_pub, html_upd = self._try_extract_html_dates(jm_id)
+        if html_pub:
+            album_pub_date = html_pub
+        else:
+            # 网页受限时，若缺少 HTML 首发日期，尝试从首话 addtime 辅助校准首发时间（首话创建时间往往先于整本被修改时间）
+            try:
+                first_pid = str(detail.episode_list[0][0]) if episodes_cnt > 0 else jm_id
+                _, first_ep_date = _get_photo_detail(api_client, first_pid)
+                if first_ep_date and (not album_pub_date or first_ep_date < album_pub_date):
+                    album_pub_date = first_ep_date
+            except Exception:
+                pass
+
+        if album_pub_date:
+            detail.pub_date = album_pub_date
+            if not (existing and existing.meta.updated_at):
+                detail.update_date = max(album_pub_date, api_album_date)
+        if html_upd:
+            detail.update_date = html_upd
+        if album_page_count:
+            detail.page_count = album_page_count
 
         def fetch_photo_api(pid: str):
             nonlocal api_client
@@ -612,32 +662,18 @@ class JMProvider(ComicProvider):
         t_html_start = time.perf_counter()
         client = self._make_html_client()
         log_import_diag("JM-HTML-CLIENT-READY", f"jm_id={jm_id} client_init_ms={int((time.perf_counter()-t_html_start)*1000)}")
-
-        def _is_restricted(resp) -> bool:
-            url_str = str(getattr(resp, "url", ""))
-            text = getattr(resp, "text", "")
-            return (
-                "/login" in url_str
-                or "需要登入" in text
-                or "需要登录" in text
-                or "登入後才能" in text
-                or "登录后才能" in text
-                or "請先登入" in text
-                or "请先登录" in text
-            )
-
         t_req = time.perf_counter()
         album_resp = client.get(f"/album/{jm_id}")
         album_req_ms = int((time.perf_counter() - t_req) * 1000)
         log_import_diag("JM-HTML-ALBUM-RESP", f"jm_id={jm_id} duration_ms={album_req_ms} status={getattr(album_resp, 'status_code', None)} len={len(getattr(album_resp, 'content', b''))}")
 
-        if _is_restricted(album_resp):
+        if self._is_login_required_response(album_resp):
             if JM_USERNAME and JM_PASSWORD:
                 logger.info("检测到受限车号 JM%s，尝试 HTML 会话自愈刷新重登并重试...", jm_id)
                 self._clear_session_cache()
                 client = self._make_html_client(force_refresh_session=True)
                 album_resp = client.get(f"/album/{jm_id}")
-                if _is_restricted(album_resp):
+                if self._is_login_required_response(album_resp):
                     raise ValueError(f"禁漫车号 JM{jm_id} 受权限保护（需登录查看），当前账号无权访问或登录会话已失效")
             else:
                 raise ValueError(
@@ -658,18 +694,17 @@ class JMProvider(ComicProvider):
                 raise ValueError(f"禁漫车号 JM{jm_id} 页面解析失败（可能不存在或已被删除）") from exc
         uploader = self._parse_uploader(album_resp.text)
         if not getattr(detail, "pub_date", "") or not getattr(detail, "update_date", ""):
-            pub_m = re.search(r"上架日期\s*[:：]\s*([0-9]{4}-[0-9]{2}-[0-9]{2})", album_resp.text)
-            upd_m = re.search(r"更新日期\s*[:：]\s*([0-9]{4}-[0-9]{2}-[0-9]{2})", album_resp.text)
-            if pub_m and not getattr(detail, "pub_date", ""):
-                detail.pub_date = pub_m.group(1).strip()
-            if upd_m and not getattr(detail, "update_date", ""):
-                detail.update_date = upd_m.group(1).strip()
+            h_pub, h_upd = self._extract_html_dates(album_resp.text)
+            if h_pub and not getattr(detail, "pub_date", ""):
+                detail.pub_date = h_pub
+            if h_upd and not getattr(detail, "update_date", ""):
+                detail.update_date = h_upd
 
         def fetch_photo_html(pid: str):
             nonlocal client
             t_ep = time.perf_counter()
             photo_resp = client.get(f"/photo/{pid}")
-            if _is_restricted(photo_resp):
+            if self._is_login_required_response(photo_resp):
                 if JM_USERNAME and JM_PASSWORD:
                     logger.info("检测到单话 %s 受限，尝试 HTML 会话重登并重试...", pid)
                     self._clear_session_cache()
@@ -679,7 +714,7 @@ class JMProvider(ComicProvider):
                     raise ValueError(
                         f"禁漫话数 {pid} 受权限保护（需登录查看），请在 .env 中配置 JM_USERNAME 与 JM_PASSWORD 后重试"
                     )
-                if _is_restricted(photo_resp):
+                if self._is_login_required_response(photo_resp):
                     raise ValueError(f"禁漫话数 {pid} 需登录后才能查看，当前账号无权访问或登录会话已失效")
             photo = JmcomicText.analyse_jm_photo_html(photo_resp.text)
             photo.from_album = detail
@@ -706,7 +741,7 @@ class JMProvider(ComicProvider):
         source_url: str = "",
     ) -> FetchedComic:
         episodes = [
-            (ep[0], (ep[2] if len(ep) > 2 else "").strip())
+            (str(ep[0]), (ep[2] if len(ep) > 2 else "").strip())
             for ep in (detail.episode_list or [])
         ]
         if not episodes:

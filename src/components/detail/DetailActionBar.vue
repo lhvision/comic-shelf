@@ -23,6 +23,7 @@ const props = withDefaults(
     lastReadLabel?: string
     cachePercent: number
     caching: boolean
+    refreshing?: boolean
     cacheComplete: boolean
     cachedPages: number
     pageCount: number
@@ -30,7 +31,7 @@ const props = withDefaults(
     source?: string
     customPages?: boolean
   }>(),
-  { canWrite: true, source: 'jm', customPages: false },
+  { canWrite: true, source: 'jm', customPages: false, refreshing: false },
 )
 
 const emit = defineEmits<{
@@ -169,7 +170,7 @@ function prefetchReader() {
         v-if="canWrite && source !== 'local'"
         variant="ghost"
         type="button"
-        :disabled="caching || cacheComplete || customPages"
+        :disabled="caching || cacheComplete || customPages || refreshing"
         :title="
           customPages
             ? '画页已由馆长重新装订保护，禁止远端自动覆盖'
@@ -196,10 +197,16 @@ function prefetchReader() {
         v-if="canWrite && source !== 'local' && !customPages"
         variant="ghost"
         type="button"
-        title="从远端重新同步作品章节与最新元数据"
+        :loading="refreshing"
+        :disabled="refreshing || caching"
+        :title="
+          refreshing
+            ? '正在从远端重新同步作品章节与最新元数据…'
+            : '从远端重新同步作品章节与最新元数据'
+        "
         @click="emit('refreshMetadata')"
       >
-        刷新资料
+        {{ refreshing ? '刷新中…' : '刷新资料' }}
       </AppButton>
 
       <AppDropdown

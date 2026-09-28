@@ -101,6 +101,7 @@ const {
 syncJobStateDelegate = syncJobState
 
 const {
+  refreshing,
   editOpen,
   appendOpen,
   replaceOpen,
@@ -173,6 +174,7 @@ onMounted(() => {
         :last-read-label="lastReadLabel"
         :cache-percent="cachePercent"
         :caching="caching"
+        :refreshing="refreshing"
         :cache-complete="detail.cache_complete"
         :cached-pages="detail.cached_pages"
         :page-count="detail.meta.page_count"

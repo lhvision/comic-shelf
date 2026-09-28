@@ -323,15 +323,16 @@ JmImageTool.decode_and_save(num, source_image, save_path)
 
 ### 4.13 上架与更新日期时序偏序不变式（ADR 0025 / PITFALLS #151）
 
-- **双轨尽力式探测（Best-Effort Dual-Track Retrieval）**：
+- **双轨尽力式探测与首话辅助校准（Best-Effort Dual-Track Retrieval & Episode Calibrated Fallback）**：
   - 禁漫官方 App REST API 仅序列化单个 `addtime` 时间戳，在作品修整后直接覆写为更新日期，导致 `published_at`（上架日期）向后漂移失真；
-  - 核心抓取以移动端 REST API 为核心（`_fetch_via_api`）快速解析目录，同时向网页端发起 5 秒超时的尽力式轻量探测（`_try_extract_html_dates`），成功提取时采纳 HTML 保留的真实上架与更新日期；受限（CAPTCHA/需要登录/302）或网络故障时平滑降级使用 API `addtime` 兜底。
+  - 核心抓取以移动端 REST API 为核心（`_fetch_via_api`）快速解析目录，同时向网页端发起 5 秒超时的尽力式轻量探测（`_try_extract_html_dates`，单源复用静态纯函数 `_extract_html_dates` 预编译正则）；遇登录受限且配置账号时自动触发一次会话自愈重试；若网页端因强风控/验证码确实无法读取 HTML 双日期，API 模式自动回溯已拉取的首话（Chapter 1）`addtime` 作为早期首发时间参考（`min(album_addtime, chapter1_addtime)`），攻克受限作品首发日期漂移痛点。
 - **时序偏序不变式（Partial Ordering Invariant）**：
   - `published_at` 单调不后移：`pub_date = min(existing, pub_date)`（过滤历史 `"0"` 哨兵值），首发时间永不因源站修整而前推到未来；
   - `updated_at` 单调不前移：`update_date = max(existing, update_date, latest_ep_date)`（过滤历史 `"0"` 哨兵值），更新时间永不发生时序倒退；
   - 偏序强约束：全库任何阶段、任何时刻必须满足 `published_at <= updated_at`。
 - **惰性自愈与双层防线（Lazy Healing & Defense-in-Depth）**：
-  - 不维护额外的脱机修复脚本；在馆长点击详情页「刷新资料」或后台定时追更发现新章节时，由 Provider 组装层（`_assemble_fetched_comic`）与 Storage 存储层（`save_auto_update`）双层独立捍卫不变式，实现存量异常无感自愈。
+  - 不维护额外的脱机修复脚本；在馆长点击详情页「刷新资料」或后台定时追更发现新章节时，由 Provider 组装层（`_assemble_fetched_comic`）与 Storage 存储层（`save_auto_update`）双层独立捍卫不变式，实现存量异常无感自愈；
+  - 前端详情页「刷新资料」按钮通过 Composable 维护 `refreshing` 状态，具备 Loading 转圈与后台缓存互斥禁用，并细粒度感知日期变动（「已同步最新日期与版本」）。
 
 ## 5. 后端文件地图
 

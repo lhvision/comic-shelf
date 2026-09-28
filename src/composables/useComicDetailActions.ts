@@ -82,6 +82,7 @@ export function useComicDetailActions(options: UseComicDetailActionsOptions) {
   const editOpen = ref(false)
   const appendOpen = ref(false)
   const replaceOpen = ref(false)
+  const refreshing = ref(false)
 
   function restoreScrollPosition() {
     const key = `${source.value}/${sourceId.value}`
@@ -111,9 +112,13 @@ export function useComicDetailActions(options: UseComicDetailActionsOptions) {
   }
 
   async function refreshMetadata() {
+    if (refreshing.value) return
+    refreshing.value = true
     try {
       const prevPageCount = detail.value?.meta.page_count ?? 0
       const prevChapterCount = chapters.value?.length ?? 0
+      const prevPubDate = detail.value?.meta.published_at || ''
+      const prevUpdDate = detail.value?.meta.updated_at || ''
       const result = await store.importComic({
         id: sourceId.value,
         source: source.value,
@@ -123,6 +128,8 @@ export function useComicDetailActions(options: UseComicDetailActionsOptions) {
       await load()
       const nextPageCount = result.meta.page_count ?? 0
       const nextChapterCount = result.meta.chapters?.length ?? 0
+      const nextPubDate = result.meta.published_at || ''
+      const nextUpdDate = result.meta.updated_at || ''
       if (nextPageCount > prevPageCount || nextChapterCount > prevChapterCount) {
         const newChaps = nextChapterCount - prevChapterCount
         const newPages = nextPageCount - prevPageCount
@@ -131,11 +138,18 @@ export function useComicDetailActions(options: UseComicDetailActionsOptions) {
         } else {
           toast(`已增量更新：新增 ${newPages} 页，旧缓存已保留`)
         }
+      } else if (
+        (nextPubDate && nextPubDate !== prevPubDate) ||
+        (nextUpdDate && nextUpdDate !== prevUpdDate)
+      ) {
+        toast('资料已刷新，已同步最新日期与版本')
       } else {
         toast('资料已刷新，当前已是最新版本')
       }
     } catch (e) {
       toast(e instanceof Error ? e.message : String(e), 'error')
+    } finally {
+      refreshing.value = false
     }
   }
 
@@ -157,6 +171,7 @@ export function useComicDetailActions(options: UseComicDetailActionsOptions) {
   }
 
   return {
+    refreshing,
     editOpen,
     appendOpen,
     replaceOpen,
