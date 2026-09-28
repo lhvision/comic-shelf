@@ -275,7 +275,7 @@ export const DEFAULT_PROVIDERS: ProviderInfo[] = [
     key: 'jm',
     label: '禁漫天堂',
     short_label: '禁漫',
-    id_pattern: '^(?:JM)?\\d+$',
+    id_pattern: '^(?:JM)?\\d{3,10}$',
     example: '523607',
     description: '禁漫天堂 (18comic)',
   },

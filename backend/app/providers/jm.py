@@ -387,7 +387,7 @@ class JMProvider(ComicProvider):
     def normalize_id(self, raw: str) -> str:
         m = re.fullmatch(self.id_pattern, raw.strip(), re.IGNORECASE)
         if m is None:
-            raise ValueError("禁漫车号格式不正确，示例：JM523607 或 523607")
+            raise ValueError("禁漫车号格式不正确（需 3~10 位数字），示例：JM523607 或 523607")
         return m.group(1)
 
     def _cached_html_domain(self) -> str | None:
