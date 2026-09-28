@@ -111,14 +111,18 @@ export function useComicDetailActions(options: UseComicDetailActionsOptions) {
     }
   }
 
+  function normalizeDate(d?: string): string {
+    return d && d !== '0' ? d : ''
+  }
+
   async function refreshMetadata() {
     if (refreshing.value) return
     refreshing.value = true
     try {
       const prevPageCount = detail.value?.meta.page_count ?? 0
       const prevChapterCount = chapters.value?.length ?? 0
-      const prevPubDate = detail.value?.meta.published_at || ''
-      const prevUpdDate = detail.value?.meta.updated_at || ''
+      const prevPubDate = normalizeDate(detail.value?.meta.published_at)
+      const prevUpdDate = normalizeDate(detail.value?.meta.updated_at)
       const result = await store.importComic({
         id: sourceId.value,
         source: source.value,
@@ -128,8 +132,8 @@ export function useComicDetailActions(options: UseComicDetailActionsOptions) {
       await load()
       const nextPageCount = result.meta.page_count ?? 0
       const nextChapterCount = result.meta.chapters?.length ?? 0
-      const nextPubDate = result.meta.published_at || ''
-      const nextUpdDate = result.meta.updated_at || ''
+      const nextPubDate = normalizeDate(result.meta.published_at)
+      const nextUpdDate = normalizeDate(result.meta.updated_at)
       if (nextPageCount > prevPageCount || nextChapterCount > prevChapterCount) {
         const newChaps = nextChapterCount - prevChapterCount
         const newPages = nextPageCount - prevPageCount

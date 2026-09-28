@@ -468,7 +468,7 @@ class JMProvider(ComicProvider):
         return pub_date, upd_date
 
     @staticmethod
-    def _is_login_required_response(resp) -> bool:
+    def _is_login_required_response(resp: Any) -> bool:
         """判定 HTTP 响应是否被 18comic 登录墙拦截或重定向。"""
         url_str = str(getattr(resp, "url", ""))
         text = getattr(resp, "text", "")
@@ -564,7 +564,11 @@ class JMProvider(ComicProvider):
         episodes_cnt = len(detail.episode_list or [])
         log_import_diag("JM-API-ALBUM-DETAIL", f"jm_id={jm_id} duration_ms={album_ms} episodes={episodes_cnt} page_count={getattr(detail, 'page_count', 0)}")
 
+        photo_cache: dict[str, tuple[Any, str]] = {}
+
         def _get_photo_detail(client, photo_id: str) -> tuple[Any, str]:
+            if photo_id in photo_cache:
+                return photo_cache[photo_id]
             try:
                 if hasattr(client, "API_CHAPTER") and callable(getattr(client, "req_api", None)):
                     url = client.append_params_to_url(client.API_CHAPTER, {"id": photo_id})
@@ -577,7 +581,9 @@ class JMProvider(ComicProvider):
                         photo_obj.from_album = detail
                         photo_obj.scramble_id = str(client.get_scramble_id(photo_id, getattr(detail, "album_id", None)) or "0")
                         ep_date = _format_addtime(p_data.get("addtime"))
-                        return photo_obj, ep_date
+                        res = (photo_obj, ep_date)
+                        photo_cache[photo_id] = res
+                        return res
             except MissingAlbumPhotoException:
                 raise
             except Exception:
@@ -585,7 +591,9 @@ class JMProvider(ComicProvider):
 
             photo_obj = client.get_photo_detail(photo_id, fetch_album=False)
             photo_obj.from_album = detail
-            return photo_obj, str(getattr(photo_obj, "pub_date", "") or "")
+            res = (photo_obj, str(getattr(photo_obj, "pub_date", "") or ""))
+            photo_cache[photo_id] = res
+            return res
 
         # 尽力式从网页端提取真实的 (上架日期, 更新日期)，弥补禁漫 API 在漫画修改后 addtime 漂移为更新日期的缺陷
         api_album_date = album_pub_date
@@ -626,6 +634,7 @@ class JMProvider(ComicProvider):
                 if JM_USERNAME and JM_PASSWORD:
                     logger.info("检测到单话 %s 在 API 端受限或缺失，尝试自愈刷新重登...", pid)
                     self._clear_session_cache()
+                    photo_cache.pop(pid, None)
                     api_client = self._make_api_client(force_refresh_session=True)
                     try:
                         photo, ep_date = _get_photo_detail(api_client, pid)

@@ -1169,7 +1169,9 @@ class TestJMProvider(unittest.TestCase):
                 "liked": False,
             }
 
+            req_urls: list[str] = []
             def mock_req_api(url, *args, **kwargs):
+                req_urls.append(url)
                 if "/album" in url:
                     return album_resp
                 elif "id=1001" in url:
@@ -1188,6 +1190,9 @@ class TestJMProvider(unittest.TestCase):
                 # published_at 成功利用第 1 话的 addtime 校准为 2024-01-01，而非整本漂移后的 2025-10-05
                 self.assertEqual(comic.meta.published_at, "2024-01-01")
                 self.assertEqual(comic.meta.updated_at, "2025-10-05")
+                # 验证首话在日期校准时获取后，被局部 photo_cache 复用，id=1001 仅发起了 1 次网络请求
+                chap1_requests = [u for u in req_urls if "id=1001" in u]
+                self.assertEqual(len(chap1_requests), 1)
         finally:
             self.html_dates_patcher.start()
             self.api_patcher.start()
