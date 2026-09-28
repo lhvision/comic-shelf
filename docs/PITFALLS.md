@@ -900,6 +900,12 @@
   4. **惰性自愈自理**：依托增量收录、定时追更或用户点击详情页「刷新资料」时自动触发惰性自愈（Lazy Healing），由核心抓取流水线无感修正已有日期，无需额外维护脱机修复脚本；
   5. **详情页交互感知与防重入**：详情页「刷新资料」按钮必须通过 Composable 维护 `refreshing` 状态，绑定 `:loading` 并与后台缓存互斥禁用，文案动态切换为「刷新中…」；刷新完成后比对新旧日期，变动时精准反馈「已同步最新日期与版本」，杜绝静默假死感。
 
+### 152. PWA 安装事件阻止与控制台标准审计日志误判：`beforeinstallpromptevent.preventDefault()` 与 `<meta name="mobile-web-app-capable">`
+
+- **症状**：前端启动或 DevTools 控制台输出 `<meta name="apple-mobile-web-app-capable" content="yes"> is deprecated. Please include <meta name="mobile-web-app-capable" content="yes">` 警告，以及 `Banner not shown: beforeinstallpromptevent.preventDefault() called. The page must call beforeinstallpromptevent.prompt() to show the banner.` 信息提示，易被误判为 PWA 运行故障。
+- **根因**：① 现代 Chromium 建议声明标准属性 `<meta name="mobile-web-app-capable" content="yes" />`；② 纸间在 `usePwaInstall.ts` 中依据 ADR 0005 拦截了 `beforeinstallprompt` 浏览器默认横幅以支持应用内非侵入式安装 UI，Chromium 依照规范打印确认该拦截已生效。
+- **红线**：严禁误删 `e.preventDefault()` 破坏无侵入安装设计；入口 `index.html` 必须双向声明 `<meta name="mobile-web-app-capable" content="yes" />` 与 `<meta name="apple-mobile-web-app-capable" content="yes" />`，兼顾标准 Chromium 消除黄色警告与 iOS Safari 独立视口兼容性。
+
 ---
 
 ## 🚦 交付门禁
