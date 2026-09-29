@@ -470,9 +470,10 @@ export const useLibraryStore = defineStore('library', () => {
     userId?: string,
     bypassCache = false,
   ) {
+    const effectiveSource = params ? params.source : currentParams.value.source
     await Promise.all([
       loadItems(silent, false, params, userId),
-      loadFacets(params?.source, bypassCache),
+      loadFacets(effectiveSource, bypassCache),
     ])
     if (!isOffline.value) {
       await refreshLiveCache()

@@ -904,7 +904,38 @@
 
 - **症状**：前端启动或 DevTools 控制台输出 `<meta name="apple-mobile-web-app-capable" content="yes"> is deprecated. Please include <meta name="mobile-web-app-capable" content="yes">` 警告，以及 `Banner not shown: beforeinstallpromptevent.preventDefault() called. The page must call beforeinstallpromptevent.prompt() to show the banner.` 信息提示，易被误判为 PWA 运行故障。
 - **根因**：① 现代 Chromium 建议声明标准属性 `<meta name="mobile-web-app-capable" content="yes" />`；② 纸间在 `usePwaInstall.ts` 中依据 ADR 0005 拦截了 `beforeinstallprompt` 浏览器默认横幅以支持应用内非侵入式安装 UI，Chromium 依照规范打印确认该拦截已生效。
-- **红线**：严禁误删 `e.preventDefault()` 破坏无侵入安装设计；入口 `index.html` 必须双向声明 `<meta name="mobile-web-app-capable" content="yes" />` 与 `<meta name="apple-mobile-web-app-capable" content="yes" />`，兼顾标准 Chromium 消除黄色警告与 iOS Safari 独立视口兼容性。
+
+### 153. 拷贝漫画（CopyManga）接入避坑：DevTools 反调试死循环、Django REST 请求头陷阱与 CDN 域名隔离
+
+- **症状**：
+  1. 浏览器人工打开或无头浏览器尝试访问拷贝漫画页面时，控制台疯狂陷入 `debugger` 断点，单步跳出超过 50ms 页面立即被重定向至 `about:blank` 无法分析；
+  2. 后端直接请求 `/comicdetail/{slug}/chapters` 接口时，返回一整张完整的包含页头页尾的 HTML 页面，导致 JSON 解析器抛出 `json.decoder.JSONDecodeError` 崩溃；
+  3. 画页下载时如果白名单限制为 `.mangacopy.com`，所有画页均被当作非法域名阻断拦截，下载成功率为 0。
+- **根因**：
+  1. 拷贝漫画前端网页部署了高频 `setInterval(loop, 1)` 定时器动态注入 `debugger;`，利用时间差检测开发者控制台是否开启并暴力阻断逆向；
+  2. 上游章节列表接口基于 Django REST Framework 构建，未携带专属 AJAX 头时会触发 DRF 的浏览型 API（Browsable API）模板回退渲染为 HTML 网页，而非直接下发纯 JSON；
+  3. 拷贝漫画网站与原画存储实行完全的物理域名隔离：页面与 API 交互在 `mangacopy.com`，所有漫画画页实际托管在独立高防对象存储 CDN 集群 `*.mangafunb.fun`（如 `sx.mangafunb.fun`）。
+- **红线**：
+  1. **TLS 指纹模拟脱机解析**：严禁在后端拉起浏览器或执行前端 JavaScript 沙箱；统一使用 `curl_cffi` 模拟 Chrome 124 握手指纹（JA3/JA4），走纯原生 HTTP 请求提取 HTML 中的 `var ccz`、`dnt`、`var cct` 和 `contentKey` 密钥参数，天然绕过前端一切反调试；
+  2. **DRF 契约请求头规范**：请求 `/comicdetail/{slug}/chapters` 时必须显式声明请求头 `Accept: application/json, text/plain, */*` 与 `X-Requested-With: XMLHttpRequest`，且必须携带 `dnts: <dnt>` 盐值头，强制上游返回纯 JSON 格式的加密数据；
+  3. **AES-128-CBC 动态 IV 解包**：解密密文由前 16 字节 IV 与后续 Hex 密文拼合而成，必须按 `iv = cipher[:16].encode("utf-8")` 与 `ciphertext = bytes.fromhex(cipher[16:])` 解析，采用 PKCS7 反填充；严禁使用硬编码 IV；
+  4. **CDN 动态放行与底层 SSRF 双重防护**：严禁将画页 CDN 域名硬编码仅限主站域名；必须以动态解密的 CDN 结果为准，并在传输层严格执行通用 SSRF 拦截（阻断私网 IP、回环地址、多播、直接 IP 访问与 `.nip.io` / `.sslip.io` / `.local` DNS 重绑定利用）并结合 Magic Bytes 二进制魔数校验拦截伪装 HTML 报错页。
+
+### 154. 拷贝漫画（CopyManga）元数据与多分组避坑：SEO 推广词误读、上架日期缺失与单行本重复卷膨胀
+
+- **症状**：
+  1. 漫画收录后被错误标记上海贼王、FGO、进击的巨人等无关热搜词，导致分类筛选和标签分布严重失真；
+  2. 漫画详情页显示的上架日期与最后更新日期强行相同，造成日期语义混淆；
+  3. 一本 84 话的连载漫画（如《想要成为影之实力者》），收录后章节数膨胀到 108 话、4875 页，包含 15 卷与连载 100% 重复的单行本，导致下载流量与本地磁盘空间成倍浪费。
+- **根因**：
+  1. 页面 `<meta itemprop="keywords">` 存的是站点层面的全站引流推广热词，而非作品自身题材；作品真实题材存放在 `.comicParticulars-tag a` 中；
+  2. 拷贝漫画网站本身没有上架日期字段，只有「最後更新」日期。若将 `updated_at` 硬塞给 `published_at` 会产生数据失真；
+  3. 拷贝漫画 API 的 `groups` 字典中同时提供了 `default`（连载正文）与 `tankobon`（单行本）。单行本是已出版卷的打包翻印，内容与正文 100% 重叠。
+- **红线**：
+  1. **题材与元数据精准提取**：废弃 `keywords` meta 标签；精准从 `.comicParticulars-tag a` 提取真实题材（如 `#轻小说` `#奇幻`），热度映射至 `views`，上架日期 `published_at` 明确留空；
+  2. **默认仅收录连载正文（`default` 分组）**：初次收录时仅选取连载正文，章节与画页数精准减半；
+  3. **单本详情页设置下沉**：不污染主收录界面，在详情页「更多 ⋯」菜单提供「章节分组管理」，支持按需勾选单行本等衍生分组；取消勾选已有分组时，必须弹出危险二次确认并物理彻底删除对应画页目录释放磁盘；
+  4. **自动追更范围继承**：自动追更巡检服务严格遵循本地保存的 `selected_groups`，严禁在后台巡检时越权塞入未勾选的衍生分组。
 
 ---
 

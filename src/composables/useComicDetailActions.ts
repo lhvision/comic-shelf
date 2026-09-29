@@ -7,7 +7,7 @@
  * 承载单本漫画的作品概览、章节目录切片、画页重订与元数据维护。
  */
 
-import { nextTick, ref, type Ref } from 'vue'
+import { computed, nextTick, ref, type Ref } from 'vue'
 import { onBeforeRouteLeave, useRouter } from 'vue-router'
 import { useLibraryStore } from '@/stores/library'
 import { useToast } from '@/composables/useToast'
@@ -20,11 +20,11 @@ import {
   getDetailScrollPosition,
   setDetailScrollPosition,
 } from '@/composables/useChapterNavigation'
-import type { Chapter, ComicDetail } from '@/types'
+import type { Chapter, ComicDetail, ComicGroupSummary, ComicSource } from '@/types'
 
 export interface UseComicDetailActionsOptions {
   /** 渠道来源标识 */
-  source: Ref<string>
+  source: Ref<ComicSource>
   /** 漫画车号 ID */
   sourceId: Ref<string>
   /** 漫画详情数据引用 */
@@ -82,7 +82,22 @@ export function useComicDetailActions(options: UseComicDetailActionsOptions) {
   const editOpen = ref(false)
   const appendOpen = ref(false)
   const replaceOpen = ref(false)
+  const groupsOpen = ref(false)
   const refreshing = ref(false)
+
+  const availableGroups = computed<ComicGroupSummary[]>(() => {
+    const raw = detail.value?.meta?.raw
+    return (
+      raw && Array.isArray(raw.available_groups) ? raw.available_groups : []
+    ) as ComicGroupSummary[]
+  })
+
+  const selectedGroups = computed<string[]>(() => {
+    const raw = detail.value?.meta?.raw
+    return (raw && Array.isArray(raw.selected_groups) ? raw.selected_groups : []) as string[]
+  })
+
+  const hasMultipleGroups = computed(() => availableGroups.value.length > 1)
 
   function restoreScrollPosition() {
     const key = `${source.value}/${sourceId.value}`
@@ -179,6 +194,10 @@ export function useComicDetailActions(options: UseComicDetailActionsOptions) {
     editOpen,
     appendOpen,
     replaceOpen,
+    groupsOpen,
+    hasMultipleGroups,
+    availableGroups,
+    selectedGroups,
     restoreScrollPosition,
     removeComic,
     refreshMetadata,

@@ -30,7 +30,7 @@ describe('useUploadQueue', () => {
       (_, i) => new File(['dummy'], `frame_${i + 1}.webp`, { type: 'image/webp' }),
     )
 
-    const mockDetail = {
+    const mockDetail: ComicDetail = {
       meta: {
         source: 'local',
         source_id: 'test',

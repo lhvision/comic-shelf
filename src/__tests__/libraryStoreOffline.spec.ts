@@ -334,4 +334,27 @@ describe('useLibraryStore offline resilience', () => {
     expect(store.items[0]?.source_id).toBe('pub-1')
     expect(store.items.some((i) => i.hidden_from_guest)).toBe(false)
   })
+
+  it('preserves source query in loadFacets when recovering from offline with store.load(true)', async () => {
+    const store = useLibraryStore()
+    const facetsSpy = vi.spyOn(api, 'libraryFacets').mockResolvedValue({
+      stats: { total_books: 1, total_pages: 10, cached_pages: 10 },
+      top_tags: [],
+    })
+    vi.spyOn(api, 'library').mockResolvedValue({
+      items: [],
+      total: 0,
+      page: 1,
+      page_size: 20,
+      has_more: false,
+    })
+
+    // 1. Initial load with specific source (e.g. copymanga)
+    await store.load(false, { source: 'copymanga' })
+    expect(facetsSpy).toHaveBeenLastCalledWith('copymanga', false)
+
+    // 2. Offline recovery triggers store.load(true) without params
+    await store.load(true)
+    expect(facetsSpy).toHaveBeenLastCalledWith('copymanga', false)
+  })
 })

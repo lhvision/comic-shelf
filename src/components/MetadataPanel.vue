@@ -44,9 +44,17 @@ const fieldRows = computed(() => {
     { label: '更新日期', value: props.meta.updated_at || '—', mono: true },
   ]
   if (props.meta.source !== 'local') {
+    let statValue = '—'
+    if (props.meta.views && props.meta.likes) {
+      statValue = `${props.meta.views} 次观看 · ${props.meta.likes} 点击喜欢`
+    } else if (props.meta.views) {
+      statValue = `${props.meta.views} 次观看 / 热度`
+    } else if (props.meta.likes) {
+      statValue = `${props.meta.likes} 点击喜欢`
+    }
     rows.push({
-      label: '观看 / 喜欢',
-      value: `${props.meta.views || '—'} 次观看 · ${props.meta.likes || '—'} 点击喜欢`,
+      label: '热度 / 喜欢',
+      value: statValue,
     })
   }
   if (props.meta.custom_pages) {

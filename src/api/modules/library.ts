@@ -189,3 +189,23 @@ export async function updateMetadata(
     body: JSON.stringify(payload),
   })
 }
+
+/**
+ * 更新漫画选定的章节分组（如开启或移除单行本分组，并清除该作品详情缓存）
+ *
+ * @param source 图源平台标识
+ * @param sourceId 作品 ID
+ * @param selectedGroups 目标分组 Key 列表
+ * @returns 更新后的完整作品详情
+ */
+export async function updateComicGroups(
+  source: string,
+  sourceId: string,
+  selectedGroups: string[],
+): Promise<ComicDetail> {
+  memoizedDetail.delete(source, sourceId)
+  return request<ComicDetail>(`/library/${source}/${sourceId}/groups`, {
+    method: 'POST',
+    body: JSON.stringify({ selected_groups: selectedGroups }),
+  })
+}

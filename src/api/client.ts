@@ -67,6 +67,8 @@ export const api = {
   setFavorite: library.setFavorite,
   /** 更新作品自定义元数据 */
   updateMetadata: library.updateMetadata,
+  /** 更新漫画章节分组选择（追加/移除扩展分组） */
+  updateComicGroups: library.updateComicGroups,
 
   // === 3. 离线缓存与并发管理 (Cache) ===
   /** 触发指定作品的全本后台离线缓存下载 */

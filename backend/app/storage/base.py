@@ -450,6 +450,7 @@ class ComicStoreBase:
         refresh: bool = False,
         *,
         backup_dir: Path | None = None,
+        reset_custom_pages: bool = False,
     ) -> ComicMeta:
         """Save metadata and page descriptors under the comic lock.
 
@@ -464,7 +465,7 @@ class ComicStoreBase:
             existing = existing_bundle.meta if existing_bundle is not None else None
 
             if refresh and existing is not None:
-                if existing.custom_pages:
+                if existing.custom_pages and not reset_custom_pages:
                     meta.custom_pages = True
                     meta.pages = existing.pages
                     meta.chapters = existing.chapters

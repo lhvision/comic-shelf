@@ -15,14 +15,14 @@ import { useWebMCP } from '@vueuse/core'
 import type { Router } from 'vue-router'
 import type { useDiscovery } from '@/composables/useDiscovery'
 import { useAuth } from '@/composables/useAuth'
-import type { DiscoveryFeed, DiscoveryItem, DiscoveryTimeframe } from '@/types'
+import type { DiscoveryFeed, DiscoveryItem, DiscoverySource, DiscoveryTimeframe } from '@/types'
 
 /**
  * `useDiscoveryWebMCP` 依赖项契约
  */
 export interface UseDiscoveryWebMCPOptions {
   /** 当前选中的图源模块 */
-  source?: Ref<'jm' | 'picacg'>
+  source?: Ref<DiscoverySource>
   /** 当前选中的时间跨度 */
   timeframe: Ref<DiscoveryTimeframe>
   /** 排行榜数据 Ref */
@@ -100,7 +100,7 @@ export function useDiscoveryWebMCP(options: UseDiscoveryWebMCPOptions): UseDisco
         limit,
         category,
       } = (args ?? {}) as {
-        source?: 'jm' | 'picacg'
+        source?: DiscoverySource
         timeframe?: DiscoveryTimeframe
         refresh?: boolean
         limit?: number

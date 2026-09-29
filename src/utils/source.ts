@@ -8,6 +8,8 @@
  * 3. 支撑后续无缝接入新图源站点（如 EH / NH / 拷贝等）的统一扩展契约。
  */
 
+import type { ComicSource } from '@/types'
+
 export interface SourceMeta {
   /** 图源唯一键名，如 'jm'、'picacg'、'local' */
   key: string
@@ -21,6 +23,16 @@ export interface SourceMeta {
   idLabel: string
   /** 原站链接构造函数（可选） */
   externalUrl?: (sourceId: string) => string
+}
+
+/** 所有已注册的漫画源标识列表 */
+export const COMIC_SOURCES: readonly ComicSource[] = ['jm', 'picacg', 'local', 'copymanga'] as const
+
+/**
+ * 判定传入的值是否为受系统支持的有效 ComicSource
+ */
+export function isComicSource(val: unknown): val is ComicSource {
+  return typeof val === 'string' && (COMIC_SOURCES as readonly string[]).includes(val)
 }
 
 /**
@@ -49,6 +61,14 @@ export const SOURCE_MAP: Record<string, SourceMeta> = {
     shortName: '本地',
     badge: 'LOCAL',
     idLabel: '自建编号',
+  },
+  copymanga: {
+    key: 'copymanga',
+    name: '拷贝漫画',
+    shortName: '拷贝',
+    badge: 'COPY',
+    idLabel: '拷贝车号',
+    externalUrl: (sourceId) => `https://www.mangacopy.com/comic/${sourceId}`,
   },
 }
 

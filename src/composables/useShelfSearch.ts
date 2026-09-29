@@ -25,7 +25,7 @@ import type { SearchScope } from '@/composables/useLibraryFilter'
 import type { DialogueSearchItem, LibrarySummary } from '@/types'
 
 export interface UseShelfSearchOptions {
-  /** 当前选中的数据源过滤 (如 'jm' | 'picacg' | 'local') */
+  /** 当前选中的数据源过滤 (如 'jm' | 'picacg' | 'local' | 'copymanga'，空字符串为全部) */
   activeSource: ComputedRef<string>
   /** 书架网格常规过滤关键词 Ref */
   shelfSearch: Ref<string>

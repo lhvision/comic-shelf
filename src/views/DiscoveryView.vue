@@ -9,7 +9,7 @@ import { useDiscovery } from '@/composables/useDiscovery'
 import { useDiscoveryWebMCP } from '@/composables/useDiscoveryWebMCP'
 import { useAuth } from '@/composables/useAuth'
 import { getSourceBadge, getSourceName, getSourceShortName } from '@/utils/source'
-import type { DiscoveryItem, DiscoveryTimeframe } from '@/types'
+import type { DiscoveryItem, DiscoverySource, DiscoveryTimeframe } from '@/types'
 
 const router = useRouter()
 const { canWrite } = useAuth()
@@ -36,7 +36,7 @@ useDiscoveryWebMCP({
   router,
 })
 
-const sourceTabs: { key: 'jm' | 'picacg'; label: string; sub: string }[] = [
+const sourceTabs: { key: DiscoverySource; label: string; sub: string }[] = [
   { key: 'jm', label: getSourceName('jm'), sub: getSourceBadge('jm') },
   { key: 'picacg', label: getSourceName('picacg'), sub: getSourceBadge('picacg') },
 ]
@@ -65,7 +65,7 @@ const items = computed<DiscoveryItem[]>(() => feed.value?.items || [])
 const inLibraryCount = computed(() => items.value.filter((it) => it.in_library).length)
 const totalCount = computed(() => items.value.length)
 
-function selectSource(src: 'jm' | 'picacg') {
+function selectSource(src: DiscoverySource) {
   if (loading.value || refreshing.value) return
   void loadRanking(src, timeframe.value, false)
 }

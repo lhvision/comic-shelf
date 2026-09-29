@@ -25,7 +25,12 @@ import { useShelfState } from '@/composables/useShelfState'
 import { useLibraryStore } from '@/stores/library'
 import type { ComicSource, ReadingStatus, SortKey } from '@/types'
 
-const ALLOWED_SOURCES = ['jm', 'picacg', 'local'] as const satisfies readonly ComicSource[]
+const ALLOWED_SOURCES = [
+  'jm',
+  'picacg',
+  'local',
+  'copymanga',
+] as const satisfies readonly ComicSource[]
 
 /**
  * `useShelfWebMCP` 依赖项契约
@@ -238,8 +243,8 @@ export function useShelfWebMCP(options: UseShelfWebMCPOptions): UseShelfWebMCPRe
         },
         source: {
           type: 'string',
-          enum: ['jm', 'picacg', 'local'],
-          description: '可选限定图源平台（如 "jm" | "picacg" | "local"）',
+          enum: ['jm', 'picacg', 'local', 'copymanga'],
+          description: '可选限定图源平台（如 "jm" | "picacg" | "local" | "copymanga"）',
         },
         openReader: {
           type: 'boolean',
@@ -510,7 +515,7 @@ export function useShelfWebMCP(options: UseShelfWebMCPOptions): UseShelfWebMCPRe
   // Helper: 单本收录底层逻辑（由 shelf_import_comic 与 shelf_batch_import_comics 共享）
   async function importOneComic(opts: {
     inputVal: string
-    rawSource?: 'jm' | 'picacg' | 'local'
+    rawSource?: ComicSource
     prefetch_all?: boolean
     prefetch_covers?: number
     favorite?: boolean
@@ -535,7 +540,7 @@ export function useShelfWebMCP(options: UseShelfWebMCPOptions): UseShelfWebMCPRe
 
     if (!rawSource || !ALLOWED_SOURCES.includes(rawSource as ComicSource)) {
       throw new Error(
-        '收录漫画必须显式指定来源 Provider (source: "jm" | "picacg" | "local")，为杜绝多平台车号冲突，系统已不再提供隐式猜测。',
+        '收录漫画必须显式指定来源 Provider (source: "jm" | "picacg" | "local" | "copymanga")，为杜绝多平台车号冲突，系统已不再提供隐式猜测。',
       )
     }
 
@@ -610,15 +615,15 @@ export function useShelfWebMCP(options: UseShelfWebMCPOptions): UseShelfWebMCPRe
     ? useWebMCP({
         name: 'shelf_import_comic',
         description:
-          '将漫画收录导入至本地书库。支持禁漫车号、哔咔画卷 ID/分享链接、以及服务器本地目录/PDF 导入；必须显式指定图源 Provider（jm、picacg 或 local），严禁省略以避免跨平台车号冲突；支持后台离线全本预缓存、初始标签设定与收藏联动',
+          '将漫画收录导入至本地书库。支持禁漫车号、哔咔画卷 ID/分享链接、拷贝漫画 Slug/分享链接、以及服务器本地目录/PDF 导入；必须显式指定图源 Provider（jm、picacg、local 或 copymanga），严禁省略以避免跨平台车号冲突；支持后台离线全本预缓存、初始标签设定与收藏联动',
         inputSchema: {
           type: 'object',
           properties: {
             source: {
               type: 'string',
-              enum: ['jm', 'picacg', 'local'],
+              enum: ['jm', 'picacg', 'local', 'copymanga'],
               description:
-                '必须显式指定的图源 Provider（"jm"、"picacg" 或 "local"），严禁省略以避免跨平台车号冲突',
+                '必须显式指定的图源 Provider（"jm"、"picacg"、"local" 或 "copymanga"），严禁省略以避免跨平台车号冲突',
             },
             id: {
               type: 'string',
@@ -672,7 +677,7 @@ export function useShelfWebMCP(options: UseShelfWebMCPOptions): UseShelfWebMCPRe
           } = (args ?? {}) as {
             id?: string
             source_id?: string
-            source?: 'jm' | 'picacg' | 'local'
+            source?: ComicSource
             local_path?: string
             prefetch_all?: boolean
             prefetch_covers?: number
@@ -683,7 +688,7 @@ export function useShelfWebMCP(options: UseShelfWebMCPOptions): UseShelfWebMCPRe
 
           if (!rawSource || !ALLOWED_SOURCES.includes(rawSource as ComicSource)) {
             throw new Error(
-              '收录漫画必须显式指定来源 Provider (source: "jm" | "picacg" | "local")，为杜绝多平台车号冲突，系统已不再提供隐式猜测。',
+              '收录漫画必须显式指定来源 Provider (source: "jm" | "picacg" | "local" | "copymanga")，为杜绝多平台车号冲突，系统已不再提供隐式猜测。',
             )
           }
 
@@ -740,15 +745,15 @@ export function useShelfWebMCP(options: UseShelfWebMCPOptions): UseShelfWebMCPRe
     ? useWebMCP({
         name: 'shelf_batch_import_comics',
         description:
-          '批量收录导入多部漫画至本地书库。单次批量严格同源，必须显式指定统一图源 Provider（jm、picacg 或 local）；支持传入以换行、逗号或分号分隔的车号列表纯文本（例如 "JM523607, JM123456" 或多行粘贴）；内部以 5 秒安全间隔串行执行防风控；单本失败隔离容错，返回结构化汇总报告',
+          '批量收录导入多部漫画至本地书库。单次批量严格同源，必须显式指定统一图源 Provider（jm、picacg、local 或 copymanga）；支持传入以换行、逗号或分号分隔的车号列表纯文本（例如 "JM523607, JM123456" 或多行粘贴）；内部以 5 秒安全间隔串行执行防风控；单本失败隔离容错，返回结构化汇总报告',
         inputSchema: {
           type: 'object',
           properties: {
             source: {
               type: 'string',
-              enum: ['jm', 'picacg', 'local'],
+              enum: ['jm', 'picacg', 'local', 'copymanga'],
               description:
-                '必须显式指定的统一图源 Provider（"jm"、"picacg" 或 "local"）。单次批量严格同源，严禁省略以避免跨平台车号冲突',
+                '必须显式指定的统一图源 Provider（"jm"、"picacg"、"local" 或 "copymanga"）。单次批量严格同源，严禁省略以避免跨平台车号冲突',
             },
             items: {
               type: 'string',
@@ -801,7 +806,7 @@ export function useShelfWebMCP(options: UseShelfWebMCPOptions): UseShelfWebMCPRe
 
             if (!rawSource || !ALLOWED_SOURCES.includes(rawSource as ComicSource)) {
               throw new Error(
-                '收录漫画必须显式指定来源 Provider (source: "jm" | "picacg" | "local")，为杜绝多平台车号冲突，系统已不再提供隐式猜测。',
+                '收录漫画必须显式指定来源 Provider (source: "jm" | "picacg" | "local" | "copymanga")，为杜绝多平台车号冲突，系统已不再提供隐式猜测。',
               )
             }
 

@@ -421,7 +421,7 @@ describe('useLibraryFilter', () => {
   })
 
   it('matches chapter titles in search query (T11 specification)', () => {
-    const list = [
+    const list: LibrarySummary[] = [
       {
         source: 'jm',
         source_id: '1',

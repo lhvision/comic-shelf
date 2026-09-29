@@ -99,7 +99,7 @@ MCP_TOOLS: list[dict[str, Any]] = [
                 },
                 "source": {
                     "type": "string",
-                    "description": "可选限定特定图源平台（如 'jm' | 'picacg' | 'local'）",
+                    "description": "可选限定特定图源平台（如 'jm' | 'picacg' | 'copymanga' | 'local'）",
                 },
                 "limit": {
                     "type": "integer",
@@ -131,7 +131,7 @@ MCP_TOOLS: list[dict[str, Any]] = [
                 },
                 "source": {
                     "type": "string",
-                    "description": "可选限定特定图源平台（如 'jm' | 'picacg' | 'local'）",
+                    "description": "可选限定特定图源平台（如 'jm' | 'picacg' | 'copymanga' | 'local'）",
                 },
                 "limit": {
                     "type": "integer",
@@ -169,7 +169,7 @@ MCP_TOOLS: list[dict[str, Any]] = [
                 },
                 "source": {
                     "type": "string",
-                    "description": "图源平台过滤（如 'jm' | 'picacg' | 'local'）",
+                    "description": "图源平台过滤（如 'jm' | 'picacg' | 'copymanga' | 'local'）",
                 },
                 "status": {
                     "type": "string",
@@ -208,7 +208,7 @@ MCP_TOOLS: list[dict[str, Any]] = [
             "properties": {
                 "source": {
                     "type": "string",
-                    "description": "图源平台标识（如 'jm' | 'picacg' | 'local'）",
+                    "description": "图源平台标识（如 'jm' | 'picacg' | 'copymanga' | 'local'）",
                 },
                 "source_id": {
                     "type": "string",
@@ -248,7 +248,7 @@ MCP_TOOLS: list[dict[str, Any]] = [
             "properties": {
                 "source": {
                     "type": "string",
-                    "description": "图源平台标识（如 'jm' | 'picacg' | 'local'）",
+                    "description": "图源平台标识（如 'jm' | 'picacg' | 'copymanga' | 'local'）",
                 },
                 "source_id": {
                     "type": "string",
@@ -290,7 +290,7 @@ MCP_TOOLS: list[dict[str, Any]] = [
             "properties": {
                 "source": {
                     "type": "string",
-                    "description": "图源平台标识（如 'jm' | 'picacg' | 'local'）",
+                    "description": "图源平台标识（如 'jm' | 'picacg' | 'copymanga' | 'local'）",
                 },
                 "source_id": {
                     "type": "string",
@@ -328,7 +328,7 @@ MCP_RESOURCES: list[dict[str, Any]] = [
     {
         "uri": "shelf://providers",
         "name": "支持的漫画图源清单",
-        "description": "支持的图源列表（禁漫天堂、哔咔漫画、本地自建等）",
+        "description": "支持的图源列表（禁漫天堂、哔咔漫画、拷贝漫画、本地自建等）",
         "mimeType": "application/json",
     },
     {

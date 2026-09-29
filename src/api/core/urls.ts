@@ -13,7 +13,7 @@ import { BASE, buildQueryString } from './http'
 /**
  * 获取指定漫画画页的高清原图文件 URL
  *
- * @param source 图源平台标识（如 'jm' | 'picacg' | 'local'）
+ * @param source 图源平台标识（如 'jm' | 'picacg' | 'local' | 'copymanga'）
  * @param sourceId 图源作品唯一 ID
  * @param index 全局画页序号（1-indexed）
  * @returns 完整文件访问路径（如 `/api/library/jm/12345/pages/1/file`）
@@ -24,7 +24,7 @@ export const pageFileUrl = (source: string, sourceId: string, index: number): st
 /**
  * 获取指定漫画画页的 WebP 压缩缩略图 URL
  *
- * @param source 图源平台标识（如 'jm' | 'picacg' | 'local'）
+ * @param source 图源平台标识（如 'jm' | 'picacg' | 'local' | 'copymanga'）
  * @param sourceId 图源作品唯一 ID
  * @param index 全局画页序号（1-indexed）
  * @returns 缩略图访问路径（如 `/api/library/jm/12345/pages/1/thumbnail.webp`）

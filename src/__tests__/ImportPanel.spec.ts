@@ -68,7 +68,8 @@ describe('ImportPanel Component', () => {
     expect(tabs[0]?.text()).toBe('禁漫车号')
     expect(tabs[0]?.classes()).toContain('is-active')
     expect(tabs[1]?.text()).toBe('哔咔漫画')
-    expect(tabs[2]?.text()).toBe('本地自建 / 拆帧')
+    expect(tabs[2]?.text()).toBe('拷贝漫画')
+    expect(tabs[3]?.text()).toBe('本地自建 / 拆帧')
 
     // JM input form
     expect(wrapper.find('.field-prefix').text()).toBe('JM')
@@ -98,6 +99,25 @@ describe('ImportPanel Component', () => {
     expect(wrapper.text()).toContain('下载并发')
   })
 
+  it('renders CopyManga tab when clicking 拷贝漫画', async () => {
+    const pinia = createPinia()
+    const wrapper = mount(ImportPanel, {
+      global: {
+        plugins: [pinia],
+      },
+    })
+
+    const tabs = wrapper.findAll('.panel-tab')
+    // Click "拷贝漫画" tab
+    await tabs[2]?.trigger('click')
+    expect(tabs[2]?.classes()).toContain('is-active')
+
+    // CopyManga input form
+    expect(wrapper.find('.field-prefix').text()).toBe('COPY')
+    expect(wrapper.text()).toContain('同时缓存全部页面')
+    expect(wrapper.text()).toContain('下载并发')
+  })
+
   it('hides "同时缓存全部页面" and "下载并发" when switching to local tab', async () => {
     const pinia = createPinia()
     const wrapper = mount(ImportPanel, {
@@ -108,8 +128,8 @@ describe('ImportPanel Component', () => {
 
     const tabs = wrapper.findAll('.panel-tab')
     // Click "本地自建 / 拆帧" tab
-    await tabs[2]?.trigger('click')
-    expect(tabs[2]?.classes()).toContain('is-active')
+    await tabs[3]?.trigger('click')
+    expect(tabs[3]?.classes()).toContain('is-active')
 
     // Local input form
     expect(wrapper.find('.field-prefix').text()).toBe('PATH')
@@ -140,6 +160,23 @@ describe('ImportPanel Component', () => {
     // Displays PicAcg dedicated heading and input
     expect(wrapper.text()).toContain('收录哔咔画卷')
     expect(wrapper.find('.field-prefix').text()).toBe('PICA')
+    expect(wrapper.text()).toContain('同时缓存全部页面')
+  })
+
+  it('hides internal panel-tabs and locks to copymanga when source="copymanga" prop is provided', () => {
+    const pinia = createPinia()
+    const wrapper = mount(ImportPanel, {
+      props: {
+        source: 'copymanga',
+      },
+      global: {
+        plugins: [pinia],
+      },
+    })
+
+    expect(wrapper.findAll('.panel-tab').length).toBe(0)
+    expect(wrapper.text()).toContain('收录拷贝漫画')
+    expect(wrapper.find('.field-prefix').text()).toBe('COPY')
     expect(wrapper.text()).toContain('同时缓存全部页面')
   })
 
@@ -201,7 +238,7 @@ describe('ImportPanel Component', () => {
     })
 
     const tabs = wrapper.findAll('.panel-tab')
-    await tabs[2]?.trigger('click')
+    await tabs[3]?.trigger('click')
     await wrapper.get('input[aria-label="服务器本地目录路径"]').setValue('/data/2899054')
     await wrapper.get('form.import-form').trigger('submit')
     await flushPromises()
@@ -239,5 +276,32 @@ describe('ImportPanel Component', () => {
     // 11 digits: disabled
     await input.setValue('12345678901')
     expect((submitBtn.element as HTMLButtonElement).disabled).toBe(true)
+  })
+
+  it('validates CopyManga pathword and web link', async () => {
+    const pinia = createPinia()
+    const wrapper = mount(ImportPanel, {
+      props: {
+        source: 'copymanga',
+      },
+      global: {
+        plugins: [pinia],
+      },
+    })
+
+    const input = wrapper.get('input[aria-label="拷贝漫画 pathword 或网页链接"]')
+    const submitBtn = wrapper.get('button.import-submit-btn')
+
+    // Empty: disabled
+    await input.setValue('')
+    expect((submitBtn.element as HTMLButtonElement).disabled).toBe(true)
+
+    // Slug: enabled
+    await input.setValue('xiangyaochengweiyingzhishilizhe')
+    expect((submitBtn.element as HTMLButtonElement).disabled).toBe(false)
+
+    // Full URL: enabled
+    await input.setValue('https://www.mangacopy.com/comic/xiangyaochengweiyingzhishilizhe')
+    expect((submitBtn.element as HTMLButtonElement).disabled).toBe(false)
   })
 })

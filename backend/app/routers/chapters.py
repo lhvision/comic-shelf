@@ -1,6 +1,7 @@
 """Chapter management, title updating, deletion, cover serving, and prefetch router."""
 from __future__ import annotations
 
+import shutil
 import time
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import FileResponse
@@ -8,8 +9,9 @@ from fastapi.responses import FileResponse
 from ..config import COVER_THUMB_WIDTH
 from ..db import sync_comic_dialogues
 from ..events import broadcast_event
-from ..jobs import start_job
-from ..models import CacheProgress, ChapterUpdateRequest, ComicDetail
+from ..jobs import cancel_job, start_job
+from ..models import CacheProgress, ChapterUpdateRequest, ComicDetail, UpdateGroupsRequest
+from ..providers import get_provider
 from .common import (
     _client_accepts_webp,
     _require_known_source,
@@ -152,3 +154,67 @@ def chapter_cover(
         ),
         error_subject=f"章节封面 {chapter_id}",
     )
+
+
+@router.post("/api/library/{source}/{source_id}/groups", response_model=ComicDetail)
+def update_comic_groups(
+    source: str,
+    source_id: str,
+    req: UpdateGroupsRequest,
+) -> ComicDetail:
+    """Updates the selected chapter groups for a comic (e.g. including or excluding tankobon)."""
+    _require_known_source(source)
+    existing = store.load_fetched(source, source_id)
+    if existing is None:
+        raise HTTPException(status_code=404, detail="本子还没有导入本地书库")
+
+    provider = get_provider(source)
+    if provider is None:
+        raise HTTPException(status_code=400, detail=f"未找到来源适配器: {source}")
+
+    # Cancel any in-flight download jobs to prevent race conditions during group reorganization
+    cancel_job(source, source_id)
+
+    # 1. Fetch with requested groups
+    try:
+        fetched = provider.fetch(source_id, existing=existing, groups_to_fetch=req.selected_groups)
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"更新章节分组失败：{exc}") from exc
+
+    # Identify removed chapters
+    existing_cids = {c.id for c in (existing.meta.chapters or [])}
+    new_cids = {c.id for c in (fetched.meta.chapters or [])}
+    removed_cids = existing_cids - new_cids
+
+    # 2. Transactionally save updated metadata and remote page index first
+    meta = store.save_fetched(fetched, refresh=True, reset_custom_pages=True)
+
+    # 3. Safely purge removed chapter directories and cached covers only after metadata committed
+    for cid in removed_cids:
+        safe_cid = store._safe(cid)
+        chap_dir = store.pages_dir(source, source_id) / safe_cid
+        thumb_dir = store.thumbs_dir(source, source_id) / safe_cid
+        if chap_dir.exists():
+            shutil.rmtree(chap_dir, ignore_errors=True)
+        if thumb_dir.exists():
+            shutil.rmtree(thumb_dir, ignore_errors=True)
+
+    for ch in (existing.meta.chapters or []):
+        if ch.id in removed_cids:
+            try:
+                chap_cover = store.chapter_cover_path(existing.meta, ch)
+                chap_cover.unlink(missing_ok=True)
+            except Exception:
+                pass
+
+    sync_comic_dialogues(source, source_id)
+    broadcast_event(
+        "library_changed",
+        {
+            "action": "update_groups",
+            "source": source,
+            "source_id": source_id,
+            "timestamp": time.time(),
+        },
+    )
+    return store.detail(meta)

@@ -27,6 +27,10 @@ export function isJmComic(source: string | null | undefined): boolean {
   return source === 'jm'
 }
 
+export function isCopymangaComic(source: string | null | undefined): boolean {
+  return source === 'copymanga'
+}
+
 const zhCollator = new Intl.Collator('zh-CN', { numeric: true })
 
 const itemSearchTextCache = new WeakMap<LibrarySummary, string>()

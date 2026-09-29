@@ -98,15 +98,59 @@ if COOKIE_NAME == DEVICE_COOKIE_NAME:
 # Anti-hotlinking / storage bucket abuse protection
 ENABLE_HOTLINK_PROTECTION = os.getenv("COMIC_SHELF_ENABLE_HOTLINK_PROTECTION", "true").lower() in ("1", "true", "yes")
 
+# Unified global proxy for all providers (e.g. http://127.0.0.1:7890)
+GLOBAL_PROXY = os.getenv("COMIC_SHELF_PROXY", "").strip()
+
+
+def get_proxy_for_source(source: str) -> str:
+    """Resolve proxy for a given source following the cascade hierarchy:
+    1. Provider-specific proxy: COPY_PROXY, JM_PROXY, PICA_PROXY
+    2. Global unified proxy: COMIC_SHELF_PROXY
+    3. System environment proxy: ALL_PROXY, HTTPS_PROXY, HTTP_PROXY
+    4. Direct connection ("")
+    """
+    key = source.lower().strip()
+    if key in ("copymanga", "copy"):
+        val = os.getenv("COPY_PROXY", os.getenv("COMIC_SHELF_COPY_PROXY", "")).strip()
+        if val:
+            return val
+    elif key == "jm":
+        val = os.getenv("JM_PROXY", os.getenv("COMIC_SHELF_JM_PROXY", "")).strip()
+        if val:
+            return val
+    elif key == "picacg":
+        val = os.getenv("PICA_PROXY", os.getenv("COMIC_SHELF_PICA_PROXY", "")).strip()
+        if val:
+            return val
+
+    global_proxy = os.getenv("COMIC_SHELF_PROXY", GLOBAL_PROXY).strip()
+    if global_proxy:
+        return global_proxy
+
+    sys_proxy = (
+        os.getenv("all_proxy", os.getenv("ALL_PROXY", ""))
+        or os.getenv("https_proxy", os.getenv("HTTPS_PROXY", ""))
+        or os.getenv("http_proxy", os.getenv("HTTP_PROXY", ""))
+    ).strip()
+    return sys_proxy
+
+
 # PicAcg (哔咔漫画) provider settings
 PICA_EMAIL = os.getenv("PICA_EMAIL", os.getenv("COMIC_SHELF_PICA_EMAIL", "")).strip()
 PICA_PASSWORD = os.getenv("PICA_PASSWORD", os.getenv("COMIC_SHELF_PICA_PASSWORD", "")).strip()
-PICA_PROXY = os.getenv("PICA_PROXY", os.getenv("COMIC_SHELF_PICA_PROXY", "")).strip()
+PICA_PROXY = get_proxy_for_source("picacg")
 PICA_API_URL = os.getenv("PICA_API_URL", "https://picaapi.picacomic.com").rstrip("/")
 PICA_CHANNEL = os.getenv("PICA_CHANNEL", "2").strip()
 
 # JMComic (禁漫天堂) provider settings
 JM_USERNAME = os.getenv("JM_USERNAME", os.getenv("COMIC_SHELF_JM_USERNAME", "")).strip()
 JM_PASSWORD = os.getenv("JM_PASSWORD", os.getenv("COMIC_SHELF_JM_PASSWORD", "")).strip()
-JM_PROXY = os.getenv("JM_PROXY", os.getenv("COMIC_SHELF_JM_PROXY", "")).strip()
+JM_PROXY = get_proxy_for_source("jm")
 JM_IMAGE_PROXY_MODE = os.getenv("JM_IMAGE_PROXY_MODE", os.getenv("COMIC_SHELF_JM_IMAGE_PROXY_MODE", "auto")).strip().lower()
+
+# CopyManga (拷贝漫画) provider settings
+COPY_BASE_URL = os.getenv("COPY_BASE_URL", os.getenv("COMIC_SHELF_COPY_BASE_URL", "https://www.mangacopy.com")).rstrip("/")
+COPY_TOKEN = os.getenv("COPY_TOKEN", os.getenv("COMIC_SHELF_COPY_TOKEN", "")).strip()
+COPY_USERNAME = os.getenv("COPY_USERNAME", os.getenv("COMIC_SHELF_COPY_USERNAME", "")).strip()
+COPY_PASSWORD = os.getenv("COPY_PASSWORD", os.getenv("COMIC_SHELF_COPY_PASSWORD", "")).strip()
+COPY_PROXY = get_proxy_for_source("copymanga")

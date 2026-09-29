@@ -17,7 +17,7 @@ import { serializeBubbleBox, serializeBubbleBoxes } from '@/composables/useReade
 import type { DialogueSearchItem } from '@/types'
 
 export interface UseDialogueSearchOptions {
-  /** 可选的漫画来源过滤（如 'jm' | 'picacg' | 'local'），不传或为空时全库检索 */
+  /** 可选的漫画来源过滤（如 'jm' | 'picacg' | 'local' | 'copymanga'），不传或为空时全库检索 */
   source?: Ref<string | undefined> | ComputedRef<string | undefined>
   /** 防抖延迟时间（毫秒，默认 300ms） */
   debounceMs?: number

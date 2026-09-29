@@ -22,20 +22,21 @@ import AppIcon from '@/components/AppIcon.vue'
 import ImportRemoteTab from './import/ImportRemoteTab.vue'
 import ImportLocalTab from './import/ImportLocalTab.vue'
 import ImportConcurrencyStepper from './import/ImportConcurrencyStepper.vue'
-import { isJmComic, isLocalComic, isPicacgComic } from '@/utils/is'
+import { isComicSource } from '@/utils/is'
 import { formatLocalImportToast } from '@/utils/format'
+import type { ComicSource, RemoteComicSource } from '@/types'
 
 const props = defineProps<{
   /**
-   * 指定当前来源（'jm' | 'picacg' | 'local'）。
+   * 指定当前来源（'jm' | 'picacg' | 'local' | 'copymanga'）。
    * 若传入，面板锁定到该来源并隐藏内部二级 Tab；未传入则支持内部自主切换（保持向下兼容）。
    */
-  source?: string
+  source?: ComicSource
 }>()
 
 const emit = defineEmits<{
   /** 收录成功事件（向父级传递 source 与 sourceId） */
-  imported: [source: string, sourceId: string]
+  imported: [source: ComicSource, sourceId: string]
 }>()
 
 const store = useLibraryStore()
@@ -62,30 +63,34 @@ const id = ref('')
 const prefetchAll = ref(false)
 const warnings = ref<string[]>([])
 
-const activeTab = ref<'jm' | 'picacg' | 'local'>(
-  isJmComic(props.source) || isPicacgComic(props.source) || isLocalComic(props.source)
-    ? (props.source as 'jm' | 'picacg' | 'local')
-    : 'jm',
-)
+function parseSource(src?: string): ComicSource | null {
+  return isComicSource(src) ? src : null
+}
+
+const activeTab = ref<ComicSource>(parseSource(props.source) ?? 'jm')
 
 watch(
   () => props.source,
   (val) => {
-    if (isJmComic(val) || isPicacgComic(val) || isLocalComic(val)) {
-      activeTab.value = val as 'jm' | 'picacg' | 'local'
+    const parsed = parseSource(val)
+    if (parsed) {
+      activeTab.value = parsed
     }
   },
 )
 
-const PANEL_TITLES: Record<string, string> = {
+const PANEL_TITLES: Record<ComicSource, string> = {
   jm: '收录禁漫车号',
   picacg: '收录哔咔画卷',
+  copymanga: '收录拷贝漫画',
   local: '收录本地图集',
 }
 
-const PANEL_HINTS: Record<string, string> = {
+const PANEL_HINTS: Record<ComicSource, string> = {
   jm: '输入禁漫车号。首次收录会读取元数据并缓存前 4 页做封面；之后永远先读本地，不再打扰远端。',
   picacg: '输入哔咔 24 位 ID，或直接粘贴网页分享链接（如 picawang.com/comic/5ebe...）。',
+  copymanga:
+    '输入拷贝漫画 pathword（如 xiangyaochengweiyingzhishilizhe），或直接粘贴网页链接（如 mangacopy.com/comic/...）。',
   local:
     '输入服务器目录（如 public/tiya-frames 或 /comics）一键扫描收录；未填车号时用文件夹或文件名作本地标识，同卷优先硬链接零拷贝。白名单见 COMIC_SHELF_ALLOWED_DIRS。',
 }
@@ -104,9 +109,18 @@ watch([id, localPath, activeTab], () => {
 
 const canSubmitJm = computed(() => /^(?:JM)?\d{3,10}$/i.test(id.value.trim()))
 const canSubmitPica = computed(() => /[0-9a-fA-F]{24}/.test(id.value.trim()))
+const canSubmitCopy = computed(() => {
+  const v = id.value.trim()
+  if (!v) return false
+  return /^[a-zA-Z0-9_-]+$/.test(v) || /\/comic\/[a-zA-Z0-9_-]+/.test(v)
+})
 
-async function submitRemote(source: 'jm' | 'picacg') {
-  const isValid = source === 'jm' ? canSubmitJm.value : canSubmitPica.value
+async function submitRemote(source: RemoteComicSource) {
+  let isValid = false
+  if (source === 'jm') isValid = canSubmitJm.value
+  else if (source === 'picacg') isValid = canSubmitPica.value
+  else if (source === 'copymanga') isValid = canSubmitCopy.value
+
   if (!isValid) return
   warnings.value = []
   try {
@@ -223,6 +237,14 @@ function incConcurrency() {
             </button>
             <button
               class="panel-tab"
+              :class="{ 'is-active': activeTab === 'copymanga' }"
+              type="button"
+              @click="activeTab = 'copymanga'"
+            >
+              拷贝漫画
+            </button>
+            <button
+              class="panel-tab"
               :class="{ 'is-active': activeTab === 'local' }"
               type="button"
               @click="activeTab = 'local'"
@@ -267,6 +289,21 @@ function incConcurrency() {
             @submit="() => submitRemote('picacg')"
           />
 
+          <!-- CopyManga Tab Form -->
+          <ImportRemoteTab
+            v-else-if="activeTab === 'copymanga'"
+            v-model:id="id"
+            v-model:prefetch-all="prefetchAll"
+            prefix="COPY"
+            placeholder="xiangyaochengweiyingzhishilizhe 或粘贴网页链接"
+            aria-label="拷贝漫画 pathword 或网页链接"
+            tooltip-id="cache-all-copy-tip"
+            tooltip-text="收录时直接把所有章节与画页下载到本地磁盘（支持自动解密与多卷分组）。不勾选则仅预热前 4 页封面，后续页面在翻阅时按需秒级懒下载。"
+            :importing="store.importing"
+            :can-submit="canSubmitCopy"
+            @submit="() => submitRemote('copymanga')"
+          />
+
           <!-- Local Tab Form -->
           <ImportLocalTab
             v-else
@@ -299,7 +336,7 @@ function incConcurrency() {
 
             <!-- Concurrency Stepper (Remote tabs only) -->
             <ImportConcurrencyStepper
-              v-if="activeTab === 'jm' || activeTab === 'picacg'"
+              v-if="activeTab !== 'local'"
               :concurrency="settings.concurrency"
               :min="settings.min"
               :max="settings.max"

@@ -23,8 +23,9 @@ import PageIndexGrid from '@/components/detail/PageIndexGrid.vue'
 import EditMetadataModal from '@/components/detail/EditMetadataModal.vue'
 import AppendPagesModal from '@/components/detail/AppendPagesModal.vue'
 import ReplacePagesModal from '@/components/detail/ReplacePagesModal.vue'
+import ChapterGroupsModal from '@/components/detail/ChapterGroupsModal.vue'
 import DirectPassModal from '@/components/detail/DirectPassModal.vue'
-import type { CacheJob } from '@/types'
+import type { CacheJob, ComicSource } from '@/types'
 
 /**
  * 本子详情页 —— 编排封面轮播 / 元数据 / 操作栏 / 章节目录 / 页面索引。
@@ -41,7 +42,7 @@ const { toast } = useToast()
 const { canWrite, isDirectPass } = useAuth()
 const { isOnline } = useOfflineSync()
 
-const source = computed(() => String(route.params.source))
+const source = computed<ComicSource>(() => String(route.params.source) as ComicSource)
 const sourceId = computed(() => String(route.params.sourceId))
 
 const lastRead = useLastRead(source, sourceId)
@@ -105,6 +106,10 @@ const {
   editOpen,
   appendOpen,
   replaceOpen,
+  groupsOpen,
+  hasMultipleGroups,
+  availableGroups,
+  selectedGroups,
   restoreScrollPosition,
   removeComic,
   refreshMetadata,
@@ -181,11 +186,13 @@ onMounted(() => {
         :can-write="canWrite && isOnline && !store.isOffline"
         :source="source"
         :custom-pages="detail.meta.custom_pages"
+        :has-multiple-groups="hasMultipleGroups"
         @start-reading="startReading"
         @cache-all="cacheAll"
         @refresh-metadata="refreshMetadata"
         @remove-comic="removeComic"
         @edit-metadata="editOpen = true"
+        @manage-groups="groupsOpen = true"
         @append-pages="
           () => {
             initialAppendType = 'current'
@@ -262,6 +269,22 @@ onMounted(() => {
         @replaced="
           () => {
             replaceOpen = false
+            load(true)
+            store.load()
+          }
+        "
+      />
+
+      <ChapterGroupsModal
+        :open="groupsOpen"
+        :source="source"
+        :source-id="sourceId"
+        :available-groups="availableGroups"
+        :selected-groups="selectedGroups"
+        @cancel="groupsOpen = false"
+        @updated="
+          () => {
+            groupsOpen = false
             load(true)
             store.load()
           }

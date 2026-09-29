@@ -978,7 +978,7 @@ describe('WebMCP Composables', () => {
         items: [
           {
             id: '888888',
-            source: 'jm',
+            source: 'jm' as const,
             source_id: '888888',
             title: 'Top Discovery Comic',
             author: 'Great Artist',

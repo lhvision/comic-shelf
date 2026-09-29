@@ -35,8 +35,9 @@ import { useToast } from '@/composables/useToast'
 import { useAuth } from '@/composables/useAuth'
 import { useSystemEvents } from '@/composables/useSystemEvents'
 import { useOfflineSync } from '@/composables/useOfflineSync'
+import { isComicSource } from '@/utils/is'
 import { api, DEFAULT_PROVIDERS } from '@/api/client'
-import type { ProviderInfo } from '@/types'
+import type { ComicSource, ProviderInfo } from '@/types'
 
 const store = useLibraryStore()
 const route = useRoute()
@@ -81,10 +82,17 @@ const { activeUnfoldCount, archiveOpen, archiveUnfoldCount, unifiedUnfoldCount, 
 const activeSource = computed(() =>
   typeof route.query.source === 'string' ? route.query.source : '',
 )
+const activeComicSource = computed<ComicSource | undefined>(() =>
+  isComicSource(activeSource.value) ? activeSource.value : undefined,
+)
 const shelfTitle = computed(
   () =>
-    ({ jm: '禁漫天堂藏书', picacg: '哔咔漫画藏书', local: '本地自建图集' })[activeSource.value] ??
-    '全部藏书',
+    ({
+      jm: '禁漫天堂藏书',
+      picacg: '哔咔漫画藏书',
+      local: '本地自建图集',
+      copymanga: '拷贝漫画藏书',
+    })[activeSource.value] ?? '全部藏书',
 )
 
 const imageSearch = useImageSearch()
@@ -260,7 +268,7 @@ watch([() => store.error, imageSearch.error], ([err1, err2]) => {
       :providers="providers"
     >
       <template #import v-if="canWrite && isOnline && !store.isOffline && activeSource">
-        <ImportPanel :source="activeSource" @imported="openComic" />
+        <ImportPanel :source="activeComicSource" @imported="openComic" />
       </template>
     </LibraryHero>
 

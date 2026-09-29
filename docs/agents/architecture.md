@@ -107,8 +107,15 @@ flowchart TD
 
 > **多章节模型**：`ComicMeta.pages` 始终是**全书拍平的全局页码表**，每页带
 > `chapter` 字段（空串 = 单章节扁平布局）；`ComicMeta.chapters[]` 记录各章节
-> id / 序数 / 标题 / 页数 / 起始全局页（`start`）。这样阅读器页码、继续阅读、
+> id / 序数 / 标题 / 页数 / 起始全局页（`start`）/ 可选分组（`group`）。这样阅读器页码、继续阅读、
 > 封面、API 路径都不用为章节拆分端点。
+>
+> **多分组策略与动态管理（ADR 0029 延展）**：
+> 针对同时提供连载正文与单行本等衍生分组的图源（如拷贝漫画），默认策略仅收录连载正文（`default` 分组），
+> 避免因单行本与连载 100% 重复导致画页膨胀；`meta.raw` 记录 `available_groups` 与 `selected_groups`。
+> 详情页提供单本分组管理接口（`POST /api/library/{source}/{source_id}/groups`），追加分组将增量拉取单话画页并追加至末尾；
+> 反选取消分组时，严格遵循「事务落盘优先」原则（先原子落盘新元数据，再物理删除被剔除章节的画页与缩略图目录及单话封面缓存），
+> 并自动取消后台排队任务与同步 FTS 台词索引；定时追更巡检（`auto_update_worker`）严格继承用户保存的 `selected_groups`。
 
 ### 客户端离线缓存与服务端数据边界（正交隔离）
 
@@ -184,7 +191,22 @@ JmImageTool.decode_and_save(num, source_image, save_path)
   4. **封面动态收敛**：`cover_count = min(COVER_COUNT, total_page_count)` 防御短篇画卷越界 404；
 - **宽容输入清洗**：输入端兼容 24 位 16 进制 ID、`PICA:` 前缀及镜像站分享直链，服务端统一正则归一化为 24 位 ID。
 
-### 4.4 decode_version 迁移
+### 4.4 CopyManga (拷贝漫画) 动态密钥提取、AES-128-CBC 解密与反调试规避
+
+- **反调试机制规避**：官方网页端通过 `setInterval(loop, 1)` 注入 `debugger;` 并判定打开 DevTools 耗时超限后强行触发 `about:blank` 跳转；后端直连解析跳过前端执行沙箱，杜绝该反调试干扰；
+- **双阶动态密钥与 AES-128-CBC 解密**：
+  1. **作品详情与目录 API**：在漫画主页（`/comic/<slug>`）HTML 动态提取 `var ccz = '...'` 与隐藏节点 `<span id="dnt" value="...">`，向 `/comicdetail/<slug>/chapters` 发送携带 `Accept: application/json, text/plain, */*`、`X-Requested-With: XMLHttpRequest` 及 `dnts` 盐值头的请求（规避上游 Django REST Framework 模板回退渲染）；密文由前 16 字节 IV 与后续十六进制密文组成，经 AES-128-CBC（PKCS7，Utf8 Key `ccz`）解密为纯 JSON 分组目录；
+  2. **画页清单解密**：在单话页面（`/comic/<slug>/chapter/<id>`）HTML 动态提取 `var cct = '...'` 与 `contentKey = '...'`，同样通过 AES-128-CBC 解密出画页真实 CDN 清单；画页二进制为标准原生 JPEG/WebP，无打乱混淆，`decode_version=2` 成品入库；
+- **画页 CDN 集群隔离与零信任防御**：
+  - 画页托管在独立对象存储 CDN 集群（如 `*.mangafunb.fun`），与主站 `mangacopy.com` 物理隔离；
+  - 传输层强制校验 `http(s)` 协议与 `_validate_download_host`（严格阻断私网 IP、回环、保留地址、直接 IP 访问及 `.nip.io` / `.sslip.io` / `.local` DNS 重绑定利用）；
+  - 结合 `is_valid_image` 的二进制魔数（Magic Bytes）强校验与 2 次弱网重试避让，彻底杜绝 WAF 报错页面或空响应污染本地磁盘；
+- **多分组多章节连续归整**：自动提取 `default`（连载正文）、`tankobon`（单行本卷）及番外分组，在全书单调拍平模型中连续编排；
+- **全站统一网络代理级联（COMIC_SHELF_PROXY）**：
+  - 支持新增全局代理 `COMIC_SHELF_PROXY`，优先级：`具体图源代理 (COPY_PROXY / JM_PROXY / PICA_PROXY)` > `全局代理 (COMIC_SHELF_PROXY)` > `系统环境变量 (ALL_PROXY / HTTPS_PROXY / HTTP_PROXY)` > `直连`；
+  - 一站式消除各源分散重复配置代理的维护负担。
+
+### 4.5 decode_version 迁移
 
 - `decode_version=1`：旧缓存，页面是未解密 raw 图。
 - 读取书架时会自动本地迁移：用已有 raw 文件解密替换，**不重新下载**，

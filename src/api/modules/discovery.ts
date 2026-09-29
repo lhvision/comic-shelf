@@ -8,12 +8,12 @@
  */
 
 import { BASE, buildQueryString, getStoredToken, request, type RequestOptions } from '../core/http'
-import type { DiscoveryFeed, DiscoveryTimeframe } from '@/types'
+import type { DiscoveryFeed, DiscoverySource, DiscoveryTimeframe } from '@/types'
 
 /**
  * 获取官方发现排行榜数据（支持禁漫、哔咔以及日榜、周榜、月榜）
  *
- * @param source 图源模块（'jm' | 'picacg'，默认 'jm'）
+ * @param source 图源模块（DiscoverySource，默认 'jm'）
  * @param timeframe 时间维度（'day' | 'week' | 'month'，默认 'week'）
  * @param refresh 是否强制穿透缓存请求远端最新数据（默认 false）
  * @param options 可选的请求配置
@@ -25,18 +25,18 @@ export async function discoveryRanking(
   options?: RequestOptions,
 ): Promise<DiscoveryFeed>
 export async function discoveryRanking(
-  source: 'jm' | 'picacg',
+  source: DiscoverySource,
   timeframe?: DiscoveryTimeframe,
   refresh?: boolean,
   options?: RequestOptions,
 ): Promise<DiscoveryFeed>
 export async function discoveryRanking(
-  arg1?: 'jm' | 'picacg' | DiscoveryTimeframe,
+  arg1?: DiscoverySource | DiscoveryTimeframe,
   arg2?: DiscoveryTimeframe | boolean,
   arg3?: boolean | RequestOptions,
   arg4?: RequestOptions,
 ): Promise<DiscoveryFeed> {
-  let source: 'jm' | 'picacg' | undefined
+  let source: DiscoverySource | undefined
   let timeframe: DiscoveryTimeframe = 'week'
   let refresh = false
   let options: RequestOptions | undefined

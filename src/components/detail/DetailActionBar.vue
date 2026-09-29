@@ -30,8 +30,10 @@ const props = withDefaults(
     canWrite?: boolean
     source?: string
     customPages?: boolean
+    /** 是否包含多个章节分组（如连载与单行本） */
+    hasMultipleGroups?: boolean
   }>(),
-  { canWrite: true, source: 'jm', customPages: false, refreshing: false },
+  { canWrite: true, source: 'jm', customPages: false, refreshing: false, hasMultipleGroups: false },
 )
 
 const emit = defineEmits<{
@@ -43,6 +45,7 @@ const emit = defineEmits<{
   appendPages: []
   replacePages: []
   shareDirect: []
+  manageGroups: []
 }>()
 
 /** 移除确认弹窗开合 */
@@ -52,6 +55,13 @@ const ackRemove = ref(false)
 
 const moreOptions = computed<DropdownOption[]>(() => {
   const list: DropdownOption[] = []
+  if (props.hasMultipleGroups && props.canWrite) {
+    list.push({
+      key: 'manage_groups',
+      label: '章节分组管理…',
+      hint: '连载/单行本',
+    })
+  }
   if (props.canWrite) {
     list.push({
       key: 'replace_pages',
@@ -73,6 +83,8 @@ function onMoreSelect(option: DropdownOption) {
     requestRemove()
   } else if (option.key === 'replace_pages') {
     emit('replacePages')
+  } else if (option.key === 'manage_groups') {
+    emit('manageGroups')
   }
 }
 

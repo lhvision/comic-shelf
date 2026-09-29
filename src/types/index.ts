@@ -19,10 +19,18 @@ export interface Chapter {
   page_count: number
   /** 1-based global page index at which this chapter begins */
   start: number
+  /** 分组标识符（如 'default'、'tankobon'） */
+  group?: string
+}
+
+export interface ComicGroupSummary {
+  key: string
+  name: string
+  count: number
 }
 
 export interface ComicMeta {
-  source: string
+  source: ComicSource
   source_id: string
   display_id: string
   title: string
@@ -57,7 +65,7 @@ export interface ComicMeta {
 }
 
 export interface LibrarySummary {
-  source: string
+  source: ComicSource
   source_id: string
   display_id: string
   title: string
@@ -128,11 +136,17 @@ export interface ComicDetail {
 }
 
 /** 支持的漫画图源 Provider 标识符 */
-export type ComicSource = 'jm' | 'picacg' | 'local'
+export type ComicSource = 'jm' | 'picacg' | 'local' | 'copymanga'
+
+/** 远端可直接联网抓取/同步的图源（排除本地自建） */
+export type RemoteComicSource = Exclude<ComicSource, 'local'>
+
+/** 支持发现与热门排行榜的图源（目前为 jm 与 picacg） */
+export type DiscoverySource = 'jm' | 'picacg'
 
 export interface ImportRequest {
   id: string
-  source: ComicSource | (string & {})
+  source: ComicSource
   prefetch_covers?: number
   prefetch_all?: boolean
   refresh?: boolean
@@ -312,7 +326,7 @@ export type DiscoveryTimeframe = 'week' | 'month' | 'day'
 export interface DiscoveryItem {
   id: string
   source_id: string
-  source: string
+  source: DiscoverySource
   title: string
   author: string
   category: string
@@ -323,7 +337,7 @@ export interface DiscoveryItem {
 }
 
 export interface DiscoveryFeed {
-  source?: string
+  source?: DiscoverySource
   timeframe: DiscoveryTimeframe
   updated_at: string
   items: DiscoveryItem[]

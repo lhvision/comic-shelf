@@ -295,6 +295,14 @@ export const DEFAULT_PROVIDERS: ProviderInfo[] = [
     example: 'my-album-01',
     description: '本地自建画集',
   },
+  {
+    key: 'copymanga',
+    label: '拷贝漫画',
+    short_label: '拷贝',
+    id_pattern: '^(?:(?:https?:\\/\\/[^\\/]+)?\\/comic\\/)?([a-zA-Z0-9_\\-]+)',
+    example: 'xiangyaochengweiyingzhishilizhe',
+    description: '拷贝漫画 (CopyManga)',
+  },
 ]
 
 /**

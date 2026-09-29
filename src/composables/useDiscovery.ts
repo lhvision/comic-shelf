@@ -4,10 +4,10 @@ import { api } from '@/api/client'
 import { getTaskId, useSystemEvents } from '@/composables/useSystemEvents'
 import { useToast } from '@/composables/useToast'
 import { useLibraryStore } from '@/stores/library'
-import type { DiscoveryFeed, DiscoveryItem, DiscoveryTimeframe } from '@/types'
+import type { DiscoveryFeed, DiscoveryItem, DiscoverySource, DiscoveryTimeframe } from '@/types'
 
 export function useDiscovery() {
-  const source = ref<'jm' | 'picacg'>('jm')
+  const source = ref<DiscoverySource>('jm')
   const timeframe = ref<DiscoveryTimeframe>('week')
   const feed = shallowRef<DiscoveryFeed | null>(null)
   const loading = ref(false)
@@ -29,12 +29,12 @@ export function useDiscovery() {
 
   async function loadRanking(timeframe?: DiscoveryTimeframe, refresh?: boolean): Promise<void>
   async function loadRanking(
-    source: 'jm' | 'picacg',
+    source: DiscoverySource,
     timeframe?: DiscoveryTimeframe,
     refresh?: boolean,
   ): Promise<void>
   async function loadRanking(
-    arg1?: 'jm' | 'picacg' | DiscoveryTimeframe,
+    arg1?: DiscoverySource | DiscoveryTimeframe,
     arg2?: DiscoveryTimeframe | boolean,
     arg3?: boolean,
   ): Promise<void> {
@@ -44,7 +44,7 @@ export function useDiscovery() {
     const controller = new AbortController()
     activeAbortController = controller
 
-    let src: 'jm' | 'picacg' = source.value
+    let src: DiscoverySource = source.value
     let tf: DiscoveryTimeframe = timeframe.value
     let refresh = false
 

@@ -31,6 +31,7 @@ const SOURCE_HERO_TITLES: Record<string, string> = {
   jm: '禁漫藏卷，\n入册安放。',
   picacg: '哔咔画集，\n纸间定格。',
   local: '本地原卷，\n工坊自裁。',
+  copymanga: '拷贝长卷，\n随心畅阅。',
 }
 
 const SOURCE_HERO_LEDES: Record<string, string> = {
@@ -38,6 +39,7 @@ const SOURCE_HERO_LEDES: Record<string, string> = {
   picacg: '收录哔咔分卷与原画，多 CDN 容灾分流；本地优先存储，告别网页打不开与加载中断。',
   local:
     '扫描服务器本地目录或拆帧图集，自由装订多卷；完全属于你个人的离线画室，不依赖任何外部网络。',
+  copymanga: '收录拷贝漫画连载分话与单行本卷册；纯净解密持久化，支持全本离线与继续阅读。',
 }
 
 const heroTitle = computed(() => SOURCE_HERO_TITLES[props.activeSource] ?? '读过的，\n都收进纸间。')

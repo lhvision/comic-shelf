@@ -35,6 +35,7 @@ class Chapter(BaseModel):
     title: str = Field(default="", description="Chapter title, e.g. 第 1 話")
     page_count: int = Field(default=0, description="Pages inside this chapter")
     start: int = Field(ge=1, description="1-based global page index of the first page")
+    group: str | None = Field(default=None, description="Optional group key, e.g. 'default', 'tankobon'")
 
 
 class ComicMeta(BaseModel):
@@ -486,6 +487,10 @@ class ReplacePathRequest(BaseModel):
 
 class ChapterUpdateRequest(BaseModel):
     title: str = ""
+
+
+class UpdateGroupsRequest(BaseModel):
+    selected_groups: list[str] = Field(default_factory=list, description="Selected chapter group keys")
 
 
 class DiscoveryItem(BaseModel):

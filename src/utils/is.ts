@@ -6,7 +6,9 @@ export {
   isLocalComic,
   isPicacgComic,
   isJmComic,
+  isCopymangaComic,
 } from '@/utils/libraryFilterCore'
+export { isComicSource, COMIC_SOURCES } from '@/utils/source'
 
 /* ==========================================================================
    1. 基础类型守卫（Type Guards）

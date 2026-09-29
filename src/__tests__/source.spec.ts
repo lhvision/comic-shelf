@@ -30,12 +30,18 @@ describe('source utility', () => {
     expect(getSourceName('local')).toBe('本地自建')
     expect(getSourceBadge('local')).toBe('LOCAL')
     expect(getSourceIdLabel('local')).toBe('自建编号')
+
+    expect(getSourceShortName('copymanga')).toBe('拷贝')
+    expect(getSourceName('copymanga')).toBe('拷贝漫画')
+    expect(getSourceBadge('copymanga')).toBe('COPY')
+    expect(getSourceIdLabel('copymanga')).toBe('拷贝车号')
   })
 
   it('handles case-insensitivity correctly', () => {
     expect(getSourceShortName('JM')).toBe('禁漫')
     expect(getSourceShortName('PicAcg')).toBe('哔咔')
     expect(getSourceShortName('LOCAL')).toBe('本地')
+    expect(getSourceShortName('CopyManga')).toBe('拷贝')
   })
 
   it('generates graceful fallback metadata for future unknown sources', () => {
@@ -55,6 +61,9 @@ describe('source utility', () => {
     expect(getSourceExternalUrl('jm', '123456')).toBe('https://18comic.vip/album/123456')
     expect(getSourceExternalUrl('picacg', '6aa41d3bf7e21a74faf94e42')).toBe(
       'https://picawang.com/comic/6aa41d3bf7e21a74faf94e42',
+    )
+    expect(getSourceExternalUrl('copymanga', 'xiangyaochengweiyingzhishilizhe')).toBe(
+      'https://www.mangacopy.com/comic/xiangyaochengweiyingzhishilizhe',
     )
     expect(getSourceExternalUrl('local', 'my_comic')).toBeUndefined()
     expect(getSourceExternalUrl('unknown', '123')).toBeUndefined()
