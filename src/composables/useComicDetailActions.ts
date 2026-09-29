@@ -20,6 +20,7 @@ import {
   getDetailScrollPosition,
   setDetailScrollPosition,
 } from '@/composables/useChapterNavigation'
+import { isCopymangaComic } from '@/utils/is'
 import type { Chapter, ComicDetail, ComicGroupSummary, ComicSource } from '@/types'
 
 export interface UseComicDetailActionsOptions {
@@ -97,7 +98,9 @@ export function useComicDetailActions(options: UseComicDetailActionsOptions) {
     return (raw && Array.isArray(raw.selected_groups) ? raw.selected_groups : []) as string[]
   })
 
-  const hasMultipleGroups = computed(() => availableGroups.value.length > 1)
+  const hasMultipleGroups = computed(
+    () => isCopymangaComic(source.value) && availableGroups.value.length > 1,
+  )
 
   function restoreScrollPosition() {
     const key = `${source.value}/${sourceId.value}`

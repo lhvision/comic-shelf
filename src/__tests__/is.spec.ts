@@ -10,6 +10,7 @@ import {
   isLocalComic,
   isPicacgComic,
   isJmComic,
+  isCopymangaComic,
 } from '@/utils/is'
 import type { LibrarySummary } from '@/types'
 
@@ -83,6 +84,8 @@ describe('is utility module (Type Guards & Predicates)', () => {
       expect(isPicacgComic('jm')).toBe(false)
       expect(isJmComic('jm')).toBe(true)
       expect(isJmComic('local')).toBe(false)
+      expect(isCopymangaComic('copymanga')).toBe(true)
+      expect(isCopymangaComic('jm')).toBe(false)
     })
   })
 })

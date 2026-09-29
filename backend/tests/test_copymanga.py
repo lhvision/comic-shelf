@@ -92,8 +92,9 @@ class TestCopyMangaProvider(unittest.TestCase):
         self.assertTrue(is_valid_image(b"RIFF\x20\x00\x00\x00WEBPVP8 "))
         # Valid GIF
         self.assertTrue(is_valid_image(b"GIF89a\x01\x00\x01\x00"))
-        # Valid AVIF
+        # Valid AVIF (avif and mif1 brands)
         self.assertTrue(is_valid_image(b"\x00\x00\x00\x1cftypavif\x00\x00\x00\x00"))
+        self.assertTrue(is_valid_image(b"\x00\x00\x00\x1cftypmif1\x00\x00\x00\x00"))
 
         # Invalid formats / text / WAF errors
         self.assertFalse(is_valid_image(b""))
@@ -107,7 +108,9 @@ class TestCopyMangaProvider(unittest.TestCase):
         _validate_download_host("s3.mangafunb.fun")
         _validate_download_host("c.mangacopy.com")
 
-        # SSRF malicious hosts
+        # SSRF malicious hosts and unauthorized domains
+        with self.assertRaises(ValueError):
+            _validate_download_host("evil-attacker.com")
         with self.assertRaises(ValueError):
             _validate_download_host("localhost")
         with self.assertRaises(ValueError):
@@ -440,9 +443,59 @@ class TestCopyMangaProvider(unittest.TestCase):
         data = self.provider.download_page(comic, page)
         self.assertEqual(data, jpeg_bytes)
 
+    def test_download_page_security(self) -> None:
+        p_bad_host = RemotePage(index=1, url="http://evil-attacker.com/test.jpg", file="00001.jpg", ext="jpg", chapter="ch1")
+        p_bad_port = RemotePage(index=1, url="http://sx.mangafunb.fun:8080/test.jpg", file="00001.jpg", ext="jpg", chapter="ch1")
+        p_ip_port = RemotePage(index=1, url="http://127.0.0.1:8000/test.jpg", file="00001.jpg", ext="jpg", chapter="ch1")
+
+        fake_comic = MagicMock()
+        with self.assertRaises(ValueError):
+            self.provider.download_page(fake_comic, p_bad_host)
+        with self.assertRaises(ValueError):
+            self.provider.download_page(fake_comic, p_bad_port)
+        with self.assertRaises(ValueError):
+            self.provider.download_page(fake_comic, p_ip_port)
+
+    @patch.object(CopyMangaProvider, "_session")
+    def test_download_page_redirect_security(self, mock_session_fn: MagicMock) -> None:
+        mock_sess = MagicMock()
+        mock_session_fn.return_value = mock_sess
+
+        fake_comic = MagicMock()
+        page = RemotePage(index=1, url="https://sx.mangafunb.fun/01.jpg", file="00001.jpg", ext="jpg", chapter="ch1")
+
+        # 1. Malicious 302 redirect to internal IP is blocked before request
+        resp_redirect_evil = MagicMock()
+        resp_redirect_evil.status_code = 302
+        resp_redirect_evil.headers = {"Location": "http://127.0.0.1:8080/admin"}
+        mock_sess.get.return_value = resp_redirect_evil
+
+        with self.assertRaises(ValueError):
+            self.provider.download_page(fake_comic, page)
+        # Ensure only 1 request was made (the initial one); no request was made to 127.0.0.1
+        self.assertEqual(mock_sess.get.call_count, 1)
+
+        mock_sess.get.reset_mock()
+
+        # 2. Legitimate 302 redirect within allowed CDN succeeds
+        resp_redirect_ok = MagicMock()
+        resp_redirect_ok.status_code = 302
+        resp_redirect_ok.headers = {"Location": "https://s3.mangafunb.fun/real.jpg"}
+
+        resp_final = MagicMock()
+        resp_final.status_code = 200
+        jpeg_bytes = b"\xff\xd8\xff\xe0" + b"\x00" * 20
+        resp_final.content = jpeg_bytes
+
+        mock_sess.get.side_effect = [resp_redirect_ok, resp_final]
+        data = self.provider.download_page(fake_comic, page)
+        self.assertEqual(data, jpeg_bytes)
+        self.assertEqual(mock_sess.get.call_count, 2)
+
     @patch.object(CopyMangaProvider, "_session")
     def test_update_groups_workflow(self, mock_session_fn: MagicMock) -> None:
         import tempfile
+        from fastapi import HTTPException
         from app.models import UpdateGroupsRequest
         from app.routers.chapters import update_comic_groups
         from app.storage import ComicStore
@@ -546,6 +599,24 @@ class TestCopyMangaProvider(unittest.TestCase):
                 self.assertFalse(vol1_dir.exists())
                 # Confirm ch1 still intact
                 self.assertTrue((ch1_dir / "00001.jpg").exists())
+
+                # 4. Reject non-supported source with 400
+                with self.assertRaises(HTTPException) as ctx:
+                    update_comic_groups("jm", "test_slug", req_add)
+                self.assertEqual(ctx.exception.status_code, 400)
+
+                # 5. Keep only tankobon (1 chapter total) - verify ch1 removed, vol1 retained
+                vol1_dir.mkdir(parents=True, exist_ok=True)
+                (vol1_dir / "00003.jpg").write_bytes(b"data_vol")
+                req_single = UpdateGroupsRequest(selected_groups=["tankobon"])
+                detail3 = update_comic_groups("copymanga", "test_slug", req_single)
+                self.assertEqual(len(detail3.meta.chapters), 1)
+                self.assertEqual(detail3.meta.chapters[0].id, "vol1")
+                # vol1 file still intact and not wiped!
+                self.assertTrue(vol1_dir.exists())
+                self.assertTrue((vol1_dir / "00003.jpg").exists())
+                # ch1 is now removed
+                self.assertFalse(ch1_dir.exists())
 
 
 if __name__ == "__main__":

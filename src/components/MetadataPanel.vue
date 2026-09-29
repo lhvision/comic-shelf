@@ -48,7 +48,9 @@ const fieldRows = computed(() => {
     if (props.meta.views && props.meta.likes) {
       statValue = `${props.meta.views} 次观看 · ${props.meta.likes} 点击喜欢`
     } else if (props.meta.views) {
-      statValue = `${props.meta.views} 次观看 / 热度`
+      const viewsStr = String(props.meta.views).trim()
+      statValue =
+        viewsStr.endsWith('热度') || viewsStr.endsWith('次观看') ? viewsStr : `${viewsStr} 热度`
     } else if (props.meta.likes) {
       statValue = `${props.meta.likes} 点击喜欢`
     }

@@ -3,6 +3,7 @@ from __future__ import annotations
 import ipaddress
 import json
 import logging
+import os
 import re
 import threading
 import time
@@ -10,7 +11,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
-from urllib.parse import urlparse
+from urllib.parse import urljoin, urlparse
 
 from curl_cffi import requests as curl_requests
 
@@ -47,6 +48,19 @@ DEFAULT_USER_AGENT = (
     "(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
 )
 
+COPY_ALLOWED_CDN_SUFFIXES = (
+    ".mangafunb.fun",
+    ".mangacopy.com",
+    ".copymanga.com",
+    ".copymanga.tv",
+    ".copymanga.site",
+)
+
+COPY_EXTRA_CDN_HOSTS = [
+    h.strip().lower() for h in os.getenv("COPY_EXTRA_CDN_HOSTS", "").split(",") if h.strip()
+]
+
+
 def is_valid_image(data: bytes) -> bool:
     """Validate image magic bytes to reject corrupted bytes or HTML/WAF error blocks."""
     if not data or len(data) < 4:
@@ -59,13 +73,13 @@ def is_valid_image(data: bytes) -> bool:
         return True
     if len(data) >= 6 and data[:6] in (b"GIF87a", b"GIF89a"):
         return True
-    if len(data) >= 12 and data[4:8] == b"ftyp" and data[8:12] in (b"avif", b"avis"):
+    if len(data) >= 12 and data[4:8] == b"ftyp" and data[8:12] in (b"avif", b"avis", b"mif1", b"miaf"):
         return True
     return False
 
 
 def _validate_download_host(host: str) -> None:
-    """SSRF defense: block private networks, localhost, link-local, and pseudo-domains."""
+    """SSRF defense: block private networks, localhost, link-local, pseudo-domains, and non-whitelisted CDN hosts."""
     cleaned = (host or "").strip().lower()
     if not cleaned or cleaned in ("localhost", "localtest.me"):
         raise ValueError(f"禁止访问敏感或未知的画页下载目标: {host}")
@@ -93,6 +107,26 @@ def _validate_download_host(host: str) -> None:
     ):
         raise ValueError(f"禁止下载内部网络或重绑定域名图片: {host}")
 
+    is_authorized = any(
+        cleaned == suffix.lstrip(".") or cleaned.endswith(suffix)
+        for suffix in COPY_ALLOWED_CDN_SUFFIXES
+    ) or (cleaned in COPY_EXTRA_CDN_HOSTS)
+
+    if not is_authorized:
+        raise ValueError(f"非法的拷贝漫画画页 CDN 域名: {host}")
+
+
+def _validate_download_url(url: str) -> None:
+    """Validate full download URL: protocol, port, and host SSRF checks."""
+    if not url:
+        raise ValueError("画页缺少有效的下载 URL")
+    parsed = urlparse(url)
+    if parsed.scheme not in ("http", "https"):
+        raise ValueError(f"非法的画页下载协议: {parsed.scheme}")
+    if parsed.port and parsed.port not in (80, 443):
+        raise ValueError(f"禁止访问非常规端口的画页目标: {parsed.port}")
+    _validate_download_host(parsed.hostname or "")
+
 
 class CopyMangaProvider(ComicProvider):
     """拷贝漫画 (CopyManga) Provider implementation."""
@@ -102,6 +136,7 @@ class CopyMangaProvider(ComicProvider):
     short_label = "拷贝"
     id_pattern = r"^[a-zA-Z0-9_\-\.]+$"
     example = "xiangyaochengweiyingzhishilizhe"
+    supports_groups = True
 
     def __init__(self) -> None:
         self._tls = threading.local()
@@ -203,7 +238,7 @@ class CopyMangaProvider(ComicProvider):
         # 3. Strip query parameters, hashes, and trailing slashes
         cleaned = cleaned.split("?")[0].split("#")[0].rstrip("/")
 
-        if not re.match(r"^[a-zA-Z0-9_\-\.]+$", cleaned):
+        if not re.match(r"^[a-zA-Z0-9_-]+(?:\.[a-zA-Z0-9_-]+)*$", cleaned):
             raise ValueError(f"非法的拷贝漫画车号标识: '{raw}'，期望为字母/数字/下划线/连字符组成的 slug")
 
         return cleaned
@@ -480,7 +515,8 @@ class CopyMangaProvider(ComicProvider):
 
         # 12. Fetch all chapters with concurrency pool (3 polite workers)
         fetched_chapter_pages: dict[str, list[str]] = {}
-        with ThreadPoolExecutor(max_workers=3) as pool:
+        pool = ThreadPoolExecutor(max_workers=3)
+        try:
             future_to_ch = {
                 pool.submit(_fetch_chapter_pages, ch): ch
                 for ch in flattened_raw_chapters
@@ -488,6 +524,11 @@ class CopyMangaProvider(ComicProvider):
             for fut in as_completed(future_to_ch):
                 ch_item, urls = fut.result()
                 fetched_chapter_pages[ch_item["id"]] = urls
+        except Exception:
+            pool.shutdown(wait=False, cancel_futures=True)
+            raise
+        else:
+            pool.shutdown(wait=True)
 
         # 13. Assemble final Chapter, RemotePage, PageRecord lists
         chapters: list[Chapter] = []
@@ -495,11 +536,19 @@ class CopyMangaProvider(ComicProvider):
         page_records: list[PageRecord] = []
         global_page_index = 1
 
+        # Index existing filenames per chapter to prevent file cache detachment on page index shift
+        existing_filenames_by_chap: dict[str, list[str]] = {}
+        if existing:
+            for p in existing.remote_pages:
+                if p.chapter and p.file:
+                    existing_filenames_by_chap.setdefault(p.chapter, []).append(Path(p.file).name)
+
         for idx, ch in enumerate(flattened_raw_chapters, start=1):
             cid = ch["id"]
             title_text = ch["name"]
             page_urls = fetched_chapter_pages.get(cid, [])
             start_page = global_page_index
+            existing_files = existing_filenames_by_chap.get(cid, [])
 
             chapters.append(
                 Chapter(
@@ -516,7 +565,10 @@ class CopyMangaProvider(ComicProvider):
                 parsed = urlparse(p_url)
                 raw_ext = Path(parsed.path).suffix.lower().lstrip(".") or "jpg"
                 ext = raw_ext if raw_ext in ("jpg", "jpeg", "png", "webp", "avif") else "jpg"
-                file_name = f"{global_page_index:05d}.{ext}"
+                if page_idx - 1 < len(existing_files):
+                    file_name = existing_files[page_idx - 1]
+                else:
+                    file_name = f"{global_page_index:05d}.{ext}"
 
                 remote_pages.append(
                     RemotePage(
@@ -563,7 +615,7 @@ class CopyMangaProvider(ComicProvider):
             updated_at=updated_at,
             views=views,
             likes="",
-            chapters=chapters if len(chapters) > 1 else [],
+            chapters=chapters,
             pages=page_records,
             source_url=f"{self.base_url}/comic/{comic_id}",
             raw={
@@ -584,14 +636,7 @@ class CopyMangaProvider(ComicProvider):
     def download_page(self, comic: FetchedComic, page: RemotePage) -> bytes:
         """Download one page and return valid image bytes."""
         url = page.url
-        if not url:
-            raise ValueError(f"画页缺少有效的下载 URL (page {page.index})")
-
-        parsed = urlparse(url)
-        if parsed.scheme not in ("http", "https"):
-            raise ValueError(f"非法的画页下载协议: {parsed.scheme}")
-
-        _validate_download_host(parsed.netloc)
+        _validate_download_url(url)
 
         headers = {
             "User-Agent": DEFAULT_USER_AGENT,
@@ -603,22 +648,36 @@ class CopyMangaProvider(ComicProvider):
         last_exc: Exception | None = None
         for attempt in range(2):
             try:
-                with download_gate:
-                    resp = self._session().get(
-                        url,
-                        headers=headers,
-                        proxies=proxies,
-                        timeout=20,
-                    )
-                if resp.status_code == 200:
-                    data = resp.content
-                    if not is_valid_image(data):
-                        raise ValueError(f"下载的画页非有效图片格式 (Magic Bytes 校验失败): {url}")
-                    return data
-                raise RuntimeError(f"下载画页失败 ({resp.status_code}): {url}")
+                curr_url = url
+                for _hop in range(3):
+                    with download_gate:
+                        resp = self._session().get(
+                            curr_url,
+                            headers=headers,
+                            proxies=proxies,
+                            timeout=20,
+                            allow_redirects=False,
+                        )
+                    if resp.status_code in (301, 302, 303, 307, 308):
+                        loc = resp.headers.get("Location")
+                        if not loc:
+                            raise RuntimeError(f"重定向缺少 Location 标头: {curr_url}")
+                        next_url = urljoin(curr_url, loc)
+                        _validate_download_url(next_url)
+                        curr_url = next_url
+                        continue
+                    if resp.status_code == 200:
+                        data = resp.content
+                        if not is_valid_image(data):
+                            raise ValueError(f"下载的画页非有效图片格式 (Magic Bytes 校验失败): {curr_url}")
+                        return data
+                    raise RuntimeError(f"下载画页失败 ({resp.status_code}): {curr_url}")
+                raise RuntimeError(f"下载画页重定向次数过多: {url}")
             except Exception as exc:
                 last_exc = exc
-                if attempt == 0 and not isinstance(exc, ValueError):
+                if isinstance(exc, ValueError):
+                    break
+                if attempt == 0:
                     time.sleep(0.5)
 
         raise last_exc or RuntimeError(f"下载画页失败: {url}")

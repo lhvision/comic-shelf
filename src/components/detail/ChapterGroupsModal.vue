@@ -77,6 +77,10 @@ function toggleGroup(key: string) {
     return
   }
   if (selected.value.includes(key)) {
+    if (selected.value.length === 1) {
+      toast('至少需要保留一个章节分组', 'info')
+      return
+    }
     selected.value = selected.value.filter((k) => k !== key)
   } else {
     selected.value.push(key)
@@ -138,7 +142,7 @@ async function handleSave() {
               type="checkbox"
               class="group-checkbox"
               :checked="selected.includes(g.key)"
-              :disabled="g.key === 'default'"
+              :disabled="g.key === 'default' || (selected.length === 1 && selected.includes(g.key))"
               @change="toggleGroup(g.key)"
             />
           </label>

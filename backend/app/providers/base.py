@@ -6,6 +6,7 @@ import os
 import time
 from abc import ABC, abstractmethod
 from pathlib import Path
+from typing import Any
 
 from ..models import DiscoveryItem, FetchedComic, RemotePage
 
@@ -25,6 +26,7 @@ class ComicProvider(ABC):
     short_label: str = ""
     id_pattern: str = ""
     example: str = ""
+    supports_groups: bool = False
 
     # ------------------------------------------------------------------
     # Secure Session / Credential Persistence (0o600 POSIX File Permissions)
@@ -91,6 +93,8 @@ class ComicProvider(ABC):
         raw_id: str,
         *,
         existing: "FetchedComic | None" = None,
+        groups_to_fetch: list[str] | None = None,
+        **kwargs: Any,
     ) -> FetchedComic:
         """Fetch metadata + page URLs. Must not download page bytes here.
 

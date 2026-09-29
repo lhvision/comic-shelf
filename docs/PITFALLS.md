@@ -937,6 +937,21 @@
   3. **单本详情页设置下沉**：不污染主收录界面，在详情页「更多 ⋯」菜单提供「章节分组管理」，支持按需勾选单行本等衍生分组；取消勾选已有分组时，必须弹出危险二次确认并物理彻底删除对应画页目录释放磁盘；
   4. **自动追更范围继承**：自动追更巡检服务严格遵循本地保存的 `selected_groups`，严禁在后台巡检时越权塞入未勾选的衍生分组。
 
+### 155. SSRF 302 跳转盲区防范与 FastAPI response_model 参数注入冲突
+
+- **症状**：
+  1. 画页下载时虽然对初始目标域名做了解析和白名单校验，但在面对 302/301 重定向时，若依赖 HTTP 客户端自动跟随（`allow_redirects=True`），探测内网的 GET 请求依然会被发出；
+  2. 在已有 `response_model` 的 FastAPI 路由签名中随意声明可选依赖（如 `request: Request | None = None`），服务启动时直接崩溃报 `FastAPIError: Invalid args for response field!`；
+  3. 章节多分组变更在单话保留或组别缩减时，若以旧全书章节对象为差集基准，会因单话未列入 `chapters` 导致 `shutil.rmtree` 误删物理有效目录。
+- **根因**：
+  1. 现代 HTTP 库（如 `curl_cffi` / `requests`）在 `allow_redirects=True` 时由底层网络栈全自动处理跳转。在应用层检查返回的 `resp.url` 之前，发往内网目标（如 `http://127.0.0.1:8080/cmd` 或云元数据）的流量已实际打通，后置阻断无法挽回请求已执行的破坏；
+  2. FastAPI 依赖注入解析器在函数参数带有默认值 `None` 且缺少 `Depends(...)` 时，会试图将其作为 Pydantic 字段纳入响应/请求体解析，与现有 `response_model` 类型反射产生剧烈冲突；
+  3. 单话漫画由多组变为单组仅剩 1 话时，`chapters` 字段按约定可能为空或单条，需以 `meta.pages` 的真实所属章节为权威比对差集。
+- **红线**：
+  1. **禁止盲目跟随 302 跳转（Pre-request SSRF Defense）**：画页下载必须显式配置 `allow_redirects=False`，手动拦截 3xx 重定向状态码，并在向下一跳发出任何网络请求**之前**强校验协议、端口与域名白名单，阻断任何跨协议、内网 IP 或非常规端口跳板；
+  2. **避免在 response_model 路由中混入弱类型 Request 注入**：鉴权优先依托全局安全中间件拦截；路由参数中需要 `Request` 对象时必须显式声明类型 `request: Request` 且不加默认值，禁止写 `request: Request | None = None`；
+  3. **基于真实页面归属实施目录物理裁剪**：章节分组裁剪计算 `removed_cids` 时，以 `p.chapter for p in meta.pages if p.chapter` 为权威真理源，只有全书完全脱钩的章节目录才允许执行物理清理。
+
 ---
 
 ## 🚦 交付门禁

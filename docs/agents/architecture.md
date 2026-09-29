@@ -51,13 +51,13 @@ flowchart TD
         LibraryRouter["书架检索与导入 (routers/library.py)<br/>• 影子索引分页 / 分面聚合 / 排行榜"]
         MediaRouter["媒体流式推流 (routers/media.py)<br/>• WebP内容协商 / 双模封面 / 懒下载"]
         SearchRouter["复合搜索路由 (routers/search.py)<br/>• 识图代理 / 台词全文检索 / OCR同步"]
-        ChaptersRouter["章节编排 (routers/chapters.py)"]
+        ChaptersRouter["章节编排 (routers/chapters.py)<br/>• 单话重订与物理裁剪 / 多分组动态重组"]
         LocalRouter["自建工坊 (routers/local_comic.py)"]
     end
 
     subgraph Domain["领域与存储驱动层 (Domain Storage & Providers)"]
         ComicStore["ComicStore 领域门面<br/>(细粒度文件锁 / 原子写入 / 缓存预取)"]
-        Providers["站点适配层 (Providers)<br/>• JMComic (Scramble解密)<br/>• PicAcg (JWT/3-CDN容灾)<br/>• Local (自建图集/视频拆帧/PDF提取)"]
+        Providers["站点适配层 (Providers)<br/>• JMComic (Scramble解密)<br/>• PicAcg (JWT/3-CDN容灾)<br/>• CopyManga (Chrome指纹/AES解密/多分组)<br/>• Local (自建图集/视频拆帧/PDF提取)"]
     end
 
     subgraph Storage["数据存储与外部索引 (Data Persistence)"]

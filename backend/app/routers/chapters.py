@@ -164,13 +164,16 @@ def update_comic_groups(
 ) -> ComicDetail:
     """Updates the selected chapter groups for a comic (e.g. including or excluding tankobon)."""
     _require_known_source(source)
-    existing = store.load_fetched(source, source_id)
-    if existing is None:
-        raise HTTPException(status_code=404, detail="本子还没有导入本地书库")
-
     provider = get_provider(source)
     if provider is None:
         raise HTTPException(status_code=400, detail=f"未找到来源适配器: {source}")
+
+    if not getattr(provider, "supports_groups", False):
+        raise HTTPException(status_code=400, detail=f"图源「{source}」不支持章节多分组动态调整")
+
+    existing = store.load_fetched(source, source_id)
+    if existing is None:
+        raise HTTPException(status_code=404, detail="本子还没有导入本地书库")
 
     # Cancel any in-flight download jobs to prevent race conditions during group reorganization
     cancel_job(source, source_id)
@@ -181,9 +184,13 @@ def update_comic_groups(
     except Exception as exc:
         raise HTTPException(status_code=502, detail=f"更新章节分组失败：{exc}") from exc
 
-    # Identify removed chapters
-    existing_cids = {c.id for c in (existing.meta.chapters or [])}
-    new_cids = {c.id for c in (fetched.meta.chapters or [])}
+    # Identify removed chapters safely by checking both chapters and pages
+    existing_cids = {p.chapter for p in (existing.meta.pages or []) if p.chapter} or {
+        c.id for c in (existing.meta.chapters or [])
+    }
+    new_cids = {p.chapter for p in (fetched.meta.pages or []) if p.chapter} or {
+        c.id for c in (fetched.meta.chapters or [])
+    }
     removed_cids = existing_cids - new_cids
 
     # 2. Transactionally save updated metadata and remote page index first
