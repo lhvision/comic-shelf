@@ -864,6 +864,23 @@ def test_mcp_search_by_meaning_forwards_reason():
     print("  ✓ MCP search_by_meaning forwards available/reason passed")
 
 
+def test_mcp_tool_rate_limiting():
+    """MCP 工具执行入口必须受到频控保护，超限时优雅返回错误并标明 isError=True。"""
+    from app.abuse import clear_rate_limit
+
+    clear_rate_limit("mcp")
+    res = asyncio.run(execute_tool("get_shelf_stats", {}))
+    assert res.get("isError") is not True, res
+
+    with patch("app.routers.mcp.check_guest_rate_limit", return_value=False):
+        res_limited = asyncio.run(execute_tool("get_shelf_stats", {}))
+        assert res_limited.get("isError") is True
+        assert "频次超限" in res_limited["content"][0]["text"]
+
+    clear_rate_limit("mcp")
+    print("  ✓ MCP tool rate limiting passed")
+
+
 if __name__ == "__main__":
     print("Running MCP Server unit tests...")
     test_mcp_protocol_initialize_and_tools()
@@ -880,4 +897,5 @@ if __name__ == "__main__":
     test_mcp_handshake_url_is_credential_free_and_failures_get_locked()
     test_mcp_handlers_run_off_event_loop()
     test_mcp_search_by_meaning_forwards_reason()
+    test_mcp_tool_rate_limiting()
     print("All MCP Server tests passed successfully!")

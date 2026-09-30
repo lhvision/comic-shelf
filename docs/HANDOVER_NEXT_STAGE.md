@@ -19,7 +19,7 @@
 已关的各项及理由见 `DEPLOYMENT.md` §9.5。
 
 - ⏳ **入站 `?token=` 仍然接受**（`extract_token` 第 4 档，为不支持自定义 Headers 的客户端保留）：uvicorn 日志已打码，但 NPM 等反代的日志照记。要彻底堵掉，得让 MCP 只从请求头取子凭据，代价是只能在 URL 里填凭据的客户端（`DEPLOYMENT.md` §9.2 方式 B）会失效。等确认自用客户端都支持自定义 Headers 再做。
-- ⏳ **MCP 工具无独立频控**：线程池只解决"一次慢调用卡住全站"，不限次数；`/api/mcp/rpc` 也没有会话与队列上限。外部 agent 疯狂检索仍会与书架请求抢同一份 SQLite 连接。现成的最小方案是在 `execute_tool` 入口调 `abuse.check_guest_rate_limit("mcp")`，代价是与访客翻页共用限流参数。
+- ✅ **MCP 工具独立频控已落地**（2026-10-01）：在 `execute_tool` 入口调 `abuse.check_guest_rate_limit("mcp")`，直接复用令牌桶（180次/分 + 100突发容量），超限时优雅返回 `isError: True`，防范外部 Agent 并发风暴打满 SQLite 连接池与卡死服务。
 - ⏳ **失败锁记下的 IP 可不可信取决于部署**：`COMIC_SHELF_TRUST_FORWARDED_HEADERS` 默认开，`get_client_ip` 直接信任 `CF-Connecting-IP` / XFF 第一段。经 Cloudflare 且源站不能直连时没问题；源站能直连，这两个头就能伪造，可以每次换 IP 永不触发锁，也可以冒用馆长 IP 把馆长锁在门外。目前只把 `docs/HOMELAB_NETWORKING_GUIDE.md` §6.8 回源印章列为公网部署必配项，默认值不改：改成 false 会让所有走 Cloudflare 的部署都得手动再打开。
 - ⏳ **前端把馆长口令存在 localStorage**：`src/api/core/http.ts` 把口令存进 `localStorage`，每个请求都带 `Authorization: Bearer`（后端 `backend/app/auth.py` 的 `extract_token` 第 1 档）。这是一直以来的做法；改口令后前端会反复重放旧值，同一个错误凭据在计数窗口内只计一次，所以不会锁 IP。
 - ⏳ **有意延后的小项**（都不构成绕过，按需再做）：

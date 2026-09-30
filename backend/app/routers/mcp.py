@@ -18,6 +18,7 @@ from fastapi import APIRouter, HTTPException, Query, Request, Response
 from fastapi.responses import JSONResponse, StreamingResponse
 
 from ..abuse import (
+    check_guest_rate_limit,
     is_ip_login_locked,
     record_ip_login_failure_and_check_lock,
 )
@@ -833,6 +834,12 @@ async def execute_tool(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
     if not handler:
         return {
             "content": [{"type": "text", "text": f"未知的 MCP 工具: {name}"}],
+            "isError": True,
+        }
+    if not check_guest_rate_limit("mcp"):
+        logger.warning("MCP rate limit exceeded for tool '%s'", name)
+        return {
+            "content": [{"type": "text", "text": "MCP 工具调用频次超限，请稍后重试 (Rate limit exceeded)"}],
             "isError": True,
         }
     try:
