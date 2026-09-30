@@ -105,7 +105,7 @@ useIntersectionObserver(
                   class="rec-cover-img"
                   :src="item.cover_paths[0]"
                   :srcset="coverSrcset(item.cover_paths[0])"
-                  sizes="(max-width: 680px) 180px, 220px"
+                  sizes="(max-width: 680px) 120px, 220px"
                   :alt="item.title"
                   loading="lazy"
                   decoding="async"

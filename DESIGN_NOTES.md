@@ -159,7 +159,7 @@
 - **书架 48 图预算（Shelf 48-Cover Budget）**：首页每本漫画包含 4 张展示封面（1 主封面 + 3 叠牌封面），采用 12 本/批（严格对应 12 × 4 = 48 张封面图）的增量渲染机制（VueUse `useIntersectionObserver` 监听底部哨兵）；
 - **详情页 48 页切片（Detail Index Chunking）**：详情页缩略图按 48 页增量展开，避免千页巨作一次性阻塞主线程；
 - **Canvas 重绘防抖（Canvas Redraw Debounce）**：Canvas 卡片采用 `redrawKey` + 80ms 防抖调度，消除高频进度重绘带来的掉帧；
-- **响应式阶梯封面（Responsive Stepped Covers）**：封面与缩略图遵循 `Cover Dimension Budget`（720px 物理基线）；未来多阶分发严格遵循 `srcset`（`360w`, `720w`）+ `sizes` 规范，**严禁只写 `w` 漏写 `sizes`**（防浏览器默认 100vw 拉取超大图），渐进增强支持 `sizes="auto"` 与 `loading="lazy"` 原生尺寸联动。
+- **响应式阶梯封面（Responsive Stepped Covers）**：封面与缩略图遵循 `Cover Dimension Budget`（720px 物理基线）；多阶分发严格遵循 `srcset`（`360w`, `720w`）+ `sizes` 规范，**严禁只写 `w` 漏写 `sizes`**（防浏览器默认 100vw 拉取超大图）。在双阶梯架构下，全站封面统一采用保守低估规范 `sizes="(max-width: 680px) 120px, 240px"`，避免使用 `sizes="auto"`（因现代 2x/3x 高密屏会放大物理像素需求至 400~500px+ 从而全量越级拉取 720w 原图，反噬移动端与首屏加载速度）。
 
 ### 3.4 现代进度条与拟真加载体系（Progress Bar System）
 

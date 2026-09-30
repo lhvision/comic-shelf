@@ -81,8 +81,8 @@
 | **`font-size-adjust`**                               |              127+               |     3+<br>_(92+ two-values)_     |      16.4+<br>_(17+ two-values)_      |                   ✅ Baseline 2024                   |                      ✅ 渐进增强（微标 `--text-caption` 与多语言字形排版）                      |
 | **`CSS Counters` (`counter-reset`)**                 |              全通               |               全通               |                 全通                  |             ✅ Baseline Widely Available             |                           ✅ 已落地（页面网格与折叠指示双轨混合架构）                           |
 | **`scroll-margin-top` / `scroll-padding`**           |              全通               |               全通               |                 全通                  |             ✅ Baseline Widely Available             |                            ✅ 已落地（画卷折叠平滑回顶吸顶锚点补偿）                            |
-| **`srcset` / `sizes` (`w` 描述符)**                  |      38+<br>_(34+ srcset)_      |               38+                |         9.1+<br>_(8+ srcset)_         |                   ✅ Baseline 2016                   |                             📋 路线图（响应式阶梯封面分阶调度管线）                             |
-| **`sizes="auto"` (懒加载原生联动)**                  |              126+               |               150+               |                  ⏳                   |               🔶 Newly Available 2026                |                           📋 路线图（配合 `loading="lazy"` 自动槽位）                           |
+| **`srcset` / `sizes` (`w` 描述符)**                  |      38+<br>_(34+ srcset)_      |               38+                |         9.1+<br>_(8+ srcset)_         |                   ✅ Baseline 2016                   |                 ✅ 已落地（全站统一 `sizes="(max-width: 680px) 120px, 240px"`）                 |
+| **`sizes="auto"` (懒加载原生联动)**                  |              126+               |               150+               |                  27+                  |                   ✅ Baseline 2026                   |                   ⚠️ 实测避坑（双档架构因 DPR 放大拉大图，维持人工低估规范）                    |
 | **局部 Element-Scoped VT**                           |              147+               |                ⏳                |                  ⏳                   |                      🧪 Stage 2                      |                      ✅ 渐进增强（`useViewTransition.ts` 元素级门面封装）                       |
 | `interpolate-size: allow-keywords`                   |              129+               |                ⏳                |                  ⏳                   |               🔶 Limited Availability                |                  ✅ 已落地（TagFilterBar / MetadataPanel / ImportPanel 展开）                   |
 | `::details-content`                                  |              131+               |               143+               |                 18.4+                 |               🔶 Limited Availability                |                            ✅ 渐进增强（main.css 全局 details 动画）                            |
@@ -571,7 +571,7 @@ overflow: hidden;
 **Baseline**：2016（全网事实标准）· Chrome 38+ · Firefox 38+ · Safari 9.1+  
 **现代演进**：`sizes="auto"`（Chrome 126+, Firefox 150+）  
 **参考**：[张鑫旭 响应式图片srcset全新释义sizes属性w描述符](https://www.zhangxinxu.com/wordpress/2014/10/responsive-images-srcset-size-w-descriptor/)  
-**本项目落地决策**：📋 **纳入响应式媒体管线标准，指导封面派生图与阅读器高分屏分阶按需拉取**
+**本项目落地决策**：✅ **全站统一采用 `sizes="(max-width: 680px) 120px, 240px"` 保守低估规范，全终端优先拉取 360px 极速缩略图**
 
 **核心机制与关键原理**：
 
@@ -579,23 +579,24 @@ overflow: hidden;
    - 例如 `srcset="cover-360.webp 360w, cover-720.webp 720w"` 表示各张切片真实的物理像素宽度。
 2. **`sizes` 是渲染预期的 CSS 槽位尺寸**：
    - 浏览器在解析 HTML 阶段，尚未执行 CSS 样式计算和重排，不知道图片最终在屏幕上会渲染成多大；
-   - `sizes` 用于在 HTML 解析阶段提前告知浏览器该图片在不同断点下的预期槽位宽度（如 `sizes="(max-width: 680px) 50vw, 200px"`）；
+   - `sizes` 用于在 HTML 解析阶段提前告知浏览器该图片在不同断点下的预期槽位宽度（如 `sizes="(max-width: 680px) 120px, 240px"`）；
    - 浏览器将 `sizes 计算宽度 × 设备像素比 (DPR)`，计算出所需的最小物理像素数，再从 `srcset` 中选择最适宜的一档资源。
 3. **避坑红线：严禁只写 `w` 描述符而省略 `sizes`**：
-   - **痛点复盘**：如果写了 `srcset="... 360w, ... 720w, ... 1440w"` 却漏写了 `sizes`，WHATWG 规范规定浏览器默认按 `sizes="100vw"` 处理；
-   - **后果**：在桌面 2K/4K 屏幕上，即便书架卡片在界面上只占 180px 宽度，浏览器也会按 2000px+ 视口计算，导致强行下载最大的 1440w 超大原图，带来严重的带宽浪费与解码内存暴涨！必须始终配套编写精确的 `sizes`。
-4. **现代前瞻：`sizes="auto"` 与懒加载原生联动**：
-   - Chrome 126+ 与 Firefox 150+ 已支持 `sizes="auto"`；
-   - 当图片带有 `loading="lazy"` 时，浏览器在图片即将进入视口前，会根据已完成排版的 DOM 真实布局宽度自动推导 `sizes`，彻底免去手动编写复杂媒体查询的成本。
+   - **痛点复盘**：如果写了 `srcset="... 360w, ... 720w"` 却漏写了 `sizes`，WHATWG 规范规定浏览器默认按 `sizes="100vw"` 处理；
+   - **后果**：在桌面 2K/4K 屏幕上，即便书架卡片在界面上只占 180px 宽度，浏览器也会按 2000px+ 视口计算，导致强行下载最大的 720w 超大原图，带来严重的带宽浪费与解码内存暴涨！必须始终配套编写精确的 `sizes`。
+4. **现代演进与实测避坑：`sizes="auto"` 陷阱**：
+   - Chrome 126+、Firefox 150+ 与 Safari 27+ 已原生支持 `sizes="auto"`；
+   - **实测暗坑**：在后端仅提供 `360w` 和 `720w` 粗粒度双档架构下，WHATWG 规范的候选图选择算法具有“保清晰不容忍模糊（向上取整）”特性。现代手机（DPR=3）单列卡片（276px × 3 = 828px）与视网膜高分屏（220px × 1.5/2 = 330~440px）都会被 `auto` 诚实算出的物理像素超出 360w，导致全终端无论手机还是大屏全量被浏览器越级拉取 720w 大图，彻底反噬首屏极速加载初衷！
+   - **纸间最佳工程决策**：全站封面（`ComicCard`、`CoverCarousel`、`ChapterCard`、`ReaderEndCard`）一律采用人工保守低估规范 `sizes="(max-width: 680px) 120px, 240px"`，通过将移动端锁定在 120px（$120 \times 3\text{ (DPR)} = 360\text{px} \le 360\text{w}$），完美守住全终端优先 360px 极速缩略图模式。
 
-**纸间生产落地蓝图（`ComicCard.vue` 封面标准契约）**：
+**纸间生产落地契约（封面响应式声明标准范式）**：
 
 ```html
-<!-- 书架卡片封面响应式声明范式 -->
+<!-- 书架卡片、轮播图与尾页推荐响应式声明范式 -->
 <img
   :src="coverUrl"
   :srcset="`${coverUrlThumb} 360w, ${coverUrl} 720w`"
-  sizes="(max-width: 680px) calc(50vw - 1.5rem), (max-width: 960px) 33vw, 200px"
+  sizes="(max-width: 680px) 120px, 240px"
   loading="lazy"
   decoding="async"
   alt="封面"
@@ -1472,7 +1473,7 @@ text-fit: <fit-type> <fit-target>;
 
 - [ ] **`::details-content` 落地 Baseline**（Safari 18.4+ 已支持，等 Firefox 144+ 稳定版）：统一全站原生 `<details>` 折叠展开；
 - [ ] **全量启用原生 `interestfor` 意图触发**：当 Chromium 与 WebKit 正式版稳定支持后，逐步减少 Tooltip 中的 `useTimeout` 定时器；
-- [ ] **响应式阶梯封面（Responsive Stepped Covers）**：结合后端派生缩略图在 `ComicCard` 与详情页接入 `srcset` (`360w`, `720w`) + `sizes` 规范，配合 Chrome 126+/Firefox 150+ `sizes="auto"` 渐进增强。
+- [x] **响应式阶梯封面（Responsive Stepped Covers）**：全站封面全面对齐 `srcset` (`360w`, `720w`) + `sizes="(max-width: 680px) 120px, 240px"` 低估规范，实测验证并规避 `sizes="auto"` 越级拉取大图的性能陷阱。
 
 ### 中期（预计 2027，等规范 Stage 3-4）
 

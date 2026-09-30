@@ -101,7 +101,7 @@ function onSlideClick(index: number) {
             class="cover-image"
             :src="cover"
             :srcset="coverSrcset(cover)"
-            sizes="(max-width: 680px) 75vw, 360px"
+            sizes="(max-width: 680px) 120px, 240px"
             :alt="`${title} 第 ${index + 1} 页封面`"
             :loading="index < 2 ? 'eager' : 'lazy'"
             decoding="async"
