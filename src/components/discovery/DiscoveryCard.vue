@@ -184,6 +184,14 @@ function retryCover() {
         <span class="rank-hash">#</span>{{ rankFormatted }}
       </div>
 
+      <span
+        v-if="!item.in_library && item.mirror_source"
+        class="mirror-seal"
+        :title="`馆内已收录【${getSourceShortName(item.mirror_source)}】版本`"
+      >
+        馆内已有
+      </span>
+
       <a
         v-if="item.url"
         :href="item.url"
@@ -244,6 +252,28 @@ function retryCover() {
           </template>
           已在书架 · 详情
         </AppButton>
+
+        <div v-else-if="item.mirror_source" class="mirror-action-split">
+          <AppButton
+            :to="`/comic/${item.mirror_source}/${item.mirror_source_id}`"
+            variant="secondary"
+            size="sm"
+            class="mirror-btn"
+            :title="`前往查看馆内已有版本（${getSourceShortName(item.mirror_source)}）`"
+          >
+            馆内已有 · {{ getSourceShortName(item.mirror_source) }}
+          </AppButton>
+          <AppButton
+            variant="soft"
+            size="sm"
+            icon="plus"
+            :loading="ingesting"
+            title="依然收录本版本"
+            aria-label="依然收录本版本"
+            class="mirror-ingest-btn"
+            @click="emit('ingest', item)"
+          />
+        </div>
 
         <AppButton
           v-else
@@ -465,6 +495,39 @@ function retryCover() {
 
 .in-library-btn {
   font-weight: 600;
+}
+
+.mirror-seal {
+  position: absolute;
+  top: var(--space-2);
+  right: var(--space-2);
+  display: inline-flex;
+  align-items: center;
+  padding: var(--space-0-5) var(--space-1);
+  border-radius: var(--radius-1);
+  font-family: var(--font-body);
+  font-size: var(--text-caption);
+  font-weight: 600;
+  background: color-mix(in oklab, #d97706 90%, black);
+  color: #fff;
+  z-index: 2;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+}
+
+.mirror-action-split {
+  display: flex;
+  gap: var(--space-1);
+  width: 100%;
+}
+
+.mirror-btn {
+  flex: 1;
+  min-width: 0;
+  font-size: 0.6875rem !important;
+}
+
+.mirror-ingest-btn {
+  flex-shrink: 0;
 }
 
 .status-dot {

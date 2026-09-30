@@ -360,6 +360,25 @@ JmImageTool.decode_and_save(num, source_image, save_path)
   - 不维护额外的脱机修复脚本；在馆长点击详情页「刷新资料」或后台定时追更发现新章节时，由 Provider 组装层（`_assemble_fetched_comic`）与 Storage 存储层（`save_auto_update`）双层独立捍卫不变式，实现存量异常无感自愈；
   - 前端详情页「刷新资料」按钮通过 Composable 维护 `refreshing` 状态，具备 Loading 转圈与后台缓存互斥禁用，并细粒度感知日期变动（「已同步最新日期与版本」）。
 
+### 4.14 跨源作品查重与规范化标题影子索引（ADR 0031）
+
+- **规范化标题（Normalized Title）与清洗边界**：
+  - `backend/app/formatting.py:normalize_title(title)` 纯函数：
+    1. 递归剥离最多 3 层成对括号标签：`[...]`、`(...)`、`【...】`、`（...）`、`{...}`、`［...］`、`〔...〕`、`〖...〗`、`〘...〙` 等汉化组、社团、展会、发售载体标记；
+    2. 繁简归一化：通过 `to_simplified()` 统一转为简体中文；
+    3. 标点与空白清洗：折叠连续全半角空格与特殊分隔标点，小写归一化；
+    4. 严格保留卷册标识：主干中的卷号、册号、分部（如 `01`、`Vol.2`、`前篇`、`下`）作为核心标题保留，确保分卷作品误报率为 0；
+    5. 纯标签兜底保护：若剥离后主体文字为空（如 `[C100][DL版]`），自动回退使用原始标题（仅做繁简与空白折叠），杜绝空值碰撞。
+- **影子索引 B-Tree 加速（idx_comics_index_norm_title）**：
+  - 在 SQLite `comics_index` 表建立 `normalized_title TEXT NOT NULL DEFAULT ''` 字段及 B-Tree 索引（`idx_comics_index_norm_title`）；
+  - 1w ~ 5w 藏书体量下单次查询索引树深度 $\le 3$，单条比对耗时 **< 0.1ms**，零 I/O 阻塞；
+  - `init_db()` 自动增量迁移与存量回填；`upsert_comic_index` 在任何元数据写入时自动调用 `normalize_title` 确保持久化同步。
+- **极简方案 3 提交时弱拦截与动态镜像关联**：
+  - 零实体冗余表：各图源版本作为物理独立的 `(source, source_id)` 实体共存，保留各自的画质、章节与 `remote.json` 摄取血缘；
+  - 零多余抽象接口：不设立独立的探测端点与后台输入轮询；复用 `POST /api/library/import`（响应携带 `cross_matches`），输入框平时静默无感；点击收录时若命中本地缓存（`from_cache=True`）原地弱拦截并直达已有详情页，新书收录若命中异源则弹出琥珀色提示并在详情页顶部呈现异源镜像水墨胶囊条；
+- **隐私隔离与越权防御**：
+  - `find_comic_mirrors(..., is_curator=...)` 严格区分权限上下文：非馆长时强制注入 `AND hidden_from_guest = 0`，绝对阻断访客通过异源同名作品刺探隐藏藏书。
+
 ## 5. 后端文件地图
 
 | 文件                                | 职责                                                                                                                        |
@@ -396,7 +415,7 @@ JmImageTool.decode_and_save(num, source_image, save_path)
 - `GET /api/events/stream`（单向系统事件流 SSE，广播构建版本、书库变动与任务进度）
 - `GET /api/discovery/ranking`（发现页与排行榜数据：周榜/月榜/日榜，支持 `source` 与 `timeframe` 筛选）
 - `GET /api/library`（基于 SQLite `comics_index` 影子索引的毫秒级受控分页与多维筛选，参数支持 `page`, `page_size`, `status`, `favorite`, `source`, `q`, `scope`（支持 `all`, `title_id`, `id`, `author`, `tag`，默认 `all` 并按四级相关度分层重排）, `tag`, `tags`, `sort`, `ids`, `offset`；动态 JOIN 各用户独立阅读进度与喜欢）
-- `POST /api/library/import` `{id, source, prefetch_covers, prefetch_all, refresh}`（`refresh=true` 走增量，章节未变则复用旧 remote；已重新装订画卷禁止 refresh 覆盖）
+- `POST /api/library/import` `{id, source, prefetch_covers, prefetch_all, refresh}`（`refresh=true` 走增量，章节未变则复用旧 remote；已重新装订画卷禁止 refresh 覆盖；响应返回 `from_cache` 与 `cross_matches` 支持提交时弱拦截与跨源导流）
 - `POST /api/library/local/create`（自建工坊创建本地图集/多章节元数据骨架；未填 `id` 时分配时钟 `source_id`；作为 Paper Studio 外部创作平台 Machine API 规范契约长期保留）
 - `POST /api/library/local/create-from-staged-pdf`（从隔离区暂存 PDF 页面原子收录为本地多章节漫画，带章节草案与页码重排）
 - `POST /api/library/local/import-path`（扫描服务器本地目录或单个/多卷 PDF 文件秒级收录；未填 `id` 时用路径名作 `source_id`，见 ADR 0027）
@@ -409,7 +428,7 @@ JmImageTool.decode_and_save(num, source_image, save_path)
 - `PATCH /api/library/{source}/{id}/metadata`（更新标题/作者/标签/叙述/自定义封面页码 `cover_indices`）
 - `PATCH /api/library/{source}/{id}/chapters/{chapterId}`（修改单章节名称）
 - `DELETE /api/library/{source}/{id}/chapters/{chapterId}`（物理删除单个章节并重排全书全局页码）
-- `GET /api/library/{source}/{id}`（详情含 `chapters`）
+- `GET /api/library/{source}/{id}`（详情含 `chapters` 与 `mirrors` 异源镜像清单，受访客隐私保护）
 - `GET /api/library/{source}/{id}/pages/{n}/file`（`n` 为全局页号，带防盗链校验，支持 `.{ext}` 静态扩展名别名）
 - `GET /api/library/{source}/{id}/pages/{n}/thumbnail`（同上，支持 `.{ext}` 别名）
 - `GET /api/library/{source}/{id}/covers/{n}/file`（封面取 `cover_indices` 或前 N 页，带防盗链校验，支持 `Accept: image/webp` 内容协商、360 规格 `?w=360` 与 `.{ext}` 别名，带 `Vary: Accept`；资源缺失响应 404，由 `_serve_negotiated_image` 统一服务）

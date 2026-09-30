@@ -170,7 +170,7 @@ onMounted(() => {
           :covers="detail.cover_paths"
           :title="detail.meta.title"
         />
-        <MetadataPanel class="detail-meta" :meta="detail.meta" />
+        <MetadataPanel class="detail-meta" :meta="detail.meta" :mirrors="detail.mirrors" />
       </div>
 
       <DetailActionBar

@@ -131,11 +131,28 @@ async function submitRemote(source: RemoteComicSource) {
       prefetch_all: prefetchAll.value,
     })
     warnings.value = result.warnings
-    toast(store.importMessage, warnings.value.length ? 'error' : 'success')
 
-    if (!result.from_cache) {
-      emit('imported', result.meta.source, result.meta.source_id)
+    // 方案 3：提交时若已在馆内，弱拦截并直接导流前往已有详情页
+    if (result.from_cache) {
+      toast(`该作品已在馆内，正在为您前往《${result.meta.title}》`, 'info')
+      void router.push(`/comic/${result.meta.source}/${result.meta.source_id}`)
+      id.value = ''
+      return
     }
+
+    if (result.cross_matches && result.cross_matches.length > 0) {
+      const match = result.cross_matches[0]
+      if (match) {
+        toast(
+          `收录成功，检测到馆内已存在异源同名作品：【${match.source}】《${match.title}》`,
+          'info',
+        )
+      }
+    } else {
+      toast(store.importMessage, warnings.value.length ? 'error' : 'success')
+    }
+
+    emit('imported', result.meta.source, result.meta.source_id)
     id.value = ''
   } catch (err) {
     toast(err instanceof Error ? err.message : String(err), 'error')

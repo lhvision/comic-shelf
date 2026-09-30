@@ -482,6 +482,7 @@ def init_db(db_path: Path | None = None) -> None:
                 mtime REAL NOT NULL DEFAULT 0.0,
                 auto_update_interval_days INTEGER NOT NULL DEFAULT 15,
                 last_auto_checked_at TEXT NOT NULL DEFAULT '',
+                normalized_title TEXT NOT NULL DEFAULT '',
                 PRIMARY KEY (source, source_id)
             );
             CREATE INDEX IF NOT EXISTS idx_comics_index_imported ON comics_index(imported_at DESC);
@@ -528,12 +529,22 @@ def init_db(db_path: Path | None = None) -> None:
         if "pin_salt" not in cols:
             conn.execute("ALTER TABLE guest_passes ADD COLUMN pin_salt TEXT NOT NULL DEFAULT ''")
 
-        # Migrations for comics_index: auto_update_interval_days, last_auto_checked_at
+        # Migrations for comics_index: auto_update_interval_days, last_auto_checked_at, normalized_title
         c_cols = [r["name"] for r in conn.execute("PRAGMA table_info(comics_index)").fetchall()]
         if "auto_update_interval_days" not in c_cols:
             conn.execute("ALTER TABLE comics_index ADD COLUMN auto_update_interval_days INTEGER NOT NULL DEFAULT 15")
         if "last_auto_checked_at" not in c_cols:
             conn.execute("ALTER TABLE comics_index ADD COLUMN last_auto_checked_at TEXT NOT NULL DEFAULT ''")
+        if "normalized_title" not in c_cols:
+            conn.execute("ALTER TABLE comics_index ADD COLUMN normalized_title TEXT NOT NULL DEFAULT ''")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_comics_index_norm_title ON comics_index(normalized_title)")
+
+        # Ensure normalized_title is backfilled for any existing entries
+        empty_norm_rows = conn.execute("SELECT source, source_id, title FROM comics_index WHERE normalized_title = ''").fetchall()
+        if empty_norm_rows:
+            from .formatting import normalize_title
+            updates = [(normalize_title(r["title"]), r["source"], r["source_id"]) for r in empty_norm_rows]
+            conn.executemany("UPDATE comics_index SET normalized_title = ? WHERE source = ? AND source_id = ?", updates)
 
         # Ensure facets snapshot is populated on cold start / first migration
         snap_count = conn.execute("SELECT COUNT(*) as cnt FROM library_stats_snapshot").fetchone()
@@ -1223,8 +1234,39 @@ def set_user_progress(
 
 def upsert_comic_index(item: dict[str, Any]) -> None:
     """插入或更新漫画影子索引记录，并增量同步分面快照。"""
-    source = str(item.get("source") or "")
-    source_id = str(item.get("source_id") or "")
+    defaults = {
+        "source": "",
+        "source_id": "",
+        "display_id": "",
+        "title": "",
+        "authors_json": "[]",
+        "works_json": "[]",
+        "actors_json": "[]",
+        "tags_json": "[]",
+        "chapter_titles_json": "[]",
+        "page_count": 0,
+        "cached_pages": 0,
+        "cover_count": 4,
+        "cover_indices_json": "[]",
+        "views": "",
+        "likes": "",
+        "uploaded_at": "",
+        "published_at": "",
+        "updated_at": "",
+        "imported_at": "",
+        "hidden_from_guest": 0,
+        "mtime": 0.0,
+        "auto_update_interval_days": 15,
+        "last_auto_checked_at": "",
+        "normalized_title": "",
+    }
+    merged_item = {**defaults, **item}
+    source = str(merged_item.get("source") or "")
+    source_id = str(merged_item.get("source_id") or "")
+    if not merged_item.get("normalized_title"):
+        from .formatting import normalize_title
+        merged_item["normalized_title"] = normalize_title(str(merged_item.get("title") or ""))
+
     with get_db() as conn:
         old_row = conn.execute(
             "SELECT page_count, cached_pages, hidden_from_guest, tags_json FROM comics_index WHERE source = ? AND source_id = ?",
@@ -1239,13 +1281,15 @@ def upsert_comic_index(item: dict[str, Any]) -> None:
                 authors_json, works_json, actors_json, tags_json, chapter_titles_json,
                 page_count, cached_pages, cover_count, cover_indices_json,
                 views, likes, uploaded_at, published_at, updated_at, imported_at,
-                hidden_from_guest, mtime, auto_update_interval_days, last_auto_checked_at
+                hidden_from_guest, mtime, auto_update_interval_days, last_auto_checked_at,
+                normalized_title
             ) VALUES (
                 :source, :source_id, :display_id, :title,
                 :authors_json, :works_json, :actors_json, :tags_json, :chapter_titles_json,
                 :page_count, :cached_pages, :cover_count, :cover_indices_json,
                 :views, :likes, :uploaded_at, :published_at, :updated_at, :imported_at,
-                :hidden_from_guest, :mtime, :auto_update_interval_days, :last_auto_checked_at
+                :hidden_from_guest, :mtime, :auto_update_interval_days, :last_auto_checked_at,
+                :normalized_title
             ) ON CONFLICT(source, source_id) DO UPDATE SET
                 display_id = excluded.display_id,
                 title = excluded.title,
@@ -1267,11 +1311,12 @@ def upsert_comic_index(item: dict[str, Any]) -> None:
                 hidden_from_guest = excluded.hidden_from_guest,
                 mtime = excluded.mtime,
                 auto_update_interval_days = excluded.auto_update_interval_days,
-                last_auto_checked_at = excluded.last_auto_checked_at
+                last_auto_checked_at = excluded.last_auto_checked_at,
+                normalized_title = excluded.normalized_title
             """,
-            item,
+            merged_item,
         )
-        _apply_facets_delta(conn, source, old_item, item)
+        _apply_facets_delta(conn, source, old_item, merged_item)
         conn.commit()
     invalidate_facets_cache()
 
@@ -1452,6 +1497,38 @@ def record_comic_auto_checked(source: str, source_id: str, checked_at: str) -> N
             (checked_at, source, source_id),
         )
         conn.commit()
+
+
+def find_comic_mirrors(
+    source: str,
+    source_id: str,
+    title: str | None = None,
+    normalized_title: str | None = None,
+    limit: int = 5,
+    is_curator: bool = True,
+) -> list[dict[str, Any]]:
+    """基于规范化标题查找馆内的异源同名作品（ADR 0031）。"""
+    if not normalized_title:
+        if not title:
+            return []
+        from .formatting import normalize_title
+        normalized_title = normalize_title(title)
+    if not normalized_title:
+        return []
+
+    with get_db() as conn:
+        sql = """
+            SELECT source, source_id, display_id, title, page_count
+            FROM comics_index
+            WHERE normalized_title = ? AND (source != ? OR source_id != ?)
+        """
+        params: list[Any] = [normalized_title, source, source_id]
+        if not is_curator:
+            sql += " AND hidden_from_guest = 0"
+        sql += " LIMIT ?"
+        params.append(limit)
+        rows = conn.execute(sql, params).fetchall()
+        return [dict(r) for r in rows]
 
 
 def query_library_index(

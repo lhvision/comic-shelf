@@ -1,14 +1,15 @@
 <script setup lang="ts">
 import { computed, watch } from 'vue'
 import { useToggle } from '@vueuse/core'
-import type { ComicMeta } from '@/types'
+import type { ComicMeta, DuplicateCheckMatch } from '@/types'
 import AppIcon from '@/components/AppIcon.vue'
 import AppTextClamp from '@/components/AppTextClamp.vue'
 import AppChip from '@/components/AppChip.vue'
-import { getSourceIdLabel } from '@/utils/source'
+import { getSourceIdLabel, getSourceShortName } from '@/utils/source'
 
 const props = defineProps<{
   meta: ComicMeta
+  mirrors?: DuplicateCheckMatch[]
 }>()
 
 const [descExpanded, toggleDesc] = useToggle(false)
@@ -117,6 +118,28 @@ const autoUpdateLabel = computed(() => {
         tooltip-side="bottom"
         tooltip-width="30rem"
       />
+
+      <!-- Cross-source mirror banner (ADR 0031) -->
+      <div v-if="mirrors && mirrors.length > 0" class="meta-mirrors-banner">
+        <span class="mirror-banner-lead">
+          <AppIcon name="book-open" size="xs" />
+          <span>异源同本：</span>
+        </span>
+        <div class="mirror-chips">
+          <router-link
+            v-for="m in mirrors"
+            :key="`${m.source}-${m.source_id}`"
+            :to="`/comic/${m.source}/${m.source_id}`"
+            class="mirror-link-chip"
+            :title="`前往查看【${getSourceShortName(m.source)}】《${m.title}》`"
+          >
+            <span class="mirror-src">【{{ getSourceShortName(m.source) }}】</span>
+            <span class="mirror-title">{{ m.title }}</span>
+            <span v-if="m.page_count" class="mirror-p font-mono">{{ m.page_count }}P</span>
+            <AppIcon name="arrow-right" size="xs" class="mirror-arrow" />
+          </router-link>
+        </div>
+      </div>
     </div>
 
     <dl class="meta-grid">
@@ -454,5 +477,75 @@ const autoUpdateLabel = computed(() => {
     padding-inline: 0;
     border-left: 0;
   }
+}
+
+.meta-mirrors-banner {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+  padding: var(--space-1-5) var(--space-2-5);
+  background: color-mix(in oklab, #d97706 8%, var(--paper-1));
+  border: 1px solid color-mix(in oklab, #d97706 25%, transparent);
+  border-radius: var(--radius-2);
+  font-size: var(--text-xs);
+}
+
+.mirror-banner-lead {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  color: #d97706;
+  font-weight: 600;
+  flex-shrink: 0;
+}
+
+.mirror-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.mirror-link-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: 0.125rem 0.5rem;
+  background: var(--paper-0);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-pill);
+  color: var(--ink-0);
+  text-decoration: none;
+  font-size: var(--text-caption);
+  transition: all var(--duration-1) var(--ease-out);
+}
+
+.mirror-link-chip:hover {
+  border-color: #d97706;
+  color: #d97706;
+  transform: translateY(-1px);
+}
+
+.mirror-src {
+  font-weight: 600;
+  color: #d97706;
+}
+
+.mirror-title {
+  max-width: 14rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.mirror-p {
+  color: var(--ink-2);
+  font-size: 0.6875rem;
+}
+
+.mirror-arrow {
+  color: var(--ink-2);
+  font-size: 0.75rem;
 }
 </style>

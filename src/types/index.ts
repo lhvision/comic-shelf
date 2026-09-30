@@ -128,11 +128,20 @@ export interface LibraryFacetsResponse {
   top_tags: Array<[string, number]>
 }
 
+export interface DuplicateCheckMatch {
+  source: ComicSource
+  source_id: string
+  display_id: string
+  title: string
+  page_count?: number
+}
+
 export interface ComicDetail {
   meta: ComicMeta
   cached_pages: number
   cache_complete: boolean
   cover_paths: string[]
+  mirrors?: DuplicateCheckMatch[]
 }
 
 /** 支持的漫画图源 Provider 标识符 */
@@ -159,6 +168,7 @@ export interface ImportResult {
   warnings: string[]
   /** True when page/cover caching is still running in the background. */
   background?: boolean
+  cross_matches?: DuplicateCheckMatch[]
 }
 
 export interface CacheJob {
@@ -334,6 +344,8 @@ export interface DiscoveryItem {
   cover_url?: string
   updated_at?: string
   in_library: boolean
+  mirror_source?: string
+  mirror_source_id?: string
 }
 
 export interface DiscoveryFeed {

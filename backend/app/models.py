@@ -138,6 +138,14 @@ class ImportRequest(BaseModel):
     refresh: bool = False
 
 
+class DuplicateCheckMatch(BaseModel):
+    source: str
+    source_id: str
+    display_id: str
+    title: str
+    page_count: int = 0
+
+
 class ImportResult(BaseModel):
     meta: ComicMeta
     from_cache: bool
@@ -145,6 +153,7 @@ class ImportResult(BaseModel):
     warnings: list[str] = Field(default_factory=list)
     background: bool = False
     """True when page caching is still running in the background."""
+    cross_matches: list[DuplicateCheckMatch] = Field(default_factory=list)
 
 
 class JobInfo(BaseModel):
@@ -224,6 +233,7 @@ class ComicDetail(BaseModel):
     cached_pages: int
     cache_complete: bool
     cover_paths: list[str]
+    mirrors: list[DuplicateCheckMatch] = Field(default_factory=list)
 
 
 class PageResponse(BaseModel):
@@ -504,6 +514,8 @@ class DiscoveryItem(BaseModel):
     url: str = ""
     updated_at: str = ""
     in_library: bool = False
+    mirror_source: str = ""
+    mirror_source_id: str = ""
 
 
 class DiscoveryFeed(BaseModel):

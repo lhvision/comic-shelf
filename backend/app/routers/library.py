@@ -12,6 +12,7 @@ from fastapi import APIRouter, HTTPException, Query, Request, Response
 
 from ..auth import get_current_user_id, is_curator, require_curator
 from ..db import (
+    find_comic_mirrors,
     get_library_facets,
     get_user_progress,
     is_user_favorite,
@@ -27,6 +28,7 @@ from ..models import (
     ComicDetail,
     DeleteResponse,
     DiscoveryFeed,
+    DuplicateCheckMatch,
     FavoriteRequest,
     FavoriteResponse,
     FetchedComic,
@@ -221,10 +223,15 @@ def discovery_ranking(
             else:
                 raise HTTPException(status_code=502, detail=f"拉取排行榜失败：{exc}") from exc
 
-    # Populate in_library status for current library
+    # Populate in_library status for current library and cross-source mirror match
     for item in feed.items:
         meta = store.load_meta(item.source, item.source_id)
         item.in_library = meta is not None
+        if not item.in_library:
+            mirrors = find_comic_mirrors(item.source, item.source_id, title=item.title, limit=1)
+            if mirrors:
+                item.mirror_source = mirrors[0]["source"]
+                item.mirror_source_id = mirrors[0]["source_id"]
 
     return feed
 
@@ -343,7 +350,15 @@ def import_comic(req: ImportRequest) -> ImportResult:
         if cached is not None and cached.meta.page_count > 0:
             elapsed_ms = int((time.perf_counter() - t_start) * 1000)
             log_import_diag("IMPORT-HIT-CACHE", f"source={req.source} id={source_id} elapsed_ms={elapsed_ms}")
-            return ImportResult(meta=cached.meta, from_cache=True, prefetched=0, warnings=[])
+            mirrors = find_comic_mirrors(req.source, source_id, title=cached.meta.title)
+            cross_matches = [DuplicateCheckMatch(**m) for m in mirrors]
+            return ImportResult(
+                meta=cached.meta,
+                from_cache=True,
+                prefetched=0,
+                warnings=[],
+                cross_matches=cross_matches,
+            )
 
     # Metadata + URL discovery happen on the request thread: fast and necessary
     # for a useful response. Page/cover downloads are the slow part, so they're
@@ -406,12 +421,16 @@ def import_comic(req: ImportRequest) -> ImportResult:
         f"source={req.source} id={source_id} total_ms={total_ms} fetch_ms={fetch_ms} save_ms={save_ms}",
     )
 
+    mirrors = find_comic_mirrors(req.source, source_id, title=fetched.meta.title)
+    cross_matches = [DuplicateCheckMatch(**m) for m in mirrors]
+
     return ImportResult(
         meta=fetched.meta,
         from_cache=False,
         prefetched=0,
         warnings=[],
         background=True,
+        cross_matches=cross_matches,
     )
 
 
@@ -422,6 +441,9 @@ def comic_detail(source: str, source_id: str, request: Request) -> ComicDetail:
     detail = store.detail(meta)
     user_id = get_current_user_id(request)
     detail.meta.favorite = is_user_favorite(user_id, source, source_id)
+    is_cur = is_curator(request)
+    mirrors = find_comic_mirrors(source, source_id, title=meta.title, is_curator=is_cur)
+    detail.mirrors = [DuplicateCheckMatch(**m) for m in mirrors]
     return detail
 
 
