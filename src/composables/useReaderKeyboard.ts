@@ -119,8 +119,19 @@ export function useReaderKeyboard(options: UseReaderKeyboardOptions) {
       'ArrowUp',
       'PageDown',
       'PageUp',
+      'Home',
+      'End',
       ' ',
     ].includes(event.key)
+
+    const isChapterKey =
+      event.key === 'n' || event.key === 'N' || event.key === 'p' || event.key === 'P'
+
+    // 切话互斥锁定期（Chapter Transition Mutex）：拦截所有常规翻页与跨话快捷键，杜绝时序抢占
+    if (isSwitchingChapter?.value && (isNavKey || isChapterKey)) {
+      event.preventDefault()
+      return
+    }
 
     // 键盘长按节流：无论初次敲击还是操作系统连续连击，均统一以 110ms 进行节奏节流
     if (isNavKey) {
@@ -175,13 +186,11 @@ export function useReaderKeyboard(options: UseReaderKeyboardOptions) {
         break
       case 'n':
       case 'N':
-        if (isSwitchingChapter?.value) break
         onUserInteract?.()
         goNextChapter()
         break
       case 'p':
       case 'P':
-        if (isSwitchingChapter?.value) break
         onUserInteract?.()
         goPrevChapter()
         break

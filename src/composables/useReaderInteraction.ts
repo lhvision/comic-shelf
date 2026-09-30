@@ -138,7 +138,9 @@ export function useReaderInteraction(options: UseReaderInteractionOptions) {
     targetAnchorGroupIndex.value = null
     targetAnchorPage.value = null
     resetAutoTurnCountdown()
-    unlockProgrammaticScroll()
+    if (!isSwitchingChapter.value) {
+      unlockProgrammaticScroll()
+    }
   }
 
   function prevGroup(behavior: ScrollBehavior = 'smooth') {

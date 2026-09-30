@@ -996,7 +996,7 @@
 - **红线**：
   1. **跨话视口重置完全瞬态化（Instant Reset）**：跨章节跳转（`goNextChapter` / `goPrevChapter` / `onSelectChapter`）必须强制声明 `behavior: 'instant'`，严禁使用 `smooth` 平滑滑行跨越数万像素；
   2. **滚动结束监听严格隔离**：`scrollToGroup` 仅在 `effectiveBehavior === 'smooth'` 时监听 `scrollend`，严禁在 `instant` 或 `auto` 模式下挂载 `scrollend` 提前泄露解除静音锁；
-  3. **切话防抖互斥状态机（Chapter Transition Mutex）**：引入 `isSwitchingChapter`（280ms 自动释放）；在底层 `setScope()`、行内切话按钮（`:disabled="isSwitchingChapter"`）、跨话横幅（`ReaderChapterBanners`）、键盘 `N/P` 键分发以及路由监听器（`route.params.page` 反跳保护）中统一加锁拦截重入；
+  3. **切话防抖互斥状态机（Chapter Transition Mutex）**：引入 `isSwitchingChapter`（280ms 自动释放）；在底层 `setScope()`、行内切话按钮（`:disabled="isSwitchingChapter"`）、跨话横幅（`ReaderChapterBanners`）、键盘全量导航键（Arrow/Page/Home/End）与 `N/P` 键分发、触控事件（拦截 `unlockProgrammaticScroll` 提前解除）、滚轮 `onWheel` 以及路由监听器中统一加锁拦截重入；`handleScroll` 必须受 `(isProgrammaticScrolling || isSwitchingChapter)` 双锁拦截；
   4. **分章物理 DOM 隔离与防锚定**：分屏容器必须声明 `:key="`${scopeId || 'all'}-${group.index}`"`，切话强制全量重挂载 DOM，严禁跨章节原地复用；`.reader-scroll` 样式必须显式声明 `overflow-anchor: none;`，彻底禁用异步撑高时的视口自激跳动；
   5. **单话作用域规范化（Scoped Chapter Canonicalization）**：多章节漫画（`chapters.length > 1`）开卷若无 `?chapter=` 查询参数，必须在 `useReaderData.loadDetail` 中基于当前阅读进度单向对齐补齐 `?chapter=chX`，永远杜绝千页大合集无边界混拼。
 

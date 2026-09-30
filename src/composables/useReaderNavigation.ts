@@ -336,13 +336,9 @@ export function useReaderNavigation(options: UseReaderNavigationOptions) {
       groupDiff > 5 && behavior === 'smooth' ? 'auto' : behavior
 
     if (!target) {
+      lockProgrammaticScroll(480)
       if (groupIndex === 0) {
-        lockProgrammaticScroll(480)
-        if (settings.mode === 'horizontal') {
-          el.scrollTo({ left: 0, top: 0, behavior: effectiveBehavior })
-        } else {
-          el.scrollTo({ left: 0, top: 0, behavior: effectiveBehavior })
-        }
+        el.scrollTo({ left: 0, top: 0, behavior: effectiveBehavior })
       }
       return
     }
@@ -472,8 +468,8 @@ export function useReaderNavigation(options: UseReaderNavigationOptions) {
     const rawProgress = max <= 0 ? 1 : clamp(position / max, 0, 1)
     progressValue.value = rtl ? 1 - rawProgress : rawProgress
 
-    // 处于程序化跳转平滑滑行期：仅更新滚动进度条 progressValue，禁止被动探测反向抢占当前页码
-    if (isProgrammaticScrolling.value) {
+    // 处于程序化跳转平滑滑行期或跨话切换过渡期：仅更新滚动进度条 progressValue，禁止被动探测反向抢占当前页码
+    if (isProgrammaticScrolling.value || isSwitchingChapter.value) {
       return
     }
 
@@ -536,6 +532,7 @@ export function useReaderNavigation(options: UseReaderNavigationOptions) {
    * @param event 滚轮事件对象
    */
   function onWheel(event: WheelEvent) {
+    if (isSwitchingChapter.value) return
     unlockProgrammaticScroll()
     if (settings.mode !== 'horizontal') return
     const el = scrollEl.value
@@ -622,6 +619,7 @@ export function useReaderNavigation(options: UseReaderNavigationOptions) {
   function setScope(id: string, page: number) {
     isSwitchingChapter.value = true
     startSwitchRelease()
+    lockProgrammaticScroll(480)
     scopeId.value = id
     const target = `/comic/${source.value}/${sourceId.value}/read/${page}?chapter=${encodeURIComponent(id)}`
     void router.replace(target)

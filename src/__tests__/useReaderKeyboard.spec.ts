@@ -159,24 +159,44 @@ describe('useReaderKeyboard - Cascading Escape & Filmstrip Toggle', () => {
     expect(goNextChapter).not.toHaveBeenCalled()
   })
 
-  it('blocks "n" and "p" chapter transition hotkeys when isSwitchingChapter is true', () => {
+  it('blocks navigation keys and chapter transition hotkeys when isSwitchingChapter is true', () => {
+    const nextGroup = vi.fn<(behavior?: ScrollBehavior) => void>()
+    const prevGroup = vi.fn<(behavior?: ScrollBehavior) => void>()
+    const goToPage = vi.fn<(_page: number) => void>()
     const goNextChapter = vi.fn<() => void>()
     const goPrevChapter = vi.fn<() => void>()
     const isSwitchingChapter = ref(true)
 
     const state = setupKeyboard({
+      nextGroup,
+      prevGroup,
+      goToPage,
       goNextChapter,
       goPrevChapter,
       isSwitchingChapter,
     })
 
+    // Navigation and chapter keys should all be blocked
+    state.onKeydown(new KeyboardEvent('keydown', { key: 'ArrowDown' }))
+    state.onKeydown(new KeyboardEvent('keydown', { key: 'ArrowUp' }))
+    state.onKeydown(new KeyboardEvent('keydown', { key: 'PageDown' }))
+    state.onKeydown(new KeyboardEvent('keydown', { key: ' ' }))
+    state.onKeydown(new KeyboardEvent('keydown', { key: 'Home' }))
+    state.onKeydown(new KeyboardEvent('keydown', { key: 'End' }))
     state.onKeydown(new KeyboardEvent('keydown', { key: 'n' }))
     state.onKeydown(new KeyboardEvent('keydown', { key: 'p' }))
+
+    expect(nextGroup).not.toHaveBeenCalled()
+    expect(prevGroup).not.toHaveBeenCalled()
+    expect(goToPage).not.toHaveBeenCalled()
     expect(goNextChapter).not.toHaveBeenCalled()
     expect(goPrevChapter).not.toHaveBeenCalled()
 
     // Unlock mutex
     isSwitchingChapter.value = false
+    state.onKeydown(new KeyboardEvent('keydown', { key: 'ArrowDown' }))
+    expect(nextGroup).toHaveBeenCalledTimes(1)
+
     state.onKeydown(new KeyboardEvent('keydown', { key: 'n' }))
     expect(goNextChapter).toHaveBeenCalledTimes(1)
 

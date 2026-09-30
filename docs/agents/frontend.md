@@ -304,7 +304,7 @@
 - **跨章节平稳切换与全通道并发互斥（Chapter Transition Mutex & Instant Reset）**：
   - 跨话跳转（`goNextChapter` / `goPrevChapter` / `onSelectChapter`）统一执行 `behavior: 'instant'`，彻底斩断跨数万像素的无效平滑滑行；
   - `scrollToGroup` 仅在 `effectiveBehavior === 'smooth'` 时监听 `scrollend`，严禁 instant/auto 挂载 `scrollend` 提前解锁 `isProgrammaticScrolling` 导致虚拟注水视窗被底部误判篡改；
-  - 跨话过程全程受 `isSwitchingChapter`（280ms）互斥锁保护，底层 `setScope` 统一锁定，行内按钮 `:disabled` 置灰、悬浮横幅禁用、键盘 N/P 拦截且路由参数监听自动防反跳；
+  - 跨话过程全程受 `isSwitchingChapter`（280ms）互斥锁保护，底层 `setScope` 统一锁定，行内按钮 `:disabled` 置灰、悬浮横幅禁用、键盘全量导航键与 N/P 拦截、触控与滚轮事件无法提前解除静音锁且路由参数监听自动防反跳；`handleScroll` 必须受 `(isProgrammaticScrolling || isSwitchingChapter)` 双锁防护；
   - 分屏容器声明 `:key="`${scopeId || 'all'}-${group.index}`"` 保证切话瞬间旧章节 DOM 完全 unmount，新章节 fresh mount，配合 `.reader-scroll` 样式声明 `overflow-anchor: none;`，彻底根除 DOM 原地复用残留与图片异步撑高导致的自激堆叠错位（见 [PITFALLS #158](../PITFALLS.md#158-沉浸式阅读器跨话切换视口时序撕裂与虚拟注水黑屏死锁)）。
 - **开本自适应有效阅读线相交与绝对触底夹紧（Adaptive Read-Line & Bottom Clamping）**：
   - 针对条漫切片分幅高度不一、终页高度不足（如终页 584px 矮于视口 900px）导致无法触及顶端的痛点，当滚动容器触底 `position >= max - 24` 时，绝对夹紧至最后一页并激活末话状态；

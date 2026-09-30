@@ -577,6 +577,92 @@ describe('useReaderNavigation - Discrete Wheel Stepping & Dual-Axis Discriminati
     expect(nav.isSwitchingChapter.value).toBe(false)
   })
 
+  it('prevents concurrent goPrevChapter transitions and scrolls to chapter end page with instant behavior', () => {
+    const prevChapter = computed<Chapter | null>(() => ({
+      id: 'ch1',
+      index: 1,
+      title: 'Chapter 1',
+      page_count: 10,
+      start: 1,
+    }))
+    const mockReplace = vi.fn<(_url: string) => Promise<void>>()
+    const mockRouter = {
+      replace: mockReplace,
+      push: vi.fn<(_url: string) => Promise<void>>(),
+    } as unknown as Router
+
+    const nav = createNavigation({
+      prevChapter,
+      router: mockRouter,
+    })
+
+    expect(nav.isSwitchingChapter.value).toBe(false)
+
+    // Rapid consecutive calls
+    nav.goPrevChapter()
+    nav.goPrevChapter()
+
+    expect(nav.isSwitchingChapter.value).toBe(true)
+    // 1 + 10 - 1 = 10 (chapter final page)
+    expect(mockReplace).toHaveBeenCalledTimes(1)
+    expect(mockReplace).toHaveBeenCalledWith(expect.stringContaining('/read/10?chapter=ch1'))
+
+    expect(mockScrollTo).toHaveBeenCalledWith(
+      expect.objectContaining({
+        behavior: 'instant',
+      }),
+    )
+
+    vi.advanceTimersByTime(280)
+    expect(nav.isSwitchingChapter.value).toBe(false)
+  })
+
+  it('silences scroll listener when isSwitchingChapter is active', () => {
+    settings.mode = 'vertical-continuous'
+    const nextChapter = computed<Chapter | null>(() => ({
+      id: 'ch2',
+      index: 2,
+      title: 'Chapter 2',
+      page_count: 10,
+      start: 1,
+    }))
+    const mockRouter = {
+      replace: vi.fn<(_url: string) => Promise<void>>(),
+      push: vi.fn<(_url: string) => Promise<void>>(),
+    } as unknown as Router
+
+    const nav = createNavigation({
+      nextChapter,
+      router: mockRouter,
+    })
+
+    Object.defineProperty(mockContainer, 'clientHeight', { value: 1000, configurable: true })
+    Object.defineProperty(mockContainer, 'scrollHeight', { value: 3000, configurable: true })
+    Object.defineProperty(mockContainer, 'scrollTop', { value: 0, configurable: true })
+
+    // Trigger chapter switch to group 0
+    nav.goNextChapter()
+    expect(nav.isSwitchingChapter.value).toBe(true)
+    expect(currentGroupIndex.value).toBe(0)
+
+    // Fire scroll event while switching (simulating container at bottom)
+    Object.defineProperty(mockContainer, 'scrollTop', { value: 2980, configurable: true })
+    nav.onScroll()
+    vi.advanceTimersByTime(16)
+
+    // Because isSwitchingChapter is true, scroll handler MUST NOT hijack currentGroupIndex to bottom group 2
+    expect(currentGroupIndex.value).toBe(0)
+
+    // After mutex and programmatic duration release (480ms)
+    vi.advanceTimersByTime(500)
+    expect(nav.isSwitchingChapter.value).toBe(false)
+
+    // Now regular scrolling operates normally and updates group index
+    nav.onScroll()
+    vi.advanceTimersByTime(16)
+    expect(currentGroupIndex.value).toBe(2)
+  })
+
   it('does not attach scrollend listener on instant scrollToGroup to prevent premature unlocking', () => {
     const addEventListenerSpy = vi.spyOn(mockContainer, 'addEventListener')
     const nav = createNavigation()
