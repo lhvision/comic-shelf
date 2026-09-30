@@ -24,6 +24,7 @@ import ImportLocalTab from './import/ImportLocalTab.vue'
 import ImportConcurrencyStepper from './import/ImportConcurrencyStepper.vue'
 import { isComicSource } from '@/utils/is'
 import { formatLocalImportToast } from '@/utils/format'
+import { getSourceShortName } from '@/utils/source'
 import type { ComicSource, RemoteComicSource } from '@/types'
 
 const props = defineProps<{
@@ -143,12 +144,15 @@ async function submitRemote(source: RemoteComicSource) {
     if (result.cross_matches && result.cross_matches.length > 0) {
       const match = result.cross_matches[0]
       if (match) {
+        const isCross = match.source !== source
+        const mirrorType = isCross ? '异源同名作品' : '同源其他版本'
         toast(
-          `收录成功，检测到馆内已存在异源同名作品：【${match.source}】《${match.title}》`,
+          `收录成功，检测到馆内已存在${mirrorType}：【${getSourceShortName(match.source)}】《${match.title}》`,
           'info',
         )
       }
-    } else {
+    }
+    if (!result.cross_matches?.length || warnings.value.length) {
       toast(store.importMessage, warnings.value.length ? 'error' : 'success')
     }
 

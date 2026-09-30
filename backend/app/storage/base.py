@@ -611,7 +611,10 @@ class ComicStoreBase:
                 except Exception:
                     meta.imported_at = datetime.datetime.now(datetime.timezone.utc).isoformat()
             elif " " in meta.imported_at:
-                meta.imported_at = meta.imported_at.replace(" ", "T")
+                iso = meta.imported_at.replace(" ", "T")
+                if not (iso.endswith("Z") or "+" in iso[10:] or "-" in iso[10:]):
+                    iso += "+00:00"
+                meta.imported_at = iso
 
             # Auto-heal: If comic has chapters but first chapter start > 1 (orphaned flat pages 1..start-1 exist)
             if meta.chapters and meta.pages and meta.chapters[0].start > 1:

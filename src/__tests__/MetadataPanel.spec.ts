@@ -1,7 +1,14 @@
 import { describe, it, expect } from 'vite-plus/test'
-import { mount } from '@vue/test-utils'
+import { config, mount } from '@vue/test-utils'
 import MetadataPanel from '@/components/MetadataPanel.vue'
 import type { ComicMeta } from '@/types'
+
+config.global.stubs = {
+  RouterLink: {
+    template: '<a :href="to"><slot /></a>',
+    props: ['to'],
+  },
+}
 
 function makeMeta(partial: Partial<ComicMeta> = {}): ComicMeta {
   return {
@@ -178,5 +185,47 @@ describe('MetadataPanel', () => {
     const w3 = mount(MetadataPanel, { props: { meta: disabledMeta } })
     expect(w3.find('.auto-update-badge').exists()).toBe(false)
     expect(w3.text()).toContain('已关闭自动巡检')
+  })
+
+  it('renders mirror banner when mirrors prop is provided', () => {
+    const wrapper = mount(MetadataPanel, {
+      props: {
+        meta: makeMeta(),
+        mirrors: [
+          {
+            source: 'picacg',
+            source_id: 'pica123',
+            display_id: 'PICA123',
+            title: '哔咔版本测试',
+            page_count: 30,
+          },
+        ],
+      },
+      global: {
+        stubs: {
+          RouterLink: {
+            template: '<a :href="to"><slot /></a>',
+            props: ['to'],
+          },
+        },
+      },
+    })
+
+    expect(wrapper.find('.meta-mirrors-banner').exists()).toBe(true)
+    expect(wrapper.find('.mirror-banner-lead').text()).toContain('馆内亦藏：')
+    expect(wrapper.find('.mirror-src').text()).toBe('【哔咔】')
+    expect(wrapper.find('.mirror-title').text()).toBe('哔咔版本测试')
+    expect(wrapper.find('.mirror-p').text()).toBe('30P')
+  })
+
+  it('renders unbroken URL description correctly without breaking structure', () => {
+    const urlDesc = 'https://www.melonbooks.co.jp/detail/detail.php?product_id=1566028'
+    const wrapper = mount(MetadataPanel, {
+      props: {
+        meta: makeMeta({ description: urlDesc }),
+      },
+    })
+    const content = wrapper.find('.description-content')
+    expect(content.text()).toBe(urlDesc)
   })
 })

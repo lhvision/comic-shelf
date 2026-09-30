@@ -968,6 +968,19 @@
   3. **基于文件系统 mtime 的优雅自愈**：`sync_library_index` 扫库或 `load_meta` 读取时，若发现条目缺失 `imported_at` 或包含空格，必须基于真实文件系统 `mtime` 转换为 ISO 8601 UTC 自动自愈修复并回写持久化；
   4. **追更与装订恒定性保护**：刷新资料、自动追更或重新装订时，严格继承原有 `imported_at`，保持藏书在案头书架的初次纳馆历史时序。
 
+### 157. 未截断长 URL 导致移动端 CSS Grid Min-Content 膨胀撑爆布局
+
+- **症状**：
+  1. 漫画详情页「叙述」包含未打断长 URL（如 melonbooks、dlsite 等外链）时，移动端整张卡片横向被撑爆至 400px+，右侧作者名、卡片阴影边框、顶栏导航被挤出屏幕，页面产生横向滚动；
+  2. 极窄屏幕（<= 390px）下属性网格右侧文本被挤压断裂。
+- **根因**：
+  1. CSS Grid / Flexbox 子元素默认 `min-width: auto`，即尺寸不得小于内部最小内容宽度（`min-content`）；
+  2. 叙述段落仅设置了 `white-space: pre-line`，缺失 `overflow-wrap: anywhere` 和 `word-break: break-word`。默认情况下浏览器不会在一个连续无空格的 URL 中断行，导致该段落的 `min-content` 高达 400px+；
+  3. `1fr` 在未声明 `minmax(0, 1fr)` 时等价于 `minmax(auto, 1fr)`，允许子元素的 `min-content` 逐级向外层穿透并撑大整个卡片网格轨道。
+- **红线**：
+  1. **描述与富文本容器强制任意断行**：凡包含外链、长单词或用户自定义排版的容器（特别是带有 `white-space: pre-line` 的描述块），必须强制设置 `overflow-wrap: anywhere; word-break: break-word;` 以及 `min-width: 0; max-width: 100%;`；
+  2. **Grid / Flex 轨道零下限声明**：移动端 Grid 轨道与卡片内层列必须显式声明 `minmax(0, 1fr)` 代替裸写 `1fr`，阻断不可分割内容向外膨胀破坏移动端视口。
+
 ---
 
 ## 🚦 交付门禁

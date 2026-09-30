@@ -178,6 +178,7 @@ def sync_library_index(store: ComicStore) -> None:
                     continue
 
                 # Auto-heal: If album.json on disk was missing imported_at or not normalized, persist healed value
+                healed_persisted = False
                 try:
                     raw_data = json.loads(album_path.read_text(encoding="utf-8"))
                     raw_imp = raw_data.get("imported_at")
@@ -186,13 +187,12 @@ def sync_library_index(store: ComicStore) -> None:
                         _write_json_atomic(album_path, raw_data)
                         mtime = album_path.stat().st_mtime
                         store._invalidate_cache(source, source_id)
+                        healed_persisted = True
                 except Exception as exc:
                     logger.warning("Failed to persist healed imported_at in sync_library_index for %s/%s: %s", source, source_id, exc)
 
-                try:
-                    mtime = album_path.stat().st_mtime
-                except Exception:
-                    pass
+                if healed_persisted:
+                    continue
 
                 cached_pages = store.cached_page_count(meta)
                 upsert_comic_index({

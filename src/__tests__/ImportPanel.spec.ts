@@ -4,12 +4,13 @@ import { createPinia, setActivePinia } from 'pinia'
 import ImportPanel from '@/components/ImportPanel.vue'
 import type { ComicDetail } from '@/types'
 
+const mockRouterPush = vi.fn<(to: string) => void>()
 vi.mock('vue-router', async (importOriginal) => {
   const actual = await importOriginal<typeof import('vue-router')>()
   return {
     ...actual,
     useRouter: () => ({
-      push: vi.fn<(to: string) => void>(),
+      push: mockRouterPush,
     }),
   }
 })
@@ -31,6 +32,7 @@ vi.mock('@/api/client', async (importOriginal) => {
           }
         }>
       >(),
+      importComic: vi.fn<(req: unknown) => Promise<unknown>>(),
       getSettings: vi
         .fn<() => Promise<{ concurrency: number; guest_hide_new_comics: boolean }>>()
         .mockResolvedValue({ concurrency: 4, guest_hide_new_comics: false }),
@@ -303,5 +305,75 @@ describe('ImportPanel Component', () => {
     // Full URL: enabled
     await input.setValue('https://www.mangacopy.com/comic/xiangyaochengweiyingzhishilizhe')
     expect((submitBtn.element as HTMLButtonElement).disabled).toBe(false)
+  })
+
+  it('redirects to existing comic and shows info toast when from_cache is true', async () => {
+    const { api } = await import('@/api/client')
+    vi.mocked(api.importComic).mockResolvedValue({
+      meta: {
+        source: 'jm',
+        source_id: '123456',
+        display_id: 'JM123456',
+        title: '已存在的禁漫',
+        page_count: 20,
+      } as unknown as ComicDetail['meta'],
+      from_cache: true,
+      prefetched: 0,
+      warnings: [],
+    })
+
+    const pinia = createPinia()
+    const wrapper = mount(ImportPanel, {
+      global: { plugins: [pinia] },
+    })
+
+    await wrapper.get('input[aria-label="禁漫车号"]').setValue('123456')
+    await wrapper.get('form.import-form').trigger('submit')
+    await flushPromises()
+
+    expect(mockToast).toHaveBeenCalledWith('该作品已在馆内，正在为您前往《已存在的禁漫》', 'info')
+    expect(mockRouterPush).toHaveBeenCalledWith('/comic/jm/123456')
+  })
+
+  it('shows localized mirror toast and does not swallow warnings', async () => {
+    const { api } = await import('@/api/client')
+    vi.mocked(api.importComic).mockResolvedValue({
+      meta: {
+        source: 'jm',
+        source_id: '654321',
+        display_id: 'JM654321',
+        title: '新入库禁漫',
+        page_count: 25,
+      } as unknown as ComicDetail['meta'],
+      from_cache: false,
+      prefetched: 0,
+      warnings: ['部分画页拉取超时'],
+      cross_matches: [
+        {
+          source: 'picacg',
+          source_id: 'pica999',
+          display_id: 'PICA999',
+          title: '异源哔咔版本',
+          page_count: 25,
+        },
+      ],
+    })
+
+    const pinia = createPinia()
+    const wrapper = mount(ImportPanel, {
+      global: { plugins: [pinia] },
+    })
+
+    await wrapper.get('input[aria-label="禁漫车号"]').setValue('654321')
+    await wrapper.get('form.import-form').trigger('submit')
+    await flushPromises()
+
+    // 1. Mirror toast is shown with localized source name
+    expect(mockToast).toHaveBeenCalledWith(
+      '收录成功，检测到馆内已存在异源同名作品：【哔咔】《异源哔咔版本》',
+      'info',
+    )
+    // 2. Warning toast is NOT swallowed
+    expect(mockToast).toHaveBeenCalledWith(expect.anything(), 'error')
   })
 })

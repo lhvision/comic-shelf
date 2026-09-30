@@ -123,7 +123,7 @@ const autoUpdateLabel = computed(() => {
       <div v-if="mirrors && mirrors.length > 0" class="meta-mirrors-banner">
         <span class="mirror-banner-lead">
           <AppIcon name="book-open" size="xs" />
-          <span>异源同本：</span>
+          <span>馆内亦藏：</span>
         </span>
         <div class="mirror-chips">
           <router-link
@@ -214,6 +214,8 @@ const autoUpdateLabel = computed(() => {
 .metadata-panel {
   display: grid;
   gap: var(--space-5);
+  min-width: 0;
+  max-width: 100%;
 }
 
 .meta-head {
@@ -293,10 +295,11 @@ const autoUpdateLabel = computed(() => {
 
 .meta-row {
   display: grid;
-  grid-template-columns: minmax(4.8rem, 0.45fr) 1fr;
+  grid-template-columns: minmax(4.8rem, 0.45fr) minmax(0, 1fr);
   gap: var(--space-3);
   padding: var(--space-3) 0;
   border-bottom: 1px solid var(--line);
+  min-width: 0;
 }
 
 .meta-row:nth-child(odd) {
@@ -348,6 +351,11 @@ const autoUpdateLabel = computed(() => {
 .meta-row dd[data-mono='true'] {
   font-family: var(--font-mono);
   font-size: var(--text-xs);
+}
+
+.meta-block {
+  min-width: 0;
+  max-width: 100%;
 }
 
 .meta-block h3 {
@@ -415,6 +423,10 @@ const autoUpdateLabel = computed(() => {
   color: var(--ink-1);
   font-size: var(--text-sm);
   line-height: var(--leading-body);
+  min-width: 0;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .description-content {
@@ -422,6 +434,10 @@ const autoUpdateLabel = computed(() => {
   line-height: var(--leading-body);
   white-space: pre-line;
   overflow: clip;
+  min-width: 0;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  word-break: break-word;
   interpolate-size: allow-keywords;
   transition: height var(--duration-2) var(--ease-out);
 }
@@ -469,13 +485,18 @@ const autoUpdateLabel = computed(() => {
 
 @media (max-width: 640px) {
   .meta-grid {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
   }
 
   .meta-row:nth-child(odd),
   .meta-row:nth-child(even) {
     padding-inline: 0;
     border-left: 0;
+  }
+
+  .description,
+  :deep(.description) {
+    padding: var(--space-2-5) var(--space-3);
   }
 }
 
@@ -486,8 +507,8 @@ const autoUpdateLabel = computed(() => {
   gap: var(--space-2);
   margin-top: var(--space-2);
   padding: var(--space-1-5) var(--space-2-5);
-  background: color-mix(in oklab, #d97706 8%, var(--paper-1));
-  border: 1px solid color-mix(in oklab, #d97706 25%, transparent);
+  background: color-mix(in oklab, var(--amber) 8%, var(--paper-1));
+  border: 1px solid color-mix(in oklab, var(--amber) 25%, transparent);
   border-radius: var(--radius-2);
   font-size: var(--text-xs);
 }
@@ -496,7 +517,7 @@ const autoUpdateLabel = computed(() => {
   display: inline-flex;
   align-items: center;
   gap: var(--space-1);
-  color: #d97706;
+  color: var(--amber);
   font-weight: 600;
   flex-shrink: 0;
 }
@@ -522,14 +543,14 @@ const autoUpdateLabel = computed(() => {
 }
 
 .mirror-link-chip:hover {
-  border-color: #d97706;
-  color: #d97706;
+  border-color: var(--amber);
+  color: var(--amber);
   transform: translateY(-1px);
 }
 
 .mirror-src {
   font-weight: 600;
-  color: #d97706;
+  color: var(--amber);
 }
 
 .mirror-title {

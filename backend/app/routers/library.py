@@ -12,6 +12,7 @@ from fastapi import APIRouter, HTTPException, Query, Request, Response
 
 from ..auth import get_current_user_id, is_curator, require_curator
 from ..db import (
+    batch_find_comic_mirrors,
     find_comic_mirrors,
     get_library_facets,
     get_user_progress,
@@ -224,14 +225,22 @@ def discovery_ranking(
                 raise HTTPException(status_code=502, detail=f"拉取排行榜失败：{exc}") from exc
 
     # Populate in_library status for current library and cross-source mirror match
+    cur_is_curator = is_curator(request)
+    missing_items: list[tuple[str, str, str]] = []
     for item in feed.items:
         meta = store.load_meta(item.source, item.source_id)
         item.in_library = meta is not None
         if not item.in_library:
-            mirrors = find_comic_mirrors(item.source, item.source_id, title=item.title, limit=1)
-            if mirrors:
-                item.mirror_source = mirrors[0]["source"]
-                item.mirror_source_id = mirrors[0]["source_id"]
+            missing_items.append((item.source, item.source_id, item.title))
+
+    if missing_items:
+        mirrors_map = batch_find_comic_mirrors(missing_items, is_curator=cur_is_curator)
+        for item in feed.items:
+            if not item.in_library:
+                match = mirrors_map.get((item.source, item.source_id))
+                if match:
+                    item.mirror_source = match["source"]
+                    item.mirror_source_id = match["source_id"]
 
     return feed
 
@@ -350,7 +359,7 @@ def import_comic(req: ImportRequest) -> ImportResult:
         if cached is not None and cached.meta.page_count > 0:
             elapsed_ms = int((time.perf_counter() - t_start) * 1000)
             log_import_diag("IMPORT-HIT-CACHE", f"source={req.source} id={source_id} elapsed_ms={elapsed_ms}")
-            mirrors = find_comic_mirrors(req.source, source_id, title=cached.meta.title)
+            mirrors = find_comic_mirrors(req.source, source_id, title=cached.meta.title, is_curator=True)
             cross_matches = [DuplicateCheckMatch(**m) for m in mirrors]
             return ImportResult(
                 meta=cached.meta,
@@ -421,7 +430,7 @@ def import_comic(req: ImportRequest) -> ImportResult:
         f"source={req.source} id={source_id} total_ms={total_ms} fetch_ms={fetch_ms} save_ms={save_ms}",
     )
 
-    mirrors = find_comic_mirrors(req.source, source_id, title=fetched.meta.title)
+    mirrors = find_comic_mirrors(req.source, source_id, title=fetched.meta.title, is_curator=True)
     cross_matches = [DuplicateCheckMatch(**m) for m in mirrors]
 
     return ImportResult(

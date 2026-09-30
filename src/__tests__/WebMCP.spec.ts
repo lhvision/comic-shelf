@@ -501,7 +501,7 @@ describe('WebMCP Composables', () => {
         }
         expect(missingSourceRes.isError).toBe(true)
         expect(missingSourceRes.content[0]?.text).toContain(
-          '收录漫画必须显式指定来源 Provider (source: "jm" | "picacg" | "local")',
+          '收录漫画必须显式指定来源 Provider (source: "jm" | "picacg" | "local" | "copymanga")',
         )
 
         // 传入非法 source 时必须阻断
@@ -514,7 +514,7 @@ describe('WebMCP Composables', () => {
         }
         expect(invalidSourceRes.isError).toBe(true)
         expect(invalidSourceRes.content[0]?.text).toContain(
-          '收录漫画必须显式指定来源 Provider (source: "jm" | "picacg" | "local")',
+          '收录漫画必须显式指定来源 Provider (source: "jm" | "picacg" | "local" | "copymanga")',
         )
 
         // 传入 local_path 但 source 不为 local 时必须阻断
@@ -703,7 +703,7 @@ describe('WebMCP Composables', () => {
         }
         expect(missingSourceBatchRes.isError).toBe(true)
         expect(missingSourceBatchRes.content[0]?.text).toContain(
-          '收录漫画必须显式指定来源 Provider (source: "jm" | "picacg" | "local")',
+          '收录漫画必须显式指定来源 Provider (source: "jm" | "picacg" | "local" | "copymanga")',
         )
 
         // 验证传入非法 source 时的快速阻断
@@ -716,7 +716,7 @@ describe('WebMCP Composables', () => {
         }
         expect(invalidSourceBatchRes.isError).toBe(true)
         expect(invalidSourceBatchRes.content[0]?.text).toContain(
-          '收录漫画必须显式指定来源 Provider (source: "jm" | "picacg" | "local")',
+          '收录漫画必须显式指定来源 Provider (source: "jm" | "picacg" | "local" | "copymanga")',
         )
 
         const batchRes = (await registeredTools['shelf_batch_import_comics']!({

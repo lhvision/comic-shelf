@@ -28,8 +28,8 @@
   1. 剥离所有成对标签：`[...]`、`(...)`、`【...】`、`（...）`、`{...}` 内容（汉化组、社团、展会、发售载体）；
   2. 繁简归一化：通过内置 `to_simplified()` 统一转为简体中文；
   3. 符号与空白清洗：折叠连续全半角空格与特殊分隔标点；
-  4. 严格保留卷册标识：主干中的卷号、册号、分部（如 `01`、`Vol.2`、`前篇`、`下`）作为核心标题保留，确保分卷作品误报率为 0；
-  5. 纯标签兜底保护：若剥离后主体文字为空（如 `[C100][DL版]`），自动回退使用原始标题（仅做繁简与空白折叠），杜绝空值碰撞。
+  4. 严格保留卷册标识：主干与括号中的卷号、册号、分部（如 `01`、`[01]`、`Vol.2`、`前篇`、`【第1话】`、`【上】`）经 `VOL_MARKER` 智能甄别保留，确保分卷作品误报率为 0；
+  5. 纯标签与纯标点兜底保护：若剥离后主体文字为空（如 `[C100][DL版]`）或仅含标点（如 `???`），自动回退至去除空白的原始标题，杜绝空值碰撞并避免系统冷启动时重复回填更新。
 
 ### 3. 数据关系架构：动态计算 vs 持久化关系表
 
@@ -53,7 +53,7 @@
    - 单本详情（`GET /api/library/{source}/{source_id}`）响应携带 `mirrors`；
    - 标题下方展示古雅水墨胶囊条「馆内亦藏有：【图源】《书名》」，点击无缝跨源切换，支持多版本自主比对。
 3. **发现榜单导流（Discovery Feed）**：
-   - 榜单卡片在拉取时同步比对书库，对跨源已收录作品右上角盖上赭黄色「异源同本印章（馆内已有 · 来源）」，并提供一键看馆内版本动作。
+   - 榜单卡片在拉取时通过 `batch_find_comic_mirrors` 单次批量比对书库（消除 N+1 循环查询），对跨源已收录作品右上角盖上赭黄色「异源同本印章（馆内已有 · 来源）」，采用 `--amber` + `--reader-bg` 与 `--accent-contrast` 语义色彩体系，并提供一键查看馆内版本与双操作分流。
 4. **批量收录执行策略（Batch Import）**：
    - `shelf_batch_import_comics` 遇到异源重复作品不中断，继续收录并在结果与诊断日志中记录警告，确保调用方知情且数据完整。
 
@@ -81,6 +81,8 @@ CREATE INDEX IF NOT EXISTS idx_comics_index_norm_title ON comics_index(normalize
    - **隐私隔离不变式**：查询函数 `find_comic_mirrors(..., is_curator=...)` 严格区分访客权限，非馆长时强制注入 `AND hidden_from_guest = 0`，绝对阻断访客通过异源作品刺探隐藏藏书。
 3. **发现榜单端点扩展（`GET /api/discovery/ranking`）**：
    响应模型 `DiscoveryItem` 增补 `mirror_source: str | None` 与 `mirror_source_id: str | None`。
+   - **单次批量优化（Batch Mirror Lookups）**：通过 `batch_find_comic_mirrors(missing_items, is_curator=...)` 聚合单次 SQL `IN (...)` 完成全榜单镜像比对，彻底杜绝 N+1 数据库连接与锁开销；
+   - **默认最小权限（Least Privilege）**：查重函数默认 `is_curator=False`，非馆长请求自动隔离 `hidden_from_guest = 0`。
 
 ## 收益
 

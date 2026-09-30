@@ -508,10 +508,10 @@ function retryCover() {
   font-family: var(--font-body);
   font-size: var(--text-caption);
   font-weight: 600;
-  background: color-mix(in oklab, #d97706 90%, black);
-  color: #fff;
-  z-index: 2;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+  background: color-mix(in oklab, var(--amber) 88%, var(--reader-bg));
+  color: var(--accent-contrast);
+  z-index: var(--z-card-stamp);
+  box-shadow: 0 1px 3px rgb(0 0 0 / 18%);
 }
 
 .mirror-action-split {

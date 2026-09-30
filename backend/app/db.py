@@ -24,6 +24,7 @@ from .abuse import (
     record_eviction_and_check_lock,
 )
 from .config import DATA_DIR
+from .formatting import normalize_title
 from .zh_conv import to_simplified
 
 logger = logging.getLogger(__name__)
@@ -540,9 +541,8 @@ def init_db(db_path: Path | None = None) -> None:
         conn.execute("CREATE INDEX IF NOT EXISTS idx_comics_index_norm_title ON comics_index(normalized_title)")
 
         # Ensure normalized_title is backfilled for any existing entries
-        empty_norm_rows = conn.execute("SELECT source, source_id, title FROM comics_index WHERE normalized_title = ''").fetchall()
+        empty_norm_rows = conn.execute("SELECT source, source_id, title FROM comics_index WHERE normalized_title = '' AND title != ''").fetchall()
         if empty_norm_rows:
-            from .formatting import normalize_title
             updates = [(normalize_title(r["title"]), r["source"], r["source_id"]) for r in empty_norm_rows]
             conn.executemany("UPDATE comics_index SET normalized_title = ? WHERE source = ? AND source_id = ?", updates)
 
@@ -1264,7 +1264,6 @@ def upsert_comic_index(item: dict[str, Any]) -> None:
     source = str(merged_item.get("source") or "")
     source_id = str(merged_item.get("source_id") or "")
     if not merged_item.get("normalized_title"):
-        from .formatting import normalize_title
         merged_item["normalized_title"] = normalize_title(str(merged_item.get("title") or ""))
 
     with get_db() as conn:
@@ -1505,13 +1504,12 @@ def find_comic_mirrors(
     title: str | None = None,
     normalized_title: str | None = None,
     limit: int = 5,
-    is_curator: bool = True,
+    is_curator: bool = False,
 ) -> list[dict[str, Any]]:
-    """基于规范化标题查找馆内的异源同名作品（ADR 0031）。"""
+    """基于规范化标题查找馆内的异源/多版本同名作品（ADR 0031）。"""
     if not normalized_title:
         if not title:
             return []
-        from .formatting import normalize_title
         normalized_title = normalize_title(title)
     if not normalized_title:
         return []
@@ -1529,6 +1527,51 @@ def find_comic_mirrors(
         params.append(limit)
         rows = conn.execute(sql, params).fetchall()
         return [dict(r) for r in rows]
+
+
+def batch_find_comic_mirrors(
+    items: list[tuple[str, str, str]],
+    is_curator: bool = False,
+) -> dict[tuple[str, str], dict[str, Any] | None]:
+    """批量查找候选作品在馆内的镜像匹配（首个匹配项），单次数据库连接完成以消除 N+1 查询。"""
+    if not items:
+        return {}
+    res: dict[tuple[str, str], dict[str, Any] | None] = {}
+    norm_map: dict[tuple[str, str], str] = {}
+    norm_to_keys: dict[str, list[tuple[str, str]]] = {}
+    for s, sid, t in items:
+        norm = normalize_title(t)
+        if norm:
+            norm_map[(s, sid)] = norm
+            norm_to_keys.setdefault(norm, []).append((s, sid))
+        res[(s, sid)] = None
+
+    if not norm_to_keys:
+        return res
+
+    with get_db() as conn:
+        placeholders = ",".join("?" for _ in norm_to_keys)
+        sql = f"""
+            SELECT source, source_id, display_id, title, page_count, normalized_title
+            FROM comics_index
+            WHERE normalized_title IN ({placeholders})
+        """
+        params: list[Any] = list(norm_to_keys.keys())
+        if not is_curator:
+            sql += " AND hidden_from_guest = 0"
+        rows = conn.execute(sql, params).fetchall()
+
+        matches_by_norm: dict[str, list[dict[str, Any]]] = {}
+        for r in rows:
+            matches_by_norm.setdefault(r["normalized_title"], []).append(dict(r))
+
+        for (s, sid), norm in norm_map.items():
+            candidates = matches_by_norm.get(norm, [])
+            for c in candidates:
+                if c["source"] != s or c["source_id"] != sid:
+                    res[(s, sid)] = c
+                    break
+    return res
 
 
 def query_library_index(

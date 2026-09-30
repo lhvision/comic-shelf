@@ -354,18 +354,30 @@ onMounted(() => {
 }
 
 .detail-meta {
+  min-width: 0;
+  max-width: 100%;
   padding: var(--space-5);
   border-left: 1px solid var(--line);
 }
 
 @media (max-width: 980px) {
   .detail-hero {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
   }
 
   .detail-meta {
     border-left: 0;
     border-top: 1px solid var(--line);
+  }
+}
+
+@media (max-width: 640px) {
+  .detail-hero {
+    padding: var(--space-3);
+  }
+
+  .detail-meta {
+    padding: var(--space-4) var(--space-2);
   }
 }
 </style>

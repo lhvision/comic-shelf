@@ -121,4 +121,35 @@ describe('DiscoveryCard on-demand cover viewing (Scheme A)', () => {
     expect(wrapper.find('.cover-loading-overlay').exists()).toBe(true)
     expect(wrapper.find('.cover-error-overlay').exists()).toBe(false)
   })
+
+  it('displays mirror seal and split action button when item has mirror_source', () => {
+    const mirrorItem: DiscoveryItem = {
+      ...jmItemWithoutCover,
+      in_library: false,
+      mirror_source: 'picacg',
+      mirror_source_id: 'pica_abc123',
+    }
+    const wrapper = mount(DiscoveryCard, {
+      props: {
+        item: mirrorItem,
+        rank: 3,
+      },
+      global: {
+        stubs: {
+          RouterLink: {
+            template: '<a :href="to"><slot /></a>',
+            props: ['to'],
+          },
+        },
+      },
+    })
+
+    const seal = wrapper.find('.mirror-seal')
+    expect(seal.exists()).toBe(true)
+    expect(seal.text()).toContain('馆内已有')
+
+    const split = wrapper.find('.mirror-action-split')
+    expect(split.exists()).toBe(true)
+    expect(split.text()).toContain('馆内已有 · 哔咔')
+  })
 })
