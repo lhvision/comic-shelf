@@ -7,6 +7,7 @@ import {
 import { DEFAULT_SETTINGS, type ReaderSettings } from '@/composables/useReaderSettings'
 import type { Router } from 'vue-router'
 import { clamp } from '@/utils/math'
+import type { Chapter } from '@/types'
 
 describe('useReaderNavigation - Discrete Wheel Stepping & Dual-Axis Discrimination', () => {
   let settings: ReaderSettings
@@ -531,5 +532,58 @@ describe('useReaderNavigation - Discrete Wheel Stepping & Dual-Axis Discriminati
         behavior: 'auto',
       }),
     )
+  })
+
+  it('prevents concurrent chapter transitions with isSwitchingChapter mutex and uses instant scroll', () => {
+    const nextChapter = computed<Chapter | null>(() => ({
+      id: 'ch2',
+      index: 2,
+      title: 'Chapter 2',
+      page_count: 10,
+      start: 7,
+    }))
+    const mockReplace = vi.fn<(_url: string) => Promise<void>>()
+    const mockRouter = {
+      replace: mockReplace,
+      push: vi.fn<(_url: string) => Promise<void>>(),
+    } as unknown as Router
+
+    const nav = createNavigation({
+      nextChapter,
+      router: mockRouter,
+    })
+
+    expect(nav.isSwitchingChapter.value).toBe(false)
+
+    // Rapid consecutive calls (simulate user spam clicking "next chapter")
+    nav.goNextChapter()
+    nav.goNextChapter()
+    nav.goNextChapter()
+
+    expect(nav.isSwitchingChapter.value).toBe(true)
+    // Router replace called exactly ONCE despite 3 rapid calls
+    expect(mockReplace).toHaveBeenCalledTimes(1)
+    expect(mockReplace).toHaveBeenCalledWith(expect.stringContaining('chapter=ch2'))
+
+    // And verify scroll behavior is instant (not smooth)
+    expect(mockScrollTo).toHaveBeenCalledWith(
+      expect.objectContaining({
+        behavior: 'instant',
+      }),
+    )
+
+    // Advance timer past 280ms release threshold
+    vi.advanceTimersByTime(280)
+    expect(nav.isSwitchingChapter.value).toBe(false)
+  })
+
+  it('does not attach scrollend listener on instant scrollToGroup to prevent premature unlocking', () => {
+    const addEventListenerSpy = vi.spyOn(mockContainer, 'addEventListener')
+    const nav = createNavigation()
+
+    nav.scrollToGroup(0, 'instant')
+
+    const scrollendCalls = addEventListenerSpy.mock.calls.filter(([event]) => event === 'scrollend')
+    expect(scrollendCalls.length).toBe(0)
   })
 })

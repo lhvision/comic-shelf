@@ -115,6 +115,34 @@ export function useReaderData(options: UseReaderDataOptions = {}): UseReaderData
   /* ---------------- 数据加载与生命周期 ---------------- */
   let readerAbortController: AbortController | null = null
 
+  /**
+   * 多章节作品开卷单话作用域规范化（Scoped Chapter Canonicalization）。
+   * 若作品包含多章节且未指定 `?chapter=` 作用域，根据当前阅读进度自动对齐并补齐 URL，消除全本拍平混拼。
+   *
+   * @param comicData 漫画详情数据
+   */
+  function canonicalizeChapterScope(comicData: ComicDetail) {
+    const chapters = comicData.meta?.chapters
+    if (!chapters || chapters.length <= 1) return
+    if (scopeId.value) return
+
+    const p = Number.parseInt(String(route.params.page || route.query.page), 10)
+    const targetPage = p > 0 ? p : lastRead.value > 0 ? lastRead.value : 1
+    const matched =
+      chapters.find((c) => targetPage >= c.start && targetPage < c.start + c.page_count) ??
+      chapters[0]
+
+    if (matched) {
+      scopeId.value = matched.id
+      void router.replace({
+        query: {
+          ...route.query,
+          chapter: matched.id,
+        },
+      })
+    }
+  }
+
   async function loadDetail() {
     if (!source.value || !sourceId.value) return
 
@@ -128,6 +156,7 @@ export function useReaderData(options: UseReaderDataOptions = {}): UseReaderData
     const cached = store.getDetail(source.value, sourceId.value)
     if (cached) {
       detail.value = cached
+      canonicalizeChapterScope(cached)
       loading.value = false
       if (onLoaded) {
         void onLoaded(cached)
@@ -141,6 +170,7 @@ export function useReaderData(options: UseReaderDataOptions = {}): UseReaderData
       if (controller.signal.aborted) return
       detail.value = data
       store.setDetail(data, userId.value)
+      canonicalizeChapterScope(data)
       if (loading.value) {
         loading.value = false
         if (onLoaded) {
@@ -169,6 +199,7 @@ export function useReaderData(options: UseReaderDataOptions = {}): UseReaderData
 
       if (fallback) {
         detail.value = fallback
+        canonicalizeChapterScope(fallback)
         loading.value = false
         if (onLoaded) {
           await onLoaded(fallback)

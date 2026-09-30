@@ -95,7 +95,7 @@ const readerNavigation = useReaderNavigation({
   scopeId,
   router,
 })
-const { progressValue, pillActive } = readerNavigation
+const { progressValue, pillActive, isSwitchingChapter } = readerNavigation
 
 const readerAutoTurn = useAutoTurn({
   settings,
@@ -169,6 +169,8 @@ const { recommendations, onReaderCompleted, onSelectComic, onOpenComicDetail, on
       :settings="settings"
       :source="source"
       :source-id="sourceId"
+      :scope-id="scopeId"
+      :is-switching-chapter="isSwitchingChapter"
       :ordered-groups="orderedGroups"
       :current-group-index="currentGroupIndex"
       :show-end-card="showEndCard"
@@ -203,6 +205,7 @@ const { recommendations, onReaderCompleted, onSelectComic, onOpenComicDetail, on
       :at-chapter-end="atChapterEnd"
       :chapter-short-label="chapterShortLabel"
       :mode="settings.mode"
+      :disabled="isSwitchingChapter"
       @prev-chapter="goPrevChapter"
       @next-chapter="goNextChapter"
     />

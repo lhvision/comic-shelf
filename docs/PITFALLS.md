@@ -981,6 +981,25 @@
   1. **描述与富文本容器强制任意断行**：凡包含外链、长单词或用户自定义排版的容器（特别是带有 `white-space: pre-line` 的描述块），必须强制设置 `overflow-wrap: anywhere; word-break: break-word;` 以及 `min-width: 0; max-width: 100%;`；
   2. **Grid / Flex 轨道零下限声明**：移动端 Grid 轨道与卡片内层列必须显式声明 `minmax(0, 1fr)` 代替裸写 `1fr`，阻断不可分割内容向外膨胀破坏移动端视口。
 
+### 158. 沉浸式阅读器跨话切换视口时序撕裂与虚拟注水黑屏死锁
+
+- **症状**：
+  1. 竖向连续条漫无缝滚动（`vertical-continuous` + `seamless: true`）模式下，读者点击「进入下一话」时偶现全屏纯黑或大面积黑留白（未注水占位纸印盒），向下滚动一段距离后又突然恢复正常；
+  2. 切换时偶现看似不生效，需退出阅读器重新进入才恢复；
+  3. 偶现第一话与第二话内容堆叠错位；
+  4. 高频快速连击多次「进入下一话」或长按键盘 `N` 键时，上述症状极易恶化并大概率复现。
+- **根因**：
+  1. 上一话读完处于滚动容器底端（数万像素），平滑滚顶（`smooth`）与跨话微任务产生了漫长滑行与动画排队滞后；
+  2. `scrollToGroup` 中无条件向所有滚动行为挂载了 `scrollend` 监听；在 `instant` 瞬态滚动重置时，浏览器立即触发 `scrollend` 并提前解除了 `isProgrammaticScrolling` 静音锁。容器排版与视口尚未完全稳定，被动滚动监听 `handleScroll` 嗅探到物理底端（`position >= max - 24`），误将 `currentGroupIndex` 篡改为新话末尾索引；虚拟注水视窗随之锁死在末尾，新话前部（0~15 组）画页全部判定为离屏并降级为纯黑占位盒 `.quiescent-paper`；
+  3. 分屏 DOM 容器原声明为 `:key="group.index"`（0, 1, 2...），跨话切换时 Vue 原地复用 `<section>` DOM 节点，叠加 Chromium 默认的 `overflow-anchor: auto` 异步尺寸补偿，造成新老章节在同一瞬间视觉堆叠；
+  4. 多章节漫画若无 `?chapter=` 作用域参数，全书页码被拍平在同一无缝卷轴中，缺乏章节物理边界；连续点击缺乏跨话并发互斥锁（In-flight Mutex）。
+- **红线**：
+  1. **跨话视口重置完全瞬态化（Instant Reset）**：跨章节跳转（`goNextChapter` / `goPrevChapter` / `onSelectChapter`）必须强制声明 `behavior: 'instant'`，严禁使用 `smooth` 平滑滑行跨越数万像素；
+  2. **滚动结束监听严格隔离**：`scrollToGroup` 仅在 `effectiveBehavior === 'smooth'` 时监听 `scrollend`，严禁在 `instant` 或 `auto` 模式下挂载 `scrollend` 提前泄露解除静音锁；
+  3. **切话防抖互斥状态机（Chapter Transition Mutex）**：引入 `isSwitchingChapter`（280ms 自动释放）；在底层 `setScope()`、行内切话按钮（`:disabled="isSwitchingChapter"`）、跨话横幅（`ReaderChapterBanners`）、键盘 `N/P` 键分发以及路由监听器（`route.params.page` 反跳保护）中统一加锁拦截重入；
+  4. **分章物理 DOM 隔离与防锚定**：分屏容器必须声明 `:key="`${scopeId || 'all'}-${group.index}`"`，切话强制全量重挂载 DOM，严禁跨章节原地复用；`.reader-scroll` 样式必须显式声明 `overflow-anchor: none;`，彻底禁用异步撑高时的视口自激跳动；
+  5. **单话作用域规范化（Scoped Chapter Canonicalization）**：多章节漫画（`chapters.length > 1`）开卷若无 `?chapter=` 查询参数，必须在 `useReaderData.loadDetail` 中基于当前阅读进度单向对齐补齐 `?chapter=chX`，永远杜绝千页大合集无边界混拼。
+
 ---
 
 ## 🚦 交付门禁

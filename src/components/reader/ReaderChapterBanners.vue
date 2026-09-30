@@ -32,6 +32,8 @@ export interface ReaderChapterBannersProps {
   chapterShortLabel: (chapter: Chapter) => string
   /** 当前阅读器排版模式（条漫连续模式下隐藏下一话悬浮横幅） */
   mode: ReaderSettings['mode']
+  /** 是否禁用横幅交互（处于跨话切换过渡中） */
+  disabled?: boolean
 }
 
 defineProps<ReaderChapterBannersProps>()
@@ -49,6 +51,7 @@ defineEmits<{
     v-if="prevChapter && atChapterStart"
     class="reader-chapter-banner reader-chapter-prev"
     type="button"
+    :disabled="disabled"
     @click="$emit('prevChapter')"
   >
     <IconArrowLeft :size="14" class="reader-chapter-icon" />
@@ -60,6 +63,7 @@ defineEmits<{
     v-if="nextChapter && atChapterEnd && mode !== 'vertical-continuous'"
     class="reader-chapter-banner reader-chapter-next"
     type="button"
+    :disabled="disabled"
     @click="$emit('nextChapter')"
   >
     <span class="reader-chapter-badge">本话完</span>
@@ -103,6 +107,12 @@ defineEmits<{
 .reader-chapter-banner:hover {
   background-color: var(--accent);
   color: var(--paper-0);
+}
+
+.reader-chapter-banner:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  pointer-events: none;
 }
 
 .reader-chapter-icon {

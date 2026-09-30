@@ -70,6 +70,7 @@ export function useReaderInteraction(options: UseReaderInteractionOptions) {
       goPrevChapter: navGoPrevChapter,
       lockProgrammaticScroll,
       unlockProgrammaticScroll,
+      isSwitchingChapter,
     },
     autoTurn: { resetAutoTurnCountdown },
   } = options
@@ -193,10 +194,11 @@ export function useReaderInteraction(options: UseReaderInteractionOptions) {
   }
 
   function onSelectChapter(id: string) {
+    if (isSwitchingChapter.value) return
     const c = detail.value?.meta.chapters?.find((item) => item.id === id)
     if (c) {
       options.navigation.setScope(c.id, c.start)
-      goToPage(c.start, 'smooth')
+      goToPage(c.start, 'instant')
     }
   }
 
@@ -223,6 +225,7 @@ export function useReaderInteraction(options: UseReaderInteractionOptions) {
     goNextChapter,
     goPrevChapter,
     backToDetail,
+    isSwitchingChapter,
     onUserInteract,
     onKeyRelease: () => lockProgrammaticScroll(380),
   })
@@ -230,7 +233,7 @@ export function useReaderInteraction(options: UseReaderInteractionOptions) {
   watch(
     () => [route.params.page, route.query.page],
     () => {
-      if (loading.value) return
+      if (loading.value || isSwitchingChapter.value) return
       const page = targetPage.value ?? lastRead.value ?? scopedPages.value[0] ?? 1
       const pages = scopedPages.value
       if (!isFiniteNumber(page) || pages.length === 0) return
@@ -255,6 +258,8 @@ export function useReaderInteraction(options: UseReaderInteractionOptions) {
     () => scopeId.value,
     async () => {
       if (!detail.value) return
+      targetAnchorPage.value = null
+      targetAnchorGroupIndex.value = null
       const clamped = clampToScope(currentPage.value)
       if (clamped !== currentPage.value) currentPage.value = clamped
       currentGroupIndex.value = groupIndexForPage(currentPage.value)

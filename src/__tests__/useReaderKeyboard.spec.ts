@@ -158,4 +158,29 @@ describe('useReaderKeyboard - Cascading Escape & Filmstrip Toggle', () => {
     state.onKeydown(new KeyboardEvent('keydown', { key: 'n', altKey: true }))
     expect(goNextChapter).not.toHaveBeenCalled()
   })
+
+  it('blocks "n" and "p" chapter transition hotkeys when isSwitchingChapter is true', () => {
+    const goNextChapter = vi.fn<() => void>()
+    const goPrevChapter = vi.fn<() => void>()
+    const isSwitchingChapter = ref(true)
+
+    const state = setupKeyboard({
+      goNextChapter,
+      goPrevChapter,
+      isSwitchingChapter,
+    })
+
+    state.onKeydown(new KeyboardEvent('keydown', { key: 'n' }))
+    state.onKeydown(new KeyboardEvent('keydown', { key: 'p' }))
+    expect(goNextChapter).not.toHaveBeenCalled()
+    expect(goPrevChapter).not.toHaveBeenCalled()
+
+    // Unlock mutex
+    isSwitchingChapter.value = false
+    state.onKeydown(new KeyboardEvent('keydown', { key: 'n' }))
+    expect(goNextChapter).toHaveBeenCalledTimes(1)
+
+    state.onKeydown(new KeyboardEvent('keydown', { key: 'p' }))
+    expect(goPrevChapter).toHaveBeenCalledTimes(1)
+  })
 })

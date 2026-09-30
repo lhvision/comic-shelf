@@ -45,6 +45,8 @@ export interface UseReaderKeyboardOptions {
   goPrevChapter: () => void
   /** 返回详情页回调 */
   backToDetail: () => void
+  /** 是否处于跨章节切换中（用于拦截快速连按 N/P） */
+  isSwitchingChapter?: Ref<boolean>
   /** 用户主动键盘翻阅交互通知 */
   onUserInteract?: () => void
   /** 连续按键释放通知（用于延长静默锁定） */
@@ -68,6 +70,7 @@ export function useReaderKeyboard(options: UseReaderKeyboardOptions) {
     goNextChapter,
     goPrevChapter,
     backToDetail,
+    isSwitchingChapter,
     onUserInteract,
     onKeyRelease,
   } = options
@@ -172,11 +175,13 @@ export function useReaderKeyboard(options: UseReaderKeyboardOptions) {
         break
       case 'n':
       case 'N':
+        if (isSwitchingChapter?.value) break
         onUserInteract?.()
         goNextChapter()
         break
       case 'p':
       case 'P':
+        if (isSwitchingChapter?.value) break
         onUserInteract?.()
         goPrevChapter()
         break

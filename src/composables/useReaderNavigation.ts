@@ -275,6 +275,19 @@ export function useReaderNavigation(options: UseReaderNavigationOptions) {
   }
 
   /**
+   * 标记是否正处于跨章节切换过渡中（防抖互斥锁）。
+   * 在此期间拦截连击、长按快捷键以及重入调用，彻底根除高频切话并发竞态。
+   */
+  const isSwitchingChapter = ref(false)
+  const { start: startSwitchRelease, stop: stopSwitchRelease } = useTimeoutFn(
+    () => {
+      isSwitchingChapter.value = false
+    },
+    280,
+    { immediate: false },
+  )
+
+  /**
    * 标记是否处于程序化跳转（如点击翻页、外部直达、滑块跳转）的滑行期。
    * 在此期间阻止 handleScroll 被动探测中间态并反向抢占当前页码，根除页码跳动抖动死锁。
    */
@@ -304,24 +317,46 @@ export function useReaderNavigation(options: UseReaderNavigationOptions) {
    * 将阅读器滚动视口物理定位到指定的分屏容器
    * @param groupIndex 目标分屏索引
    * @param behavior 滚动动画行为（'smooth' | 'auto' | 'instant'）
+   * @param fromGroupIndex 起始分屏索引（可选，用于在状态更新前精确判定跨度）
    */
-  function scrollToGroup(groupIndex: number, behavior: ScrollBehavior = 'smooth') {
+  function scrollToGroup(
+    groupIndex: number,
+    behavior: ScrollBehavior = 'smooth',
+    fromGroupIndex?: number,
+  ) {
     const el = scrollEl.value
     if (!el) return
     const target = el.querySelector<HTMLElement>(`[data-group-index="${groupIndex}"]`)
-    if (!target) return
 
     // 跨度判定：当跳转跨度超过 5 个分屏分组时（如外部直达、Home/End、跳章），退化为即时跳转，
     // 避免几十万像素漫长平滑滚动导致浏览器合成器压力以及中途 320ms 静音锁提前超时
-    const groupDiff = Math.abs(groupIndex - currentGroupIndex.value)
+    const baseIndex = fromGroupIndex ?? currentGroupIndex.value
+    const groupDiff = Math.abs(groupIndex - baseIndex)
     const effectiveBehavior: ScrollBehavior =
       groupDiff > 5 && behavior === 'smooth' ? 'auto' : behavior
+
+    if (!target) {
+      if (groupIndex === 0) {
+        lockProgrammaticScroll(480)
+        if (settings.mode === 'horizontal') {
+          el.scrollTo({ left: 0, top: 0, behavior: effectiveBehavior })
+        } else {
+          el.scrollTo({ left: 0, top: 0, behavior: effectiveBehavior })
+        }
+      }
+      return
+    }
 
     lockProgrammaticScroll(
       effectiveBehavior === 'instant' || effectiveBehavior === 'auto' ? 480 : 400,
     )
 
-    if (typeof window !== 'undefined' && 'onscrollend' in window) {
+    // 仅在 smooth 动画时监听 scrollend，instant/auto 会瞬发并提前泄露解除锁，导致注水视窗漂移
+    if (
+      effectiveBehavior === 'smooth' &&
+      typeof window !== 'undefined' &&
+      'onscrollend' in window
+    ) {
       el.addEventListener('scrollend', unlockProgrammaticScroll, { once: true })
     }
 
@@ -339,9 +374,10 @@ export function useReaderNavigation(options: UseReaderNavigationOptions) {
    */
   function goToGroup(groupIndex: number, behavior: ScrollBehavior = 'smooth') {
     const clamped = clamp(groupIndex, 0, Math.max(0, lastGroupIndex.value))
+    const oldGroup = currentGroupIndex.value
     currentGroupIndex.value = clamped
     currentPage.value = groupFirstPage(clamped)
-    scrollToGroup(clamped, behavior)
+    scrollToGroup(clamped, behavior, oldGroup)
     if (behavior === 'instant' || behavior === 'auto') {
       void nextTick(() => {
         recalibrateTargetOffset(clamped)
@@ -359,9 +395,10 @@ export function useReaderNavigation(options: UseReaderNavigationOptions) {
   function goToPage(page: number, behavior: ScrollBehavior = 'smooth') {
     const clampedPage = clampToScope(page)
     const groupIndex = groupIndexForPage(clampedPage)
+    const oldGroup = currentGroupIndex.value
     currentPage.value = clampedPage
     currentGroupIndex.value = groupIndex
-    scrollToGroup(groupIndex, behavior)
+    scrollToGroup(groupIndex, behavior, oldGroup)
     if (behavior === 'instant' || behavior === 'auto') {
       void nextTick(() => {
         recalibrateTargetOffset(groupIndex)
@@ -393,6 +430,7 @@ export function useReaderNavigation(options: UseReaderNavigationOptions) {
 
   if (getCurrentScope()) {
     onScopeDispose(() => {
+      stopSwitchRelease()
       if (scrollRafId !== null) {
         cancelAnimationFrame(scrollRafId)
         scrollRafId = null
@@ -582,6 +620,8 @@ export function useReaderNavigation(options: UseReaderNavigationOptions) {
 
   /** 切换章节作用域并替换当前路由 URL 查询参数 */
   function setScope(id: string, page: number) {
+    isSwitchingChapter.value = true
+    startSwitchRelease()
     scopeId.value = id
     const target = `/comic/${source.value}/${sourceId.value}/read/${page}?chapter=${encodeURIComponent(id)}`
     void router.replace(target)
@@ -589,18 +629,21 @@ export function useReaderNavigation(options: UseReaderNavigationOptions) {
 
   /** 跳转至下一话首页 */
   function goNextChapter() {
+    if (isSwitchingChapter.value) return
     const c = nextChapter.value
     if (!c) return
     setScope(c.id, c.start)
-    goToPage(c.start, 'smooth')
+    goToPage(c.start, 'instant')
   }
 
   /** 跳转至上一话末页 */
   function goPrevChapter() {
+    if (isSwitchingChapter.value) return
     const c = prevChapter.value
     if (!c) return
-    setScope(c.id, c.start + c.page_count - 1)
-    goToPage(c.start + c.page_count - 1, 'smooth')
+    const targetPage = c.start + c.page_count - 1
+    setScope(c.id, targetPage)
+    goToPage(targetPage, 'instant')
   }
 
   /**
@@ -647,6 +690,7 @@ export function useReaderNavigation(options: UseReaderNavigationOptions) {
   return {
     progressValue,
     pillActive,
+    isSwitchingChapter,
     scrollToGroup,
     recalibrateTargetOffset,
     goToGroup,

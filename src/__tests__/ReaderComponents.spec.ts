@@ -172,6 +172,32 @@ describe('ReaderViewport', () => {
     expect(page55.findComponent({ name: 'ComicPageImage' }).exists()).toBe(true)
     expect(page55.find('.quiescent-paper').exists()).toBe(false)
   })
+
+  it('disables webtoon-next-btn when isSwitchingChapter is true', () => {
+    const nextChapter: Chapter = {
+      id: 'ch-2',
+      index: 2,
+      title: '第 2 话',
+      page_count: 20,
+      start: 21,
+    }
+
+    const wrapper = mount(ReaderViewport, {
+      props: {
+        ...defaultProps,
+        settings: {
+          ...DEFAULT_SETTINGS,
+          mode: 'vertical-continuous',
+        },
+        nextChapter,
+        isSwitchingChapter: true,
+      },
+    })
+
+    const nextBtn = wrapper.find('.webtoon-next-btn')
+    expect(nextBtn.exists()).toBe(true)
+    expect(nextBtn.attributes('disabled')).toBeDefined()
+  })
 })
 
 describe('ReaderChapterBanners', () => {
@@ -256,6 +282,24 @@ describe('ReaderChapterBanners', () => {
     })
 
     expect(wrapper.find('.reader-chapter-next').exists()).toBe(false)
+  })
+
+  it('disables banner buttons when disabled prop is true', () => {
+    const wrapper = mount(ReaderChapterBanners, {
+      props: {
+        prevChapter,
+        nextChapter: null,
+        atChapterStart: true,
+        atChapterEnd: false,
+        chapterShortLabel,
+        mode: 'vertical-paged',
+        disabled: true,
+      },
+    })
+
+    const prevBtn = wrapper.find('.reader-chapter-prev')
+    expect(prevBtn.exists()).toBe(true)
+    expect(prevBtn.attributes('disabled')).toBeDefined()
   })
 })
 

@@ -48,6 +48,10 @@ export interface ReaderViewportProps {
   toLocalPage: (page: number) => number
   /** 卷末接卷推荐藏书列表 */
   recommendations?: LibrarySummary[]
+  /** 当前锁定的章节 ID（无则为整本全局），用于分章 DOM Key 隔离 */
+  scopeId?: string | null
+  /** 是否处于跨章节切换过渡中（禁用连击进入下一话按钮） */
+  isSwitchingChapter?: boolean
   /** 待高亮呈现的目标气泡（来自台词检索等直接定位） */
   targetBubble?: TargetBubble | null
   /** 下一话章节元数据（若有下一话） */
@@ -142,7 +146,7 @@ defineExpose({
 
     <section
       v-for="group in orderedGroups"
-      :key="group.index"
+      :key="`${scopeId || 'all'}-${group.index}`"
       class="reader-spread"
       :data-group-index="group.index"
     >
@@ -207,6 +211,7 @@ defineExpose({
           size="sm"
           type="button"
           class="webtoon-next-btn"
+          :disabled="isSwitchingChapter"
           @click="$emit('nextChapter')"
         >
           <span>进入下一话</span>
@@ -239,6 +244,7 @@ defineExpose({
   height: 100dvh;
   overflow-y: auto;
   overflow-x: hidden;
+  overflow-anchor: none;
   background:
     radial-gradient(circle at 50% 0%, var(--reader-glow), transparent 38rem), var(--reader-bg);
   overscroll-behavior: contain;

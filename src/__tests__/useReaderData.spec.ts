@@ -219,4 +219,125 @@ describe('useReaderData', () => {
     hookResult.backToDetail()
     expect(mockReplace).toHaveBeenCalledWith('/comic/jm/999/chapter/ch-5')
   })
+
+  it('canonicalizes chapter scope when opening multi-chapter comic without query', async () => {
+    mockRouteParams = { source: 'jm', sourceId: 'multi-ch' }
+    mockRouteQuery = { chapter: undefined }
+
+    const multiDetail: ComicDetail = {
+      meta: {
+        source: 'jm',
+        source_id: 'multi-ch',
+        display_id: 'multi-ch',
+        title: 'Multi Chapter Comic',
+        authors: ['Author'],
+        works: [],
+        actors: [],
+        tags: [],
+        description: '',
+        uploader: null,
+        page_count: 50,
+        published_at: '',
+        updated_at: '',
+        views: '',
+        likes: '',
+        comment_count: 0,
+        favorite: false,
+        cover_count: 1,
+        source_url: '',
+        pages: [],
+        imported_at: '',
+        last_checked_at: '',
+        raw: {},
+        chapters: [
+          { id: 'ch1', index: 1, title: 'Chapter 1', page_count: 20, start: 1 },
+          { id: 'ch2', index: 2, title: 'Chapter 2', page_count: 30, start: 21 },
+        ],
+      },
+      cached_pages: 50,
+      cache_complete: true,
+      cover_paths: ['/cover.webp'],
+    }
+
+    vi.spyOn(api, 'detail').mockResolvedValueOnce(multiDetail)
+
+    let hookResult!: UseReaderDataReturn
+    const TestComponent = defineComponent({
+      setup() {
+        hookResult = useReaderData()
+        return () => null
+      },
+    })
+
+    const wrapper = mount(TestComponent)
+    await flushPromises()
+
+    expect(hookResult.scopeId.value).toBe('ch1')
+    expect(mockReplace).toHaveBeenCalledWith({
+      query: {
+        chapter: 'ch1',
+      },
+    })
+
+    wrapper.unmount()
+  })
+
+  it('preserves existing chapter query without canonicalization override', async () => {
+    mockRouteParams = { source: 'jm', sourceId: 'multi-ch' }
+    mockRouteQuery = { chapter: 'ch2' }
+
+    const multiDetail: ComicDetail = {
+      meta: {
+        source: 'jm',
+        source_id: 'multi-ch',
+        display_id: 'multi-ch',
+        title: 'Multi Chapter Comic',
+        authors: ['Author'],
+        works: [],
+        actors: [],
+        tags: [],
+        description: '',
+        uploader: null,
+        page_count: 50,
+        published_at: '',
+        updated_at: '',
+        views: '',
+        likes: '',
+        comment_count: 0,
+        favorite: false,
+        cover_count: 1,
+        source_url: '',
+        pages: [],
+        imported_at: '',
+        last_checked_at: '',
+        raw: {},
+        chapters: [
+          { id: 'ch1', index: 1, title: 'Chapter 1', page_count: 20, start: 1 },
+          { id: 'ch2', index: 2, title: 'Chapter 2', page_count: 30, start: 21 },
+        ],
+      },
+      cached_pages: 50,
+      cache_complete: true,
+      cover_paths: ['/cover.webp'],
+    }
+
+    vi.spyOn(api, 'detail').mockResolvedValueOnce(multiDetail)
+
+    let hookResult!: UseReaderDataReturn
+    const TestComponent = defineComponent({
+      setup() {
+        hookResult = useReaderData()
+        return () => null
+      },
+    })
+
+    const wrapper = mount(TestComponent)
+    await flushPromises()
+
+    expect(hookResult.scopeId.value).toBe('ch2')
+    // mockReplace should NOT have been called with canonicalize
+    expect(mockReplace).not.toHaveBeenCalled()
+
+    wrapper.unmount()
+  })
 })
