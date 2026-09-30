@@ -952,6 +952,22 @@
   2. **避免在 response_model 路由中混入弱类型 Request 注入**：鉴权优先依托全局安全中间件拦截；路由参数中需要 `Request` 对象时必须显式声明类型 `request: Request` 且不加默认值，禁止写 `request: Request | None = None`；
   3. **基于真实页面归属实施目录物理裁剪**：章节分组裁剪计算 `removed_cids` 时，以 `p.chapter for p in meta.pages if p.chapter` 为权威真理源，只有全书完全脱钩的章节目录才允许执行物理清理。
 
+### 156. 收录时间（imported_at）缺失与格式混排导致案头藏书沉底
+
+- **症状**：
+  1. 拷贝漫画（CopyManga）或哔咔（PicAcg）收录入库后，在首页默认的「最近收录」排序中无法出现在顶部，反而沉底到第 3 页甚至最后；
+  2. 本地自建漫画与远端图源同天收录时，时序发生错位颠倒；
+  3. 历史存量数据或通过物理拷贝进入书库的目录，因缺少入库时间戳被一直压制在已有藏书末尾。
+- **根因**：
+  1. 部分图源 Provider 在实例化 `ComicMeta` 时漏传 `imported_at`，导致默认落盘为空字符串 `""`；在 SQLite 文本降序排序中任何正常时间字符串均大于 `""`，前端 `Date.parse("")` 亦回退为 0，导致新书被永远排到最后；
+  2. 本地自建源历史代码采用 `YYYY-MM-DD HH:MM:SS`（空格分隔、本地时区），而远端源采用 `YYYY-MM-DDTHH:MM:SSZ`（ISO 8601 UTC）。在 SQLite 字典序比较中，ASCII `'T'`（84）大于 `' '`（32），造成同天时间戳无法按绝对时序比较；
+  3. 物理拷贝外部目录到书库缺少全局 inotify 监听，且扫库时若对 `imported_at == ""` 无自愈逻辑，会导致存量脏数据永远无法浮出水面。
+- **红线**：
+  1. **全站统一 ISO 8601 UTC 规范**：全站所有图源 Provider 及本地自建导入必须统一生成 `datetime.now(timezone.utc).isoformat()` 格式的时间戳，严禁写入带空格的非标准时间；
+  2. **存储落盘层单一真理防线**：`store.save_fetched` 在持久化落盘时对 `imported_at` 实施强制兜底，若为空自动填补当前 UTC 时间，严禁将空时间戳持久化进 `album.json`；
+  3. **基于文件系统 mtime 的优雅自愈**：`sync_library_index` 扫库或 `load_meta` 读取时，若发现条目缺失 `imported_at` 或包含空格，必须基于真实文件系统 `mtime` 转换为 ISO 8601 UTC 自动自愈修复并回写持久化；
+  4. **追更与装订恒定性保护**：刷新资料、自动追更或重新装订时，严格继承原有 `imported_at`，保持藏书在案头书架的初次纳馆历史时序。
+
 ---
 
 ## 🚦 交付门禁

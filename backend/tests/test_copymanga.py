@@ -270,6 +270,8 @@ class TestCopyMangaProvider(unittest.TestCase):
         self.assertIn("奇幻", fetched.meta.tags)
         self.assertEqual(fetched.meta.published_at, "")
         self.assertEqual(fetched.meta.updated_at, "2026-08-30")
+        self.assertTrue(fetched.meta.imported_at)
+        self.assertIn("T", fetched.meta.imported_at)
         self.assertEqual(fetched.meta.views, "2245.9W")
 
         # Check raw group metadata
@@ -364,6 +366,7 @@ class TestCopyMangaProvider(unittest.TestCase):
                 source_id="test_slug",
                 display_id="COPY_test_slug",
                 title="测试",
+                imported_at="2025-05-20T12:00:00+00:00",
                 chapters=[Chapter(id="ch1", index=1, title="第01话", page_count=1, start=1)],
                 pages=[PageRecord(index=1, file="00001.jpg", ext="jpg", chapter="ch1")],
             ),
@@ -393,6 +396,7 @@ class TestCopyMangaProvider(unittest.TestCase):
         self.assertEqual(len(fetched.meta.chapters), 2)
         self.assertEqual(fetched.remote_pages[0].url, "https://cached/01.jpg")
         self.assertEqual(fetched.remote_pages[1].url, "https://new/02.jpg")
+        self.assertEqual(fetched.meta.imported_at, "2025-05-20T12:00:00+00:00")
 
     @patch.object(CopyMangaProvider, "_session")
     def test_download_page(self, mock_session_fn: MagicMock) -> None:

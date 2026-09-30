@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import datetime, timezone
 import hashlib
 import hmac
 import ipaddress
@@ -577,6 +578,7 @@ class PicacgProvider(ComicProvider):
             page_count=total_page_count,
             published_at=published_at,
             updated_at=updated_at,
+            imported_at=existing.meta.imported_at if (existing and existing.meta.imported_at) else datetime.now(timezone.utc).isoformat(),
             views=views,
             likes=likes,
             comment_count=int(comic_info.get("commentsCount", comic_info.get("totalComments", 0)) or 0),

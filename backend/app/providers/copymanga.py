@@ -613,6 +613,7 @@ class CopyMangaProvider(ComicProvider):
             cover_indices=[i for i in range(1, effective_cover_count + 1)],
             published_at=published_at,
             updated_at=updated_at,
+            imported_at=existing.meta.imported_at if (existing and existing.meta.imported_at) else datetime.now(timezone.utc).isoformat(),
             views=views,
             likes="",
             chapters=chapters,

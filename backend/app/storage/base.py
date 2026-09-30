@@ -478,6 +478,9 @@ class ComicStoreBase:
                 meta.auto_update_interval_days = getattr(existing, "auto_update_interval_days", 15)
                 meta.last_auto_checked_at = getattr(meta, "last_auto_checked_at", "") or getattr(existing, "last_auto_checked_at", "")
 
+            if not meta.imported_at:
+                meta.imported_at = datetime.datetime.now(datetime.timezone.utc).isoformat()
+
             album_path = self.album_path(meta.source, meta.source_id)
             remote_path = self.remote_path(meta.source, meta.source_id)
             paths = (remote_path, album_path)
@@ -599,6 +602,16 @@ class ComicStoreBase:
             # Auto-heal: If PicAcg comic lacks cover_indices, backfill dual-source cover mapping
             if meta.source == "picacg" and not meta.cover_indices and meta.page_count:
                 meta.cover_indices = ([1] + list(range(1, meta.cover_count)))[: meta.cover_count]
+
+            # In-memory normalization: If comic lacks imported_at, derive from file mtime or now
+            if not meta.imported_at:
+                try:
+                    file_mtime = path.stat().st_mtime
+                    meta.imported_at = datetime.datetime.fromtimestamp(file_mtime, tz=datetime.timezone.utc).isoformat()
+                except Exception:
+                    meta.imported_at = datetime.datetime.now(datetime.timezone.utc).isoformat()
+            elif " " in meta.imported_at:
+                meta.imported_at = meta.imported_at.replace(" ", "T")
 
             # Auto-heal: If comic has chapters but first chapter start > 1 (orphaned flat pages 1..start-1 exist)
             if meta.chapters and meta.pages and meta.chapters[0].start > 1:

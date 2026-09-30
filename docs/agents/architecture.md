@@ -160,6 +160,10 @@ flowchart TD
   - `POST /api/library/import` 先查 `album.json`；命中则 `from_cache=true`，**不请求远端**。
   - 只有显式 `refresh=true` 才更新元数据。
   - 图片按需懒下载；`POST .../cache` 才批量缓存。
+- **收录时间（imported_at）与时序规范**：
+  - **全局标准**：全站所有 Provider 及本地自建导入必须统一采用 ISO 8601 UTC 格式（`datetime.now(timezone.utc).isoformat()`），严禁使用带空格的本地时间，确保 SQLite 文本字典序与前端 `Date.parse()` 排序完全一致。
+  - **恒定性与防重置**：初次入库确定后永久保持恒定；增量追更、补页、刷新资料或重新装订均严格继承原有时间戳，绝不发生时序漂移。
+  - **底层兜底与自愈**：存储层 `save_fetched` 在持久化时对空值执行当前 UTC 时间兜底；扫库 `sync_library_index` 遇到缺失或旧空格格式时，基于文件系统 `mtime` 转换为 ISO 8601 UTC 自动自愈持久化至 `album.json` 并同步更新数据库索引。
 
 ### 4.2 JM 图片必须解密
 

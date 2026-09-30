@@ -33,7 +33,7 @@ from .auth import (
     is_request_secure,
 )
 from .config import COOKIE_NAME, ENABLE_AUTO_UPDATE, ENABLE_DOCS, LIBRARY_DIR
-from .storage.utils import acquire_library_writer_lock
+from .storage.utils import acquire_library_writer_lock, _write_json_atomic
 from .db import (
     clean_expired_direct_passes,
     get_all_indexed_mtimes,
@@ -176,6 +176,23 @@ def sync_library_index(store: ComicStore) -> None:
                 meta = store.load_meta(source, source_id)
                 if meta is None:
                     continue
+
+                # Auto-heal: If album.json on disk was missing imported_at or not normalized, persist healed value
+                try:
+                    raw_data = json.loads(album_path.read_text(encoding="utf-8"))
+                    raw_imp = raw_data.get("imported_at")
+                    if not raw_imp or " " in str(raw_imp):
+                        raw_data["imported_at"] = meta.imported_at
+                        _write_json_atomic(album_path, raw_data)
+                        mtime = album_path.stat().st_mtime
+                        store._invalidate_cache(source, source_id)
+                except Exception as exc:
+                    logger.warning("Failed to persist healed imported_at in sync_library_index for %s/%s: %s", source, source_id, exc)
+
+                try:
+                    mtime = album_path.stat().st_mtime
+                except Exception:
+                    pass
 
                 cached_pages = store.cached_page_count(meta)
                 upsert_comic_index({

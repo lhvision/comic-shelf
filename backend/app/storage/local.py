@@ -228,6 +228,7 @@ class ComicStoreLocalMixin:
                     chapters.append(Chapter(id=cid, index=idx, title=title, page_count=0, start=1))
 
             now_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            now_iso = datetime.datetime.now(datetime.timezone.utc).isoformat()
             meta = ComicMeta(
                 source="local",
                 source_id=source_id,
@@ -244,7 +245,7 @@ class ComicStoreLocalMixin:
                 cover_indices=getattr(req, "cover_indices", []) or [],
                 published_at=now_str,
                 updated_at=now_str,
-                imported_at=now_str,
+                imported_at=now_iso,
                 chapters=chapters,
                 hidden_from_guest=getattr(req, "hidden_from_guest", False) or get_guest_hide_new_comics(),
             )
@@ -336,6 +337,7 @@ class ComicStoreLocalMixin:
                         global_idx += 1
 
                 now_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                now_iso = datetime.datetime.now(datetime.timezone.utc).isoformat()
                 author_val = req.authors if req.authors else ([pdf_meta["author"]] if pdf_meta.get("author") else ["自制"])
 
                 meta = ComicMeta(
@@ -354,7 +356,7 @@ class ComicStoreLocalMixin:
                     cover_indices=getattr(req, "cover_indices", []) or [],
                     published_at=now_str,
                     updated_at=now_str,
-                    imported_at=now_str,
+                    imported_at=now_iso,
                     pages=pages,
                     chapters=chapters,
                     hidden_from_guest=getattr(req, "hidden_from_guest", False) or get_guest_hide_new_comics(),
@@ -419,6 +421,7 @@ class ComicStoreLocalMixin:
                 )
 
             now_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            now_iso = datetime.datetime.now(datetime.timezone.utc).isoformat()
             title = req.title.strip() if req.title and req.title.strip() else base_dir.name
 
             meta = ComicMeta(
@@ -437,7 +440,7 @@ class ComicStoreLocalMixin:
                 cover_indices=getattr(req, "cover_indices", []) or [],
                 published_at=now_str,
                 updated_at=now_str,
-                imported_at=now_str,
+                imported_at=now_iso,
                 pages=pages,
                 chapters=chapters,
                 hidden_from_guest=getattr(req, "hidden_from_guest", False) or get_guest_hide_new_comics(),
@@ -625,6 +628,7 @@ class ComicStoreLocalMixin:
                 shutil.rmtree(staging_dir, ignore_errors=True)
 
             now_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            now_iso = datetime.datetime.now(datetime.timezone.utc).isoformat()
             meta = ComicMeta(
                 source="local",
                 source_id=source_id,
@@ -641,7 +645,7 @@ class ComicStoreLocalMixin:
                 cover_indices=getattr(req, "cover_indices", []) or [],
                 published_at=now_str,
                 updated_at=now_str,
-                imported_at=now_str,
+                imported_at=now_iso,
                 pages=pages,
                 chapters=chapters,
                 hidden_from_guest=getattr(req, "hidden_from_guest", False) or get_guest_hide_new_comics(),
@@ -775,6 +779,7 @@ class ComicStoreLocalMixin:
                         global_idx += 1
 
             now_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            now_iso = datetime.datetime.now(datetime.timezone.utc).isoformat()
             title = req.title.strip() if req.title and req.title.strip() else raw_path.name
 
             meta = ComicMeta(
@@ -793,7 +798,7 @@ class ComicStoreLocalMixin:
                 cover_indices=getattr(req, "cover_indices", []) or [],
                 published_at=now_str,
                 updated_at=now_str,
-                imported_at=now_str,
+                imported_at=now_iso,
                 pages=pages,
                 chapters=chapters,
                 hidden_from_guest=getattr(req, "hidden_from_guest", False) or get_guest_hide_new_comics(),

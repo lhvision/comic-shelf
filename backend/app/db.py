@@ -1334,10 +1334,15 @@ def delete_comic_index(source: str, source_id: str) -> None:
 
 
 def get_all_indexed_mtimes() -> dict[tuple[str, str], float]:
-    """获取索引库中所有已记录条目的 (source, source_id) -> mtime 映射。"""
+    """获取索引库中所有已记录条目的 (source, source_id) -> mtime 映射。
+    若条目缺少 imported_at 或为非标准格式（含空格），则视为脏数据（返回 -1.0），促使 sync_library_index 触发自愈归一化。
+    """
     with get_db() as conn:
-        rows = conn.execute("SELECT source, source_id, mtime FROM comics_index").fetchall()
-        return {(r["source"], r["source_id"]): float(r["mtime"]) for r in rows}
+        rows = conn.execute("SELECT source, source_id, mtime, imported_at FROM comics_index").fetchall()
+        return {
+            (r["source"], r["source_id"]): float(r["mtime"]) if (r["imported_at"] and " " not in r["imported_at"]) else -1.0
+            for r in rows
+        }
 
 
 def get_comic_index_count() -> int:
