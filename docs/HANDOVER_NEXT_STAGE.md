@@ -41,5 +41,5 @@
   - 下载到服务器应叫"缓存"：`ChapterCard.vue`、`ChapterView.vue` 的"离线缓存本话"，`src/api/modules/cache.ts` 的文件注释。`ComicPageImage.vue` 的"画页未离线缓存"指的是 PWA 本地，这个用法是对的。
   - 访客凭证应叫"访客通行证"：`GateView.vue` 的"读者借书证验证"、`GatePinForm.vue` 的"读者借书证"。
   - 车号：`useDiscoveryWebMCP.ts` 把 `source_id` 叫车号；哔咔在 `src/utils/source.ts` 叫"哔咔 ID"，收录面板里又叫"车号"。
-  - 单本直达链接在代码里有两个名字：`direct_passes`（`backend/app/db.py` 建表）和 `temp_token`（`backend/app/routers/auth.py` 拼直达 URL）。
+  - 单本直达链接在代码里有两个名字：`direct_passes`（`backend/app/db/schema.py` 建表，`passes.py` 操作）和 `temp_token`（`backend/app/routers/auth.py` 拼直达 URL）。
   - 馆长：`backend/app/auth.py` 里 role 是 `admin`，属于代码标识符，可以不改。

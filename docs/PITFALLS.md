@@ -794,7 +794,7 @@
 
 ### 136. 常驻 --reload 开发服务在保存瞬间对真库执行破坏性迁移
 
-- **症状**：保存 `backend/app/db.py` 的瞬间，真实数据库 `comic_dialogues.db` 的派生台词索引当场清零，且单测全绿无法发现。
+- **症状**：保存 `backend/app/db/`（特别是 `schema.py`）的瞬间，真实数据库 `comic_dialogues.db` 的派生台词索引当场清零，且单测全绿无法发现。
 - **根因**：`backend/server.py --reload` 在保存文件瞬间热重载触发 `init_db()`，未做列集合包含判定直接执行 DROP TABLE 重建但未带自动回填；单测全部在 temp 隔离目录运行掩盖了开发库故障。
 - **红线**：修改台词 schema 与迁移逻辑前必须确认无 `--reload` 服务在跑；严禁将派生索引 `comic_dialogues_fts` 当作有状态原件；迁移判据必须写成列集合包含判断（缺列才重建），且重建必须自带 `backfill_dialogue_index` 自动回填与核验三连。
 

@@ -381,26 +381,26 @@ JmImageTool.decode_and_save(num, source_image, save_path)
 
 ## 5. 后端文件地图
 
-| 文件                                | 职责                                                                                                                        |
-| ----------------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
-| `backend/app/main.py`               | FastAPI 应用入口、全局中间件、应用生命周期、SPA 静态文件回落挂载与向前兼容门面                                              |
-| `backend/app/routers/`              | 模块化路由包（`auth.py`, `library.py`, `media.py`, `chapters.py`, `local_comic.py`, `search.py`, `system.py`, `common.py`） |
-| `backend/app/storage/`              | 模块化存储包（Domain Mixin + Facade 模式：`base.py`, `media.py`, `chapters.py`, `local.py`, `prefetch.py`, `utils.py`）     |
-| `backend/app/auth.py`               | 鉴权校验、Cookie 会话管理、Sec-Fetch-Site 与 Referer 防盗链校验                                                             |
-| `backend/app/db.py`                 | SQLite 会话存储与 WAL 模式持久化；藏书影子索引、台词 FTS、增量分面快照表（`library_stats_snapshot`、`library_tag_counts`）  |
-| `backend/app/diagnostics.py`        | 入库全链路耗时诊断日志工具，密码/代理凭据自动脱敏与 5MB 滚动轮转（落盘至 `backend/data/import_diagnostic.log`）             |
-| `backend/app/gate.py`               | 运行时下载并发控制闸门（支持环境变量锁定与设置持久化）                                                                      |
-| `backend/app/jobs.py`               | 后台异步缓存任务执行器与进度追踪                                                                                            |
-| `backend/app/models.py`             | 通用模型：`ComicMeta`（含 `Chapter`/`chapters`）/ `PageRecord.chapter` / `RemotePage` / `FetchedComic`                      |
-| `backend/app/providers/base.py`     | Provider 接口                                                                                                               |
-| `backend/app/providers/jm.py`       | JM HTML 元数据、上传者解析、车号规范化（支持 3~10 位数字）、**多章节 episode 逐话拉取**、图片下载 + 解密                    |
-| `backend/app/providers/local.py`    | 本地自建、外部白名单目录扫描、视频拆帧与多章节追加、重新装订；`normalize_id` / `generate_id` / `display_id`（ADR 0027）     |
-| `backend/app/providers/picacg.py`   | 哔咔 App REST 接口签名（HMAC-SHA256）、车号宽容清洗、多章节分卷映射与 3-CDN 容灾下载                                        |
-| `backend/app/providers/registry.py` | `{"jm": JMProvider(), "local": LocalProvider(), "picacg": PicacgProvider()}` 注册表                                         |
-| `backend/app/routers/mcp.py`        | 模型上下文协议（MCP）服务端路由（SSE流式、消息派发、直接RPC、9大工具、3大资源、2大Prompts）                                 |
-| `backend/app/mcp_server.py`         | MCP 原生 Stdio 命令行模式运行入口（标准管道集成）                                                                           |
-| `backend/app/imsearch.py`           | 局部特征识图客户端（ORB 特征匹配、健康探测、路径解析）                                                                      |
-| `backend/app/config.py`             | 数据目录、访问密钥、防盗链开关、封面尺寸、识图服务地址配置                                                                  |
+| 文件                                | 职责                                                                                                                                                               |
+| ----------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `backend/app/main.py`               | FastAPI 应用入口、全局中间件、应用生命周期、SPA 静态文件回落挂载与向前兼容门面                                                                                     |
+| `backend/app/routers/`              | 模块化路由包（`auth.py`, `library.py`, `media.py`, `chapters.py`, `local_comic.py`, `search.py`, `system.py`, `common.py`）                                        |
+| `backend/app/storage/`              | 模块化存储包（Domain Mixin + Facade 模式：`base.py`, `media.py`, `chapters.py`, `local.py`, `prefetch.py`, `utils.py`）                                            |
+| `backend/app/auth.py`               | 鉴权校验、Cookie 会话管理、Sec-Fetch-Site 与 Referer 防盗链校验                                                                                                    |
+| `backend/app/db/`                   | 模块化数据库子包（`connection.py`, `schema.py`, `passes.py`, `user_state.py`, `index.py`, `dialogues.py`，由 `__init__.py` 汇聚导出维持 100% 兼容，详见 ADR 0032） |
+| `backend/app/diagnostics.py`        | 入库全链路耗时诊断日志工具，密码/代理凭据自动脱敏与 5MB 滚动轮转（落盘至 `backend/data/import_diagnostic.log`）                                                    |
+| `backend/app/gate.py`               | 运行时下载并发控制闸门（支持环境变量锁定与设置持久化）                                                                                                             |
+| `backend/app/jobs.py`               | 后台异步缓存任务执行器与进度追踪                                                                                                                                   |
+| `backend/app/models.py`             | 通用模型：`ComicMeta`（含 `Chapter`/`chapters`）/ `PageRecord.chapter` / `RemotePage` / `FetchedComic`                                                             |
+| `backend/app/providers/base.py`     | Provider 接口                                                                                                                                                      |
+| `backend/app/providers/jm.py`       | JM HTML 元数据、上传者解析、车号规范化（支持 3~10 位数字）、**多章节 episode 逐话拉取**、图片下载 + 解密                                                           |
+| `backend/app/providers/local.py`    | 本地自建、外部白名单目录扫描、视频拆帧与多章节追加、重新装订；`normalize_id` / `generate_id` / `display_id`（ADR 0027）                                            |
+| `backend/app/providers/picacg.py`   | 哔咔 App REST 接口签名（HMAC-SHA256）、车号宽容清洗、多章节分卷映射与 3-CDN 容灾下载                                                                               |
+| `backend/app/providers/registry.py` | `{"jm": JMProvider(), "local": LocalProvider(), "picacg": PicacgProvider()}` 注册表                                                                                |
+| `backend/app/routers/mcp.py`        | 模型上下文协议（MCP）服务端路由（SSE流式、消息派发、直接RPC、9大工具、3大资源、2大Prompts）                                                                        |
+| `backend/app/mcp_server.py`         | MCP 原生 Stdio 命令行模式运行入口（标准管道集成）                                                                                                                  |
+| `backend/app/imsearch.py`           | 局部特征识图客户端（ORB 特征匹配、健康探测、路径解析）                                                                                                             |
+| `backend/app/config.py`             | 数据目录、访问密钥、防盗链开关、封面尺寸、识图服务地址配置                                                                                                         |
 
 - `GET /api/mcp/sse` / `GET /mcp/sse`（MCP SSE 握手与实时下行事件流，支持馆长/机器鉴权）
 - `POST /api/mcp/messages` / `POST /mcp/messages`（向指定 MCP SSE 会话投递 JSON-RPC 2.0 请求）
@@ -475,8 +475,8 @@ JmImageTool.decode_and_save(num, source_image, save_path)
 ### 7.1 当前存储机制（本地优先 + 零依赖）
 
 - **核心书库**：采用 **文件系统分片 + 原子 JSON（`album.json` / `remote.json`）+ 内存二级缓存（`_meta_cache`）**，保持本地优先与自包含，脱离数据库亦可独立迁移与阅读。
-- **状态与通行证**：采用 **轻量 SQLite WAL（`comic_shelf.db`）**，管理动态访客通行证（`guest_passes`）、按用户红心收藏（`user_favorites`）、跨端阅读进度（`user_reading_progress`）以及藏书元数据影子索引（`comics_index`），体积小巧（~5MB），备份极速。
-- **台词全文检索专库**：采用 **独立 SQLite WAL 专库（`comic_dialogues.db`）**，管理 `comic_dialogues_fts`（Trigram FTS5 倒排索引）、语义向量表（`comic_dialogue_vectors`）与伴生同步元数据（`comic_ocr_sync_meta`）。与主库实现写事务与存储容量的双重物理隔离，彻底根治万级十万级下批量建索引导致的写锁冲突。
+- **状态与通行证**：采用 **轻量 SQLite WAL（`comic_shelf.db`）**，管理动态访客通行证（`guest_passes`）、按用户红心收藏（`user_favorites`）、跨端阅读进度（`user_reading_progress`）以及藏书元数据影子索引（`comics_index`），体积小巧（~5MB），备份极速。代码组织遵循 ADR 0032 模块化解耦，由 `backend/app/db/` 子包按领域分别承载。
+- **台词全文检索专库**：采用 **独立 SQLite WAL 专库（`comic_dialogues.db`）**，管理 `comic_dialogues_fts`（Trigram FTS5 倒排索引）、语义向量表（`comic_dialogue_vectors`）与伴生同步元数据（`comic_ocr_sync_meta`）。与主库实现写事务与存储容量的双重物理隔离，彻底根治万级十万级下批量建索引导致的写锁冲突。由 `backend/app/db/dialogues.py` 独立收敛全部 OCR 清洗、FTS 检索与向量逻辑。
 - **识图模块**：采用 **SQLite（`imsearch.db`）+ 二进制倒排索引（`invlists.bin`）**。
 
 ### 7.2 性能表现与规模分层评估
