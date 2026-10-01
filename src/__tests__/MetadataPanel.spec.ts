@@ -228,4 +228,26 @@ describe('MetadataPanel', () => {
     const content = wrapper.find('.description-content')
     expect(content.text()).toBe(urlDesc)
   })
+
+  it('renders ultra-long display_id stamp with title attribute alongside auto-update badge', () => {
+    const longId = 'COPY_xiangyaochengweiyingzhishilizhedadadadsda1234567890'
+    const wrapper = mount(MetadataPanel, {
+      props: {
+        meta: makeMeta({
+          source: 'copymanga',
+          display_id: longId,
+          chapters: [
+            { id: 'c1', index: 1, title: '第 1 话', page_count: 10, start: 1 },
+            { id: 'c2', index: 2, title: '第 2 话', page_count: 10, start: 11 },
+          ],
+          auto_update_interval_days: 15,
+        }),
+      },
+    })
+    const metaId = wrapper.find('.meta-id')
+    expect(metaId.exists()).toBe(true)
+    expect(metaId.text()).toBe(longId)
+    expect(metaId.attributes('title')).toBe(longId)
+    expect(wrapper.find('.auto-update-badge').exists()).toBe(true)
+  })
 })

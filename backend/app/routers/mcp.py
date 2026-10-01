@@ -12,7 +12,7 @@ import json
 import logging
 import secrets
 from typing import Any, AsyncGenerator, Callable
-from urllib.parse import quote, urlencode
+from urllib.parse import quote, urlencode, urlsplit
 
 from fastapi import APIRouter, HTTPException, Query, Request, Response
 from fastapi.responses import JSONResponse, StreamingResponse
@@ -23,7 +23,7 @@ from ..abuse import (
     record_ip_login_failure_and_check_lock,
 )
 from ..auth import extract_token, get_client_ip, is_curator
-from ..config import MCP_TOKEN
+from ..config import MCP_TOKEN, PUBLIC_URL
 from ..db import (
     MAX_PAGE_BOXES,
     create_direct_pass,
@@ -264,6 +264,10 @@ MCP_TOOLS: list[dict[str, Any]] = [
                     "type": "integer",
                     "description": "有效秒数（默认 7200 即 2 小时，最长 7 天）",
                     "default": 7200,
+                },
+                "base_url": {
+                    "type": "string",
+                    "description": "可选公网访问基准地址（如 'https://comic.example.com'），用于生成完整分享链接；留空时优先使用环境变量 COMIC_SHELF_PUBLIC_URL，若均未配置则回退为相对路径",
                 },
             },
             "required": ["source", "source_id"],
@@ -709,6 +713,19 @@ def _tool_recommend_unread(arguments: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _normalize_base_url(url: str) -> str:
+    s = url.strip()
+    if not s:
+        return ""
+    if any(c in s for c in ("\r", "\n", "\t", " ")):
+        raise ValueError("base_url 包含非法空白字符")
+    parsed = urlsplit(s)
+    if parsed.scheme not in ("http", "https") or not parsed.hostname:
+        raise ValueError("base_url 必须是以 http:// 或 https:// 开头的合法基准地址")
+    path = parsed.path.rstrip("/")
+    return f"{parsed.scheme}://{parsed.netloc}{path}"
+
+
 def _tool_create_direct_pass(arguments: dict[str, Any]) -> dict[str, Any]:
     source = str(arguments.get("source", "")).strip()
     source_id = str(arguments.get("source_id", "")).strip()
@@ -738,7 +755,17 @@ def _tool_create_direct_pass(arguments: dict[str, Any]) -> dict[str, Any]:
     )
     safe_src = quote(source, safe="")
     safe_sid = quote(source_id, safe="")
-    direct_url = f"/comic/{safe_src}/{safe_sid}/read/{safe_page}?temp_token={res['token']}"
+    direct_path = f"/comic/{safe_src}/{safe_sid}/read/{safe_page}?temp_token={res['token']}"
+
+    raw_base = str(arguments.get("base_url") or "").strip()
+    if raw_base:
+        base_url = _normalize_base_url(raw_base)
+    elif PUBLIC_URL:
+        base_url = _normalize_base_url(PUBLIC_URL)
+    else:
+        base_url = ""
+
+    direct_url = f"{base_url}{direct_path}" if base_url else direct_path
 
     return {
         "content": [
@@ -751,6 +778,7 @@ def _tool_create_direct_pass(arguments: dict[str, Any]) -> dict[str, Any]:
                     "title": meta.title,
                     "page_index": page_index,
                     "direct_url": direct_url,
+                    "direct_path": direct_path,
                     "expires_at": res["expires_at"],
                     "expires_in_seconds": res["expires_in"],
                     "expires_in_hours": round(res["expires_in"] / 3600, 1),

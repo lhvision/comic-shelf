@@ -133,7 +133,7 @@ const effectiveCover = computed(() => {
           >
             {{ comic.last_page }}P / {{ comic.page_count }}P
           </span>
-          <span class="id-stamp">{{ comic.display_id }}</span>
+          <span class="id-stamp" :title="comic.display_id">{{ comic.display_id }}</span>
           <RouterLink
             v-if="searchMatch"
             :to="`/comic/${comic.source}/${comic.source_id}/read/${searchMatch.bestMatchPage}`"
@@ -342,6 +342,7 @@ const effectiveCover = computed(() => {
   position: absolute;
   right: var(--space-2);
   bottom: var(--space-2);
+  max-width: calc(100% - var(--space-4));
   padding: var(--space-0-5) var(--space-2);
   background: color-mix(in oklab, var(--ink-0) 88%, transparent);
   color: var(--paper-0);
@@ -352,6 +353,10 @@ const effectiveCover = computed(() => {
   font-size-adjust: ch-width 0.48;
   letter-spacing: 0.08em;
   box-shadow: 0 1px 3px rgb(0 0 0 / 28%);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  z-index: 2;
 }
 
 .match-stamp {
@@ -433,8 +438,9 @@ const effectiveCover = computed(() => {
 
 .reading-stamp {
   position: absolute;
-  left: var(--space-2);
-  bottom: var(--space-2);
+  right: var(--space-2);
+  top: var(--space-2);
+  max-width: 65%;
   display: inline-flex;
   align-items: center;
   gap: var(--space-1);
@@ -447,6 +453,9 @@ const effectiveCover = computed(() => {
   font-weight: 500;
   z-index: 2;
   box-shadow: var(--shadow-1);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .reading-stamp.is-completed {

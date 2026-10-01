@@ -92,7 +92,7 @@ describe('ComicCard component', () => {
     expect(progress.exists()).toBe(true)
   })
 
-  it('displays clean display_id stamp on cover', () => {
+  it('displays clean display_id stamp on cover with title attribute', () => {
     const comic = createSampleComic({
       display_id: 'LOC_20260918_010452',
     })
@@ -113,5 +113,36 @@ describe('ComicCard component', () => {
     const stamp = wrapper.find('.id-stamp')
     expect(stamp.exists()).toBe(true)
     expect(stamp.text()).toBe('LOC_20260918_010452')
+    expect(stamp.attributes('title')).toBe('LOC_20260918_010452')
+  })
+
+  it('coexists with reading stamp without interference when comic is in-progress', () => {
+    const comic = createSampleComic({
+      display_id: 'COPY_xiangyaochengweiyingzhishilizhe',
+      last_page: 5,
+      page_count: 2846,
+    })
+
+    const wrapper = mount(ComicCard, {
+      props: { comic },
+      global: {
+        stubs: {
+          RouterLink: {
+            template: '<a><slot /></a>',
+          },
+          AppTextClamp: true,
+          FavoriteButton: true,
+        },
+      },
+    })
+
+    const idStamp = wrapper.find('.id-stamp')
+    expect(idStamp.exists()).toBe(true)
+    expect(idStamp.text()).toBe('COPY_xiangyaochengweiyingzhishilizhe')
+    expect(idStamp.attributes('title')).toBe('COPY_xiangyaochengweiyingzhishilizhe')
+
+    const readingStamp = wrapper.find('.reading-stamp.is-reading')
+    expect(readingStamp.exists()).toBe(true)
+    expect(readingStamp.text()).toBe('5P / 2846P')
   })
 })

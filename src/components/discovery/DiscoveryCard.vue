@@ -203,7 +203,7 @@ function retryCover() {
         <span>{{ getSourceBadge(item.source) }}</span>
         <AppIcon name="external-link" size="xs" />
       </a>
-      <span v-else class="id-stamp">{{ item.id }}</span>
+      <span v-else class="id-stamp" :title="item.id">{{ item.id }}</span>
     </div>
 
     <div class="card-body">
@@ -431,6 +431,7 @@ function retryCover() {
   position: absolute;
   bottom: var(--space-2);
   right: var(--space-2);
+  max-width: 65%;
   display: inline-flex;
   align-items: center;
   gap: var(--space-1);
@@ -442,6 +443,9 @@ function retryCover() {
   background: color-mix(in oklab, var(--paper-0) 85%, transparent);
   border: 1px solid var(--line);
   text-decoration: none;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   transition: all var(--duration-1) var(--ease-out);
 }
 

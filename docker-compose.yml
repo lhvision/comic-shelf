@@ -12,6 +12,8 @@ services:
       COMIC_SHELF_IMSEARCH_URL: http://imsearch:8765
       # 常用环境变量（公网部署建议取消注释并设置馆长密码；留空则为局域网免密模式）：
       # COMIC_SHELF_SECRET: 'your_curator_password'
+      # 公网访问基准地址（供 MCP 等外部智能体签发单本沙箱直达免密阅读链接时拼接绝对 URL，如 https://comic.example.com）：
+      # COMIC_SHELF_PUBLIC_URL: 'https://comic.example.com'
       # 自定义 Cookie 键名（隐匿开源默认键名，配合 Cloudflare WAF 规则使用）：
       # COMIC_SHELF_COOKIE_NAME: 'your_custom_token'
       # COMIC_SHELF_DEVICE_COOKIE_NAME: 'your_custom_device'

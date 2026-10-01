@@ -222,21 +222,8 @@ const autoUpdateLabel = computed(() => {
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
-}
-
-.meta-head-top {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-3);
-}
-
-.meta-head-top .eyebrow {
-  margin: 0;
-  font-size: var(--text-caption);
-  letter-spacing: 0.12em;
-  color: var(--accent);
-  text-transform: uppercase;
+  min-width: 0;
+  max-width: 100%;
 }
 
 .meta-head h2,
@@ -253,7 +240,18 @@ const autoUpdateLabel = computed(() => {
   display: flex;
   align-items: center;
   gap: var(--space-2);
-  flex-wrap: wrap;
+  justify-content: space-between;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.meta-head-top .eyebrow {
+  margin: 0;
+  font-size: var(--text-caption);
+  letter-spacing: 0.12em;
+  color: var(--accent);
+  text-transform: uppercase;
+  flex-shrink: 0;
 }
 
 .meta-id {
@@ -264,9 +262,11 @@ const autoUpdateLabel = computed(() => {
   font-size: var(--text-xs);
   color: var(--accent-strong);
   white-space: nowrap;
+  min-width: 0;
   max-width: 100%;
   overflow: hidden;
   text-overflow: ellipsis;
+  flex: 0 1 auto;
 }
 
 .custom-pages-badge,
@@ -279,6 +279,7 @@ const autoUpdateLabel = computed(() => {
   color: var(--accent);
   background: var(--accent-soft);
   white-space: nowrap;
+  flex-shrink: 0;
 }
 
 @supports (text-fit: shrink) {

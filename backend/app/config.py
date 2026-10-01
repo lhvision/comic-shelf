@@ -70,6 +70,9 @@ MACHINE_TOKEN = os.getenv("COMIC_SHELF_MACHINE_TOKEN", os.getenv("MACHINE_API_TO
 # 留空 = MCP 只认馆长口令；机器密钥任何时候都进不了 MCP。
 MCP_TOKEN = os.getenv("COMIC_SHELF_MCP_TOKEN", "").strip()
 
+# 公网访问基准地址（供 MCP 等外部智能体签发单本沙箱直达免密阅读链接时拼接绝对 URL，如 https://comic.example.com）
+PUBLIC_URL = os.getenv("COMIC_SHELF_PUBLIC_URL", os.getenv("COMIC_SHELF_BASE_URL", "")).strip().rstrip("/")
+
 # Trust reverse-proxy headers (CF-Connecting-IP, X-Forwarded-For) for client IP detection
 TRUST_FORWARDED_HEADERS = os.getenv("COMIC_SHELF_TRUST_FORWARDED_HEADERS", "true").lower() in ("1", "true", "yes")
 

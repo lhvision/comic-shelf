@@ -1000,6 +1000,20 @@
   4. **分章物理 DOM 隔离与防锚定**：分屏容器必须声明 `:key="`${scopeId || 'all'}-${group.index}`"`，切话强制全量重挂载 DOM，严禁跨章节原地复用；`.reader-scroll` 样式必须显式声明 `overflow-anchor: none;`，彻底禁用异步撑高时的视口自激跳动；
   5. **单话作用域规范化（Scoped Chapter Canonicalization）**：多章节漫画（`chapters.length > 1`）开卷若无 `?chapter=` 查询参数，必须在 `useReaderData.loadDetail` 中基于当前阅读进度单向对齐补齐 `?chapter=chX`，永远杜绝千页大合集无边界混拼。
 
+### 159. 超长车号印章与阅读标签同层堆叠及 Flex Item 默认尺寸撑爆详情卡片
+
+- **症状**：
+  1. 书架卡片在未读或在读状态下，超长车号（如 `COPY_xiangyaochengweiyingzhishilizhe`）向左穿透封面边界；当作品处于在读状态时，左下角阅读进度（`5P / 2846P`）与右下角车号印章在同底边物理重叠，互相压盖遮挡；
+  2. 详情页顶栏包含超长车号时，车号徽标冲破卡片右边界，横向撑爆整个详情卡片，并将同行的「追更中」/「重新装订」状态徽标挤落到下一行。
+- **根因**：
+  1. 卡片端车号印章缺失 `max-width` 与 `text-overflow: ellipsis` 约束；阅读印章与车号印章同置于底部边缘，未在垂直维度上错开；
+  2. 详情页顶栏父级 Flex 容器设置了 `flex-wrap: wrap` 且父级容器缺失 `min-width: 0`；车号包含 `white-space: nowrap`，在 `min-width: auto` 的 Flex 子项中其最小内容尺寸（`min-content`）等于全文本宽度，破坏了外层容器约束；同时车号占满宽度导致状态徽标折行；
+  3. 误引入了非标未落地的 `@supports (text-fit: shrink)` 伪规则企图自动缩减字号，在现代浏览器中均不生效。
+- **红线**：
+  1. **印章多极错位排版**：卡片封面浮层标签必须避免同边堆叠，阅读印章置于右上角（与左上角收藏按钮相对称），车号印章置于右下角，且两端标签必须严格声明 `max-width` 与 `overflow: hidden; text-overflow: ellipsis; white-space: nowrap;`；
+  2. **Flex 头部同行保底与弹性压缩**：顶栏徽章同行容器严禁依赖 `flex-wrap: wrap`；固定状态徽标（追更中/重新装订）必须显式声明 `flex-shrink: 0`，动态可变长文本徽标（车号）必须声明 `flex: 0 1 auto; min-width: 0; max-width: 100%; text-overflow: ellipsis`，并在父级声明 `min-width: 0`，绝不撑破外层布局；
+  3. **清理无效伪属性**：严禁在样式中残留非标准或草案阶段未实现的 CSS 规则（如 `text-fit: shrink`）。
+
 ---
 
 ## 🚦 交付门禁

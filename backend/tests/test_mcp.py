@@ -237,8 +237,86 @@ def test_mcp_tool_execution():
         assert not res_pass["isError"]
         pass_data = json.loads(res_pass["content"][0]["text"])
         assert "token" in pass_data
-        assert pass_data["page_index"] == 5
         assert pass_data["direct_url"].startswith("/comic/local/mcp_test_comic/read/5?temp_token=")
+        assert pass_data["direct_path"].startswith("/comic/local/mcp_test_comic/read/5?temp_token=")
+        assert pass_data["direct_url"] == pass_data["direct_path"]
+
+        # 4b. create_direct_pass with base_url argument
+        res_pass_base = asyncio.run(
+            execute_tool(
+                "create_direct_pass",
+                {
+                    "source": "local",
+                    "source_id": "mcp_test_comic",
+                    "page_index": 5,
+                    "ttl_seconds": 3600,
+                    "base_url": "https://comic.test/",
+                },
+            )
+        )
+        assert not res_pass_base["isError"]
+        pass_data_base = json.loads(res_pass_base["content"][0]["text"])
+        assert pass_data_base["direct_url"].startswith("https://comic.test/comic/local/mcp_test_comic/read/5?temp_token=")
+        assert pass_data_base["direct_path"].startswith("/comic/local/mcp_test_comic/read/5?temp_token=")
+
+        # 4c. create_direct_pass with PUBLIC_URL env
+        with patch("app.routers.mcp.PUBLIC_URL", "https://env-manga.example.com"):
+            res_pass_env = asyncio.run(
+                execute_tool(
+                    "create_direct_pass",
+                    {
+                        "source": "local",
+                        "source_id": "mcp_test_comic",
+                        "page_index": 5,
+                    },
+                )
+            )
+            assert not res_pass_env["isError"]
+            pass_data_env = json.loads(res_pass_env["content"][0]["text"])
+            assert pass_data_env["direct_url"].startswith("https://env-manga.example.com/comic/local/mcp_test_comic/read/5?temp_token=")
+
+        # 4d. create_direct_pass with invalid malicious base_url
+        res_pass_bad = asyncio.run(
+            execute_tool(
+                "create_direct_pass",
+                {
+                    "source": "local",
+                    "source_id": "mcp_test_comic",
+                    "page_index": 5,
+                    "base_url": "javascript:alert(1)",
+                },
+            )
+        )
+        assert res_pass_bad["isError"]
+        assert "base_url 必须是以 http:// 或 https:// 开头的合法基准地址" in res_pass_bad["content"][0]["text"]
+
+        # 4e. create_direct_pass with CRLF / whitespace in base_url
+        res_pass_crlf = asyncio.run(
+            execute_tool(
+                "create_direct_pass",
+                {
+                    "source": "local",
+                    "source_id": "mcp_test_comic",
+                    "base_url": "https://example.com\r\nX-Bad: 1",
+                },
+            )
+        )
+        assert res_pass_crlf["isError"]
+        assert "base_url 包含非法空白字符" in res_pass_crlf["content"][0]["text"]
+
+        # 4f. create_direct_pass with missing hostname
+        res_pass_nohost = asyncio.run(
+            execute_tool(
+                "create_direct_pass",
+                {
+                    "source": "local",
+                    "source_id": "mcp_test_comic",
+                    "base_url": "http://:80",
+                },
+            )
+        )
+        assert res_pass_nohost["isError"]
+        assert "base_url 必须是以 http:// 或 https:// 开头的合法基准地址" in res_pass_nohost["content"][0]["text"]
 
         # Verify pass in DB
         dp = get_direct_pass(pass_data["token"])
