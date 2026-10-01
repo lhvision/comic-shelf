@@ -408,6 +408,24 @@ def test_classify_dialogue_kind_rules():
     # 水印行自己仍然不入库（两件事互不牵连）
     assert cls(21, 22, tail_with_watermark, "jmcomic") is None
 
+    # 繁体汉化组特征词识别（繁简混排与纯繁体均能捕捉）
+    assert cls(10, 42, ["本页其他文本"], "For Adults ONLYFINAL個人漢化") == db_mod.PARATEXT_KIND
+    assert cls(10, 42, ["本页其他文本"], "圖源：小明，校對：小紅，壓制：小剛") == db_mod.PARATEXT_KIND
+    assert cls(10, 42, ["本页其他文本"], "僅供交流學習，嚴禁商用") == db_mod.PARATEXT_KIND
+    assert cls(10, 42, ["本页其他文本"], "愛發電贊助：paperroom") == db_mod.PARATEXT_KIND
+
+    # 单话末尾整页熔断：末页命中汉化组特征词，整页全部气泡丢弃（return None）
+    scanlator_tail = ["感謝大家閱讀", "本漢化組誠聘嵌字與初翻", "QQ群：987654321", "下周同一時間再見"]
+    for t in scanlator_tail:
+        assert cls(10, 42, scanlator_tail, t, is_chapter_tail=True) is None, f"尾页汉化组文本未熔断丢弃: {t}"
+
+    # 单话末尾剧情对白：无汉化组特征词时，最后一页台词 100% 完好保全
+    story_tail = ["下一次見面就是敵人了！", "待續"]
+    assert cls(10, 42, story_tail, "下一次見面就是敵人了！", is_chapter_tail=True) == db_mod.DIALOGUE_KIND, "剧情最后一页被误杀"
+
+    # 跨话重复高频模板丢弃
+    assert cls(10, 42, ["模板标语"], "模板标语", is_recurring_template=True, is_chapter_tail=True) is None
+
     # 册页数不足以谈"书头书尾"时，位置规则整体失效，只认特征词
     assert cls(1, 6, ["第一页的一句话"], "第一页的一句话") == db_mod.DIALOGUE_KIND
     assert cls(1, 0, ["无 album.json"], "无 album.json 的一句话") == db_mod.DIALOGUE_KIND
@@ -1452,6 +1470,129 @@ def test_ascii_case_folding_and_unparsable_query():
         shutil.rmtree(temp_dir, ignore_errors=True)
 
 
+def test_multi_chapter_scanlator_deduplication():
+    """验证多章节漫画（拷贝/连载）每话末尾汉化组招新广告整页熔断彻底不入库，
+    同时单话最后一页的剧情台词 100% 完整保留与检索。"""
+    temp_dir = Path(tempfile.mkdtemp())
+    try:
+        temp_db = temp_dir / "test_dedup.db"
+        db_mod.set_db_path(temp_db)
+        db_mod.init_db(temp_db)
+        config_mod.DATA_DIR = temp_dir
+        db_mod.DATA_DIR = temp_dir
+
+        pages_dir = temp_dir / "library" / "copymanga" / "shadow_garden" / "pages"
+        pages_dir.mkdir(parents=True)
+
+        # 3 个章节，每章 10 页，共 30 页
+        # 章节 1：1~10 页；章节 2：11~20 页；章节 3：21~30 页
+        pages_meta = []
+        for i in range(1, 31):
+            chap_id = f"chap{(i - 1) // 10 + 1}"
+            pages_meta.append({
+                "index": i,
+                "file": f"{i:05d}.webp",
+                "chapter": chap_id,
+            })
+
+        (pages_dir.parent / "album.json").write_text(
+            json.dumps({
+                "source": "copymanga",
+                "source_id": "shadow_garden",
+                "page_count": 30,
+                "pages": pages_meta,
+            }, ensure_ascii=False),
+            encoding="utf-8",
+        )
+
+        def write_ocr(page: int, texts: list[str]) -> None:
+            (pages_dir / f"{page:05d}.ocr.json").write_text(
+                json.dumps({
+                    "version": 1,
+                    "engine": "rapidocr",
+                    "bubbles": [
+                        {"id": idx, "order": idx, "box": [0.1 * idx, 0.1, 0.1 * idx + 0.05, 0.4], "text": t}
+                        for idx, t in enumerate(texts, start=1)
+                    ],
+                }, ensure_ascii=False),
+                encoding="utf-8",
+            )
+
+        # 第 1 话：
+        # Page 1 (封面)：保留为副文本
+        # Page 2 (开头广告插页，类似禁漫天堂APP海报)：熔断丢弃（0 行入库）
+        # Page 3 (正文开始)："...尤金先生"，正常入库
+        # Page 9 (剧情高潮)：正常入库
+        # Page 10 (单话尾页汉化招新)：熔断丢弃（0 行入库）
+        write_ocr(1, ["想要成为影之实力者 第一卷"])
+        write_ocr(2, ["禁漫天堂 永久免费", "APP正式启动", "扫描QRCODE 不再迷路", "每日最新成人漫画", "独特的勋章称号凸显个人特色"])
+        write_ocr(3, ["...尤金先生，请问您在看什么"])
+        write_ocr(9, ["這就是命運嗎！吾乃暗影"])
+        write_ocr(10, ["感謝大家閱讀本話", "本漢化組誠聘嵌字與初翻君", "審核QQ群：987654321", "愛發電贊助：paperroom"])
+
+        # 第 2 话：
+        # Page 11 (第 2 话开头插页广告)：熔断丢弃（0 行入库）
+        # Page 12 (第 2 话正文开始)：正常入库
+        # Page 19 (第 2 话剧情结尾)：正常入库
+        # Page 20 (尾页汉化组招新)：熔断丢弃（0 行入库）
+        write_ocr(11, ["禁漫天堂 永久免费", "扫描二维码下载APP"])
+        write_ocr(12, ["第二話開始，新的敵人出現了"])
+        write_ocr(19, ["我們絕不會認輸！暗影大人會拯救大家"])
+        write_ocr(20, ["感謝大家閱讀本話", "本漢化組誠聘嵌字與初翻君", "審核QQ群：987654321"])
+
+        # 第 3 话：第 29 页普通结尾，第 30 页（尾页）汉化组招新
+        write_ocr(21, ["第三話的序幕"])
+        write_ocr(29, ["戰鬥才剛剛開始。下期待續"])
+        write_ocr(30, ["感謝大家閱讀本話", "本漢化組誠聘嵌字與初翻君", "審核QQ群：987654321"])
+
+        indexed_count = db_mod.sync_comic_dialogues("copymanga", "shadow_garden")
+
+        # 检查数据库内容：首尾广告页（第 2、10、11、20、30 页）应彻底未被写入（0 行记录）
+        with db_mod.get_dialogue_db() as conn:
+            ad_rows = conn.execute(
+                "SELECT page_index, text FROM comic_dialogues_fts WHERE source = 'copymanga' AND source_id = 'shadow_garden' AND page_index IN (2, 10, 11, 20, 30)"
+            ).fetchall()
+            assert len(ad_rows) == 0, f"首尾广告页未被丢弃，仍入库了: {[dict(r) for r in ad_rows]}"
+
+            # 封面（第 1 页）应作为 paratext 正常归档保留
+            cover_rows = conn.execute(
+                "SELECT page_index, text, kind FROM comic_dialogues_fts WHERE source = 'copymanga' AND source_id = 'shadow_garden' AND page_index = 1"
+            ).fetchall()
+            assert len(cover_rows) == 1 and cover_rows[0]["kind"] == db_mod.PARATEXT_KIND
+
+            # 剧情对白（第 3、9、12、19、29 页）必须完整入库且为 dialogue
+            story_rows = conn.execute(
+                "SELECT page_index, text, kind FROM comic_dialogues_fts WHERE source = 'copymanga' AND source_id = 'shadow_garden' AND page_index IN (3, 9, 12, 19, 29)"
+            ).fetchall()
+            assert len(story_rows) == 5, f"剧情对白被误杀: {[dict(r) for r in story_rows]}"
+            for r in story_rows:
+                assert r["kind"] == db_mod.DIALOGUE_KIND
+
+        # 检索测试：
+        # 1. 搜平台/APP广告（禁漫天堂 / APP正式启动 / QRCODE / 987654321 / 嵌字）应该 0 命中
+        assert db_mod.search_dialogues("禁漫天堂", source="copymanga") == []
+        assert db_mod.search_dialogues("APP正式启动", source="copymanga") == []
+        assert db_mod.search_dialogues("987654321", source="copymanga") == []
+        assert db_mod.search_dialogues("嵌字", source="copymanga") == []
+
+        # 2. 搜正文对白（第 3 页尤金先生、第 9 页暗影、第 19 页认输、第 29 页战斗）精准命中对应页码
+        res_eugene = db_mod.search_dialogues("尤金先生", source="copymanga")
+        assert len(res_eugene) == 1 and res_eugene[0]["page_index"] == 3
+
+        res_destiny = db_mod.search_dialogues("这就是命运吗", source="copymanga")
+        assert len(res_destiny) == 1 and res_destiny[0]["page_index"] == 9
+
+        res_never_give_up = db_mod.search_dialogues("绝不会认输", source="copymanga")
+        assert len(res_never_give_up) == 1 and res_never_give_up[0]["page_index"] == 19
+
+        res_battle = db_mod.search_dialogues("战斗才刚刚开始", source="copymanga")
+        assert len(res_battle) == 1 and res_battle[0]["page_index"] == 29
+
+        print("  ✓ Multi-chapter scanlator & app promo boundary deduplication passed")
+    finally:
+        shutil.rmtree(temp_dir, ignore_errors=True)
+
+
 if __name__ == "__main__":
     print("Running dialogue FTS & API unit tests...")
     test_dialogue_fts_lifecycle()
@@ -1466,6 +1607,7 @@ if __name__ == "__main__":
     test_dialogue_rank_score_scale_hides_hidden_books()
     test_classify_dialogue_kind_rules()
     test_paratext_indexed_but_excluded_from_search()
+    test_multi_chapter_scanlator_deduplication()
     test_story_context_export_slice()
     test_dirty_sidecar_values_stay_contained()
     test_dialogue_index_backfills_after_rebuild()

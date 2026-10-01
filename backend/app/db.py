@@ -1952,11 +1952,25 @@ BACK_MATTER_MEAN_LINE_CHARS = 25
 # 水印与页码：真台词一定有中日文字形，纯拉丁/数字且极短的就是噪声（站点名的 OCR 变体列举不完）
 _CJK_RE = re.compile(r"[぀-ヿ一-鿿＀-￯]")
 NOISE_MAX_CHARS = 12
-# 刻意不收「我是」「禁止」这类真台词里也常见的宽词
+
+# 汉化组/发布组/平台宣传专属强特征词（简繁双轨）：涵盖制作分工、招募、社交平台、赞助打赏、APP推广与水印
+_SCANLATOR_RE = re.compile(
+    r"(图源|圖源|翻校|嵌字|扫图|掃圖|校对|校對|压制|壓制|汉化|漢化|初翻|招募|招新"
+    r"|爱发电|愛發電|赞助|贊助|打赏|打賞|仅供交流|僅供交流|禁止商用|禁止商業|严禁商用|嚴禁商用"
+    r"|qq群|加群|加羣|微信群|微信羣|交流群|交流羣|群号|羣號|微博|邮箱|郵箱|@[A-Za-z0-9]|pixiv|fanbox|twitter"
+    r"|禁漫天堂|禁漫食堂|禁漫娘|拷贝漫画|拷貝漫畫"
+    r"|app正式启动|app正式啟動|永久免费|永久免費|不再迷路|二维码|二維碼|qrcode|扫码|掃碼|扫码下载|掃碼下載"
+    r"|presented by|凳行|尧行|印刷)",
+    re.IGNORECASE,
+)
+
+# 刻意不收「我是」「禁止」这类真台词里也常见的宽词；简繁双轨支持
 _PARATEXT_RE = re.compile(
-    r"(图源|翻校|嵌字|扫图|校对|压制|汉化|翻译|仅供|转载|商业|邮箱|@[A-Za-z0-9]"
-    r"|https?://|www\.|pixiv|fanbox|twitter|comiket|comic\s*market|qq群|群号|加群|微博"
-    r"|后记|前言|附录|presented by|凳行|尧行|印刷)",
+    r"(图源|圖源|翻校|嵌字|扫图|掃圖|校对|校對|压制|壓制|汉化|漢化|翻译|翻譯|初翻|仅供|僅供|转载|轉載|商业|商業|邮箱|郵箱|@[A-Za-z0-9]"
+    r"|https?://|www\.|pixiv|fanbox|twitter|comiket|comic\s*market|qq群|群号|羣號|加群|加羣|微信群|微信羣|交流群|交流羣|微博|爱发电|愛發電|赞助|贊助|打赏|打賞"
+    r"|禁漫天堂|禁漫食堂|禁漫娘|拷贝漫画|拷貝漫畫"
+    r"|app正式启动|app正式啟動|永久免费|永久免費|不再迷路|二维码|二維碼|qrcode|扫码|掃碼|扫码下载|掃碼下載"
+    r"|后记|後記|前言|附录|附錄|完结感言|完結感言|番外篇|特典|商业志|商業誌|presented by|凳行|尧行|印刷)",
     re.IGNORECASE,
 )
 
@@ -1970,6 +1984,12 @@ def classify_dialogue_kind(
     page_count: int,
     page_texts: list[str],
     text: str,
+    *,
+    is_chapter_tail: bool = False,
+    is_chapter_boundary: bool = False,
+    is_recurring_template: bool = False,
+    page_has_scanlator: bool | None = None,
+    page_recurring_ratio: float = 0.0,
 ) -> str | None:
     """判定一条 OCR 文本的语料类别。
 
@@ -1978,24 +1998,58 @@ def classify_dialogue_kind(
         page_count: 该漫画总页数；取不到时传 0，位置规则自动失效。
         page_texts: 同一页上的全部文本，用于判断整页是否像后记。
         text: 待判定的单条文本。
+        is_chapter_tail: 是否为所属章节末尾 1~2 页（兼容历史传参）。
+        is_chapter_boundary: 是否为所属章节首尾 1~2 页（且该章页数 >= 8）。
+        is_recurring_template: 该条文本是否为跨话/跨页高频重复模板。
+        page_has_scanlator: 该页是否含有汉化组/平台广告强特征词（传入 None 时从 page_texts 现场计算）。
+        page_recurring_ratio: 该页模板文本行占全页文本行的比例（0.0 ~ 1.0）。
 
     Returns:
         'dialogue' 分镜台词、'paratext' 书名页/版权页/后记等副文本，
-        None 表示纯噪声（水印、页码），不该进索引。
+        None 表示纯噪声（水印、页码、汉化组首尾页广告、重复模板），不该进索引。
     """
     if _is_noise_line(text):
         return None
-    if _PARATEXT_RE.search(text):
+
+    norm_text = to_simplified(text)
+    # 噪声行不能替整页定性（ADR 0017 决策 7）
+    meaningful_texts = [t for t in page_texts if not _is_noise_line(t)]
+    norm_page_texts = [to_simplified(t) for t in meaningful_texts]
+
+    is_boundary = is_chapter_boundary or is_chapter_tail
+    has_scan = (
+        page_has_scanlator
+        if page_has_scanlator is not None
+        else any(_SCANLATOR_RE.search(t) for t in norm_page_texts)
+    )
+
+    # 1. 单话首尾边界熔断：若处于单话首尾 1~2 页（全书封面第 1 页除外），且该页包含广告/汉化词或主要由模板构成，整页一律不入库
+    if is_boundary and page_index != 1:
+        if has_scan or page_recurring_ratio >= 0.5:
+            return None
+        if is_recurring_template:
+            return None
+
+    # 2. 纯广告海报全位置熔断：若整页所有有效行均由广告/汉化词构成（0 剧情正文），整页一律不入库
+    if page_index != 1 and norm_page_texts and all(_SCANLATOR_RE.search(t) for t in norm_page_texts):
+        return None
+
+    # 3. 跨话高频重复的水印/广告模板（如全局重复出现的网站域名或赞助标语）直接丢弃
+    if is_recurring_template and _SCANLATOR_RE.search(norm_text):
+        return None
+
+    # 4. 基础特征词匹配：优先识别副文本（如作者后记、版权信息、刊物说明等）
+    if _PARATEXT_RE.search(norm_text):
         return PARATEXT_KIND
 
+    # 5. 全书位置护栏（仅在全书页数 >= 10 时启用）
     if page_count >= MIN_PAGES_FOR_POSITION_RULE:
         if page_index <= FRONT_MATTER_PAGES:
             return PARATEXT_KIND
         if page_index > page_count - BACK_MATTER_PAGES and page_texts:
-            mean_line_chars = sum(len(t) for t in page_texts) / len(page_texts)
+            mean_line_chars = sum(len(t) for t in meaningful_texts) / len(meaningful_texts) if meaningful_texts else 0
             long_form_page = mean_line_chars >= BACK_MATTER_MEAN_LINE_CHARS
-            # 噪声行不能替整页定性：它本就不入库，正文页上同样满是水印（ADR 0017 决策 7 的 09-22 修正）
-            credit_page = any(_PARATEXT_RE.search(t) for t in page_texts)
+            credit_page = any(_PARATEXT_RE.search(t) for t in norm_page_texts)
             if long_form_page or credit_page:
                 return PARATEXT_KIND
 
@@ -2089,8 +2143,10 @@ def sync_comic_dialogues(source: str, source_id: str, force: bool = False) -> in
                 if stored_mtime >= latest_mtime and (latest_mtime > 0 or stored_count == 0):
                     return stored_count
 
-    # 读取 album.json 以便建立多章节全局页号映射
+    # 读取 album.json 以便建立多章节全局页号映射与单话边界上下文
     page_map: dict[str, int] = {}
+    page_to_chapter: dict[int, str] = {}
+    chapter_page_map: dict[str, list[int]] = {}
     page_count = 0
     album_candidates = []
     if target_dir is not None:
@@ -2116,15 +2172,34 @@ def sync_comic_dialogues(source: str, source_id: str, force: bool = False) -> in
                     f_val = p.get("file", "")
                     chap_val = p.get("chapter", "")
                     if idx_val is not None:
+                        try:
+                            pid = int(idx_val)
+                        except (ValueError, TypeError):
+                            continue
                         s = Path(f_val).stem
-                        page_map[s] = int(idx_val)
+                        page_map[s] = pid
                         if chap_val:
-                            page_map[f"{chap_val}/{s}"] = int(idx_val)
+                            page_map[f"{chap_val}/{s}"] = pid
+                        chap_str = str(chap_val or "")
+                        page_to_chapter[pid] = chap_str
+                        chapter_page_map.setdefault(chap_str, []).append(pid)
                 break
         except Exception:
             pass
 
-    records: list[tuple[str, str, int, int | str, str, str, str, int, str, str]] = []
+    # 统计单话首尾 1~2 页（仅当该话页数 >= 8 时判定，防止误杀极短单篇与番外）
+    MIN_CHAPTER_PAGES = 8
+    chapter_boundary_page_indices: set[int] = set()
+    for chap_str, p_list in chapter_page_map.items():
+        if len(p_list) >= MIN_CHAPTER_PAGES:
+            chapter_boundary_page_indices.update(p_list[:2])
+            chapter_boundary_page_indices.update(p_list[-2:])
+
+    # 预先解析所有 OCR 文件并提取文本，用于全局模板频次去重与整页结构分析
+    parsed_ocr_items: list[dict[str, Any]] = []
+    text_chapters: dict[str, set[str]] = {}
+    text_pages: dict[str, set[int]] = {}
+
     for f in ocr_files:
         try:
             payload = json.loads(f.read_text(encoding="utf-8"))
@@ -2163,9 +2238,49 @@ def sync_comic_dialogues(source: str, source_id: str, force: bool = False) -> in
         if not isinstance(bubbles, list):
             continue
 
-        # 副文本判定要看整页：后记页上的单句可能很短，但它旁边的长句会暴露整页性质
-        page_texts = [str(b.get("text", "")).strip() for b in bubbles if isinstance(b, dict)]
-        page_texts = [t for t in page_texts if t]
+        chap_id = page_to_chapter.get(page_idx, f.parent.name)
+        raw_texts = [str(b.get("text", "")).strip() for b in bubbles if isinstance(b, dict)]
+        raw_texts = [t for t in raw_texts if t]
+
+        for t in raw_texts:
+            if len(t) >= 8 and len(set(c for c in t if c.isalnum())) >= 5:
+                nt = to_simplified(t)
+                text_chapters.setdefault(nt, set()).add(chap_id)
+                text_pages.setdefault(nt, set()).add(page_idx)
+
+        parsed_ocr_items.append({
+            "page_idx": page_idx,
+            "top_lang": top_lang,
+            "bubbles": bubbles,
+            "page_texts": raw_texts,
+        })
+
+    # 判定为跨话/跨页高频模板的文本集合（单本内跨 >= 3 话，或跨 >= 4 页出现）
+    recurring_templates: set[str] = {
+        nt for nt, chaps in text_chapters.items()
+        if len(chaps) >= 3 or len(text_pages.get(nt, set())) >= 4
+    }
+
+    # 若无 album.json 章节划分，退回整本首尾各 2 页作为边界兜底（全本页数 >= 8 时生效）
+    if not chapter_boundary_page_indices and parsed_ocr_items:
+        all_pids = sorted(set(item["page_idx"] for item in parsed_ocr_items))
+        if len(all_pids) >= MIN_CHAPTER_PAGES:
+            chapter_boundary_page_indices.update(all_pids[:2])
+            chapter_boundary_page_indices.update(all_pids[-2:])
+
+    records: list[tuple[str, str, int, int | str, str, str, str, int, str, str]] = []
+    for item in parsed_ocr_items:
+        page_idx = item["page_idx"]
+        top_lang = item["top_lang"]
+        bubbles = item["bubbles"]
+        page_texts = item["page_texts"]
+
+        is_boundary = page_idx in chapter_boundary_page_indices
+        norm_page_texts = [to_simplified(t) for t in page_texts]
+        page_has_scanlator = any(_SCANLATOR_RE.search(t) for t in norm_page_texts)
+
+        template_count = sum(1 for t in norm_page_texts if t in recurring_templates)
+        page_recurring_ratio = (template_count / len(page_texts)) if page_texts else 0.0
 
         for b_idx, b in enumerate(bubbles, start=1):
             if not isinstance(b, dict):
@@ -2173,7 +2288,18 @@ def sync_comic_dialogues(source: str, source_id: str, force: bool = False) -> in
             text = str(b.get("text", "")).strip()
             if not text:
                 continue
-            kind = classify_dialogue_kind(page_idx, page_count, page_texts, text)
+            is_rec = to_simplified(text) in recurring_templates
+            kind = classify_dialogue_kind(
+                page_idx,
+                page_count,
+                page_texts,
+                text,
+                is_chapter_tail=is_boundary,
+                is_chapter_boundary=is_boundary,
+                is_recurring_template=is_rec,
+                page_has_scanlator=page_has_scanlator,
+                page_recurring_ratio=page_recurring_ratio,
+            )
             if kind is None:
                 continue
             bubble_id = b.get("id", b_idx)
