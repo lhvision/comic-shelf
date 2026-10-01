@@ -408,6 +408,14 @@ def test_classify_dialogue_kind_rules():
     # 水印行自己仍然不入库（两件事互不牵连）
     assert cls(21, 22, tail_with_watermark, "jmcomic") is None
 
+    # 拷贝漫画、禁漫天堂等中文平台全页水印同样不能替整页定性，正文剧情对白 100% 完好入库
+    tail_with_cjk_watermark = ["刚刚不是有说还没回礼吗", "圣诞礼物…？", "拷贝漫画", "禁漫天堂"]
+    assert cls(21, 22, tail_with_cjk_watermark, "刚刚不是有说还没回礼吗") == db_mod.DIALOGUE_KIND, (
+        "尾页中文水印导致正文被误判为副文本"
+    )
+    assert cls(21, 22, tail_with_cjk_watermark, "拷贝漫画", is_chapter_boundary=True) is None
+    assert cls(21, 22, tail_with_cjk_watermark, "禁漫天堂", is_chapter_boundary=True) is None
+
     # 繁体汉化组特征词识别（繁简混排与纯繁体均能捕捉）
     assert cls(10, 42, ["本页其他文本"], "For Adults ONLYFINAL個人漢化") == db_mod.PARATEXT_KIND
     assert cls(10, 42, ["本页其他文本"], "圖源：小明，校對：小紅，壓制：小剛") == db_mod.PARATEXT_KIND

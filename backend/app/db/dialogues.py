@@ -110,6 +110,16 @@ _SCANLATOR_RE = re.compile(
     re.IGNORECASE,
 )
 
+# 平台水印与汉化组广告特征词：不得具备替整页定性为副文本（后记/版权页）的权力（ADR 0017 决策 7）
+_WATERMARK_RE = re.compile(
+    r"(图源|圖源|翻校|嵌字|扫图|掃圖|校对|校對|压制|壓制|汉化|漢化|初翻|招募|招新"
+    r"|爱发电|愛發電|赞助|贊助|打赏|打賞|仅供交流|僅供交流|禁止商用|禁止商業|严禁商用|嚴禁商用"
+    r"|qq群|加群|加羣|微信群|微信羣|交流群|交流羣|群号|羣號|微博|邮箱|郵箱"
+    r"|禁漫天堂|禁漫食堂|禁漫娘|拷贝漫画|拷貝漫畫"
+    r"|app正式启动|app正式啟動|永久免费|永久免費|不再迷路|二维码|二維碼|qrcode|扫码|掃碼|扫码下载|掃碼下載)",
+    re.IGNORECASE,
+)
+
 # 刻意不收「我是」「禁止」这类真台词里也常见的宽词；简繁双轨支持
 _PARATEXT_RE = re.compile(
     r"(图源|圖源|翻校|嵌字|扫图|掃圖|校对|校對|压制|壓制|汉化|漢化|翻译|翻譯|初翻|仅供|僅供|转载|轉載|商业|商業|邮箱|郵箱|@[A-Za-z0-9]"
@@ -195,7 +205,10 @@ def classify_dialogue_kind(
         if page_index > page_count - BACK_MATTER_PAGES and page_texts:
             mean_line_chars = sum(len(t) for t in meaningful_texts) / len(meaningful_texts) if meaningful_texts else 0
             long_form_page = mean_line_chars >= BACK_MATTER_MEAN_LINE_CHARS
-            credit_page = any(_PARATEXT_RE.search(t) for t in norm_page_texts)
+            # 只有作者本人的后记/版权/谢恩词（后记、前言、附录、特典、推特号等）或长段文本才有资格定性整页为副文本；
+            # 平台水印与汉化组广告（_WATERMARK_RE）绝不能替整页定性（错题本 #7 / ADR 0017 决策 7）
+            author_texts = [t for t in norm_page_texts if not _WATERMARK_RE.search(t)]
+            credit_page = any(_PARATEXT_RE.search(t) for t in author_texts)
             if long_form_page or credit_page:
                 return PARATEXT_KIND
 

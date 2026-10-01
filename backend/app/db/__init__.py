@@ -29,6 +29,7 @@ from .dialogues import (
     _CJK_RE,
     _PARATEXT_RE,
     _SCANLATOR_RE,
+    _WATERMARK_RE,
     _VECTOR_CACHE,
     _bump_vector_version,
     _coerce_order_index,
