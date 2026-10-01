@@ -1008,11 +1008,11 @@
 - **根因**：
   1. 卡片端车号印章缺失 `max-width` 与 `text-overflow: ellipsis` 约束；阅读印章与车号印章同置于底部边缘，未在垂直维度上错开；
   2. 详情页顶栏父级 Flex 容器设置了 `flex-wrap: wrap` 且父级容器缺失 `min-width: 0`；车号包含 `white-space: nowrap`，在 `min-width: auto` 的 Flex 子项中其最小内容尺寸（`min-content`）等于全文本宽度，破坏了外层容器约束；同时车号占满宽度导致状态徽标折行；
-  3. 误引入了非标未落地的 `@supports (text-fit: shrink)` 伪规则企图自动缩减字号，在现代浏览器中均不生效。
+  3. 单纯依赖未全量落地的 `@supports (text-fit: shrink)` 前瞻渐进增强分支企图自动缩减字号，而未在基线层声明坚固的 `min-width: 0; max-width: 100%; overflow: hidden; text-overflow: ellipsis;`，导致在尚未实装该草案的浏览器中彻底失去防线。
 - **红线**：
   1. **印章多极错位排版**：卡片封面浮层标签必须避免同边堆叠，阅读印章置于右上角（与左上角收藏按钮相对称），车号印章置于右下角，且两端标签必须严格声明 `max-width` 与 `overflow: hidden; text-overflow: ellipsis; white-space: nowrap;`；
   2. **Flex 头部同行保底与弹性压缩**：顶栏徽章同行容器严禁依赖 `flex-wrap: wrap`；固定状态徽标（追更中/重新装订）必须显式声明 `flex-shrink: 0`，动态可变长文本徽标（车号）必须声明 `flex: 0 1 auto; min-width: 0; max-width: 100%; text-overflow: ellipsis`，并在父级声明 `min-width: 0`，绝不撑破外层布局；
-  3. **清理无效伪属性**：严禁在样式中残留非标准或草案阶段未实现的 CSS 规则（如 `text-fit: shrink`）。
+  3. **前瞻渐进增强必须有坚固的基线层兜底**：使用 `@supports (text-fit: shrink)`（见 `DESIGN_NOTES.md` §30 / `docs/CSS_RADAR.md` §4.6）等现代前瞻特性时，必须始终在基线规则中声明完备的 `overflow: hidden; text-overflow: ellipsis; min-width: 0`，严禁让未实装特性裸奔充当唯一防线。
 
 ---
 

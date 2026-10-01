@@ -245,15 +245,6 @@ const autoUpdateLabel = computed(() => {
   max-width: 100%;
 }
 
-.meta-head-top .eyebrow {
-  margin: 0;
-  font-size: var(--text-caption);
-  letter-spacing: 0.12em;
-  color: var(--accent);
-  text-transform: uppercase;
-  flex-shrink: 0;
-}
-
 .meta-id {
   padding: var(--space-1) var(--space-2);
   border: 1px solid var(--line-strong);
