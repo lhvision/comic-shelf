@@ -163,17 +163,17 @@ def classify_dialogue_kind(
     norm_page_texts = [to_simplified(t) for t in meaningful_texts]
 
     is_boundary = is_chapter_boundary or is_chapter_tail
-    has_scan = (
-        page_has_scanlator
-        if page_has_scanlator is not None
-        else any(_SCANLATOR_RE.search(t) for t in norm_page_texts)
-    )
+    scan_count = sum(1 for t in norm_page_texts if _SCANLATOR_RE.search(t))
+    scan_ratio = (scan_count / len(norm_page_texts)) if norm_page_texts else 0.0
 
-    # 1. 单话首尾边界熔断：若处于单话首尾 1~2 页（全书封面第 1 页除外），且该页包含广告/汉化词或主要由模板构成，整页一律不入库
+    # 1. 单话首尾边界熔断（全书封面第 1 页除外）：
+    # - 若单条自身为汉化组广告词或高频跨话模板，在首尾边界页直接丢弃（不入库）
+    # - 若整页由模板主导（>= 50%）、广告特征词占多数（>= 2 行且 >= 50%），整页一律不入库
+    # - 对于正文与水印混排的边界页，仅丢弃水印行，完好保全正文剧情对白（ADR 0017 决策 7 & 10）
     if is_boundary and page_index != 1:
-        if has_scan or page_recurring_ratio >= 0.5:
+        if _SCANLATOR_RE.search(norm_text) or is_recurring_template:
             return None
-        if is_recurring_template:
+        if page_recurring_ratio >= 0.5 or (scan_count >= 2 and scan_ratio >= 0.5):
             return None
 
     # 2. 纯广告海报全位置熔断：若整页所有有效行均由广告/汉化词构成（0 剧情正文），整页一律不入库
@@ -424,7 +424,6 @@ def sync_comic_dialogues(source: str, source_id: str, force: bool = False) -> in
 
         is_boundary = page_idx in chapter_boundary_page_indices
         norm_page_texts = [to_simplified(t) for t in page_texts]
-        page_has_scanlator = any(_SCANLATOR_RE.search(t) for t in norm_page_texts)
 
         template_count = sum(1 for t in norm_page_texts if t in recurring_templates)
         page_recurring_ratio = (template_count / len(page_texts)) if page_texts else 0.0
@@ -444,7 +443,6 @@ def sync_comic_dialogues(source: str, source_id: str, force: bool = False) -> in
                 is_chapter_tail=is_boundary,
                 is_chapter_boundary=is_boundary,
                 is_recurring_template=is_rec,
-                page_has_scanlator=page_has_scanlator,
                 page_recurring_ratio=page_recurring_ratio,
             )
             if kind is None:

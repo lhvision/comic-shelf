@@ -423,6 +423,12 @@ def test_classify_dialogue_kind_rules():
     story_tail = ["下一次見面就是敵人了！", "待續"]
     assert cls(10, 42, story_tail, "下一次見面就是敵人了！", is_chapter_tail=True) == db_mod.DIALOGUE_KIND, "剧情最后一页被误杀"
 
+    # 单话首尾混排正文保护：首尾页剧情对白 + 角落汉化水印，仅水印行丢弃，正文对白 100% 保全
+    mixed_boundary = ["老师，我们明天还在这里见面吗？", "好啊，一言为定！", "XX汉化组制作"]
+    assert cls(10, 42, mixed_boundary, "老师，我们明天还在这里见面吗？", is_chapter_boundary=True) == db_mod.DIALOGUE_KIND
+    assert cls(10, 42, mixed_boundary, "好啊，一言为定！", is_chapter_boundary=True) == db_mod.DIALOGUE_KIND
+    assert cls(10, 42, mixed_boundary, "XX汉化组制作", is_chapter_boundary=True) is None
+
     # 跨话重复高频模板丢弃
     assert cls(10, 42, ["模板标语"], "模板标语", is_recurring_template=True, is_chapter_tail=True) is None
 
@@ -1537,7 +1543,7 @@ def test_multi_chapter_scanlator_deduplication():
         # Page 20 (尾页汉化组招新)：熔断丢弃（0 行入库）
         write_ocr(11, ["禁漫天堂 永久免费", "扫描二维码下载APP"])
         write_ocr(12, ["第二話開始，新的敵人出現了"])
-        write_ocr(19, ["我們絕不會認輸！暗影大人會拯救大家"])
+        write_ocr(19, ["我們絕不會認輸！暗影大人會拯救大家", "【個人漢化禁止轉載】"])
         write_ocr(20, ["感謝大家閱讀本話", "本漢化組誠聘嵌字與初翻君", "審核QQ群：987654321"])
 
         # 第 3 话：第 29 页普通结尾，第 30 页（尾页）汉化组招新
@@ -1554,6 +1560,13 @@ def test_multi_chapter_scanlator_deduplication():
             ).fetchall()
             assert len(ad_rows) == 0, f"首尾广告页未被丢弃，仍入库了: {[dict(r) for r in ad_rows]}"
 
+            # 边界剧情页（第 19 页）混排的水印应单独被剔除，仅保留剧情对白（共 1 行）
+            p19_rows = conn.execute(
+                "SELECT text, kind FROM comic_dialogues_fts WHERE source = 'copymanga' AND source_id = 'shadow_garden' AND page_index = 19"
+            ).fetchall()
+            assert len(p19_rows) == 1 and p19_rows[0]["kind"] == db_mod.DIALOGUE_KIND
+            assert "禁止轉載" not in p19_rows[0]["text"]
+
             # 封面（第 1 页）应作为 paratext 正常归档保留
             cover_rows = conn.execute(
                 "SELECT page_index, text, kind FROM comic_dialogues_fts WHERE source = 'copymanga' AND source_id = 'shadow_garden' AND page_index = 1"
@@ -1569,11 +1582,12 @@ def test_multi_chapter_scanlator_deduplication():
                 assert r["kind"] == db_mod.DIALOGUE_KIND
 
         # 检索测试：
-        # 1. 搜平台/APP广告（禁漫天堂 / APP正式启动 / QRCODE / 987654321 / 嵌字）应该 0 命中
+        # 1. 搜平台/APP广告（禁漫天堂 / APP正式启动 / QRCODE / 987654321 / 嵌字 / 禁止轉載）应该 0 命中
         assert db_mod.search_dialogues("禁漫天堂", source="copymanga") == []
         assert db_mod.search_dialogues("APP正式启动", source="copymanga") == []
         assert db_mod.search_dialogues("987654321", source="copymanga") == []
         assert db_mod.search_dialogues("嵌字", source="copymanga") == []
+        assert db_mod.search_dialogues("禁止转载", source="copymanga") == []
 
         # 2. 搜正文对白（第 3 页尤金先生、第 9 页暗影、第 19 页认输、第 29 页战斗）精准命中对应页码
         res_eugene = db_mod.search_dialogues("尤金先生", source="copymanga")

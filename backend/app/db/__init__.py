@@ -226,6 +226,11 @@ __all__ = [
 
 
 def __getattr__(name: str):
+    """PEP 562 模块级动态属性解析（只读向后兼容）。
+
+    注意：测试或运行时若需切换数据库路径，必须调用 set_db_path() / set_dialogue_db_path()，
+    严禁直接对模块属性 db._DB_PATH 赋值（直接赋值会绕过连接池并导致测试隔离失效，见 PITFALLS #160）。
+    """
     if name == "_DB_PATH":
         return get_db_path()
     if name == "_DIALOGUE_DB_PATH":
