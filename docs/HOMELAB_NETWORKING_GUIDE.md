@@ -268,7 +268,7 @@ _原理：将所有解密漫画原图、封面图、缩略图强制缓存在距�
    - **When incoming requests match...（自定义匹配表达式）**：
      点击右上角的 `Edit expression（编辑表达式）`，直接粘贴以下生产级表达式：
      ```text
-     (http.request.uri.path contains "/api/library/" and (http.request.uri.path.extension in {"webp" "jpg" "jpeg" "png"} or ends_with(http.request.uri.path, "/file") or ends_with(http.request.uri.path, "/thumbnail")))
+     (http.request.uri.path contains "/api/library/" and (http.request.uri.path.extension in {"webp" "jpg" "jpeg" "png" "avif" "gif"} or ends_with(http.request.uri.path, "/file") or ends_with(http.request.uri.path, "/thumbnail")))
      ```
    - **Cache eligibility（缓存资格）**：选择 **Eligible for cache (符合缓存条件)**。
    - **Edge TTL（边缘缓存生存时间）**：选择 **Ignore cache-control header and use TTL** ➔ 设为 **1 个月 (1 month)** 或 **7 天**。

@@ -11,7 +11,7 @@
  * 5. 抛出滚动、滚轮、鼠标移动与视图点击等高频视口交互事件。
  */
 
-import { computed, useTemplateRef } from 'vue'
+import { computed, useTemplateRef, type CSSProperties } from 'vue'
 import { pageFileUrl } from '@/api/client'
 import ComicPageImage from '@/components/ComicPageImage.vue'
 import ReaderBubbleOverlay, { type TargetBubble } from '@/components/ReaderBubbleOverlay.vue'
@@ -58,6 +58,10 @@ export interface ReaderViewportProps {
   nextChapter?: Chapter | null
   /** 章节简写标题格式化函数 */
   chapterShortLabel?: (chapter: Chapter) => string
+  /** 当前是否处于画页双击放大状态 */
+  isZoomed?: boolean
+  /** 获取画页放大变换样式 */
+  getPageZoomStyle?: (page: number) => CSSProperties | undefined
 }
 
 const props = defineProps<ReaderViewportProps>()
@@ -87,6 +91,16 @@ const emit = defineEmits<{
   completed: []
   /** 点击行内卡片进入下一话 */
   nextChapter: []
+  /** 画页双击事件（触发放大/还原） */
+  pageDblClick: [page: number, event: MouseEvent]
+  /** 画页指针按下事件（平移拖拽开始或双触探测） */
+  pagePointerDown: [page: number, event: PointerEvent]
+  /** 画页指针移动事件（执行放大平移） */
+  pagePointerMove: [page: number, event: PointerEvent]
+  /** 画页指针抬起事件（结算平移或移动端双触） */
+  pagePointerUp: [page: number, event: PointerEvent]
+  /** 画页指针取消事件 */
+  pagePointerCancel: [page: number, event: PointerEvent]
 }>()
 
 const scrollEl = useTemplateRef<HTMLElement>('scrollEl')
@@ -115,6 +129,7 @@ defineExpose({
   <main
     ref="scrollEl"
     class="reader-scroll"
+    :class="{ 'is-zoom-locked': isZoomed }"
     :data-mode="settings.mode"
     :data-pages="settings.pagesPerView"
     :data-direction="settings.direction"
@@ -157,7 +172,16 @@ defineExpose({
         :data-page="page"
         :id="`page-${page}`"
       >
-        <div class="page-frame" :data-fit="settings.fit" :style="getPageStyle(page)">
+        <div
+          class="page-frame"
+          :data-fit="settings.fit"
+          :style="[getPageStyle(page), getPageZoomStyle?.(page)]"
+          @dblclick="$emit('pageDblClick', page, $event)"
+          @pointerdown="$emit('pagePointerDown', page, $event)"
+          @pointermove="$emit('pagePointerMove', page, $event)"
+          @pointerup="$emit('pagePointerUp', page, $event)"
+          @pointercancel="$emit('pagePointerCancel', page, $event)"
+        >
           <ComicPageImage
             v-if="isGroupHydrated(group.index)"
             :src="pageFileUrl(source, sourceId, page)"
@@ -252,6 +276,28 @@ defineExpose({
   scroll-timeline-axis: block;
 }
 
+.reader-scroll.is-zoom-locked {
+  overflow: hidden !important;
+  touch-action: none !important;
+  user-select: none !important;
+}
+
+.reader-scroll.is-zoom-locked .reader-spread,
+.reader-scroll.is-zoom-locked .reader-page {
+  overflow: visible !important;
+}
+
+.reader-scroll.is-zoom-locked .reader-spread {
+  content-visibility: visible !important;
+}
+
+.reader-scroll.is-zoom-locked .reader-webtoon-chapter-end,
+.reader-scroll.is-zoom-locked :deep(.reader-end-card) {
+  opacity: 0.35;
+  pointer-events: none;
+  transition: opacity var(--duration-2) var(--ease-out);
+}
+
 .reader-scroll[data-mode='vertical-paged'] .reader-spread,
 .reader-scroll[data-mode='horizontal'] .reader-spread {
   content-visibility: auto;
@@ -276,6 +322,9 @@ defineExpose({
   display: flex;
   justify-content: center;
   align-items: center;
+  touch-action: manipulation;
+  user-select: none;
+  -webkit-user-select: none;
 }
 
 .page-frame :deep(.comic-page-img) {

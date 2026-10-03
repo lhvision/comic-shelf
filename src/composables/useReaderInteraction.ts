@@ -9,10 +9,11 @@
 
 import { computed, nextTick, ref, watch, type Ref } from 'vue'
 import type { RouteLocationNormalizedLoaded, Router } from 'vue-router'
-import { useTimeoutFn } from '@vueuse/core'
+import { tryOnScopeDispose, useTimeoutFn } from '@vueuse/core'
 import { useReaderKeyboard } from '@/composables/useReaderKeyboard'
 import { useReaderSync } from '@/composables/useReaderSync'
 import { useReaderWebMCP } from '@/composables/useReaderWebMCP'
+import { usePageZoom } from '@/composables/usePageZoom'
 import { isFiniteNumber } from '@/utils/is'
 import type { useReaderSettings } from '@/composables/useReaderSettings'
 import type { useReaderPaging } from '@/composables/useReaderPaging'
@@ -75,6 +76,26 @@ export function useReaderInteraction(options: UseReaderInteractionOptions) {
     autoTurn: { resetAutoTurnCountdown },
   } = options
 
+  const pageZoom = usePageZoom({
+    onZoomChange: (zoomed) => {
+      if (zoomed) {
+        scheduleChromeHide()
+        resetAutoTurnCountdown()
+      }
+    },
+  })
+  const {
+    isZoomed,
+    resetZoom,
+    getPageZoomStyle,
+    wasRecentlyToggled,
+    onPageDblClick,
+    onPagePointerDown,
+    onPagePointerMove,
+    onPagePointerUp,
+    onPagePointerCancel,
+  } = pageZoom
+
   /**
    * 记录初次载入或显式跳转的目标锚点页码与分组。
    * 仅用于在用户未交互前，若视口上方离屏图片异步解码撑高时精准微调，绝不跟随滚动探测漂移。
@@ -110,6 +131,10 @@ export function useReaderInteraction(options: UseReaderInteractionOptions) {
   }
 
   function advanceAutoTurn() {
+    if (isZoomed.value) {
+      resetAutoTurnCountdown()
+      return
+    }
     navAdvanceAutoTurn(reducedMotion.value)
   }
 
@@ -129,6 +154,11 @@ export function useReaderInteraction(options: UseReaderInteractionOptions) {
   }
 
   function onViewportWheel(event: WheelEvent) {
+    if (isZoomed.value) {
+      event.preventDefault()
+      pageZoom.panBy(0, -event.deltaY)
+      return
+    }
     onUserInteract()
     onWheel(event)
   }
@@ -144,38 +174,54 @@ export function useReaderInteraction(options: UseReaderInteractionOptions) {
   }
 
   function prevGroup(behavior: ScrollBehavior = 'smooth') {
+    if (isZoomed.value) resetZoom()
     onUserInteract()
     navPrevGroup(behavior)
   }
 
   function nextGroup(behavior: ScrollBehavior = 'smooth') {
+    if (isZoomed.value) resetZoom()
     onUserInteract()
     navNextGroup(behavior)
   }
 
   function goToPage(page: number, behavior: ScrollBehavior = 'smooth') {
+    if (isZoomed.value) resetZoom()
     onUserInteract()
     navGoToPage(page, behavior)
   }
 
   function goToGroup(groupIndex: number, behavior: ScrollBehavior = 'smooth') {
+    if (isZoomed.value) resetZoom()
     onUserInteract()
     options.navigation.goToGroup(groupIndex, behavior)
   }
 
   function goNextChapter() {
+    if (isZoomed.value) resetZoom()
     onUserInteract()
     navGoNextChapter()
   }
 
   function goPrevChapter() {
+    if (isZoomed.value) resetZoom()
     onUserInteract()
     navGoPrevChapter()
   }
 
   function onContainerScroll() {
+    if (isZoomed.value) return
     onScroll()
   }
+
+  let clickDebounceTimer: ReturnType<typeof setTimeout> | null = null
+
+  tryOnScopeDispose(() => {
+    if (clickDebounceTimer) {
+      clearTimeout(clickDebounceTimer)
+      clickDebounceTimer = null
+    }
+  })
 
   function onReaderClick(event: MouseEvent) {
     if (event.button !== 0) {
@@ -192,7 +238,27 @@ export function useReaderInteraction(options: UseReaderInteractionOptions) {
       filmstripOpen.value = false
       return
     }
-    toggleChrome()
+
+    // 若本次点击是双击手势伴随产生的残余原生 click，直接静默阻断，杜绝切换
+    if (wasRecentlyToggled()) {
+      if (clickDebounceTimer) {
+        clearTimeout(clickDebounceTimer)
+        clickDebounceTimer = null
+      }
+      return
+    }
+
+    // 延迟 220ms 判定单击，避免双击时的第一次点击让顶栏闪烁
+    if (clickDebounceTimer) {
+      clearTimeout(clickDebounceTimer)
+      clickDebounceTimer = null
+    }
+    clickDebounceTimer = setTimeout(() => {
+      clickDebounceTimer = null
+      if (!isZoomed.value && !wasRecentlyToggled()) {
+        toggleChrome()
+      }
+    }, 220)
   }
 
   function onSelectChapter(id: string) {
@@ -228,6 +294,9 @@ export function useReaderInteraction(options: UseReaderInteractionOptions) {
     goPrevChapter,
     backToDetail,
     isSwitchingChapter,
+    isZoomed,
+    onPanZoom: pageZoom.panBy,
+    onResetZoom: pageZoom.resetZoom,
     onUserInteract,
     onKeyRelease: () => lockProgrammaticScroll(380),
   })
@@ -248,6 +317,7 @@ export function useReaderInteraction(options: UseReaderInteractionOptions) {
   watch(
     () => `${settings.mode}|${settings.pagesPerView}|${settings.direction}`,
     async () => {
+      if (isZoomed.value) resetZoom()
       currentGroupIndex.value = groupIndexForPage(currentPage.value)
       await nextTick()
       scrollToGroup(currentGroupIndex.value, 'instant')
@@ -260,6 +330,7 @@ export function useReaderInteraction(options: UseReaderInteractionOptions) {
     () => scopeId.value,
     async () => {
       if (!detail.value) return
+      if (isZoomed.value) resetZoom()
       targetAnchorPage.value = null
       targetAnchorGroupIndex.value = null
       const clamped = clampToScope(currentPage.value)
@@ -309,5 +380,13 @@ export function useReaderInteraction(options: UseReaderInteractionOptions) {
     goToGroup,
     goNextChapter,
     goPrevChapter,
+    isZoomed,
+    resetZoom,
+    getPageZoomStyle,
+    onPageDblClick,
+    onPagePointerDown,
+    onPagePointerMove,
+    onPagePointerUp,
+    onPagePointerCancel,
   }
 }

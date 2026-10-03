@@ -47,6 +47,12 @@ export interface UseReaderKeyboardOptions {
   backToDetail: () => void
   /** 是否处于跨章节切换中（用于拦截快速连按 N/P） */
   isSwitchingChapter?: Ref<boolean>
+  /** 画页是否正处于放大态（用于拦截键盘翻页与让位 ESC 还原） */
+  isZoomed?: Ref<boolean>
+  /** 放大态下的方向键视口平移回调 */
+  onPanZoom?: (deltaX: number, deltaY: number) => void
+  /** 放大态下的还原视图回调 */
+  onResetZoom?: () => void
   /** 用户主动键盘翻阅交互通知 */
   onUserInteract?: () => void
   /** 连续按键释放通知（用于延长静默锁定） */
@@ -71,6 +77,9 @@ export function useReaderKeyboard(options: UseReaderKeyboardOptions) {
     goPrevChapter,
     backToDetail,
     isSwitchingChapter,
+    isZoomed,
+    onPanZoom,
+    onResetZoom,
     onUserInteract,
     onKeyRelease,
   } = options
@@ -109,6 +118,39 @@ export function useReaderKeyboard(options: UseReaderKeyboardOptions) {
     if (filmstripOpen?.value && event.key === 'Escape') {
       event.preventDefault()
       filmstripOpen.value = false
+      return
+    }
+
+    // 3. 画页处于放大态时：方向键接管为微调平移视角，彻底阻止浏览器原生滚动，杜绝切屏错位
+    if (isZoomed?.value) {
+      if (event.key === 'Escape') {
+        event.preventDefault()
+        onResetZoom?.()
+        return
+      }
+
+      const zoomNavKeys = [
+        'ArrowDown',
+        'ArrowUp',
+        'ArrowLeft',
+        'ArrowRight',
+        'PageDown',
+        'PageUp',
+        ' ',
+        'Home',
+        'End',
+        'Tab',
+      ]
+      if (zoomNavKeys.includes(event.key)) {
+        event.preventDefault()
+        const step = 45
+        if (event.key === 'ArrowDown') onPanZoom?.(0, -step)
+        else if (event.key === 'ArrowUp') onPanZoom?.(0, step)
+        else if (event.key === 'ArrowRight') onPanZoom?.(-step, 0)
+        else if (event.key === 'ArrowLeft') onPanZoom?.(step, 0)
+        else if (event.key === 'PageDown' || event.key === ' ') onPanZoom?.(0, -step * 3)
+        else if (event.key === 'PageUp') onPanZoom?.(0, step * 3)
+      }
       return
     }
 

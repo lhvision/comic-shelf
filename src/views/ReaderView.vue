@@ -3,9 +3,9 @@
  * @file ReaderView.vue - 沉浸式阅读器主视图（纯编排视图，脚本严格 ≤150 行）
  */
 
-import { computed, ref, useTemplateRef } from 'vue'
+import { computed, onMounted, onUnmounted, ref, useTemplateRef } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { usePreferredReducedMotion, useToggle } from '@vueuse/core'
+import { usePreferredReducedMotion, useScrollLock, useToggle } from '@vueuse/core'
 import { useReaderSettings } from '@/composables/useReaderSettings'
 import { useReaderPaging } from '@/composables/useReaderPaging'
 import { useReaderChrome } from '@/composables/useReaderChrome'
@@ -24,6 +24,7 @@ import ReaderHud from '@/components/reader/ReaderHud.vue'
 import ReaderFloatingPill from '@/components/reader/ReaderFloatingPill.vue'
 import ReaderSettingsPanel from '@/components/reader/ReaderSettingsPanel.vue'
 import ReaderFilmstrip from '@/components/reader/ReaderFilmstrip.vue'
+import AppButton from '@/components/AppButton.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -42,109 +43,71 @@ const reducedMotion = usePreferredReducedMotion()
 const viewportRef = useTemplateRef<{ scrollEl: HTMLElement | null }>('viewportRef')
 const scrollEl = computed(() => viewportRef.value?.scrollEl ?? null)
 
+// 移动端全屏视口锁：进入阅读器时锁定 body 滚动防止滚动穿透与顶栏错位
+const isBodyLocked = useScrollLock(typeof document !== 'undefined' ? document.body : null)
+isBodyLocked.value = true
+
 const readerData = useReaderData({ onLoaded: () => initReaderView() })
 const { detail, loading, loadingVariant, source, sourceId, scopeId, backToDetail, lastRead } =
   readerData
 
-const readerPaging = useReaderPaging({
-  detail,
-  scopeId,
-  settings,
-  currentPage,
-  currentGroupIndex,
-})
+const readerPaging = useReaderPaging({ detail, scopeId, settings, currentPage, currentGroupIndex })
+// prettier-ignore
 const {
-  total,
-  chapterLabel,
-  chapterShortLabel,
-  nextChapter,
-  prevChapter,
-  atChapterEnd,
-  atChapterStart,
-  showEndCard,
-  orderedGroups,
-  isVertical,
-  rtlHorizontal,
-  prevIcon,
-  nextIcon,
-  toLocalPage,
-  currentGroupLabel,
-  lastGroupIndex,
-  atLastGroup,
+  total, chapterLabel, chapterShortLabel, nextChapter, prevChapter,
+  atChapterEnd, atChapterStart, showEndCard, orderedGroups, isVertical,
+  rtlHorizontal, prevIcon, nextIcon, toLocalPage, currentGroupLabel,
+  lastGroupIndex, atLastGroup,
 } = readerPaging
 
 const readerChrome = useReaderChrome({ settingsOpen, filmstripOpen })
 const { chromeVisible, showChromeTemporarily } = readerChrome
 
+// prettier-ignore
 const readerNavigation = useReaderNavigation({
-  scrollEl,
-  settings,
-  currentPage,
-  currentGroupIndex,
-  pageGroups: readerPaging.pageGroups,
-  lastGroupIndex: readerPaging.lastGroupIndex,
-  clampToScope: readerPaging.clampToScope,
-  groupIndexForPage: readerPaging.groupIndexForPage,
-  groupFirstPage: readerPaging.groupFirstPage,
-  showChromeTemporarily,
+  scrollEl, settings, currentPage, currentGroupIndex,
+  pageGroups: readerPaging.pageGroups, lastGroupIndex: readerPaging.lastGroupIndex,
+  clampToScope: readerPaging.clampToScope, groupIndexForPage: readerPaging.groupIndexForPage,
+  groupFirstPage: readerPaging.groupFirstPage, showChromeTemporarily,
   resetAutoTurnCountdown: () => readerAutoTurn.resetAutoTurnCountdown(),
-  source,
-  sourceId,
-  nextChapter,
-  prevChapter,
-  scopeId,
-  router,
+  source, sourceId, nextChapter, prevChapter, scopeId, router,
 })
 const { progressValue, pillActive, isSwitchingChapter } = readerNavigation
 
+// prettier-ignore
 const readerAutoTurn = useAutoTurn({
-  settings,
-  currentGroupIndex,
-  lastGroupIndex: readerPaging.lastGroupIndex,
-  settingsOpen,
-  filmstripOpen,
-  chromeVisible,
-  onAdvance: () => advanceAutoTurn(),
-  onScheduleChromeHide: readerChrome.scheduleChromeHide,
+  settings, currentGroupIndex, lastGroupIndex: readerPaging.lastGroupIndex,
+  settingsOpen, filmstripOpen, chromeVisible,
+  onAdvance: () => advanceAutoTurn(), onScheduleChromeHide: readerChrome.scheduleChromeHide,
 })
 const { isAutoTurnActive, autoTurnRemaining, autoTurnPaused, toggleAutoTurnPause } = readerAutoTurn
 
+// prettier-ignore
 const {
-  initReaderView,
-  advanceAutoTurn,
-  onPageReady,
-  onViewportWheel,
-  onUserInteract,
-  onContainerScroll,
-  onReaderClick,
-  onSelectChapter,
-  toggleFullscreen,
-  prevGroup,
-  nextGroup,
-  goToPage,
-  goNextChapter,
-  goPrevChapter,
+  initReaderView, advanceAutoTurn, onPageReady, onViewportWheel, onUserInteract,
+  onContainerScroll, onReaderClick, onSelectChapter, toggleFullscreen,
+  prevGroup, nextGroup, goToPage, goNextChapter, goPrevChapter,
+  isZoomed, resetZoom, getPageZoomStyle, onPageDblClick,
+  onPagePointerDown, onPagePointerMove, onPagePointerUp, onPagePointerCancel,
 } = useReaderInteraction({
-  userInteracted,
-  currentPage,
-  currentGroupIndex,
-  settingsOpen,
-  filmstripOpen,
-  toggleFilmstrip,
+  userInteracted, currentPage, currentGroupIndex, settingsOpen, filmstripOpen, toggleFilmstrip,
   reducedMotion: computed(() => Boolean(reducedMotion.value)),
-  route,
-  router,
-  settings: readerSettings,
-  bubble: readerBubble,
-  data: readerData,
-  paging: readerPaging,
-  chrome: readerChrome,
-  navigation: readerNavigation,
-  autoTurn: readerAutoTurn,
+  route, router, settings: readerSettings, bubble: readerBubble, data: readerData,
+  paging: readerPaging, chrome: readerChrome, navigation: readerNavigation, autoTurn: readerAutoTurn,
 })
 
 const { recommendations, onReaderCompleted, onSelectComic, onOpenComicDetail, onBackToShelf } =
   useReaderCompletion({ source, sourceId, detail, total, lastRead })
+
+onMounted(() => {
+  if (typeof window !== 'undefined') {
+    window.scrollTo({ top: 0, behavior: 'instant' })
+  }
+})
+
+onUnmounted(() => {
+  isBodyLocked.value = false
+})
 </script>
 
 <template>
@@ -181,12 +144,19 @@ const { recommendations, onReaderCompleted, onSelectComic, onOpenComicDetail, on
       :target-bubble="targetBubble"
       :next-chapter="nextChapter"
       :chapter-short-label="chapterShortLabel"
+      :is-zoomed="isZoomed"
+      :get-page-zoom-style="getPageZoomStyle"
       @scroll="onContainerScroll"
       @wheel="onViewportWheel"
       @user-interact="onUserInteract"
       @page-ready="onPageReady"
       @mousemove="showChromeTemporarily"
       @reader-click="onReaderClick"
+      @page-dbl-click="onPageDblClick"
+      @page-pointer-down="onPagePointerDown"
+      @page-pointer-move="onPagePointerMove"
+      @page-pointer-up="onPagePointerUp"
+      @page-pointer-cancel="onPagePointerCancel"
       @next-chapter="goNextChapter"
       @back-to-detail="backToDetail"
       @back-to-shelf="onBackToShelf"
@@ -198,7 +168,7 @@ const { recommendations, onReaderCompleted, onSelectComic, onOpenComicDetail, on
     <ReaderProgress :progress="progressValue" :invert="rtlHorizontal" />
 
     <ReaderChapterBanners
-      v-if="!loading"
+      v-if="!loading && !isZoomed"
       :prev-chapter="prevChapter"
       :next-chapter="nextChapter"
       :at-chapter-start="atChapterStart"
@@ -256,8 +226,25 @@ const { recommendations, onReaderCompleted, onSelectComic, onOpenComicDetail, on
       :current="toLocalPage(currentPage)"
       :total="total"
       :active="pillActive"
-      :suppressed="chromeVisible || settingsOpen || filmstripOpen"
+      :suppressed="chromeVisible || settingsOpen || filmstripOpen || isZoomed"
     />
+
+    <!-- 放大态悬浮还原胶囊 -->
+    <Transition name="zoom-pill">
+      <div v-if="isZoomed" class="reader-zoom-reset-bar">
+        <AppButton
+          theme="reader"
+          variant="primary"
+          size="sm"
+          icon="refresh"
+          class="reader-zoom-reset-btn"
+          title="还原画页原始比例 (Esc 或双击任意处)"
+          @click="resetZoom"
+        >
+          <span>还原视图</span>
+        </AppButton>
+      </div>
+    </Transition>
 
     <ReaderSettingsPanel :open="settingsOpen" @close="settingsOpen = false" />
   </div>
@@ -284,6 +271,34 @@ const { recommendations, onReaderCompleted, onSelectComic, onOpenComicDetail, on
   height: 100dvh;
   background: var(--reader-bg);
   padding: var(--space-4);
+}
+
+.reader-zoom-reset-bar {
+  position: absolute;
+  left: 50%;
+  bottom: max(var(--space-6), env(safe-area-inset-bottom, 0px));
+  translate: -50% 0;
+  z-index: 25;
+  pointer-events: auto;
+}
+
+.reader-zoom-reset-btn {
+  box-shadow:
+    0 4px 16px rgb(0 0 0 / 60%),
+    0 0 0 1px var(--reader-line);
+}
+
+.zoom-pill-enter-active,
+.zoom-pill-leave-active {
+  transition:
+    opacity var(--duration-2) var(--ease-out),
+    translate var(--duration-2) var(--ease-out);
+}
+
+.zoom-pill-enter-from,
+.zoom-pill-leave-to {
+  opacity: 0;
+  translate: -50% var(--space-2);
 }
 
 /* ---------------- 进度条（scroll-timeline 增强） ----------------

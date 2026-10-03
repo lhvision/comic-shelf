@@ -139,9 +139,10 @@ const cachePercent = computed(() => {
 
 useIdlePrefetch(() => import('@/views/ReaderView.vue'))
 
-onMounted(() => {
+onMounted(async () => {
   restoreScrollPosition()
-  void load()
+  await load()
+  restoreScrollPosition()
 })
 </script>
 

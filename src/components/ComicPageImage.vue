@@ -161,6 +161,7 @@ watch(isOnline, (online, wasOnline) => {
         :loading="eager || retryKey > 0 ? 'eager' : 'lazy'"
         :fetchpriority="retryKey > 0 ? 'high' : undefined"
         decoding="async"
+        draggable="false"
         @load="onLoad"
         @error="onError"
       />
@@ -229,6 +230,10 @@ watch(isOnline, (online, wasOnline) => {
   max-height: 100%;
   opacity: 0;
   transition: opacity var(--duration-2) var(--ease-out);
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-user-drag: none;
+  -webkit-touch-callout: none;
 }
 
 .comic-page-image[data-state='ready'] .comic-page-img,

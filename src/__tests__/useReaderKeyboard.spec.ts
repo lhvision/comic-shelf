@@ -203,4 +203,63 @@ describe('useReaderKeyboard - Cascading Escape & Filmstrip Toggle', () => {
     state.onKeydown(new KeyboardEvent('keydown', { key: 'p' }))
     expect(goPrevChapter).toHaveBeenCalledTimes(1)
   })
+
+  it('yields Escape key to zoom reset and suppresses backToDetail when isZoomed is true', () => {
+    const backToDetail = vi.fn<() => void>()
+    const nextGroup = vi.fn<() => void>()
+    const onResetZoom = vi.fn<() => void>()
+    const onPanZoom = vi.fn<(dx: number, dy: number) => void>()
+    const isZoomed = ref(true)
+    const state = setupKeyboard({ backToDetail, nextGroup, isZoomed, onResetZoom, onPanZoom })
+
+    const escapeEvent = new KeyboardEvent('keydown', { key: 'Escape', cancelable: true })
+    const preventDefaultSpy = vi.spyOn(escapeEvent, 'preventDefault')
+
+    state.onKeydown(escapeEvent)
+
+    // Should preventDefault so browser doesn't do native ESC behavior
+    expect(preventDefaultSpy).toHaveBeenCalled()
+    // Should trigger onResetZoom
+    expect(onResetZoom).toHaveBeenCalledTimes(1)
+    // Should NOT trigger backToDetail
+    expect(backToDetail).not.toHaveBeenCalled()
+
+    // Nav keys should trigger onPanZoom with preventDefault and NOT trigger nextGroup
+    const downEvent = new KeyboardEvent('keydown', { key: 'ArrowDown', cancelable: true })
+    const downSpy = vi.spyOn(downEvent, 'preventDefault')
+    state.onKeydown(downEvent)
+    expect(downSpy).toHaveBeenCalled()
+    expect(onPanZoom).toHaveBeenCalledWith(0, -45)
+    expect(nextGroup).not.toHaveBeenCalled()
+
+    const upEvent = new KeyboardEvent('keydown', { key: 'ArrowUp', cancelable: true })
+    state.onKeydown(upEvent)
+    expect(onPanZoom).toHaveBeenCalledWith(0, 45)
+
+    const leftEvent = new KeyboardEvent('keydown', { key: 'ArrowLeft', cancelable: true })
+    state.onKeydown(leftEvent)
+    expect(onPanZoom).toHaveBeenCalledWith(45, 0)
+
+    const rightEvent = new KeyboardEvent('keydown', { key: 'ArrowRight', cancelable: true })
+    state.onKeydown(rightEvent)
+    expect(onPanZoom).toHaveBeenCalledWith(-45, 0)
+
+    const pageDownEvent = new KeyboardEvent('keydown', { key: 'PageDown', cancelable: true })
+    state.onKeydown(pageDownEvent)
+    expect(onPanZoom).toHaveBeenCalledWith(0, -135)
+
+    const spaceEvent = new KeyboardEvent('keydown', { key: ' ', cancelable: true })
+    state.onKeydown(spaceEvent)
+    expect(onPanZoom).toHaveBeenCalledWith(0, -135)
+
+    const pageUpEvent = new KeyboardEvent('keydown', { key: 'PageUp', cancelable: true })
+    state.onKeydown(pageUpEvent)
+    expect(onPanZoom).toHaveBeenCalledWith(0, 135)
+
+    // Tab key is preventDefault-ed to prevent scroll displacement
+    const tabEvent = new KeyboardEvent('keydown', { key: 'Tab', cancelable: true })
+    const tabSpy = vi.spyOn(tabEvent, 'preventDefault')
+    state.onKeydown(tabEvent)
+    expect(tabSpy).toHaveBeenCalled()
+  })
 })

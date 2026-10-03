@@ -84,6 +84,9 @@ const router = createRouter({
 })
 
 router.beforeEach((to) => {
+  if (to.name === 'reader' && typeof window !== 'undefined') {
+    window.scrollTo({ top: 0, behavior: 'instant' })
+  }
   const { isDirectPass, directPassComic, logout } = useAuth()
   if (isDirectPass.value) {
     if (!directPassComic.value) {

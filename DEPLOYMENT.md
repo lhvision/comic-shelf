@@ -651,7 +651,7 @@ docker push yourname/paper-room:v1.0.0
    - 进入 Cloudflare Dashboard → **Caching** → **Cache Rules** → 点击 **Create rule**：
      - **Rule name**: `Paper Room Media Cache`
      - **When incoming requests match...**:
-       `(http.request.uri.path contains "/api/library/" and (http.request.uri.path.extension in {"webp" "jpg" "jpeg" "png"} or ends_with(http.request.uri.path, "/file") or ends_with(http.request.uri.path, "/thumbnail")))`
+       `(http.request.uri.path contains "/api/library/" and (http.request.uri.path.extension in {"webp" "jpg" "jpeg" "png" "avif" "gif"} or ends_with(http.request.uri.path, "/file") or ends_with(http.request.uri.path, "/thumbnail")))`
      - **Cache eligibility**: `Eligible for cache`
      - **Edge TTL**: `Override origin` → `1 month`（1 个月）
      - **Browser TTL**: `Respect origin headers`（遵循纸间返回的 30 天 immutable 强缓存）

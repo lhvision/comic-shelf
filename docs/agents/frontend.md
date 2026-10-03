@@ -327,6 +327,11 @@
 - `onKeydown` 必须在 `settingsOpen` 时提前返回（除 Escape），否则方向键/Space 会翻动面板背后的页面，
   且会劫持 switch 等原生 button 的 Space 激活。
 - 自动切换的滚动行为需尊重 `prefers-reduced-motion: reduce`，此时用 `behavior: 'auto'`。
+- **画页局部放大、防脱轨视口平移与安全互斥（Page Zoom, Clamped Pan & Gesture Isolation - `usePageZoom.ts`）**：
+  - **对焦触发与黑色留白隔离**：仅在真实漫画图片区域内部双击（PC 双击或移动端 320ms 内且位移 <28px 双触）触发 2.5x 放大，并以点击物理坐标居中对齐；双击/双触外围黑色留白区域静默忽略；双击成功后建立 450ms 静默窗口屏蔽连带的原生 click，杜绝顶栏闪烁；
+  - **防脱轨平移约束（Edge Clamping）**：平移偏移量 $\text{panOffset}$ 严格受限在 $[-\text{maxX}, \text{maxX}]$ 与 $[-\text{maxY}, \text{maxY}]$ 内（$\text{max} = \frac{(\text{scale}-1) \times \text{dim}}{2}$），支持指针拖拽、滚轮滚动与方向键微调，杜绝画面移出视口露底；
+  - **独占手势与键盘切页拦截**：放大态下对所有导航键（`ArrowDown`/`Up`/`Left`/`Right`/`PageDown`/`PageUp`/`Space`/`Home`/`End`/`Tab`）全量 `preventDefault()`，阻断浏览器原生滚动与常规翻页，接管为平移视口（方向键步长 45px，翻页键/空格步长 135px）；同时静默挂起自动翻页倒计时，压制条漫章末过渡卡片；
+  - **四阶梯自愈复位（Reset Zoom）**：支持屏幕底部悬浮还原胶囊按钮、再次双击、`Escape` 键级联响应（优先退出放大），并在窗口尺寸突变（屏幕横竖屏旋转/Resize）或切换章节/排版模式时自动自愈复位至 1:1 原始排版。
 
 ## 7.5 每页 loading 兜底与视觉
 
