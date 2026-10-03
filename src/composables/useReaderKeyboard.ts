@@ -50,7 +50,7 @@ export interface UseReaderKeyboardOptions {
   /** 画页是否正处于放大态（用于拦截键盘翻页与让位 ESC 还原） */
   isZoomed?: Ref<boolean>
   /** 放大态下的方向键视口平移回调 */
-  onPanZoom?: (deltaX: number, deltaY: number) => void
+  onPanZoom?: (deltaX: number, deltaY: number, instant?: boolean) => void
   /** 放大态下的还原视图回调 */
   onResetZoom?: () => void
   /** 用户主动键盘翻阅交互通知 */
@@ -144,12 +144,19 @@ export function useReaderKeyboard(options: UseReaderKeyboardOptions) {
       if (zoomNavKeys.includes(event.key)) {
         event.preventDefault()
         const step = 45
-        if (event.key === 'ArrowDown') onPanZoom?.(0, -step)
-        else if (event.key === 'ArrowUp') onPanZoom?.(0, step)
-        else if (event.key === 'ArrowRight') onPanZoom?.(-step, 0)
-        else if (event.key === 'ArrowLeft') onPanZoom?.(step, 0)
-        else if (event.key === 'PageDown' || event.key === ' ') onPanZoom?.(0, -step * 3)
-        else if (event.key === 'PageUp') onPanZoom?.(0, step * 3)
+        const callPan = (dx: number, dy: number) => {
+          if (event.repeat) onPanZoom?.(dx, dy, true)
+          else onPanZoom?.(dx, dy)
+        }
+
+        if (event.key === 'ArrowDown') callPan(0, -step)
+        else if (event.key === 'ArrowUp') callPan(0, step)
+        else if (event.key === 'ArrowRight') callPan(-step, 0)
+        else if (event.key === 'ArrowLeft') callPan(step, 0)
+        else if (event.key === 'PageDown' || (!event.shiftKey && event.key === ' '))
+          callPan(0, -step * 3)
+        else if (event.key === 'PageUp' || (event.shiftKey && event.key === ' '))
+          callPan(0, step * 3)
       }
       return
     }

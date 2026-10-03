@@ -185,19 +185,128 @@ describe('usePageZoom', () => {
     })
   })
 
-  it('resets zoom on Escape key and stops event propagation', () => {
+  it('ignores non-primary pointer down or secondary mouse buttons (button !== 0)', () => {
     scope.run(() => {
-      const { toggleZoom, isZoomed } = usePageZoom()
+      const { toggleZoom, onPagePointerDown, isDragging, isZoomed } = usePageZoom()
 
       toggleZoom(1)
       expect(isZoomed.value).toBe(true)
 
-      const event = new KeyboardEvent('keydown', { key: 'Escape', cancelable: true })
-      const stopSpy = vi.spyOn(event, 'stopImmediatePropagation')
-      window.dispatchEvent(event)
+      // Right click down (button === 2) should not start drag
+      const rightDownEvent = {
+        button: 2,
+        pointerType: 'mouse',
+        isPrimary: true,
+        clientX: 100,
+        clientY: 100,
+        pointerId: 1,
+      } as unknown as PointerEvent
+
+      onPagePointerDown(1, rightDownEvent)
+      expect(isDragging.value).toBe(false)
+
+      // Non-primary touch down should not start drag
+      const secondaryTouchEvent = {
+        button: 0,
+        pointerType: 'touch',
+        isPrimary: false,
+        clientX: 100,
+        clientY: 100,
+        pointerId: 2,
+      } as unknown as PointerEvent
+
+      onPagePointerDown(1, secondaryTouchEvent)
+      expect(isDragging.value).toBe(false)
+    })
+  })
+
+  it('allows double-tap on black pillarbox margin to reset zoom when already zoomed', () => {
+    scope.run(() => {
+      vi.useFakeTimers()
+      const { toggleZoom, onPagePointerDown, onPagePointerUp, isZoomed } = usePageZoom()
+
+      toggleZoom(1)
+      expect(isZoomed.value).toBe(true)
+
+      const blackBoxTarget = document.createElement('div')
+      blackBoxTarget.className = 'page-frame'
+
+      // First tap on black margin while zoomed
+      const down1 = {
+        button: 0,
+        isPrimary: true,
+        clientX: 50,
+        clientY: 50,
+      } as unknown as PointerEvent
+      const up1 = {
+        button: 0,
+        isPrimary: true,
+        clientX: 50,
+        clientY: 50,
+        target: blackBoxTarget,
+        currentTarget: blackBoxTarget,
+      } as unknown as PointerEvent
+      onPagePointerDown(1, down1)
+      onPagePointerUp(1, up1)
+
+      // Second tap on black margin within 100ms
+      vi.advanceTimersByTime(100)
+      const down2 = {
+        button: 0,
+        isPrimary: true,
+        clientX: 52,
+        clientY: 51,
+      } as unknown as PointerEvent
+      const up2 = {
+        button: 0,
+        isPrimary: true,
+        clientX: 52,
+        clientY: 51,
+        target: blackBoxTarget,
+        currentTarget: blackBoxTarget,
+      } as unknown as PointerEvent
+      onPagePointerDown(1, down2)
+      onPagePointerUp(1, up2)
 
       expect(isZoomed.value).toBe(false)
-      expect(stopSpy).toHaveBeenCalled()
+      vi.useRealTimers()
+    })
+  })
+
+  it('disables transition during instant pan and restores transition after debounce', () => {
+    scope.run(() => {
+      vi.useFakeTimers()
+      const { toggleZoom, panBy, getPageZoomStyle } = usePageZoom({ scale: 2.5 })
+
+      const mockElement = {
+        getBoundingClientRect: () => ({
+          left: 0,
+          top: 0,
+          width: 400,
+          height: 600,
+          right: 400,
+          bottom: 600,
+          x: 0,
+          y: 0,
+          toJSON: () => {},
+        }),
+      } as unknown as HTMLElement
+
+      toggleZoom(1, { clientX: 200, clientY: 300 }, mockElement)
+
+      // Regular pan has transition
+      panBy(10, 10, false)
+      expect(getPageZoomStyle(1)?.transition).toContain('var(--duration-2)')
+
+      // Instant pan (e.g. Wheel/repeat) sets transition to none
+      panBy(10, 10, true)
+      expect(getPageZoomStyle(1)?.transition).toBe('none')
+
+      // After debounce, transition restores
+      vi.advanceTimersByTime(150)
+      expect(getPageZoomStyle(1)?.transition).toContain('var(--duration-2)')
+
+      vi.useRealTimers()
     })
   })
 

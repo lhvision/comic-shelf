@@ -14,7 +14,7 @@
  */
 
 import { computed, ref, type CSSProperties, type Ref } from 'vue'
-import { useEventListener } from '@vueuse/core'
+import { tryOnScopeDispose, useEventListener } from '@vueuse/core'
 
 export interface PageFrameDimensions {
   w: number
@@ -49,8 +49,8 @@ export interface UsePageZoomReturn {
   resetZoom: () => void
   /** 获取指定画页的缩放与平移内联样式 */
   getPageZoomStyle: (page: number) => CSSProperties | undefined
-  /** 微调平移放大的画页视口（用于键盘上下左右与滚轮滚动） */
-  panBy: (deltaX: number, deltaY: number) => void
+  /** 微调平移放大的画页视口（用于键盘上下左右与滚轮滚动，支持瞬时无过渡平移） */
+  panBy: (deltaX: number, deltaY: number, instant?: boolean) => void
   /** 最近一段时间内（默认 450ms）是否刚刚切换过缩放，用于屏蔽连带的原生 click 事件 */
   wasRecentlyToggled: (threshold?: number) => boolean
   /** 画页双击事件处理函数（PC 端） */
@@ -84,6 +84,8 @@ export function usePageZoom(options: UsePageZoomOptions = {}): UsePageZoomReturn
 
   const panOffset = ref({ x: 0, y: 0 })
   const isDragging = ref(false)
+  const isInstantPanning = ref(false)
+  let instantPanResetTimer: ReturnType<typeof setTimeout> | null = null
 
   // 记录放大画页的物理尺寸以计算防脱轨平移最大边界
   const currentFrameDim = ref<PageFrameDimensions>({ w: 0, h: 0 })
@@ -93,6 +95,10 @@ export function usePageZoom(options: UsePageZoomOptions = {}): UsePageZoomReturn
   let dragStartClientY = 0
   let dragStartPanX = 0
   let dragStartPanY = 0
+
+  // 触控单次手势位移追踪（杜绝滑动误判为双击）
+  let pointerDownClientX = 0
+  let pointerDownClientY = 0
 
   // 移动端双触（Double-tap）检测状态机
   let lastTapTime = 0
@@ -118,14 +124,33 @@ export function usePageZoom(options: UsePageZoomOptions = {}): UsePageZoomReturn
     zoomedPage.value = null
     panOffset.value = { x: 0, y: 0 }
     isDragging.value = false
+    isInstantPanning.value = false
+    if (instantPanResetTimer) {
+      clearTimeout(instantPanResetTimer)
+      instantPanResetTimer = null
+    }
     options.onZoomChange?.(false)
   }
 
   /**
    * 微调平移放大的画页视口（用于键盘上下左右与滚轮滚动）
+   * @param instant 是否瞬时生效，滚轮高频滚动或长按方向键连击时传入 true 屏蔽 CSS 缓动延迟
    */
-  function panBy(deltaX: number, deltaY: number) {
+  function panBy(deltaX: number, deltaY: number, instant = false) {
     if (!isZoomed.value) return
+    if (instant) {
+      isInstantPanning.value = true
+      if (instantPanResetTimer) {
+        clearTimeout(instantPanResetTimer)
+      }
+      instantPanResetTimer = setTimeout(() => {
+        isInstantPanning.value = false
+        instantPanResetTimer = null
+      }, 120)
+    } else {
+      isInstantPanning.value = false
+    }
+
     const { maxX, maxY } = getMaxPan(currentFrameDim.value)
     panOffset.value = {
       x: clamp(panOffset.value.x + deltaX, -maxX, maxX),
@@ -236,16 +261,24 @@ export function usePageZoom(options: UsePageZoomOptions = {}): UsePageZoomReturn
       return
     }
 
-    const target =
-      (event.currentTarget as HTMLElement | null) ||
-      (typeof document !== 'undefined'
-        ? document.querySelector<HTMLElement>(`#page-${page} .comic-page-img-frame`) ||
-          document.querySelector<HTMLElement>(`#page-${page} .page-frame`)
-        : null)
-    toggleZoom(page, { clientX: event.clientX, clientY: event.clientY }, target)
+    toggleZoom(
+      page,
+      { clientX: event.clientX, clientY: event.clientY },
+      event.currentTarget as HTMLElement | null,
+    )
   }
 
   function onPagePointerDown(page: number, event: PointerEvent) {
+    if (
+      (event.button ?? 0) !== 0 ||
+      (event.pointerType === 'touch' && (event.isPrimary ?? true) === false)
+    ) {
+      return
+    }
+
+    pointerDownClientX = event.clientX
+    pointerDownClientY = event.clientY
+
     if (zoomedPage.value === page) {
       isDragging.value = true
       dragStartClientX = event.clientX
@@ -259,7 +292,7 @@ export function usePageZoom(options: UsePageZoomOptions = {}): UsePageZoomReturn
       } catch {
         // ignore capture failure on unsupported environments
       }
-      event.stopPropagation()
+      event.stopPropagation?.()
     }
   }
 
@@ -273,11 +306,18 @@ export function usePageZoom(options: UsePageZoomOptions = {}): UsePageZoomReturn
         x: clamp(dragStartPanX + deltaX, -maxX, maxX),
         y: clamp(dragStartPanY + deltaY, -maxY, maxY),
       }
-      event.stopPropagation()
+      event.stopPropagation?.()
     }
   }
 
   function onPagePointerUp(page: number, event: PointerEvent) {
+    if (
+      (event.button ?? 0) !== 0 ||
+      (event.pointerType === 'touch' && (event.isPrimary ?? true) === false)
+    ) {
+      return
+    }
+
     let hadDrag = false
     if (zoomedPage.value === page && isDragging.value) {
       isDragging.value = false
@@ -292,10 +332,17 @@ export function usePageZoom(options: UsePageZoomOptions = {}): UsePageZoomReturn
       } catch {
         // ignore
       }
-      event.stopPropagation()
+      event.stopPropagation?.()
+    } else {
+      // 未放大状态下：若单次触控过程位移超过 12px（即发生了滑动或滚动手势），则不作为有效点击/双触候选
+      const downDist = Math.hypot(
+        event.clientX - pointerDownClientX,
+        event.clientY - pointerDownClientY,
+      )
+      hadDrag = downDist > 12
     }
 
-    // 若刚刚发生了明显拖拽平移，不记录为 tap 候选，杜绝拖拽后误判双触
+    // 若刚刚发生了明显拖拽平移或滑动手势，不记录为 tap 候选，杜绝拖拽后误判双触
     if (hadDrag) {
       lastTapTime = 0
       return
@@ -313,18 +360,16 @@ export function usePageZoom(options: UsePageZoomOptions = {}): UsePageZoomReturn
         return
       }
 
-      const target =
-        (event.currentTarget as HTMLElement | null) ||
-        (typeof document !== 'undefined'
-          ? document.querySelector<HTMLElement>(`#page-${page} .comic-page-img-frame`) ||
-            document.querySelector<HTMLElement>(`#page-${page} .page-frame`)
-          : null)
-      toggleZoom(page, { clientX: event.clientX, clientY: event.clientY }, target)
+      toggleZoom(
+        page,
+        { clientX: event.clientX, clientY: event.clientY },
+        event.currentTarget as HTMLElement | null,
+      )
       return
     }
 
-    // 仅在点击发生在图像区域内部时，才记录为双触候选 tap（排除黑色留白区）
-    if (isEventOnImage(event, page)) {
+    // 仅在点击发生在图像区域内部或当前已处于放大态时，才记录为双触候选 tap（放大态允许双击黑边自愈还原）
+    if (isEventOnImage(event, page) || zoomedPage.value === page) {
       lastTapTime = now
       lastTapPage = page
       lastTapX = event.clientX
@@ -335,6 +380,7 @@ export function usePageZoom(options: UsePageZoomOptions = {}): UsePageZoomReturn
   }
 
   function onPagePointerCancel(page: number, event: PointerEvent) {
+    lastTapTime = 0
     if (zoomedPage.value === page && isDragging.value) {
       isDragging.value = false
       const target = event.currentTarget as HTMLElement | null
@@ -351,7 +397,10 @@ export function usePageZoom(options: UsePageZoomOptions = {}): UsePageZoomReturn
       return {
         transform: `translate3d(${panOffset.value.x}px, ${panOffset.value.y}px, 0) scale(${scale})`,
         transformOrigin: 'center center',
-        transition: isDragging.value ? 'none' : 'transform var(--duration-2) var(--ease-out)',
+        transition:
+          isDragging.value || isInstantPanning.value
+            ? 'none'
+            : 'transform var(--duration-2) var(--ease-out)',
         zIndex: 20,
         touchAction: 'none',
         cursor: isDragging.value ? 'grabbing' : 'grab',
@@ -367,21 +416,19 @@ export function usePageZoom(options: UsePageZoomOptions = {}): UsePageZoomReturn
     return undefined
   }
 
-  function onKeyDown(event: KeyboardEvent) {
-    if (event.key === 'Escape' && isZoomed.value) {
-      resetZoom()
-      event.preventDefault()
-      event.stopImmediatePropagation()
-    }
-  }
-
   function onResize() {
     if (isZoomed.value) {
       resetZoom()
     }
   }
 
-  useEventListener(typeof window !== 'undefined' ? window : null, 'keydown', onKeyDown)
+  tryOnScopeDispose(() => {
+    if (instantPanResetTimer) {
+      clearTimeout(instantPanResetTimer)
+      instantPanResetTimer = null
+    }
+  })
+
   useEventListener(typeof window !== 'undefined' ? window : null, 'resize', onResize)
 
   return {

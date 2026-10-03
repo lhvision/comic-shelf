@@ -156,7 +156,7 @@ export function useReaderInteraction(options: UseReaderInteractionOptions) {
   function onViewportWheel(event: WheelEvent) {
     if (isZoomed.value) {
       event.preventDefault()
-      pageZoom.panBy(0, -event.deltaY)
+      pageZoom.panBy(0, -event.deltaY, true)
       return
     }
     onUserInteract()

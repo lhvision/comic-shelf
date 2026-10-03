@@ -252,9 +252,27 @@ describe('useReaderKeyboard - Cascading Escape & Filmstrip Toggle', () => {
     state.onKeydown(spaceEvent)
     expect(onPanZoom).toHaveBeenCalledWith(0, -135)
 
+    // Shift + Space pans upwards
+    const shiftSpaceEvent = new KeyboardEvent('keydown', {
+      key: ' ',
+      shiftKey: true,
+      cancelable: true,
+    })
+    state.onKeydown(shiftSpaceEvent)
+    expect(onPanZoom).toHaveBeenCalledWith(0, 135)
+
     const pageUpEvent = new KeyboardEvent('keydown', { key: 'PageUp', cancelable: true })
     state.onKeydown(pageUpEvent)
     expect(onPanZoom).toHaveBeenCalledWith(0, 135)
+
+    // Repeating keydown passes instant=true
+    const repeatDownEvent = new KeyboardEvent('keydown', {
+      key: 'ArrowDown',
+      repeat: true,
+      cancelable: true,
+    })
+    state.onKeydown(repeatDownEvent)
+    expect(onPanZoom).toHaveBeenCalledWith(0, -45, true)
 
     // Tab key is preventDefault-ed to prevent scroll displacement
     const tabEvent = new KeyboardEvent('keydown', { key: 'Tab', cancelable: true })

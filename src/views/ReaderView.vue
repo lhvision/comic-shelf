@@ -3,7 +3,7 @@
  * @file ReaderView.vue - 沉浸式阅读器主视图（纯编排视图，脚本严格 ≤150 行）
  */
 
-import { computed, onMounted, onUnmounted, ref, useTemplateRef } from 'vue'
+import { computed, onUnmounted, ref, useTemplateRef } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { usePreferredReducedMotion, useScrollLock, useToggle } from '@vueuse/core'
 import { useReaderSettings } from '@/composables/useReaderSettings'
@@ -98,12 +98,6 @@ const {
 
 const { recommendations, onReaderCompleted, onSelectComic, onOpenComicDetail, onBackToShelf } =
   useReaderCompletion({ source, sourceId, detail, total, lastRead })
-
-onMounted(() => {
-  if (typeof window !== 'undefined') {
-    window.scrollTo({ top: 0, behavior: 'instant' })
-  }
-})
 
 onUnmounted(() => {
   isBodyLocked.value = false
