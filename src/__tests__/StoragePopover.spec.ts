@@ -33,6 +33,8 @@ describe('StoragePopover component', () => {
     expect(items.length).toBeGreaterThanOrEqual(2)
     expect(items[0]?.text()).toContain('纸间核心资产')
     expect(items[1]?.text()).toContain('漫画阅览缓存')
+    expect(items[1]?.text()).toContain('正文画页')
+    expect(items[1]?.text()).toContain('书库封面')
   })
 
   it('renders clear button with trash icon and safe boundary notice', () => {

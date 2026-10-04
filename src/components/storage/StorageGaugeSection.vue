@@ -11,7 +11,11 @@
 
 import AppIcon from '@/components/AppIcon.vue'
 import AppProgressBar from '@/components/AppProgressBar.vue'
-import { MANGA_IMAGE_MAX_BUDGET } from '@/composables/useOfflineStorage'
+import {
+  MANGA_IMAGE_MAX_BUDGET,
+  MANGA_PAGE_MAX_BUDGET,
+  MANGA_COVER_MAX_BUDGET,
+} from '@/composables/useOfflineStorage'
 
 defineProps<{
   /** 浏览器提供的总配额字节数（为 0 表示未知） */
@@ -20,12 +24,16 @@ defineProps<{
   quotaFormatted: string
   /** 已使用百分比数值（0 ~ 100） */
   percentage: number
-  /** 漫画画页离线预算百分比数值（0 ~ 100） */
+  /** 漫画画页与封面离线预算百分比数值（0 ~ 100） */
   budgetPercentage?: number
   /** 格式化后的应用核心资源占用大小 */
   coreAssetBytesFormatted: string
-  /** 离线缓存的漫画画页总数 */
+  /** 离线缓存的漫画画页与封面总数 */
   mangaImageCount: number
+  /** 离线缓存的正文画页数 */
+  mangaPageCount?: number
+  /** 离线缓存的书库封面数 */
+  mangaCoverCount?: number
   /** 格式化后的漫画画页占用大小 */
   mangaImageBytesFormatted: string
   /** 客户端运行环境状态 */
@@ -35,12 +43,12 @@ defineProps<{
 
 <template>
   <div>
-    <!-- 存储容量平直标尺（基于漫画画页预算） -->
-    <section class="storage-gauge" aria-label="漫画画页离线预算">
+    <!-- 存储容量平直标尺（基于漫画离线图片总预算） -->
+    <section class="storage-gauge" aria-label="漫画离线缓存预算">
       <div class="gauge-meta">
         <span class="gauge-name">漫画离线缓存预算</span>
         <span class="gauge-value font-mono">
-          <strong>{{ mangaImageCount }}</strong>
+          <strong>{{ mangaImageCount.toLocaleString() }}</strong>
           <small>
             / {{ MANGA_IMAGE_MAX_BUDGET.toLocaleString() }} 张上限 ({{
               mangaImageBytesFormatted
@@ -54,7 +62,7 @@ defineProps<{
         :max="100"
         variant="gauge"
         color="accent"
-        :value-text="`已占用 ${mangaImageCount} 张画页 (${mangaImageBytesFormatted})`"
+        :value-text="`已占用 ${mangaImageCount.toLocaleString()} 张图片 (${mangaImageBytesFormatted})`"
         :label="`漫画离线缓存已使用 ${Math.round(budgetPercentage ?? percentage)}%`"
       />
     </section>
@@ -72,10 +80,18 @@ defineProps<{
       <li class="breakdown-item">
         <div class="item-text">
           <span class="item-title">漫画阅览缓存</span>
-          <small class="item-desc">
-            {{ mangaImageCount }} 张已读页面与封面（含本地淘汰索引） · 保留最新
-            {{ MANGA_IMAGE_MAX_BUDGET.toLocaleString() }} 页面
-          </small>
+          <div class="item-sub-breakdown">
+            <span class="sub-item-desc">
+              正文画页：{{ (mangaPageCount ?? mangaImageCount).toLocaleString() }} /
+              {{ MANGA_PAGE_MAX_BUDGET.toLocaleString() }} 张（滚动保留最新
+              {{ MANGA_PAGE_MAX_BUDGET.toLocaleString() }} 页）
+            </span>
+            <span v-if="mangaCoverCount !== undefined" class="sub-item-desc">
+              书库封面：{{ mangaCoverCount.toLocaleString() }} /
+              {{ MANGA_COVER_MAX_BUDGET.toLocaleString() }} 张（滚动保留最新
+              {{ MANGA_COVER_MAX_BUDGET.toLocaleString() }} 张）
+            </span>
+          </div>
         </div>
         <span class="item-metric font-mono">{{ mangaImageBytesFormatted }}</span>
       </li>
@@ -165,6 +181,20 @@ defineProps<{
   font-size: var(--text-caption);
   color: var(--ink-2);
   line-height: 1.3;
+}
+
+.item-sub-breakdown {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-0-5);
+  margin-top: var(--space-0-5);
+}
+
+.sub-item-desc {
+  display: block;
+  font-size: var(--text-caption);
+  color: var(--ink-2);
+  line-height: 1.35;
 }
 
 .item-metric {

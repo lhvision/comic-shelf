@@ -1,5 +1,10 @@
 import { describe, it, expect } from 'vite-plus/test'
-import { useOfflineStorage } from '@/composables/useOfflineStorage'
+import {
+  useOfflineStorage,
+  MANGA_PAGE_MAX_BUDGET,
+  MANGA_COVER_MAX_BUDGET,
+  MANGA_IMAGE_MAX_BUDGET,
+} from '@/composables/useOfflineStorage'
 import { formatBytes } from '@/utils/format'
 
 describe('useOfflineStorage composable', () => {
@@ -140,5 +145,92 @@ describe('useOfflineStorage composable', () => {
     const resetResult = await storage.resetAllStorage()
     expect(resetResult).toBe(0)
     storage.clearing.value = false
+  })
+
+  it('exports correct budget constants aligning to 4,000 total images', () => {
+    expect(MANGA_PAGE_MAX_BUDGET).toBe(3000)
+    expect(MANGA_COVER_MAX_BUDGET).toBe(1000)
+    expect(MANGA_IMAGE_MAX_BUDGET).toBe(4000)
+  })
+
+  it('separates page and cover counts and auto-trims excess entries on refreshEstimate', async () => {
+    const storage = useOfflineStorage()
+
+    const deletedPageUrls: string[] = []
+    const deletedCoverUrls: string[] = []
+
+    const mockExcessPageCache = {
+      keys: async () =>
+        Array.from({ length: 3050 }, (_, i) => new Request(`http://localhost/api/pages/${i}`)),
+      match: async () => null,
+      delete: async (req: Request) => {
+        deletedPageUrls.push(req.url)
+        return true
+      },
+    }
+
+    const mockExcessCoverCache = {
+      keys: async () =>
+        Array.from({ length: 1020 }, (_, i) => new Request(`http://localhost/api/covers/${i}`)),
+      match: async () => null,
+      delete: async (req: Request) => {
+        deletedCoverUrls.push(req.url)
+        return true
+      },
+    }
+
+    const originalStorageDescriptor = Object.getOwnPropertyDescriptor(navigator, 'storage')
+    const originalCaches = globalThis.caches
+
+    try {
+      Object.defineProperty(navigator, 'storage', {
+        value: {
+          estimate: () =>
+            Promise.resolve({
+              quota: 10 * 1024 * 1024 * 1024,
+              usage: 200 * 1024 * 1024,
+            }),
+        },
+        configurable: true,
+      })
+
+      const cachesMap = new Map<string, unknown>([
+        ['manga-images-cache', mockExcessPageCache],
+        ['manga-images-covers-cache', mockExcessCoverCache],
+      ])
+
+      Object.defineProperty(globalThis, 'caches', {
+        value: {
+          keys: () => Promise.resolve(Array.from(cachesMap.keys())),
+          open: (name: string) => Promise.resolve(cachesMap.get(name)),
+          delete: (name: string) => Promise.resolve(cachesMap.delete(name)),
+        },
+        configurable: true,
+      })
+
+      await storage.refreshEstimate()
+
+      // Pages: 3050 - 50 trimmed = 3000
+      expect(deletedPageUrls.length).toBe(50)
+      expect(storage.mangaPageCount.value).toBe(3000)
+
+      // Covers: 1020 - 20 trimmed = 1000
+      expect(deletedCoverUrls.length).toBe(20)
+      expect(storage.mangaCoverCount.value).toBe(1000)
+
+      // Total count capped at 4000
+      expect(storage.mangaImageCount.value).toBe(4000)
+      expect(storage.budgetPercentage.value).toBe(100)
+    } finally {
+      if (originalStorageDescriptor) {
+        Object.defineProperty(navigator, 'storage', originalStorageDescriptor)
+      }
+      if (originalCaches) {
+        Object.defineProperty(globalThis, 'caches', {
+          value: originalCaches,
+          configurable: true,
+        })
+      }
+    }
   })
 })

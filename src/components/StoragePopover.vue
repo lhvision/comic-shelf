@@ -27,6 +27,8 @@ const {
   percentage,
   budgetPercentage,
   mangaImageCount,
+  mangaPageCount,
+  mangaCoverCount,
   mangaImageBytes,
   usageFormatted,
   quotaFormatted,
@@ -149,6 +151,8 @@ async function handleResetAll() {
           :budget-percentage="budgetPercentage"
           :core-asset-bytes-formatted="coreAssetBytesFormatted"
           :manga-image-count="mangaImageCount"
+          :manga-page-count="mangaPageCount"
+          :manga-cover-count="mangaCoverCount"
           :manga-image-bytes-formatted="mangaImageBytesFormatted"
           :environment-status="environmentStatus"
         />

@@ -5,14 +5,53 @@ import { clearAllMetadataDb } from '@/utils/offlineDb'
 import { formatBytes } from '@/utils/format'
 import { clamp, sumPrecise } from '@/utils/math'
 
-export const MANGA_IMAGE_MAX_BUDGET = 3000
+export const MANGA_PAGE_MAX_BUDGET = 3000
+export const MANGA_COVER_MAX_BUDGET = 1000
+export const MANGA_IMAGE_MAX_BUDGET = 4000
+
+/**
+ * 对超出预算上限的 Cache 桶执行轻量 FIFO 头部自愈修剪
+ *
+ * @param cache 目标 CacheStorage 实例
+ * @param requests 当前桶内所有已缓存请求数组
+ * @param maxAllowed 允许保留的最大条目上限
+ * @returns 修剪对齐后的条目数量
+ */
+async function trimExcessCacheEntries(
+  cache: Cache,
+  requests: readonly Request[],
+  maxAllowed: number,
+): Promise<number> {
+  const excess = requests.length - maxAllowed
+  if (excess <= 0) return requests.length
+
+  const toDelete = requests.slice(0, excess)
+
+  // 并发异步删除超出配额的头部陈旧条目，直接释放物理磁盘
+  await Promise.all(
+    toDelete.map(async (req) => {
+      try {
+        if (typeof cache.delete === 'function') {
+          await cache.delete(req)
+        }
+      } catch {
+        // 忽略单个条目删除异常
+      }
+    }),
+  )
+
+  return maxAllowed
+}
 
 export const useOfflineStorage = createGlobalState(() => {
   const usage = ref(0)
   const quota = ref(0)
   const mangaImageCount = ref(0)
+  const mangaPageCount = ref(0)
+  const mangaCoverCount = ref(0)
   const mangaImageBytes = ref(0)
   const clearing = ref(false)
+  let estimating = false
 
   const isSupported = computed(() => {
     return (
@@ -28,7 +67,7 @@ export const useOfflineStorage = createGlobalState(() => {
     return clamp((usage.value / quota.value) * 100, 0, 100)
   })
 
-  // 漫画画页离线预算百分比（相对于 3,000 张上限）
+  // 漫画画页与封面离线总预算百分比（相对于 4,000 张上限：3,000 画页 + 1,000 封面）
   const budgetPercentage = computed(() => {
     if (mangaImageCount.value <= 0) return 0
     return clamp((mangaImageCount.value / MANGA_IMAGE_MAX_BUDGET) * 100, 0, 100)
@@ -59,6 +98,8 @@ export const useOfflineStorage = createGlobalState(() => {
 
   async function refreshEstimate(): Promise<void> {
     if (typeof window === 'undefined') return
+    if (estimating) return
+    estimating = true
     try {
       if (isSupported.value) {
         const estimate = await navigator.storage.estimate()
@@ -99,22 +140,35 @@ export const useOfflineStorage = createGlobalState(() => {
           }
           coreAssetBytes.value = precacheBytes
 
-          // 2. 漫画画页缓存统计（manga-images）
+          // 2. 漫画画页与封面缓存统计及轻量自愈修剪（manga-images & covers）
           const mangaCacheNames = cacheKeys.filter(
             (k) => k.includes('manga-images') || k.includes('images'),
           )
 
-          let count = 0
+          let pageCount = 0
+          let coverCount = 0
+
           for (const name of mangaCacheNames) {
             try {
               const cache = await caches.open(name)
               const requests = await cache.keys()
-              count += requests.length
+              const isCover = name.includes('cover')
+              const maxBudget = isCover ? MANGA_COVER_MAX_BUDGET : MANGA_PAGE_MAX_BUDGET
+              const trimmedCount = await trimExcessCacheEntries(cache, requests, maxBudget)
+
+              if (isCover) {
+                coverCount += trimmedCount
+              } else {
+                pageCount += trimmedCount
+              }
             } catch {
               // 忽略单个缓存打开异常
             }
           }
-          // 立即更新数量，界面第一时间呈现
+
+          const count = pageCount + coverCount
+          mangaPageCount.value = pageCount
+          mangaCoverCount.value = coverCount
           mangaImageCount.value = count
 
           // 3. 计算画页物理真实占用（对齐浏览器物理磁盘，消除逆向减法对核心资产的污染）
@@ -146,6 +200,8 @@ export const useOfflineStorage = createGlobalState(() => {
       }
     } catch {
       // 降级守卫
+    } finally {
+      estimating = false
     }
   }
 
@@ -241,6 +297,8 @@ export const useOfflineStorage = createGlobalState(() => {
       }
 
       // 立即重置前端内存状态，防止异步延迟出现视觉残留
+      mangaPageCount.value = 0
+      mangaCoverCount.value = 0
       mangaImageCount.value = 0
       mangaImageBytes.value = 0
 
@@ -316,6 +374,8 @@ export const useOfflineStorage = createGlobalState(() => {
 
       await clearAllMetadataDb()
 
+      mangaPageCount.value = 0
+      mangaCoverCount.value = 0
       mangaImageCount.value = 0
       mangaImageBytes.value = 0
       coreAssetBytes.value = 0
@@ -334,6 +394,8 @@ export const useOfflineStorage = createGlobalState(() => {
     percentage,
     budgetPercentage,
     mangaImageCount,
+    mangaPageCount,
+    mangaCoverCount,
     mangaImageBytes,
     coreAssetBytes,
     usageFormatted,
