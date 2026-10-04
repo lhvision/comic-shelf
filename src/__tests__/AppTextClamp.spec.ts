@@ -164,4 +164,44 @@ describe('AppTextClamp', () => {
     expect(tip.exists()).toBe(true)
     expect(tip.text()).toBe('移动端触碰测试文本内容')
   })
+
+  it('does not falsely mark multi-line text as truncated when only horizontal scrollWidth exceeds clientWidth', async () => {
+    const wrapper = mount(AppTextClamp, {
+      props: {
+        text: '这是一段两行文本，排版正常且未发生截断',
+        lines: 2,
+      },
+    })
+
+    const clampEl = wrapper.find('.app-text-clamp')
+    // 模拟多行文本未纵向溢出，但由于换行导致整体 scrollWidth > clientWidth（Chromium 常见行为）
+    Object.defineProperty(clampEl.element, 'scrollHeight', { value: 40, configurable: true })
+    Object.defineProperty(clampEl.element, 'clientHeight', { value: 40, configurable: true })
+    Object.defineProperty(clampEl.element, 'scrollWidth', { value: 320, configurable: true })
+    Object.defineProperty(clampEl.element, 'clientWidth', { value: 200, configurable: true })
+
+    await clampEl.trigger('pointerenter')
+    await nextTick()
+
+    expect(clampEl.classes()).not.toContain('is-truncated')
+  })
+
+  it('marks multi-line text as truncated when vertical scrollHeight exceeds clientHeight', async () => {
+    const wrapper = mount(AppTextClamp, {
+      props: {
+        text: '这是一段超长文本，真实发生纵向溢出并被截断打点',
+        lines: 2,
+      },
+    })
+
+    const clampEl = wrapper.find('.app-text-clamp')
+    // 模拟纵向溢出（scrollHeight > clientHeight + 1）
+    Object.defineProperty(clampEl.element, 'scrollHeight', { value: 70, configurable: true })
+    Object.defineProperty(clampEl.element, 'clientHeight', { value: 40, configurable: true })
+
+    await clampEl.trigger('pointerenter')
+    await nextTick()
+
+    expect(clampEl.classes()).toContain('is-truncated')
+  })
 })

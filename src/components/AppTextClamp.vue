@@ -75,9 +75,9 @@ function checkTruncation(): boolean {
   const el = textRef.value
   if (!el) return false
 
-  // 1px 容差消除次像素渲染舍入抖动
+  // 1px 容差消除次像素渲染舍入抖动；横向溢出仅适用于单行截断（多行文本由 vertical overflow 判定，杜绝 Chromium 下多行 scrollWidth 假溢出）
   const hasVerticalOverflow = el.scrollHeight > el.clientHeight + 1
-  const hasHorizontalOverflow = el.scrollWidth > el.clientWidth + 1
+  const hasHorizontalOverflow = props.lines === 1 && el.scrollWidth > el.clientWidth + 1
   const truncated = hasVerticalOverflow || hasHorizontalOverflow
   isTruncated.value = truncated
   return truncated
@@ -152,12 +152,19 @@ watch(
   min-width: 0;
 }
 
+.app-text-clamp-wrapper.is-block :deep(.tooltip__trigger) {
+  display: flex;
+  width: 100%;
+  min-width: 0;
+}
+
 .app-text-clamp {
   display: -webkit-box;
   -webkit-box-orient: vertical;
   overflow: hidden;
   word-break: break-word;
   overflow-wrap: anywhere;
+  text-wrap: wrap;
   max-width: 100%;
   min-width: 0;
   font-size: inherit;
