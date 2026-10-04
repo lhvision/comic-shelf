@@ -24,17 +24,16 @@ describe('StoragePopover component', () => {
     expect(progressbar.attributes('aria-valuemin')).toBe('0')
     expect(progressbar.attributes('aria-valuemax')).toBe('100')
     expect(progressbar.attributes('aria-valuenow')).toBeDefined()
-    expect(progressbar.attributes('aria-label')).toContain('漫画离线缓存')
+    expect(progressbar.attributes('aria-label')).toContain('书库封面')
   })
 
-  it('renders breakdown items for core assets and manga images', () => {
+  it('renders breakdown items for core assets and manga covers', () => {
     const wrapper = mount(StoragePopover)
     const items = wrapper.findAll('.breakdown-item')
     expect(items.length).toBeGreaterThanOrEqual(2)
     expect(items[0]?.text()).toContain('纸间核心资产')
-    expect(items[1]?.text()).toContain('漫画阅览缓存')
-    expect(items[1]?.text()).toContain('正文画页')
-    expect(items[1]?.text()).toContain('书库封面')
+    expect(items[1]?.text()).toContain('书库封面缓存')
+    expect(items[1]?.text()).toContain('作品封面与章节封面')
   })
 
   it('renders clear button with trash icon and safe boundary notice', () => {

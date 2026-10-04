@@ -1,10 +1,5 @@
 import { describe, it, expect } from 'vite-plus/test'
-import {
-  useOfflineStorage,
-  MANGA_PAGE_MAX_BUDGET,
-  MANGA_COVER_MAX_BUDGET,
-  MANGA_IMAGE_MAX_BUDGET,
-} from '@/composables/useOfflineStorage'
+import { useOfflineStorage, MANGA_COVER_MAX_BUDGET } from '@/composables/useOfflineStorage'
 import { formatBytes } from '@/utils/format'
 
 describe('useOfflineStorage composable', () => {
@@ -101,7 +96,7 @@ describe('useOfflineStorage composable', () => {
 
       const cachesMap = new Map<string, unknown>([
         ['workbox-precache-v2-http://localhost/', mockPrecache],
-        ['manga-images-cache', mockMangaCache],
+        ['manga-images-covers-cache', mockMangaCache],
       ])
 
       Object.defineProperty(globalThis, 'caches', {
@@ -115,12 +110,12 @@ describe('useOfflineStorage composable', () => {
 
       await storage.refreshEstimate()
 
-      // 核心资产必须独立且真实反映 Precache (~1 MB)，绝不被画页反向污染膨胀到 56 MB
+      // 核心资产必须独立且真实反映 Precache (~1 MB)，绝不被封面反向污染
       expect(storage.coreAssetBytes.value).toBe(1024 * 1024)
       expect(storage.coreAssetBytesFormatted.value).toBe('1.0 MB')
 
-      // 漫画画页必须正确统计为 497 张，且真实占用对齐为 86 MB - 1 MB = 85 MB (或根据 usageDetails.caches 对齐)
-      expect(storage.mangaImageCount.value).toBe(497)
+      // 漫画封面必须正确统计为 497 张，且真实占用对齐为 86 MB - 1 MB = 85 MB
+      expect(storage.mangaCoverCount.value).toBe(497)
       expect(storage.mangaImageBytes.value).toBe(85 * 1024 * 1024)
       expect(storage.mangaImageBytesFormatted.value).toBe('85 MB')
     } finally {
@@ -147,36 +142,19 @@ describe('useOfflineStorage composable', () => {
     storage.clearing.value = false
   })
 
-  it('exports correct budget constants aligning to 4,000 total images', () => {
-    expect(MANGA_PAGE_MAX_BUDGET).toBe(3000)
+  it('exports correct cover budget constant of 1,000 images', () => {
     expect(MANGA_COVER_MAX_BUDGET).toBe(1000)
-    expect(MANGA_IMAGE_MAX_BUDGET).toBe(4000)
   })
 
-  it('separates page and cover counts and auto-trims excess entries on refreshEstimate', async () => {
+  it('silently removes legacy manga-images-cache and tracks cover counts on refreshEstimate', async () => {
     const storage = useOfflineStorage()
 
-    const deletedPageUrls: string[] = []
-    const deletedCoverUrls: string[] = []
+    const deletedCaches: string[] = []
 
-    const mockExcessPageCache = {
+    const mockCoverCache = {
       keys: async () =>
-        Array.from({ length: 3050 }, (_, i) => new Request(`http://localhost/api/pages/${i}`)),
+        Array.from({ length: 42 }, (_, i) => new Request(`http://localhost/api/covers/${i}`)),
       match: async () => null,
-      delete: async (req: Request) => {
-        deletedPageUrls.push(req.url)
-        return true
-      },
-    }
-
-    const mockExcessCoverCache = {
-      keys: async () =>
-        Array.from({ length: 1020 }, (_, i) => new Request(`http://localhost/api/covers/${i}`)),
-      match: async () => null,
-      delete: async (req: Request) => {
-        deletedCoverUrls.push(req.url)
-        return true
-      },
     }
 
     const originalStorageDescriptor = Object.getOwnPropertyDescriptor(navigator, 'storage')
@@ -195,32 +173,30 @@ describe('useOfflineStorage composable', () => {
       })
 
       const cachesMap = new Map<string, unknown>([
-        ['manga-images-cache', mockExcessPageCache],
-        ['manga-images-covers-cache', mockExcessCoverCache],
+        ['manga-images-cache', {}],
+        ['manga-images-covers-cache', mockCoverCache],
       ])
 
       Object.defineProperty(globalThis, 'caches', {
         value: {
           keys: () => Promise.resolve(Array.from(cachesMap.keys())),
           open: (name: string) => Promise.resolve(cachesMap.get(name)),
-          delete: (name: string) => Promise.resolve(cachesMap.delete(name)),
+          delete: (name: string) => {
+            deletedCaches.push(name)
+            return Promise.resolve(cachesMap.delete(name))
+          },
         },
         configurable: true,
       })
 
       await storage.refreshEstimate()
 
-      // Pages: 3050 - 50 trimmed = 3000
-      expect(deletedPageUrls.length).toBe(50)
-      expect(storage.mangaPageCount.value).toBe(3000)
+      // Legacy manga-images-cache must be silently deleted
+      expect(deletedCaches).toContain('manga-images-cache')
 
-      // Covers: 1020 - 20 trimmed = 1000
-      expect(deletedCoverUrls.length).toBe(20)
-      expect(storage.mangaCoverCount.value).toBe(1000)
-
-      // Total count capped at 4000
-      expect(storage.mangaImageCount.value).toBe(4000)
-      expect(storage.budgetPercentage.value).toBe(100)
+      // Covers count must be accurately tracked
+      expect(storage.mangaCoverCount.value).toBe(42)
+      expect(storage.budgetPercentage.value).toBe((42 / 1000) * 100)
     } finally {
       if (originalStorageDescriptor) {
         Object.defineProperty(navigator, 'storage', originalStorageDescriptor)
@@ -236,9 +212,7 @@ describe('useOfflineStorage composable', () => {
 
   it('clears image caches and wipes workbox-expiration in indexedDB while preserving metadata db', async () => {
     const storage = useOfflineStorage()
-    storage.mangaPageCount.value = 500
     storage.mangaCoverCount.value = 100
-    storage.mangaImageCount.value = 600
     storage.mangaImageBytes.value = 10 * 1024 * 1024
 
     const deletedCaches: string[] = []
@@ -298,13 +272,14 @@ describe('useOfflineStorage composable', () => {
       },
     }
 
+    const activeCaches = new Set(['manga-images-cache', 'manga-images-covers-cache', 'app-shell'])
     try {
       Object.defineProperty(globalThis, 'caches', {
         value: {
-          keys: () =>
-            Promise.resolve(['manga-images-cache', 'manga-images-covers-cache', 'app-shell']),
+          keys: () => Promise.resolve(Array.from(activeCaches)),
           delete: (name: string) => {
             deletedCaches.push(name)
+            activeCaches.delete(name)
             return Promise.resolve(true)
           },
         },
@@ -316,11 +291,9 @@ describe('useOfflineStorage composable', () => {
       })
 
       const res = await storage.clearImageCache()
-      expect(res.freedCount).toBe(600)
+      expect(res.freedCount).toBe(100)
       expect(deletedCaches).toEqual(['manga-images-cache', 'manga-images-covers-cache'])
-      expect(storage.mangaPageCount.value).toBe(0)
       expect(storage.mangaCoverCount.value).toBe(0)
-      expect(storage.mangaImageCount.value).toBe(0)
       expect(storage.mangaImageBytes.value).toBe(0)
 
       // 验证：清除了 workbox-expiration 与 manga 相关库，但严格保护了 comic-shelf-meta

@@ -4,7 +4,7 @@
  * @description 存储管理操作按钮区组件（双级清理与两步防误触危险区）。
  *
  * 核心功能：
- * - 释放漫画画页缓存（保留应用离线运行核心资源）；
+ * - 释放书库封面缓存（保留应用离线运行核心资源）；
  * - 彻底重置离线环境（带 5s VueUse `refAutoReset` 自动自愈的危险操作二次确认）；
  * - 暴露 `resetConfirmation()` 供浮层关闭或重开时重置确认状态。
  */
@@ -15,16 +15,16 @@ import AppButton from '@/components/AppButton.vue'
 defineProps<{
   /** 是否正在执行清理异步操作中 */
   clearing: boolean
-  /** 离线漫画画页数量 */
-  mangaImageCount: number
-  /** 离线漫画画页字节数 */
+  /** 离线漫画封面数量 */
+  mangaCoverCount: number
+  /** 离线漫画封面字节数 */
   mangaImageBytes: number
-  /** 格式化后的漫画画页大小描述 */
+  /** 格式化后的漫画封面大小描述 */
   mangaImageBytesFormatted: string
 }>()
 
 const emit = defineEmits<{
-  /** 触发仅清理漫画画页缓存 */
+  /** 触发仅清理漫画封面缓存 */
   clearImages: []
   /** 触发彻底重置全部离线存储与缓存 */
   resetAll: []
@@ -66,10 +66,10 @@ defineExpose({
       icon="trash"
       block
       :loading="clearing"
-      :disabled="mangaImageCount === 0 && mangaImageBytes === 0"
+      :disabled="mangaCoverCount === 0 && mangaImageBytes === 0"
       @click="emit('clearImages')"
     >
-      清理阅览图片缓存 (释放 {{ mangaImageBytesFormatted }})
+      清理书库封面缓存 (释放 {{ mangaImageBytesFormatted }})
     </AppButton>
 
     <div class="reset-wrapper" :class="{ 'is-confirming': isConfirmingReset }">

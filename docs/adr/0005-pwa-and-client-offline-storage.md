@@ -80,3 +80,17 @@
 2. **iOS PWA 挂起防御与端侧自愈修剪（Safe Client Trim）**：
    - 针对 iOS Standalone PWA 激进挂起 Service Worker 导致 Workbox 淘汰滞后的游离超额（如突破 4,000 的部分），在展开 `<StoragePopover>` 探测存储时由前端轻量并发调用 Cache API 剪除超额最早项，直接释放磁盘空间；
    - 在 Workbox 运行时缓存中为画页桶补充 `matchOptions: { ignoreSearch: true }`，确保重试页面在后台淘汰时被正确命中。
+
+---
+
+## 补充决议（2026-10）：废弃端侧正文缓存，全面回归纯封面轻量化离线
+
+1. **确立「正文画页阅后即走」哲学并废弃 `manga-images-cache`**：
+   - 正文画页不再由 Service Worker 强行拦截并写入持久 `CacheStorage`，全量交由浏览器原生网络栈按服务端 HTTP 响应头（`Cache-Control: public, max-age=2592000, immutable`）进行内存与磁盘缓存；
+   - 读者在阅读器内前后翻页、放大复查与重试，由浏览器标准 HTTP 缓存原生保障零延迟命中，彻底消除在端侧维护 3,000 张画页带来的巨大复杂度；
+   - 彻底规避 3,000 张画页引发的 iOS Standalone PWA 线程休眠淘汰滞后、LevelDB WAL 磁盘预分配以及端侧 FIFO 自愈修剪代码；
+   - 客户端初始化探测时对存量设备旧的 `manga-images-cache` 桶执行一次性静默自愈删除，无感释放老用户数个 GB 孤岛空间。
+
+2. **精简客户端离线预算为主书库封面（1,000 张上限）**：
+   - 客户端离线图片预算全量收敛为 `manga-images-covers-cache` 单桶（包含作品封面与章节封面，1,000 张上限，约 30~50MB）；
+   - 彻底移除双桶预算换算与端侧手动修剪逻辑，仪表盘全面做减法，聚焦于「书库封面离线预算（1,000 张上限）」与「纸间核心外壳」，操作按钮对齐为「清理书库封面缓存」。

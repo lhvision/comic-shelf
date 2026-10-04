@@ -121,8 +121,8 @@ flowchart TD
 
 - **端侧 CacheStorage（PWA 离线运行）**：
   - `workbox-precache`：HTML/JS/CSS/WebP 应用外壳预缓存（严格控制在 ~1MB 预算内）；
-  - `manga-images-cache`：漫画原图与缩略图 Cache-First（LRU 限制 3000 张 / 30 天，开启 ignoreSearch 兼顾重试）；
   - `manga-images-covers-cache`：书架与章节封面 Cache-First（LRU 限制 1000 张 / 30 天，严格匹配尺寸保真）；
+  - 正文画页不入持久 CacheStorage（阅后即走）：由浏览器原生网络栈按服务端 HTTP `Cache-Control` (30天 immutable) 自动管理内存与磁盘缓存，保证前后翻页零延迟的同时彻底规避客户端存储膨胀；
   - `illustration-pool-cache`：全站看板角色与加载插画运行时懒加载缓存（30 张上限）；
   - **API 离线缓存红线（PITFALLS #14）**：严禁在 Service Worker 中缓存任何 `/api/` 动态端点（防鉴权劫持与脏状态）；动态元数据统一走前端内存 SWR（`useMemoize`）直连后端；
   - **安全红线**：所有针对缓存的查看与清理（`useOfflineStorage`）**100% 局限于端侧浏览器**，零破坏性服务端 API，绝不触碰服务端持久化目录 `backend/data/`。

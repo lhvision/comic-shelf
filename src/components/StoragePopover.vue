@@ -26,8 +26,6 @@ const {
   quota,
   percentage,
   budgetPercentage,
-  mangaImageCount,
-  mangaPageCount,
   mangaCoverCount,
   mangaImageBytes,
   usageFormatted,
@@ -150,8 +148,6 @@ async function handleResetAll() {
           :percentage="percentage"
           :budget-percentage="budgetPercentage"
           :core-asset-bytes-formatted="coreAssetBytesFormatted"
-          :manga-image-count="mangaImageCount"
-          :manga-page-count="mangaPageCount"
           :manga-cover-count="mangaCoverCount"
           :manga-image-bytes-formatted="mangaImageBytesFormatted"
           :environment-status="environmentStatus"
@@ -161,7 +157,7 @@ async function handleResetAll() {
         <StorageActionsSection
           ref="actionsRef"
           :clearing="clearing"
-          :manga-image-count="mangaImageCount"
+          :manga-cover-count="mangaCoverCount"
           :manga-image-bytes="mangaImageBytes"
           :manga-image-bytes-formatted="mangaImageBytesFormatted"
           @clear-images="handleClearImages"

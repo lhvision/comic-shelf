@@ -176,27 +176,6 @@ export default defineConfig({
         runtimeCaching: [
           {
             urlPattern: ({ url }) =>
-              url.pathname.startsWith('/api/library/') && url.pathname.includes('/pages/'),
-            handler: 'CacheFirst',
-            options: {
-              cacheName: 'manga-images-cache',
-              matchOptions: {
-                ignoreSearch: true,
-              },
-              expiration: {
-                maxEntries: 3000,
-                maxAgeSeconds: 30 * 24 * 60 * 60,
-                matchOptions: {
-                  ignoreSearch: true,
-                },
-              },
-              cacheableResponse: {
-                statuses: [0, 200],
-              },
-            },
-          },
-          {
-            urlPattern: ({ url }) =>
               url.pathname.startsWith('/api/library/') &&
               (url.pathname.includes('/covers/') || url.pathname.includes('/cover')),
             handler: 'CacheFirst',

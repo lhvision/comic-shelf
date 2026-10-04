@@ -5,51 +5,11 @@ import { clearAllMetadataDb } from '@/utils/offlineDb'
 import { formatBytes } from '@/utils/format'
 import { clamp, sumPrecise } from '@/utils/math'
 
-export const MANGA_PAGE_MAX_BUDGET = 3000
 export const MANGA_COVER_MAX_BUDGET = 1000
-export const MANGA_IMAGE_MAX_BUDGET = 4000
-
-/**
- * 对超出预算上限的 Cache 桶执行轻量 FIFO 头部自愈修剪
- *
- * @param cache 目标 CacheStorage 实例
- * @param requests 当前桶内所有已缓存请求数组
- * @param maxAllowed 允许保留的最大条目上限
- * @returns 修剪对齐后的条目数量
- */
-async function trimExcessCacheEntries(
-  cache: Cache,
-  requests: readonly Request[],
-  maxAllowed: number,
-): Promise<number> {
-  const excess = requests.length - maxAllowed
-  if (excess <= 0) return requests.length
-
-  const toDelete = requests.slice(0, excess)
-  let deletedCount = 0
-
-  // 并发异步删除超出配额的头部陈旧条目，直接释放物理磁盘
-  await Promise.all(
-    toDelete.map(async (req) => {
-      try {
-        if (typeof cache.delete === 'function') {
-          const res = await cache.delete(req)
-          if (res !== false) deletedCount++
-        }
-      } catch {
-        // 忽略单个条目删除异常
-      }
-    }),
-  )
-
-  return requests.length - deletedCount
-}
 
 export const useOfflineStorage = createGlobalState(() => {
   const usage = ref(0)
   const quota = ref(0)
-  const mangaImageCount = ref(0)
-  const mangaPageCount = ref(0)
   const mangaCoverCount = ref(0)
   const mangaImageBytes = ref(0)
   const clearing = ref(false)
@@ -69,10 +29,10 @@ export const useOfflineStorage = createGlobalState(() => {
     return clamp((usage.value / quota.value) * 100, 0, 100)
   })
 
-  // 漫画画页与封面离线总预算百分比（相对于 4,000 张上限：3,000 画页 + 1,000 封面）
+  // 书库封面离线预算百分比（相对于 1,000 张上限）
   const budgetPercentage = computed(() => {
-    if (mangaImageCount.value <= 0) return 0
-    return clamp((mangaImageCount.value / MANGA_IMAGE_MAX_BUDGET) * 100, 0, 100)
+    if (mangaCoverCount.value <= 0) return 0
+    return clamp((mangaCoverCount.value / MANGA_COVER_MAX_BUDGET) * 100, 0, 100)
   })
 
   const usageFormatted = computed(() => formatBytes(usage.value))
@@ -108,7 +68,7 @@ export const useOfflineStorage = createGlobalState(() => {
         usage.value = estimate.usage ?? 0
         quota.value = estimate.quota ?? 0
 
-        // 细分探测 CacheStorage 中的核心资产预缓存与漫画图片缓存
+        // 细分探测 CacheStorage 中的核心资产预缓存与书库封面缓存
         if (typeof caches !== 'undefined') {
           const cacheKeys = await caches.keys()
 
@@ -142,39 +102,35 @@ export const useOfflineStorage = createGlobalState(() => {
           }
           coreAssetBytes.value = precacheBytes
 
-          // 2. 漫画画页与封面缓存统计及轻量自愈修剪（manga-images & covers）
-          const mangaCacheNames = cacheKeys.filter(
-            (k) => k.includes('manga-images') || k.includes('images'),
+          // 2. 存量旧正文画页缓存 (manga-images-cache) 静默自愈清理（释放数个 GB 孤岛数据）
+          if (cacheKeys.includes('manga-images-cache')) {
+            try {
+              await caches.delete('manga-images-cache')
+            } catch {
+              // 忽略删除异常
+            }
+          }
+
+          // 3. 书库封面与章节封面缓存统计 (manga-images-covers-cache)
+          const coverCacheNames = cacheKeys.filter(
+            (k) => k.includes('cover') && !k.includes('precache'),
           )
 
-          let pageCount = 0
           let coverCount = 0
-
-          for (const name of mangaCacheNames) {
+          for (const name of coverCacheNames) {
             try {
               const cache = await caches.open(name)
               const requests = await cache.keys()
-              const isCover = name.includes('cover')
-              const maxBudget = isCover ? MANGA_COVER_MAX_BUDGET : MANGA_PAGE_MAX_BUDGET
-              const trimmedCount = await trimExcessCacheEntries(cache, requests, maxBudget)
-
-              if (isCover) {
-                coverCount += trimmedCount
-              } else {
-                pageCount += trimmedCount
-              }
+              coverCount += requests.length
             } catch {
               // 忽略单个缓存打开异常
             }
           }
 
-          const count = pageCount + coverCount
-          mangaPageCount.value = pageCount
           mangaCoverCount.value = coverCount
-          mangaImageCount.value = count
 
-          // 3. 计算画页物理真实占用（对齐浏览器物理磁盘，消除逆向减法对核心资产的污染）
-          if (count === 0) {
+          // 4. 计算封面物理真实占用
+          if (coverCount === 0) {
             mangaImageBytes.value = 0
           } else {
             const usageDetails = (estimate as unknown as { usageDetails?: { caches?: number } })
@@ -182,20 +138,17 @@ export const useOfflineStorage = createGlobalState(() => {
             const cachesTotal = usageDetails?.caches
 
             if (typeof cachesTotal === 'number' && cachesTotal > 0) {
-              // 支持 usageDetails.caches：从物理 CacheStorage 中扣除独立测出的核心资产
               mangaImageBytes.value = Math.max(
-                count * 60 * 1024,
+                coverCount * 30 * 1024,
                 cachesTotal - coreAssetBytes.value,
               )
             } else if (usage.value > coreAssetBytes.value) {
-              // 通用支持：扣除核心资产后的真实 Origin 物理占用归属于漫画画页与媒体缓存
               mangaImageBytes.value = Math.max(
-                count * 60 * 1024,
+                coverCount * 30 * 1024,
                 usage.value - coreAssetBytes.value,
               )
             } else {
-              // 离线/受限环境兜底：按每张画页均值约 180 KB
-              mangaImageBytes.value = count * 180 * 1024
+              mangaImageBytes.value = coverCount * 45 * 1024
             }
           }
         }
@@ -276,7 +229,7 @@ export const useOfflineStorage = createGlobalState(() => {
     if (typeof caches === 'undefined' || clearing.value) return { freedBytes: 0, freedCount: 0 }
     clearing.value = true
     const prevBytes = mangaImageBytes.value
-    const prevCount = mangaImageCount.value
+    const prevCount = mangaCoverCount.value
 
     try {
       const keys = await caches.keys()
@@ -293,9 +246,7 @@ export const useOfflineStorage = createGlobalState(() => {
       }
 
       // 立即重置前端内存状态，防止异步延迟出现视觉残留
-      mangaPageCount.value = 0
       mangaCoverCount.value = 0
-      mangaImageCount.value = 0
       mangaImageBytes.value = 0
 
       // 清理与漫画画页及 Workbox 过期索引相关的 IndexedDB 记录，保护用户书架元数据
@@ -321,7 +272,7 @@ export const useOfflineStorage = createGlobalState(() => {
 
       await refreshEstimate()
 
-      const freedBytes = prevBytes || prevCount * 180 * 1024
+      const freedBytes = prevBytes || prevCount * 45 * 1024
       return { freedBytes, freedCount: prevCount }
     } finally {
       clearing.value = false
@@ -371,9 +322,7 @@ export const useOfflineStorage = createGlobalState(() => {
 
       await clearAllMetadataDb()
 
-      mangaPageCount.value = 0
       mangaCoverCount.value = 0
-      mangaImageCount.value = 0
       mangaImageBytes.value = 0
       coreAssetBytes.value = 0
       usage.value = 0
@@ -390,8 +339,6 @@ export const useOfflineStorage = createGlobalState(() => {
     quota,
     percentage,
     budgetPercentage,
-    mangaImageCount,
-    mangaPageCount,
     mangaCoverCount,
     mangaImageBytes,
     coreAssetBytes,
