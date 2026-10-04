@@ -208,6 +208,9 @@ export default defineConfig({
               expiration: {
                 maxEntries: 1000,
                 maxAgeSeconds: 30 * 24 * 60 * 60,
+                matchOptions: {
+                  ignoreSearch: true,
+                },
               },
               cacheableResponse: {
                 statuses: [0, 200],

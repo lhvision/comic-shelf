@@ -26,13 +26,15 @@ async function trimExcessCacheEntries(
   if (excess <= 0) return requests.length
 
   const toDelete = requests.slice(0, excess)
+  let deletedCount = 0
 
   // 并发异步删除超出配额的头部陈旧条目，直接释放物理磁盘
   await Promise.all(
     toDelete.map(async (req) => {
       try {
         if (typeof cache.delete === 'function') {
-          await cache.delete(req)
+          const res = await cache.delete(req)
+          if (res !== false) deletedCount++
         }
       } catch {
         // 忽略单个条目删除异常
@@ -40,7 +42,7 @@ async function trimExcessCacheEntries(
     }),
   )
 
-  return maxAllowed
+  return requests.length - deletedCount
 }
 
 export const useOfflineStorage = createGlobalState(() => {
