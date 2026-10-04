@@ -86,8 +86,8 @@ defineProps<{
               {{ MANGA_PAGE_MAX_BUDGET.toLocaleString() }} 张（滚动保留最新
               {{ MANGA_PAGE_MAX_BUDGET.toLocaleString() }} 页）
             </span>
-            <span v-if="mangaCoverCount !== undefined" class="sub-item-desc">
-              书库封面：{{ mangaCoverCount.toLocaleString() }} /
+            <span class="sub-item-desc">
+              书库封面：{{ (mangaCoverCount ?? 0).toLocaleString() }} /
               {{ MANGA_COVER_MAX_BUDGET.toLocaleString() }} 张（滚动保留最新
               {{ MANGA_COVER_MAX_BUDGET.toLocaleString() }} 张）
             </span>

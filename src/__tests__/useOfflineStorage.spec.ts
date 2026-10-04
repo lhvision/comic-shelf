@@ -233,4 +233,113 @@ describe('useOfflineStorage composable', () => {
       }
     }
   })
+
+  it('clears image caches and wipes workbox-expiration in indexedDB while preserving metadata db', async () => {
+    const storage = useOfflineStorage()
+    storage.mangaPageCount.value = 500
+    storage.mangaCoverCount.value = 100
+    storage.mangaImageCount.value = 600
+    storage.mangaImageBytes.value = 10 * 1024 * 1024
+
+    const deletedCaches: string[] = []
+    const originalCaches = globalThis.caches
+    const originalIndexedDB = globalThis.indexedDB
+
+    const deletedDbs: string[] = []
+    const mockIndexedDB = {
+      databases: async () => [
+        { name: 'workbox-expiration' },
+        { name: 'comic-shelf-meta' },
+        { name: 'manga-cache-db' },
+      ],
+      open: () => {
+        const req: {
+          result?: {
+            objectStoreNames: string[]
+            transaction: () => {
+              objectStore: () => { clear: () => void }
+              oncomplete: (() => void) | null
+              onerror: (() => void) | null
+              onabort: (() => void) | null
+            }
+            close: () => void
+          }
+          onsuccess: (() => void) | null
+          onerror: (() => void) | null
+          onblocked: (() => void) | null
+        } = {
+          onsuccess: null,
+          onerror: null,
+          onblocked: null,
+        }
+        setTimeout(() => {
+          req.result = {
+            objectStoreNames: ['cache-entries'],
+            transaction: () => {
+              const tx = {
+                objectStore: () => ({ clear: () => {} }),
+                oncomplete: null as (() => void) | null,
+                onerror: null,
+                onabort: null,
+              }
+              setTimeout(() => {
+                tx.oncomplete?.()
+              }, 0)
+              return tx
+            },
+            close: () => {},
+          }
+          req.onsuccess?.()
+        }, 0)
+        return req
+      },
+      deleteDatabase: (name: string) => {
+        deletedDbs.push(name)
+      },
+    }
+
+    try {
+      Object.defineProperty(globalThis, 'caches', {
+        value: {
+          keys: () =>
+            Promise.resolve(['manga-images-cache', 'manga-images-covers-cache', 'app-shell']),
+          delete: (name: string) => {
+            deletedCaches.push(name)
+            return Promise.resolve(true)
+          },
+        },
+        configurable: true,
+      })
+      Object.defineProperty(globalThis, 'indexedDB', {
+        value: mockIndexedDB,
+        configurable: true,
+      })
+
+      const res = await storage.clearImageCache()
+      expect(res.freedCount).toBe(600)
+      expect(deletedCaches).toEqual(['manga-images-cache', 'manga-images-covers-cache'])
+      expect(storage.mangaPageCount.value).toBe(0)
+      expect(storage.mangaCoverCount.value).toBe(0)
+      expect(storage.mangaImageCount.value).toBe(0)
+      expect(storage.mangaImageBytes.value).toBe(0)
+
+      // 验证：清除了 workbox-expiration 与 manga 相关库，但严格保护了 comic-shelf-meta
+      expect(deletedDbs).toContain('workbox-expiration')
+      expect(deletedDbs).toContain('manga-cache-db')
+      expect(deletedDbs).not.toContain('comic-shelf-meta')
+    } finally {
+      if (originalCaches) {
+        Object.defineProperty(globalThis, 'caches', {
+          value: originalCaches,
+          configurable: true,
+        })
+      }
+      if (originalIndexedDB) {
+        Object.defineProperty(globalThis, 'indexedDB', {
+          value: originalIndexedDB,
+          configurable: true,
+        })
+      }
+    }
+  })
 })

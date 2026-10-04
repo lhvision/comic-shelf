@@ -210,7 +210,7 @@ export const useOfflineStorage = createGlobalState(() => {
    * 避免因 Service Worker 长连接未释放导致 deleteDatabase 触发 blocked 挂起。
    * 增加 1.5s 兜底超时与 onabort 容错，防止 IDB 事务异常挂死。
    */
-  async function clearIndexedDbRecords(dbName: string, targetStoreName?: string): Promise<void> {
+  async function clearIndexedDbRecords(dbName: string): Promise<void> {
     if (typeof indexedDB === 'undefined') return
     const { promise, resolve } = withResolvers<void>()
 
@@ -221,10 +221,7 @@ export const useOfflineStorage = createGlobalState(() => {
       const openReq = indexedDB.open(dbName)
       openReq.onsuccess = () => {
         const db = openReq.result
-        const allStores = Array.from(db.objectStoreNames)
-        const storesToClear = targetStoreName
-          ? allStores.filter((name) => name === targetStoreName || name.includes(targetStoreName))
-          : allStores
+        const storesToClear = Array.from(db.objectStoreNames)
 
         if (storesToClear.length > 0) {
           try {
@@ -266,13 +263,10 @@ export const useOfflineStorage = createGlobalState(() => {
 
     await promise
 
-    // 仅在全量清空（未指定 targetStoreName）时才执行彻底删除库
-    if (!targetStoreName) {
-      try {
-        indexedDB.deleteDatabase(dbName)
-      } catch {
-        // 降级容错
-      }
+    try {
+      indexedDB.deleteDatabase(dbName)
+    } catch {
+      // 降级容错
     }
   }
 
@@ -302,24 +296,25 @@ export const useOfflineStorage = createGlobalState(() => {
       mangaImageCount.value = 0
       mangaImageBytes.value = 0
 
-      // 清理与 manga-images 及 illustration-pool 相关的 IndexedDB objectStore，保护其他生命周期元数据
+      // 清理与漫画画页及 Workbox 过期索引相关的 IndexedDB 记录，保护用户书架元数据
       if (typeof indexedDB !== 'undefined' && typeof indexedDB.databases === 'function') {
         try {
           const dbs = await indexedDB.databases()
           for (const db of dbs) {
-            if (db.name && (db.name.includes('manga') || db.name.includes('illustration'))) {
+            if (
+              db.name &&
+              (db.name.includes('manga') ||
+                db.name.includes('illustration') ||
+                db.name.includes('workbox'))
+            ) {
               await clearIndexedDbRecords(db.name)
-            } else if (db.name && db.name.includes('workbox')) {
-              await clearIndexedDbRecords(db.name, 'manga-images')
-              await clearIndexedDbRecords(db.name, 'illustration-pool')
             }
           }
         } catch {
           // ignore
         }
       } else {
-        await clearIndexedDbRecords('workbox-expiration', 'manga-images')
-        await clearIndexedDbRecords('workbox-expiration', 'illustration-pool')
+        await clearIndexedDbRecords('workbox-expiration')
       }
 
       await refreshEstimate()
