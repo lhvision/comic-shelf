@@ -3,7 +3,7 @@ timestamp: 2026-09-12T06-15-33Z
 slug: reader-bubble-overlay
 ---
 
----
+***
 
 target: src/components/ReaderBubbleOverlay.vue
 total_score: 25

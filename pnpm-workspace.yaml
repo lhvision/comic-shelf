@@ -22,8 +22,8 @@ peerDependencyRules:
     vite: '*'
 catalog:
   vue: rc
-  vite: npm:@voidzero-dev/vite-plus-core@1.0.0
-  vite-plus: 1.0.0
+  vite: npm:@voidzero-dev/vite-plus-core@1.1.0
+  vite-plus: 1.1.0
 allowBuilds:
   '@ffmpeg-installer/linux-x64': true
   puppeteer: true

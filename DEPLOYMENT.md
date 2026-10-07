@@ -379,7 +379,7 @@ backend/data/
    ```
 
    回落是**显式**的：`.venv-ocr` 不存在时 `run` 会打一行 `⚠️ 检测到宿主有 NVIDIA 显卡，但 GPU 算力环境
-未创建，本轮按 CPU 跑` 并给出建环境的命令；`--gpu` 时环境缺失直接拒绝（exit 1）。环境在、但 Det/Cls/Rec 三段会话里有一段没跑在 CUDA 上（CPU 版 `onnxruntime` 覆盖了 GPU 版，或 `LD_LIBRARY_PATH` 没挂上 venv 内的 CUDA 库），`build_engine` 也会当场报错退出，绝不静默降级。
+   未创建，本轮按 CPU 跑` 并给出建环境的命令；`--gpu` 时环境缺失直接拒绝（exit 1）。环境在、但 Det/Cls/Rec 三段会话里有一段没跑在 CUDA 上（CPU 版 `onnxruntime` 覆盖了 GPU 版，或 `LD_LIBRARY_PATH` 没挂上 venv 内的 CUDA 库），`build_engine` 也会当场报错退出，绝不静默降级。
 
    > ⚠️ **不要**手动把 `onnxruntime-gpu` 与 CPU 版 `onnxruntime` 混装进同一个环境：两个 wheel
    > 共用 `site-packages/onnxruntime/` 目录，覆盖安装会留下混合文件，`get_available_providers()`
