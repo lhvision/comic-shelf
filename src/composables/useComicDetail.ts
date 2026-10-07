@@ -2,7 +2,7 @@
  * @file useComicDetail.ts
  * @description 漫画详情生命周期、SWR 内存态占位、离线容错与后台任务对齐 Composable。
  *
- * 领域契约（CONTEXT.md）：
+ * 领域契约（GLOSSARY.md）：
  * 1. 详情元数据内存态热复用（Detail In-memory SWR Cache）：
  *    优先命中 Pinia Store 内存中的完整详情或概要占位（createPlaceholderDetail），
  *    消除跨路由跳转的白屏/骨架屏二次闪烁与重复 JSON 反序列化；

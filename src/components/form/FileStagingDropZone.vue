@@ -3,7 +3,7 @@
  * @file FileStagingDropZone.vue
  * @description 画卷文件暂存区与本地路径扫描双模输入组件。
  *
- * 领域概念（CONTEXT.md）：
+ * 领域概念（GLOSSARY.md）：
  * 画卷文件暂存区（Staged File Rack / File Staging Drop Zone）
  * 统一收敛追加页面、重新装订与自建工坊中的图片拖拽暂存、多图选单与服务器路径输入。
  */

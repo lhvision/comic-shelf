@@ -2,7 +2,7 @@
  * @file useChapterPageInfo.ts
  * @description 章节详情页专用的章节上下文信息与翻话阅读辅助函数。
  *
- * 领域概念（CONTEXT.md）：
+ * 领域概念（GLOSSARY.md）：
  * 章节子路由详情（Chapter View）
  * 承载当前激活话的起止范围计算、阅读进度换算、相邻话导航及阅读器直达。
  */

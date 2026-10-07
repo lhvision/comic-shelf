@@ -36,7 +36,7 @@
 ## 其他
 
 - OCR 侧车的 `lang` 写死成 `zh`（`scripts/ocr_worker.py` 写侧车的地方），日文书也标成 zh。等需要按语言分流时再修。
-- 界面和代码里与术语表（`CONTEXT.md`）不一致的地方，这次只改了文档：
+- 界面和代码里与术语表（`GLOSSARY.md`）不一致的地方，这次只改了文档：
   - 心形标记应叫"喜欢"：`FavoriteButton.vue` 的"更新收藏状态失败"，`src/api/client.ts` 与 `src/api/modules/library.ts` 注释里的"收藏状态"，`useShelfWebMCP.ts`、`useComicDetailWebMCP.ts` 里的"红心收藏""已收藏 / 未收藏"。筛选里的"只看喜欢"已经是对的。
   - 下载到服务器应叫"缓存"：`ChapterCard.vue`、`ChapterView.vue` 的"离线缓存本话"，`src/api/modules/cache.ts` 的文件注释。`ComicPageImage.vue` 的"画页未离线缓存"指的是 PWA 本地，这个用法是对的。
   - 访客凭证应叫"访客通行证"：`GateView.vue` 的"读者借书证验证"、`GatePinForm.vue` 的"读者借书证"。

@@ -2,7 +2,7 @@
  * @file usePageZoom.ts
  * @description 阅读器画页双击放大、防脱轨边界平移与视图还原状态机。
  *
- * 领域概念（CONTEXT.md）：
+ * 领域概念（GLOSSARY.md）：
  * - 画页放大（Page Zoom）：双击画页以点击坐标为中心 2.5 倍平滑放大，并允许拖拽平移浏览细节。
  * - 还原视图（Reset Zoom）：放大状态下将画页复原至 1:1 原始排版尺标。
  *

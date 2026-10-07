@@ -2,7 +2,7 @@
  * @file useComicDetailActions.ts
  * @description 漫画详情页核心操作与编排（元数据刷新、漫画移除、阅读直达、返回书架与滚动位置恢复）。
  *
- * 领域概念（CONTEXT.md）：
+ * 领域概念（GLOSSARY.md）：
  * 漫画详情页（Comic Detail View）
  * 承载单本漫画的作品概览、章节目录切片、画页重订与元数据维护。
  */

@@ -290,7 +290,7 @@ $COMIC_SHELF_DATA/
 | 文档                                                           | 内容与定位                                                                                                                                   |
 | :------------------------------------------------------------- | :------------------------------------------------------------------------------------------------------------------------------------------- |
 | **交互式 API 文档**                                            | 服务运行时的 `/docs`（Swagger UI）与 `/redoc`，由 FastAPI 自动生成；默认关闭，设 `COMIC_SHELF_ENABLE_DOCS=true` 才开放，公网部署建议保持关闭 |
-| **[CONTEXT.md](CONTEXT.md)**                                   | 纸间领域模型与术语表（单一语义源，核心概念、收藏夹状态、阅读器与基础设施定义）                                                               |
+| **[GLOSSARY.md](GLOSSARY.md)**                                 | 纸间领域模型与术语表（单一语义源，核心概念、收藏夹状态、阅读器与基础设施定义）                                                               |
 | **[DEPLOYMENT.md](DEPLOYMENT.md)**                             | 生产容器化部署全景：Docker Compose、TrueNAS Scale / Unraid / 群晖 NAS 挂载配置、环境变量详解、反向代理与权限排查                             |
 | **[docs/PITFALLS.md](docs/PITFALLS.md)**                       | 错题本（每条“症状 / 根因 / 红线”，按编号或关键词查）                                                                                         |
 | **[CSS / JS 技术雷达](docs/CSS_RADAR.md)**                     | [CSS 技术雷达](docs/CSS_RADAR.md) 与 [JS 技术雷达](docs/JS_RADAR.md)（浏览器兼容性快查表、已落地特性的用法与降级方案）                       |

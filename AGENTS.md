@@ -4,7 +4,7 @@
 
 ## 按需读取
 
-- 术语：`CONTEXT.md`；架构决策：`docs/adr/`
+- 术语：`GLOSSARY.md`；架构决策：`docs/adr/`
 - 后端 / 存储 / Provider / 安全 / 后端测试：`docs/agents/architecture.md`
 - 前端 / 阅读器 / 路由 / VueUse / 契约注释：`docs/agents/frontend.md`
 - 新 UI 组件或视觉重构：`docs/agents/ui.md` + `DESIGN_NOTES.md`
