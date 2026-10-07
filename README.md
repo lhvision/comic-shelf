@@ -22,11 +22,12 @@
   - 完整支持多章节分卷映射，与禁漫、本地漫画全书拍平与阅读器体系 100% 格式对齐；
   - `waka / waifu / heaven` 3-CDN 分流容灾与故障自动轮换降级。
 - **浏览器扩展一键收录（Paper Room Extension，ADR 0033）**：
+  [![Download Chrome Extension](https://img.shields.io/badge/📥_下载扩展离线包-paper--room--extension.zip-c74c35?style=flat-square&logo=googlechrome&logoColor=white)](https://github.com/lhvision/comic-shelf/releases/latest/download/paper-room-extension.zip)
   - 支持在禁漫天堂（含全部官方镜像与分流）、哔咔漫画、拷贝漫画等站点浏览时，鼠标右键直接将本子添加入库；
   - **双模智能提取**：列表/搜索页封面卡片超链接右键直接入库，免除新开标签页开销；本子详情/阅读页空白处右键智能提取车号；
   - **域名严格隔离**：基于 Chrome 扩展 `documentUrlPatterns` 机制，在普通日常网站（百度/Google/B站等）右键菜单彻底隐形，0 视觉污染；支持选项页动态增补新分流域名；
-  - **极简无打扰与深层直达**：纯原生 Manifest V3 标准，0 框架包袱，打包体积仅 48KB；系统原生通知（`chrome.notifications`）与角标反馈，点击直达纸间阅览室详情页；
-  - 源码内聚于 [`extension/`](extension/)，浏览器开发者模式直接加载解压即可使用，支持通过 `pnpm build:ext` 生成 Release 离线包。
+  - **极简无打扰与深层直达**：纯原生 Manifest V3 标准，0 框架包袱，打包体积仅 49KB；系统原生通知（`chrome.notifications`）与角标反馈，点击直达纸间阅览室详情页；
+  - 源码内聚于 [`extension/`](extension/)（详见 [扩展使用指南](extension/README.md)），浏览器开发者模式直接加载解压即可使用，支持通过 `pnpm build:ext` 生成 Release 离线包。
 - **来源导航单一真理源与收录工作台解耦架构（Source SSOT）**：
   - 彻底解耦顶栏来源导航（`全部 | 01 禁漫 | 02 本地 | 03 哔咔`）与 Hero 收录表单，废除“嵌套 Tab”反模式与认知冗余；
   - **「全部」视图**：Hero 回归单栏典藏大片版式（`hero--single`），不常驻录入卡片，聚焦书房总揽、诗意导语与藏书统计，配备轻巧的「录入新卷」动态药丸直达对应源；
