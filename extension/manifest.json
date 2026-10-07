@@ -11,7 +11,8 @@
   "permissions": ["contextMenus", "notifications", "storage", "scripting", "activeTab"],
   "host_permissions": ["http://*/*", "https://*/*"],
   "background": {
-    "service_worker": "service-worker.js"
+    "service_worker": "service-worker.js",
+    "type": "module"
   },
   "action": {
     "default_title": "打开纸间书架",

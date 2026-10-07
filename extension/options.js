@@ -41,7 +41,9 @@ document.addEventListener('DOMContentLoaded', async () => {
             d
               .trim()
               .replace(/^https?:\/\//, '')
-              .replace(/\/.*$/, ''),
+              .replace(/\/.*$/, '')
+              .replace(/^\*+\.?/, '')
+              .replace(/:\d+$/, ''),
           )
           .filter(Boolean)
       : []
@@ -67,6 +69,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       url = `http://${url}`
     }
     url = url.replace(/\/+$/, '')
+    serverUrlInput.value = url
     const token = tokenInput.value.trim()
 
     showStatus('正在连接纸间服务...', 'success')
@@ -96,7 +99,8 @@ document.addEventListener('DOMContentLoaded', async () => {
       if (data.auth_required && !data.can_write) {
         showStatus('⚠️ 服务已连接，但口令不具备馆长写入权限', 'error')
       } else {
-        showStatus(`✓ 连接成功！具备入库写入权限（角色: ${data.role || '馆长'}）`, 'success')
+        const roleLabel = data.role === 'admin' ? '馆长 (admin)' : data.role || '馆长'
+        showStatus(`✓ 连接成功！具备入库写入权限（角色: ${roleLabel}）`, 'success')
       }
     } catch (err) {
       if (err.name === 'AbortError') {

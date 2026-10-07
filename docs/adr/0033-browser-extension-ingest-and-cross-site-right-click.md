@@ -35,15 +35,15 @@
    - **超链接右键**（`contexts: ["link"]`）：在漫画目录/列表/搜索页直接右键本子卡片链接触发收录，淘书时无需逐个新开标签页；
    - **页面空白处右键**（`contexts: ["page"]`）：在已打开的漫画详情页或阅读器内空白处右键触发收录。
 2. **确定性图源解析引擎**：
-   - 禁漫天堂（`jm`）：匹配 `/album/(\d+)` 与 `/photo/(\d+)`，支持官方主站及所有已知内地/东南亚分流镜像；
+   - 禁漫天堂（`jm`）：严格限定相册车号 `album_id` 匹配 `/album/(\d+)`，支持官方主站及所有已知内地/东南亚分流镜像；若用户在单话阅读页（`/photo/`）空白处右键，借助 `activeTab` 瞬时权限遍历 DOM 链接或内嵌 `<script>` 标签提取所属相册车号并自愈重定向；若未能提取则显式拦截，绝不允许单话分卷 ID（`photo_id`）穿透至服务端；
    - 哔咔漫画（`picacg`）：匹配 `/(?:comic|comics)/([0-9a-fA-F]{24})`；
    - 拷贝漫画（`copymanga`）：匹配 `/comic/([a-zA-Z0-9_\-\.]+)`。
    - 严格向纸间 API `POST /api/library/import` 显式提交 `{ id, source }`，符合 ADR 0030。
 3. **原生通知与直达链路**：
-   - 彻底摒弃注入页面 Content Script 的做法，免疫任何第三方站点的 CSP 安全策略阻断；
+   - 彻底摒弃注入页面常驻 Content Script 的做法，免疫任何第三方站点的 CSP 安全策略阻断；
    - 使用系统原生通知（`chrome.notifications`）与图标 Badge 反馈收录结果，色彩严格遵循 `src/styles/tokens.css` 设计令牌（成功墨绿 `#3f6d4e`、在库琥珀 `#d97706`、报错朱红 `#e5484d`）；
-   - 通过 `chrome.storage.local` 持久化通知链接，彻底规避 Manifest V3 Service Worker 闲置休眠导致内存映射丢失的问题；点击通知卡片随时直达纸间阅览室详情页（`{serverUrl}/comic/{source}/{source_id}`）；
-   - 在禁漫单话阅读页（`/photo/`）借助 `activeTab` 瞬时权限轻量探测页面内的相册主链接，自愈识别整部作品车号。
+   - 通过 `chrome.storage.local` 持久化通知链接，彻底规避 Manifest V3 Service Worker 闲置休眠导致内存映射丢失的问题；点击通知卡片随时直达纸间阅览室详情页（`{serverUrl}/comic/{source}/{source_id}`）；浏览器启动时自动清理陈旧通知 Key；
+   - `buildUrlPatterns` 严格过滤前导通配符并区分 IPv4 地址，在 `chrome.contextMenus.create` 设置异常捕获并平滑降级至内置默认规则，杜绝菜单因规则非法而静默崩溃。
 
 ### 三、极简配置与快捷入口
 

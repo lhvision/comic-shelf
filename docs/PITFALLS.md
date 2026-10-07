@@ -1044,6 +1044,18 @@
 - **演进（2026-10 ADR 0005 补充决议）**：
   鉴于漫画画页具备天然的「阅后即走」特性，且服务端具备长期 HTTP `immutable` 缓存（依靠浏览器原生 Disk Cache 即足以保障翻页回看与短途重试），系统已正式从 Service Worker 中废弃持久正文画页桶 `manga-images-cache`，全站离线图片预算彻底收敛为主书库封面桶 `manga-images-covers-cache`（1,000 张上限）。前端启动时对存量设备的旧正文桶执行一次性静默自愈删除，彻底消除了 3,000 张画页引发的 iOS 休眠淘汰滞后与端侧复杂自愈修剪负担。
 
+### 164. Chrome 扩展右键图源探测中的分卷 ID 穿透与 ISOLATED 执行域变量不可见陷阱
+
+- **症状**：在禁漫单话阅读页或章节链接右键收录时，服务端偶发返回 404 / 502 报错；在单话阅读页读取 `window.series_id` 始终为 `undefined`；选项页输入包含通配符的自定义域名后右键菜单完全消失。
+- **根因**：
+  1. **分卷 ID 与相册 ID 语义脱节**：禁漫图源单话阅读页 `/photo/<id>` 中的 ID 是分卷/章节 ID，后端收录仅认相册 ID（`album_id`）；若未加区分直接将 `photo_id` 提取提交，会导致服务端查询相册失败；
+  2. **Chrome MV3 隔离执行域（ISOLATED world）不可见性**：`chrome.scripting.executeScript` 默认运行在独立沙箱中，无法直接访问宿主页面的 `window` 全局变量（如 `window.series_id`），直接读取将返回 `undefined`；
+  3. **Match Pattern 语法严格性**：`chrome.contextMenus.create` 的 `documentUrlPatterns` 包含任何一个非法匹配规则（例如带重复通配符 `*://*.*.domain/*` 或对 IPv4 地址加通配符 `*://*.127.0.0.1/*`）时，Chromium 会抛出未捕获的运行时异常并导致菜单创建整体失败。
+- **红线**：
+  1. 浏览器扩展必须严格在客户端校验图源 ID 语义，禁漫仅允许提交相册 ID（`/album/`）；无法解析单话对应相册时必须显式拦截并给予告警，严禁无效 ID 穿透至服务端；
+  2. 在 Chrome `ISOLATED world` 下探测页面信息时，通过遍历 `<script>` 标签文本与 `<a href>` 严格正则匹配，不依赖页面全局变量；
+  3. 自定义域名构建 Match Pattern 时必须过滤前导 `*` 与端口，区分 IPv4 地址，并在注册菜单时设置 `chrome.runtime.lastError` 降级兜底。
+
 ---
 
 ## 🚦 交付门禁

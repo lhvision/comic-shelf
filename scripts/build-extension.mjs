@@ -1,6 +1,6 @@
 import fs from 'node:fs'
 import path from 'node:path'
-import { execSync } from 'node:child_process'
+import { execFileSync, execSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
@@ -15,11 +15,9 @@ if (!fs.existsSync(distDir)) {
 
 // 直接将 extension/ 归档打包为发布 Zip，免除冗余目录拷贝
 const pythonScript = `
-import zipfile, os
+import os, sys, zipfile
 
-src_dir = r'''${srcDir}'''
-zip_path = r'''${zipFile}'''
-
+src_dir, zip_path = sys.argv[1], sys.argv[2]
 with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as zf:
     for root, dirs, files in os.walk(src_dir):
         for f in files:
@@ -30,7 +28,7 @@ print(f'✅ Successfully packaged {zip_path} ({os.path.getsize(zip_path)} bytes)
 `
 
 try {
-  execSync(`python3 -c "${pythonScript.replace(/"/g, '\\"')}"`, { stdio: 'inherit' })
+  execFileSync('python3', ['-c', pythonScript, srcDir, zipFile], { stdio: 'inherit' })
 } catch {
   execSync(`cd "${srcDir}" && zip -r "${zipFile}" .`, { stdio: 'inherit' })
 }
