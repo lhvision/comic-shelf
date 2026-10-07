@@ -1,0 +1,185 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <title>纸间 · 扩展配置</title>
+    <style>
+      :root {
+        --bg: #191b19;
+        --card-bg: #20231f;
+        --input-bg: #11120f;
+        --border: rgba(242, 236, 223, 0.14);
+        --text: #f2ecdf;
+        --text-muted: #9a9387;
+        --accent: #c74c35;
+        --accent-hover: #a23a27;
+        --success: #3f6d4e;
+        --error: #e5484d;
+      }
+      * {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+      }
+      body {
+        font-family: 'Avenir Next', 'Noto Sans SC', 'Source Han Sans SC', system-ui, sans-serif;
+        background: var(--bg);
+        color: var(--text);
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        min-height: 100vh;
+        padding: 24px;
+      }
+      .card {
+        background: var(--card-bg);
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        width: 100%;
+        max-width: 420px;
+        padding: 28px;
+        box-shadow: 0 14px 34px rgba(0, 0, 0, 0.45);
+      }
+      .header {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        margin-bottom: 24px;
+      }
+      .header img {
+        width: 36px;
+        height: 36px;
+        border-radius: 8px;
+      }
+      .header h1 {
+        font-size: 1.15rem;
+        font-weight: 600;
+        letter-spacing: 0.5px;
+      }
+      .form-group {
+        margin-bottom: 18px;
+      }
+      label {
+        display: block;
+        font-size: 0.85rem;
+        font-weight: 500;
+        color: var(--text);
+        margin-bottom: 6px;
+      }
+      input {
+        width: 100%;
+        background: var(--input-bg);
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        padding: 10px 12px;
+        color: var(--text);
+        font-size: 0.9rem;
+        outline: none;
+        transition: border-color 0.2s;
+      }
+      input:focus {
+        border-color: var(--accent);
+      }
+      .hint {
+        font-size: 0.75rem;
+        color: var(--text-muted);
+        margin-top: 4px;
+        line-height: 1.4;
+      }
+      .actions {
+        display: flex;
+        gap: 10px;
+        margin-top: 24px;
+      }
+      button {
+        flex: 1;
+        padding: 10px 14px;
+        border-radius: 6px;
+        font-size: 0.9rem;
+        font-weight: 500;
+        cursor: pointer;
+        border: none;
+        transition: all 0.2s;
+      }
+      .btn-primary {
+        background: var(--accent);
+        color: #fff;
+      }
+      .btn-primary:hover {
+        background: var(--accent-hover);
+      }
+      .btn-secondary {
+        background: transparent;
+        color: var(--text);
+        border: 1px solid var(--border);
+      }
+      .btn-secondary:hover {
+        background: rgba(255, 255, 255, 0.05);
+        border-color: var(--text-muted);
+      }
+      .status-msg {
+        margin-top: 14px;
+        font-size: 0.82rem;
+        text-align: center;
+        min-height: 20px;
+        word-break: break-all;
+      }
+      .status-msg.success {
+        color: var(--success);
+      }
+      .status-msg.error {
+        color: var(--error);
+      }
+    </style>
+  </head>
+  <body>
+    <div class="card">
+      <div class="header">
+        <img src="icons/icon-48.png" alt="Paper Room Icon" />
+        <div>
+          <h1>纸间 · 扩展配置</h1>
+          <p class="hint">配置本地或私有阅览室服务连接信息</p>
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label for="serverUrl">纸间服务地址</label>
+        <input type="text" id="serverUrl" placeholder="http://localhost:8000" spellcheck="false" />
+        <p class="hint">
+          默认本地 http://localhost:8000；若是远程公网部署建议使用 https:// 确保传输加密。
+        </p>
+      </div>
+
+      <div class="form-group">
+        <label for="token">馆长访问口令 (选填)</label>
+        <input
+          type="password"
+          id="token"
+          placeholder="未配置 AUTH_SECRET 时留空"
+          spellcheck="false"
+        />
+        <p class="hint">若服务端 .env 配置了 AUTH_SECRET 口令，请在此填入以获准写权限。</p>
+      </div>
+
+      <div class="form-group">
+        <label for="customDomains">自定义图源域名 (选填)</label>
+        <input
+          type="text"
+          id="customDomains"
+          placeholder="如新分流 comic18j-xxx.xyz，逗号分隔"
+          spellcheck="false"
+        />
+        <p class="hint">默认已内置三大图源全部官方与分流域名；若图源换域可在此追加。</p>
+      </div>
+
+      <div class="actions">
+        <button id="testBtn" type="button" class="btn-secondary">测试连接</button>
+        <button id="saveBtn" type="button" class="btn-primary">保存配置</button>
+      </div>
+
+      <div id="status" class="status-msg"></div>
+    </div>
+
+    <script src="options.js"></script>
+  </body>
+</html>

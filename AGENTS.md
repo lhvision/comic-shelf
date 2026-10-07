@@ -34,4 +34,4 @@
 
 ## 常用命令
 
-`pnpm dev:all`（API + Web）· `pnpm api` · `vp dev` · `vp build` · `pnpm imsearch <action>` · `pnpm detect:slop <target>` · `pnpm detect:perf`
+`pnpm dev:all`（API + Web）· `pnpm api` · `vp dev` · `vp build` · `pnpm build:ext` · `pnpm imsearch <action>` · `pnpm detect:slop <target>` · `pnpm detect:perf`

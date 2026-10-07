@@ -21,6 +21,7 @@
     "detect:slop": "node scripts/detect.mjs --json",
     "detect:perf": "node scripts/detect-perf.mjs",
     "build-only": "vp build",
+    "build:ext": "node scripts/build-extension.mjs",
     "type-check": "vue-tsc --build",
     "lint": "run-s \"lint:*\"",
     "lint:oxlint": "vp lint . --fix",
