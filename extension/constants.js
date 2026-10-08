@@ -10,35 +10,24 @@ export const BUILTIN_PROVIDERS = [
     domains: [
       '18comic.vip',
       '18comic.ink',
-      '18comic.org',
-      'jmcomic.me',
       'jmcomic-zzz.one',
       'jmcomic-zzz.org',
       'comic18j-ada.space',
       'comic18j-ada.online',
       'comic18j-ada.work',
-      'jmcomictt.site',
-      'jmcomic.org',
     ],
   },
   {
     source: 'picacg',
     name: '哔咔漫画',
     badge: '哔咔',
-    domains: ['manhuapica.com', 'picawang.com', 'picacomic.com'],
+    domains: ['manhuapica.com', 'picawang.com'],
   },
   {
     source: 'copymanga',
     name: '拷贝漫画',
     badge: '拷贝',
-    domains: [
-      'mangacopy.com',
-      'copy4000.com',
-      'copymanga.com',
-      'copymanga.site',
-      'copymanga.tv',
-      'copy2000.com',
-    ],
+    domains: ['mangacopy.com', 'copy4000.com'],
   },
 ]
 

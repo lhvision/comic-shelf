@@ -112,15 +112,15 @@ describe('extension service-worker', () => {
       )
       expect(jm?.badge).toBe('JM')
       expect(jm?.domains).toContain('18comic.vip')
-      expect(DEFAULT_DOMAINS.length).toBe(20)
+      expect(DEFAULT_DOMAINS.length).toBe(11)
     })
 
     it('sanitizes messy domain inputs correctly (including query strings and hash anchors)', () => {
       expect(sanitizeDomain('https://comic18j-mirror.xyz/album/123')).toBe('comic18j-mirror.xyz')
-      expect(sanitizeDomain('  http://PICACOMIC.COM:443/  ')).toBe('picacomic.com')
-      expect(sanitizeDomain('*.copymanga.tv')).toBe('copymanga.tv')
+      expect(sanitizeDomain('  http://MANHUAPICA.COM:443/  ')).toBe('manhuapica.com')
+      expect(sanitizeDomain('*.mangacopy.com')).toBe('mangacopy.com')
       expect(sanitizeDomain('comic18.vip?source=share&utm=test')).toBe('comic18.vip')
-      expect(sanitizeDomain('picacomic.com#heading-1')).toBe('picacomic.com')
+      expect(sanitizeDomain('manhuapica.com#heading-1')).toBe('manhuapica.com')
       expect(sanitizeDomain('')).toBe('')
     })
 
@@ -177,7 +177,7 @@ describe('extension service-worker', () => {
       })
 
       it('detects comic info from pendingUrl when tab is still navigating', async () => {
-        const tab = { id: 10, pendingUrl: 'https://copymanga.tv/comic/dandadan' }
+        const tab = { id: 10, pendingUrl: 'https://mangacopy.com/comic/dandadan' }
         const res = await detectComicFromTab(tab)
         expect(res?.comic).toEqual({
           source: 'copymanga',

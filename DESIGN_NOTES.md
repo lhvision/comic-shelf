@@ -767,7 +767,7 @@
    - 支持 `@media (prefers-color-scheme: dark)` 亮暗自适应双模，亮色采用米暖纸底 `--paper-0` 与浓墨 `--ink-0`，暗色采用纸墨深调与明朱砂 `--accent`；浅色模式下针对正文辅助说明将 `--ink-2` 加深至 `#595349`，实测保证 WCAG AA 5.3:1 高保真对比度；
    - 坚守零 Unicode 伪字符铁律，配置页所有状态提示、清除徽标、加载指示均基于纯内联 SVG 矢量图标渲染。
 2. **现代折叠抽屉动效渐进增强（Modern CSS `::details-content` Animation）**：
-   - 基于 Chromium 原生现代 CSS 特性，内置 20 个图源分流域名通过 `<details class="builtin-drawer">` 实现平滑高度过渡；
+   - 基于 Chromium 原生现代 CSS 特性，内置三大图源 11 个官方发布页域名通过 `<details class="builtin-drawer">` 实现平滑高度过渡；
    - 样式利用 `interpolate-size: allow-keywords;` 与 `::details-content { transition: height 0.32s var(--ease-spring), content-visibility 0.32s allow-discrete; height: 0; overflow: clip; }`；
    - 搭配 Chevron 矢量图标随 `[open]` 状态顺滑旋转 180°，并兼容 `prefers-reduced-motion: reduce` 静默降级，实现 0 JS 开销的极致平滑折叠体验。
 3. **分流胶囊群微交互、触控外扩与键盘焦点回退（Accessible Tag Chips, Touch Expansion & Focus Restoration）**：
