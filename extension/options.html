@@ -2,184 +2,918 @@
 <html lang="zh-CN">
   <head>
     <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>纸间 · 扩展配置</title>
     <style>
       :root {
-        --bg: #191b19;
-        --card-bg: #20231f;
-        --input-bg: #11120f;
-        --border: rgba(242, 236, 223, 0.14);
-        --text: #f2ecdf;
-        --text-muted: #9a9387;
+        /* 亮色模式：纸张暖灰 + 浓墨 + 朱砂强调（--ink-2 加深至 #595349 满足 WCAG AA 5.3:1 对比度） */
+        --paper-0: #f7f2e9;
+        --paper-1: #efe6d8;
+        --paper-2: #e5d9c6;
+        --ink-0: #211f1c;
+        --ink-1: #4f4941;
+        --ink-2: #595349;
         --accent: #c74c35;
-        --accent-hover: #a23a27;
+        --accent-strong: #a23a27;
+        --accent-soft: rgba(199, 76, 53, 0.12);
+        --accent-contrast: #fff8f2;
+        --line: rgba(33, 31, 28, 0.12);
+        --line-strong: rgba(33, 31, 28, 0.22);
         --success: #3f6d4e;
-        --error: #e5484d;
+        --success-soft: rgba(63, 109, 78, 0.12);
+        --warning: #9a6b17;
+        --warning-soft: rgba(154, 107, 23, 0.12);
+        --amber: #d97706;
+        --danger: #e5484d;
+        --danger-soft: rgba(229, 72, 77, 0.12);
+        --shadow-1: 0 1px 2px rgba(33, 31, 28, 0.08);
+        --shadow-2: 0 8px 24px rgba(33, 31, 28, 0.12), 0 1px 3px rgba(33, 31, 28, 0.06);
+
+        --font-display:
+          'Iowan Old Style', 'Baskerville', 'Noto Serif SC', 'Source Han Serif SC', 'Songti SC',
+          serif;
+        --font-body:
+          'Avenir Next', 'IBM Plex Sans', 'Noto Sans SC', 'Source Han Sans SC', system-ui,
+          sans-serif;
+        --font-mono:
+          'SFMono-Regular', 'Cascadia Code', 'Noto Sans Mono CJK SC', 'Roboto Mono', monospace;
+
+        --radius-1: 0.375rem; /* 6px */
+        --radius-2: 0.625rem; /* 10px */
+        --radius-3: 1rem; /* 16px */
+        --radius-pill: 9999px;
+
+        --duration-1: 150ms;
+        --duration-2: 250ms;
+        --duration-3: 350ms;
+        --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+        --ease-spring: cubic-bezier(0.16, 1, 0.3, 1);
       }
+
+      @media (prefers-color-scheme: dark) {
+        :root {
+          /* 暗色模式：纸墨深调 + 柔墨 + 明朱砂 */
+          --paper-0: #191b19;
+          --paper-1: #20231f;
+          --paper-2: #2a2d28;
+          --ink-0: #f2ecdf;
+          --ink-1: #c9c0b0;
+          --ink-2: #9a9387;
+          --accent: #e27452;
+          --accent-strong: #f08a68;
+          --accent-soft: rgba(226, 116, 82, 0.15);
+          --accent-contrast: #fff8f2;
+          --line: rgba(242, 236, 223, 0.14);
+          --line-strong: rgba(242, 236, 223, 0.24);
+          --success: #4e855f;
+          --success-soft: rgba(78, 133, 95, 0.16);
+          --warning: #c99333;
+          --warning-soft: rgba(201, 147, 51, 0.16);
+          --amber: #f59e0b;
+          --danger: #ff6b6b;
+          --danger-soft: rgba(255, 107, 107, 0.16);
+          --shadow-1: 0 1px 2px rgba(0, 0, 0, 0.35);
+          --shadow-2: 0 12px 32px rgba(0, 0, 0, 0.45), 0 2px 6px rgba(0, 0, 0, 0.25);
+        }
+      }
+
       * {
         box-sizing: border-box;
         margin: 0;
         padding: 0;
       }
+
       body {
-        font-family: 'Avenir Next', 'Noto Sans SC', 'Source Han Sans SC', system-ui, sans-serif;
-        background: var(--bg);
-        color: var(--text);
+        font-family: var(--font-body);
+        background: var(--paper-0);
+        color: var(--ink-0);
         display: flex;
         justify-content: center;
         align-items: flex-start;
         min-width: 440px;
-        padding: 24px;
+        min-height: 100vh;
+        padding: 28px 16px;
+        line-height: 1.5;
+        -webkit-font-smoothing: antialiased;
       }
+
+      /* 纸间统一焦点环规范 */
+      :focus-visible {
+        outline: 2px solid var(--accent);
+        outline-offset: 2px;
+      }
+
       .card {
-        background: var(--card-bg);
-        border: 1px solid var(--border);
-        border-radius: 10px;
+        background: var(--paper-1);
+        border: 1px solid var(--line);
+        border-radius: var(--radius-2);
         width: 100%;
-        max-width: 420px;
+        max-width: 480px;
         padding: 28px;
-        box-shadow: 0 14px 34px rgba(0, 0, 0, 0.45);
+        box-shadow: var(--shadow-2);
+        position: relative;
       }
+
       .header {
         display: flex;
         align-items: center;
-        gap: 12px;
-        margin-bottom: 24px;
+        gap: 14px;
+        margin-bottom: 22px;
+        padding-bottom: 16px;
+        border-bottom: 1px solid var(--line);
       }
+
       .header img {
-        width: 36px;
-        height: 36px;
-        border-radius: 8px;
+        width: 40px;
+        height: 40px;
+        border-radius: var(--radius-1);
+        border: 1px solid var(--line);
+        background: var(--paper-2);
+        flex-shrink: 0;
       }
+
       .header h1 {
-        font-size: 1.15rem;
+        font-family: var(--font-display);
+        font-size: 1.25rem;
         font-weight: 600;
-        letter-spacing: 0.5px;
+        color: var(--ink-0);
+        letter-spacing: 0.3px;
+        line-height: 1.2;
       }
+
+      .header .header-desc {
+        font-size: 0.8rem;
+        color: var(--ink-2);
+        margin-top: 3px;
+      }
+
+      .section-title {
+        font-size: 0.75rem;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.8px;
+        color: var(--ink-2);
+        margin: 20px 0 10px;
+      }
+
       .form-group {
-        margin-bottom: 18px;
+        margin-bottom: 16px;
       }
+
       label {
-        display: block;
-        font-size: 0.85rem;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        font-size: 0.86rem;
         font-weight: 500;
-        color: var(--text);
+        color: var(--ink-0);
         margin-bottom: 6px;
       }
-      input {
+
+      label .tag-badge {
+        font-family: var(--font-mono);
+        font-size: 0.72rem;
+        color: var(--ink-2);
+        background: var(--paper-2);
+        padding: 1px 6px;
+        border-radius: var(--radius-pill);
+      }
+
+      input[type='text'],
+      input[type='password'] {
         width: 100%;
-        background: var(--input-bg);
-        border: 1px solid var(--border);
-        border-radius: 6px;
-        padding: 10px 12px;
-        color: var(--text);
-        font-size: 0.9rem;
+        background: var(--paper-0);
+        border: 1px solid var(--line);
+        border-radius: var(--radius-1);
+        padding: 9px 12px;
+        color: var(--ink-0);
+        font-size: 0.88rem;
+        font-family: var(--font-body);
         outline: none;
-        transition: border-color 0.2s;
+        transition:
+          border-color var(--duration-1) var(--ease-out),
+          box-shadow var(--duration-1) var(--ease-out);
       }
-      input:focus {
+
+      input[type='text']:focus,
+      input[type='password']:focus {
         border-color: var(--accent);
+        box-shadow: 0 0 0 2px var(--accent-soft);
       }
+
+      input[aria-invalid='true'] {
+        border-color: var(--danger);
+        box-shadow: 0 0 0 2px var(--danger-soft);
+      }
+
+      input.font-mono {
+        font-family: var(--font-mono);
+        font-size: 0.84rem;
+      }
+
       .hint {
-        font-size: 0.75rem;
-        color: var(--text-muted);
+        font-size: 0.76rem;
+        color: var(--ink-2);
+        margin-top: 5px;
+        line-height: 1.45;
+      }
+
+      .field-error-msg {
+        font-size: 0.74rem;
+        color: var(--danger);
         margin-top: 4px;
+        min-height: 16px;
+        display: none;
+      }
+
+      .field-error-msg.show {
+        display: block;
+      }
+
+      /* 通知偏好开关 */
+      .toggle-row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        cursor: pointer;
+        padding: 9px 12px;
+        background: var(--paper-0);
+        border: 1px solid var(--line);
+        border-radius: var(--radius-1);
+        user-select: none;
+        transition:
+          background-color var(--duration-1) var(--ease-out),
+          border-color var(--duration-1) var(--ease-out);
+      }
+
+      .toggle-row:hover {
+        background: var(--paper-2);
+        border-color: var(--line-strong);
+      }
+
+      .toggle-info {
+        flex: 1;
+        padding-right: 12px;
+      }
+
+      .toggle-title {
+        font-size: 0.86rem;
+        font-weight: 500;
+        color: var(--ink-0);
+        display: block;
+      }
+
+      .toggle-hint {
+        font-size: 0.74rem;
+        color: var(--ink-2);
+        margin-top: 2px;
+        display: block;
         line-height: 1.4;
       }
+
+      input[type='checkbox'].toggle-checkbox {
+        appearance: none;
+        width: 38px;
+        height: 22px;
+        background: var(--paper-2);
+        border: 1px solid var(--line-strong);
+        border-radius: var(--radius-pill);
+        position: relative;
+        cursor: pointer;
+        outline: none;
+        flex-shrink: 0;
+        transition:
+          background-color var(--duration-2) var(--ease-out),
+          border-color var(--duration-2) var(--ease-out);
+      }
+
+      input[type='checkbox'].toggle-checkbox::before {
+        content: '';
+        position: absolute;
+        top: 2px;
+        left: 2px;
+        width: 16px;
+        height: 16px;
+        background: var(--ink-2);
+        border-radius: 50%;
+        transition:
+          transform var(--duration-2) var(--ease-spring),
+          background-color var(--duration-2) var(--ease-out);
+      }
+
+      input[type='checkbox'].toggle-checkbox:checked {
+        background: var(--accent);
+        border-color: var(--accent);
+      }
+
+      input[type='checkbox'].toggle-checkbox:checked::before {
+        transform: translateX(16px);
+        background: #fff;
+      }
+
+      input[type='checkbox'].toggle-checkbox:focus-visible {
+        outline: 2px solid var(--accent);
+        outline-offset: 2px;
+      }
+
+      /* 域名管理分区 */
+      .domain-manager-box {
+        background: var(--paper-0);
+        border: 1px solid var(--line);
+        border-radius: var(--radius-1);
+        padding: 14px;
+        margin-top: 6px;
+      }
+
+      .domain-input-bar {
+        display: flex;
+        gap: 8px;
+        align-items: center;
+      }
+
+      .domain-input-bar input {
+        flex: 1;
+        background: var(--paper-1);
+      }
+
+      .btn-add {
+        padding: 8px 14px;
+        background: var(--paper-2);
+        color: var(--ink-0);
+        border: 1px solid var(--line);
+        border-radius: var(--radius-1);
+        font-size: 0.84rem;
+        font-weight: 500;
+        cursor: pointer;
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        white-space: nowrap;
+        transition:
+          background-color var(--duration-1) var(--ease-out),
+          border-color var(--duration-1) var(--ease-out),
+          color var(--duration-1) var(--ease-out);
+      }
+
+      .btn-add:hover {
+        background: var(--accent-soft);
+        border-color: var(--accent);
+        color: var(--accent);
+      }
+
+      .domain-feedback {
+        font-size: 0.74rem;
+        color: var(--danger);
+        margin-top: 4px;
+        min-height: 16px;
+        display: none;
+        align-items: center;
+        gap: 4px;
+      }
+
+      .domain-feedback.show {
+        display: flex;
+      }
+
+      .custom-section {
+        margin-top: 8px;
+        animation: fadeIn 0.2s var(--ease-out);
+      }
+
+      .chips-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin: 6px 0 6px;
+        font-size: 0.78rem;
+        color: var(--ink-2);
+      }
+
+      .chips-header-right {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+
+      .chips-container {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+      }
+
+      .domain-chip {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        background: var(--paper-1);
+        border: 1px solid var(--line);
+        border-radius: var(--radius-pill);
+        padding: 3px 8px 3px 10px;
+        font-family: var(--font-mono);
+        font-size: 0.78rem;
+        color: var(--ink-0);
+        animation: chipPop 0.18s var(--ease-spring);
+        transition:
+          border-color var(--duration-1) var(--ease-out),
+          background-color var(--duration-1) var(--ease-out);
+      }
+
+      .domain-chip:hover {
+        border-color: var(--accent);
+      }
+
+      .chip-domain-text {
+        max-width: 220px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      /* 芯片移除按钮与触控热区外扩 (≥44x44px) */
+      .domain-chip .btn-remove {
+        position: relative;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 20px;
+        height: 20px;
+        border: none;
+        background: transparent;
+        color: var(--ink-2);
+        border-radius: var(--radius-pill);
+        cursor: pointer;
+        padding: 0;
+        flex-shrink: 0;
+        transition:
+          color var(--duration-1) var(--ease-out),
+          background-color var(--duration-1) var(--ease-out);
+      }
+
+      .domain-chip .btn-remove::before {
+        content: '';
+        position: absolute;
+        inset: -12px;
+      }
+
+      .domain-chip .btn-remove:hover {
+        color: var(--danger);
+        background: var(--danger-soft);
+      }
+
+      @keyframes chipPop {
+        from {
+          opacity: 0;
+          transform: scale(0.92);
+        }
+        to {
+          opacity: 1;
+          transform: scale(1);
+        }
+      }
+
+      /* 内置图源抽屉（采用 ::details-content 现代动画） */
+      details.builtin-drawer {
+        interpolate-size: allow-keywords;
+        border: 1px dashed var(--line);
+        border-radius: var(--radius-1);
+        background: var(--paper-1);
+        margin-top: 14px;
+        overflow: hidden;
+      }
+
+      details.builtin-drawer summary {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 9px 12px;
+        font-size: 0.8rem;
+        color: var(--ink-1);
+        cursor: pointer;
+        user-select: none;
+        list-style: none;
+        transition:
+          background-color var(--duration-1) var(--ease-out),
+          color var(--duration-1) var(--ease-out);
+      }
+
+      details.builtin-drawer summary::-webkit-details-marker {
+        display: none;
+      }
+
+      details.builtin-drawer summary:hover {
+        background: var(--paper-2);
+        color: var(--ink-0);
+      }
+
+      .summary-label {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+      }
+
+      .drawer-chevron {
+        width: 14px;
+        height: 14px;
+        color: var(--ink-2);
+        transition: transform var(--duration-2) var(--ease-out);
+      }
+
+      details.builtin-drawer[open] .drawer-chevron {
+        transform: rotate(180deg);
+      }
+
+      details.builtin-drawer::details-content {
+        transition:
+          height 0.32s var(--ease-spring),
+          content-visibility 0.32s var(--ease-spring) allow-discrete;
+        height: 0;
+        overflow: clip;
+      }
+
+      details.builtin-drawer[open]::details-content {
+        height: auto;
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        details.builtin-drawer::details-content {
+          transition: none;
+        }
+        .drawer-chevron {
+          transition: none;
+        }
+      }
+
+      .drawer-content {
+        padding: 10px 12px 14px;
+        border-top: 1px solid var(--line);
+      }
+
+      .provider-group {
+        margin-bottom: 10px;
+      }
+
+      .provider-group:last-child {
+        margin-bottom: 0;
+      }
+
+      .provider-label {
+        font-size: 0.73rem;
+        font-weight: 600;
+        color: var(--ink-2);
+        margin-bottom: 5px;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+      }
+
+      .provider-badge {
+        font-family: var(--font-mono);
+        font-size: 0.68rem;
+        background: var(--paper-2);
+        color: var(--accent);
+        padding: 0 5px;
+        border-radius: var(--radius-pill);
+      }
+
+      .builtin-chips {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 5px;
+      }
+
+      .builtin-chip {
+        display: inline-block;
+        background: var(--paper-0);
+        border: 1px solid var(--line);
+        border-radius: var(--radius-pill);
+        padding: 2px 8px;
+        font-family: var(--font-mono);
+        font-size: 0.72rem;
+        color: var(--ink-1);
+        user-select: text;
+      }
+
+      /* 底部操作区 */
       .actions {
         display: flex;
         gap: 10px;
         margin-top: 24px;
       }
-      button {
-        flex: 1;
+
+      button.btn-base {
         padding: 10px 14px;
-        border-radius: 6px;
-        font-size: 0.9rem;
+        border-radius: var(--radius-1);
+        font-size: 0.88rem;
         font-weight: 500;
         cursor: pointer;
-        border: none;
-        transition: all 0.2s;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 6px;
+        transition:
+          background-color var(--duration-1) var(--ease-out),
+          border-color var(--duration-1) var(--ease-out),
+          color var(--duration-1) var(--ease-out),
+          opacity var(--duration-1) var(--ease-out);
+        min-height: 40px;
       }
+
+      button.btn-base:disabled {
+        opacity: 0.6;
+        cursor: not-allowed;
+      }
+
       .btn-primary {
+        flex: 1.4;
         background: var(--accent);
-        color: #fff;
+        color: var(--accent-contrast);
+        border: 1px solid var(--accent);
+        position: relative;
       }
-      .btn-primary:hover {
-        background: var(--accent-hover);
+
+      .btn-primary:hover:not(:disabled) {
+        background: var(--accent-strong);
+        border-color: var(--accent-strong);
       }
+
       .btn-secondary {
+        flex: 1;
+        background: var(--paper-0);
+        color: var(--ink-0);
+        border: 1px solid var(--line);
+      }
+
+      .btn-secondary:hover:not(:disabled) {
+        background: var(--paper-2);
+        border-color: var(--line-strong);
+      }
+
+      .btn-ghost {
         background: transparent;
-        color: var(--text);
-        border: 1px solid var(--border);
+        color: var(--ink-2);
+        border: 1px dashed var(--line);
+        padding: 8px 10px;
       }
-      .btn-secondary:hover {
-        background: rgba(255, 255, 255, 0.05);
-        border-color: var(--text-muted);
+
+      .btn-ghost:hover:not(:disabled) {
+        color: var(--ink-0);
+        border-color: var(--ink-2);
+        background: var(--paper-0);
       }
-      .status-msg {
-        margin-top: 14px;
+
+      .dirty-dot {
+        display: inline-block;
+        width: 6px;
+        height: 6px;
+        background: var(--amber);
+        border-radius: 50%;
+        margin-left: 2px;
+      }
+
+      /* 状态消息横幅 */
+      .status-box {
+        margin-top: 16px;
+        padding: 10px 14px;
+        border-radius: var(--radius-1);
         font-size: 0.82rem;
-        text-align: center;
-        min-height: 20px;
-        word-break: break-all;
+        line-height: 1.45;
+        display: none;
+        align-items: flex-start;
+        gap: 8px;
+        animation: fadeIn 0.2s var(--ease-out);
       }
-      .status-msg.success {
+
+      .status-box.show {
+        display: flex;
+      }
+
+      .status-box.success {
+        background: var(--success-soft);
+        border: 1px solid var(--success);
         color: var(--success);
       }
-      .status-msg.error {
-        color: var(--error);
+
+      .status-box.error {
+        background: var(--danger-soft);
+        border: 1px solid var(--danger);
+        color: var(--danger);
+      }
+
+      .status-box.warning {
+        background: var(--warning-soft);
+        border: 1px solid var(--warning);
+        color: var(--warning);
+      }
+
+      .status-box svg {
+        width: 16px;
+        height: 16px;
+        flex-shrink: 0;
+        margin-top: 2px;
+      }
+
+      @keyframes fadeIn {
+        from {
+          opacity: 0;
+          transform: translateY(-4px);
+        }
+        to {
+          opacity: 1;
+          transform: translateY(0);
+        }
+      }
+
+      @keyframes spin {
+        from {
+          transform: rotate(0deg);
+        }
+        to {
+          transform: rotate(360deg);
+        }
+      }
+
+      .icon-spin {
+        animation: spin 0.85s linear infinite;
+      }
+
+      /* 纯矢量 SVG 图标公用尺寸 */
+      .icon-svg {
+        display: inline-block;
+        vertical-align: middle;
+        fill: none;
+        stroke: currentColor;
+        stroke-width: 2;
+        stroke-linecap: round;
+        stroke-linejoin: round;
       }
     </style>
   </head>
   <body>
-    <div class="card">
-      <div class="header">
+    <main class="card" role="main">
+      <header class="header">
         <img src="icons/icon-48.png" alt="Paper Room Icon" />
         <div>
           <h1>纸间 · 扩展配置</h1>
-          <p class="hint">配置本地或私有阅览室服务连接信息</p>
+          <p class="header-desc">私人漫画收藏馆 · 浏览器一键收录与分流配置</p>
         </div>
-      </div>
+      </header>
 
-      <div class="form-group">
-        <label for="serverUrl">纸间服务地址</label>
-        <input type="text" id="serverUrl" placeholder="http://localhost:8000" spellcheck="false" />
+      <!-- 第一分区：服务连接配置 -->
+      <section aria-labelledby="section-connection">
+        <h2 id="section-connection" class="section-title">服务连接</h2>
+
+        <div class="form-group">
+          <label for="serverUrl">纸间服务地址</label>
+          <input
+            type="text"
+            id="serverUrl"
+            class="font-mono"
+            placeholder="http://localhost:8000"
+            spellcheck="false"
+            autocomplete="off"
+            aria-describedby="serverUrlHint"
+          />
+          <div id="serverUrlError" class="field-error-msg" aria-live="polite"></div>
+          <p id="serverUrlHint" class="hint">
+            默认本地 http://localhost:8000；若是远程公网部署建议使用 https:// 确保传输加密。
+          </p>
+        </div>
+
+        <div class="form-group">
+          <label for="token">馆长访问口令 (选填)</label>
+          <input
+            type="password"
+            id="token"
+            class="font-mono"
+            placeholder="未配置 AUTH_SECRET 时留空"
+            spellcheck="false"
+            autocomplete="off"
+            aria-describedby="tokenHint"
+          />
+          <p id="tokenHint" class="hint">若服务端配置了写权限口令，请在此填入以获准收录入库。</p>
+        </div>
+
+        <div class="form-group">
+          <label class="toggle-row" for="enableNotifications">
+            <span class="toggle-info">
+              <span class="toggle-title">接收系统通知推送</span>
+              <span class="toggle-hint">
+                开启后在右键收录完成时通过系统弹窗提示；关闭则仅通过图标角标静默反馈。
+              </span>
+            </span>
+            <input type="checkbox" id="enableNotifications" class="toggle-checkbox" checked />
+          </label>
+        </div>
+      </section>
+
+      <!-- 第二分区：图源分流域名管理 -->
+      <section aria-labelledby="section-domains">
+        <h2 id="section-domains" class="section-title">图源分流域名</h2>
+
+        <div class="domain-manager-box">
+          <div class="domain-input-bar">
+            <input
+              type="text"
+              id="domainInput"
+              class="font-mono"
+              placeholder="输入分流域名，如 comic18j-xxx.xyz (支持逗号批量输入)"
+              spellcheck="false"
+              autocomplete="off"
+              aria-describedby="domainFeedback"
+            />
+            <button type="button" id="addDomainBtn" class="btn-add">
+              <svg class="icon-svg" style="width: 14px; height: 14px" viewBox="0 0 24 24">
+                <line x1="12" y1="5" x2="12" y2="19"></line>
+                <line x1="5" y1="12" x2="19" y2="12"></line>
+              </svg>
+              <span>添加</span>
+            </button>
+          </div>
+          <div id="domainFeedback" class="domain-feedback" aria-live="polite"></div>
+
+          <div id="customSection" class="custom-section" style="display: none">
+            <div class="chips-header">
+              <span>自定义追加分流</span>
+              <div class="chips-header-right">
+                <span id="customCountBadge" class="tag-badge">0 个</span>
+              </div>
+            </div>
+
+            <div id="customChipsContainer" class="chips-container" role="list">
+              <!-- 动态渲染自定义追加分流 Chip -->
+            </div>
+          </div>
+
+          <!-- 系统内置分流抽屉 (::details-content 现代 CSS 动效) -->
+          <details class="builtin-drawer" id="builtinDrawer">
+            <summary>
+              <span class="summary-label">
+                <svg class="icon-svg" style="width: 14px; height: 14px" viewBox="0 0 24 24">
+                  <circle cx="12" cy="12" r="10"></circle>
+                  <line x1="2" y1="12" x2="22" y2="12"></line>
+                  <path
+                    d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"
+                  ></path>
+                </svg>
+                <span>查看内置分流域名 (<span id="builtinCountText">加载中</span>)</span>
+              </span>
+              <svg class="icon-svg drawer-chevron" viewBox="0 0 24 24">
+                <polyline points="6 9 12 15 18 9"></polyline>
+              </svg>
+            </summary>
+            <div class="drawer-content" id="builtinDrawerContent">
+              <!-- 动态渲染三大内置图源 -->
+            </div>
+          </details>
+        </div>
         <p class="hint">
-          默认本地 http://localhost:8000；若是远程公网部署建议使用 https:// 确保传输加密。
+          当在上述站点浏览时，扩展将激活右键「收录至纸间」菜单；若图源换域可在此增删。支持快捷键
+          <kbd>Ctrl+S</kbd> / <kbd>⌘S</kbd> 快速保存。
         </p>
+      </section>
+
+      <!-- 底部操作与测试 -->
+      <footer class="actions">
+        <button id="testBtn" type="button" class="btn-base btn-secondary">
+          <svg
+            id="testBtnIcon"
+            class="icon-svg"
+            style="width: 15px; height: 15px"
+            viewBox="0 0 24 24"
+          >
+            <polyline points="23 4 23 10 17 10"></polyline>
+            <polyline points="1 20 1 14 7 14"></polyline>
+            <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
+          </svg>
+          <span id="testBtnText">测试连接</span>
+        </button>
+        <button
+          id="resetBtn"
+          type="button"
+          class="btn-base btn-ghost"
+          style="display: none"
+          title="放弃当前未保存的草稿修改"
+        >
+          <span>重置修改</span>
+        </button>
+        <button id="saveBtn" type="button" class="btn-base btn-primary">
+          <svg class="icon-svg" style="width: 15px; height: 15px" viewBox="0 0 24 24">
+            <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path>
+            <polyline points="17 21 17 13 7 13 7 21"></polyline>
+            <polyline points="7 3 7 8 15 8"></polyline>
+          </svg>
+          <span id="saveBtnText">保存配置</span>
+          <span id="dirtyIndicator" class="dirty-dot" style="display: none"></span>
+        </button>
+      </footer>
+
+      <!-- 状态提示横幅 (全矢量图标，严禁 Unicode 伪字符) -->
+      <div id="statusBox" class="status-box" role="status" aria-live="polite">
+        <svg id="statusIcon" class="icon-svg" viewBox="0 0 24 24"></svg>
+        <span id="statusText"></span>
       </div>
+    </main>
 
-      <div class="form-group">
-        <label for="token">馆长访问口令 (选填)</label>
-        <input
-          type="password"
-          id="token"
-          placeholder="未配置 AUTH_SECRET 时留空"
-          spellcheck="false"
-        />
-        <p class="hint">若服务端 .env 配置了 AUTH_SECRET 口令，请在此填入以获准写权限。</p>
-      </div>
-
-      <div class="form-group">
-        <label for="customDomains">自定义图源域名 (选填)</label>
-        <input
-          type="text"
-          id="customDomains"
-          placeholder="如新分流 comic18j-xxx.xyz，逗号分隔"
-          spellcheck="false"
-        />
-        <p class="hint">默认已内置三大图源全部官方与分流域名；若图源换域可在此追加。</p>
-      </div>
-
-      <div class="actions">
-        <button id="testBtn" type="button" class="btn-secondary">测试连接</button>
-        <button id="saveBtn" type="button" class="btn-primary">保存配置</button>
-      </div>
-
-      <div id="status" class="status-msg"></div>
-    </div>
-
-    <script src="options.js"></script>
+    <script type="module" src="options.js"></script>
   </body>
 </html>

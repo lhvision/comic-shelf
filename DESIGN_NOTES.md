@@ -44,6 +44,7 @@
    - [§73 单本沙箱借阅笺弹窗、四档黄金时效单选组与设计 Token 零失真契约](#sec-73)
    - [§74 WebMCP 通用泛型映射、多态组合式函数返回契约与命名洁净架构](#sec-74)
    - [§75 搜索历史沉淀、状态跨页驻留与多意图浮层防冲突架构](#sec-75)
+   - [§76 浏览器扩展案头配置、现代折叠抽屉动效与胶囊群无障碍焦点架构](#sec-76)
 
 ---
 
@@ -756,3 +757,27 @@
 5. **Combobox 候选列表与通用 Top-layer Popover 的架构正交防线（Combobox Listbox vs Generic Popover Orthogonality）**：
    - **机制冲突与不复用原因**：通用弹出层 `AppPopover.vue` 基于 HTML 原生 `popover="auto"` 运行于浏览器的 Top-layer（顶层画布），带有底层的原生 Light Dismiss 机制。在实时打字的搜索输入框（Combobox）中，用户高频键入文本或呼出输入法（IME）时，焦点处于普通 DOM 层，浏览器底层的 Popover API 会误判为外部交互而引发浮层闪退；此外原生 `popover="auto"` 的 ESC 监听会强行抢占搜索框专属的三级阶梯式退出（退浮层 -> 清文本 -> 销胶囊）。
    - **架构归位原则**：严格将「按钮触发的独立 Top-layer 富面板（`AppPopover`）」与「表单复合输入内联候选列表（Combobox Listbox，如 `SearchCommandMenu`、`SearchHistoryMenu`）」解耦为两个正交模式；各搜索浮层保持内聚独立与满宽几何贴合，不引入多余的 Slot Shell 抽象层，坚守轻量、直观与高维护性。
+
+### <a id="sec-76"></a>§76 浏览器扩展案头配置、现代折叠抽屉动效与胶囊群无障碍焦点架构（Browser Extension Options, Details-Content Animation & Accessible Chip System Architecture）
+
+针对纸间 Chrome 浏览器扩展选项页（`options.html` / `options.js`）的视觉统一度、图源分流管理交互与无障碍健壮性：
+
+1. **案头视觉规范同构（Extension Theming & Design Tokens Conformance）**：
+   - 彻底废除硬编码深色与 Chrome 默认样式，全量对齐 `tokens.css` 核心变量体系；
+   - 支持 `@media (prefers-color-scheme: dark)` 亮暗自适应双模，亮色采用米暖纸底 `--paper-0` 与浓墨 `--ink-0`，暗色采用纸墨深调与明朱砂 `--accent`；浅色模式下针对正文辅助说明将 `--ink-2` 加深至 `#595349`，实测保证 WCAG AA 5.3:1 高保真对比度；
+   - 坚守零 Unicode 伪字符铁律，配置页所有状态提示、清除徽标、加载指示均基于纯内联 SVG 矢量图标渲染。
+2. **现代折叠抽屉动效渐进增强（Modern CSS `::details-content` Animation）**：
+   - 基于 Chromium 原生现代 CSS 特性，内置 20 个图源分流域名通过 `<details class="builtin-drawer">` 实现平滑高度过渡；
+   - 样式利用 `interpolate-size: allow-keywords;` 与 `::details-content { transition: height 0.32s var(--ease-spring), content-visibility 0.32s allow-discrete; height: 0; overflow: clip; }`；
+   - 搭配 Chevron 矢量图标随 `[open]` 状态顺滑旋转 180°，并兼容 `prefers-reduced-motion: reduce` 静默降级，实现 0 JS 开销的极致平滑折叠体验。
+3. **分流胶囊群微交互、触控外扩与键盘焦点回退（Accessible Tag Chips, Touch Expansion & Focus Restoration）**：
+   - **触控底线（WCAG 2.5.5）**：微型移除按钮通过 `::before { position: absolute; inset: -12px; }` 物理外扩点击热区至 ≥44×44px，平板与触摸板零误触；
+   - **键盘焦点回退（Focus Restoration）**：在通过键盘 `Space` / `Enter` 触发删除某 Chip 后，算法自动将焦点平滑转移到相邻下一个 Chip（若为末项则前移，空列表则安全回退至输入框），彻底杜绝焦点坠落至 `<body>` 的 Ghost Focus 恶疾；
+   - **长文本截断防御**：Chip 内部域名挂载 `max-width: 220px; text-overflow: ellipsis;`，防御超长域名撑爆卡片盒模型。
+4. **单提交语义、防御性 URL 校验与草稿脏状态逃生（Single Submit Semantics, RFC URL Validation & Dirty State Guard）**：
+   - **RFC URL 严格校验**：`validateServerUrl` 基于标准 `new URL()` 校验，严格限制 http/https 协议并核验有效主机名，阻断非法输入污染存储；
+   - **脏状态感知与离开保护**：实时比对当前草稿与持久化快照，当发生变更时在保存按钮激活高亮小黄点，并在 `window.onbeforeunload` 注册离开警示，防止读者误关标签页静默丢失心血；
+   - **逃生与快捷保存**：提供「重置修改」快捷逃生通道恢复原状；全局捕获 `Ctrl+S` / `Cmd+S` 拦截浏览器默认保存网页窗口，直达配置保存。
+5. **通知推送可控与上下文单向直达（Notification Opt-out & Context-Aware Silent Navigation）**：
+   - **通知推送即时落盘开关**：选项页提供即时落盘存储的「接收系统通知推送」独立开关；关闭时彻底阻断系统弹窗气泡，仅通过工具栏图标彩色短角标反馈状态，彻底规避操作系统专注助手/通知中心对声音和横幅的拦截；
+   - **智能上下文单向直达**：在漫画页面点击扩展图标，直接在新标签页打开纸间该本子详情页并在后台静默确保入库；纯跳转上下文保持静默，严禁在图标闪烁「已在」或「✓」角标与通知，避免用户对「是否误触发添加」产生认知混淆；杜绝过度工程化的逆向跳出抽象，严格遵循单体收藏馆「纸间即归宿」的设计哲学。

@@ -1,6 +1,16 @@
 import { describe, it, expect } from 'vite-plus/test'
-// @ts-expect-error Extension service-worker is vanilla JS without d.ts declarations
-import { isSafeUrl, resolveComicInfo, buildUrlPatterns } from '../../extension/service-worker.js'
+import {
+  isSafeUrl,
+  resolveComicInfo,
+  buildUrlPatterns,
+  detectComicFromTab,
+} from '../../extension/service-worker.js'
+import {
+  sanitizeDomain,
+  isValidDomain,
+  BUILTIN_PROVIDERS,
+  DEFAULT_DOMAINS,
+} from '../../extension/constants.js'
 
 describe('extension service-worker', () => {
   describe('isSafeUrl', () => {
@@ -91,6 +101,79 @@ describe('extension service-worker', () => {
     it('deduplicates domains and drops invalid entries', () => {
       const patterns = buildUrlPatterns(['18comic.vip', '18comic.vip', '', '   '])
       expect(patterns).toEqual(['*://*.18comic.vip/*'])
+    })
+  })
+
+  describe('extension constants & domain tools', () => {
+    it('provides valid BUILTIN_PROVIDERS with expected domains and badges', () => {
+      expect(BUILTIN_PROVIDERS.length).toBe(3)
+      const jm = BUILTIN_PROVIDERS.find(
+        (p: { source: string; badge: string; domains: string[] }) => p.source === 'jm',
+      )
+      expect(jm?.badge).toBe('JM')
+      expect(jm?.domains).toContain('18comic.vip')
+      expect(DEFAULT_DOMAINS.length).toBe(20)
+    })
+
+    it('sanitizes messy domain inputs correctly', () => {
+      expect(sanitizeDomain('https://comic18j-mirror.xyz/album/123')).toBe('comic18j-mirror.xyz')
+      expect(sanitizeDomain('  http://PICACOMIC.COM:443/  ')).toBe('picacomic.com')
+      expect(sanitizeDomain('*.copymanga.tv')).toBe('copymanga.tv')
+      expect(sanitizeDomain('')).toBe('')
+    })
+
+    it('validates domain strings accurately', () => {
+      expect(isValidDomain('comic18j-mirror.xyz')).toBe(true)
+      expect(isValidDomain('192.168.1.100')).toBe(true)
+      expect(isValidDomain('localhost')).toBe(true)
+      expect(isValidDomain('invalid..domain')).toBe(false)
+      expect(isValidDomain('not a domain')).toBe(false)
+      expect(isValidDomain('')).toBe(false)
+    })
+  })
+
+  describe('context-aware icon click & site navigation', () => {
+    describe('detectComicFromTab', () => {
+      it('detects comic info on an active tab with a valid comic URL', async () => {
+        const tab = { id: 1, url: 'https://18comic.vip/album/123456' }
+        const res = await detectComicFromTab(tab)
+        expect(res?.comic).toEqual({
+          source: 'jm',
+          id: '123456',
+          name: '禁漫天堂',
+        })
+      })
+
+      it('returns null when tab URL is not a comic page', async () => {
+        const tab = { id: 2, url: 'https://google.com/search' }
+        const res = await detectComicFromTab(tab)
+        expect(res).toBeNull()
+      })
+
+      it('detects comic info from pendingUrl when tab is still navigating', async () => {
+        const tab = { id: 10, pendingUrl: 'https://copymanga.tv/comic/dandadan' }
+        const res = await detectComicFromTab(tab)
+        expect(res?.comic).toEqual({
+          source: 'copymanga',
+          id: 'dandadan',
+          name: '拷贝漫画',
+        })
+      })
+
+      it('detects comic info with hash-based single page app routing', async () => {
+        const tab = { id: 11, url: 'https://mirror.org/#/comic/chainsaw-man' }
+        const res = await detectComicFromTab(tab)
+        expect(res?.comic).toEqual({
+          source: 'copymanga',
+          id: 'chainsaw-man',
+          name: '拷贝漫画',
+        })
+      })
+
+      it('returns null when tab or url is invalid', async () => {
+        expect(await detectComicFromTab(null)).toBeNull()
+        expect(await detectComicFromTab({ id: 3, url: 'javascript:alert(1)' })).toBeNull()
+      })
     })
   })
 })
