@@ -93,9 +93,9 @@ describe('extension service-worker', () => {
       ])
     })
 
-    it('supports direct IPv4 hostnames without wildcard subdomain syntax', () => {
-      const patterns = buildUrlPatterns(['127.0.0.1:8000', '192.168.1.10'])
-      expect(patterns).toEqual(['*://127.0.0.1/*', '*://192.168.1.10/*'])
+    it('supports direct IPv4 hostnames and localhost without wildcard subdomain syntax', () => {
+      const patterns = buildUrlPatterns(['127.0.0.1:8000', '192.168.1.10', 'localhost'])
+      expect(patterns).toEqual(['*://127.0.0.1/*', '*://192.168.1.10/*', '*://localhost/*'])
     })
 
     it('deduplicates domains and drops invalid entries', () => {
@@ -115,10 +115,12 @@ describe('extension service-worker', () => {
       expect(DEFAULT_DOMAINS.length).toBe(20)
     })
 
-    it('sanitizes messy domain inputs correctly', () => {
+    it('sanitizes messy domain inputs correctly (including query strings and hash anchors)', () => {
       expect(sanitizeDomain('https://comic18j-mirror.xyz/album/123')).toBe('comic18j-mirror.xyz')
       expect(sanitizeDomain('  http://PICACOMIC.COM:443/  ')).toBe('picacomic.com')
       expect(sanitizeDomain('*.copymanga.tv')).toBe('copymanga.tv')
+      expect(sanitizeDomain('comic18.vip?source=share&utm=test')).toBe('comic18.vip')
+      expect(sanitizeDomain('picacomic.com#heading-1')).toBe('picacomic.com')
       expect(sanitizeDomain('')).toBe('')
     })
 
@@ -144,10 +146,34 @@ describe('extension service-worker', () => {
         })
       })
 
+      it('supports subdomains of supported providers', async () => {
+        const tab = { id: 1, url: 'https://m.18comic.vip/album/123456' }
+        const res = await detectComicFromTab(tab)
+        expect(res?.comic).toEqual({
+          source: 'jm',
+          id: '123456',
+          name: '禁漫天堂',
+        })
+      })
+
       it('returns null when tab URL is not a comic page', async () => {
         const tab = { id: 2, url: 'https://google.com/search' }
         const res = await detectComicFromTab(tab)
         expect(res).toBeNull()
+      })
+
+      it('rejects Paper Room self-origin URLs to prevent misidentifying own route as CopyManga', async () => {
+        const tab = { id: 3, url: 'http://localhost:8000/comic/jm/123456' }
+        const res = await detectComicFromTab(tab, { serverUrl: 'http://localhost:8000' })
+        expect(res).toBeNull()
+      })
+
+      it('rejects unrelated sites with /comic/ or /album/ in path/hash', async () => {
+        const tabGithub = { id: 4, url: 'https://github.com/comic/some-repo' }
+        expect(await detectComicFromTab(tabGithub)).toBeNull()
+
+        const tabMusic = { id: 5, url: 'https://music.163.com/#/album/12345' }
+        expect(await detectComicFromTab(tabMusic)).toBeNull()
       })
 
       it('detects comic info from pendingUrl when tab is still navigating', async () => {
@@ -160,9 +186,9 @@ describe('extension service-worker', () => {
         })
       })
 
-      it('detects comic info with hash-based single page app routing', async () => {
+      it('detects comic info with hash-based single page app routing on allowed custom domains', async () => {
         const tab = { id: 11, url: 'https://mirror.org/#/comic/chainsaw-man' }
-        const res = await detectComicFromTab(tab)
+        const res = await detectComicFromTab(tab, { domains: ['mirror.org'] })
         expect(res?.comic).toEqual({
           source: 'copymanga',
           id: 'chainsaw-man',

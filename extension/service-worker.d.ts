@@ -7,8 +7,14 @@ export interface ResolvedComic {
 export declare function isSafeUrl(raw?: string | null): boolean
 export declare function resolveComicInfo(rawUrl?: string | null): ResolvedComic | null
 export declare function buildUrlPatterns(domains: string[]): string[]
+export interface DetectComicOptions {
+  domains?: string[]
+  serverUrl?: string
+}
+
 export declare function detectComicFromTab(
   tab?: { id?: number; url?: string; pendingUrl?: string } | null,
+  options?: DetectComicOptions,
 ): Promise<{ comic?: ResolvedComic; error?: string } | null>
 
 export declare function getConfig(): Promise<{

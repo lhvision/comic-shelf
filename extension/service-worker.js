@@ -82,14 +82,72 @@ async function extractJmAlbumUrl(tabId) {
 }
 
 /**
- * 探测指定 Tab 上的漫画信息（支持相册页及 JM 单话阅读页智能提取）
+ * 判断指定主机名是否匹配分流域名列表（支持根域名及任意子域名匹配）
  */
-async function detectComicFromTab(tab) {
+function isDomainMatch(hostname, allowedDomains) {
+  if (!hostname || !Array.isArray(allowedDomains) || allowedDomains.length === 0) return false
+  const lowerHost = hostname.toLowerCase()
+  return allowedDomains.some((d) => {
+    const clean = sanitizeDomain(d)
+    if (!clean) return false
+    return lowerHost === clean || lowerHost.endsWith(`.${clean}`)
+  })
+}
+
+/**
+ * 探测指定 Tab 上的漫画信息（支持相册页及 JM 单话阅读页智能提取）
+ * @param {{ id?: number, url?: string, pendingUrl?: string } | null} tab
+ * @param {{ domains?: string[], serverUrl?: string }} [options]
+ */
+async function detectComicFromTab(tab, options = {}) {
   const currentUrl = tab?.url || tab?.pendingUrl
   if (!currentUrl || !isSafeUrl(currentUrl)) return null
 
+  let parsedUrl
+  try {
+    parsedUrl = new URL(currentUrl)
+  } catch {
+    return null
+  }
+
+  // 1. 若当前在纸间服务自身（通过 serverUrl 校验），绝不误判为外部漫画
+  let serverUrl = options.serverUrl
+  if (!serverUrl) {
+    try {
+      serverUrl = (await getConfig()).serverUrl
+    } catch {
+      // 单元测试或孤立调用容错
+    }
+  }
+  if (serverUrl && isSafeUrl(serverUrl)) {
+    try {
+      if (parsedUrl.origin === new URL(serverUrl).origin) return null
+    } catch {
+      // 忽略解析异常
+    }
+  }
+
+  // 2. 域名白名单核验：仅当标签页域名命中支持的分流列表时才进行漫画识别
+  let allowedDomains = options.domains
+  if (!allowedDomains) {
+    let customList = []
+    try {
+      if (typeof chrome !== 'undefined' && chrome?.storage?.local) {
+        const stored = await chrome.storage.local.get({ customDomains: [] })
+        customList = Array.isArray(stored?.customDomains) ? stored.customDomains : []
+      }
+    } catch {
+      // 容错
+    }
+    allowedDomains = [...DEFAULT_DOMAINS, ...customList]
+  }
+
+  if (!isDomainMatch(parsedUrl.hostname, allowedDomains)) {
+    return null
+  }
+
   let targetUrl = currentUrl
-  if (targetUrl.includes('/photo/') && tab.id) {
+  if (targetUrl.includes('/photo/') && tab?.id) {
     const albumUrl = await extractJmAlbumUrl(tab.id)
     if (albumUrl) {
       targetUrl = albumUrl
@@ -105,12 +163,6 @@ async function detectComicFromTab(tab) {
   return comic ? { comic } : null
 }
 
-function parseBool(val, defaultValue = true) {
-  if (val === false || val === 'false' || val === 0 || val === '0') return false
-  if (val === true || val === 'true' || val === 1 || val === '1') return true
-  return defaultValue
-}
-
 /**
  * 获取保存的配置（使用 storage.local 本地隔离存储，严禁敏感口令随 Google 账户同步上云）
  */
@@ -124,7 +176,7 @@ async function getConfig() {
   return {
     serverUrl,
     token: (data.token || '').trim(),
-    enableNotifications: parseBool(data.enableNotifications, true),
+    enableNotifications: data.enableNotifications !== false && data.enableNotifications !== 'false',
   }
 }
 
@@ -154,7 +206,9 @@ async function showNotification(title, message, targetUrl = null) {
 
   const notifId = `paper-room-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`
   if (targetUrl && isSafeUrl(targetUrl)) {
-    await chrome.storage.local.set({ [`notif_${notifId}`]: targetUrl })
+    await chrome.storage.local.set({
+      [`notif_${notifId}`]: { url: targetUrl, createdAt: Date.now() },
+    })
   }
 
   chrome.notifications.create(notifId, {
@@ -173,11 +227,11 @@ function buildUrlPatterns(domains) {
     const clean = sanitizeDomain(d)
     if (!clean) continue
 
-    // 区分 IPv4 地址与标准域名
-    const isIp = /^(\d{1,3}\.){3}\d{1,3}$/.test(clean)
-    if (isIp) {
+    // 区分 IPv4 地址 / localhost 与标准域名
+    const isIpOrLocalhost = /^(\d{1,3}\.){3}\d{1,3}$/.test(clean) || clean === 'localhost'
+    if (isIpOrLocalhost) {
       patterns.push(`*://${clean}/*`)
-    } else if (/^[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/.test(clean) || clean === 'localhost') {
+    } else if (/^[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/.test(clean)) {
       patterns.push(`*://*.${clean}/*`)
     }
   }
@@ -221,12 +275,21 @@ async function registerContextMenu() {
 }
 
 /**
- * 清理本地存储中超时的通知 ID 映射
+ * 清理本地存储中超时的通知 ID 映射（保留 24 小时以内，防范长期会话累积泄露）
  */
 async function pruneStaleNotifications() {
   try {
     const all = await chrome.storage.local.get(null)
-    const keysToRemove = Object.keys(all).filter((k) => k.startsWith('notif_'))
+    const now = Date.now()
+    const maxAge = 24 * 60 * 60 * 1000 // 24小时
+    const keysToRemove = Object.keys(all).filter((k) => {
+      if (!k.startsWith('notif_')) return false
+      const val = all[k]
+      if (val && typeof val === 'object' && val.createdAt) {
+        return now - val.createdAt > maxAge
+      }
+      return true
+    })
     if (keysToRemove.length > 0) {
       await chrome.storage.local.remove(keysToRemove)
     }
@@ -286,13 +349,11 @@ async function importComic(comic, { openTab = false, silent = false } = {}) {
     clearTimeout(timeoutId)
 
     if (response.status === 401 || response.status === 403) {
-      if (!silent) {
-        setBadge('AUTH', '#e5484d')
-        await showNotification(
-          '纸间访问认证失败',
-          '馆长口令未配置或无效。右键点击插件图标选择「选项」配置正确口令。',
-        )
-      }
+      setBadge('AUTH', '#e5484d')
+      await showNotification(
+        '纸间访问认证失败',
+        '馆长口令未配置或无效。右键点击插件图标选择「选项」配置正确口令。',
+      )
       chrome.runtime.openOptionsPage()
       return { ok: false }
     }
@@ -308,10 +369,8 @@ async function importComic(comic, { openTab = false, silent = false } = {}) {
       } catch {
         // 无法解析 JSON 错误，保留默认状态文本
       }
-      if (!silent) {
-        setBadge('ERR', '#e5484d')
-        await showNotification('收录失败', `[${comic.name}] ${detailMsg}`)
-      }
+      setBadge('ERR', '#e5484d')
+      await showNotification('收录失败', `[${comic.name}] ${detailMsg}`)
       return { ok: false }
     }
 
@@ -344,14 +403,12 @@ async function importComic(comic, { openTab = false, silent = false } = {}) {
 
     return { ok: true, detailUrl, fromCache: Boolean(result.from_cache) }
   } catch (error) {
-    if (!silent) {
-      setBadge('ERR', '#e5484d')
-      const isTimeout = error.name === 'AbortError'
-      const msg = isTimeout
-        ? '请求超时（60s），请检查网络或纸间服务响应'
-        : `无法连接到纸间服务（${serverUrl}），请检查服务是否启动。`
-      await showNotification('连接纸间失败', msg)
-    }
+    setBadge('ERR', '#e5484d')
+    const isTimeout = error.name === 'AbortError'
+    const msg = isTimeout
+      ? '请求超时（60s），请检查网络或纸间服务响应'
+      : `无法连接到纸间服务（${serverUrl}），请检查服务是否启动。`
+    await showNotification('连接纸间失败', msg)
     return { ok: false }
   } finally {
     IN_FLIGHT_SET.delete(inFlightKey)
@@ -381,20 +438,12 @@ if (typeof chrome !== 'undefined' && chrome?.runtime) {
   chrome.action.onClicked.addListener(async (tab) => {
     let currentTab = tab
 
-    // 1. 若 tab 或 tab.url 缺失，主动通过 chrome.tabs.get / query 容灾获取
+    // 1. 若 tab 或 tab.url 缺失，主动通过 chrome.tabs.get 容灾获取
     if (!currentTab?.url && currentTab?.id) {
       try {
         currentTab = await chrome.tabs.get(currentTab.id)
       } catch (err) {
         console.warn('[Paper Room] 获取 Tab 详情异常:', err)
-      }
-    }
-    if (!currentTab?.url) {
-      try {
-        const [active] = await chrome.tabs.query({ active: true, currentWindow: true })
-        if (active) currentTab = active
-      } catch (err) {
-        console.warn('[Paper Room] 查询当前活动 Tab 异常:', err)
       }
     }
 
@@ -405,7 +454,7 @@ if (typeof chrome !== 'undefined' && chrome?.runtime) {
     }
 
     // 2. 若当前在支持的外部漫画页面（禁漫、哔咔、拷贝），一键收录并直达纸间详情页
-    const detection = await detectComicFromTab(currentTab)
+    const detection = await detectComicFromTab(currentTab, { serverUrl })
     if (detection?.error === 'jm_photo_unresolved') {
       setBadge('!', '#e5484d')
       await showNotification(
@@ -435,7 +484,8 @@ if (typeof chrome !== 'undefined' && chrome?.runtime) {
   chrome.notifications.onClicked.addListener(async (notificationId) => {
     const key = `notif_${notificationId}`
     const data = await chrome.storage.local.get(key)
-    const targetUrl = data[key]
+    const stored = data[key]
+    const targetUrl = typeof stored === 'object' ? stored?.url : stored
     if (targetUrl && isSafeUrl(targetUrl)) {
       chrome.tabs.create({ url: targetUrl })
       await chrome.storage.local.remove(key)
@@ -478,6 +528,29 @@ if (typeof chrome !== 'undefined' && chrome?.runtime) {
       await showNotification(
         '无法识别相册车号',
         '禁漫单话阅读链接无法直接入库，请在相册主页空白处或封面链接上右键收录。',
+      )
+      return
+    }
+
+    // 4. 域名白名单核验：防范右键点选的外链属于广告或无关第三方站点
+    let parsed
+    try {
+      parsed = new URL(targetUrl)
+    } catch {
+      setBadge('!', '#e5484d')
+      await showNotification('无法识别漫画来源', 'URL 格式无效，请在漫画详情页或卡片链接上右键。')
+      return
+    }
+
+    const data = await chrome.storage.local.get({ customDomains: [] })
+    const customList = Array.isArray(data.customDomains) ? data.customDomains : []
+    const allDomains = [...DEFAULT_DOMAINS, ...customList]
+
+    if (!isDomainMatch(parsed.hostname, allDomains)) {
+      setBadge('!', '#e5484d')
+      await showNotification(
+        '无法识别漫画来源',
+        '目标链接不属于已配置的图源分流域名（支持禁漫、哔咔、拷贝），请在漫画卡片上右键。',
       )
       return
     }

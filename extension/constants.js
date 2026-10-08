@@ -53,7 +53,7 @@ export function sanitizeDomain(raw) {
   return raw
     .trim()
     .replace(/^https?:\/\//i, '')
-    .replace(/\/.*$/, '')
+    .replace(/[/?#].*$/, '')
     .replace(/^\*+\.?/, '')
     .replace(/:\d+$/, '')
     .toLowerCase()

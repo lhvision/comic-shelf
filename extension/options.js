@@ -390,6 +390,8 @@ document.addEventListener('DOMContentLoaded', async () => {
       updateDirtyState()
 
       showStatus('配置已保存至本地，右键收录菜单已同步生效', 'success', true)
+    } catch (err) {
+      showStatus(`保存配置失败: ${err.message || '未知异常'}`, 'error', true)
     } finally {
       saveBtn.disabled = false
     }
