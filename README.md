@@ -314,12 +314,13 @@ $COMIC_SHELF_DATA/
 
 ## 开源协议与鸣谢（License & Acknowledgements）
 
-本项目基于 **MIT License** 开源。感谢以下优秀的开源项目与社区生态：
+本项目基于 **GNU Affero General Public License v3.0 (AGPL-3.0)** 开源（详情参阅 [ADR 0034](docs/adr/0034-relicense-to-agpl-3.md)）。感谢以下优秀的开源项目与社区生态：
 
+- [PyMuPDF](https://github.com/pymupdf/PyMuPDF) (AGPL-3.0 License) by Artifex — 提供高性能 PDF 图像流无损解包与版面分析。
 - [JMComic-Crawler-Python](https://github.com/hect0x7/JMComic-Crawler-Python) (MIT License) — 提供了可靠的禁漫元数据解析与图片反混淆解密算法。
 - [PicaComic](https://github.com/wgh136/PicaComic) (MIT License) by @wgh136 — 为哔咔移动端 REST 接口规范、HMAC-SHA256 签名机制与分流端点提供了宝贵且权威的开源参考。
 - [curl_cffi](https://github.com/lexiforest/curl_cffi) (MIT License) — 提供底层现代 TLS 指纹模拟与高性能 HTTP 客户端能力。
-- [imsearch](https://github.com/lolishinshi/imsearch) (GPL-3.0 License) by @aloxaf — 高性能二次元局部特征点图片搜索引擎（本项目通过独立容器 HTTP API 网络隔离调用，严格保障纸间项目的 MIT 开源合规性）。
+- [imsearch](https://github.com/lolishinshi/imsearch) (GPL-3.0 License) by @aloxaf — 高性能二次元局部特征点图片搜索引擎。
 - [FastAPI](https://fastapi.tiangolo.com/) & [Uvicorn](https://www.uvicorn.org/) — 高性能 Python 异步后端。
 - [Vue.js](https://vuejs.org/) / [VueUse](https://vueuse.org/) / [Pinia](https://pinia.vuejs.org/) — 优雅轻盈的前端生态。
 - [Vite+](https://viteplus.dev/) — 现代化统一前端工具链。
