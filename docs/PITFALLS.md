@@ -1054,7 +1054,20 @@
 - **红线**：
   1. 浏览器扩展必须严格在客户端校验图源 ID 语义，禁漫仅允许提交相册 ID（`/album/`）；无法解析单话对应相册时必须显式拦截并给予告警，严禁无效 ID 穿透至服务端；
   2. 在 Chrome `ISOLATED world` 下探测页面信息时，通过遍历 `<script>` 标签文本与 `<a href>` 严格正则匹配，不依赖页面全局变量；
-  3. 自定义域名构建 Match Pattern 时必须过滤前导 `*` 与端口，区分 IPv4 地址，并在注册菜单时设置 `chrome.runtime.lastError` 降级兜底。
+
+### 165. 禁漫排行榜匿名修剪、空封面及 15 秒前端超时致使发现页失效断点
+
+- **症状**：进入发现页切换到禁漫排行榜时长时间转圈并弹窗报错 502/超时；成功拉出列表后卡片全部无封面；榜单作品内容与网页端登录后的热门排行严重不符。
+- **根因**：
+  1. **前端默认超时过紧**：`src/api/modules/discovery.ts` 未传 `timeoutMs`，继承全局默认 15 秒，跨境外网与代理域名握手耗时极易超标触发前端中断；
+  2. **后端同步嗅探重定向**：`fetch_ranking` 同步调用 `resolve_html_domain()` 嗅探静态发布页，冷启动耗时增加 10+ 秒；
+  3. **禁漫平台匿名内容修剪**：禁漫 API `/categories/filter` 对未登录用户过滤修剪热门作品，需注入已登录的 `AVS` 令牌与 Web Cookies 才能获取真实全量热门；
+  4. **封面字段缺失与代理空白**：上游 API 响应不带封面图片，`JMProvider` 未注入 `cover_url` 且未实现 `download_cover_by_url`。
+- **红线**：
+  1. 发现页榜单请求 `discoveryRanking` 必须显式声明宽松超时预算（`timeoutMs: 60000`）；
+  2. 榜单热路径严禁执行耗时的动态域名嗅探（优先复用已缓存或官方基准域名）；
+  3. 禁漫 `fetch_ranking` 必须通过 `_make_api_client()` 注入真实登录会话，并在异常时自愈重登；
+  4. 禁漫封面统一注入 `https://cdn-msp.../media/albums/{aid}_3x4.jpg`，并通过 `download_cover_by_url` 施加严格 SSRF 白名单校验（官方 CDN 及合法路径）与二进制魔数防伪，配合 Scheme A 纯内存 LRU 代理。
 
 ---
 

@@ -221,8 +221,11 @@ def discovery_ranking(
         except Exception as exc:
             if cached_feed is not None:
                 feed = cached_feed
-            else:
-                raise HTTPException(status_code=502, detail=f"拉取排行榜失败：{exc}") from exc
+    # Self-heal historical JM cached feeds missing cover_url
+    if feed is not None and source == "jm":
+        for item in feed.items:
+            if not item.cover_url:
+                item.cover_url = f"https://cdn-msp.jmapiproxy1.cc/media/albums/{item.source_id}_3x4.jpg"
 
     # Populate in_library status for current library and cross-source mirror match
     cur_is_curator = is_curator(request)
@@ -305,8 +308,8 @@ def discovery_cover(
                     if item.source_id == source_id and item.cover_url:
                         resolved_cover_url = item.cover_url
                         break
-            if resolved_cover_url:
-                break
+    if not resolved_cover_url and source == "jm":
+        resolved_cover_url = f"https://cdn-msp.jmapiproxy1.cc/media/albums/{source_id}_3x4.jpg"
 
     if not resolved_cover_url:
         raise HTTPException(status_code=404, detail="未找到该条目的封面图片地址")

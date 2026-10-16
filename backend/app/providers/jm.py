@@ -1256,32 +1256,107 @@ class JMProvider(ComicProvider):
                 source.close()
             return tmp_path.read_bytes()
 
+    def download_cover_by_url(self, cover_url: str) -> bytes | None:
+        """Downloads discovery cover image bytes with candidate CDN fallbacks and magic byte sniffing."""
+        if not cover_url or not cover_url.strip():
+            return None
+        parsed = urlparse(cover_url.strip())
+        if parsed.scheme not in ("http", "https"):
+            return None
+
+        # Defense-in-depth: Enforce path structure and host restrictions for JM covers
+        if not parsed.path.startswith(("/media/albums/", "/media/photos/")):
+            return None
+        if not parsed.path.lower().endswith((".jpg", ".jpeg", ".webp", ".png")):
+            return None
+
+        original_host = (parsed.hostname or "").lower()
+        if not _is_safe_remote_domain(original_host):
+            return None
+
+        from jmcomic import JmModuleConfig
+
+        # Ensure target domain is an authorized JM image CDN or official domain
+        is_authorized_host = (
+            original_host in JmModuleConfig.DOMAIN_IMAGE_LIST
+            or any(
+                original_host == suffix or original_host.endswith("." + suffix)
+                for suffix in (
+                    "jmapiproxy1.cc",
+                    "jmapiproxy2.cc",
+                    "jmapinodeudzn.net",
+                    "18comic.vip",
+                    "18comic.org",
+                    "18comic.ink",
+                )
+            )
+        )
+        if not is_authorized_host:
+            return None
+
+        cdn_candidates: list[str] = [original_host]
+        for cand in JmModuleConfig.DOMAIN_IMAGE_LIST:
+            if cand and _is_safe_remote_domain(cand) and cand not in cdn_candidates:
+                cdn_candidates.append(cand)
+
+        headers = {
+            "User-Agent": (
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                "AppleWebKit/537.36 (KHTML, like Gecko) "
+                "Chrome/124.0 Safari/537.36"
+            ),
+            "Referer": f"https://{self._cached_html_domain() or '18comic.vip'}/",
+            "Accept": "image/webp,image/apng,image/*,*/*;q=0.8",
+        }
+        session = self._session()
+        max_attempts = max(3, min(len(cdn_candidates), 6))
+
+        for attempt in range(max_attempts):
+            curr_domain = cdn_candidates[attempt % len(cdn_candidates)]
+            target_url = parsed._replace(netloc=curr_domain, scheme="https").geturl()
+            try:
+                resp = session.get(target_url, headers=headers, timeout=15, allow_redirects=True)
+                if resp.status_code == 200 and self._is_image_bytes(resp.content):
+                    return bytes(resp.content)
+                if resp.status_code == 404 and "_3x4.jpg" in target_url:
+                    alt_url = target_url.replace("_3x4.jpg", ".jpg")
+                    alt_resp = session.get(alt_url, headers=headers, timeout=10, allow_redirects=True)
+                    if alt_resp.status_code == 200 and self._is_image_bytes(alt_resp.content):
+                        return bytes(alt_resp.content)
+            except Exception:
+                continue
+        return None
+
     def fetch_ranking(
         self, timeframe: str = "week", page: int = 1, limit: int = 20
     ) -> list[DiscoveryItem]:
-        from jmcomic import JmModuleConfig, JmOption
+        from jmcomic import JmModuleConfig
 
         JmModuleConfig.FLAG_ENABLE_JM_LOG = False
-        option = JmOption.default()
-        control_proxies = self._get_control_proxies()
-        option.client.postman.meta_data["proxies"] = control_proxies
-        cookies = self._get_valid_cookies(option)
-        if cookies:
-            option.update_cookies(cookies)
-
-        client = option.build_jm_client()
-
-        if timeframe == "day":
-            resp = client.day_ranking(page=page)
-        elif timeframe == "month":
-            resp = client.month_ranking(page=page)
-        else:
-            resp = client.week_ranking(page=page)
+        client = self._make_api_client()
 
         try:
-            ranking_domain = self.resolve_html_domain()
-        except Exception:
-            ranking_domain = "18comic.vip"
+            if timeframe == "day":
+                resp = client.day_ranking(page=page)
+            elif timeframe == "month":
+                resp = client.month_ranking(page=page)
+            else:
+                resp = client.week_ranking(page=page)
+        except Exception as exc:
+            if JM_USERNAME and JM_PASSWORD:
+                logger.info("禁漫拉取排行榜异常，尝试自愈刷新凭据重试: %s", _mask_sensitive(exc))
+                self._clear_session_cache()
+                client = self._make_api_client(force_refresh_session=True)
+                if timeframe == "day":
+                    resp = client.day_ranking(page=page)
+                elif timeframe == "month":
+                    resp = client.month_ranking(page=page)
+                else:
+                    resp = client.week_ranking(page=page)
+            else:
+                raise
+
+        ranking_domain = self._cached_html_domain() or "18comic.vip"
 
         items: list[DiscoveryItem] = []
         if hasattr(resp, "content") and resp.content:
@@ -1307,6 +1382,7 @@ class JMProvider(ComicProvider):
                             title=name,
                             author=author,
                             category=category,
+                            cover_url=f"https://cdn-msp.jmapiproxy1.cc/media/albums/{aid}_3x4.jpg",
                             url=f"https://{ranking_domain}/album/{aid}",
                         )
                     )

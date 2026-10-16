@@ -318,10 +318,18 @@ JmImageTool.decode_and_save(num, source_image, save_path)
   - 携带必要分类过滤参数 `ct=VC`（浏览量榜）以通过哔咔移动端 API 的严格校验；
   - 时段映射契约：`day` 映射为 `H24`（24小时榜）、`week` 映射为 `D7`（7天热门）、`month` 映射为 `D30`（30天热门）；
   - 封面缩略图前缀智能规整（自动嗅探 `static/` 相对路径防 404 挂图）。
+- **JMComic 榜单适配与登录态注入**：
+  - 调用移动端 REST 接口 `/categories/filter`（`day_ranking`、`week_ranking`、`month_ranking`）；
+  - **登录态优先与自愈**：通过 `_make_api_client()` 自动注入已登录的 `AVS` 令牌与 Web Cookies，获取无平台修剪的完整登录版榜单；若未配置 `JM_USERNAME` / `JM_PASSWORD` 则平滑降级为匿名模式；遇认证过期自动清空缓存并透明重登重试；
+  - **域名嗅探瘦身与超时预算**：榜单热路径直接复用已缓存或基准域名，剥离阻塞式发布页探测；前端 `discoveryRanking` 配备 60 秒宽松超时预算（`timeoutMs: 60000`）；
+  - **历史旧缓存自动自愈**：加载存量缺失 `cover_url` 的禁漫磁盘快照时，自动按规范补全 `_3x4.jpg` 官方封面地址；
+  - **直接封面兜底**：端点找不到条目封面记录时，针对 JM 车号直接基于标准格式秒级合成直达地址，消除 404 挂图。
 - **方案 A 榜单封面纯内存代理（Scheme A In-Memory Cover Proxying）**：
   - 端点：`GET /api/discovery/cover`（受 `require_curator` 权限保护）；
   - **零磁盘冗余机制（Zero Disk Waste）**：发现页属于高频流转榜单，严禁将未收录的临时条目图片下载落盘。后端采用线程安全的内存 LRU 缓存（上限 100 份、TTL 3600 秒），当榜单轮换或自然淘汰时，相关内存随之释放，磁盘保持绝对纯净；
-  - **多 CDN 自动容灾与 SSRF 防护**：通过 `_validate_download_host` 校验远端主机名，并在候选 CDN 节点（`PICA_STORAGE_FALLBACKS`）中依次重试。
+  - **多 CDN 自动容灾与 SSRF 深度防御**：
+    - 哔咔：通过 `_validate_download_host` 校验远端主机名，并在候选 CDN 节点（`PICA_STORAGE_FALLBACKS`）中依次重试；
+    - 禁漫：通过 `download_cover_by_url` 实施严格前置校验（路径限定 `/media/albums/` 与 `/media/photos/`，Host 限定官方 CDN 白名单与分流后缀），并在 6 组官方 CDN 集群中动态轮换，支持 `_3x4.jpg` 到 `.jpg` 兜底及全量二进制魔数防伪。
 
 ### 4.10 服务端 MCP 架构与传输流控规范（MCP Server & Transport Protocols）
 

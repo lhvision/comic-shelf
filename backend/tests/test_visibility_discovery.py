@@ -270,6 +270,25 @@ def test_discovery_cover_router():
             assert False, "Should raise 404 for nonexistent cover"
         except HTTPException as exc:
             assert exc.status_code == 404
+
+        # 5. JM cover router proxying test
+        jm_provider = get_provider("jm")
+        orig_jm_download = getattr(jm_provider, "download_cover_by_url", None)
+        jm_provider.download_cover_by_url = lambda url: fake_img  # type: ignore[assignment]
+        try:
+            resp_jm = discovery_cover(
+                req_curator,
+                source="jm",
+                source_id="12345",
+                cover_url="https://cdn-msp.jmapiproxy1.cc/media/albums/12345_3x4.jpg",
+            )
+            assert resp_jm.status_code == 200
+            assert resp_jm.media_type == "image/jpeg"
+            assert resp_jm.body == fake_img
+            assert resp_jm.headers.get("X-Discovery-Cover-Cache") == "MISS"
+        finally:
+            if orig_jm_download is not None:
+                jm_provider.download_cover_by_url = orig_jm_download  # type: ignore[assignment]
     finally:
         if original_download is not None:
             provider.download_cover_by_url = original_download  # type: ignore[assignment]

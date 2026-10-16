@@ -78,7 +78,19 @@
   - `importComic` 仅负责向上抛出异常，由发起交互的具体组件（`ImportPanel.vue`）在其捕获逻辑中直接向用户展示精准错误提示；
 - **全局 Toast 1.5s 幂等去重与定时器延期刷新**：
   - 在 `src/composables/useToast.ts` 中引入活跃提示记录映射表（`Map<string, number>`），对 1.5 秒内相同的 `(text, tone)` 弹窗请求执行幂等去重；
-  - 遇到相同提示时，阻断新弹窗入队，并刷新延长既有弹窗的自动销毁定时器（TTL），彻底消灭多重异常捕获或冒泡引发的右下角双重 Toast 弹窗重影。
+
+### 7. 发现榜单登录态透传、首屏提速与封面 Scheme A 纯内存代理 (Discovery Authenticated Ranking & In-Memory Cover Proxying)
+
+- **榜单登录会话透传与无删减热门获取**：
+  - 禁漫平台移动端与网页对未登录匿名访客执行严格的热门条目修剪与敏感作品过滤；
+  - 排行榜拉取（`fetch_ranking`）并轨接入 `_make_api_client()`，在配置了 `JM_USERNAME` / `JM_PASSWORD` 时自动注入 `AVS` 令牌与 Web Cookies，获取无删减真实热门内容；遇会话过期自动清空缓存并透明重登重试；未配置账号平滑回退匿名模式；
+- **热路径剥离重定向嗅探与 60s 前端超时对齐**：
+  - 榜单热路径直接复用已缓存或基准域名，彻底剥离阻塞式动态发布页重定向嗅探，耗时从 20s+ 压缩到秒级；
+  - 前端 `discoveryRanking` 请求放宽至 60 秒超时（`timeoutMs: 60000`），避免跨境外网握手期间过早中断触发 502/网络失败误报；
+- **Scheme A 封面纯内存代理与 SSRF 深度防御**：
+  - 每条榜单记录规范化注入 `https://cdn-msp.../media/albums/{aid}_3x4.jpg` 官方封面地址；
+  - 适配器落地 `download_cover_by_url`，严格限制路径前缀（`/media/albums/`、`/media/photos/`）与 Host 白名单，并在 6 组官方 CDN 候选节点中故障轮换与二进制魔数防伪；
+  - 存量磁盘快照在读取时对缺失 `cover_url` 的条目自动自愈，端点查不到封面记录时按规范秒级合成兜底，杜绝 404 挂图。
 
 ## 影响与收益
 

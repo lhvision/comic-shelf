@@ -56,6 +56,7 @@ export async function discoveryRanking(
     '/discovery/ranking',
     { signal: options?.signal },
     {
+      timeoutMs: 60000,
       ...options,
       params: {
         source,
