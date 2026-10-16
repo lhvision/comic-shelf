@@ -110,6 +110,10 @@ class ComicProvider(ABC):
         """Optional hook for discovery feeds / rankings."""
         return []
 
+    def format_cover_url(self, source_id: str) -> str:
+        """Optional hook to synthesize a canonical remote cover URL for discovery."""
+        return ""
+
     def describe(self) -> dict:
         return {
             "key": self.key,

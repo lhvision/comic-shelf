@@ -1307,6 +1307,17 @@ class TestJMProvider(unittest.TestCase):
             self.assertEqual(items[0].cover_url, "https://cdn-msp.jmapiproxy1.cc/media/albums/12345_3x4.jpg")
             self.assertEqual(items[0].url, "https://18comic.vip/album/12345")
 
+    def test_format_cover_url(self):
+        self.assertEqual(
+            self.provider.format_cover_url("12345"),
+            "https://cdn-msp.jmapiproxy1.cc/media/albums/12345_3x4.jpg",
+        )
+        self.assertEqual(
+            self.provider.format_cover_url("JM12345"),
+            "https://cdn-msp.jmapiproxy1.cc/media/albums/12345_3x4.jpg",
+        )
+        self.assertEqual(self.provider.format_cover_url("invalid_id"), "")
+
     def test_fetch_ranking_self_healing_auth_retry(self):
         failing_client = MagicMock()
         failing_client.day_ranking.side_effect = RuntimeError("API Auth Error: session expired")
@@ -1319,30 +1330,33 @@ class TestJMProvider(unittest.TestCase):
         ok_client.day_ranking.return_value = ok_resp
 
         clients = [failing_client, ok_client]
+        recorded_calls = []
+
         def mock_make_client(force_refresh_session=False):
+            recorded_calls.append(force_refresh_session)
             return clients.pop(0)
 
         with patch("app.providers.jm.JM_USERNAME", "test_user"), patch(
             "app.providers.jm.JM_PASSWORD", "test_pass"
         ), patch.object(self.provider, "_make_api_client", side_effect=mock_make_client), patch.object(
-            self.provider, "_clear_session_cache"
-        ) as mock_clear, patch.object(
             self.provider, "_cached_html_domain", return_value="18comic.vip"
         ):
             items = self.provider.fetch_ranking("day")
             self.assertEqual(len(items), 1)
             self.assertEqual(items[0].id, "JM99999")
-            mock_clear.assert_called_once()
+            self.assertEqual(recorded_calls, [False, True])
 
     def test_download_cover_by_url(self):
-        # 1. Empty / invalid URLs / non-media paths / unauthorized hosts
+        # 1. Empty / invalid URLs / non-media paths / unauthorized hosts / path traversal
         self.assertIsNone(self.provider.download_cover_by_url(""))
         self.assertIsNone(self.provider.download_cover_by_url("ftp://cdn.invalid/test.jpg"))
         self.assertIsNone(self.provider.download_cover_by_url("https://127.0.0.1/test.jpg"))
         self.assertIsNone(self.provider.download_cover_by_url("https://cdn-msp.jmapiproxy1.cc/not_media/12345.jpg"))
         self.assertIsNone(self.provider.download_cover_by_url("https://evil.com/media/albums/12345_3x4.jpg"))
+        self.assertIsNone(self.provider.download_cover_by_url("https://cdn-msp.jmapiproxy1.cc/media/albums/../../etc/passwd.jpg"))
+        self.assertIsNone(self.provider.download_cover_by_url("https://cdn-msp.jmapiproxy1.cc/media/albums/%2e%2e/test.jpg"))
 
-        # 2. Success with valid JPEG image bytes
+        # 2. Success with valid JPEG image bytes and allow_redirects=False verification
         fake_jpeg = b"\xff\xd8\xff\xe0" + b"\x00" * 100
         mock_resp = MagicMock()
         mock_resp.status_code = 200
@@ -1354,6 +1368,7 @@ class TestJMProvider(unittest.TestCase):
         with patch.object(self.provider, "_session", return_value=mock_session):
             data = self.provider.download_cover_by_url("https://cdn-msp.jmapiproxy1.cc/media/albums/12345_3x4.jpg")
             self.assertEqual(data, fake_jpeg)
+            self.assertFalse(mock_session.get.call_args[1].get("allow_redirects"))
 
         # 3. 404 on _3x4.jpg falls back to .jpg
         resp_404 = MagicMock()
@@ -1367,6 +1382,7 @@ class TestJMProvider(unittest.TestCase):
         with patch.object(self.provider, "_session", return_value=mock_session_fallback):
             data = self.provider.download_cover_by_url("https://cdn-msp.jmapiproxy1.cc/media/albums/12345_3x4.jpg")
             self.assertEqual(data, fake_jpeg)
+            self.assertFalse(mock_session_fallback.get.call_args[1].get("allow_redirects"))
 
         # 4. Reject WAF HTML disguised as 200
         mock_waf = MagicMock()
@@ -1377,6 +1393,17 @@ class TestJMProvider(unittest.TestCase):
         with patch.object(self.provider, "_session", return_value=mock_session_waf):
             data = self.provider.download_cover_by_url("https://cdn-msp.jmapiproxy1.cc/media/albums/12345_3x4.jpg")
             self.assertIsNone(data)
+
+        # 5. Reject oversized payload (> 10 MB)
+        mock_huge = MagicMock()
+        mock_huge.status_code = 200
+        mock_huge.content = b"\xff\xd8\xff\xe0" + b"\x00" * (11 * 1024 * 1024)
+        mock_session_huge = MagicMock()
+        mock_session_huge.get.return_value = mock_huge
+        with patch.object(self.provider, "_session", return_value=mock_session_huge):
+            data = self.provider.download_cover_by_url("https://cdn-msp.jmapiproxy1.cc/media/albums/12345_3x4.jpg")
+            self.assertIsNone(data)
+
 
 
 if __name__ == "__main__":

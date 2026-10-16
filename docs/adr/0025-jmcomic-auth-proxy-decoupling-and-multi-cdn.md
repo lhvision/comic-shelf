@@ -83,14 +83,19 @@
 
 - **榜单登录会话透传与无删减热门获取**：
   - 禁漫平台移动端与网页对未登录匿名访客执行严格的热门条目修剪与敏感作品过滤；
-  - 排行榜拉取（`fetch_ranking`）并轨接入 `_make_api_client()`，在配置了 `JM_USERNAME` / `JM_PASSWORD` 时自动注入 `AVS` 令牌与 Web Cookies，获取无删减真实热门内容；遇会话过期自动清空缓存并透明重登重试；未配置账号平滑回退匿名模式；
+  - 排行榜拉取（`fetch_ranking`）并轨接入 `_make_api_client()`，在配置了 `JM_USERNAME` / `JM_PASSWORD` 时自动注入 `AVS` 令牌与 Web Cookies，获取无删减真实热门内容；遇会话过期自动在线程锁内透明重登自愈，依赖 15 秒并发防抖避免惊群重登；未配置账号平滑回退匿名模式；
 - **热路径剥离重定向嗅探与 60s 前端超时对齐**：
   - 榜单热路径直接复用已缓存或基准域名，彻底剥离阻塞式动态发布页重定向嗅探，耗时从 20s+ 压缩到秒级；
   - 前端 `discoveryRanking` 请求放宽至 60 秒超时（`timeoutMs: 60000`），避免跨境外网握手期间过早中断触发 502/网络失败误报；
-- **Scheme A 封面纯内存代理与 SSRF 深度防御**：
-  - 每条榜单记录规范化注入 `https://cdn-msp.../media/albums/{aid}_3x4.jpg` 官方封面地址；
-  - 适配器落地 `download_cover_by_url`，严格限制路径前缀（`/media/albums/`、`/media/photos/`）与 Host 白名单，并在 6 组官方 CDN 候选节点中故障轮换与二进制魔数防伪；
-  - 存量磁盘快照在读取时对缺失 `cover_url` 的条目自动自愈，端点查不到封面记录时按规范秒级合成兜底，杜绝 404 挂图。
+- **Scheme A 封面纯内存代理、解耦契约与七层深度防御**：
+  - **Provider 契约解耦**：在 `ComicProvider` 基类定义 `format_cover_url(source_id)` 契约钩子，路由层全面解耦对具体平台的 CDN URL 细节依赖；存量磁盘快照在读取时通过钩子统一自愈，端点查不到封面记录时统一委托 Provider 秒级合成兜底；
+  - **真 LRU 与 Singleflight 并发合并**：采用 `collections.OrderedDict` 实现 O(1) 严格最近最少使用淘汰（上限 100 份、TTL 3600 秒），并引入基于 `threading.Event` 的在途并发请求合并（Singleflight），同一封面并发穿透远端次数降为 1，杜绝击穿；
+  - **七层深度安全防护**：
+    1. 鉴权屏障：端点受 `require_curator` 强保护，严禁作为开放图床滥用；
+    2. 协议与主机：限定 `https` 协议与官方图片 CDN 白名单（`_is_safe_remote_domain` 阻断内网/回环/云元数据）；
+    3. 重定向切断：双图源（JM 与 PicAcg）统一 `allow_redirects=False`，彻底阻断 302 跨域重定向到内网的 SSRF 漏洞；
+    4. 路径穿越与污染防护：通过 `posixpath.normpath` 强制规整，检测过滤 `..` 与 `%2e`，剥离 query 与 fragment；
+    5. 内存边界与真伪检验：严格限定包体大小（10MB 上限防内存 DoS）并校验 JPEG/PNG/WebP/GIF/AVIF 二进制魔数，杜绝 Cloudflare 200 拦截页污染缓存。
 
 ## 影响与收益
 

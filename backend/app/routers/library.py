@@ -1,6 +1,7 @@
 """Library browsing, indexing, faceted search, discovery ranking, comic imports, and metadata management router."""
 from __future__ import annotations
 
+from collections import OrderedDict
 import hashlib
 import json
 import threading
@@ -221,11 +222,11 @@ def discovery_ranking(
         except Exception as exc:
             if cached_feed is not None:
                 feed = cached_feed
-    # Self-heal historical JM cached feeds missing cover_url
-    if feed is not None and source == "jm":
+    # Self-heal historical cached feeds missing cover_url via provider hook
+    if feed is not None and hasattr(provider, "format_cover_url"):
         for item in feed.items:
             if not item.cover_url:
-                item.cover_url = f"https://cdn-msp.jmapiproxy1.cc/media/albums/{item.source_id}_3x4.jpg"
+                item.cover_url = provider.format_cover_url(item.source_id)
 
     # Populate in_library status for current library and cross-source mirror match
     cur_is_curator = is_curator(request)
@@ -248,9 +249,10 @@ def discovery_ranking(
     return feed
 
 
-# In-memory LRU cache for discovery covers (zero disk write under Scheme A)
+# In-memory true LRU cache for discovery covers (zero disk write under Scheme A)
 # Key: f"{source}:{source_id}" -> (timestamp: float, content: bytes, media_type: str)
-_discovery_cover_cache: dict[str, tuple[float, bytes, str]] = {}
+_discovery_cover_cache: OrderedDict[str, tuple[float, bytes, str]] = OrderedDict()
+_discovery_cover_inflight: dict[str, threading.Event] = {}
 _discovery_cover_lock = threading.Lock()
 _DISCOVERY_COVER_CACHE_MAX = 100
 _DISCOVERY_COVER_TTL = 3600.0  # 1 hour
@@ -287,6 +289,7 @@ def discovery_cover(
         if cache_key in _discovery_cover_cache:
             cached_ts, cached_data, cached_type = _discovery_cover_cache[cache_key]
             if now - cached_ts < _DISCOVERY_COVER_TTL:
+                _discovery_cover_cache.move_to_end(cache_key)
                 return Response(
                     content=cached_data,
                     media_type=cached_type,
@@ -298,50 +301,89 @@ def discovery_cover(
             else:
                 _discovery_cover_cache.pop(cache_key, None)
 
-    # Resolve target cover_url if not explicitly provided
-    resolved_cover_url = cover_url.strip() if isinstance(cover_url, str) else ""
-    if not resolved_cover_url:
-        for tf in ("week", "month", "day"):
-            cached_feed = store.load_discovery_feed(tf, source=source)
-            if cached_feed:
-                for item in cached_feed.items:
-                    if item.source_id == source_id and item.cover_url:
-                        resolved_cover_url = item.cover_url
-                        break
-    if not resolved_cover_url and source == "jm":
-        resolved_cover_url = f"https://cdn-msp.jmapiproxy1.cc/media/albums/{source_id}_3x4.jpg"
+        # Singleflight: coordinate concurrent requests for the same cover
+        if cache_key in _discovery_cover_inflight:
+            event = _discovery_cover_inflight[cache_key]
+            is_leader = False
+        else:
+            event = threading.Event()
+            _discovery_cover_inflight[cache_key] = event
+            is_leader = True
 
-    if not resolved_cover_url:
-        raise HTTPException(status_code=404, detail="未找到该条目的封面图片地址")
+    if not is_leader:
+        # Wait for the in-flight leader to finish downloading
+        event.wait(timeout=20.0)
+        with _discovery_cover_lock:
+            if cache_key in _discovery_cover_cache:
+                cached_ts, cached_data, cached_type = _discovery_cover_cache[cache_key]
+                if time.time() - cached_ts < _DISCOVERY_COVER_TTL:
+                    _discovery_cover_cache.move_to_end(cache_key)
+                    return Response(
+                        content=cached_data,
+                        media_type=cached_type,
+                        headers={
+                            "Cache-Control": "private, max-age=3600",
+                            "X-Discovery-Cover-Cache": "HIT",
+                        },
+                    )
 
     provider = get_provider(source)
-    if not hasattr(provider, "download_cover_by_url"):
-        raise HTTPException(status_code=400, detail=f"图源 {source} 不支持直接封面代理")
-
     try:
-        data = provider.download_cover_by_url(resolved_cover_url)
-    except Exception as exc:
-        raise HTTPException(status_code=502, detail=f"拉取封面失败: {exc}") from exc
+        # Resolve target cover_url if not explicitly provided
+        resolved_cover_url = cover_url.strip() if isinstance(cover_url, str) else ""
+        if not resolved_cover_url:
+            for tf in ("week", "month", "day"):
+                cached_feed = store.load_discovery_feed(tf, source=source)
+                if cached_feed:
+                    for item in cached_feed.items:
+                        if item.source_id == source_id and item.cover_url:
+                            resolved_cover_url = item.cover_url
+                            break
+                if resolved_cover_url:
+                    break
 
-    if not data:
-        raise HTTPException(status_code=404, detail="无法下载该漫画封面或封面已失效")
+        if not resolved_cover_url and hasattr(provider, "format_cover_url"):
+            try:
+                resolved_cover_url = provider.format_cover_url(source_id)
+            except Exception:
+                resolved_cover_url = ""
 
-    media_type = _sniff_image_media_type(data)
+        if not resolved_cover_url:
+            raise HTTPException(status_code=404, detail="未找到该条目的封面图片地址")
 
-    with _discovery_cover_lock:
-        if len(_discovery_cover_cache) >= _DISCOVERY_COVER_CACHE_MAX:
-            oldest_key = next(iter(_discovery_cover_cache))
-            _discovery_cover_cache.pop(oldest_key, None)
-        _discovery_cover_cache[cache_key] = (now, data, media_type)
+        if not hasattr(provider, "download_cover_by_url"):
+            raise HTTPException(status_code=400, detail=f"图源 {source} 不支持直接封面代理")
 
-    return Response(
-        content=data,
-        media_type=media_type,
-        headers={
-            "Cache-Control": "private, max-age=3600",
-            "X-Discovery-Cover-Cache": "MISS",
-        },
-    )
+        try:
+            data = provider.download_cover_by_url(resolved_cover_url)
+        except Exception as exc:
+            raise HTTPException(status_code=502, detail=f"拉取封面失败: {exc}") from exc
+
+        if not data:
+            raise HTTPException(status_code=404, detail="无法下载该漫画封面或封面已失效")
+
+        media_type = _sniff_image_media_type(data)
+
+        with _discovery_cover_lock:
+            if cache_key in _discovery_cover_cache:
+                _discovery_cover_cache.move_to_end(cache_key)
+            elif len(_discovery_cover_cache) >= _DISCOVERY_COVER_CACHE_MAX:
+                _discovery_cover_cache.popitem(last=False)
+            _discovery_cover_cache[cache_key] = (now, data, media_type)
+
+        return Response(
+            content=data,
+            media_type=media_type,
+            headers={
+                "Cache-Control": "private, max-age=3600",
+                "X-Discovery-Cover-Cache": "MISS",
+            },
+        )
+    finally:
+        if is_leader:
+            with _discovery_cover_lock:
+                _discovery_cover_inflight.pop(cache_key, None)
+            event.set()
 
 
 @router.post("/api/library/import", response_model=ImportResult)

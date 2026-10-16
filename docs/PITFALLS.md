@@ -1067,7 +1067,7 @@
   1. 发现页榜单请求 `discoveryRanking` 必须显式声明宽松超时预算（`timeoutMs: 60000`）；
   2. 榜单热路径严禁执行耗时的动态域名嗅探（优先复用已缓存或官方基准域名）；
   3. 禁漫 `fetch_ranking` 必须通过 `_make_api_client()` 注入真实登录会话，并在异常时自愈重登；
-  4. 禁漫封面统一注入 `https://cdn-msp.../media/albums/{aid}_3x4.jpg`，并通过 `download_cover_by_url` 施加严格 SSRF 白名单校验（官方 CDN 及合法路径）与二进制魔数防伪，配合 Scheme A 纯内存 LRU 代理。
+  4. 禁漫封面统一注入 `https://cdn-msp.../media/albums/{aid}_3x4.jpg`，并通过 `download_cover_by_url` 施加严格 SSRF 白名单校验（官方 CDN 及合法路径、禁用跟随重定向 `allow_redirects=False`）与二进制魔数防伪，配合 Scheme A 纯内存 `OrderedDict` LRU 与 Singleflight 并发合并代理。
 
 ---
 

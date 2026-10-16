@@ -1,5 +1,6 @@
 import sys
 import tempfile
+import time
 from pathlib import Path
 from unittest.mock import MagicMock
 
@@ -271,21 +272,41 @@ def test_discovery_cover_router():
         except HTTPException as exc:
             assert exc.status_code == 404
 
-        # 5. JM cover router proxying test
+        # 5. JM cover router proxying test with format_cover_url provider delegation
         jm_provider = get_provider("jm")
         orig_jm_download = getattr(jm_provider, "download_cover_by_url", None)
         jm_provider.download_cover_by_url = lambda url: fake_img  # type: ignore[assignment]
         try:
+            # Do NOT pass cover_url; router should resolve via jm_provider.format_cover_url("12345")
             resp_jm = discovery_cover(
                 req_curator,
                 source="jm",
                 source_id="12345",
-                cover_url="https://cdn-msp.jmapiproxy1.cc/media/albums/12345_3x4.jpg",
             )
             assert resp_jm.status_code == 200
             assert resp_jm.media_type == "image/jpeg"
             assert resp_jm.body == fake_img
             assert resp_jm.headers.get("X-Discovery-Cover-Cache") == "MISS"
+
+            # 6. True LRU cache eviction test: accessing an item moves it to end so it survives eviction
+            from app.routers.library import _DISCOVERY_COVER_CACHE_MAX
+            with _discovery_cover_lock:
+                _discovery_cover_cache.clear()
+                for i in range(_DISCOVERY_COVER_CACHE_MAX):
+                    _discovery_cover_cache[f"test:{i}"] = (time.time(), fake_img, "image/jpeg")
+
+            # Access item 0 (moves it to end in LRU)
+            resp_lru = discovery_cover(req_curator, source="test", source_id="0")
+            assert resp_lru.headers.get("X-Discovery-Cover-Cache") == "HIT"
+
+            # Insert 1 new item via router
+            resp_new = discovery_cover(req_curator, source="jm", source_id="99999")
+            assert resp_new.status_code == 200
+            with _discovery_cover_lock:
+                # Item 1 was untouched and oldest, should have been evicted
+                assert "test:1" not in _discovery_cover_cache
+                # Item 0 was accessed, should survive eviction
+                assert "test:0" in _discovery_cover_cache
         finally:
             if orig_jm_download is not None:
                 jm_provider.download_cover_by_url = orig_jm_download  # type: ignore[assignment]

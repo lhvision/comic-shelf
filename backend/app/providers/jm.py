@@ -10,6 +10,7 @@ import tempfile
 import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+import posixpath
 import threading
 from urllib.parse import urlparse
 
@@ -1256,6 +1257,14 @@ class JMProvider(ComicProvider):
                 source.close()
             return tmp_path.read_bytes()
 
+    def format_cover_url(self, source_id: str) -> str:
+        """Synthesize canonical remote cover URL for JM album."""
+        try:
+            aid = self.normalize_id(source_id)
+            return f"https://cdn-msp.jmapiproxy1.cc/media/albums/{aid}_3x4.jpg"
+        except (ValueError, TypeError):
+            return ""
+
     def download_cover_by_url(self, cover_url: str) -> bytes | None:
         """Downloads discovery cover image bytes with candidate CDN fallbacks and magic byte sniffing."""
         if not cover_url or not cover_url.strip():
@@ -1264,10 +1273,14 @@ class JMProvider(ComicProvider):
         if parsed.scheme not in ("http", "https"):
             return None
 
-        # Defense-in-depth: Enforce path structure and host restrictions for JM covers
-        if not parsed.path.startswith(("/media/albums/", "/media/photos/")):
+        # Defense-in-depth: Block path traversal and enforce normalized path structure
+        raw_path = parsed.path or ""
+        if ".." in raw_path or "%2e" in raw_path.lower():
             return None
-        if not parsed.path.lower().endswith((".jpg", ".jpeg", ".webp", ".png")):
+        norm_path = posixpath.normpath(raw_path)
+        if not norm_path.startswith(("/media/albums/", "/media/photos/")):
+            return None
+        if not norm_path.lower().endswith((".jpg", ".jpeg", ".webp", ".png")):
             return None
 
         original_host = (parsed.hostname or "").lower()
@@ -1309,19 +1322,29 @@ class JMProvider(ComicProvider):
             "Accept": "image/webp,image/apng,image/*,*/*;q=0.8",
         }
         session = self._session()
-        max_attempts = max(3, min(len(cdn_candidates), 6))
+        max_attempts = min(len(cdn_candidates), 3)
 
         for attempt in range(max_attempts):
             curr_domain = cdn_candidates[attempt % len(cdn_candidates)]
-            target_url = parsed._replace(netloc=curr_domain, scheme="https").geturl()
+            target_url = parsed._replace(
+                netloc=curr_domain, scheme="https", path=norm_path, query="", fragment=""
+            ).geturl()
             try:
-                resp = session.get(target_url, headers=headers, timeout=15, allow_redirects=True)
-                if resp.status_code == 200 and self._is_image_bytes(resp.content):
+                resp = session.get(target_url, headers=headers, timeout=8, allow_redirects=False)
+                if (
+                    resp.status_code == 200
+                    and 16 <= len(resp.content) <= 10 * 1024 * 1024
+                    and self._is_image_bytes(resp.content)
+                ):
                     return bytes(resp.content)
                 if resp.status_code == 404 and "_3x4.jpg" in target_url:
                     alt_url = target_url.replace("_3x4.jpg", ".jpg")
-                    alt_resp = session.get(alt_url, headers=headers, timeout=10, allow_redirects=True)
-                    if alt_resp.status_code == 200 and self._is_image_bytes(alt_resp.content):
+                    alt_resp = session.get(alt_url, headers=headers, timeout=5, allow_redirects=False)
+                    if (
+                        alt_resp.status_code == 200
+                        and 16 <= len(alt_resp.content) <= 10 * 1024 * 1024
+                        and self._is_image_bytes(alt_resp.content)
+                    ):
                         return bytes(alt_resp.content)
             except Exception:
                 continue
@@ -1345,7 +1368,6 @@ class JMProvider(ComicProvider):
         except Exception as exc:
             if JM_USERNAME and JM_PASSWORD:
                 logger.info("禁漫拉取排行榜异常，尝试自愈刷新凭据重试: %s", _mask_sensitive(exc))
-                self._clear_session_cache()
                 client = self._make_api_client(force_refresh_session=True)
                 if timeframe == "day":
                     resp = client.day_ranking(page=page)
@@ -1382,7 +1404,7 @@ class JMProvider(ComicProvider):
                             title=name,
                             author=author,
                             category=category,
-                            cover_url=f"https://cdn-msp.jmapiproxy1.cc/media/albums/{aid}_3x4.jpg",
+                            cover_url=self.format_cover_url(aid),
                             url=f"https://{ranking_domain}/album/{aid}",
                         )
                     )

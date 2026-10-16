@@ -623,6 +623,11 @@ class PicacgProvider(ComicProvider):
         if parsed.scheme not in ("http", "https"):
             return None
 
+        # Defense-in-depth: Block path traversal
+        raw_path = parsed.path or ""
+        if ".." in raw_path or "%2e" in raw_path.lower():
+            return None
+
         original_host = (parsed.hostname or "").lower()
         try:
             _validate_download_host(original_host)
@@ -645,8 +650,12 @@ class PicacgProvider(ComicProvider):
         for url in candidate_urls:
             try:
                 _validate_download_host((urlparse(url).hostname or "").lower())
-                resp = session.get(url, headers=headers, proxies=proxies, timeout=15)
-                if resp.status_code == 200 and len(resp.content) >= 100 and is_valid_image(resp.content):
+                resp = session.get(url, headers=headers, proxies=proxies, timeout=15, allow_redirects=False)
+                if (
+                    resp.status_code == 200
+                    and 100 <= len(resp.content) <= 10 * 1024 * 1024
+                    and is_valid_image(resp.content)
+                ):
                     return bytes(resp.content)
             except Exception as exc:
                 logger.debug(f"下载哔咔发现封面分流节点异常 ({sanitize_proxy_url(url)}): {exc}")
