@@ -13,6 +13,10 @@ import { computed, ref } from 'vue'
  * 危险操作（Impeccable 重设计）：
  * - 「移除本地」不再摆在操作栏里，而是收进「更多 ⋯」菜单（本地缓存删了可惜，应弱化入口）；
  * - 点到后弹 Modal 做「二次确认」，且必须勾选「我已了解」才能点确认，防止误删。
+ * 从头阅读保护：
+ * - 读者在「在读（1 < lastRead < pageCount）」状态下点击「从第 1 页开始」，弹轻量 Modal 进行二次确认，
+ *   防范误触导致辛苦读到的阅读断点被即时冲掉；
+ * - 未读（lastRead <= 1）或已读完（lastRead >= pageCount）则直接开读，零摩擦进入。
  */
 const props = withDefaults(
   defineProps<{
@@ -109,6 +113,29 @@ function confirmRemove() {
   emit('removeComic')
 }
 
+/** 从头阅读确认弹窗开合 */
+const restartOpen = ref(false)
+
+const restartChapterLocation = computed(() => {
+  if (!props.lastReadLabel) return ''
+  const clean = props.lastReadLabel.replace(/^继续阅读\s*·\s*/, '').trim()
+  if (clean === `第 ${props.lastRead} 页`) return ''
+  return clean
+})
+
+function handleStartFromFirst() {
+  if (props.lastRead > 1 && props.lastRead < props.pageCount) {
+    restartOpen.value = true
+  } else {
+    emit('startReading', 1)
+  }
+}
+
+function confirmRestart() {
+  restartOpen.value = false
+  emit('startReading', 1)
+}
+
 function prefetchReader() {
   void import('@/views/ReaderView.vue').catch(() => {})
 }
@@ -143,7 +170,7 @@ function prefetchReader() {
         @pointerenter.once="prefetchReader"
         @focusin.once="prefetchReader"
         @touchstart.passive.once="prefetchReader"
-        @click="emit('startReading', 1)"
+        @click="handleStartFromFirst"
       >
         从第 1 页开始
       </AppButton>
@@ -265,6 +292,32 @@ function prefetchReader() {
       </template>
     </Modal>
 
+    <Modal
+      :open="restartOpen"
+      size="sm"
+      :title="`从第 1 页重新开始？`"
+      @cancel="restartOpen = false"
+    >
+      <p class="restart-copy">
+        《{{ title }}》当前已读至<template v-if="restartChapterLocation"
+          ><strong>{{ restartChapterLocation }}</strong
+          >（全书第 <strong>{{ lastRead }}</strong> 页 / 共
+          <strong>{{ pageCount }}</strong> 页）</template
+        ><template v-else
+          >第 <strong>{{ lastRead }}</strong> 页（共 <strong>{{ pageCount }}</strong> 页）</template
+        >。从头开始阅读将更新你的阅读断点，确定要从卷首重新开始吗？
+      </p>
+
+      <template #footer>
+        <AppButton variant="ghost" size="md" type="button" @click="restartOpen = false">
+          取消
+        </AppButton>
+        <AppButton variant="primary" size="md" type="button" @click="confirmRestart">
+          确认从头阅读
+        </AppButton>
+      </template>
+    </Modal>
+
     <AppProgressBar
       class="cache-summary-bar"
       :value="cachedPages"
@@ -305,8 +358,15 @@ function prefetchReader() {
   margin-left: auto;
 }
 
-.remove-copy {
+.remove-copy,
+.restart-copy {
   color: var(--ink-1);
+  line-height: 1.6;
+}
+
+.restart-copy strong {
+  font-weight: 600;
+  color: var(--accent-strong);
 }
 
 .remove-ack {
