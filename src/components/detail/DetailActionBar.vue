@@ -292,12 +292,7 @@ function prefetchReader() {
       </template>
     </Modal>
 
-    <Modal
-      :open="restartOpen"
-      size="sm"
-      :title="`从第 1 页重新开始？`"
-      @cancel="restartOpen = false"
-    >
+    <Modal :open="restartOpen" size="sm" title="从第 1 页重新开始？" @cancel="restartOpen = false">
       <p class="restart-copy">
         《{{ title }}》当前已读至<template v-if="restartChapterLocation"
           ><strong>{{ restartChapterLocation }}</strong
@@ -367,6 +362,7 @@ function prefetchReader() {
 .restart-copy strong {
   font-weight: 600;
   color: var(--accent-strong);
+  font-variant-numeric: tabular-nums;
 }
 
 .remove-ack {
