@@ -1,11 +1,11 @@
 # 纸间 · Paper Room
 
 一个本地优先的个人漫画书架。
-支持 JMComic 禁漫收录与反混淆解密、哔咔漫画（PicAcg）原生集成与容灾分流，同时提供本地图集与视频拆帧自建工坊。第一次收录后元数据和高清图片全部落在本机；之后浏览、重读、封面都走本地持久化缓存，**0 外部网络冗余请求**。
+支持 JMComic 禁漫收录与反混淆解密、哔咔漫画（PicAcg）原生集成与容灾分流、拷贝漫画（CopyManga）动态解密与全分组支持、PDF 漫画画卷无损解包与多卷合订，同时提供本地图集与视频拆帧自建工坊。第一次收录后元数据和高清图片全部落在本机；之后浏览、重读、封面都走本地持久化缓存，**0 外部网络冗余请求**。
 
 - **前端**：Vite+（`vp` 工具链 / Vite 8 / Rolldown / Vitest 4 / Oxlint / Oxfmt）+ Vue 3 + TypeScript + Vue Router + Pinia + VueUse
 - **样式**：现代原生 CSS（`@layer`、Nesting、`color-mix()`、`oklch()`、`clamp()`）
-- **后端**：FastAPI + Pillow + jmcomic + curl_cffi（基于 Provider 抽象，内置禁漫、哔咔与本地图集多源支持）
+- **后端**：FastAPI + PyMuPDF + Pillow + SQLite (FTS5) + jmcomic + curl_cffi + pycryptodome（基于 Provider 抽象，内置禁漫、哔咔、拷贝、PDF 与本地图集多源支持）
 - **搜图**：`imsearch`（独立 Docker Sidecar，基于 OpenCV ORB 局部特征点 + Faiss 倒排索引）
 
 ---
@@ -21,6 +21,11 @@
   - 宽容 ID/链接解析：支持输入 24 位 16 进制 ID，或直接粘贴各种分享镜像站链接（如 `https://picawang.com/comic/5ebe89bf...`）；
   - 完整支持多章节分卷映射，与禁漫、本地漫画全书拍平与阅读器体系 100% 格式对齐；
   - `waka / waifu / heaven` 3-CDN 分流容灾与故障自动轮换降级。
+- **拷贝漫画（CopyManga）原生集成与动态 AES 解密**：
+  - 支持直接粘贴漫画主页/分享链接（如 `https://copymanga.com/comic/xxx`）或输入 Slug 车号秒级收录；
+  - 双阶动态密钥提取与 AES-128-CBC 解密算法，免除前端沙箱执行开销，免疫官方网页端 DevTools 反调试死循环；
+  - 自动归整 `default`（连载正文）、`tankobon`（单行本卷）及番外多分组，全书无缝拍平连续编排；
+  - 独立 CDN 集群零信任校验与二进制魔数防伪，杜绝 WAF 报错页面或空响应污染本地磁盘。
 - **浏览器扩展一键收录（Paper Room Extension，ADR 0033）**：
   [![Download Chrome Extension](https://img.shields.io/badge/📥_下载扩展离线包-paper--room--extension.zip-c74c35?style=flat-square&logo=googlechrome&logoColor=white)](https://github.com/lhvision/comic-shelf/releases/latest/download/paper-room-extension.zip)
   - 支持在禁漫天堂（含全部官方镜像与分流）、哔咔漫画、拷贝漫画等站点浏览时，鼠标右键直接将本子添加入库；
@@ -29,7 +34,7 @@
   - **极简无打扰与深层直达**：纯原生 Manifest V3 标准，0 框架包袱，打包体积仅 49KB；系统原生通知（`chrome.notifications`）与角标反馈，点击直达纸间阅览室详情页；
   - 源码内聚于 [`extension/`](extension/)（详见 [扩展使用指南](extension/README.md)），浏览器开发者模式直接加载解压即可使用，支持通过 `pnpm build:ext` 生成 Release 离线包。
 - **来源导航单一真理源与收录工作台解耦架构（Source SSOT）**：
-  - 彻底解耦顶栏来源导航（`全部 | 01 禁漫 | 02 本地 | 03 哔咔`）与 Hero 收录表单，废除“嵌套 Tab”反模式与认知冗余；
+  - 彻底解耦顶栏来源导航（`全部 | 01 禁漫 | 02 本地 | 03 哔咔 | 04 拷贝`）与 Hero 收录表单，废除“嵌套 Tab”反模式与认知冗余；
   - **「全部」视图**：Hero 回归单栏典藏大片版式（`hero--single`），不常驻录入卡片，聚焦书房总揽、诗意导语与藏书统计，配备轻巧的「录入新卷」动态药丸直达对应源；
   - **「单源」专属视图**：Hero 右侧专精呈现对应站点的收录/自建面板（`.is-source-locked` 紧凑单列），消除 961~1180px 视口轨道溢出；
   - **完备逃生通道与无障碍防护**：Hero 左上方常驻 `〔 ← 返回全部藏书 〕` 面包屑锚点，移动端折叠抽屉严格挂载 `:inert` 与 `visibility: hidden` 杜绝幽灵焦点，快捷药丸严格保底 `min-height: 44px;` 触控物理判定区。
@@ -43,6 +48,10 @@
 - **典藏资料与封面编排（`EditMetadataModal`）**：
   - 馆长可就地修改作品标题、作者、叙述，全站标签自由增删；
   - **自定义 4 张封面展示页码（`cover_indices`）**：允许指定任意全局页号（如 `[1, 12, 35, 78]`）作为书架叠牌与详情页展示封面，修改后即时击穿缓存热更新。
+- **跨源作品查重与异源镜像关联（ADR 0031）**：
+  - **规范化标题（Normalized Title）影子索引**：入库时自动剥离汉化组、社团、展会、发售载体等成对包围标签（如 `[...]`、`(...)`、`【...】`），结合简繁双向归一化与符号空白清洗提炼核心作品名，在 SQLite `comics_index` 中建立 B-Tree 索引；
+  - **提交时弱拦截与智能导流**：录入新漫画时执行微秒级查重点查；若命中已收录的异源作品，弹窗友好提示「已在纸间藏有该作品的另一版本（如禁漫版 / 哔咔版）」，提供一键直达已有藏书或确认继续收录双通道；
+  - **详情页异源镜像双向直达**：同一部作品的不同来源实体独立物理收录、互不污染，详情页动态呈现异源版本胶囊链接，方便馆长多源画质对比或分卷互补。
 - **多章节体系（合集/系列平滑支持）**：
   - 详情页按「章节目录」摆放（展示章节封面 + 话标题 + 页数 + 本话缓存进度 %），**不铺开几千页**；
   - 点击某话进入「章节子路由（`/comic/:source/:id/chapter/:chapterId`）」只查看该话页面索引，支持上一话/下一话快速切换、修改章节标题与单话删除；
@@ -50,6 +59,10 @@
   - 目录封面走服务端章节封面端点（池化缓存，失败优雅回落书脊占位）；
   - 阅读器顶栏实时显示“第 X 話 · 标题”；读到末页浮现「本话完 · 下一话」横幅直达；键盘 `N/P` 跨话翻页；
   - 全局页码拍平设计：全书页面统一为 1..N 全局页号，阅读器、封面、继续阅读心智零割裂。
+- **多章节连载自动追更巡检与守护调度（ADR 0029）**：
+  - **单 Worker 守护调度**：后台单一守护线程按 1 小时周期扫描到期藏书（默认 15 天未检），单次唤醒最多处理 10 本并逐本节流（3 秒休眠），0 线程风控与高频打扰；
+  - **馆长元数据严格不覆盖原则**：仅探测远端新发布章节与新画页，馆长自定义编辑的标题、作者、标签、叙述严格保留；
+  - **阅读与缓存状态自愈**：原已读完的合集若发现新话，系统自动自愈回退至在读状态并浮现案头；若原漫画已全本离线缓存完毕，自动将新章节推入后台预缓存队列。
 - **全源画卷重新装订与复合章节智能分话（ADR 0020）**：
   - **全源画卷重新装订（Re-binding Protection）**：不仅支持自建漫画，还支持禁漫、哔咔等远端停更漫画的高清画页手动替换与补全，自动打上 `custom_pages: true` 徽标；建立「前端隐藏刷新按钮 + 后端拦截 400 + 底层写入强行保留」三层纵深防御，彻底杜绝远端同步冲垮本地画卷；
   - **单话靶向替换与缩略图局部失效**：支持针对特定章节重新装订或整本替换；单话替换时仅清理本话及后续话的缩略图缓存，保留其他历史章节秒开体验；
@@ -68,12 +81,13 @@
   - 竖向连续 / 竖向翻页 / 横向翻页三种模式；
   - **排版作用域双轨制（Dual-Scope Reader Preferences）**：阅读器设置面板提供「📖 本作偏好」与「🌐 全局默认」双轨体系，支持即改即分离、实时视口联动、一键「恢复跟随全局」与历史脏基线静默自愈，彻底告别配置黑盒；
   - **条漫无缝长卷拼接与自适应画卷（Webtoon Seamless Stitched View）**：针对韩漫/条漫长卷切片撕裂痛点，提供「无缝长卷拼接」开关，彻底拔除行内占位页脚，消除页间黑缝与单页阴影；施加 -1px 亚像素微咬合（Micro-Overlap）杜绝高 DPR 缩放漏缝；视口悬浮画卷页标（`021 / 045`）滚动感应淡入淡出；排版硬约束锁定单页全宽；单本偏好独立记忆，且命中 `条漫` / `韩漫` / `Webtoon` 标签时智能自适应首开；
+  - **画页局部双击放大与平移（Double-Tap Zoom & Pan）**：移动端与桌面端均支持双击画页定点放大（2.5×），放大状态下自由平移画卷视口；具备严格手势互斥隔离，缩放状态下拦截翻页与滚轮误触，再次双击瞬时重置复位；
   - 横向模式支持左右滑动切页、鼠标滚轮自动映射为横向滚动，可自由切换“左→右 / 右→左（日漫）”；
   - 每屏支持 1 / 2 / 4 页多列排版；
   - 滚动驱动进度条（CSS Scroll Timeline + JS 兜底）、页码浮动指示、键盘翻页、适应宽度 / 适应高度、全屏沉浸；
   - **全幅加载骨架与独立装订插画**：每次进入漫画随机选取一张角色看板插画并伴随呼吸微光，整本书保持风格一致且彻底杜绝排版跳动；
   - 自动翻页计时辅助（预设 5/10/15/30 秒与 1~300 秒自定义，手动操作重置计时）；
-  - 每本漫画独立记忆“上次阅读位置”，详情页一键直达“继续阅读”。
+  - 每本漫画独立记忆“上次阅读位置”，详情页一键直达“继续阅读”；对于在读未完作品，点击「从第 1 页开始」触发二次确认弹窗（带当前进度高亮），防止无意点击覆盖历史记忆。
 - **局部特征以图搜图（Visual Search）**：
   - 搜索框集成 Chrome Lens 风格识图芯片（带微缩预览、点击放大查看、一键清除 `×`）；
   - 支持直接剪贴板粘贴截图（`Ctrl+V`）、相机图标选择文件、图片拖拽到书架；
@@ -120,6 +134,7 @@
 - **漫画台词全文检索、快捷指令中枢与阅读器气泡呼吸高亮（Dialogue Search, Slash Commands & Dedicated DB）**：
   - **台词专库垂直解耦（`comic_dialogues.db`）**：在万级与十万级规模下，将 FTS5 Trigram 倒排索引虚拟表及增量同步元数据从主库物理隔离为 `comic_dialogues.db`，海量离线 OCR 批量写入通道与用户核心状态（翻页打点/收藏）零写锁争抢（Zero Lock Contention），彻底杜绝 `SQLITE_BUSY` 锁异常；
   - **原生 Trigram 倒排全文检索与短词防爆守卫**：基于 SQLite 3.34+ 原生 `tokenize='trigram'` 构建 `comic_dialogues_fts` 虚拟表，零第三方 C 库依赖，秒级模糊命中中日文无空格对白；前后端硬性门禁 `< 2` 字符阻断，彻底消除 Trigram 在极短词下全表 `LIKE` 扫描导致的 100% CPU 锁死；
+  - **语义与意图找台词（Semantic Meaning Search，ADR 0028）**：除字符重合的 FTS5 倒排检索外，还提供双轨语义向量检索能力，即便台词字面不完全匹配、记错个别词汇或仅凭场景情绪意图描述，亦能智能召回对应的分镜对白与具体物理页码；
   - **快捷指令中枢与命令胶囊（Slash Commands & Command Chip）**：搜索栏支持 `/` 快捷指令唤醒菜单（`/台词`、`/车号`、`/作者`、`/随机`），激活台词检索后提取为朱砂印章样式的命令胶囊（`〔 💬 台词 × 〕`），同时将书架卡片过滤严格冻结置空，杜绝“一搜台词列表就空”的体验断层；
   - **简繁双向互通归一化**：内置 3,881 对标准简繁映射词表，输入简体自动召回港台繁体本子，输入繁体亦能命中大陆简体翻译；
   - **书架搜索栏水墨联想浮层（`DialogueSearchPopover`）**：输入文字时防抖 300ms 异步全文检索，在搜索栏正下方展开纸本浮层；实行**静默伴生原则**（0 条结果时静默隐藏，不遮挡书架已过滤作品）；纯声明式解析分镜高亮（零 `v-html` 杜绝 XSS）；支持 WAI-ARIA Combobox 无障碍键盘视口跟随（`scrollIntoView`）与智能回车直达首项；
@@ -135,7 +150,7 @@
   - **前端原生 WebMCP 视口控制**：基于 VueUse 15 `useWebMCP` 规范，在书架、详情、发现与阅读器四大核心页面向 Chrome 原生 `document.modelContext` 声明式注册交互控制工具（支持翻页/跳页/章节跳转/排版切换/缓存触发），非兼容浏览器自动优雅空跑；
   - **内网机器专属密钥（Machine API Token）与 MCP 子凭据分轨鉴权**：支持配置 `COMIC_SHELF_MACHINE_TOKEN` 供局域网应用与自动化流水线调用 REST API 与入库同步；另有 `COMIC_SHELF_MCP_TOKEN` 专供外部智能体解锁 MCP 工具（需同时配置 `COMIC_SHELF_SECRET` 才生效），可随时更换撤销；机器密钥进不了 MCP，与网页端馆长密码完全解耦互不干扰；
   - **客户端配置指南**：关于局域网 NAS（TrueNAS/群晖）SSE 模式直连、Claude Desktop / Cursor 配置模板与本机 Stdio 管道集成，请参阅 **[DEPLOYMENT.md §9 MCP 智能体配置与连接指南](DEPLOYMENT.md#9-mcpmodel-context-protocol智能体配置与连接指南)**。
-- **分级离线缓存体系与安全边界**：基于 Workbox 实现 App Shell 核心资产预缓存 + 漫画画页 Cache-First（最大 3000 篇目 LRU 淘汰）；日常清理仅释放画页缓存、保留元数据快照；彻底重置才清空所有 DB；**绝对不触碰服务器已下载珍藏数据（`backend/data/`）**。
+- **分级离线缓存体系与安全边界（ADR 0005 / PITFALLS #163）**：基于 Workbox 实现 App Shell 核心静态资产预缓存；正文画页采用浏览器原生标准 HTTP immutable 缓存（阅后即走，杜绝挤占移动端 CacheStorage 孤岛存储）；封面与插画通过 `manga-images-covers-cache` 受控持久化（1,000 张上限 LRU 淘汰）；日常清理仅释放封面与插画缓存、保留 IndexedDB 元数据快照；彻底重置才清空全部端侧数据库；**绝对不触碰服务器已下载珍藏数据（`backend/data/`）**。
 
 ---
 
@@ -261,14 +276,16 @@ bash scripts/reindex.sh --full
 
 ```text
 $COMIC_SHELF_DATA/
+├── comic_shelf.db                       # SQLite 主库：comics_index 影子索引、规范化标题、访客凭据、独立阅读进度与红心收藏
+├── comic_dialogues.db                   # 台词全文检索专库：FTS5 Trigram 倒排索引表与页码分镜气泡映射（物理隔离杜绝写锁争抢）
 ├── jm_html_domain.json                  # 禁漫网页域名 6 小时缓存
 ├── jm_session.json                      # 禁漫 AVS 会话凭据与 Cookies 缓存（0o600 私有安全权限）
 ├── picacg_session.json                  # 哔咔会话凭据与 JWT 缓存（0o600 私有安全权限）
 ├── discovery/                           # 官方榜单数据分源落盘（{source}_{timeframe}.json，封面纯内存代理零落盘）
 ├── imsearch/                            # 识图索引与特征库（centroids.bin / invlists.bin / imsearch.db）
 └── library/
-    └── <source>/                         # provider key：jm / pica / local
-        └── <source_id>/                  # 禁漫车号、哔咔 ID 或自建 source_id（如 523607 / 5ebe... / tiya-frames）；本地印章为 LOC_{source_id}
+    └── <source>/                         # provider key：jm / picacg / copymanga / local
+        └── <source_id>/                  # 禁漫车号、哔咔 ID、拷贝 Slug 或自建 source_id（如 523607 / 5ebe... / xiangyaochengwei... / tiya-frames）；本地印章为 LOC_{source_id}
             ├── album.json                # 元数据 + favorite + pages[].cached + chapters[] + cover_indices[]
             ├── remote.json               # 远端 URL + scramble_id + decode_version
             ├── pages/00001.webp          # 单章节：已解密拼好的成品页（扁平）
@@ -298,6 +315,7 @@ $COMIC_SHELF_DATA/
 | **[docs/agents/architecture.md](docs/agents/architecture.md)** | 后端架构设计、数据存储模型、Provider 扩展体系、安全门禁与 SSE 单向事件流                                                                     |
 | **[docs/agents/frontend.md](docs/agents/frontend.md)**         | 前端视图与 Composable 地图、阅读器分页与手势、PWA 离线缓存与性能策略                                                                         |
 | **[DESIGN_NOTES.md](DESIGN_NOTES.md)**                         | 纸间设计系统规范（Living Design System）、品牌哲学、色彩/组件层级与核心设计定律                                                              |
+| **[extension/README.md](extension/README.md)**                 | 纸间 Chrome 浏览器扩展使用与分流配置指南（双模右键收录、域名隔离、静默模式与 Releases 离线包安装）                                           |
 | **[docs/adr/](docs/adr/)**                                     | 架构决策记录（Architecture Decision Records，涵盖系统重大架构抉择）                                                                          |
 
 ---
