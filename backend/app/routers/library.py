@@ -199,6 +199,7 @@ def discovery_ranking(
     now_ts = time.time()
     cached_feed = store.load_discovery_feed(timeframe, source=source)
     feed: DiscoveryFeed | None = None
+    provider = get_provider(source)
 
     if not refresh and cached_feed is not None:
         try:
@@ -209,7 +210,6 @@ def discovery_ranking(
             feed = cached_feed
 
     if feed is None:
-        provider = get_provider(source)
         try:
             items = provider.fetch_ranking(timeframe=timeframe)
             feed = DiscoveryFeed(
@@ -222,6 +222,8 @@ def discovery_ranking(
         except Exception as exc:
             if cached_feed is not None:
                 feed = cached_feed
+            else:
+                raise HTTPException(status_code=502, detail=f"拉取排行榜失败：{exc}") from exc
     # Self-heal historical cached feeds missing cover_url via provider hook
     if feed is not None and hasattr(provider, "format_cover_url"):
         for item in feed.items:

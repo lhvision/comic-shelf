@@ -199,6 +199,30 @@ def test_discovery_ranking_router():
         assert feed.timeframe == "day"
         assert len(feed.items) == 1
         assert feed.items[0].source_id == "6aa41d3bf7e21a74faf94e42"
+
+        # When live ranking fetch raises and no cached feed exists, router must raise 502 HTTPException
+        from fastapi import HTTPException
+        provider._request = MagicMock(side_effect=RuntimeError("Upstream service connection failed"))
+        try:
+            discovery_ranking(req, source="picacg", timeframe="nonexistent_timeframe_test", refresh=True)
+            assert False, "Should raise 502 when live fetch fails and no cache exists"
+        except HTTPException as exc:
+            assert exc.status_code == 502
+            assert "拉取排行榜失败" in str(exc.detail)
+
+        # Test cache hit (refresh=False) ensures provider is properly bound and self-heals cover_url
+        from datetime import datetime
+        cached_jm_feed = DiscoveryFeed(
+            source="jm",
+            timeframe="week",
+            updated_at=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            items=[DiscoveryItem(id="JM12345", source="jm", source_id="12345", title="缓存作品", cover_url="")]
+        )
+        main_mod.store.save_discovery_feed(cached_jm_feed)
+        feed_hit = discovery_ranking(req, source="jm", timeframe="week", refresh=False)
+        assert feed_hit.source == "jm"
+        assert len(feed_hit.items) == 1
+        assert feed_hit.items[0].cover_url.startswith("https://cdn-msp.jmapiproxy1.cc/media/albums/12345_3x4.jpg")
     finally:
         provider._request = original_req
 

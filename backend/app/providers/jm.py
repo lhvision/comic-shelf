@@ -45,7 +45,6 @@ _FALLBACK_HTML_DOMAINS = [
     "18comic.ink",
 ]
 _DOMAIN_TTL_SECONDS = 6 * 60 * 60
-_SESSION_TTL_SECONDS = 7 * 24 * 60 * 60
 _PROXY_CRED_RE = re.compile(r"://([^:@\s]*):([^@\s]+)@")
 _JM_PUB_DATE_RE = re.compile(r"上架日期\s*[:：]\s*([0-9]{4}-[0-9]{2}-[0-9]{2})")
 _JM_UPD_DATE_RE = re.compile(r"更新日期\s*[:：]\s*([0-9]{4}-[0-9]{2}-[0-9]{2})")
@@ -242,16 +241,26 @@ class JMProvider(ComicProvider):
     # ------------------------------------------------------------------
     def _load_session_cache(self) -> dict[str, str] | None:
         data = self.load_secure_session(self._session_cache_file)
-        if not data or data.get("username") != JM_USERNAME:
+        if not data or not isinstance(data, dict):
+            return None
+        # 若环境显式配置了 JM_USERNAME 且与缓存记录的用户名冲突，视为切号需重新登录
+        if JM_USERNAME and data.get("username") and data.get("username") != JM_USERNAME:
             return None
         try:
             ts = float(data.get("ts") or 0)
+            if ts <= 0:
+                return None
         except (TypeError, ValueError):
             return None
-        if time.time() - ts < _SESSION_TTL_SECONDS:
-            cookies = data.get("cookies")
-            if isinstance(cookies, dict) and cookies:
-                return {str(k): str(v) for k, v in cookies.items()}
+        cookies = data.get("cookies")
+        if isinstance(cookies, dict) and cookies:
+            clean_cookies: dict[str, str] = {}
+            for k, v in cookies.items():
+                sk, sv = str(k).strip(), str(v).strip()
+                if sk and "\r" not in sk and "\n" not in sk and "\r" not in sv and "\n" not in sv:
+                    clean_cookies[sk] = sv
+            if clean_cookies:
+                return clean_cookies
         return None
 
     def _save_session_cache(self, cookies: dict[str, str]) -> None:
@@ -268,9 +277,6 @@ class JMProvider(ComicProvider):
         self.clear_secure_session(self._session_cache_file)
 
     def _get_valid_cookies(self, option=None, force_refresh: bool = False) -> dict[str, str] | None:
-        if not JM_USERNAME or not JM_PASSWORD:
-            return None
-
         if not force_refresh:
             cached = self._load_session_cache()
             if cached is not None:
@@ -289,7 +295,11 @@ class JMProvider(ComicProvider):
                     ts = 0.0
                 if time.time() - ts < 15:
                     return cached
-            return self._perform_login(option)
+            # 只有配置了账号密码才能执行主动登录换取新会话；无密码时非破坏性保留已有会话
+            if not JM_USERNAME or not JM_PASSWORD:
+                return cached
+            new_cookies = self._perform_login(option)
+            return new_cookies if new_cookies else cached
 
     def _login_web(self, username: str, password: str) -> dict[str, str]:
         """向当前有效 18comic 网页端发起真实 Web 表单登录，获取正牌网页端 Session Cookies。"""
@@ -491,16 +501,17 @@ class JMProvider(ComicProvider):
     # ------------------------------------------------------------------
     # fetching
     # ------------------------------------------------------------------
-    def _make_api_client(self, force_refresh_session: bool = False):
+    def _make_api_client(self, force_refresh_session: bool = False, anonymous: bool = False):
         from jmcomic import JmOption
 
         option = JmOption.default()
         control_proxies = self._get_control_proxies()
         option.client.postman.meta_data["proxies"] = control_proxies
 
-        cookies = self._get_valid_cookies(option, force_refresh=force_refresh_session)
-        if cookies:
-            option.update_cookies(cookies)
+        if not anonymous:
+            cookies = self._get_valid_cookies(option, force_refresh=force_refresh_session)
+            if cookies:
+                option.update_cookies(cookies)
 
         return option.new_jm_client(impl="api")
 
@@ -572,7 +583,6 @@ class JMProvider(ComicProvider):
             if self._is_login_required_response(resp):
                 if JM_USERNAME and JM_PASSWORD:
                     logger.info("检测到车号 JM%s 网页端受限或需登录，尝试刷新 HTML 会话重试探测日期...", jm_id)
-                    self._clear_session_cache()
                     client = self._make_html_client(force_refresh_session=True)
                     resp = client.get(f"/album/{jm_id}", timeout=5)
                     return self._extract_html_dates(getattr(resp, "text", ""))
@@ -632,14 +642,20 @@ class JMProvider(ComicProvider):
         except MissingAlbumPhotoException as e_missing:
             if JM_USERNAME and JM_PASSWORD:
                 logger.info("检测到受限车号 JM%s 在 API 端返回缺失，尝试自愈刷新凭据重试...", jm_id)
-                self._clear_session_cache()
                 api_client = self._make_api_client(force_refresh_session=True)
                 try:
                     detail, album_pub_date, album_page_count = _get_album_detail(api_client, jm_id)
                 except Exception:
-                    raise e_missing
+                    raise ValueError(
+                        f"禁漫车号 JM{jm_id} 受权限保护（需登录查看），当前账号无权访问或登录会话已失效"
+                    ) from e_missing
             else:
-                raise
+                cached = self._load_session_cache()
+                if cached:
+                    raise ValueError(
+                        f"禁漫车号 JM{jm_id} 受权限保护（需登录查看），挂载的 jm_session.json 凭据已失效，请在 docker-compose.yml 中配置 JM_USERNAME 与 JM_PASSWORD 以便自动重新登录"
+                    ) from e_missing
+                raise e_missing
 
         album_ms = int((time.perf_counter() - t_album_req) * 1000)
         episodes_cnt = len(detail.episode_list or [])
@@ -714,7 +730,6 @@ class JMProvider(ComicProvider):
             except MissingAlbumPhotoException as e_ep_missing:
                 if JM_USERNAME and JM_PASSWORD:
                     logger.info("检测到单话 %s 在 API 端受限或缺失，尝试自愈刷新重登...", pid)
-                    self._clear_session_cache()
                     photo_cache.pop(pid, None)
                     api_client = self._make_api_client(force_refresh_session=True)
                     try:
@@ -725,9 +740,16 @@ class JMProvider(ComicProvider):
                         log_import_diag("JM-API-PHOTO-RETRY", f"pid={pid} duration_ms={ep_ms} pages={len(photo.page_arr)}")
                         return photo
                     except Exception:
-                        raise e_ep_missing
+                        raise ValueError(
+                            f"禁漫话数 {pid} 受权限保护（需登录查看），当前账号无权访问或登录会话已失效"
+                        ) from e_ep_missing
                 else:
-                    raise
+                    cached = self._load_session_cache()
+                    if cached:
+                        raise ValueError(
+                            f"禁漫话数 {pid} 受权限保护（需登录查看），挂载的 jm_session.json 凭据已失效，请在 docker-compose.yml 中配置 JM_USERNAME 与 JM_PASSWORD 以便自动重新登录"
+                        ) from e_ep_missing
+                    raise e_ep_missing
 
         html_domain = self._cached_html_domain() or "18comic.vip"
         source_url = f"https://{html_domain}/album/{jm_id}"
@@ -760,14 +782,18 @@ class JMProvider(ComicProvider):
         if self._is_login_required_response(album_resp):
             if JM_USERNAME and JM_PASSWORD:
                 logger.info("检测到受限车号 JM%s，尝试 HTML 会话自愈刷新重登并重试...", jm_id)
-                self._clear_session_cache()
                 client = self._make_html_client(force_refresh_session=True)
                 album_resp = client.get(f"/album/{jm_id}")
                 if self._is_login_required_response(album_resp):
                     raise ValueError(f"禁漫车号 JM{jm_id} 受权限保护（需登录查看），当前账号无权访问或登录会话已失效")
             else:
+                cached = self._load_session_cache()
+                if cached:
+                    raise ValueError(
+                        f"禁漫车号 JM{jm_id} 受权限保护（需登录查看），挂载的 jm_session.json 凭据已失效，请在 docker-compose.yml 中配置 JM_USERNAME 与 JM_PASSWORD 以便自动重新登录"
+                    )
                 raise ValueError(
-                    f"禁漫车号 JM{jm_id} 受权限保护（需登录查看），请在 .env 中配置 JM_USERNAME 与 JM_PASSWORD 后重试"
+                    f"禁漫车号 JM{jm_id} 受权限保护（需登录查看），请在 docker-compose.yml 或 .env 中配置 JM_USERNAME 与 JM_PASSWORD 后重试"
                 )
 
         if (
@@ -797,12 +823,16 @@ class JMProvider(ComicProvider):
             if self._is_login_required_response(photo_resp):
                 if JM_USERNAME and JM_PASSWORD:
                     logger.info("检测到单话 %s 受限，尝试 HTML 会话重登并重试...", pid)
-                    self._clear_session_cache()
                     client = self._make_html_client(force_refresh_session=True)
                     photo_resp = client.get(f"/photo/{pid}")
                 else:
+                    cached = self._load_session_cache()
+                    if cached:
+                        raise ValueError(
+                            f"禁漫话数 {pid} 受权限保护（需登录查看），挂载的 jm_session.json 凭据已失效，请在 docker-compose.yml 中配置 JM_USERNAME 与 JM_PASSWORD 以便自动重新登录"
+                        )
                     raise ValueError(
-                        f"禁漫话数 {pid} 受权限保护（需登录查看），请在 .env 中配置 JM_USERNAME 与 JM_PASSWORD 后重试"
+                        f"禁漫话数 {pid} 受权限保护（需登录查看），请在 docker-compose.yml 或 .env 中配置 JM_USERNAME 与 JM_PASSWORD 后重试"
                     )
                 if self._is_login_required_response(photo_resp):
                     raise ValueError(f"禁漫话数 {pid} 需登录后才能查看，当前账号无权访问或登录会话已失效")
@@ -1358,25 +1388,30 @@ class JMProvider(ComicProvider):
         JmModuleConfig.FLAG_ENABLE_JM_LOG = False
         client = self._make_api_client()
 
-        try:
+        def _query_ranking(c: Any) -> Any:
             if timeframe == "day":
-                resp = client.day_ranking(page=page)
-            elif timeframe == "month":
-                resp = client.month_ranking(page=page)
-            else:
-                resp = client.week_ranking(page=page)
+                return c.day_ranking(page=page)
+            if timeframe == "month":
+                return c.month_ranking(page=page)
+            return c.week_ranking(page=page)
+
+        resp = None
+        try:
+            resp = _query_ranking(client)
         except Exception as exc:
+            retry_success = False
             if JM_USERNAME and JM_PASSWORD:
                 logger.info("禁漫拉取排行榜异常，尝试自愈刷新凭据重试: %s", _mask_sensitive(exc))
-                client = self._make_api_client(force_refresh_session=True)
-                if timeframe == "day":
-                    resp = client.day_ranking(page=page)
-                elif timeframe == "month":
-                    resp = client.month_ranking(page=page)
-                else:
-                    resp = client.week_ranking(page=page)
-            else:
-                raise
+                try:
+                    client = self._make_api_client(force_refresh_session=True)
+                    resp = _query_ranking(client)
+                    retry_success = True
+                except Exception as exc_retry:
+                    logger.warning("禁漫自愈刷新拉取榜单重试失败: %s，准备降级为匿名榜单", _mask_sensitive(exc_retry))
+            if not retry_success:
+                logger.info("尝试降级为匿名客户端拉取禁漫排行榜...")
+                anon_client = self._make_api_client(anonymous=True)
+                resp = _query_ranking(anon_client)
 
         ranking_domain = self._cached_html_domain() or "18comic.vip"
 

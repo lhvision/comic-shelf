@@ -231,6 +231,13 @@ class TestJMProvider(unittest.TestCase):
             )
             self.assertIsNone(self.provider._load_session_cache())
 
+            # Cookies with CRLF control characters are filtered out
+            self.provider.save_secure_session(
+                self.provider._session_cache_file,
+                {"cookies": {"bad\r\nkey": "val", "bad_val": "val\r\ninjected", "clean": "good_token"}, "username": "alice", "ts": time.time()},
+            )
+            self.assertEqual(self.provider._load_session_cache(), {"clean": "good_token"})
+
             # Clear cache
             self.provider._clear_session_cache()
             self.assertIsNone(self.provider._load_session_cache())
@@ -1100,7 +1107,8 @@ class TestJMProvider(unittest.TestCase):
                 pub, upd = self.provider._try_extract_html_dates("1208546")
                 self.assertEqual(pub, "2024-03-10")
                 self.assertEqual(upd, "2025-02-20")
-                mock_clear.assert_called_once()
+                # Non-destructive: session cache should not be cleared before re-login
+                mock_clear.assert_not_called()
         finally:
             self.html_dates_patcher.start()
 
@@ -1345,6 +1353,72 @@ class TestJMProvider(unittest.TestCase):
             self.assertEqual(len(items), 1)
             self.assertEqual(items[0].id, "JM99999")
             self.assertEqual(recorded_calls, [False, True])
+
+    def test_fetch_ranking_anonymous_fallback_when_auth_fails(self):
+        failing_client = MagicMock()
+        failing_client.day_ranking.side_effect = RuntimeError("API Auth Error: 403 Forbidden")
+
+        mock_anon_client = MagicMock()
+        anon_resp = MagicMock()
+        anon_resp.content = [
+            ("88888", {"id": "88888", "name": "匿名排行榜作品", "author": "作者", "category": "同人"}),
+        ]
+        mock_anon_client.day_ranking.return_value = anon_resp
+
+        def _mock_make_api_client(force_refresh_session=False, anonymous=False):
+            return mock_anon_client if anonymous else failing_client
+
+        with patch("app.providers.jm.JM_USERNAME", "test_user"), patch(
+            "app.providers.jm.JM_PASSWORD", "test_pass"
+        ), patch.object(self.provider, "_make_api_client", side_effect=_mock_make_api_client), patch.object(
+            self.provider, "_cached_html_domain", return_value="18comic.vip"
+        ):
+            items = self.provider.fetch_ranking("day")
+            self.assertEqual(len(items), 1)
+            self.assertEqual(items[0].id, "JM88888")
+            self.assertEqual(items[0].title, "匿名排行榜作品")
+
+    def test_zero_env_session_adoption_and_optimistic_reuse(self):
+        # 1. Zero-Env: JM_USERNAME unset, but jm_session.json exists from 30 days ago
+        cookies = {"AVS": "long_lived_token_456"}
+        old_ts = time.time() - 30 * 86400  # 30 days ago
+        self.provider.save_secure_session(
+            self.provider._session_cache_file,
+            {"cookies": cookies, "username": "historic_user", "ts": old_ts},
+        )
+
+        with patch("app.providers.jm.JM_USERNAME", ""), patch("app.providers.jm.JM_PASSWORD", ""):
+            # Should optimistically adopt existing cookies despite no env credentials and >7 days old
+            loaded = self.provider._load_session_cache()
+            self.assertEqual(loaded, cookies)
+            valid = self.provider._get_valid_cookies()
+            self.assertEqual(valid, cookies)
+
+    def test_restricted_album_blocks_html_downgrade(self):
+        from jmcomic import MissingAlbumPhotoException
+
+        self.api_patcher.stop()
+        self.html_dates_patcher.stop()
+        try:
+            mock_api_client = MagicMock()
+            mock_api_client.API_ALBUM = "/album"
+            mock_api_client.append_params_to_url.return_value = "/album?id=1208546"
+            mock_resp = MagicMock()
+            mock_resp.res_data = None
+            mock_api_client.req_api.side_effect = MissingAlbumPhotoException(mock_resp, "1208546")
+
+            self.provider._save_session_cache({"AVS": "test_token"})
+            with patch.object(self.provider, "_make_api_client", return_value=mock_api_client), patch.object(
+                self.provider, "_fetch_via_html"
+            ) as mock_html, patch("app.providers.jm.JM_USERNAME", ""), patch("app.providers.jm.JM_PASSWORD", ""):
+                with self.assertRaises(ValueError) as ctx:
+                    self.provider.fetch("1208546")
+                self.assertIn("受权限保护", str(ctx.exception))
+                self.assertIn("docker-compose.yml", str(ctx.exception))
+                mock_html.assert_not_called()
+        finally:
+            self.api_patcher.start()
+            self.html_dates_patcher.start()
 
     def test_download_cover_by_url(self):
         # 1. Empty / invalid URLs / non-media paths / unauthorized hosts / path traversal
