@@ -321,7 +321,8 @@ JmImageTool.decode_and_save(num, source_image, save_path)
 - **JMComic 榜单适配与登录态注入**：
   - 调用移动端 REST 接口 `/categories/filter`（`day_ranking`、`week_ranking`、`month_ranking`）；
   - **登录态优先、Zero-Env 接管与双轨自愈**：通过 `_make_api_client()` 自动注入长效缓存的 `AVS` 令牌与 Web Cookies，获取无平台修剪的完整登录版榜单；支持无环境变量时自动接管容器卷已挂载的既有凭据（Zero-Env）；遇认证过期触发非破坏性自愈重登（不提前物理删除缓存，重登成功原子覆写）；若重登失败或未配密码，透明降级为匿名 API 客户端双轨容灾；
-  - **端点容灾屏障与作用域安全**：`provider = get_provider(source)` 提升至端点入口外层，根除缓存命中时的 `UnboundLocalError`；若主榜单与回退榜单均返回空或上游崩溃，端点统一抛出 HTTP 502 语义化屏障，杜绝空对象导致 500 级联崩溃；
+  - **端点容灾屏障、作用域安全与缓存防冲刷**：`provider = get_provider(source)` 提升至端点入口外层，根除缓存命中时的 `UnboundLocalError`；若主榜单与回退榜单均返回空或上游崩溃，端点统一抛出 HTTP 502 语义化屏障，杜绝空对象导致 500 级联崩溃；当拉取结果为空且存在有效本地缓存时，自动回退复用旧快照且不冲刷磁盘；
+  - **互斥锁重入安全与防惊群精简**：`JMProvider` 采用 `threading.RLock()` 严防冷启动嵌套死锁；结合内存级时间戳 `_last_login_attempt_ts` 实现登录成功与失败统一 15 秒冷却屏障，全面裁撤脱离生产的 `_clear_session_cache` 死代码并剔除双检锁内的二次读盘 I/O；
   - **域名嗅探瘦身与超时预算**：榜单热路径直接复用已缓存或基准域名，剥离阻塞式发布页探测；前端 `discoveryRanking` 配备 60 秒宽松超时预算（`timeoutMs: 60000`）；
   - **历史旧缓存自动自愈**：加载存量缺失 `cover_url` 的磁盘快照时，通过 Provider 的 `format_cover_url()` 统一补全官方封面地址；
   - **直接封面兜底**：端点找不到条目封面记录时，通过 Provider 的 `format_cover_url()` 秒级合成直达地址，消除 404 挂图。

@@ -212,13 +212,17 @@ def discovery_ranking(
     if feed is None:
         try:
             items = provider.fetch_ranking(timeframe=timeframe)
-            feed = DiscoveryFeed(
-                source=source,
-                timeframe=timeframe,
-                updated_at=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                items=items,
-            )
-            store.save_discovery_feed(feed)
+            if not items and cached_feed is not None:
+                feed = cached_feed
+            else:
+                feed = DiscoveryFeed(
+                    source=source,
+                    timeframe=timeframe,
+                    updated_at=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                    items=items,
+                )
+                if items:
+                    store.save_discovery_feed(feed)
         except Exception as exc:
             if cached_feed is not None:
                 feed = cached_feed

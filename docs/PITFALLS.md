@@ -1074,13 +1074,18 @@
 - **症状**：进入发现页拉取榜单时服务直接报 500 错误；容器卷中挂载了 `jm_session.json`，但受限禁漫漫画完全无法收录，且该文件始终停留在上个月从未刷新。
 - **根因**：
   1. **路由层缺失 502 错误拦截导致空指针解引用**：`discovery_ranking` 删除了 `else: raise HTTPException`，缓存为空且拉取失败时 `feed is None`，触发 `AttributeError: 'NoneType' object has no attribute 'items'` (HTTP 500)；
-  2. **会话时钟硬编码 7 天 TTL 误杀有效凭据**：禁漫 AVS 与 Cookies 往往长效有效，但代码按 7 天抛弃，而在容器或网络限制下重新登录失败，陷入老凭据被无视、新凭据无法获取的僵死状态；且 `_clear_session_cache` 提前物理删除文件存在洗盘风险；
-  3. **容器环境账号密码未配时拒绝接管已有凭据**：`docker-compose.yml` 未配 `JM_USERNAME` 时，`_load_session_cache` 与 `_get_valid_cookies` 直接拒绝加载已挂载的 `jm_session.json`；
-  4. **受限车号异常向 HTML 盲目降级**：API 报 `MissingAlbumPhotoException` 时被误当常规异常降级到 HTML，撞上网页端图形验证码（CAPTCHA）直接被拒。
+  2. **变量作用域局限在缓存缺失分支导致命中时报 UnboundLocalError**：`provider = get_provider(source)` 被包裹在 `if feed is None:` 内，导致命中 12h 缓存时跳过赋值，后续调用 `hasattr(provider, ...)` 抛出 `UnboundLocalError` (HTTP 500)；
+  3. **会话时钟硬编码 7 天 TTL 误杀有效凭据**：禁漫 AVS 与 Cookies 往往长效有效，但代码按 7 天抛弃，而在容器或网络限制下重新登录失败，陷入老凭据被无视、新凭据无法获取的僵死状态；且 `_clear_session_cache` 提前物理删除文件存在洗盘风险；
+  4. **容器环境账号密码未配时拒绝接管已有凭据**：`docker-compose.yml` 未配 `JM_USERNAME` 时，`_load_session_cache` 与 `_get_valid_cookies` 直接拒绝加载已挂载的 `jm_session.json`；
+  5. **受限车号异常向 HTML 盲目降级**：API 报 `MissingAlbumPhotoException` 时被误当常规异常降级到 HTML，撞上网页端图形验证码（CAPTCHA）直接被拒；
+  6. **不可重入互斥锁与并发惊群击穿**：`JMProvider` 使用 `threading.Lock()` 在冷启动时（无域名缓存）调用链嵌套获取同一把锁造成自身死锁；重登失败时缺乏时间戳冷却导致并发排队线程连续超时堆叠；
+  7. **空榜单冲刷覆盖有效本地快照**：上游因偶发抖动返回空列表 `[]` 时，直接保存导致覆盖原本有效的 12h 榜单快照。
 - **红线**：
-  1. 发现榜单路由严禁发生 `feed is None` 的空指针解引用，必须捕获上游异常并转为规范 502 错误，榜单拉取实施登录态到匿名客户端的双轨自动降级；
-  2. 会话凭据管理践行乐观长效复用与非破坏性原子自愈，移除硬编码 TTL，未配置账号密码但存在挂载 session 文件时必须无缝接管；
-  3. 受限车号 API 失败必须显式拦截并友好报错，严禁向必然遭遇图形验证码拦截的 HTML 端盲目降级。
+  1. 发现榜单路由严禁发生 `feed is None` 的空指针解引用与变量作用域穿透，必须捕获上游异常并转为规范 502 错误，榜单拉取实施登录态到匿名客户端的双轨自动降级；
+  2. 榜单空数据严禁覆写冲刷已有有效缓存快照（`not items and cached_feed` 时自动回退旧快照）；
+  3. 会话凭据管理践行乐观长效复用与非破坏性原子自愈，移除硬编码 TTL，未配置账号密码但存在挂载 session 文件时必须无缝接管，裁撤无用死代码与二次读盘；
+  4. 图源内部互斥锁必须采用 `threading.RLock()` 严防嵌套死锁，登录失败必须与成功同享 15 秒内存冷却（防并发惊群击穿）；
+  5. 受限车号 API 失败必须显式拦截并友好报错，严禁向必然遭遇图形验证码拦截的 HTML 端盲目降级。
 
 ---
 

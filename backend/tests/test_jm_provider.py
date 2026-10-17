@@ -238,8 +238,15 @@ class TestJMProvider(unittest.TestCase):
             )
             self.assertEqual(self.provider._load_session_cache(), {"clean": "good_token"})
 
-            # Clear cache
-            self.provider._clear_session_cache()
+            # Hand-crafted session file without "ts" key is tolerated and loaded
+            self.provider.save_secure_session(
+                self.provider._session_cache_file,
+                {"cookies": {"AVS": "manual_token"}, "username": "alice"},
+            )
+            self.assertEqual(self.provider._load_session_cache(), {"AVS": "manual_token"})
+
+            # Clear cache using base method
+            self.provider.clear_secure_session(self.provider._session_cache_file)
             self.assertIsNone(self.provider._load_session_cache())
 
     def test_get_valid_cookies_concurrent_refresh_grace_window(self) -> None:
@@ -255,6 +262,30 @@ class TestJMProvider(unittest.TestCase):
                 res = self.provider._get_valid_cookies(force_refresh=True)
                 self.assertEqual(res, cookies)
                 mock_login.assert_not_called()
+
+    def test_get_valid_cookies_login_failure_cooldown(self) -> None:
+        with patch("app.providers.jm.JM_USERNAME", "alice"), patch(
+            "app.providers.jm.JM_PASSWORD", "secret123"
+        ):
+            # When login fails, it returns None
+            with patch.object(self.provider, "_perform_login", return_value=None) as mock_login:
+                res1 = self.provider._get_valid_cookies(force_refresh=True)
+                self.assertIsNone(res1)
+                self.assertEqual(mock_login.call_count, 1)
+
+                # Subsequent call within 15s cooldown should skip _perform_login to prevent thundering herd
+                res2 = self.provider._get_valid_cookies(force_refresh=True)
+                self.assertIsNone(res2)
+                self.assertEqual(mock_login.call_count, 1)
+
+    def test_reentrant_lock_prevents_nested_deadlock(self) -> None:
+        # When _get_valid_cookies calls _perform_login, which calls resolve_html_domain,
+        # both acquire self.provider._lock on the same thread. It must be an RLock to avoid deadlock.
+        acquired = False
+        with self.provider._lock:
+            with self.provider._lock:
+                acquired = True
+        self.assertTrue(acquired)
 
     def test_fetch_restricted_album_guidance_when_anonymous(self) -> None:
         mock_client = MagicMock()
@@ -1099,16 +1130,15 @@ class TestJMProvider(unittest.TestCase):
             mock_resp_succ.text = "<html><span>上架日期 : 2024-03-10</span><span>更新日期 : 2025-02-20</span></html>"
             mock_client2.get.return_value = mock_resp_succ
 
+            self.provider.save_secure_session(self.provider._session_cache_file, {"cookies": {"AVS": "old_token"}, "username": "test_user", "ts": time.time()})
             with patch.object(self.provider, "_make_html_client", side_effect=[mock_client1, mock_client2]), patch(
                 "app.providers.jm.JM_USERNAME", "test_user"
-            ), patch("app.providers.jm.JM_PASSWORD", "test_pass"), patch.object(
-                self.provider, "_clear_session_cache"
-            ) as mock_clear:
+            ), patch("app.providers.jm.JM_PASSWORD", "test_pass"):
                 pub, upd = self.provider._try_extract_html_dates("1208546")
                 self.assertEqual(pub, "2024-03-10")
                 self.assertEqual(upd, "2025-02-20")
-                # Non-destructive: session cache should not be cleared before re-login
-                mock_clear.assert_not_called()
+                # Non-destructive: session cache file should not be deleted before re-login
+                self.assertTrue(self.provider._session_cache_file.exists())
         finally:
             self.html_dates_patcher.start()
 

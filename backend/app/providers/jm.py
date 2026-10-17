@@ -204,9 +204,10 @@ class JMProvider(ComicProvider):
     example = "JM523607"
 
     def __init__(self) -> None:
-        self._lock = threading.Lock()
+        self._lock = threading.RLock()
         self._domain_cache_file = DATA_DIR / "jm_html_domain.json"
         self._session_cache_file = DATA_DIR / "jm_session.json"
+        self._last_login_attempt_ts: float = 0.0
 
     # ------------------------------------------------------------------
     # proxy & network routing helpers
@@ -246,12 +247,14 @@ class JMProvider(ComicProvider):
         # 若环境显式配置了 JM_USERNAME 且与缓存记录的用户名冲突，视为切号需重新登录
         if JM_USERNAME and data.get("username") and data.get("username") != JM_USERNAME:
             return None
-        try:
-            ts = float(data.get("ts") or 0)
-            if ts <= 0:
+        # 若文件中显式包含了 ts 字段，则进行有效性检验；若用户手建文件省略了 ts 字段则予以容错放行
+        if "ts" in data:
+            try:
+                ts = float(data.get("ts") or 0)
+                if ts <= 0:
+                    return None
+            except (TypeError, ValueError):
                 return None
-        except (TypeError, ValueError):
-            return None
         cookies = data.get("cookies")
         if isinstance(cookies, dict) and cookies:
             clean_cookies: dict[str, str] = {}
@@ -264,17 +267,15 @@ class JMProvider(ComicProvider):
         return None
 
     def _save_session_cache(self, cookies: dict[str, str]) -> None:
+        self._last_login_attempt_ts = time.time()
         self.save_secure_session(
             self._session_cache_file,
             {
                 "cookies": cookies,
                 "username": JM_USERNAME,
-                "ts": time.time(),
+                "ts": self._last_login_attempt_ts,
             },
         )
-
-    def _clear_session_cache(self) -> None:
-        self.clear_secure_session(self._session_cache_file)
 
     def _get_valid_cookies(self, option=None, force_refresh: bool = False) -> dict[str, str] | None:
         if not force_refresh:
@@ -284,20 +285,18 @@ class JMProvider(ComicProvider):
 
         with self._lock:
             cached = self._load_session_cache()
+            now = time.time()
             if cached is not None:
-                if not force_refresh:
+                if not force_refresh or (now - self._last_login_attempt_ts < 15):
                     return cached
-                # 若已有其他并发线程在近 15 秒内刚刚完成登录自愈，直接复用避免惊群重登
-                data = self.load_secure_session(self._session_cache_file) or {}
-                try:
-                    ts = float(data.get("ts") or 0)
-                except (TypeError, ValueError):
-                    ts = 0.0
-                if time.time() - ts < 15:
-                    return cached
+            elif now - self._last_login_attempt_ts < 15:
+                # 即使无有效缓存，若近 15 秒内刚发生过失败的登录尝试，直接跳过避免连续请求堆叠击穿
+                return None
+
             # 只有配置了账号密码才能执行主动登录换取新会话；无密码时非破坏性保留已有会话
             if not JM_USERNAME or not JM_PASSWORD:
                 return cached
+            self._last_login_attempt_ts = now
             new_cookies = self._perform_login(option)
             return new_cookies if new_cookies else cached
 

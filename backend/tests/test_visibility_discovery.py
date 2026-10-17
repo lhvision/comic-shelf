@@ -2,7 +2,7 @@ import sys
 import tempfile
 import time
 from pathlib import Path
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 BACKEND_DIR = Path(__file__).resolve().parent.parent
 if str(BACKEND_DIR) not in sys.path:
@@ -223,6 +223,17 @@ def test_discovery_ranking_router():
         assert feed_hit.source == "jm"
         assert len(feed_hit.items) == 1
         assert feed_hit.items[0].cover_url.startswith("https://cdn-msp.jmapiproxy1.cc/media/albums/12345_3x4.jpg")
+
+        # When refresh=True but provider.fetch_ranking returns empty list, cached_feed should be preserved
+        jm_prov = get_provider("jm")
+        with patch.object(jm_prov, "fetch_ranking", return_value=[]):
+            feed_fallback = discovery_ranking(req, source="jm", timeframe="week", refresh=True)
+            assert len(feed_fallback.items) == 1
+            assert feed_fallback.items[0].source_id == "12345"
+            # Ensure on-disk cache was not wiped with empty feed
+            disk_feed = main_mod.store.load_discovery_feed("week", source="jm")
+            assert disk_feed is not None
+            assert len(disk_feed.items) == 1
     finally:
         provider._request = original_req
 
