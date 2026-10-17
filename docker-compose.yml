@@ -6,6 +6,7 @@ services:
     container_name: paper-room
     restart: unless-stopped
     environment:
+      TZ: Asia/Shanghai
       COMIC_SHELF_DATA: /app/data
       COMIC_SHELF_HOST: 0.0.0.0
       COMIC_SHELF_PORT: 8000

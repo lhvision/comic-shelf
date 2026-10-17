@@ -1087,6 +1087,19 @@
   4. 图源内部互斥锁必须采用 `threading.RLock()` 严防嵌套死锁，登录失败必须与成功同享 15 秒内存冷却（防并发惊群击穿）；
   5. 受限车号 API 失败必须显式拦截并友好报错，严禁向必然遭遇图形验证码拦截的 HTML 端盲目降级。
 
+### 167. 发现榜单裸本地时间字符串导致跨时区与 Docker 部署时序撕裂
+
+- **症状**：Docker 部署后进入发现页，榜单显示「更新于 2026-10-17 08:48:31」，而用户本地实际时间为 16:48:31，时间整整慢了 8 小时。
+- **根因**：
+  1. **容器默认时区缺失**：Docker 基础镜像 `python:3.12-slim` 默认运行在 UTC 时区，且未安装 `tzdata` 及注入 `TZ` 环境变量；
+  2. **服务端裸时间字符串**：`discovery_ranking` 路由生成缓存时间时采用裸 `datetime.now().strftime("%Y-%m-%d %H:%M:%S")`，剥离了所有时区偏移量，返回给前端的是一个无时区信息的 Naive 字符串；
+  3. **前端直出未本地化**：前端模板原样插值 `更新于 {{ feed.updated_at }}`，未进行 `Date` 解析和客户端本地时区换算；
+  4. **缓存校验时区歧义**：原先使用 `datetime.strptime(cached_feed.updated_at, "%Y-%m-%d %H:%M:%S")` 计算 `feed_dt.timestamp()`，在不同时区机器迁移时产生计算偏差。
+- **红线**：
+  1. **全站状态与缓存统一 ISO 8601 UTC**：所有对外接口和持久化元数据（含 `DiscoveryFeed.updated_at`）统一生成 `datetime.now(timezone.utc).isoformat()`，严禁向前端返回不带时区偏移的裸时间；
+  2. **端服时区彻底解耦**：前端统一使用 `@/utils/format.ts` 的 `formatRelativeTime` 与 `formatDateTime` 按照用户浏览器所在本地时区呈现（如显示为人性化相对时间 `更新于 刚刚` / `更新于 5 分钟前`，浮层提示本地绝对时间）；
+  3. **容器基准声明**：Dockerfile Stage 2 必须内置 `tzdata` 并声明 `ENV TZ=Asia/Shanghai`，`docker-compose.yml` 默认挂载 `TZ: Asia/Shanghai` 环境变量。
+
 ---
 
 ## 🚦 交付门禁

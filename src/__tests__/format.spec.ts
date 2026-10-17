@@ -1,5 +1,11 @@
 import { describe, it, expect } from 'vite-plus/test'
-import { formatBytes, formatLocalImportToast } from '@/utils/format'
+import {
+  formatBytes,
+  formatDateTime,
+  formatLocalImportToast,
+  formatRelativeTime,
+  parseDateToMs,
+} from '@/utils/format'
 
 describe('format utility module', () => {
   describe('formatLocalImportToast', () => {
@@ -50,6 +56,54 @@ describe('format utility module', () => {
       expect(formatBytes(1024 * 1.5)).toBe('1.5 KB')
       expect(formatBytes(1024 * 1024 * 3.4)).toBe('3.4 MB')
       expect(formatBytes(1024 * 1024 * 1024 * 4.5)).toBe('4.5 GB')
+    })
+  })
+
+  describe('parseDateToMs and formatDateTime', () => {
+    it('handles falsy or invalid input', () => {
+      expect(parseDateToMs(null)).toBe(0)
+      expect(parseDateToMs('')).toBe(0)
+      expect(parseDateToMs('invalid-date')).toBe(0)
+      expect(formatDateTime(null)).toBe('')
+      expect(formatDateTime('')).toBe('')
+      expect(formatDateTime('invalid')).toBe('')
+    })
+
+    it('parses numeric timestamps (seconds and milliseconds)', () => {
+      const tsSec = 1760690911
+      expect(parseDateToMs(tsSec)).toBe(tsSec * 1000)
+      expect(parseDateToMs(String(tsSec))).toBe(tsSec * 1000)
+      const tsMs = 1760690911000
+      expect(parseDateToMs(tsMs)).toBe(tsMs)
+      expect(parseDateToMs(String(tsMs))).toBe(tsMs)
+    })
+
+    it('parses ISO 8601 UTC strings', () => {
+      const iso = '2026-10-17T08:48:31.000Z'
+      const ms = parseDateToMs(iso)
+      expect(ms).toBe(Date.parse(iso))
+      expect(formatDateTime(iso)).toMatch(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/)
+    })
+
+    it('parses legacy space-separated time strings assuming UTC', () => {
+      const legacy = '2026-10-17 08:48:31'
+      const ms = parseDateToMs(legacy)
+      expect(ms).toBe(Date.parse('2026-10-17T08:48:31Z'))
+    })
+  })
+
+  describe('formatRelativeTime', () => {
+    it('returns "从未" for empty or invalid input', () => {
+      expect(formatRelativeTime(null)).toBe('从未')
+      expect(formatRelativeTime('')).toBe('从未')
+    })
+
+    it('returns human readable relative time based on diff', () => {
+      const now = Date.now()
+      expect(formatRelativeTime(now - 10 * 1000)).toBe('刚刚')
+      expect(formatRelativeTime(now - 120 * 1000)).toBe('2 分钟前')
+      expect(formatRelativeTime(now - 7200 * 1000)).toBe('2 小时前')
+      expect(formatRelativeTime(now - 86400 * 2 * 1000)).toBe('2 天前')
     })
   })
 })

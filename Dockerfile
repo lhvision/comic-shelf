@@ -26,12 +26,19 @@ FROM python:3.12-slim
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
+    TZ=Asia/Shanghai \
     COMIC_SHELF_DATA=/app/data \
     COMIC_SHELF_HOST=0.0.0.0 \
     COMIC_SHELF_PORT=8000 \
     COMIC_SHELF_STATIC_DIR=/app/dist
 
 WORKDIR /app
+
+RUN if [ -f /etc/apt/sources.list.d/debian.sources ]; then sed -i 's/deb.debian.org/mirrors.ustc.edu.cn/g' /etc/apt/sources.list.d/debian.sources; fi \
+    && if [ -f /etc/apt/sources.list ]; then sed -i 's/deb.debian.org/mirrors.ustc.edu.cn/g' /etc/apt/sources.list; fi \
+    && apt-get update \
+    && apt-get install -y --no-install-recommends tzdata \
+    && rm -rf /var/lib/apt/lists/*
 
 COPY backend/requirements.txt ./
 RUN --mount=type=cache,target=/root/.cache/pip \

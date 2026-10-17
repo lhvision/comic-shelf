@@ -203,11 +203,13 @@ def discovery_ranking(
 
     if not refresh and cached_feed is not None:
         try:
-            feed_dt = datetime.strptime(cached_feed.updated_at, "%Y-%m-%d %H:%M:%S")
-            if now_ts - feed_dt.timestamp() < 12 * 3600:
-                feed = cached_feed
+            if cached_feed.updated_at:
+                feed_dt = datetime.fromisoformat(cached_feed.updated_at)
+                feed_ts = feed_dt.timestamp() if feed_dt.tzinfo else feed_dt.replace(tzinfo=timezone.utc).timestamp()
+                if now_ts - feed_ts < 12 * 3600:
+                    feed = cached_feed
         except Exception:
-            feed = cached_feed
+            pass
 
     if feed is None:
         try:
@@ -218,7 +220,7 @@ def discovery_ranking(
                 feed = DiscoveryFeed(
                     source=source,
                     timeframe=timeframe,
-                    updated_at=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                    updated_at=datetime.now(timezone.utc).isoformat(),
                     items=items,
                 )
                 if items:

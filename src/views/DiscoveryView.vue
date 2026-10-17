@@ -8,6 +8,7 @@ import AppIcon from '@/components/AppIcon.vue'
 import { useDiscovery } from '@/composables/useDiscovery'
 import { useDiscoveryWebMCP } from '@/composables/useDiscoveryWebMCP'
 import { useAuth } from '@/composables/useAuth'
+import { formatDateTime, formatRelativeTime } from '@/utils/format'
 import { getSourceBadge, getSourceName, getSourceShortName } from '@/utils/source'
 import type { DiscoveryItem, DiscoverySource, DiscoveryTimeframe } from '@/types'
 
@@ -123,7 +124,13 @@ onMounted(() => {
         </div>
 
         <div class="meta-action-bar">
-          <span v-if="feed?.updated_at" class="update-time"> 更新于 {{ feed.updated_at }} </span>
+          <span
+            v-if="feed?.updated_at"
+            class="update-time"
+            :title="`榜单缓存时间：${formatDateTime(feed.updated_at)}`"
+          >
+            更新于 {{ formatRelativeTime(feed.updated_at) }}
+          </span>
           <span v-if="totalCount > 0" class="badge">
             已收录 {{ inLibraryCount }} / {{ totalCount }}
           </span>
