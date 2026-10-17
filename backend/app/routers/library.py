@@ -205,8 +205,9 @@ def discovery_ranking(
         try:
             if cached_feed.updated_at:
                 feed_dt = datetime.fromisoformat(cached_feed.updated_at)
-                feed_ts = feed_dt.timestamp() if feed_dt.tzinfo else feed_dt.replace(tzinfo=timezone.utc).timestamp()
-                if now_ts - feed_ts < 12 * 3600:
+                feed_ts = feed_dt.timestamp()
+                time_diff = now_ts - feed_ts
+                if -60 <= time_diff < 12 * 3600:
                     feed = cached_feed
         except Exception:
             pass

@@ -89,6 +89,10 @@ describe('format utility module', () => {
       const legacy = '2026-10-17 08:48:31'
       const ms = parseDateToMs(legacy)
       expect(ms).toBe(Date.parse('2026-10-17T08:48:31Z'))
+
+      const legacyWithMs = '2026-10-17 08:48:31.456'
+      const msWithFrac = parseDateToMs(legacyWithMs)
+      expect(msWithFrac).toBe(Date.parse('2026-10-17T08:48:31.456Z'))
     })
   })
 
