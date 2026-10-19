@@ -127,9 +127,9 @@ const effectiveCover = computed(() => {
           <span
             v-if="hasNew"
             class="reading-stamp is-new-chapter"
-            :title="`追更有新话！上次翻至第 ${comic.last_page} 页（全书已增至 ${comic.page_count} 页）`"
+            :title="`追更有新话！上次翻至第 ${comic.last_page || 1} 页（全书已增至 ${comic.page_count} 页）`"
           >
-            新话 · {{ comic.last_page }}P / {{ comic.page_count }}P
+            新话 · {{ comic.last_page || 1 }}P / {{ comic.page_count }}P
           </span>
           <span v-else-if="isCompleted" class="reading-stamp is-completed" title="全书已读完">
             已读完

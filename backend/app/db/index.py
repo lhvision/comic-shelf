@@ -525,8 +525,13 @@ def _retire_album_auto_update(source: str, source_id: str) -> None:
             if data.get("auto_update_interval_days", 15) == 15:
                 data["auto_update_interval_days"] = 0
                 _write_json_atomic(album_path, data)
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.warning(
+            "Failed to sync auto-update retirement to album.json for %s/%s: %s",
+            source,
+            source_id,
+            exc,
+        )
 
 
 def retire_comic_auto_update(source: str, source_id: str) -> None:
@@ -555,7 +560,8 @@ def get_comics_due_for_auto_update(max_count: int = 10) -> list[dict[str, Any]]:
        - 若作品距最后更新/发布时间（兜底入库时间）已超 120 天无新话，自动设为 0 永久关停；
     7. 60 天休眠退避（Dormancy Backoff）：
        - 若作品距最后更新超 60 天，巡检周期由 15 天平滑退避拉长至 60 天；
-    8. 当前时间距离上次检查时间 >= 实际巡检周期 * 86400。
+    8. 当前时间距离上次检查时间 >= 实际巡检周期 * 86400；
+    9. 调度公平性（FIFO）：按上次检查时间升序（从未检查者优先）与入馆时间升序排队。
     """
     with get_db() as conn:
         rows = conn.execute(
@@ -565,6 +571,7 @@ def get_comics_due_for_auto_update(max_count: int = 10) -> list[dict[str, Any]]:
             FROM comics_index
             WHERE source != 'local'
               AND auto_update_interval_days > 0
+            ORDER BY last_auto_checked_at ASC, imported_at ASC
             """
         ).fetchall()
 
