@@ -8,7 +8,7 @@ import AppChip from '@/components/AppChip.vue'
 import { api, coverSrcset, pageFileUrl } from '@/api/client'
 import { useCoverTransition } from '@/composables/useCoverTransition'
 import { useAuth } from '@/composables/useAuth'
-import { isCompletedComic, isInProgressComic } from '@/utils/is'
+import { isCompletedComic, isInProgressComic, hasNewChapters } from '@/utils/is'
 
 const props = defineProps<{
   comic: LibrarySummary
@@ -48,6 +48,7 @@ const liveCached = computed(() => props.cache?.cached ?? props.comic.cached_page
 const liveTotal = computed(() => props.cache?.total || props.comic.page_count)
 const liveRunning = computed(() => Boolean(props.cache?.running))
 const isTargetCover = computed(() => isCoverActive(props.comic.source, props.comic.source_id))
+const hasNew = computed(() => hasNewChapters(props.comic))
 const isCompleted = computed(() => isCompletedComic(props.comic))
 const isInProgress = computed(() => isInProgressComic(props.comic))
 
@@ -123,7 +124,14 @@ const effectiveCover = computed(() => {
           <div v-else class="cover-placeholder">
             <span>{{ comic.display_id }}</span>
           </div>
-          <span v-if="isCompleted" class="reading-stamp is-completed" title="全书已读完">
+          <span
+            v-if="hasNew"
+            class="reading-stamp is-new-chapter"
+            :title="`追更有新话！上次翻至第 ${comic.last_page} 页（全书已增至 ${comic.page_count} 页）`"
+          >
+            新话 · {{ comic.last_page }}P / {{ comic.page_count }}P
+          </span>
+          <span v-else-if="isCompleted" class="reading-stamp is-completed" title="全书已读完">
             已读完
           </span>
           <span
@@ -456,6 +464,14 @@ const effectiveCover = computed(() => {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.reading-stamp.is-new-chapter {
+  background: color-mix(in oklab, var(--accent) 92%, black 8%);
+  color: var(--accent-contrast, #fff8f2);
+  border: 1px solid color-mix(in oklab, var(--paper-0) 36%, transparent);
+  font-weight: 600;
+  box-shadow: 0 1px 4px color-mix(in oklab, var(--accent) 45%, transparent);
 }
 
 .reading-stamp.is-completed {

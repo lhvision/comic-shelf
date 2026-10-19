@@ -230,6 +230,89 @@ describe('useLibraryFilter', () => {
     expect(filtered.value.map((b) => b.source_id)).toEqual(['3', '1', '2'])
   })
 
+  it('prioritizes comics with unread new chapters to the top in default recent sort', () => {
+    const list: LibrarySummary[] = [
+      {
+        source: 'jm',
+        source_id: '1',
+        display_id: '1',
+        title: 'Newest In-Progress Book',
+        authors: [],
+        works: [],
+        actors: [],
+        tags: [],
+        favorite: false,
+        page_count: 20,
+        views: '0',
+        likes: '0',
+        uploaded_at: '',
+        published_at: '',
+        updated_at: '',
+        imported_at: '2026-03-01T00:00:00Z',
+        cover_paths: [],
+        cached_pages: 0,
+        cover_count: 1,
+        last_page: 5,
+        read_total_pages: 20,
+      },
+      {
+        source: 'jm',
+        source_id: '2',
+        display_id: '2',
+        title: 'Old Book With Newly Appended Chapters',
+        authors: [],
+        works: [],
+        actors: [],
+        tags: [],
+        favorite: false,
+        page_count: 50, // 增至 50P
+        views: '0',
+        likes: '0',
+        uploaded_at: '',
+        published_at: '',
+        updated_at: '',
+        imported_at: '2025-01-01T00:00:00Z', // 极早入库
+        cover_paths: [],
+        cached_pages: 0,
+        cover_count: 1,
+        last_page: 30,
+        read_total_pages: 30, // 上次读完时只有 30P -> 有新章节未读！
+      },
+      {
+        source: 'jm',
+        source_id: '3',
+        display_id: '3',
+        title: 'Completed Book',
+        authors: [],
+        works: [],
+        actors: [],
+        tags: [],
+        favorite: false,
+        page_count: 10,
+        views: '0',
+        likes: '0',
+        uploaded_at: '',
+        published_at: '',
+        updated_at: '',
+        imported_at: '2026-02-01T00:00:00Z',
+        cover_paths: [],
+        cached_pages: 10,
+        cover_count: 1,
+        last_page: 10,
+        read_total_pages: 10, // 已读完且无新章节
+      },
+    ]
+
+    const itemsRef = ref(list)
+    const activeSourceRef = ref('')
+    const { filtered } = useLibraryFilter(itemsRef, activeSourceRef)
+
+    // Book 2 (有新章节未读) 哪怕入库最早，必须置顶排在最前 (Tier 0)
+    // 接着是常规在读 Book 1 (Tier 1)
+    // 已读完 Book 3 置底 (Tier 2)
+    expect(filtered.value.map((b) => b.source_id)).toEqual(['2', '1', '3'])
+  })
+
   it('filters by readingStatus completed combined with favorites correctly', () => {
     const list: LibrarySummary[] = [
       {

@@ -76,6 +76,7 @@ from .index import (
     query_library_index,
     rebuild_facets_snapshot,
     record_comic_auto_checked,
+    retire_comic_auto_update,
     update_comic_cached_pages,
     upsert_comic_index,
 )
@@ -192,6 +193,7 @@ __all__ = [
     "update_comic_cached_pages",
     "get_comics_due_for_auto_update",
     "record_comic_auto_checked",
+    "retire_comic_auto_update",
     "find_comic_mirrors",
     "batch_find_comic_mirrors",
     "query_library_index",

@@ -29,7 +29,7 @@ from ..models import (
     PageRecord,
     RemotePage,
 )
-from ..formatting import format_count
+from ..formatting import format_count, is_comic_completed
 from .utils import (
     CURRENT_DECODE_VERSION,
     _SAFE,
@@ -478,6 +478,11 @@ class ComicStoreBase:
                 meta.auto_update_interval_days = getattr(existing, "auto_update_interval_days", 15)
                 meta.last_auto_checked_at = getattr(meta, "last_auto_checked_at", "") or getattr(existing, "last_auto_checked_at", "")
 
+            # 完结识别自动关停（ADR 0029）：仅对默认 15 天生效，馆长自定义优先
+            if getattr(meta, "auto_update_interval_days", 15) == 15 and meta.source != "local":
+                if is_comic_completed(meta.title, meta.tags, [c.title for c in meta.chapters]):
+                    meta.auto_update_interval_days = 0
+
             if not meta.imported_at:
                 meta.imported_at = datetime.datetime.now(datetime.timezone.utc).isoformat()
 
@@ -527,6 +532,24 @@ class ComicStoreBase:
         from ..db import record_comic_auto_checked
         record_comic_auto_checked(source, source_id, checked_at)
 
+    def retire_auto_update(self, source: str, source_id: str) -> None:
+        """Atomically set auto_update_interval_days = 0 in album.json, memory cache, and DB index."""
+        with self._lock_for(source, source_id):
+            meta = self.load_meta(source, source_id)
+            if meta is not None and getattr(meta, "auto_update_interval_days", 15) == 15:
+                meta_copy = meta.model_copy(deep=True)
+                meta_copy.auto_update_interval_days = 0
+                p = self.album_path(source, source_id)
+                _write_json_atomic(p, meta_copy.model_dump())
+                try:
+                    mtime = p.stat().st_mtime
+                except Exception:
+                    mtime = 0.0
+                with self._cache_guard:
+                    self._meta_cache[(source, source_id)] = (mtime, meta_copy)
+        from ..db import retire_comic_auto_update
+        retire_comic_auto_update(source, source_id)
+
     def save_auto_update(self, fetched: FetchedComic, checked_at: str) -> ComicMeta | None:
         """巡检发现新章节时写盘：只换章节与画页，其余资料以锁内重读的最新版为准。
 
@@ -550,6 +573,9 @@ class ComicStoreBase:
             if merged.published_at and merged.published_at != "0" and (not merged.updated_at or merged.updated_at == "0" or merged.published_at > merged.updated_at):
                 merged.updated_at = merged.published_at
             merged.last_auto_checked_at = checked_at
+            if getattr(merged, "auto_update_interval_days", 15) == 15:
+                if is_comic_completed(merged.title, merged.tags, [c.title for c in merged.chapters]):
+                    merged.auto_update_interval_days = 0
             fetched.meta = merged
             return self.save_fetched(fetched, refresh=True)
 

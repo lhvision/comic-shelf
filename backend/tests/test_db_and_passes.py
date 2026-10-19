@@ -611,6 +611,65 @@ def test_comics_index_and_pagination():
     items_sort, _ = db_mod.query_library_index("u1", is_curator=True, sort="recent")
     assert items_sort[-1]["source_id"] == "c3"
 
+    # When c3 gets new chapters appended (page_count 15 -> 25 while total_pages was 15):
+    # c3 should be prioritized to the very top (Tier 0) in recent sort!
+    db_mod.upsert_comic_index({
+        "source": "local",
+        "source_id": "c3",
+        "display_id": "LOC_c3",
+        "title": "Gamma Secret",
+        "authors_json": '["Author C"]',
+        "works_json": '[]',
+        "actors_json": '[]',
+        "tags_json": '["短篇"]',
+        "chapter_titles_json": '[]',
+        "page_count": 25,
+        "cached_pages": 15,
+        "cover_count": 4,
+        "cover_indices_json": '[]',
+        "views": "50",
+        "likes": "10",
+        "uploaded_at": "2026-01-03",
+        "published_at": "2026-01-03",
+        "updated_at": "2026-01-04",
+        "imported_at": "2026-01-03T10:00:00",
+        "hidden_from_guest": 0,
+        "mtime": 999.0,
+        "auto_update_interval_days": 15,
+        "last_auto_checked_at": "",
+    })
+    items_sort_updated, _ = db_mod.query_library_index("u1", is_curator=True, sort="recent")
+    assert items_sort_updated[0]["source_id"] == "c3", "有新章节未读的作品必须置顶排在最前 (Tier 0)"
+    assert items_sort_updated[0]["read_total_pages"] == 15
+    assert items_sort_updated[0]["page_count"] == 25
+
+    # 还原 c3 原始数据，保持后续 facets 统计不受影响
+    db_mod.upsert_comic_index({
+        "source": "local",
+        "source_id": "c3",
+        "display_id": "LOC_c3",
+        "title": "Gamma Secret",
+        "authors_json": '["Author C"]',
+        "works_json": '[]',
+        "actors_json": '[]',
+        "tags_json": '["短篇"]',
+        "chapter_titles_json": '[]',
+        "page_count": 15,
+        "cached_pages": 15,
+        "cover_count": 4,
+        "cover_indices_json": '[]',
+        "views": "50",
+        "likes": "10",
+        "uploaded_at": "2026-01-03",
+        "published_at": "2026-01-03",
+        "updated_at": "2026-01-03",
+        "imported_at": "2026-01-03T10:00:00",
+        "hidden_from_guest": 1,
+        "mtime": 300.0,
+        "auto_update_interval_days": 15,
+        "last_auto_checked_at": "",
+    })
+
     # Pagination: page 1 (size 2) -> 2 items, page 2 (size 2) -> 1 item
     p1_items, p1_total = db_mod.query_library_index("u1", is_curator=True, page=1, page_size=2)
     assert p1_total == 3

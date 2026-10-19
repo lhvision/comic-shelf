@@ -15,6 +15,15 @@ export function isInProgressComic(item: LibrarySummary | null | undefined): bool
   return (item.last_page ?? 0) > 0 && (item.last_page ?? 0) < item.page_count && item.page_count > 0
 }
 
+/**
+ * 判定作品是否处于「追更新话未翻阅」状态（此前读过，但总页数增加）。
+ */
+export function hasNewChapters(item: LibrarySummary | null | undefined): boolean {
+  if (!item) return false
+  const readTotal = item.read_total_pages ?? 0
+  return readTotal > 0 && item.page_count > readTotal
+}
+
 export function isLocalComic(source: string | null | undefined): boolean {
   return source === 'local'
 }
@@ -180,10 +189,10 @@ export function filterAndSortLibrary(
             b.cached_pages / Math.max(b.page_count, 1) - a.cached_pages / Math.max(a.page_count, 1)
           )
         default: {
-          const aCompleted = isCompletedComic(a) ? 1 : 0
-          const bCompleted = isCompletedComic(b) ? 1 : 0
-          if (aCompleted !== bCompleted) {
-            return aCompleted - bCompleted
+          const aTier = hasNewChapters(a) ? 0 : isCompletedComic(a) ? 2 : 1
+          const bTier = hasNewChapters(b) ? 0 : isCompletedComic(b) ? 2 : 1
+          if (aTier !== bTier) {
+            return aTier - bTier
           }
           return (timeMap.get(b) ?? 0) - (timeMap.get(a) ?? 0)
         }

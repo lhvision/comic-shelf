@@ -6,10 +6,12 @@ import sqlite3
 import sys
 import threading
 import time
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any
 
-from ..formatting import normalize_title
+from ..config import LIBRARY_DIR
+from ..formatting import is_comic_completed, normalize_title
+from ..storage.utils import _write_json_atomic
 from ..zh_conv import to_simplified
 from .connection import _escape_like, get_db
 from .dialogues import delete_comic_dialogues
@@ -490,19 +492,75 @@ def update_comic_cached_pages(source: str, source_id: str, cached_pages: int) ->
     invalidate_facets_cache()
 
 
+def _parse_candidate_date(candidate_date: Any) -> float:
+    """Helper to robustly parse various date formats into UTC timestamp."""
+    if not candidate_date:
+        return 0.0
+    s = str(candidate_date).strip()
+    if not s or s == "0":
+        return 0.0
+    if s.endswith("Z"):
+        s = s[:-1] + "+00:00"
+    try:
+        return datetime.fromisoformat(s).timestamp()
+    except Exception:
+        pass
+    for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d", "%Y/%m/%d", "%Y.%m.%d"):
+        try:
+            return datetime.strptime(s, fmt).replace(tzinfo=timezone.utc).timestamp()
+        except Exception:
+            pass
+    try:
+        return float(s)
+    except Exception:
+        return 0.0
+
+
+def _retire_album_auto_update(source: str, source_id: str) -> None:
+    """Best-effort atomic update of album.json so retirement persists across index rebuilds."""
+    try:
+        album_path = LIBRARY_DIR / source / source_id / "album.json"
+        if album_path.exists():
+            data = json.loads(album_path.read_text(encoding="utf-8"))
+            if data.get("auto_update_interval_days", 15) == 15:
+                data["auto_update_interval_days"] = 0
+                _write_json_atomic(album_path, data)
+    except Exception:
+        pass
+
+
+def retire_comic_auto_update(source: str, source_id: str) -> None:
+    """更新指定漫画在影子索引中的自动追更周期为 0（关停归档）。"""
+    with get_db() as conn:
+        conn.execute(
+            "UPDATE comics_index SET auto_update_interval_days = 0 WHERE source = ? AND source_id = ?",
+            (source, source_id),
+        )
+        conn.commit()
+
+
 def get_comics_due_for_auto_update(max_count: int = 10) -> list[dict[str, Any]]:
     """获取所有已到期需要进行自动追更巡检的非本地多章节漫画。
 
-    过滤条件：
+    过滤条件与策略：
     1. 来源非 local（仅限远端图源）；
     2. auto_update_interval_days > 0（未关闭自动追更）；
     3. chapter_titles_json 话数 > 1（必须为多章节作品）；
-    4. 当前时间距离上次检查时间 >= auto_update_interval_days * 86400。
+    4. 馆长意志绝对优先：
+       - 若馆长显式自定义了周期（如 7 天高频追更或 30 天慢更），系统绝对尊重馆长意愿，不自动关停也不退避；
+       - 以下 5/6/7 仅对系统默认周期（auto_update_interval_days == 15）生效；
+    5. 完结识别自动关停（ADR 0029）：
+       - 若作品标题、标签或最终章节标题匹配完结特征（最终话/完结/后篇/下篇/End/Fin等），自动设为 0 永久关停；
+    6. 120 天硬关停（Dormancy Expiration Cutoff）：
+       - 若作品距最后更新/发布时间（兜底入库时间）已超 120 天无新话，自动设为 0 永久关停；
+    7. 60 天休眠退避（Dormancy Backoff）：
+       - 若作品距最后更新超 60 天，巡检周期由 15 天平滑退避拉长至 60 天；
+    8. 当前时间距离上次检查时间 >= 实际巡检周期 * 86400。
     """
     with get_db() as conn:
         rows = conn.execute(
             """
-            SELECT source, source_id, display_id, title, updated_at, published_at,
+            SELECT source, source_id, display_id, title, tags_json, updated_at, published_at, imported_at,
                    auto_update_interval_days, last_auto_checked_at, chapter_titles_json
             FROM comics_index
             WHERE source != 'local'
@@ -521,24 +579,51 @@ def get_comics_due_for_auto_update(max_count: int = 10) -> list[dict[str, Any]]:
                 continue
 
             interval_days = int(r["auto_update_interval_days"])
-            last_checked = str(r["last_auto_checked_at"] or "")
-            last_ts = 0.0
-            if last_checked:
+
+            # 仅对系统默认周期（auto_update_interval_days == 15）生效；馆长意志绝对优先
+            if interval_days == 15:
+                # 1. 完结特征自动识别并关停
                 try:
-                    s = last_checked.strip()
-                    if s.endswith("Z"):
-                        s = s[:-1] + "+00:00"
-                    last_ts = datetime.fromisoformat(s).timestamp()
+                    tags = json.loads(r["tags_json"] or "[]")
                 except Exception:
-                    try:
-                        last_ts = float(last_checked)
-                    except Exception:
-                        last_ts = 0.0
+                    tags = []
+                if is_comic_completed(r["title"], tags, chaps):
+                    conn.execute(
+                        "UPDATE comics_index SET auto_update_interval_days = 0 WHERE source = ? AND source_id = ?",
+                        (r["source"], r["source_id"]),
+                    )
+                    _retire_album_auto_update(r["source"], r["source_id"])
+                    continue
+
+                # 2. 停更时效计算：最后更新/发布/入库时间
+                ref_ts = 0.0
+                for candidate_date in (r["updated_at"], r["published_at"], r["imported_at"]):
+                    ref_ts = _parse_candidate_date(candidate_date)
+                    if ref_ts > 0.0:
+                        break
+
+                if ref_ts > 0.0:
+                    diff_seconds = now_ts - ref_ts
+                    # 120 天硬关停（Dormancy Expiration Cutoff）：停更满 120 天永久关停归档
+                    if diff_seconds >= (120 * 86400):
+                        conn.execute(
+                            "UPDATE comics_index SET auto_update_interval_days = 0 WHERE source = ? AND source_id = ?",
+                            (r["source"], r["source_id"]),
+                        )
+                        _retire_album_auto_update(r["source"], r["source_id"])
+                        continue
+                    # 60 天休眠退避（Dormancy Backoff）：停更满 60 天平滑退避拉长至 60 天巡检
+                    elif diff_seconds >= (60 * 86400):
+                        interval_days = 60
+
+            last_checked = str(r["last_auto_checked_at"] or "")
+            last_ts = _parse_candidate_date(last_checked)
 
             if (now_ts - last_ts) >= (interval_days * 86400):
                 candidates.append(dict(r))
                 if len(candidates) >= max_count:
                     break
+        conn.commit()
         return candidates
 
 
@@ -768,9 +853,14 @@ def query_library_index(
     if sort == "recent":
         order_sql = f"""ORDER BY {relevance_order}
             CASE
-                WHEN COALESCE(urp.last_page, 0) >= ci.page_count AND ci.page_count > 0 THEN 1
-                ELSE 0
+                WHEN COALESCE(urp.last_page, 0) >= ci.page_count AND ci.page_count > 0 THEN 2
+                WHEN COALESCE(urp.total_pages, 0) > 0 AND ci.page_count > COALESCE(urp.total_pages, 0) THEN 0
+                ELSE 1
             END ASC,
+            CASE
+                WHEN COALESCE(urp.total_pages, 0) > 0 AND ci.page_count > COALESCE(urp.total_pages, 0) THEN ci.mtime
+                ELSE 0
+            END DESC,
             ci.imported_at DESC,
             ci.source ASC,
             ci.source_id ASC"""
@@ -818,7 +908,8 @@ def query_library_index(
             ci.imported_at,
             ci.hidden_from_guest,
             COALESCE(uf.user_id IS NOT NULL, 0) as is_favorite,
-            COALESCE(urp.last_page, 0) as last_page
+            COALESCE(urp.last_page, 0) as last_page,
+            COALESCE(urp.total_pages, 0) as read_total_pages
         FROM comics_index ci
         LEFT JOIN user_favorites uf
             ON uf.source = ci.source AND uf.source_id = ci.source_id AND uf.user_id = :user_id

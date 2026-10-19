@@ -89,6 +89,8 @@ export interface LibrarySummary {
   chapter_titles?: string[]
   /** 用户个人阅读进度：上次翻到的页码（0 表示未读） */
   last_page?: number
+  /** 用户上次翻阅时记录的全书总页数（用于识别追更追加的新画页） */
+  read_total_pages?: number
 }
 
 export type ReadingStatus = 'all' | 'reading' | 'completed' | 'unread'

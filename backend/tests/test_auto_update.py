@@ -45,7 +45,7 @@ def make_comic_index_item(source: str, source_id: str, title: str = "Test Comic"
         "uploaded_at": "",
         "published_at": "",
         "updated_at": "",
-        "imported_at": "2026-01-01T00:00:00Z",
+        "imported_at": datetime.now(timezone.utc).isoformat(),
         "hidden_from_guest": 0,
         "mtime": 100.0,
         "auto_update_interval_days": 15,
@@ -495,7 +495,7 @@ class TestAutoUpdateEngine(unittest.TestCase):
             page_count=4,
             chapters=chapters,
             pages=pages,
-            auto_update_interval_days=15,
+            auto_update_interval_days=7,
             last_auto_checked_at="",
         )
         fetched = FetchedComic(
@@ -527,7 +527,7 @@ class TestAutoUpdateEngine(unittest.TestCase):
             page_count=6,
             chapters=new_chapters,
             pages=new_pages,
-            auto_update_interval_days=15,
+            auto_update_interval_days=7,
         )
         mock_provider = MagicMock()
         mock_provider.fetch.return_value = FetchedComic(
@@ -628,6 +628,381 @@ class TestAutoUpdateEngine(unittest.TestCase):
         reloaded = self.store.load_meta("jm", "zero_sentinel_comic")
         self.assertEqual(reloaded.published_at, "2025-10-01")
         self.assertEqual(reloaded.updated_at, "2025-10-03")
+
+    def test_dormancy_backoff_and_curator_supremacy(self):
+        """测试 60 天休眠退避机制与馆长自定义周期的协同（ADR 0029 修订）。"""
+        now = datetime.now(timezone.utc)
+        date_70_days_ago = (now - timedelta(days=70)).strftime("%Y-%m-%d")
+        date_10_days_ago = (now - timedelta(days=10)).strftime("%Y-%m-%d")
+
+        # 1. Comic A：默认 15 天，已停更 70 天，20 天前检查过 -> 自动退避至 60 天，此时未满 60 天不应到期
+        upsert_comic_index(make_comic_index_item(
+            source="jm",
+            source_id="dormant_not_due",
+            chapter_titles_json='["话1", "话2"]',
+            updated_at=date_70_days_ago,
+            auto_update_interval_days=15,
+            last_auto_checked_at=(now - timedelta(days=20)).isoformat(),
+        ))
+
+        # 2. Comic B：默认 15 天，已停更 70 天，65 天前检查过 -> 退避至 60 天且已满 60 天 -> 应到期
+        upsert_comic_index(make_comic_index_item(
+            source="jm",
+            source_id="dormant_due",
+            chapter_titles_json='["话1", "话2"]',
+            updated_at=date_70_days_ago,
+            auto_update_interval_days=15,
+            last_auto_checked_at=(now - timedelta(days=65)).isoformat(),
+        ))
+
+        # 3. Comic C：默认 15 天，10 天前活跃更新，16 天前检查过 -> 维持 15 天且已满 15 天 -> 应到期
+        upsert_comic_index(make_comic_index_item(
+            source="jm",
+            source_id="active_due",
+            chapter_titles_json='["话1", "话2"]',
+            updated_at=date_10_days_ago,
+            auto_update_interval_days=15,
+            last_auto_checked_at=(now - timedelta(days=16)).isoformat(),
+        ))
+
+        # 4. Comic D：馆长自定 7 天，已停更 70 天，8 天前检查过 -> 馆长优先不退避且已满 7 天 -> 应到期
+        upsert_comic_index(make_comic_index_item(
+            source="jm",
+            source_id="curator_7d_due",
+            chapter_titles_json='["话1", "话2"]',
+            updated_at=date_70_days_ago,
+            auto_update_interval_days=7,
+            last_auto_checked_at=(now - timedelta(days=8)).isoformat(),
+        ))
+
+        due_candidates = get_comics_due_for_auto_update(max_count=10)
+        due_ids = {c["source_id"] for c in due_candidates}
+
+        self.assertNotIn("dormant_not_due", due_ids, "停更 70 天的漫画应退避至 60 天，距上次检查仅 20 天不应到期")
+        self.assertIn("dormant_due", due_ids, "停更 70 天且距上次检查 65 天应到期")
+        self.assertIn("active_due", due_ids, "活跃漫画（10 天前更新）应保持 15 天周期到期")
+        self.assertIn("curator_7d_due", due_ids, "馆长自定义 7 天的高频追更不受休眠退避影响，8 天已到期")
+
+    def test_dormancy_backoff_self_heals_when_new_chapter_found(self):
+        """测试休眠状态的漫画在探测到新章节后，自动自愈恢复 15 天基准周期。"""
+        now = datetime.now(timezone.utc)
+        date_70_days_ago = (now - timedelta(days=70)).strftime("%Y-%m-%d")
+        today_str = now.strftime("%Y-%m-%d")
+
+        chapters = [
+            Chapter(id="c1", index=1, title="第 1 话", page_count=2, start=1),
+            Chapter(id="c2", index=2, title="第 2 话", page_count=2, start=3),
+        ]
+        pages = [
+            PageRecord(index=1, file="00001.webp", ext=".webp", cached=False, chapter="c1"),
+            PageRecord(index=2, file="00002.webp", ext=".webp", cached=False, chapter="c1"),
+            PageRecord(index=3, file="00001.webp", ext=".webp", cached=False, chapter="c2"),
+            PageRecord(index=4, file="00002.webp", ext=".webp", cached=False, chapter="c2"),
+        ]
+        meta = ComicMeta(
+            source="jm",
+            source_id="dormant_heal",
+            display_id="JM_dormant_heal",
+            title="休眠自愈测试本",
+            updated_at=date_70_days_ago,
+            page_count=4,
+            chapters=chapters,
+            pages=pages,
+            auto_update_interval_days=15,
+            last_auto_checked_at=(now - timedelta(days=65)).isoformat(),
+        )
+        fetched = FetchedComic(
+            meta=meta,
+            remote_pages=[
+                RemotePage(index=1, url="http://1", file="00001.webp", ext=".webp", chapter="c1"),
+                RemotePage(index=2, url="http://2", file="00002.webp", ext=".webp", chapter="c1"),
+                RemotePage(index=3, url="http://3", file="00001.webp", ext=".webp", chapter="c2"),
+                RemotePage(index=4, url="http://4", file="00002.webp", ext=".webp", chapter="c2"),
+            ],
+        )
+        self.store.save_fetched(fetched)
+
+        # 此时应到期（满 60 天）
+        due = get_comics_due_for_auto_update(max_count=10)
+        self.assertIn("dormant_heal", {c["source_id"] for c in due})
+
+        # Mock 远端返回新章节 c3，日期为今日
+        new_chapters = list(chapters) + [
+            Chapter(id="c3", index=3, title="第 3 话", page_count=2, start=5)
+        ]
+        new_pages = list(pages) + [
+            PageRecord(index=5, file="00001.webp", ext=".webp", cached=False, chapter="c3"),
+            PageRecord(index=6, file="00002.webp", ext=".webp", cached=False, chapter="c3"),
+        ]
+        provider_meta = ComicMeta(
+            source="jm",
+            source_id="dormant_heal",
+            display_id="JM_dormant_heal",
+            title="休眠自愈测试本",
+            updated_at=today_str,
+            page_count=6,
+            chapters=new_chapters,
+            pages=new_pages,
+            auto_update_interval_days=15,
+        )
+        mock_provider = MagicMock()
+        mock_provider.fetch.return_value = FetchedComic(
+            meta=provider_meta,
+            remote_pages=fetched.remote_pages + [
+                RemotePage(index=5, url="http://5", file="00001.webp", ext=".webp", chapter="c3"),
+                RemotePage(index=6, url="http://6", file="00002.webp", ext=".webp", chapter="c3"),
+            ],
+        )
+
+        with patch("app.auto_update.get_provider", return_value=mock_provider), \
+             patch("app.auto_update.broadcast_event"):
+            res = run_auto_update_cycle(self.store, max_check=10, sleep_seconds=0)
+            self.assertEqual(res["updated"], 1)
+
+        reloaded = self.store.load_meta("jm", "dormant_heal")
+        self.assertEqual(reloaded.page_count, 6)
+        self.assertEqual(reloaded.updated_at, today_str)
+
+        # 模拟经过 16 天（< 60 天，但 >= 15 天）
+        simulated_now = time.time() + 16 * 86400
+        with patch("time.time", return_value=simulated_now):
+            due_next = get_comics_due_for_auto_update(max_count=10)
+            self.assertIn(
+                "dormant_heal",
+                {c["source_id"] for c in due_next},
+                "更新后 updated_at 为最新，周期应自愈恢复为 15 天并在 16 天后重新到期",
+            )
+
+    def test_completion_detection_retires_auto_update_on_import(self):
+        """测试标题、标签或最终章节命中完结特征时，系统默认 15 天自动归档为 0，馆长自定义优先。"""
+        # 1. 最后一话包含「下篇 (完结)」 -> 自动设为 0
+        meta_completed_chap = ComicMeta(
+            source="jm",
+            source_id="comp_chap",
+            display_id="JM_comp_chap",
+            title="连载短篇",
+            chapters=[
+                Chapter(id="c1", index=1, title="第 1 话 上篇", page_count=2, start=1),
+                Chapter(id="c2", index=2, title="第 2 话 下篇 (完结)", page_count=2, start=3),
+            ],
+            pages=[
+                PageRecord(index=1, file="01.webp", ext=".webp", cached=False, chapter="c1"),
+                PageRecord(index=2, file="02.webp", ext=".webp", cached=False, chapter="c1"),
+                PageRecord(index=3, file="03.webp", ext=".webp", cached=False, chapter="c2"),
+                PageRecord(index=4, file="04.webp", ext=".webp", cached=False, chapter="c2"),
+            ],
+            auto_update_interval_days=15,
+        )
+        saved = self.store.save_fetched(FetchedComic(
+            meta=meta_completed_chap,
+            remote_pages=[
+                RemotePage(index=1, url="http://1", file="01.webp", ext=".webp", chapter="c1"),
+                RemotePage(index=2, url="http://2", file="02.webp", ext=".webp", chapter="c1"),
+                RemotePage(index=3, url="http://3", file="03.webp", ext=".webp", chapter="c2"),
+                RemotePage(index=4, url="http://4", file="04.webp", ext=".webp", chapter="c2"),
+            ],
+        ))
+        self.assertEqual(saved.auto_update_interval_days, 0, "末话标题为下篇(完结)应自动归档 auto_update_interval_days=0")
+
+        # 2. 标签包含「完结」 -> 自动设为 0
+        meta_completed_tag = ComicMeta(
+            source="jm",
+            source_id="comp_tag",
+            display_id="JM_comp_tag",
+            title="完结标签漫画",
+            tags=["同人", "完结"],
+            chapters=[
+                Chapter(id="c1", index=1, title="第 1 话", page_count=2, start=1),
+                Chapter(id="c2", index=2, title="第 2 话", page_count=2, start=3),
+            ],
+            pages=[
+                PageRecord(index=1, file="01.webp", ext=".webp", cached=False, chapter="c1"),
+                PageRecord(index=2, file="02.webp", ext=".webp", cached=False, chapter="c1"),
+                PageRecord(index=3, file="03.webp", ext=".webp", cached=False, chapter="c2"),
+                PageRecord(index=4, file="04.webp", ext=".webp", cached=False, chapter="c2"),
+            ],
+            auto_update_interval_days=15,
+        )
+        saved_tag = self.store.save_fetched(FetchedComic(
+            meta=meta_completed_tag,
+            remote_pages=[
+                RemotePage(index=1, url="http://1", file="01.webp", ext=".webp", chapter="c1"),
+                RemotePage(index=2, url="http://2", file="02.webp", ext=".webp", chapter="c1"),
+                RemotePage(index=3, url="http://3", file="03.webp", ext=".webp", chapter="c2"),
+                RemotePage(index=4, url="http://4", file="04.webp", ext=".webp", chapter="c2"),
+            ],
+        ))
+        self.assertEqual(saved_tag.auto_update_interval_days, 0, "标签含完结应自动归档 auto_update_interval_days=0")
+
+        # 3. 未完结（中篇） -> 保持 15 天
+        meta_ongoing = ComicMeta(
+            source="jm",
+            source_id="ongoing_mid",
+            display_id="JM_ongoing_mid",
+            title="进行中作品",
+            chapters=[
+                Chapter(id="c1", index=1, title="第 1 话 前篇", page_count=2, start=1),
+                Chapter(id="c2", index=2, title="第 2 话 中篇", page_count=2, start=3),
+            ],
+            pages=[
+                PageRecord(index=1, file="01.webp", ext=".webp", cached=False, chapter="c1"),
+                PageRecord(index=2, file="02.webp", ext=".webp", cached=False, chapter="c1"),
+                PageRecord(index=3, file="03.webp", ext=".webp", cached=False, chapter="c2"),
+                PageRecord(index=4, file="04.webp", ext=".webp", cached=False, chapter="c2"),
+            ],
+            auto_update_interval_days=15,
+        )
+        saved_ongoing = self.store.save_fetched(FetchedComic(
+            meta=meta_ongoing,
+            remote_pages=[
+                RemotePage(index=1, url="http://1", file="01.webp", ext=".webp", chapter="c1"),
+                RemotePage(index=2, url="http://2", file="02.webp", ext=".webp", chapter="c1"),
+                RemotePage(index=3, url="http://3", file="03.webp", ext=".webp", chapter="c2"),
+                RemotePage(index=4, url="http://4", file="04.webp", ext=".webp", chapter="c2"),
+            ],
+        ))
+        self.assertEqual(saved_ongoing.auto_update_interval_days, 15, "末话为中篇不应误判完结，应保留 15 天")
+
+        # 4. 馆长自定义意志绝对优先（自定义 7 天即便是完结本也不自动覆盖）
+        meta_curator = ComicMeta(
+            source="jm",
+            source_id="curator_override",
+            display_id="JM_curator",
+            title="馆长特许关注 [完结]",
+            chapters=[
+                Chapter(id="c1", index=1, title="第 1 话", page_count=2, start=1),
+                Chapter(id="c2", index=2, title="第 2 话 最终话", page_count=2, start=3),
+            ],
+            pages=[
+                PageRecord(index=1, file="01.webp", ext=".webp", cached=False, chapter="c1"),
+                PageRecord(index=2, file="02.webp", ext=".webp", cached=False, chapter="c1"),
+                PageRecord(index=3, file="03.webp", ext=".webp", cached=False, chapter="c2"),
+                PageRecord(index=4, file="04.webp", ext=".webp", cached=False, chapter="c2"),
+            ],
+            auto_update_interval_days=7,
+        )
+        saved_curator = self.store.save_fetched(FetchedComic(
+            meta=meta_curator,
+            remote_pages=[
+                RemotePage(index=1, url="http://1", file="01.webp", ext=".webp", chapter="c1"),
+                RemotePage(index=2, url="http://2", file="02.webp", ext=".webp", chapter="c1"),
+                RemotePage(index=3, url="http://3", file="03.webp", ext=".webp", chapter="c2"),
+                RemotePage(index=4, url="http://4", file="04.webp", ext=".webp", chapter="c2"),
+            ],
+        ))
+        self.assertEqual(saved_curator.auto_update_interval_days, 7, "馆长显式自定义 7 天应受绝对尊重，不自动关停")
+
+    def test_120_day_dormancy_cutoff_retires_comic(self):
+        """测试停更满 120 天的作品自动永久关停归档（auto_update_interval_days = 0），且馆长自定义不受影响。"""
+        now = datetime.now(timezone.utc)
+        date_130_days_ago = (now - timedelta(days=130)).strftime("%Y-%m-%d")
+
+        # 1. 默认 15 天，停更 130 天 -> 应触发 120 天硬关停，且不作为巡检候选
+        upsert_comic_index(make_comic_index_item(
+            source="jm",
+            source_id="cutoff_130d",
+            chapter_titles_json='["话1", "话2"]',
+            updated_at=date_130_days_ago,
+            auto_update_interval_days=15,
+            last_auto_checked_at=(now - timedelta(days=70)).isoformat(),
+        ))
+
+        # 2. 馆长自定义 7 天，停更 130 天 -> 馆长优先不关停，且已超 7 天 -> 应到期
+        upsert_comic_index(make_comic_index_item(
+            source="jm",
+            source_id="curator_130d",
+            chapter_titles_json='["话1", "话2"]',
+            updated_at=date_130_days_ago,
+            auto_update_interval_days=7,
+            last_auto_checked_at=(now - timedelta(days=8)).isoformat(),
+        ))
+
+        due_candidates = get_comics_due_for_auto_update(max_count=10)
+        due_ids = {c["source_id"] for c in due_candidates}
+
+        self.assertNotIn("cutoff_130d", due_ids, "停更 130 天的默认周期作品应被硬关停，不返回为到期候选")
+        self.assertIn("curator_130d", due_ids, "馆长自定义 7 天的作品应绝对尊重，即便停更 130 天仍正常巡检")
+
+        # 检验 cutoff_130d 在索引中已被写为 0
+        from app.db import get_db
+        with get_db() as conn:
+            row = conn.execute(
+                "SELECT auto_update_interval_days FROM comics_index WHERE source = 'jm' AND source_id = 'cutoff_130d'"
+            ).fetchone()
+            self.assertEqual(row["auto_update_interval_days"], 0, "120 天硬关停应持久化写回 auto_update_interval_days = 0")
+
+    def test_auto_update_cycle_retires_when_new_chapter_is_final(self):
+        """测试自动追更巡检拉取到「最终话」新章节时，合并后自动关停后续巡检。"""
+        now = datetime.now(timezone.utc)
+        chapters = [
+            Chapter(id="c1", index=1, title="第 1 话", page_count=2, start=1),
+            Chapter(id="c2", index=2, title="第 2 话", page_count=2, start=3),
+        ]
+        pages = [
+            PageRecord(index=1, file="01.webp", ext=".webp", cached=False, chapter="c1"),
+            PageRecord(index=2, file="02.webp", ext=".webp", cached=False, chapter="c1"),
+            PageRecord(index=3, file="03.webp", ext=".webp", cached=False, chapter="c2"),
+            PageRecord(index=4, file="04.webp", ext=".webp", cached=False, chapter="c2"),
+        ]
+        meta = ComicMeta(
+            source="jm",
+            source_id="final_chap_test",
+            display_id="JM_final_chap",
+            title="测试迎向结局漫画",
+            updated_at=(now - timedelta(days=20)).strftime("%Y-%m-%d"),
+            page_count=4,
+            chapters=chapters,
+            pages=pages,
+            auto_update_interval_days=15,
+            last_auto_checked_at=(now - timedelta(days=25)).isoformat(),
+        )
+        fetched = FetchedComic(
+            meta=meta,
+            remote_pages=[
+                RemotePage(index=1, url="http://1", file="01.webp", ext=".webp", chapter="c1"),
+                RemotePage(index=2, url="http://2", file="02.webp", ext=".webp", chapter="c1"),
+                RemotePage(index=3, url="http://3", file="03.webp", ext=".webp", chapter="c2"),
+                RemotePage(index=4, url="http://4", file="04.webp", ext=".webp", chapter="c2"),
+            ],
+        )
+        self.store.save_fetched(fetched)
+
+        # 远端新发布了第 3 话，标题为「第 3 话 最终话」
+        new_chapters = list(chapters) + [
+            Chapter(id="c3", index=3, title="第 3 话 最终话", page_count=2, start=5)
+        ]
+        new_pages = list(pages) + [
+            PageRecord(index=5, file="05.webp", ext=".webp", cached=False, chapter="c3"),
+            PageRecord(index=6, file="06.webp", ext=".webp", cached=False, chapter="c3"),
+        ]
+        provider_meta = ComicMeta(
+            source="jm",
+            source_id="final_chap_test",
+            display_id="JM_final_chap",
+            title="测试迎向结局漫画",
+            updated_at=now.strftime("%Y-%m-%d"),
+            page_count=6,
+            chapters=new_chapters,
+            pages=new_pages,
+            auto_update_interval_days=15,
+        )
+        mock_provider = MagicMock()
+        mock_provider.fetch.return_value = FetchedComic(
+            meta=provider_meta,
+            remote_pages=fetched.remote_pages + [
+                RemotePage(index=5, url="http://5", file="05.webp", ext=".webp", chapter="c3"),
+                RemotePage(index=6, url="http://6", file="06.webp", ext=".webp", chapter="c3"),
+            ],
+        )
+
+        with patch("app.auto_update.get_provider", return_value=mock_provider), \
+             patch("app.auto_update.broadcast_event"):
+            res = run_auto_update_cycle(self.store, max_check=10, sleep_seconds=0)
+            self.assertEqual(res["updated"], 1)
+
+        reloaded = self.store.load_meta("jm", "final_chap_test")
+        self.assertEqual(reloaded.page_count, 6)
+        self.assertEqual(reloaded.auto_update_interval_days, 0, "更新最终话后应自动将 auto_update_interval_days 设为 0")
 
 
 if __name__ == "__main__":

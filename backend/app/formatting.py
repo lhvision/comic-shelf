@@ -76,3 +76,42 @@ def normalize_title(title: str) -> str:
         fb_norm = WHITESPACE_PUNCT_PATTERN.sub(" ", fallback).strip().lower()
         return fb_norm or title.strip().lower()
     return normalized
+
+
+COMPLETION_TAGS = {
+    "完结", "完結", "已完结", "已完結", "全一话", "全一話", "end", "fin", "completed",
+}
+
+COMPLETION_TITLE_PATTERN = re.compile(
+    r"(?:\[(?:完结|完結|END|Fin)\]|\((?:完结|完結|END|Fin)\)|（(?:完结|完結|END|Fin)）|【(?:完结|完結|END|Fin)】|已完结|已完結|(?:^|\s)(?:完结|完結)$)",
+    re.IGNORECASE,
+)
+
+COMPLETION_CHAPTER_PATTERN = re.compile(
+    r"(?:最终话|最終話|最终回|最終回|最终章|最終章|完结篇?|完結篇?|完结章?|完結章?|大结局|大結局|全一话|全一話|全篇完|本篇完|全文完|后篇|後篇|下篇|下卷|下冊|下册|\bepilogue\b|(?:[-_(\[<（【\s]|^)(?:end|fin)[\]\)>）】\s]*$|(?:\[|\(|（|【)(?:完结|完結|end|fin)(?:\]|\)|）|】))",
+    re.IGNORECASE,
+)
+
+
+def is_comic_completed(
+    title: str = "",
+    tags: list[str] | None = None,
+    chapter_titles: list[str] | None = None,
+) -> bool:
+    """Detect whether a comic is completed based on title, tags, or final chapter title."""
+    if tags:
+        for t in tags:
+            tag_clean = str(t).strip().lower()
+            if tag_clean in COMPLETION_TAGS:
+                return True
+
+    if title and COMPLETION_TITLE_PATTERN.search(title):
+        return True
+
+    if chapter_titles and len(chapter_titles) > 1:
+        last_chap = str(chapter_titles[-1]).strip()
+        if last_chap and COMPLETION_CHAPTER_PATTERN.search(last_chap):
+            return True
+
+    return False
+

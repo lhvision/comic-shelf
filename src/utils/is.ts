@@ -3,6 +3,7 @@
 export {
   isCompletedComic,
   isInProgressComic,
+  hasNewChapters,
   isLocalComic,
   isPicacgComic,
   isJmComic,
