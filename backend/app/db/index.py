@@ -534,14 +534,13 @@ def _retire_album_auto_update(source: str, source_id: str) -> None:
         )
 
 
-def retire_comic_auto_update(source: str, source_id: str) -> None:
-    """更新指定漫画在影子索引中的自动追更周期为 0（关停归档）。"""
-    with get_db() as conn:
-        conn.execute(
-            "UPDATE comics_index SET auto_update_interval_days = 0 WHERE source = ? AND source_id = ?",
-            (source, source_id),
-        )
-        conn.commit()
+def _retire_comic_index_and_album(conn: sqlite3.Connection, source: str, source_id: str) -> None:
+    """Atomically retire comic auto-update in SQLite index and album.json."""
+    conn.execute(
+        "UPDATE comics_index SET auto_update_interval_days = 0 WHERE source = ? AND source_id = ?",
+        (source, source_id),
+    )
+    _retire_album_auto_update(source, source_id)
 
 
 def get_comics_due_for_auto_update(max_count: int = 10) -> list[dict[str, Any]]:
@@ -595,11 +594,7 @@ def get_comics_due_for_auto_update(max_count: int = 10) -> list[dict[str, Any]]:
                 except Exception:
                     tags = []
                 if is_comic_completed(r["title"], tags, chaps):
-                    conn.execute(
-                        "UPDATE comics_index SET auto_update_interval_days = 0 WHERE source = ? AND source_id = ?",
-                        (r["source"], r["source_id"]),
-                    )
-                    _retire_album_auto_update(r["source"], r["source_id"])
+                    _retire_comic_index_and_album(conn, r["source"], r["source_id"])
                     continue
 
                 # 2. 停更时效计算：最后更新/发布/入库时间
@@ -613,11 +608,7 @@ def get_comics_due_for_auto_update(max_count: int = 10) -> list[dict[str, Any]]:
                     diff_seconds = now_ts - ref_ts
                     # 120 天硬关停（Dormancy Expiration Cutoff）：停更满 120 天永久关停归档
                     if diff_seconds >= (120 * 86400):
-                        conn.execute(
-                            "UPDATE comics_index SET auto_update_interval_days = 0 WHERE source = ? AND source_id = ?",
-                            (r["source"], r["source_id"]),
-                        )
-                        _retire_album_auto_update(r["source"], r["source_id"])
+                        _retire_comic_index_and_album(conn, r["source"], r["source_id"])
                         continue
                     # 60 天休眠退避（Dormancy Backoff）：停更满 60 天平滑退避拉长至 60 天巡检
                     elif diff_seconds >= (60 * 86400):
