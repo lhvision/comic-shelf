@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1
 # ---- Stage 1: Build Vue 3 Frontend (Vite+) ----
-# 使用轻量级 Node 22 Alpine 作为构建环境（编译完成后会被完全丢弃，不进最终镜像）
-FROM node:22-alpine AS frontend-builder
+# 使用轻量级 Node 24 Alpine 作为构建环境（编译完成后会被完全丢弃，不进最终镜像）
+FROM node:24-alpine AS frontend-builder
 ENV PUPPETEER_SKIP_DOWNLOAD=true \
     PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1
 RUN sed -i 's/dl-cdn.alpinelinux.org/mirrors.ustc.edu.cn/g' /etc/apk/repositories \
