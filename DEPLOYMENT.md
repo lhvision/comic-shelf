@@ -116,15 +116,31 @@ docker run -d \
 
 ### 2.1 常用启停与容器运维命令速查
 
-| 场景需求                   | 终端执行命令                                | 说明                                                                                                     |
-| :------------------------- | :------------------------------------------ | :------------------------------------------------------------------------------------------------------- |
-| **仅启动主容器（免搜图）** | `docker compose up -d --no-deps paper-room` | **加 `--no-deps` 忽略依赖**，不拉起 imsearch，防 132 报错                                                |
-| **启动全部容器**           | `docker compose up -d`                      | 适用于带 AVX2 机器，同时拉起主程序与以图搜图                                                             |
-| **安全停止全部服务**       | `docker compose down`                       | 停止并移除容器与内部网络，存储卷数据 100% 安全保留                                                       |
-| **暂停容器运行**           | `docker compose stop`                       | 仅暂停容器不删除，后续 `docker compose start` 可秒级恢复                                                 |
-| **单独停掉以图搜图**       | `docker compose stop imsearch`              | 解决由于硬件缺少 AVX2 导致容器反复崩溃报错 132 的问题                                                    |
-| **查看运行状态**           | `docker compose ps`                         | 查看容器状态（`Up` 为正常运行）                                                                          |
-| **代码更新后重启**         | `docker compose up -d --build paper-room`   | 自动命中缓存，仅需 2~3 秒增量编译平滑重启（内置 BuildKit pnpm/pip 宿主机缓存挂载，依赖变更亦免重复下载） |
+| 场景需求                   | 终端执行命令                                                       | 说明                                                                                      |
+| :------------------------- | :----------------------------------------------------------------- | :---------------------------------------------------------------------------------------- |
+| **仅启动主容器（免搜图）** | `docker compose up -d --no-deps paper-room`                        | **加 `--no-deps` 忽略依赖**，不拉起 imsearch，防 132 报错                                 |
+| **启动全部容器**           | `docker compose up -d`                                             | 适用于带 AVX2 机器，同时拉起主程序与以图搜图                                              |
+| **安全停止全部服务**       | `docker compose down`                                              | 停止并移除容器与内部网络，存储卷数据 100% 安全保留                                        |
+| **暂停容器运行**           | `docker compose stop`                                              | 仅暂停容器不删除，后续 `docker compose start` 可秒级恢复                                  |
+| **单独停掉以图搜图**       | `docker compose stop imsearch`                                     | 解决由于硬件缺少 AVX2 导致容器反复崩溃报错 132 的问题                                     |
+| **查看运行状态**           | `docker compose ps`                                                | 查看容器状态（`Up` 为正常运行）                                                           |
+| **代码更新后重启（推荐）** | `docker compose up -d --build paper-room && docker image prune -f` | 自动命中缓存秒级重构平滑重启，并顺手修剪失去标签的旧镜像（`<none>:<none>`），杜绝磁盘累积 |
+| **释放旧镜像与构建缓存**   | `docker image prune -f && docker builder prune -f`                 | 安全清理悬挂镜像与前端/Python 中间构建缓存（绝不影响运行中的容器与持久化数据）            |
+
+> 💡 **运维避坑：为什么多次构建后 `docker images` 会看到很多 `<none>:<none>` 镜像？**
+>
+> 每次执行 `docker compose up -d --build` 时，若代码有变更，Docker 会生成全新 Image ID 的镜像并赋予最新标签（`paper-room:latest`）。
+> 上一次构建的旧镜像因此失去了 Tag 引用，沦为 **悬挂镜像（Dangling Image）**。Docker 默认不会主动删除它们以备回滚，频繁更新便会逐渐堆积。
+>
+> - **安全一键清理悬挂镜像**：`docker image prune -f`（只删 `<none>` 孤儿镜像，正在运行的服务与其他带 Tag 镜像 100% 安全）。
+> - **释放多阶段编译缓存**：`docker builder prune -f`（清理 BuildKit 中间构建缓存，常可腾出数 GB 空间）。
+> - **解除废弃容器占用锁定**：若提示个别 `<none>` 镜像无法删除，说明存在历史调试残留的“已停止容器”正引用着它们，先执行 `docker container prune -f` 移除废弃容器即可解开锁定。
+> - **零负担平滑更新**：日常更新代码直接使用 `docker compose up -d --build paper-room && docker image prune -f` 即可一步到位。
+> - **版本回滚哲学**：纸间以 Git 为唯一版本真理源。若新版需回滚，只需在仓库执行 `git checkout <旧commit> && docker compose up -d --build paper-room` 即可依靠内置 BuildKit 物理缓存 2~3 秒内极速重构旧版本，无需在 Docker 层常驻陈旧镜像浪费存储。
+> - **（进阶可选）NAS / Linux 无人值守月度自动瘦身**：若希望服务器长期运行无需人工干预，可在宿主机 `crontab -e` 或群晖/TrueNAS 任务计划中加入一行月度轻量修剪（每月 1 号凌晨 4 点静默执行）：
+>   ```bash
+>   0 4 1 * * docker image prune -f >/dev/null 2>&1
+>   ```
 
 ---
 

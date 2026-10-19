@@ -1,5 +1,6 @@
 services:
   paper-room:
+    image: paper-room:latest
     build:
       context: .
       dockerfile: Dockerfile
