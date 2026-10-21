@@ -1100,6 +1100,17 @@
   2. **端服时区彻底解耦**：前端统一使用 `@/utils/format.ts` 的 `formatRelativeTime` 与 `formatDateTime` 按照用户浏览器所在本地时区呈现（如显示为人性化相对时间 `更新于 刚刚` / `更新于 5 分钟前`，浮层提示本地绝对时间）；
   3. **容器基准声明**：Dockerfile Stage 2 必须内置 `tzdata` 并声明 `ENV TZ=Asia/Shanghai`，`docker-compose.yml` 默认挂载 `TZ: Asia/Shanghai` 环境变量。
 
+### 168. 依赖未锁顶致使上游发布大版本绑入 AI 全家桶击穿生产镜像体积
+
+- **症状**：未修改任何后端大模块代码的情况下重新构建 Docker 镜像，镜像体积从正常的 276.76 MiB 突增至 481.19 MiB（净增 +204.43 MiB，膨胀 73.9%）。
+- **根因**：
+  1. **上游大版本发布未隔离**：PyPI 于 2026-10-19 突发释出 `pymupdf 2.0`。该版本为支持 RAG/LLM 布局解构，无条件绑定引入了 `onnxruntime`、`numpy`、`networkx`、`pymupdf-layout`、`pymupdf4llm` 等 AI 依赖；
+  2. **宽松依赖区间缺少主版本上限**：`backend/requirements.txt` 原书写为 `pymupdf>=1.24.0`，在未锁顶的状态下，构建时 pip 自动解析并拉取了 2.0 及其全部重量级传递依赖；
+  3. **击穿算存分离架构不变量**：按 ADR 0024 与 DEPLOYMENT.md 规约，核心镜像严禁默认捆绑 `onnxruntime`（避免轻量 NAS 承载无谓体积）。纸间仅需 PDF 光栅流与目录树无损提取，与 2.0 的 RAG/LLM 属性毫无交集。
+- **红线**：
+  1. **生产镜像体积预算守卫**：纸间生产核心镜像严格遵守 **SLO ≤ 300 MiB** 底线；
+  2. **C / 扩展特性依赖必须封顶约束**：`backend/requirements.txt` 中带有 C/二进制扩展或可能衍生重型特性的依赖项（如 `pymupdf`），严禁使用无封顶的 `>=` 声明，必须显式约束主版本范围（如 `pymupdf>=1.24.0,<2.0.0`），坚决防范上游大版本发布向核心镜像隐式注入重型依赖。
+
 ---
 
 ## 🚦 交付门禁
