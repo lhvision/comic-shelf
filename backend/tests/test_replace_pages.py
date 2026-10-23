@@ -624,6 +624,103 @@ class TestReplacePages(unittest.TestCase):
         a1 = ComicAppendRequest.model_validate({"path": "/path/append"})
         self.assertEqual(a1.server_path, "/path/append")
 
+    def test_replace_from_directory_containing_chinese_subdirs(self):
+        import os
+        self._setup_sample_comic("test", "dir_chinese_subdirs")
+        subdirs_dir = self.tmp_dir / "comic_chinese_subdirs"
+        ch1 = subdirs_dir / "第一话"
+        ch2 = subdirs_dir / "第二话"
+        ch1.mkdir(parents=True, exist_ok=True)
+        ch2.mkdir(parents=True, exist_ok=True)
+        (ch1 / "01.png").write_bytes(self._create_sample_img("red"))
+        (ch1 / "02.png").write_bytes(self._create_sample_img("green"))
+        (ch2 / "01.png").write_bytes(self._create_sample_img("blue"))
+
+        os.environ["COMIC_SHELF_ALLOWED_DIRS"] = str(self.tmp_dir)
+        try:
+            new_meta = self.store.replace_pages("test", "dir_chinese_subdirs", server_path=str(subdirs_dir))
+            self.assertTrue(new_meta.custom_pages)
+            self.assertEqual(new_meta.page_count, 3)
+            self.assertEqual(len(new_meta.chapters), 2)
+            # Must NOT collide to "collection"
+            self.assertNotEqual(new_meta.chapters[0].id, "collection")
+            self.assertNotEqual(new_meta.chapters[1].id, "collection")
+            self.assertNotEqual(new_meta.chapters[0].id, new_meta.chapters[1].id)
+            self.assertEqual(new_meta.chapters[0].title, "第一话")
+            self.assertEqual(new_meta.chapters[1].title, "第二话")
+            self.assertEqual(new_meta.chapters[0].page_count, 2)
+            self.assertEqual(new_meta.chapters[1].page_count, 1)
+
+            pages_dir = self.store.pages_dir("test", "dir_chinese_subdirs")
+            ch1_dir = pages_dir / self.store._safe(new_meta.chapters[0].id)
+            ch2_dir = pages_dir / self.store._safe(new_meta.chapters[1].id)
+            self.assertTrue((ch1_dir / "00001.png").exists())
+            self.assertTrue((ch1_dir / "00002.png").exists())
+            self.assertTrue((ch2_dir / "00001.png").exists())
+        finally:
+            os.environ.pop("COMIC_SHELF_ALLOWED_DIRS", None)
+
+    def test_replace_from_directory_with_macosx_and_flat_images(self):
+        import os
+        self._setup_sample_comic("test", "dir_macosx_flat")
+        parent_dir = self.tmp_dir / "comic_macosx_flat"
+        parent_dir.mkdir(parents=True, exist_ok=True)
+        # Empty/system subdir like __MACOSX
+        macosx_dir = parent_dir / "__MACOSX"
+        macosx_dir.mkdir(parents=True, exist_ok=True)
+        (macosx_dir / ".DS_Store").write_bytes(b"dummy")
+
+        (parent_dir / "01.png").write_bytes(self._create_sample_img("red"))
+        (parent_dir / "02.png").write_bytes(self._create_sample_img("green"))
+
+        os.environ["COMIC_SHELF_ALLOWED_DIRS"] = str(self.tmp_dir)
+        try:
+            new_meta = self.store.replace_pages("test", "dir_macosx_flat", server_path=str(parent_dir))
+            self.assertTrue(new_meta.custom_pages)
+            self.assertEqual(new_meta.page_count, 2)
+            self.assertEqual(len(new_meta.chapters), 0)
+            pages_dir = self.store.pages_dir("test", "dir_macosx_flat")
+            self.assertTrue((pages_dir / "00001.png").exists())
+            self.assertTrue((pages_dir / "00002.png").exists())
+        finally:
+            os.environ.pop("COMIC_SHELF_ALLOWED_DIRS", None)
+
+    def test_replace_target_chapter_on_flat_comic_raises_404(self):
+        import os
+        self._setup_sample_comic("test", "flat_target_404")
+        img_dir = self.tmp_dir / "flat_img_folder"
+        img_dir.mkdir(parents=True, exist_ok=True)
+        (img_dir / "01.png").write_bytes(self._create_sample_img("red"))
+
+        os.environ["COMIC_SHELF_ALLOWED_DIRS"] = str(self.tmp_dir)
+        try:
+            with self.assertRaises(HTTPException) as ctx:
+                self.store.replace_pages("test", "flat_target_404", server_path=str(img_dir), target_chapter="c1")
+            self.assertEqual(ctx.exception.status_code, 404)
+            self.assertIn("单卷平铺模式", str(ctx.exception.detail))
+        finally:
+            os.environ.pop("COMIC_SHELF_ALLOWED_DIRS", None)
+
+    def test_replace_directory_with_both_pdf_and_subdirs_raises_400(self):
+        import os
+        self._setup_sample_comic("test", "ambiguous_folder")
+        ambig_dir = self.tmp_dir / "ambig_dir"
+        ambig_dir.mkdir(parents=True, exist_ok=True)
+        self._create_synthetic_pdf(ambig_dir / "vol1.pdf", num_pages=2)
+        sub_ch = ambig_dir / "vol2"
+        sub_ch.mkdir(parents=True, exist_ok=True)
+        (sub_ch / "01.png").write_bytes(self._create_sample_img("blue"))
+
+        os.environ["COMIC_SHELF_ALLOWED_DIRS"] = str(self.tmp_dir)
+        try:
+            with self.assertRaises(HTTPException) as ctx:
+                self.store.replace_pages("test", "ambiguous_folder", server_path=str(ambig_dir))
+            self.assertEqual(ctx.exception.status_code, 400)
+            self.assertIn("同时包含 PDF 文件与章节子目录", str(ctx.exception.detail))
+        finally:
+            os.environ.pop("COMIC_SHELF_ALLOWED_DIRS", None)
+
+
 
 if __name__ == "__main__":
     unittest.main()
