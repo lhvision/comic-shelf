@@ -44,6 +44,7 @@ describe('AppButton', () => {
     })
 
     expect(wrapper.find('.btn-spinner').exists()).toBe(true)
+    expect(wrapper.find('.btn-content').text()).toBe('保存中')
     expect((wrapper.element as HTMLButtonElement).disabled).toBe(true)
     expect(wrapper.attributes('aria-busy')).toBe('true')
   })

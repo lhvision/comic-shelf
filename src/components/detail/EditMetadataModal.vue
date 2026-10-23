@@ -125,7 +125,7 @@ async function save() {
     :prevent-close="saving"
     @cancel="!saving && emit('cancel')"
   >
-    <form class="edit-meta-form" @submit.prevent="save">
+    <form class="edit-meta-form" :class="{ 'is-saving': saving }" @submit.prevent="save">
       <div class="field-group">
         <label class="form-label" for="edit-title">作品标题 *</label>
         <input
@@ -274,6 +274,12 @@ async function save() {
 .edit-meta-form {
   display: grid;
   gap: var(--space-4);
+  transition: opacity var(--duration-1) var(--ease-out);
+}
+
+.edit-meta-form.is-saving {
+  pointer-events: none;
+  opacity: 0.7;
 }
 
 .field-group {

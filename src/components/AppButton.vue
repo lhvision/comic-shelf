@@ -157,18 +157,17 @@ if (import.meta.env.DEV) {
     :aria-busy="loading ? 'true' : undefined"
     @click="handleClick"
   >
-    <!-- 加载中 Spinner 动效 -->
-    <span v-if="loading" class="btn-spinner" aria-hidden="true"></span>
-
     <!-- 纯图标模式渲染 -->
-    <template v-else-if="isIconOnly">
-      <AppIcon v-if="icon && !$slots.default" :name="icon" :size="iconSize" />
+    <template v-if="isIconOnly">
+      <span v-if="loading" class="btn-spinner" aria-hidden="true"></span>
+      <AppIcon v-else-if="icon && !$slots.default" :name="icon" :size="iconSize" />
       <slot v-else></slot>
     </template>
 
     <!-- 标准图文模式渲染 -->
     <template v-else>
-      <span v-if="$slots.prefix || (icon && iconPosition !== 'right')" class="btn-prefix">
+      <span v-if="loading" class="btn-spinner" aria-hidden="true"></span>
+      <span v-else-if="$slots.prefix || (icon && iconPosition !== 'right')" class="btn-prefix">
         <slot v-if="$slots.prefix" name="prefix"></slot>
         <AppIcon v-else-if="icon" :name="icon" :size="iconSize" />
       </span>

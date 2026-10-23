@@ -152,6 +152,7 @@ describe('ReplacePagesModal Component', () => {
     })
     expect(activeSubmitBtn?.exists()).toBe(true)
     expect(activeSubmitBtn?.find('.btn-spinner').exists()).toBe(true)
+    expect(activeSubmitBtn?.text()).toContain('正在重新装订…')
 
     // Attempting to invoke cancel during submitting is safely blocked
     await cancelBtn!.trigger('click')

@@ -239,6 +239,7 @@ useEventListener(
   (event: BeforeUnloadEvent) => {
     if (open.value && props.preventClose) {
       event.preventDefault()
+      event.returnValue = ''
     }
   },
 )

@@ -235,6 +235,7 @@ describe('Modal Component', () => {
     const beforeUnloadEvent = new Event('beforeunload', { cancelable: true })
     window.dispatchEvent(beforeUnloadEvent)
     expect(beforeUnloadEvent.defaultPrevented).toBe(true)
+    expect(beforeUnloadEvent.returnValue).toBeFalsy()
 
     wrapper.unmount()
   })
