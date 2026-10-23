@@ -89,7 +89,7 @@ export function useChapterManagement(options: UseChapterManagementOptions) {
   }
 
   async function saveChapterTitle() {
-    if (!activeChapter.value) return
+    if (savingTitle.value || !activeChapter.value) return
     savingTitle.value = true
     try {
       const updated = await api.updateChapter(
@@ -122,7 +122,7 @@ export function useChapterManagement(options: UseChapterManagementOptions) {
   }
 
   async function confirmRemoveChapter() {
-    if (!activeChapter.value) return
+    if (removing.value || !activeChapter.value) return
     removing.value = true
     const deletedId = activeChapter.value.id
     const deletedTitle = activeChapter.value.title || `第 ${activeChapter.value.index} 话`

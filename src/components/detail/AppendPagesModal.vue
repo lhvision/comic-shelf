@@ -82,6 +82,7 @@ const selectedChapterLabel = computed(() =>
 )
 
 async function submit() {
+  if (submitting.value || isUploading.value) return
   submitting.value = true
   try {
     const targetChap = appendType.value === 'new' ? '' : selectedChapterId.value
@@ -135,7 +136,12 @@ async function submit() {
 </script>
 
 <template>
-  <Modal :open="open" title="增量追加页面 / 章节" @cancel="emit('cancel')">
+  <Modal
+    :open="open"
+    title="增量追加页面 / 章节"
+    :prevent-close="submitting || isUploading"
+    @cancel="!(submitting || isUploading) && emit('cancel')"
+  >
     <div class="append-modal-body">
       <div class="append-type-group">
         <label class="form-label">追加目标位置</label>
@@ -239,7 +245,7 @@ async function submit() {
         variant="ghost"
         size="md"
         :disabled="submitting || isUploading"
-        @click="emit('cancel')"
+        @click="!(submitting || isUploading) && emit('cancel')"
       >
         取消
       </AppButton>
@@ -249,7 +255,9 @@ async function submit() {
         :loading="submitting || isUploading"
         :disabled="
           (mode === 'upload' && selectedFiles.length === 0) ||
-          (mode === 'path' && !serverPath.trim())
+          (mode === 'path' && !serverPath.trim()) ||
+          submitting ||
+          isUploading
         "
         @click="submit"
       >

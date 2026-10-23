@@ -53,11 +53,7 @@ const {
 })
 
 function cancelModal() {
-  if (uploadAbortController.value) {
-    uploadAbortController.value.abort()
-    uploadAbortController.value = null
-  }
-  submitting.value = false
+  if (submitting.value) return
   emit('cancel')
 }
 
@@ -146,6 +142,7 @@ function onDropzoneTrigger() {
 }
 
 async function submit() {
+  if (submitting.value) return
   if (mode.value === 'upload') {
     if (selectedFiles.value.length === 0) {
       toast('请先选择要替换的图片文件', 'error')
@@ -212,7 +209,7 @@ async function submit() {
 </script>
 
 <template>
-  <Modal :open="open" title="重新装订画页" @cancel="cancelModal">
+  <Modal :open="open" title="重新装订画页" :prevent-close="submitting" @cancel="cancelModal">
     <div class="replace-modal-body" :class="{ 'is-submitting': submitting }">
       <div class="replace-alert" role="alert">
         <AppIcon name="archive" size="18" class="replace-alert-icon" />
@@ -322,7 +319,15 @@ async function submit() {
     </div>
 
     <template #footer>
-      <AppButton variant="ghost" size="md" type="button" @click="cancelModal"> 取消 </AppButton>
+      <AppButton
+        variant="ghost"
+        size="md"
+        type="button"
+        :disabled="submitting"
+        @click="cancelModal"
+      >
+        取消
+      </AppButton>
       <AppButton
         :variant="isMulti && replaceScope === 'full' ? 'danger' : 'primary'"
         size="md"
@@ -336,8 +341,14 @@ async function submit() {
         "
         @click="submit"
       >
-        {{ isMulti && replaceScope === 'full' ? '确认整部重订' : '确认重新装订' }}
-        <template v-if="mode === 'upload' && selectedFiles.length">
+        {{
+          submitting
+            ? '正在重新装订…'
+            : isMulti && replaceScope === 'full'
+              ? '确认整部重订'
+              : '确认重新装订'
+        }}
+        <template v-if="!submitting && mode === 'upload' && selectedFiles.length">
           （{{ selectedFiles.length }} 页）
         </template>
       </AppButton>

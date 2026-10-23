@@ -187,7 +187,13 @@ function handleClose() {
 </script>
 
 <template>
-  <Modal v-model:open="open" title="签发单本借阅通行证" variant="paper" size="md">
+  <Modal
+    v-model:open="open"
+    title="签发单本借阅通行证"
+    variant="paper"
+    size="md"
+    :prevent-close="generating"
+  >
     <div class="direct-pass-modal-body">
       <!-- 头部作品题眉与页码提示 -->
       <div class="comic-brief">
@@ -366,7 +372,7 @@ function handleClose() {
         <AppButton v-if="generatedPass" variant="ghost" type="button" @click="handleRegenerate">
           重新配置
         </AppButton>
-        <AppButton variant="secondary" type="button" @click="handleClose">
+        <AppButton variant="secondary" type="button" :disabled="generating" @click="handleClose">
           {{ generatedPass ? '完成' : '取消' }}
         </AppButton>
         <AppButton

@@ -73,7 +73,7 @@
 | `src/components/gate/`                             | 门禁模块化表单群：初始口令表单、首访认领自设 PIN 表单、已认领 PIN 验证表单                                                                                                                                                                                                |
 | `src/components/gate/GatePasswordInput.vue`        | 门禁口令输入分子：自动聚焦、密码显隐切换与回车提交契约单一真理源                                                                                                                                                                                                          |
 | `src/components/form/FileStagingDropZone.vue`      | 画卷文件暂存区：自建漫画/追加/重装订拖拽投放与服务器路径扫描双模暂存（原生支持图片与 PDF 徽印及文件类型提示）                                                                                                                                                             |
-| `src/components/Modal.vue`                         | 通用顶层模态对话框：基于 HTML5 原生 `<dialog>` Top Layer 与无障碍焦点圈闭，支持声明式关闭指令 (`commandfor`)、焦点记忆自动返还、防穿透微弹反馈与子表单安全防护                                                                                                            |
+| `src/components/Modal.vue`                         | 通用顶层模态对话框：基于 HTML5 原生 `<dialog>` Top Layer 与无障碍焦点圈闭，支持声明式关闭指令 (`commandfor`)、焦点记忆自动返还、变动批处理锁定 (`preventClose` + 浏览器 `beforeunload` 离页拦截)、防穿透微弹反馈与子表单安全防护                                          |
 | `src/components/SegmentedTabs.vue`                 | 典藏分段选项卡：支持泛型 `TabItem<T>`/字符串、左右/Home/End 键导航与多尺寸                                                                                                                                                                                                |
 | `src/components/AppButton.vue`                     | 通用典藏按钮：支持 primary / secondary / soft / ghost / danger 多种变体                                                                                                                                                                                                   |
 | `src/components/AppChip.vue`                       | 通用微件胶囊：多态无障碍渲染（`<span>` ⇄ `<button aria-pressed>`）、标签/筛选/计数/删除单一真理源                                                                                                                                                                         |
@@ -97,7 +97,7 @@
 | `src/components/detail/EditMetadataModal.vue`      | 典藏资料与标签编排弹窗（实时修改标题、作者、4 张封面展示页码、标签增删、非本地多章节作品自动追更巡检周期配置）                                                                                                                                                            |
 | `src/components/detail/ChapterGroupsModal.vue`     | 单本章节分组管理弹窗（默认锁定主连载正文，按需勾选追加单行本等衍生分组，取消时二次危险确认并物理释放磁盘空间）                                                                                                                                                            |
 | `src/components/detail/AppendPagesModal.vue`       | 画页增量追加弹窗（全源支持，追加至已有话或新建分话、复合文件名智能切分、支持网页上传/服务器路径）                                                                                                                                                                         |
-| `src/components/detail/ReplacePagesModal.vue`      | 画页重新装订弹窗（全源支持，支持整本重装订或单话靶向替换、复合文件名智能切分、重新装订三层保护提示）                                                                                                                                                                      |
+| `src/components/detail/ReplacePagesModal.vue`      | 画页重新装订弹窗（全源支持，支持整本重装订或单话靶向替换、复合文件名智能切分、重新装订防逃逸锁定与三层保护提示）                                                                                                                                                          |
 | `src/components/discovery/DiscoveryCard.vue`       | 榜单漫画卡片：排名徽章、原站外链、分类胶囊与一键收录/在库直达                                                                                                                                                                                                             |
 | `src/components/form/TagManager.vue`               | 交互式标签管理器（Chip 展示、Enter/空格添加、SVG 居中删除、对齐全馆聚合 top_tags 的热门快选推荐、支持可选 source 图源隔离）                                                                                                                                               |
 | `src/components/form/CoverIndicesPicker.vue`       | 4 张封面展示页码选定器（`v-for` 四槽、`maxPage` 默认不封顶、已知页数时 blur 纠偏）                                                                                                                                                                                        |
@@ -411,6 +411,11 @@
   - 所有使用 `@vueuse/core` 的 `useMemoize` 缓存的异步函数，必须在 catch 中调用 `.delete(key)`，防止因 Abort 或临时网络抖动导致 rejected promise 常驻缓存污染后续访问；
   - 在 `api` 导出对象上必须通过包装函数声明包含 `options?: RequestOptions` 的显式类型签名，杜绝 IDE 参数长度推导偏差。
 - **声明式参数过滤与纯函数单源**：严禁在业务 RPC 方法中书写散落的 `new URLSearchParams()` 与冗余 `if (...) set(...)`，或通过模板字符串手工拼接 URL Query；必须统一通过强类型纯函数 `buildQueryString(params?: QueryParams)` 声明式过滤 `undefined` / `null` / `''`，由 `options.params` 统一传递 Plain Object 键值对。
+- **变动类模态弹窗防逃逸与防重入契约（Destructive/Mutation Modal Anti-Escape & Guard Contract）**：
+  - **防逃逸锁定**：所有包含异步写入、画页替换或元数据保存的弹窗（`ReplacePagesModal`、`AppendPagesModal`、`EditMetadataModal`、`ChapterGroupsModal`、`DirectPassModal` 及 `ChapterView` 章节删改），必须向 `<Modal>` 传入 `:prevent-close="isPending"`；
+  - **动作层防护**：提交处理期间，底部「取消」按钮必须绑定 `:disabled="isPending"`，取消回调函数顶部增加 `if (isPending) return` 守卫，杜绝误触中止网络流导致端服状态撕裂；
+  - **逻辑层防重入**：提交入口函数顶部必须显式设置 `if (isPending) return`，杜绝连续按键或连击产生的并发写请求；
+  - **浏览器原生离页保护**：由 `Modal.vue` 在 `open && preventClose` 时统一挂载 `beforeunload` 监听器，防止耗时写入期间因误按 <kbd>F5</kbd> 或关闭标签页导致写操作截断。
 
 ## 12. 来源导航单一真理源与收录工作台解耦架构（Source SSOT Decoupling）
 

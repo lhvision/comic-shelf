@@ -300,7 +300,8 @@ onMounted(() => {
       <Modal
         :open="editOpen"
         :title="`编辑第 ${activeChapter.index} 话名称`"
-        @cancel="editOpen = false"
+        :prevent-close="savingTitle"
+        @cancel="!savingTitle && (editOpen = false)"
       >
         <div class="edit-chap-form">
           <label class="form-label" for="chap-title-input">章节名称</label>
@@ -311,12 +312,19 @@ onMounted(() => {
             type="text"
             placeholder="例如：第 1 话 · 初始篇"
             maxlength="100"
+            :disabled="savingTitle"
             @keydown.enter.prevent="saveChapterTitle"
           />
         </div>
 
         <template #footer>
-          <AppButton variant="ghost" size="sm" type="button" @click="editOpen = false">
+          <AppButton
+            variant="ghost"
+            size="sm"
+            type="button"
+            :disabled="savingTitle"
+            @click="!savingTitle && (editOpen = false)"
+          >
             取消
           </AppButton>
           <AppButton
@@ -324,9 +332,10 @@ onMounted(() => {
             size="sm"
             type="button"
             :loading="savingTitle"
+            :disabled="savingTitle"
             @click="saveChapterTitle"
           >
-            保存
+            {{ savingTitle ? '保存中…' : '保存' }}
           </AppButton>
         </template>
       </Modal>
@@ -335,7 +344,8 @@ onMounted(() => {
       <Modal
         :open="removeOpen"
         :title="`删除《${activeChapter.title || `第 ${activeChapter.index} 话`}》？`"
-        @cancel="removeOpen = false"
+        :prevent-close="removing"
+        @cancel="!removing && (removeOpen = false)"
       >
         <p class="remove-copy">
           该操作将永久删除本章节所有本地页面（共
@@ -344,23 +354,29 @@ onMounted(() => {
         </p>
 
         <label class="remove-ack">
-          <input v-model="ackRemove" type="checkbox" />
+          <input v-model="ackRemove" type="checkbox" :disabled="removing" />
           <span>我已了解此操作不可撤销，确认永久删除该话所有页面</span>
         </label>
 
         <template #footer>
-          <AppButton variant="ghost" size="sm" type="button" @click="removeOpen = false">
+          <AppButton
+            variant="ghost"
+            size="sm"
+            type="button"
+            :disabled="removing"
+            @click="!removing && (removeOpen = false)"
+          >
             取消
           </AppButton>
           <AppButton
             variant="danger"
             size="sm"
             type="button"
-            :disabled="!ackRemove"
+            :disabled="!ackRemove || removing"
             :loading="removing"
             @click="confirmRemoveChapter"
           >
-            确认删除
+            {{ removing ? '正在删除…' : '确认删除' }}
           </AppButton>
         </template>
       </Modal>

@@ -232,6 +232,17 @@ function onDialogClick(event: MouseEvent) {
   }
 }
 
+// 关键变动批处理中（preventClose=true）防误触刷新或关闭标签页
+useEventListener(
+  typeof window !== 'undefined' ? window : null,
+  'beforeunload',
+  (event: BeforeUnloadEvent) => {
+    if (open.value && props.preventClose) {
+      event.preventDefault()
+    }
+  },
+)
+
 // 键盘 Escape 与焦点辅助监听（兼顾测试环境与老旧浏览器无障碍）
 useEventListener(window, 'keydown', (event: KeyboardEvent) => {
   if (!open.value) return

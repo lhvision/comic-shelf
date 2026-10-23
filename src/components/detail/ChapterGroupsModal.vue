@@ -117,7 +117,13 @@ async function handleSave() {
 </script>
 
 <template>
-  <Modal :open="open" title="章节分组管理" size="md" @cancel="emit('cancel')">
+  <Modal
+    :open="open"
+    title="章节分组管理"
+    size="md"
+    :prevent-close="saving"
+    @cancel="!saving && emit('cancel')"
+  >
     <div class="groups-manager">
       <div class="groups-hint">
         <AppIcon name="info" class="hint-icon" />
@@ -182,14 +188,16 @@ async function handleSave() {
 
     <template #footer>
       <div class="modal-actions">
-        <AppButton variant="secondary" :disabled="saving" @click="emit('cancel')"> 取消 </AppButton>
+        <AppButton variant="secondary" :disabled="saving" @click="!saving && emit('cancel')">
+          取消
+        </AppButton>
         <AppButton
           variant="primary"
           :loading="saving"
           :disabled="saving || !hasChanges || (hasRemoved && !ackRemove)"
           @click="handleSave"
         >
-          保存更改
+          {{ saving ? '保存中…' : '保存更改' }}
         </AppButton>
       </div>
     </template>

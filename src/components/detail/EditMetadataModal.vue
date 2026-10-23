@@ -80,6 +80,7 @@ function parseList(str: string): string[] {
 }
 
 async function save() {
+  if (saving.value) return
   if (!title.value.trim()) {
     toast('作品标题不能为空', 'error')
     return
@@ -118,7 +119,12 @@ async function save() {
 </script>
 
 <template>
-  <Modal :open="open" title="编辑典藏资料与标签" @cancel="emit('cancel')">
+  <Modal
+    :open="open"
+    title="编辑典藏资料与标签"
+    :prevent-close="saving"
+    @cancel="!saving && emit('cancel')"
+  >
     <form class="edit-meta-form" @submit.prevent="save">
       <div class="field-group">
         <label class="form-label" for="edit-title">作品标题 *</label>
@@ -248,14 +254,14 @@ async function save() {
     </form>
 
     <template #footer>
-      <AppButton variant="ghost" size="md" :disabled="saving" @click="emit('cancel')">
+      <AppButton variant="ghost" size="md" :disabled="saving" @click="!saving && emit('cancel')">
         取消
       </AppButton>
       <AppButton
         variant="primary"
         size="md"
         :loading="saving"
-        :disabled="!title.trim()"
+        :disabled="!title.trim() || saving"
         @click="save"
       >
         {{ saving ? '保存中…' : '保存修改' }}

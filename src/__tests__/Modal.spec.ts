@@ -217,6 +217,28 @@ describe('Modal Component', () => {
     wrapper.unmount()
   })
 
+  it('prevents default on beforeunload when open=true and preventClose=true', () => {
+    const wrapper = mount(Modal, {
+      props: {
+        open: true,
+        title: '防误触关闭测试',
+        preventClose: true,
+      },
+      global: {
+        stubs: {
+          Teleport: true,
+        },
+      },
+      attachTo: document.body,
+    })
+
+    const beforeUnloadEvent = new Event('beforeunload', { cancelable: true })
+    window.dispatchEvent(beforeUnloadEvent)
+    expect(beforeUnloadEvent.defaultPrevented).toBe(true)
+
+    wrapper.unmount()
+  })
+
   it('hides close button when showCloseButton=false', () => {
     const wrapper = mount(Modal, {
       props: {
