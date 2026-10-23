@@ -962,7 +962,10 @@ class ComicStoreLocalMixin:
                         for _pno, f_path, p_ext in extracted_pages:
                             items.append((f_path.name, p_ext, f_path))
                     elif raw_path.is_dir():
-                        pdf_files = [f for f in raw_path.iterdir() if f.is_file() and f.suffix.lower() == ".pdf"]
+                        pdf_files = [
+                            f for f in raw_path.iterdir()
+                            if f.is_file() and is_pdf_file(f) and _is_path_allowed(f.resolve())
+                        ]
                         if pdf_files:
                             pdf_files.sort(key=lambda f: self._natural_key(f.name))
                             for pf in pdf_files:
@@ -972,7 +975,10 @@ class ComicStoreLocalMixin:
                                 for _pno, f_path, p_ext in extracted_pages:
                                     items.append((f_path.name, p_ext, f_path))
                         else:
-                            img_files = [f for f in raw_path.iterdir() if f.is_file() and f.suffix.lower() in IMAGE_EXTS]
+                            img_files = [
+                                f for f in raw_path.iterdir()
+                                if f.is_file() and f.suffix.lower() in IMAGE_EXTS and _is_path_allowed(f.resolve())
+                            ]
                             img_files.sort(key=lambda f: self._natural_key(f.name))
                             for f in img_files:
                                 items.append((f.name, f.suffix.lower(), f))
@@ -1164,8 +1170,29 @@ class ComicStoreLocalMixin:
                 raise HTTPException(status_code=404, detail="漫画不存在")
 
             meta = fetched.meta
+            existing_chaps = meta.chapters or []
+            provider = LocalProvider()
             valid_items: list[tuple[str, str, bytes | Path]] = []
+            chapter_groups: list[tuple[str, str, list[tuple[str, str, bytes | Path]]]] | None = None
             pdf_temp_dirs: list[Path] = []
+
+            def _extract_pdf_chapters_if_any(
+                pdf_p: Path, pages: list[tuple[int, Path, str]], doc_title: str
+            ) -> list[tuple[str, str, list[tuple[str, str, bytes | Path]]]] | None:
+                detected, _ = detect_pdf_chapters(pdf_p, len(pages), doc_title)
+                if len(detected) <= 1:
+                    return None
+                groups = []
+                for idx, ch_spec in enumerate(detected, start=1):
+                    matched = existing_chaps[idx - 1] if idx <= len(existing_chaps) else None
+                    c_title = ch_spec.get("title") or (matched.title if matched else f"第 {idx} 话")
+                    c_id = matched.id if matched else provider.normalize_id(ch_spec.get("id") or f"c{idx}")
+                    c_start = ch_spec.get("start", 1)
+                    c_count = ch_spec.get("page_count", 0)
+                    c_files = [item for item in pages if c_start <= item[0] < c_start + c_count]
+                    groups.append((c_id, c_title, [(f_path.name, p_ext, f_path) for _pno, f_path, p_ext in c_files]))
+                return groups
+
             try:
                 if files:
                     sorted_files = sorted(files, key=lambda f: self._natural_key(f[0]))
@@ -1176,41 +1203,137 @@ class ComicStoreLocalMixin:
                             pdf_staging.mkdir(parents=True, exist_ok=True)
                             tmp_pdf = pdf_staging / "upload.pdf"
                             tmp_pdf.write_bytes(content)
-                            extracted_pages, _ = unpack_pdf(tmp_pdf, pdf_staging / "pages")
-                            tmp_pdf.unlink(missing_ok=True)
+                            extracted_pages, pdf_meta = unpack_pdf(tmp_pdf, pdf_staging / "pages")
                             pdf_temp_dirs.append(pdf_staging)
-                            for _pno, f_path, p_ext in extracted_pages:
-                                valid_items.append((f_path.name, p_ext, f_path))
+                            if not target_chapter and len(files) == 1:
+                                chapter_groups = _extract_pdf_chapters_if_any(
+                                    tmp_pdf, extracted_pages, pdf_meta.get("title") or meta.title or "PDF"
+                                )
+                            tmp_pdf.unlink(missing_ok=True)
+                            if not chapter_groups:
+                                for _pno, f_path, p_ext in extracted_pages:
+                                    valid_items.append((f_path.name, p_ext, f_path))
                         elif ext in IMAGE_EXTS and content:
                             valid_items.append((filename, ext, content))
+
                 elif server_path:
-                    raw_path = self._resolve_and_verify_server_path(server_path, must_be_dir=False)
-                    if raw_path.is_file() and raw_path.suffix.lower() == ".pdf" and _is_path_allowed(raw_path.resolve()):
-                        pdf_staging = TMP_DIR / f".replace_pdf_{uuid.uuid4().hex[:12]}"
-                        extracted_pages, _ = unpack_pdf(raw_path, pdf_staging)
-                        pdf_temp_dirs.append(pdf_staging)
-                        for _pno, f_path, p_ext in extracted_pages:
-                            valid_items.append((f_path.name, p_ext, f_path))
+                    clean_path = server_path.strip()
+                    if not clean_path:
+                        raise HTTPException(status_code=400, detail="请提供有效非空的服务器路径（server_path 或 path）")
+                    raw_path = self._resolve_and_verify_server_path(clean_path, must_be_dir=False)
+
+                    if raw_path.is_file():
+                        if raw_path.suffix.lower() == ".pdf" and _is_path_allowed(raw_path.resolve()):
+                            pdf_staging = TMP_DIR / f".replace_pdf_{uuid.uuid4().hex[:12]}"
+                            extracted_pages, pdf_meta = unpack_pdf(raw_path, pdf_staging)
+                            pdf_temp_dirs.append(pdf_staging)
+                            if not target_chapter:
+                                chapter_groups = _extract_pdf_chapters_if_any(
+                                    raw_path, extracted_pages, pdf_meta.get("title") or raw_path.stem or meta.title
+                                )
+                            if not chapter_groups:
+                                for _pno, f_path, p_ext in extracted_pages:
+                                    valid_items.append((f_path.name, p_ext, f_path))
+                        elif raw_path.suffix.lower() in IMAGE_EXTS and _is_path_allowed(raw_path.resolve()):
+                            valid_items.append((raw_path.name, raw_path.suffix.lower(), raw_path))
+                        else:
+                            raise HTTPException(status_code=400, detail=f"指定路径不是有效的图片/PDF文件或目录：{server_path}")
+
                     elif raw_path.is_dir():
-                        img_files = [
-                            f
-                            for f in raw_path.iterdir()
-                            if f.is_file() and f.suffix.lower() in IMAGE_EXTS and _is_path_allowed(f.resolve())
+                        pdf_files = [
+                            f for f in raw_path.iterdir()
+                            if f.is_file() and is_pdf_file(f) and _is_path_allowed(f.resolve())
                         ]
-                        img_files.sort(key=lambda f: self._natural_key(f.name))
-                        for f in img_files:
-                            valid_items.append((f.name, f.suffix.lower(), f))
-                    elif raw_path.is_file() and raw_path.suffix.lower() in IMAGE_EXTS and _is_path_allowed(raw_path.resolve()):
-                        valid_items.append((raw_path.name, raw_path.suffix.lower(), raw_path))
+                        subdirs = [
+                            d for d in raw_path.iterdir()
+                            if d.is_dir() and not d.name.startswith(".") and _is_path_allowed(d.resolve())
+                        ]
+
+                        if target_chapter:
+                            if len(pdf_files) > 1 or len(subdirs) > 0:
+                                raise HTTPException(
+                                    status_code=400,
+                                    detail="单话重订仅支持单个 PDF 文件或单话图片目录，检测到目录下包含多卷 PDF 或多个章节子目录",
+                                )
+                            if len(pdf_files) == 1:
+                                pdf_staging = TMP_DIR / f".replace_pdf_{uuid.uuid4().hex[:12]}"
+                                extracted_pages, _ = unpack_pdf(pdf_files[0], pdf_staging)
+                                pdf_temp_dirs.append(pdf_staging)
+                                for _pno, f_path, p_ext in extracted_pages:
+                                    valid_items.append((f_path.name, p_ext, f_path))
+                            else:
+                                img_files = [
+                                    f for f in raw_path.iterdir()
+                                    if f.is_file() and f.suffix.lower() in IMAGE_EXTS and _is_path_allowed(f.resolve())
+                                ]
+                                img_files.sort(key=lambda f: self._natural_key(f.name))
+                                for f in img_files:
+                                    valid_items.append((f.name, f.suffix.lower(), f))
+                        else:
+                            if pdf_files and not subdirs:
+                                if len(pdf_files) == 1:
+                                    pdf_f = pdf_files[0]
+                                    pdf_staging = TMP_DIR / f".replace_pdf_{uuid.uuid4().hex[:12]}"
+                                    extracted_pages, pdf_meta = unpack_pdf(pdf_f, pdf_staging)
+                                    pdf_temp_dirs.append(pdf_staging)
+                                    chapter_groups = _extract_pdf_chapters_if_any(
+                                        pdf_f, extracted_pages, pdf_meta.get("title") or pdf_f.stem or meta.title
+                                    )
+                                    if not chapter_groups:
+                                        for _pno, f_path, p_ext in extracted_pages:
+                                            valid_items.append((f_path.name, p_ext, f_path))
+                                else:
+                                    pdf_files.sort(key=lambda f: self._natural_key(f.name))
+                                    chapter_groups = []
+                                    for chap_idx, pdf_f in enumerate(pdf_files, start=1):
+                                        pdf_staging = TMP_DIR / f".replace_pdf_{uuid.uuid4().hex[:12]}_{chap_idx}"
+                                        extracted_pages, _ = unpack_pdf(pdf_f, pdf_staging)
+                                        pdf_temp_dirs.append(pdf_staging)
+                                        matched_ch = existing_chaps[chap_idx - 1] if chap_idx <= len(existing_chaps) else None
+                                        chap_title = matched_ch.title if matched_ch else pdf_f.stem
+                                        chap_id = matched_ch.id if matched_ch else provider.normalize_id(f"c{chap_idx}")
+                                        chap_items = [(f_path.name, p_ext, f_path) for _pno, f_path, p_ext in extracted_pages]
+                                        chapter_groups.append((chap_id, chap_title, chap_items))
+
+                            elif subdirs:
+                                subdirs.sort(key=lambda d: self._natural_key(d.name))
+                                chapter_groups = []
+                                for chap_idx, d in enumerate(subdirs, start=1):
+                                    sub_imgs = [
+                                        f for f in d.iterdir()
+                                        if f.is_file() and f.suffix.lower() in IMAGE_EXTS and _is_path_allowed(f.resolve())
+                                    ]
+                                    if sub_imgs:
+                                        sub_imgs.sort(key=lambda f: self._natural_key(f.name))
+                                        matched_ch = existing_chaps[chap_idx - 1] if chap_idx <= len(existing_chaps) else None
+                                        chap_title = matched_ch.title if matched_ch else d.name
+                                        chap_id = matched_ch.id if matched_ch else (provider.normalize_id(d.name) or f"c{chap_idx}")
+                                        chap_items = [(f.name, f.suffix.lower(), f) for f in sub_imgs]
+                                        chapter_groups.append((chap_id, chap_title, chap_items))
+                            else:
+                                img_files = [
+                                    f for f in raw_path.iterdir()
+                                    if f.is_file() and f.suffix.lower() in IMAGE_EXTS and _is_path_allowed(f.resolve())
+                                ]
+                                img_files.sort(key=lambda f: self._natural_key(f.name))
+                                for f in img_files:
+                                    valid_items.append((f.name, f.suffix.lower(), f))
                     else:
                         raise HTTPException(status_code=400, detail=f"指定路径不是有效的图片/PDF文件或目录：{server_path}")
 
-                if not valid_items:
+                all_items_to_verify: list[tuple[str, str, bytes | Path]] = []
+                if chapter_groups:
+                    for _cid, _ctitle, c_items in chapter_groups:
+                        all_items_to_verify.extend(c_items)
+                else:
+                    all_items_to_verify.extend(valid_items)
+
+                if not all_items_to_verify:
                     raise HTTPException(status_code=400, detail="未提供有效的图片或 PDF 画卷文件")
 
                 staging_dir = self._new_work_item(".tmp_replace")
 
-                for _idx, (filename, _ext, content_or_path) in enumerate(valid_items, start=1):
+                for _idx, (filename, _ext, content_or_path) in enumerate(all_items_to_verify, start=1):
                     try:
                         self._verify_image_item(content_or_path, filename)
                     except Exception:
@@ -1309,18 +1432,13 @@ class ComicStoreLocalMixin:
                     return meta
 
                 else:
-                    composite_groups = self._group_by_composite_chapter_pattern(valid_items)
-                    if composite_groups:
-                        sorted_chap_nums = sorted(composite_groups.keys())
-                        existing_chaps = meta.chapters or []
-                        new_chapters: list[Chapter] = []
-                        rebuilt_pages: list[PageRecord] = []
-                        rebuilt_remote: list[RemotePage] = []
-                        global_idx = 1
-
-                        try:
+                    if not chapter_groups and valid_items:
+                        composite_groups = self._group_by_composite_chapter_pattern(valid_items)
+                        if composite_groups:
+                            existing_chaps = meta.chapters or []
+                            sorted_chap_nums = sorted(composite_groups.keys())
+                            chapter_groups = []
                             for chap_idx, chap_num in enumerate(sorted_chap_nums, start=1):
-                                chap_items = composite_groups[chap_num]
                                 matched_ch = None
                                 for old_c in existing_chaps:
                                     if old_c.index == chap_num or old_c.id == str(chap_num) or old_c.id == f"c{chap_num}":
@@ -1331,6 +1449,16 @@ class ComicStoreLocalMixin:
 
                                 chap_title = matched_ch.title if matched_ch else f"第 {chap_num} 话"
                                 chap_id = matched_ch.id if matched_ch else f"c{chap_num}"
+                                chapter_groups.append((chap_id, chap_title, composite_groups[chap_num]))
+
+                    if chapter_groups:
+                        new_chapters: list[Chapter] = []
+                        rebuilt_pages: list[PageRecord] = []
+                        rebuilt_remote: list[RemotePage] = []
+                        global_idx = 1
+
+                        try:
+                            for chap_idx, (chap_id, chap_title, chap_items) in enumerate(chapter_groups, start=1):
                                 chap_staging_dir = staging_dir / self._safe(chap_id)
                                 chap_staging_dir.mkdir(parents=True, exist_ok=True)
 
@@ -1363,26 +1491,6 @@ class ComicStoreLocalMixin:
                             shutil.rmtree(staging_dir, ignore_errors=True)
                             raise
 
-                        album_path = self.album_path(source, source_id)
-                        remote_path = self.remote_path(source, source_id)
-                        backup_dir = self._begin_metadata_backup(album_path, remote_path)
-                        installed = False
-                        try:
-                            self._replace_live_with_staging(backup_dir, staging_dir, target_pages_dir)
-                            installed = True
-                        except Exception:
-                            if not installed:
-                                self._rollback_metadata_backup(
-                                    backup_dir, (remote_path, album_path), source, source_id
-                                )
-                            shutil.rmtree(staging_dir, ignore_errors=True)
-                            raise
-
-                        meta.pages = rebuilt_pages
-                        fetched.remote_pages = rebuilt_remote
-                        meta.page_count = len(rebuilt_pages)
-                        meta.chapters = new_chapters
-
                     else:
                         staged_names: list[tuple[str, str]] = []
                         for idx, (_filename, ext, content_or_path) in enumerate(valid_items, start=1):
@@ -1394,33 +1502,35 @@ class ComicStoreLocalMixin:
                                 dest_path.write_bytes(content_or_path)
                             staged_names.append((dest_name, ext))
 
-                        album_path = self.album_path(source, source_id)
-                        remote_path = self.remote_path(source, source_id)
-                        backup_dir = self._begin_metadata_backup(album_path, remote_path)
-                        installed = False
-                        try:
-                            self._replace_live_with_staging(backup_dir, staging_dir, target_pages_dir)
-                            installed = True
-                        except Exception:
-                            if not installed:
-                                self._rollback_metadata_backup(
-                                    backup_dir, (remote_path, album_path), source, source_id
-                                )
-                            shutil.rmtree(staging_dir, ignore_errors=True)
-                            raise
-
-                        new_pages = [
+                        new_chapters = []
+                        rebuilt_pages = [
                             PageRecord(index=i, file=dest_name, ext=ext, cached=True, chapter="")
                             for i, (dest_name, ext) in enumerate(staged_names, start=1)
                         ]
-                        new_remote = [
+                        rebuilt_remote = [
                             RemotePage(index=i, url="", file=dest_name, ext=ext, chapter="")
                             for i, (dest_name, ext) in enumerate(staged_names, start=1)
                         ]
-                        meta.pages = new_pages
-                        fetched.remote_pages = new_remote
-                        meta.page_count = len(new_pages)
-                        meta.chapters = []
+
+                    album_path = self.album_path(source, source_id)
+                    remote_path = self.remote_path(source, source_id)
+                    backup_dir = self._begin_metadata_backup(album_path, remote_path)
+                    installed = False
+                    try:
+                        self._replace_live_with_staging(backup_dir, staging_dir, target_pages_dir)
+                        installed = True
+                    except Exception:
+                        if not installed:
+                            self._rollback_metadata_backup(
+                                backup_dir, (remote_path, album_path), source, source_id
+                            )
+                        shutil.rmtree(staging_dir, ignore_errors=True)
+                        raise
+
+                    meta.pages = rebuilt_pages
+                    fetched.remote_pages = rebuilt_remote
+                    meta.page_count = len(rebuilt_pages)
+                    meta.chapters = new_chapters
 
                     meta.custom_pages = True
                     meta.cover_count = min(4, meta.page_count)

@@ -161,10 +161,12 @@ def append_comic(
 ) -> ComicDetail:
     """Appends pages from a server-side directory to an existing or new chapter."""
     _require_known_source(source)
+    if not (req.server_path or "").strip():
+        raise HTTPException(status_code=400, detail="请提供有效非空的服务器路径（server_path 或 path）")
     meta = store.append_pages(
         source_id=source_id,
         source=source,
-        server_path=req.server_path,
+        server_path=req.server_path.strip(),
         target_chapter=req.target_chapter,
         new_chapter_title=req.new_chapter_title,
     )
@@ -199,10 +201,12 @@ def replace_comic_pages_from_path(
 ) -> ComicDetail:
     """Replaces comic or chapter pages with images from a server-side directory, purging prior OCR dialogues upon success."""
     _require_known_source(source)
+    if not (req.server_path or "").strip():
+        raise HTTPException(status_code=400, detail="请提供有效非空的服务器路径（server_path 或 path）")
     meta = store.replace_pages(
         source=source,
         source_id=source_id,
-        server_path=req.server_path,
+        server_path=req.server_path.strip(),
         target_chapter=req.target_chapter,
     )
     return _finish_pages_update(source, source_id, meta)

@@ -438,9 +438,9 @@ JmImageTool.decode_and_save(num, source_image, save_path)
 - `POST /api/library/local/inspect-pdf`（接收上传 PDF 并在隔离工作区预解包分析，返回双轨探测章节草案与 staging_token）
 - `DELETE /api/library/local/staged-pdf/{staging_token}`（物理释放暂存解包隔离区）
 - `POST /api/library/{source}/{id}/upload-pages`（支持全源，向指定漫画分批上传图片或 PDF 增量追加画页或创建新章节，兼容 `/local/{id}/upload-pages`）
-- `POST /api/library/{source}/{id}/append`（支持全源，从服务器路径增量追加图片或多卷 PDF 页面/新章节，支持平铺复合模式自动切分，兼容 `/local/{id}/append`）
+- `POST /api/library/{source}/{id}/append`（支持全源，从服务器路径增量追加图片或多卷 PDF 页面/新章节，支持平铺复合模式自动切分，支持 `server_path` / `path` 别名兼容，兼容 `/local/{id}/append`）
 - `POST /api/library/{source}/{id}/replace-pages`（支持全源，网页端批量上传高清画页或 PDF 重新装订全本或单话，支持平铺复合模式自动切分，原子替换并加盖重新装订保护）
-- `POST /api/library/{source}/{id}/replace-path`（支持全源，指定服务器本地图片或 PDF 路径秒级重新装订全本或单话）
+- `POST /api/library/{source}/{id}/replace-path`（支持全源，指定服务器本地图片、目录、多卷/单卷 PDF 或多章节子目录秒级重新装订全本或单话，支持 `server_path` / `path` 别名兼容）
 - `PATCH /api/library/{source}/{id}/metadata`（更新标题/作者/标签/叙述/自定义封面页码 `cover_indices`）
 - `PATCH /api/library/{source}/{id}/chapters/{chapterId}`（修改单章节名称）
 - `DELETE /api/library/{source}/{id}/chapters/{chapterId}`（物理删除单个章节并重排全书全局页码）

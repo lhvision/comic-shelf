@@ -515,6 +515,115 @@ class TestReplacePages(unittest.TestCase):
             thumb = self.store.ensure_page_thumb(new_meta, fetched, i)
             self.assertTrue(thumb.exists())
 
+    def _create_synthetic_pdf(self, path: Path, num_pages: int = 4) -> None:
+        import pymupdf
+        doc = pymupdf.open()
+        for i in range(1, num_pages + 1):
+            img = Image.new("RGB", (120, 160), color=(i * 30 % 255, i * 50 % 255, i * 70 % 255))
+            buf = io.BytesIO()
+            img.save(buf, format="JPEG")
+            img_bytes = buf.getvalue()
+            page = doc.new_page(width=120, height=160)
+            page.insert_image(page.rect, stream=img_bytes)
+        doc.save(str(path))
+        doc.close()
+
+    def test_replace_from_directory_containing_single_pdf(self):
+        import os
+        self._setup_sample_comic("test", "dir_single_pdf")
+        pdf_dir = self.tmp_dir / "pdf_folder_single"
+        pdf_dir.mkdir(parents=True, exist_ok=True)
+        pdf_file = pdf_dir / "manga.pdf"
+        self._create_synthetic_pdf(pdf_file, num_pages=3)
+
+        os.environ["COMIC_SHELF_ALLOWED_DIRS"] = str(self.tmp_dir)
+        try:
+            new_meta = self.store.replace_pages("test", "dir_single_pdf", server_path=str(pdf_dir))
+            self.assertTrue(new_meta.custom_pages)
+            self.assertEqual(new_meta.page_count, 3)
+            pages_dir = self.store.pages_dir("test", "dir_single_pdf")
+            self.assertTrue((pages_dir / "00001.jpeg").exists() or (pages_dir / "00001.jpg").exists() or (pages_dir / "00001.png").exists())
+        finally:
+            os.environ.pop("COMIC_SHELF_ALLOWED_DIRS", None)
+
+    def test_replace_from_directory_containing_multiple_pdfs(self):
+        import os
+        self._setup_sample_comic("test", "dir_multi_pdfs")
+        pdf_dir = self.tmp_dir / "pdf_folder_multi"
+        pdf_dir.mkdir(parents=True, exist_ok=True)
+        self._create_synthetic_pdf(pdf_dir / "vol1.pdf", num_pages=2)
+        self._create_synthetic_pdf(pdf_dir / "vol2.pdf", num_pages=3)
+
+        os.environ["COMIC_SHELF_ALLOWED_DIRS"] = str(self.tmp_dir)
+        try:
+            new_meta = self.store.replace_pages("test", "dir_multi_pdfs", server_path=str(pdf_dir))
+            self.assertTrue(new_meta.custom_pages)
+            self.assertEqual(new_meta.page_count, 5)
+            self.assertEqual(len(new_meta.chapters), 2)
+            self.assertEqual(new_meta.chapters[0].page_count, 2)
+            self.assertEqual(new_meta.chapters[0].start, 1)
+            self.assertEqual(new_meta.chapters[1].page_count, 3)
+            self.assertEqual(new_meta.chapters[1].start, 3)
+        finally:
+            os.environ.pop("COMIC_SHELF_ALLOWED_DIRS", None)
+
+    def test_replace_from_directory_containing_subdirs(self):
+        import os
+        self._setup_sample_comic("test", "dir_subdirs")
+        subdirs_dir = self.tmp_dir / "comic_subdirs"
+        ch1 = subdirs_dir / "ch1"
+        ch2 = subdirs_dir / "ch2"
+        ch1.mkdir(parents=True, exist_ok=True)
+        ch2.mkdir(parents=True, exist_ok=True)
+        (ch1 / "01.png").write_bytes(self._create_sample_img("red"))
+        (ch1 / "02.png").write_bytes(self._create_sample_img("green"))
+        (ch2 / "01.png").write_bytes(self._create_sample_img("blue"))
+
+        os.environ["COMIC_SHELF_ALLOWED_DIRS"] = str(self.tmp_dir)
+        try:
+            new_meta = self.store.replace_pages("test", "dir_subdirs", server_path=str(subdirs_dir))
+            self.assertTrue(new_meta.custom_pages)
+            self.assertEqual(new_meta.page_count, 3)
+            self.assertEqual(len(new_meta.chapters), 2)
+            self.assertEqual(new_meta.chapters[0].page_count, 2)
+            self.assertEqual(new_meta.chapters[1].page_count, 1)
+        finally:
+            os.environ.pop("COMIC_SHELF_ALLOWED_DIRS", None)
+
+    def test_replace_target_chapter_rejects_multi_pdf_directory(self):
+        import os
+        from app.models import Chapter
+        fetched = self._setup_sample_comic("test", "multi_guard")
+        fetched.meta.chapters = [
+            Chapter(id="c1", index=1, title="第1话", page_count=2, start=1),
+            Chapter(id="c2", index=2, title="第2话", page_count=2, start=3),
+        ]
+        self.store.save_fetched(fetched)
+
+        pdf_dir = self.tmp_dir / "guard_multi_pdf"
+        pdf_dir.mkdir(parents=True, exist_ok=True)
+        self._create_synthetic_pdf(pdf_dir / "vol1.pdf", num_pages=2)
+        self._create_synthetic_pdf(pdf_dir / "vol2.pdf", num_pages=2)
+
+        os.environ["COMIC_SHELF_ALLOWED_DIRS"] = str(self.tmp_dir)
+        try:
+            with self.assertRaises(HTTPException) as ctx:
+                self.store.replace_pages("test", "multi_guard", server_path=str(pdf_dir), target_chapter="c1")
+            self.assertEqual(ctx.exception.status_code, 400)
+            self.assertIn("单话重订仅支持单个 PDF 文件或单话图片目录", str(ctx.exception.detail))
+        finally:
+            os.environ.pop("COMIC_SHELF_ALLOWED_DIRS", None)
+
+    def test_replace_request_pydantic_alias_and_validation(self):
+        from app.models import ReplacePathRequest, ComicAppendRequest
+        r1 = ReplacePathRequest.model_validate({"path": "/path/abc"})
+        self.assertEqual(r1.server_path, "/path/abc")
+        r2 = ReplacePathRequest.model_validate({"server_path": "/path/xyz"})
+        self.assertEqual(r2.server_path, "/path/xyz")
+
+        a1 = ComicAppendRequest.model_validate({"path": "/path/append"})
+        self.assertEqual(a1.server_path, "/path/append")
+
 
 if __name__ == "__main__":
     unittest.main()

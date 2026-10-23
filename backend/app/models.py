@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import AliasChoices, BaseModel, ConfigDict, Field
 
 
 class PageRecord(BaseModel):
@@ -486,13 +486,17 @@ class LocalPathImportRequest(BaseModel):
 
 
 class ComicAppendRequest(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
     target_chapter: str = ""
     new_chapter_title: str = ""
-    server_path: str = ""
+    server_path: str = Field(default="", validation_alias=AliasChoices("server_path", "path"))
 
 
 class ReplacePathRequest(BaseModel):
-    server_path: str = ""
+    model_config = ConfigDict(populate_by_name=True)
+
+    server_path: str = Field(default="", validation_alias=AliasChoices("server_path", "path"))
     target_chapter: str = ""
 
 
