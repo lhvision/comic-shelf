@@ -139,7 +139,8 @@
    - 尺寸属性 `size="sm" | "md" | "lg" | "xl"`（适配简单确认至多字段大面板）；
    - 水印开关 `watermark: boolean`（纸间默认开启，暗室默认关闭）；
    - 架构基建：基于 HTML5 原生 `<dialog>` 顶层渲染体系（Top Layer）与原生无障碍焦点陷阱，辅以 `<Transition>` 保持淡出平滑度；
-   - 交互契约：支持 `closeOnBackdrop`、`closeOnEsc`、`showCloseButton`、`preventClose` 与 `ariaLabel`，阻止关闭时触发 `is-shaking` 优雅微弹反馈；
+   - 交互契约：支持 `closeOnBackdrop`、`closeOnEsc`、`showCloseButton`、`preventClose` 与 `ariaLabel`，阻止关闭时触发 `is-shaking` 优雅微弹反馈；变动批处理中（`preventClose: true`）底层自动注入 `beforeunload` 原生离页防护（带 `event.returnValue = ''` 跨浏览器规范对齐）；
+   - 变动防逃逸协同：所有破坏性或异步变更弹窗（画页重订/追加/元数据保存/章节删改）统一接驳 `:prevent-close="isPending"`，底部取消按钮禁用，表单区应用 `.is-submitting` / `.is-saving`（`pointer-events: none; opacity: 0.7;`），函数入口统一注入顶层防重入守卫；
    - 焦点归还：关闭后自动将光标送回触发源（遵循 WCAG 2.1 2.4.3 Focus Restoration）；
    - 声明式指令：关闭按钮原生挂载 `:commandfor="dialogId" command="close"`，并监听原生 `command` 事件；
 2. **系统安全门禁（`GateView.vue` & `src/components/gate/`）**：
@@ -203,6 +204,7 @@
 - **标准变体与尺寸契约**：
   - 六色变体：`variant="primary" | "secondary" | "ghost" | "soft" | "danger" | "success"`（严格映射 `tokens.css` 主色、墨色与状态色，支持 `block` 占满宽度）；
   - 规范四阶尺寸：`size="xs"` (28px) | `"sm"` (32px) | `"md"` (40px, 默认) | `"lg"` (48px)，触控区域结合移动端自适应收缩；
+  - **图文与纯图标双轨 Loading 呈现**：纯图标按钮（`isIconOnly: true`）在 `loading: true` 时居中渲染 `.btn-spinner`；常规图文按钮在 `loading: true` 时将 `.btn-spinner` 前置作为 Prefix 图元，**无缝保留文本插槽 `<slot>` 内容**（自动阻断后缀图标），保证用户既能获得 Spinner 动效，又能清晰读取「正在重新装订…」、「保存修改…」等动态反馈文字；
 - **多态渲染与跳转安全（Polymorphic ARIA Navigation）**：
   - 传入 `to` 时自动以 `<RouterLink>` 渲染；传入 `href` 时自动以 `<a>` 渲染（支持 `target="_blank"` 自动补齐 `rel="noopener noreferrer"`）；未提供时渲染原生 `<button>`；
   - **链接禁用态拦截铁律**：当处于 `disabled` 或 `loading` 状态时，多态链接自动挂载 `aria-disabled="true"`、`tabindex="-1"`，并在底层强制 `event.preventDefault()` + `event.stopPropagation()`，保持 DOM 节点稳定的同时彻底杜绝链接误触跳转；
