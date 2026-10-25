@@ -550,7 +550,7 @@
 
 - **症状**：`vp check` 报通过但运行白屏或报 `TS2339`/`TS2551` 属性不存在，模板绑定的响应式变量静默失效。
 - **根因**：`vp check` 仅校验脚本内部类型，无法深入检测 `.vue` 模板 `<template>` 内部表达式；逻辑从组件抽取到 Composable 时漏在 setup 顶层解构模板引用的属性。
-- **红线**：任何涉及 `.vue` 文件的变更交付前必须运行 `pnpm type-check`（基于 `vue-tsc --build` 增量验证）；Composable 返回值必须声明清晰契约并在 `<script setup>` 顶层精准解构模板绑定的 Ref。
+- **红线**：任何涉及 `.vue` 文件的变更交付前必须运行 `vpr type-check`（基于 `vue-tsc --build` 增量验证）；Composable 返回值必须声明清晰契约并在 `<script setup>` 顶层精准解构模板绑定的 Ref。
 
 ### 93. 轮询状态提前覆写与任务终止反馈静默吞没陷阱
 

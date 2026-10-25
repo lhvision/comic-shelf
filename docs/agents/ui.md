@@ -54,7 +54,7 @@
   - **必须派一个独立子代理（独立上下文）评审**（角色：`Design Director`）；
   - **子代理派发指令契约**：Prompt 中必须显式要求：_“请先读取 `<impeccable-dir>/reference/critique.md`，严格按照其 10 项 Nielsen 可用性评分标准与认知负荷检测逻辑审查目标代码，必须挑出至少 1~2 项实质性 P1 缺陷，严禁全打满分（40/40）的虚假汇报”_；
 - **B 轨（客观·机器规则扫描）**：
-  - 必须在终端运行 `pnpm detect:slop <target-file>`，通过确定性规则扫描排除显性 Slop 与格式漏洞；
+  - 必须在终端运行 `vpr detect:slop <target-file>`，通过确定性规则扫描排除显性 Slop 与格式漏洞；
 - **分级归类**：整理为 **P0（阻断）/ P1（缺陷）/ P2（体验）** 清单；刻意保留的取舍写进 `.impeccable/critique/ignore.md`。
 
 ### 4. 照单系统修复：`/impeccable polish <target>`
@@ -69,7 +69,7 @@
 - **产物双轨落盘铁律（必须物理分开）**：
   1. **评审快照（事实痕迹）**：运行项目便携命令落盘至 `.impeccable/critique/`，**只追加不覆盖**：
      ```bash
-     pnpm critique write <slug> <critique-report.md>
+     vpr critique write <slug> <critique-report.md>
      ```
   2. **现状地图（最新真理）**：若涉及**设计 Token 演进、核心组件变体（如 Modal 变体）、破坏性视觉规范变更或新增全局交互隐喻**，提炼并更新 `DESIGN_NOTES.md`（常青设计系统规范）；单次评审细节由 `.impeccable/critique/` 快照承载，避免历史流水账无节制堆叠；
   3. **严禁混写**：重写决策会污染历史，快照只记录当次评审，设计系统规范只记录当前真实基准与通用定律。
@@ -83,4 +83,4 @@ Agent 在声明任务完成前，必须核对以下红线：
 1. **严禁口头走流程**：对话里写了“我执行了 Impeccable”，但 `.impeccable/critique/` 没生成文件的，判定为任务未完成；
 2. **严禁自导自演假评审**：Critique 阶段必须派一个独立子代理（独立上下文）评审，严禁在同一会话中自己量自己的尺子；
 3. **严禁无瑕疵满分快照**：全新或重构组件若出现 40/40 满分且无任何 P1 待办，判定为敷衍应付；
-4. **严禁绝对系统路径**：落盘与检测工具必须走 `pnpm critique write` / `pnpm detect:slop` 跨平台代理，严禁硬编码本机路径。
+4. **严禁绝对系统路径**：落盘与检测工具必须走 `vpr critique write` / `vpr detect:slop` 跨平台代理，严禁硬编码本机路径。

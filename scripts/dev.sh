@@ -2,7 +2,7 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-export PATH="$HOME/.cargo/bin:$PATH"
+export PATH="$HOME/.vite-plus/bin:$HOME/.local/bin:$HOME/.cargo/bin:$PATH"
 
 # Auto-detect Python interpreter in order: project .venv -> parent .venv -> backend .venv -> PATH python3/python
 PYTHON=""
@@ -215,7 +215,15 @@ if [ -x "$IMSEARCH_BIN" ]; then
 fi
 
 # 3. Start Frontend Web
-pnpm run dev &
+if command -v vp >/dev/null 2>&1; then
+  vp run dev &
+elif command -v pnpm >/dev/null 2>&1; then
+  pnpm run dev &
+elif [ -x "./node_modules/.bin/vp" ]; then
+  ./node_modules/.bin/vp run dev &
+else
+  npx vp run dev &
+fi
 WEB_PID=$!
 
 echo "Paper Room API: http://127.0.0.1:8000"

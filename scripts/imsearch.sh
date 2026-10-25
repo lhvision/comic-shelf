@@ -121,7 +121,7 @@ cmd_status() {
       q_mtime=$(stat -c %Y "$IMSEARCH_CONF/quantizer.bin" 2>/dev/null || echo 0)
       i_mtime=$(stat -c %Y "$IMSEARCH_CONF/invlists.bin" 2>/dev/null || echo 0)
       if [ "$q_mtime" -gt "$((i_mtime + 10))" ]; then
-        echo "   - ⚠️ 警告: quantizer.bin 比 invlists.bin 新，可能存在索引失步风险！建议执行 pnpm imsearch train"
+        echo "   - ⚠️ 警告: quantizer.bin 比 invlists.bin 新，可能存在索引失步风险！建议执行 vpr imsearch train"
       else
         echo "   - 索引同步: 正常（聚类模型与倒排列表已对齐）"
       fi

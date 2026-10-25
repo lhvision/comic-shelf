@@ -286,7 +286,7 @@ function main() {
     process.exit(hasErrors ? 1 : 0)
   }
 
-  console.log('\n📜 纸间 · 性能与强制同步重排静态扫描 (pnpm detect:perf)')
+  console.log('\n📜 纸间 · 性能与强制同步重排静态扫描 (vpr detect:perf)')
   console.log(`已扫描 ${files.length} 个前端源码文件...\n`)
 
   if (allFindings.length === 0) {

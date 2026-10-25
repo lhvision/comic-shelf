@@ -26,12 +26,12 @@
 
 ## 交付门禁
 
-- `vp check` 0 错误；改了 `.vue` 再跑 `pnpm type-check`。
+- `vp check --deny-warnings` 0 错误；改了 `.vue` 再跑 `vpr type-check`。
 - 只跑相关单测：`vp test src/__tests__/<Target>.spec.ts`，日常不跑全量。
-- 改了 Python：`pnpm test:py`。
-- 结构性 UI 变更：按 `docs/agents/ui.md` 请独立子代理评审，并用 `pnpm critique write` 落盘快照。
-- E2E 只在新增路由、跨页流程重构或用户要求时，最后跑单条：`pnpm ai-e2e:test e2e/tests/<file>.spec.ts -g "<用例>"`。
+- 改了 Python：`vpr test:py`。
+- 结构性 UI 变更：按 `docs/agents/ui.md` 请独立子代理评审，并用 `vpr critique write` 落盘快照。
+- E2E 只在新增路由、跨页流程重构或用户要求时，最后跑单条：`vpr ai-e2e:test e2e/tests/<file>.spec.ts -g "<用例>"`。
 
 ## 常用命令
 
-`pnpm dev:all`（API + Web）· `pnpm api` · `vp dev` · `vp build` · `pnpm build:ext` · `pnpm imsearch <action>` · `pnpm detect:slop <target>` · `pnpm detect:perf`
+`vpr dev:all`（API + Web）· `vpr api` · `vp dev` · `vp build` · `vpr build:ext` · `vpr imsearch <action>` · `vpr detect:slop <target>` · `vpr detect:perf`

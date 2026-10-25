@@ -27,7 +27,7 @@ while IFS= read -r f; do
   [ -n "$f" ] && TEST_FILES+=("$f")
 done < <(find backend/tests -maxdepth 1 -name 'test_*.py' | sort)
 
-# Support running specific tests (e.g. pnpm test:py auth) or all by default
+# Support running specific tests (e.g. vpr test:py auth) or all by default
 if [ $# -gt 0 ]; then
   for arg in "$@"; do
     matched=false

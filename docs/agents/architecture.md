@@ -483,7 +483,7 @@ JmImageTool.decode_and_save(num, source_image, save_path)
   - `invlists.bin`：倒排索引文件，支撑毫秒级向量相似度匹配。
 - **索引触发与增量构建机制**：
   - **收录新漫画时**：不实时同步重构索引（避免频繁触发 CPU 密集的特征提取与聚类重训）；
-  - **日常增量追加（默认行为，秒级完成）**：运行 `pnpm reindex:image`（执行 `scripts/reindex.sh`）。脚本检测到已存在 `centroids.bin` 时，**仅执行 `add`（提取新图特征）+ `build`（追加未索引特征至倒排索引）**，旧特征与聚类模型 100% 保留，零重复计算；
+  - **日常增量追加（默认行为，秒级完成）**：运行 `vpr reindex:image`（执行 `scripts/reindex.sh`）。脚本检测到已存在 `centroids.bin` 时，**仅执行 `add`（提取新图特征）+ `build`（追加未索引特征至倒排索引）**，旧特征与聚类模型 100% 保留，零重复计算；
   - **全量重置重训**：仅在显式传入 `--full` 参数（`bash scripts/reindex.sh --full`）或首次初始化时，重新运行 K-Means 训练聚类中心并重构全量倒排索引。
 
 ## 7. 存储架构与规模演进分析（千万级性能评估）
@@ -517,6 +517,6 @@ JmImageTool.decode_and_save(num, source_image, save_path)
 
 ## 8. 后端测试
 
-- 改了 Python 就跑 `pnpm test:py`（`scripts/test_py.sh`）：先跑 `backend/check_backend.py` 动态 AST 巡检（语法、导入、未定义符号），再跑 `backend/tests/test_*.py` 全部套件，要求全绿。
-- 只跑某一个套件：`pnpm test:py <文件名关键词>`，如 `pnpm test:py auth`。
+- 改了 Python 就跑 `vpr test:py`（`scripts/test_py.sh`）：先跑 `backend/check_backend.py` 动态 AST 巡检（语法、导入、未定义符号），再跑 `backend/tests/test_*.py` 全部套件，要求全绿。
+- 只跑某一个套件：`vpr test:py <文件名关键词>`，如 `vpr test:py auth`。
 - 中间件全链路（鉴权、`no-store`、401）由 `backend/tests/test_dialogue_http_stack.py` 这类用例用真 HTTP 请求锁住，改中间件或路由后必须一起过。

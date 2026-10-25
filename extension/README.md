@@ -32,7 +32,7 @@
 
 1. **获取离线扩展包**：
    - **方式 A（点击下载）**：从 GitHub Releases 下载最新版 [**`paper-room-extension.zip`**](https://github.com/lhvision/comic-shelf/releases/latest/download/paper-room-extension.zip) 并解压到本地文件夹；
-   - **方式 B（本地生成）**：在 `comic-shelf` 项目根目录下运行 `pnpm build:ext` 生成；
+   - **方式 B（本地生成）**：在 `comic-shelf` 项目根目录下运行 `vpr build:ext` 生成；
    - **方式 C（免打包）**：直接在浏览器加载本项目现成的 `extension/` 源码文件夹。
 2. **加载到浏览器**：
    - 打开 Chrome / Edge / Brave 浏览器，在地址栏输入：

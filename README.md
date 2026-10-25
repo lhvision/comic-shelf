@@ -32,7 +32,7 @@
   - **双模智能提取**：列表/搜索页封面卡片超链接右键直接入库，免除新开标签页开销；本子详情/阅读页空白处右键智能提取车号；
   - **域名严格隔离**：基于 Chrome 扩展 `documentUrlPatterns` 机制，在普通日常网站（百度/Google/B站等）右键菜单彻底隐形，0 视觉污染；支持选项页动态增补新分流域名；
   - **极简无打扰与深层直达**：纯原生 Manifest V3 标准，0 框架包袱，打包体积仅 49KB；系统原生通知（`chrome.notifications`）与角标反馈，点击直达纸间阅览室详情页；
-  - 源码内聚于 [`extension/`](extension/)（详见 [扩展使用指南](extension/README.md)），浏览器开发者模式直接加载解压即可使用，支持通过 `pnpm build:ext` 生成 Release 离线包。
+  - 源码内聚于 [`extension/`](extension/)（详见 [扩展使用指南](extension/README.md)），浏览器开发者模式直接加载解压即可使用，支持通过 `vpr build:ext` 生成 Release 离线包。
 - **来源导航单一真理源与收录工作台解耦架构（Source SSOT）**：
   - 彻底解耦顶栏来源导航（`全部 | 01 禁漫 | 02 本地 | 03 哔咔 | 04 拷贝`）与 Hero 收录表单，废除“嵌套 Tab”反模式与认知冗余；
   - **「全部」视图**：Hero 回归单栏典藏大片版式（`hero--single`），不常驻录入卡片，聚焦书房总揽、诗意导语与藏书统计，配备轻巧的「录入新卷」动态药丸直达对应源；
@@ -160,11 +160,10 @@
 
 ```bash
 # 1. 初始化 Python 后端依赖（创建 .venv 并安装依赖）
-pnpm setup:py
+vpr setup:py
 
 # 2. 安装前端依赖
 vp install
-# 或 pnpm install
 
 # 3.（可选）台词 OCR 算力依赖——只有要跑 scripts/ocr.sh 的机器需要，读者端不用装
 bash scripts/ocr.sh install       # 检测到 NVIDIA 显卡即在项目内建 .venv-ocr/ 并默认走 GPU
@@ -172,23 +171,24 @@ bash scripts/ocr.sh install       # 检测到 NVIDIA 显卡即在项目内建 .v
 # Apple 机器装不出加速器（onnxruntime 无 macOS CUDA 构建），留 CPU 线即可，大批量交给带卡机器
 
 # 4. 启动开发环境（前后端热重载）
-pnpm dev:all
+vpr dev:all
 
 # 或分别启动：
-pnpm api       # 后端 FastAPI（端口 8000）
-vp dev         # 前端 Vite+（端口 5173，已自动反代 /api 到 8000）
+vpr api       # 后端 FastAPI（端口 8000）
+vp dev        # 前端 Vite+（端口 5173，已自动反代 /api 到 8000）
 ```
 
 常用质量与维护命令：
 
 ```bash
-vp check                               # 格式化 + Lint + 类型检查
+vp check --deny-warnings               # 格式化 + Lint + 类型检查（0 Warning 门禁）
 vp test src/__tests__/<Target>.spec.ts # 精准单测验证（严禁日常全量）
-pnpm reindex:image                     # 增量追加以图搜图索引（秒级完成，自动适配本地/Docker环境）
-vp build                               # 生产打包
+vpr reindex:image                     # 增量追加以图搜图索引（秒级完成，自动适配本地/Docker环境）
+vp build                               # 生产编译（Rolldown 原生直调）
+vpr build                              # 完整生产打包流水线（含类型校验）
 ```
 
-> 💡 **以图搜图索引构建**：批量收录或缓存新漫画后，随时可在终端执行 `pnpm reindex:image` 秒级追加新图特征至倒排索引；若宿主机未编译 `imsearch`，脚本会自动检测正在运行的 Docker 识图容器并在容器内执行。更多说明详见下文以图搜图章节。
+> 💡 **以图搜图索引构建**：批量收录或缓存新漫画后，随时可在终端执行 `vpr reindex:image` 秒级追加新图特征至倒排索引；若宿主机未编译 `imsearch`，脚本会自动检测正在运行的 Docker 识图容器并在容器内执行。更多说明详见下文以图搜图章节。
 
 ---
 
@@ -245,13 +245,13 @@ docker compose restart imsearch
 当 NAS 为低功耗 CPU 时，可在电脑/WSL2 上运行 `imsearch`，通过 SMB 挂载 NAS 漫画目录进行高性能识图：
 
 ```bash
-pnpm imsearch start    # 后台启动识图服务 (:8765)
-pnpm imsearch stop     # 停止服务
-pnpm imsearch restart  # 重启服务
-pnpm imsearch status   # 查看运行状态与健康度
-pnpm imsearch reindex  # 日常增量追加新本子特征并自动热重载（秒级）
-pnpm imsearch train    # 全量重新训练 512 聚类中心并重建索引
-pnpm imsearch logs     # 查看实时搜索日志
+vpr imsearch start    # 后台启动识图服务 (:8765)
+vpr imsearch stop     # 停止服务
+vpr imsearch restart  # 重启服务
+vpr imsearch status   # 查看运行状态与健康度
+vpr imsearch reindex  # 日常增量追加新本子特征并自动热重载（秒级）
+vpr imsearch train    # 全量重新训练 512 聚类中心并重建索引
+vpr imsearch logs     # 查看实时搜索日志
 ```
 
 ### 3. 宿主机一键脚本智能代理（单机 Docker 模式）
@@ -260,7 +260,7 @@ pnpm imsearch logs     # 查看实时搜索日志
 
 ```bash
 # 日常增量构建（脚本会自动检测正在运行的 Docker 识图容器并自动在容器内执行）
-pnpm reindex:image
+vpr reindex:image
 # 或直接运行
 bash scripts/reindex.sh
 

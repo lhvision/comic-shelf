@@ -511,7 +511,7 @@ graph TD
 ### 14.3 契约注释与精准解构
 
 - 新增或重构 Composable、子组件时写完整 JSDoc/TSDoc：文件职责、入参、返回值；组件写明 Props 与 Emits 的业务含义。
-- 视图只解构模板和方法实际用到的 Ref 与函数。多余的声明由两道检查拦住：`.ts` 走 oxlint 的 `no-unused-vars`（`vite.config.ts`）；`.vue` 由 `pnpm type-check` 按 `tsconfig.app.json` 的 `noUnusedLocals` / `noUnusedParameters` 检查，oxlint 对 `.vue` 关掉了这条规则，免得误报模板 ref。错题本 #23、#99。
+- 视图只解构模板和方法实际用到的 Ref 与函数。多余的声明由两道检查拦住：`.ts` 走 oxlint 的 `no-unused-vars`（`vite.config.ts`）；`.vue` 由 `vpr type-check` 按 `tsconfig.app.json` 的 `noUnusedLocals` / `noUnusedParameters` 检查，oxlint 对 `.vue` 关掉了这条规则，免得误报模板 ref。错题本 #23、#99。
 
 ## 15. 打包分块、长效缓存与异步分流契约（ADR 0022）
 
