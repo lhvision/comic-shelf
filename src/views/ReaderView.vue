@@ -3,8 +3,8 @@
  * @file ReaderView.vue - 沉浸式阅读器主视图（纯编排视图，脚本严格 ≤150 行）
  */
 
-import { computed, onUnmounted, ref, useTemplateRef } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
+import { computed, onUnmounted, ref, useTemplateRef, watch } from 'vue'
+import { onBeforeRouteLeave, useRoute, useRouter } from 'vue-router'
 import { usePreferredReducedMotion, useScrollLock, useToggle } from '@vueuse/core'
 import { useReaderSettings } from '@/composables/useReaderSettings'
 import { useReaderPaging } from '@/composables/useReaderPaging'
@@ -15,6 +15,7 @@ import { useReaderData } from '@/composables/useReaderData'
 import { useReaderBubble } from '@/composables/useReaderBubble'
 import { useReaderCompletion } from '@/composables/useReaderCompletion'
 import { useReaderInteraction } from '@/composables/useReaderInteraction'
+import { useReadingSession } from '@/composables/useReadingSession'
 import ReaderTopBar from '@/components/reader/ReaderTopBar.vue'
 import ReaderLoadingState from '@/components/reader/ReaderLoadingState.vue'
 import ReaderViewport from '@/components/reader/ReaderViewport.vue'
@@ -98,6 +99,27 @@ const {
 
 const { recommendations, onReaderCompleted, onSelectComic, onOpenComicDetail, onBackToShelf } =
   useReaderCompletion({ source, sourceId, detail, total, lastRead })
+
+const { recordSession, deactivateSession } = useReadingSession()
+
+watch(
+  [source, sourceId, currentPage, total],
+  ([s, sid, p, tot]) => {
+    if (s && sid && p > 0) {
+      recordSession({
+        source: s,
+        sourceId: sid,
+        page: p,
+        totalPages: tot,
+      })
+    }
+  },
+  { immediate: true },
+)
+
+onBeforeRouteLeave(() => {
+  deactivateSession()
+})
 
 onUnmounted(() => {
   isBodyLocked.value = false

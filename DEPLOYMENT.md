@@ -582,7 +582,7 @@ curl "http://127.0.0.1:8000/api/search/dialogue-semantic?q=告白&limit=3" \
 
 - **Node.js 编译阶段（打包后完全丢弃）**：使用轻量 `node:24-alpine` 仅执行前端构建（`pnpm run build-only`），**Node.js、pnpm 及庞大的 `node_modules` 均不会打包进最终镜像**；已内置 BuildKit 物理缓存挂载（`--mount=type=cache,id=paper-room-pnpm`），即使代码更新拉取了新的依赖包，已有依赖 100% 从宿主机磁盘复用，秒级极速装配；
 - **最终生产镜像**：仅基于官方精简镜像 `python:3.12-slim`，安装纯 Python 运行时依赖（同样内置 pip cache 挂载），附带约 2MB 的前端静态成品，镜像极小、拉取速度极快。台词 OCR 与语义检索的推理依赖**都不在这张基础依赖表里**（前者在算力机、后者见 §5.1.2），要就在自己的构建里加一层；
-- **依赖防膨胀锁顶原则**：为防范底层 C/二进制包升级突变（如 `pymupdf 2.0` 默认绑入 `onnxruntime` 与 `numpy` 导致镜像暴涨 200MB+），对带有扩展特性的底层依赖在 `backend/requirements.txt` 中实施明确的主版本上限约束（如 `pymupdf>=1.24.0,<2.0.0`），坚决守卫轻量化底线（见 `docs/PITFALLS.md` #168）。
+- **依赖防膨胀锁顶原则**：为防范底层 C/二进制包升级突变（如 `pymupdf 2.0` 默认绑入 `onnxruntime` 与 `numpy` 导致镜像暴涨 200MB+），`backend/requirements.txt` 实施确定性全量精准版本锁定（`==`）；并通过 BuildKit 宿主机独立缓存挂载（`--mount=type=cache,target=/root/.cache/pip`）实现 wheel 缓存物理隔离，既杜绝 wheel 归档固化进最终镜像，又保障改动依赖时的极速装配（见 `docs/PITFALLS.md` #168）。
 
 ### 6.1 本地打包构建与测试
 

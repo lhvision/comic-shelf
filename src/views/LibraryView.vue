@@ -35,6 +35,7 @@ import { useToast } from '@/composables/useToast'
 import { useAuth } from '@/composables/useAuth'
 import { useSystemEvents } from '@/composables/useSystemEvents'
 import { useOfflineSync } from '@/composables/useOfflineSync'
+import { useReadingSession } from '@/composables/useReadingSession'
 import { isComicSource } from '@/utils/is'
 import { api, DEFAULT_PROVIDERS } from '@/api/client'
 import type { ComicSource, ProviderInfo } from '@/types'
@@ -207,6 +208,8 @@ const {
   searchInputRef: searchInputEl,
 })
 
+const { tryResumeSession } = useReadingSession()
+
 onBeforeRouteLeave(() => shelf.saveScrollPosition(window.scrollY))
 
 watch(activeSource, (newSource, oldSource) => {
@@ -214,15 +217,24 @@ watch(activeSource, (newSource, oldSource) => {
     shelf.resetAllShelfState()
     const hasHydrated = shelf.hydrateFromQuery(route.query)
     searchInput.value = hasHydrated ? shelf.search.value : ''
+    shelf.persistedSource.value = newSource
     window.scrollTo({ top: 0, behavior: 'instant' })
   }
 })
 
 onMounted(() => {
+  // PWA 独立窗口启动接续上次未读完的藏书
+  if (Object.keys(route.query).length === 0) {
+    const resumed = tryResumeSession(router, toast)
+    if (resumed) return
+  }
+
   // 仅在初始挂载时单向恢复 URL 参数（SSOT 保持内存驱动，杜绝交互过程高频 replace 污染导航）
   const hasHydrated = shelf.hydrateFromQuery(route.query)
   if (hasHydrated && shelf.search.value && !searchInput.value) {
     searchInput.value = shelf.search.value
+  } else if (!hasHydrated && route.query.source === undefined && shelf.persistedSource.value) {
+    void router.replace({ query: { ...route.query, source: shelf.persistedSource.value } })
   }
   if (shelf.shelfScrollY.value > 0) {
     nextTick(() => window.scrollTo({ top: shelf.shelfScrollY.value, behavior: 'instant' }))

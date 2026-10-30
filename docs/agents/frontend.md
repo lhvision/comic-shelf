@@ -23,7 +23,8 @@
 | `src/composables/useSearchCommands.ts`             | 快捷指令中枢与命令胶囊状态机：斜杠触发、模糊过滤、键盘选中、字段限定（/车号、/作者、/标签）与台词列表冻结                                                                                                                                                                 |
 | `src/composables/useSearchHistory.ts`              | 搜索历史状态机：端侧 localStorage 驱动、最多 8 条 LRU 淘汰、快捷指令（/台词、/作者、/车号、/标签）徽标沉淀、防重复置顶、单条移除与一键清空                                                                                                                                |
 | `src/composables/useDialogueSearch.ts`             | 分镜台词全文检索状态机：短词防爆守卫、防抖请求与即时 Enter 执行、后台刷新非破坏防闪烁、**结果粒度是页不是气泡**（`bubble_count` 为候选池内命中数、`>1` 才显示）、直达时一次性带齐 `bubble_box`＋`bubble_boxes`＋`bubble_text`（编解码复用 `useReaderBubble`，两侧各封顶） |
-| `src/composables/useShelfState.ts`                 | 书架会话上下文记忆单例：跨路由纵向视口滚动锚定（免疫浏览器历史快照归零）、展开批次、归档专匣开闭、筛选条件保持、单向 URL 深层水合（hydrateFromQuery）与直达分享链接构建（buildShareUrl）                                                                                  |
+| `src/composables/useShelfState.ts`                 | 书架会话上下文记忆单例：跨路由纵向视口滚动锚定、展开批次、归档开闭、端侧核心偏好（来源Tab、排序规则、阅读状态、只看喜欢）持久化、单向 URL 深层水合（hydrateFromQuery）与直达分享链接构建（buildShareUrl）                                                                 |
+| `src/composables/useReadingSession.ts`             | PWA 独立视口阅读会话恢复状态机：画卷阅读中断记录、多租户/访客身份隔离、冷启动在读秒级接续直达与轻量提示                                                                                                                                                                   |
 | `src/composables/usePaginationFold.ts`             | 画卷与书架分批折叠展开状态机：受控步进铺开（24页/12本）、60本安全刹车、显式余量徽印计算与平滑滚顶自愈                                                                                                                                                                     |
 | `src/composables/useReaderRecommendations.ts`      | 阅读器末页接卷推荐：启发式元数据权重评分（同作者/同原作/共有标签/在读状态）与未读作品遴选                                                                                                                                                                                 |
 | `src/composables/useImageSearch.ts`                | 以图搜图状态机：文件上传、剪贴板粘贴、拖拽、置信度与状态管理                                                                                                                                                                                                              |
@@ -122,8 +123,10 @@
 
 ## 6.4 书架状态记忆、单向 URL 水合与深层直达分享（SSOT & Deep-Link Sharing）
 
-- **单一真理源（SSOT）与零路由污染**：
-  书架检索关键词（`search`）、多标签集合（`activeTags`，上限 5 个）、只看喜欢（`favoritesOnly`）、阅读状态（`readingStatus`: all/reading/completed）、排序规则（`sortBy`）以及展开批次和滚动偏移量统一由 `useShelfState`（`createGlobalState` 单例）集中驱动。
+- **单一真理源（SSOT）与端侧核心偏好持久化**：
+  书架检索关键词（`search`）、多标签集合（`activeTags`，上限 5 个）、只看喜欢（`favoritesOnly`）、阅读状态（`readingStatus`: all/reading/completed）、排序规则（`sortBy`）以及展开批次和滚动偏移量统一由 `useShelfState`（`createGlobalState` 单例）集中驱动。其中核心视图偏好（来源分区、排序模式、阅读状态与只看喜欢）通过 `useLocalStorage` 安全对象序列化落盘，PWA 进程重启或冷启动自动恢复上次使用偏好，搜索词与标签维持内存瞬态防丢失错觉。
+- **PWA 独立视口阅读会话恢复（Reading Session Resume）**：
+  读者在阅读器内未完读直接退出应用（如杀后台或锁屏）时，由 `useReadingSession` 记录中断状态；下次在 PWA 独立视口启动且处于根路径时，自动秒级直达上次在读画卷并弹出轻提示，读者主动点击返回书架离开则自动失活不打扰。
 - **杜绝高频 `router.replace`**：
   严禁在用户日常筛选、输入搜索词或切页过程中高频调用 `router.replace`。这彻底根除了 Vue Router 导航抢占抛出 `NavigationCancelled` 导致顶栏导航与页面跳转被意外中断的问题，保持低延迟交互响应。
 - **单向只读水合（`hydrateFromQuery`）**：

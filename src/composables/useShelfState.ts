@@ -9,15 +9,32 @@
  * 3. 顶栏显式点击 Logo 或切换来源时支持主动重置书架记忆，回归初态。
  */
 
-import { computed, ref } from 'vue'
-import { createGlobalState } from '@vueuse/core'
+import { computed, ref, watch } from 'vue'
+import { createGlobalState, StorageSerializers, useLocalStorage } from '@vueuse/core'
 import type { SortKey } from '@/composables/useLibraryFilter'
 import type { ReadingStatus } from '@/types'
 import type { SearchCommandType } from '@/composables/useSearchCommands'
 
 export const DEFAULT_SHELF_BATCH = 12
+export const SHELF_PREFERENCES_KEY = 'comic-shelf:shelf-preferences:v1'
+
+export interface ShelfPreferences {
+  sortBy?: SortKey
+  readingStatus?: ReadingStatus
+  favoritesOnly?: boolean
+  source?: string
+}
 
 export const useShelfState = createGlobalState(() => {
+  const preferences = useLocalStorage<ShelfPreferences>(
+    SHELF_PREFERENCES_KEY,
+    {},
+    {
+      serializer: StorageSerializers.object,
+    },
+  )
+  const initialPrefs = preferences.value || {}
+
   /** 离开书架时的垂直滚动偏移量（px） */
   const shelfScrollY = ref(0)
   /** 案头在读藏书当前展开呈现的数量（首屏默认 12 本） */
@@ -36,13 +53,28 @@ export const useShelfState = createGlobalState(() => {
   /** 当前选中的多标签集合（空数组表示全部） */
   const activeTags = ref<string[]>([])
   /** 是否只看已加入喜欢的藏书 */
-  const favoritesOnly = ref(false)
+  const favoritesOnly = ref(Boolean(initialPrefs.favoritesOnly))
   /** 阅读状态单选维度（all | reading | completed） */
-  const readingStatus = ref<ReadingStatus>('all')
+  const readingStatus = ref<ReadingStatus>(initialPrefs.readingStatus || 'all')
   /** 当前选中的排序规则 */
-  const sortBy = ref<SortKey>('recent')
+  const sortBy = ref<SortKey>(initialPrefs.sortBy || 'recent')
   /** 标签筛选条中的「更多标签」抽屉是否处于展开状态 */
   const tagTrayExpanded = ref(false)
+  /** 持久化记录的漫画源分区（供冷启动恢复） */
+  const persistedSource = ref<string>(initialPrefs.source || '')
+
+  // 监听持久化偏好并在用户操作后自动更新落盘
+  watch(
+    [sortBy, readingStatus, favoritesOnly, persistedSource],
+    ([newSort, newStatus, newFav, newSrc]) => {
+      preferences.value = {
+        sortBy: newSort,
+        readingStatus: newStatus,
+        favoritesOnly: newFav,
+        source: newSrc,
+      }
+    },
+  )
 
   /** 是否处于非默认筛选态（标签、喜欢、状态、搜索或排序非初态） */
   const hasActiveFilters = computed(
@@ -82,6 +114,8 @@ export const useShelfState = createGlobalState(() => {
     readingStatus.value = 'all'
     sortBy.value = 'recent'
     tagTrayExpanded.value = false
+    persistedSource.value = ''
+    preferences.value = {}
   }
 
   /** 显式全新导航时的全量归零重置 */
@@ -220,6 +254,7 @@ export const useShelfState = createGlobalState(() => {
     readingStatus,
     sortBy,
     tagTrayExpanded,
+    persistedSource,
     hasActiveFilters,
     saveScrollPosition,
     resetShelfScroll,

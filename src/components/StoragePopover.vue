@@ -21,6 +21,7 @@ import { formatBytes } from '@/utils/format'
 import { usePwaInstall } from '@/composables/usePwaInstall'
 import { usePwaUpdate } from '@/composables/usePwaUpdate'
 import { useToast } from '@/composables/useToast'
+import { useReadingSession } from '@/composables/useReadingSession'
 
 const {
   quota,
@@ -43,6 +44,7 @@ const {
 const { canInstall, isStandalone, showIosGuide, installApp } = usePwaInstall()
 const { needRefresh, isUpdating, applyUpdate } = usePwaUpdate()
 const { toast } = useToast()
+const { resumeOnLaunch } = useReadingSession()
 
 /** 浮层展开状态 */
 const isOpen = ref(false)
@@ -153,6 +155,12 @@ async function handleResetAll() {
           :environment-status="environmentStatus"
         />
 
+        <!-- 会话接续偏好选项 -->
+        <label class="storage-resume-toggle">
+          <input type="checkbox" v-model="resumeOnLaunch" class="storage-resume-checkbox" />
+          <span>启动自动恢复上次在读（PWA 独立模式）</span>
+        </label>
+
         <!-- 操作按钮区 -->
         <StorageActionsSection
           ref="actionsRef"
@@ -212,6 +220,22 @@ async function handleResetAll() {
   gap: var(--space-3-5);
   padding: var(--space-3-5);
   color: var(--ink-0);
+}
+
+.storage-resume-toggle {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--text-caption);
+  color: var(--ink-1);
+  cursor: pointer;
+  user-select: none;
+  padding: var(--space-0-5) 0;
+}
+
+.storage-resume-checkbox {
+  accent-color: var(--accent);
+  cursor: pointer;
 }
 
 @media (max-width: 640px) {

@@ -230,6 +230,89 @@ describe('useLibraryFilter', () => {
     expect(filtered.value.map((b) => b.source_id)).toEqual(['3', '1', '2'])
   })
 
+  it('prioritizes recently read in-progress comic to the first position in default recent sort', () => {
+    const list: LibrarySummary[] = [
+      {
+        source: 'jm',
+        source_id: 'unread_new',
+        display_id: '1',
+        title: 'Brand New Unread Comic',
+        authors: [],
+        works: [],
+        actors: [],
+        tags: [],
+        favorite: false,
+        page_count: 20,
+        views: '0',
+        likes: '0',
+        uploaded_at: '',
+        published_at: '',
+        updated_at: '',
+        imported_at: '2026-10-30T10:00:00Z',
+        cover_paths: [],
+        cached_pages: 0,
+        cover_count: 1,
+        last_page: 0,
+      },
+      {
+        source: 'jm',
+        source_id: 'reading_old_read',
+        display_id: '2',
+        title: 'Read Yesterday In-Progress',
+        authors: [],
+        works: [],
+        actors: [],
+        tags: [],
+        favorite: false,
+        page_count: 50,
+        views: '0',
+        likes: '0',
+        uploaded_at: '',
+        published_at: '',
+        updated_at: '',
+        imported_at: '2026-01-01T00:00:00Z',
+        cover_paths: [],
+        cached_pages: 5,
+        cover_count: 1,
+        last_page: 10,
+        read_updated_at: 1000,
+      },
+      {
+        source: 'jm',
+        source_id: 'reading_just_now',
+        display_id: '3',
+        title: 'Read Just Now In-Progress',
+        authors: [],
+        works: [],
+        actors: [],
+        tags: [],
+        favorite: false,
+        page_count: 50,
+        views: '0',
+        likes: '0',
+        uploaded_at: '',
+        published_at: '',
+        updated_at: '',
+        imported_at: '2026-02-01T00:00:00Z',
+        cover_paths: [],
+        cached_pages: 5,
+        cover_count: 1,
+        last_page: 25,
+        read_updated_at: 2000,
+      },
+    ]
+
+    const itemsRef = ref(list)
+    const activeSourceRef = ref('')
+    const { filtered } = useLibraryFilter(itemsRef, activeSourceRef)
+
+    expect(filtered.value.map((b) => b.source_id)).toEqual([
+      'reading_just_now',
+      'reading_old_read',
+      'unread_new',
+    ])
+  })
+
   it('prioritizes comics with unread new chapters to the top in default recent sort', () => {
     const list: LibrarySummary[] = [
       {

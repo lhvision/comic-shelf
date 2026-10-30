@@ -189,10 +189,26 @@ export function filterAndSortLibrary(
             b.cached_pages / Math.max(b.page_count, 1) - a.cached_pages / Math.max(a.page_count, 1)
           )
         default: {
-          const aTier = hasNewChapters(a) ? 0 : isCompletedComic(a) ? 2 : 1
-          const bTier = hasNewChapters(b) ? 0 : isCompletedComic(b) ? 2 : 1
+          const aTier = hasNewChapters(a)
+            ? 0
+            : isInProgressComic(a)
+              ? 1
+              : isCompletedComic(a)
+                ? 3
+                : 2
+          const bTier = hasNewChapters(b)
+            ? 0
+            : isInProgressComic(b)
+              ? 1
+              : isCompletedComic(b)
+                ? 3
+                : 2
           if (aTier !== bTier) {
             return aTier - bTier
+          }
+          if (aTier === 1) {
+            const diff = (b.read_updated_at ?? 0) - (a.read_updated_at ?? 0)
+            if (diff !== 0) return diff
           }
           return (timeMap.get(b) ?? 0) - (timeMap.get(a) ?? 0)
         }

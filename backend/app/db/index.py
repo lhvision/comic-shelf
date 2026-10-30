@@ -851,12 +851,14 @@ def query_library_index(
     if sort == "recent":
         order_sql = f"""ORDER BY {relevance_order}
             CASE
-                WHEN COALESCE(urp.last_page, 0) >= ci.page_count AND ci.page_count > 0 THEN 2
                 WHEN COALESCE(urp.total_pages, 0) > 0 AND ci.page_count > COALESCE(urp.total_pages, 0) THEN 0
-                ELSE 1
+                WHEN COALESCE(urp.last_page, 0) > 0 AND COALESCE(urp.last_page, 0) < ci.page_count AND ci.page_count > 0 THEN 1
+                WHEN COALESCE(urp.last_page, 0) = 0 THEN 2
+                ELSE 3
             END ASC,
             CASE
                 WHEN COALESCE(urp.total_pages, 0) > 0 AND ci.page_count > COALESCE(urp.total_pages, 0) THEN ci.mtime
+                WHEN COALESCE(urp.last_page, 0) > 0 AND COALESCE(urp.last_page, 0) < ci.page_count AND ci.page_count > 0 THEN COALESCE(urp.updated_at, 0)
                 ELSE 0
             END DESC,
             ci.imported_at DESC,
@@ -907,7 +909,8 @@ def query_library_index(
             ci.hidden_from_guest,
             COALESCE(uf.user_id IS NOT NULL, 0) as is_favorite,
             COALESCE(urp.last_page, 0) as last_page,
-            COALESCE(urp.total_pages, 0) as read_total_pages
+            COALESCE(urp.total_pages, 0) as read_total_pages,
+            COALESCE(urp.updated_at, 0) as read_updated_at
         FROM comics_index ci
         LEFT JOIN user_favorites uf
             ON uf.source = ci.source AND uf.source_id = ci.source_id AND uf.user_id = :user_id
