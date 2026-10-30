@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vite-plus/test'
 import { nextTick } from 'vue'
 import { useReadingSession } from '@/composables/useReadingSession'
+import { useAuth } from '@/composables/useAuth'
 import type { Router } from 'vue-router'
 
 describe('useReadingSession', () => {
@@ -186,5 +187,56 @@ describe('useReadingSession', () => {
     const resumed = tryResumeSession(router, toastSpy)
     expect(resumed).toBe(false)
     expect(replaceSpy).not.toHaveBeenCalled()
+
+    // Even if legacy session has missing userId, it defaults to 'default'
+    if (session.value) {
+      delete session.value.userId
+    }
+    // Now if userId of auth profile is different (e.g. curator), it still rejects
+    const { userId } = useAuth()
+    userId.value = 'curator_admin'
+    expect(tryResumeSession(router, toastSpy)).toBe(false)
+    userId.value = ''
+  })
+
+  it('sanitizes NaN and non-finite page inputs defensively', () => {
+    const { session, recordSession } = useReadingSession()
+    recordSession({
+      source: 'jm',
+      sourceId: '12345',
+      page: NaN,
+      totalPages: 20,
+    })
+    expect(session.value?.page).toBe(1)
+
+    recordSession({
+      source: 'jm',
+      sourceId: '12345',
+      page: -5,
+      totalPages: 20,
+    })
+    expect(session.value?.page).toBe(1)
+
+    recordSession({
+      source: 'jm',
+      sourceId: '12345',
+      page: 12.8,
+      totalPages: 20,
+    })
+    expect(session.value?.page).toBe(12)
+  })
+
+  it('clears active reading session on clearSession', () => {
+    const { session, recordSession, clearSession } = useReadingSession()
+    recordSession({
+      source: 'jm',
+      sourceId: '12345',
+      page: 5,
+      totalPages: 20,
+    })
+    expect(session.value).not.toBeNull()
+
+    clearSession()
+    expect(session.value).toBeNull()
   })
 })

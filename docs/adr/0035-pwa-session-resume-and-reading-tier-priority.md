@@ -33,7 +33,10 @@
 2. **冷启动直达与逃生通道**：
    - 仅在独立应用窗口（`display-mode: standalone` 或 `navigator.standalone`）且全局配置开启时激活；
    - 探测到合法的未读完活跃会话，冷启动直接路由直达 `/comic/:source/:sourceId/read/:page`，并以朱砂轻提示弹出「已恢复上次在读：第 X 页」；读者点击阅读器顶栏返回按钮即可安全返回书架。
-3. **控制开关**：
+3. **多租户隔离与登出主动擦除**：
+   - 实施双向归一化身份比对（`sessionUid !== currentUid`），杜绝旧版本无 `userId` 记录或跨身份绕过拦截；
+   - 侦听 `userId` 变更，在用户登出或切换账号时级联调用 `clearSession()` 彻底擦除 LocalStorage，杜绝共享设备上的在读信息残留。
+4. **控制开关**：
    - 系统设置提供持久化开关「启动时自动恢复上次阅读」（`comic-shelf:resume-on-launch:v1`，默认开启）。
 
 ### 三、书架核心视口偏好记忆（Shelf Preferences Persistence）
@@ -45,7 +48,10 @@
      - 阅读状态过滤 `readingStatus`；
      - 只看喜欢 `favoritesOnly`。
    - 检索关键词 `search` 与选中标签 `activeTags` 坚守内存瞬态，杜绝下次打开误以为藏书丢失。
-2. **Deep-Link 外部链接优先级防御**：
+2. **冷启动单向水合与切源重置解耦**：
+   - 冷启动由根路径挂载恢复 `persistedSource` 并触发 `router.replace` 时，设置瞬态水合守卫（`isHydratingSource`），阻断 `watch(activeSource)` 误触发全局重置，确保先前持久化的排序、状态与只看喜欢完好无损；
+   - 避免在重置流程中手动覆写落盘对象，完全由响应式单向流驱动落盘更新。
+3. **Deep-Link 外部链接优先级防御**：
    - 当携带 `?source=...`、`?sort=...` 等显式查询参数直达或分享打开时，URL 参数享有瞬时最高优先级，不被本地记忆覆写，亦不冲掉读者的日常本地偏好；
    - 读者显式点击顶栏 Logo 或“全部藏书”时，提供干净的重置初态通道。
 

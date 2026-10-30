@@ -8,6 +8,7 @@
  * 3. 独立应用（Standalone PWA）冷启动时检测未完结的活跃会话，提供秒级接续直达与轻量反馈提示。
  */
 
+import { watch } from 'vue'
 import { StorageSerializers, useLocalStorage } from '@vueuse/core'
 import type { Router } from 'vue-router'
 import { useAuth } from '@/composables/useAuth'
@@ -55,6 +56,13 @@ export function useReadingSession() {
   })
   const resumeOnLaunch = useLocalStorage<boolean>(RESUME_ON_LAUNCH_KEY, true)
 
+  // 用户登出或切换账号身份时立即清理会话，杜绝跨会话残留
+  watch(userId, (newUid, oldUid) => {
+    if (oldUid !== undefined && newUid !== oldUid) {
+      clearSession()
+    }
+  })
+
   /**
    * 记录或更新当前阅读会话。
    *
@@ -67,13 +75,16 @@ export function useReadingSession() {
     totalPages: number
   }): void {
     if (!data.source || !data.sourceId) return
-    const isCompleted = data.totalPages > 0 && data.page >= data.totalPages
+    const page = Number.isFinite(data.page) ? Math.max(1, Math.floor(data.page)) : 1
+    const totalPages =
+      Number.isFinite(data.totalPages) && data.totalPages > 0 ? Math.floor(data.totalPages) : 0
+    const isCompleted = totalPages > 0 && page >= totalPages
     session.value = {
       userId: userId.value || 'default',
       source: data.source,
       sourceId: data.sourceId,
-      page: Math.max(1, data.page),
-      totalPages: data.totalPages || 0,
+      page,
+      totalPages,
       updatedAt: Date.now(),
       active: !isCompleted,
     }
@@ -89,6 +100,13 @@ export function useReadingSession() {
         active: false,
       }
     }
+  }
+
+  /**
+   * 清空在读会话记录（如登出或手动重置）。
+   */
+  function clearSession(): void {
+    session.value = null
   }
 
   /**
@@ -111,7 +129,8 @@ export function useReadingSession() {
 
     // 租户/访客隔离：跨账号或访客登录时，禁止恢复前一用户的会话
     const currentUid = userId.value || 'default'
-    if (s.userId && s.userId !== currentUid) return false
+    const sessionUid = s.userId || 'default'
+    if (sessionUid !== currentUid) return false
 
     if (s.totalPages > 0 && s.page >= s.totalPages) {
       deactivateSession()
@@ -129,6 +148,7 @@ export function useReadingSession() {
     resumeOnLaunch,
     recordSession,
     deactivateSession,
+    clearSession,
     tryResumeSession,
   }
 }

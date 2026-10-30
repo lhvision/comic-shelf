@@ -212,7 +212,13 @@ const { tryResumeSession } = useReadingSession()
 
 onBeforeRouteLeave(() => shelf.saveScrollPosition(window.scrollY))
 
+let isHydratingSource = false
+
 watch(activeSource, (newSource, oldSource) => {
+  if (isHydratingSource) {
+    isHydratingSource = false
+    return
+  }
   if (oldSource !== undefined && newSource !== oldSource) {
     shelf.resetAllShelfState()
     const hasHydrated = shelf.hydrateFromQuery(route.query)
@@ -234,7 +240,12 @@ onMounted(() => {
   if (hasHydrated && shelf.search.value && !searchInput.value) {
     searchInput.value = shelf.search.value
   } else if (!hasHydrated && route.query.source === undefined && shelf.persistedSource.value) {
-    void router.replace({ query: { ...route.query, source: shelf.persistedSource.value } })
+    isHydratingSource = true
+    void router
+      .replace({ query: { ...route.query, source: shelf.persistedSource.value } })
+      .finally(() => {
+        isHydratingSource = false
+      })
   }
   if (shelf.shelfScrollY.value > 0) {
     nextTick(() => window.scrollTo({ top: shelf.shelfScrollY.value, behavior: 'instant' }))

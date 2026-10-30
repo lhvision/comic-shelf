@@ -115,7 +115,6 @@ export const useShelfState = createGlobalState(() => {
     sortBy.value = 'recent'
     tagTrayExpanded.value = false
     persistedSource.value = ''
-    preferences.value = {}
   }
 
   /** 显式全新导航时的全量归零重置 */

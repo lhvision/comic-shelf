@@ -1,5 +1,10 @@
 import { describe, it, expect, beforeEach } from 'vite-plus/test'
-import { useShelfState, DEFAULT_SHELF_BATCH } from '@/composables/useShelfState'
+import { nextTick } from 'vue'
+import {
+  useShelfState,
+  DEFAULT_SHELF_BATCH,
+  SHELF_PREFERENCES_KEY,
+} from '@/composables/useShelfState'
 
 describe('useShelfState composable', () => {
   const shelf = useShelfState()
@@ -162,6 +167,49 @@ describe('useShelfState composable', () => {
       expect(url).not.toContain('status=')
       expect(url).not.toContain('sort=')
       expect(url).toContain('tags=%E5%8D%95%E8%A1%8C%E6%9C%AC')
+    })
+  })
+
+  describe('shelf preferences persistence', () => {
+    it('persists sortBy, readingStatus, favoritesOnly and source to localStorage', async () => {
+      shelf.sortBy.value = 'pages'
+      shelf.readingStatus.value = 'reading'
+      shelf.favoritesOnly.value = true
+      shelf.persistedSource.value = 'jm'
+
+      await nextTick()
+
+      const raw = localStorage.getItem(SHELF_PREFERENCES_KEY)
+      expect(raw).not.toBeNull()
+      const parsed = JSON.parse(raw!)
+      expect(parsed.sortBy).toBe('pages')
+      expect(parsed.readingStatus).toBe('reading')
+      expect(parsed.favoritesOnly).toBe(true)
+      expect(parsed.source).toBe('jm')
+    })
+
+    it('resets persisted preferences when resetAllShelfState is called', async () => {
+      shelf.sortBy.value = 'cached'
+      shelf.readingStatus.value = 'completed'
+      shelf.favoritesOnly.value = true
+      shelf.persistedSource.value = 'picacg'
+
+      await nextTick()
+
+      shelf.resetAllShelfState()
+      await nextTick()
+
+      expect(shelf.sortBy.value).toBe('recent')
+      expect(shelf.readingStatus.value).toBe('all')
+      expect(shelf.favoritesOnly.value).toBe(false)
+      expect(shelf.persistedSource.value).toBe('')
+
+      const raw = localStorage.getItem(SHELF_PREFERENCES_KEY)
+      const parsed = JSON.parse(raw!)
+      expect(parsed.sortBy).toBe('recent')
+      expect(parsed.readingStatus).toBe('all')
+      expect(parsed.favoritesOnly).toBe(false)
+      expect(parsed.source).toBe('')
     })
   })
 })
