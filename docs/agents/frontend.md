@@ -45,7 +45,7 @@
 | `src/composables/useComicDetailActions.ts`         | 漫画详情操作编排：元数据刷新、漫画移除、阅读直达、返回书架与滚动记忆                                                                                                                                                                                                      |
 | `src/composables/useChapterCache.ts`               | 漫画全书与分话后台缓存轮询与进度状态编排：任务驱动按需轮询、页码 cached 就地对齐与任务生命周期收敛                                                                                                                                                                        |
 | `src/composables/useReaderSettings.ts`             | 阅读器设置全局状态单例持久化（VueUse `createGlobalState`）                                                                                                                                                                                                                |
-| `src/composables/useLastRead.ts`                   | 每部作品继续阅读页码持久化读写                                                                                                                                                                                                                                            |
+| `src/composables/useLastRead.ts`                   | 每部作品继续阅读页码持久化读写：本地 LocalStorage + SQLite LWW 时间戳双向对齐、防重读锁死、keepalive 与 pagehide 零延迟强制刷盘                                                                                                                                           |
 | `src/composables/useToast.ts`                      | 全局轻量印章通知 Toast 状态机（支持 info / error / success 三态提示）                                                                                                                                                                                                     |
 | `src/composables/useOfflineStorage.ts`             | 端侧离线物理存储探测、纯封面轻量化度量（1000 张上限）与旧桶静默自愈清理（StorageManager + CacheStorage 统计）                                                                                                                                                             |
 | `src/composables/useOfflineSync.ts`                | 客户端离线网络感知与记账对齐流水线：断网记账、联网自愈自动回写与 SWR 书架刷新调度                                                                                                                                                                                         |
@@ -126,7 +126,7 @@
 - **单一真理源（SSOT）与端侧核心偏好持久化**：
   书架检索关键词（`search`）、多标签集合（`activeTags`，上限 5 个）、只看喜欢（`favoritesOnly`）、阅读状态（`readingStatus`: all/reading/completed）、排序规则（`sortBy`）以及展开批次和滚动偏移量统一由 `useShelfState`（`createGlobalState` 单例）集中驱动。其中核心视图偏好（来源分区、排序模式、阅读状态与只看喜欢）通过 `useLocalStorage` 安全对象序列化落盘，PWA 进程重启或冷启动自动恢复上次使用偏好，搜索词与标签维持内存瞬态防丢失错觉。
 - **阅读会话恢复（Reading Session Resume）与极端退出防丢**：
-  读者在阅读器内未完读直接退出应用（如划掉杀后台或锁屏）时，由 `useReadingSession` 记录中断状态；下次在移动端浏览器或 PWA 启动且处于根路径时，由系统偏好 `resumeOnLaunch`（默认开启）驱动秒级直达上次在读画卷并弹出轻提示，读者主动点击返回书架离开则自动失活不打扰。结合原生 `keepalive: true` 与 `pagehide` 强制 flush，消除杀后台防抖丢进度风险；严密设立未认证前置守卫与单本沙箱隔离，杜绝越权恢复。
+  读者在阅读器内未完读直接退出应用（如划掉杀后台或锁屏）时，由 `useReadingSession` 记录中断状态；下次在移动端浏览器或 PWA 启动且处于根路径时，由系统偏好 `resumeOnLaunch`（默认开启）驱动秒级直达上次在读画卷并弹出轻提示，读者主动点击返回书架离开则自动失活不打扰。结合原生 `keepalive: true` 与 `pagehide` 强制 flush，消除杀后台防抖丢进度风险；严密设立未认证前置守卫与单本沙箱隔离，杜绝越权恢复。作品进度基于秒级时间戳执行 LWW 双向对齐并消除 `Math.max` 重读锁死，阅读器切本时解耦清除上一本残余页码，杜绝跨本踩踏。
 - **杜绝高频 `router.replace`**：
   严禁在用户日常筛选、输入搜索词或切页过程中高频调用 `router.replace`。这彻底根除了 Vue Router 导航抢占抛出 `NavigationCancelled` 导致顶栏导航与页面跳转被意外中断的问题，保持低延迟交互响应。
 - **单向只读水合（`hydrateFromQuery`）**：

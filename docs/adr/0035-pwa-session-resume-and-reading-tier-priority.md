@@ -34,14 +34,15 @@
    - 统一由系统设置项「启动时自动恢复上次阅读」（`comic-shelf:resume-on-launch:v1`，默认开启）驱动，消除脆弱的 WebKit `navigator.standalone` 环境排他限制，移动端与 PWA 体验完全一致；
    - 探测到合法的未读完活跃会话且根路径无特定查询参数时，冷启动直接路由直达 `/comic/:source/:sourceId/read/:page`，并以朱砂轻提示弹出「已恢复上次在读：第 X 页」；读者点击阅读器顶栏返回按钮即可安全返回书架。
 3. **多租户、鉴权前置与单本沙箱隔离**：
-   - 全局认证未登录拦截：若全站开启鉴权且当前处于未认证状态（`authRequired && !authenticated`），严禁恢复任何在读会话，杜绝未登录者窥探馆长私密藏书；
+   - 全局认证未登录拦截：若全站开启鉴权且当前处于未认证状态（`authRequired && (!authenticated || role === 'unauthorized')`），严禁恢复任何在读会话，杜绝未登录者窥探馆长私密藏书；
    - 单本沙箱边界：单本限定通行证（`isDirectPass`）仅允许恢复对应限定作品，严防逃逸至全库其他画卷；
    - 实施双向归一化身份比对（`normalizeSessionUid`），馆长单人模式归一化为 `curator`；
    - 侦听 `userId` 真实切换或登出（`oldUid && oldUid !== newUid`），级联调用 `clearSession()` 彻底擦除 LocalStorage，杜绝共享设备上的在读信息残留；同时豁免冷启动异步水合阶段的误清空。
 4. **移动端极端退出与防抖落盘保障**：
    - 原生 `keepalive: true`：在进度上报请求中注入原生 `keepalive: true`，即使移动端直接杀死应用，浏览器底层网络栈仍能保证完成上报；
    - 零延迟 Flush：在 `pagehide`、`beforeunload` 与作用域卸载时强制刷新 800ms 防抖队列；
-   - 进度防回退（Anti-Regression）：对齐拉取时采用 `Math.max(storage.value, prog.last_page)`，杜绝服务端旧进度冲掉本地更新记录。
+   - LWW（Last-Write-Wins）时间戳双向对齐：摒弃粗暴的 `Math.max` 单调递增逻辑（消除读者从头重读第 1 页被旧云端进度锁死弹回的缺陷）；引入秒级复合时间戳比对（`comic-shelf:last-read:...:ts`）。云端更新晚于端侧则拉取云端，端侧更新晚于云端（如从头重读、刚离线翻页）则坚守端侧真实进度并向服务端补报。
+   - 跨本状态解耦：切源或路由卸载时严格调用 `clearActiveComic()` 清理激活配置，杜绝上一部漫画残留 `currentPage` 跨本踩踏写入。
 
 ### 三、书架核心视口偏好记忆（Shelf Preferences Persistence）
 

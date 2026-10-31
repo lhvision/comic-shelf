@@ -142,11 +142,6 @@ export function useReadingSession() {
     const sessionUid = normalizeSessionUid(s.userId)
     if (sessionUid !== currentUid) return false
 
-    if (s.totalPages > 0 && s.page >= s.totalPages) {
-      deactivateSession()
-      return false
-    }
-
     const targetUrl = `/comic/${encodeURIComponent(s.source)}/${encodeURIComponent(s.sourceId)}/read/${s.page}`
     void router.replace(targetUrl)
     showToast?.(`已为您恢复上次在读：第 ${s.page} 页`, 'info')
