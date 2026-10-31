@@ -91,7 +91,7 @@ export interface LibrarySummary {
   last_page?: number
   /** 用户上次翻阅时记录的全书总页数（用于识别追更追加的新画页） */
   read_total_pages?: number
-  /** 用户上次翻阅更新的时间戳（用于案头在读时序置顶） */
+  /** 用户上次翻阅更新的时间戳（Unix timestamp 秒级整数，用于案头在读时序置顶） */
   read_updated_at?: number
 }
 

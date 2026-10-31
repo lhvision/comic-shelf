@@ -22,8 +22,10 @@ export function useLastRead(source: MaybeRefOrGetter<string>, sourceId: MaybeRef
   const uid = computed(() => userId.value || 'default')
   const key = computed(() => `comic-shelf:last-read:${uid.value}:${s.value}/${sid.value}`)
   const storage = useLocalStorage<number>(key, 0)
+  const timeKey = computed(() => `${key.value}:ts`)
+  const lastUpdated = useLocalStorage<number>(timeKey, 0)
 
-  // 1. 初始化或切换用户/作品时向后端拉取最新进度并强对齐
+  // 1. 初始化或切换用户/作品时向后端拉取最新进度并基于时间戳执行 LWW 双向对齐
   watch(
     [s, sid, uid],
     async ([curS, curSid]) => {
@@ -31,7 +33,16 @@ export function useLastRead(source: MaybeRefOrGetter<string>, sourceId: MaybeRef
       try {
         const prog = await api.getReadingProgress(curS, curSid)
         if (prog && prog.last_page > 0) {
-          storage.value = Math.max(storage.value || 0, prog.last_page)
+          const serverTime = prog.updated_at || 0
+          const localTime = lastUpdated.value || 0
+          // 仅在服务端记录严格晚于端侧最后翻页时间，或端侧尚无有效时间戳记录时对齐服务端进度；
+          // 若端侧最后更新晚于服务端（如故意从头重读、刚离线翻页或网络延迟），坚守端侧真理源并触发补报
+          if (serverTime > localTime || localTime === 0) {
+            storage.value = prog.last_page
+            lastUpdated.value = serverTime || Math.floor(Date.now() / 1000)
+          } else if (localTime > serverTime && storage.value > 0) {
+            void reportProgress(storage.value)
+          }
         }
       } catch {
         /* offline or network error */
@@ -55,6 +66,7 @@ export function useLastRead(source: MaybeRefOrGetter<string>, sourceId: MaybeRef
 
   watch(storage, (newPage) => {
     if (newPage > 0) {
+      lastUpdated.value = Math.floor(Date.now() / 1000)
       void reportProgress(newPage)
     }
   })

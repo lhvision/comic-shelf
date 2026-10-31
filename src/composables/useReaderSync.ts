@@ -74,13 +74,8 @@ export function useReaderSync(options: UseReaderSyncOptions) {
     { immediate: true },
   )
 
-  watch([source, sourceId], ([s, sid]) => {
+  watch([source, sourceId], () => {
     clearActiveComic()
-    if (s && sid && currentPage.value > 0) {
-      lastRead.value = currentPage.value
-      libraryStore.setReadingProgressLocal(s, sid, currentPage.value, userId.value)
-      void broadcastReadingProgress(currentPage.value)
-    }
   })
 
   watch(

@@ -46,7 +46,7 @@ export function normalizeSessionUid(uid?: string | null): string {
  * @returns 会话状态与恢复动作
  */
 export function useReadingSession() {
-  const { userId, authRequired, authenticated, isDirectPass, directPassComic } = useAuth()
+  const { userId, authRequired, authenticated, role, isDirectPass, directPassComic } = useAuth()
   const session = useLocalStorage<ActiveReadingSession | null>(SESSION_KEY, null, {
     serializer: StorageSerializers.object,
   })
@@ -119,8 +119,8 @@ export function useReadingSession() {
   ): boolean {
     if (!resumeOnLaunch.value) return false
 
-    // 1. 全局鉴权守卫：若开启了全站认证且当前尚未登录，严禁向未授权访客恢复任何在读会话
-    if (authRequired.value && !authenticated.value) return false
+    // 1. 全局鉴权守卫：若开启了全站认证且当前尚未登录或已失效，严禁向未授权访客恢复任何在读会话
+    if (authRequired.value && (!authenticated.value || role.value === 'unauthorized')) return false
 
     const s = session.value
     if (!s || !s.active) return false
