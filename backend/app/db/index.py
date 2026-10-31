@@ -749,7 +749,11 @@ def query_library_index(
         A tuple of (matching_comic_dictionaries, total_matched_count).
     """
     conditions: list[str] = []
-    params: dict[str, Any] = {"user_id": user_id}
+    params: dict[str, Any] = {
+        "user_id": user_id,
+        "source": source or None,
+        "is_curator": 1 if is_curator else 0,
+    }
 
     if not is_curator:
         conditions.append("ci.hidden_from_guest = 0")
@@ -852,15 +856,22 @@ def query_library_index(
         order_sql = f"""ORDER BY {relevance_order}
             CASE
                 WHEN COALESCE(urp.total_pages, 0) > 0 AND ci.page_count > COALESCE(urp.total_pages, 0) THEN 0
-                WHEN COALESCE(urp.last_page, 0) > 0 AND COALESCE(urp.last_page, 0) < ci.page_count AND ci.page_count > 0 THEN 1
-                WHEN COALESCE(urp.last_page, 0) = 0 THEN 2
-                ELSE 3
+                WHEN COALESCE(urp.last_page, 0) > 0 AND COALESCE(urp.last_page, 0) < ci.page_count AND ci.page_count > 0 
+                     AND ci.source || '/' || ci.source_id = (
+                         SELECT u.source || '/' || u.source_id 
+                         FROM user_reading_progress u 
+                         JOIN comics_index c ON c.source = u.source AND c.source_id = u.source_id
+                         WHERE u.user_id = :user_id 
+                           AND (:source IS NULL OR u.source = :source)
+                           AND (:is_curator = 1 OR c.hidden_from_guest = 0)
+                           AND COALESCE(u.last_page, 0) > 0 
+                           AND COALESCE(u.last_page, 0) < c.page_count
+                         ORDER BY COALESCE(u.updated_at, 0) DESC, c.imported_at DESC, u.source ASC, u.source_id ASC
+                         LIMIT 1
+                     ) THEN 1
+                WHEN COALESCE(urp.last_page, 0) >= ci.page_count AND ci.page_count > 0 THEN 3
+                ELSE 2
             END ASC,
-            CASE
-                WHEN COALESCE(urp.total_pages, 0) > 0 AND ci.page_count > COALESCE(urp.total_pages, 0) THEN ci.mtime
-                WHEN COALESCE(urp.last_page, 0) > 0 AND COALESCE(urp.last_page, 0) < ci.page_count AND ci.page_count > 0 THEN COALESCE(urp.updated_at, 0)
-                ELSE 0
-            END DESC,
             ci.imported_at DESC,
             ci.source ASC,
             ci.source_id ASC"""

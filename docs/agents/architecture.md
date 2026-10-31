@@ -430,7 +430,7 @@ JmImageTool.decode_and_save(num, source_image, save_path)
 - `GET /api/settings/guest-privacy` / `PUT /api/settings/guest-privacy`（获取与修改新藏书访客默认隐藏设置）
 - `GET /api/events/stream`（单向系统事件流 SSE，广播构建版本、书库变动与任务进度）
 - `GET /api/discovery/ranking`（发现页与排行榜数据：周榜/月榜/日榜，支持 `source` 与 `timeframe` 筛选）
-- `GET /api/library`（基于 SQLite `comics_index` 影子索引的毫秒级受控分页与多维筛选，参数支持 `page`, `page_size`, `status`, `favorite`, `source`, `q`, `scope`（支持 `all`, `title_id`, `id`, `author`, `tag`，默认 `all` 并按四级相关度分层重排）, `tag`, `tags`, `sort`, `ids`, `offset`；动态 JOIN 各用户独立阅读进度与喜欢）
+- `GET /api/library`（基于 SQLite `comics_index` 影子索引的毫秒级受控分页与多维筛选，参数支持 `page`, `page_size`, `status`, `favorite`, `source`, `q`, `scope`（支持 `all`, `title_id`, `id`, `author`, `tag`，默认 `all` 并按四级相关度分层重排）, `tag`, `tags`, `sort`（默认 `recent` 独幅案头手边书置顶与入库时序排布，响应透出 `read_updated_at`）, `ids`, `offset`；动态 JOIN 各用户独立阅读进度与喜欢）
 - `POST /api/library/import` `{id, source, prefetch_covers, prefetch_all, refresh}`（`refresh=true` 走增量，章节未变则复用旧 remote；已重新装订画卷禁止 refresh 覆盖；响应返回 `from_cache` 与 `cross_matches` 支持提交时弱拦截与跨源导流）
 - `POST /api/library/local/create`（自建工坊创建本地图集/多章节元数据骨架；未填 `id` 时分配时钟 `source_id`；作为 Paper Studio 外部创作平台 Machine API 规范契约长期保留）
 - `POST /api/library/local/create-from-staged-pdf`（从隔离区暂存 PDF 页面原子收录为本地多章节漫画，带章节草案与页码重排）

@@ -13,21 +13,22 @@
 
 ## 核心决策
 
-### 一、案头在读时序置顶（Active Reading Priority）与四级梯队重构
+### 一、案头在读独幅手边书置顶（Active Reading Priority）与四级梯队重构
 
 重塑书架全貌 `query_library_index`（后端 SQLite 影子索引）与 `filterAndSortLibrary`（前端 Worker / 纯函数双轨）的默认排序规则：
 
 - **Tier 0（追更更新）**：作品追加新章节且读者尚未翻阅（`ci.page_count > urp.total_pages`），按 `ci.mtime DESC` 保持最高置顶；
-- **Tier 1（案头在读）**：读者已开卷但尚未读完（`0 < last_page < page_count`），严格按读者最后翻页时间戳 `urp.updated_at DESC` 排布。**读者退出前翻过的本子天然升至全库第 1 位**；
-- **Tier 2（案头未读）**：尚未开卷的全新藏书（`last_page == 0`），按初次收录时间 `ci.imported_at DESC` 呈现新鲜感；
+- **Tier 1（案头独幅在读手边书）**：读者最近翻阅的**独幅在读藏书**（`0 < last_page < page_count` 且处于全库 `read_updated_at` 峰值），独占置顶于案头首位，实现「刚翻阅的书手边即达」；
+- **Tier 2（主书架藏书）**：其余全部藏书（包括全新未读 `last_page == 0` 以及其他老在读藏书），统一按入库时间 `ci.imported_at DESC` 排布，新收录藏书紧随案头手边书之后，彻底捍卫「最近收录」的淘书心智与新鲜感；
 - **Tier 3（卷末归档）**：已完全读至全书末页的藏书（`last_page >= page_count`），按 `ci.imported_at DESC` 折叠收纳于案头底端。
 
-在查询投影中，`query_library_index` 补齐透出 `COALESCE(urp.updated_at, 0) as read_updated_at`，与前端 `LibrarySummary` 强类型契约严格对齐。端侧 `setReadingProgressLocal` 本地乐观更新同步注入秒级 `read_updated_at`，并在开卷首屏第 1 页即刻激活在读打标，确保无需等待后端返回即可让翻阅作品即时置顶案头。
+在查询投影与数据模型中，`backend/app/models.py`（`LibrarySummary`）与 `_row_to_library_summary` 补齐透出 `read_updated_at`，与前端强类型契约严格对齐。端侧 `setReadingProgressLocal` 本地乐观更新同步注入秒级 `read_updated_at`，并在开卷首屏第 1 页即刻激活在读打标。
 
 ### 二、阅读会话恢复（Reading Session Resume）与极端退出防丢
 
 1. **阅读器生命周期受控记录**：
    - 阅读器运行时通过 `@vueuse/core` 驱动 `comic-shelf:active-reading-session:v1`（包含 `source`, `sourceId`, `page`, `totalPages`, `updatedAt`, `active: boolean`）；
+   - `recordSession` 的总页数参数必须严格绑定全书拍平总页数（`detail.value.meta.page_count`），严禁使用局部章节分话页数（`readerPaging.total`），消除多章节连载漫画全局页码大于单话页数导致翻页误判为完结并失活活跃态的恶性缺陷；
    - 当读者主动点击阅读器顶栏「返回书架/详情」或翻至全书末页读完全本时，显式标记 `active = false`；
    - 若读者在阅读过程中直接划掉应用、进程被系统回收或锁屏关闭，状态保留 `active = true`。
 2. **冷启动直达与逃生通道**：

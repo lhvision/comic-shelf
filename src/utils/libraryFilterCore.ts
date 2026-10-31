@@ -172,9 +172,26 @@ export function filterAndSortLibrary(
     })
   } else {
     const timeMap = new Map<LibrarySummary, number>()
+    let mostRecentReadingItem: LibrarySummary | null = null
+    let maxReadUpdatedAt = 0
+
     if (sortBy === 'recent' || (needle.length > 0 && searchScope === 'all')) {
       for (const item of list) {
-        timeMap.set(item, item.imported_at ? Date.parse(item.imported_at) || 0 : 0)
+        const itemTime = item.imported_at ? Date.parse(item.imported_at) || 0 : 0
+        timeMap.set(item, itemTime)
+        if (sortBy === 'recent' && isInProgressComic(item)) {
+          const t = item.read_updated_at ?? 0
+          if (
+            t > maxReadUpdatedAt ||
+            (t === maxReadUpdatedAt &&
+              t > 0 &&
+              mostRecentReadingItem &&
+              itemTime > (timeMap.get(mostRecentReadingItem) ?? 0))
+          ) {
+            maxReadUpdatedAt = t
+            mostRecentReadingItem = item
+          }
+        }
       }
     }
 
@@ -191,24 +208,20 @@ export function filterAndSortLibrary(
         default: {
           const aTier = hasNewChapters(a)
             ? 0
-            : isInProgressComic(a)
+            : a === mostRecentReadingItem
               ? 1
               : isCompletedComic(a)
                 ? 3
                 : 2
           const bTier = hasNewChapters(b)
             ? 0
-            : isInProgressComic(b)
+            : b === mostRecentReadingItem
               ? 1
               : isCompletedComic(b)
                 ? 3
                 : 2
           if (aTier !== bTier) {
             return aTier - bTier
-          }
-          if (aTier === 1) {
-            const diff = (b.read_updated_at ?? 0) - (a.read_updated_at ?? 0)
-            if (diff !== 0) return diff
           }
           return (timeMap.get(b) ?? 0) - (timeMap.get(a) ?? 0)
         }

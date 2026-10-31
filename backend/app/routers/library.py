@@ -118,6 +118,7 @@ def _row_to_library_summary(row: dict[str, Any]) -> LibrarySummary:
         favorite=bool(row["is_favorite"]),
         last_page=int(row["last_page"]),
         read_total_pages=int(row.get("read_total_pages") or 0),
+        read_updated_at=int(row.get("read_updated_at") or 0),
         cover_paths=cover_paths,
     )
 

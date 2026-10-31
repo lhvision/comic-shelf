@@ -308,8 +308,93 @@ describe('useLibraryFilter', () => {
 
     expect(filtered.value.map((b) => b.source_id)).toEqual([
       'reading_just_now',
-      'reading_old_read',
       'unread_new',
+      'reading_old_read',
+    ])
+  })
+
+  it('breaks tie by imported_at DESC when multiple in-progress comics share identical read_updated_at', () => {
+    const list: LibrarySummary[] = [
+      {
+        source: 'jm',
+        source_id: 'reading_tied_older_import',
+        display_id: '1',
+        title: 'Tied Older Import Book',
+        authors: [],
+        works: [],
+        actors: [],
+        tags: [],
+        favorite: false,
+        page_count: 50,
+        views: '0',
+        likes: '0',
+        uploaded_at: '',
+        published_at: '',
+        updated_at: '',
+        imported_at: '2026-01-01T00:00:00Z',
+        cover_paths: [],
+        cached_pages: 5,
+        cover_count: 1,
+        last_page: 10,
+        read_updated_at: 3000,
+      },
+      {
+        source: 'jm',
+        source_id: 'reading_tied_newer_import',
+        display_id: '2',
+        title: 'Tied Newer Import Book',
+        authors: [],
+        works: [],
+        actors: [],
+        tags: [],
+        favorite: false,
+        page_count: 50,
+        views: '0',
+        likes: '0',
+        uploaded_at: '',
+        published_at: '',
+        updated_at: '',
+        imported_at: '2026-03-01T00:00:00Z',
+        cover_paths: [],
+        cached_pages: 5,
+        cover_count: 1,
+        last_page: 20,
+        read_updated_at: 3000,
+      },
+      {
+        source: 'jm',
+        source_id: 'unread_between',
+        display_id: '3',
+        title: 'Unread Between Book',
+        authors: [],
+        works: [],
+        actors: [],
+        tags: [],
+        favorite: false,
+        page_count: 50,
+        views: '0',
+        likes: '0',
+        uploaded_at: '',
+        published_at: '',
+        updated_at: '',
+        imported_at: '2026-02-01T00:00:00Z',
+        cover_paths: [],
+        cached_pages: 0,
+        cover_count: 1,
+        last_page: 0,
+      },
+    ]
+
+    const itemsRef = ref(list)
+    const activeSourceRef = ref('')
+    const { filtered } = useLibraryFilter(itemsRef, activeSourceRef)
+
+    // reading_tied_newer_import 拥有最新 imported_at，打破平局享有第 1 位置顶；
+    // unread_between 比 reading_tied_older_import 入库更晚，在 Tier 2 优先排布
+    expect(filtered.value.map((b) => b.source_id)).toEqual([
+      'reading_tied_newer_import',
+      'unread_between',
+      'reading_tied_older_import',
     ])
   })
 

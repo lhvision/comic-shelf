@@ -126,7 +126,7 @@
 - **单一真理源（SSOT）与端侧核心偏好持久化**：
   书架检索关键词（`search`）、多标签集合（`activeTags`，上限 5 个）、只看喜欢（`favoritesOnly`）、阅读状态（`readingStatus`: all/reading/completed）、排序规则（`sortBy`）以及展开批次和滚动偏移量统一由 `useShelfState`（`createGlobalState` 单例）集中驱动。其中核心视图偏好（来源分区、排序模式、阅读状态与只看喜欢）通过 `useLocalStorage` 安全对象序列化落盘，PWA 进程重启或冷启动自动恢复上次使用偏好，搜索词与标签维持内存瞬态防丢失错觉。
 - **阅读会话恢复（Reading Session Resume）与极端退出防丢**：
-  读者在阅读器内未完读直接退出应用（如划掉杀后台或锁屏）时，由 `useReadingSession` 记录中断状态；下次在移动端浏览器或 PWA 启动且处于根路径时，由系统偏好 `resumeOnLaunch`（默认开启）驱动秒级直达上次在读画卷并弹出轻提示，读者主动点击返回书架离开则自动失活不打扰。结合原生 `keepalive: true` 与 `pagehide` 强制 flush，消除杀后台防抖丢进度风险；严密设立未认证前置守卫与单本沙箱隔离，杜绝越权恢复。作品进度基于秒级时间戳执行 LWW 双向对齐并消除 `Math.max` 重读锁死，阅读器切本时解耦清除上一本残余页码，杜绝跨本踩踏。
+  读者在阅读器内未完读直接退出应用（如划掉杀后台或锁屏）时，由 `useReadingSession` 记录中断状态；总页数判定严格绑定全书拍平总页数（`detail.value.meta.page_count`），杜绝分话页数冒充全书导致翻页误判为已完读而失活；下次在移动端浏览器或 PWA 启动且处于根路径时，由系统偏好 `resumeOnLaunch`（默认开启）驱动秒级直达上次在读画卷并弹出轻提示，读者主动点击返回书架离开则自动失活不打扰。结合原生 `keepalive: true` 与 `pagehide` 强制 flush，消除杀后台防抖丢进度风险；严密设立未认证前置守卫与单本沙箱隔离，杜绝越权恢复。作品进度基于秒级时间戳执行 LWW 双向对齐并消除 `Math.max` 重读锁死，阅读器切本时解耦清除上一本残余页码，杜绝跨本踩踏。书架默认「最近收录」排序采用独幅手边书置顶模式（最后翻阅的 1 部在读藏书置顶，其余全部藏书严格按 `imported_at DESC` 排布）。
 - **杜绝高频 `router.replace`**：
   严禁在用户日常筛选、输入搜索词或切页过程中高频调用 `router.replace`。这彻底根除了 Vue Router 导航抢占抛出 `NavigationCancelled` 导致顶栏导航与页面跳转被意外中断的问题，保持低延迟交互响应。
 - **单向只读水合（`hydrateFromQuery`）**：

@@ -281,4 +281,56 @@ describe('useReadingSession', () => {
     clearSession()
     expect(session.value).toBeNull()
   })
+
+  it('keeps multi-chapter long series active across sub-chapter boundaries and marks completed only on final page', () => {
+    const { session, recordSession } = useReadingSession()
+
+    // 模拟真机实测 3104 页连载长篇，当前处于第 35 话（单话 20 页），全书进度第 697 页
+    recordSession({
+      source: 'jm',
+      sourceId: 'long_series_3104',
+      page: 697,
+      totalPages: 3104,
+    })
+
+    expect(session.value?.active).toBe(true)
+    expect(session.value?.totalPages).toBe(3104)
+
+    // 翻到全书最终完结页
+    recordSession({
+      source: 'jm',
+      sourceId: 'long_series_3104',
+      page: 3104,
+      totalPages: 3104,
+    })
+
+    expect(session.value?.active).toBe(false)
+  })
+
+  it('reuses existing session totalPages when detail hydration temporarily yields 0', () => {
+    const { session, recordSession } = useReadingSession()
+
+    // 1. 已建立有效会话
+    recordSession({
+      source: 'jm',
+      sourceId: 'offline_book',
+      page: 15,
+      totalPages: 100,
+    })
+    expect(session.value?.totalPages).toBe(100)
+    expect(session.value?.active).toBe(true)
+
+    // 2. 离线或弱网首屏重新触发 watch，detail.value?.meta.page_count 为 undefined (传入 0)
+    recordSession({
+      source: 'jm',
+      sourceId: 'offline_book',
+      page: 16,
+      totalPages: 0,
+    })
+
+    // 成功复用已有总页数 100，避免被 0 冲刷
+    expect(session.value?.page).toBe(16)
+    expect(session.value?.totalPages).toBe(100)
+    expect(session.value?.active).toBe(true)
+  })
 })

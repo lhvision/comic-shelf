@@ -103,14 +103,14 @@ const { recommendations, onReaderCompleted, onSelectComic, onOpenComicDetail, on
 const { recordSession, deactivateSession } = useReadingSession()
 
 watch(
-  [source, sourceId, currentPage, total],
-  ([s, sid, p, tot]) => {
+  [source, sourceId, currentPage, () => detail.value?.meta.page_count],
+  ([s, sid, p, fullPages]) => {
     if (s && sid && p > 0) {
       recordSession({
         source: s,
         sourceId: sid,
         page: p,
-        totalPages: tot,
+        totalPages: fullPages ?? 0,
       })
     }
   },

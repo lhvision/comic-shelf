@@ -204,6 +204,7 @@ class LibrarySummary(BaseModel):
     cover_count: int
     last_page: int = 0
     read_total_pages: int = 0
+    read_updated_at: int = 0
     chapter_titles: list[str] = Field(
         default_factory=list,
         description="Chapter titles, so the shelf search can match '第 5 话' too",

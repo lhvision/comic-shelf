@@ -73,8 +73,21 @@ export function useReadingSession() {
   }): void {
     if (!data.source || !data.sourceId) return
     const page = Number.isFinite(data.page) ? Math.max(1, Math.floor(data.page)) : 1
-    const totalPages =
+    let totalPages =
       Number.isFinite(data.totalPages) && data.totalPages > 0 ? Math.floor(data.totalPages) : 0
+
+    // 若当前上报暂无有效总页数（如离线或弱网首屏 meta.page_count 尚未水合完成），
+    // 且已有当前作品的会话缓存，复用已记录的真实总页数兜底，杜绝真空期判定偏差
+    if (
+      totalPages === 0 &&
+      session.value &&
+      session.value.source === data.source &&
+      session.value.sourceId === data.sourceId &&
+      session.value.totalPages > 0
+    ) {
+      totalPages = session.value.totalPages
+    }
+
     const isCompleted = totalPages > 0 && page >= totalPages
     session.value = {
       userId: normalizeSessionUid(userId.value),
