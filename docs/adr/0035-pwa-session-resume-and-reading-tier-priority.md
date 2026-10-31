@@ -22,22 +22,26 @@
 - **Tier 2（案头未读）**：尚未开卷的全新藏书（`last_page == 0`），按初次收录时间 `ci.imported_at DESC` 呈现新鲜感；
 - **Tier 3（卷末归档）**：已完全读至全书末页的藏书（`last_page >= page_count`），按 `ci.imported_at DESC` 折叠收纳于案头底端。
 
-在查询投影中，`query_library_index` 补齐透出 `COALESCE(urp.updated_at, 0) as read_updated_at`，与前端 `LibrarySummary` 强类型契约严格对齐。
+在查询投影中，`query_library_index` 补齐透出 `COALESCE(urp.updated_at, 0) as read_updated_at`，与前端 `LibrarySummary` 强类型契约严格对齐。端侧 `setReadingProgressLocal` 本地乐观更新同步注入秒级 `read_updated_at`，并在开卷首屏第 1 页即刻激活在读打标，确保无需等待后端返回即可让翻阅作品即时置顶案头。
 
-### 二、PWA 独立视口下的阅读会话恢复（Reading Session Resume）
+### 二、阅读会话恢复（Reading Session Resume）与极端退出防丢
 
 1. **阅读器生命周期受控记录**：
    - 阅读器运行时通过 `@vueuse/core` 驱动 `comic-shelf:active-reading-session:v1`（包含 `source`, `sourceId`, `page`, `totalPages`, `updatedAt`, `active: boolean`）；
    - 当读者主动点击阅读器顶栏「返回书架/详情」或翻至全书末页读完全本时，显式标记 `active = false`；
    - 若读者在阅读过程中直接划掉应用、进程被系统回收或锁屏关闭，状态保留 `active = true`。
 2. **冷启动直达与逃生通道**：
-   - 仅在独立应用窗口（`display-mode: standalone` 或 `navigator.standalone`）且全局配置开启时激活；
-   - 探测到合法的未读完活跃会话，冷启动直接路由直达 `/comic/:source/:sourceId/read/:page`，并以朱砂轻提示弹出「已恢复上次在读：第 X 页」；读者点击阅读器顶栏返回按钮即可安全返回书架。
-3. **多租户隔离与登出主动擦除**：
-   - 实施双向归一化身份比对（`sessionUid !== currentUid`），杜绝旧版本无 `userId` 记录或跨身份绕过拦截；
-   - 侦听 `userId` 变更，在用户登出或切换账号时级联调用 `clearSession()` 彻底擦除 LocalStorage，杜绝共享设备上的在读信息残留。
-4. **控制开关**：
-   - 系统设置提供持久化开关「启动时自动恢复上次阅读」（`comic-shelf:resume-on-launch:v1`，默认开启）。
+   - 统一由系统设置项「启动时自动恢复上次阅读」（`comic-shelf:resume-on-launch:v1`，默认开启）驱动，消除脆弱的 WebKit `navigator.standalone` 环境排他限制，移动端与 PWA 体验完全一致；
+   - 探测到合法的未读完活跃会话且根路径无特定查询参数时，冷启动直接路由直达 `/comic/:source/:sourceId/read/:page`，并以朱砂轻提示弹出「已恢复上次在读：第 X 页」；读者点击阅读器顶栏返回按钮即可安全返回书架。
+3. **多租户、鉴权前置与单本沙箱隔离**：
+   - 全局认证未登录拦截：若全站开启鉴权且当前处于未认证状态（`authRequired && !authenticated`），严禁恢复任何在读会话，杜绝未登录者窥探馆长私密藏书；
+   - 单本沙箱边界：单本限定通行证（`isDirectPass`）仅允许恢复对应限定作品，严防逃逸至全库其他画卷；
+   - 实施双向归一化身份比对（`normalizeSessionUid`），馆长单人模式归一化为 `curator`；
+   - 侦听 `userId` 真实切换或登出（`oldUid && oldUid !== newUid`），级联调用 `clearSession()` 彻底擦除 LocalStorage，杜绝共享设备上的在读信息残留；同时豁免冷启动异步水合阶段的误清空。
+4. **移动端极端退出与防抖落盘保障**：
+   - 原生 `keepalive: true`：在进度上报请求中注入原生 `keepalive: true`，即使移动端直接杀死应用，浏览器底层网络栈仍能保证完成上报；
+   - 零延迟 Flush：在 `pagehide`、`beforeunload` 与作用域卸载时强制刷新 800ms 防抖队列；
+   - 进度防回退（Anti-Regression）：对齐拉取时采用 `Math.max(storage.value, prog.last_page)`，杜绝服务端旧进度冲掉本地更新记录。
 
 ### 三、书架核心视口偏好记忆（Shelf Preferences Persistence）
 

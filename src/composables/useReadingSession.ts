@@ -28,18 +28,14 @@ export const SESSION_KEY = 'comic-shelf:active-reading-session:v1'
 export const RESUME_ON_LAUNCH_KEY = 'comic-shelf:resume-on-launch:v1'
 
 /**
- * 判定当前运行环境是否为 Standalone 独立视口（PWA 安装或全屏应用）。
+ * 归一化用户身份，统一馆长/个人模式缺省标识，并保持多租户/访客通行证严格隔离。
  */
-export function isStandaloneViewport(): boolean {
-  if (typeof window === 'undefined') return false
-  const isMatchMedia =
-    typeof window.matchMedia === 'function' &&
-    window.matchMedia('(display-mode: standalone)').matches
-  const isIosStandalone = Boolean(
-    typeof navigator !== 'undefined' &&
-    (navigator as unknown as { standalone?: boolean }).standalone,
-  )
-  return Boolean(isMatchMedia || isIosStandalone)
+export function normalizeSessionUid(uid?: string | null): string {
+  const trimmed = (uid || '').trim()
+  if (!trimmed || trimmed === 'default' || trimmed === 'curator') {
+    return 'curator'
+  }
+  return trimmed
 }
 
 /**
@@ -50,15 +46,16 @@ export function isStandaloneViewport(): boolean {
  * @returns 会话状态与恢复动作
  */
 export function useReadingSession() {
-  const { userId } = useAuth()
+  const { userId, authRequired, authenticated, isDirectPass, directPassComic } = useAuth()
   const session = useLocalStorage<ActiveReadingSession | null>(SESSION_KEY, null, {
     serializer: StorageSerializers.object,
   })
   const resumeOnLaunch = useLocalStorage<boolean>(RESUME_ON_LAUNCH_KEY, true)
 
-  // 用户登出或切换账号身份时立即清理会话，杜绝跨会话残留
+  // 仅在真实发生账号切换（A -> B）或显式登出（A -> ""）时清理端侧会话；
+  // 排除冷启动从初态空值水合为已登录身份（"" -> A）的正常初始化时序。
   watch(userId, (newUid, oldUid) => {
-    if (oldUid !== undefined && newUid !== oldUid) {
+    if (oldUid && oldUid !== newUid) {
       clearSession()
     }
   })
@@ -80,7 +77,7 @@ export function useReadingSession() {
       Number.isFinite(data.totalPages) && data.totalPages > 0 ? Math.floor(data.totalPages) : 0
     const isCompleted = totalPages > 0 && page >= totalPages
     session.value = {
-      userId: userId.value || 'default',
+      userId: normalizeSessionUid(userId.value),
       source: data.source,
       sourceId: data.sourceId,
       page,
@@ -120,16 +117,29 @@ export function useReadingSession() {
     router: Router,
     showToast?: (message: string, tone?: 'info' | 'error' | 'success') => void | number,
   ): boolean {
-    if (!isStandaloneViewport()) return false
     if (!resumeOnLaunch.value) return false
+
+    // 1. 全局鉴权守卫：若开启了全站认证且当前尚未登录，严禁向未授权访客恢复任何在读会话
+    if (authRequired.value && !authenticated.value) return false
 
     const s = session.value
     if (!s || !s.active) return false
     if (!s.source || !s.sourceId) return false
 
-    // 租户/访客隔离：跨账号或访客登录时，禁止恢复前一用户的会话
-    const currentUid = userId.value || 'default'
-    const sessionUid = s.userId || 'default'
+    // 2. 单本沙箱守卫：若持有单本限定通行证，严禁恢复非该限定本的任何外部会话
+    if (isDirectPass.value) {
+      if (!directPassComic.value) return false
+      if (
+        s.source !== directPassComic.value.source ||
+        s.sourceId !== directPassComic.value.sourceId
+      ) {
+        return false
+      }
+    }
+
+    // 3. 租户/访客隔离：跨账号或访客登录时，禁止恢复前一用户的会话
+    const currentUid = normalizeSessionUid(userId.value)
+    const sessionUid = normalizeSessionUid(s.userId)
     if (sessionUid !== currentUid) return false
 
     if (s.totalPages > 0 && s.page >= s.totalPages) {

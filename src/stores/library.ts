@@ -568,7 +568,11 @@ export const useLibraryStore = defineStore('library', () => {
     )
     const current = items.value[idx]
     if (idx !== -1 && current) {
-      const updatedItem: LibrarySummary = { ...current, last_page: page }
+      const updatedItem: LibrarySummary = {
+        ...current,
+        last_page: page,
+        read_updated_at: Math.floor(Date.now() / 1000),
+      }
       const newItems = [...items.value]
       newItems[idx] = updatedItem
       items.value = newItems

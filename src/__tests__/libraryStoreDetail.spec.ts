@@ -82,4 +82,42 @@ describe('useLibraryStore detailCache', () => {
       expect(store.getDetail('jm', String(i))).toBeDefined()
     }
   })
+
+  it('updates last_page and sets read_updated_at epoch timestamp in setReadingProgressLocal', () => {
+    const store = useLibraryStore()
+    const nowBefore = Math.floor(Date.now() / 1000)
+
+    store.items = [
+      {
+        source: 'jm',
+        source_id: '999',
+        display_id: '999',
+        title: 'Test Progress',
+        authors: [],
+        works: [],
+        actors: [],
+        tags: [],
+        favorite: false,
+        hidden_from_guest: false,
+        views: '0',
+        likes: '0',
+        uploaded_at: '',
+        published_at: '',
+        updated_at: '',
+        imported_at: '2026-01-01T00:00:00Z',
+        cover_paths: [],
+        cached_pages: 5,
+        cover_count: 1,
+        page_count: 30,
+        last_page: 0,
+      },
+    ]
+
+    store.setReadingProgressLocal('jm', '999', 15)
+
+    const updated = store.items.find((i) => i.source_id === '999')
+    expect(updated).toBeDefined()
+    expect(updated?.last_page).toBe(15)
+    expect(updated?.read_updated_at).toBeGreaterThanOrEqual(nowBefore)
+  })
 })

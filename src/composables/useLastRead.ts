@@ -1,5 +1,5 @@
 import { computed, watch } from 'vue'
-import { useDebounceFn, useLocalStorage } from '@vueuse/core'
+import { tryOnScopeDispose, useDebounceFn, useLocalStorage } from '@vueuse/core'
 import type { MaybeRefOrGetter } from 'vue'
 import { toValue } from 'vue'
 import { api } from '@/api/client'
@@ -30,8 +30,8 @@ export function useLastRead(source: MaybeRefOrGetter<string>, sourceId: MaybeRef
       if (!curS || !curSid) return
       try {
         const prog = await api.getReadingProgress(curS, curSid)
-        if (prog) {
-          storage.value = prog.last_page
+        if (prog && prog.last_page > 0) {
+          storage.value = Math.max(storage.value || 0, prog.last_page)
         }
       } catch {
         /* offline or network error */
@@ -56,6 +56,25 @@ export function useLastRead(source: MaybeRefOrGetter<string>, sourceId: MaybeRef
   watch(storage, (newPage) => {
     if (newPage > 0) {
       void reportProgress(newPage)
+    }
+  })
+
+  const flushProgress = () => {
+    if (storage.value > 0) {
+      reportProgress.flush()
+    }
+  }
+
+  if (typeof window !== 'undefined') {
+    window.addEventListener('pagehide', flushProgress)
+    window.addEventListener('beforeunload', flushProgress)
+  }
+
+  tryOnScopeDispose(() => {
+    flushProgress()
+    if (typeof window !== 'undefined') {
+      window.removeEventListener('pagehide', flushProgress)
+      window.removeEventListener('beforeunload', flushProgress)
     }
   })
 

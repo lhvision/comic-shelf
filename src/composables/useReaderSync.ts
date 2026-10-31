@@ -61,15 +61,26 @@ export function useReaderSync(options: UseReaderSyncOptions) {
     }
   }, 800)
 
-  watch(currentPage, (page) => {
-    lastRead.value = page
-    libraryStore.setReadingProgressLocal(source.value, sourceId.value, page, userId.value)
-    void broadcastReadingProgress(page)
-    preloadAround(page)
-  })
+  watch(
+    currentPage,
+    (page) => {
+      lastRead.value = page
+      if (page > 0 && source.value && sourceId.value) {
+        libraryStore.setReadingProgressLocal(source.value, sourceId.value, page, userId.value)
+        void broadcastReadingProgress(page)
+      }
+      preloadAround(page)
+    },
+    { immediate: true },
+  )
 
-  watch([source, sourceId], () => {
+  watch([source, sourceId], ([s, sid]) => {
     clearActiveComic()
+    if (s && sid && currentPage.value > 0) {
+      lastRead.value = currentPage.value
+      libraryStore.setReadingProgressLocal(s, sid, currentPage.value, userId.value)
+      void broadcastReadingProgress(currentPage.value)
+    }
   })
 
   watch(

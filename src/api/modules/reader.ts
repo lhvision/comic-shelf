@@ -49,5 +49,6 @@ export async function saveReadingProgress(
     method: 'PUT',
     body: JSON.stringify({ page, total_pages }),
     signal: options?.signal,
+    keepalive: true,
   })
 }

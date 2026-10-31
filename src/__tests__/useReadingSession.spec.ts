@@ -58,7 +58,7 @@ describe('useReadingSession', () => {
     expect(session.value?.page).toBe(15)
   })
 
-  it('does not resume session when not in standalone mode', () => {
+  it('resumes session on launch with valid active session', () => {
     const { recordSession, tryResumeSession } = useReadingSession()
     recordSession({
       source: 'jm',
@@ -72,58 +72,12 @@ describe('useReadingSession', () => {
     const toastSpy = vi.fn<(msg: string, tone?: 'info' | 'error' | 'success') => void>()
 
     const resumed = tryResumeSession(router, toastSpy)
-    expect(resumed).toBe(false)
-    expect(replaceSpy).not.toHaveBeenCalled()
-    expect(toastSpy).not.toHaveBeenCalled()
-  })
-
-  it('resumes session in standalone mode with valid active session', () => {
-    // Mock standalone mode
-    window.matchMedia = vi
-      .fn<(query: string) => MediaQueryList>()
-      .mockImplementation((query: string) => ({
-        matches: query === '(display-mode: standalone)',
-        media: query,
-        onchange: null,
-        addListener: vi.fn<() => void>(),
-        removeListener: vi.fn<() => void>(),
-        addEventListener: vi.fn<() => void>(),
-        removeEventListener: vi.fn<() => void>(),
-        dispatchEvent: vi.fn<() => boolean>(),
-      }))
-
-    const { recordSession, tryResumeSession } = useReadingSession()
-    recordSession({
-      source: 'jm',
-      sourceId: '12345',
-      page: 8,
-      totalPages: 24,
-    })
-
-    const replaceSpy = vi.fn<() => Promise<void>>()
-    const router = { replace: replaceSpy } as unknown as Router
-    const toastSpy = vi.fn<(msg: string, tone?: 'info' | 'error' | 'success') => void>()
-
-    const resumed = tryResumeSession(router, toastSpy)
     expect(resumed).toBe(true)
-    expect(replaceSpy).toHaveBeenCalledWith('/comic/jm/12345/read/8')
-    expect(toastSpy).toHaveBeenCalledWith('已为您恢复上次在读：第 8 页', 'info')
+    expect(replaceSpy).toHaveBeenCalledWith('/comic/jm/12345/read/10')
+    expect(toastSpy).toHaveBeenCalledWith('已为您恢复上次在读：第 10 页', 'info')
   })
 
   it('refuses to resume if resumeOnLaunch is toggled off', () => {
-    window.matchMedia = vi
-      .fn<(query: string) => MediaQueryList>()
-      .mockImplementation((query: string) => ({
-        matches: query === '(display-mode: standalone)',
-        media: query,
-        onchange: null,
-        addListener: vi.fn<() => void>(),
-        removeListener: vi.fn<() => void>(),
-        addEventListener: vi.fn<() => void>(),
-        removeEventListener: vi.fn<() => void>(),
-        dispatchEvent: vi.fn<() => boolean>(),
-      }))
-
     const { recordSession, resumeOnLaunch, tryResumeSession } = useReadingSession()
     resumeOnLaunch.value = false
 
@@ -152,28 +106,14 @@ describe('useReadingSession', () => {
       totalPages: 50,
     })
     expect(session.value?.sourceId).toBe('curator_secret')
-    expect(session.value?.userId).toBe('default')
+    expect(session.value?.userId).toBe('curator')
 
     await nextTick()
 
     // Session contains userId
     const raw = localStorage.getItem('comic-shelf:active-reading-session:v1')
     expect(raw).toContain('curator_secret')
-    expect(raw).toContain('default')
-
-    // If another user (e.g. guest) is logged in, tryResumeSession rejects cross-user resume
-    window.matchMedia = vi
-      .fn<(query: string) => MediaQueryList>()
-      .mockImplementation((query: string) => ({
-        matches: query === '(display-mode: standalone)',
-        media: query,
-        onchange: null,
-        addListener: vi.fn<() => void>(),
-        removeListener: vi.fn<() => void>(),
-        addEventListener: vi.fn<() => void>(),
-        removeEventListener: vi.fn<() => void>(),
-        dispatchEvent: vi.fn<() => boolean>(),
-      }))
+    expect(raw).toContain('curator')
 
     // Simulate session owned by a different user
     if (session.value) {
@@ -188,14 +128,116 @@ describe('useReadingSession', () => {
     expect(resumed).toBe(false)
     expect(replaceSpy).not.toHaveBeenCalled()
 
-    // Even if legacy session has missing userId, it defaults to 'default'
-    if (session.value) {
-      delete session.value.userId
-    }
-    // Now if userId of auth profile is different (e.g. curator), it still rejects
+    // Now if userId of auth profile is different (e.g. curator_admin), it still rejects
     const { userId } = useAuth()
-    userId.value = 'curator_admin'
+    userId.value = 'guest:pass_1'
     expect(tryResumeSession(router, toastSpy)).toBe(false)
+    userId.value = ''
+  })
+
+  it('preserves reading session during initial auth hydration, but clears on logout or account switch', async () => {
+    const { userId } = useAuth()
+    userId.value = '' // initial unhydrated state
+
+    const { recordSession, session } = useReadingSession()
+    recordSession({
+      source: 'jm',
+      sourceId: 'shelf_book',
+      page: 5,
+      totalPages: 20,
+    })
+    expect(session.value).not.toBeNull()
+
+    // 1. Initial auth hydration from "" to "curator" MUST NOT wipe session
+    userId.value = 'curator'
+    await nextTick()
+    expect(session.value).not.toBeNull()
+    expect(session.value?.sourceId).toBe('shelf_book')
+
+    // 2. Account switch from "curator" to "guest:pass_abc" MUST wipe session
+    userId.value = 'guest:pass_abc'
+    await nextTick()
+    expect(session.value).toBeNull()
+
+    // 3. New session for guest
+    recordSession({
+      source: 'jm',
+      sourceId: 'guest_book',
+      page: 2,
+      totalPages: 10,
+    })
+    expect(session.value?.sourceId).toBe('guest_book')
+
+    // 4. Explicit logout ("guest:pass_abc" to "") MUST wipe session
+    userId.value = ''
+    await nextTick()
+    expect(session.value).toBeNull()
+  })
+
+  it('refuses to resume session if auth is required and user is unauthenticated', () => {
+    const { authRequired, authenticated } = useAuth()
+    authRequired.value = true
+    authenticated.value = false
+
+    const { recordSession, tryResumeSession } = useReadingSession()
+    recordSession({
+      source: 'jm',
+      sourceId: 'secret_book',
+      page: 10,
+      totalPages: 30,
+    })
+
+    const replaceSpy = vi.fn<() => Promise<void>>()
+    const router = { replace: replaceSpy } as unknown as Router
+    const toastSpy = vi.fn<() => void>()
+
+    expect(tryResumeSession(router, toastSpy)).toBe(false)
+    expect(replaceSpy).not.toHaveBeenCalled()
+
+    authRequired.value = false
+    authenticated.value = true
+  })
+
+  it('strictly enforces single-book sandbox boundary during resume', () => {
+    const { userId, authenticated } = useAuth()
+    authenticated.value = true
+    userId.value = 'direct:local:book_allowed'
+
+    const { recordSession, session, tryResumeSession } = useReadingSession()
+
+    // 1. Session for a DIFFERENT comic must be rejected
+    recordSession({
+      source: 'local',
+      sourceId: 'book_forbidden',
+      page: 5,
+      totalPages: 20,
+    })
+    // Simulate user identity on session
+    if (session.value) {
+      session.value.userId = 'direct:local:book_allowed'
+    }
+
+    const replaceSpy = vi.fn<() => Promise<void>>()
+    const router = { replace: replaceSpy } as unknown as Router
+    const toastSpy = vi.fn<() => void>()
+
+    expect(tryResumeSession(router, toastSpy)).toBe(false)
+    expect(replaceSpy).not.toHaveBeenCalled()
+
+    // 2. Session for the ALLOWED comic succeeds
+    recordSession({
+      source: 'local',
+      sourceId: 'book_allowed',
+      page: 5,
+      totalPages: 20,
+    })
+    if (session.value) {
+      session.value.userId = 'direct:local:book_allowed'
+    }
+
+    expect(tryResumeSession(router, toastSpy)).toBe(true)
+    expect(replaceSpy).toHaveBeenCalledWith('/comic/local/book_allowed/read/5')
+
     userId.value = ''
   })
 
