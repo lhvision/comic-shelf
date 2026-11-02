@@ -23,9 +23,9 @@
 - 🟢 **轻量级（单点修补/微调）**：
   - **场景**：修改已有样式的显性 Bug、微调 1~2 个 padding/margin/color token、修复文字溢出、调整 hover 态。
   - **处理方式**：直接读取现有设计 Token 执行最小必要修改，运行 `vp check` 与对应的精准单测，**豁免完整评审与快照流程**。
-- 🟣 **探索级（即时变体探索）**：
+- 🟣 **探索级（即时变体探索：`/impeccable live`）**：
   - **场景**：视觉概念未定、需对比多种版式方案，或用户明确提出“看看几种排版/设计变体”、“实时挑选视觉效果/动效”。
-  - **处理方式**：在开发服务（`vpr dev:all` 或 `vp dev`）运行状态下切入 **Live 实时探索流**（定向变体 `/impeccable generate` 或全页拾取 `/impeccable live`），由人类在浏览器直观比对并拍板（Accept）。Accept 后**必须执行变体收敛清洗**（去临时 wrapper、样式 Token 化、`vpr detect:slop` 扫描）。局部排版探索豁免子代理快照，新建核心组件或视图级重构仍需在收敛后补齐子代理快照。
+  - **处理方式**：在开发服务（`vpr dev:all`）运行状态下切入 **Live 实时探索流**（执行 `/impeccable generate` 定向变体或 `/impeccable live` 全页拾取），由人类在浏览器直观比对并拍板（Accept）。Accept 后**必须执行变体收敛清洗**（去临时 wrapper、样式 Token 化、`vpr detect:slop` 扫描）。局部排版探索豁免子代理快照，新建核心组件或视图级重构仍需在收敛后补齐子代理快照。
 - 🔴 **重量级（结构性变更）**：
   - **场景**：新建组件（`src/components/*.vue`）、视图与路由级重构（`src/views/*.vue`）、核心交互与弹层体系演进。
   - **处理方式**：**必须完整执行以下实质性指令链**。
@@ -44,16 +44,16 @@
 - **反面参考最值钱**：牢记纸间绝对禁令（**严禁紫色渐变、严禁毛玻璃拟态、严禁第三方轮播、严禁伪字符**，统一朱砂点缀与物理纸本质感）；
 - **模式判定（Register）**：纸间是个人私有收藏夹，设计为阅读与管理服务 → **Product 模式**（视觉隐身、严整装订感、信息与封面优先）。
 
-### 2. 方案与底线：双轨起稿机制
+### 2. 方案与底线：双轨起稿（`/impeccable craft` 或 `/impeccable live`）
 
 在编写任何源码前，强制进入起稿关卡，根据场景选择分支：
 
 - **分支 A（自主起稿：`/impeccable craft <target>`）**：
   - **强制加载底线规范**：必须先读取 `<impeccable-dir>/reference/craft-floor.md`（掌握触控尺寸底线、排版层级与对比度要求）；
   - **起稿前确认**：在对话中梳理：**设计 Brief → 布局基调 → 关键交互**，提出 2~3 个方向供人类确认，拍板后才起稿。
-- **分支 B（即时探索：Live 变体模式）**：
+- **分支 B（即时探索：`/impeccable live` 或 `/impeccable generate <target>`）**：
   - **前置准备**：
-    1. **开发服务与 HTTPS**：本地开发环境由 `basicSsl()` 原生提供 HTTPS（支撑 PWA 与安全凭据）。Live 模式必须在开发服务器（`vpr dev:all` 或 `vpr dev`，后端由 `vpr api` 支撑）运行下进行，浏览器直接打开 `https://localhost:5173/`（严禁在无 HMR 的 `vpr preview` 下运行）；
+    1. **开发服务与 HTTPS**：Live 模式必须在开发环境（`vpr dev:all`）运行下进行，前端由 `basicSsl()` 原生提供 HTTPS，在浏览器中打开 `https://localhost:5173/`；纸间项目由单容器统一托管，`vpr api`（在 `vp build` 后）可直接启动部署后的前后端全栈效果，无需使用 `vpr preview`；由于 `vpr api` 部署态托管的是静态 `dist/` 且无 Vite HMR，严禁在此环境下运行 Live 模式；
     2. **工程预设**：项目已预置 `.impeccable/live/config.json`（单页面 SPA `index.html` 入口），且 `.gitignore` 已排除会话日志与本地绝对路径；
   - **定向生成（优先推荐）**：已知目标元素时，执行：
     ```bash
