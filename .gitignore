@@ -91,3 +91,8 @@ public/avatars/
 /*.jpeg
 *.pdf
 
+# Impeccable live session journals & local overrides
+.impeccable/live/*
+!.impeccable/live/config.json
+.impeccable/**/*.local.json
+
