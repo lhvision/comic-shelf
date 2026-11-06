@@ -88,7 +88,7 @@ def auth_status(request: Request, response: Response) -> AuthStatusResponse:
     # Cookie self-healing: if client is authenticated via Bearer header or storage but
     # the HttpOnly cookie is missing, re-issue the cookie so browser <img> tags and media can load
     if authed and token and not request.cookies.get(COOKIE_NAME):
-        if curator:
+        if curator and token.startswith("cs_curator_"):
             set_auth_cookie(response, token, secure=is_sec)
 
     requires_claim = False
@@ -283,6 +283,7 @@ def auth_logout(request: Request, response: Response, all: bool = False) -> dict
     """Clears client session cookies and revokes active device session token."""
     all_devices = all or request.query_params.get("all") in ("1", "true") or request.headers.get("x-logout-all") == "1"
     if all_devices:
+        require_curator(request)
         delete_all_curator_sessions()
     else:
         token = extract_token(request)

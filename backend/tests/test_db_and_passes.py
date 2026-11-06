@@ -822,11 +822,29 @@ def test_curator_sessions_and_zero_exposure():
         assert active_cnt <= 20
 
     # 11. Logout All Devices
+    # 11.a Unauthenticated request to logout all devices must be rejected (401)
+    req_unauth_all = MagicMock()
+    req_unauth_all.state = type("State", (), {})()
+    req_unauth_all.headers.get = lambda k, default="": ""
+    req_unauth_all.cookies.get = lambda k, default="": ""
+    req_unauth_all.query_params.get = lambda k, default="": "1" if k == "all" else default
+    req_unauth_all.client.host = "10.0.0.9"
+    resp_unauth = Response()
+    try:
+        auth_router_mod.auth_logout(req_unauth_all, resp_unauth, all=True)
+        assert False, "Unauthenticated logout all should have raised HTTPException(401)"
+    except HTTPException as exc:
+        assert exc.status_code == 401
+
+    # 11.b Authenticated curator can successfully logout all devices
+    tok_all = db_mod.create_curator_session(client_ip="10.0.0.1", current_secret=curator_secret)
     req_logout_all = MagicMock()
-    req_logout_all.headers.get = lambda k, default="": ""
+    req_logout_all.state = type("State", (), {})()
+    req_logout_all.headers.get = lambda k, default="": f"Bearer {tok_all}" if k.lower() == "authorization" else ""
     req_logout_all.cookies.get = lambda k, default="": ""
     req_logout_all.query_params.get = lambda k, default="": "1" if k == "all" else default
     req_logout_all.url.scheme = "https"
+    req_logout_all.client.host = "10.0.0.1"
     resp_logout_all = Response()
     auth_router_mod.auth_logout(req_logout_all, resp_logout_all, all=True)
     with db_mod.get_db() as conn:
@@ -849,6 +867,22 @@ def test_curator_sessions_and_zero_exposure():
     # Verify cookie was self-healed and attached to response
     heal_cookie_headers = [v.decode("latin-1") for k, v in resp_heal.raw_headers if k == b"set-cookie"]
     assert any(f"{auth_mod.COOKIE_NAME}={tok_heal}" in c for c in heal_cookie_headers)
+
+    # 13. Zero-Exposure on auth_status: raw master secret Bearer MUST NOT trigger Set-Cookie with master secret
+    req_status_raw = MagicMock()
+    req_status_raw.state = type("State", (), {})()
+    req_status_raw.headers.get = lambda k, default="": f"Bearer {curator_secret}" if k.lower() == "authorization" else ""
+    req_status_raw.cookies.get = lambda k, default="": ""
+    req_status_raw.query_params.get = lambda k, default="": ""
+    req_status_raw.client.host = "10.0.0.6"
+    req_status_raw.url.scheme = "https"
+    resp_status_raw = Response()
+
+    st_raw = auth_router_mod.auth_status(req_status_raw, resp_status_raw)
+    assert st_raw.authenticated is True
+    assert st_raw.role == "admin"
+    raw_cookie_headers = [v.decode("latin-1") for k, v in resp_status_raw.raw_headers if k == b"set-cookie"]
+    assert not any(curator_secret in c for c in raw_cookie_headers)
 
 
 if __name__ == "__main__":

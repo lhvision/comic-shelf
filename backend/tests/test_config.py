@@ -58,6 +58,33 @@ class TestConfigEnvCascade(unittest.TestCase):
                 _load_dotenv()
                 self.assertEqual(os.environ.get("COMIC_SHELF_SECRET"), "system_level_secret")
 
+    def test_root_dotenv_takes_precedence_over_data_dir_dotenv(self):
+        with tempfile.TemporaryDirectory() as tmp_root_dir, tempfile.TemporaryDirectory() as tmp_data_dir:
+            root_env = Path(tmp_root_dir) / ".env"
+            root_env.write_text(
+                "COMIC_SHELF_SECRET=root_secret\n"
+                "COMIC_SHELF_PORT=8888\n",
+                encoding="utf-8",
+            )
+            data_env = Path(tmp_data_dir) / ".env"
+            data_env.write_text(
+                "COMIC_SHELF_SECRET=data_dir_secret\n"
+                "COMIC_SHELF_HOST=0.0.0.0\n",
+                encoding="utf-8",
+            )
+            os.environ.pop("COMIC_SHELF_SECRET", None)
+            os.environ.pop("COMIC_SHELF_PORT", None)
+            os.environ.pop("COMIC_SHELF_HOST", None)
+
+            with patch("app.config.PROJECT_ROOT", Path(tmp_root_dir)):
+                with patch.dict(os.environ, {"COMIC_SHELF_DATA": tmp_data_dir}):
+                    _load_dotenv()
+                    # Tier 2 (root .env) takes precedence over Tier 3 (data dir .env)
+                    self.assertEqual(os.environ.get("COMIC_SHELF_SECRET"), "root_secret")
+                    self.assertEqual(os.environ.get("COMIC_SHELF_PORT"), "8888")
+                    # Tier 3 (data dir .env) provides missing keys as fallback
+                    self.assertEqual(os.environ.get("COMIC_SHELF_HOST"), "0.0.0.0")
+
 
 if __name__ == "__main__":
     unittest.main()

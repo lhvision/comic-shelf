@@ -600,7 +600,6 @@ def create_curator_session(
             """,
             (token, secret_hash, now, now, expires_at, safe_ip, safe_ua),
         )
-        conn.commit()
     return token
 
 
@@ -623,9 +622,8 @@ def verify_and_touch_curator_session(
             return False
 
         # Invalidate old session immediately if master password was rotated in .env
-        if expected_hash and row["secret_hash"] != expected_hash:
+        if expected_hash and not secrets.compare_digest(str(row["secret_hash"]), expected_hash):
             conn.execute("DELETE FROM curator_sessions WHERE id = ?", (row["id"],))
-            conn.commit()
             return False
 
         # Sliding expiration: update at most once every hour to avoid unnecessary write churn
@@ -635,7 +633,6 @@ def verify_and_touch_curator_session(
                 "UPDATE curator_sessions SET last_active_at = ?, expires_at = ? WHERE id = ?",
                 (now, new_expires, row["id"]),
             )
-            conn.commit()
         return True
 
 
@@ -645,7 +642,6 @@ def delete_curator_session(token: str) -> bool:
         return False
     with get_db() as conn:
         cur = conn.execute("DELETE FROM curator_sessions WHERE token = ?", (token.strip(),))
-        conn.commit()
         return cur.rowcount > 0
 
 
@@ -653,7 +649,6 @@ def delete_all_curator_sessions() -> int:
     """Revokes all active curator sessions across all devices."""
     with get_db() as conn:
         cur = conn.execute("DELETE FROM curator_sessions")
-        conn.commit()
         return cur.rowcount
 
 
@@ -662,7 +657,6 @@ def clean_expired_curator_sessions() -> int:
     now = int(time.time())
     with get_db() as conn:
         cur = conn.execute("DELETE FROM curator_sessions WHERE expires_at <= ?", (now,))
-        conn.commit()
         return cur.rowcount
 
 

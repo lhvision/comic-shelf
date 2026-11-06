@@ -132,7 +132,6 @@ def init_db(db_path: Path | None = None) -> None:
                 client_ip TEXT NOT NULL DEFAULT '',
                 user_agent TEXT NOT NULL DEFAULT ''
             );
-            CREATE INDEX IF NOT EXISTS idx_curator_sessions_token ON curator_sessions(token);
             CREATE INDEX IF NOT EXISTS idx_curator_sessions_expires ON curator_sessions(expires_at);
 
             CREATE TABLE IF NOT EXISTS library_stats_snapshot (
@@ -176,11 +175,6 @@ def init_db(db_path: Path | None = None) -> None:
         if empty_norm_rows:
             updates = [(normalize_title(r["title"]), r["source"], r["source_id"]) for r in empty_norm_rows]
             conn.executemany("UPDATE comics_index SET normalized_title = ? WHERE source = ? AND source_id = ?", updates)
-
-        # Ensure secret_hash column exists on curator_sessions
-        cur_cols = {row[1] for row in conn.execute("PRAGMA table_info(curator_sessions)")}
-        if "secret_hash" not in cur_cols:
-            conn.execute("ALTER TABLE curator_sessions ADD COLUMN secret_hash TEXT NOT NULL DEFAULT ''")
 
         # Ensure facets snapshot is populated on cold start / first migration
         snap_count = conn.execute("SELECT COUNT(*) as cnt FROM library_stats_snapshot").fetchone()

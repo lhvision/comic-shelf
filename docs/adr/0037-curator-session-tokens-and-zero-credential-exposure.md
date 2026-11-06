@@ -45,7 +45,6 @@ CREATE TABLE IF NOT EXISTS curator_sessions (
     client_ip TEXT NOT NULL DEFAULT '',
     user_agent TEXT NOT NULL DEFAULT ''
 );
-CREATE INDEX IF NOT EXISTS idx_curator_sessions_token ON curator_sessions(token);
 CREATE INDEX IF NOT EXISTS idx_curator_sessions_expires ON curator_sessions(expires_at);
 ```
 
@@ -67,7 +66,7 @@ CREATE INDEX IF NOT EXISTS idx_curator_sessions_expires ON curator_sessions(expi
 1. **单设备安全注销**：
    馆长调用 `/api/auth/logout` 时，后端提取当前 `cs_curator_` 令牌并调用 `delete_curator_session(token)` 物理抹除记录。
 2. **一键注销全设备**：
-   支持 `/api/auth/logout?all=true`（或 `X-Logout-All: 1`），调用 `delete_all_curator_sessions()`，瞬时清空数据库全部馆长会话，满足丢机或紧急避险诉求。
+   支持 `/api/auth/logout?all=true`（或 `X-Logout-All: 1`），仅限已鉴权馆长调用（未鉴权或访客调用直接拦截 401/403），调用 `delete_all_curator_sessions()`，瞬时清空数据库全部馆长会话，满足丢机或紧急避险诉求。
 3. **过期自动清理**：
    在应用启动生命周期（`lifespan`）及定期维护中，调用 `clean_expired_curator_sessions()`，利用 `idx_curator_sessions_expires` 索引毫秒级物理清理过期会话。
 
@@ -75,7 +74,7 @@ CREATE INDEX IF NOT EXISTS idx_curator_sessions_expires ON curator_sessions(expi
 
 前端 SPA 在特定浏览器策略或跨标签页场景下，可能保留了 `localStorage` 的 Bearer Token 但被清除了 HttpOnly Cookie。由于网页原生 `<img src="...">` 无法携带自定义 Authorization Header：
 
-- 当客户端通过 Bearer Header 访问 `/api/auth/status` 且鉴权成功时，若服务端探测到 `Cookie: comic_shelf_token` 缺失，自动在响应头回写 `set_auth_cookie`；
+- 当客户端通过 Bearer Header 访问 `/api/auth/status` 且鉴权成功时，若服务端探测到 `Cookie: comic_shelf_token` 缺失且凭据为高熵 `cs_curator_` 令牌，自动在响应头回写 `set_auth_cookie`；若凭据为自动化原始根口令，则绝不回写 Cookie，彻底杜绝明文主口令落地；
 - 确保后续画页与封面渲染零 401 偶发故障，实现鉴权与媒体推流闭环。
 
 ### 六、双轨向下兼容（Dual-Track Architecture for Automation）

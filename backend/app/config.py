@@ -11,29 +11,29 @@ BACKEND_DIR = PROJECT_ROOT / "backend"
 def _load_dotenv() -> None:
     """Load .env files in cascade order without overwriting existing environment variables.
     Cascade candidates:
-    1. COMIC_SHELF_DATA / ".env" (persistent storage volume in Docker/NAS, or backend/data/.env)
-    2. PROJECT_ROOT / ".env" (host development or Compose root)
+    1. PROJECT_ROOT / ".env" (host development or Compose root - Tier 2)
+    2. COMIC_SHELF_DATA / ".env" (persistent storage volume fallback - Tier 3)
     3. BACKEND_DIR / ".env" (legacy backend-specific override)
     """
-    initial_data_dir = Path(os.getenv("COMIC_SHELF_DATA", BACKEND_DIR / "data")).resolve()
-    candidates = (
-        initial_data_dir / ".env",
-        PROJECT_ROOT / ".env",
-        BACKEND_DIR / ".env",
-    )
-    for env_file in candidates:
-        if env_file.is_file():
-            try:
-                for line in env_file.read_text(encoding="utf-8").splitlines():
-                    line = line.strip()
-                    if not line or line.startswith("#") or "=" not in line:
-                        continue
-                    k, v = line.split("=", 1)
-                    k, v = k.strip(), v.strip().strip("'\"")
-                    if k and k not in os.environ:
-                        os.environ[k] = v
-            except Exception:
-                pass
+    def _read_env(env_file: Path) -> None:
+        if not env_file.is_file():
+            return
+        try:
+            for line in env_file.read_text(encoding="utf-8").splitlines():
+                line = line.strip()
+                if not line or line.startswith("#") or "=" not in line:
+                    continue
+                k, v = line.split("=", 1)
+                k, v = k.strip(), v.strip().strip("'\"")
+                if k and k not in os.environ:
+                    os.environ[k] = v
+        except Exception:
+            pass
+
+    _read_env(PROJECT_ROOT / ".env")
+    data_dir = Path(os.getenv("COMIC_SHELF_DATA", BACKEND_DIR / "data")).resolve()
+    _read_env(data_dir / ".env")
+    _read_env(BACKEND_DIR / ".env")
 
 
 _load_dotenv()
