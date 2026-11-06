@@ -27,11 +27,14 @@ from ..auth import (
     set_auth_cookie,
     set_device_cookie,
 )
-from ..config import AUTH_SECRET
+from ..config import AUTH_SECRET, COOKIE_NAME
 from ..db import (
     claim_guest_pass,
+    create_curator_session,
     create_direct_pass,
     create_guest_pass,
+    delete_all_curator_sessions,
+    delete_curator_session,
     delete_guest_device,
     delete_guest_pass,
     get_device_by_token,
@@ -41,6 +44,7 @@ from ..db import (
     register_guest_device,
     touch_device_active,
     update_guest_pass,
+    verify_and_touch_curator_session,
     verify_guest_pass_pin,
 )
 from .common import store
@@ -76,13 +80,19 @@ def auth_status(request: Request, response: Response) -> AuthStatusResponse:
     curator = role == "admin"
     guest = role == "guest"
     authed = curator or guest
+    token = extract_token(request)
+    is_sec = is_request_secure(request)
     if authed and hasattr(request.state, "new_device_token"):
-        is_sec = is_request_secure(request)
         set_device_cookie(response, request.state.new_device_token, secure=is_sec)
+
+    # Cookie self-healing: if client is authenticated via Bearer header or storage but
+    # the HttpOnly cookie is missing, re-issue the cookie so browser <img> tags and media can load
+    if authed and token and not request.cookies.get(COOKIE_NAME):
+        if curator:
+            set_auth_cookie(response, token, secure=is_sec)
 
     requires_claim = False
     requires_pin = False
-    token = extract_token(request)
     p_item = None
     if not authed and token:
         p_item = get_guest_pass_by_token(token)
@@ -119,10 +129,17 @@ def auth_login(req: LoginRequest, request: Request, response: Response) -> Login
 
     is_sec = is_request_secure(request)
     secret = req.secret.strip()
+    if secret.startswith("cs_curator_") and verify_and_touch_curator_session(secret):
+        set_auth_cookie(response, secret, secure=is_sec)
+        clear_device_cookie(response, secure=is_sec)
+        return LoginResponse(ok=True, token=secret, role="admin", username="馆长", user_id="curator")
+
     if AUTH_SECRET and secrets.compare_digest(secret, AUTH_SECRET):
-        set_auth_cookie(response, AUTH_SECRET, secure=is_sec)
+        ua = request.headers.get("user-agent", "")[:250]
+        session_token = create_curator_session(client_ip=ip, user_agent=ua)
+        set_auth_cookie(response, session_token, secure=is_sec)
         clear_device_cookie(response, secure=is_sec)  # Clean up any lingering guest device session
-        return LoginResponse(ok=True, token=AUTH_SECRET, role="admin", username="馆长", user_id="curator")
+        return LoginResponse(ok=True, token=session_token, role="admin", username="馆长", user_id="curator")
 
     dp = get_direct_pass(secret)
     if dp is not None:
@@ -262,8 +279,15 @@ def auth_claim(req: ClaimGuestPassRequest, request: Request, response: Response)
 
 
 @router.post("/api/auth/logout")
-def auth_logout(request: Request, response: Response) -> dict[str, bool]:
+def auth_logout(request: Request, response: Response, all: bool = False) -> dict[str, bool]:
     """Clears client session cookies and revokes active device session token."""
+    all_devices = all or request.query_params.get("all") in ("1", "true") or request.headers.get("x-logout-all") == "1"
+    if all_devices:
+        delete_all_curator_sessions()
+    else:
+        token = extract_token(request)
+        if token and token.startswith("cs_curator_"):
+            delete_curator_session(token)
     dev_token = extract_device_token(request)
     if dev_token:
         dev = get_device_by_token(dev_token)

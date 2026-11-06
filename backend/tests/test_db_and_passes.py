@@ -693,9 +693,168 @@ def test_comics_index_and_pagination():
     assert db_mod.get_comic_index_count() == 2
 
 
+def test_curator_sessions_and_zero_exposure():
+    import app.auth as auth_mod
+    from app.models import LoginRequest
+    from app.routers import auth as auth_router_mod
+    from unittest.mock import MagicMock
+    from fastapi import Response
+
+    temp_dir = tempfile.mkdtemp()
+    temp_db = Path(temp_dir) / "test_curator_sessions.db"
+    db_mod.init_db(temp_db)
+
+    # 1. Direct DB session creation & verification
+    token = db_mod.create_curator_session(client_ip="192.168.1.50", user_agent="Mozilla/5.0")
+    assert token.startswith("cs_curator_")
+    assert len(token) > 30
+
+    assert db_mod.verify_and_touch_curator_session(token) is True
+    assert db_mod.verify_and_touch_curator_session("cs_curator_invalid") is False
+    assert db_mod.verify_and_touch_curator_session("") is False
+
+    # 2. Sliding window expiration touch
+    now = int(time.time())
+    with db_mod.get_db() as conn:
+        conn.execute("UPDATE curator_sessions SET last_active_at = ? WHERE token = ?", (now - 7200, token))
+        conn.commit()
+
+    assert db_mod.verify_and_touch_curator_session(token) is True
+    with db_mod.get_db() as conn:
+        row = conn.execute("SELECT last_active_at, expires_at FROM curator_sessions WHERE token = ?", (token,)).fetchone()
+        assert row["last_active_at"] >= now
+
+    # 3. Expiration and clean_expired_curator_sessions
+    token_exp = db_mod.create_curator_session(client_ip="192.168.1.51")
+    with db_mod.get_db() as conn:
+        conn.execute("UPDATE curator_sessions SET expires_at = ? WHERE token = ?", (now - 100, token_exp))
+        conn.commit()
+
+    assert db_mod.verify_and_touch_curator_session(token_exp) is False
+    cleaned = db_mod.clean_expired_curator_sessions()
+    assert cleaned >= 1
+
+    # 4. Deletion
+    assert db_mod.delete_curator_session(token) is True
+    assert db_mod.verify_and_touch_curator_session(token) is False
+    assert db_mod.delete_curator_session("non_existent") is False
+
+    # 5. Zero-exposure login & logout integration
+    curator_secret = "master-secret-password-xyz"
+    auth_mod.AUTH_SECRET = curator_secret
+    auth_router_mod.AUTH_SECRET = curator_secret
+
+    req_login = MagicMock()
+    req_login.headers.get = lambda k, default="": "Curator Browser UA" if k.lower() == "user-agent" else ""
+    req_login.cookies.get = lambda k, default="": ""
+    req_login.client.host = "10.0.0.1"
+    req_login.url.scheme = "https"
+    resp_login = Response()
+
+    res = auth_router_mod.auth_login(LoginRequest(secret=curator_secret), req_login, resp_login)
+    assert res.ok is True
+    assert res.role == "admin"
+    assert res.token.startswith("cs_curator_")
+    # CRITICAL: Raw master secret is NEVER returned as token
+    assert res.token != curator_secret
+
+    # Check cookie was set with session token, not master secret
+    cookie_headers = [v.decode("latin-1") for k, v in resp_login.raw_headers if k == b"set-cookie"]
+    assert any(f"{auth_mod.COOKIE_NAME}={res.token}" in c for c in cookie_headers)
+    assert not any(curator_secret in c for c in cookie_headers)
+
+    # 6. Session token authenticates user as curator
+    req_curator = MagicMock()
+    req_curator.state = type("State", (), {})()
+    req_curator.headers.get = lambda k, default="": f"Bearer {res.token}" if k.lower() == "authorization" else ""
+    req_curator.cookies.get = lambda k, default="": ""
+    req_curator.client.host = "10.0.0.1"
+    u_id, u_name, u_role = auth_mod.get_user_context(req_curator)
+    assert u_role == "admin"
+    assert u_name == "馆长"
+    assert u_id == "curator"
+
+    # 7. Dual-track fallback: raw master secret still works for scripts / automation
+    req_script = MagicMock()
+    req_script.state = type("State", (), {})()
+    req_script.headers.get = lambda k, default="": f"Bearer {curator_secret}" if k.lower() == "authorization" else ""
+    req_script.cookies.get = lambda k, default="": ""
+    req_script.client.host = "10.0.0.2"
+    s_id, s_name, s_role = auth_mod.get_user_context(req_script)
+    assert s_role == "admin"
+    assert s_name == "馆长"
+
+    # 8. Curator logout revokes session
+    req_logout = MagicMock()
+    req_logout.headers.get = lambda k, default="": f"Bearer {res.token}" if k.lower() == "authorization" else ""
+    req_logout.cookies.get = lambda k, default="": ""
+    req_logout.client.host = "10.0.0.1"
+    req_logout.url.scheme = "https"
+    resp_logout = Response()
+
+    logout_res = auth_router_mod.auth_logout(req_logout, resp_logout)
+    assert logout_res.get("ok") is True
+    # Verify session is deleted
+    assert db_mod.verify_and_touch_curator_session(res.token) is False
+    # Subsequent request with revoked session fails
+    req_revoked = MagicMock()
+    req_revoked.state = type("State", (), {})()
+    req_revoked.headers.get = lambda k, default="": f"Bearer {res.token}" if k.lower() == "authorization" else ""
+    req_revoked.cookies.get = lambda k, default="": ""
+    req_revoked.client.host = "10.0.0.1"
+    r_id, r_name, r_role = auth_mod.get_user_context(req_revoked)
+    assert r_role != "admin"
+
+    # 9. Password Rotation: If master secret is rotated, old sessions are automatically purged
+    t_rot = db_mod.create_curator_session(client_ip="1.1.1.1", current_secret="old-secret-111")
+    assert db_mod.verify_and_touch_curator_session(t_rot, current_secret="old-secret-111") is True
+    # Now simulate master secret rotated in .env to "new-secret-222"
+    assert db_mod.verify_and_touch_curator_session(t_rot, current_secret="new-secret-222") is False
+    # Verify old session was automatically purged on sight
+    with db_mod.get_db() as conn:
+        assert conn.execute("SELECT id FROM curator_sessions WHERE token = ?", (t_rot,)).fetchone() is None
+
+    # 10. Capacity Cap & LRU Eviction: Creating > 20 sessions keeps at most 20 active sessions
+    for i in range(25):
+        db_mod.create_curator_session(client_ip=f"10.0.1.{i}")
+    with db_mod.get_db() as conn:
+        active_cnt = conn.execute("SELECT COUNT(*) as cnt FROM curator_sessions").fetchone()["cnt"]
+        assert active_cnt <= 20
+
+    # 11. Logout All Devices
+    req_logout_all = MagicMock()
+    req_logout_all.headers.get = lambda k, default="": ""
+    req_logout_all.cookies.get = lambda k, default="": ""
+    req_logout_all.query_params.get = lambda k, default="": "1" if k == "all" else default
+    req_logout_all.url.scheme = "https"
+    resp_logout_all = Response()
+    auth_router_mod.auth_logout(req_logout_all, resp_logout_all, all=True)
+    with db_mod.get_db() as conn:
+        assert conn.execute("SELECT COUNT(*) as cnt FROM curator_sessions").fetchone()["cnt"] == 0
+
+    # 12. Cookie Self-Healing on auth_status
+    tok_heal = db_mod.create_curator_session(client_ip="10.0.0.5", current_secret=curator_secret)
+    req_heal = MagicMock()
+    req_heal.state = type("State", (), {})()
+    req_heal.headers.get = lambda k, default="": f"Bearer {tok_heal}" if k.lower() == "authorization" else ""
+    req_heal.cookies.get = lambda k, default="": ""  # Missing Cookie!
+    req_heal.query_params.get = lambda k, default="": ""
+    req_heal.client.host = "10.0.0.5"
+    req_heal.url.scheme = "https"
+    resp_heal = Response()
+
+    st = auth_router_mod.auth_status(req_heal, resp_heal)
+    assert st.authenticated is True
+    assert st.role == "admin"
+    # Verify cookie was self-healed and attached to response
+    heal_cookie_headers = [v.decode("latin-1") for k, v in resp_heal.raw_headers if k == b"set-cookie"]
+    assert any(f"{auth_mod.COOKIE_NAME}={tok_heal}" in c for c in heal_cookie_headers)
+
+
 if __name__ == "__main__":
     test_db_and_passes_crud()
     test_comics_index_and_pagination()
+    test_curator_sessions_and_zero_exposure()
     print("Database and passes unit tests passed!")
 
 

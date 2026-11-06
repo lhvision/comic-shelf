@@ -38,7 +38,7 @@ flowchart TD
 
     subgraph Gateway["网关与安全门禁层 (Security & Middleware)"]
         AuthMiddleware["FastAPI 安全与鉴权中间件<br/>(auth_and_security_middleware)"]
-        CuratorAuth["馆长口令认证<br/>(AUTH_SECRET)"]
+        CuratorAuth["馆长口令认证<br/>(AUTH_SECRET / Session Token)"]
         MachineAuth["内网专属机器密钥<br/>(MACHINE_TOKEN)"]
         SandboxGuard["单本沙箱隔离守卫<br/>(Single-Book Sandbox Guard)"]
         GuestDevice["访客设备与 PIN 绑定<br/>(PBKDF2 100k + Anti-Bruteforce)"]
@@ -62,7 +62,7 @@ flowchart TD
 
     subgraph Storage["数据存储与外部索引 (Data Persistence)"]
         subgraph Databases["双轨 SQLite 数据库 (事务物理隔离)"]
-            MainDB[("comic_shelf.db<br/>• 藏书影子索引<br/>• 访客通行证 & 设备会话<br/>• 单本直达临时票据<br/>• 隔离阅读进度 & 收藏")]
+            MainDB[("comic_shelf.db<br/>• 藏书影子索引<br/>• 馆长会话 & 访客通行证<br/>• 单本直达临时票据<br/>• 隔离阅读进度 & 收藏")]
             DiagDB[("comic_dialogues.db<br/>• FTS5 Trigram 倒排全文索引<br/>• OCR 识别台词与气泡归一化坐标")]
         end
         ImsearchSidecar["imsearch 识图 Sidecar (:8765)<br/>(ORB 特征点 + 倒排向量索引)"]

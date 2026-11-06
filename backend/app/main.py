@@ -35,6 +35,7 @@ from .auth import (
 from .config import COOKIE_NAME, ENABLE_AUTO_UPDATE, ENABLE_DOCS, LIBRARY_DIR
 from .storage.utils import acquire_library_writer_lock, _write_json_atomic
 from .db import (
+    clean_expired_curator_sessions,
     clean_expired_direct_passes,
     get_all_indexed_mtimes,
     get_user_favorites,
@@ -236,6 +237,7 @@ async def lifespan(app: FastAPI):
         try:
             init_db()
             clean_expired_direct_passes()
+            clean_expired_curator_sessions()
             _migrate_existing_favorites_to_db()
         except Exception as exc:
             logger.warning("Startup initialization error: %s", exc)

@@ -19,6 +19,7 @@ from .db import (
     get_guest_pass_by_token,
     register_guest_device,
     touch_device_active,
+    verify_and_touch_curator_session,
 )
 
 
@@ -101,10 +102,15 @@ def get_user_context(request: Request) -> tuple[str, str, str]:
 
     # 1. Curator or Machine token check
     x_machine = request.headers.get("x-machine-token", "").strip()
-    if token and AUTH_SECRET and secrets.compare_digest(token, AUTH_SECRET):
-        ctx = ("curator", "馆长", "admin")
-        request.state.user_context = ctx
-        return ctx
+    if token:
+        if token.startswith("cs_curator_") and verify_and_touch_curator_session(token):
+            ctx = ("curator", "馆长", "admin")
+            request.state.user_context = ctx
+            return ctx
+        if AUTH_SECRET and secrets.compare_digest(token, AUTH_SECRET):
+            ctx = ("curator", "馆长", "admin")
+            request.state.user_context = ctx
+            return ctx
 
     machine_by_token = bool(MACHINE_TOKEN and token and secrets.compare_digest(token, MACHINE_TOKEN))
     machine_by_header = bool(MACHINE_TOKEN and x_machine and secrets.compare_digest(x_machine, MACHINE_TOKEN))
