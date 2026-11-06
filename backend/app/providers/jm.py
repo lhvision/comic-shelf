@@ -652,7 +652,7 @@ class JMProvider(ComicProvider):
                 cached = self._load_session_cache()
                 if cached:
                     raise ValueError(
-                        f"禁漫车号 JM{jm_id} 受权限保护（需登录查看），挂载的 jm_session.json 凭据已失效，请在 docker-compose.yml 中配置 JM_USERNAME 与 JM_PASSWORD 以便自动重新登录"
+                        f"禁漫车号 JM{jm_id} 受权限保护（需登录查看），挂载的 jm_session.json 凭据已失效，请在 .env（或数据卷 backend/data/.env / docker-compose.yml）中配置 JM_USERNAME 与 JM_PASSWORD 以便自动重新登录"
                     ) from e_missing
                 raise e_missing
 
@@ -746,7 +746,7 @@ class JMProvider(ComicProvider):
                     cached = self._load_session_cache()
                     if cached:
                         raise ValueError(
-                            f"禁漫话数 {pid} 受权限保护（需登录查看），挂载的 jm_session.json 凭据已失效，请在 docker-compose.yml 中配置 JM_USERNAME 与 JM_PASSWORD 以便自动重新登录"
+                            f"禁漫话数 {pid} 受权限保护（需登录查看），挂载的 jm_session.json 凭据已失效，请在 .env（或数据卷 backend/data/.env / docker-compose.yml）中配置 JM_USERNAME 与 JM_PASSWORD 以便自动重新登录"
                         ) from e_ep_missing
                     raise e_ep_missing
 
@@ -789,10 +789,10 @@ class JMProvider(ComicProvider):
                 cached = self._load_session_cache()
                 if cached:
                     raise ValueError(
-                        f"禁漫车号 JM{jm_id} 受权限保护（需登录查看），挂载的 jm_session.json 凭据已失效，请在 docker-compose.yml 中配置 JM_USERNAME 与 JM_PASSWORD 以便自动重新登录"
+                        f"禁漫车号 JM{jm_id} 受权限保护（需登录查看），挂载的 jm_session.json 凭据已失效，请在 .env（或数据卷 backend/data/.env / docker-compose.yml）中配置 JM_USERNAME 与 JM_PASSWORD 以便自动重新登录"
                     )
                 raise ValueError(
-                    f"禁漫车号 JM{jm_id} 受权限保护（需登录查看），请在 docker-compose.yml 或 .env 中配置 JM_USERNAME 与 JM_PASSWORD 后重试"
+                    f"禁漫车号 JM{jm_id} 受权限保护（需登录查看），请在 .env（或数据卷 backend/data/.env / docker-compose.yml）中配置 JM_USERNAME 与 JM_PASSWORD 后重试"
                 )
 
         if (
@@ -828,10 +828,10 @@ class JMProvider(ComicProvider):
                     cached = self._load_session_cache()
                     if cached:
                         raise ValueError(
-                            f"禁漫话数 {pid} 受权限保护（需登录查看），挂载的 jm_session.json 凭据已失效，请在 docker-compose.yml 中配置 JM_USERNAME 与 JM_PASSWORD 以便自动重新登录"
+                            f"禁漫话数 {pid} 受权限保护（需登录查看），挂载的 jm_session.json 凭据已失效，请在 .env（或数据卷 backend/data/.env / docker-compose.yml）中配置 JM_USERNAME 与 JM_PASSWORD 以便自动重新登录"
                         )
                     raise ValueError(
-                        f"禁漫话数 {pid} 受权限保护（需登录查看），请在 docker-compose.yml 或 .env 中配置 JM_USERNAME 与 JM_PASSWORD 后重试"
+                        f"禁漫话数 {pid} 受权限保护（需登录查看），请在 .env（或数据卷 backend/data/.env / docker-compose.yml）中配置 JM_USERNAME 与 JM_PASSWORD 后重试"
                     )
                 if self._is_login_required_response(photo_resp):
                     raise ValueError(f"禁漫话数 {pid} 需登录后才能查看，当前账号无权访问或登录会话已失效")

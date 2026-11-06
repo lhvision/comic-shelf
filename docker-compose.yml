@@ -6,45 +6,29 @@ services:
       dockerfile: Dockerfile
     container_name: paper-room
     restart: unless-stopped
+    env_file:
+      - path: .env
+        required: false
     environment:
       TZ: Asia/Shanghai
       COMIC_SHELF_DATA: /app/data
       COMIC_SHELF_HOST: 0.0.0.0
       COMIC_SHELF_PORT: 8000
-      COMIC_SHELF_IMSEARCH_URL: http://imsearch:8765
-      # 常用环境变量（公网部署建议取消注释并设置馆长密码；留空则为局域网免密模式）：
-      # COMIC_SHELF_SECRET: 'your_curator_password'
-      # 公网访问基准地址（供 MCP 等外部智能体签发单本沙箱直达免密阅读链接时拼接绝对 URL，如 https://comic.example.com）：
-      # COMIC_SHELF_PUBLIC_URL: 'https://comic.example.com'
-      # 自定义 Cookie 键名（隐匿开源默认键名，配合 Cloudflare WAF 规则使用）：
-      # COMIC_SHELF_COOKIE_NAME: 'your_custom_token'
-      # COMIC_SHELF_DEVICE_COOKIE_NAME: 'your_custom_device'
-      # 访问日志开关（默认 true，若不需要控制台打印每次 HTTP 访问流水可设为 false）：
-      # COMIC_SHELF_ACCESS_LOG: 'false'
-      # 允许本地直扫导入的外部挂载目录白名单（多个路径用冒号分隔）：
+      COMIC_SHELF_IMSEARCH_URL: ${COMIC_SHELF_IMSEARCH_URL:-http://imsearch:8765}
+      # 外部目录直扫放行白名单（若解开下方 volumes 外部挂载，可同步解开此行，须与容器内挂载点保持一致）：
       # COMIC_SHELF_ALLOWED_DIRS: '/external-comics'
-      # 全局统一网络代理（统一代理所有外部图源：拷贝漫画、哔咔、禁漫；更多分流配置详见 DEPLOYMENT.md）：
-      # COMIC_SHELF_PROXY: 'http://host.docker.internal:7890'
-      # 拷贝漫画配置（可选；主站域名与用户登录 Token）：
-      # COPY_BASE_URL: 'https://www.mangacopy.com'
-      # COPY_TOKEN: 'your_copy_token'
-      # 哔咔漫画配置（可选；配置账号密码后自动登录与保活）：
-      # PICA_EMAIL: 'your_pica_email'
-      # PICA_PASSWORD: 'your_pica_password'
-      # 禁漫天堂配置（可选；配置账号密码解析受限本子）：
-      # JM_USERNAME: 'your_jm_username'
-      # JM_PASSWORD: 'your_jm_password'
-      # JM_IMAGE_PROXY_MODE: 'auto'
-      COMIC_SHELF_ENABLE_HOTLINK_PROTECTION: 'true'
-      COMIC_SHELF_PAGE_THUMB_WIDTH: '360'
+      # 其余业务与安全配置（馆长密码、Token、网络代理等）请配置在宿主机根目录 .env 或持久化卷 ./backend/data/.env 中；
+      # 详细参数说明与模板参见根目录 .env.example
     volumes:
-      # 核心数据持久化目录（存放所有漫画原图、元数据、封面、缩略图与配置等）：
+      # 核心数据持久化目录（存放所有漫画原图、元数据、封面、缩略图、数据库与持久配置 .env 等）：
       # 默认映射本地相对路径 ./backend/data；若在 TrueNAS / 群晖 / Unraid 等 NAS 部署，可改为宿主机绝对路径，例如：
       # - /mnt/pool/apps/comic-shelf:/app/data
       - ./backend/data:/app/data
-      # 若需从 NAS 外部目录直扫收录漫画，解开并映射外部路径（同时配置 COMIC_SHELF_ALLOWED_DIRS 白名单）：
+      # 若需从 NAS 外部目录直扫收录漫画，解开并映射外部路径（同时解开上方 COMIC_SHELF_ALLOWED_DIRS 白名单）：
       # - /mnt/tank/comics:/external-comics:ro
     ports:
+      # 宿主机访问端口映射（格式为 '宿主机端口:容器内部端口'）：
+      # 若 8000 端口已被其他服务占用，只需修改冒号左侧的宿主机端口，例如改为 '9000:8000'
       - '8000:8000'
     depends_on:
       - imsearch

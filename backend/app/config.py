@@ -9,7 +9,19 @@ BACKEND_DIR = PROJECT_ROOT / "backend"
 
 
 def _load_dotenv() -> None:
-    for env_file in (PROJECT_ROOT / ".env", BACKEND_DIR / ".env"):
+    """Load .env files in cascade order without overwriting existing environment variables.
+    Cascade candidates:
+    1. COMIC_SHELF_DATA / ".env" (persistent storage volume in Docker/NAS, or backend/data/.env)
+    2. PROJECT_ROOT / ".env" (host development or Compose root)
+    3. BACKEND_DIR / ".env" (legacy backend-specific override)
+    """
+    initial_data_dir = Path(os.getenv("COMIC_SHELF_DATA", BACKEND_DIR / "data")).resolve()
+    candidates = (
+        initial_data_dir / ".env",
+        PROJECT_ROOT / ".env",
+        BACKEND_DIR / ".env",
+    )
+    for env_file in candidates:
         if env_file.is_file():
             try:
                 for line in env_file.read_text(encoding="utf-8").splitlines():

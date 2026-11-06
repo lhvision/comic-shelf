@@ -66,9 +66,10 @@ Paper Room (Web & API 核心容器)
 适合主流 x86 电脑、工作站或配备支持 AVX2 指令集处理器的服务器：
 
 ```bash
-# 1. （可选）若公网部署需设置密码，可直接编辑 docker-compose.yml 中的 environment：
-#    取消注释 COMIC_SHELF_SECRET: '你的管理密码'
-#    若为纯内网家庭环境，无需任何修改！
+# 1. （可选）若公网部署需设置密码或自定义参数，推荐复制配置模版：
+#    方式一（推荐，与 Git 彻底物理隔离）：cp .env.example backend/data/.env
+#    方式二（Compose 根目录注入）：cp .env.example .env
+#    然后按需编辑 .env（如设置 COMIC_SHELF_SECRET）；纯内网家庭环境无需任何修改！
 
 # 2. 一键构建并启动双容器（包含主服务与识图 Sidecar）
 docker compose up -d --build
@@ -146,14 +147,16 @@ docker run -d \
 
 ## 3. 环境变量参数配置字典
 
-> **关于环境变量注入**：
+> **关于环境变量注入与配置持久化**：
 >
-> - Docker 容器部署**完全不需要** `.env` 文件（`.env` 也不会提交到代码仓库）。
-> - 你可以通过以下任一标准方式配置环境变量：
->   1. **Docker Compose**：直接在 `docker-compose.yml` 的 `environment` 节修改或取消注释；
->   2. **NAS Web 图形界面（TrueNAS / 群晖 / Portainer）**：在应用的“环境变量”设置表单中填入 Key 与 Value；
->   3. **Docker 命令行**：启动时增加 `-e KEY="value"` 参数；
->   4. （可选）本地开发或习惯使用 dotenv 的用户，可参考根目录 [`.env.example`](.env.example) 模版查阅参数说明。
+> 纸间采用**双轨级联配置（Dual-Track Cascade）**，彻底实现「代码拉取升级」与「部署参数」物理隔离：
+>
+> 1. **持久化数据卷配置（最推荐，升级绝对零冲突）**：直接在挂载的数据目录中放置 `.env`（宿主机为 `./backend/data/.env`，容器内映射为 `/app/data/.env`），后续 `git pull` 升级代码永不冲突；
+> 2. **Docker Compose 根目录配置**：在项目根目录复制 `cp .env.example .env`，Compose 自动通过 `env_file` 注入容器（`docker-compose.yml` 保持纯净模板无需修改）；
+> 3. **NAS Web 图形界面（TrueNAS / 群晖 / Portainer）**：在应用的“环境变量”设置表单中填入 Key 与 Value；
+> 4. **Docker 命令行**：启动时增加 `-e KEY="value"` 参数；
+> 5. **覆盖优先级**：系统环境变量（`-e` / Compose `environment:`） > 根目录 `.env` > 数据卷 `/app/data/.env` > 内置开箱默认值。
+>    详细参数说明与模板参见根目录 [`.env.example`](.env.example)。
 
 ### 3.1 核心权限与安全配置（必看）
 
@@ -170,15 +173,15 @@ docker run -d \
 | `COMIC_SHELF_COOKIE_NAME`               | ⚪ **可选自定义**            | `comic_shelf_token`                           | **通行证 Cookie 键名**。支持自定义 Cookie 名称（如 `my_vault_token`），彻底隐匿开源默认键名，配合 Cloudflare WAF 与单本沙箱 `temp_token` 实现高强度私有免检与零裂图秒开（详见 `docs/HOMELAB_NETWORKING_GUIDE.md` §6.6 与 §6.7）。                                                                                                                                        |
 | `COMIC_SHELF_DEVICE_COOKIE_NAME`        | ⚪ **可选自定义**            | `comic_shelf_device`                          | **设备认证 Cookie 键名**。支持自定义设备 Cookie 名称（如 `my_vault_device`），配合 Cloudflare WAF 规则实现免检通行。                                                                                                                                                                                                                                                     |
 
-### 3.2 基础服务与持久化配置
+### 3.2 基础服务与持久化配置（Docker 部署请通过 Compose `volumes` 与 `ports` 管理）
 
-| 环境变量                   | 默认值                  | 说明                                                                                                                                    |
-| :------------------------- | :---------------------- | :-------------------------------------------------------------------------------------------------------------------------------------- |
-| `COMIC_SHELF_DATA`         | `backend/data`          | 数据根目录。Docker 容器内固定为 `/app/data`。所有已下载漫画、封面、元数据、访客与进度数据库（`comic_shelf.db`）与索引均保存在此目录下。 |
-| `COMIC_SHELF_HOST`         | `127.0.0.1`             | 服务绑定地址。Docker 容器内已配置为 `0.0.0.0`。                                                                                         |
-| `COMIC_SHELF_PORT`         | `8000`                  | 服务监听端口。可在 Compose 中将宿主机端口任意映射（如 `8080:8000`）。                                                                   |
-| `COMIC_SHELF_IMSEARCH_URL` | `http://localhost:8765` | 局部特征识图 Sidecar 服务地址。Docker Compose 内部网络已配置为 `http://imsearch:8765`。                                                 |
-| `COMIC_SHELF_ENABLE_DOCS`  | `false`                 | 是否开放 FastAPI 交互式 API 文档页面（`/docs` 与 `/redoc`）。公网环境建议保持 `false`。                                                 |
+| 环境变量                   | 默认值                  | 说明                                                                                                                                 |
+| :------------------------- | :---------------------- | :----------------------------------------------------------------------------------------------------------------------------------- |
+| `COMIC_SHELF_DATA`         | `backend/data`          | 数据根目录。Docker 容器内固定为 `/app/data`；Docker 部署时直接在 Compose 的 `volumes` 节映射宿主机路径，无需且切勿在 `.env` 中设置。 |
+| `COMIC_SHELF_HOST`         | `127.0.0.1`             | 服务绑定地址。Docker 容器内已固定为 `0.0.0.0`，无需在 `.env` 中设置。                                                                |
+| `COMIC_SHELF_PORT`         | `8000`                  | 服务监听端口。Docker 部署时直接在 Compose 的 `ports` 节映射宿主机端口（如 `8080:8000`），无需在 `.env` 中设置。                      |
+| `COMIC_SHELF_IMSEARCH_URL` | `http://localhost:8765` | 局部特征识图 Sidecar 服务地址。Docker Compose 内部网络已预配置为 `http://imsearch:8765`。                                            |
+| `COMIC_SHELF_ENABLE_DOCS`  | `false`                 | 是否开放 FastAPI 交互式 API 文档页面（`/docs` 与 `/redoc`）。公网环境建议保持 `false`。                                              |
 
 ### 3.3 性能调优与并发控制（低配 NAS / 进阶调优）
 
