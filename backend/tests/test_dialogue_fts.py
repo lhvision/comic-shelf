@@ -1477,8 +1477,11 @@ def test_ascii_case_folding_and_unparsable_query():
         assert res[0]["rank_score"] > res[1]["rank_score"], res
         assert "<mark>OK</mark>" in res[0]["snippet"], f"命中了 OK 却高亮不出来: {res[0]['snippet']}"
 
-        # 3 字以上 MATCH 为空就是真没有，不再拿 LIKE 全表重扫；NUL 让 FTS5 解析失败，也只当无命中
+        # 3 字以上 MATCH 为空就是真没有，不再拿 LIKE 全表重扫；NUL 与未闭合引号等让 FTS5 解析失败，也只当无命中、绝不 500
         assert db_mod.search_dialogues("ok\x00啦", source="local") == []
+        assert db_mod.search_dialogues('"测试"', source="local") == []
+        assert db_mod.search_dialogues('测试"未闭合', source="local") == []
+        assert db_mod.search_dialogues('AND OR NOT *', source="local") == []
         print("  ✓ ASCII case folding and unparsable query passed")
     finally:
         shutil.rmtree(temp_dir, ignore_errors=True)

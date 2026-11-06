@@ -388,10 +388,10 @@ async def auth_and_security_middleware(request: Request, call_next):
     if is_write:
         if not is_curator(request):
             if is_machine(request):
-                # Machine token is allowed to create local comics, upload pages, and sync OCR
+                # Machine token is strictly scoped to comic creation, page uploads, and OCR sync (ADR 0008)
                 is_machine_allowed_write = (
-                    path.startswith("/api/library/local/")
-                    or path.endswith("/ocr/sync")
+                    path == "/api/library/local/create"
+                    or path.endswith(("/upload-pages", "/replace-pages", "/ocr/sync"))
                 ) and request.method != "DELETE"
                 if not is_machine_allowed_write:
                     return JSONResponse(

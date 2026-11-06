@@ -289,9 +289,9 @@ JmImageTool.decode_and_save(num, source_image, save_path)
 - **四态权限角色模型（Role Matrix）**：
   1. `admin`（馆长）：由 `COMIC_SHELF_SECRET` 鉴权，拥有全库浏览、收录、元数据修改、访客通行证派发与高危物理删除（`DELETE`）等全权权限；
   2. `machine`（机器专属流水线）：由 `MACHINE_TOKEN`（`COMIC_SHELF_MACHINE_TOKEN`）鉴权，遵循**最小特权原则（Least Privilege）**：
-     - 允许调用自动化创作端点（`POST /api/library/local/create`）、增量画页追加（`/upload-pages`）、OCR 台词同步（`/ocr/sync`）与台词取料（`/api/search/dialogue-context`）；未配置 `COMIC_SHELF_MCP_TOKEN` 时兼作 MCP 入口，配置后就进不了 MCP；
+     - 精确放行自动化创作端点（`POST /api/library/local/create`）、增量画页追加/替换（`/upload-pages`、`/replace-pages`）、OCR 台词同步（`/ocr/sync`）与台词取料（`/api/search/dialogue-context`）；未配置 `COMIC_SHELF_MCP_TOKEN` 时兼作 MCP 入口，配置后就进不了 MCP；
      - 与访客一样看不到对访客隐藏的书（读接口经 `_require_meta(..., request)` 过滤）；
-     - **严格禁止**执行全库物理删除（`DELETE /api/library/...`）、删除章节、注销访客通行证或注销设备会话等高危破坏性端点（HTTP 403 阻断）；
+     - **严格禁止**执行全库物理删除（`DELETE /api/library/...`）、删除章节、注销访客通行证或注销设备会话，**禁止触发 `/import-path` 与 `/inspect-pdf`**（宿主机任意目录与 PDF 解析导入必须由馆长亲自触发，HTTP 403 阻断）；
      - 支持请求头 `Authorization: Bearer <TOKEN>`、`X-Machine-Token: <TOKEN>` 或 Query 参数 `token=<TOKEN>`；
   3. `guest`（访客）：持有专属通行证并绑定自设 PIN 码的读者，仅限只读已授权藏书；
   4. `unauthorized`：未鉴权或通行证过期，严格阻断（HTTP 401）。

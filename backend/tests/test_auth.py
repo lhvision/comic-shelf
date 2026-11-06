@@ -640,6 +640,111 @@ def test_unauthorized_clears_stale_cookie():
         clear_ip_login_failures("203.0.113.8")
 
 
+def test_is_request_secure_trust_forwarded_headers():
+    """验证 is_request_secure 在开启/关闭 TRUST_FORWARDED_HEADERS 时的行为。"""
+    # 1. 开启信任代理（生产默认）：支持 Cloudflare / 反代注入的 https 协议头
+    auth_mod.TRUST_FORWARDED_HEADERS = True
+    req_https_url = make_mock_request()
+    req_https_url.url.scheme = "https"
+    assert auth_mod.is_request_secure(req_https_url) is True
+
+    req_proto = make_mock_request(headers={"X-Forwarded-Proto": "https"})
+    req_proto.url.scheme = "http"
+    assert auth_mod.is_request_secure(req_proto) is True
+
+    req_scheme = make_mock_request(headers={"X-Forwarded-Scheme": "https"})
+    req_scheme.url.scheme = "http"
+    assert auth_mod.is_request_secure(req_scheme) is True
+
+    req_cf = make_mock_request(headers={"CF-Visitor": '{"scheme":"https"}'})
+    req_cf.url.scheme = "http"
+    assert auth_mod.is_request_secure(req_cf) is True
+
+    req_plain = make_mock_request()
+    req_plain.url.scheme = "http"
+    assert auth_mod.is_request_secure(req_plain) is False
+
+    # 2. 关闭信任代理（未配反代环境）：忽略客户端伪造的转发协议头，仅认物理连接
+    auth_mod.TRUST_FORWARDED_HEADERS = False
+    assert auth_mod.is_request_secure(req_https_url) is True
+    assert auth_mod.is_request_secure(req_proto) is False
+    assert auth_mod.is_request_secure(req_scheme) is False
+    assert auth_mod.is_request_secure(req_cf) is False
+
+    # 还原配置
+    auth_mod.TRUST_FORWARDED_HEADERS = True
+
+
+def test_machine_token_permission_boundaries():
+    """验证机器密钥 (MACHINE_TOKEN) 的严格权限收敛：仅放行创建/上传/同步，阻断全目录导入与删除。"""
+    from app.main import auth_and_security_middleware
+    from unittest.mock import AsyncMock
+
+    auth_mod.AUTH_SECRET = "curator-key-999"
+    config_mod.AUTH_SECRET = "curator-key-999"
+    auth_mod.MACHINE_TOKEN = "machine-token-abc"
+    config_mod.MACHINE_TOKEN = "machine-token-abc"
+
+    try:
+        call_next = AsyncMock()
+
+        # 1. 允许：创建本地漫画
+        r_create = make_mock_request(
+            "/api/library/local/create",
+            headers={"X-Machine-Token": "machine-token-abc"},
+        )
+        r_create.method = "POST"
+        res_create = asyncio.run(auth_and_security_middleware(r_create, call_next))
+        assert call_next.called
+
+        # 2. 允许：上传画页与 OCR 同步
+        call_next.reset_mock()
+        r_upload = make_mock_request(
+            "/api/library/local/c1/upload-pages",
+            headers={"X-Machine-Token": "machine-token-abc"},
+        )
+        r_upload.method = "POST"
+        asyncio.run(auth_and_security_middleware(r_upload, call_next))
+        assert call_next.called
+
+        call_next.reset_mock()
+        r_ocr = make_mock_request(
+            "/api/library/local/c1/ocr/sync",
+            headers={"X-Machine-Token": "machine-token-abc"},
+        )
+        r_ocr.method = "POST"
+        asyncio.run(auth_and_security_middleware(r_ocr, call_next))
+        assert call_next.called
+
+        # 3. 拒绝：禁止机器密钥直接触发整目录导入 (import-path)
+        call_next.reset_mock()
+        r_import = make_mock_request(
+            "/api/library/local/import-path",
+            headers={"X-Machine-Token": "machine-token-abc"},
+        )
+        r_import.method = "POST"
+        res_import = asyncio.run(auth_and_security_middleware(r_import, call_next))
+        assert res_import.status_code == 403
+        assert "仅限执行作品创作入库与伴生同步" in res_import.body.decode("utf-8")
+        assert not call_next.called
+
+        # 4. 拒绝：禁止机器密钥执行删除
+        call_next.reset_mock()
+        r_del = make_mock_request(
+            "/api/library/local/c1",
+            headers={"X-Machine-Token": "machine-token-abc"},
+        )
+        r_del.method = "DELETE"
+        res_del = asyncio.run(auth_and_security_middleware(r_del, call_next))
+        assert res_del.status_code == 403
+        assert not call_next.called
+    finally:
+        auth_mod.AUTH_SECRET = ""
+        config_mod.AUTH_SECRET = ""
+        auth_mod.MACHINE_TOKEN = ""
+        config_mod.MACHINE_TOKEN = ""
+
+
 if __name__ == "__main__":
     test_auth_logic()
     test_hotlink_protection()
@@ -652,6 +757,8 @@ if __name__ == "__main__":
     test_access_log_redacts_query_credentials()
     test_stepped_covers()
     test_custom_cookie_names()
+    test_is_request_secure_trust_forwarded_headers()
+    test_machine_token_permission_boundaries()
     print("All backend auth, middleware & hotlink protection tests passed!")
 
 

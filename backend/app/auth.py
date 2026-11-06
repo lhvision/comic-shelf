@@ -289,15 +289,16 @@ def is_request_secure(request: Request | None) -> bool:
         return False
     if getattr(request, "url", None) and request.url.scheme == "https":
         return True
-    x_proto = request.headers.get("x-forwarded-proto", "").strip().lower()
-    if x_proto and x_proto.split(",")[0].strip() == "https":
-        return True
-    x_scheme = request.headers.get("x-forwarded-scheme", "").strip().lower()
-    if x_scheme and x_scheme.split(",")[0].strip() == "https":
-        return True
-    cf_visitor = request.headers.get("cf-visitor", "")
-    if '"scheme":"https"' in cf_visitor.lower():
-        return True
+    if TRUST_FORWARDED_HEADERS:
+        x_proto = request.headers.get("x-forwarded-proto", "").strip().lower()
+        if x_proto and x_proto.split(",")[0].strip() == "https":
+            return True
+        x_scheme = request.headers.get("x-forwarded-scheme", "").strip().lower()
+        if x_scheme and x_scheme.split(",")[0].strip() == "https":
+            return True
+        cf_visitor = request.headers.get("cf-visitor", "")
+        if '"scheme":"https"' in cf_visitor.lower():
+            return True
     return False
 
 

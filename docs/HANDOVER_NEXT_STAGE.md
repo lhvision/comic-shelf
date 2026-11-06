@@ -20,6 +20,8 @@
 
 - ⏳ **入站 `?token=` 仍然接受**（`extract_token` 第 4 档，为不支持自定义 Headers 的客户端保留）：uvicorn 日志已打码，但 NPM 等反代的日志照记。要彻底堵掉，得让 MCP 只从请求头取子凭据，代价是只能在 URL 里填凭据的客户端（`DEPLOYMENT.md` §9.2 方式 B）会失效。等确认自用客户端都支持自定义 Headers 再做。
 - ✅ **MCP 工具独立频控已落地**（2026-10-01）：在 `execute_tool` 入口调 `abuse.check_guest_rate_limit("mcp")`，直接复用令牌桶（180次/分 + 100突发容量），超限时优雅返回 `isError: True`，防范外部 Agent 并发风暴打满 SQLite 连接池与卡死服务。
+- ✅ **is_request_secure 协议头信任收敛**（2026-11-06）：`is_request_secure` 增加 `TRUST_FORWARDED_HEADERS` 校验，未开启代理信任的单机/开发环境不再采信伪造的 `X-Forwarded-Proto`，杜绝 HTTP 下意外下发 `Secure` Cookie 导致写失败。
+- ✅ **机器密钥 (MACHINE_TOKEN) 白名单精确收拢**（2026-11-06）：将中间件中的宽泛前缀 `path.startswith("/api/library/local/")` 精确限制为 `/local/create`、`/upload-pages`、`/replace-pages` 与 `/ocr/sync`，彻底禁止机器密钥调用宿主机目录导入（`/import-path`、`/inspect-pdf`）。
 - ⏳ **失败锁记下的 IP 可不可信取决于部署**：`COMIC_SHELF_TRUST_FORWARDED_HEADERS` 默认开，`get_client_ip` 直接信任 `CF-Connecting-IP` / XFF 第一段。经 Cloudflare 且源站不能直连时没问题；源站能直连，这两个头就能伪造，可以每次换 IP 永不触发锁，也可以冒用馆长 IP 把馆长锁在门外。目前只把 `docs/HOMELAB_NETWORKING_GUIDE.md` §6.8 回源印章列为公网部署必配项，默认值不改：改成 false 会让所有走 Cloudflare 的部署都得手动再打开。
 - ⏳ **前端把馆长口令存在 localStorage**：`src/api/core/http.ts` 把口令存进 `localStorage`，每个请求都带 `Authorization: Bearer`（后端 `backend/app/auth.py` 的 `extract_token` 第 1 档）。这是一直以来的做法；改口令后前端会反复重放旧值，同一个错误凭据在计数窗口内只计一次，所以不会锁 IP。
 - ⏳ **有意延后的小项**（都不构成绕过，按需再做）：
