@@ -175,8 +175,12 @@ describe('usePageZoom', () => {
       toggleZoom(1)
       const zoomedStyle = getPageZoomStyle(1)
       expect(zoomedStyle).toBeDefined()
-      expect(zoomedStyle?.transform).toContain('scale(2.5)')
+      expect(zoomedStyle?.transform).toContain('translate3d')
       expect(zoomedStyle?.zIndex).toBe(20)
+      expect(zoomedStyle?.['--zoom-scale']).toBe('2.5')
+      expect(zoomedStyle?.['--zoomed-width']).toBe('1000px')
+      expect(zoomedStyle?.['--zoomed-height']).toBe('1500px')
+      expect(zoomedStyle?.minHeight).toBe('600px')
 
       // Other pages are dimmed while zoom is active
       const otherStyle = getPageZoomStyle(2)

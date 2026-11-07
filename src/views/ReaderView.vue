@@ -88,7 +88,7 @@ const {
   initReaderView, advanceAutoTurn, onPageReady, onViewportWheel, onUserInteract,
   onContainerScroll, onReaderClick, onSelectChapter, toggleFullscreen,
   prevGroup, nextGroup, goToPage, goNextChapter, goPrevChapter,
-  isZoomed, resetZoom, getPageZoomStyle, onPageDblClick,
+  isZoomed, zoomedPage, resetZoom, getPageZoomStyle, onPageDblClick,
   onPagePointerDown, onPagePointerMove, onPagePointerUp, onPagePointerCancel,
 } = useReaderInteraction({
   userInteracted, currentPage, currentGroupIndex, settingsOpen, filmstripOpen, toggleFilmstrip,
@@ -161,6 +161,7 @@ onUnmounted(() => {
       :next-chapter="nextChapter"
       :chapter-short-label="chapterShortLabel"
       :is-zoomed="isZoomed"
+      :zoomed-page="zoomedPage"
       :get-page-zoom-style="getPageZoomStyle"
       @scroll="onContainerScroll"
       @wheel="onViewportWheel"

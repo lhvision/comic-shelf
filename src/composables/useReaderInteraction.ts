@@ -86,6 +86,7 @@ export function useReaderInteraction(options: UseReaderInteractionOptions) {
   })
   const {
     isZoomed,
+    zoomedPage,
     resetZoom,
     getPageZoomStyle,
     wasRecentlyToggled,
@@ -381,6 +382,7 @@ export function useReaderInteraction(options: UseReaderInteractionOptions) {
     goNextChapter,
     goPrevChapter,
     isZoomed,
+    zoomedPage,
     resetZoom,
     getPageZoomStyle,
     onPageDblClick,

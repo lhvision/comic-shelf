@@ -60,6 +60,8 @@ export interface ReaderViewportProps {
   chapterShortLabel?: (chapter: Chapter) => string
   /** 当前是否处于画页双击放大状态 */
   isZoomed?: boolean
+  /** 当前处于放大态的画页页号（无则为 null） */
+  zoomedPage?: number | null
   /** 获取画页放大变换样式 */
   getPageZoomStyle?: (page: number) => CSSProperties | undefined
 }
@@ -175,6 +177,7 @@ defineExpose({
         <div
           class="page-frame"
           :data-fit="settings.fit"
+          :data-zoomed="zoomedPage === page ? 'true' : undefined"
           :style="[getPageStyle(page), getPageZoomStyle?.(page)]"
           @dblclick="$emit('pageDblClick', page, $event)"
           @pointerdown="$emit('pagePointerDown', page, $event)"
@@ -325,6 +328,47 @@ defineExpose({
   touch-action: manipulation;
   user-select: none;
   -webkit-user-select: none;
+}
+
+/* ---------------- 画页放大动静分相高清栅格化 (ADR 0038) ---------------- */
+.page-frame[data-zoomed='true'] {
+  z-index: 20;
+  touch-action: none;
+}
+
+.page-frame[data-zoomed='true'] :deep(.comic-page-img-frame) {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: var(--zoomed-width) !important;
+  height: var(--zoomed-height) !important;
+  max-width: none !important;
+  max-height: none !important;
+  transform: translate(-50%, -50%);
+  animation: zoom-supersampled-enter var(--duration-2) var(--ease-out) forwards;
+}
+
+@keyframes zoom-supersampled-enter {
+  from {
+    transform: translate(-50%, -50%) scale(calc(1 / var(--zoom-scale, 2.5)));
+  }
+  to {
+    transform: translate(-50%, -50%) scale(1);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .page-frame[data-zoomed='true'] :deep(.comic-page-img-frame) {
+    animation: none;
+  }
+}
+
+.page-frame[data-zoomed='true'] :deep(.comic-page-img) {
+  width: 100% !important;
+  height: 100% !important;
+  max-width: none !important;
+  max-height: none !important;
+  object-fit: contain;
 }
 
 .page-frame :deep(.comic-page-img) {

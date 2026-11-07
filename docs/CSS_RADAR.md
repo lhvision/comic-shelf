@@ -25,6 +25,7 @@
    - [2.13 `HTML5 <dialog>` 与原生顶层模态体系（Top Layer Dialog & Baseline 2022/2026）](#213-html5-dialog-与原生顶层模态体系top-layer-dialog--baseline-20222026)
    - [2.14 `CSS Counters` 与网格超出余量指示体系（CSS Counters & Overflow Indicators）](#214-css-counters-与网格超出余量指示体系css-counters--overflow-indicators)
    - [2.15 `@starting-style` 与 Compositor 离散动画（废除 JS FLIP 消除高刷重排）](#215-starting-style-与-compositor-离散动画废除-js-flip-消除高刷重排)
+   - [2.16 动静分相栅格化架构与首帧超采样（Render Scale Separation & Instant Supersampling — ADR 0038）](#216-动静分相栅格化架构与首帧超采样render-scale-separation--instant-supersampling--adr-0038)
 3. [渐进增强特性（Progressive Enhancement）](#3-渐进增强特性progressive-enhancement)
    - [3.1 `interpolate-size: allow-keywords` 与 CSS Grid 复合轨道](#31-interpolate-size-allow-keywords-与-css-grid-复合轨道)
    - [3.2 `::details-content` — 原生展开内容伪元素](#32-details-content--原生展开内容伪元素)
@@ -80,6 +81,7 @@
 | **`-webkit-line-clamp` / `line-clamp`**              | 6+ (前缀)<br>_(Preview 无前缀)_ | 68+ (前缀)<br>_(Preview 无前缀)_ | 5+ (前缀)<br>_(18.2-18.3 误开已回退)_ | ✅ W3C 兼容事实标准（前缀）<br>⏳ 规范草案（无前缀） |                       ✅ 已落地（`AppTextClamp.vue` / `main.css` 实用类）                       |
 | **`font-size-adjust`**                               |              127+               |     3+<br>_(92+ two-values)_     |      16.4+<br>_(17+ two-values)_      |                   ✅ Baseline 2024                   |                      ✅ 渐进增强（微标 `--text-caption` 与多语言字形排版）                      |
 | **`CSS Counters` (`counter-reset`)**                 |              全通               |               全通               |                 全通                  |             ✅ Baseline Widely Available             |                           ✅ 已落地（页面网格与折叠指示双轨混合架构）                           |
+| **动静分相高分栅格化架构 (ADR 0038)**                |              全通               |               全通               |                 全通                  |             ✅ Baseline Widely Available             |         ✅ 已落地（`usePageZoom.ts` / `ReaderViewport.vue` 1:1 原画清晰度与首帧超采样）         |
 | **`scroll-margin-top` / `scroll-padding`**           |              全通               |               全通               |                 全通                  |             ✅ Baseline Widely Available             |                            ✅ 已落地（画卷折叠平滑回顶吸顶锚点补偿）                            |
 | **`srcset` / `sizes` (`w` 描述符)**                  |      38+<br>_(34+ srcset)_      |               38+                |         9.1+<br>_(8+ srcset)_         |                   ✅ Baseline 2016                   |                 ✅ 已落地（全站统一 `sizes="(max-width: 680px) 120px, 240px"`）                 |
 | **`sizes="auto"` (懒加载原生联动)**                  |              126+               |               150+               |                  27+                  |                   ✅ Baseline 2026                   |                   ⚠️ 实测避坑（双档架构因 DPR 放大拉大图，维持人工低估规范）                    |
@@ -767,6 +769,47 @@ overflow: hidden;
 .shelf-card:hover,
 .shelf-card:focus-visible {
   perspective: 60rem;
+}
+```
+
+### 2.16 动静分相栅格化架构与首帧超采样（Render Scale Separation & Instant Supersampling — ADR 0038）
+
+**规范状态**：✅ Baseline Widely Available（标准 CSS Transforms 与原生栅格化渲染管线）  
+**本项目落地状态**：✅ 已在 `usePageZoom.ts` 与 `ReaderViewport.vue` 落地（画页放大 2.5x 原画级锐利对焦）
+
+**核心原理与优势**：
+
+1. **废除直接 CSS `scale(...)` 放大，消除 GPU 双线性拉伸模糊**：
+   常规布局下浏览器按视口尺寸（如 400px~800px）将 `<img>` 栅格化为标准 GPU 纹理。若直接对父容器执行 `scale(2.5)`，GPU 合成器仅对低分纹理做双线性拉伸（Bilinear Blit），无法从原图解码位图重采样；
+2. **动静分相解耦（Render Scale Separation）**：
+   画页放大激活时，仅在单页沙箱内将物理渲染尺寸（`--zoomed-width: w * scale` 与 `--zoomed-height: h * scale`）扩充至放大倍率，强制浏览器按 1:1 原画物理像素重栅格化 `<img>`；读者的拖拽平移、滚轮漫游由 `transform: translate3d(panX, panY, 0)` 硬件加速承载，平移全程 0 Reflow，帧率稳定 60/120fps；
+3. **首帧超采样动效（Instant Supersampling）**：
+   自双击激活瞬时起即由高分辨率图层驱动 `@keyframes zoom-supersampled-enter`，从 `scale(0.4)` 平滑膨胀至 `scale(1)`，杜绝两段式模糊闪烁（Flash of Blur）；
+4. **单页沙箱与物理锁高**：
+   仅对激活页扩展渲染尺寸，长卷条漫注入 `minHeight` 物理锁高杜绝文档流塌陷，退出放大（Reset Zoom）即刻释放高分层。
+
+**纸间生产落地范式（`ReaderViewport.vue`）**：
+
+```css
+.page-frame[data-zoomed='true'] :deep(.comic-page-img-frame) {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: var(--zoomed-width) !important;
+  height: var(--zoomed-height) !important;
+  max-width: none !important;
+  max-height: none !important;
+  transform: translate(-50%, -50%);
+  animation: zoom-supersampled-enter var(--duration-2) var(--ease-out) forwards;
+}
+
+@keyframes zoom-supersampled-enter {
+  from {
+    transform: translate(-50%, -50%) scale(calc(1 / var(--zoom-scale, 2.5)));
+  }
+  to {
+    transform: translate(-50%, -50%) scale(1);
+  }
 }
 ```
 

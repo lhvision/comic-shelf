@@ -2,15 +2,17 @@
  * @file usePageZoom.ts
  * @description 阅读器画页双击放大、防脱轨边界平移与视图还原状态机。
  *
- * 领域概念（GLOSSARY.md）：
+ * 领域概念（GLOSSARY.md / ADR 0038）：
  * - 画页放大（Page Zoom）：双击画页以点击坐标为中心 2.5 倍平滑放大，并允许拖拽平移浏览细节。
- * - 还原视图（Reset Zoom）：放大状态下将画页复原至 1:1 原始排版尺标。
+ * - 动静分相栅格化（Render Scale Separation）：画页放大态提升单页物理渲染像素尺寸以实现 1:1 原画清晰度，平移全程由 GPU 硬件加速接管。
+ * - 还原视图（Reset Zoom）：放大状态下将画页复原至 1:1 原始排版尺标并即刻释放高分辨率图层。
  *
  * 核心契约：
  * 1. 双击/双触目标点智能对焦（基于点击位置瞬时偏置计算）；
- * 2. 防脱轨平移约束（Edge Clamping）：平移位移严格受限于画面有效范围，杜绝拖出视口露底；
- * 3. 放大态独占手势，隔离整书切页与滚动，避免阅读微小文字时发生误触；
- * 4. 支持悬浮还原胶囊按钮、再次双击、Escape 键或切页时自动还原。
+ * 2. 动静分相栅格化（Render Scale Separation）：通过单页沙箱将渲染尺寸扩展至 2.5x，彻底消除 GPU 纹理拉伸模糊；
+ * 3. 防脱轨平移约束（Edge Clamping）：平移位移严格受限于画面有效范围，杜绝拖出视口露底；
+ * 4. 放大态独占手势，隔离整书切页与滚动，避免阅读微小文字时发生误触；
+ * 5. 支持悬浮还原胶囊按钮、再次双击、Escape 键或切页时自动还原。
  */
 
 import { computed, ref, type CSSProperties, type Ref } from 'vue'
@@ -78,7 +80,7 @@ function clamp(val: number, min: number, max: number): number {
  * 画页局部放大与拖拽平移组合式函数
  */
 export function usePageZoom(options: UsePageZoomOptions = {}): UsePageZoomReturn {
-  const scale = options.scale ?? 2.5
+  const scale = Math.max(1, options.scale ?? 2.5)
   const zoomedPage = ref<number | null>(null)
   const isZoomed = computed(() => zoomedPage.value !== null)
 
@@ -394,9 +396,10 @@ export function usePageZoom(options: UsePageZoomOptions = {}): UsePageZoomReturn
 
   function getPageZoomStyle(page: number): CSSProperties | undefined {
     if (zoomedPage.value === page) {
+      const w = currentFrameDim.value.w > 0 ? currentFrameDim.value.w : 400
+      const h = currentFrameDim.value.h > 0 ? currentFrameDim.value.h : 600
       return {
-        transform: `translate3d(${panOffset.value.x}px, ${panOffset.value.y}px, 0) scale(${scale})`,
-        transformOrigin: 'center center',
+        transform: `translate3d(${panOffset.value.x}px, ${panOffset.value.y}px, 0)`,
         transition:
           isDragging.value || isInstantPanning.value
             ? 'none'
@@ -404,6 +407,10 @@ export function usePageZoom(options: UsePageZoomOptions = {}): UsePageZoomReturn
         zIndex: 20,
         touchAction: 'none',
         cursor: isDragging.value ? 'grabbing' : 'grab',
+        '--zoom-scale': `${scale}`,
+        '--zoomed-width': `${w * scale}px`,
+        '--zoomed-height': `${h * scale}px`,
+        minHeight: `${h}px`,
       }
     }
     if (isZoomed.value) {

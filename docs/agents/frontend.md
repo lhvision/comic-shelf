@@ -333,10 +333,11 @@
 - 自动切换的滚动行为需尊重 `prefers-reduced-motion: reduce`，此时用 `behavior: 'auto'`。
 - **画页局部放大、防脱轨视口平移与安全互斥（Page Zoom, Clamped Pan & Gesture Isolation - `usePageZoom.ts`）**：
   - **对焦触发与黑色留白隔离**：仅在真实漫画图片区域内部双击（PC 双击或移动端 320ms 内且位移 <28px 双触）触发 2.5x 放大，并以点击物理坐标居中对齐；双击/双触外围黑色留白区域静默忽略（但处于放大态时允许双击黑边自愈还原）；双击成功后建立 450ms 静默窗口屏蔽连带的原生 click，杜绝顶栏闪烁；
+  - **动静分相高清栅格化与首帧超采样（Render Scale Separation & Instant Supersampling - ADR 0038）**：严禁直接对画页容器施加粗暴的 CSS `scale(2.5)`（会导致 GPU 拉伸 1x 纹理严重模糊）；底层采用动静分相栅格化，仅在当前被放大的单一画页（`data-zoomed="true"`）沙箱内，将真实画格 `.comic-page-img-frame` 渲染尺寸重置为真实 $w \times 2.5$ 与 $h \times 2.5$（`--zoomed-width`/`--zoomed-height`），强制浏览器以 1:1 原画物理像素重栅格化，平移全程由 GPU `translate3d` 硬件加速接管；过渡过程通过 `@keyframes zoom-supersampled-enter` 实现从 `scale(0.4)` 到 `scale(1)` 的首帧超采样丝滑膨胀，长卷条漫注入 `minHeight` 物理锁高杜绝文档流塌陷；
   - **指针安全性与手势滑动隔离**：严格校验 `(event.button ?? 0) === 0` 与 `isPrimary !== false`，全量拦截鼠标右键/中键及非主触控点干扰；单次手势位移超过 12px 即判定为滑动翻阅，丢弃 tap 候选，杜绝翻阅滑动误判为双击；
   - **防脱轨平移约束（Edge Clamping）与瞬时响应**：平移偏移量 $\text{panOffset}$ 严格受限在 $[-\text{maxX}, \text{maxX}]$ 与 $[-\text{maxY}, \text{maxY}]$ 内（$\text{max} = \frac{(\text{scale}-1) \times \text{dim}}{2}$），杜绝画面移出视口露底；滚轮高频滚动与键盘方向键长按连击时启用 `instant` 瞬时平移（`transition: none`），彻底消除 260ms CSS 缓动累积造成的粘滞延迟；
   - **独占手势与键盘切页拦截**：放大态下对所有导航键（`ArrowDown`/`Up`/`Left`/`Right`/`PageDown`/`PageUp`/`Space`/`Home`/`End`/`Tab`）全量 `preventDefault()`，阻断浏览器原生滚动与常规翻页，接管为平移视口（方向键步长 45px，翻页键/空格步长 135px，支持 `Shift + Space` 反向向上平移）；同时静默挂起自动翻页倒计时，压制条漫章末过渡卡片；
-  - **四阶梯自愈复位（Reset Zoom）**：支持屏幕底部悬浮还原胶囊按钮、再次双击、`Escape` 键级联响应（由 `useReaderKeyboard.ts` 统一调度优先退出放大），并在窗口尺寸突变（屏幕横竖屏旋转/Resize）或切换章节/排版模式时自动自愈复位至 1:1 原始排版。
+  - **四阶梯自愈复位（Reset Zoom）**：支持屏幕底部悬浮还原胶囊按钮、再次双击、`Escape` 键级联响应（由 `useReaderKeyboard.ts` 统一调度优先退出放大），并在窗口尺寸突变（屏幕横竖屏旋转/Resize）或切换章节/排版模式时自动自愈复位至 1:1 原始排版并即刻释放高分辨率沙箱。
 
 ## 7.5 每页 loading 兜底与视觉
 
