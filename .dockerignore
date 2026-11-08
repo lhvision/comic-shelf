@@ -7,7 +7,6 @@ backend/tests/
 backend/__pycache__/
 **/__pycache__/
 .git/
-.dsh-vision-toolkit/
 .impeccable/
 e2e/
 test-results/
@@ -17,4 +16,12 @@ docs/
 **/*.py[cod]
 **/.pytest_cache/
 .DS_Store
-
+.agents
+.claude
+.codex
+.vscode/
+extension/
+scripts/
+skills/
+.env
+.env.*

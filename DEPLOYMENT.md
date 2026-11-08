@@ -68,7 +68,7 @@ Paper Room (Web & API 核心容器)
 ```bash
 # 1. （可选）若公网部署需设置密码或自定义参数，推荐复制配置模版：
 #    方式一（推荐，与 Git 彻底物理隔离）：cp .env.example backend/data/.env
-#    方式二（Compose 根目录注入）：cp .env.example .env
+#    方式二（Compose 宿主机根目录注入，由 Compose 运行时读取环境变量，不打入镜像）：cp .env.example .env
 #    然后按需编辑 .env（如设置 COMIC_SHELF_SECRET）；纯内网家庭环境无需任何修改！
 
 # 2. 一键构建并启动双容器（包含主服务与识图 Sidecar）
@@ -152,7 +152,7 @@ docker run -d \
 > 纸间采用**双轨级联配置（Dual-Track Cascade）**，彻底实现「代码拉取升级」与「部署参数」物理隔离：
 >
 > 1. **持久化数据卷配置（最推荐，升级绝对零冲突）**：直接在挂载的数据目录中放置 `.env`（宿主机为 `./backend/data/.env`，容器内映射为 `/app/data/.env`），后续 `git pull` 升级代码永不冲突；
-> 2. **Docker Compose 根目录配置**：在项目根目录复制 `cp .env.example .env`，Compose 自动通过 `env_file` 注入容器（`docker-compose.yml` 保持纯净模板无需修改）；
+> 2. **Docker Compose 根目录配置**：在项目根目录复制 `cp .env.example .env`，Compose 启动容器时自动通过 `env_file` 注入环境变量（注意：`.env` 已被 `.dockerignore` 隔离，确保敏感凭据不被打进镜像层，仅作为宿主机运行时注入）；
 > 3. **NAS Web 图形界面（TrueNAS / 群晖 / Portainer）**：在应用的“环境变量”设置表单中填入 Key 与 Value；
 > 4. **Docker 命令行**：启动时增加 `-e KEY="value"` 参数；
 > 5. **覆盖优先级**：系统环境变量（`-e` / Compose `environment:`） > 根目录 `.env` > 数据卷 `/app/data/.env` > 内置开箱默认值。
