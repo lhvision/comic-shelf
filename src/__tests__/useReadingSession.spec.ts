@@ -2,6 +2,8 @@ import { describe, it, expect, beforeEach, vi } from 'vite-plus/test'
 import { nextTick } from 'vue'
 import { useReadingSession } from '@/composables/useReadingSession'
 import { useAuth } from '@/composables/useAuth'
+import { api } from '@/api/client'
+import { ApiError } from '@/api/core/http'
 import type { Router } from 'vue-router'
 
 describe('useReadingSession', () => {
@@ -58,7 +60,7 @@ describe('useReadingSession', () => {
     expect(session.value?.page).toBe(15)
   })
 
-  it('resumes session on launch with valid active session', () => {
+  it('resumes session on launch with valid active session', async () => {
     const { recordSession, tryResumeSession } = useReadingSession()
     recordSession({
       source: 'jm',
@@ -71,13 +73,135 @@ describe('useReadingSession', () => {
     const router = { replace: replaceSpy } as unknown as Router
     const toastSpy = vi.fn<(msg: string, tone?: 'info' | 'error' | 'success') => void>()
 
-    const resumed = tryResumeSession(router, toastSpy)
+    const resumed = await tryResumeSession(router, toastSpy)
     expect(resumed).toBe(true)
     expect(replaceSpy).toHaveBeenCalledWith('/comic/jm/12345/read/10')
     expect(toastSpy).toHaveBeenCalledWith('已为您恢复上次在读：第 10 页', 'info')
   })
 
-  it('refuses to resume if resumeOnLaunch is toggled off', () => {
+  it('synchronizes with newer server reading progress during cold launch resume', async () => {
+    vi.spyOn(api, 'getReadingProgress').mockResolvedValue({
+      ok: true,
+      last_page: 25,
+      total_pages: 30,
+      updated_at: 2000,
+    })
+
+    const { recordSession, session, tryResumeSession } = useReadingSession()
+    recordSession({
+      source: 'jm',
+      sourceId: '12345',
+      page: 10,
+      totalPages: 30,
+    })
+
+    const replaceSpy = vi.fn<() => Promise<void>>()
+    const router = { replace: replaceSpy } as unknown as Router
+    const toastSpy = vi.fn<(msg: string, tone?: 'info' | 'error' | 'success') => void>()
+
+    const resumed = await tryResumeSession(router, toastSpy)
+    expect(resumed).toBe(true)
+    expect(replaceSpy).toHaveBeenCalledWith('/comic/jm/12345/read/25')
+    expect(toastSpy).toHaveBeenCalledWith('已为您恢复上次在读：第 25 页', 'info')
+    expect(session.value?.page).toBe(25)
+  })
+
+  it('deactivates session and stays on shelf when comic was finished on another device', async () => {
+    vi.spyOn(api, 'getReadingProgress').mockResolvedValue({
+      ok: true,
+      last_page: 30,
+      total_pages: 30,
+      updated_at: 2500,
+    })
+
+    const { recordSession, session, tryResumeSession } = useReadingSession()
+    recordSession({
+      source: 'jm',
+      sourceId: '12345',
+      page: 10,
+      totalPages: 30,
+    })
+
+    const replaceSpy = vi.fn<() => Promise<void>>()
+    const router = { replace: replaceSpy } as unknown as Router
+    const toastSpy = vi.fn<(msg: string, tone?: 'info' | 'error' | 'success') => void>()
+
+    const resumed = await tryResumeSession(router, toastSpy)
+    expect(resumed).toBe(false)
+    expect(replaceSpy).not.toHaveBeenCalled()
+    expect(session.value?.active).toBe(false)
+  })
+
+  it('gracefully falls back to local session when server progress fetch fails or times out', async () => {
+    vi.spyOn(api, 'getReadingProgress').mockRejectedValue(new Error('Network offline'))
+
+    const { recordSession, session, tryResumeSession } = useReadingSession()
+    recordSession({
+      source: 'jm',
+      sourceId: '12345',
+      page: 10,
+      totalPages: 30,
+    })
+
+    const replaceSpy = vi.fn<() => Promise<void>>()
+    const router = { replace: replaceSpy } as unknown as Router
+    const toastSpy = vi.fn<(msg: string, tone?: 'info' | 'error' | 'success') => void>()
+
+    const resumed = await tryResumeSession(router, toastSpy)
+    expect(resumed).toBe(true)
+    expect(replaceSpy).toHaveBeenCalledWith('/comic/jm/12345/read/10')
+    expect(toastSpy).toHaveBeenCalledWith('已为您恢复上次在读：第 10 页', 'info')
+    expect(session.value?.page).toBe(10)
+  })
+
+  it('clears ghost session and cancels resume if comic was deleted (404) or forbidden (403)', async () => {
+    vi.spyOn(api, 'getReadingProgress').mockRejectedValue(new ApiError(404, 'Comic not found'))
+
+    const { recordSession, session, tryResumeSession } = useReadingSession()
+    recordSession({
+      source: 'jm',
+      sourceId: 'deleted_book',
+      page: 10,
+      totalPages: 30,
+    })
+
+    const replaceSpy = vi.fn<() => Promise<void>>()
+    const router = { replace: replaceSpy } as unknown as Router
+    const toastSpy = vi.fn<(msg: string, tone?: 'info' | 'error' | 'success') => void>()
+
+    const resumed = await tryResumeSession(router, toastSpy)
+    expect(resumed).toBe(false)
+    expect(replaceSpy).not.toHaveBeenCalled()
+    expect(session.value).toBeNull()
+  })
+
+  it('defends against TOCTOU resurrection if session is cleared during async progress fetch', async () => {
+    const { recordSession, session, clearSession, tryResumeSession } = useReadingSession()
+    recordSession({
+      source: 'jm',
+      sourceId: 'race_book',
+      page: 10,
+      totalPages: 30,
+    })
+
+    // Simulate concurrent logout or clearSession while HTTP request is in-flight
+    vi.spyOn(api, 'getReadingProgress').mockImplementation(async () => {
+      clearSession()
+      return { ok: true, last_page: 25, total_pages: 30, updated_at: 2000 }
+    })
+
+    const replaceSpy = vi.fn<() => Promise<void>>()
+    const router = { replace: replaceSpy } as unknown as Router
+    const toastSpy = vi.fn<(msg: string, tone?: 'info' | 'error' | 'success') => void>()
+
+    const resumed = await tryResumeSession(router, toastSpy)
+    expect(resumed).toBe(false)
+    expect(replaceSpy).not.toHaveBeenCalled()
+    // Session MUST NOT be resurrected with the in-flight data
+    expect(session.value).toBeNull()
+  })
+
+  it('refuses to resume if resumeOnLaunch is toggled off', async () => {
     const { recordSession, resumeOnLaunch, tryResumeSession } = useReadingSession()
     resumeOnLaunch.value = false
 
@@ -92,7 +216,7 @@ describe('useReadingSession', () => {
     const router = { replace: replaceSpy } as unknown as Router
     const toastSpy = vi.fn<(msg: string, tone?: 'info' | 'error' | 'success') => void>()
 
-    const resumed = tryResumeSession(router, toastSpy)
+    const resumed = await tryResumeSession(router, toastSpy)
     expect(resumed).toBe(false)
     expect(replaceSpy).not.toHaveBeenCalled()
   })
@@ -124,14 +248,14 @@ describe('useReadingSession', () => {
     const router = { replace: replaceSpy } as unknown as Router
     const toastSpy = vi.fn<(msg: string, tone?: 'info' | 'error' | 'success') => void>()
 
-    const resumed = tryResumeSession(router, toastSpy)
+    const resumed = await tryResumeSession(router, toastSpy)
     expect(resumed).toBe(false)
     expect(replaceSpy).not.toHaveBeenCalled()
 
     // Now if userId of auth profile is different (e.g. curator_admin), it still rejects
     const { userId } = useAuth()
     userId.value = 'guest:pass_1'
-    expect(tryResumeSession(router, toastSpy)).toBe(false)
+    expect(await tryResumeSession(router, toastSpy)).toBe(false)
     userId.value = ''
   })
 
@@ -174,7 +298,7 @@ describe('useReadingSession', () => {
     expect(session.value).toBeNull()
   })
 
-  it('refuses to resume session if auth is required and user is unauthenticated', () => {
+  it('refuses to resume session if auth is required and user is unauthenticated', async () => {
     const { authRequired, authenticated } = useAuth()
     authRequired.value = true
     authenticated.value = false
@@ -191,14 +315,14 @@ describe('useReadingSession', () => {
     const router = { replace: replaceSpy } as unknown as Router
     const toastSpy = vi.fn<() => void>()
 
-    expect(tryResumeSession(router, toastSpy)).toBe(false)
+    expect(await tryResumeSession(router, toastSpy)).toBe(false)
     expect(replaceSpy).not.toHaveBeenCalled()
 
     authRequired.value = false
     authenticated.value = true
   })
 
-  it('strictly enforces single-book sandbox boundary during resume', () => {
+  it('strictly enforces single-book sandbox boundary during resume', async () => {
     const { userId, authenticated } = useAuth()
     authenticated.value = true
     userId.value = 'direct:local:book_allowed'
@@ -221,7 +345,7 @@ describe('useReadingSession', () => {
     const router = { replace: replaceSpy } as unknown as Router
     const toastSpy = vi.fn<() => void>()
 
-    expect(tryResumeSession(router, toastSpy)).toBe(false)
+    expect(await tryResumeSession(router, toastSpy)).toBe(false)
     expect(replaceSpy).not.toHaveBeenCalled()
 
     // 2. Session for the ALLOWED comic succeeds
@@ -235,7 +359,7 @@ describe('useReadingSession', () => {
       session.value.userId = 'direct:local:book_allowed'
     }
 
-    expect(tryResumeSession(router, toastSpy)).toBe(true)
+    expect(await tryResumeSession(router, toastSpy)).toBe(true)
     expect(replaceSpy).toHaveBeenCalledWith('/comic/local/book_allowed/read/5')
 
     userId.value = ''

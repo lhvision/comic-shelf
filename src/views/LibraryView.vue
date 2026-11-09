@@ -228,10 +228,10 @@ watch(activeSource, (newSource, oldSource) => {
   }
 })
 
-onMounted(() => {
+onMounted(async () => {
   // PWA 独立窗口启动接续上次未读完的藏书
   if (Object.keys(route.query).length === 0) {
-    const resumed = tryResumeSession(router, toast)
+    const resumed = await tryResumeSession(router, toast)
     if (resumed) return
   }
 

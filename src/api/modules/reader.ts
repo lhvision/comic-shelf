@@ -23,9 +23,7 @@ export async function getReadingProgress(
   sourceId: string,
   options?: RequestOptions,
 ): Promise<ReadingProgressInfo> {
-  return request<ReadingProgressInfo>(`/library/${source}/${sourceId}/progress`, {
-    signal: options?.signal,
-  })
+  return request<ReadingProgressInfo>(`/library/${source}/${sourceId}/progress`, options)
 }
 
 /**

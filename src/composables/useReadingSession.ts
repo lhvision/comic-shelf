@@ -11,6 +11,8 @@
 import { watch } from 'vue'
 import { StorageSerializers, useLocalStorage } from '@vueuse/core'
 import type { Router } from 'vue-router'
+import { api } from '@/api/client'
+import { ApiError } from '@/api/core/http'
 import { useAuth } from '@/composables/useAuth'
 
 export interface ActiveReadingSession {
@@ -122,14 +124,18 @@ export function useReadingSession() {
   /**
    * 尝试在冷启动时恢复在读会话。
    *
+   * 结合多端协同进度对齐：优先拉取服务端最新阅读进度（带 600ms 超时防阻塞），
+   * 消除跨设备直接退出时本地 LocalStorage 残留陈旧页码的问题；若已在其他设备读完则自然完结。
+   * 离线、超时或网络异常时平滑降级使用端侧 LocalStorage 记录。
+   *
    * @param router 路由实例
    * @param showToast 可选的消息提示回调
    * @returns 是否成功触发了恢复导航
    */
-  function tryResumeSession(
+  async function tryResumeSession(
     router: Router,
     showToast?: (message: string, tone?: 'info' | 'error' | 'success') => void | number,
-  ): boolean {
+  ): Promise<boolean> {
     if (!resumeOnLaunch.value) return false
 
     // 1. 全局鉴权守卫：若开启了全站认证且当前尚未登录或已失效，严禁向未授权访客恢复任何在读会话
@@ -155,9 +161,58 @@ export function useReadingSession() {
     const sessionUid = normalizeSessionUid(s.userId)
     if (sessionUid !== currentUid) return false
 
-    const targetUrl = `/comic/${encodeURIComponent(s.source)}/${encodeURIComponent(s.sourceId)}/read/${s.page}`
+    // 4. 多端进度协同：尝试拉取服务端最新真实进度（带 600ms 超时），消除跨设备阅读的页码差
+    let resumePage = s.page
+    try {
+      const prog = await api.getReadingProgress(s.source, s.sourceId, { timeoutMs: 600 })
+      // 防御 TOCTOU：在异步网络等待期间，若账号切换、注销或会话被外部清空/失活，放弃恢复
+      const activeUid = normalizeSessionUid(userId.value)
+      if (
+        !session.value ||
+        !session.value.active ||
+        activeUid !== currentUid ||
+        session.value.source !== s.source ||
+        session.value.sourceId !== s.sourceId
+      ) {
+        return false
+      }
+      if (prog && prog.last_page > 0) {
+        resumePage = prog.last_page
+        const total = prog.total_pages || s.totalPages
+        // 对齐端侧会话缓存与时间戳
+        session.value = {
+          ...s,
+          page: resumePage,
+          totalPages: total > 0 ? total : s.totalPages,
+          updatedAt: prog.updated_at ? prog.updated_at * 1000 : Date.now(),
+        }
+      }
+    } catch (err: unknown) {
+      // 靶向安全防护：若作品在远端已被删除 (404) 或失去了访问权限 (401/403)，彻底清理幽灵会话并停留在书架
+      if (
+        err instanceof ApiError &&
+        (err.status === 404 || err.status === 401 || err.status === 403)
+      ) {
+        clearSession()
+        return false
+      }
+      // 离线、超时或普通网络波动时，平滑降级使用端侧 LocalStorage 记录
+    }
+
+    // 再次确认会话仍处于有效活跃态
+    if (!session.value || !session.value.active) {
+      return false
+    }
+
+    const effectiveTotal = session.value.totalPages || s.totalPages
+    if (effectiveTotal > 0 && resumePage >= effectiveTotal) {
+      deactivateSession()
+      return false
+    }
+
+    const targetUrl = `/comic/${encodeURIComponent(s.source)}/${encodeURIComponent(s.sourceId)}/read/${resumePage}`
     void router.replace(targetUrl)
-    showToast?.(`已为您恢复上次在读：第 ${s.page} 页`, 'info')
+    showToast?.(`已为您恢复上次在读：第 ${resumePage} 页`, 'info')
     return true
   }
 
