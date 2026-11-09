@@ -47,6 +47,7 @@
    - [4.5 CSS 动态鼠标跟随锚点（Mouse-Follow Anchor）](#45-css-动态鼠标跟随锚点mouse-follow-anchor)
    - [4.6 `text-fit` — 容器宽度文字自动适配（Stage 1-2 / Chrome 150+）](#46-text-fit--容器宽度文字自动适配stage-1-2--chrome-150)
    - [4.7 CSS `border-shape` 与 `shape()` 一体化气泡轮廓裁切（Stage 1-2 / 实验草案）](#47-css-border-shape-与-shape-一体化气泡轮廓裁切stage-1-2--实验草案)
+   - [4.8 `contrast-color()` — 背景对比色自动推导（Baseline 2026 / 评估否决）](#48-contrast-color--背景对比色自动推导baseline-2026--评估否决)
 5. [升级路线图（Roadmap）](#5-升级路线图roadmap)
 6. [参考资源（MDN & 博客专栏）](#6-参考资源mdn--博客专栏)
 
@@ -98,6 +99,7 @@
 | **`border-shape` / `shape()`**                       |             148+🚩              |                ❌                |                  ❌                   |                     🧪 Stage 1-2                     |                   📋 实验探索（固定徽章提示储备，通用组件因动态内容形变慎用）                   |
 | CSS `if()` 行内条件                                  |             137+🚩              |                ❌                |                  ❌                   |                      🧪 Stage 1                      |                                    🚫 构建工具限制，暂不采用                                    |
 | CSS `@function`                                      |             139+🚩              |                ❌                |                  ❌                   |                      🧪 Stage 2                      |                                      🚫 过早引入，暂不采用                                      |
+| **`contrast-color()`**                               |              147+               |               146+               |                  26+                  |               🔶 Newly Available 2026                |              🚫 经 ui.md 评估否决（抽干纸墨暖调致水泥灰，击穿 WCAG AA 且暗室穿透）              |
 
 **图例**：✅ 可用 · 🔶 部分支持 · 🧪 实验旗 · 🚩 需开 Flag · ❌ 未支持 · 🚫 本项目不采用
 
@@ -1495,6 +1497,53 @@ text-fit: <fit-type> <fit-target>;
 
 ---
 
+### 4.8 `contrast-color()` — 背景对比色自动推导（Baseline 2026 / 评估否决）
+
+**MDN**：[contrast-color()](https://developer.mozilla.org/en-US/docs/Web/CSS/Reference/Values/color_value/contrast-color) · [CSS Color Module Level 5 #contrast-color](https://drafts.csswg.org/css-color-5/#contrast-color)  
+**Baseline**：Newly Available 2026 · Chrome 147+ (2026-04), Firefox 146+ (2025-12), Safari 26+ (2025-09)  
+**参考**：[张鑫旭 CSS contrast-color()函数简介](https://www.zhangxinxu.com/wordpress/2026/06/css-contrast-color/) · [张鑫旭 CSS好用的color-mix颜色函数也可以使用啦](https://www.zhangxinxu.com/wordpress/2024/11/css-color-mix-function/)  
+**本项目落地决策**：🚫 **经 `docs/agents/ui.md` 独立设计评审正式否决，全站生产代码坚决不采用**（评审快照见 [`.impeccable/critique/2026-11-09T16-06-04Z__css-contrast-color-proposal.md`](file:///home/miku/lhvision/comic-shelf/.impeccable/critique/2026-11-09T16-06-04Z__css-contrast-color-proposal.md)）
+
+#### 核心机制与规范现状
+
+1. **二值极色算法（Black/White MVP）**：
+   - CSS Color Module Level 5 MVP 规范中，`contrast-color(var(--bg))` 严格只返回命名颜色 `white` 或 `black`（挑选对比度最高的一方）；
+   - 自定义候选色列表（如 `contrast-color(var(--bg) vs red, blue)`）已被推迟至 CSS Color 6 草案。
+2. **混合柔化探索（`color-mix` 复合公式）**：
+   - 理论设想：通过 `color-mix(in oklab, contrast-color(var(--bg)) 85%, var(--bg))` 稀释机械死黑/冷白，使文本带有背景的色相回染（Hue Bleed），实现自适应按钮文字。
+
+#### 为什么纸间坚决不采用（四大避坑红线）
+
+1. **品牌核心隐喻遭工业死黑/冷白污染与 OKLab 水泥灰漂移**：
+   - 规范返回的纯黑纯白其彩度（Chroma）严格为 0；在 OKLab 感知均匀色彩空间中插值时，纯黑白会迅速抽干暖纸（`--paper-0`）与松烟墨（`--ink-0`）微弱但关键的暖色相（Hue 70~88），沉淀出发青、发冷的**“水泥冷灰”与“塑料白”**；
+   - 严重破坏纸间“温润暖纸、水墨书卷、朱砂印章”的核心视觉隐喻，将文人典雅质感降解为廉价代码控制台。
+2. **次级混融打折导致 WCAG AA 对比度底线被击穿**：
+   - 纸间核心朱砂色 `--accent`（`#c74c35` / `oklch(0.59 0.17 38)`）与纯白的原生对比度仅为 **4.88:1**（刚好满足 WCAG AA 4.5:1）；
+   - 一旦为了追求“柔和”打折 15%~20%，对比度直接砸穿至 **3.2:1 ~ 3.8:1**，在日光或弱视读者视线下文字严重融化发虚。
+3. **阅读器暗室（Reader Dark Room）主题隔离被动态穿透与 Alpha 误判**：
+   - `contrast-color()` 仅为静态语法解析，不具备视口像素合成感知能力；
+   - 暗室中的幽灵按钮与气泡常伴有极微透明蒙层（如 `--reader-surface`），算法根据局部未合成 Alpha 容易误判为“浅底”并输出 `black`，导致暗室中的“退出”与“翻页”按钮在纯黑背景上彻底隐形。
+4. **业务上属于过度工程（纸间无此痛点）**：
+   - 纸间是精致克制的单体收藏馆，不是通用换肤工具。按钮固定为 6 种标准变体，均已人工校准了高保真象牙暖白令牌（`--accent-contrast: #fff8f2`）与墨色令牌，0 兼容风险且表现远超算法。
+
+#### 未来边缘防御储备（若引入未知外部色块）
+
+若未来在纯沙箱或未知外部来源色块中必须使用，严格遵循双层级联与 `@supports` 防护，杜绝旧内核语法丢弃导致文字隐形：
+
+```css
+.dynamic-tag-badge {
+  /* 1. 基线兜底：使用纸间标准象牙暖白 */
+  color: var(--accent-contrast);
+
+  /* 2. 现代渐进增强（仅在未知动态背景沙箱中激活） */
+  @supports (color: contrast-color(red)) {
+    color: contrast-color(var(--external-tag-bg));
+  }
+}
+```
+
+---
+
 ## 5. 升级路线图（Roadmap）
 
 ### 已落地（2026-08 / 2026-09）
@@ -1537,6 +1586,8 @@ text-fit: <fit-type> <fit-target>;
 ### 规范与 MDN 官方文档
 
 - [MDN CSS 参考](https://developer.mozilla.org/en-US/docs/Web/CSS)
+- [MDN contrast-color() 函数](https://developer.mozilla.org/en-US/docs/Web/CSS/Reference/Values/color_value/contrast-color)
+- [MDN color-mix() 函数](https://developer.mozilla.org/en-US/docs/Web/CSS/Reference/Values/color_value/color-mix)
 - [MDN row-rule 属性](https://developer.mozilla.org/en-US/docs/Web/CSS/Reference/Properties/row-rule)
 - [MDN column-rule 属性](https://developer.mozilla.org/en-US/docs/Web/CSS/Reference/Properties/column-rule)
 - [W3C CSS Gap Decorations Module Level 1 草案](https://drafts.csswg.org/css-gaps-1/)
@@ -1577,6 +1628,8 @@ text-fit: <fit-type> <fit-target>;
 | **动画折叠** | `interpolate-size` 与 `calc-size()` 无级尺寸插值         | https://www.zhangxinxu.com/wordpress/2024/11/css-calc-interpolate-size/                  |
 | **滚动驱动** | `scroll-timeline` 滚动驱动动画详解                       | https://www.zhangxinxu.com/wordpress/2024/08/css-scroll-timeline/                        |
 | **色彩管理** | `light-dark()` 色彩函数实战                              | https://www.zhangxinxu.com/wordpress/2026/06/css-color-theme-light-dark-function/        |
+| **色彩管理** | CSS `contrast-color()` 颜色函数与无障碍配色              | https://www.zhangxinxu.com/wordpress/2026/06/css-contrast-color/                         |
+| **色彩管理** | CSS `color-mix()` 颜色函数与色相混融                     | https://www.zhangxinxu.com/wordpress/2024/11/css-color-mix-function/                     |
 | **原生折叠** | `<details>` & `::details-content` 伪元素                 | https://www.zhangxinxu.com/wordpress/2025/11/css-details-target-content-open/            |
 | **函数规则** | CSS `@function` at-rules 自定义函数                      | https://www.zhangxinxu.com/wordpress/2025/09/css-function-at-rules/                      |
 
