@@ -96,3 +96,4 @@ public/avatars/
 !.impeccable/live/config.json
 .impeccable/**/*.local.json
 
+.vitest/
