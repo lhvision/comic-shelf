@@ -2,7 +2,13 @@
  * 纸间 · Paper Room Chrome 扩展后台服务
  * 实现三大图源（禁漫、哔咔、拷贝）右键双模收录、智能图标直达与状态静默反馈
  */
-import { DEFAULT_DOMAINS, sanitizeDomain } from './constants.js'
+import {
+  DEFAULT_DOMAINS,
+  sanitizeDomain,
+  matchDomainToProvider,
+  migrateCustomDomains,
+  getAllConfiguredDomains,
+} from './constants.js'
 
 const IN_FLIGHT_SET = new Set()
 
@@ -21,8 +27,10 @@ function isSafeUrl(raw) {
 
 /**
  * 从 URL 解析出图源、车号与站点名称
+ * @param {string} rawUrl
+ * @param {string|null} [sourceHint] 若提供 sourceHint，则严格限定调用该图源的提取器，杜绝跨源正则碰撞
  */
-function resolveComicInfo(rawUrl) {
+function resolveComicInfo(rawUrl, sourceHint = null) {
   if (!rawUrl || typeof rawUrl !== 'string') return null
   try {
     const u = new URL(rawUrl)
@@ -30,19 +38,25 @@ function resolveComicInfo(rawUrl) {
     const hash = u.hash || ''
 
     // 1. 禁漫天堂：/album/<数字车号>（单话 /photo/ 为分卷 ID，必须解析为相册后方可入库）
-    const jm = pathname.match(/\/album\/(\d{3,10})/) || hash.match(/\/album\/(\d{3,10})/)
-    if (jm) return { source: 'jm', id: jm[1], name: '禁漫天堂' }
+    if (!sourceHint || sourceHint === 'jm') {
+      const jm = pathname.match(/\/album\/(\d{3,10})/) || hash.match(/\/album\/(\d{3,10})/)
+      if (jm) return { source: 'jm', id: jm[1], name: '禁漫天堂' }
+    }
 
     // 2. 哔咔漫画：/(comic|comics)/<24位Hex>
-    const pica =
-      pathname.match(/\/(?:comic|comics)\/([0-9a-fA-F]{24})/) ||
-      hash.match(/\/(?:comic|comics)\/([0-9a-fA-F]{24})/)
-    if (pica) return { source: 'picacg', id: pica[1].toLowerCase(), name: '哔咔漫画' }
+    if (!sourceHint || sourceHint === 'picacg') {
+      const pica =
+        pathname.match(/\/(?:comic|comics)\/([0-9a-fA-F]{24})/) ||
+        hash.match(/\/(?:comic|comics)\/([0-9a-fA-F]{24})/)
+      if (pica) return { source: 'picacg', id: pica[1].toLowerCase(), name: '哔咔漫画' }
+    }
 
     // 3. 拷贝漫画：/comic/<slug>
-    const copy =
-      pathname.match(/\/comic\/([a-zA-Z0-9_\-.]+)/) || hash.match(/\/comic\/([a-zA-Z0-9_\-.]+)/)
-    if (copy) return { source: 'copymanga', id: copy[1], name: '拷贝漫画' }
+    if (!sourceHint || sourceHint === 'copymanga') {
+      const copy =
+        pathname.match(/\/comic\/([a-zA-Z0-9_\-.]+)/) || hash.match(/\/comic\/([a-zA-Z0-9_\-.]+)/)
+      if (copy) return { source: 'copymanga', id: copy[1], name: '拷贝漫画' }
+    }
 
     return null
   } catch {
@@ -95,9 +109,9 @@ function isDomainMatch(hostname, allowedDomains) {
 }
 
 /**
- * 探测指定 Tab 上的漫画信息（支持相册页及 JM 单话阅读页智能提取）
+ * 探测指定 Tab 上的漫画信息（先按域名反查图源，再执行该图源专属提取）
  * @param {{ id?: number, url?: string, pendingUrl?: string } | null} tab
- * @param {{ domains?: string[], serverUrl?: string }} [options]
+ * @param {{ domains?: string[] | Record<string, string[]>, customDomains?: Record<string, string[]>, serverUrl?: string }} [options]
  */
 async function detectComicFromTab(tab, options = {}) {
   const currentUrl = tab?.url || tab?.pendingUrl
@@ -127,27 +141,43 @@ async function detectComicFromTab(tab, options = {}) {
     }
   }
 
-  // 2. 域名白名单核验：仅当标签页域名命中支持的分流列表时才进行漫画识别
-  let allowedDomains = options.domains
-  if (!allowedDomains) {
-    let customList = []
+  // 2. 域名白名单与图源确定性判定
+  let customMap = {}
+  let legacyAllowedList = null
+
+  if (options.customDomains) {
+    customMap = migrateCustomDomains(options.customDomains)
+  } else if (options.domains) {
+    if (Array.isArray(options.domains)) {
+      legacyAllowedList = options.domains
+    } else if (typeof options.domains === 'object') {
+      customMap = migrateCustomDomains(options.domains)
+    }
+  } else {
     try {
       if (typeof chrome !== 'undefined' && chrome?.storage?.local) {
-        const stored = await chrome.storage.local.get({ customDomains: [] })
-        customList = Array.isArray(stored?.customDomains) ? stored.customDomains : []
+        const stored = await chrome.storage.local.get({ customDomains: {} })
+        customMap = migrateCustomDomains(stored?.customDomains)
       }
     } catch {
       // 容错
     }
-    allowedDomains = [...DEFAULT_DOMAINS, ...customList]
   }
 
-  if (!isDomainMatch(parsedUrl.hostname, allowedDomains)) {
-    return null
+  const matched = matchDomainToProvider(parsedUrl.hostname, customMap)
+  let matchedSource = matched?.source || null
+
+  // 针对仅传入 legacy 域名数组且无法推导图源的边界测试容错
+  if (!matchedSource) {
+    if (legacyAllowedList && isDomainMatch(parsedUrl.hostname, legacyAllowedList)) {
+      matchedSource = null
+    } else {
+      return null
+    }
   }
 
   let targetUrl = currentUrl
-  if (targetUrl.includes('/photo/') && tab?.id) {
+  if ((!matchedSource || matchedSource === 'jm') && targetUrl.includes('/photo/') && tab?.id) {
     const albumUrl = await extractJmAlbumUrl(tab.id)
     if (albumUrl) {
       targetUrl = albumUrl
@@ -155,11 +185,15 @@ async function detectComicFromTab(tab, options = {}) {
   }
 
   // 若仍为 /photo/ 单话阅读页且未提取到相册，返回无法提取相册标记
-  if (/\/photo\/\d+/.test(targetUrl) && !/\/album\/\d+/.test(targetUrl)) {
+  if (
+    (!matchedSource || matchedSource === 'jm') &&
+    /\/photo\/\d+/.test(targetUrl) &&
+    !/\/album\/\d+/.test(targetUrl)
+  ) {
     return { error: 'jm_photo_unresolved' }
   }
 
-  const comic = resolveComicInfo(targetUrl)
+  const comic = resolveComicInfo(targetUrl, matchedSource)
   return comic ? { comic } : null
 }
 
@@ -220,13 +254,17 @@ async function showNotification(title, message, targetUrl = null) {
     })
   }
 
-  chrome.notifications.create(notifId, {
-    type: 'basic',
-    iconUrl: 'icons/icon-128.png',
-    title,
-    message,
-    priority: 1,
-  })
+  try {
+    chrome.notifications.create(notifId, {
+      type: 'basic',
+      iconUrl: 'icons/icon-128.png',
+      title,
+      message,
+      priority: 1,
+    })
+  } catch (err) {
+    console.warn('[Paper Room] 创建通知异常:', err)
+  }
 }
 
 function buildUrlPatterns(domains) {
@@ -248,12 +286,12 @@ function buildUrlPatterns(domains) {
 }
 
 /**
- * 仅在漫画图源站点注册右键菜单，非漫画网站绝不显示
+ * 仅在已配置的漫画图源站点注册右键菜单，非漫画网站绝不显示
  */
 async function registerContextMenu() {
-  const data = await chrome.storage.local.get({ customDomains: [] })
-  const customList = Array.isArray(data.customDomains) ? data.customDomains : []
-  const allDomains = [...DEFAULT_DOMAINS, ...customList]
+  const data = await chrome.storage.local.get({ customDomains: {} })
+  const customMap = migrateCustomDomains(data.customDomains)
+  const allDomains = getAllConfiguredDomains(customMap)
   let documentUrlPatterns = buildUrlPatterns(allDomains)
   if (documentUrlPatterns.length === 0) {
     documentUrlPatterns = buildUrlPatterns(DEFAULT_DOMAINS)
@@ -281,6 +319,21 @@ async function registerContextMenu() {
       },
     )
   })
+}
+
+/**
+ * 检查存量自定义域名存储格式并执行单向自愈升级
+ */
+async function ensureMigratedStorage() {
+  try {
+    const data = await chrome.storage.local.get('customDomains')
+    if (Array.isArray(data.customDomains)) {
+      const migrated = migrateCustomDomains(data.customDomains)
+      await chrome.storage.local.set({ customDomains: migrated })
+    }
+  } catch (err) {
+    console.warn('[Paper Room] 迁移存储异常:', err)
+  }
 }
 
 /**
@@ -425,14 +478,16 @@ async function importComic(comic, { openTab = false, silent = false } = {}) {
 }
 
 if (typeof chrome !== 'undefined' && chrome?.runtime) {
-  // 扩展安装或更新时注册
+  // 扩展安装或更新时注册并自愈旧版存储格式
   chrome.runtime.onInstalled.addListener(() => {
+    void ensureMigratedStorage()
     void registerContextMenu()
   })
 
   // 浏览器冷启动时防丢容灾并清理陈旧通知与遗留徽标
   chrome.runtime.onStartup.addListener(() => {
     setBadge('')
+    void ensureMigratedStorage()
     void registerContextMenu()
     void pruneStaleNotifications()
   })
@@ -486,7 +541,7 @@ if (typeof chrome !== 'undefined' && chrome?.runtime) {
       return
     }
 
-    // 4. 常规网页上下文：直达纸间书架主站
+    // 3. 常规网页上下文：直达纸间书架主站
     chrome.tabs.create({ url: serverUrl })
   })
 
@@ -515,34 +570,16 @@ if (typeof chrome !== 'undefined' && chrome?.runtime) {
 
     let targetUrl = info.linkUrl || info.pageUrl || tab?.url
 
-    // 1. 若用户在相册详情页 (tab.url 包含 /album/) 右键点击了章节链接 (linkUrl 包含 /photo/)，直接采用相册主页 URL
-    if (
-      info.linkUrl &&
-      info.linkUrl.includes('/photo/') &&
-      tab?.url &&
-      tab.url.includes('/album/')
-    ) {
-      targetUrl = tab.url
-    }
-    // 2. 若用户在单话阅读页空白处右键 (未点选链接)，尝试从当前阅读页 DOM 中提取整部作品相册 (/album/) 主链接
-    else if (!info.linkUrl && targetUrl && targetUrl.includes('/photo/') && tab?.id) {
-      const albumUrl = await extractJmAlbumUrl(tab.id)
-      if (albumUrl) {
-        targetUrl = albumUrl
-      }
-    }
-
-    // 3. 禁漫单话阅读链接无法作为整部相册车号直接入库，若未能解析为相册则明确拦截并向用户提示
-    if (targetUrl && /\/photo\/\d+/.test(targetUrl) && !/\/album\/\d+/.test(targetUrl)) {
+    // 1. 基础安全性与 URL 格式校验（防范 javascript:/file: 等非法协议）
+    if (!targetUrl || !isSafeUrl(targetUrl)) {
       setBadge('!', '#e5484d')
       await showNotification(
-        '无法识别相册车号',
-        '禁漫单话阅读链接无法直接入库，请在相册主页空白处或封面链接上右键收录。',
+        '无法识别漫画来源',
+        'URL 格式无效或不安全，请在漫画详情页或卡片链接上右键。',
       )
       return
     }
 
-    // 4. 域名白名单核验：防范右键点选的外链属于广告或无关第三方站点
     let parsed
     try {
       parsed = new URL(targetUrl)
@@ -552,11 +589,12 @@ if (typeof chrome !== 'undefined' && chrome?.runtime) {
       return
     }
 
-    const data = await chrome.storage.local.get({ customDomains: [] })
-    const customList = Array.isArray(data.customDomains) ? data.customDomains : []
-    const allDomains = [...DEFAULT_DOMAINS, ...customList]
+    // 2. 域名白名单与图源判定（优先前置执行，非合法图源绝不注入提取脚本）
+    const data = await chrome.storage.local.get({ customDomains: {} })
+    const customMap = migrateCustomDomains(data.customDomains)
+    const matched = matchDomainToProvider(parsed.hostname, customMap)
 
-    if (!isDomainMatch(parsed.hostname, allDomains)) {
+    if (!matched) {
       setBadge('!', '#e5484d')
       await showNotification(
         '无法识别漫画来源',
@@ -565,13 +603,40 @@ if (typeof chrome !== 'undefined' && chrome?.runtime) {
       return
     }
 
-    const comic = resolveComicInfo(targetUrl)
+    // 3. 禁漫专用：相册链接自愈与阅读页相册提取（仅对经认证的 JM 域名执行）
+    if (matched.source === 'jm') {
+      if (
+        info.linkUrl &&
+        info.linkUrl.includes('/photo/') &&
+        tab?.url &&
+        tab.url.includes('/album/')
+      ) {
+        targetUrl = tab.url
+      } else if (!info.linkUrl && targetUrl.includes('/photo/') && tab?.id) {
+        const albumUrl = await extractJmAlbumUrl(tab.id)
+        if (albumUrl) {
+          targetUrl = albumUrl
+        }
+      }
+
+      if (/\/photo\/\d+/.test(targetUrl) && !/\/album\/\d+/.test(targetUrl)) {
+        setBadge('!', '#e5484d')
+        await showNotification(
+          '无法识别相册车号',
+          '禁漫单话阅读链接无法直接入库，请在相册主页空白处或封面链接上右键收录。',
+        )
+        return
+      }
+    }
+
+    // 4. 执行专属图源解析提取
+    const comic = resolveComicInfo(targetUrl, matched.source)
 
     if (!comic) {
       setBadge('!', '#e5484d')
       await showNotification(
         '无法识别漫画来源',
-        '请在支持的漫画详情页空白处或列表卡片链接上右键（支持禁漫、哔咔、拷贝）。',
+        `目标链接未能识别为有效的【${matched.name}】漫画页面，请在漫画详情页或卡片链接上右键。`,
       )
       return
     }

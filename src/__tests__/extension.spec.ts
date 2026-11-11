@@ -10,6 +10,12 @@ import {
   isValidDomain,
   BUILTIN_PROVIDERS,
   DEFAULT_DOMAINS,
+  createEmptyCustomDomainsMap,
+  guessProviderFromDomain,
+  findDomainOwner,
+  migrateCustomDomains,
+  matchDomainToProvider,
+  getAllConfiguredDomains,
 } from '../../extension/constants.js'
 
 describe('extension service-worker', () => {
@@ -134,6 +140,153 @@ describe('extension service-worker', () => {
     })
   })
 
+  describe('provider-bound custom domains & global uniqueness', () => {
+    it('creates an empty custom domains dictionary for all builtin providers', () => {
+      const empty = createEmptyCustomDomainsMap()
+      expect(empty).toEqual({
+        jm: [],
+        picacg: [],
+        copymanga: [],
+      })
+    })
+
+    it('guesses provider heuristically from domain features', () => {
+      expect(guessProviderFromDomain('comic18j-mirror.xyz')).toBe('jm')
+      expect(guessProviderFromDomain('jmcomic-zzz.org')).toBe('jm')
+      expect(guessProviderFromDomain('https://manhuapica.com/comic/123')).toBe('picacg')
+      expect(guessProviderFromDomain('mangacopy.tv')).toBe('copymanga')
+      expect(guessProviderFromDomain('copy4000.net')).toBe('copymanga')
+      expect(guessProviderFromDomain('unknown-site.org')).toBeNull()
+    })
+
+    it('enforces global uniqueness and correctly finds domain owners', () => {
+      const customMap = {
+        jm: ['custom-jm.org'],
+        picacg: ['custom-pica.com'],
+        copymanga: ['custom-copy.tv'],
+      }
+
+      // 1. 系统内置域名 (精确匹配)
+      const builtinOwner = findDomainOwner('18comic.vip', customMap)
+      expect(builtinOwner).toEqual({
+        source: 'jm',
+        name: '禁漫天堂',
+        badge: 'JM',
+        isBuiltin: true,
+        conflictType: 'exact',
+        conflictDomain: '18comic.vip',
+      })
+
+      // 2. 自定义域名 (精确匹配)
+      const customOwner = findDomainOwner('custom-copy.tv', customMap)
+      expect(customOwner).toEqual({
+        source: 'copymanga',
+        name: '拷贝漫画',
+        badge: '拷贝',
+        isBuiltin: false,
+        conflictType: 'exact',
+        conflictDomain: 'custom-copy.tv',
+      })
+
+      // 3. 子域名重叠冲突拦截
+      const subOwner = findDomainOwner('sub.18comic.vip', customMap)
+      expect(subOwner).toEqual({
+        source: 'jm',
+        name: '禁漫天堂',
+        badge: 'JM',
+        isBuiltin: true,
+        conflictType: 'subdomain',
+        conflictDomain: '18comic.vip',
+      })
+
+      // 4. 父域名重叠冲突拦截
+      const parentOwner = findDomainOwner('custom-jm.org', {
+        ...customMap,
+        jm: ['sub.custom-jm.org'],
+      })
+      expect(parentOwner?.conflictType).toBe('parent')
+
+      // 5. 未被占用的全新域名
+      expect(findDomainOwner('brand-new-domain.com', customMap)).toBeNull()
+    })
+
+    it('migrates legacy flat domain array to provider map without duplicates', () => {
+      const legacy = [
+        '18comic.vip', // 与系统内置重复，应被过滤
+        'comic18j-mirror.xyz', // 归入 jm
+        'pica-share.net', // 归入 picacg
+        'copymanga-mirror.org', // 归入 copymanga
+        'general-mirror.com', // 启发式无法确定时保守归入 jm
+        'comic18j-mirror.xyz', // 重复项，应去重
+      ]
+
+      const migrated = migrateCustomDomains(legacy)
+      expect(migrated.jm).toContain('comic18j-mirror.xyz')
+      expect(migrated.jm).toContain('general-mirror.com')
+      expect(migrated.jm).not.toContain('18comic.vip')
+      expect(migrated.picacg).toEqual(['pica-share.net'])
+      expect(migrated.copymanga).toEqual(['copymanga-mirror.org'])
+      expect(migrated.jm?.filter((d) => d === 'comic18j-mirror.xyz').length).toBe(1)
+    })
+
+    it('matches domain and subdomains to the exact owning provider', () => {
+      const customMap = {
+        jm: ['custom-jm.org'],
+        picacg: ['custom-pica.com'],
+        copymanga: ['custom-copy.tv'],
+      }
+
+      const matchBuiltin = matchDomainToProvider('sub.18comic.vip', customMap)
+      expect(matchBuiltin?.source).toBe('jm')
+
+      const matchCustom = matchDomainToProvider('reader.custom-copy.tv', customMap)
+      expect(matchCustom?.source).toBe('copymanga')
+
+      const matchNone = matchDomainToProvider('example.com', customMap)
+      expect(matchNone).toBeNull()
+    })
+
+    it('retrieves all configured domains deduplicated', () => {
+      const customMap = {
+        jm: ['custom-jm.org', '18comic.vip'], // 包含一个与内置重复的
+        picacg: ['custom-pica.com'],
+        copymanga: [],
+      }
+
+      const all = getAllConfiguredDomains(customMap)
+      expect(all).toContain('18comic.vip')
+      expect(all).toContain('custom-jm.org')
+      expect(all).toContain('custom-pica.com')
+      // 确认无重复项
+      expect(new Set(all).size).toBe(all.length)
+    })
+  })
+
+  describe('source-hint locked resolution in resolveComicInfo', () => {
+    it('resolves CopyManga even when slug is a 24-char hex string when sourceHint is copymanga', () => {
+      // 拷贝漫画的 slug 碰巧是 24 位十六进制，在未指定 sourceHint 时易被误认为哔咔
+      const hexSlugUrl = 'https://custom-copy.tv/comic/5ebe89bf89196b0559e21bf4'
+
+      const defaultResolution = resolveComicInfo(hexSlugUrl)
+      expect(defaultResolution?.source).toBe('picacg')
+
+      // 在绑定 copymanga 图源上下文后，严格解析为 copymanga，杜绝跨源误判
+      const lockedResolution = resolveComicInfo(hexSlugUrl, 'copymanga')
+      expect(lockedResolution).toEqual({
+        source: 'copymanga',
+        id: '5ebe89bf89196b0559e21bf4',
+        name: '拷贝漫画',
+      })
+    })
+
+    it('rejects invalid path for the locked provider without cross-source fallback', () => {
+      const copyUrl = 'https://custom-jm.org/comic/chainsaw-man'
+      // 即使路径符合拷贝漫画，如果当前锁定为 jm 图源，绝不返回拷贝结果
+      const res = resolveComicInfo(copyUrl, 'jm')
+      expect(res).toBeNull()
+    })
+  })
+
   describe('context-aware icon click & site navigation', () => {
     describe('detectComicFromTab', () => {
       it('detects comic info on an active tab with a valid comic URL', async () => {
@@ -193,6 +346,38 @@ describe('extension service-worker', () => {
           source: 'copymanga',
           id: 'chainsaw-man',
           name: '拷贝漫画',
+        })
+      })
+
+      it('accurately resolves comic source based on domain binding without heuristic confusion', async () => {
+        const customDomains = {
+          jm: ['jm-custom.org'],
+          picacg: [],
+          copymanga: ['copy-custom.tv'],
+        }
+
+        // On CopyManga custom domain with hex slug: should resolve as CopyManga
+        const tabCopy = {
+          id: 12,
+          url: 'https://copy-custom.tv/comic/5ebe89bf89196b0559e21bf4',
+        }
+        const resCopy = await detectComicFromTab(tabCopy, { customDomains })
+        expect(resCopy?.comic).toEqual({
+          source: 'copymanga',
+          id: '5ebe89bf89196b0559e21bf4',
+          name: '拷贝漫画',
+        })
+
+        // On JM custom domain: should resolve as JM
+        const tabJm = {
+          id: 13,
+          url: 'https://jm-custom.org/album/998877',
+        }
+        const resJm = await detectComicFromTab(tabJm, { customDomains })
+        expect(resJm?.comic).toEqual({
+          source: 'jm',
+          id: '998877',
+          name: '禁漫天堂',
         })
       })
 

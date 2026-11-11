@@ -1,3 +1,5 @@
+import type { CustomDomainsMap } from './constants'
+
 export interface ResolvedComic {
   source: string
   id: string
@@ -5,10 +7,14 @@ export interface ResolvedComic {
 }
 
 export declare function isSafeUrl(raw?: string | null): boolean
-export declare function resolveComicInfo(rawUrl?: string | null): ResolvedComic | null
+export declare function resolveComicInfo(
+  rawUrl?: string | null,
+  sourceHint?: string | null,
+): ResolvedComic | null
 export declare function buildUrlPatterns(domains: string[]): string[]
 export interface DetectComicOptions {
-  domains?: string[]
+  domains?: string[] | CustomDomainsMap
+  customDomains?: CustomDomainsMap
   serverUrl?: string
 }
 

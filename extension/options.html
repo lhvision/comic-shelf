@@ -331,6 +331,110 @@
         align-items: center;
       }
 
+      .provider-select {
+        background: var(--paper-1);
+        color: var(--ink-0);
+        border: 1px solid var(--line);
+        border-radius: var(--radius-1);
+        padding: 8px 10px;
+        font-size: 0.82rem;
+        cursor: pointer;
+        flex-shrink: 0;
+        transition:
+          border-color var(--duration-1) var(--ease-out),
+          background-color var(--duration-1) var(--ease-out);
+      }
+
+      .provider-select:hover {
+        border-color: var(--accent);
+      }
+
+      .provider-select:focus-visible {
+        outline: 2px solid var(--accent);
+      }
+
+      .domain-suggest-hint {
+        font-size: 0.72rem;
+        color: var(--accent);
+        margin-top: 4px;
+        display: none;
+        align-items: center;
+        gap: 4px;
+      }
+
+      .domain-suggest-hint.show {
+        display: flex;
+      }
+
+      /* 统一图源专属面板 */
+      .provider-cards {
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+        margin-top: 14px;
+      }
+
+      .provider-card {
+        background: var(--paper-1);
+        border: 1px solid var(--line);
+        border-radius: var(--radius-1);
+        padding: 12px 14px;
+        transition: border-color var(--duration-1) var(--ease-out);
+      }
+
+      .provider-card:hover {
+        border-color: var(--line-strong);
+      }
+
+      .provider-card-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin-bottom: 8px;
+      }
+
+      .provider-card-title {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        font-size: 0.86rem;
+        font-weight: 600;
+        color: var(--ink-0);
+      }
+
+      .provider-count-summary {
+        font-size: 0.72rem;
+        color: var(--ink-2);
+        font-family: var(--font-mono);
+      }
+
+      .card-subgroup {
+        margin-top: 8px;
+      }
+
+      .card-subgroup-title {
+        font-size: 0.72rem;
+        font-weight: 500;
+        color: var(--ink-2);
+        margin-bottom: 5px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+      }
+
+      .empty-custom-tip {
+        font-size: 0.72rem;
+        color: var(--ink-2);
+        font-style: italic;
+        padding: 2px 0;
+      }
+
+      .custom-chips-wrap {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+      }
+
       .domain-input-bar input {
         flex: 1;
         background: var(--paper-1);
@@ -373,32 +477,6 @@
 
       .domain-feedback.show {
         display: flex;
-      }
-
-      .custom-section {
-        margin-top: 8px;
-        animation: fadeIn 0.2s var(--ease-out);
-      }
-
-      .chips-header {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        margin: 6px 0 6px;
-        font-size: 0.78rem;
-        color: var(--ink-2);
-      }
-
-      .chips-header-right {
-        display: flex;
-        align-items: center;
-        gap: 8px;
-      }
-
-      .chips-container {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 6px;
       }
 
       .domain-chip {
@@ -471,13 +549,12 @@
         }
       }
 
-      /* 内置图源抽屉（采用 ::details-content 现代动画） */
+      /* 内置图源抽屉（遵循 Modern Web Guidance ::details-content 标准规范） */
       details.builtin-drawer {
-        interpolate-size: allow-keywords;
         border: 1px dashed var(--line);
         border-radius: var(--radius-1);
         background: var(--paper-1);
-        margin-top: 14px;
+        margin-top: 10px;
         overflow: hidden;
       }
 
@@ -485,8 +562,8 @@
         display: flex;
         align-items: center;
         justify-content: space-between;
-        padding: 9px 12px;
-        font-size: 0.8rem;
+        padding: 8px 10px;
+        font-size: 0.78rem;
         color: var(--ink-1);
         cursor: pointer;
         user-select: none;
@@ -523,15 +600,17 @@
       }
 
       details.builtin-drawer::details-content {
-        transition:
-          height 0.32s var(--ease-spring),
-          content-visibility 0.32s var(--ease-spring) allow-discrete;
-        height: 0;
+        interpolate-size: allow-keywords;
         overflow: clip;
+        contain: layout;
+        block-size: 0;
+        transition:
+          block-size 0.28s var(--ease-spring),
+          content-visibility 0.28s var(--ease-spring) allow-discrete;
       }
 
       details.builtin-drawer[open]::details-content {
-        height: auto;
+        block-size: auto;
       }
 
       @media (prefers-reduced-motion: reduce) {
@@ -546,24 +625,6 @@
       .drawer-content {
         padding: 10px 12px 14px;
         border-top: 1px solid var(--line);
-      }
-
-      .provider-group {
-        margin-bottom: 10px;
-      }
-
-      .provider-group:last-child {
-        margin-bottom: 0;
-      }
-
-      .provider-label {
-        font-size: 0.73rem;
-        font-weight: 600;
-        color: var(--ink-2);
-        margin-bottom: 5px;
-        display: flex;
-        align-items: center;
-        gap: 6px;
       }
 
       .provider-badge {
@@ -812,6 +873,11 @@
 
         <div class="domain-manager-box">
           <div class="domain-input-bar">
+            <select id="providerSelect" class="provider-select" aria-label="目标图源">
+              <option value="jm">禁漫天堂 (JM)</option>
+              <option value="picacg">哔咔漫画 (哔咔)</option>
+              <option value="copymanga">拷贝漫画 (拷贝)</option>
+            </select>
             <input
               type="text"
               id="domainInput"
@@ -830,41 +896,12 @@
             </button>
           </div>
           <div id="domainFeedback" class="domain-feedback" aria-live="polite"></div>
+          <div id="domainSuggestHint" class="domain-suggest-hint" aria-live="polite"></div>
 
-          <div id="customSection" class="custom-section" style="display: none">
-            <div class="chips-header">
-              <span>自定义追加分流</span>
-              <div class="chips-header-right">
-                <span id="customCountBadge" class="tag-badge">0 个</span>
-              </div>
-            </div>
-
-            <div id="customChipsContainer" class="chips-container" role="list">
-              <!-- 动态渲染自定义追加分流 Chip -->
-            </div>
+          <!-- 统一三大图源专属面板 -->
+          <div id="providerCardsContainer" class="provider-cards">
+            <!-- 动态渲染各图源内置分流与自定义分流 -->
           </div>
-
-          <!-- 系统内置分流抽屉 (::details-content 现代 CSS 动效) -->
-          <details class="builtin-drawer" id="builtinDrawer">
-            <summary>
-              <span class="summary-label">
-                <svg class="icon-svg" style="width: 14px; height: 14px" viewBox="0 0 24 24">
-                  <circle cx="12" cy="12" r="10"></circle>
-                  <line x1="2" y1="12" x2="22" y2="12"></line>
-                  <path
-                    d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"
-                  ></path>
-                </svg>
-                <span>查看内置分流域名 (<span id="builtinCountText">加载中</span>)</span>
-              </span>
-              <svg class="icon-svg drawer-chevron" viewBox="0 0 24 24">
-                <polyline points="6 9 12 15 18 9"></polyline>
-              </svg>
-            </summary>
-            <div class="drawer-content" id="builtinDrawerContent">
-              <!-- 动态渲染三大内置图源 -->
-            </div>
-          </details>
         </div>
         <p class="hint">
           当在上述站点浏览时，扩展将激活右键「收录至纸间」菜单；若图源换域可在此增删。支持快捷键
