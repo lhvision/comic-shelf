@@ -104,6 +104,7 @@ function onSlideClick(index: number) {
             sizes="(max-width: 680px) 120px, 240px"
             :alt="`${title} 第 ${index + 1} 页封面`"
             :loading="index < 2 ? 'eager' : 'lazy'"
+            :fetchpriority="index === 0 ? 'high' : undefined"
             decoding="async"
           />
           <span class="cover-label">{{ String(index + 1).padStart(2, '0') }}</span>

@@ -4,7 +4,7 @@
  * @description 阅读器画卷视口组件（承载纵向连续、纵向翻页、横向翻页三种排版模式与分屏画页渲染）。
  *
  * 核心职责：
- * 1. 物理滚动容器（`<main class="reader-scroll">`）承载与 DOM 节点挂载；
+ * 1. 物理滚动容器（`<section class="reader-scroll">`）承载与 DOM 节点挂载；
  * 2. 多屏分组（`orderedGroups`）与双联页（Spread）排版循环渲染；
  * 3. 单页图片（`ComicPageImage`）自适应装订与页脚页码指示；
  * 4. 结尾卡片（`ReaderEndCard`）在横向 RTL 日漫模式与常规模式下的分发；
@@ -128,9 +128,10 @@ defineExpose({
 </script>
 
 <template>
-  <main
+  <section
     ref="scrollEl"
     class="reader-scroll"
+    aria-label="漫画画卷视口"
     :class="{ 'is-zoom-locked': isZoomed }"
     :data-mode="settings.mode"
     :data-pages="settings.pagesPerView"
@@ -261,7 +262,7 @@ defineExpose({
       @detail="(src, sid) => $emit('openComicDetail', src, sid)"
       @completed="$emit('completed')"
     />
-  </main>
+  </section>
 </template>
 
 <style scoped>

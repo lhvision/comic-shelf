@@ -180,6 +180,8 @@ async function getConfig() {
   }
 }
 
+let badgeTimer = null
+
 /**
  * 设置工具栏图标 Badge 短提示
  */
@@ -189,9 +191,16 @@ function setBadge(text, color) {
     if (color) {
       chrome.action.setBadgeBackgroundColor({ color })
     }
-    setTimeout(() => {
-      chrome.action.setBadgeText({ text: '' })
-    }, 4000)
+    if (badgeTimer) {
+      clearTimeout(badgeTimer)
+      badgeTimer = null
+    }
+    if (text) {
+      badgeTimer = setTimeout(() => {
+        chrome.action.setBadgeText({ text: '' })
+        badgeTimer = null
+      }, 4000)
+    }
   } catch {
     // 忽略在无法设置 badge 时的异常
   }
@@ -421,8 +430,9 @@ if (typeof chrome !== 'undefined' && chrome?.runtime) {
     void registerContextMenu()
   })
 
-  // 浏览器冷启动时防丢容灾并清理陈旧通知
+  // 浏览器冷启动时防丢容灾并清理陈旧通知与遗留徽标
   chrome.runtime.onStartup.addListener(() => {
+    setBadge('')
     void registerContextMenu()
     void pruneStaleNotifications()
   })
@@ -472,7 +482,7 @@ if (typeof chrome !== 'undefined' && chrome?.runtime) {
         chrome.tabs.create({ url: detailUrl })
       }
       // 后台静默预热作品（纯页面跳转交互，绝不显示「已在」或「✓」等入库角标与通知，避免用户误解）
-      void importComic(comic, { openTab: false, silent: true })
+      await importComic(comic, { openTab: false, silent: true })
       return
     }
 
@@ -566,7 +576,7 @@ if (typeof chrome !== 'undefined' && chrome?.runtime) {
       return
     }
 
-    void importComic(comic, { openTab: false })
+    await importComic(comic, { openTab: false })
   })
 }
 

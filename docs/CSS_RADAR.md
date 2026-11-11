@@ -61,12 +61,13 @@
 | :--------------------------------------------------- | :-----------------------------: | :------------------------------: | :-----------------------------------: | :--------------------------------------------------: | :---------------------------------------------------------------------------------------------: |
 | `light-dark()`                                       |              123+               |               120+               |                 17.5+                 |                   ✅ Baseline 2024                   |                       ⚠️ 审慎评估（保留 hex+oklch 双层回退，防色彩丢失）                        |
 | `color-mix(in oklab, ...)`                           |              111+               |               113+               |                 16.2+                 |                   ✅ Baseline 2023                   |                            ✅ 已落地（tokens.css / 柔和半透明色阶）                             |
-| `@container (inline-size)`                           |              105+               |               110+               |                  16+                  |                   ✅ Baseline 2023                   |                              ✅ 已落地（ImportPanel / 响应式侧栏）                              |
+| `@container (inline-size)`                           |              105+               |               110+               |                  16+                  |                   ✅ Baseline 2023                   |                           ✅ 已落地（ComicCard / 卡片尺寸自适应排版）                           |
 | `@layer`                                             |               99+               |               97+                |                 15.4+                 |                   ✅ Baseline 2022                   |                             ✅ 已落地（main.css 顶层样式层级声明）                              |
 | CSS Nesting (`&`)                                    |              120+               |               117+               |                 17.2+                 |                   ✅ Baseline 2024                   |                          ✅ 已落地（全站 SFC 样式规范，限制最大 3 层）                          |
 | `@property`                                          |               85+               |               128+               |                 16.4+                 |                   ✅ Baseline 2024                   | ✅ 已落地（遮罩变量 / --progress-ratio / --shimmer-pos / --card-glow-color / --card-glow-size） |
 | `:has()` (Parent / Relational Selector)              |              105+               |               121+               |                 15.4+                 |                   ✅ Baseline 2023                   |                     ✅ 已落地（body:has(dialog[open]) 锁屏与表单状态接管）                      |
-| CSS Subgrid (`subgrid`)                              |              117+               |               71+                |                  16+                  |                   ✅ Baseline 2023                   |                        ✅ 已落地（卡片网格跨卡片行高/操作槽位刚性对齐）                         |
+| CSS Subgrid (`subgrid`)                              |              117+               |               71+                |                  16+                  |                   ✅ Baseline 2023                   |                        ⏳ 候选/评估中（卡片网格跨卡片行高刚性对齐候选）                         |
+| **Standard Scrollbars (`scrollbar-width/color`)**    |              121+               |               64+                |                 17.2+                 |                   ✅ Baseline 2024                   |                        ✅ 已落地（`main.css` / 跨端标准墨色纸本滚动条）                         |
 | **HTML Popover (`auto`/`manual`)**                   |              114+               |               125+               |                  17+                  |                   ✅ Baseline 2024                   |                  ✅ 已落地（`AppPopover` / `AppDropdown` / `StoragePopover`）                   |
 | **HTML Popover (`hint`)**                            |              151+               |               153+               |                  ⏳                   |               🔶 Newly Available 2026                |                          ✅ 渐进增强（`AppTooltip.vue` 轻量气泡提示）                           |
 | **CSS Carousel (`::scroll-marker/button`)**          |              135+               |                ⏳                |                  ⏳                   |               🔶 Newly Available 2025                |     ✅ 渐进增强（`CoverCarousel.vue` 零 JS 标记与切换，构建时 LightningCSS 提示非致命告警）     |
@@ -173,16 +174,22 @@ background: color-mix(in oklab, var(--paper-1) 50%, transparent);
 **用法**：
 
 ```css
-/* 1. 父级声明为容器 */
-.import-panel {
+/* 1. 卡片外层声明为行内尺寸容器（ComicCard.vue） */
+.comic-card {
   container-type: inline-size;
-  container-name: import-panel;
+  contain: layout style;
 }
 
-/* 2. 子组件内部根据自身宽度响应 —— 不依赖全局视口 */
-@container import-panel (max-width: 820px) {
-  .import-grid {
-    grid-template-columns: 1fr;
+/* 2. 卡片内部根据自身宽度自适应 —— 在窄列宽下紧凑布局，完全解耦全局视口媒体查询 */
+@container (max-width: 220px) {
+  .card-foot {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: var(--space-1);
+  }
+
+  .card-progress {
+    margin-left: 0;
   }
 }
 ```

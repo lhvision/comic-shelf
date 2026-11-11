@@ -121,6 +121,12 @@
     font-family: var(--font-mono);
   }
 
+  html,
+  body {
+    scrollbar-width: thin;
+    scrollbar-color: color-mix(in oklab, var(--ink-2) 55%, transparent) transparent;
+  }
+
   ::-webkit-scrollbar {
     width: 10px;
     height: 10px;

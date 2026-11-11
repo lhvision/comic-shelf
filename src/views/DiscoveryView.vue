@@ -91,7 +91,7 @@ onMounted(() => {
 </script>
 
 <template>
-  <main class="discovery-view container">
+  <div class="discovery-view container">
     <header class="discovery-header">
       <div class="discovery-title-area">
         <div class="title-with-pill">
@@ -186,7 +186,7 @@ onMounted(() => {
       <p class="state-msg">暂无该榜单推荐条目</p>
       <AppButton variant="primary" size="md" @click="refreshCurrent"> 立即刷新 </AppButton>
     </section>
-  </main>
+  </div>
 </template>
 
 <style scoped>
