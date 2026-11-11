@@ -96,19 +96,6 @@ async function extractJmAlbumUrl(tabId) {
 }
 
 /**
- * 判断指定主机名是否匹配分流域名列表（支持根域名及任意子域名匹配）
- */
-function isDomainMatch(hostname, allowedDomains) {
-  if (!hostname || !Array.isArray(allowedDomains) || allowedDomains.length === 0) return false
-  const lowerHost = hostname.toLowerCase()
-  return allowedDomains.some((d) => {
-    const clean = sanitizeDomain(d)
-    if (!clean) return false
-    return lowerHost === clean || lowerHost.endsWith(`.${clean}`)
-  })
-}
-
-/**
  * 探测指定 Tab 上的漫画信息（先按域名反查图源，再执行该图源专属提取）
  * @param {{ id?: number, url?: string, pendingUrl?: string } | null} tab
  * @param {{ domains?: string[] | Record<string, string[]>, customDomains?: Record<string, string[]>, serverUrl?: string }} [options]
@@ -143,16 +130,10 @@ async function detectComicFromTab(tab, options = {}) {
 
   // 2. 域名白名单与图源确定性判定
   let customMap = {}
-  let legacyAllowedList = null
-
   if (options.customDomains) {
     customMap = migrateCustomDomains(options.customDomains)
   } else if (options.domains) {
-    if (Array.isArray(options.domains)) {
-      legacyAllowedList = options.domains
-    } else if (typeof options.domains === 'object') {
-      customMap = migrateCustomDomains(options.domains)
-    }
+    customMap = migrateCustomDomains(options.domains)
   } else {
     try {
       if (typeof chrome !== 'undefined' && chrome?.storage?.local) {
@@ -165,19 +146,12 @@ async function detectComicFromTab(tab, options = {}) {
   }
 
   const matched = matchDomainToProvider(parsedUrl.hostname, customMap)
-  let matchedSource = matched?.source || null
+  if (!matched) return null
 
-  // 针对仅传入 legacy 域名数组且无法推导图源的边界测试容错
-  if (!matchedSource) {
-    if (legacyAllowedList && isDomainMatch(parsedUrl.hostname, legacyAllowedList)) {
-      matchedSource = null
-    } else {
-      return null
-    }
-  }
+  const matchedSource = matched.source
 
   let targetUrl = currentUrl
-  if ((!matchedSource || matchedSource === 'jm') && targetUrl.includes('/photo/') && tab?.id) {
+  if (matchedSource === 'jm' && targetUrl.includes('/photo/') && tab?.id) {
     const albumUrl = await extractJmAlbumUrl(tab.id)
     if (albumUrl) {
       targetUrl = albumUrl
@@ -185,11 +159,7 @@ async function detectComicFromTab(tab, options = {}) {
   }
 
   // 若仍为 /photo/ 单话阅读页且未提取到相册，返回无法提取相册标记
-  if (
-    (!matchedSource || matchedSource === 'jm') &&
-    /\/photo\/\d+/.test(targetUrl) &&
-    !/\/album\/\d+/.test(targetUrl)
-  ) {
+  if (matchedSource === 'jm' && /\/photo\/\d+/.test(targetUrl) && !/\/album\/\d+/.test(targetUrl)) {
     return { error: 'jm_photo_unresolved' }
   }
 

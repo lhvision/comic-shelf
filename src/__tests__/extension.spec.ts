@@ -341,7 +341,9 @@ describe('extension service-worker', () => {
 
       it('detects comic info with hash-based single page app routing on allowed custom domains', async () => {
         const tab = { id: 11, url: 'https://mirror.org/#/comic/chainsaw-man' }
-        const res = await detectComicFromTab(tab, { domains: ['mirror.org'] })
+        const res = await detectComicFromTab(tab, {
+          customDomains: { copymanga: ['mirror.org'] },
+        })
         expect(res?.comic).toEqual({
           source: 'copymanga',
           id: 'chainsaw-man',

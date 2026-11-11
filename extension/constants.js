@@ -16,18 +16,21 @@ export const BUILTIN_PROVIDERS = [
       'comic18j-ada.online',
       'comic18j-ada.work',
     ],
+    keywords: ['18comic', 'jmcomic', 'comic18', 'jm-comic'],
   },
   {
     source: 'picacg',
     name: '哔咔漫画',
     badge: '哔咔',
     domains: ['manhuapica.com', 'picawang.com'],
+    keywords: ['pica', 'picacomic', 'manhuapica', 'picawang'],
   },
   {
     source: 'copymanga',
     name: '拷贝漫画',
     badge: '拷贝',
     domains: ['mangacopy.com', 'copy4000.com'],
+    keywords: ['copymanga', 'mangacopy', 'copy4000'],
   },
 ]
 
@@ -85,14 +88,10 @@ export function isValidDomain(raw) {
 export function guessProviderFromDomain(raw) {
   const clean = sanitizeDomain(raw)
   if (!clean) return null
-  if (clean.includes('18comic') || clean.includes('jmcomic') || clean.includes('comic18')) {
-    return 'jm'
-  }
-  if (clean.includes('pica') || clean.includes('manhuapica')) {
-    return 'picacg'
-  }
-  if (clean.includes('copymanga') || clean.includes('mangacopy') || clean.includes('copy4000')) {
-    return 'copymanga'
+  for (const provider of BUILTIN_PROVIDERS) {
+    if (provider.keywords?.some((k) => clean.includes(k))) {
+      return provider.source
+    }
   }
   return null
 }

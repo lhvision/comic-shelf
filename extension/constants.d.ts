@@ -3,6 +3,7 @@ export interface BuiltinProvider {
   name: string
   badge: string
   domains: string[]
+  keywords?: string[]
 }
 
 export type CustomDomainsMap = Record<string, string[]>

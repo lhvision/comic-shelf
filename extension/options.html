@@ -90,7 +90,7 @@
         display: flex;
         justify-content: center;
         align-items: flex-start;
-        min-width: 440px;
+        min-width: 480px;
         min-height: 100vh;
         padding: 28px 16px;
         line-height: 1.5;
@@ -108,7 +108,7 @@
         border: 1px solid var(--line);
         border-radius: var(--radius-2);
         width: 100%;
-        max-width: 480px;
+        max-width: 580px;
         padding: 28px;
         box-shadow: var(--shadow-2);
         position: relative;
@@ -325,6 +325,43 @@
         margin-top: 6px;
       }
 
+      .domain-manager-topbar {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 10px;
+        gap: 12px;
+      }
+
+      .domain-target-label {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        margin-bottom: 0;
+        cursor: pointer;
+        min-width: 0;
+      }
+
+      .domain-target-title {
+        font-size: 0.82rem;
+        font-weight: 600;
+        color: var(--ink-0);
+        line-height: 1.25;
+        letter-spacing: 1px;
+        text-align: center;
+        flex-shrink: 0;
+        border-right: 1px solid var(--line);
+        padding-right: 10px;
+      }
+
+      .domain-target-desc {
+        font-size: 0.74rem;
+        color: var(--ink-2);
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+
       .domain-input-bar {
         display: flex;
         gap: 8px;
@@ -336,7 +373,7 @@
         color: var(--ink-0);
         border: 1px solid var(--line);
         border-radius: var(--radius-1);
-        padding: 8px 10px;
+        padding: 7px 12px;
         font-size: 0.82rem;
         cursor: pointer;
         flex-shrink: 0;
@@ -356,7 +393,7 @@
       .domain-suggest-hint {
         font-size: 0.72rem;
         color: var(--accent);
-        margin-top: 4px;
+        margin-top: 6px;
         display: none;
         align-items: center;
         gap: 4px;
@@ -872,12 +909,19 @@
         <h2 id="section-domains" class="section-title">图源分流域名</h2>
 
         <div class="domain-manager-box">
-          <div class="domain-input-bar">
+          <div class="domain-manager-topbar">
+            <label for="providerSelect" class="domain-target-label">
+              <span class="domain-target-title">归属<br />图源</span>
+              <span class="domain-target-desc">选择要追加分流的目标站点</span>
+            </label>
             <select id="providerSelect" class="provider-select" aria-label="目标图源">
               <option value="jm">禁漫天堂 (JM)</option>
               <option value="picacg">哔咔漫画 (哔咔)</option>
               <option value="copymanga">拷贝漫画 (拷贝)</option>
             </select>
+          </div>
+
+          <div class="domain-input-bar">
             <input
               type="text"
               id="domainInput"
@@ -892,7 +936,7 @@
                 <line x1="12" y1="5" x2="12" y2="19"></line>
                 <line x1="5" y1="12" x2="19" y2="12"></line>
               </svg>
-              <span>添加</span>
+              <span>添加分流</span>
             </button>
           </div>
           <div id="domainFeedback" class="domain-feedback" aria-live="polite"></div>
