@@ -472,15 +472,19 @@ function onMouseEnterItem(index: number) {
   flex-direction: column;
   gap: var(--space-1);
   outline: none;
+  scrollbar-width: thin;
+  scrollbar-color: var(--line-strong) transparent;
 }
 
-.results-list::-webkit-scrollbar {
-  width: 6px;
-}
+@supports not (scrollbar-color: auto) {
+  .results-list::-webkit-scrollbar {
+    width: 6px;
+  }
 
-.results-list::-webkit-scrollbar-thumb {
-  background: var(--line-strong);
-  border-radius: 3px;
+  .results-list::-webkit-scrollbar-thumb {
+    background: var(--line-strong);
+    border-radius: 3px;
+  }
 }
 
 /* 结果条目 */

@@ -28,7 +28,7 @@ function handleBackToSecret() {
 </script>
 
 <template>
-  <form class="gate-form" @submit.prevent="handleClaimSubmit">
+  <form class="gate-form" novalidate @submit.prevent="handleClaimSubmit">
     <div class="claim-info-card">
       <div class="claim-badge">
         <AppIcon name="lock" size="xs" />
@@ -65,7 +65,7 @@ function handleBackToSecret() {
         placeholder="如 2026"
         autocomplete="new-password"
         inputmode="numeric"
-        pattern="[0-9]*"
+        pattern="[0-9]{4,6}"
         :maxlength="6"
         :disabled="submitting"
         :error="!!errorMessage"

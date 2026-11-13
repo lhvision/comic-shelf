@@ -113,6 +113,11 @@
     text-wrap: balance;
   }
 
+  p,
+  blockquote {
+    text-wrap: pretty;
+  }
+
   small {
     font-size: var(--text-xs);
   }

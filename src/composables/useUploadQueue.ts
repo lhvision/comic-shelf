@@ -35,7 +35,7 @@ export function useUploadQueue() {
     const source = options.source ?? 'local'
 
     // Ensure files are naturally sorted before batching (e.g. 000.jpg -> 00a.jpg -> 001.jpg)
-    const sortedFiles = [...files].sort((a, b) =>
+    const sortedFiles = files.toSorted((a, b) =>
       a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' }),
     )
 

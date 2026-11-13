@@ -74,11 +74,7 @@ const effectiveCover = computed(() => {
     @focusin.once="prefetch"
     @touchstart.passive.once="prefetch"
   >
-    <RouterLink
-      :to="route"
-      class="card-link"
-      @click="setActiveCover(comic.source, comic.source_id)"
-    >
+    <div class="card-inner">
       <div class="cover-deck">
         <FavoriteButton
           :source="comic.source"
@@ -146,7 +142,6 @@ const effectiveCover = computed(() => {
             v-if="searchMatch"
             :to="`/comic/${comic.source}/${comic.source_id}/read/${searchMatch.bestMatchPage}`"
             class="match-stamp"
-            @click.stop
             :title="`第 ${searchMatch.bestMatchPage} 页匹配度 ${Math.round(searchMatch.bestScore * 100)}%，点击直接阅读`"
           >
             P.{{ searchMatch.bestMatchPage }} · {{ Math.round(searchMatch.bestScore * 100) }}%
@@ -155,16 +150,23 @@ const effectiveCover = computed(() => {
       </div>
 
       <div class="card-body">
-        <AppTextClamp
-          as="h2"
-          class="card-title"
-          :lines="2"
-          :text="comic.title"
-          :delay="350"
-          tooltip-align="end"
-          tooltip-side="top"
-          tooltip-width="22rem"
-        />
+        <h2 class="card-title">
+          <RouterLink
+            :to="route"
+            class="card-link"
+            @click="setActiveCover(comic.source, comic.source_id)"
+          >
+            <AppTextClamp
+              as="span"
+              :lines="2"
+              :text="comic.title"
+              :delay="350"
+              tooltip-align="end"
+              tooltip-side="top"
+              tooltip-width="22rem"
+            />
+          </RouterLink>
+        </h2>
         <AppTextClamp
           as="p"
           class="card-meta"
@@ -188,7 +190,7 @@ const effectiveCover = computed(() => {
           />
         </div>
       </div>
-    </RouterLink>
+    </div>
   </article>
 </template>
 
@@ -209,7 +211,8 @@ const effectiveCover = computed(() => {
   }
 }
 
-.card-link {
+.card-inner {
+  position: relative;
   display: flex;
   flex-direction: column;
   height: 100%;
@@ -225,12 +228,31 @@ const effectiveCover = computed(() => {
 }
 
 /* Hover Hysteresis Guard: 锚定至静止宿主容器 .comic-card，杜绝位移导致光标反复脱靶的高频抖动 */
-.comic-card:hover .card-link,
-.comic-card:focus-within .card-link,
-.card-link:focus-visible {
+.comic-card:hover .card-inner,
+.comic-card:focus-within .card-inner {
   translate: 0 -0.35rem;
   border-color: var(--line-strong);
   box-shadow: var(--shadow-2);
+}
+
+.card-link {
+  color: inherit;
+  text-decoration: none;
+  outline: none;
+}
+
+/* Stretched Link 规范：主链接伪元素扩展覆盖整张卡片热区 */
+.card-link::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: var(--radius-3);
+  z-index: 1;
+}
+
+.comic-card:has(.card-link:focus-visible) .card-inner {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 
 .cover-deck {
@@ -241,8 +263,7 @@ const effectiveCover = computed(() => {
 }
 
 .comic-card:hover .cover-deck,
-.comic-card:focus-within .cover-deck,
-.card-link:focus-visible .cover-deck {
+.comic-card:focus-within .cover-deck {
   perspective: 60rem;
 }
 
@@ -279,20 +300,17 @@ const effectiveCover = computed(() => {
 }
 
 .comic-card:hover .deck-leaf[data-deck-index='0'],
-.comic-card:focus-within .deck-leaf[data-deck-index='0'],
-.card-link:focus-visible .deck-leaf[data-deck-index='0'] {
+.comic-card:focus-within .deck-leaf[data-deck-index='0'] {
   transform: translateX(-16%) rotate(7deg);
 }
 
 .comic-card:hover .deck-leaf[data-deck-index='1'],
-.comic-card:focus-within .deck-leaf[data-deck-index='1'],
-.card-link:focus-visible .deck-leaf[data-deck-index='1'] {
+.comic-card:focus-within .deck-leaf[data-deck-index='1'] {
   transform: translateX(0) rotate(0deg) translateY(4%);
 }
 
 .comic-card:hover .deck-leaf[data-deck-index='2'],
-.comic-card:focus-within .deck-leaf[data-deck-index='2'],
-.card-link:focus-visible .deck-leaf[data-deck-index='2'] {
+.comic-card:focus-within .deck-leaf[data-deck-index='2'] {
   transform: translateX(16%) rotate(-7deg) translateY(8%);
 }
 
@@ -308,8 +326,7 @@ const effectiveCover = computed(() => {
 }
 
 .comic-card:hover .cover-front,
-.comic-card:focus-within .cover-front,
-.card-link:focus-visible .cover-front {
+.comic-card:focus-within .cover-front {
   transform: rotateX(-3deg) rotateY(4deg) translateY(-0.35rem);
 }
 
@@ -404,6 +421,8 @@ const effectiveCover = computed(() => {
 .card-title {
   font-size: var(--text-md);
   min-height: 2.4em;
+  margin: 0;
+  font-weight: inherit;
 }
 
 .card-meta {
@@ -486,14 +505,13 @@ const effectiveCover = computed(() => {
   border: 1px solid color-mix(in oklab, var(--paper-0) 28%, transparent);
 }
 
-.comic-card[data-completed='true'] .card-link {
+.comic-card[data-completed='true'] .card-inner {
   opacity: 0.82;
   filter: grayscale(0.12);
 }
 
-.comic-card[data-completed='true']:hover .card-link,
-.comic-card[data-completed='true']:focus-within .card-link,
-.comic-card[data-completed='true'] .card-link:focus-visible {
+.comic-card[data-completed='true']:hover .card-inner,
+.comic-card[data-completed='true']:focus-within .card-inner {
   opacity: 1;
   filter: none;
 }

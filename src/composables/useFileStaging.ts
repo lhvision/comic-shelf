@@ -21,7 +21,7 @@ import { useToast } from '@/composables/useToast'
  * naturalSortFiles([File('p10.png'), File('p2.png')]) // => [File('p2.png'), File('p10.png')]
  */
 export function naturalSortFiles(files: File[]): File[] {
-  return [...files].sort((a, b) =>
+  return files.toSorted((a, b) =>
     a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' }),
   )
 }

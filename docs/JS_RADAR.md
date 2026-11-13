@@ -53,6 +53,8 @@
 | **`AbortSignal.timeout()`**                 |  124+  |  100+   |  16+   |    ✅ Baseline 2024     |   ⚠️ 架构决策（因无法提前取消定时器，短命 RPC 采用受控定时器 + 原生 `any`）   |
 | **`Set` 集合运算 (`intersection` 等)**      |  122+  |  127+   |  17+   |    ✅ Baseline 2024     |               ✅ 已落地（`TagFilterBar` / `useLibraryFilter`）                |
 | **`Map.groupBy` / `Object.groupBy`**        |  117+  |  119+   | 17.4+  |    ✅ Baseline 2024     |                  ✅ 已落地（漫画多章节切片与 Provider 分组）                  |
+| **`Array.prototype.toSorted()`**            |  110+  |  115+   |  16+   |    ✅ Baseline 2023     |     ✅ 已落地（`useUploadQueue.ts` / `useFileStaging.ts` 不可变自然排序）     |
+| **`crypto.randomUUID()`**                   |  92+   |   95+   | 15.4+  |    ✅ Baseline 2021     |            ✅ 已落地（`useSearchHistory.ts` 原生随机唯一标识生成）            |
 | **`HTMLImageElement.decode()`**             |  65+   |   68+   |  11+   |    ✅ Baseline 2020     |                ✅ 已落地（阅读器大图预载管道 / 离线画页解码）                 |
 | **`Intl.Collator`**                         |  24+   |   29+   |  10+   |    ✅ Baseline 2020     |            ✅ 已落地（`useLibraryFilter.ts` 中文拼音极速排序引擎）            |
 | **`WeakMap` 弱引用缓存模式**                |  36+   |   6+    |   8+   |       ✅ Baseline       |        ✅ 已落地（`useLibraryFilter.ts` 藏书全文字段小写搜索索引缓存）        |

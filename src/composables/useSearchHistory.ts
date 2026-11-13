@@ -100,7 +100,10 @@ export const useSearchHistory = createGlobalState((): UseSearchHistoryReturn => 
     )
 
     const newItem: SearchHistoryItem = {
-      id: `${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+      id:
+        typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+          ? crypto.randomUUID()
+          : `${Date.now()}_${Math.random().toString(36).slice(2, 9)}`,
       query: trimmed,
       command: targetCmd,
       timestamp: Date.now(),

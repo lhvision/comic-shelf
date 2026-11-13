@@ -13,6 +13,23 @@ declare module 'virtual:illustrations' {
   export const illustrations: string[]
 }
 
+// ECMAScript 2023 Array extensions
+interface Array<T> {
+  /**
+   * Returns a copy of the array with its elements sorted according to compareFn.
+   * Baseline 2023 (Chrome 110+, Firefox 115+, Safari 16+, Node.js 20+)
+   */
+  toSorted(compareFn?: (a: T, b: T) => number): T[]
+}
+
+interface ReadonlyArray<T> {
+  /**
+   * Returns a copy of the array with its elements sorted according to compareFn.
+   * Baseline 2023 (Chrome 110+, Firefox 115+, Safari 16+, Node.js 20+)
+   */
+  toSorted(compareFn?: (a: T, b: T) => number): T[]
+}
+
 // ECMAScript 2024 / 2025 Promise extensions
 interface PromiseWithResolvers<T> {
   promise: Promise<T>

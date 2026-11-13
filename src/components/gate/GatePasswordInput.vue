@@ -120,8 +120,13 @@ defineExpose({
   color: var(--accent);
 }
 
-.input-wrap.error {
+.input-wrap.error,
+.input-wrap:has(.gate-input:user-invalid) {
   border-color: var(--accent-strong);
+}
+
+.gate-input:user-invalid {
+  color: var(--accent-strong);
 }
 
 .gate-input {
