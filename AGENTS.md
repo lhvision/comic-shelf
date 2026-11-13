@@ -23,6 +23,13 @@
 7. View Transitions 只用于跨页面跳转，阅读器内翻页、切话不用；`ready` / `finished` / `updateCallbackDone` 必须 catch；弹窗用 `<Transition>`。
 8. 仓库内不写宿主机绝对路径（跨文件引用走相对路径，落盘剥离 `file://` 协议）。
 9. 优先用 VueUse 和现有依赖，不造轮子。
+10. 命令契约统一走 Vite+：
+    - 脚本执行：统一使用 `vpr <script>`（禁止 `pnpm run` / `npm run`）；
+    - TS/JS 脚本运行：统一使用 `vpx <file.ts|js|mjs>`（禁止引入 `tsx` / `ts-node`）；文件监听重跑使用 `vpx --watch <file>`（取代 `tsx watch` / `nodemon`）；
+    - 本地二进制调用：严格调用本地依赖使用 `vp exec <cmd>`（取代 `pnpm exec`，防误下载）；
+    - 即时包/临时包运行：使用 `vpx <pkg>` 或一次性执行 `vp dlx <pkg>`（禁止使用 `npx` / `pnpx`）；
+    - 依赖增删：统一使用 `vp add / vp remove / vp install`（底层由 pnpm 守门）；
+    - 纯 Node 运行时走 `vp node <file.js>`；外部 node 驱动 TS 走 `node --import vite-plus/register <file.ts>`。
 
 ## 交付门禁
 

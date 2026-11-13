@@ -23,7 +23,7 @@
 ### 一、单仓同构与极致精简交付
 
 1. **源码内聚在 `extension/` 目录**：
-   - 随主工程同步演进，依托现有 Node 工具链，在 `package.json` 提供 `pnpm build:ext` 脚本；
+   - 随主工程同步演进，依托现有 Node 工具链，在 `package.json` 提供 `vpr build:ext` 脚本；
    - 产出解压即用的 `dist/extension/` 与 GitHub Release 附件 `dist/paper-room-extension.zip`（体积 < 50KB）。
 2. **纯原生 Web 标准 (Vanilla MV3)**：
    - 采用标准 Manifest V3，仅由 `service-worker.js` 与原生精简 `options.html` 组成；

@@ -744,7 +744,7 @@ Vue 3.6 Vapor Mode 汲取了 SolidJS 的编译期优化思想，将 SFC 单文�
 - [x] **Phase 1: 异步基建安全闭环（2026-09 已完成）**
   - 在 `src/api/client.ts` 落地原生 `AbortSignal.any` + `AbortSignal.timeout`；
   - 在 `useViewTransition.ts`、`router/index.ts`、`useOfflineStorage.ts` 及单元测试插桩中全面实装 `Promise.withResolvers` 与 `Promise.try`；
-  - 确立 `env.d.ts` 全局标准契约，确保 `pnpm type-check` 与 `vp check` 0 报错。
+  - 确立 `env.d.ts` 全局标准契约，确保 `vpr type-check` 与 `vp check` 0 报错。
 - [x] **Phase 2: Vue 3.6 Vapor Mode 局部探针与渐进增强（2026-09 已完成首批闭环）**
   - 全局依赖锁定 `vue@3.6.0-rc.8`，全站默认成熟 VDOM；
   - 高密度生产叶子探针 `PageTile.vue`（`<template vapor>` + 原生链接直驱）接入画页索引网格；

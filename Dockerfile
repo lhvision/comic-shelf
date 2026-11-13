@@ -1,25 +1,22 @@
 # syntax=docker/dockerfile:1
-# ---- Stage 1: Build Vue 3 Frontend (Vite+) ----
-# 使用轻量级 Node 24 Alpine 作为构建环境（编译完成后会被完全丢弃，不进最终镜像）
-FROM node:24-alpine AS frontend-builder
+# ---- Stage 1: Build Vue 3 Frontend (Official Vite+ Toolchain) ----
+# 使用 VoidZero 官方 Vite+ 工具链镜像（预置 vp CLI，自动按 devEngines 调度 pnpm 12 与 Node.js）
+FROM ghcr.io/voidzero-dev/vite-plus:latest AS frontend-builder
 ENV PUPPETEER_SKIP_DOWNLOAD=true \
     PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1
-RUN sed -i 's/dl-cdn.alpinelinux.org/mirrors.ustc.edu.cn/g' /etc/apk/repositories \
-    && apk add --no-cache libstdc++ \
-    && npm install -g pnpm@11.25.0 --registry=https://registry.npmmirror.com \
-    && pnpm config set store-dir /root/.pnpm-store
 
 WORKDIR /app
 
-COPY package.json pnpm-lock.yaml pnpm-workspace.yaml .npmrc* ./
-RUN --mount=type=cache,id=paper-room-pnpm,target=/root/.pnpm-store \
-    pnpm install --frozen-lockfile --ignore-scripts
+# 优先复制依赖定义与配置，充分利用 Docker 缓存层
+COPY --chown=vp:vp package.json pnpm-lock.yaml pnpm-workspace.yaml .node-version* .npmrc* ./
+RUN vp install --frozen-lockfile
 
-COPY src ./src
-COPY public ./public
-COPY plugins ./plugins
-COPY index.html vite.config.ts tsconfig*.json env.d.ts ./
-RUN pnpm run build-only
+# 仅复制前端构建相关源码，避免后端变动破坏前端构建缓存
+COPY --chown=vp:vp src ./src
+COPY --chown=vp:vp public ./public
+COPY --chown=vp:vp plugins ./plugins
+COPY --chown=vp:vp index.html vite.config.ts tsconfig*.json env.d.ts ./
+RUN vp build
 
 # ---- Stage 2: Python Backend Runtime with Static SPA ----
 FROM python:3.12-slim

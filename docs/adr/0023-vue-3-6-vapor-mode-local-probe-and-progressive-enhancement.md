@@ -151,7 +151,7 @@ function handleClick(e: MouseEvent) {
 
 ## 效果与收益
 
-1. **依赖底座就绪**：`pnpm-workspace.yaml` 与 `package.json` 全面对齐 Vue 3.6 RC，增量 `pnpm type-check` 0 错误；
+1. **依赖底座就绪**：`pnpm-workspace.yaml` 与 `package.json` 全面对齐 Vue 3.6 RC，增量 `vpr type-check` 0 错误；
 2. **高密度生产探针落地**：`PageTile.vue` 成功转为无虚树直驱，详情页长章节展开时 100% 消除缩略图卡片的 VNode 树分配；
 3. **图标单源规范坚守**：坚守红线 12，杜绝微粒图标过度碎片化引发的 Bridge Thrashing；
 4. **历史基准留档**：保留沙盒下线前的测量结果，作为后续组件评测的参考。

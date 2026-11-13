@@ -61,6 +61,7 @@ backend/data/**
 
 # Package-manager caches and local backups
 .pnpm-cache/
+.pnpm-store/
 .npm-cache/
 _backups/
 
@@ -95,5 +96,10 @@ public/avatars/
 .impeccable/live/*
 !.impeccable/live/config.json
 .impeccable/**/*.local.json
+*.local.json
 
 .vitest/
+
+# Git hooks dispatcher & local agent caches
+.vite-hooks/_/
+.agents/

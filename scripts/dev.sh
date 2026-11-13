@@ -217,15 +217,15 @@ fi
 # 3. Start Frontend Web
 if command -v vp >/dev/null 2>&1; then
   vp run dev &
-elif command -v pnpm >/dev/null 2>&1; then
-  pnpm run dev &
 elif [ -x "./node_modules/.bin/vp" ]; then
   ./node_modules/.bin/vp run dev &
+elif command -v pnpm >/dev/null 2>&1; then
+  pnpm run dev &
 else
-  npx vp run dev &
+  pnpm run dev &
 fi
 WEB_PID=$!
 
-echo "Paper Room API: http://127.0.0.1:8000"
-echo "Paper Room Web: http://127.0.0.1:5173"
+echo "Paper Room API: https://127.0.0.1:8000"
+echo "Paper Room Web: https://127.0.0.1:5173"
 wait

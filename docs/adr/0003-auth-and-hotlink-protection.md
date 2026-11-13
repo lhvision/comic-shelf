@@ -29,7 +29,7 @@
 
 3. **依赖与启动流程自愈优化**：
    - 启动脚本 `scripts/dev.sh` 与 `package.json` 的 Python 探测调整为：优先 `.venv/bin/python`（项目内）→ `../.venv/bin/python`（共享上级）→ 系统 `python3`。
-   - 提供 `pnpm setup:py` 一键初始化本地虚拟环境并安装依赖。
+   - 提供 `vpr setup:py` 一键初始化本地虚拟环境并安装依赖。
    - `scripts/dev.sh` 开发环境默认注入 `--reload`，改动后端代码无需重启服务。
 
 ## 后果

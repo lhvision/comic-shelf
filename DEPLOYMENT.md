@@ -277,7 +277,7 @@ docker compose restart imsearch
 
 ```bash
 # 日常增量构建
-pnpm reindex:image
+vpr reindex:image
 # 或直接运行
 bash scripts/reindex.sh
 
@@ -316,17 +316,17 @@ sudo mount -t drvfs '\\<NAS-IP>\<SHARE-NAME>' /mnt/nas_manga
 
 #### 2. 一键脚本运维速查表（推荐）
 
-项目内置了专用运维脚本 `scripts/imsearch.sh`（支持 `pnpm imsearch` 触发，自动智能探测 `/mnt/nas_manga` 挂载点）：
+项目内置了专用运维脚本 `scripts/imsearch.sh`（支持 `vpr imsearch` 触发，自动智能探测 `/mnt/nas_manga` 挂载点）：
 
-| 操作目标         | 推荐执行命令            | 说明                                                      |
-| :--------------- | :---------------------- | :-------------------------------------------------------- |
-| **启动后台服务** | `pnpm imsearch start`   | 监听 `0.0.0.0:8765` 端口，后台常驻运行并自动健康探测      |
-| **停止服务**     | `pnpm imsearch stop`    | 优雅终止运行中的 imsearch 进程                            |
-| **重启服务**     | `pnpm imsearch restart` | 平滑重启以加载最新索引                                    |
-| **查看运行状态** | `pnpm imsearch status`  | 查看运行状态、PID、端口、内存占用与健康度                 |
-| **日常增量更新** | `pnpm imsearch reindex` | 扫描 NAS 新图提取特征、追加倒排索引并自动重启服务（秒级） |
-| **全量重置重训** | `pnpm imsearch train`   | 重新训练 512 聚类中心并彻底重建索引库                     |
-| **查看实时日志** | `pnpm imsearch logs`    | 跟踪查看实时搜索日志（`Ctrl+C` 退出）                     |
+| 操作目标         | 推荐执行命令           | 说明                                                      |
+| :--------------- | :--------------------- | :-------------------------------------------------------- |
+| **启动后台服务** | `vpr imsearch start`   | 监听 `0.0.0.0:8765` 端口，后台常驻运行并自动健康探测      |
+| **停止服务**     | `vpr imsearch stop`    | 优雅终止运行中的 imsearch 进程                            |
+| **重启服务**     | `vpr imsearch restart` | 平滑重启以加载最新索引                                    |
+| **查看运行状态** | `vpr imsearch status`  | 查看运行状态、PID、端口、内存占用与健康度                 |
+| **日常增量更新** | `vpr imsearch reindex` | 扫描 NAS 新图提取特征、追加倒排索引并自动重启服务（秒级） |
+| **全量重置重训** | `vpr imsearch train`   | 重新训练 512 聚类中心并彻底重建索引库                     |
+| **查看实时日志** | `vpr imsearch logs`    | 跟踪查看实时搜索日志（`Ctrl+C` 退出）                     |
 
 _(也可以直接运行 `bash scripts/imsearch.sh <action>`)_
 
@@ -388,7 +388,7 @@ backend/data/
 
    ```bash
    # 巡检：OCR 伴生覆盖率 + 宿主显卡 + 本轮默认算力线 + 两条线各自的"会话级"实际推理设备 + FTS5 条目
-   pnpm ocr status              # 等价于 bash scripts/ocr.sh status
+   vpr ocr status              # 等价于 bash scripts/ocr.sh status
 
    # 装依赖：检测到 NVIDIA 显卡 → 在项目内建 .venv-ocr/（已 gitignore，约 1.7GB）并装 GPU 栈；
    # 没检测到卡 → 只往应用 .venv 里装 CPU 依赖。装完 GPU 环境后，run/test/status 自动优先用它。
@@ -410,7 +410,7 @@ backend/data/
 
    ```bash
    # 默认就走 GPU（v6 实测 94 页/分），推荐把线程数给到 4：
-   pnpm ocr run --source jm --workers 4
+   vpr ocr run --source jm --workers 4
 
    # 强制回落应用的 CPU 线：
    bash scripts/ocr.sh run --cpu --source jm
@@ -457,7 +457,7 @@ backend/data/
 
    ```bash
    # 全库增量同步（智能感知 /mnt/nas_manga 或 COMIC_SHELF_DATA）：
-   pnpm ocr:sync
+   vpr ocr:sync
    # 或指定单本：
    python3 scripts/sync_ocr.py --source jm --id 1059521
    ```
@@ -583,8 +583,8 @@ curl "http://127.0.0.1:8000/api/search/dialogue-semantic?q=告白&limit=3" \
 
 纸间采用 **多阶段构建（Multi-stage Build）** 严格控制生产镜像体积与运行时轻量化（**生产镜像体积预算 SLO ≤ 300 MiB**，实际约 276 MiB）：
 
-- **Node.js 编译阶段（打包后完全丢弃）**：使用轻量 `node:24-alpine` 仅执行前端构建（`pnpm run build-only`），**Node.js、pnpm 及庞大的 `node_modules` 均不会打包进最终镜像**；已内置 BuildKit 物理缓存挂载（`--mount=type=cache,id=paper-room-pnpm`），即使代码更新拉取了新的依赖包，已有依赖 100% 从宿主机磁盘复用，秒级极速装配；
-- **最终生产镜像**：仅基于官方精简镜像 `python:3.12-slim`，安装纯 Python 运行时依赖（同样内置 pip cache 挂载），附带约 2MB 的前端静态成品，镜像极小、拉取速度极快。台词 OCR 与语义检索的推理依赖**都不在这张基础依赖表里**（前者在算力机、后者见 §5.1.2），要就在自己的构建里加一层；
+- **前端编译阶段（构建后完全丢弃）**：使用 VoidZero 官方 Vite+ 工具链镜像 `ghcr.io/voidzero-dev/vite-plus:latest` 执行前端编译（`vp install` + `vp build`），预置 `vp` 统一调度 pnpm 与 Node.js，**工具链与庞大的 `node_modules` 均不会打包进最终镜像**；
+- **最终生产镜像**：仅基于官方精简镜像 `python:3.12-slim`，安装纯 Python 运行时依赖（内置 pip cache 挂载），附带约 2MB 的前端静态成品，镜像极小、拉取速度极快。台词 OCR 与语义检索的推理依赖**都不在这张基础依赖表里**（前者在算力机、后者见 §5.1.2），要就在自己的构建里加一层；
 - **依赖防膨胀锁顶原则**：为防范底层 C/二进制包升级突变（如 `pymupdf 2.0` 默认绑入 `onnxruntime` 与 `numpy` 导致镜像暴涨 200MB+），`backend/requirements.txt` 实施确定性全量精准版本锁定（`==`）；并通过 BuildKit 宿主机独立缓存挂载（`--mount=type=cache,target=/root/.cache/pip`）实现 wheel 缓存物理隔离，既杜绝 wheel 归档固化进最终镜像，又保障改动依赖时的极速装配（见 `docs/PITFALLS.md` #168）。
 
 ### 6.1 本地打包构建与测试
@@ -965,8 +965,8 @@ curl -X POST "http://<NAS_IP>:8000/api/mcp/rpc" \
 仓库已全面迁移至 Vite+：
 
 - `package.json` 使用 `vite-plus` 与 `vite` override；
-- `Dockerfile` 构建阶段直接使用 `pnpm build` 调用本地打包器；
-- Docker 部署环境无需额外安装 `vp` CLI。
+- `Dockerfile` 前端构建阶段使用官方 `ghcr.io/voidzero-dev/vite-plus` 镜像并直接调用 `vp build`；
+- Docker 运行时环境（Stage 2）仅含 Python 3.12 纯后端与静态前端产物，无需额外安装 `vp` CLI。
 
 ## 11. 本地书库的并发与故障恢复边界
 
@@ -991,4 +991,4 @@ API 启动器 `backend/server.py` 固定使用一个工作进程，不提供进�
 
 删除章节在写元数据阶段与刷新共用这套备份。路径 PDF 首次导入把画页直接写入目标目录后再 `save_fetched`，中途崩溃按首次保存处理（半成品会被清掉），不把半套图片装成一本。启动只 `iterdir` `library/.work`，不遍历漫画目录或 `pages/`。追加产生的未引用画页、封面/缩略图、原子写留下的 `.*.tmp.*` 不扫。单机 Docker 或日后单台 Mac mini 都适用这套边界；不引入 WAL 或跨文件事务，重要书库以 Time Machine 或 NAS 快照为耐久底线。
 
-针对性验证：`pnpm test:py storage_metadata server_workers replace_pages` 覆盖刷新权限保留、旧下载失效、保存失败回退、回退失败备份保留、启动恢复可重试、恢复失败阻止启动、重新装订还原、第二次追加页表、删除残留清理、首次保存中断清目录、`.work` 临时目录清理、固定单 worker。它不替代真实 NAS/SMB 断电测试，也不覆盖追加未引用文件、封面/缩略图/decode 中途崩溃。
+针对性验证：`vpr test:py storage_metadata server_workers replace_pages` 覆盖刷新权限保留、旧下载失效、保存失败回退、回退失败备份保留、启动恢复可重试、恢复失败阻止启动、重新装订还原、第二次追加页表、删除残留清理、首次保存中断清目录、`.work` 临时目录清理、固定单 worker。它不替代真实 NAS/SMB 断电测试，也不覆盖追加未引用文件、封面/缩略图/decode 中途崩溃。

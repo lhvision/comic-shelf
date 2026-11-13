@@ -1,5 +1,5 @@
 # Midscene YAML 用例：阅读器回归
-# 跑：pnpm test:yaml
+# 跑：vpr ai-e2e:yaml
 web:
   url: http://127.0.0.1:5173/comic/jm/1242163/read/1
 

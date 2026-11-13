@@ -563,7 +563,7 @@
   2. 统一按照子状态机整包传递（`{ settings, bubble, data, paging, chrome, navigation, autoTurn }`），并在高阶 Composable 内部就地精准解构，彻底消除视图层胶水代码；
 - **VueUse 优先与顶层解构终验**：
   1. 深度使用 VueUse 标准函数（`useTimeoutFn`、`useLocalStorage`、`StorageSerializers.object`、`useFocus`、`useDropZone`）；
-  2. 严格执行 `pnpm type-check` 验证模板解构绑定的完整性，彻底杜绝 TS2339 / TS2551 盲区。
+  2. 严格执行 `vpr type-check` 验证模板解构绑定的完整性，彻底杜绝 TS2339 / TS2551 盲区。
 
 ### <a id="sec-67"></a>§67 章节子路由移动端触控底线与双轨分页画卷架构
 
