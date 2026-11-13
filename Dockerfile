@@ -3,14 +3,17 @@
 # 使用 VoidZero 官方 Vite+ 工具链镜像（预置 vp CLI，自动按 devEngines 调度 pnpm 12 与 Node.js）
 FROM ghcr.io/voidzero-dev/vite-plus:latest AS frontend-builder
 ENV PUPPETEER_SKIP_DOWNLOAD=true \
-    PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1
+    PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 \
+    VP_NODE_DIST_MIRROR=https://npmmirror.com/mirrors/node \
+    npm_config_registry=https://registry.npmmirror.com \
+    pnpm_config_registry=https://registry.npmmirror.com
 
 WORKDIR /app
 
 # 优先复制依赖定义与配置，充分利用 Docker 缓存层与 pnpm 依赖缓存
 COPY --chown=vp:vp package.json pnpm-lock.yaml pnpm-workspace.yaml .node-version* .npmrc* ./
 RUN --mount=type=cache,id=paper-room-pnpm-store,target=/home/vp/.local/share/pnpm/store,uid=1000,gid=1000 \
-    vp install --frozen-lockfile
+    vp install --frozen-lockfile --ignore-scripts
 
 # 仅复制前端构建相关源码，避免后端变动破坏前端构建缓存
 COPY --chown=vp:vp src ./src
