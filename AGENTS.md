@@ -9,7 +9,8 @@
 - 前端 / 阅读器 / 路由 / VueUse / 契约注释：`docs/agents/frontend.md`
 - 新 UI 组件或视觉重构：`docs/agents/ui.md` + `DESIGN_NOTES.md`
 - 踩坑记录：`docs/PITFALLS.md`（按编号或关键词查，不必通读）
-- 引入新 CSS / JS 特性前：`docs/CSS_RADAR.md` / `docs/JS_RADAR.md`
+- 引入新 CSS / JS 特性前：查阅 `docs/CSS_RADAR.md` / `docs/JS_RADAR.md`；架构重构优先激活 `modern-web-guidance` 并反哺雷达
+- Chrome 插件（`extension/`）：激活 `chrome-extensions`，严格遵循 MV3 纯异步生命周期与存储规范
 - 部署与环境变量：`DEPLOYMENT.md`；E2E：`e2e/README.md`
 
 ## 不变量
@@ -41,4 +42,4 @@
 
 ## 常用命令
 
-`vpr dev:all`（API + Web）· `vpr api` · `vp dev` · `vp build` · `vpr build:ext` · `vpr imsearch <action>` · `vpr detect:slop <target>` · `vpr detect:perf`
+`vpr dev:all`（API + Web）· `vpr api` · `vp dev` · `vp build` · `vpr build:ext` · `vpr imsearch <action>` · `vpr detect:slop <target>` · `vpr detect:perf` · `vpx modern-web-guidance legacy-scan src --json`
