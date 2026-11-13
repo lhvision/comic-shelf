@@ -3,6 +3,8 @@
   "include": ["env.d.ts", "src/**/*", "src/**/*.vue", "shared"],
   "exclude": ["src/**/__tests__/*"],
   "compilerOptions": {
+    "lib": ["ESNext", "DOM", "DOM.Iterable"],
+
     // Strict checks against unused variables and imports
     "noUnusedLocals": true,
     "noUnusedParameters": true,

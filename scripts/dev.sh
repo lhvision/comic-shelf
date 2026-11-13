@@ -226,6 +226,6 @@ else
 fi
 WEB_PID=$!
 
-echo "Paper Room API: https://127.0.0.1:8000"
+echo "Paper Room API: http://127.0.0.1:8000"
 echo "Paper Room Web: https://127.0.0.1:5173"
 wait

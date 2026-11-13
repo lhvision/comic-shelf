@@ -7,9 +7,10 @@ ENV PUPPETEER_SKIP_DOWNLOAD=true \
 
 WORKDIR /app
 
-# 优先复制依赖定义与配置，充分利用 Docker 缓存层
+# 优先复制依赖定义与配置，充分利用 Docker 缓存层与 pnpm 依赖缓存
 COPY --chown=vp:vp package.json pnpm-lock.yaml pnpm-workspace.yaml .node-version* .npmrc* ./
-RUN vp install --frozen-lockfile
+RUN --mount=type=cache,id=paper-room-pnpm-store,target=/home/vp/.local/share/pnpm/store,uid=1000,gid=1000 \
+    vp install --frozen-lockfile
 
 # 仅复制前端构建相关源码，避免后端变动破坏前端构建缓存
 COPY --chown=vp:vp src ./src

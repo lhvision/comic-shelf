@@ -1192,6 +1192,16 @@
   1. **异步事件监听必须 await 完整透传**：MV3 Service Worker 的事件监听器若涉及异步操作，必须将异步处理链完整的 Promise（通过 `await` 或 `return`）透传给监听器回调以维持 SW 生命周期；
   2. **瞬态状态防丢与冷启动复位**：凡涉及延迟徽标或状态复位，必须具备防休眠与冷启动时主动复位（`chrome.runtime.onStartup` 清空残留 badge），避免陈旧图章误导用户。
 
+### 177. 复合 3D 透视卡片生搬 Stretched Link 致层叠上下文拦截与交互瘫痪
+
+- **症状**：为了消除 HTML5 规范中 `<a>` 嵌套 `<button>` 的理论警告，将藏书卡片重构为 Stretched Link 规范（`.card-link::after` 铺满整卡），导致悬停态下收藏红心按钮与以图搜图徽章被点击拦截直接跳转详情页、卡片标题半粗体字重被冲刷为细体，View Transition 跨页封面捕获偶发失焦。
+- **根因**：
+  1. **3D 透视/变换强制切分层叠上下文（Stacking Context）**：封面容器 `.cover-deck` 悬停时激活 `perspective: 60rem`，根据 W3C Transforms 规范强制创建独立的局部层叠上下文。其内部声明高 `z-index` 的按钮无法突破局部作用域，必然被宿主容器 `z-index: 1` 的 Stretched Link 伪元素绝对遮盖；
+  2. **盲目搬用平面卡片规范引发过度工程化**：原设计基于 Vue `<RouterLink>` 配合 `@click.stop.prevent` 阻止冒泡，跨端表现极其健壮。强行引入 Stretched Link 逼迫增加额外容器与 `pointer-events: none/auto` 补丁，得不偿失。
+- **红线**：
+  1. **动效卡片严禁硬套 Stretched Link 伪元素**：凡含有 3D `perspective`、`transform` 或多书叶展开的复合卡片，杜绝采用外层伪元素大面积铺满；
+  2. **冒泡防御优先于结构过度重构**：保持卡片主体语义清晰，次级交互控件通过 `@click.stop.prevent` 原生阻断冒泡，简单可靠优先，杜绝为了教条式校验牺牲交互体验。
+
 ---
 
 ## 🚦 交付门禁
