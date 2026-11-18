@@ -151,7 +151,9 @@ def test_dialogue_fts_lifecycle():
         assert "<mark>" in res_trad[0]["snippet"]
 
         # 6. Search with short 2-character word (LIKE fallback test) & <2 chars guard
-        assert db_mod.search_dialogues(query="波", source=None, limit=10, is_guest=False) == [], "Query < 2 chars must be blocked"
+        assert db_mod.search_dialogues(query="波", source=None, limit=10, is_guest=False) == [], (
+            "Query < 2 chars must be blocked"
+        )
         res_short = db_mod.search_dialogues(query="波纹", source=None, limit=10, is_guest=False)
         assert len(res_short) == 1, f"Expected 1 page for '波纹', got {len(res_short)}"
         assert "<mark>波纹</mark>" in res_short[0]["snippet"]
@@ -170,10 +172,12 @@ def test_dialogue_fts_lifecycle():
         # Remove page 2, replace page 1 with single dialogue
         (pages_dir / "00002.ocr.json").unlink()
         (pages_dir / "00001.ocr.json").write_text(
-            json.dumps({
-                "version": 1,
-                "bubbles": [{"id": 99, "box": [0.1, 0.1, 0.2, 0.2], "text": "人类的赞歌就是勇气的赞歌！"}],
-            }),
+            json.dumps(
+                {
+                    "version": 1,
+                    "bubbles": [{"id": 99, "box": [0.1, 0.1, 0.2, 0.2], "text": "人类的赞歌就是勇气的赞歌！"}],
+                }
+            ),
             encoding="utf-8",
         )
         new_count = db_mod.sync_comic_dialogues("local", "c_jojo")
@@ -303,12 +307,14 @@ def test_dialogue_api_endpoints_and_auth():
             encoding="utf-8",
         )
         (c_dir / "album.json").write_text(
-            json.dumps({
-                "source": "local",
-                "source_id": "comic_api",
-                "title": "API测试漫画",
-                "pages": [{"index": 1, "file": "00001.webp", "chapter": ""}],
-            }),
+            json.dumps(
+                {
+                    "source": "local",
+                    "source_id": "comic_api",
+                    "title": "API测试漫画",
+                    "pages": [{"index": 1, "file": "00001.webp", "chapter": ""}],
+                }
+            ),
             encoding="utf-8",
         )
         db_mod.upsert_comic_index(make_comic_item("local", "comic_api", "API测试漫画", 0))
@@ -422,11 +428,15 @@ def test_classify_dialogue_kind_rules():
 
     # 单话末尾剧情对白：无汉化组特征词时，最后一页台词 100% 完好保全
     story_tail = ["下一次見面就是敵人了！", "待續"]
-    assert cls(10, 42, story_tail, "下一次見面就是敵人了！", is_chapter_tail=True) == db_mod.DIALOGUE_KIND, "剧情最后一页被误杀"
+    assert cls(10, 42, story_tail, "下一次見面就是敵人了！", is_chapter_tail=True) == db_mod.DIALOGUE_KIND, (
+        "剧情最后一页被误杀"
+    )
 
     # 单话首尾混排正文保护：首尾页剧情对白 + 角落汉化水印，仅水印行丢弃，正文对白 100% 保全
     mixed_boundary = ["老师，我们明天还在这里见面吗？", "好啊，一言为定！", "XX汉化组制作"]
-    assert cls(10, 42, mixed_boundary, "老师，我们明天还在这里见面吗？", is_chapter_boundary=True) == db_mod.DIALOGUE_KIND
+    assert (
+        cls(10, 42, mixed_boundary, "老师，我们明天还在这里见面吗？", is_chapter_boundary=True) == db_mod.DIALOGUE_KIND
+    )
     assert cls(10, 42, mixed_boundary, "好啊，一言为定！", is_chapter_boundary=True) == db_mod.DIALOGUE_KIND
     assert cls(10, 42, mixed_boundary, "XX汉化组制作", is_chapter_boundary=True) is None
 
@@ -454,25 +464,30 @@ def test_paratext_indexed_but_excluded_from_search():
         pages_dir = temp_dir / "library" / "local" / "comic_kind" / "pages"
         pages_dir.mkdir(parents=True)
         (pages_dir.parent / "album.json").write_text(
-            json.dumps({
-                "source": "local",
-                "source_id": "comic_kind",
-                "page_count": 42,
-                "pages": [{"index": i, "file": f"{i:05d}.webp"} for i in range(1, 43)],
-            }),
+            json.dumps(
+                {
+                    "source": "local",
+                    "source_id": "comic_kind",
+                    "page_count": 42,
+                    "pages": [{"index": i, "file": f"{i:05d}.webp"} for i in range(1, 43)],
+                }
+            ),
             encoding="utf-8",
         )
 
         def write_page(page: int, texts: list[str]) -> None:
             (pages_dir / f"{page:05d}.ocr.json").write_text(
-                json.dumps({
-                    "version": 1,
-                    "engine": "rapidocr",
-                    "bubbles": [
-                        {"id": i, "order": i, "box": [0.1 * i, 0.1, 0.1 * i + 0.05, 0.4], "text": t}
-                        for i, t in enumerate(texts, start=1)
-                    ],
-                }, ensure_ascii=False),
+                json.dumps(
+                    {
+                        "version": 1,
+                        "engine": "rapidocr",
+                        "bubbles": [
+                            {"id": i, "order": i, "box": [0.1 * i, 0.1, 0.1 * i + 0.05, 0.4], "text": t}
+                            for i, t in enumerate(texts, start=1)
+                        ],
+                    },
+                    ensure_ascii=False,
+                ),
                 encoding="utf-8",
             )
 
@@ -497,7 +512,9 @@ def test_paratext_indexed_but_excluded_from_search():
 
         # 噪声连一行都没有：整表 4 行，其中无 jmcomic
         with db_mod.get_dialogue_db() as conn:
-            junk = conn.execute("SELECT count(*) AS c FROM comic_dialogues_fts WHERE text IN ('jmcomic','20')").fetchone()["c"]
+            junk = conn.execute(
+                "SELECT count(*) AS c FROM comic_dialogues_fts WHERE text IN ('jmcomic','20')"
+            ).fetchone()["c"]
         assert junk == 0
 
         # 旧八列表（有 reading_order、无 kind）同样要触发整表重建
@@ -558,14 +575,17 @@ def test_reading_order_roundtrip_and_legacy_rebuild():
         pages_dir.mkdir(parents=True, exist_ok=True)
         # 数组次序刻意与 order 相反：入库必须以显式 order 为准，不能靠下标猜
         (pages_dir / "00001.ocr.json").write_text(
-            json.dumps({
-                "version": 1,
-                "engine": "rapidocr",
-                "bubbles": [
-                    {"id": 7, "order": 2, "box": [0.5, 0.1, 0.7, 0.4], "text": "第二句台词在这里"},
-                    {"id": 3, "order": 1, "box": [0.1, 0.6, 0.3, 0.9], "text": "第一句台词在这里"},
-                ],
-            }, ensure_ascii=False),
+            json.dumps(
+                {
+                    "version": 1,
+                    "engine": "rapidocr",
+                    "bubbles": [
+                        {"id": 7, "order": 2, "box": [0.5, 0.1, 0.7, 0.4], "text": "第二句台词在这里"},
+                        {"id": 3, "order": 1, "box": [0.1, 0.6, 0.3, 0.9], "text": "第一句台词在这里"},
+                    ],
+                },
+                ensure_ascii=False,
+            ),
             encoding="utf-8",
         )
 
@@ -573,8 +593,7 @@ def test_reading_order_roundtrip_and_legacy_rebuild():
 
         with db_mod.get_dialogue_db() as conn:
             rows = conn.execute(
-                "SELECT bubble_id, reading_order, text FROM comic_dialogues_fts"
-                " ORDER BY page_index, reading_order"
+                "SELECT bubble_id, reading_order, text FROM comic_dialogues_fts ORDER BY page_index, reading_order"
             ).fetchall()
         assert [r["reading_order"] for r in rows] == [1, 2], f"Expected order 1,2 got {rows[:]}"
         assert [r["bubble_id"] for r in rows] == [3, 7], "顺序必须跟随 order，而非气泡 id 或数组下标"
@@ -617,9 +636,7 @@ def test_reading_order_roundtrip_and_legacy_rebuild():
                 )
                 """
             )
-            old_conn.execute(
-                "INSERT INTO comic_ocr_sync_meta VALUES ('local', 'comic_order', 9e12, 2, 0)"
-            )
+            old_conn.execute("INSERT INTO comic_ocr_sync_meta VALUES ('local', 'comic_order', 9e12, 2, 0)")
             old_conn.commit()
 
         db_mod.init_dialogue_db(old_db)
@@ -660,17 +677,23 @@ def test_bm25_relevance_ordering():
         )
         # 长句占第 1 页、短句占第 2 页：行号顺序偏向长句，相关度顺序必须偏向短句
         (pages_dir / "00001.ocr.json").write_text(
-            json.dumps({
-                "version": 1,
-                "bubbles": [{"id": 1, "box": [0.1, 0.1, 0.4, 0.4], "text": long_line}],
-            }, ensure_ascii=False),
+            json.dumps(
+                {
+                    "version": 1,
+                    "bubbles": [{"id": 1, "box": [0.1, 0.1, 0.4, 0.4], "text": long_line}],
+                },
+                ensure_ascii=False,
+            ),
             encoding="utf-8",
         )
         (pages_dir / "00002.ocr.json").write_text(
-            json.dumps({
-                "version": 1,
-                "bubbles": [{"id": 1, "box": [0.6, 0.6, 0.7, 0.8], "text": "我喜欢你"}],
-            }, ensure_ascii=False),
+            json.dumps(
+                {
+                    "version": 1,
+                    "bubbles": [{"id": 1, "box": [0.6, 0.6, 0.7, 0.8], "text": "我喜欢你"}],
+                },
+                ensure_ascii=False,
+            ),
             encoding="utf-8",
         )
         assert db_mod.sync_comic_dialogues("local", "comic_rank") == 2
@@ -714,17 +737,23 @@ def test_dialogue_script_normalization_recall():
         pages_dir = temp_dir / "library" / "local" / "comic_script" / "pages"
         pages_dir.mkdir(parents=True, exist_ok=True)
         (pages_dir / "00001.ocr.json").write_text(
-            json.dumps({
-                "version": 1,
-                "bubbles": [{"id": 1, "order": 1, "box": [0.1, 0.1, 0.4, 0.4], "text": "他的頭髮很長"}],
-            }, ensure_ascii=False),
+            json.dumps(
+                {
+                    "version": 1,
+                    "bubbles": [{"id": 1, "order": 1, "box": [0.1, 0.1, 0.4, 0.4], "text": "他的頭髮很長"}],
+                },
+                ensure_ascii=False,
+            ),
             encoding="utf-8",
         )
         (pages_dir / "00002.ocr.json").write_text(
-            json.dumps({
-                "version": 1,
-                "bubbles": [{"id": 1, "order": 1, "box": [0.6, 0.2, 0.9, 0.5], "text": "他的头发很短"}],
-            }, ensure_ascii=False),
+            json.dumps(
+                {
+                    "version": 1,
+                    "bubbles": [{"id": 1, "order": 1, "box": [0.6, 0.2, 0.9, 0.5], "text": "他的头发很短"}],
+                },
+                ensure_ascii=False,
+            ),
             encoding="utf-8",
         )
         assert db_mod.sync_comic_dialogues("local", "comic_script") == 2
@@ -774,24 +803,34 @@ def test_page_level_aggregation():
         pages_dir = temp_dir / "library" / "local" / "comic_agg" / "pages"
         pages_dir.mkdir(parents=True, exist_ok=True)
         (pages_dir / "00001.ocr.json").write_text(
-            json.dumps({
-                "version": 1,
-                "bubbles": [
-                    {"id": 1, "order": 1, "box": [0.1, 0.1, 0.3, 0.3],
-                     "text": "他在心里反复排练着喜欢你这句话，可是到了嘴边却变成了别的话题，那天夜里下了很大的雨。"},
-                    {"id": 2, "order": 2, "box": [0.4, 0.4, 0.5, 0.5], "text": "我喜欢你"},
-                    {"id": 3, "order": 3, "box": [0.6, 0.6, 0.7, 0.7], "text": "我真的好喜欢你啊"},
-                ],
-            }, ensure_ascii=False),
+            json.dumps(
+                {
+                    "version": 1,
+                    "bubbles": [
+                        {
+                            "id": 1,
+                            "order": 1,
+                            "box": [0.1, 0.1, 0.3, 0.3],
+                            "text": "他在心里反复排练着喜欢你这句话，可是到了嘴边却变成了别的话题，那天夜里下了很大的雨。",
+                        },
+                        {"id": 2, "order": 2, "box": [0.4, 0.4, 0.5, 0.5], "text": "我喜欢你"},
+                        {"id": 3, "order": 3, "box": [0.6, 0.6, 0.7, 0.7], "text": "我真的好喜欢你啊"},
+                    ],
+                },
+                ensure_ascii=False,
+            ),
             encoding="utf-8",
         )
         (pages_dir / "00002.ocr.json").write_text(
-            json.dumps({
-                "version": 1,
-                "bubbles": [
-                    {"id": 1, "order": 1, "box": [0.2, 0.2, 0.35, 0.35], "text": "喜欢你，不是一天两天了"},
-                ],
-            }, ensure_ascii=False),
+            json.dumps(
+                {
+                    "version": 1,
+                    "bubbles": [
+                        {"id": 1, "order": 1, "box": [0.2, 0.2, 0.35, 0.35], "text": "喜欢你，不是一天两天了"},
+                    ],
+                },
+                ensure_ascii=False,
+            ),
             encoding="utf-8",
         )
         assert db_mod.sync_comic_dialogues("local", "comic_agg") == 4
@@ -846,18 +885,21 @@ def test_page_level_aggregation():
         many_dir = temp_dir / "library" / "local" / "comic_many" / "pages"
         many_dir.mkdir(parents=True, exist_ok=True)
         (many_dir / "00001.ocr.json").write_text(
-            json.dumps({
-                "version": 1,
-                "bubbles": [
-                    {
-                        "id": i,
-                        "order": i,
-                        "box": [0.02 * i, 0.05, 0.02 * i + 0.02, 0.3],
-                        "text": f"老师说过第{i}句要记住",
-                    }
-                    for i in range(1, 9)
-                ],
-            }, ensure_ascii=False),
+            json.dumps(
+                {
+                    "version": 1,
+                    "bubbles": [
+                        {
+                            "id": i,
+                            "order": i,
+                            "box": [0.02 * i, 0.05, 0.02 * i + 0.02, 0.3],
+                            "text": f"老师说过第{i}句要记住",
+                        }
+                        for i in range(1, 9)
+                    ],
+                },
+                ensure_ascii=False,
+            ),
             encoding="utf-8",
         )
         assert db_mod.sync_comic_dialogues("local", "comic_many") == 8
@@ -954,9 +996,7 @@ def test_dialogue_business_signal_ranking():
             db_mod.set_user_progress("curator", "local", sid, last_page=10, total_pages=10)
         mine = db_mod.search_dialogues(query, source="local", limit=10, user_id="curator")
         mine_ids = [r["source_id"] for r in mine]
-        assert mine_ids == ["sig_a", "sig_b", "sig_long"], (
-            f"业务信号要么没抬起来、要么把明显不相关的顶上了: {mine_ids}"
-        )
+        assert mine_ids == ["sig_a", "sig_b", "sig_long"], f"业务信号要么没抬起来、要么把明显不相关的顶上了: {mine_ids}"
         assert mine[-1]["rank_score"] == 0.0, "rank_score 必须还是纯相关度，不能被融合分污染"
 
         # 序列化边界同 §64.4：字段在后端恒发，响应模型就不许给它兜底默认值
@@ -965,14 +1005,13 @@ def test_dialogue_business_signal_ranking():
         assert DialogueSearchItem(**mine[0]).rank_score == 1.0, "相关度字段在响应模型边界被吞掉或改写"
 
         # 错题本 #139：顺序可以随身份变，命中的页与计数不行
-        baseline = sorted(
-            (r["source_id"], r["page_index"], r["bubble_count"], r["rank_score"]) for r in plain
-        )
+        baseline = sorted((r["source_id"], r["page_index"], r["bubble_count"], r["rank_score"]) for r in plain)
         for other in ("", "curator", "guest:9"):
             as_other = db_mod.search_dialogues(query, source="local", limit=10, user_id=other)
-            assert sorted(
-                (r["source_id"], r["page_index"], r["bubble_count"], r["rank_score"]) for r in as_other
-            ) == baseline, f"user_id={other!r} 改变了命中集合或计数，不只是顺序"
+            assert (
+                sorted((r["source_id"], r["page_index"], r["bubble_count"], r["rank_score"]) for r in as_other)
+                == baseline
+            ), f"user_id={other!r} 改变了命中集合或计数，不只是顺序"
         print("  ✓ Business signals break relevance ties yet never bury passed")
     finally:
         shutil.rmtree(temp_dir, ignore_errors=True)
@@ -1049,28 +1088,34 @@ def test_story_context_export_slice():
         def write_bubbles(page: int, items: list[tuple[int, int, str]]) -> None:
             """items 为 (数组下标序里的 id, reading order, text)，刻意让两者不一致。"""
             (pages_dir / f"{page:05d}.ocr.json").write_text(
-                json.dumps({
-                    "version": 1,
-                    "engine": "rapidocr",
-                    "bubbles": [
-                        {
-                            "id": bid,
-                            "order": order,
-                            "box": [round(0.1 * (i + 1), 4), 0.2, round(0.1 * (i + 1) + 0.08, 4), 0.5],
-                            "text": text,
-                        }
-                        for i, (bid, order, text) in enumerate(items)
-                    ],
-                }, ensure_ascii=False),
+                json.dumps(
+                    {
+                        "version": 1,
+                        "engine": "rapidocr",
+                        "bubbles": [
+                            {
+                                "id": bid,
+                                "order": order,
+                                "box": [round(0.1 * (i + 1), 4), 0.2, round(0.1 * (i + 1) + 0.08, 4), 0.5],
+                                "text": text,
+                            }
+                            for i, (bid, order, text) in enumerate(items)
+                        ],
+                    },
+                    ensure_ascii=False,
+                ),
                 encoding="utf-8",
             )
 
         # 数组次序与 order 完全相反：取料若跟写下走的顺序，结果会整篇倒过来
-        write_bubbles(12, [
-            (9, 3, "第十二页第三句台词"),
-            (5, 2, "第十二页第二句台词"),
-            (7, 1, "第十二页第一句台词"),
-        ])
+        write_bubbles(
+            12,
+            [
+                (9, 3, "第十二页第三句台词"),
+                (5, 2, "第十二页第二句台词"),
+                (7, 1, "第十二页第一句台词"),
+            ],
+        )
         write_bubbles(13, [(2, 2, "第十三页次句台词"), (1, 1, "第十三页首句台词")])
         # 第 1 页是书名页（前 2 页规则）：取料也不该把 credits 当剧情喂给模型
         write_bubbles(1, [(1, 1, "封面书名与汉化组credits信息")])
@@ -1120,8 +1165,9 @@ def test_story_context_export_slice():
         other = temp_dir / "library" / "picacg" / "comic_ctx" / "pages"
         other.mkdir(parents=True)
         (other / "00012.ocr.json").write_text(
-            json.dumps({"bubbles": [{"id": 1, "order": 1, "box": [0.1, 0.1, 0.2, 0.2],
-                                     "text": "哔咔同名作品台词一条"}]}),
+            json.dumps(
+                {"bubbles": [{"id": 1, "order": 1, "box": [0.1, 0.1, 0.2, 0.2], "text": "哔咔同名作品台词一条"}]}
+            ),
             encoding="utf-8",
         )
         db_mod.sync_comic_dialogues("picacg", "comic_ctx")
@@ -1147,23 +1193,37 @@ def test_dirty_sidecar_values_stay_contained():
         pages_dir = temp_dir / "library" / "local" / "comic_dirty" / "pages"
         pages_dir.mkdir(parents=True)
         (pages_dir / "00007.ocr.json").write_text(
-            json.dumps({
-                "version": 1,
-                "engine": "rapidocr",
-                "bubbles": [
-                    # 只判 len(box)==4 会放过 4 键 dict，它能在响应模型上炸出 500
-                    {"id": 1, "order": 1, "box": {"a": 0.1, "b": 0.2, "c": 0.3, "d": 0.4},
-                     "text": "坐标写成字典的一句畸形台词"},
-                    # 1e999 转 int 抛的是 OverflowError，不在原捕获清单里
-                    {"id": 2, "order": 1e999, "box": [[1, 2], [3, 4], [5, 6], [7, 8]],
-                     "text": "序号是天文数字且坐标是四点嵌套的一句"},
-                    # id 是对象会让 executemany 抛 InterfaceError，整本书都灌不进去
-                    {"id": {"x": 1}, "order": 3, "box": [0.1, 0.2, 0.3, "nope"],
-                     "text": "气泡标识是对象且坐标含非数字的一句"},
-                    {"id": 4, "order": 4, "box": [0.3, 0.1, 0.5, 0.4],
-                     "text": "这一句完全正常应当稳稳被搜到"},
-                ],
-            }, ensure_ascii=False),
+            json.dumps(
+                {
+                    "version": 1,
+                    "engine": "rapidocr",
+                    "bubbles": [
+                        # 只判 len(box)==4 会放过 4 键 dict，它能在响应模型上炸出 500
+                        {
+                            "id": 1,
+                            "order": 1,
+                            "box": {"a": 0.1, "b": 0.2, "c": 0.3, "d": 0.4},
+                            "text": "坐标写成字典的一句畸形台词",
+                        },
+                        # 1e999 转 int 抛的是 OverflowError，不在原捕获清单里
+                        {
+                            "id": 2,
+                            "order": 1e999,
+                            "box": [[1, 2], [3, 4], [5, 6], [7, 8]],
+                            "text": "序号是天文数字且坐标是四点嵌套的一句",
+                        },
+                        # id 是对象会让 executemany 抛 InterfaceError，整本书都灌不进去
+                        {
+                            "id": {"x": 1},
+                            "order": 3,
+                            "box": [0.1, 0.2, 0.3, "nope"],
+                            "text": "气泡标识是对象且坐标含非数字的一句",
+                        },
+                        {"id": 4, "order": 4, "box": [0.3, 0.1, 0.5, 0.4], "text": "这一句完全正常应当稳稳被搜到"},
+                    ],
+                },
+                ensure_ascii=False,
+            ),
             encoding="utf-8",
         )
 
@@ -1175,9 +1235,9 @@ def test_dirty_sidecar_values_stay_contained():
         for item in res:
             dumped = DialogueSearchItem(**item).model_dump()
             box = dumped["box"]
-            assert box == [] or (
-                isinstance(box, list) and len(box) == 4 and all(isinstance(v, float) for v in box)
-            ), f"脏坐标漏到响应里: {box!r}"
+            assert box == [] or (isinstance(box, list) and len(box) == 4 and all(isinstance(v, float) for v in box)), (
+                f"脏坐标漏到响应里: {box!r}"
+            )
 
         page = res[0]
         valid = [0.3, 0.1, 0.5, 0.4]
@@ -1204,12 +1264,14 @@ def test_dialogue_index_backfills_after_rebuild():
         pages_dir = temp_dir / "library" / "jm" / "88001" / "pages"
         pages_dir.mkdir(parents=True)
         (pages_dir / "00003.ocr.json").write_text(
-            json.dumps({
-                "version": 1,
-                "engine": "rapidocr",
-                "bubbles": [{"id": 1, "order": 1, "box": [0.2, 0.1, 0.4, 0.5],
-                             "text": "重建之后这条台词必须还在"}],
-            }, ensure_ascii=False),
+            json.dumps(
+                {
+                    "version": 1,
+                    "engine": "rapidocr",
+                    "bubbles": [{"id": 1, "order": 1, "box": [0.2, 0.1, 0.4, 0.5], "text": "重建之后这条台词必须还在"}],
+                },
+                ensure_ascii=False,
+            ),
             encoding="utf-8",
         )
         # 没有任何 OCR 文件的本子：回填必须跳过它，不去空跑
@@ -1252,9 +1314,7 @@ def test_dialogue_index_backfills_after_rebuild():
         assert hits[0]["source_id"] == "88001"
         assert db_mod.get_story_context("jm", "88001", 3, 3)["lines"], "取料出口同样要能拿到回填后的行"
         with db_mod.get_dialogue_db() as conn:
-            meta = conn.execute(
-                "SELECT dialogue_count FROM comic_ocr_sync_meta WHERE source_id = '88001'"
-            ).fetchone()
+            meta = conn.execute("SELECT dialogue_count FROM comic_ocr_sync_meta WHERE source_id = '88001'").fetchone()
         assert meta and int(meta["dialogue_count"]) == 1, "回填必须写下新的增量元数据"
         print("  ✓ Dialogue index auto-backfills after schema rebuild passed")
     finally:
@@ -1338,8 +1398,13 @@ def test_dialogue_key_normalization_roundtrip():
         dirty = "Foo Bar!"
         assert db_mod.sync_comic_dialogues("local", dirty) == 1, "按清洗键应能找到目录并入库"
         with db_mod.get_dialogue_db() as conn:
-            rows = {(r["source"], r["source_id"]) for r in conn.execute("SELECT DISTINCT source, source_id FROM comic_dialogues_fts")}
-            meta = {(r["source"], r["source_id"]) for r in conn.execute("SELECT source, source_id FROM comic_ocr_sync_meta")}
+            rows = {
+                (r["source"], r["source_id"])
+                for r in conn.execute("SELECT DISTINCT source, source_id FROM comic_dialogues_fts")
+            }
+            meta = {
+                (r["source"], r["source_id"]) for r in conn.execute("SELECT source, source_id FROM comic_ocr_sync_meta")
+            }
         assert rows == {("local", "Foo_Bar")}, f"写库键没有清洗: {rows}"
         assert meta == {("local", "Foo_Bar")}, f"增量元数据键没有清洗: {meta}"
 
@@ -1395,9 +1460,11 @@ def test_dialogue_context_http_endpoint():
         )
         assert db_mod.sync_comic_dialogues("local", "comic_http") == 2
 
-        with mock.patch.object(search_router, "is_curator", lambda r: False), \
-            mock.patch.object(search_router, "is_machine", lambda r: False), \
-            mock.patch.object(search_router, "require_curator", side_effect=HTTPException(403, "拒绝")):
+        with (
+            mock.patch.object(search_router, "is_curator", lambda r: False),
+            mock.patch.object(search_router, "is_machine", lambda r: False),
+            mock.patch.object(search_router, "require_curator", side_effect=HTTPException(403, "拒绝")),
+        ):
             try:
                 search_router.dialogue_context_endpoint(
                     request=None, source="local", source_id="comic_http", page_start=1, page_end=9, budget_lines=10
@@ -1406,8 +1473,11 @@ def test_dialogue_context_http_endpoint():
             except HTTPException as exc:
                 assert exc.status_code == 403, f"访客应收到 403，实际 {exc.status_code}"
 
-        with mock.patch.object(search_router, "is_curator", lambda r: True), mock.patch.object(
-            search_router, "_require_meta", lambda s, i, request=None: SimpleNamespace(title="测试本")
+        with (
+            mock.patch.object(search_router, "is_curator", lambda r: True),
+            mock.patch.object(
+                search_router, "_require_meta", lambda s, i, request=None: SimpleNamespace(title="测试本")
+            ),
         ):
             resp = search_router.dialogue_context_endpoint(
                 request=None, source="local", source_id="comic_http", page_start=1, page_end=9, budget_lines=10
@@ -1416,18 +1486,20 @@ def test_dialogue_context_http_endpoint():
         assert resp.title == "测试本"
         assert [l.text for l in resp.lines] == ["先说的话", "后说的话"], "必须按阅读原序"
         assert resp.truncated is False
-        assert [l.model_dump().keys() for l in resp.lines] == [{"line_id", "page_index", "reading_order", "text"}] * 2, (
-            "取料出口不得吐 <mark>、snippet 等展示态字段"
-        )
+        assert [l.model_dump().keys() for l in resp.lines] == [
+            {"line_id", "page_index", "reading_order", "text"}
+        ] * 2, "取料出口不得吐 <mark>、snippet 等展示态字段"
 
         # 机器密钥与访客一样看不到隐藏本：取料不能成为它唯一能读隐藏本台词的口子
         from app.routers import common as common_router
 
         hidden_meta = SimpleNamespace(title="隐藏本", hidden_from_guest=True)
-        with mock.patch.object(search_router, "is_curator", lambda r: False), \
-            mock.patch.object(search_router, "is_machine", lambda r: True), \
-            mock.patch.object(common_router, "is_curator", lambda r: False), \
-            mock.patch.object(common_router.store, "load_meta", lambda s, i: hidden_meta):
+        with (
+            mock.patch.object(search_router, "is_curator", lambda r: False),
+            mock.patch.object(search_router, "is_machine", lambda r: True),
+            mock.patch.object(common_router, "is_curator", lambda r: False),
+            mock.patch.object(common_router.store, "load_meta", lambda s, i: hidden_meta),
+        ):
             try:
                 search_router.dialogue_context_endpoint(
                     request=object(), source="local", source_id="comic_http", page_start=1, page_end=9, budget_lines=10
@@ -1474,7 +1546,7 @@ def test_ascii_case_folding_and_unparsable_query():
         assert db_mod.search_dialogues("ok\x00啦", source="local") == []
         assert db_mod.search_dialogues('"测试"', source="local") == []
         assert db_mod.search_dialogues('测试"未闭合', source="local") == []
-        assert db_mod.search_dialogues('AND OR NOT *', source="local") == []
+        assert db_mod.search_dialogues("AND OR NOT *", source="local") == []
         print("  ✓ ASCII case folding and unparsable query passed")
     finally:
         shutil.rmtree(temp_dir, ignore_errors=True)
@@ -1499,32 +1571,40 @@ def test_multi_chapter_scanlator_deduplication():
         pages_meta = []
         for i in range(1, 31):
             chap_id = f"chap{(i - 1) // 10 + 1}"
-            pages_meta.append({
-                "index": i,
-                "file": f"{i:05d}.webp",
-                "chapter": chap_id,
-            })
+            pages_meta.append(
+                {
+                    "index": i,
+                    "file": f"{i:05d}.webp",
+                    "chapter": chap_id,
+                }
+            )
 
         (pages_dir.parent / "album.json").write_text(
-            json.dumps({
-                "source": "copymanga",
-                "source_id": "shadow_garden",
-                "page_count": 30,
-                "pages": pages_meta,
-            }, ensure_ascii=False),
+            json.dumps(
+                {
+                    "source": "copymanga",
+                    "source_id": "shadow_garden",
+                    "page_count": 30,
+                    "pages": pages_meta,
+                },
+                ensure_ascii=False,
+            ),
             encoding="utf-8",
         )
 
         def write_ocr(page: int, texts: list[str]) -> None:
             (pages_dir / f"{page:05d}.ocr.json").write_text(
-                json.dumps({
-                    "version": 1,
-                    "engine": "rapidocr",
-                    "bubbles": [
-                        {"id": idx, "order": idx, "box": [0.1 * idx, 0.1, 0.1 * idx + 0.05, 0.4], "text": t}
-                        for idx, t in enumerate(texts, start=1)
-                    ],
-                }, ensure_ascii=False),
+                json.dumps(
+                    {
+                        "version": 1,
+                        "engine": "rapidocr",
+                        "bubbles": [
+                            {"id": idx, "order": idx, "box": [0.1 * idx, 0.1, 0.1 * idx + 0.05, 0.4], "text": t}
+                            for idx, t in enumerate(texts, start=1)
+                        ],
+                    },
+                    ensure_ascii=False,
+                ),
                 encoding="utf-8",
             )
 
@@ -1535,7 +1615,16 @@ def test_multi_chapter_scanlator_deduplication():
         # Page 9 (剧情高潮)：正常入库
         # Page 10 (单话尾页汉化招新)：熔断丢弃（0 行入库）
         write_ocr(1, ["想要成为影之实力者 第一卷"])
-        write_ocr(2, ["禁漫天堂 永久免费", "APP正式启动", "扫描QRCODE 不再迷路", "每日最新成人漫画", "独特的勋章称号凸显个人特色"])
+        write_ocr(
+            2,
+            [
+                "禁漫天堂 永久免费",
+                "APP正式启动",
+                "扫描QRCODE 不再迷路",
+                "每日最新成人漫画",
+                "独特的勋章称号凸显个人特色",
+            ],
+        )
         write_ocr(3, ["...尤金先生，请问您在看什么"])
         write_ocr(9, ["這就是命運嗎！吾乃暗影"])
         write_ocr(10, ["感謝大家閱讀本話", "本漢化組誠聘嵌字與初翻君", "審核QQ群：987654321", "愛發電贊助：paperroom"])

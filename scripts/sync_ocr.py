@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """CLI script to synchronize sidecar OCR dialogues (*.ocr.json) into SQLite FTS5."""
+
 from __future__ import annotations
 
 import argparse
@@ -32,9 +33,7 @@ def detect_data_dir() -> Path:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(
-        description="Sync sidecar *.ocr.json comic dialogues into SQLite FTS5 table"
-    )
+    parser = argparse.ArgumentParser(description="Sync sidecar *.ocr.json comic dialogues into SQLite FTS5 table")
     parser.add_argument("--source", type=str, default=None, help="Target comic source (e.g. jm, local, picacg)")
     parser.add_argument("--id", type=str, default=None, help="Target comic ID")
     parser.add_argument("--data-dir", type=str, default=None, help="Explicit data directory path")
@@ -101,7 +100,9 @@ def main() -> None:
     with get_dialogue_db() as conn:
         meta_rows = {
             (r["source"], r["source_id"]): (float(r["last_synced_mtime"]), int(r["dialogue_count"]))
-            for r in conn.execute("SELECT source, source_id, last_synced_mtime, dialogue_count FROM comic_ocr_sync_meta")
+            for r in conn.execute(
+                "SELECT source, source_id, last_synced_mtime, dialogue_count FROM comic_ocr_sync_meta"
+            )
         }
 
     for idx, (src, cid) in enumerate(targets, start=1):

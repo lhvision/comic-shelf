@@ -1,4 +1,5 @@
 """Regression tests for formatting legacy metadata without read-time writes."""
+
 from __future__ import annotations
 
 import json
@@ -28,8 +29,12 @@ class TestStorageMetadata(unittest.TestCase):
         self.path = self.store.album_path("jm", "12345")
         self.path.parent.mkdir(parents=True)
         meta = ComicMeta(
-            source="jm", source_id="12345", display_id="JM12345",
-            title="Original", views="12,222", likes="1200",
+            source="jm",
+            source_id="12345",
+            display_id="JM12345",
+            title="Original",
+            views="12,222",
+            likes="1200",
         )
         self.path.write_text(meta.model_dump_json(), encoding="utf-8")
 
@@ -43,9 +48,7 @@ class TestStorageMetadata(unittest.TestCase):
 
     def test_legacy_counts_remain_readable_when_storage_is_unwritable(self) -> None:
         original = self.path.read_bytes()
-        with patch(
-            "app.storage.base._write_json_atomic", side_effect=PermissionError("read-only library")
-        ) as write:
+        with patch("app.storage.base._write_json_atomic", side_effect=PermissionError("read-only library")) as write:
             meta = self.store.load_meta("jm", "12345")
             self.assertIsNotNone(meta)
             self.assertEqual(meta.views, "12k")
@@ -69,14 +72,14 @@ class TestStorageMetadata(unittest.TestCase):
             return snapshot
 
         def edit() -> None:
-            self.store.update_metadata(
-                "jm", "12345", {"title": "Edited", "hidden_from_guest": True}
-            )
+            self.store.update_metadata("jm", "12345", {"title": "Edited", "hidden_from_guest": True})
             edit_done.set()
 
-        with patch.object(self.store, "_invalidate_cache"), patch.object(
-            Path, "read_text", blocked_read
-        ), ThreadPoolExecutor(max_workers=2) as pool:
+        with (
+            patch.object(self.store, "_invalidate_cache"),
+            patch.object(Path, "read_text", blocked_read),
+            ThreadPoolExecutor(max_workers=2) as pool,
+        ):
             reader = pool.submit(self.store.load_meta, "jm", "12345")
             try:
                 self.assertTrue(reading.wait(5))
@@ -100,10 +103,12 @@ class TestStorageMetadata(unittest.TestCase):
         ]
         meta.chapters = [Chapter(id="c2", index=1, start=2, page_count=1)] if orphaned else []
         if not orphaned:
-            meta.raw = {"chapters": [
-                {"id": "c1", "index": 1, "start": 1, "page_count": 1},
-                {"id": "c2", "index": 2, "start": 2, "page_count": 1},
-            ]}
+            meta.raw = {
+                "chapters": [
+                    {"id": "c1", "index": 1, "start": 1, "page_count": 1},
+                    {"id": "c2", "index": 2, "start": 2, "page_count": 1},
+                ]
+            }
         for page in meta.pages:
             target = self.store.page_path(meta, page.index)
             target.parent.mkdir(parents=True, exist_ok=True)
@@ -179,9 +184,11 @@ class TestStorageMetadata(unittest.TestCase):
             self.store.update_metadata("jm", "12345", {"title": "Edited", "hidden_from_guest": True})
             edit_done.set()
 
-        with patch("app.storage.base._write_json_atomic", side_effect=paused_write), patch(
-            "app.db.upsert_comic_index"
-        ), ThreadPoolExecutor(max_workers=2) as pool:
+        with (
+            patch("app.storage.base._write_json_atomic", side_effect=paused_write),
+            patch("app.db.upsert_comic_index"),
+            ThreadPoolExecutor(max_workers=2) as pool,
+        ):
             repair = pool.submit(self.store.load_meta, "jm", "12345")
             try:
                 self.assertTrue(repair_writing.wait(5))
@@ -239,9 +246,7 @@ class TestStorageMetadata(unittest.TestCase):
         meta = self._write_pages(orphaned=True)
         meta.chapters[0].id = "c1"
         meta.pages[1].chapter = "c1"
-        self.store.pages_dir("jm", "12345").joinpath("c2").rename(
-            self.store.pages_dir("jm", "12345") / "c1"
-        )
+        self.store.pages_dir("jm", "12345").joinpath("c2").rename(self.store.pages_dir("jm", "12345") / "c1")
         self.path.write_text(meta.model_dump_json())
         healed = self.store.load_meta("jm", "12345")
         self.assertEqual([chapter.id for chapter in healed.chapters], ["c2", "c1"])
@@ -251,9 +256,12 @@ class TestStorageMetadata(unittest.TestCase):
     def test_cover_download_allows_metadata_edit_and_preserves_it(self) -> None:
         meta = self._write_pages()
         self.store.page_path(meta, 1).unlink()
-        fetched = FetchedComic(meta=meta, remote_pages=[
-            RemotePage(index=1, url="https://example.com/1.webp", file="00001.webp", ext=".webp", chapter="c1"),
-        ])
+        fetched = FetchedComic(
+            meta=meta,
+            remote_pages=[
+                RemotePage(index=1, url="https://example.com/1.webp", file="00001.webp", ext=".webp", chapter="c1"),
+            ],
+        )
         downloading = threading.Event()
         resume_download = threading.Event()
         image = create_sample_image()
@@ -264,15 +272,20 @@ class TestStorageMetadata(unittest.TestCase):
                 raise TimeoutError("download was not resumed")
             return image
 
-        with patch("app.providers.registry.get_provider") as provider, patch("app.db.upsert_comic_index"), patch(
-            "app.db.update_comic_cached_pages"
-        ), ThreadPoolExecutor(max_workers=2) as pool:
+        with (
+            patch("app.providers.registry.get_provider") as provider,
+            patch("app.db.upsert_comic_index"),
+            patch("app.db.update_comic_cached_pages"),
+            ThreadPoolExecutor(max_workers=2) as pool,
+        ):
             provider.return_value.download_page.side_effect = download
             cover = pool.submit(self.store.ensure_webp_cover, meta, fetched)
             try:
                 self.assertTrue(downloading.wait(5))
                 editing = pool.submit(
-                    self.store.update_metadata, "jm", "12345",
+                    self.store.update_metadata,
+                    "jm",
+                    "12345",
                     {"title": "Edited during download", "hidden_from_guest": True},
                 )
                 editing.result(timeout=2)
@@ -294,9 +307,14 @@ class TestStorageMetadata(unittest.TestCase):
         meta.pages = [PageRecord(index=1, file="00001.webp", ext=".webp")]
         remote = RemotePage(index=1, url="https://example.com/1.webp", file="00001.webp", ext=".webp")
         self.path.write_text(meta.model_dump_json())
-        self.store.remote_path("jm", "12345").write_text(json.dumps({
-            "decode_version": 2, "remote_pages": [remote.model_dump()],
-        }))
+        self.store.remote_path("jm", "12345").write_text(
+            json.dumps(
+                {
+                    "decode_version": 2,
+                    "remote_pages": [remote.model_dump()],
+                }
+            )
+        )
         self.store._meta_cache.clear()
         self.store._fetched_cache.clear()
         return FetchedComic(meta=meta, remote_pages=[remote])
@@ -374,8 +392,9 @@ class TestStorageMetadata(unittest.TestCase):
                 raise PermissionError("restore denied")
             return real_copy2(src, dst, *args, **kwargs)
 
-        with patch("app.storage.base._write_json_atomic", side_effect=OSError("disk full")), patch(
-            "app.storage.base.shutil.copy2", fail_copy
+        with (
+            patch("app.storage.base._write_json_atomic", side_effect=OSError("disk full")),
+            patch("app.storage.base.shutil.copy2", fail_copy),
         ):
             with self.assertRaises(PermissionError):
                 self.store.save_fetched(fetched, refresh=True)
@@ -388,7 +407,11 @@ class TestStorageMetadata(unittest.TestCase):
             with self.subTest(action=action):
                 self.path.parent.mkdir(parents=True, exist_ok=True)
                 if not self.path.exists():
-                    self.path.write_text(ComicMeta(source="jm", source_id="12345", display_id="JM12345", title="Original").model_dump_json())
+                    self.path.write_text(
+                        ComicMeta(
+                            source="jm", source_id="12345", display_id="JM12345", title="Original"
+                        ).model_dump_json()
+                    )
                 fetched = self._write_remote_comic()
                 target = self.store.page_path(fetched.meta, 1)
                 target.unlink(missing_ok=True)
@@ -401,11 +424,13 @@ class TestStorageMetadata(unittest.TestCase):
                         raise TimeoutError("download was not resumed")
                     return create_sample_image(color="red")
 
-                with patch("app.providers.registry.get_provider") as provider, patch(
-                    "app.db.upsert_comic_index"
-                ), patch("app.db.purge_comic_db_records"), patch.object(
-                    self.store, "ensure_webp_cover"
-                ), ThreadPoolExecutor(max_workers=1) as pool:
+                with (
+                    patch("app.providers.registry.get_provider") as provider,
+                    patch("app.db.upsert_comic_index"),
+                    patch("app.db.purge_comic_db_records"),
+                    patch.object(self.store, "ensure_webp_cover"),
+                    ThreadPoolExecutor(max_workers=1) as pool,
+                ):
                     provider.return_value.download_page.side_effect = download
                     downloading = pool.submit(self.store.ensure_page, fetched, 1)
                     try:
@@ -531,7 +556,10 @@ class TestStorageMetadata(unittest.TestCase):
         (backup / ".in-progress").write_bytes(b"")
         self.path.write_text(
             ComicMeta(
-                source="jm", source_id="12345", display_id="JM12345", title="New",
+                source="jm",
+                source_id="12345",
+                display_id="JM12345",
+                title="New",
                 chapters=[Chapter(id="new", index=1, start=1, page_count=1)],
             ).model_dump_json(),
             encoding="utf-8",
@@ -574,9 +602,7 @@ class TestStorageMetadata(unittest.TestCase):
             ComicMeta(source="jm", source_id="12345", display_id="JM12345", title="New").model_dump_json(),
             encoding="utf-8",
         )
-        self.store.remote_path("jm", "12345").write_text(
-            '{"decode_version": 2, "remote_pages": []}', encoding="utf-8"
-        )
+        self.store.remote_path("jm", "12345").write_text('{"decode_version": 2, "remote_pages": []}', encoding="utf-8")
         self.path.write_bytes(original_album)
         with patch("app.db.upsert_comic_index"):
             self.store.recover_interrupted_saves()
@@ -624,9 +650,11 @@ class TestStorageMetadata(unittest.TestCase):
         target = self.store.page_path(fetched.meta, 1)
         target.unlink(missing_ok=True)
         image = create_sample_image()
-        with patch("app.providers.registry.get_provider") as provider, patch(
-            "app.db.update_comic_cached_pages"
-        ), patch("app.db.upsert_comic_index"):
+        with (
+            patch("app.providers.registry.get_provider") as provider,
+            patch("app.db.update_comic_cached_pages"),
+            patch("app.db.upsert_comic_index"),
+        ):
             provider.return_value.download_page.return_value = image
             self.assertEqual(self.store.ensure_page(fetched, 1).read_bytes(), image)
 
@@ -644,9 +672,12 @@ class TestStorageMetadata(unittest.TestCase):
                 raise TimeoutError("download was not resumed")
             return create_sample_image()
 
-        with patch("app.providers.registry.get_provider") as provider, patch(
-            "app.db.update_comic_cached_pages"
-        ), patch("app.db.upsert_comic_index"), ThreadPoolExecutor(max_workers=2) as pool:
+        with (
+            patch("app.providers.registry.get_provider") as provider,
+            patch("app.db.update_comic_cached_pages"),
+            patch("app.db.upsert_comic_index"),
+            ThreadPoolExecutor(max_workers=2) as pool,
+        ):
             provider.return_value.download_page.side_effect = download
             first = pool.submit(self.store.ensure_page, fetched, 1)
             self.assertTrue(started.wait(5))

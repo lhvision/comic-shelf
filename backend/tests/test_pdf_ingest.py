@@ -1,4 +1,5 @@
 """Unit tests for PDF comic unpacking, dual-track chapter detection, and direct file import."""
+
 from __future__ import annotations
 
 import io
@@ -28,10 +29,12 @@ class TestPdfIngest(unittest.TestCase):
         self.tmp_dir = Path(tempfile.mkdtemp(prefix="test_pdf_"))
         self.store = ComicStore(root=self.tmp_dir)
         import os
+
         os.environ["COMIC_SHELF_ALLOWED_DIRS"] = str(self.tmp_dir)
 
     def tearDown(self) -> None:
         import os
+
         os.environ.pop("COMIC_SHELF_ALLOWED_DIRS", None)
         try:
             self.store._cover_executor.shutdown(wait=True)
@@ -189,7 +192,6 @@ class TestPdfIngest(unittest.TestCase):
             unpack_pdf(pdf_path, out_dir)
         self.assertIn("加密", str(ctx.exception))
 
-
     def test_append_pages_with_pdf(self) -> None:
         pdf_path1 = self.tmp_dir / "base.pdf"
         self._create_synthetic_pdf(pdf_path1, num_pages=3)
@@ -266,6 +268,7 @@ class TestPdfIngest(unittest.TestCase):
             source_id=meta.source_id,
             files=[("new_edition_up.pdf", pdf_bytes)],
         )
+
     def test_solid_separator_page_detection(self) -> None:
         black_img = Image.new("RGB", (100, 100), color=(10, 10, 10))
         buf = io.BytesIO()
@@ -306,4 +309,3 @@ class TestPdfIngest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
-

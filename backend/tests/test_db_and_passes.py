@@ -213,6 +213,7 @@ def test_db_and_passes_crud():
 
     # 18. Concurrent Device Registration Race Prevention
     from concurrent.futures import ThreadPoolExecutor
+
     p_race = db_mod.create_guest_pass(username="RaceUser", max_devices=2)
     race_pid = p_race["id"]
 
@@ -266,7 +267,9 @@ def test_db_and_passes_crud():
     req_unauth_pass = MagicMock()
     req_unauth_pass.state = type("State", (), {})()
     req_unauth_pass.url.path = "/api/library"
-    req_unauth_pass.headers.get = lambda k, default="": f"Bearer {relogin_token}" if k.lower() == "authorization" else ""
+    req_unauth_pass.headers.get = lambda k, default="": (
+        f"Bearer {relogin_token}" if k.lower() == "authorization" else ""
+    )
     req_unauth_pass.cookies.get = lambda k, default="": ""
     req_unauth_pass.query_params.get = lambda k, default="": ""
     assert get_user_context(req_unauth_pass)[2] == "unauthorized"
@@ -312,7 +315,9 @@ def test_db_and_passes_crud():
 
     # 22. Anti-Group-Spam & PIN-Guarded Login
     req_stranger = MagicMock()
-    req_stranger.headers.get = lambda k, default="": "Mozilla/5.0 (iPhone) Stranger" if k.lower() == "user-agent" else ""
+    req_stranger.headers.get = lambda k, default="": (
+        "Mozilla/5.0 (iPhone) Stranger" if k.lower() == "user-agent" else ""
+    )
     req_stranger.cookies.get = lambda k, default="": ""
     req_stranger.client.host = "1.2.3.4"
     resp_stranger = Response()
@@ -358,7 +363,9 @@ def test_db_and_passes_crud():
 
     # 25. Dual-Key Anti-DoS: Stranger IP (1.2.3.4) is locked, but Legitimate Owner IP (5.6.7.8) can still enter with correct PIN
     req_owner_device = MagicMock()
-    req_owner_device.headers.get = lambda k, default="": "Mozilla/5.0 (iPhone) Owner" if k.lower() == "user-agent" else ""
+    req_owner_device.headers.get = lambda k, default="": (
+        "Mozilla/5.0 (iPhone) Owner" if k.lower() == "user-agent" else ""
+    )
     req_owner_device.cookies.get = lambda k, default="": ""
     req_owner_device.client.host = "5.6.7.8"
     resp_owner_device = Response()
@@ -417,83 +424,89 @@ def test_comics_index_and_pagination():
     db_mod.init_db(temp_db)
 
     # 1. Upsert 3 comics
-    db_mod.upsert_comic_index({
-        "source": "local",
-        "source_id": "c1",
-        "display_id": "LOC_c1",
-        "title": "Alpha Comic",
-        "authors_json": '["Author A"]',
-        "works_json": '[]',
-        "actors_json": '[]',
-        "tags_json": '["同人", "全彩", "t1", "t2", "t3"]',
-        "chapter_titles_json": '["第 1 话"]',
-        "page_count": 20,
-        "cached_pages": 20,
-        "cover_count": 4,
-        "cover_indices_json": '[]',
-        "views": "100",
-        "likes": "50",
-        "uploaded_at": "2026-01-01",
-        "published_at": "2026-01-01",
-        "updated_at": "2026-01-01",
-        "imported_at": "2026-01-01T10:00:00",
-        "hidden_from_guest": 0,
-        "mtime": 100.0,
-        "auto_update_interval_days": 15,
-        "last_auto_checked_at": "",
-    })
+    db_mod.upsert_comic_index(
+        {
+            "source": "local",
+            "source_id": "c1",
+            "display_id": "LOC_c1",
+            "title": "Alpha Comic",
+            "authors_json": '["Author A"]',
+            "works_json": "[]",
+            "actors_json": "[]",
+            "tags_json": '["同人", "全彩", "t1", "t2", "t3"]',
+            "chapter_titles_json": '["第 1 话"]',
+            "page_count": 20,
+            "cached_pages": 20,
+            "cover_count": 4,
+            "cover_indices_json": "[]",
+            "views": "100",
+            "likes": "50",
+            "uploaded_at": "2026-01-01",
+            "published_at": "2026-01-01",
+            "updated_at": "2026-01-01",
+            "imported_at": "2026-01-01T10:00:00",
+            "hidden_from_guest": 0,
+            "mtime": 100.0,
+            "auto_update_interval_days": 15,
+            "last_auto_checked_at": "",
+        }
+    )
 
-    db_mod.upsert_comic_index({
-        "source": "local",
-        "source_id": "c2",
-        "display_id": "LOC_c2",
-        "title": "Beta Comic",
-        "authors_json": '["Author B"]',
-        "works_json": '[]',
-        "actors_json": '[]',
-        "tags_json": '["同人"]',
-        "chapter_titles_json": '[]',
-        "page_count": 30,
-        "cached_pages": 30,
-        "cover_count": 4,
-        "cover_indices_json": '[]',
-        "views": "200",
-        "likes": "60",
-        "uploaded_at": "2026-01-02",
-        "published_at": "2026-01-02",
-        "updated_at": "2026-01-02",
-        "imported_at": "2026-01-02T10:00:00",
-        "hidden_from_guest": 0,
-        "mtime": 200.0,
-        "auto_update_interval_days": 15,
-        "last_auto_checked_at": "",
-    })
+    db_mod.upsert_comic_index(
+        {
+            "source": "local",
+            "source_id": "c2",
+            "display_id": "LOC_c2",
+            "title": "Beta Comic",
+            "authors_json": '["Author B"]',
+            "works_json": "[]",
+            "actors_json": "[]",
+            "tags_json": '["同人"]',
+            "chapter_titles_json": "[]",
+            "page_count": 30,
+            "cached_pages": 30,
+            "cover_count": 4,
+            "cover_indices_json": "[]",
+            "views": "200",
+            "likes": "60",
+            "uploaded_at": "2026-01-02",
+            "published_at": "2026-01-02",
+            "updated_at": "2026-01-02",
+            "imported_at": "2026-01-02T10:00:00",
+            "hidden_from_guest": 0,
+            "mtime": 200.0,
+            "auto_update_interval_days": 15,
+            "last_auto_checked_at": "",
+        }
+    )
 
-    db_mod.upsert_comic_index({
-        "source": "local",
-        "source_id": "c3",
-        "display_id": "LOC_c3",
-        "title": "Gamma Secret",
-        "authors_json": '["Author C"]',
-        "works_json": '[]',
-        "actors_json": '[]',
-        "tags_json": '["短篇"]',
-        "chapter_titles_json": '[]',
-        "page_count": 15,
-        "cached_pages": 15,
-        "cover_count": 4,
-        "cover_indices_json": '[]',
-        "views": "50",
-        "likes": "10",
-        "uploaded_at": "2026-01-03",
-        "published_at": "2026-01-03",
-        "updated_at": "2026-01-03",
-        "imported_at": "2026-01-03T10:00:00",
-        "hidden_from_guest": 1,
-        "mtime": 300.0,
-        "auto_update_interval_days": 15,
-        "last_auto_checked_at": "",
-    })
+    db_mod.upsert_comic_index(
+        {
+            "source": "local",
+            "source_id": "c3",
+            "display_id": "LOC_c3",
+            "title": "Gamma Secret",
+            "authors_json": '["Author C"]',
+            "works_json": "[]",
+            "actors_json": "[]",
+            "tags_json": '["短篇"]',
+            "chapter_titles_json": "[]",
+            "page_count": 15,
+            "cached_pages": 15,
+            "cover_count": 4,
+            "cover_indices_json": "[]",
+            "views": "50",
+            "likes": "10",
+            "uploaded_at": "2026-01-03",
+            "published_at": "2026-01-03",
+            "updated_at": "2026-01-03",
+            "imported_at": "2026-01-03T10:00:00",
+            "hidden_from_guest": 1,
+            "mtime": 300.0,
+            "auto_update_interval_days": 15,
+            "last_auto_checked_at": "",
+        }
+    )
 
     # Set reading progress: c2 is reading (page 10 / 30), c3 is completed (page 15 / 15)
     db_mod.set_user_progress("u1", "local", "c2", last_page=10, total_pages=30)
@@ -610,62 +623,66 @@ def test_comics_index_and_pagination():
 
     # When c3 gets new chapters appended (page_count 15 -> 25 while total_pages was 15):
     # c3 should be prioritized to the very top (Tier 0) in recent sort!
-    db_mod.upsert_comic_index({
-        "source": "local",
-        "source_id": "c3",
-        "display_id": "LOC_c3",
-        "title": "Gamma Secret",
-        "authors_json": '["Author C"]',
-        "works_json": '[]',
-        "actors_json": '[]',
-        "tags_json": '["短篇"]',
-        "chapter_titles_json": '[]',
-        "page_count": 25,
-        "cached_pages": 15,
-        "cover_count": 4,
-        "cover_indices_json": '[]',
-        "views": "50",
-        "likes": "10",
-        "uploaded_at": "2026-01-03",
-        "published_at": "2026-01-03",
-        "updated_at": "2026-01-04",
-        "imported_at": "2026-01-03T10:00:00",
-        "hidden_from_guest": 0,
-        "mtime": 999.0,
-        "auto_update_interval_days": 15,
-        "last_auto_checked_at": "",
-    })
+    db_mod.upsert_comic_index(
+        {
+            "source": "local",
+            "source_id": "c3",
+            "display_id": "LOC_c3",
+            "title": "Gamma Secret",
+            "authors_json": '["Author C"]',
+            "works_json": "[]",
+            "actors_json": "[]",
+            "tags_json": '["短篇"]',
+            "chapter_titles_json": "[]",
+            "page_count": 25,
+            "cached_pages": 15,
+            "cover_count": 4,
+            "cover_indices_json": "[]",
+            "views": "50",
+            "likes": "10",
+            "uploaded_at": "2026-01-03",
+            "published_at": "2026-01-03",
+            "updated_at": "2026-01-04",
+            "imported_at": "2026-01-03T10:00:00",
+            "hidden_from_guest": 0,
+            "mtime": 999.0,
+            "auto_update_interval_days": 15,
+            "last_auto_checked_at": "",
+        }
+    )
     items_sort_updated, _ = db_mod.query_library_index("u1", is_curator=True, sort="recent")
     assert items_sort_updated[0]["source_id"] == "c3", "有新章节未读的作品必须置顶排在最前 (Tier 0)"
     assert items_sort_updated[0]["read_total_pages"] == 15
     assert items_sort_updated[0]["page_count"] == 25
 
     # 还原 c3 原始数据，保持后续 facets 统计不受影响
-    db_mod.upsert_comic_index({
-        "source": "local",
-        "source_id": "c3",
-        "display_id": "LOC_c3",
-        "title": "Gamma Secret",
-        "authors_json": '["Author C"]',
-        "works_json": '[]',
-        "actors_json": '[]',
-        "tags_json": '["短篇"]',
-        "chapter_titles_json": '[]',
-        "page_count": 15,
-        "cached_pages": 15,
-        "cover_count": 4,
-        "cover_indices_json": '[]',
-        "views": "50",
-        "likes": "10",
-        "uploaded_at": "2026-01-03",
-        "published_at": "2026-01-03",
-        "updated_at": "2026-01-03",
-        "imported_at": "2026-01-03T10:00:00",
-        "hidden_from_guest": 1,
-        "mtime": 300.0,
-        "auto_update_interval_days": 15,
-        "last_auto_checked_at": "",
-    })
+    db_mod.upsert_comic_index(
+        {
+            "source": "local",
+            "source_id": "c3",
+            "display_id": "LOC_c3",
+            "title": "Gamma Secret",
+            "authors_json": '["Author C"]',
+            "works_json": "[]",
+            "actors_json": "[]",
+            "tags_json": '["短篇"]',
+            "chapter_titles_json": "[]",
+            "page_count": 15,
+            "cached_pages": 15,
+            "cover_count": 4,
+            "cover_indices_json": "[]",
+            "views": "50",
+            "likes": "10",
+            "uploaded_at": "2026-01-03",
+            "published_at": "2026-01-03",
+            "updated_at": "2026-01-03",
+            "imported_at": "2026-01-03T10:00:00",
+            "hidden_from_guest": 1,
+            "mtime": 300.0,
+            "auto_update_interval_days": 15,
+            "last_auto_checked_at": "",
+        }
+    )
 
     # Pagination: page 1 (size 2) -> 2 items, page 2 (size 2) -> 1 item
     p1_items, p1_total = db_mod.query_library_index("u1", is_curator=True, page=1, page_size=2)
@@ -718,7 +735,9 @@ def test_curator_sessions_and_zero_exposure():
 
     assert db_mod.verify_and_touch_curator_session(token) is True
     with db_mod.get_db() as conn:
-        row = conn.execute("SELECT last_active_at, expires_at FROM curator_sessions WHERE token = ?", (token,)).fetchone()
+        row = conn.execute(
+            "SELECT last_active_at, expires_at FROM curator_sessions WHERE token = ?", (token,)
+        ).fetchone()
         assert row["last_active_at"] >= now
 
     # 3. Expiration and clean_expired_curator_sessions
@@ -868,7 +887,9 @@ def test_curator_sessions_and_zero_exposure():
     # 13. Zero-Exposure on auth_status: raw master secret Bearer MUST NOT trigger Set-Cookie with master secret
     req_status_raw = MagicMock()
     req_status_raw.state = type("State", (), {})()
-    req_status_raw.headers.get = lambda k, default="": f"Bearer {curator_secret}" if k.lower() == "authorization" else ""
+    req_status_raw.headers.get = lambda k, default="": (
+        f"Bearer {curator_secret}" if k.lower() == "authorization" else ""
+    )
     req_status_raw.cookies.get = lambda k, default="": ""
     req_status_raw.query_params.get = lambda k, default="": ""
     req_status_raw.client.host = "10.0.0.6"
@@ -887,5 +908,3 @@ if __name__ == "__main__":
     test_comics_index_and_pagination()
     test_curator_sessions_and_zero_exposure()
     print("Database and passes unit tests passed!")
-
-

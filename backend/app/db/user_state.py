@@ -5,6 +5,7 @@ from typing import Any
 
 from .connection import get_db
 
+
 def get_user_favorites(user_id: str) -> set[tuple[str, str]]:
     with get_db() as conn:
         rows = conn.execute(
@@ -66,6 +67,7 @@ def migrate_legacy_favorites(album_favorites: list[tuple[str, str]], curator_id:
 # 用户专属阅读进度（User Reading Progress）
 # ----------------------------------------------------------------------
 
+
 def get_user_progress(user_id: str, source: str, source_id: str) -> dict[str, Any] | None:
     with get_db() as conn:
         row = conn.execute(
@@ -83,7 +85,6 @@ def get_user_progress(user_id: str, source: str, source_id: str) -> dict[str, An
                 "updated_at": row["updated_at"],
             }
         return None
-
 
 
 def set_user_progress(
@@ -112,4 +113,3 @@ def set_user_progress(
         "total_pages": total_pages,
         "updated_at": now,
     }
-

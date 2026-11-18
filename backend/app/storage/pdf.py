@@ -1,4 +1,5 @@
 """PDF comic extraction, lossless image stream unpacking, and dual-track chapter detection."""
+
 from __future__ import annotations
 
 import logging
@@ -69,7 +70,9 @@ def unpack_pdf(pdf_path: Path, output_dir: Path) -> tuple[list[tuple[int, Path, 
                     extracted.append((idx, dest_file, ext))
                     done = True
                 except Exception as exc:
-                    logger.warning("Failed raw extraction for page %d in %s: %s, falling back to render", idx, pdf_path, exc)
+                    logger.warning(
+                        "Failed raw extraction for page %d in %s: %s, falling back to render", idx, pdf_path, exc
+                    )
 
             if not done:
                 # Fallback: rasterize page to high-quality pixmap (200 DPI, capped for memory safety)
@@ -159,29 +162,35 @@ def _extract_chapters_from_toc(
         while first_count > 1 and is_separator_page(doc, first_count):
             logger.info("Trimmed trailing blank separator page at PDF p.%d in prelude/contents", first_count)
             first_count -= 1
-        chapters.append({
-            "id": "c0",
-            "index": chap_idx,
-            "title": "卷首 / 目录",
-            "start": 1,
-            "page_count": first_count,
-        })
+        chapters.append(
+            {
+                "id": "c0",
+                "index": chap_idx,
+                "title": "卷首 / 目录",
+                "start": 1,
+                "page_count": first_count,
+            }
+        )
         chap_idx += 1
 
     for i, (title, pno) in enumerate(unique_entries):
         next_pno = unique_entries[i + 1][1] if i + 1 < len(unique_entries) else total_pages + 1
         raw_count = next_pno - pno
         while raw_count > 1 and is_separator_page(doc, pno + raw_count - 1):
-            logger.info("Trimmed trailing blank separator page at PDF p.%d in chapter %d", pno + raw_count - 1, chap_idx)
+            logger.info(
+                "Trimmed trailing blank separator page at PDF p.%d in chapter %d", pno + raw_count - 1, chap_idx
+            )
             raw_count -= 1
         page_count = max(1, raw_count)
-        chapters.append({
-            "id": f"c{chap_idx}",
-            "index": chap_idx,
-            "title": title,
-            "start": pno,
-            "page_count": page_count,
-        })
+        chapters.append(
+            {
+                "id": f"c{chap_idx}",
+                "index": chap_idx,
+                "title": title,
+                "start": pno,
+                "page_count": page_count,
+            }
+        )
         chap_idx += 1
 
     return chapters if len(chapters) >= 1 else None
@@ -201,6 +210,7 @@ def _extract_chapters_from_ocr(
         # rapidocr 3.x（PP-OCRv6 small 是其包内默认）：目录页与扉页多为繁体/日文汉字，
         # 旧 rapidocr-onnxruntime 的字符表会把它们认成形似汉字的乱码，分话因此漏判。
         from rapidocr import RapidOCR
+
         ocr = RapidOCR()
     except Exception as exc:
         # 必须用 warning：uvicorn 默认不给 root logger 设级别，info 会被整条丢掉，
@@ -336,32 +346,38 @@ def _extract_chapters_from_ocr(
         while first_count > 1 and is_separator_page(doc, first_count):
             logger.info("Trimmed trailing blank separator page at PDF p.%d in prelude/contents", first_count)
             first_count -= 1
-        chapters.append({
-            "id": "c0",
-            "index": chap_idx,
-            "title": "卷首 / 目录",
-            "start": 1,
-            "page_count": first_count,
-        })
+        chapters.append(
+            {
+                "id": "c0",
+                "index": chap_idx,
+                "title": "卷首 / 目录",
+                "start": 1,
+                "page_count": first_count,
+            }
+        )
         chap_idx += 1
 
     for i, pno in enumerate(final_pnos):
         next_pno = final_pnos[i + 1] if i + 1 < len(final_pnos) else total_pages + 1
         raw_count = next_pno - pno
         while raw_count > 1 and is_separator_page(doc, pno + raw_count - 1):
-            logger.info("Trimmed trailing blank separator page at PDF p.%d in chapter %d", pno + raw_count - 1, chap_idx)
+            logger.info(
+                "Trimmed trailing blank separator page at PDF p.%d in chapter %d", pno + raw_count - 1, chap_idx
+            )
             raw_count -= 1
         page_count = max(1, raw_count)
         title = filtered_splits[pno]
         if not title or len(title) < 2:
             title = f"第 {chap_idx} 话"
-        chapters.append({
-            "id": f"c{chap_idx}",
-            "index": chap_idx,
-            "title": title,
-            "start": pno,
-            "page_count": page_count,
-        })
+        chapters.append(
+            {
+                "id": f"c{chap_idx}",
+                "index": chap_idx,
+                "title": title,
+                "start": pno,
+                "page_count": page_count,
+            }
+        )
         chap_idx += 1
 
     return chapters

@@ -60,10 +60,7 @@ def extract_token(request: Request) -> str:
         return cookie_token
 
     # 4. Query param (?token=xxx or ?temp_token=xxx)
-    query_token = (
-        request.query_params.get("token", "").strip()
-        or request.query_params.get("temp_token", "").strip()
-    )
+    query_token = request.query_params.get("token", "").strip() or request.query_params.get("temp_token", "").strip()
     if query_token:
         return query_token
 

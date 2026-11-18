@@ -135,7 +135,9 @@ class TestCopyMangaProvider(unittest.TestCase):
 
     def test_proxy_cascading_resolution(self) -> None:
         # 1. When source-specific COPY_PROXY is set, it takes precedence
-        with patch.dict("os.environ", {"COPY_PROXY": "http://10.0.0.1:8080", "COMIC_SHELF_PROXY": "http://127.0.0.1:7890"}):
+        with patch.dict(
+            "os.environ", {"COPY_PROXY": "http://10.0.0.1:8080", "COMIC_SHELF_PROXY": "http://127.0.0.1:7890"}
+        ):
             self.assertEqual(get_proxy_for_source("copymanga"), "http://10.0.0.1:8080")
 
         # 2. When COPY_PROXY is unset, it falls back to COMIC_SHELF_PROXY
@@ -143,11 +145,25 @@ class TestCopyMangaProvider(unittest.TestCase):
             self.assertEqual(get_proxy_for_source("copymanga"), "http://127.0.0.1:7890")
 
         # 3. Falls back to system ALL_PROXY / HTTPS_PROXY
-        with patch.dict("os.environ", {"COPY_PROXY": "", "COMIC_SHELF_PROXY": "", "all_proxy": "socks5://127.0.0.1:1080"}):
+        with patch.dict(
+            "os.environ", {"COPY_PROXY": "", "COMIC_SHELF_PROXY": "", "all_proxy": "socks5://127.0.0.1:1080"}
+        ):
             self.assertEqual(get_proxy_for_source("copymanga"), "socks5://127.0.0.1:1080")
 
         # 4. Falls back to empty string (direct connection)
-        with patch.dict("os.environ", {"COPY_PROXY": "", "COMIC_SHELF_PROXY": "", "all_proxy": "", "ALL_PROXY": "", "https_proxy": "", "HTTPS_PROXY": "", "http_proxy": "", "HTTP_PROXY": ""}):
+        with patch.dict(
+            "os.environ",
+            {
+                "COPY_PROXY": "",
+                "COMIC_SHELF_PROXY": "",
+                "all_proxy": "",
+                "ALL_PROXY": "",
+                "https_proxy": "",
+                "HTTPS_PROXY": "",
+                "http_proxy": "",
+                "HTTP_PROXY": "",
+            },
+        ):
             self.assertEqual(get_proxy_for_source("copymanga"), "")
 
     @patch.object(CopyMangaProvider, "_session")
@@ -225,9 +241,15 @@ class TestCopyMangaProvider(unittest.TestCase):
         encrypted_chapters = iv_str + ct1.hex()
 
         # Mock chapter page payloads
-        ch1_pages = [{"url": "https://sx.mangafunb.fun/pages/ch1/01.jpg"}, {"url": "https://sx.mangafunb.fun/pages/ch1/02.jpg"}]
+        ch1_pages = [
+            {"url": "https://sx.mangafunb.fun/pages/ch1/01.jpg"},
+            {"url": "https://sx.mangafunb.fun/pages/ch1/02.jpg"},
+        ]
         ch2_pages = [{"url": "https://sx.mangafunb.fun/pages/ch2/01.jpg"}]
-        vol1_pages = [{"url": "https://sx.mangafunb.fun/pages/vol1/01.jpg"}, {"url": "https://sx.mangafunb.fun/pages/vol1/02.jpg"}]
+        vol1_pages = [
+            {"url": "https://sx.mangafunb.fun/pages/vol1/01.jpg"},
+            {"url": "https://sx.mangafunb.fun/pages/vol1/02.jpg"},
+        ]
 
         def make_chap_html(pages_list: list) -> str:
             cipher = AES.new(key_str.encode("utf-8"), AES.MODE_CBC, iv_str.encode("utf-8"))
@@ -445,9 +467,15 @@ class TestCopyMangaProvider(unittest.TestCase):
         self.assertEqual(data, jpeg_bytes)
 
     def test_download_page_security(self) -> None:
-        p_bad_host = RemotePage(index=1, url="http://evil-attacker.com/test.jpg", file="00001.jpg", ext="jpg", chapter="ch1")
-        p_bad_port = RemotePage(index=1, url="http://sx.mangafunb.fun:8080/test.jpg", file="00001.jpg", ext="jpg", chapter="ch1")
-        p_ip_port = RemotePage(index=1, url="http://127.0.0.1:8000/test.jpg", file="00001.jpg", ext="jpg", chapter="ch1")
+        p_bad_host = RemotePage(
+            index=1, url="http://evil-attacker.com/test.jpg", file="00001.jpg", ext="jpg", chapter="ch1"
+        )
+        p_bad_port = RemotePage(
+            index=1, url="http://sx.mangafunb.fun:8080/test.jpg", file="00001.jpg", ext="jpg", chapter="ch1"
+        )
+        p_ip_port = RemotePage(
+            index=1, url="http://127.0.0.1:8000/test.jpg", file="00001.jpg", ext="jpg", chapter="ch1"
+        )
 
         fake_comic = MagicMock()
         with self.assertRaises(ValueError):
@@ -563,11 +591,12 @@ class TestCopyMangaProvider(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as tmp_root:
             test_store = ComicStore(Path(tmp_root))
-            with patch("app.routers.chapters.store", test_store), \
-                 patch("app.routers.common.store", test_store), \
-                 patch("app.routers.chapters.sync_comic_dialogues"), \
-                 patch("app.routers.chapters.broadcast_event"):
-
+            with (
+                patch("app.routers.chapters.store", test_store),
+                patch("app.routers.common.store", test_store),
+                patch("app.routers.chapters.sync_comic_dialogues"),
+                patch("app.routers.chapters.broadcast_event"),
+            ):
                 # 1. First fetch: default only (ch1 + ch2)
                 initial_fetched = self.provider.fetch("test_slug")
                 self.assertEqual(len(initial_fetched.meta.chapters), 2)

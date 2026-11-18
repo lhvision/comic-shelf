@@ -9,6 +9,7 @@ Implements ADR 0029:
 - Throttles requests with 3s delays between inspections to avoid upstream rate limiting.
 - Graceful shutdown integration via threading.Event.
 """
+
 from __future__ import annotations
 
 import logging
@@ -81,8 +82,10 @@ def run_auto_update_cycle(
             prev_chaps = len(cached_bundle.meta.chapters) if cached_bundle else 0
             prev_pages = cached_bundle.meta.page_count if cached_bundle else 0
             was_fully_cached = (
-                prev_pages > 0 and store.cached_page_count(cached_bundle.meta) >= prev_pages
-            ) if cached_bundle else False
+                (prev_pages > 0 and store.cached_page_count(cached_bundle.meta) >= prev_pages)
+                if cached_bundle
+                else False
+            )
 
             provider = get_provider(source)
             fetched = provider.fetch(source_id, existing=cached_bundle)

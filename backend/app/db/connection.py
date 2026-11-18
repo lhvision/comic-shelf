@@ -35,6 +35,7 @@ def set_db_path(path: Path) -> None:
         _DIALOGUE_DB_PATH = path.parent / f"{path.stem}_dialogues.db"
     try:
         from .index import invalidate_facets_cache
+
         invalidate_facets_cache(force=True)
     except ImportError:
         pass

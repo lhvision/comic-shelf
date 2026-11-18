@@ -8,6 +8,7 @@
 提供关键词检索（与 `storage/pdf.py` 的扉页分话同一套降级口径）。numpy 同样用到才导入：
 基础镜像不带它，模块级导入会让 `*/ocr/sync` 在关键词入库之后抛 500；缺了它就按编码器不可用处理。
 """
+
 from __future__ import annotations
 
 import logging

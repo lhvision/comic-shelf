@@ -5,6 +5,7 @@ The in-app setting (persisted to DATA_DIR/settings.json, backed by localStorage)
 adjusts the live limit at runtime without needing a restart. When the env var is
 explicitly set it wins and the UI reports ``env_controlled``.
 """
+
 from __future__ import annotations
 
 import json
@@ -143,4 +144,3 @@ def set_guest_hide_new_comics(hide: bool) -> bool:
             return bool(hide)
         except Exception:
             return False
-

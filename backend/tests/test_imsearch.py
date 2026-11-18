@@ -148,9 +148,7 @@ def test_fastapi_endpoints():
             from app.models import ImageSearchItem
 
             mock_search.return_value = [
-                ImageSearchItem(
-                    source="jm", source_id="1242163", page_index=5, is_cover=False, score=0.94
-                )
+                ImageSearchItem(source="jm", source_id="1242163", page_index=5, is_cover=False, score=0.94)
             ]
             mock_upload = MagicMock()
             mock_upload.filename = "test.jpg"

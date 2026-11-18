@@ -54,7 +54,7 @@ def broadcast_event(event_type: str, data: dict[str, Any] | None = None) -> int:
             else:
                 loop.call_soon_threadsafe(queue.put_nowait, sse_message)
             delivered += 1
-        except (asyncio.QueueFull, RuntimeError):
+        except asyncio.QueueFull, RuntimeError:
             dead_entries.append(entry)
 
     if dead_entries:

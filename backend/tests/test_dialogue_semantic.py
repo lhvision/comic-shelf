@@ -72,10 +72,7 @@ def _comic(temp_dir: Path, source_id: str, lines: list[tuple[int, str]]) -> None
     for page_index, text in lines:
         per_page.setdefault(page_index, []).append(text)
     for page_index, texts in per_page.items():
-        bubbles = [
-            {"id": i + 1, "order": i + 1, "box": [0.1, 0.1, 0.4, 0.4], "text": t}
-            for i, t in enumerate(texts)
-        ]
+        bubbles = [{"id": i + 1, "order": i + 1, "box": [0.1, 0.1, 0.4, 0.4], "text": t} for i, t in enumerate(texts)]
         (pages_dir / f"{page_index:05d}.ocr.json").write_text(
             json.dumps({"version": 1, "engine": "rapidocr", "bubbles": bubbles}, ensure_ascii=False),
             encoding="utf-8",
@@ -85,9 +82,9 @@ def _comic(temp_dir: Path, source_id: str, lines: list[tuple[int, str]]) -> None
 
 def _vector_count(source_id: str) -> int:
     with db_mod.get_dialogue_db() as conn:
-        return int(conn.execute(
-            "SELECT count(*) FROM comic_dialogue_vectors WHERE source_id = ?", (source_id,)
-        ).fetchone()[0])
+        return int(
+            conn.execute("SELECT count(*) FROM comic_dialogue_vectors WHERE source_id = ?", (source_id,)).fetchone()[0]
+        )
 
 
 def test_semantic_vectors_built_with_sync_and_searchable():

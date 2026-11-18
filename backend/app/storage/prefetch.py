@@ -1,4 +1,5 @@
 """Prefetch mixin managing batch background page preheating and chapter prefetching."""
+
 from __future__ import annotations
 
 import logging
@@ -53,6 +54,7 @@ class ComicStorePrefetchMixin:
         # Pre-warm official cover if provider supports it (e.g. PicAcg thumb)
         try:
             from ..providers.registry import get_provider
+
             prov = get_provider(meta.source)
             if hasattr(prov, "download_cover"):
                 official_cover_bytes = prov.download_cover(fetched)
@@ -66,7 +68,10 @@ class ComicStorePrefetchMixin:
 
         for index in indexes:
             from ..jobs import is_job_cancelled
-            if not self.album_path(meta.source, meta.source_id).exists() or is_job_cancelled(meta.source, meta.source_id):
+
+            if not self.album_path(meta.source, meta.source_id).exists() or is_job_cancelled(
+                meta.source, meta.source_id
+            ):
                 logger.info("Prefetch aborted for deleted/cancelled comic %s/%s", meta.source, meta.source_id)
                 break
             success = False
@@ -110,7 +115,10 @@ class ComicStorePrefetchMixin:
 
         for index in indexes:
             from ..jobs import is_job_cancelled
-            if not self.album_path(meta.source, meta.source_id).exists() or is_job_cancelled(meta.source, meta.source_id):
+
+            if not self.album_path(meta.source, meta.source_id).exists() or is_job_cancelled(
+                meta.source, meta.source_id
+            ):
                 logger.info("Prefetch chapter aborted for deleted/cancelled comic %s/%s", meta.source, meta.source_id)
                 break
             success = False

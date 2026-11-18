@@ -4,6 +4,7 @@ Implements the Model Context Protocol over Server-Sent Events (SSE) and direct J
 exposing atomic data tools, searchable resources, and prompt templates to AI Agents
 (Claude Desktop, Antigravity, Cursor, Feishu Bot, etc.).
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -406,26 +407,32 @@ def _tool_search_by_image(arguments: dict[str, Any]) -> dict[str, Any]:
         meta = store.load_meta(item.source, item.source_id)
         if not meta:
             continue
-        hits.append({
-            "source": item.source,
-            "source_id": item.source_id,
-            "title": meta.title,
-            "authors": meta.authors,
-            "page_index": item.page_index,
-            "is_cover": item.is_cover,
-            "similarity_score": round(item.score, 4),
-            "confidence_percent": f"{round(item.score * 100, 1)}%",
-            "reader_url": f"/comic/{item.source}/{item.source_id}/read/{item.page_index}",
-        })
+        hits.append(
+            {
+                "source": item.source,
+                "source_id": item.source_id,
+                "title": meta.title,
+                "authors": meta.authors,
+                "page_index": item.page_index,
+                "is_cover": item.is_cover,
+                "similarity_score": round(item.score, 4),
+                "confidence_percent": f"{round(item.score * 100, 1)}%",
+                "reader_url": f"/comic/{item.source}/{item.source_id}/read/{item.page_index}",
+            }
+        )
 
     return {
         "content": [
             {
                 "type": "text",
-                "text": json.dumps({
-                    "total_matched": len(hits),
-                    "hits": hits,
-                }, ensure_ascii=False, indent=2),
+                "text": json.dumps(
+                    {
+                        "total_matched": len(hits),
+                        "hits": hits,
+                    },
+                    ensure_ascii=False,
+                    indent=2,
+                ),
             }
         ],
         "isError": False,
@@ -439,6 +446,7 @@ def _bubble_query(d: dict[str, Any]) -> dict[str, str]:
     历史版本在这里拼的是 `?bubble=<气泡 id>`，数字 id 不被解析，等于签发了一个
     永远不高亮的直达链接。坐标必须与前端 useDialogueSearch 的编码逐字对齐。
     """
+
     def encode(box: list[float]) -> str:
         return ",".join(f"{float(v):.4f}" for v in box)
 
@@ -472,32 +480,38 @@ def _tool_search_by_dialogue(arguments: dict[str, Any]) -> dict[str, Any]:
         url = f"/comic/{d['source']}/{d['source_id']}/read/{d['page_index']}"
         if query:
             url = f"{url}?{urlencode(query)}"
-        hits.append({
-            "source": d["source"],
-            "source_id": d["source_id"],
-            "title": d.get("title", d["source_id"]),
-            "authors": d.get("authors", []),
-            "page_index": d["page_index"],
-            "bubble_id": d.get("bubble_id"),
-            # 检索单元是气泡、展示单元是页：一行代表一整页，同页命中数与同页其余命中气泡一并给出
-            "bubble_count": d.get("bubble_count"),
-            "text": d["text"],
-            "snippet": d.get("snippet", d["text"]),
-            "box": d.get("box", []),
-            "other_boxes": d.get("other_boxes", []),
-            "rank_score": d.get("rank_score", 0.0),
-            "reader_url": url,
-        })
+        hits.append(
+            {
+                "source": d["source"],
+                "source_id": d["source_id"],
+                "title": d.get("title", d["source_id"]),
+                "authors": d.get("authors", []),
+                "page_index": d["page_index"],
+                "bubble_id": d.get("bubble_id"),
+                # 检索单元是气泡、展示单元是页：一行代表一整页，同页命中数与同页其余命中气泡一并给出
+                "bubble_count": d.get("bubble_count"),
+                "text": d["text"],
+                "snippet": d.get("snippet", d["text"]),
+                "box": d.get("box", []),
+                "other_boxes": d.get("other_boxes", []),
+                "rank_score": d.get("rank_score", 0.0),
+                "reader_url": url,
+            }
+        )
 
     return {
         "content": [
             {
                 "type": "text",
-                "text": json.dumps({
-                    "query": text,
-                    "total_matched": len(hits),
-                    "hits": hits,
-                }, ensure_ascii=False, indent=2),
+                "text": json.dumps(
+                    {
+                        "query": text,
+                        "total_matched": len(hits),
+                        "hits": hits,
+                    },
+                    ensure_ascii=False,
+                    indent=2,
+                ),
             }
         ],
         "isError": False,
@@ -580,32 +594,38 @@ def _tool_query_shelf(arguments: dict[str, Any]) -> dict[str, Any]:
     for item in items:
         authors = json.loads(item["authors_json"]) if item.get("authors_json") else []
         tags_list = json.loads(item["tags_json"]) if item.get("tags_json") else []
-        summaries.append({
-            "source": item["source"],
-            "source_id": item["source_id"],
-            "display_id": item.get("display_id", item["source_id"]),
-            "title": item["title"],
-            "authors": authors,
-            "tags": tags_list,
-            "page_count": item["page_count"],
-            "cached_pages": item.get("cached_pages", 0),
-            "likes": item.get("likes", ""),
-            "views": item.get("views", ""),
-            "imported_at": item.get("imported_at", ""),
-            "detail_url": f"/comic/{item['source']}/{item['source_id']}",
-        })
+        summaries.append(
+            {
+                "source": item["source"],
+                "source_id": item["source_id"],
+                "display_id": item.get("display_id", item["source_id"]),
+                "title": item["title"],
+                "authors": authors,
+                "tags": tags_list,
+                "page_count": item["page_count"],
+                "cached_pages": item.get("cached_pages", 0),
+                "likes": item.get("likes", ""),
+                "views": item.get("views", ""),
+                "imported_at": item.get("imported_at", ""),
+                "detail_url": f"/comic/{item['source']}/{item['source_id']}",
+            }
+        )
 
     return {
         "content": [
             {
                 "type": "text",
-                "text": json.dumps({
-                    "total": total,
-                    "returned": len(summaries),
-                    "offset": offset,
-                    "limit": limit,
-                    "items": summaries,
-                }, ensure_ascii=False, indent=2),
+                "text": json.dumps(
+                    {
+                        "total": total,
+                        "returned": len(summaries),
+                        "offset": offset,
+                        "limit": limit,
+                        "items": summaries,
+                    },
+                    ensure_ascii=False,
+                    indent=2,
+                ),
             }
         ],
         "isError": False,
@@ -689,24 +709,30 @@ def _tool_recommend_unread(arguments: dict[str, Any]) -> dict[str, Any]:
     for item in items:
         authors = json.loads(item["authors_json"]) if item.get("authors_json") else []
         tags_list = json.loads(item["tags_json"]) if item.get("tags_json") else []
-        results.append({
-            "source": item["source"],
-            "source_id": item["source_id"],
-            "title": item["title"],
-            "authors": authors,
-            "tags": tags_list,
-            "page_count": item["page_count"],
-            "detail_url": f"/comic/{item['source']}/{item['source_id']}",
-        })
+        results.append(
+            {
+                "source": item["source"],
+                "source_id": item["source_id"],
+                "title": item["title"],
+                "authors": authors,
+                "tags": tags_list,
+                "page_count": item["page_count"],
+                "detail_url": f"/comic/{item['source']}/{item['source_id']}",
+            }
+        )
 
     return {
         "content": [
             {
                 "type": "text",
-                "text": json.dumps({
-                    "total_unread": total,
-                    "recommendations": results,
-                }, ensure_ascii=False, indent=2),
+                "text": json.dumps(
+                    {
+                        "total_unread": total,
+                        "recommendations": results,
+                    },
+                    ensure_ascii=False,
+                    indent=2,
+                ),
             }
         ],
         "isError": False,
@@ -771,18 +797,22 @@ def _tool_create_direct_pass(arguments: dict[str, Any]) -> dict[str, Any]:
         "content": [
             {
                 "type": "text",
-                "text": json.dumps({
-                    "token": res["token"],
-                    "source": source,
-                    "source_id": source_id,
-                    "title": meta.title,
-                    "page_index": page_index,
-                    "direct_url": direct_url,
-                    "direct_path": direct_path,
-                    "expires_at": res["expires_at"],
-                    "expires_in_seconds": res["expires_in"],
-                    "expires_in_hours": round(res["expires_in"] / 3600, 1),
-                }, ensure_ascii=False, indent=2),
+                "text": json.dumps(
+                    {
+                        "token": res["token"],
+                        "source": source,
+                        "source_id": source_id,
+                        "title": meta.title,
+                        "page_index": page_index,
+                        "direct_url": direct_url,
+                        "direct_path": direct_path,
+                        "expires_at": res["expires_at"],
+                        "expires_in_seconds": res["expires_in"],
+                        "expires_in_hours": round(res["expires_in"] / 3600, 1),
+                    },
+                    ensure_ascii=False,
+                    indent=2,
+                ),
             }
         ],
         "isError": False,
@@ -821,7 +851,7 @@ def _tool_get_story_context(arguments: dict[str, Any]) -> dict[str, Any]:
     try:
         page_start = int(arguments["page_start"])
         page_end = int(arguments["page_end"])
-    except (KeyError, TypeError, ValueError):
+    except KeyError, TypeError, ValueError:
         raise ValueError("page_start 与 page_end 必须是整数页号")
     budget = int(arguments.get("budget_lines", 120))
 
@@ -836,9 +866,7 @@ def _tool_get_story_context(arguments: dict[str, Any]) -> dict[str, Any]:
     ctx = get_story_context(source, source_id, page_start, page_end, budget_lines=budget)
     payload = {"source": source, "source_id": source_id, "title": meta.title, **ctx}
     return {
-        "content": [
-            {"type": "text", "text": json.dumps(payload, ensure_ascii=False, indent=2)}
-        ],
+        "content": [{"type": "text", "text": json.dumps(payload, ensure_ascii=False, indent=2)}],
         "isError": False,
     }
 

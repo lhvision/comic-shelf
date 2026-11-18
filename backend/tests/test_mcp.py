@@ -1,4 +1,5 @@
 """Unit and integration tests for Paper Room MCP Server & Single-Book Direct Pass Sandbox."""
+
 from __future__ import annotations
 
 import asyncio
@@ -121,12 +122,14 @@ def test_mcp_protocol_initialize_and_tools():
     try:
         # 1. Test initialize
         init_resp = asyncio.run(
-            process_jsonrpc_request({
-                "jsonrpc": "2.0",
-                "id": 1,
-                "method": "initialize",
-                "params": {},
-            })
+            process_jsonrpc_request(
+                {
+                    "jsonrpc": "2.0",
+                    "id": 1,
+                    "method": "initialize",
+                    "params": {},
+                }
+            )
         )
         assert init_resp is not None
         assert init_resp["id"] == 1
@@ -136,21 +139,25 @@ def test_mcp_protocol_initialize_and_tools():
 
         # 2. Test ping
         ping_resp = asyncio.run(
-            process_jsonrpc_request({
-                "jsonrpc": "2.0",
-                "id": 2,
-                "method": "ping",
-            })
+            process_jsonrpc_request(
+                {
+                    "jsonrpc": "2.0",
+                    "id": 2,
+                    "method": "ping",
+                }
+            )
         )
         assert ping_resp == {"jsonrpc": "2.0", "id": 2, "result": {}}
 
         # 3. Test tools/list
         tools_resp = asyncio.run(
-            process_jsonrpc_request({
-                "jsonrpc": "2.0",
-                "id": 3,
-                "method": "tools/list",
-            })
+            process_jsonrpc_request(
+                {
+                    "jsonrpc": "2.0",
+                    "id": 3,
+                    "method": "tools/list",
+                }
+            )
         )
         assert tools_resp is not None
         tools = tools_resp["result"]["tools"]
@@ -169,10 +176,12 @@ def test_mcp_protocol_initialize_and_tools():
 
         # 4. Test JSON-RPC 2.0 batch array request
         batch_resp = asyncio.run(
-            process_jsonrpc_request([
-                {"jsonrpc": "2.0", "id": 41, "method": "ping"},
-                {"jsonrpc": "2.0", "id": 42, "method": "ping"},
-            ])
+            process_jsonrpc_request(
+                [
+                    {"jsonrpc": "2.0", "id": 41, "method": "ping"},
+                    {"jsonrpc": "2.0", "id": 42, "method": "ping"},
+                ]
+            )
         )
         assert isinstance(batch_resp, list)
         assert len(batch_resp) == 2
@@ -252,7 +261,9 @@ def test_mcp_tool_execution():
         )
         assert not res_pass_base["isError"]
         pass_data_base = json.loads(res_pass_base["content"][0]["text"])
-        assert pass_data_base["direct_url"].startswith("https://comic.test/comic/local/mcp_test_comic/read/5?temp_token=")
+        assert pass_data_base["direct_url"].startswith(
+            "https://comic.test/comic/local/mcp_test_comic/read/5?temp_token="
+        )
         assert pass_data_base["direct_path"].startswith("/comic/local/mcp_test_comic/read/5?temp_token=")
 
         # 4c. create_direct_pass with PUBLIC_URL env
@@ -269,7 +280,9 @@ def test_mcp_tool_execution():
             )
             assert not res_pass_env["isError"]
             pass_data_env = json.loads(res_pass_env["content"][0]["text"])
-            assert pass_data_env["direct_url"].startswith("https://env-manga.example.com/comic/local/mcp_test_comic/read/5?temp_token=")
+            assert pass_data_env["direct_url"].startswith(
+                "https://env-manga.example.com/comic/local/mcp_test_comic/read/5?temp_token="
+            )
 
         # 4d. create_direct_pass with invalid malicious base_url
         res_pass_bad = asyncio.run(
@@ -341,11 +354,14 @@ def test_mcp_tool_execution():
             # 5c. Valid image with mocked search_imsearch
             with patch("app.routers.mcp.search_imsearch") as mock_im_search:
                 from app.models import ImageSearchItem
+
                 mock_im_search.return_value = [
                     ImageSearchItem(source="local", source_id="mcp_test_comic", page_index=1, is_cover=True, score=0.95)
                 ]
                 res_valid = asyncio.run(
-                    execute_tool("search_by_image", {"image_base64": base64.b64encode(b"\xff\xd8\xff\xe0fake").decode()})
+                    execute_tool(
+                        "search_by_image", {"image_base64": base64.b64encode(b"\xff\xd8\xff\xe0fake").decode()}
+                    )
                 )
                 assert not res_valid["isError"]
                 match_data = json.loads(res_valid["content"][0]["text"])
@@ -361,11 +377,13 @@ def test_mcp_resources_and_prompts():
     try:
         # 1. resources/list
         r_list = asyncio.run(
-            process_jsonrpc_request({
-                "jsonrpc": "2.0",
-                "id": 10,
-                "method": "resources/list",
-            })
+            process_jsonrpc_request(
+                {
+                    "jsonrpc": "2.0",
+                    "id": 10,
+                    "method": "resources/list",
+                }
+            )
         )
         assert r_list is not None
         uris = [r["uri"] for r in r_list["result"]["resources"]]
@@ -374,34 +392,40 @@ def test_mcp_resources_and_prompts():
 
         # 2. resources/read
         r_read = asyncio.run(
-            process_jsonrpc_request({
-                "jsonrpc": "2.0",
-                "id": 11,
-                "method": "resources/read",
-                "params": {"uri": "shelf://stats"},
-            })
+            process_jsonrpc_request(
+                {
+                    "jsonrpc": "2.0",
+                    "id": 11,
+                    "method": "resources/read",
+                    "params": {"uri": "shelf://stats"},
+                }
+            )
         )
         assert r_read is not None
         assert "contents" in r_read["result"]
 
         # 3. prompts/list & get
         p_list = asyncio.run(
-            process_jsonrpc_request({
-                "jsonrpc": "2.0",
-                "id": 12,
-                "method": "prompts/list",
-            })
+            process_jsonrpc_request(
+                {
+                    "jsonrpc": "2.0",
+                    "id": 12,
+                    "method": "prompts/list",
+                }
+            )
         )
         assert p_list is not None
         assert len(p_list["result"]["prompts"]) >= 2
 
         p_get = asyncio.run(
-            process_jsonrpc_request({
-                "jsonrpc": "2.0",
-                "id": 13,
-                "method": "prompts/get",
-                "params": {"name": "find_comic_by_scene", "arguments": {"clue": "最后的波纹"}},
-            })
+            process_jsonrpc_request(
+                {
+                    "jsonrpc": "2.0",
+                    "id": 13,
+                    "method": "prompts/get",
+                    "params": {"name": "find_comic_by_scene", "arguments": {"clue": "最后的波纹"}},
+                }
+            )
         )
         assert p_get is not None
         assert "messages" in p_get["result"]
@@ -430,6 +454,7 @@ def test_http_direct_rpc_and_sandbox_middleware():
             assert False, "Should raise HTTPException 401 when unauthenticated"
         except Exception as exc:
             from fastapi import HTTPException
+
             assert isinstance(exc, HTTPException)
             assert exc.status_code == 401
 
@@ -491,6 +516,7 @@ def test_http_direct_rpc_and_sandbox_middleware():
         from app.models import LoginRequest
         from app.routers.auth import auth_login
         from fastapi import Response
+
         login_resp = auth_login(
             LoginRequest(secret=temp_token),
             req_rpc_unauth,
@@ -508,6 +534,7 @@ def test_http_direct_rpc_and_sandbox_middleware():
             nonlocal next_called
             next_called = True
             from fastapi.responses import JSONResponse
+
             return JSONResponse({"status": "ok"})
 
         req_ok = make_mock_request(
@@ -548,6 +575,7 @@ def test_http_direct_rpc_and_sandbox_middleware():
         resp_blocked_other = asyncio.run(auth_and_security_middleware(req_blocked_other, dummy_call_next))
         # 2e. Direct pass rate limiting on reading page binary endpoint (/file)
         from app.abuse import _guest_rate_buckets
+
         req_file = make_mock_request(
             path="/api/library/local/mcp_test_comic/pages/1/file",
             query_params={"temp_token": temp_token},
@@ -614,15 +642,18 @@ def test_mcp_dialogue_deep_link_and_story_context():
             encoding="utf-8",
         )
         (pages / "00005.ocr.json").write_text(
-            json.dumps({
-                "version": 1,
-                "engine": "rapidocr",
-                "bubbles": [
-                    {"id": 1, "order": 1, "box": [0.1, 0.1, 0.2, 0.4], "text": "老师我真的很喜欢你"},
-                    {"id": 2, "order": 2, "box": [0.3, 0.2, 0.4, 0.6], "text": "我也最喜欢你了老师"},
-                    {"id": 3, "order": 3, "box": [0.5, 0.3, 0.6, 0.7], "text": "今天天气不错啊"},
-                ],
-            }, ensure_ascii=False),
+            json.dumps(
+                {
+                    "version": 1,
+                    "engine": "rapidocr",
+                    "bubbles": [
+                        {"id": 1, "order": 1, "box": [0.1, 0.1, 0.2, 0.4], "text": "老师我真的很喜欢你"},
+                        {"id": 2, "order": 2, "box": [0.3, 0.2, 0.4, 0.6], "text": "我也最喜欢你了老师"},
+                        {"id": 3, "order": 3, "box": [0.5, 0.3, 0.6, 0.7], "text": "今天天气不错啊"},
+                    ],
+                },
+                ensure_ascii=False,
+            ),
             encoding="utf-8",
         )
         assert db_mod.sync_comic_dialogues("local", "mcp_test_comic") == 3
@@ -646,10 +677,18 @@ def test_mcp_dialogue_deep_link_and_story_context():
         assert hit["bubble_count"] == 2 and len(hit["other_boxes"]) == 1
 
         # 2. 取料出口：按页码+阅读顺序出原始台词流，不收关键词、不带展示态、撞预算要回报
-        ctx = asyncio.run(execute_tool("get_story_context", {
-            "source": "local", "source_id": "mcp_test_comic",
-            "page_start": 5, "page_end": 6, "budget_lines": 2,
-        }))
+        ctx = asyncio.run(
+            execute_tool(
+                "get_story_context",
+                {
+                    "source": "local",
+                    "source_id": "mcp_test_comic",
+                    "page_start": 5,
+                    "page_end": 6,
+                    "budget_lines": 2,
+                },
+            )
+        )
         assert ctx["isError"] is False
         cp = json.loads(ctx["content"][0]["text"])
         assert [ln["text"] for ln in cp["lines"]] == ["老师我真的很喜欢你", "我也最喜欢你了老师"]
@@ -660,16 +699,32 @@ def test_mcp_dialogue_deep_link_and_story_context():
         assert [b["line_id"] for b in cp["boxes"]] == [ln["line_id"] for ln in cp["lines"]]
 
         # 3. 边界：缺页号、非整数页号都要明确报错，而不是静默返回空物料
-        bad = asyncio.run(execute_tool("get_story_context", {
-            "source": "local", "source_id": "mcp_test_comic", "page_start": "abc", "page_end": 6,
-        }))
+        bad = asyncio.run(
+            execute_tool(
+                "get_story_context",
+                {
+                    "source": "local",
+                    "source_id": "mcp_test_comic",
+                    "page_start": "abc",
+                    "page_end": 6,
+                },
+            )
+        )
         assert bad["isError"] is True
         missing = asyncio.run(execute_tool("get_story_context", {"source": "local"}))
         assert missing["isError"] is True
         # 书不在库里要明说，不能回一份空物料让 agent 误以为"这本没台词"
-        ghost = asyncio.run(execute_tool("get_story_context", {
-            "source": "local", "source_id": "no_such_comic", "page_start": 1, "page_end": 2,
-        }))
+        ghost = asyncio.run(
+            execute_tool(
+                "get_story_context",
+                {
+                    "source": "local",
+                    "source_id": "no_such_comic",
+                    "page_start": 1,
+                    "page_end": 2,
+                },
+            )
+        )
         assert ghost["isError"] is True and "不存在" in ghost["content"][0]["text"]
         assert cp["title"] == "MCP 测试漫画特刊"
 
@@ -889,8 +944,9 @@ def test_mcp_handlers_run_off_event_loop():
         seen.append(threading.current_thread())
         return {"content": [], "isError": False}
 
-    with patch.dict(mcp_mod.TOOL_HANDLERS, {"get_shelf_stats": probe}), patch.dict(
-        mcp_mod.RESOURCE_HANDLERS, {"shelf://stats": probe}
+    with (
+        patch.dict(mcp_mod.TOOL_HANDLERS, {"get_shelf_stats": probe}),
+        patch.dict(mcp_mod.RESOURCE_HANDLERS, {"shelf://stats": probe}),
     ):
         asyncio.run(execute_tool("get_shelf_stats", {}))
         asyncio.run(mcp_mod.read_resource("shelf://stats"))
@@ -923,10 +979,17 @@ def test_mcp_search_by_meaning_forwards_reason():
         assert short["available"] is True and short["reason"] == "query_too_short" and short["hint"], short
 
         fake.out = {
-            "results": [{
-                "source": "local", "source_id": "mcp_test_comic", "page_index": 3, "bubble_id": 1,
-                "text": "我喜欢你", "box": [0.1, 0.2, 0.3, 0.4], "similarity": 0.8123,
-            }],
+            "results": [
+                {
+                    "source": "local",
+                    "source_id": "mcp_test_comic",
+                    "page_index": 3,
+                    "bubble_id": 1,
+                    "text": "我喜欢你",
+                    "box": [0.1, 0.2, 0.3, 0.4],
+                    "similarity": 0.8123,
+                }
+            ],
             "available": True,
             "reason": "",
         }

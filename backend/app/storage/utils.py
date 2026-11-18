@@ -1,4 +1,5 @@
 """Low-level filesystem helpers, atomic JSON writing, and path traversal security checks."""
+
 from __future__ import annotations
 
 import json

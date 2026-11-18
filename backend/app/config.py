@@ -15,6 +15,7 @@ def _load_dotenv() -> None:
     2. COMIC_SHELF_DATA / ".env" (persistent storage volume fallback - Tier 3)
     3. BACKEND_DIR / ".env" (legacy backend-specific override)
     """
+
     def _read_env(env_file: Path) -> None:
         if not env_file.is_file():
             return
@@ -161,10 +162,14 @@ PICA_CHANNEL = os.getenv("PICA_CHANNEL", "2").strip()
 JM_USERNAME = os.getenv("JM_USERNAME", os.getenv("COMIC_SHELF_JM_USERNAME", "")).strip()
 JM_PASSWORD = os.getenv("JM_PASSWORD", os.getenv("COMIC_SHELF_JM_PASSWORD", "")).strip()
 JM_PROXY = get_proxy_for_source("jm")
-JM_IMAGE_PROXY_MODE = os.getenv("JM_IMAGE_PROXY_MODE", os.getenv("COMIC_SHELF_JM_IMAGE_PROXY_MODE", "auto")).strip().lower()
+JM_IMAGE_PROXY_MODE = (
+    os.getenv("JM_IMAGE_PROXY_MODE", os.getenv("COMIC_SHELF_JM_IMAGE_PROXY_MODE", "auto")).strip().lower()
+)
 
 # CopyManga (拷贝漫画) provider settings
-COPY_BASE_URL = os.getenv("COPY_BASE_URL", os.getenv("COMIC_SHELF_COPY_BASE_URL", "https://www.mangacopy.com")).rstrip("/")
+COPY_BASE_URL = os.getenv("COPY_BASE_URL", os.getenv("COMIC_SHELF_COPY_BASE_URL", "https://www.mangacopy.com")).rstrip(
+    "/"
+)
 COPY_TOKEN = os.getenv("COPY_TOKEN", os.getenv("COMIC_SHELF_COPY_TOKEN", "")).strip()
 COPY_USERNAME = os.getenv("COPY_USERNAME", os.getenv("COMIC_SHELF_COPY_USERNAME", "")).strip()
 COPY_PASSWORD = os.getenv("COPY_PASSWORD", os.getenv("COMIC_SHELF_COPY_PASSWORD", "")).strip()

@@ -231,7 +231,11 @@ class TestJMProvider(unittest.TestCase):
             # Cookies with CRLF control characters are filtered out
             self.provider.save_secure_session(
                 self.provider._session_cache_file,
-                {"cookies": {"bad\r\nkey": "val", "bad_val": "val\r\ninjected", "clean": "good_token"}, "username": "alice", "ts": time.time()},
+                {
+                    "cookies": {"bad\r\nkey": "val", "bad_val": "val\r\ninjected", "clean": "good_token"},
+                    "username": "alice",
+                    "ts": time.time(),
+                },
             )
             self.assertEqual(self.provider._load_session_cache(), {"clean": "good_token"})
 
@@ -247,9 +251,7 @@ class TestJMProvider(unittest.TestCase):
             self.assertIsNone(self.provider._load_session_cache())
 
     def test_get_valid_cookies_concurrent_refresh_grace_window(self) -> None:
-        with patch("app.providers.jm.JM_USERNAME", "alice"), patch(
-            "app.providers.jm.JM_PASSWORD", "secret123"
-        ):
+        with patch("app.providers.jm.JM_USERNAME", "alice"), patch("app.providers.jm.JM_PASSWORD", "secret123"):
             # Simulate thread 1 just completed login and cached cookies 2 seconds ago
             cookies = {"AVS": "fresh_token_xyz"}
             self.provider._save_session_cache(cookies)
@@ -261,9 +263,7 @@ class TestJMProvider(unittest.TestCase):
                 mock_login.assert_not_called()
 
     def test_get_valid_cookies_login_failure_cooldown(self) -> None:
-        with patch("app.providers.jm.JM_USERNAME", "alice"), patch(
-            "app.providers.jm.JM_PASSWORD", "secret123"
-        ):
+        with patch("app.providers.jm.JM_USERNAME", "alice"), patch("app.providers.jm.JM_PASSWORD", "secret123"):
             # When login fails, it returns None
             with patch.object(self.provider, "_perform_login", return_value=None) as mock_login:
                 res1 = self.provider._get_valid_cookies(force_refresh=True)
@@ -291,9 +291,11 @@ class TestJMProvider(unittest.TestCase):
         mock_resp.text = "<html>此本子需要登入後才能觀看</html>"
         mock_client.get.return_value = mock_resp
 
-        with patch.object(self.provider, "_make_html_client", return_value=mock_client), patch(
-            "app.providers.jm.JM_USERNAME", ""
-        ), patch("app.providers.jm.JM_PASSWORD", ""):
+        with (
+            patch.object(self.provider, "_make_html_client", return_value=mock_client),
+            patch("app.providers.jm.JM_USERNAME", ""),
+            patch("app.providers.jm.JM_PASSWORD", ""),
+        ):
             with self.assertRaises(ValueError) as ctx:
                 self.provider.fetch("523607")
             self.assertIn("受权限保护（需登录查看）", str(ctx.exception))
@@ -307,9 +309,11 @@ class TestJMProvider(unittest.TestCase):
         mock_resp.text = "<html><div>錯誤: 無效A漫連結</div><div>此漫畫已消失於無盡宇宙中</div><button>看不到?登入看看</button></html>"
         mock_client.get.return_value = mock_resp
 
-        with patch.object(self.provider, "_make_html_client", return_value=mock_client), patch(
-            "app.providers.jm.JM_USERNAME", ""
-        ), patch("app.providers.jm.JM_PASSWORD", ""):
+        with (
+            patch.object(self.provider, "_make_html_client", return_value=mock_client),
+            patch("app.providers.jm.JM_USERNAME", ""),
+            patch("app.providers.jm.JM_PASSWORD", ""),
+        ):
             with self.assertRaises(ValueError) as ctx:
                 self.provider.fetch("523607")
             self.assertIn("受权限保护（需登录查看）", str(ctx.exception))
@@ -342,10 +346,11 @@ class TestJMProvider(unittest.TestCase):
         mock_detail.likes = ""
         mock_detail.comment_count = 0
 
-        with patch.object(self.provider, "_make_html_client", return_value=mock_client), patch(
-            "app.providers.jm.JM_USERNAME", ""
-        ), patch("app.providers.jm.JM_PASSWORD", ""), patch(
-            "jmcomic.JmcomicText.analyse_jm_album_html", return_value=mock_detail
+        with (
+            patch.object(self.provider, "_make_html_client", return_value=mock_client),
+            patch("app.providers.jm.JM_USERNAME", ""),
+            patch("app.providers.jm.JM_PASSWORD", ""),
+            patch("jmcomic.JmcomicText.analyse_jm_album_html", return_value=mock_detail),
         ):
             with self.assertRaises(ValueError) as ctx:
                 self.provider.fetch("523607")
@@ -399,12 +404,12 @@ class TestJMProvider(unittest.TestCase):
             call_count += 1
             return mock_client2 if force_refresh_session else mock_client1
 
-        with patch.object(self.provider, "_make_html_client", side_effect=client_factory), patch(
-            "app.providers.jm.JM_USERNAME", "my_jm_user"
-        ), patch("app.providers.jm.JM_PASSWORD", "my_password"), patch(
-            "jmcomic.JmcomicText.analyse_jm_album_html", return_value=mock_detail
-        ), patch(
-            "jmcomic.JmcomicText.analyse_jm_photo_html", return_value=mock_photo
+        with (
+            patch.object(self.provider, "_make_html_client", side_effect=client_factory),
+            patch("app.providers.jm.JM_USERNAME", "my_jm_user"),
+            patch("app.providers.jm.JM_PASSWORD", "my_password"),
+            patch("jmcomic.JmcomicText.analyse_jm_album_html", return_value=mock_detail),
+            patch("jmcomic.JmcomicText.analyse_jm_photo_html", return_value=mock_photo),
         ):
             comic = self.provider.fetch("523607")
             self.assertEqual(comic.meta.title, "测试受限本子")
@@ -445,9 +450,7 @@ class TestJMProvider(unittest.TestCase):
         mock_session = MagicMock()
         mock_session.get.side_effect = [waf_resp, succ_resp]
 
-        with patch.object(self.provider, "_session", return_value=mock_session), patch(
-            "time.sleep", return_value=None
-        ):
+        with patch.object(self.provider, "_session", return_value=mock_session), patch("time.sleep", return_value=None):
             decoded = self.provider.download_page(comic, page)
             self.assertEqual(decoded, valid_img_bytes)
             self.assertEqual(mock_session.get.call_count, 2)
@@ -531,6 +534,7 @@ class TestJMProvider(unittest.TestCase):
         self.api_patcher.stop()
         try:
             from jmcomic import MissingAlbumPhotoException
+
             mock_client1 = MagicMock()
             mock_client1.get_album_detail.side_effect = MissingAlbumPhotoException("Album requires login", {})
 
@@ -563,14 +567,17 @@ class TestJMProvider(unittest.TestCase):
             mock_client2.get_photo_detail.return_value = mock_photo
 
             call_count = 0
+
             def api_factory(force_refresh_session: bool = False):
                 nonlocal call_count
                 call_count += 1
                 return mock_client2 if force_refresh_session else mock_client1
 
-            with patch.object(self.provider, "_make_api_client", side_effect=api_factory), patch(
-                "app.providers.jm.JM_USERNAME", "alice"
-            ), patch("app.providers.jm.JM_PASSWORD", "secret123"):
+            with (
+                patch.object(self.provider, "_make_api_client", side_effect=api_factory),
+                patch("app.providers.jm.JM_USERNAME", "alice"),
+                patch("app.providers.jm.JM_PASSWORD", "secret123"),
+            ):
                 comic = self.provider.fetch("1208546")
                 self.assertEqual(comic.meta.title, "受限自愈画卷")
                 self.assertEqual(call_count, 2)
@@ -581,6 +588,7 @@ class TestJMProvider(unittest.TestCase):
         self.api_patcher.stop()
         try:
             from jmcomic import MissingAlbumPhotoException
+
             mock_client = MagicMock()
             mock_client.get_album_detail.side_effect = MissingAlbumPhotoException("Missing album", {})
 
@@ -590,9 +598,12 @@ class TestJMProvider(unittest.TestCase):
             mock_resp.text = "<html>需登入後才能觀看</html>"
             mock_html_client.get.return_value = mock_resp
 
-            with patch.object(self.provider, "_make_api_client", return_value=mock_client), patch.object(
-                self.provider, "_make_html_client", return_value=mock_html_client
-            ), patch("app.providers.jm.JM_USERNAME", ""), patch("app.providers.jm.JM_PASSWORD", ""):
+            with (
+                patch.object(self.provider, "_make_api_client", return_value=mock_client),
+                patch.object(self.provider, "_make_html_client", return_value=mock_html_client),
+                patch("app.providers.jm.JM_USERNAME", ""),
+                patch("app.providers.jm.JM_PASSWORD", ""),
+            ):
                 with self.assertRaises(ValueError) as ctx:
                     self.provider.fetch("1208546")
                 self.assertIn("受权限保护（需登录查看）", str(ctx.exception))
@@ -952,8 +963,9 @@ class TestJMProvider(unittest.TestCase):
             mock_api_client.get_scramble_id.return_value = "0"
 
             # HTML probe successfully extracts real published date
-            with patch.object(self.provider, "_make_api_client", return_value=mock_api_client), patch.object(
-                self.provider, "_try_extract_html_dates", return_value=("2025-10-01", "2025-10-03")
+            with (
+                patch.object(self.provider, "_make_api_client", return_value=mock_api_client),
+                patch.object(self.provider, "_try_extract_html_dates", return_value=("2025-10-01", "2025-10-03")),
             ):
                 comic = self.provider.fetch("1220124")
                 self.assertEqual(comic.meta.published_at, "2025-10-01")
@@ -1025,10 +1037,13 @@ class TestJMProvider(unittest.TestCase):
                     page_count=1,
                     chapters=[],
                 ),
-                remote_pages=[RemotePage(index=1, url="http://img", file="00001.webp", ext=".webp", scramble_id="0", chapter="")],
+                remote_pages=[
+                    RemotePage(index=1, url="http://img", file="00001.webp", ext=".webp", scramble_id="0", chapter="")
+                ],
             )
-            with patch.object(self.provider, "_make_api_client", return_value=mock_api_client), patch.object(
-                self.provider, "_try_extract_html_dates", return_value=("2025-10-01", "2025-10-05")
+            with (
+                patch.object(self.provider, "_make_api_client", return_value=mock_api_client),
+                patch.object(self.provider, "_try_extract_html_dates", return_value=("2025-10-01", "2025-10-05")),
             ):
                 comic1 = self.provider.fetch("1220124", existing=existing_earlier)
                 self.assertEqual(comic1.meta.published_at, "2025-09-01")
@@ -1047,10 +1062,13 @@ class TestJMProvider(unittest.TestCase):
                     page_count=1,
                     chapters=[],
                 ),
-                remote_pages=[RemotePage(index=1, url="http://img", file="00001.webp", ext=".webp", scramble_id="0", chapter="")],
+                remote_pages=[
+                    RemotePage(index=1, url="http://img", file="00001.webp", ext=".webp", scramble_id="0", chapter="")
+                ],
             )
-            with patch.object(self.provider, "_make_api_client", return_value=mock_api_client), patch.object(
-                self.provider, "_try_extract_html_dates", return_value=("2025-10-01", "2025-10-05")
+            with (
+                patch.object(self.provider, "_make_api_client", return_value=mock_api_client),
+                patch.object(self.provider, "_try_extract_html_dates", return_value=("2025-10-01", "2025-10-05")),
             ):
                 comic2 = self.provider.fetch("1220124", existing=existing_corrupted)
                 self.assertEqual(comic2.meta.published_at, "2025-10-01")
@@ -1058,8 +1076,9 @@ class TestJMProvider(unittest.TestCase):
 
             # 3. Partial ordering: published_at <= updated_at
             # If pub_date is 2025-10-08 and update_date is 2025-10-05, updated_at must be raised to 2025-10-08
-            with patch.object(self.provider, "_make_api_client", return_value=mock_api_client), patch.object(
-                self.provider, "_try_extract_html_dates", return_value=("2025-10-08", "2025-10-05")
+            with (
+                patch.object(self.provider, "_make_api_client", return_value=mock_api_client),
+                patch.object(self.provider, "_try_extract_html_dates", return_value=("2025-10-08", "2025-10-05")),
             ):
                 comic3 = self.provider.fetch("1220124")
                 self.assertEqual(comic3.meta.published_at, "2025-10-08")
@@ -1077,10 +1096,13 @@ class TestJMProvider(unittest.TestCase):
                     page_count=1,
                     chapters=[],
                 ),
-                remote_pages=[RemotePage(index=1, url="http://img", file="00001.webp", ext=".webp", scramble_id="0", chapter="")],
+                remote_pages=[
+                    RemotePage(index=1, url="http://img", file="00001.webp", ext=".webp", scramble_id="0", chapter="")
+                ],
             )
-            with patch.object(self.provider, "_make_api_client", return_value=mock_api_client), patch.object(
-                self.provider, "_try_extract_html_dates", return_value=("2025-10-01", "2025-10-05")
+            with (
+                patch.object(self.provider, "_make_api_client", return_value=mock_api_client),
+                patch.object(self.provider, "_try_extract_html_dates", return_value=("2025-10-01", "2025-10-05")),
             ):
                 comic4 = self.provider.fetch("1220124", existing=existing_sentinel)
                 self.assertEqual(comic4.meta.published_at, "2025-10-01")
@@ -1127,10 +1149,15 @@ class TestJMProvider(unittest.TestCase):
             mock_resp_succ.text = "<html><span>上架日期 : 2024-03-10</span><span>更新日期 : 2025-02-20</span></html>"
             mock_client2.get.return_value = mock_resp_succ
 
-            self.provider.save_secure_session(self.provider._session_cache_file, {"cookies": {"AVS": "old_token"}, "username": "test_user", "ts": time.time()})
-            with patch.object(self.provider, "_make_html_client", side_effect=[mock_client1, mock_client2]), patch(
-                "app.providers.jm.JM_USERNAME", "test_user"
-            ), patch("app.providers.jm.JM_PASSWORD", "test_pass"):
+            self.provider.save_secure_session(
+                self.provider._session_cache_file,
+                {"cookies": {"AVS": "old_token"}, "username": "test_user", "ts": time.time()},
+            )
+            with (
+                patch.object(self.provider, "_make_html_client", side_effect=[mock_client1, mock_client2]),
+                patch("app.providers.jm.JM_USERNAME", "test_user"),
+                patch("app.providers.jm.JM_PASSWORD", "test_pass"),
+            ):
                 pub, upd = self.provider._try_extract_html_dates("1208546")
                 self.assertEqual(pub, "2024-03-10")
                 self.assertEqual(upd, "2025-02-20")
@@ -1208,6 +1235,7 @@ class TestJMProvider(unittest.TestCase):
             }
 
             req_urls: list[str] = []
+
             def mock_req_api(url, *args, **kwargs):
                 req_urls.append(url)
                 if "/album" in url:
@@ -1221,8 +1249,9 @@ class TestJMProvider(unittest.TestCase):
             mock_api_client.req_api.side_effect = mock_req_api
 
             # 模拟网页端完全受限返回空 ("", "")
-            with patch.object(self.provider, "_make_api_client", return_value=mock_api_client), patch.object(
-                self.provider, "_try_extract_html_dates", return_value=("", "")
+            with (
+                patch.object(self.provider, "_make_api_client", return_value=mock_api_client),
+                patch.object(self.provider, "_try_extract_html_dates", return_value=("", "")),
             ):
                 comic = self.provider.fetch("1220124")
                 # published_at 成功利用第 1 话的 addtime 校准为 2024-01-01，而非整本漂移后的 2025-10-05
@@ -1279,11 +1308,12 @@ class TestJMProvider(unittest.TestCase):
         mock_api_c.get_meta_data.return_value = {"AVS": "api_token_123"}
         mock_opt.build_jm_client.return_value = mock_api_c
 
-        with patch("app.providers.jm.JM_USERNAME", "test_user"), patch(
-            "app.providers.jm.JM_PASSWORD", "test_pass"
-        ), patch.object(self.provider, "_login_web", return_value={"PHPSESSID": "web_sess_456"}), patch.object(
-            self.provider, "_save_session_cache"
-        ) as mock_save:
+        with (
+            patch("app.providers.jm.JM_USERNAME", "test_user"),
+            patch("app.providers.jm.JM_PASSWORD", "test_pass"),
+            patch.object(self.provider, "_login_web", return_value={"PHPSESSID": "web_sess_456"}),
+            patch.object(self.provider, "_save_session_cache") as mock_save,
+        ):
             cookies = self.provider._perform_login(mock_opt)
             self.assertIsNotNone(cookies)
             self.assertEqual(cookies.get("AVS"), "api_token_123")
@@ -1317,8 +1347,9 @@ class TestJMProvider(unittest.TestCase):
         mock_session.post.return_value = mock_resp
         mock_session.cookies.get_dict.return_value = {"PHPSESSID": "valid_web_session_cookie"}
 
-        with patch("app.providers.jm.curl_requests.Session") as mock_sess_cls, patch.object(
-            self.provider, "resolve_html_domain", return_value="18comic.vip"
+        with (
+            patch("app.providers.jm.curl_requests.Session") as mock_sess_cls,
+            patch.object(self.provider, "resolve_html_domain", return_value="18comic.vip"),
         ):
             mock_sess_cls.return_value.__enter__.return_value = mock_session
             cookies = self.provider._login_web("test_user", "test_pass")
@@ -1332,8 +1363,9 @@ class TestJMProvider(unittest.TestCase):
         ]
         mock_client.week_ranking.return_value = mock_resp
 
-        with patch.object(self.provider, "_make_api_client", return_value=mock_client) as mock_make_client, patch.object(
-            self.provider, "_cached_html_domain", return_value="18comic.vip"
+        with (
+            patch.object(self.provider, "_make_api_client", return_value=mock_client) as mock_make_client,
+            patch.object(self.provider, "_cached_html_domain", return_value="18comic.vip"),
         ):
             items = self.provider.fetch_ranking("week")
             mock_make_client.assert_called_once()
@@ -1371,10 +1403,11 @@ class TestJMProvider(unittest.TestCase):
             recorded_calls.append(force_refresh_session)
             return clients.pop(0)
 
-        with patch("app.providers.jm.JM_USERNAME", "test_user"), patch(
-            "app.providers.jm.JM_PASSWORD", "test_pass"
-        ), patch.object(self.provider, "_make_api_client", side_effect=mock_make_client), patch.object(
-            self.provider, "_cached_html_domain", return_value="18comic.vip"
+        with (
+            patch("app.providers.jm.JM_USERNAME", "test_user"),
+            patch("app.providers.jm.JM_PASSWORD", "test_pass"),
+            patch.object(self.provider, "_make_api_client", side_effect=mock_make_client),
+            patch.object(self.provider, "_cached_html_domain", return_value="18comic.vip"),
         ):
             items = self.provider.fetch_ranking("day")
             self.assertEqual(len(items), 1)
@@ -1395,10 +1428,11 @@ class TestJMProvider(unittest.TestCase):
         def _mock_make_api_client(force_refresh_session=False, anonymous=False):
             return mock_anon_client if anonymous else failing_client
 
-        with patch("app.providers.jm.JM_USERNAME", "test_user"), patch(
-            "app.providers.jm.JM_PASSWORD", "test_pass"
-        ), patch.object(self.provider, "_make_api_client", side_effect=_mock_make_api_client), patch.object(
-            self.provider, "_cached_html_domain", return_value="18comic.vip"
+        with (
+            patch("app.providers.jm.JM_USERNAME", "test_user"),
+            patch("app.providers.jm.JM_PASSWORD", "test_pass"),
+            patch.object(self.provider, "_make_api_client", side_effect=_mock_make_api_client),
+            patch.object(self.provider, "_cached_html_domain", return_value="18comic.vip"),
         ):
             items = self.provider.fetch_ranking("day")
             self.assertEqual(len(items), 1)
@@ -1435,9 +1469,12 @@ class TestJMProvider(unittest.TestCase):
             mock_api_client.req_api.side_effect = MissingAlbumPhotoException(mock_resp, "1208546")
 
             self.provider._save_session_cache({"AVS": "test_token"})
-            with patch.object(self.provider, "_make_api_client", return_value=mock_api_client), patch.object(
-                self.provider, "_fetch_via_html"
-            ) as mock_html, patch("app.providers.jm.JM_USERNAME", ""), patch("app.providers.jm.JM_PASSWORD", ""):
+            with (
+                patch.object(self.provider, "_make_api_client", return_value=mock_api_client),
+                patch.object(self.provider, "_fetch_via_html") as mock_html,
+                patch("app.providers.jm.JM_USERNAME", ""),
+                patch("app.providers.jm.JM_PASSWORD", ""),
+            ):
                 with self.assertRaises(ValueError) as ctx:
                     self.provider.fetch("1208546")
                 self.assertIn("受权限保护", str(ctx.exception))
@@ -1454,8 +1491,12 @@ class TestJMProvider(unittest.TestCase):
         self.assertIsNone(self.provider.download_cover_by_url("https://127.0.0.1/test.jpg"))
         self.assertIsNone(self.provider.download_cover_by_url("https://cdn-msp.jmapiproxy1.cc/not_media/12345.jpg"))
         self.assertIsNone(self.provider.download_cover_by_url("https://evil.com/media/albums/12345_3x4.jpg"))
-        self.assertIsNone(self.provider.download_cover_by_url("https://cdn-msp.jmapiproxy1.cc/media/albums/../../etc/passwd.jpg"))
-        self.assertIsNone(self.provider.download_cover_by_url("https://cdn-msp.jmapiproxy1.cc/media/albums/%2e%2e/test.jpg"))
+        self.assertIsNone(
+            self.provider.download_cover_by_url("https://cdn-msp.jmapiproxy1.cc/media/albums/../../etc/passwd.jpg")
+        )
+        self.assertIsNone(
+            self.provider.download_cover_by_url("https://cdn-msp.jmapiproxy1.cc/media/albums/%2e%2e/test.jpg")
+        )
 
         # 2. Success with valid JPEG image bytes and allow_redirects=False verification
         fake_jpeg = b"\xff\xd8\xff\xe0" + b"\x00" * 100

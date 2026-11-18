@@ -21,6 +21,7 @@ from .dialogues import sync_comic_dialogues
 
 logger = logging.getLogger(__name__)
 
+
 def init_db(db_path: Path | None = None) -> None:
     if db_path is not None:
         set_db_path(db_path)
@@ -171,7 +172,9 @@ def init_db(db_path: Path | None = None) -> None:
         conn.execute("CREATE INDEX IF NOT EXISTS idx_comics_index_norm_title ON comics_index(normalized_title)")
 
         # Ensure normalized_title is backfilled for any existing entries
-        empty_norm_rows = conn.execute("SELECT source, source_id, title FROM comics_index WHERE normalized_title = '' AND title != ''").fetchall()
+        empty_norm_rows = conn.execute(
+            "SELECT source, source_id, title FROM comics_index WHERE normalized_title = '' AND title != ''"
+        ).fetchall()
         if empty_norm_rows:
             updates = [(normalize_title(r["title"]), r["source"], r["source_id"]) for r in empty_norm_rows]
             conn.executemany("UPDATE comics_index SET normalized_title = ? WHERE source = ? AND source_id = ?", updates)
@@ -331,4 +334,3 @@ def init_dialogue_db(dialogue_db_path: Path | None = None) -> None:
             logger.warning("台词索引半截迁移重灌失败 %s/%s: %s", r["source"], r["source_id"], exc)
     if half_synced:
         logger.warning("发现 %d 本台词索引新列为 NULL（错题本 #145），已按书重灌", len(half_synced))
-

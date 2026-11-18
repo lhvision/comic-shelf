@@ -110,9 +110,7 @@ BUBBLE_THICKNESS_RATIO = 2.0
 BUBBLE_MAX_PAGE_AREA = 0.20
 
 
-def cluster_blocks(
-    blocks: List[Dict[str, Any]], img_w: int, img_h: int
-) -> List[Dict[str, Any]]:
+def cluster_blocks(blocks: List[Dict[str, Any]], img_w: int, img_h: int) -> List[Dict[str, Any]]:
     """
     气泡级多行文本几何聚类算法 (Bubble-level Line Clustering)
     根据几何间距与重合度，将属于同一气泡的多行文字聚合为一条完整对白，并计算归一化坐标 [ymin, xmin, ymax, xmax]
@@ -129,9 +127,7 @@ def cluster_blocks(
 
     parent = list(range(n))
     # comp[root] = [ymin, xmin, ymax, xmax]：该分量当前的外接框，用于合并后的面积上限判定
-    comp: Dict[int, List[float]] = {
-        i: [b["ymin"], b["xmin"], b["ymax"], b["xmax"]] for i, b in enumerate(blocks)
-    }
+    comp: Dict[int, List[float]] = {i: [b["ymin"], b["xmin"], b["ymax"], b["xmax"]] for i, b in enumerate(blocks)}
     area_cap = img_w * img_h * BUBBLE_MAX_PAGE_AREA
 
     def find(i: int) -> int:
@@ -203,9 +199,7 @@ def cluster_blocks(
     results: List[Dict[str, Any]] = []
     for _, g_blocks in groups.items():
         # 判断该气泡是否偏竖排
-        v_count = sum(
-            1 for b in g_blocks if (b["ymax"] - b["ymin"]) > (b["xmax"] - b["xmin"]) * 1.1
-        )
+        v_count = sum(1 for b in g_blocks if (b["ymax"] - b["ymin"]) > (b["xmax"] - b["xmin"]) * 1.1)
         is_vertical = v_count >= len(g_blocks) / 2
 
         if is_vertical:
@@ -323,11 +317,7 @@ def is_valid_ocr_sidecar(out_path: Path) -> bool:
             return False
         with open(out_path, "r", encoding="utf-8") as f:
             data = json.load(f)
-            return (
-                isinstance(data, dict)
-                and data.get("engine") == "rapidocr"
-                and isinstance(data.get("bubbles"), list)
-            )
+            return isinstance(data, dict) and data.get("engine") == "rapidocr" and isinstance(data.get("bubbles"), list)
     except Exception:
         return False
 
@@ -461,9 +451,7 @@ def parse_page_filter(page_spec: Optional[str]) -> Optional[set[int]]:
     return res
 
 
-def collect_comic_pages(
-    comic_dir: Path, page_filter: Optional[set[int]] = None
-) -> List[Tuple[Path, Path]]:
+def collect_comic_pages(comic_dir: Path, page_filter: Optional[set[int]] = None) -> List[Tuple[Path, Path]]:
     """收集指定漫画目录下的全部有效画页图片及对应伴生文件路径。
     若指定 page_filter，仅保留匹配该页码（1-based 序号或文件名数字）的画页。
     """
@@ -558,6 +546,7 @@ def get_library_stats(data_dir: Path) -> Dict[str, Any]:
     if diag_db_path.is_file():
         try:
             import sqlite3
+
             conn = sqlite3.connect(diag_db_path)
             cur = conn.cursor()
             cur.execute("SELECT count(*) FROM sqlite_master WHERE type='table' AND name='comic_dialogues_fts'")
@@ -603,9 +592,13 @@ def build_arg_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--force", action="store_true", help="强制重新提取已存在的 OCR 伴生文件")
     parser.add_argument("--limit", type=int, default=0, help="最多处理漫画册数（0 为无限制）")
-    parser.add_argument("--api-url", help="NAS 纸间服务 API 地址（如 http://192.168.1.100:8000），处理完毕后自动远程通知入库")
+    parser.add_argument(
+        "--api-url", help="NAS 纸间服务 API 地址（如 http://192.168.1.100:8000），处理完毕后自动远程通知入库"
+    )
     parser.add_argument("--token", help="纸间 Machine API Token 认证口令")
-    parser.add_argument("--sync-local", action="store_true", help="处理完成后直接同步本地 SQLite 索引（同机/本地测试适用）")
+    parser.add_argument(
+        "--sync-local", action="store_true", help="处理完成后直接同步本地 SQLite 索引（同机/本地测试适用）"
+    )
     parser.add_argument("--status", action="store_true", help="仅查看书库 OCR 伴生文件覆盖统计")
     return parser
 
@@ -654,8 +647,11 @@ def main() -> int:
         # 环境装的是 GPU 构建却没带 --gpu，几乎只可能是绕开 ocr.sh 直接调解释器
         # （这时 LD_LIBRARY_PATH 没挂上，推理会悄悄退回 CPU）。不挡路，但要说出来。
         if cuda_ready()[0]:
-            print("⚠️ 该环境的 onnxruntime 是 GPU 构建，却没带 --gpu：本次按 CPU 跑。"
-                  "批量提取请用 bash scripts/ocr.sh run，它会自动带上 --gpu。", file=sys.stderr)
+            print(
+                "⚠️ 该环境的 onnxruntime 是 GPU 构建，却没带 --gpu：本次按 CPU 跑。"
+                "批量提取请用 bash scripts/ocr.sh run，它会自动带上 --gpu。",
+                file=sys.stderr,
+            )
 
     # 初始化 OCR 引擎（主线程预热验证）
     device = "GPU · CUDAExecutionProvider" if USE_GPU else "CPU 多核"
@@ -694,6 +690,7 @@ def main() -> int:
                         try:
                             sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "backend"))
                             from app.db import sync_comic_dialogues
+
                             synced = sync_comic_dialogues(src, sid, force=True)
                             print(f"  💾 本地 SQLite 索引已同步 ({src}/{sid}: {synced} 条)")
                         except Exception as e:
@@ -759,12 +756,16 @@ def main() -> int:
 
         if not pending_pages:
             total_skipped_pages += len(pages)
-            print(f"[{idx}/{len(target_comics)}] ⚡ 跳过 {src}/{sid}: 全部 {len(pages)} 页伴生文件已是最新 (0ms 增量命中)")
+            print(
+                f"[{idx}/{len(target_comics)}] ⚡ 跳过 {src}/{sid}: 全部 {len(pages)} 页伴生文件已是最新 (0ms 增量命中)"
+            )
             continue
 
         skipped_in_comic = len(pages) - len(pending_pages)
         total_skipped_pages += skipped_in_comic
-        print(f"\n[{idx}/{len(target_comics)}] 开始提取 {src}/{sid} (待处理 {len(pending_pages)}/{len(pages)} 页, 线程数: {args.workers})...")
+        print(
+            f"\n[{idx}/{len(target_comics)}] 开始提取 {src}/{sid} (待处理 {len(pending_pages)}/{len(pages)} 页, 线程数: {args.workers})..."
+        )
         comic_dialogues = 0
         comic_new_pages = 0
 
@@ -789,10 +790,14 @@ def main() -> int:
                 except Exception as e:
                     print(f"\n⚠️ 处理画页异常 {img_p.name}: {e}", file=sys.stderr)
 
-                sys.stdout.write(f"\r  - 进度: {done_count}/{len(pending_pages)} 页完成 (本册累计检出 {comic_dialogues} 处对白)")
+                sys.stdout.write(
+                    f"\r  - 进度: {done_count}/{len(pending_pages)} 页完成 (本册累计检出 {comic_dialogues} 处对白)"
+                )
                 sys.stdout.flush()
 
-        print(f"\r  ✓ 完成 {src}/{sid}: 新提取 {comic_new_pages} 页, 增量跳过 {skipped_in_comic} 页, 获得 {comic_dialogues} 处对白")
+        print(
+            f"\r  ✓ 完成 {src}/{sid}: 新提取 {comic_new_pages} 页, 增量跳过 {skipped_in_comic} 页, 获得 {comic_dialogues} 处对白"
+        )
 
         # 触发同步回调 (当有新画页提取或开启 force 时)
         if comic_new_pages > 0 or args.force:
@@ -802,13 +807,16 @@ def main() -> int:
                 try:
                     sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "backend"))
                     from app.db import sync_comic_dialogues
+
                     synced = sync_comic_dialogues(src, sid)
                     print(f"  💾 本地 SQLite 索引已同步 ({synced} 条)")
                 except Exception as e:
                     print(f"  ⚠️ 本地 SQLite 同步异常: {e}", file=sys.stderr)
 
     print("\n" + "=" * 56)
-    print(f"🎉 批处理完成！新处理画页: {total_processed_pages} 页, 增量跳过: {total_skipped_pages} 页, 提取对白: {total_extracted_dialogues} 条")
+    print(
+        f"🎉 批处理完成！新处理画页: {total_processed_pages} 页, 增量跳过: {total_skipped_pages} 页, 提取对白: {total_extracted_dialogues} 条"
+    )
     if not args.api_url and not args.sync_local:
         print("💡 提示: 伴生文件已安全落盘至漫画画页目录。若要写入 SQLite FTS5，请执行:")
         print("   bash scripts/ocr.sh sync (或通过 HTTP 通知 NAS API)")

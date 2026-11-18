@@ -1,4 +1,5 @@
 """Unit tests for comic deletion cascade purge and immediate shelf sync."""
+
 import json
 import sys
 import tempfile
@@ -39,31 +40,33 @@ class TestDeleteCascade(unittest.TestCase):
             chapters=[],
             pages=[],
         )
-        db_mod.upsert_comic_index({
-            "source": meta.source,
-            "source_id": meta.source_id,
-            "display_id": meta.display_id,
-            "title": meta.title,
-            "authors_json": json.dumps(meta.authors, ensure_ascii=False),
-            "works_json": json.dumps(meta.works, ensure_ascii=False),
-            "actors_json": json.dumps(meta.actors, ensure_ascii=False),
-            "tags_json": json.dumps(meta.tags, ensure_ascii=False),
-            "chapter_titles_json": json.dumps([c.title for c in meta.chapters], ensure_ascii=False),
-            "page_count": meta.page_count,
-            "cached_pages": 10,
-            "cover_count": meta.cover_count,
-            "cover_indices_json": json.dumps(meta.cover_indices, ensure_ascii=False),
-            "views": "0",
-            "likes": "0",
-            "uploaded_at": "",
-            "published_at": "",
-            "updated_at": "",
-            "imported_at": "",
-            "hidden_from_guest": 0,
-            "mtime": 12345.0,
-            "auto_update_interval_days": 15,
-            "last_auto_checked_at": "",
-        })
+        db_mod.upsert_comic_index(
+            {
+                "source": meta.source,
+                "source_id": meta.source_id,
+                "display_id": meta.display_id,
+                "title": meta.title,
+                "authors_json": json.dumps(meta.authors, ensure_ascii=False),
+                "works_json": json.dumps(meta.works, ensure_ascii=False),
+                "actors_json": json.dumps(meta.actors, ensure_ascii=False),
+                "tags_json": json.dumps(meta.tags, ensure_ascii=False),
+                "chapter_titles_json": json.dumps([c.title for c in meta.chapters], ensure_ascii=False),
+                "page_count": meta.page_count,
+                "cached_pages": 10,
+                "cover_count": meta.cover_count,
+                "cover_indices_json": json.dumps(meta.cover_indices, ensure_ascii=False),
+                "views": "0",
+                "likes": "0",
+                "uploaded_at": "",
+                "published_at": "",
+                "updated_at": "",
+                "imported_at": "",
+                "hidden_from_guest": 0,
+                "mtime": 12345.0,
+                "auto_update_interval_days": 15,
+                "last_auto_checked_at": "",
+            }
+        )
 
         # 2. Add user favorite, progress, direct pass
         db_mod.set_user_favorite("curator", source, source_id, True)
@@ -98,9 +101,7 @@ class TestDeleteCascade(unittest.TestCase):
             ).fetchone()["cnt"]
             self.assertEqual(idx_count, 0)
 
-        rows_after, total_after = db_mod.query_library_index(
-            user_id="curator", is_curator=True, page=1, page_size=20
-        )
+        rows_after, total_after = db_mod.query_library_index(user_id="curator", is_curator=True, page=1, page_size=20)
         self.assertFalse(any(r["source_id"] == source_id for r in rows_after))
         print("  ✓ test_delete_comic_cascade_purges_all_records passed")
 

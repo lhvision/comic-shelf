@@ -3,6 +3,7 @@
 Standard stdio transport for local agent integration (Antigravity, Claude Desktop, Cursor, etc.).
 Runs a lightweight async event loop reading line-delimited JSON-RPC from stdin and emitting to stdout.
 """
+
 from __future__ import annotations
 
 import asyncio

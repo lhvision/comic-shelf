@@ -1,4 +1,5 @@
 """Media streaming, page binary delivery, thumbnails, covers, and cache progress router."""
+
 from __future__ import annotations
 
 from fastapi import APIRouter, HTTPException, Request

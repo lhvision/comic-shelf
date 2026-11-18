@@ -373,7 +373,9 @@ def test_auth_and_security_middleware():
             )
             req_img_cross.method = "GET"
             res_cross = await auth_and_security_middleware(req_img_cross, call_next)
-            assert getattr(res_cross, "status_code", None) == 403, f"Cross-site access to {img_ext_path} should be blocked (403)"
+            assert getattr(res_cross, "status_code", None) == 403, (
+                f"Cross-site access to {img_ext_path} should be blocked (403)"
+            )
 
     asyncio.run(run_cases())
 
@@ -387,7 +389,10 @@ def test_quiet_access_log_filter():
     # Health probe 200 OK should be silenced regardless of client IP (e.g. 10.0.0.1, 192.168.x, 172.x, IPv6)
     for probe_ip in ("10.0.0.1", "192.168.1.100", "172.20.0.2", "127.0.0.1", "::1"):
         rec_health = logging.LogRecord(
-            "uvicorn.access", logging.INFO, "", 0,
+            "uvicorn.access",
+            logging.INFO,
+            "",
+            0,
             '%s - "%s %s HTTP/%s" %d',
             (probe_ip, "GET", "/api/health", "1.1", 200),
             None,
@@ -396,7 +401,10 @@ def test_quiet_access_log_filter():
 
     # Image search status probe 200 OK should be silenced
     rec_status_200 = logging.LogRecord(
-        "uvicorn.access", logging.INFO, "", 0,
+        "uvicorn.access",
+        logging.INFO,
+        "",
+        0,
         '%s - "%s %s HTTP/%s" %d',
         ("192.168.1.50", "GET", "/api/search/image/status", "1.1", 200),
         None,
@@ -405,7 +413,10 @@ def test_quiet_access_log_filter():
 
     # Health probe with 500 error should be preserved
     rec_health_500 = logging.LogRecord(
-        "uvicorn.access", logging.INFO, "", 0,
+        "uvicorn.access",
+        logging.INFO,
+        "",
+        0,
         '%s - "%s %s HTTP/%s" %d',
         ("10.0.0.2", "GET", "/api/health", "1.1", 500),
         None,
@@ -414,7 +425,10 @@ def test_quiet_access_log_filter():
 
     # Real image request 200 OK should be preserved
     rec_img_200 = logging.LogRecord(
-        "uvicorn.access", logging.INFO, "", 0,
+        "uvicorn.access",
+        logging.INFO,
+        "",
+        0,
         '%s - "%s %s HTTP/%s" %d',
         ("192.168.1.200", "GET", "/api/library/jm/148952/pages/23/thumbnail.jpg", "1.1", 200),
         None,
@@ -428,7 +442,10 @@ def test_access_log_redacts_query_credentials():
     from server import QuietAccessLogFilter
 
     rec = logging.LogRecord(
-        "uvicorn.access", logging.INFO, "", 0,
+        "uvicorn.access",
+        logging.INFO,
+        "",
+        0,
         '%s - "%s %s HTTP/%s" %d',
         (
             "10.0.0.3",
@@ -554,7 +571,9 @@ def test_rest_credential_bruteforce_lockout():
                 req(Authorization="Bearer lock-guest-token", **{"X-Device-Token": dev["device_token"]}), call_next
             )
             assert ok.status_code == 200
-        assert (await auth_and_security_middleware(req(Authorization="Bearer curator-key-888"), call_next)).status_code == 200
+        assert (
+            await auth_and_security_middleware(req(Authorization="Bearer curator-key-888"), call_next)
+        ).status_code == 200
 
         # 持有访客设备会话的人拿 token 猜馆长口令：身份仍是访客，但这次猜测要记账
         guessing_guest = req(Authorization="Bearer guess-0", **{"X-Device-Token": dev["device_token"]})
@@ -598,7 +617,9 @@ def test_same_bad_credential_counted_once():
     async def run_cases():
         call_next = AsyncMock(side_effect=lambda _r: Response(content=b"{}"))
         statuses = [
-            (await auth_and_security_middleware(req(cookies={auth_mod.COOKIE_NAME: "old-secret"}), call_next)).status_code
+            (
+                await auth_and_security_middleware(req(cookies={auth_mod.COOKIE_NAME: "old-secret"}), call_next)
+            ).status_code
             for _ in range(12)
         ]
         assert statuses == [401] * 12, f"同一个旧 Cookie 被逐次计数，锁住了本 IP: {statuses}"
@@ -754,5 +775,3 @@ if __name__ == "__main__":
     test_is_request_secure_trust_forwarded_headers()
     test_machine_token_permission_boundaries()
     print("All backend auth, middleware & hotlink protection tests passed!")
-
-

@@ -25,7 +25,7 @@ class TestConfigEnvCascade(unittest.TestCase):
                 "COMIC_SHELF_PORT=9090\n"
                 "# Commented line\n"
                 "EMPTY_VAL=\n"
-                "QUOTED_VAL=\"hello_world\"\n",
+                'QUOTED_VAL="hello_world"\n',
                 encoding="utf-8",
             )
             # Ensure keys not already present in environment
@@ -58,14 +58,12 @@ class TestConfigEnvCascade(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp_root_dir, tempfile.TemporaryDirectory() as tmp_data_dir:
             root_env = Path(tmp_root_dir) / ".env"
             root_env.write_text(
-                "COMIC_SHELF_SECRET=root_secret\n"
-                "COMIC_SHELF_PORT=8888\n",
+                "COMIC_SHELF_SECRET=root_secret\nCOMIC_SHELF_PORT=8888\n",
                 encoding="utf-8",
             )
             data_env = Path(tmp_data_dir) / ".env"
             data_env.write_text(
-                "COMIC_SHELF_SECRET=data_dir_secret\n"
-                "COMIC_SHELF_HOST=0.0.0.0\n",
+                "COMIC_SHELF_SECRET=data_dir_secret\nCOMIC_SHELF_HOST=0.0.0.0\n",
                 encoding="utf-8",
             )
             os.environ.pop("COMIC_SHELF_SECRET", None)

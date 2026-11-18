@@ -1,4 +1,5 @@
 """Authentication, guest pass claiming, session cookies, and curator pass administration router."""
+
 from __future__ import annotations
 
 import secrets
@@ -304,6 +305,7 @@ def auth_logout(request: Request, response: Response, all: bool = False) -> dict
 # 馆长访客通行证管理（Curator Passes Management）
 # ----------------------------------------------------------------------
 
+
 @router.get("/api/curator/passes", response_model=list[GuestPassItem])
 def curator_list_passes(request: Request) -> list[GuestPassItem]:
     """Lists all active and expired guest passes for curator management."""
@@ -399,4 +401,3 @@ def create_direct_pass_api(req: DirectPassCreateRequest, request: Request) -> Di
         expires_in=result["expires_in"],
         direct_url=direct_url,
     )
-

@@ -247,4 +247,3 @@ def __getattr__(name: str):
     if name == "_DIALOGUE_DB_PATH":
         return get_dialogue_db_path()
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
-

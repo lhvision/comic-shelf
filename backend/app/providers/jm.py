@@ -135,11 +135,7 @@ def _is_safe_remote_domain(domain: str) -> bool:
             or (
                 hasattr(ip, "ipv4_mapped")
                 and ip.ipv4_mapped
-                and (
-                    ip.ipv4_mapped.is_private
-                    or ip.ipv4_mapped.is_loopback
-                    or ip.ipv4_mapped.is_link_local
-                )
+                and (ip.ipv4_mapped.is_private or ip.ipv4_mapped.is_loopback or ip.ipv4_mapped.is_link_local)
             )
         ):
             return False
@@ -253,7 +249,7 @@ class JMProvider(ComicProvider):
                 ts = float(data.get("ts") or 0)
                 if ts <= 0:
                     return None
-            except (TypeError, ValueError):
+            except TypeError, ValueError:
                 return None
         cookies = data.get("cookies")
         if isinstance(cookies, dict) and cookies:
@@ -340,13 +336,18 @@ class JMProvider(ComicProvider):
                 session_cookies = {str(k): str(v) for k, v in session.cookies.get_dict().items()}
                 is_status_ok = isinstance(res_json, dict) and res_json.get("status") == 1
                 has_web_session = bool(
-                    session_cookies and any("sess" in k.lower() or "user" in k.lower() or "auth" in k.lower() for k in session_cookies)
+                    session_cookies
+                    and any("sess" in k.lower() or "user" in k.lower() or "auth" in k.lower() for k in session_cookies)
                 )
                 if is_status_ok or has_web_session:
                     logger.info("禁漫网页端 Web 登录成功，已取得真实网页 Session")
                     return session_cookies
                 else:
-                    err_msg = res_json.get("errors") if isinstance(res_json, dict) else (getattr(resp, "text", "") or "")[:100]
+                    err_msg = (
+                        res_json.get("errors")
+                        if isinstance(res_json, dict)
+                        else (getattr(resp, "text", "") or "")[:100]
+                    )
                     logger.warning("禁漫网页端 Web 登录未通过: %s", _mask_sensitive(err_msg))
                     return {}
         except Exception as e_web:
@@ -453,7 +454,7 @@ class JMProvider(ComicProvider):
                     )
                     if getattr(pub_resp, "status_code", 0) == 200:
                         pub_text = getattr(pub_resp, "text", "") or ""
-                        m_intl = re.search(r'class=[\"\']international[\"\'][^>]*>([\s\S]*?)</div>', pub_text)
+                        m_intl = re.search(r"class=[\"\']international[\"\'][^>]*>([\s\S]*?)</div>", pub_text)
                         if m_intl:
                             for cand in re.findall(r"([a-z0-9-]+\.[a-z0-9.-]+)", m_intl.group(1)):
                                 cand = cand.strip()
@@ -607,7 +608,9 @@ class JMProvider(ComicProvider):
 
         t_api_start = time.perf_counter()
         api_client = self._make_api_client()
-        log_import_diag("JM-API-CLIENT-READY", f"jm_id={jm_id} client_init_ms={int((time.perf_counter()-t_api_start)*1000)}")
+        log_import_diag(
+            "JM-API-CLIENT-READY", f"jm_id={jm_id} client_init_ms={int((time.perf_counter() - t_api_start) * 1000)}"
+        )
 
         def _get_album_detail(client, target_id: str) -> tuple[Any, str, int]:
             # 优先尝试从 API 原始数据中提取 addtime 与 total_photos（jmcomic 的 JmApiAdaptTool 会将 pub_date 覆写为 '0'）
@@ -658,7 +661,10 @@ class JMProvider(ComicProvider):
 
         album_ms = int((time.perf_counter() - t_album_req) * 1000)
         episodes_cnt = len(detail.episode_list or [])
-        log_import_diag("JM-API-ALBUM-DETAIL", f"jm_id={jm_id} duration_ms={album_ms} episodes={episodes_cnt} page_count={getattr(detail, 'page_count', 0)}")
+        log_import_diag(
+            "JM-API-ALBUM-DETAIL",
+            f"jm_id={jm_id} duration_ms={album_ms} episodes={episodes_cnt} page_count={getattr(detail, 'page_count', 0)}",
+        )
 
         photo_cache: dict[str, tuple[Any, str]] = {}
 
@@ -675,7 +681,9 @@ class JMProvider(ComicProvider):
                             ExceptionTool.raise_missing(resp, photo_id)
                         photo_obj = JmApiAdaptTool.parse_entity(p_data, JmPhotoDetail)
                         photo_obj.from_album = detail
-                        photo_obj.scramble_id = str(client.get_scramble_id(photo_id, getattr(detail, "album_id", None)) or "0")
+                        photo_obj.scramble_id = str(
+                            client.get_scramble_id(photo_id, getattr(detail, "album_id", None)) or "0"
+                        )
                         ep_date = _format_addtime(p_data.get("addtime"))
                         res = (photo_obj, ep_date)
                         photo_cache[photo_id] = res
@@ -736,7 +744,9 @@ class JMProvider(ComicProvider):
                         if ep_date:
                             photo.pub_date = ep_date
                         ep_ms = int((time.perf_counter() - t_ep) * 1000)
-                        log_import_diag("JM-API-PHOTO-RETRY", f"pid={pid} duration_ms={ep_ms} pages={len(photo.page_arr)}")
+                        log_import_diag(
+                            "JM-API-PHOTO-RETRY", f"pid={pid} duration_ms={ep_ms} pages={len(photo.page_arr)}"
+                        )
                         return photo
                     except Exception:
                         raise ValueError(
@@ -772,11 +782,16 @@ class JMProvider(ComicProvider):
 
         t_html_start = time.perf_counter()
         client = self._make_html_client()
-        log_import_diag("JM-HTML-CLIENT-READY", f"jm_id={jm_id} client_init_ms={int((time.perf_counter()-t_html_start)*1000)}")
+        log_import_diag(
+            "JM-HTML-CLIENT-READY", f"jm_id={jm_id} client_init_ms={int((time.perf_counter() - t_html_start) * 1000)}"
+        )
         t_req = time.perf_counter()
         album_resp = client.get(f"/album/{jm_id}")
         album_req_ms = int((time.perf_counter() - t_req) * 1000)
-        log_import_diag("JM-HTML-ALBUM-RESP", f"jm_id={jm_id} duration_ms={album_req_ms} status={getattr(album_resp, 'status_code', None)} len={len(getattr(album_resp, 'content', b''))}")
+        log_import_diag(
+            "JM-HTML-ALBUM-RESP",
+            f"jm_id={jm_id} duration_ms={album_req_ms} status={getattr(album_resp, 'status_code', None)} len={len(getattr(album_resp, 'content', b''))}",
+        )
 
         if self._is_login_required_response(album_resp):
             if JM_USERNAME and JM_PASSWORD:
@@ -859,18 +874,13 @@ class JMProvider(ComicProvider):
         uploader: str | None = None,
         source_url: str = "",
     ) -> FetchedComic:
-        episodes = [
-            (str(ep[0]), (ep[2] if len(ep) > 2 else "").strip())
-            for ep in (detail.episode_list or [])
-        ]
+        episodes = [(str(ep[0]), (ep[2] if len(ep) > 2 else "").strip()) for ep in (detail.episode_list or [])]
         if not episodes:
             episodes = [(jm_id, "")]
 
         multi = len(episodes) > 1
 
-        existing_chapter_map = {
-            c.id: c for c in (existing.meta.chapters if existing else [])
-        }
+        existing_chapter_map = {c.id: c for c in (existing.meta.chapters if existing else [])}
         existing_pages_by_chap: dict[str, list[RemotePage]] = {}
         if existing:
             for p in existing.remote_pages:
@@ -885,21 +895,13 @@ class JMProvider(ComicProvider):
             existing is not None
             and multi
             and [c.id for c in existing.meta.chapters] == [ep[0] for ep in episodes]
-            and (
-                existing.meta.page_count == int(detail.page_count or 0)
-                if api_has_page_count
-                else True
-            )
+            and (existing.meta.page_count == int(detail.page_count or 0) if api_has_page_count else True)
         )
         single_match = (
             existing is not None
             and not multi
             and not existing.meta.chapters
-            and (
-                existing.meta.page_count == int(detail.page_count or 0)
-                if api_has_page_count
-                else True
-            )
+            and (existing.meta.page_count == int(detail.page_count or 0) if api_has_page_count else True)
         )
 
         remote_pages: list[RemotePage] = []
@@ -910,24 +912,19 @@ class JMProvider(ComicProvider):
         now = datetime.now(timezone.utc).isoformat()
 
         if all_ids_match or single_match:
-            remote_pages = [
-                RemotePage.model_validate(p.model_dump()) for p in existing.remote_pages
-            ]
+            remote_pages = [RemotePage.model_validate(p.model_dump()) for p in existing.remote_pages]
             for i, page in enumerate(remote_pages, start=1):
                 page.index = i
-            chapters = [
-                Chapter.model_validate(c.model_dump()) for c in existing.meta.chapters
-            ]
+            chapters = [Chapter.model_validate(c.model_dump()) for c in existing.meta.chapters]
             page_count = len(remote_pages) or int(detail.page_count or 0)
             image_domain = str((existing.meta.raw or {}).get("image_domain", "") or "")
         else:
+
             def _fetch_episode(pid: str, ptitle: str, ordinal: int):
                 nonlocal first_photo, latest_ep_date
                 photo = fetch_photo(pid)
                 if getattr(photo, "data_original_0", None):
-                    photo.data_original_query_params = photo.get_data_original_query_params(
-                        photo.data_original_0
-                    )
+                    photo.data_original_query_params = photo.get_data_original_query_params(photo.data_original_0)
                 if first_photo is None:
                     first_photo = photo
                 ep_pub = str(getattr(photo, "pub_date", "") or "").strip()
@@ -989,15 +986,12 @@ class JMProvider(ComicProvider):
                 cached_chap = existing_chapter_map.get(pid)
 
                 if cached_pages and (
-                    cached_chap is not None
-                    or (existing and not existing.meta.chapters and ordinal == 1)
+                    cached_chap is not None or (existing and not existing.meta.chapters and ordinal == 1)
                 ):
                     copied = [RemotePage.model_validate(p.model_dump()) for p in cached_pages]
                     for p in copied:
                         p.chapter = pid if multi else ""
-                    chap_title = ptitle or (
-                        cached_chap.title if cached_chap else f"第 {ordinal} 話"
-                    )
+                    chap_title = ptitle or (cached_chap.title if cached_chap else f"第 {ordinal} 話")
                     _append_episode(copied, pid, chap_title, ordinal)
                 else:
                     ep_pages, chap_title = _fetch_episode(pid, ptitle, ordinal)
@@ -1037,7 +1031,12 @@ class JMProvider(ComicProvider):
         if latest_ep_date and (not update_date or latest_ep_date > update_date):
             update_date = latest_ep_date
         # 更新日期单调不前移：绝不回退已有更新时间（过滤历史 "0" 哨兵值）
-        if existing and existing.meta.updated_at and existing.meta.updated_at != "0" and existing.meta.updated_at > update_date:
+        if (
+            existing
+            and existing.meta.updated_at
+            and existing.meta.updated_at != "0"
+            and existing.meta.updated_at > update_date
+        ):
             update_date = existing.meta.updated_at
 
         # 时序偏序约束：published_at <= updated_at
@@ -1079,11 +1078,7 @@ class JMProvider(ComicProvider):
             imported_at=now,
             last_checked_at=now,
             raw={
-                "album": {
-                    k: v
-                    for k, v in detail.__dict__.items()
-                    if not k.startswith("_")
-                },
+                "album": {k: v for k, v in detail.__dict__.items() if not k.startswith("_")},
                 "uploader": uploader,
                 "image_domain": image_domain,
                 "chapters": [c.model_dump() for c in chapters],
@@ -1106,7 +1101,9 @@ class JMProvider(ComicProvider):
         try:
             fetched = self._fetch_via_api(jm_id, existing=existing)
             total_ms = int((time.perf_counter() - t_jm_fetch) * 1000)
-            log_import_diag("JM-FETCH-SUCCESS", f"jm_id={jm_id} client=api total_ms={total_ms} pages={len(fetched.remote_pages)}")
+            log_import_diag(
+                "JM-FETCH-SUCCESS", f"jm_id={jm_id} client=api total_ms={total_ms} pages={len(fetched.remote_pages)}"
+            )
             return fetched
         except (ValueError, RuntimeError) as exc:
             # 若是明确的权限/账号配置错误，直接上浮明确提示，不再做无意义的 HTML 重试
@@ -1116,18 +1113,25 @@ class JMProvider(ComicProvider):
                 raise
             total_ms = int((time.perf_counter() - t_jm_fetch) * 1000)
             log_import_diag("JM-API-FAIL-DOWNGRADE", f"jm_id={jm_id} api_ms={total_ms} error={_mask_sensitive(exc)}")
-            logger.warning("禁漫 API 客户端解析车号 JM%s 失败: %s，尝试降级到 HTML 网页解析...", jm_id, _mask_sensitive(exc))
+            logger.warning(
+                "禁漫 API 客户端解析车号 JM%s 失败: %s，尝试降级到 HTML 网页解析...", jm_id, _mask_sensitive(exc)
+            )
         except Exception as exc:
             total_ms = int((time.perf_counter() - t_jm_fetch) * 1000)
             log_import_diag("JM-API-EXC-DOWNGRADE", f"jm_id={jm_id} api_ms={total_ms} error={_mask_sensitive(exc)}")
-            logger.warning("禁漫 API 客户端解析车号 JM%s 异常: %s，尝试降级到 HTML 网页解析...", jm_id, _mask_sensitive(exc))
+            logger.warning(
+                "禁漫 API 客户端解析车号 JM%s 异常: %s，尝试降级到 HTML 网页解析...", jm_id, _mask_sensitive(exc)
+            )
 
         # 2. 降级到既有的 HTML 网页客户端解析
         t_html_entry = time.perf_counter()
         fetched = self._fetch_via_html(jm_id, existing=existing)
         total_ms = int((time.perf_counter() - t_jm_fetch) * 1000)
         html_ms = int((time.perf_counter() - t_html_entry) * 1000)
-        log_import_diag("JM-FETCH-SUCCESS", f"jm_id={jm_id} client=html total_ms={total_ms} html_ms={html_ms} pages={len(fetched.remote_pages)}")
+        log_import_diag(
+            "JM-FETCH-SUCCESS",
+            f"jm_id={jm_id} client=html total_ms={total_ms} html_ms={html_ms} pages={len(fetched.remote_pages)}",
+        )
         return fetched
 
     @staticmethod
@@ -1205,9 +1209,7 @@ class JMProvider(ComicProvider):
             if cand and _is_safe_remote_domain(cand) and cand not in cdn_candidates:
                 cdn_candidates.append(cand)
         if not cdn_candidates:
-            raise RuntimeError(
-                f"未找到可信安全的图片 CDN 域名（原始域名受限或已被阻断: {orig_domain}）"
-            )
+            raise RuntimeError(f"未找到可信安全的图片 CDN 域名（原始域名受限或已被阻断: {orig_domain}）")
 
         transient = {401, 403, 429, 500, 502, 503, 504}
         last_err: RuntimeError | None = None
@@ -1240,21 +1242,17 @@ class JMProvider(ComicProvider):
 
             if resp.status_code in transient:
                 last_err = RuntimeError(
-                    f"下载图片失败 {comic.meta.display_id} 第{page.index}页 ({curr_domain}): "
-                    f"HTTP {resp.status_code}"
+                    f"下载图片失败 {comic.meta.display_id} 第{page.index}页 ({curr_domain}): HTTP {resp.status_code}"
                 )
                 time.sleep(0.3 * (attempt + 1))
                 continue
 
             last_err = RuntimeError(
-                f"下载图片失败 {comic.meta.display_id} 第{page.index}页 ({curr_domain}): "
-                f"HTTP {resp.status_code}"
+                f"下载图片失败 {comic.meta.display_id} 第{page.index}页 ({curr_domain}): HTTP {resp.status_code}"
             )
             time.sleep(0.3 * (attempt + 1))
 
-        raise last_err or RuntimeError(
-            f"下载图片失败 {comic.meta.display_id} 第{page.index}页: 未知错误"
-        )
+        raise last_err or RuntimeError(f"下载图片失败 {comic.meta.display_id} 第{page.index}页: 未知错误")
 
     @staticmethod
     def _decode_page(page: RemotePage, raw: bytes) -> bytes:
@@ -1291,7 +1289,7 @@ class JMProvider(ComicProvider):
         try:
             aid = self.normalize_id(source_id)
             return f"https://cdn-msp.jmapiproxy1.cc/media/albums/{aid}_3x4.jpg"
-        except (ValueError, TypeError):
+        except ValueError, TypeError:
             return ""
 
     def download_cover_by_url(self, cover_url: str) -> bytes | None:
@@ -1319,18 +1317,15 @@ class JMProvider(ComicProvider):
         from jmcomic import JmModuleConfig
 
         # Ensure target domain is an authorized JM image CDN or official domain
-        is_authorized_host = (
-            original_host in JmModuleConfig.DOMAIN_IMAGE_LIST
-            or any(
-                original_host == suffix or original_host.endswith("." + suffix)
-                for suffix in (
-                    "jmapiproxy1.cc",
-                    "jmapiproxy2.cc",
-                    "jmapinodeudzn.net",
-                    "18comic.vip",
-                    "18comic.org",
-                    "18comic.ink",
-                )
+        is_authorized_host = original_host in JmModuleConfig.DOMAIN_IMAGE_LIST or any(
+            original_host == suffix or original_host.endswith("." + suffix)
+            for suffix in (
+                "jmapiproxy1.cc",
+                "jmapiproxy2.cc",
+                "jmapinodeudzn.net",
+                "18comic.vip",
+                "18comic.org",
+                "18comic.ink",
             )
         )
         if not is_authorized_host:
@@ -1379,9 +1374,7 @@ class JMProvider(ComicProvider):
                 continue
         return None
 
-    def fetch_ranking(
-        self, timeframe: str = "week", page: int = 1, limit: int = 20
-    ) -> list[DiscoveryItem]:
+    def fetch_ranking(self, timeframe: str = "week", page: int = 1, limit: int = 20) -> list[DiscoveryItem]:
         from jmcomic import JmModuleConfig
 
         JmModuleConfig.FLAG_ENABLE_JM_LOG = False
@@ -1443,4 +1436,3 @@ class JMProvider(ComicProvider):
                         )
                     )
         return items
-

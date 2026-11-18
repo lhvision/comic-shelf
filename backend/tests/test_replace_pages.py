@@ -11,6 +11,7 @@ from app.models import ComicMeta, PageRecord, FetchedComic
 from app.storage import ComicStore
 from fastapi import HTTPException
 
+
 class TestReplacePages(unittest.TestCase):
     def setUp(self):
         self.tmp_dir = Path(tempfile.mkdtemp(prefix="test_replace_pages_"))
@@ -148,6 +149,7 @@ class TestReplacePages(unittest.TestCase):
     def test_multi_chapter_replacement(self):
         # Setup multi-chapter comic: 2 chapters, 2 pages each
         from app.models import Chapter
+
         fetched = self._setup_sample_comic("test", "multi")
         ch1 = Chapter(id="c1", index=1, title="第 1 话", page_count=2, start=1)
         ch2 = Chapter(id="c2", index=2, title="第 2 话", page_count=2, start=3)
@@ -174,19 +176,22 @@ class TestReplacePages(unittest.TestCase):
         img1 = self._create_sample_img("purple")
         img2 = self._create_sample_img("purple")
         img3 = self._create_sample_img("purple")
-        new_meta = self.store.replace_pages("test", "multi", files=[("p1.jpg", img1), ("p2.jpg", img2), ("p3.jpg", img3)], target_chapter="c1")
+        new_meta = self.store.replace_pages(
+            "test", "multi", files=[("p1.jpg", img1), ("p2.jpg", img2), ("p3.jpg", img3)], target_chapter="c1"
+        )
 
         self.assertTrue(new_meta.custom_pages)
-        self.assertEqual(new_meta.page_count, 5) # 3 in c1 + 2 in c2 = 5
+        self.assertEqual(new_meta.page_count, 5)  # 3 in c1 + 2 in c2 = 5
         self.assertEqual(len(new_meta.chapters), 2)
         self.assertEqual(new_meta.chapters[0].page_count, 3)
         self.assertEqual(new_meta.chapters[0].start, 1)
         self.assertEqual(new_meta.chapters[1].page_count, 2)
-        self.assertEqual(new_meta.chapters[1].start, 4) # shifted from 3 to 4!
+        self.assertEqual(new_meta.chapters[1].start, 4)  # shifted from 3 to 4!
 
     def test_replacement_from_server_path(self):
         self._setup_sample_comic("test", "server_path_test")
         import os
+
         scan_dir = self.tmp_dir / "external_scan"
         scan_dir.mkdir(parents=True, exist_ok=True)
         img1 = self._create_sample_img("orange")
@@ -208,11 +213,13 @@ class TestReplacePages(unittest.TestCase):
     def test_symlink_escape_protection(self):
         self._setup_sample_comic("test", "symlink_test")
         import os
+
         scan_dir = self.tmp_dir / "safe_scan"
         scan_dir.mkdir(parents=True, exist_ok=True)
 
         # Create a file outside allowed dirs
         import tempfile
+
         with tempfile.TemporaryDirectory() as forbidden_dir:
             forbidden_img = Path(forbidden_dir) / "secret.png"
             forbidden_img.write_bytes(self._create_sample_img("pink"))
@@ -236,6 +243,7 @@ class TestReplacePages(unittest.TestCase):
     def test_composite_filename_auto_grouping(self):
         # Setup sample comic with 2 legacy chapters
         from app.models import Chapter
+
         fetched = self._setup_sample_comic("picacg", "5f80b1234567890abcdef123")
         fetched.meta.chapters = [
             Chapter(id="c1", index=1, title="第1话：青梅竹马", page_count=2, start=1),
@@ -314,6 +322,7 @@ class TestReplacePages(unittest.TestCase):
 
     def test_scoped_thumbnail_invalidation_preserves_other_chapters(self):
         from app.models import Chapter
+
         fetched = self._setup_sample_comic("local", "multi_scoped")
         fetched.meta.chapters = [
             Chapter(id="c1", index=1, title="第 1 话", page_count=2, start=1),
@@ -397,6 +406,7 @@ class TestReplacePages(unittest.TestCase):
 
     def test_delete_and_title_update_sets_custom_pages(self):
         from app.models import Chapter
+
         fetched = self._setup_sample_comic("picacg", "5f80b1234567890abcdef777")
         fetched.meta.chapters = [
             Chapter(id="c1", index=1, title="第 1 话", page_count=2, start=1),
@@ -421,6 +431,7 @@ class TestReplacePages(unittest.TestCase):
 
         # Simulated remote refresh with fresh meta (where custom_pages is False)
         from app.models import PageRecord
+
         fresh_meta = ComicMeta(
             source="picacg",
             source_id="5f80b1234567890abcdef888",
@@ -439,6 +450,7 @@ class TestReplacePages(unittest.TestCase):
 
     def test_picacg_replaced_pages_page_path_and_ensure_page(self):
         from app.models import Chapter
+
         source = "picacg"
         source_id = "5f80b1234567890abcdef999"
         fetched = self._setup_sample_comic(source, source_id)
@@ -514,6 +526,7 @@ class TestReplacePages(unittest.TestCase):
 
     def _create_synthetic_pdf(self, path: Path, num_pages: int = 4) -> None:
         import pymupdf
+
         doc = pymupdf.open()
         for i in range(1, num_pages + 1):
             img = Image.new("RGB", (120, 160), color=(i * 30 % 255, i * 50 % 255, i * 70 % 255))
@@ -527,6 +540,7 @@ class TestReplacePages(unittest.TestCase):
 
     def test_replace_from_directory_containing_single_pdf(self):
         import os
+
         self._setup_sample_comic("test", "dir_single_pdf")
         pdf_dir = self.tmp_dir / "pdf_folder_single"
         pdf_dir.mkdir(parents=True, exist_ok=True)
@@ -539,12 +553,17 @@ class TestReplacePages(unittest.TestCase):
             self.assertTrue(new_meta.custom_pages)
             self.assertEqual(new_meta.page_count, 3)
             pages_dir = self.store.pages_dir("test", "dir_single_pdf")
-            self.assertTrue((pages_dir / "00001.jpeg").exists() or (pages_dir / "00001.jpg").exists() or (pages_dir / "00001.png").exists())
+            self.assertTrue(
+                (pages_dir / "00001.jpeg").exists()
+                or (pages_dir / "00001.jpg").exists()
+                or (pages_dir / "00001.png").exists()
+            )
         finally:
             os.environ.pop("COMIC_SHELF_ALLOWED_DIRS", None)
 
     def test_replace_from_directory_containing_multiple_pdfs(self):
         import os
+
         self._setup_sample_comic("test", "dir_multi_pdfs")
         pdf_dir = self.tmp_dir / "pdf_folder_multi"
         pdf_dir.mkdir(parents=True, exist_ok=True)
@@ -566,6 +585,7 @@ class TestReplacePages(unittest.TestCase):
 
     def test_replace_from_directory_containing_subdirs(self):
         import os
+
         self._setup_sample_comic("test", "dir_subdirs")
         subdirs_dir = self.tmp_dir / "comic_subdirs"
         ch1 = subdirs_dir / "ch1"
@@ -590,6 +610,7 @@ class TestReplacePages(unittest.TestCase):
     def test_replace_target_chapter_rejects_multi_pdf_directory(self):
         import os
         from app.models import Chapter
+
         fetched = self._setup_sample_comic("test", "multi_guard")
         fetched.meta.chapters = [
             Chapter(id="c1", index=1, title="第1话", page_count=2, start=1),
@@ -613,6 +634,7 @@ class TestReplacePages(unittest.TestCase):
 
     def test_replace_request_pydantic_alias_and_validation(self):
         from app.models import ReplacePathRequest, ComicAppendRequest
+
         r1 = ReplacePathRequest.model_validate({"path": "/path/abc"})
         self.assertEqual(r1.server_path, "/path/abc")
         r2 = ReplacePathRequest.model_validate({"server_path": "/path/xyz"})
@@ -623,6 +645,7 @@ class TestReplacePages(unittest.TestCase):
 
     def test_replace_from_directory_containing_chinese_subdirs(self):
         import os
+
         self._setup_sample_comic("test", "dir_chinese_subdirs")
         subdirs_dir = self.tmp_dir / "comic_chinese_subdirs"
         ch1 = subdirs_dir / "第一话"
@@ -659,6 +682,7 @@ class TestReplacePages(unittest.TestCase):
 
     def test_replace_from_directory_with_macosx_and_flat_images(self):
         import os
+
         self._setup_sample_comic("test", "dir_macosx_flat")
         parent_dir = self.tmp_dir / "comic_macosx_flat"
         parent_dir.mkdir(parents=True, exist_ok=True)
@@ -684,6 +708,7 @@ class TestReplacePages(unittest.TestCase):
 
     def test_replace_target_chapter_on_flat_comic_raises_404(self):
         import os
+
         self._setup_sample_comic("test", "flat_target_404")
         img_dir = self.tmp_dir / "flat_img_folder"
         img_dir.mkdir(parents=True, exist_ok=True)
@@ -700,6 +725,7 @@ class TestReplacePages(unittest.TestCase):
 
     def test_replace_directory_with_both_pdf_and_subdirs_raises_400(self):
         import os
+
         self._setup_sample_comic("test", "ambiguous_folder")
         ambig_dir = self.tmp_dir / "ambig_dir"
         ambig_dir.mkdir(parents=True, exist_ok=True)
@@ -720,5 +746,3 @@ class TestReplacePages(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
-
-

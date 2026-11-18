@@ -40,7 +40,6 @@ def invalidate_facets_cache(force: bool = False) -> None:
             _facets_cache.clear()
 
 
-
 def rebuild_facets_snapshot(conn: sqlite3.Connection) -> None:
     """全量基于 comics_index 重建增量分面快照表 (library_stats_snapshot 与 library_tag_counts)。"""
     now_ts = time.time()
@@ -265,10 +264,10 @@ def _apply_facets_delta(
         d_pages = new_pages - old_pages
         d_cached = new_cached - old_cached
         admin_tag_deltas: dict[str, int] = {}
-        for t in (new_tags - old_tags):
+        for t in new_tags - old_tags:
             if t:
                 admin_tag_deltas[t] = 1
-        for t in (old_tags - new_tags):
+        for t in old_tags - new_tags:
             if t:
                 admin_tag_deltas[t] = -1
 
@@ -284,8 +283,6 @@ def _apply_facets_delta(
         elif old_hidden == 1 and new_hidden == 0:
             _update_stats(guest_scopes, 1, new_pages, new_cached)
             _update_tags(guest_scopes, {t: 1 for t in new_tags if t})
-
-
 
 
 def upsert_comic_index(item: dict[str, Any]) -> None:
@@ -440,7 +437,9 @@ def get_all_indexed_mtimes() -> dict[tuple[str, str], float]:
     with get_db() as conn:
         rows = conn.execute("SELECT source, source_id, mtime, imported_at FROM comics_index").fetchall()
         return {
-            (r["source"], r["source_id"]): float(r["mtime"]) if (r["imported_at"] and " " not in r["imported_at"]) else -1.0
+            (r["source"], r["source_id"]): float(r["mtime"])
+            if (r["imported_at"] and " " not in r["imported_at"])
+            else -1.0
             for r in rows
         }
 
@@ -766,7 +765,9 @@ def query_library_index(
         conditions.append("uf.user_id IS NOT NULL")
 
     if status == "reading":
-        conditions.append("COALESCE(urp.last_page, 0) > 0 AND COALESCE(urp.last_page, 0) < ci.page_count AND ci.page_count > 0")
+        conditions.append(
+            "COALESCE(urp.last_page, 0) > 0 AND COALESCE(urp.last_page, 0) < ci.page_count AND ci.page_count > 0"
+        )
     elif status == "completed":
         conditions.append("COALESCE(urp.last_page, 0) >= ci.page_count AND ci.page_count > 0")
     elif status == "unread":
@@ -878,7 +879,9 @@ def query_library_index(
     elif sort == "title":
         order_sql = f"ORDER BY {relevance_order}ci.title COLLATE NOCASE ASC, ci.imported_at DESC, ci.source ASC, ci.source_id ASC"
     elif sort == "pages":
-        order_sql = f"ORDER BY {relevance_order}ci.page_count DESC, ci.imported_at DESC, ci.source ASC, ci.source_id ASC"
+        order_sql = (
+            f"ORDER BY {relevance_order}ci.page_count DESC, ci.imported_at DESC, ci.source ASC, ci.source_id ASC"
+        )
     elif sort == "cached":
         order_sql = f"ORDER BY {relevance_order}(CAST(ci.cached_pages AS REAL) / MAX(ci.page_count, 1)) DESC, ci.imported_at DESC, ci.source ASC, ci.source_id ASC"
 
@@ -1026,5 +1029,3 @@ def get_library_facets(
             _facets_cache[key] = (compute_started_at, result)
 
         return _copy_facets(result)
-
-

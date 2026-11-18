@@ -1,6 +1,7 @@
 """Guest abuse prevention: Eviction cooling lock & token bucket rate limiting.
 Implements ADR 0008.
 """
+
 from __future__ import annotations
 
 import hashlib
@@ -12,8 +13,8 @@ import time
 # 5 分钟内连续置换超过 3 次 -> 锁定 10 分钟
 # ----------------------------------------------------------------------
 _EVICTION_WINDOW_SECONDS = 300.0  # 5 minutes
-_EVICTION_MAX_COUNT = 3           # max 3 evictions per 5 minutes
-_COOLING_LOCK_SECONDS = 600.0     # 10 minutes lock
+_EVICTION_MAX_COUNT = 3  # max 3 evictions per 5 minutes
+_COOLING_LOCK_SECONDS = 600.0  # 10 minutes lock
 
 _eviction_history: dict[int, list[float]] = {}
 _cooling_locks: dict[int, float] = {}  # pass_id -> locked_until timestamp
@@ -126,18 +127,18 @@ def clear_rate_limit(pass_id: int | str) -> None:
 # - 单 IP + Pass: 1 分钟内输错 5 次 -> 仅该 IP 锁定 5 分钟 (杜绝恶意群友 DoS 号主)
 # - 全局 Pass: 1 小时内全网累计输错 20 次 -> 全局锁定 30 分钟 (防分布式撞库)
 # ----------------------------------------------------------------------
-_PIN_ATTEMPT_WINDOW_SECONDS = 60.0   # 1 minute per IP
-_PIN_MAX_FAILED_ATTEMPTS = 5         # max 5 failed attempts per IP
-_PIN_LOCK_SECONDS = 300.0            # 5 minutes lock
+_PIN_ATTEMPT_WINDOW_SECONDS = 60.0  # 1 minute per IP
+_PIN_MAX_FAILED_ATTEMPTS = 5  # max 5 failed attempts per IP
+_PIN_LOCK_SECONDS = 300.0  # 5 minutes lock
 
 _PIN_GLOBAL_WINDOW_SECONDS = 3600.0  # 1 hour global
-_PIN_GLOBAL_MAX_ATTEMPTS = 20        # max 20 attempts global
-_PIN_GLOBAL_LOCK_SECONDS = 1800.0    # 30 minutes lock
+_PIN_GLOBAL_MAX_ATTEMPTS = 20  # max 20 attempts global
+_PIN_GLOBAL_LOCK_SECONDS = 1800.0  # 30 minutes lock
 
-_pin_ip_failed_history: dict[str, list[float]] = {}      # "ip:pass_id" -> timestamps
-_pin_ip_locks: dict[str, float] = {}                    # "ip:pass_id" -> locked_until
-_pin_global_failed_history: dict[int, list[float]] = {} # pass_id -> timestamps
-_pin_global_locks: dict[int, float] = {}                 # pass_id -> locked_until
+_pin_ip_failed_history: dict[str, list[float]] = {}  # "ip:pass_id" -> timestamps
+_pin_ip_locks: dict[str, float] = {}  # "ip:pass_id" -> locked_until
+_pin_global_failed_history: dict[int, list[float]] = {}  # pass_id -> timestamps
+_pin_global_locks: dict[int, float] = {}  # pass_id -> locked_until
 _pin_mutex = threading.RLock()
 
 
@@ -219,12 +220,12 @@ def clear_pin_failures(pass_id: int, ip: str = "") -> None:
 # 单 IP 1 分钟内口令错误达到 10 次 -> 锁定该 IP 5 分钟
 # ----------------------------------------------------------------------
 _LOGIN_ATTEMPT_WINDOW_SECONDS = 60.0  # 1 minute
-_LOGIN_MAX_FAILED_ATTEMPTS = 10       # max 10 failed attempts per IP
-_LOGIN_LOCK_SECONDS = 300.0           # 5 minutes lock
+_LOGIN_MAX_FAILED_ATTEMPTS = 10  # max 10 failed attempts per IP
+_LOGIN_LOCK_SECONDS = 300.0  # 5 minutes lock
 
 _login_failed_history: dict[str, list[float]] = {}  # ip -> timestamps
 _login_failed_creds: dict[str, dict[str, float]] = {}  # ip -> {凭据指纹: 计数时刻}
-_login_ip_locks: dict[str, float] = {}             # ip -> locked_until
+_login_ip_locks: dict[str, float] = {}  # ip -> locked_until
 _login_mutex = threading.RLock()
 _last_login_prune_time: float = 0.0
 
@@ -254,17 +255,11 @@ def _prune_stale_login_tracking(now: float) -> None:
         _login_ip_locks.pop(k, None)
 
     cutoff = now - _LOGIN_ATTEMPT_WINDOW_SECONDS
-    stale_ips = [
-        k for k, h in _login_failed_history.items()
-        if not h or h[-1] <= cutoff
-    ]
+    stale_ips = [k for k, h in _login_failed_history.items() if not h or h[-1] <= cutoff]
     for k in stale_ips:
         _login_failed_history.pop(k, None)
 
-    stale_cred_ips = [
-        k for k, c in _login_failed_creds.items()
-        if not c or max(c.values(), default=0.0) <= cutoff
-    ]
+    stale_cred_ips = [k for k, c in _login_failed_creds.items() if not c or max(c.values(), default=0.0) <= cutoff]
     for k in stale_cred_ips:
         _login_failed_creds.pop(k, None)
 
@@ -280,7 +275,9 @@ def record_ip_login_failure_and_check_lock(ip: str, credential: str = "") -> boo
         return False
     now = time.time()
     with _login_mutex:
-        if (len(_login_failed_history) > 100 or len(_login_failed_creds) > 100) and (now - _last_login_prune_time > 10.0):
+        if (len(_login_failed_history) > 100 or len(_login_failed_creds) > 100) and (
+            now - _last_login_prune_time > 10.0
+        ):
             _last_login_prune_time = now
             _prune_stale_login_tracking(now)
 
@@ -321,5 +318,3 @@ def clear_ip_login_failures(ip: str) -> None:
         _login_ip_locks.pop(ip, None)
         _login_failed_history.pop(ip, None)
         _login_failed_creds.pop(ip, None)
-
-

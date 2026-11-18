@@ -57,11 +57,12 @@ def test_batch_prefetch_flow():
             p.write_bytes(b"dummy_image_data")
             return p
 
-        with patch.object(store, "ensure_page", side_effect=mock_ensure_page), \
-             patch.object(store, "ensure_webp_cover"), \
-             patch.object(store, "ensure_page_thumb"), \
-             patch("app.storage.prefetch.MAX_PREFETCH", 6):
-
+        with (
+            patch.object(store, "ensure_page", side_effect=mock_ensure_page),
+            patch.object(store, "ensure_webp_cover"),
+            patch.object(store, "ensure_page_thumb"),
+            patch("app.storage.prefetch.MAX_PREFETCH", 6),
+        ):
             # --- Batch 1: Should fetch pages 1..6 ---
             done1, warnings1 = store.prefetch(fetched, cover_count=4, prefetch_all=True)
             assert done1 == 6, f"Batch 1 expected 6, got {done1}"
@@ -107,6 +108,7 @@ def test_prefetch_worker_macro_progress():
     tmp_dir = Path(tempfile.mkdtemp(prefix="paper_room_test_worker_"))
     try:
         from app.routers import common as common_router
+
         store = ComicStore(root=tmp_dir / "library")
         fetched = create_test_comic(page_count=10)
         meta = fetched.meta
@@ -120,14 +122,16 @@ def test_prefetch_worker_macro_progress():
             return p
 
         broadcast_events = []
+
         def mock_broadcast(event_name, payload):
             broadcast_events.append((event_name, payload))
 
-        with patch.object(common_router.store, "prefetch") as mock_prefetch, \
-             patch("app.routers.common.broadcast_event", side_effect=mock_broadcast), \
-             patch.object(common_router.store, "reconcile_cached_pages"), \
-             patch.object(common_router.store, "cached_page_count", side_effect=[0, 6]):
-
+        with (
+            patch.object(common_router.store, "prefetch") as mock_prefetch,
+            patch("app.routers.common.broadcast_event", side_effect=mock_broadcast),
+            patch.object(common_router.store, "reconcile_cached_pages"),
+            patch.object(common_router.store, "cached_page_count", side_effect=[0, 6]),
+        ):
             mock_prefetch.return_value = (6, ["batch warning"])
 
             job = {"running": True, "done": False, "prefetched": 0, "total": 0}
@@ -148,16 +152,19 @@ def test_prefetch_worker_exception_safety():
     tmp_dir = Path(tempfile.mkdtemp(prefix="paper_room_test_safety_"))
     try:
         from app.routers import common as common_router
+
         fetched = create_test_comic(page_count=10)
         broadcast_events = []
+
         def mock_broadcast(event_name, payload):
             broadcast_events.append((event_name, payload))
 
-        with patch.object(common_router.store, "prefetch", side_effect=RuntimeError("simulated network failure")), \
-             patch("app.routers.common.broadcast_event", side_effect=mock_broadcast), \
-             patch.object(common_router.store, "reconcile_cached_pages"), \
-             patch.object(common_router.store, "cached_page_count", side_effect=[0, 2]):
-
+        with (
+            patch.object(common_router.store, "prefetch", side_effect=RuntimeError("simulated network failure")),
+            patch("app.routers.common.broadcast_event", side_effect=mock_broadcast),
+            patch.object(common_router.store, "reconcile_cached_pages"),
+            patch.object(common_router.store, "cached_page_count", side_effect=[0, 2]),
+        ):
             job = {"running": True, "done": False, "prefetched": 0, "total": 0}
             try:
                 common_router._prefetch_worker(job, fetched, cover_count=4, prefetch_all=True)

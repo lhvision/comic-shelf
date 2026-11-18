@@ -26,7 +26,7 @@ class QuietAccessLogFilter(logging.Filter):
                 status_code = int(record.args[4])
                 if path in self.QUIET_PATHS and status_code in (200, 304):
                     return False
-            except (IndexError, ValueError, TypeError):
+            except IndexError, ValueError, TypeError:
                 pass
             # 访问日志默认记完整请求行并长期留存：凭据类参数的值打码，其余参数原样保留便于排障
             args = list(record.args)
@@ -39,7 +39,12 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Paper Room (纸间) Server")
     parser.add_argument("--host", default=os.getenv("COMIC_SHELF_HOST", "127.0.0.1"), help="Host to bind")
     parser.add_argument("--port", type=int, default=int(os.getenv("COMIC_SHELF_PORT", "8000")), help="Port to bind")
-    parser.add_argument("--reload", action="store_true", default=os.getenv("COMIC_SHELF_RELOAD", "").lower() in {"1", "true", "yes"}, help="Auto-reload on code change")
+    parser.add_argument(
+        "--reload",
+        action="store_true",
+        default=os.getenv("COMIC_SHELF_RELOAD", "").lower() in {"1", "true", "yes"},
+        help="Auto-reload on code change",
+    )
     args = parser.parse_args()
 
     access_log_env = os.getenv("COMIC_SHELF_ACCESS_LOG", "true").lower()

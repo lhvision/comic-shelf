@@ -25,10 +25,18 @@ def create_sample_fetched(multi: bool = True) -> FetchedComic:
             PageRecord(index=4, file="00002.webp", ext=".webp", cached=True, chapter="102"),
         ]
         remote_pages = [
-            RemotePage(index=1, url="http://img/1.webp", file="00001.webp", ext=".webp", scramble_id="220000", chapter="101"),
-            RemotePage(index=2, url="http://img/2.webp", file="00002.webp", ext=".webp", scramble_id="220000", chapter="101"),
-            RemotePage(index=3, url="http://img/3.webp", file="00001.webp", ext=".webp", scramble_id="220000", chapter="102"),
-            RemotePage(index=4, url="http://img/4.webp", file="00002.webp", ext=".webp", scramble_id="220000", chapter="102"),
+            RemotePage(
+                index=1, url="http://img/1.webp", file="00001.webp", ext=".webp", scramble_id="220000", chapter="101"
+            ),
+            RemotePage(
+                index=2, url="http://img/2.webp", file="00002.webp", ext=".webp", scramble_id="220000", chapter="101"
+            ),
+            RemotePage(
+                index=3, url="http://img/3.webp", file="00001.webp", ext=".webp", scramble_id="220000", chapter="102"
+            ),
+            RemotePage(
+                index=4, url="http://img/4.webp", file="00002.webp", ext=".webp", scramble_id="220000", chapter="102"
+            ),
         ]
         page_count = 4
     else:
@@ -38,8 +46,12 @@ def create_sample_fetched(multi: bool = True) -> FetchedComic:
             PageRecord(index=2, file="00002.webp", ext=".webp", cached=True, chapter=""),
         ]
         remote_pages = [
-            RemotePage(index=1, url="http://img/1.webp", file="00001.webp", ext=".webp", scramble_id="220000", chapter=""),
-            RemotePage(index=2, url="http://img/2.webp", file="00002.webp", ext=".webp", scramble_id="220000", chapter=""),
+            RemotePage(
+                index=1, url="http://img/1.webp", file="00001.webp", ext=".webp", scramble_id="220000", chapter=""
+            ),
+            RemotePage(
+                index=2, url="http://img/2.webp", file="00002.webp", ext=".webp", scramble_id="220000", chapter=""
+            ),
         ]
         page_count = 2
 
@@ -99,8 +111,10 @@ def test_incremental_fetch_unchanged():
         episode_list=[("101", "1", "第 1 話"), ("102", "2", "第 2 話")],
     )
 
-    with patch.object(provider, "_make_html_client", return_value=mock_client), \
-         patch("jmcomic.JmcomicText.analyse_jm_album_html", return_value=mock_detail):
+    with (
+        patch.object(provider, "_make_html_client", return_value=mock_client),
+        patch("jmcomic.JmcomicText.analyse_jm_album_html", return_value=mock_detail),
+    ):
         fetched = provider.fetch("500000", existing=existing)
 
         # Should only request album page, 0 photo page requests
@@ -158,15 +172,17 @@ def test_incremental_fetch_new_chapter():
 
     def fake_create_image_detail(idx):
         img = MagicMock()
-        img.download_url = f"https://cdn/{idx+1}.webp"
+        img.download_url = f"https://cdn/{idx + 1}.webp"
         img.img_file_suffix = ".webp"
         return img
 
     mock_photo_detail.create_image_detail.side_effect = fake_create_image_detail
 
-    with patch.object(provider, "_make_html_client", return_value=mock_client), \
-         patch("jmcomic.JmcomicText.analyse_jm_album_html", return_value=mock_album_detail), \
-         patch("jmcomic.JmcomicText.analyse_jm_photo_html", return_value=mock_photo_detail):
+    with (
+        patch.object(provider, "_make_html_client", return_value=mock_client),
+        patch("jmcomic.JmcomicText.analyse_jm_album_html", return_value=mock_album_detail),
+        patch("jmcomic.JmcomicText.analyse_jm_photo_html", return_value=mock_photo_detail),
+    ):
         fetched = provider.fetch("500000", existing=existing)
 
         # Expected requests: /album/500000 and ONLY /photo/103 (101 and 102 are reused!)

@@ -1,4 +1,5 @@
 """Chapter management, title updating, deletion, cover serving, and prefetch router."""
+
 from __future__ import annotations
 
 import shutil
@@ -206,7 +207,7 @@ def update_comic_groups(
         if thumb_dir.exists():
             shutil.rmtree(thumb_dir, ignore_errors=True)
 
-    for ch in (existing.meta.chapters or []):
+    for ch in existing.meta.chapters or []:
         if ch.id in removed_cids:
             try:
                 chap_cover = store.chapter_cover_path(existing.meta, ch)

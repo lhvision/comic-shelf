@@ -19,6 +19,7 @@ from ..abuse import (
 )
 from .connection import get_db
 
+
 def hash_pin(pin: str, salt: str = "") -> tuple[str, str]:
     if not salt:
         salt = secrets.token_hex(16)
@@ -39,7 +40,7 @@ def verify_pin(pin: str, pin_hash: str, salt: str) -> bool:
 
 
 _INVISIBLE_OR_OVERRIDE_CHARS = frozenset(
-    "\u200B\u200C\u200D\uFEFF\u202A\u202B\u202C\u202D\u202E\u2066\u2067\u2068\u2069\u00A0"
+    "\u200b\u200c\u200d\ufeff\u202a\u202b\u202c\u202d\u202e\u2066\u2067\u2068\u2069\u00a0"
 )
 
 
@@ -54,10 +55,7 @@ def sanitize_username(name: str, max_length: int = 20) -> str:
     if not name:
         return ""
     # Remove control characters, zero-width characters, and bidirectional override characters
-    cleaned = "".join(
-        ch for ch in name
-        if ord(ch) >= 32 and ord(ch) != 127 and ch not in _INVISIBLE_OR_OVERRIDE_CHARS
-    )
+    cleaned = "".join(ch for ch in name if ord(ch) >= 32 and ord(ch) != 127 and ch not in _INVISIBLE_OR_OVERRIDE_CHARS)
     # Normalize multiple whitespace into a single space
     cleaned = re.sub(r"\s+", " ", cleaned).strip()
     # Strip HTML brackets to prevent raw tag storage
@@ -65,7 +63,6 @@ def sanitize_username(name: str, max_length: int = 20) -> str:
     # Strip leading formula characters to prevent CSV injection
     cleaned = cleaned.lstrip("=+-@\t\r\n")
     return cleaned[:max_length].strip()
-
 
 
 def parse_device_name(ua: str) -> str:
@@ -337,7 +334,17 @@ def update_guest_pass(
                 SET username = ?, token = ?, pin_hash = ?, pin_salt = ?, expires_at = ?, is_active = ?, max_devices = ?, updated_at = ?
                 WHERE id = ?
                 """,
-                (new_username, new_token, current_pin_hash, current_pin_salt, new_expires_at, new_is_active, new_max_devices, now, pass_id),
+                (
+                    new_username,
+                    new_token,
+                    current_pin_hash,
+                    current_pin_salt,
+                    new_expires_at,
+                    new_is_active,
+                    new_max_devices,
+                    now,
+                    pass_id,
+                ),
             )
             if reset_token or reset_pin:
                 # Token or PIN changed: invalidate all active devices for this pass and clear locks
@@ -481,7 +488,6 @@ def delete_guest_device(device_id: int, pass_id: int | None = None) -> bool:
 # ----------------------------------------------------------------------
 
 
-
 def create_direct_pass(
     source: str,
     source_id: str,
@@ -560,6 +566,7 @@ def _get_curator_secret_hash(current_secret: str | None = None) -> str:
     else:
         try:
             from ..config import AUTH_SECRET
+
             secret = AUTH_SECRET
         except Exception:
             secret = ""
@@ -586,11 +593,9 @@ def create_curator_session(
         conn.execute("DELETE FROM curator_sessions WHERE expires_at <= ?", (now,))
 
         # Cap max active curator sessions to MAX_CURATOR_SESSIONS (evict oldest by last_active_at)
-        existing = conn.execute(
-            "SELECT id FROM curator_sessions ORDER BY last_active_at DESC, id DESC"
-        ).fetchall()
+        existing = conn.execute("SELECT id FROM curator_sessions ORDER BY last_active_at DESC, id DESC").fetchall()
         if len(existing) >= MAX_CURATOR_SESSIONS:
-            overflow = [r["id"] for r in existing[MAX_CURATOR_SESSIONS - 1:]]
+            overflow = [r["id"] for r in existing[MAX_CURATOR_SESSIONS - 1 :]]
             conn.executemany("DELETE FROM curator_sessions WHERE id = ?", [(i,) for i in overflow])
 
         conn.execute(
@@ -658,5 +663,3 @@ def clean_expired_curator_sessions() -> int:
     with get_db() as conn:
         cur = conn.execute("DELETE FROM curator_sessions WHERE expires_at <= ?", (now,))
         return cur.rowcount
-
-

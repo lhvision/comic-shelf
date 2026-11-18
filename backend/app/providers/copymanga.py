@@ -26,6 +26,7 @@ def aes_decrypt(key_str: str, cipher_hex_with_iv: str) -> str:
     cipher = AES.new(key, AES.MODE_CBC, iv)
     return unpad(cipher.decrypt(ciphertext), AES.block_size).decode("utf-8")
 
+
 from ..config import (
     COPY_BASE_URL,
     COPY_PASSWORD,
@@ -44,8 +45,7 @@ logger = logging.getLogger("paper_room.provider.copymanga")
 SESSION_FILE = DATA_DIR / "copymanga_session.json"
 
 DEFAULT_USER_AGENT = (
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
-    "(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
 )
 
 COPY_ALLOWED_CDN_SUFFIXES = (
@@ -56,9 +56,7 @@ COPY_ALLOWED_CDN_SUFFIXES = (
     ".copymanga.site",
 )
 
-COPY_EXTRA_CDN_HOSTS = [
-    h.strip().lower() for h in os.getenv("COPY_EXTRA_CDN_HOSTS", "").split(",") if h.strip()
-]
+COPY_EXTRA_CDN_HOSTS = [h.strip().lower() for h in os.getenv("COPY_EXTRA_CDN_HOSTS", "").split(",") if h.strip()]
 
 
 def is_valid_image(data: bytes) -> bool:
@@ -102,14 +100,11 @@ def _validate_download_host(host: str) -> None:
             raise ValueError(f"禁止下载私有或保留网络地址图片: {host}")
         raise ValueError(f"禁止使用直接 IP 地址访问画页 CDN: {host}")
 
-    if cleaned.endswith(
-        (".local", ".internal", ".lan", ".home", ".corp", ".onion", ".nip.io", ".sslip.io")
-    ):
+    if cleaned.endswith((".local", ".internal", ".lan", ".home", ".corp", ".onion", ".nip.io", ".sslip.io")):
         raise ValueError(f"禁止下载内部网络或重绑定域名图片: {host}")
 
     is_authorized = any(
-        cleaned == suffix.lstrip(".") or cleaned.endswith(suffix)
-        for suffix in COPY_ALLOWED_CDN_SUFFIXES
+        cleaned == suffix.lstrip(".") or cleaned.endswith(suffix) for suffix in COPY_ALLOWED_CDN_SUFFIXES
     ) or (cleaned in COPY_EXTRA_CDN_HOSTS)
 
     if not is_authorized:
@@ -296,7 +291,9 @@ class CopyMangaProvider(ComicProvider):
 
         # 4. Parse cover URL
         cover_url = ""
-        cover_match = re.search(r'<img[^>]*class=[\'"][^\'"]*lazyload[^\'"]*[\'"][^>]*data-src=[\'"]([^\'"]+)[\'"]', html)
+        cover_match = re.search(
+            r'<img[^>]*class=[\'"][^\'"]*lazyload[^\'"]*[\'"][^>]*data-src=[\'"]([^\'"]+)[\'"]', html
+        )
         if cover_match:
             cover_url = cover_match.group(1).strip()
         if not cover_url:
@@ -421,11 +418,7 @@ class CopyMangaProvider(ComicProvider):
             target_groups = [g for g in ordered_group_keys if g in groups_to_fetch]
             if not target_groups and ordered_group_keys:
                 target_groups = [ordered_group_keys[0]]
-        elif (
-            existing is not None
-            and isinstance(existing.meta.raw, dict)
-            and "selected_groups" in existing.meta.raw
-        ):
+        elif existing is not None and isinstance(existing.meta.raw, dict) and "selected_groups" in existing.meta.raw:
             saved_groups = existing.meta.raw.get("selected_groups", [])
             target_groups = [g for g in ordered_group_keys if g in saved_groups]
             if not target_groups and ordered_group_keys:
@@ -461,9 +454,7 @@ class CopyMangaProvider(ComicProvider):
             raise ValueError(f"拷贝漫画作品 {comic_id} 选定分组中未包含任何有效章节")
 
         # 11. Incremental cache check (reusing existing unchanged chapter pages)
-        existing_chapter_map = {
-            c.id: c for c in (existing.meta.chapters if existing else [])
-        }
+        existing_chapter_map = {c.id: c for c in (existing.meta.chapters if existing else [])}
         existing_pages_by_chap: dict[str, list[RemotePage]] = {}
         if existing:
             for p in existing.remote_pages:
@@ -517,10 +508,7 @@ class CopyMangaProvider(ComicProvider):
         fetched_chapter_pages: dict[str, list[str]] = {}
         pool = ThreadPoolExecutor(max_workers=3)
         try:
-            future_to_ch = {
-                pool.submit(_fetch_chapter_pages, ch): ch
-                for ch in flattened_raw_chapters
-            }
+            future_to_ch = {pool.submit(_fetch_chapter_pages, ch): ch for ch in flattened_raw_chapters}
             for fut in as_completed(future_to_ch):
                 ch_item, urls = fut.result()
                 fetched_chapter_pages[ch_item["id"]] = urls
@@ -613,7 +601,9 @@ class CopyMangaProvider(ComicProvider):
             cover_indices=[i for i in range(1, effective_cover_count + 1)],
             published_at=published_at,
             updated_at=updated_at,
-            imported_at=existing.meta.imported_at if (existing and existing.meta.imported_at) else datetime.now(timezone.utc).isoformat(),
+            imported_at=existing.meta.imported_at
+            if (existing and existing.meta.imported_at)
+            else datetime.now(timezone.utc).isoformat(),
             views=views,
             likes="",
             chapters=chapters,

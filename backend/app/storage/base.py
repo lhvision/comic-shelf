@@ -1,4 +1,5 @@
 """Base storage provider, filesystem directory mapping, thread synchronization, and metadata persistence."""
+
 from __future__ import annotations
 
 import datetime
@@ -46,9 +47,7 @@ class ComicStoreBase:
         self.root = root
         self._page_locks: dict[tuple[str, str, int] | tuple[str, str], threading.RLock] = {}
         self._locks_guard = threading.Lock()
-        self._thumb_semaphore = threading.BoundedSemaphore(
-            int(os.getenv("COMIC_SHELF_THUMB_CONCURRENCY", "4"))
-        )
+        self._thumb_semaphore = threading.BoundedSemaphore(int(os.getenv("COMIC_SHELF_THUMB_CONCURRENCY", "4")))
         self._meta_cache: dict[tuple[str, str], tuple[float, ComicMeta]] = {}
         self._fetched_cache: dict[tuple[str, str], tuple[float, float, FetchedComic]] = {}
         self._cache_guard = threading.Lock()
@@ -122,9 +121,7 @@ class ComicStoreBase:
     def chapter_covers_dir(self, source: str, source_id: str) -> Path:
         return self.covers_dir(source, source_id) / "chapters"
 
-    def chapter_cover_path(
-        self, meta: ComicMeta, chapter: Chapter, width: int | None = None, ext: str = "jpg"
-    ) -> Path:
+    def chapter_cover_path(self, meta: ComicMeta, chapter: Chapter, width: int | None = None, ext: str = "jpg") -> Path:
         clean_ext = "webp" if ext.lower().lstrip(".") == "webp" else "jpg"
         suffix = f".{clean_ext}"
         if width and 0 < width <= COVER_THUMB_WIDTH:
@@ -182,9 +179,7 @@ class ComicStoreBase:
             self._download_waiters[key] = event
             return event, True
 
-    def _release_page_download(
-        self, source: str, source_id: str, index: int, event: threading.Event
-    ) -> None:
+    def _release_page_download(self, source: str, source_id: str, index: int, event: threading.Event) -> None:
         with self._locks_guard:
             if self._download_waiters.get((source, source_id, index)) is event:
                 self._download_waiters.pop((source, source_id, index), None)
@@ -391,9 +386,7 @@ class ComicStoreBase:
                     continue
                 self._invalidate_cache(source, source_id)
         if failures:
-            raise RuntimeError(
-                "Could not restore interrupted saves: " + ", ".join(failures)
-            )
+            raise RuntimeError("Could not restore interrupted saves: " + ", ".join(failures))
 
     def _invalidate_cache(self, source: str, source_id: str) -> None:
         with self._cache_guard:
@@ -405,38 +398,42 @@ class ComicStoreBase:
                 meta = self.load_meta(source, source_id)
                 if meta:
                     from ..db import upsert_comic_index
+
                     try:
                         mtime = album_path.stat().st_mtime
                     except Exception:
                         mtime = 0.0
                     cached_pages = self.cached_page_count(meta)
-                    upsert_comic_index({
-                        "source": meta.source,
-                        "source_id": meta.source_id,
-                        "display_id": meta.display_id,
-                        "title": meta.title,
-                        "authors_json": json.dumps(meta.authors, ensure_ascii=False),
-                        "works_json": json.dumps(meta.works, ensure_ascii=False),
-                        "actors_json": json.dumps(meta.actors, ensure_ascii=False),
-                        "tags_json": json.dumps(meta.tags, ensure_ascii=False),
-                        "chapter_titles_json": json.dumps([c.title for c in meta.chapters], ensure_ascii=False),
-                        "page_count": meta.page_count,
-                        "cached_pages": cached_pages,
-                        "cover_count": meta.cover_count,
-                        "cover_indices_json": json.dumps(meta.cover_indices, ensure_ascii=False),
-                        "views": str(meta.views),
-                        "likes": str(meta.likes),
-                        "uploaded_at": meta.published_at,
-                        "published_at": meta.published_at,
-                        "updated_at": meta.updated_at,
-                        "imported_at": meta.imported_at,
-                        "hidden_from_guest": 1 if getattr(meta, "hidden_from_guest", False) else 0,
-                        "mtime": mtime,
-                        "auto_update_interval_days": getattr(meta, "auto_update_interval_days", 15),
-                        "last_auto_checked_at": getattr(meta, "last_auto_checked_at", ""),
-                    })
+                    upsert_comic_index(
+                        {
+                            "source": meta.source,
+                            "source_id": meta.source_id,
+                            "display_id": meta.display_id,
+                            "title": meta.title,
+                            "authors_json": json.dumps(meta.authors, ensure_ascii=False),
+                            "works_json": json.dumps(meta.works, ensure_ascii=False),
+                            "actors_json": json.dumps(meta.actors, ensure_ascii=False),
+                            "tags_json": json.dumps(meta.tags, ensure_ascii=False),
+                            "chapter_titles_json": json.dumps([c.title for c in meta.chapters], ensure_ascii=False),
+                            "page_count": meta.page_count,
+                            "cached_pages": cached_pages,
+                            "cover_count": meta.cover_count,
+                            "cover_indices_json": json.dumps(meta.cover_indices, ensure_ascii=False),
+                            "views": str(meta.views),
+                            "likes": str(meta.likes),
+                            "uploaded_at": meta.published_at,
+                            "published_at": meta.published_at,
+                            "updated_at": meta.updated_at,
+                            "imported_at": meta.imported_at,
+                            "hidden_from_guest": 1 if getattr(meta, "hidden_from_guest", False) else 0,
+                            "mtime": mtime,
+                            "auto_update_interval_days": getattr(meta, "auto_update_interval_days", 15),
+                            "last_auto_checked_at": getattr(meta, "last_auto_checked_at", ""),
+                        }
+                    )
             else:
                 from ..db import purge_comic_db_records
+
                 purge_comic_db_records(source, source_id)
         except Exception:
             logger.exception("Failed to refresh comic index for %s/%s", source, source_id)
@@ -476,7 +473,9 @@ class ComicStoreBase:
                 meta.favorite = existing.favorite
                 meta.hidden_from_guest = existing.hidden_from_guest
                 meta.auto_update_interval_days = getattr(existing, "auto_update_interval_days", 15)
-                meta.last_auto_checked_at = getattr(meta, "last_auto_checked_at", "") or getattr(existing, "last_auto_checked_at", "")
+                meta.last_auto_checked_at = getattr(meta, "last_auto_checked_at", "") or getattr(
+                    existing, "last_auto_checked_at", ""
+                )
 
             # 完结识别自动关停（ADR 0029）：仅对默认 15 天生效，馆长自定义优先
             if getattr(meta, "auto_update_interval_days", 15) == 15 and meta.source != "local":
@@ -500,16 +499,17 @@ class ComicStoreBase:
                         target = self._chapter_page_path(meta, page)
                         page.cached = target.exists() and target.stat().st_size > 0
 
-                _write_json_atomic(remote_path, {
-                    "decode_version": CURRENT_DECODE_VERSION,
-                    "remote_pages": [p.model_dump() for p in fetched.remote_pages],
-                })
+                _write_json_atomic(
+                    remote_path,
+                    {
+                        "decode_version": CURRENT_DECODE_VERSION,
+                        "remote_pages": [p.model_dump() for p in fetched.remote_pages],
+                    },
+                )
                 _write_json_atomic(album_path, meta.model_dump())
                 self._finish_metadata_backup(backup_dir)
             except Exception:
-                self._rollback_metadata_backup(
-                    backup_dir, paths, meta.source, meta.source_id, moved
-                )
+                self._rollback_metadata_backup(backup_dir, paths, meta.source, meta.source_id, moved)
                 raise
             self._invalidate_cache(meta.source, meta.source_id)
             return meta
@@ -530,6 +530,7 @@ class ComicStoreBase:
                 with self._cache_guard:
                     self._meta_cache[(source, source_id)] = (mtime, meta_copy)
         from ..db import record_comic_auto_checked
+
         record_comic_auto_checked(source, source_id, checked_at)
 
     def save_auto_update(self, fetched: FetchedComic, checked_at: str) -> ComicMeta | None:
@@ -547,12 +548,20 @@ class ComicStoreBase:
             merged.pages = fetched.meta.pages
             merged.page_count = fetched.meta.page_count
             if fetched.meta.published_at and fetched.meta.published_at != "0":
-                if not merged.published_at or merged.published_at == "0" or fetched.meta.published_at < merged.published_at:
+                if (
+                    not merged.published_at
+                    or merged.published_at == "0"
+                    or fetched.meta.published_at < merged.published_at
+                ):
                     merged.published_at = fetched.meta.published_at
             if fetched.meta.updated_at and fetched.meta.updated_at != "0":
                 if not merged.updated_at or merged.updated_at == "0" or fetched.meta.updated_at > merged.updated_at:
                     merged.updated_at = fetched.meta.updated_at
-            if merged.published_at and merged.published_at != "0" and (not merged.updated_at or merged.updated_at == "0" or merged.published_at > merged.updated_at):
+            if (
+                merged.published_at
+                and merged.published_at != "0"
+                and (not merged.updated_at or merged.updated_at == "0" or merged.published_at > merged.updated_at)
+            ):
                 merged.updated_at = merged.published_at
             merged.last_auto_checked_at = checked_at
             fetched.meta = merged
@@ -585,11 +594,7 @@ class ComicStoreBase:
                 for page in meta.pages:
                     page.cached = self._chapter_page_path(meta, page).exists()
 
-            if (
-                not meta.chapters
-                and meta.pages
-                and any(page.chapter for page in meta.pages)
-            ):
+            if not meta.chapters and meta.pages and any(page.chapter for page in meta.pages):
                 raw_chapters = (meta.raw or {}).get("chapters") or []
                 if raw_chapters:
                     rebuilt: list[Chapter] = []
@@ -699,9 +704,7 @@ class ComicStoreBase:
                     pages = []
 
             if pages and any(not page.scramble_id for page in pages):
-                scramble_id = str(
-                    (meta.raw or {}).get("album", {}).get("scramble_id") or ""
-                )
+                scramble_id = str((meta.raw or {}).get("album", {}).get("scramble_id") or "")
                 for page in pages:
                     if not page.scramble_id:
                         page.scramble_id = scramble_id
@@ -761,6 +764,7 @@ class ComicStoreBase:
     def delete(self, source: str, source_id: str) -> bool:
         try:
             from ..jobs import cancel_job
+
             cancel_job(source, source_id)
         except Exception:
             pass
@@ -775,6 +779,7 @@ class ComicStoreBase:
             db_purged = False
             try:
                 from ..db import purge_comic_db_records
+
                 db_purged = bool(purge_comic_db_records(source, source_id))
             except Exception as e:
                 logger.exception("Failed to purge comic db records for %s/%s: %s", source, source_id, e)
@@ -787,7 +792,18 @@ class ComicStoreBase:
                 raise HTTPException(status_code=404, detail="漫画不存在")
             meta = meta.model_copy(deep=True)
 
-            for field in ("title", "authors", "works", "actors", "tags", "description", "uploader", "hidden_from_guest", "custom_pages", "auto_update_interval_days"):
+            for field in (
+                "title",
+                "authors",
+                "works",
+                "actors",
+                "tags",
+                "description",
+                "uploader",
+                "hidden_from_guest",
+                "custom_pages",
+                "auto_update_interval_days",
+            ):
                 if field in updates and updates[field] is not None:
                     setattr(meta, field, updates[field])
 
@@ -806,7 +822,7 @@ class ComicStoreBase:
                         elif val > max_p:
                             val = default_slot
                         valid_indices.append(val)
-                    except (ValueError, TypeError):
+                    except ValueError, TypeError:
                         valid_indices.append(default_slot)
                 meta.cover_indices = valid_indices[:4]
                 # Clean old covers so they get regenerated from the new indices

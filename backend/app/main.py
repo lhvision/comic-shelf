@@ -2,6 +2,7 @@
 
 Assembles modular routers, security middleware, and SPA static hosting.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -190,37 +191,44 @@ def sync_library_index(store: ComicStore) -> None:
                         store._invalidate_cache(source, source_id)
                         healed_persisted = True
                 except Exception as exc:
-                    logger.warning("Failed to persist healed imported_at in sync_library_index for %s/%s: %s", source, source_id, exc)
+                    logger.warning(
+                        "Failed to persist healed imported_at in sync_library_index for %s/%s: %s",
+                        source,
+                        source_id,
+                        exc,
+                    )
 
                 if healed_persisted:
                     continue
 
                 cached_pages = store.cached_page_count(meta)
-                upsert_comic_index({
-                    "source": meta.source,
-                    "source_id": meta.source_id,
-                    "display_id": meta.display_id,
-                    "title": meta.title,
-                    "authors_json": json.dumps(meta.authors, ensure_ascii=False),
-                    "works_json": json.dumps(meta.works, ensure_ascii=False),
-                    "actors_json": json.dumps(meta.actors, ensure_ascii=False),
-                    "tags_json": json.dumps(meta.tags, ensure_ascii=False),
-                    "chapter_titles_json": json.dumps([c.title for c in meta.chapters], ensure_ascii=False),
-                    "page_count": meta.page_count,
-                    "cached_pages": cached_pages,
-                    "cover_count": meta.cover_count,
-                    "cover_indices_json": json.dumps(meta.cover_indices, ensure_ascii=False),
-                    "views": str(meta.views),
-                    "likes": str(meta.likes),
-                    "uploaded_at": meta.published_at,
-                    "published_at": meta.published_at,
-                    "updated_at": meta.updated_at,
-                    "imported_at": meta.imported_at,
-                    "hidden_from_guest": 1 if getattr(meta, "hidden_from_guest", False) else 0,
-                    "mtime": mtime,
-                    "auto_update_interval_days": getattr(meta, "auto_update_interval_days", 15),
-                    "last_auto_checked_at": getattr(meta, "last_auto_checked_at", ""),
-                })
+                upsert_comic_index(
+                    {
+                        "source": meta.source,
+                        "source_id": meta.source_id,
+                        "display_id": meta.display_id,
+                        "title": meta.title,
+                        "authors_json": json.dumps(meta.authors, ensure_ascii=False),
+                        "works_json": json.dumps(meta.works, ensure_ascii=False),
+                        "actors_json": json.dumps(meta.actors, ensure_ascii=False),
+                        "tags_json": json.dumps(meta.tags, ensure_ascii=False),
+                        "chapter_titles_json": json.dumps([c.title for c in meta.chapters], ensure_ascii=False),
+                        "page_count": meta.page_count,
+                        "cached_pages": cached_pages,
+                        "cover_count": meta.cover_count,
+                        "cover_indices_json": json.dumps(meta.cover_indices, ensure_ascii=False),
+                        "views": str(meta.views),
+                        "likes": str(meta.likes),
+                        "uploaded_at": meta.published_at,
+                        "published_at": meta.published_at,
+                        "updated_at": meta.updated_at,
+                        "imported_at": meta.imported_at,
+                        "hidden_from_guest": 1 if getattr(meta, "hidden_from_guest", False) else 0,
+                        "mtime": mtime,
+                        "auto_update_interval_days": getattr(meta, "auto_update_interval_days", 15),
+                        "last_auto_checked_at": getattr(meta, "last_auto_checked_at", ""),
+                    }
+                )
 
         for source, source_id in set(existing_mtimes.keys()) - disk_keys:
             purge_comic_db_records(source, source_id)
@@ -304,13 +312,15 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-PUBLIC_AUTH_PATHS = frozenset({
-    "/api/health",
-    "/api/auth/status",
-    "/api/auth/login",
-    "/api/auth/claim",
-    "/api/auth/logout",
-})
+PUBLIC_AUTH_PATHS = frozenset(
+    {
+        "/api/health",
+        "/api/auth/status",
+        "/api/auth/login",
+        "/api/auth/claim",
+        "/api/auth/logout",
+    }
+)
 
 
 def _unauthorized(request: Request, detail: str) -> JSONResponse:
@@ -364,7 +374,7 @@ async def auth_and_security_middleware(request: Request, call_next):
                 if _uid.startswith("guest:"):
                     try:
                         rate_key = int(_uid.split(":", 1)[1])
-                    except (ValueError, IndexError):
+                    except ValueError, IndexError:
                         pass
                 elif _uid.startswith("direct:"):
                     client_ip = get_client_ip(request)

@@ -1,4 +1,5 @@
 """Library browsing, indexing, faceted search, discovery ranking, comic imports, and metadata management router."""
+
 from __future__ import annotations
 
 from collections import OrderedDict
@@ -69,10 +70,11 @@ def _row_to_library_summary(row: dict[str, Any]) -> LibrarySummary:
     v_tag = ""
     if updated_at:
         v_tag = f"?v={hashlib.md5(updated_at.encode()).hexdigest()[:8]}"
-    cover_paths = [
-        f"/api/library/{source}/{source_id}/covers/{index}/file.webp{v_tag}"
-        for index in range(1, max(1, count) + 1)
-    ] if page_count > 0 else []
+    cover_paths = (
+        [f"/api/library/{source}/{source_id}/covers/{index}/file.webp{v_tag}" for index in range(1, max(1, count) + 1)]
+        if page_count > 0
+        else []
+    )
 
     try:
         authors = json.loads(row["authors_json"])
@@ -132,7 +134,11 @@ def library(
     favorite: bool = Query(default=False, description="只看喜欢"),
     source: str | None = Query(default=None, description="来源过滤 (jm, picacg, local)"),
     q: str | None = Query(default=None, description="标题/作者/标签过滤"),
-    scope: str = Query(default="all", pattern="^(all|title_id|id|author|tag)$", description="检索范围限制 (all, title_id, id, author, tag)"),
+    scope: str = Query(
+        default="all",
+        pattern="^(all|title_id|id|author|tag)$",
+        description="检索范围限制 (all, title_id, id, author, tag)",
+    ),
     tag: str | None = Query(default=None, description="单标签过滤"),
     tags: str | None = Query(default=None, description="逗号分隔的多标签交集过滤（最多支持 5 个）"),
     sort: str = Query(default="recent", pattern="^(recent|title|pages|cached)$", description="排序方式"),
@@ -473,11 +479,7 @@ def import_comic(req: ImportRequest) -> ImportResult:
         {"action": "import", "source": req.source, "source_id": source_id, "timestamp": time.time()},
     )
 
-    cover_count = (
-        fetched.meta.cover_count
-        if req.prefetch_all
-        else (req.prefetch_covers or fetched.meta.cover_count)
-    )
+    cover_count = fetched.meta.cover_count if req.prefetch_all else (req.prefetch_covers or fetched.meta.cover_count)
     start_job(req.source, source_id, lambda job: _prefetch_worker(job, fetched, cover_count, req.prefetch_all))
 
     total_ms = int((time.perf_counter() - t_start) * 1000)

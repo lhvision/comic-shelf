@@ -7,6 +7,7 @@ Mapping data is decoupled into a compressed binary asset (`app/assets/zh_tables.
 loaded lazily into memory upon first call, ensuring instant module import (<1ms) and
 preventing IDE syntax highlighting/LSP lag from giant raw string literals.
 """
+
 from __future__ import annotations
 
 import threading
@@ -31,9 +32,7 @@ def _load_tables() -> tuple[dict[int, int], dict[int, int]]:
             return _S2T_TABLE, _T2S_TABLE
 
         if not _ASSET_PATH.exists():
-            raise FileNotFoundError(
-                f"Chinese conversion tables asset not found at {_ASSET_PATH}."
-            )
+            raise FileNotFoundError(f"Chinese conversion tables asset not found at {_ASSET_PATH}.")
 
         raw_data = _ASSET_PATH.read_bytes()
         decompressed = zlib.decompress(raw_data).decode("utf-8")

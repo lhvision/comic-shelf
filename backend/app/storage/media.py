@@ -1,4 +1,5 @@
 """Media mixin handling image downloading, decoding migration, Pillow WebP/JPEG scaling, covers, and thumbnails."""
+
 from __future__ import annotations
 
 import io
@@ -58,9 +59,7 @@ class ComicStoreMediaMixin:
         else:
             decode_state = data.get("decode_state") or {}
 
-        decoded: set[int] = {
-            int(index) for index in decode_state.get("decoded", [])
-        }
+        decoded: set[int] = {int(index) for index in decode_state.get("decoded", [])}
 
         pages_dir = self.pages_dir(meta.source, meta.source_id)
         for page in pages:
@@ -132,6 +131,7 @@ class ComicStoreMediaMixin:
                 self._fetched_cache.pop((meta.source, meta.source_id), None)
             try:
                 from ..db import update_comic_cached_pages
+
                 update_comic_cached_pages(meta.source, meta.source_id, self.cached_page_count(latest))
             except Exception:
                 pass
@@ -146,10 +146,13 @@ class ComicStoreMediaMixin:
         directory = self.comic_dir(source, source_id).stat()
         remote_path = self.remote_path(source, source_id)
         remote = remote_path.stat() if remote_path.exists() else None
-        return (directory.st_dev, directory.st_ino,
-                remote.st_ino if remote else 0,
-                remote.st_mtime_ns if remote else 0,
-                remote.st_size if remote else 0)
+        return (
+            directory.st_dev,
+            directory.st_ino,
+            remote.st_ino if remote else 0,
+            remote.st_mtime_ns if remote else 0,
+            remote.st_size if remote else 0,
+        )
 
     def ensure_page(self: Any, fetched: FetchedComic, index: int) -> Path:
         """Download a missing page and commit it only while its archive is current.
@@ -186,9 +189,7 @@ class ComicStoreMediaMixin:
                     # A queued job may already contain outdated URLs before it starts.
                     current_bundle = self.load_fetched(meta.source, meta.source_id)
                     if current_bundle and current_bundle.remote_pages:
-                        remote_page = next(
-                            (p for p in current_bundle.remote_pages if p.index == index), None
-                        )
+                        remote_page = next((p for p in current_bundle.remote_pages if p.index == index), None)
                         if remote_page is None or (
                             remote_page.url,
                             remote_page.file,
@@ -207,6 +208,7 @@ class ComicStoreMediaMixin:
                 if target.exists():
                     return target
                 from ..providers.registry import get_provider
+
                 data = get_provider(meta.source).download_page(fetched, page)
 
             # No page lock may be held here: chapter edits acquire comic then page locks.
@@ -215,8 +217,7 @@ class ComicStoreMediaMixin:
                 if latest is None or revision != self._download_revision(meta.source, meta.source_id):
                     raise FileNotFoundError("漫画画卷已变更，取消旧下载")
                 current = next((p for p in latest.pages if p.index == index), None)
-                if (latest.custom_pages or current is None
-                        or (current.file, current.chapter) != page_identity):
+                if latest.custom_pages or current is None or (current.file, current.chapter) != page_identity:
                     raise FileNotFoundError("画页已变更，取消旧下载")
                 target = self.page_path(latest, index)
                 if not target.exists():
@@ -299,9 +300,7 @@ class ComicStoreMediaMixin:
                 if ratio < 1:
                     size = (target_width, max(1, round(img.height * ratio)))
                     resample_filter = (
-                        Image.Resampling.BILINEAR
-                        if target_width <= COVER_THUMB_WIDTH
-                        else Image.Resampling.LANCZOS
+                        Image.Resampling.BILINEAR if target_width <= COVER_THUMB_WIDTH else Image.Resampling.LANCZOS
                     )
                     img = img.resize(size, resample_filter)
             target.parent.mkdir(parents=True, exist_ok=True)
@@ -434,7 +433,11 @@ class ComicStoreMediaMixin:
         )
 
     def ensure_chapter_cover(
-        self: Any, meta: ComicMeta, fetched: FetchedComic | None = None, chapter: Chapter | None = None, width: int | None = None
+        self: Any,
+        meta: ComicMeta,
+        fetched: FetchedComic | None = None,
+        chapter: Chapter | None = None,
+        width: int | None = None,
     ) -> Path:
         """JPEG cover for a chapter = its first page, pooled under covers/chapters/."""
         if chapter is None:
@@ -450,7 +453,11 @@ class ComicStoreMediaMixin:
         )
 
     def ensure_webp_chapter_cover(
-        self: Any, meta: ComicMeta, fetched: FetchedComic | None = None, chapter: Chapter | None = None, width: int | None = None
+        self: Any,
+        meta: ComicMeta,
+        fetched: FetchedComic | None = None,
+        chapter: Chapter | None = None,
+        width: int | None = None,
     ) -> Path:
         """Ensure a WebP chapter cover/thumbnail exists with fast-path downscaling and caching."""
         if chapter is None:

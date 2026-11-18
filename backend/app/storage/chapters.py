@@ -1,4 +1,5 @@
 """Chapter mixin managing multi-chapter directory migrations, title editing, and deletion."""
+
 from __future__ import annotations
 
 import datetime
@@ -144,9 +145,7 @@ class ComicStoreChapterMixin:
                 )
                 self._finish_metadata_backup(backup_dir)
             except Exception:
-                self._rollback_metadata_backup(
-                    backup_dir, (remote_path, album_path), source, source_id
-                )
+                self._rollback_metadata_backup(backup_dir, (remote_path, album_path), source, source_id)
                 raise
             self._invalidate_cache(source, source_id)
             if chap_dir.exists():

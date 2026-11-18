@@ -1,4 +1,5 @@
 """Local comic mixin handling local album creation, server-path imports, page appending, and replacements."""
+
 from __future__ import annotations
 
 import datetime
@@ -276,7 +277,9 @@ class ComicStoreLocalMixin:
                 if total_pages == 0:
                     raise HTTPException(status_code=400, detail=f"PDF 中未发现有效画卷内容：{pdf_path.name}")
 
-                doc_title = req.title.strip() if req.title and req.title.strip() else (pdf_meta.get("title") or pdf_path.stem)
+                doc_title = (
+                    req.title.strip() if req.title and req.title.strip() else (pdf_meta.get("title") or pdf_path.stem)
+                )
 
                 if getattr(req, "chapters", None) and len(req.chapters) > 0:
                     chap_specs = [c.model_dump() if hasattr(c, "model_dump") else dict(c) for c in req.chapters]
@@ -312,8 +315,12 @@ class ComicStoreLocalMixin:
                             dest_path = chap_pages_dir / dest_name
                             shutil.move(str(src_file), str(dest_path))
 
-                            pages.append(PageRecord(index=global_idx, file=dest_name, ext=ext, cached=True, chapter=chap_id))
-                            remote_pages.append(RemotePage(index=global_idx, url="", file=dest_name, ext=ext, chapter=chap_id))
+                            pages.append(
+                                PageRecord(index=global_idx, file=dest_name, ext=ext, cached=True, chapter=chap_id)
+                            )
+                            remote_pages.append(
+                                RemotePage(index=global_idx, url="", file=dest_name, ext=ext, chapter=chap_id)
+                            )
                             global_idx += 1
 
                         chapters.append(
@@ -338,7 +345,9 @@ class ComicStoreLocalMixin:
 
                 now_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                 now_iso = datetime.datetime.now(datetime.timezone.utc).isoformat()
-                author_val = req.authors if req.authors else ([pdf_meta["author"]] if pdf_meta.get("author") else ["自制"])
+                author_val = (
+                    req.authors if req.authors else ([pdf_meta["author"]] if pdf_meta.get("author") else ["自制"])
+                )
 
                 meta = ComicMeta(
                     source="local",
@@ -592,8 +601,12 @@ class ComicStoreLocalMixin:
                             dest_path = chap_pages_dir / dest_name
                             shutil.move(str(src_file), str(dest_path))
 
-                            pages.append(PageRecord(index=global_idx, file=dest_name, ext=ext, cached=True, chapter=chap_id))
-                            remote_pages.append(RemotePage(index=global_idx, url="", file=dest_name, ext=ext, chapter=chap_id))
+                            pages.append(
+                                PageRecord(index=global_idx, file=dest_name, ext=ext, cached=True, chapter=chap_id)
+                            )
+                            remote_pages.append(
+                                RemotePage(index=global_idx, url="", file=dest_name, ext=ext, chapter=chap_id)
+                            )
                             global_idx += 1
 
                         chapters.append(
@@ -619,9 +632,7 @@ class ComicStoreLocalMixin:
 
                 self._replace_live_with_staging(backup_dir, staging_work_dir, target_pages_dir)
             except Exception:
-                self._rollback_metadata_backup(
-                    backup_dir, (remote_path, album_path), "local", source_id
-                )
+                self._rollback_metadata_backup(backup_dir, (remote_path, album_path), "local", source_id)
                 shutil.rmtree(staging_work_dir, ignore_errors=True)
                 raise
             finally:
@@ -718,8 +729,12 @@ class ComicStoreLocalMixin:
                         dest_path = chap_pages_dir / dest_name
                         self._link_or_copy_file(img_file, dest_path)
 
-                        pages.append(PageRecord(index=global_idx, file=dest_name, ext=ext, cached=True, chapter=chap_id))
-                        remote_pages.append(RemotePage(index=global_idx, url="", file=dest_name, ext=ext, chapter=chap_id))
+                        pages.append(
+                            PageRecord(index=global_idx, file=dest_name, ext=ext, cached=True, chapter=chap_id)
+                        )
+                        remote_pages.append(
+                            RemotePage(index=global_idx, url="", file=dest_name, ext=ext, chapter=chap_id)
+                        )
                         global_idx += 1
 
                     chapters.append(
@@ -735,7 +750,9 @@ class ComicStoreLocalMixin:
                 img_files = [f for f in raw_path.iterdir() if f.is_file() and f.suffix.lower() in IMAGE_EXTS]
                 img_files.sort(key=lambda f: self._natural_key(f.name))
                 if not img_files:
-                    raise HTTPException(status_code=400, detail=f"目录中未找到支持的图片文件（支持 {', '.join(IMAGE_EXTS)}）")
+                    raise HTTPException(
+                        status_code=400, detail=f"目录中未找到支持的图片文件（支持 {', '.join(IMAGE_EXTS)}）"
+                    )
 
                 composite_groups = self._group_by_composite_chapter_pattern(
                     [(f.name, f.suffix.lower(), f) for f in img_files]
@@ -754,8 +771,12 @@ class ComicStoreLocalMixin:
                             dest_path = chap_pages_dir / dest_name
                             self._link_or_copy_file(img_file, dest_path)
 
-                            pages.append(PageRecord(index=global_idx, file=dest_name, ext=ext, cached=True, chapter=chap_id))
-                            remote_pages.append(RemotePage(index=global_idx, url="", file=dest_name, ext=ext, chapter=chap_id))
+                            pages.append(
+                                PageRecord(index=global_idx, file=dest_name, ext=ext, cached=True, chapter=chap_id)
+                            )
+                            remote_pages.append(
+                                RemotePage(index=global_idx, url="", file=dest_name, ext=ext, chapter=chap_id)
+                            )
                             global_idx += 1
 
                         chapters.append(
@@ -871,7 +892,9 @@ class ComicStoreLocalMixin:
 
                 cur_idx = meta.page_count + local_i
                 meta.pages.append(PageRecord(index=cur_idx, file=dest_name, ext=ext, cached=True, chapter=new_chap_id))
-                fetched.remote_pages.append(RemotePage(index=cur_idx, url="", file=dest_name, ext=ext, chapter=new_chap_id))
+                fetched.remote_pages.append(
+                    RemotePage(index=cur_idx, url="", file=dest_name, ext=ext, chapter=new_chap_id)
+                )
 
             meta.page_count += len(chap_files)
             new_chap = Chapter(
@@ -963,7 +986,8 @@ class ComicStoreLocalMixin:
                             items.append((f_path.name, p_ext, f_path))
                     elif raw_path.is_dir():
                         pdf_files = [
-                            f for f in raw_path.iterdir()
+                            f
+                            for f in raw_path.iterdir()
                             if f.is_file() and is_pdf_file(f) and _is_path_allowed(f.resolve())
                         ]
                         if pdf_files:
@@ -976,14 +1000,17 @@ class ComicStoreLocalMixin:
                                     items.append((f_path.name, p_ext, f_path))
                         else:
                             img_files = [
-                                f for f in raw_path.iterdir()
+                                f
+                                for f in raw_path.iterdir()
                                 if f.is_file() and f.suffix.lower() in IMAGE_EXTS and _is_path_allowed(f.resolve())
                             ]
                             img_files.sort(key=lambda f: self._natural_key(f.name))
                             for f in img_files:
                                 items.append((f.name, f.suffix.lower(), f))
                     else:
-                        raise HTTPException(status_code=400, detail=f"指定路径不是有效的图片/PDF文件或目录：{server_path}")
+                        raise HTTPException(
+                            status_code=400, detail=f"指定路径不是有效的图片/PDF文件或目录：{server_path}"
+                        )
 
                 if not items:
                     raise HTTPException(status_code=400, detail="未提供有效的图片或 PDF 画卷文件")
@@ -1037,12 +1064,20 @@ class ComicStoreLocalMixin:
                                     dest_path.write_bytes(data_to_write)
 
                                 cur_idx = meta.page_count + local_i
-                                meta.pages.append(PageRecord(index=cur_idx, file=dest_name, ext=ext, cached=True, chapter=new_chap_id))
-                                fetched.remote_pages.append(RemotePage(index=cur_idx, url="", file=dest_name, ext=ext, chapter=new_chap_id))
+                                meta.pages.append(
+                                    PageRecord(index=cur_idx, file=dest_name, ext=ext, cached=True, chapter=new_chap_id)
+                                )
+                                fetched.remote_pages.append(
+                                    RemotePage(index=cur_idx, url="", file=dest_name, ext=ext, chapter=new_chap_id)
+                                )
 
                             meta.page_count += len(group_items)
                             chap_title = f"第 {new_chap_idx} 话"
-                            if c_order == 0 and new_chapter_title.strip() and f"第 {new_chap_idx}" not in new_chapter_title:
+                            if (
+                                c_order == 0
+                                and new_chapter_title.strip()
+                                and f"第 {new_chap_idx}" not in new_chapter_title
+                            ):
                                 chap_title = new_chapter_title.strip()
                             new_chap = Chapter(
                                 id=new_chap_id,
@@ -1073,8 +1108,12 @@ class ComicStoreLocalMixin:
                                 dest_path.write_bytes(data_or_path)
 
                             cur_idx = meta.page_count + local_i
-                            meta.pages.append(PageRecord(index=cur_idx, file=dest_name, ext=ext, cached=True, chapter=new_chap_id))
-                            fetched.remote_pages.append(RemotePage(index=cur_idx, url="", file=dest_name, ext=ext, chapter=new_chap_id))
+                            meta.pages.append(
+                                PageRecord(index=cur_idx, file=dest_name, ext=ext, cached=True, chapter=new_chap_id)
+                            )
+                            fetched.remote_pages.append(
+                                RemotePage(index=cur_idx, url="", file=dest_name, ext=ext, chapter=new_chap_id)
+                            )
 
                         meta.page_count += len(items)
                         new_chap = Chapter(
@@ -1111,8 +1150,12 @@ class ComicStoreLocalMixin:
                     if not meta.chapters:
                         for local_i, (dest_name, ext) in enumerate(new_chap_pages, start=1):
                             cur_idx = offset + local_i
-                            meta.pages.append(PageRecord(index=cur_idx, file=dest_name, ext=ext, cached=True, chapter=""))
-                            fetched.remote_pages.append(RemotePage(index=cur_idx, url="", file=dest_name, ext=ext, chapter=""))
+                            meta.pages.append(
+                                PageRecord(index=cur_idx, file=dest_name, ext=ext, cached=True, chapter="")
+                            )
+                            fetched.remote_pages.append(
+                                RemotePage(index=cur_idx, url="", file=dest_name, ext=ext, chapter="")
+                            )
                         meta.page_count = len(meta.pages)
                     else:
                         chap_page_map: dict[str, list[PageRecord]] = {}
@@ -1249,18 +1292,19 @@ class ComicStoreLocalMixin:
 
             elif raw_path.is_dir():
                 pdf_files = [
-                    f for f in raw_path.iterdir()
-                    if f.is_file() and is_pdf_file(f) and _is_path_allowed(f.resolve())
+                    f for f in raw_path.iterdir() if f.is_file() and is_pdf_file(f) and _is_path_allowed(f.resolve())
                 ]
                 candidate_subdirs = [
-                    d for d in raw_path.iterdir()
+                    d
+                    for d in raw_path.iterdir()
                     if d.is_dir() and not d.name.startswith(".") and _is_path_allowed(d.resolve())
                 ]
                 candidate_subdirs.sort(key=lambda d: self._natural_key(d.name))
                 valid_chapter_subdirs: list[tuple[Path, list[Path]]] = []
                 for d in candidate_subdirs:
                     sub_imgs = [
-                        f for f in d.iterdir()
+                        f
+                        for f in d.iterdir()
                         if f.is_file() and f.suffix.lower() in IMAGE_EXTS and _is_path_allowed(f.resolve())
                     ]
                     if sub_imgs:
@@ -1281,7 +1325,8 @@ class ComicStoreLocalMixin:
                             valid_items.append((f_path.name, p_ext, f_path))
                     else:
                         img_files = [
-                            f for f in raw_path.iterdir()
+                            f
+                            for f in raw_path.iterdir()
                             if f.is_file() and f.suffix.lower() in IMAGE_EXTS and _is_path_allowed(f.resolve())
                         ]
                         img_files.sort(key=lambda f: self._natural_key(f.name))
@@ -1314,7 +1359,9 @@ class ComicStoreLocalMixin:
                                 extracted_pages, _ = unpack_pdf(pdf_f, pdf_staging)
                                 pdf_temp_dirs.append(pdf_staging)
                                 matched_ch = existing_chaps[chap_idx - 1] if chap_idx <= len(existing_chaps) else None
-                                chap_title = (matched_ch.title if matched_ch and matched_ch.title else pdf_f.stem) or f"第 {chap_idx} 话"
+                                chap_title = (
+                                    matched_ch.title if matched_ch and matched_ch.title else pdf_f.stem
+                                ) or f"第 {chap_idx} 话"
                                 raw_id = matched_ch.id if matched_ch else f"c{chap_idx}"
                                 chap_id = _alloc_unique_id(raw_id, chap_idx, used_ids)
                                 chap_items = [(f_path.name, p_ext, f_path) for _pno, f_path, p_ext in extracted_pages]
@@ -1325,14 +1372,17 @@ class ComicStoreLocalMixin:
                         used_ids: set[str] = set()
                         for chap_idx, (d, sub_imgs) in enumerate(valid_chapter_subdirs, start=1):
                             matched_ch = existing_chaps[chap_idx - 1] if chap_idx <= len(existing_chaps) else None
-                            chap_title = (matched_ch.title if matched_ch and matched_ch.title else d.name) or f"第 {chap_idx} 话"
+                            chap_title = (
+                                matched_ch.title if matched_ch and matched_ch.title else d.name
+                            ) or f"第 {chap_idx} 话"
                             raw_id = matched_ch.id if matched_ch else d.name
                             chap_id = _alloc_unique_id(raw_id, chap_idx, used_ids)
                             chap_items = [(f.name, f.suffix.lower(), f) for f in sub_imgs]
                             chapter_groups.append((chap_id, chap_title, chap_items))
                     else:
                         img_files = [
-                            f for f in raw_path.iterdir()
+                            f
+                            for f in raw_path.iterdir()
                             if f.is_file() and f.suffix.lower() in IMAGE_EXTS and _is_path_allowed(f.resolve())
                         ]
                         img_files.sort(key=lambda f: self._natural_key(f.name))
@@ -1422,9 +1472,7 @@ class ComicStoreLocalMixin:
                         installed = True
                     except Exception:
                         if not installed:
-                            self._rollback_metadata_backup(
-                                backup_dir, (remote_path, album_path), source, source_id
-                            )
+                            self._rollback_metadata_backup(backup_dir, (remote_path, album_path), source, source_id)
                         shutil.rmtree(staging_dir, ignore_errors=True)
                         raise
 
@@ -1493,7 +1541,11 @@ class ComicStoreLocalMixin:
                             for chap_idx, chap_num in enumerate(sorted_chap_nums, start=1):
                                 matched_ch = None
                                 for old_c in existing_chaps:
-                                    if old_c.index == chap_num or old_c.id == str(chap_num) or old_c.id == f"c{chap_num}":
+                                    if (
+                                        old_c.index == chap_num
+                                        or old_c.id == str(chap_num)
+                                        or old_c.id == f"c{chap_num}"
+                                    ):
                                         matched_ch = old_c
                                         break
                                 if not matched_ch and chap_idx <= len(existing_chaps):
@@ -1523,7 +1575,9 @@ class ComicStoreLocalMixin:
                                     else:
                                         dest_path.write_bytes(content_or_path)
                                     rebuilt_pages.append(
-                                        PageRecord(index=global_idx, file=dest_name, ext=ext, cached=True, chapter=chap_id)
+                                        PageRecord(
+                                            index=global_idx, file=dest_name, ext=ext, cached=True, chapter=chap_id
+                                        )
                                     )
                                     rebuilt_remote.append(
                                         RemotePage(index=global_idx, url="", file=dest_name, ext=ext, chapter=chap_id)
@@ -1573,9 +1627,7 @@ class ComicStoreLocalMixin:
                         installed = True
                     except Exception:
                         if not installed:
-                            self._rollback_metadata_backup(
-                                backup_dir, (remote_path, album_path), source, source_id
-                            )
+                            self._rollback_metadata_backup(backup_dir, (remote_path, album_path), source, source_id)
                         shutil.rmtree(staging_dir, ignore_errors=True)
                         raise
 

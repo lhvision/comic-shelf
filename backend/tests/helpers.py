@@ -1,4 +1,5 @@
 """Shared test helpers, fixtures, and mock builders for backend tests."""
+
 from __future__ import annotations
 
 import io

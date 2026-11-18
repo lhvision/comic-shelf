@@ -5,6 +5,7 @@ Verifies:
 2. Clean importability of all backend modules
 3. Undefined variables and AST scope reference integrity
 """
+
 from __future__ import annotations
 
 import ast
@@ -34,9 +35,7 @@ class ScopeVisitor(ast.NodeVisitor):
     def __init__(self, filename: str) -> None:
         self.filename = filename
         self.errors: list[str] = []
-        self.scopes: list[set[str]] = [
-            set(dir(builtins)) | IMPLICIT_GLOBALS
-        ]
+        self.scopes: list[set[str]] = [set(dir(builtins)) | IMPLICIT_GLOBALS]
 
     def visit_Import(self, node: ast.Import) -> None:
         for a in node.names:
@@ -169,9 +168,7 @@ class ScopeVisitor(ast.NodeVisitor):
         if node.value:
             self.visit(node.value)
 
-    def _visit_comprehension(
-        self, node: ast.ListComp | ast.SetComp | ast.DictComp | ast.GeneratorExp
-    ) -> None:
+    def _visit_comprehension(self, node: ast.ListComp | ast.SetComp | ast.DictComp | ast.GeneratorExp) -> None:
         comp_scope = set()
         for gen in node.generators:
             self.visit(gen.iter)

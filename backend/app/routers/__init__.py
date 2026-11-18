@@ -1,4 +1,5 @@
 """Modular API Routers for Paper Room backend."""
+
 from __future__ import annotations
 
 from .auth import router as auth_router
@@ -20,4 +21,3 @@ __all__ = [
     "search_router",
     "system_router",
 ]
-

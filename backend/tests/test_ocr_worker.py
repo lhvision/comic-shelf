@@ -175,6 +175,7 @@ class TestOCRWorker(unittest.TestCase):
     def test_is_valid_ocr_sidecar(self):
         """测试伴生文件合法性与脏缓存自愈判定"""
         import tempfile
+
         with tempfile.TemporaryDirectory() as tmpdir:
             tmp = Path(tmpdir)
             valid_file = tmp / "valid.ocr.json"
@@ -188,7 +189,7 @@ class TestOCRWorker(unittest.TestCase):
 
             # 空文件视为非法脏缓存
             empty_file = tmp / "empty.ocr.json"
-            empty_file.write_text('', encoding="utf-8")
+            empty_file.write_text("", encoding="utf-8")
             self.assertFalse(is_valid_ocr_sidecar(empty_file))
 
             # 不存在的文件
@@ -206,7 +207,9 @@ class TestGPURuntime(unittest.TestCase):
         from unittest import mock
 
         def part(name):
-            providers = ["CPUExecutionProvider"] if name == cpu_part else ["CUDAExecutionProvider", "CPUExecutionProvider"]
+            providers = (
+                ["CPUExecutionProvider"] if name == cpu_part else ["CUDAExecutionProvider", "CPUExecutionProvider"]
+            )
             return SimpleNamespace(session=SimpleNamespace(session=SimpleNamespace(get_providers=lambda: providers)))
 
         class Fake:

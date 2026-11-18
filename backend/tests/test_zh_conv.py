@@ -106,10 +106,7 @@ def test_astral_plane_and_concurrency():
         return to_traditional(text), to_simplified(text)
 
     with concurrent.futures.ThreadPoolExecutor(max_workers=8) as executor:
-        futures = [
-            executor.submit(worker, f"测试文本_{i}_最后波纹")
-            for i in range(50)
-        ]
+        futures = [executor.submit(worker, f"测试文本_{i}_最后波纹") for i in range(50)]
         results = [f.result() for f in futures]
 
     assert len(results) == 50

@@ -1,4 +1,5 @@
 """Local comic creation, server directory import, file uploads, page appending and replacement router."""
+
 from __future__ import annotations
 
 import asyncio

@@ -1,4 +1,5 @@
 """Shared display formatting helpers used by providers and storage."""
+
 from __future__ import annotations
 
 import re
@@ -11,7 +12,7 @@ def format_count(val: object) -> str:
         return ""
     try:
         n = int(str(val).replace(",", "").strip())
-    except (ValueError, TypeError):
+    except ValueError, TypeError:
         return str(val).strip()
 
     if n < 0:
@@ -79,7 +80,15 @@ def normalize_title(title: str) -> str:
 
 
 COMPLETION_TAGS = {
-    "完结", "完結", "已完结", "已完結", "全一话", "全一話", "end", "fin", "completed",
+    "完结",
+    "完結",
+    "已完结",
+    "已完結",
+    "全一话",
+    "全一話",
+    "end",
+    "fin",
+    "completed",
 }
 
 COMPLETION_TITLE_PATTERN = re.compile(
@@ -114,4 +123,3 @@ def is_comic_completed(
             return True
 
     return False
-

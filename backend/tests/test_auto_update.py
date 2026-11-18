@@ -1,4 +1,5 @@
 """Unit tests for multi-chapter auto-update engine and curator metadata protection (ADR 0029)."""
+
 import os
 import shutil
 import sys
@@ -64,37 +65,45 @@ class TestAutoUpdateEngine(unittest.TestCase):
 
     def test_get_comics_due_for_auto_update_filtering(self):
         # 1. Local comic -> should be excluded
-        upsert_comic_index(make_comic_index_item(
-            source="local",
-            source_id="loc1",
-            chapter_titles_json='["话1", "话2"]',
-            auto_update_interval_days=15,
-        ))
+        upsert_comic_index(
+            make_comic_index_item(
+                source="local",
+                source_id="loc1",
+                chapter_titles_json='["话1", "话2"]',
+                auto_update_interval_days=15,
+            )
+        )
 
         # 2. Single chapter remote -> should be excluded
-        upsert_comic_index(make_comic_index_item(
-            source="jm",
-            source_id="single1",
-            chapter_titles_json='["单话"]',
-            auto_update_interval_days=15,
-        ))
+        upsert_comic_index(
+            make_comic_index_item(
+                source="jm",
+                source_id="single1",
+                chapter_titles_json='["单话"]',
+                auto_update_interval_days=15,
+            )
+        )
 
         # 3. Multi-chapter remote with auto update disabled (0) -> excluded
-        upsert_comic_index(make_comic_index_item(
-            source="jm",
-            source_id="disabled1",
-            chapter_titles_json='["话1", "话2"]',
-            auto_update_interval_days=0,
-        ))
+        upsert_comic_index(
+            make_comic_index_item(
+                source="jm",
+                source_id="disabled1",
+                chapter_titles_json='["话1", "话2"]',
+                auto_update_interval_days=0,
+            )
+        )
 
         # 4. Multi-chapter remote with auto update enabled (15 days), never checked -> INCLUDED
-        upsert_comic_index(make_comic_index_item(
-            source="jm",
-            source_id="due1",
-            chapter_titles_json='["话1", "话2"]',
-            auto_update_interval_days=15,
-            last_auto_checked_at="",
-        ))
+        upsert_comic_index(
+            make_comic_index_item(
+                source="jm",
+                source_id="due1",
+                chapter_titles_json='["话1", "话2"]',
+                auto_update_interval_days=15,
+                last_auto_checked_at="",
+            )
+        )
 
         candidates = get_comics_due_for_auto_update(max_count=10)
         self.assertEqual(len(candidates), 1)
@@ -214,9 +223,7 @@ class TestAutoUpdateEngine(unittest.TestCase):
         self.store.save_fetched(fetched)
 
         # Provider returns 3 chapters, but with raw remote title/tags
-        new_chapters = list(chapters) + [
-            Chapter(id="c3", index=3, title="第 3 话", page_count=2, start=5)
-        ]
+        new_chapters = list(chapters) + [Chapter(id="c3", index=3, title="第 3 话", page_count=2, start=5)]
         new_pages = list(pages) + [
             PageRecord(index=5, file="00001.webp", ext=".webp", cached=False, chapter="c3"),
             PageRecord(index=6, file="00002.webp", ext=".webp", cached=False, chapter="c3"),
@@ -237,14 +244,17 @@ class TestAutoUpdateEngine(unittest.TestCase):
         mock_provider = MagicMock()
         mock_provider.fetch.return_value = FetchedComic(
             meta=provider_meta,
-            remote_pages=fetched.remote_pages + [
+            remote_pages=fetched.remote_pages
+            + [
                 RemotePage(index=5, url="http://5", file="00001.webp", ext=".webp", chapter="c3"),
                 RemotePage(index=6, url="http://6", file="00002.webp", ext=".webp", chapter="c3"),
             ],
         )
 
-        with patch("app.auto_update.get_provider", return_value=mock_provider), \
-             patch("app.auto_update.broadcast_event"):
+        with (
+            patch("app.auto_update.get_provider", return_value=mock_provider),
+            patch("app.auto_update.broadcast_event"),
+        ):
             res = run_auto_update_cycle(self.store, max_check=10, sleep_seconds=0)
             self.assertEqual(res["total_due"], 1)
             self.assertEqual(res["checked"], 1)
@@ -263,24 +273,26 @@ class TestAutoUpdateEngine(unittest.TestCase):
     def test_fetch_window_keeps_curator_edits_and_deletions(self):
         """抓取要花几秒：这期间馆长改的资料不能被抓取前的旧快照盖掉，删掉的作品也不能被写回来。"""
         for source_id in ("edited", "deleted"):
-            self.store.save_fetched(FetchedComic(
-                meta=ComicMeta(
-                    source="jm",
-                    source_id=source_id,
-                    display_id=f"JM_{source_id}",
-                    title="旧标题",
-                    page_count=2,
-                    chapters=[
-                        Chapter(id="c1", index=1, title="第 1 话", page_count=1, start=1),
-                        Chapter(id="c2", index=2, title="第 2 话", page_count=1, start=2),
-                    ],
-                    pages=[
-                        PageRecord(index=1, file="00001.webp", ext=".webp", chapter="c1"),
-                        PageRecord(index=2, file="00001.webp", ext=".webp", chapter="c2"),
-                    ],
-                ),
-                remote_pages=[],
-            ))
+            self.store.save_fetched(
+                FetchedComic(
+                    meta=ComicMeta(
+                        source="jm",
+                        source_id=source_id,
+                        display_id=f"JM_{source_id}",
+                        title="旧标题",
+                        page_count=2,
+                        chapters=[
+                            Chapter(id="c1", index=1, title="第 1 话", page_count=1, start=1),
+                            Chapter(id="c2", index=2, title="第 2 话", page_count=1, start=2),
+                        ],
+                        pages=[
+                            PageRecord(index=1, file="00001.webp", ext=".webp", chapter="c1"),
+                            PageRecord(index=2, file="00001.webp", ext=".webp", chapter="c2"),
+                        ],
+                    ),
+                    remote_pages=[],
+                )
+            )
 
         def fetch_while_curator_acts(source_id, existing=None):
             if source_id == "edited":
@@ -295,8 +307,10 @@ class TestAutoUpdateEngine(unittest.TestCase):
 
         mock_provider = MagicMock()
         mock_provider.fetch.side_effect = fetch_while_curator_acts
-        with patch("app.auto_update.get_provider", return_value=mock_provider), \
-                patch("app.auto_update.broadcast_event"):
+        with (
+            patch("app.auto_update.get_provider", return_value=mock_provider),
+            patch("app.auto_update.broadcast_event"),
+        ):
             res = run_auto_update_cycle(self.store, max_check=10, sleep_seconds=0)
 
         self.assertEqual(res["updated"], 1)
@@ -406,10 +420,12 @@ class TestAutoUpdateEngine(unittest.TestCase):
         main_mod.store.root = library
         try:
             # 暂存 PDF 清扫走的是真实 TMP_DIR，这里必须挡掉
-            with patch.object(main_mod, "LIBRARY_DIR", library), \
-                    patch.object(main_mod, "ENABLE_AUTO_UPDATE", True), \
-                    patch.object(main_mod, "auto_update_worker", busy_worker), \
-                    patch.object(main_mod.store, "_cleanup_staged_pdfs"):
+            with (
+                patch.object(main_mod, "LIBRARY_DIR", library),
+                patch.object(main_mod, "ENABLE_AUTO_UPDATE", True),
+                patch.object(main_mod, "auto_update_worker", busy_worker),
+                patch.object(main_mod.store, "_cleanup_staged_pdfs"),
+            ):
                 asyncio.run(serve_once())
         finally:
             main_mod.store.root = old_root
@@ -445,10 +461,12 @@ class TestAutoUpdateEngine(unittest.TestCase):
         mock_provider.normalize_id.return_value = "new_import_comic"
         mock_provider.fetch.return_value = FetchedComic(meta=remote, remote_pages=[])
 
-        with patch.object(lib_router, "store", self.store), \
-                patch("app.routers.library.get_provider", return_value=mock_provider), \
-                patch("app.routers.library.start_job"), \
-                patch("app.routers.library.broadcast_event"):
+        with (
+            patch.object(lib_router, "store", self.store),
+            patch("app.routers.library.get_provider", return_value=mock_provider),
+            patch("app.routers.library.start_job"),
+            patch("app.routers.library.broadcast_event"),
+        ):
             # 1. 首次收录 (refresh=False)
             res1 = lib_router.import_comic(ImportRequest(source="jm", id="new_import_comic", refresh=False))
             self.assertTrue(bool(res1.meta.last_auto_checked_at))
@@ -507,9 +525,7 @@ class TestAutoUpdateEngine(unittest.TestCase):
         self.store.save_fetched(fetched)
 
         # Provider returns 3 chapters with true earlier published_at: 2025-10-01 and new update: 2026-03-01
-        new_chapters = list(chapters) + [
-            Chapter(id="c3", index=3, title="第 3 话", page_count=2, start=5)
-        ]
+        new_chapters = list(chapters) + [Chapter(id="c3", index=3, title="第 3 话", page_count=2, start=5)]
         new_pages = list(pages) + [
             PageRecord(index=5, file="00001.webp", ext=".webp", cached=False, chapter="c3"),
             PageRecord(index=6, file="00002.webp", ext=".webp", cached=False, chapter="c3"),
@@ -520,7 +536,7 @@ class TestAutoUpdateEngine(unittest.TestCase):
             display_id="JM_drifted",
             title="测试追更漫画",
             published_at="2025-10-01",  # Healed earlier date
-            updated_at="2026-03-01",    # New chapter date
+            updated_at="2026-03-01",  # New chapter date
             page_count=6,
             chapters=new_chapters,
             pages=new_pages,
@@ -529,14 +545,17 @@ class TestAutoUpdateEngine(unittest.TestCase):
         mock_provider = MagicMock()
         mock_provider.fetch.return_value = FetchedComic(
             meta=provider_meta,
-            remote_pages=fetched.remote_pages + [
+            remote_pages=fetched.remote_pages
+            + [
                 RemotePage(index=5, url="http://5", file="00001.webp", ext=".webp", chapter="c3"),
                 RemotePage(index=6, url="http://6", file="00002.webp", ext=".webp", chapter="c3"),
             ],
         )
 
-        with patch("app.auto_update.get_provider", return_value=mock_provider), \
-             patch("app.auto_update.broadcast_event"):
+        with (
+            patch("app.auto_update.get_provider", return_value=mock_provider),
+            patch("app.auto_update.broadcast_event"),
+        ):
             res = run_auto_update_cycle(self.store, max_check=10, sleep_seconds=0)
             self.assertEqual(res["updated"], 1)
 
@@ -589,9 +608,7 @@ class TestAutoUpdateEngine(unittest.TestCase):
         self.store.save_fetched(fetched)
 
         # Provider returns 3 chapters with healed dates
-        new_chapters = list(chapters) + [
-            Chapter(id="c3", index=3, title="第 3 话", page_count=2, start=5)
-        ]
+        new_chapters = list(chapters) + [Chapter(id="c3", index=3, title="第 3 话", page_count=2, start=5)]
         new_pages = list(pages) + [
             PageRecord(index=5, file="00001.webp", ext=".webp", cached=False, chapter="c3"),
             PageRecord(index=6, file="00002.webp", ext=".webp", cached=False, chapter="c3"),
@@ -611,14 +628,17 @@ class TestAutoUpdateEngine(unittest.TestCase):
         mock_provider = MagicMock()
         mock_provider.fetch.return_value = FetchedComic(
             meta=provider_meta,
-            remote_pages=fetched.remote_pages + [
+            remote_pages=fetched.remote_pages
+            + [
                 RemotePage(index=5, url="http://5", file="00001.webp", ext=".webp", chapter="c3"),
                 RemotePage(index=6, url="http://6", file="00002.webp", ext=".webp", chapter="c3"),
             ],
         )
 
-        with patch("app.auto_update.get_provider", return_value=mock_provider), \
-             patch("app.auto_update.broadcast_event"):
+        with (
+            patch("app.auto_update.get_provider", return_value=mock_provider),
+            patch("app.auto_update.broadcast_event"),
+        ):
             res = run_auto_update_cycle(self.store, max_check=10, sleep_seconds=0)
             self.assertEqual(res["updated"], 1)
 
@@ -633,44 +653,52 @@ class TestAutoUpdateEngine(unittest.TestCase):
         date_10_days_ago = (now - timedelta(days=10)).strftime("%Y-%m-%d")
 
         # 1. Comic A：默认 15 天，已停更 70 天，20 天前检查过 -> 自动退避至 60 天，此时未满 60 天不应到期
-        upsert_comic_index(make_comic_index_item(
-            source="jm",
-            source_id="dormant_not_due",
-            chapter_titles_json='["话1", "话2"]',
-            updated_at=date_70_days_ago,
-            auto_update_interval_days=15,
-            last_auto_checked_at=(now - timedelta(days=20)).isoformat(),
-        ))
+        upsert_comic_index(
+            make_comic_index_item(
+                source="jm",
+                source_id="dormant_not_due",
+                chapter_titles_json='["话1", "话2"]',
+                updated_at=date_70_days_ago,
+                auto_update_interval_days=15,
+                last_auto_checked_at=(now - timedelta(days=20)).isoformat(),
+            )
+        )
 
         # 2. Comic B：默认 15 天，已停更 70 天，65 天前检查过 -> 退避至 60 天且已满 60 天 -> 应到期
-        upsert_comic_index(make_comic_index_item(
-            source="jm",
-            source_id="dormant_due",
-            chapter_titles_json='["话1", "话2"]',
-            updated_at=date_70_days_ago,
-            auto_update_interval_days=15,
-            last_auto_checked_at=(now - timedelta(days=65)).isoformat(),
-        ))
+        upsert_comic_index(
+            make_comic_index_item(
+                source="jm",
+                source_id="dormant_due",
+                chapter_titles_json='["话1", "话2"]',
+                updated_at=date_70_days_ago,
+                auto_update_interval_days=15,
+                last_auto_checked_at=(now - timedelta(days=65)).isoformat(),
+            )
+        )
 
         # 3. Comic C：默认 15 天，10 天前活跃更新，16 天前检查过 -> 维持 15 天且已满 15 天 -> 应到期
-        upsert_comic_index(make_comic_index_item(
-            source="jm",
-            source_id="active_due",
-            chapter_titles_json='["话1", "话2"]',
-            updated_at=date_10_days_ago,
-            auto_update_interval_days=15,
-            last_auto_checked_at=(now - timedelta(days=16)).isoformat(),
-        ))
+        upsert_comic_index(
+            make_comic_index_item(
+                source="jm",
+                source_id="active_due",
+                chapter_titles_json='["话1", "话2"]',
+                updated_at=date_10_days_ago,
+                auto_update_interval_days=15,
+                last_auto_checked_at=(now - timedelta(days=16)).isoformat(),
+            )
+        )
 
         # 4. Comic D：馆长自定 7 天，已停更 70 天，8 天前检查过 -> 馆长优先不退避且已满 7 天 -> 应到期
-        upsert_comic_index(make_comic_index_item(
-            source="jm",
-            source_id="curator_7d_due",
-            chapter_titles_json='["话1", "话2"]',
-            updated_at=date_70_days_ago,
-            auto_update_interval_days=7,
-            last_auto_checked_at=(now - timedelta(days=8)).isoformat(),
-        ))
+        upsert_comic_index(
+            make_comic_index_item(
+                source="jm",
+                source_id="curator_7d_due",
+                chapter_titles_json='["话1", "话2"]',
+                updated_at=date_70_days_ago,
+                auto_update_interval_days=7,
+                last_auto_checked_at=(now - timedelta(days=8)).isoformat(),
+            )
+        )
 
         due_candidates = get_comics_due_for_auto_update(max_count=10)
         due_ids = {c["source_id"] for c in due_candidates}
@@ -724,9 +752,7 @@ class TestAutoUpdateEngine(unittest.TestCase):
         self.assertIn("dormant_heal", {c["source_id"] for c in due})
 
         # Mock 远端返回新章节 c3，日期为今日
-        new_chapters = list(chapters) + [
-            Chapter(id="c3", index=3, title="第 3 话", page_count=2, start=5)
-        ]
+        new_chapters = list(chapters) + [Chapter(id="c3", index=3, title="第 3 话", page_count=2, start=5)]
         new_pages = list(pages) + [
             PageRecord(index=5, file="00001.webp", ext=".webp", cached=False, chapter="c3"),
             PageRecord(index=6, file="00002.webp", ext=".webp", cached=False, chapter="c3"),
@@ -745,14 +771,17 @@ class TestAutoUpdateEngine(unittest.TestCase):
         mock_provider = MagicMock()
         mock_provider.fetch.return_value = FetchedComic(
             meta=provider_meta,
-            remote_pages=fetched.remote_pages + [
+            remote_pages=fetched.remote_pages
+            + [
                 RemotePage(index=5, url="http://5", file="00001.webp", ext=".webp", chapter="c3"),
                 RemotePage(index=6, url="http://6", file="00002.webp", ext=".webp", chapter="c3"),
             ],
         )
 
-        with patch("app.auto_update.get_provider", return_value=mock_provider), \
-             patch("app.auto_update.broadcast_event"):
+        with (
+            patch("app.auto_update.get_provider", return_value=mock_provider),
+            patch("app.auto_update.broadcast_event"),
+        ):
             res = run_auto_update_cycle(self.store, max_check=10, sleep_seconds=0)
             self.assertEqual(res["updated"], 1)
 
@@ -790,16 +819,20 @@ class TestAutoUpdateEngine(unittest.TestCase):
             ],
             auto_update_interval_days=15,
         )
-        saved = self.store.save_fetched(FetchedComic(
-            meta=meta_completed_chap,
-            remote_pages=[
-                RemotePage(index=1, url="http://1", file="01.webp", ext=".webp", chapter="c1"),
-                RemotePage(index=2, url="http://2", file="02.webp", ext=".webp", chapter="c1"),
-                RemotePage(index=3, url="http://3", file="03.webp", ext=".webp", chapter="c2"),
-                RemotePage(index=4, url="http://4", file="04.webp", ext=".webp", chapter="c2"),
-            ],
-        ))
-        self.assertEqual(saved.auto_update_interval_days, 0, "末话标题为下篇(完结)应自动归档 auto_update_interval_days=0")
+        saved = self.store.save_fetched(
+            FetchedComic(
+                meta=meta_completed_chap,
+                remote_pages=[
+                    RemotePage(index=1, url="http://1", file="01.webp", ext=".webp", chapter="c1"),
+                    RemotePage(index=2, url="http://2", file="02.webp", ext=".webp", chapter="c1"),
+                    RemotePage(index=3, url="http://3", file="03.webp", ext=".webp", chapter="c2"),
+                    RemotePage(index=4, url="http://4", file="04.webp", ext=".webp", chapter="c2"),
+                ],
+            )
+        )
+        self.assertEqual(
+            saved.auto_update_interval_days, 0, "末话标题为下篇(完结)应自动归档 auto_update_interval_days=0"
+        )
 
         # 2. 标签包含「完结」 -> 自动设为 0
         meta_completed_tag = ComicMeta(
@@ -820,15 +853,17 @@ class TestAutoUpdateEngine(unittest.TestCase):
             ],
             auto_update_interval_days=15,
         )
-        saved_tag = self.store.save_fetched(FetchedComic(
-            meta=meta_completed_tag,
-            remote_pages=[
-                RemotePage(index=1, url="http://1", file="01.webp", ext=".webp", chapter="c1"),
-                RemotePage(index=2, url="http://2", file="02.webp", ext=".webp", chapter="c1"),
-                RemotePage(index=3, url="http://3", file="03.webp", ext=".webp", chapter="c2"),
-                RemotePage(index=4, url="http://4", file="04.webp", ext=".webp", chapter="c2"),
-            ],
-        ))
+        saved_tag = self.store.save_fetched(
+            FetchedComic(
+                meta=meta_completed_tag,
+                remote_pages=[
+                    RemotePage(index=1, url="http://1", file="01.webp", ext=".webp", chapter="c1"),
+                    RemotePage(index=2, url="http://2", file="02.webp", ext=".webp", chapter="c1"),
+                    RemotePage(index=3, url="http://3", file="03.webp", ext=".webp", chapter="c2"),
+                    RemotePage(index=4, url="http://4", file="04.webp", ext=".webp", chapter="c2"),
+                ],
+            )
+        )
         self.assertEqual(saved_tag.auto_update_interval_days, 0, "标签含完结应自动归档 auto_update_interval_days=0")
 
         # 3. 未完结（中篇） -> 保持 15 天
@@ -849,15 +884,17 @@ class TestAutoUpdateEngine(unittest.TestCase):
             ],
             auto_update_interval_days=15,
         )
-        saved_ongoing = self.store.save_fetched(FetchedComic(
-            meta=meta_ongoing,
-            remote_pages=[
-                RemotePage(index=1, url="http://1", file="01.webp", ext=".webp", chapter="c1"),
-                RemotePage(index=2, url="http://2", file="02.webp", ext=".webp", chapter="c1"),
-                RemotePage(index=3, url="http://3", file="03.webp", ext=".webp", chapter="c2"),
-                RemotePage(index=4, url="http://4", file="04.webp", ext=".webp", chapter="c2"),
-            ],
-        ))
+        saved_ongoing = self.store.save_fetched(
+            FetchedComic(
+                meta=meta_ongoing,
+                remote_pages=[
+                    RemotePage(index=1, url="http://1", file="01.webp", ext=".webp", chapter="c1"),
+                    RemotePage(index=2, url="http://2", file="02.webp", ext=".webp", chapter="c1"),
+                    RemotePage(index=3, url="http://3", file="03.webp", ext=".webp", chapter="c2"),
+                    RemotePage(index=4, url="http://4", file="04.webp", ext=".webp", chapter="c2"),
+                ],
+            )
+        )
         self.assertEqual(saved_ongoing.auto_update_interval_days, 15, "末话为中篇不应误判完结，应保留 15 天")
 
         # 4. 馆长自定义意志绝对优先（自定义 7 天即便是完结本也不自动覆盖）
@@ -878,15 +915,17 @@ class TestAutoUpdateEngine(unittest.TestCase):
             ],
             auto_update_interval_days=7,
         )
-        saved_curator = self.store.save_fetched(FetchedComic(
-            meta=meta_curator,
-            remote_pages=[
-                RemotePage(index=1, url="http://1", file="01.webp", ext=".webp", chapter="c1"),
-                RemotePage(index=2, url="http://2", file="02.webp", ext=".webp", chapter="c1"),
-                RemotePage(index=3, url="http://3", file="03.webp", ext=".webp", chapter="c2"),
-                RemotePage(index=4, url="http://4", file="04.webp", ext=".webp", chapter="c2"),
-            ],
-        ))
+        saved_curator = self.store.save_fetched(
+            FetchedComic(
+                meta=meta_curator,
+                remote_pages=[
+                    RemotePage(index=1, url="http://1", file="01.webp", ext=".webp", chapter="c1"),
+                    RemotePage(index=2, url="http://2", file="02.webp", ext=".webp", chapter="c1"),
+                    RemotePage(index=3, url="http://3", file="03.webp", ext=".webp", chapter="c2"),
+                    RemotePage(index=4, url="http://4", file="04.webp", ext=".webp", chapter="c2"),
+                ],
+            )
+        )
         self.assertEqual(saved_curator.auto_update_interval_days, 7, "馆长显式自定义 7 天应受绝对尊重，不自动关停")
 
     def test_120_day_dormancy_cutoff_retires_comic(self):
@@ -895,24 +934,28 @@ class TestAutoUpdateEngine(unittest.TestCase):
         date_130_days_ago = (now - timedelta(days=130)).strftime("%Y-%m-%d")
 
         # 1. 默认 15 天，停更 130 天 -> 应触发 120 天硬关停，且不作为巡检候选
-        upsert_comic_index(make_comic_index_item(
-            source="jm",
-            source_id="cutoff_130d",
-            chapter_titles_json='["话1", "话2"]',
-            updated_at=date_130_days_ago,
-            auto_update_interval_days=15,
-            last_auto_checked_at=(now - timedelta(days=70)).isoformat(),
-        ))
+        upsert_comic_index(
+            make_comic_index_item(
+                source="jm",
+                source_id="cutoff_130d",
+                chapter_titles_json='["话1", "话2"]',
+                updated_at=date_130_days_ago,
+                auto_update_interval_days=15,
+                last_auto_checked_at=(now - timedelta(days=70)).isoformat(),
+            )
+        )
 
         # 2. 馆长自定义 7 天，停更 130 天 -> 馆长优先不关停，且已超 7 天 -> 应到期
-        upsert_comic_index(make_comic_index_item(
-            source="jm",
-            source_id="curator_130d",
-            chapter_titles_json='["话1", "话2"]',
-            updated_at=date_130_days_ago,
-            auto_update_interval_days=7,
-            last_auto_checked_at=(now - timedelta(days=8)).isoformat(),
-        ))
+        upsert_comic_index(
+            make_comic_index_item(
+                source="jm",
+                source_id="curator_130d",
+                chapter_titles_json='["话1", "话2"]',
+                updated_at=date_130_days_ago,
+                auto_update_interval_days=7,
+                last_auto_checked_at=(now - timedelta(days=8)).isoformat(),
+            )
+        )
 
         due_candidates = get_comics_due_for_auto_update(max_count=10)
         due_ids = {c["source_id"] for c in due_candidates}
@@ -922,11 +965,14 @@ class TestAutoUpdateEngine(unittest.TestCase):
 
         # 检验 cutoff_130d 在索引中已被写为 0
         from app.db import get_db
+
         with get_db() as conn:
             row = conn.execute(
                 "SELECT auto_update_interval_days FROM comics_index WHERE source = 'jm' AND source_id = 'cutoff_130d'"
             ).fetchone()
-            self.assertEqual(row["auto_update_interval_days"], 0, "120 天硬关停应持久化写回 auto_update_interval_days = 0")
+            self.assertEqual(
+                row["auto_update_interval_days"], 0, "120 天硬关停应持久化写回 auto_update_interval_days = 0"
+            )
 
     def test_auto_update_cycle_retires_when_new_chapter_is_final(self):
         """测试自动追更巡检拉取到「最终话」新章节时，合并后自动关停后续巡检。"""
@@ -965,9 +1011,7 @@ class TestAutoUpdateEngine(unittest.TestCase):
         self.store.save_fetched(fetched)
 
         # 远端新发布了第 3 话，标题为「第 3 话 最终话」
-        new_chapters = list(chapters) + [
-            Chapter(id="c3", index=3, title="第 3 话 最终话", page_count=2, start=5)
-        ]
+        new_chapters = list(chapters) + [Chapter(id="c3", index=3, title="第 3 话 最终话", page_count=2, start=5)]
         new_pages = list(pages) + [
             PageRecord(index=5, file="05.webp", ext=".webp", cached=False, chapter="c3"),
             PageRecord(index=6, file="06.webp", ext=".webp", cached=False, chapter="c3"),
@@ -986,14 +1030,17 @@ class TestAutoUpdateEngine(unittest.TestCase):
         mock_provider = MagicMock()
         mock_provider.fetch.return_value = FetchedComic(
             meta=provider_meta,
-            remote_pages=fetched.remote_pages + [
+            remote_pages=fetched.remote_pages
+            + [
                 RemotePage(index=5, url="http://5", file="05.webp", ext=".webp", chapter="c3"),
                 RemotePage(index=6, url="http://6", file="06.webp", ext=".webp", chapter="c3"),
             ],
         )
 
-        with patch("app.auto_update.get_provider", return_value=mock_provider), \
-             patch("app.auto_update.broadcast_event"):
+        with (
+            patch("app.auto_update.get_provider", return_value=mock_provider),
+            patch("app.auto_update.broadcast_event"),
+        ):
             res = run_auto_update_cycle(self.store, max_check=10, sleep_seconds=0)
             self.assertEqual(res["updated"], 1)
 

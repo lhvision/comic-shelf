@@ -10,6 +10,7 @@ import app.db as db_mod
 
 def _make_comic(source_id: str, title: str, tags: list[str], pages: int) -> dict:
     import json
+
     return {
         "source": "local",
         "source_id": source_id,
@@ -165,6 +166,7 @@ def test_facets_incremental_updates_and_scopes():
     # 6. 编辑 JM 书：修改标签与页数
     jm_comic_edit = dict(jm_comic)
     import json
+
     jm_comic_edit["tags_json"] = json.dumps(["new_tag"], ensure_ascii=False)
     jm_comic_edit["page_count"] = 25
     db_mod.upsert_comic_index(jm_comic_edit)

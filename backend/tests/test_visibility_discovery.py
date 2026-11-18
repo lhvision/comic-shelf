@@ -199,6 +199,7 @@ def test_discovery_ranking_router():
 
         # When live ranking fetch raises and no cached feed exists, router must raise 502 HTTPException
         from fastapi import HTTPException
+
         provider._request = MagicMock(side_effect=RuntimeError("Upstream service connection failed"))
         try:
             discovery_ranking(req, source="picacg", timeframe="nonexistent_timeframe_test", refresh=True)
@@ -209,11 +210,12 @@ def test_discovery_ranking_router():
 
         # Test cache hit (refresh=False) ensures provider is properly bound and self-heals cover_url
         from datetime import datetime
+
         cached_jm_feed = DiscoveryFeed(
             source="jm",
             timeframe="week",
             updated_at=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-            items=[DiscoveryItem(id="JM12345", source="jm", source_id="12345", title="缓存作品", cover_url="")]
+            items=[DiscoveryItem(id="JM12345", source="jm", source_id="12345", title="缓存作品", cover_url="")],
         )
         main_mod.store.save_discovery_feed(cached_jm_feed)
         feed_hit = discovery_ranking(req, source="jm", timeframe="week", refresh=False)
@@ -237,14 +239,17 @@ def test_discovery_ranking_router():
 
 def test_legacy_discovery_cache_migration():
     import json
+
     legacy_file = main_mod.store.discovery_dir() / "test_legacy_migration.json"
     legacy_file.write_text(
-        json.dumps({
-            "source": "jm",
-            "timeframe": "test_legacy_migration",
-            "updated_at": "2026-09-19 12:00:00",
-            "items": [],
-        }),
+        json.dumps(
+            {
+                "source": "jm",
+                "timeframe": "test_legacy_migration",
+                "updated_at": "2026-09-19 12:00:00",
+                "items": [],
+            }
+        ),
         encoding="utf-8",
     )
     # Load via store
@@ -277,14 +282,24 @@ def test_discovery_cover_router():
         # 1. Guest request must be blocked
         req_guest = make_mock_request("/api/discovery/cover", token="guest-secret-456")
         try:
-            discovery_cover(req_guest, source="picacg", source_id="test_pica_1", cover_url="https://storage-b.picacomic.com/static/cover.jpg")
+            discovery_cover(
+                req_guest,
+                source="picacg",
+                source_id="test_pica_1",
+                cover_url="https://storage-b.picacomic.com/static/cover.jpg",
+            )
             assert False, "Guest should not be allowed to fetch discovery cover"
         except HTTPException as exc:
             assert exc.status_code == 401
 
         # 2. Curator request should fetch and return MISS
         req_curator = make_mock_request("/api/discovery/cover", token="admin-secret-123")
-        resp1 = discovery_cover(req_curator, source="picacg", source_id="test_pica_1", cover_url="https://storage-b.picacomic.com/static/cover.jpg")
+        resp1 = discovery_cover(
+            req_curator,
+            source="picacg",
+            source_id="test_pica_1",
+            cover_url="https://storage-b.picacomic.com/static/cover.jpg",
+        )
         assert resp1.status_code == 200
         assert resp1.media_type == "image/jpeg"
         assert resp1.body == fake_img
@@ -322,6 +337,7 @@ def test_discovery_cover_router():
 
             # 6. True LRU cache eviction test: accessing an item moves it to end so it survives eviction
             from app.routers.library import _DISCOVERY_COVER_CACHE_MAX
+
             with _discovery_cover_lock:
                 _discovery_cover_cache.clear()
                 for i in range(_DISCOVERY_COVER_CACHE_MAX):
@@ -357,4 +373,3 @@ if __name__ == "__main__":
     test_legacy_discovery_cache_migration()
     test_discovery_cover_router()
     print("Visibility & Discovery unit tests passed successfully!")
-

@@ -5,6 +5,7 @@ request, which could keep the HTTP request open for minutes and made the whole
 server feel "frozen". These tasks now run on a daemon thread and expose
 progress through ``cache_progress`` / ``get_job``, which the UI already polls.
 """
+
 from __future__ import annotations
 
 import threading
@@ -34,11 +35,7 @@ def _cleanup_unlocked() -> None:
 
     # If still above limit, remove oldest finished jobs
     if len(_jobs) > _MAX_JOBS:
-        finished = [
-            (k, v.get("finished_at") or 0)
-            for k, v in _jobs.items()
-            if v.get("done")
-        ]
+        finished = [(k, v.get("finished_at") or 0) for k, v in _jobs.items() if v.get("done")]
         finished.sort(key=lambda item: item[1])
         to_remove = len(_jobs) - _MAX_JOBS
         for k, _ in finished[:to_remove]:

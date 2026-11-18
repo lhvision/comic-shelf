@@ -104,6 +104,7 @@ class ComicMeta(BaseModel):
         v_tag = ""
         if self.updated_at:
             import hashlib
+
             v_tag = f"?v={hashlib.md5(self.updated_at.encode()).hexdigest()[:8]}"
         return [
             f"/api/library/{self.source}/{self.source_id}/covers/{index}/file.webp{v_tag}"
@@ -625,6 +626,3 @@ class StoryContextResponse(BaseModel):
     boxes: list[StoryContextBox] = Field(default_factory=list)
     truncated: bool = False
     budget_lines: int = 0
-
-
-

@@ -107,7 +107,9 @@ def cmd_image(args: argparse.Namespace) -> int:
     cost = time.perf_counter() - t0
     bubbles = cluster_blocks(rows_to_blocks(rows), w, h)
     print(f"🔧 推理设备: {'GPU' if ocr_worker.USE_GPU else 'CPU'}")
-    print(f"📐 图像尺寸: {w}x{h}, 推理耗时: {cost:.2f}s, 识别行 {len(rows)} 行（引擎已滤掉置信度 <{DEFAULT_MIN_SCORE} 的行）")
+    print(
+        f"📐 图像尺寸: {w}x{h}, 推理耗时: {cost:.2f}s, 识别行 {len(rows)} 行（引擎已滤掉置信度 <{DEFAULT_MIN_SCORE} 的行）"
+    )
     print(f"💬 气泡几何聚类后获得: {len(bubbles)} 处对白")
     for b in bubbles:
         print(f"  - [{b['id']}] {b['orientation']} (置信度: {b['confidence']}) 归一化坐标: {b['box']}")

@@ -1,4 +1,5 @@
 """Storage package for Paper Room comic archives."""
+
 from __future__ import annotations
 
 from .base import ComicStoreBase

@@ -185,6 +185,7 @@ class TestWebPCover(unittest.TestCase):
 
             # 5b. Page thumbnail WebP & fast-path cleanup
             from app.main import page_thumbnail
+
             # First create a legacy jpg thumbnail manually to test fast-path conversion & cleanup
             legacy_jpg = self.store.page_thumb_path(meta, 1, ext="jpg")
             legacy_jpg.parent.mkdir(parents=True, exist_ok=True)
@@ -201,6 +202,7 @@ class TestWebPCover(unittest.TestCase):
 
             # 5c. Page info endpoint returns raw format url (no extension per ADR 0012)
             from app.main import page_info
+
             resp_info = page_info(source="local", source_id="c4", index=1, request=req_thumb_webp)
             self.assertEqual(resp_info.url, "/api/library/local/c4/pages/1/file")
 
@@ -215,6 +217,7 @@ class TestWebPCover(unittest.TestCase):
             global_store._invalidate_cache("local", "c4")
 
             from starlette.exceptions import HTTPException
+
             with self.assertRaises(HTTPException) as ctx:
                 cover_file(source="local", source_id="c4", index=1, request=req_webp, w=360)
             self.assertEqual(ctx.exception.status_code, 404)

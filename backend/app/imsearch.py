@@ -83,9 +83,7 @@ def check_imsearch_status(base_url: str = IMSEARCH_URL, use_cache: bool = True) 
         return {"available": False}
 
 
-def search_imsearch(
-    image_bytes: bytes, base_url: str = IMSEARCH_URL
-) -> list[ImageSearchItem]:
+def search_imsearch(image_bytes: bytes, base_url: str = IMSEARCH_URL) -> list[ImageSearchItem]:
     """Send image query to imsearch server and parse results."""
     try:
         boundary = f"----PaperRoomBoundary{uuid.uuid4().hex}"

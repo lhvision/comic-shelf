@@ -1,4 +1,5 @@
 """Common dependencies, helpers, and shared store instance for Paper Room routers."""
+
 from __future__ import annotations
 
 import logging

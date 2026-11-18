@@ -1,4 +1,5 @@
 """Visual image similarity search, FTS5 dialogue full-text search, and OCR sync router."""
+
 from __future__ import annotations
 
 import asyncio
@@ -163,9 +164,7 @@ def dialogue_context_endpoint(
     source_id: str = Query(..., max_length=80, description="本子在本机的稳定 ID"),
     page_start: int = Query(1, ge=1, description="起始页（全书拍平后的全局页号，1 起）"),
     page_end: int = Query(..., ge=1, description="结束页（含）。跨度由 db 层夹到 200 页"),
-    budget_lines: int = Query(
-        120, ge=1, le=STORY_CONTEXT_MAX_LINES, description="台词行预算，撞顶回报 truncated"
-    ),
+    budget_lines: int = Query(120, ge=1, le=STORY_CONTEXT_MAX_LINES, description="台词行预算，撞顶回报 truncated"),
 ) -> StoryContextResponse:
     """按页码区间导出原始台词流：不做关键词过滤、不带高亮态，按 (页号, 阅读顺序) 剧情原序返回。
 

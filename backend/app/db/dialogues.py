@@ -50,7 +50,7 @@ def _coerce_order_index(raw: Any, fallback: int) -> int:
     """把侧车里可能畸形（浮点、字符串、1e999、dict）的序号收敛成正整数。"""
     try:
         n = int(raw)
-    except (TypeError, ValueError, OverflowError):
+    except TypeError, ValueError, OverflowError:
         return fallback
     return n if n >= 0 else fallback
 
@@ -325,7 +325,7 @@ def sync_comic_dialogues(source: str, source_id: str, force: bool = False) -> in
                 pages = meta_dict.get("pages", [])
                 try:
                     page_count = int(meta_dict.get("page_count") or len(pages))
-                except (TypeError, ValueError, OverflowError):
+                except TypeError, ValueError, OverflowError:
                     page_count = len(pages)
                 for p in pages:
                     idx_val = p.get("index")
@@ -334,7 +334,7 @@ def sync_comic_dialogues(source: str, source_id: str, force: bool = False) -> in
                     if idx_val is not None:
                         try:
                             pid = int(idx_val)
-                        except (ValueError, TypeError):
+                        except ValueError, TypeError:
                             continue
                         s = Path(f_val).stem
                         page_map[s] = pid
@@ -372,12 +372,12 @@ def sync_comic_dialogues(source: str, source_id: str, force: bool = False) -> in
         if payload.get("page_index") is not None:
             try:
                 page_idx = int(payload["page_index"])
-            except (ValueError, TypeError, OverflowError):
+            except ValueError, TypeError, OverflowError:
                 pass
         elif payload.get("page") is not None:
             try:
                 page_idx = int(payload["page"])
-            except (ValueError, TypeError, OverflowError):
+            except ValueError, TypeError, OverflowError:
                 pass
 
         if page_idx is None:
@@ -408,17 +408,18 @@ def sync_comic_dialogues(source: str, source_id: str, force: bool = False) -> in
                 text_chapters.setdefault(nt, set()).add(chap_id)
                 text_pages.setdefault(nt, set()).add(page_idx)
 
-        parsed_ocr_items.append({
-            "page_idx": page_idx,
-            "top_lang": top_lang,
-            "bubbles": bubbles,
-            "page_texts": raw_texts,
-        })
+        parsed_ocr_items.append(
+            {
+                "page_idx": page_idx,
+                "top_lang": top_lang,
+                "bubbles": bubbles,
+                "page_texts": raw_texts,
+            }
+        )
 
     # 判定为跨话/跨页高频模板的文本集合（单本内跨 >= 3 话，或跨 >= 4 页出现）
     recurring_templates: set[str] = {
-        nt for nt, chaps in text_chapters.items()
-        if len(chaps) >= 3 or len(text_pages.get(nt, set())) >= 4
+        nt for nt, chaps in text_chapters.items() if len(chaps) >= 3 or len(text_pages.get(nt, set())) >= 4
     }
 
     # 若无 album.json 章节划分，退回整本首尾各 2 页作为边界兜底（全本页数 >= 8 时生效）
@@ -620,8 +621,7 @@ def embed_comic_dialogues(source: str, source_id: str) -> int:
                 "INSERT INTO comic_dialogue_vectors (source, source_id, page_index, bubble_id, dim, vec, updated_at)"
                 " VALUES (?, ?, ?, ?, ?, ?, ?)",
                 [
-                    (source, source_id, int(r["page_index"]), str(r["bubble_id"]), dim,
-                     vectors[i].tobytes(), now)
+                    (source, source_id, int(r["page_index"]), str(r["bubble_id"]), dim, vectors[i].tobytes(), now)
                     for i, r in enumerate(rows)
                 ],
             )
@@ -763,7 +763,8 @@ def search_dialogues_semantic(
     book_keys = sorted({(k[0], k[1]) for k in keys_all if not source or k[0] == source})
     comics_map = _dialogue_comics_meta_map(book_keys, user_id)
     allowed = {
-        b for b in book_keys
+        b
+        for b in book_keys
         if not is_guest or (comics_map.get(b) is not None and not comics_map[b]["hidden_from_guest"])
     }
     mask = np.fromiter(((k[0], k[1]) in allowed for k in keys_all), dtype=bool, count=len(keys_all))
@@ -875,9 +876,7 @@ def cleanup_orphan_comic_dialogues(data_dir: Path | None = None) -> int:
         for src, sid in to_delete:
             conn.execute("DELETE FROM comic_dialogues_fts WHERE source = ? AND source_id = ?", (src, sid))
             conn.execute("DELETE FROM comic_ocr_sync_meta WHERE source = ? AND source_id = ?", (src, sid))
-            conn.execute(
-                "DELETE FROM comic_dialogue_vectors WHERE source = ? AND source_id = ?", (src, sid)
-            )
+            conn.execute("DELETE FROM comic_dialogue_vectors WHERE source = ? AND source_id = ?", (src, sid))
             logger.info("Cleaned orphan dialogue index for deleted comic %s/%s", src, sid)
         _bump_vector_version(conn)
     return len(to_delete)
@@ -1261,5 +1260,3 @@ def get_story_context(
         "budget_lines": budget,
         "requested_pages": [p0, p1],
     }
-
-

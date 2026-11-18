@@ -79,9 +79,7 @@ PICA_ALLOWED_CDN_SUFFIXES = (
     ".storage.live.com",
 )
 
-PICA_EXTRA_CDN_HOSTS = [
-    h.strip().lower() for h in os.getenv("PICA_EXTRA_CDN_HOSTS", "").split(",") if h.strip()
-]
+PICA_EXTRA_CDN_HOSTS = [h.strip().lower() for h in os.getenv("PICA_EXTRA_CDN_HOSTS", "").split(",") if h.strip()]
 
 # Polite human-like rate limiting / pacing configuration (in milliseconds)
 PICA_DOWNLOAD_PACING_MS = float(os.getenv("PICA_DOWNLOAD_PACING_MS", "250"))
@@ -94,6 +92,7 @@ def _apply_pacing(base_ms: float) -> None:
         return
     jitter = random.uniform(0.8, 1.2)
     time.sleep((base_ms / 1000.0) * jitter)
+
 
 _PROXY_CRED_RE = re.compile(r"://([^:@\s]+):([^@\s]+)@")
 
@@ -146,22 +145,24 @@ def _validate_download_host(host: str) -> None:
         is_ip = False
 
     if is_ip:
-        if ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_unspecified or ip.is_reserved or ip.is_multicast:
+        if (
+            ip.is_private
+            or ip.is_loopback
+            or ip.is_link_local
+            or ip.is_unspecified
+            or ip.is_reserved
+            or ip.is_multicast
+        ):
             raise ValueError(f"禁止下载私有或保留网络地址图片: {host}")
         raise ValueError(f"禁止使用直接 IP 地址访问画页 CDN: {host}")
 
     # Block pseudo-DNS rebinding and internal suffixes
-    if cleaned_host.endswith(
-        (".local", ".internal", ".lan", ".home", ".corp", ".onion", ".nip.io", ".sslip.io")
-    ):
+    if cleaned_host.endswith((".local", ".internal", ".lan", ".home", ".corp", ".onion", ".nip.io", ".sslip.io")):
         raise ValueError(f"禁止下载内部网络或重绑定域名图片: {host}")
 
     # Validate against authorized PicAcg CDN domain suffixes, fallback storage hosts, or custom CDN hosts
     is_authorized_cdn = (
-        any(
-            cleaned_host == suffix.lstrip(".") or cleaned_host.endswith(suffix)
-            for suffix in PICA_ALLOWED_CDN_SUFFIXES
-        )
+        any(cleaned_host == suffix.lstrip(".") or cleaned_host.endswith(suffix) for suffix in PICA_ALLOWED_CDN_SUFFIXES)
         or (cleaned_host in PICA_STORAGE_FALLBACKS)
         or (cleaned_host in PICA_EXTRA_CDN_HOSTS)
     )
@@ -255,7 +256,7 @@ class PicacgProvider(ComicProvider):
         # Token valid for 7 days (604800 seconds)
         try:
             ts = float(data.get("time") or 0)
-        except (TypeError, ValueError):
+        except TypeError, ValueError:
             return None
         if token and time.time() - ts < 7 * 24 * 3600:
             return str(token)
@@ -276,9 +277,7 @@ class PicacgProvider(ComicProvider):
         act_email = (email or PICA_EMAIL).strip()
         act_pwd = (password or PICA_PASSWORD).strip()
         if not act_email or not act_pwd:
-            raise ValueError(
-                "未配置哔咔账号，请在环境变量配置 PICA_EMAIL 与 PICA_PASSWORD，或在后端 .env 中设置"
-            )
+            raise ValueError("未配置哔咔账号，请在环境变量配置 PICA_EMAIL 与 PICA_PASSWORD，或在后端 .env 中设置")
 
         endpoint = "auth/sign-in"
         url = f"{PICA_API_URL.rstrip('/')}/{endpoint}"
@@ -406,7 +405,9 @@ class PicacgProvider(ComicProvider):
         author = (comic_info.get("author") or "").strip()
         authors = [author] if author else []
         chinese_team = (comic_info.get("chineseTeam") or "").strip()
-        uploader = chinese_team or (comic_info.get("_creator", {}).get("name") if isinstance(comic_info.get("_creator"), dict) else None)
+        uploader = chinese_team or (
+            comic_info.get("_creator", {}).get("name") if isinstance(comic_info.get("_creator"), dict) else None
+        )
 
         raw_tags = comic_info.get("tags") or []
         raw_cats = comic_info.get("categories") or []
@@ -438,9 +439,7 @@ class PicacgProvider(ComicProvider):
         if not eps:
             eps = [{"order": 1, "title": "第 1 話", "_id": comic_id}]
 
-        existing_chapter_map = {
-            c.id: c for c in (existing.meta.chapters if existing else [])
-        }
+        existing_chapter_map = {c.id: c for c in (existing.meta.chapters if existing else [])}
         existing_pages_by_chap: dict[str, list[RemotePage]] = {}
         if existing:
             for p in existing.remote_pages:
@@ -578,7 +577,9 @@ class PicacgProvider(ComicProvider):
             page_count=total_page_count,
             published_at=published_at,
             updated_at=updated_at,
-            imported_at=existing.meta.imported_at if (existing and existing.meta.imported_at) else datetime.now(timezone.utc).isoformat(),
+            imported_at=existing.meta.imported_at
+            if (existing and existing.meta.imported_at)
+            else datetime.now(timezone.utc).isoformat(),
             views=views,
             likes=likes,
             comment_count=int(comic_info.get("commentsCount", comic_info.get("totalComments", 0)) or 0),
@@ -613,7 +614,6 @@ class PicacgProvider(ComicProvider):
             target_url = f"{file_server}/static/{path}"
 
         return self.download_cover_by_url(target_url)
-
 
     def download_cover_by_url(self, cover_url: str) -> bytes | None:
         """Downloads cover image bytes directly from a verified cover URL with candidate CDN fallbacks."""

@@ -58,15 +58,17 @@ class TestComicDeduplication(unittest.TestCase):
 
     def test_upsert_and_find_mirrors(self) -> None:
         # Insert a JM comic
-        upsert_comic_index({
-            "source": "jm",
-            "source_id": "523607",
-            "display_id": "JM523607",
-            "title": "[綿120パーセント ]梓喵買醬油合集 AZUS@TTACK 1-5 番外",
-            "page_count": 48,
-            "cached_pages": 48,
-            "cover_count": 4,
-        })
+        upsert_comic_index(
+            {
+                "source": "jm",
+                "source_id": "523607",
+                "display_id": "JM523607",
+                "title": "[綿120パーセント ]梓喵買醬油合集 AZUS@TTACK 1-5 番外",
+                "page_count": 48,
+                "cached_pages": 48,
+                "cover_count": 4,
+            }
+        )
 
         # Cross-source mirror match from PicACG
         mirrors = find_comic_mirrors(
@@ -88,14 +90,16 @@ class TestComicDeduplication(unittest.TestCase):
         self.assertEqual(len(self_mirrors), 0)
 
     def test_hidden_comic_security(self) -> None:
-        upsert_comic_index({
-            "source": "jm",
-            "source_id": "secret123",
-            "display_id": "JMsecret123",
-            "title": "馆长私密收藏漫画",
-            "page_count": 10,
-            "hidden_from_guest": 1,
-        })
+        upsert_comic_index(
+            {
+                "source": "jm",
+                "source_id": "secret123",
+                "display_id": "JMsecret123",
+                "title": "馆长私密收藏漫画",
+                "page_count": 10,
+                "hidden_from_guest": 1,
+            }
+        )
 
         # Curator can see it in cross-source mirror search
         res_curator = find_comic_mirrors(
@@ -124,18 +128,22 @@ class TestComicDeduplication(unittest.TestCase):
         self.assertEqual(len(res_default), 0)
 
     def test_batch_find_comic_mirrors(self) -> None:
-        upsert_comic_index({
-            "source": "jm",
-            "source_id": "111",
-            "display_id": "JM111",
-            "title": "间谍过家家 [01]",
-        })
-        upsert_comic_index({
-            "source": "jm",
-            "source_id": "222",
-            "display_id": "JM222",
-            "title": "间谍过家家 [02]",
-        })
+        upsert_comic_index(
+            {
+                "source": "jm",
+                "source_id": "111",
+                "display_id": "JM111",
+                "title": "间谍过家家 [01]",
+            }
+        )
+        upsert_comic_index(
+            {
+                "source": "jm",
+                "source_id": "222",
+                "display_id": "JM222",
+                "title": "间谍过家家 [02]",
+            }
+        )
 
         candidates = [
             ("copymanga", "cp1", "间谍过家家 [01]"),
