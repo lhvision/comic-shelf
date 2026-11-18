@@ -12,9 +12,6 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from unittest.mock import patch
 
-BACKEND_DIR = Path(__file__).resolve().parent.parent
-if str(BACKEND_DIR) not in sys.path:
-    sys.path.insert(0, str(BACKEND_DIR))
 
 from app.models import Chapter, ComicMeta, FetchedComic, PageRecord, RemotePage
 from app.storage import ComicStore

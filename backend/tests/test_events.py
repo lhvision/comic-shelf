@@ -5,10 +5,6 @@ import threading
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock
 
-# Ensure backend package is importable
-BACKEND_DIR = Path(__file__).resolve().parent.parent
-if str(BACKEND_DIR) not in sys.path:
-    sys.path.insert(0, str(BACKEND_DIR))
 
 import app.auth as auth_mod
 from app.events import broadcast_event, get_active_listener_count, shutdown_events, sse_event_stream

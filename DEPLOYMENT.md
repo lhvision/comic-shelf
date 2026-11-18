@@ -835,10 +835,7 @@ docker push yourname/paper-room:v1.0.0
   "mcpServers": {
     "paper-room": {
       "command": "/absolute/path/to/comic-shelf/.venv/bin/python",
-      "args": ["/absolute/path/to/comic-shelf/backend/app/mcp_server.py"],
-      "env": {
-        "PYTHONPATH": "/absolute/path/to/comic-shelf"
-      }
+      "args": ["/absolute/path/to/comic-shelf/backend/app/mcp_server.py"]
     }
   }
 }

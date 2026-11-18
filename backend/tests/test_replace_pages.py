@@ -7,9 +7,6 @@ from PIL import Image
 import io
 
 import sys
-BACKEND_DIR = Path(__file__).resolve().parent.parent
-if str(BACKEND_DIR) not in sys.path:
-    sys.path.insert(0, str(BACKEND_DIR))
 from app.models import ComicMeta, PageRecord, FetchedComic
 from app.storage import ComicStore
 from fastapi import HTTPException
@@ -719,7 +716,6 @@ class TestReplacePages(unittest.TestCase):
             self.assertIn("同时包含 PDF 文件与章节子目录", str(ctx.exception.detail))
         finally:
             os.environ.pop("COMIC_SHELF_ALLOWED_DIRS", None)
-
 
 
 if __name__ == "__main__":

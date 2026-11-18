@@ -8,13 +8,6 @@ import tempfile
 from pathlib import Path
 from unittest.mock import MagicMock
 
-# Ensure backend package is importable
-BACKEND_DIR = Path(__file__).resolve().parent.parent
-PROJECT_ROOT = BACKEND_DIR.parent
-if str(BACKEND_DIR) not in sys.path:
-    sys.path.insert(0, str(BACKEND_DIR))
-if str(PROJECT_ROOT) not in sys.path:
-    sys.path.insert(0, str(PROJECT_ROOT))
 
 import app.config as config_mod
 import app.db as db_mod

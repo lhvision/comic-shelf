@@ -4,10 +4,6 @@ import sys
 import time
 from pathlib import Path
 
-# Ensure backend package is importable
-BACKEND_DIR = Path(__file__).resolve().parent.parent
-if str(BACKEND_DIR) not in sys.path:
-    sys.path.insert(0, str(BACKEND_DIR))
 
 from app.zh_conv import to_simplified, to_traditional, expand_search_variants, _load_tables
 

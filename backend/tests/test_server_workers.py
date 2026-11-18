@@ -14,8 +14,6 @@ from unittest.mock import patch
 
 BACKEND_DIR = Path(__file__).resolve().parent.parent
 SERVER = BACKEND_DIR / "server.py"
-if str(BACKEND_DIR) not in sys.path:
-    sys.path.insert(0, str(BACKEND_DIR))
 
 
 class TestServerWorkers(unittest.TestCase):

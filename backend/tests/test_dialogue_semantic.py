@@ -7,11 +7,6 @@ import tempfile
 from pathlib import Path
 from unittest import mock
 
-BACKEND_DIR = Path(__file__).resolve().parent.parent
-PROJECT_ROOT = BACKEND_DIR.parent
-for p in (str(BACKEND_DIR), str(PROJECT_ROOT)):
-    if p not in sys.path:
-        sys.path.insert(0, p)
 
 import numpy as np
 

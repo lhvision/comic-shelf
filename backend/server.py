@@ -5,11 +5,6 @@ import re
 import sys
 from pathlib import Path
 
-# Ensure backend directory is in sys.path when invoked from project root
-_BACKEND_DIR = Path(__file__).resolve().parent
-if str(_BACKEND_DIR) not in sys.path:
-    sys.path.insert(0, str(_BACKEND_DIR))
-
 import app.config  # noqa: F401 - trigger dotenv cascade before reading CLI defaults / log config
 
 import uvicorn

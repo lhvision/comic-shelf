@@ -11,13 +11,13 @@ import logging
 import sys
 from pathlib import Path
 
-# Ensure package directory is in sys.path when invoked directly
-backend_root = Path(__file__).resolve().parents[2]
-if str(backend_root) not in sys.path:
-    sys.path.insert(0, str(backend_root))
+# 作为脚本直接运行时 sys.path[0] 是 backend/app/，补上 backend/ 才能以唯一导入根 `app.*` 加载
+_BACKEND_DIR = Path(__file__).resolve().parents[1]
+if str(_BACKEND_DIR) not in sys.path:
+    sys.path.insert(0, str(_BACKEND_DIR))
 
-from backend.app.db import init_db
-from backend.app.routers.mcp import process_jsonrpc_request
+from app.db import init_db
+from app.routers.mcp import process_jsonrpc_request
 
 logging.basicConfig(
     level=logging.INFO,

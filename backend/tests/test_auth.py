@@ -4,10 +4,6 @@ import json
 from pathlib import Path
 from unittest.mock import MagicMock
 
-# Ensure backend package is importable
-BACKEND_DIR = Path(__file__).resolve().parent.parent
-if str(BACKEND_DIR) not in sys.path:
-    sys.path.insert(0, str(BACKEND_DIR))
 
 import tempfile
 from fastapi import HTTPException, Response
@@ -157,8 +153,6 @@ def test_auth_logic():
     prog_guest = db_mod.get_user_progress(f"guest:{active_pass['id']}", "jm", "12345")
     assert prog_guest is not None and prog_guest["last_page"] == 18
     assert db_mod.get_user_progress("curator", "jm", "12345") is None
-
-
 
 
 def test_hotlink_protection():

@@ -13,11 +13,6 @@ from contextlib import redirect_stdout
 from pathlib import Path
 from unittest import mock
 
-backend_dir = Path(__file__).resolve().parent.parent
-root_dir = backend_dir.parent
-for p in (str(root_dir), str(backend_dir)):
-    if p not in sys.path:
-        sys.path.insert(0, p)
 
 from scripts import ocr_lines, ocr_worker
 

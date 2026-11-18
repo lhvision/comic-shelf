@@ -6,11 +6,6 @@ import sys
 import tempfile
 from pathlib import Path
 
-BACKEND_DIR = Path(__file__).resolve().parent.parent
-PROJECT_ROOT = BACKEND_DIR.parent
-for p in (str(BACKEND_DIR), str(PROJECT_ROOT)):
-    if p not in sys.path:
-        sys.path.insert(0, p)
 
 import app.auth as auth_mod
 import app.config as config_mod

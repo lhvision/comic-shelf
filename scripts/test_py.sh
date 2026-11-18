@@ -15,6 +15,9 @@ if [ -z "$PYTHON" ]; then
   PYTHON="$(command -v python3 || command -v python || echo "python3")"
 fi
 
+# 唯一的导入根配置：backend/ 供 `app.*` 与 `tests.*`，仓库根供 `scripts.*`（测试文件不再各自改 sys.path）
+export PYTHONPATH="$PWD/backend:$PWD${PYTHONPATH:+:$PYTHONPATH}"
+
 CHECK_SCRIPT="backend/check_backend.py"
 
 # Auto-discover all test files in backend/tests/

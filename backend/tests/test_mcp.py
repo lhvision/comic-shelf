@@ -10,10 +10,6 @@ import tempfile
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
-# Ensure backend package is importable
-BACKEND_DIR = Path(__file__).resolve().parent.parent
-if str(BACKEND_DIR) not in sys.path:
-    sys.path.insert(0, str(BACKEND_DIR))
 
 import app.auth as auth_mod
 import app.config as config_mod

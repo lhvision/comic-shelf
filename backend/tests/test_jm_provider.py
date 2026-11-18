@@ -9,9 +9,6 @@ import os
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-BACKEND_DIR = Path(__file__).resolve().parent.parent
-if str(BACKEND_DIR) not in sys.path:
-    sys.path.insert(0, str(BACKEND_DIR))
 
 from app.models import ComicMeta, FetchedComic, RemotePage
 from app.providers.jm import JMProvider, _is_safe_remote_domain, _mask_sensitive
@@ -1507,7 +1504,6 @@ class TestJMProvider(unittest.TestCase):
         with patch.object(self.provider, "_session", return_value=mock_session_huge):
             data = self.provider.download_cover_by_url("https://cdn-msp.jmapiproxy1.cc/media/albums/12345_3x4.jpg")
             self.assertIsNone(data)
-
 
 
 if __name__ == "__main__":

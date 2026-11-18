@@ -17,10 +17,10 @@ _DIALOGUE_DB_PATH: Path = DEFAULT_DIALOGUE_DB_PATH
 
 def get_data_dir() -> Path:
     """Return the active DATA_DIR, allowing tests to override `app.db.DATA_DIR` or `app.config.DATA_DIR`."""
-    app_db = sys.modules.get("app.db") or sys.modules.get("backend.app.db")
+    app_db = sys.modules.get("app.db")
     if app_db and hasattr(app_db, "DATA_DIR"):
         return Path(getattr(app_db, "DATA_DIR"))
-    config = sys.modules.get("app.config") or sys.modules.get("backend.app.config")
+    config = sys.modules.get("app.config")
     if config and hasattr(config, "DATA_DIR"):
         return Path(getattr(config, "DATA_DIR"))
     return DATA_DIR

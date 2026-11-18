@@ -2,13 +2,6 @@ import sys
 import unittest
 from pathlib import Path
 
-# Add project root and backend to sys.path
-backend_dir = Path(__file__).resolve().parent.parent
-root_dir = backend_dir.parent
-if str(root_dir) not in sys.path:
-    sys.path.insert(0, str(root_dir))
-if str(backend_dir) not in sys.path:
-    sys.path.insert(0, str(backend_dir))
 
 from scripts import ocr_worker
 from scripts.ocr_worker import (
