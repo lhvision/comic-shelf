@@ -159,7 +159,7 @@
 项目使用 Vite+ 工具链，日常命令使用 `vp`（或通过本地 npm scripts 调用）。
 
 ```bash
-# 1. 初始化 Python 后端依赖（创建 .venv 并安装依赖）
+# 1. 初始化 Python 后端依赖（需先装好 uv；按 uv.lock 创建 .venv 并安装依赖，Python 3.14）
 vpr setup:py
 
 # 2. 安装前端依赖

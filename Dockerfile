@@ -23,7 +23,7 @@ COPY --chown=vp:vp index.html vite.config.ts tsconfig*.json env.d.ts ./
 RUN vp build
 
 # ---- Stage 2: Python Backend Runtime with Static SPA ----
-FROM python:3.12-slim
+FROM python:3.14-slim
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
@@ -41,9 +41,15 @@ RUN if [ -f /etc/apt/sources.list.d/debian.sources ]; then sed -i 's/deb.debian.
     && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends tzdata \
     && rm -rf /var/lib/apt/lists/*
 
-COPY backend/requirements.txt ./
-RUN --mount=type=cache,target=/root/.cache/pip \
-    pip install -r requirements.txt -i https://pypi.tuna.tsinghua.edu.cn/simple
+# uv 只在本层以挂载方式借用，不进最终镜像；依赖按 uv.lock 逐字节复现（镜像源已写在 pyproject.toml）。
+# 装进系统解释器而非 .venv：CMD 的 python 与事后 `pip install` 追加可选推理依赖（DEPLOYMENT.md §5.1.2）都指向同一处。
+# --inexact 保留基础镜像自带的 pip。
+RUN --mount=from=ghcr.io/astral-sh/uv:0.12.5,source=/uv,target=/bin/uv \
+    --mount=type=cache,target=/root/.cache/uv \
+    --mount=type=bind,source=pyproject.toml,target=pyproject.toml \
+    --mount=type=bind,source=uv.lock,target=uv.lock \
+    UV_PROJECT_ENVIRONMENT=/usr/local UV_PYTHON_DOWNLOADS=never UV_LINK_MODE=copy \
+    uv sync --locked --no-dev --inexact
 
 COPY backend/app ./app
 COPY backend/server.py ./

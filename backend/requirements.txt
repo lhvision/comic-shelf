@@ -1,9 +1,0 @@
-jmcomic==2.7.4
-fastapi==0.141.1
-uvicorn==0.52.4
-curl-cffi==0.16.2
-pillow==12.3.0
-python-multipart==0.0.32
-watchfiles==1.2.0
-pymupdf==1.28.2
-pycryptodome==3.23.0

@@ -37,6 +37,10 @@ async def run_request_with_headers(app: FastAPI, path: str):
         elif msg["type"] == "http.response.body":
             body += msg.get("body", b"")
 
+    async def receive():
+        # 客户端始终在线、永不断开：starlette 发文件时会并发监听 http.disconnect，发完后自行取消本协程
+        await asyncio.Event().wait()
+
     scope = {
         "type": "http",
         "method": "GET",
@@ -44,7 +48,7 @@ async def run_request_with_headers(app: FastAPI, path: str):
         "headers": [],
         "query_string": b"",
     }
-    await app(scope, None, send)
+    await app(scope, receive, send)
     return status_code, headers, body
 
 

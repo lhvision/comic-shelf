@@ -474,7 +474,7 @@ backend/data/
 
 上面整套流水线的前提是**算存分离**：NAS 容器不做法向推理，只收 `{index}.ocr.json` 并重建 SQLite FTS5。
 `backend/app/storage/pdf.py::_extract_chapters_from_ocr`（导入 PDF 且**没有**电子书签时的第二轨分话探测）
-按 ADR 0024 的口径是"该包属可选依赖，未安装时本轨自动跳过"，因此 `rapidocr` **不在** `backend/requirements.txt` 里，
+按 ADR 0024 的口径是"该包属可选依赖，未安装时本轨自动跳过"，因此 `rapidocr` **不在** `pyproject.toml` 的依赖表里，
 别顺手加进来——它只服务"无书签 PDF 要自动切话"这一件事，代价是镜像多 33MB（PP-OCRv6 的三个 `.onnx` 就在包里，
 不需要联网下模型）。
 
@@ -483,10 +483,9 @@ backend/data/
 
 经常在 NAS 上导入无书签 PDF、想要自动分话的话，要补两个包：`rapidocr` 3.x 不自带推理后端，得另装 CPU 版 `onnxruntime`（已按 §5.1.2 装过语义腿的，这个包已经在了，只补 `rapidocr`）：
 
-```bash
-# backend/requirements.txt 追加：
-rapidocr>=3.9.2
-onnxruntime>=1.20
+```dockerfile
+# Dockerfile 的 uv sync 安装层后追加：
+RUN pip install "rapidocr>=3.9.2" "onnxruntime>=1.20" -i https://pypi.tuna.tsinghua.edu.cn/simple
 ```
 
 #### 5.1.2 语义检索「按意思找台词」（可选能力，默认不启用）
@@ -495,7 +494,7 @@ onnxruntime>=1.20
 语义这条腿解决**字面完全不通**的查询——搜「告白」拿到「我喜欢你」、搜「脸红」拿到「满脸通红」。
 为什么做成独立出口、不与关键词混排，见 ADR 0028。
 
-它不进 `backend/requirements.txt`：为了一句问题的在线编码（2ms）要每台机器多背约 70MB，
+它不进 `pyproject.toml` 的依赖表：为了一句问题的在线编码（2ms）要每台机器多背约 70MB，
 而模型文件本身还得单独放一次。不装就是没有这条腿，其余功能一律不受影响。
 
 | 项目           | 实测值（真库 6254 条向量 / 512 维，CPU）                                                                                                                                                                                                                 |
@@ -543,7 +542,7 @@ wget -O tokenizer.json https://hf-mirror.com/Xenova/bge-small-zh-v1.5/resolve/ma
   ```
   _(注：Debian slim 基座需底层 `libstdc++6` 支持，故命令中一并包含系统库安装)_
 - **方式 B（自建 Docker 镜像，永久固化）**：
-  若在本地或 NAS 编译镜像，在 `Dockerfile` 的 pip 安装层后追加系统底层库与推理包：
+  若在本地或 NAS 编译镜像，在 `Dockerfile` 的 uv sync 安装层后追加系统底层库与推理包：
   ```dockerfile
   RUN apt-get update && apt-get install -y --no-install-recommends libstdc++6 \
       && rm -rf /var/lib/apt/lists/* \
@@ -584,8 +583,8 @@ curl "http://127.0.0.1:8000/api/search/dialogue-semantic?q=告白&limit=3" \
 纸间采用 **多阶段构建（Multi-stage Build）** 严格控制生产镜像体积与运行时轻量化（**生产镜像体积预算 SLO ≤ 300 MiB**，实际约 276 MiB）：
 
 - **前端编译阶段（构建后完全丢弃）**：使用 VoidZero 官方 Vite+ 工具链镜像 `ghcr.io/voidzero-dev/vite-plus:latest` 执行前端编译（`vp install` + `vp build`），预置 `vp` 统一调度 pnpm 与 Node.js，**工具链与庞大的 `node_modules` 均不会打包进最终镜像**；
-- **最终生产镜像**：仅基于官方精简镜像 `python:3.12-slim`，安装纯 Python 运行时依赖（内置 pip cache 挂载），附带约 2MB 的前端静态成品，镜像极小、拉取速度极快。台词 OCR 与语义检索的推理依赖**都不在这张基础依赖表里**（前者在算力机、后者见 §5.1.2），要就在自己的构建里加一层；
-- **依赖防膨胀锁顶原则**：为防范底层 C/二进制包升级突变（如 `pymupdf 2.0` 默认绑入 `onnxruntime` 与 `numpy` 导致镜像暴涨 200MB+），`backend/requirements.txt` 实施确定性全量精准版本锁定（`==`）；并通过 BuildKit 宿主机独立缓存挂载（`--mount=type=cache,target=/root/.cache/pip`）实现 wheel 缓存物理隔离，既杜绝 wheel 归档固化进最终镜像，又保障改动依赖时的极速装配（见 `docs/PITFALLS.md` #168）。
+- **最终生产镜像**：仅基于官方精简镜像 `python:3.14-slim`，按 `uv.lock` 安装纯 Python 运行时依赖（uv 以构建期挂载方式借用，不进镜像；装入系统解释器，镜像内 `pip` 仍可用于追加可选依赖），附带约 2MB 的前端静态成品，镜像极小、拉取速度极快。台词 OCR 与语义检索的推理依赖**都不在这张基础依赖表里**（前者在算力机、后者见 §5.1.2），要就在自己的构建里加一层；
+- **依赖防膨胀锁顶原则**：为防范底层 C/二进制包升级突变（如 `pymupdf 2.0` 默认绑入 `onnxruntime` 与 `numpy` 导致镜像暴涨 200MB+），`pyproject.toml` 的直接依赖实施精准版本锁定（`==`），传递依赖由 `uv.lock` 全量锁死、构建以 `uv sync --locked` 复现；并通过 BuildKit 宿主机独立缓存挂载（`--mount=type=cache,target=/root/.cache/uv`）实现 wheel 缓存物理隔离，既杜绝 wheel 归档固化进最终镜像，又保障改动依赖时的极速装配（见 `docs/PITFALLS.md` #168）。
 
 ### 6.1 本地打包构建与测试
 
@@ -966,7 +965,7 @@ curl -X POST "http://<NAS_IP>:8000/api/mcp/rpc" \
 
 - `package.json` 使用 `vite-plus` 与 `vite` override；
 - `Dockerfile` 前端构建阶段使用官方 `ghcr.io/voidzero-dev/vite-plus` 镜像并直接调用 `vp build`；
-- Docker 运行时环境（Stage 2）仅含 Python 3.12 纯后端与静态前端产物，无需额外安装 `vp` CLI。
+- Docker 运行时环境（Stage 2）仅含 Python 3.14 纯后端与静态前端产物，无需额外安装 `vp` CLI。
 
 ## 11. 本地书库的并发与故障恢复边界
 

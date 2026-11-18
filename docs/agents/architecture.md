@@ -13,14 +13,14 @@
 
 ## 2. 技术栈
 
-| 层       | 技术                                                                          |
-| -------- | ----------------------------------------------------------------------------- |
-| 前端     | Vite 8 + Vue 3 + TypeScript + Vue Router + Pinia + VueUse + VitePWA (Workbox) |
-| 样式     | 原生 CSS：`@layer`、Nesting、`color-mix()`、`oklch()`、`calc()`、`clamp()`    |
-| 后端     | Python 3.12+ / 3.14 + FastAPI + uvicorn                                       |
-| 禁漫源   | `jmcomic==2.7.4`（metadata 用 HTML client，图片算法用 `JmImageTool`）         |
-| 图片处理 | Pillow（封面缩略图、解密）                                                    |
-| 识图引擎 | `imsearch`（Docker Sidecar / 本地独立进程，ORB 特征 + 倒排索引）              |
+| 层       | 技术                                                                            |
+| -------- | ------------------------------------------------------------------------------- |
+| 前端     | Vite 8 + Vue 3 + TypeScript + Vue Router + Pinia + VueUse + VitePWA (Workbox)   |
+| 样式     | 原生 CSS：`@layer`、Nesting、`color-mix()`、`oklch()`、`calc()`、`clamp()`      |
+| 后端     | Python 3.14 + FastAPI + uvicorn（依赖由 uv 管理：`pyproject.toml` + `uv.lock`） |
+| 禁漫源   | `jmcomic==2.7.4`（metadata 用 HTML client，图片算法用 `JmImageTool`）           |
+| 图片处理 | Pillow（封面缩略图、解密）                                                      |
+| 识图引擎 | `imsearch`（Docker Sidecar / 本地独立进程，ORB 特征 + 倒排索引）                |
 
 约定：**不用 SCSS**。新增视觉请走 `src/styles/tokens.css` 的设计 token。
 设计基线见 `DESIGN_NOTES.md`：私人阅览室 / 卡片目录，禁紫色渐变，禁玻璃拟态堆叠。
