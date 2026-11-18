@@ -11,7 +11,7 @@ import threading
 import time
 import uuid
 from datetime import UTC, datetime
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from urllib.parse import urlparse
 
 from curl_cffi import requests as curl_requests
@@ -29,6 +29,9 @@ from ..formatting import format_count
 from ..gate import download_gate
 from ..models import Chapter, ComicMeta, DiscoveryItem, FetchedComic, PageRecord, RemotePage
 from .base import ComicProvider
+
+if TYPE_CHECKING:
+    from curl_cffi.requests import ProxySpec
 
 logger = logging.getLogger(__name__)
 
@@ -283,7 +286,7 @@ class PicacgProvider(ComicProvider):
         url = f"{PICA_API_URL.rstrip('/')}/{endpoint}"
         headers = self._create_headers(endpoint, method="POST")
 
-        proxies = {"http": PICA_PROXY, "https": PICA_PROXY} if PICA_PROXY else None
+        proxies: ProxySpec | None = {"http": PICA_PROXY, "https": PICA_PROXY} if PICA_PROXY else None
         session = self._session()
 
         try:
@@ -349,7 +352,7 @@ class PicacgProvider(ComicProvider):
         token = self.ensure_token()
         headers = self._create_headers(clean_endpoint, method=method, token=token)
         url = f"{PICA_API_URL.rstrip('/')}/{clean_endpoint}"
-        proxies = {"http": PICA_PROXY, "https": PICA_PROXY} if PICA_PROXY else None
+        proxies: ProxySpec | None = {"http": PICA_PROXY, "https": PICA_PROXY} if PICA_PROXY else None
         session = self._session()
 
         try:
@@ -391,6 +394,8 @@ class PicacgProvider(ComicProvider):
         raw_id: str,
         *,
         existing: FetchedComic | None = None,
+        groups_to_fetch: list[str] | None = None,
+        **kwargs: Any,
     ) -> FetchedComic:
         """Fetches comic metadata and page URLs without downloading image bytes."""
         comic_id = self.normalize_id(raw_id)
@@ -644,7 +649,7 @@ class PicacgProvider(ComicProvider):
             "Referer": "https://www.picacomic.com/",
             "Accept": "image/webp,image/apng,image/*,*/*;q=0.8",
         }
-        proxies = {"http": PICA_PROXY, "https": PICA_PROXY} if PICA_PROXY else None
+        proxies: ProxySpec | None = {"http": PICA_PROXY, "https": PICA_PROXY} if PICA_PROXY else None
         session = self._session()
 
         for url in candidate_urls:
@@ -682,7 +687,7 @@ class PicacgProvider(ComicProvider):
             "Referer": "https://www.picacomic.com/",
             "Accept": "image/webp,image/apng,image/*,*/*;q=0.8",
         }
-        proxies = {"http": PICA_PROXY, "https": PICA_PROXY} if PICA_PROXY else None
+        proxies: ProxySpec | None = {"http": PICA_PROXY, "https": PICA_PROXY} if PICA_PROXY else None
 
         session = self._session()
         last_error: Exception | None = None

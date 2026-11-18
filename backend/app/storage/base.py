@@ -461,7 +461,8 @@ class ComicStoreBase:
             existing_bundle = self.load_fetched(meta.source, meta.source_id)
             existing = existing_bundle.meta if existing_bundle is not None else None
 
-            if refresh and existing is not None:
+            # existing 取自 existing_bundle.meta，二者同为 None 或同不为 None；补上 existing_bundle 判空仅为类型收窄
+            if refresh and existing_bundle is not None and existing is not None:
                 if existing.custom_pages and not reset_custom_pages:
                     meta.custom_pages = True
                     meta.pages = existing.pages

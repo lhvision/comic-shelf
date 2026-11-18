@@ -515,8 +515,12 @@ JmImageTool.decode_and_save(num, source_image, save_path)
   - **以图搜图瓶颈**：单机 SQLite 与单机 Faiss 无法承载数亿特征点，需迁移至分布式向量数据库（如 Milvus / Qdrant）与分布式任务队列。
 - **设计定位备忘**：纸间品牌定位为「本地优先的个人漫画收藏夹」（个人阅览室），避免为了千万级泛化爬虫场景过早引入重型数据库抽象，遵循当前极简无依赖的高效设计。
 
-## 8. 后端测试
+## 8. 后端静态检查与测试
 
-- 改了 Python 就跑 `vpr test:py`（`scripts/test_py.sh`）：先跑 `backend/check_backend.py` 动态 AST 巡检（语法、导入、未定义符号），再跑 `backend/tests/test_*.py` 全部套件，要求全绿。
+- 工具链配置集中在仓库根 `pyproject.toml`：依赖（`uv.lock` 全量锁定）、ruff、ty。环境初始化 `vpr setup:py`。
+- 改了 Python 先跑 `vpr check:py`：`ruff check`（lint）→ `ruff format --check`（行宽 120）→ `ty check`（类型，只卡 `backend/app/` 与 `backend/server.py`），三者都要 0 诊断。自动修复用 `uv run ruff check --fix && uv run ruff format`。
+- 抑制必须点名规则并写明原因：`# noqa: <规则>` / `# ty: ignore[<规则>]`，禁止裸 `# type: ignore`。`BLE001` / `S110` / `S112`（吞异常）目前是暂缓而非豁免，新代码不要再添。
+- 导入根只有一个：后端代码与测试一律 `from app.xxx` / `from tests.xxx`（`scripts/` 下的工具用 `from scripts.xxx`），由 `scripts/test_py.sh` 统一设置 `PYTHONPATH`；测试文件里不要再写 `sys.path.insert`，也不要出现 `backend.app.xxx` 这第二个导入根（同一模块会被加载两次，进程内锁与缓存各持一份）。
+- 再跑 `vpr test:py`（`scripts/test_py.sh`）：逐文件独立进程运行 `backend/tests/test_*.py` 全部套件，要求全绿。逐进程是有意为之——`app.config` 在 import 期读取环境变量与 dotenv，进程隔离保证用例互不污染。
 - 只跑某一个套件：`vpr test:py <文件名关键词>`，如 `vpr test:py auth`。
 - 中间件全链路（鉴权、`no-store`、401）由 `backend/tests/test_dialogue_http_stack.py` 这类用例用真 HTTP 请求锁住，改中间件或路由后必须一起过。

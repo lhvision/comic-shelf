@@ -183,7 +183,10 @@ def create_guest_pass(
     except sqlite3.IntegrityError:
         raise ValueError("该通行口令已存在，请更换口令")
 
-    return get_guest_pass_by_id(pass_id)  # type: ignore[return-value]
+    created = get_guest_pass_by_id(pass_id) if pass_id is not None else None
+    if created is None:
+        raise RuntimeError("通行证写入后未能读回")
+    return created
 
 
 def claim_guest_pass(
@@ -226,7 +229,11 @@ def claim_guest_pass(
         if cur.rowcount == 0:
             raise ValueError("该通行证已被认领，请直接输入 PIN 码登入")
 
-    return get_guest_pass_by_id(pass_id)  # type: ignore[return-value]
+    claimed = get_guest_pass_by_id(pass_id)
+    if claimed is None:
+        # 认领写入后、读回前被馆长并发删除
+        raise ValueError("通行证不存在")
+    return claimed
 
 
 def verify_guest_pass_pin(pass_id: int, pin: str) -> bool:

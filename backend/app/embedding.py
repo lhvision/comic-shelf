@@ -58,6 +58,7 @@ def _load():
         if _SESSION is not None or _FAILED:
             return _SESSION, _TOKENIZER
         try:
+            import numpy as np
             import onnxruntime as ort
             from tokenizers import Tokenizer
 
@@ -67,7 +68,10 @@ def _load():
             tok.enable_padding(pad_id=0, direction="right")
             probe = tok.encode_batch(["探针"])
             feed = _feed(sess, probe)
-            dim = int(sess.run(None, feed)[0].shape[-1])
+            out = sess.run(None, feed)[0]
+            if not isinstance(out, np.ndarray):
+                raise TypeError(f"模型输出不是稠密张量：{type(out).__name__}")
+            dim = int(out.shape[-1])
             _SESSION, _TOKENIZER, _DIM = sess, tok, dim
             logger.info("语义检索编码器就绪：%s（%d 维）", _MODEL_PATH, dim)
         except Exception as exc:

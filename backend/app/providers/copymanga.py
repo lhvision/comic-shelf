@@ -10,7 +10,7 @@ import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from urllib.parse import urljoin, urlparse
 
 from Crypto.Cipher import AES
@@ -38,6 +38,9 @@ from ..config import (
 from ..gate import download_gate
 from ..models import Chapter, ComicMeta, FetchedComic, PageRecord, RemotePage
 from .base import ComicProvider
+
+if TYPE_CHECKING:
+    from curl_cffi.requests import ProxySpec
 
 logger = logging.getLogger("paper_room.provider.copymanga")
 
@@ -177,7 +180,7 @@ class CopyMangaProvider(ComicProvider):
         """Attempt login via official /api/v1/login endpoint."""
         url = f"{self.base_url}/api/v1/login"
         payload = {"username": username, "password": password, "salt": "", "code": ""}
-        proxies = {"http": self.proxy, "https": self.proxy} if self.proxy else None
+        proxies: ProxySpec | None = {"http": self.proxy, "https": self.proxy} if self.proxy else None
         resp = self._session().post(
             url,
             data=payload,
@@ -247,7 +250,7 @@ class CopyMangaProvider(ComicProvider):
     ) -> FetchedComic:
         """Fetch metadata + page URLs for a CopyManga comic."""
         comic_id = self.normalize_id(raw_id)
-        proxies = {"http": self.proxy, "https": self.proxy} if self.proxy else None
+        proxies: ProxySpec | None = {"http": self.proxy, "https": self.proxy} if self.proxy else None
 
         # 1. Fetch comic detail HTML page
         detail_url = f"{self.base_url}/comic/{comic_id}"
@@ -616,11 +619,7 @@ class CopyMangaProvider(ComicProvider):
             },
         )
 
-        return FetchedComic(
-            meta=meta,
-            remote_pages=remote_pages,
-            decode_version=2,  # Already clean un-scrambled bytes
-        )
+        return FetchedComic(meta=meta, remote_pages=remote_pages)
 
     def download_page(self, comic: FetchedComic, page: RemotePage) -> bytes:
         """Download one page and return valid image bytes."""
@@ -632,7 +631,7 @@ class CopyMangaProvider(ComicProvider):
             "Referer": (page.headers or {}).get("Referer") or f"{self.base_url}/",
         }
 
-        proxies = {"http": self.proxy, "https": self.proxy} if self.proxy else None
+        proxies: ProxySpec | None = {"http": self.proxy, "https": self.proxy} if self.proxy else None
 
         last_exc: Exception | None = None
         for attempt in range(2):

@@ -58,3 +58,11 @@ ignore = [
 [tool.ruff.lint.flake8-bugbear]
 # FastAPI 的参数声明函数按设计就写在默认值位置
 extend-immutable-calls = ["fastapi.File"]
+
+[tool.ty.environment]
+# 与运行时一致的唯一导入根：backend/ 供 app.*
+root = ["backend"]
+
+[tool.ty.src]
+# 类型门禁只卡业务代码；tests/ 与 scripts/ 的诊断多为 mock 噪音，不纳入
+include = ["backend/app", "backend/server.py"]

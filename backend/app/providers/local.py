@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import datetime
 import re
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from .base import ComicProvider
 
@@ -49,6 +49,8 @@ class LocalProvider(ComicProvider):
         raw_id: str,
         *,
         existing: FetchedComic | None = None,
+        groups_to_fetch: list[str] | None = None,
+        **kwargs: Any,
     ) -> FetchedComic:
         if existing is not None:
             return existing

@@ -17,11 +17,11 @@ from pathlib import Path
 _ASSET_PATH = Path(__file__).resolve().parent / "assets" / "zh_tables.dat"
 
 _INIT_LOCK = threading.Lock()
-_S2T_TABLE: dict[int, int] | None = None
-_T2S_TABLE: dict[int, int] | None = None
+_S2T_TABLE: dict[int, str] | None = None
+_T2S_TABLE: dict[int, str] | None = None
 
 
-def _load_tables() -> tuple[dict[int, int], dict[int, int]]:
+def _load_tables() -> tuple[dict[int, str], dict[int, str]]:
     """Lazily load and parse compressed Simplified <-> Traditional translation tables."""
     global _S2T_TABLE, _T2S_TABLE
     if _S2T_TABLE is not None and _T2S_TABLE is not None:

@@ -6,7 +6,7 @@ import os
 import time
 from abc import ABC, abstractmethod
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from ..models import DiscoveryItem, FetchedComic, RemotePage
 
@@ -113,6 +113,12 @@ class ComicProvider(ABC):
     def format_cover_url(self, source_id: str) -> str:
         """Optional hook to synthesize a canonical remote cover URL for discovery."""
         return ""
+
+    if TYPE_CHECKING:
+        # 可选能力：仅向类型检查器声明签名，运行时基类上并不存在这两个方法，
+        # 所以未实现的 Provider 上 hasattr() 仍为 False；调用方必须先用 hasattr() 探测再调用。
+        def download_cover(self, comic: FetchedComic) -> bytes | None: ...
+        def download_cover_by_url(self, cover_url: str) -> bytes | None: ...
 
     def describe(self) -> dict:
         return {

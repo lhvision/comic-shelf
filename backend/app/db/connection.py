@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import sqlite3
 import sys
-from collections.abc import Iterator
+from collections.abc import Generator
 from contextlib import contextmanager
 from pathlib import Path
 
@@ -55,7 +55,7 @@ def get_dialogue_db_path() -> Path:
 
 
 @contextmanager
-def get_dialogue_db() -> Iterator[sqlite3.Connection]:
+def get_dialogue_db() -> Generator[sqlite3.Connection]:
     _DIALOGUE_DB_PATH.parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(_DIALOGUE_DB_PATH, timeout=15.0)
     conn.row_factory = sqlite3.Row
@@ -70,7 +70,7 @@ def get_dialogue_db() -> Iterator[sqlite3.Connection]:
 
 
 @contextmanager
-def get_db() -> Iterator[sqlite3.Connection]:
+def get_db() -> Generator[sqlite3.Connection]:
     conn = sqlite3.connect(_DB_PATH, timeout=15.0)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA journal_mode = WAL")

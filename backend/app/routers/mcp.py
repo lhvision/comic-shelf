@@ -885,9 +885,10 @@ TOOL_HANDLERS: dict[str, Callable[[dict[str, Any]], dict[str, Any]]] = {
 }
 
 
-async def execute_tool(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
+async def execute_tool(name: str | None, arguments: dict[str, Any]) -> dict[str, Any]:
     """Executes an MCP tool via registry dispatch and returns a standard JSON-RPC Tool Result."""
-    handler = TOOL_HANDLERS.get(name)
+    # 请求里缺 `params.name` 时这里拿到 None，与未注册的名字一样按未知工具回话
+    handler = TOOL_HANDLERS.get(name) if name is not None else None
     if not handler:
         return {
             "content": [{"type": "text", "text": f"未知的 MCP 工具: {name}"}],
@@ -976,9 +977,10 @@ RESOURCE_HANDLERS: dict[str, Callable[[], dict[str, Any]]] = {
 }
 
 
-async def read_resource(uri: str) -> dict[str, Any]:
+async def read_resource(uri: str | None) -> dict[str, Any]:
     """Reads the contents of an MCP resource by URI."""
-    handler = RESOURCE_HANDLERS.get(uri)
+    # 请求里缺 `params.uri` 时这里拿到 None，与未注册的 URI 一样报 Resource not found
+    handler = RESOURCE_HANDLERS.get(uri) if uri is not None else None
     if not handler:
         raise ValueError(f"Resource not found: {uri}")
     # 同 execute_tool：资源读取也是同步 SQLite 查询，不能占着事件循环

@@ -1232,7 +1232,7 @@ class ComicStoreLocalMixin:
             detected, _ = detect_pdf_chapters(pdf_p, len(pages), doc_title)
             if len(detected) <= 1:
                 return None
-            groups = []
+            groups: list[tuple[str, str, list[tuple[str, str, bytes | Path]]]] = []
             used_ids: set[str] = set()
             for idx, ch_spec in enumerate(detected, start=1):
                 matched = existing_chaps[idx - 1] if idx <= len(existing_chaps) else None
@@ -1364,7 +1364,9 @@ class ComicStoreLocalMixin:
                                 ) or f"第 {chap_idx} 话"
                                 raw_id = matched_ch.id if matched_ch else f"c{chap_idx}"
                                 chap_id = _alloc_unique_id(raw_id, chap_idx, used_ids)
-                                chap_items = [(f_path.name, p_ext, f_path) for _pno, f_path, p_ext in extracted_pages]
+                                chap_items: list[tuple[str, str, bytes | Path]] = [
+                                    (f_path.name, p_ext, f_path) for _pno, f_path, p_ext in extracted_pages
+                                ]
                                 chapter_groups.append((chap_id, chap_title, chap_items))
 
                     elif valid_chapter_subdirs:
@@ -1377,7 +1379,9 @@ class ComicStoreLocalMixin:
                             ) or f"第 {chap_idx} 话"
                             raw_id = matched_ch.id if matched_ch else d.name
                             chap_id = _alloc_unique_id(raw_id, chap_idx, used_ids)
-                            chap_items = [(f.name, f.suffix.lower(), f) for f in sub_imgs]
+                            chap_items: list[tuple[str, str, bytes | Path]] = [
+                                (f.name, f.suffix.lower(), f) for f in sub_imgs
+                            ]
                             chapter_groups.append((chap_id, chap_title, chap_items))
                     else:
                         img_files = [

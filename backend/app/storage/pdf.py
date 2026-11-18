@@ -55,7 +55,9 @@ def unpack_pdf(pdf_path: Path, output_dir: Path) -> tuple[list[tuple[int, Path, 
 
         extracted: list[tuple[int, Path, str]] = []
 
-        for idx, page in enumerate(doc, start=1):
+        # pymupdf.Document 只实现了 __getitem__/__len__（旧式序列迭代协议），没有 __iter__；
+        # 显式 iter() 与 enumerate 内部行为一致，同时让类型检查器推导出 Page。
+        for idx, page in enumerate(iter(doc), start=1):
             imgs = page.get_images()
             done = False
 
@@ -106,7 +108,8 @@ def is_blank_or_solid_page(img_bytes: bytes) -> bool:
 
         with Image.open(io.BytesIO(img_bytes)) as im:
             thumb = im.convert("RGB").resize((32, 32))
-            extrema = thumb.getextrema()
+            # getextrema() 的返回类型按波段数二选一；RGB 恒为每波段一个 (min, max)，isinstance 仅用于收窄联合类型
+            extrema = [band for band in thumb.getextrema() if isinstance(band, tuple)]
             is_near_uniform = all((high - low) <= 15 for low, high in extrema)
             is_dark = all(high <= 35 for _, high in extrema)
             is_white = all(low >= 240 for low, _ in extrema)
@@ -210,7 +213,8 @@ def _extract_chapters_from_ocr(
     try:
         # rapidocr 3.x（PP-OCRv6 small 是其包内默认）：目录页与扉页多为繁体/日文汉字，
         # 旧 rapidocr-onnxruntime 的字符表会把它们认成形似汉字的乱码，分话因此漏判。
-        from rapidocr import RapidOCR
+        # 按设计的可选依赖（ADR 0024）：未安装时由下方 except 兜底跳过 OCR 探测轨
+        from rapidocr import RapidOCR  # ty: ignore[import-not-found]
 
         ocr = RapidOCR()
     except Exception as exc:

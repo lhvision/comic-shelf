@@ -11,7 +11,7 @@ import threading
 import time
 from datetime import UTC, datetime, timedelta, timezone
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from urllib.parse import urlparse
 
 from curl_cffi import requests as curl_requests
@@ -29,6 +29,9 @@ from ..formatting import format_count
 from ..gate import download_gate
 from ..models import Chapter, ComicMeta, DiscoveryItem, FetchedComic, RemotePage
 from .base import ComicProvider
+
+if TYPE_CHECKING:
+    from curl_cffi.requests import ProxySpec
 
 logger = logging.getLogger("paper_room.provider.jm")
 
@@ -133,7 +136,7 @@ def _is_safe_remote_domain(domain: str) -> bool:
             or ip.is_reserved
             or ip.is_multicast
             or (
-                hasattr(ip, "ipv4_mapped")
+                isinstance(ip, ipaddress.IPv6Address)
                 and ip.ipv4_mapped
                 and (ip.ipv4_mapped.is_private or ip.ipv4_mapped.is_loopback or ip.ipv4_mapped.is_link_local)
             )
@@ -221,7 +224,7 @@ class JMProvider(ComicProvider):
         p = self._sanitize_proxy(JM_PROXY)
         return {"http": p, "https": p} if p else None
 
-    def _get_image_proxies(self) -> dict[str, str] | None:
+    def _get_image_proxies(self) -> ProxySpec | None:
         if JM_IMAGE_PROXY_MODE.lower() == "direct":
             return None
         # default "auto": follow JM_PROXY
@@ -1086,6 +1089,8 @@ class JMProvider(ComicProvider):
         raw_id: str,
         *,
         existing: FetchedComic | None = None,
+        groups_to_fetch: list[str] | None = None,
+        **kwargs: Any,
     ) -> FetchedComic:
         jm_id = self.normalize_id(raw_id)
         t_jm_fetch = time.perf_counter()

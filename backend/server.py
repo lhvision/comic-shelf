@@ -18,11 +18,12 @@ class QuietAccessLogFilter(logging.Filter):
     QUIET_PATHS = ("/api/health", "/api/search/image/status")
 
     def filter(self, record: logging.LogRecord) -> bool:
-        if record.args and len(record.args) >= 5:
+        if isinstance(record.args, tuple) and len(record.args) >= 5:
             try:
                 # record.args: (client_addr, method, full_path, http_version, status_code)
                 path = str(record.args[2]).split("?")[0]
-                status_code = int(record.args[4])
+                # args 元素的静态类型是 object；非数值形状按设计由下方 except 兜住
+                status_code = int(record.args[4])  # ty: ignore[invalid-argument-type]
                 if path in self.QUIET_PATHS and status_code in (200, 304):
                     return False
             except IndexError, ValueError, TypeError:
