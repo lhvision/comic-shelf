@@ -18,14 +18,8 @@ fi
 # 唯一的导入根配置：backend/ 供 `app.*` 与 `tests.*`，仓库根供 `scripts.*`（测试文件不再各自改 sys.path）
 export PYTHONPATH="$PWD/backend:$PWD${PYTHONPATH:+:$PYTHONPATH}"
 
-CHECK_SCRIPT="backend/check_backend.py"
-
-# Auto-discover all test files in backend/tests/
+# Auto-discover all test files in backend/tests/（静态检查已拆到 vpr check:py）
 TEST_FILES=()
-if [ -f "$CHECK_SCRIPT" ]; then
-  TEST_FILES+=("$CHECK_SCRIPT")
-fi
-
 while IFS= read -r f; do
   [ -n "$f" ] && TEST_FILES+=("$f")
 done < <(find backend/tests -maxdepth 1 -name 'test_*.py' | sort)

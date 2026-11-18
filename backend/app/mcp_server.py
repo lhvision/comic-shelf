@@ -69,8 +69,8 @@ async def run_stdio_server() -> None:
 
         except asyncio.CancelledError:
             break
-        except Exception as exc:
-            logger.exception("Unexpected error in stdio loop: %s", exc)
+        except Exception:
+            logger.exception("Unexpected error in stdio loop")
 
 
 def main() -> None:

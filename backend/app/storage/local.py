@@ -31,9 +31,9 @@ from ..models import (
 from ..providers.local import LocalProvider
 from .pdf import detect_pdf_chapters, is_pdf_file, unpack_pdf
 from .utils import (
+    _NATURAL_SPLIT,
     CURRENT_DECODE_VERSION,
     IMAGE_EXTS,
-    _NATURAL_SPLIT,
     _is_path_allowed,
     _write_json_atomic,
 )
@@ -84,8 +84,8 @@ class ComicStoreLocalMixin:
                 curr_chap = int(m.group(1))
             groups[curr_chap].append(item)
 
-        for cnum in groups:
-            groups[cnum].sort(key=lambda x: cls._natural_key(x[0]))
+        for group in groups.values():
+            group.sort(key=lambda x: cls._natural_key(x[0]))
 
         return groups
 
@@ -229,7 +229,7 @@ class ComicStoreLocalMixin:
                     chapters.append(Chapter(id=cid, index=idx, title=title, page_count=0, start=1))
 
             now_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            now_iso = datetime.datetime.now(datetime.timezone.utc).isoformat()
+            now_iso = datetime.datetime.now(datetime.UTC).isoformat()
             meta = ComicMeta(
                 source="local",
                 source_id=source_id,
@@ -344,7 +344,7 @@ class ComicStoreLocalMixin:
                         global_idx += 1
 
                 now_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                now_iso = datetime.datetime.now(datetime.timezone.utc).isoformat()
+                now_iso = datetime.datetime.now(datetime.UTC).isoformat()
                 author_val = (
                     req.authors if req.authors else ([pdf_meta["author"]] if pdf_meta.get("author") else ["自制"])
                 )
@@ -430,7 +430,7 @@ class ComicStoreLocalMixin:
                 )
 
             now_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            now_iso = datetime.datetime.now(datetime.timezone.utc).isoformat()
+            now_iso = datetime.datetime.now(datetime.UTC).isoformat()
             title = req.title.strip() if req.title and req.title.strip() else base_dir.name
 
             meta = ComicMeta(
@@ -639,7 +639,7 @@ class ComicStoreLocalMixin:
                 shutil.rmtree(staging_dir, ignore_errors=True)
 
             now_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            now_iso = datetime.datetime.now(datetime.timezone.utc).isoformat()
+            now_iso = datetime.datetime.now(datetime.UTC).isoformat()
             meta = ComicMeta(
                 source="local",
                 source_id=source_id,
@@ -800,7 +800,7 @@ class ComicStoreLocalMixin:
                         global_idx += 1
 
             now_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            now_iso = datetime.datetime.now(datetime.timezone.utc).isoformat()
+            now_iso = datetime.datetime.now(datetime.UTC).isoformat()
             title = req.title.strip() if req.title and req.title.strip() else raw_path.name
 
             meta = ComicMeta(

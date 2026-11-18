@@ -22,8 +22,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from scripts import ocr_worker  # noqa: E402
-from scripts.ocr_worker import (  # noqa: E402
+from scripts import ocr_worker
+from scripts.ocr_worker import (
     DEFAULT_MIN_SCORE,
     cluster_blocks,
     collect_comic_pages,

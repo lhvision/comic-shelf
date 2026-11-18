@@ -6,16 +6,16 @@ import asyncio
 import base64
 import json
 import shutil
-import sys
 import tempfile
 from pathlib import Path
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
-
 
 import app.auth as auth_mod
 import app.config as config_mod
 import app.db as db_mod
 import app.routers.mcp as mcp_mod
+from app.abuse import clear_ip_login_failures
 from app.db import (
     create_direct_pass,
     get_direct_pass,
@@ -24,13 +24,9 @@ from app.db import (
     set_dialogue_db_path,
     upsert_comic_index,
 )
-from app.abuse import clear_ip_login_failures
 from app.main import auth_and_security_middleware, store
 from app.models import ComicMeta
 from app.routers.mcp import (
-    MCP_PROMPTS,
-    MCP_RESOURCES,
-    MCP_TOOLS,
     execute_tool,
     mcp_direct_rpc_endpoint,
     mcp_messages_endpoint,
@@ -513,9 +509,10 @@ def test_http_direct_rpc_and_sandbox_middleware():
         temp_token = pass_info["token"]
 
         # 2a. Direct pass login via /api/auth/login
+        from fastapi import Response
+
         from app.models import LoginRequest
         from app.routers.auth import auth_login
-        from fastapi import Response
 
         login_resp = auth_login(
             LoginRequest(secret=temp_token),
@@ -541,7 +538,7 @@ def test_http_direct_rpc_and_sandbox_middleware():
             path="/api/library/local/mcp_test_comic",
             query_params={"temp_token": temp_token},
         )
-        resp_ok = asyncio.run(auth_and_security_middleware(req_ok, dummy_call_next))
+        asyncio.run(auth_and_security_middleware(req_ok, dummy_call_next))
         assert next_called is True
 
         # 2b-2. Requesting metadata outside single-book sandbox (e.g. /api/providers) -> 403 Forbidden
@@ -572,7 +569,7 @@ def test_http_direct_rpc_and_sandbox_middleware():
             path="/api/library/jm/999999",
             query_params={"temp_token": temp_token},
         )
-        resp_blocked_other = asyncio.run(auth_and_security_middleware(req_blocked_other, dummy_call_next))
+        asyncio.run(auth_and_security_middleware(req_blocked_other, dummy_call_next))
         # 2e. Direct pass rate limiting on reading page binary endpoint (/file)
         from app.abuse import _guest_rate_buckets
 
@@ -586,7 +583,7 @@ def test_http_direct_rpc_and_sandbox_middleware():
         assert resp_file.status_code == 200
 
         # Simulate exhausted rate-limiting token bucket for this direct reader
-        rate_key = f"direct:local:mcp_test_comic:127.0.0.1"
+        rate_key = "direct:local:mcp_test_comic:127.0.0.1"
         assert rate_key in _guest_rate_buckets
         _guest_rate_buckets[rate_key].tokens = 0.0
         next_called = False

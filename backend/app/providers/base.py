@@ -92,7 +92,7 @@ class ComicProvider(ABC):
         self,
         raw_id: str,
         *,
-        existing: "FetchedComic | None" = None,
+        existing: FetchedComic | None = None,
         groups_to_fetch: list[str] | None = None,
         **kwargs: Any,
     ) -> FetchedComic:

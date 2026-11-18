@@ -1,18 +1,13 @@
-import sys
 import tempfile
 import time
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-
-from app.models import ComicMeta, DiscoveryFeed, DiscoveryItem
-from app.storage import ComicStore
 import app.auth as auth_mod
+import app.db as db_mod
 import app.main as main_mod
 import app.storage.base as storage_base_mod
-
-
-import app.db as db_mod
+from app.models import ComicMeta, DiscoveryFeed, DiscoveryItem
 
 # 整个模块跑在临时数据目录里：下面要签一张口令已知的访客通行证（guest-secret-456），
 # 还要写发现页缓存。落进真库就是一张谁都能用的有效访客证，落进真 discovery/ 就是拿假榜单盖掉真缓存
@@ -165,8 +160,8 @@ def test_picacg_ranking_fetch():
 
 
 def test_discovery_ranking_router():
-    from app.routers.library import discovery_ranking
     from app.providers import get_provider
+    from app.routers.library import discovery_ranking
 
     provider = get_provider("picacg")
     mock_data = {
@@ -266,8 +261,9 @@ def test_legacy_discovery_cache_migration():
 
 def test_discovery_cover_router():
     from fastapi import HTTPException
-    from app.routers.library import discovery_cover, _discovery_cover_cache, _discovery_cover_lock
+
     from app.providers import get_provider
+    from app.routers.library import _discovery_cover_cache, _discovery_cover_lock, discovery_cover
 
     provider = get_provider("picacg")
     fake_img = b"\xff\xd8\xff\xe0" + b"\x00" * 32

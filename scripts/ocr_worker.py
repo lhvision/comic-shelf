@@ -16,10 +16,10 @@ import os
 import sys
 import threading
 import time
-from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
-import urllib.request
 import urllib.error
+import urllib.request
+from pathlib import Path
+from typing import Any
 
 # 尝试导入 OCR 与图像依赖
 try:
@@ -38,7 +38,7 @@ except ImportError:
     OCRVersion = None
 
 
-def resolve_data_dir(custom_path: Optional[str] = None) -> Path:
+def resolve_data_dir(custom_path: str | None = None) -> Path:
     """按优先级解析有效漫画数据目录"""
     if custom_path:
         p = Path(custom_path).resolve()
@@ -62,8 +62,8 @@ def resolve_data_dir(custom_path: Optional[str] = None) -> Path:
 
 
 def sort_bubbles_by_reading_order(
-    bubbles: List[Dict[str, Any]],
-) -> List[Dict[str, Any]]:
+    bubbles: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
     """按整页阅读顺序排定气泡：竖排页自右向左分栏，横排页自上而下分行。
 
     box 为归一化 [ymin, xmin, ymax, xmax]。
@@ -82,7 +82,7 @@ def sort_bubbles_by_reading_order(
 
     # 扫描轴上大幅重叠的气泡并入同一栏/同一行，栏内再按交叉轴排。
     # 少了这一步，左右错落的分栏会被单轴排序打散成 Z 字形。
-    bands: List[List[Dict[str, Any]]] = []
+    bands: list[list[dict[str, Any]]] = []
     band_lo = band_hi = 0.0
     for b in ordered:
         lo, hi = b["box"][sweep_lo], b["box"][sweep_hi]
@@ -95,7 +95,7 @@ def sort_bubbles_by_reading_order(
         band_lo, band_hi = lo, hi
         bands.append([b])
 
-    out: List[Dict[str, Any]] = []
+    out: list[dict[str, Any]] = []
     for band in bands:
         out.extend(sorted(band, key=lambda b: b["box"][cross]))
     return out
@@ -110,7 +110,7 @@ BUBBLE_THICKNESS_RATIO = 2.0
 BUBBLE_MAX_PAGE_AREA = 0.20
 
 
-def cluster_blocks(blocks: List[Dict[str, Any]], img_w: int, img_h: int) -> List[Dict[str, Any]]:
+def cluster_blocks(blocks: list[dict[str, Any]], img_w: int, img_h: int) -> list[dict[str, Any]]:
     """
     气泡级多行文本几何聚类算法 (Bubble-level Line Clustering)
     根据几何间距与重合度，将属于同一气泡的多行文字聚合为一条完整对白，并计算归一化坐标 [ymin, xmin, ymax, xmax]
@@ -127,7 +127,7 @@ def cluster_blocks(blocks: List[Dict[str, Any]], img_w: int, img_h: int) -> List
 
     parent = list(range(n))
     # comp[root] = [ymin, xmin, ymax, xmax]：该分量当前的外接框，用于合并后的面积上限判定
-    comp: Dict[int, List[float]] = {i: [b["ymin"], b["xmin"], b["ymax"], b["xmax"]] for i, b in enumerate(blocks)}
+    comp: dict[int, list[float]] = {i: [b["ymin"], b["xmin"], b["ymax"], b["xmax"]] for i, b in enumerate(blocks)}
     area_cap = img_w * img_h * BUBBLE_MAX_PAGE_AREA
 
     def find(i: int) -> int:
@@ -191,13 +191,13 @@ def cluster_blocks(blocks: List[Dict[str, Any]], img_w: int, img_h: int) -> List
             if is_adjacent_vertical or is_adjacent_horizontal:
                 union(i, j)
 
-    groups: Dict[int, List[Dict[str, Any]]] = {}
+    groups: dict[int, list[dict[str, Any]]] = {}
     for i in range(n):
         root = find(i)
         groups.setdefault(root, []).append(blocks[i])
 
-    results: List[Dict[str, Any]] = []
-    for _, g_blocks in groups.items():
+    results: list[dict[str, Any]] = []
+    for g_blocks in groups.values():
         # 判断该气泡是否偏竖排
         v_count = sum(1 for b in g_blocks if (b["ymax"] - b["ymin"]) > (b["xmax"] - b["xmin"]) * 1.1)
         is_vertical = v_count >= len(g_blocks) / 2
@@ -247,7 +247,7 @@ MIN_SCORE = DEFAULT_MIN_SCORE
 ENGINE_TRACK = "v6"
 
 
-def cuda_ready() -> Tuple[bool, str]:
+def cuda_ready() -> tuple[bool, str]:
     """预检 GPU 构建装没装上，用不上时说明原因。
 
     rapidocr 的启用条件是 `use_cuda and get_device()=='GPU' and 'CUDAExecutionProvider'
@@ -322,7 +322,7 @@ def is_valid_ocr_sidecar(out_path: Path) -> bool:
         return False
 
 
-def run_engine(engine: Any, img_path: Path) -> List[Tuple[Any, str, float]]:
+def run_engine(engine: Any, img_path: Path) -> list[tuple[Any, str, float]]:
     """把引擎返回拍平成 `[(box, text, score), ...]`，行序即检测器的输出序。
 
     `rapidocr` 3.x 返回 `RapidOCROutput` 对象，`boxes`/`txts`/`scores` 是三个并列字段。
@@ -339,7 +339,7 @@ def run_engine(engine: Any, img_path: Path) -> List[Tuple[Any, str, float]]:
     scores = getattr(out, "scores", None)
     boxes = list(boxes) if boxes is not None else []
     scores = list(scores) if scores is not None else []
-    rows: List[Tuple[Any, str, float]] = []
+    rows: list[tuple[Any, str, float]] = []
     for i, text in enumerate(texts):
         raw_box = boxes[i] if i < len(boxes) else []
         box = [[float(pt[0]), float(pt[1])] for pt in raw_box]
@@ -347,12 +347,12 @@ def run_engine(engine: Any, img_path: Path) -> List[Tuple[Any, str, float]]:
     return rows
 
 
-def rows_to_blocks(rows: List[Tuple[Any, str, float]]) -> List[Dict[str, Any]]:
+def rows_to_blocks(rows: list[tuple[Any, str, float]]) -> list[dict[str, Any]]:
     """识别行 → 聚类输入：丢掉空白文本，角点收成外接框。
 
     不再按置信度过滤：低分行已由引擎按 `Global.text_score` 滤掉（见 `build_engine`）。
     """
-    blocks: List[Dict[str, Any]] = []
+    blocks: list[dict[str, Any]] = []
     for box, text, score in rows:
         text_str = str(text).strip()
         if not text_str:
@@ -376,8 +376,8 @@ def process_image(
     img_path: Path,
     out_path: Path,
     force: bool = False,
-    engine: Optional[Any] = None,
-) -> Optional[int]:
+    engine: Any | None = None,
+) -> int | None:
     """处理单张画页的 OCR 提取与写入伴生文件。
     智能增量与自愈机制：
     1. 若未开启 force 且伴生文件有效、修改时间更新，直接跳过 (return None)；
@@ -430,7 +430,7 @@ def process_image(
     return len(bubbles)
 
 
-def parse_page_filter(page_spec: Optional[str]) -> Optional[set[int]]:
+def parse_page_filter(page_spec: str | None) -> set[int] | None:
     """解析页面过滤参数，支持单页 (3)、多页 (1,3,5) 或范围 (10-20)"""
     if not page_spec:
         return None
@@ -451,7 +451,7 @@ def parse_page_filter(page_spec: Optional[str]) -> Optional[set[int]]:
     return res
 
 
-def collect_comic_pages(comic_dir: Path, page_filter: Optional[set[int]] = None) -> List[Tuple[Path, Path]]:
+def collect_comic_pages(comic_dir: Path, page_filter: set[int] | None = None) -> list[tuple[Path, Path]]:
     """收集指定漫画目录下的全部有效画页图片及对应伴生文件路径。
     若指定 page_filter，仅保留匹配该页码（1-based 序号或文件名数字）的画页。
     """
@@ -460,7 +460,7 @@ def collect_comic_pages(comic_dir: Path, page_filter: Optional[set[int]] = None)
         return []
 
     exts = {".webp", ".jpg", ".jpeg", ".png"}
-    all_pages: List[Tuple[Path, Path]] = []
+    all_pages: list[tuple[Path, Path]] = []
 
     # 支持单话平铺或分章节 c1/c2
     for root, _, files in os.walk(pages_dir):
@@ -477,7 +477,7 @@ def collect_comic_pages(comic_dir: Path, page_filter: Optional[set[int]] = None)
     if not page_filter:
         return all_pages
 
-    filtered: List[Tuple[Path, Path]] = []
+    filtered: list[tuple[Path, Path]] = []
     for seq_idx, (img_path, out_path) in enumerate(all_pages, start=1):
         stem_num = None
         try:
@@ -490,7 +490,7 @@ def collect_comic_pages(comic_dir: Path, page_filter: Optional[set[int]] = None)
     return filtered
 
 
-def notify_nas_sync(api_url: str, source: str, source_id: str, token: Optional[str] = None) -> bool:
+def notify_nas_sync(api_url: str, source: str, source_id: str, token: str | None = None) -> bool:
     """通过 HTTP API 通知 NAS 纸间服务更新 SQLite FTS5 索引"""
     url = f"{api_url.rstrip('/')}/api/library/{source}/{source_id}/ocr/sync"
     req = urllib.request.Request(url, method="POST")
@@ -511,7 +511,7 @@ def notify_nas_sync(api_url: str, source: str, source_id: str, token: Optional[s
     return False
 
 
-def get_library_stats(data_dir: Path) -> Dict[str, Any]:
+def get_library_stats(data_dir: Path) -> dict[str, Any]:
     """扫描统计当前书库的 OCR 伴生覆盖率"""
     library_dir = data_dir / "library"
     stats = {
@@ -707,7 +707,7 @@ def main() -> int:
     if page_filter:
         print(f"🎯 页码过滤模式已启用: 限定提取页码 {sorted(page_filter)}")
 
-    target_comics: List[Tuple[str, str, Path]] = []
+    target_comics: list[tuple[str, str, Path]] = []
     sources = [args.source] if args.source else ["jm", "local", "picacg"]
 
     for src in sources:
@@ -776,9 +776,7 @@ def main() -> int:
                 executor.submit(process_image, img_p, out_p, args.force): (img_p, out_p)
                 for img_p, out_p in pending_pages
             }
-            done_count = 0
-            for future in concurrent.futures.as_completed(future_to_page):
-                done_count += 1
+            for done_count, future in enumerate(concurrent.futures.as_completed(future_to_page), start=1):
                 img_p, out_p = future_to_page[future]
                 try:
                     res = future.result()

@@ -12,7 +12,8 @@ import base64
 import json
 import logging
 import secrets
-from typing import Any, AsyncGenerator, Callable
+from collections.abc import AsyncGenerator, Callable
+from typing import Any
 from urllib.parse import quote, urlencode, urlsplit
 
 from fastapi import APIRouter, HTTPException, Query, Request, Response
@@ -1225,7 +1226,7 @@ async def mcp_sse_endpoint(request: Request) -> StreamingResponse:
     # 随机值、断连即回收，它的保密等级就等于一次性会话票据，不需要再叠一层长效凭据。
     message_endpoint_url = f"/api/mcp/messages?session_id={session_id}"
 
-    async def sse_stream() -> AsyncGenerator[str, None]:
+    async def sse_stream() -> AsyncGenerator[str]:
         try:
             # Emit standard MCP 'endpoint' handshake event
             yield f"event: endpoint\ndata: {message_endpoint_url}\n\n"
@@ -1238,7 +1239,7 @@ async def mcp_sse_endpoint(request: Request) -> StreamingResponse:
                     if msg is None:
                         break
                     yield f"event: message\ndata: {msg}\n\n"
-                except asyncio.TimeoutError:
+                except TimeoutError:
                     yield ": keepalive\n\n"
         except asyncio.CancelledError:
             pass

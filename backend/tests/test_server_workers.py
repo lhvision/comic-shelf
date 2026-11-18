@@ -5,12 +5,12 @@ from __future__ import annotations
 import contextlib
 import io
 import os
-from pathlib import Path
 import runpy
 import subprocess
 import sys
 import tempfile
 import unittest
+from pathlib import Path
 from unittest.mock import patch
 
 BACKEND_DIR = Path(__file__).resolve().parent.parent
@@ -43,9 +43,9 @@ class TestServerWorkers(unittest.TestCase):
             patch.object(sys, "argv", [str(SERVER), "--workers", "2"]),
             patch("uvicorn.run") as run,
             contextlib.redirect_stderr(output),
+            self.assertRaises(SystemExit) as error,
         ):
-            with self.assertRaises(SystemExit) as error:
-                runpy.run_path(str(SERVER), run_name="__main__")
+            runpy.run_path(str(SERVER), run_name="__main__")
         self.assertEqual(error.exception.code, 2)
         self.assertIn("unrecognized arguments: --workers 2", output.getvalue())
         run.assert_not_called()

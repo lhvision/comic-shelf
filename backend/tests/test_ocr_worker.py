@@ -2,13 +2,10 @@ import sys
 import unittest
 from pathlib import Path
 
-
 from scripts import ocr_worker
 from scripts.ocr_worker import (
     cluster_blocks,
-    collect_comic_pages,
     cuda_ready,
-    get_library_stats,
     is_valid_ocr_sidecar,
     parse_page_filter,
     run_engine,
@@ -260,9 +257,8 @@ class TestGPURuntime(unittest.TestCase):
         """缺包必须抛错：返回 None 会被上层当成"这页 0 气泡"，整本书安静跑完结果全空。"""
         from unittest import mock
 
-        with mock.patch.object(ocr_worker, "RapidOCR", None):
-            with self.assertRaises(RuntimeError):
-                ocr_worker.build_engine(False)
+        with mock.patch.object(ocr_worker, "RapidOCR", None), self.assertRaises(RuntimeError):
+            ocr_worker.build_engine(False)
 
     def test_cuda_ready_states_reason_when_unavailable(self):
         """不可用时必须给出原因，否则 --gpu 静默降级成 CPU 跑几个小时无人察觉。"""
@@ -306,7 +302,7 @@ class TestEngineAdapter(unittest.TestCase):
         F = TestEngineAdapter._Float32
 
         class Output:
-            txts = ["你好呀", "再見"]
+            txts = ["你好呀", "再見"]  # noqa: RUF012 - 模拟引擎输出对象的形状，不会被跨实例共享修改
             # 真实形状：每个气泡是一串 [x, y] 角点，角点分量是 numpy 标量
             boxes = TestEngineAdapter._ArrayLike(
                 [

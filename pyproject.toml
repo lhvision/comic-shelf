@@ -17,6 +17,7 @@ dependencies = [
   "pymupdf==1.28.2",
   "pycryptodome==3.23.0",
   # 代码里直接 import，版本跟随 fastapi 的约束，由 uv.lock 锁定
+  "anyio",
   "pydantic",
   "starlette",
 ]
@@ -37,3 +38,23 @@ default = true
 
 [tool.ruff]
 line-length = 120
+# 导入根：backend/ 供 app.* 与 tests.*，仓库根供 scripts.*
+src = ["backend", "."]
+
+[tool.ruff.lint]
+# 暂缓而非豁免：下面三条共约 200 处，每一处都是"吞掉异常还是让它冒出来"的行为决策，
+# 落在下载、解码、存储自愈路径上，机械修改会改变容错行为，留待专门议题逐处审视。
+ignore = [
+  "BLE001",
+  "S110",
+  "S112",
+  # 纯风格规则，在本仓库里改写后反而更难读：守卫式的 `if 不合法: return False` 链（SSRF 校验等）、
+  # 带语义分组的嵌套 if、测试里逐层叠加的 with patch
+  "SIM102",
+  "SIM103",
+  "SIM117",
+]
+
+[tool.ruff.lint.flake8-bugbear]
+# FastAPI 的参数声明函数按设计就写在默认值位置
+extend-immutable-calls = ["fastapi.File"]

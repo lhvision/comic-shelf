@@ -4,7 +4,8 @@ from __future__ import annotations
 
 import logging
 import time
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 
 from ..config import COVER_THUMB_WIDTH, COVER_WIDTH, MAX_PREFETCH
 from ..models import Chapter, FetchedComic

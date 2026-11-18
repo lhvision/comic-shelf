@@ -2,9 +2,9 @@ from __future__ import annotations
 
 import sqlite3
 import sys
+from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Iterator
 
 from ..config import DATA_DIR
 
@@ -19,10 +19,10 @@ def get_data_dir() -> Path:
     """Return the active DATA_DIR, allowing tests to override `app.db.DATA_DIR` or `app.config.DATA_DIR`."""
     app_db = sys.modules.get("app.db")
     if app_db and hasattr(app_db, "DATA_DIR"):
-        return Path(getattr(app_db, "DATA_DIR"))
+        return Path(app_db.DATA_DIR)
     config = sys.modules.get("app.config")
     if config and hasattr(config, "DATA_DIR"):
-        return Path(getattr(config, "DATA_DIR"))
+        return Path(config.DATA_DIR)
     return DATA_DIR
 
 

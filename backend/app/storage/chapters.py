@@ -10,7 +10,7 @@ from typing import Any
 
 from fastapi import HTTPException
 
-from ..models import Chapter, ComicMeta, PageRecord, RemotePage
+from ..models import ComicMeta, PageRecord, RemotePage
 from .utils import CURRENT_DECODE_VERSION, _write_json_atomic
 
 logger = logging.getLogger(__name__)

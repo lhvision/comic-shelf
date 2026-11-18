@@ -1,9 +1,6 @@
 import asyncio
 import json
-import sys
-from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
-
 
 from app.imsearch import check_imsearch_status, parse_imsearch_path, search_imsearch
 
@@ -78,6 +75,7 @@ def test_search_imsearch():
 
 def test_fastapi_endpoints():
     from fastapi import HTTPException
+
     from app.routers.search import image_search, image_search_status, store
 
     mock_req = MagicMock()

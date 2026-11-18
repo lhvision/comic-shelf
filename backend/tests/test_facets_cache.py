@@ -1,9 +1,7 @@
 from __future__ import annotations
 
-import sys
 import tempfile
 from pathlib import Path
-
 
 import app.db as db_mod
 
@@ -106,7 +104,7 @@ def test_facets_cache_toctou_write_during_compute():
     db_mod._compute_library_facets = _simulated_compute
     try:
         # bypass_cache 触发重算
-        res2 = db_mod.get_library_facets(is_curator=True, bypass_cache=True)
+        db_mod.get_library_facets(is_curator=True, bypass_cache=True)
     finally:
         db_mod._compute_library_facets = original_compute
 

@@ -2,7 +2,8 @@ import asyncio
 import json
 import threading
 import time
-from typing import Any, AsyncGenerator
+from collections.abc import AsyncGenerator
+from typing import Any
 
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import StreamingResponse
@@ -131,7 +132,7 @@ async def sse_event_stream(request: Request) -> StreamingResponse:
         _listeners.add(entry)
         _ip_counts[client_ip] = _ip_counts.get(client_ip, 0) + 1
 
-    async def event_generator() -> AsyncGenerator[str, None]:
+    async def event_generator() -> AsyncGenerator[str]:
         try:
             # Send initial connection handshake
             yield f"event: ping\ndata: {json.dumps({'status': 'connected', 'timestamp': time.time()})}\n\n"
@@ -146,7 +147,7 @@ async def sse_event_stream(request: Request) -> StreamingResponse:
                     if msg is None:
                         break
                     yield msg
-                except asyncio.TimeoutError:
+                except TimeoutError:
                     # 30s keepalive heartbeat preventing proxy timeouts and speeding up dead connection reclamation
                     yield ": keepalive\n\n"
         except asyncio.CancelledError:

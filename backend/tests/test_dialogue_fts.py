@@ -1,24 +1,22 @@
 from __future__ import annotations
 
 import json
-import os
 import shutil
-import sys
 import tempfile
 from pathlib import Path
 from unittest.mock import MagicMock
 
+from fastapi import HTTPException
 
+import app.auth as auth_mod
 import app.config as config_mod
 import app.db as db_mod
-import app.auth as auth_mod
 from app.main import (
-    search_dialogue_endpoint,
-    sync_ocr_endpoint,
     delete_comic,
+    search_dialogue_endpoint,
     store,
+    sync_ocr_endpoint,
 )
-from fastapi import HTTPException
 
 
 def make_mock_request(
@@ -1644,7 +1642,7 @@ def test_multi_chapter_scanlator_deduplication():
         write_ocr(29, ["戰鬥才剛剛開始。下期待續"])
         write_ocr(30, ["感謝大家閱讀本話", "本漢化組誠聘嵌字與初翻君", "審核QQ群：987654321"])
 
-        indexed_count = db_mod.sync_comic_dialogues("copymanga", "shadow_garden")
+        db_mod.sync_comic_dialogues("copymanga", "shadow_garden")
 
         # 检查数据库内容：首尾广告页（第 2、10、11、20、30 页）应彻底未被写入（0 行记录）
         with db_mod.get_dialogue_db() as conn:

@@ -1,14 +1,11 @@
 import asyncio
-import json
-import sys
 import threading
-from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock
 
+from fastapi import HTTPException
 
 import app.auth as auth_mod
 from app.events import broadcast_event, get_active_listener_count, shutdown_events, sse_event_stream
-from fastapi import HTTPException
 
 
 def make_request(authorization: str | None = None, cookies: dict[str, str] | None = None) -> MagicMock:

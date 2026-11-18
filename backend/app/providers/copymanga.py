@@ -8,15 +8,14 @@ import re
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 from urllib.parse import urljoin, urlparse
 
-from curl_cffi import requests as curl_requests
-
 from Crypto.Cipher import AES
 from Crypto.Util.Padding import unpad
+from curl_cffi import requests as curl_requests
 
 
 def aes_decrypt(key_str: str, cipher_hex_with_iv: str) -> str:
@@ -287,7 +286,6 @@ class CopyMangaProvider(ComicProvider):
             author_name = author_match.group(1).strip()
             if author_name and author_name not in authors:
                 authors.append(author_name)
-        author = " / ".join(authors) if authors else ""
 
         # 4. Parse cover URL
         cover_url = ""
@@ -603,7 +601,7 @@ class CopyMangaProvider(ComicProvider):
             updated_at=updated_at,
             imported_at=existing.meta.imported_at
             if (existing and existing.meta.imported_at)
-            else datetime.now(timezone.utc).isoformat(),
+            else datetime.now(UTC).isoformat(),
             views=views,
             likes="",
             chapters=chapters,
@@ -612,7 +610,7 @@ class CopyMangaProvider(ComicProvider):
             raw={
                 "base_url": self.base_url,
                 "cover_url": cover_url,
-                "fetched_at": datetime.now(timezone.utc).isoformat(),
+                "fetched_at": datetime.now(UTC).isoformat(),
                 "available_groups": available_groups,
                 "selected_groups": selected_groups,
             },

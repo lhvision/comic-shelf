@@ -11,6 +11,7 @@ from __future__ import annotations
 import json
 import os
 import threading
+from typing import Self
 
 from .config import DATA_DIR, MAX_CONCURRENT_DOWNLOADS
 
@@ -50,7 +51,7 @@ class ConcurrencyGate:
             self._active -= 1
             self._cond.notify()
 
-    def __enter__(self) -> "ConcurrencyGate":
+    def __enter__(self) -> Self:
         self._acquire()
         return self
 

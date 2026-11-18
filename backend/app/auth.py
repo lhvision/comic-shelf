@@ -17,7 +17,6 @@ from .db import (
     get_device_by_token,
     get_direct_pass,
     get_guest_pass_by_token,
-    register_guest_device,
     touch_device_active,
     verify_and_touch_curator_session,
 )

@@ -1,10 +1,8 @@
 from __future__ import annotations
 
-import sys
 import tempfile
 import unittest
 from pathlib import Path
-
 
 from app.db import (
     batch_find_comic_mirrors,

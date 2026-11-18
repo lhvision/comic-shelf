@@ -6,6 +6,7 @@ import secrets
 import time
 from typing import Any
 from urllib.parse import quote
+
 from fastapi import APIRouter, HTTPException, Request, Response
 
 from ..abuse import (
@@ -48,7 +49,6 @@ from ..db import (
     verify_and_touch_curator_session,
     verify_guest_pass_pin,
 )
-from .common import store
 from ..models import (
     AuthStatusResponse,
     ClaimGuestPassRequest,
@@ -60,6 +60,7 @@ from ..models import (
     LoginResponse,
     UpdateGuestPassRequest,
 )
+from .common import store
 
 router = APIRouter(tags=["auth"])
 

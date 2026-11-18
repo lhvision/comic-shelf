@@ -27,11 +27,16 @@ MAX_SEARCH_IMAGE_SIZE = 15 * 1024 * 1024  # 15MB
 def is_valid_search_image(data: bytes) -> bool:
     """Validate whether uploaded bytes match known image magic headers."""
     return (
-        data.startswith(b"\xff\xd8\xff")  # JPEG
-        or data.startswith(b"\x89PNG\r\n\x1a\n")  # PNG
+        data.startswith(
+            (
+                b"\xff\xd8\xff",  # JPEG
+                b"\x89PNG\r\n\x1a\n",  # PNG
+                b"GIF87a",  # GIF
+                b"GIF89a",
+                b"BM",  # BMP
+            )
+        )
         or (data.startswith(b"RIFF") and data[8:12] == b"WEBP")  # WebP
-        or data.startswith((b"GIF87a", b"GIF89a"))  # GIF
-        or data.startswith(b"BM")  # BMP
     )
 
 
@@ -91,8 +96,8 @@ def search_imsearch(image_bytes: bytes, base_url: str = IMSEARCH_URL) -> list[Im
             f"--{boundary}\r\n"
             f'Content-Disposition: form-data; name="file"; filename="query.jpg"\r\n'
             f"Content-Type: image/jpeg\r\n\r\n"
-        ).encode("utf-8")
-        footer = f"\r\n--{boundary}--\r\n".encode("utf-8")
+        ).encode()
+        footer = f"\r\n--{boundary}--\r\n".encode()
         body = header + image_bytes + footer
 
         req = urllib.request.Request(

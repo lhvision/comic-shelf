@@ -2,10 +2,8 @@ from __future__ import annotations
 
 import json
 import shutil
-import sys
 import tempfile
 from pathlib import Path
-
 
 import app.auth as auth_mod
 import app.config as config_mod

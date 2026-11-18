@@ -20,7 +20,6 @@ from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import JSONResponse
 
 from .abuse import check_guest_rate_limit
-from .auto_update import auto_update_worker
 from .auth import (
     can_read,
     check_hotlink_protection,
@@ -33,8 +32,8 @@ from .auth import (
     is_machine,
     is_request_secure,
 )
+from .auto_update import auto_update_worker
 from .config import COOKIE_NAME, ENABLE_AUTO_UPDATE, ENABLE_DOCS, LIBRARY_DIR
-from .storage.utils import acquire_library_writer_lock, _write_json_atomic
 from .db import (
     clean_expired_curator_sessions,
     clean_expired_direct_passes,
@@ -45,7 +44,8 @@ from .db import (
     purge_comic_db_records,
     upsert_comic_index,
 )
-from .events import broadcast_event, router as events_router, shutdown_events
+from .events import broadcast_event, shutdown_events
+from .events import router as events_router
 from .imsearch import check_imsearch_status, search_imsearch
 from .jobs import start_job
 from .providers import get_provider
@@ -99,7 +99,6 @@ from .routers.library import (
     update_comic_metadata,
 )
 from .routers.local_comic import (
-    append_comic,
     create_local_comic,
     import_local_path,
     replace_comic_pages,
@@ -122,6 +121,7 @@ from .routers.search import (
     sync_ocr_endpoint,
 )
 from .storage import ComicStore
+from .storage.utils import _write_json_atomic, acquire_library_writer_lock
 
 logger = logging.getLogger(__name__)
 
@@ -339,11 +339,7 @@ async def auth_and_security_middleware(request: Request, call_next):
     if (
         not path.startswith("/api/")
         or path in PUBLIC_AUTH_PATHS
-        or path.startswith("/api/events")
-        or path.startswith("/api/mcp")
-        or path.startswith("/mcp")
-        or path.startswith("/docs")
-        or path.startswith("/redoc")
+        or path.startswith(("/api/events", "/api/mcp", "/mcp", "/docs", "/redoc"))
         or path == "/openapi.json"
     ):
         return await call_next(request)
@@ -454,6 +450,7 @@ async def auth_and_security_middleware(request: Request, call_next):
 # SPA Static file mounting (All-in-one / NAS single-container deployment)
 # ----------------------------------------------------------------------
 import mimetypes
+
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.staticfiles import StaticFiles
 
@@ -480,7 +477,7 @@ class SPAStaticFiles(StaticFiles):
         clean_path = path.strip("/")
         if clean_path in ("", "index.html", "sw.js", "registerSW.js", "manifest.webmanifest"):
             response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
-        elif clean_path.startswith("assets/") or clean_path.startswith("workbox-"):
+        elif clean_path.startswith(("assets/", "workbox-")):
             response.headers["Cache-Control"] = "public, max-age=31536000, immutable"
 
         if clean_path == "sw.js":
@@ -524,6 +521,14 @@ if _DIST_DIR.exists() and (_DIST_DIR / "index.html").exists():
 
 # Re-export public symbols for backward-compatibility with tests and external consumers
 __all__ = [
+    "SPAStaticFiles",
+    "_client_accepts_webp",
+    "_guess_media_type",
+    "_prefetch_worker",
+    "_require_known_source",
+    "_require_meta",
+    "_resolve_dist_dir",
+    "_serve_negotiated_image",
     "app",
     "auth_and_security_middleware",
     "auth_claim",
@@ -566,7 +571,6 @@ __all__ = [
     "search_dialogue_endpoint",
     "search_imsearch",
     "set_favorite",
-    "SPAStaticFiles",
     "start_job",
     "store",
     "sync_library_index",
@@ -574,11 +578,4 @@ __all__ = [
     "update_chapter_title",
     "update_comic_metadata",
     "upload_comic_pages",
-    "_client_accepts_webp",
-    "_guess_media_type",
-    "_prefetch_worker",
-    "_require_known_source",
-    "_require_meta",
-    "_resolve_dist_dir",
-    "_serve_negotiated_image",
 ]

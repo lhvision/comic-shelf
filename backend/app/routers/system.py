@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from typing import Any
+
 from fastapi import APIRouter, Request
 
 from ..auth import is_auth_required, require_curator

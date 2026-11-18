@@ -2,11 +2,9 @@ from __future__ import annotations
 
 import json
 import shutil
-import sys
 import tempfile
 from pathlib import Path
 from unittest import mock
-
 
 import numpy as np
 

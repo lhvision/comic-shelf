@@ -1,16 +1,16 @@
 import io
 import shutil
-import sys
 import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import MagicMock
+
 from PIL import Image
 
-
-from app.models import ComicMeta, PageRecord, FetchedComic, Chapter
+from app.main import chapter_cover, cover_file
+from app.main import store as global_store
+from app.models import Chapter, ComicMeta, FetchedComic, PageRecord
 from app.storage import ComicStore
-from app.main import cover_file, chapter_cover, store as global_store
 
 
 def make_mock_request(
@@ -123,8 +123,7 @@ class TestWebPCover(unittest.TestCase):
         self.assertEqual(self.store._resolve_cover_page_index(meta, 4), 12)
 
     def test_cover_indices_active_prewarming(self):
-        fetched = self._setup_sample_comic("local", "c3")
-        meta = fetched.meta
+        self._setup_sample_comic("local", "c3")
 
         # Update cover_indices to [3, 4]
         new_meta = self.store.update_metadata("local", "c3", {"cover_indices": [3, 4]})

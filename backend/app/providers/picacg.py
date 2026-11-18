@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
 import hashlib
 import hmac
 import ipaddress
@@ -11,6 +10,7 @@ import re
 import threading
 import time
 import uuid
+from datetime import UTC, datetime
 from typing import Any
 from urllib.parse import urlparse
 
@@ -25,9 +25,9 @@ from ..config import (
     PICA_PASSWORD,
     PICA_PROXY,
 )
+from ..formatting import format_count
 from ..gate import download_gate
 from ..models import Chapter, ComicMeta, DiscoveryItem, FetchedComic, PageRecord, RemotePage
-from ..formatting import format_count
 from .base import ComicProvider
 
 logger = logging.getLogger(__name__)
@@ -579,7 +579,7 @@ class PicacgProvider(ComicProvider):
             updated_at=updated_at,
             imported_at=existing.meta.imported_at
             if (existing and existing.meta.imported_at)
-            else datetime.now(timezone.utc).isoformat(),
+            else datetime.now(UTC).isoformat(),
             views=views,
             likes=likes,
             comment_count=int(comic_info.get("commentsCount", comic_info.get("totalComments", 0)) or 0),

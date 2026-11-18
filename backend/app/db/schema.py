@@ -1,9 +1,7 @@
 from __future__ import annotations
 
-import json
 import logging
 import sqlite3
-import time
 from pathlib import Path
 
 from ..formatting import normalize_title
@@ -16,8 +14,8 @@ from .connection import (
     set_db_path,
     set_dialogue_db_path,
 )
-from .index import rebuild_facets_snapshot
 from .dialogues import sync_comic_dialogues
+from .index import rebuild_facets_snapshot
 
 logger = logging.getLogger(__name__)
 

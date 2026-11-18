@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import asyncio
-import secrets
+
 from fastapi import APIRouter, File, HTTPException, Query, Request, UploadFile
 
 from ..auth import can_read, get_current_user_id, is_curator, is_machine, require_curator

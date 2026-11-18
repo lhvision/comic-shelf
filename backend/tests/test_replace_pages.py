@@ -1,15 +1,15 @@
+import io
 import shutil
 import tempfile
 import unittest
-from unittest.mock import patch
 from pathlib import Path
-from PIL import Image
-import io
+from unittest.mock import patch
 
-import sys
-from app.models import ComicMeta, PageRecord, FetchedComic
-from app.storage import ComicStore
 from fastapi import HTTPException
+from PIL import Image
+
+from app.models import ComicMeta, FetchedComic, PageRecord
+from app.storage import ComicStore
 
 
 class TestReplacePages(unittest.TestCase):
@@ -281,7 +281,7 @@ class TestReplacePages(unittest.TestCase):
         self.assertEqual(new_meta.chapters[2].start, 4)
 
     def test_composite_grouping_zero_data_loss_preserves_unmatched_files(self):
-        fetched = self._setup_sample_comic("local", "zero_loss_test")
+        self._setup_sample_comic("local", "zero_loss_test")
         img = self._create_sample_img("blue")
         # 10 files total: 8 composite, 2 non-composite (00_cover.avif and extra.avif)
         files = [
@@ -384,7 +384,7 @@ class TestReplacePages(unittest.TestCase):
         self.assertEqual(new_meta.page_count, 5)
 
     def test_append_pages_multi_chapter_composite_grouping(self):
-        fetched = self._setup_sample_comic("local", "append_composite")
+        self._setup_sample_comic("local", "append_composite")
         img = self._create_sample_img("purple")
         files = [
             ("2-1.avif", img),
@@ -609,6 +609,7 @@ class TestReplacePages(unittest.TestCase):
 
     def test_replace_target_chapter_rejects_multi_pdf_directory(self):
         import os
+
         from app.models import Chapter
 
         fetched = self._setup_sample_comic("test", "multi_guard")
@@ -633,7 +634,7 @@ class TestReplacePages(unittest.TestCase):
             os.environ.pop("COMIC_SHELF_ALLOWED_DIRS", None)
 
     def test_replace_request_pydantic_alias_and_validation(self):
-        from app.models import ReplacePathRequest, ComicAppendRequest
+        from app.models import ComicAppendRequest, ReplacePathRequest
 
         r1 = ReplacePathRequest.model_validate({"path": "/path/abc"})
         self.assertEqual(r1.server_path, "/path/abc")

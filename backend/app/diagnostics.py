@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 import logging
+import re
 import threading
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -14,9 +15,6 @@ from app.config import (
     MCP_TOKEN,
     PICA_PASSWORD,
 )
-
-import os
-import re
 
 logger = logging.getLogger(__name__)
 
@@ -49,7 +47,7 @@ def log_import_diag(category: str, message: str = "", **kwargs: Any) -> None:
 
     格式: [2026-09-27T03:30:15.123Z] [CATEGORY] message key=val ...
     """
-    now_str = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
+    now_str = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
     clean_msg = _mask_diag_text(message)
     extra = ""
     if kwargs:

@@ -4,14 +4,14 @@ from __future__ import annotations
 
 import logging
 import time
+from collections.abc import Callable
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 from fastapi import HTTPException, Request
 from fastapi.responses import FileResponse
 
 from ..auth import is_curator
-from ..config import COVER_THUMB_WIDTH
 from ..events import broadcast_event
 from ..models import ComicMeta, FetchedComic
 from ..providers import provider_list
@@ -129,7 +129,7 @@ def _prefetch_worker(
 
     warnings: list[str] = []
     try:
-        done, warnings = store.prefetch(
+        _done, warnings = store.prefetch(
             fetched,
             cover_count=cover_count,
             prefetch_all=prefetch_all,

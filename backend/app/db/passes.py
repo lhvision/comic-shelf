@@ -6,7 +6,6 @@ import secrets
 import sqlite3
 import threading
 import time
-from threading import Lock
 from typing import Any
 
 from ..abuse import (
@@ -35,7 +34,7 @@ def verify_pin(pin: str, pin_hash: str, salt: str) -> bool:
     if secrets.compare_digest(h_pbkdf2, pin_hash):
         return True
     # Legacy single-round SHA-256 fallback for migration compatibility
-    h_legacy = hashlib.sha256(f"{salt}:{pin.strip()}".encode("utf-8")).hexdigest()
+    h_legacy = hashlib.sha256(f"{salt}:{pin.strip()}".encode()).hexdigest()
     return secrets.compare_digest(h_legacy, pin_hash)
 
 

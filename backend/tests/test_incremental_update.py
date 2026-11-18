@@ -1,13 +1,12 @@
 import io
-import sys
-import tempfile
 import shutil
+import tempfile
 from pathlib import Path
 from unittest.mock import MagicMock, patch
+
 from PIL import Image
 
-
-from app.models import ComicMeta, FetchedComic, RemotePage, Chapter, PageRecord
+from app.models import Chapter, ComicMeta, FetchedComic, PageRecord, RemotePage
 from app.providers.jm import JMProvider
 from app.storage import ComicStore
 

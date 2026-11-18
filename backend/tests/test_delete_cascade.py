@@ -1,11 +1,9 @@
 """Unit tests for comic deletion cascade purge and immediate shelf sync."""
 
 import json
-import sys
 import tempfile
 import unittest
 from pathlib import Path
-
 
 import app.db as db_mod
 from app.models import ComicMeta
@@ -76,7 +74,7 @@ class TestDeleteCascade(unittest.TestCase):
         # Verify DB records exist
         self.assertTrue(db_mod.is_user_favorite("curator", source, source_id))
         self.assertIsNotNone(db_mod.get_user_progress("curator", source, source_id))
-        rows, total = db_mod.query_library_index(user_id="curator", is_curator=True, page=1, page_size=20)
+        rows, _total = db_mod.query_library_index(user_id="curator", is_curator=True, page=1, page_size=20)
         self.assertTrue(any(r["source_id"] == source_id for r in rows))
 
         # 3. Execute storage delete (which should trigger cascade purge and delete disk files)
@@ -101,7 +99,7 @@ class TestDeleteCascade(unittest.TestCase):
             ).fetchone()["cnt"]
             self.assertEqual(idx_count, 0)
 
-        rows_after, total_after = db_mod.query_library_index(user_id="curator", is_curator=True, page=1, page_size=20)
+        rows_after, _total_after = db_mod.query_library_index(user_id="curator", is_curator=True, page=1, page_size=20)
         self.assertFalse(any(r["source_id"] == source_id for r in rows_after))
         print("  ✓ test_delete_comic_cascade_purges_all_records passed")
 

@@ -6,13 +6,11 @@ import argparse
 import io
 import json
 import shutil
-import sys
 import tempfile
 import unittest
 from contextlib import redirect_stdout
 from pathlib import Path
 from unittest import mock
-
 
 from scripts import ocr_lines, ocr_worker
 

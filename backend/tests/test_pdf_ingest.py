@@ -4,24 +4,21 @@ from __future__ import annotations
 
 import io
 import shutil
-import sys
 import tempfile
 import unittest
 from pathlib import Path
 
-
 import pymupdf
 from PIL import Image
 
-from app.models import Chapter, LocalPathImportRequest, PdfChapterPreview
+from app.models import LocalPathImportRequest
+from app.storage import ComicStore
 from app.storage.pdf import (
-    _extract_chapters_from_toc,
     detect_pdf_chapters,
     is_blank_or_solid_page,
     is_pdf_file,
     unpack_pdf,
 )
-from app.storage import ComicStore
 
 
 class TestPdfIngest(unittest.TestCase):
@@ -177,6 +174,7 @@ class TestPdfIngest(unittest.TestCase):
 
     def test_encrypted_pdf_detection(self) -> None:
         import pymupdf
+
         from app.storage.pdf import unpack_pdf
 
         pdf_path = self.tmp_dir / "encrypted.pdf"
@@ -263,7 +261,7 @@ class TestPdfIngest(unittest.TestCase):
         self._create_synthetic_pdf(pdf_path2, num_pages=4)
         pdf_bytes = pdf_path2.read_bytes()
 
-        updated_meta = self.store.replace_pages(
+        self.store.replace_pages(
             source="local",
             source_id=meta.source_id,
             files=[("new_edition_up.pdf", pdf_bytes)],

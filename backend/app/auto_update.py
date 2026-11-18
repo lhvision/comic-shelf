@@ -15,7 +15,7 @@ from __future__ import annotations
 import logging
 import threading
 import time
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 from .config import AUTO_UPDATE_INTERVAL_SECONDS
@@ -62,7 +62,7 @@ def run_auto_update_cycle(
 
         source = cand["source"]
         source_id = cand["source_id"]
-        checked_at = datetime.now(timezone.utc).isoformat()
+        checked_at = datetime.now(UTC).isoformat()
 
         try:
             meta = store.load_meta(source, source_id)

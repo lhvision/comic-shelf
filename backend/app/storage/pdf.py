@@ -101,6 +101,7 @@ def is_blank_or_solid_page(img_bytes: bytes) -> bool:
     """Detects if an extracted page image is a solid blank (near-black or near-white) separator page (>99% uniform)."""
     try:
         import io
+
         from PIL import Image
 
         with Image.open(io.BytesIO(img_bytes)) as im:
@@ -307,10 +308,14 @@ def _extract_chapters_from_ocr(
             for t in lines:
                 if len(t) <= 20 and not any(p in t for p in ("，", "。", "！", "？", "…", "的", "不是", "她是")):
                     m = chap_pattern.match(t)
-                    if m and not t.startswith("第一次") and not t.startswith("第二天") and not t.startswith("第1名"):
-                        splits[page_idx] = t
-                        break
-                    elif extra_pattern.match(t) and len(t) <= 12:
+                    if (
+                        m
+                        and not t.startswith("第一次")
+                        and not t.startswith("第二天")
+                        and not t.startswith("第1名")
+                        or extra_pattern.match(t)
+                        and len(t) <= 12
+                    ):
                         splits[page_idx] = t
                         break
 

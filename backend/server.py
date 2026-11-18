@@ -2,12 +2,11 @@ import argparse
 import logging
 import os
 import re
-import sys
 from pathlib import Path
 
-import app.config  # noqa: F401 - trigger dotenv cascade before reading CLI defaults / log config
-
 import uvicorn
+
+import app.config  # noqa: F401 - trigger dotenv cascade before reading CLI defaults / log config
 
 # 分享直达链接的票据（?token= / ?temp_token=）、只能在 URL 里填凭据的 MCP 客户端与 MCP 会话号都可能出现在请求行里
 _SECRET_QUERY = re.compile(r"([?&](?:token|temp_token|session_id)=)[^&]*")

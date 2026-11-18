@@ -18,6 +18,7 @@
     "api": "bash scripts/api.sh",
     "test:unit": "vp test",
     "test:py": "bash scripts/test_py.sh",
+    "check:py": "uv run ruff check && uv run ruff format --check",
     "critique": "vpx scripts/critique.mjs",
     "detect:slop": "vpx scripts/detect.mjs --json",
     "detect:perf": "vpx scripts/detect-perf.mjs",

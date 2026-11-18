@@ -1,9 +1,7 @@
 import json
-import sys
 import unittest
 from pathlib import Path
 from unittest.mock import MagicMock, patch
-
 
 from Crypto.Cipher import AES
 from Crypto.Util.Padding import pad
@@ -524,7 +522,9 @@ class TestCopyMangaProvider(unittest.TestCase):
     @patch.object(CopyMangaProvider, "_session")
     def test_update_groups_workflow(self, mock_session_fn: MagicMock) -> None:
         import tempfile
+
         from fastapi import HTTPException
+
         from app.models import UpdateGroupsRequest
         from app.routers.chapters import update_comic_groups
         from app.storage import ComicStore

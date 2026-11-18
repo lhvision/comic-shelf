@@ -1,14 +1,11 @@
 from __future__ import annotations
 
-import json
-import sys
+import os
 import tempfile
 import time
 import unittest
-import os
 from pathlib import Path
 from unittest.mock import MagicMock, patch
-
 
 from app.models import ComicMeta, FetchedComic, RemotePage
 from app.providers.jm import JMProvider, _is_safe_remote_domain, _mask_sensitive
@@ -279,9 +276,8 @@ class TestJMProvider(unittest.TestCase):
         # When _get_valid_cookies calls _perform_login, which calls resolve_html_domain,
         # both acquire self.provider._lock on the same thread. It must be an RLock to avoid deadlock.
         acquired = False
-        with self.provider._lock:
-            with self.provider._lock:
-                acquired = True
+        with self.provider._lock, self.provider._lock:
+            acquired = True
         self.assertTrue(acquired)
 
     def test_fetch_restricted_album_guidance_when_anonymous(self) -> None:
@@ -779,7 +775,7 @@ class TestJMProvider(unittest.TestCase):
     def test_fetch_via_api_incremental_preserves_existing_updated_at(self) -> None:
         self.api_patcher.stop()
         try:
-            from app.models import Chapter, ComicMeta, FetchedComic, RemotePage
+            from app.models import ComicMeta, FetchedComic, RemotePage
 
             existing = FetchedComic(
                 meta=ComicMeta(
@@ -978,7 +974,7 @@ class TestJMProvider(unittest.TestCase):
         self.api_patcher.stop()
         self.html_dates_patcher.stop()
         try:
-            from app.models import Chapter, ComicMeta, FetchedComic, RemotePage
+            from app.models import ComicMeta, FetchedComic, RemotePage
 
             mock_api_client = MagicMock()
             mock_api_client.API_ALBUM = "/album"
@@ -1171,8 +1167,6 @@ class TestJMProvider(unittest.TestCase):
         self.api_patcher.stop()
         self.html_dates_patcher.stop()
         try:
-            from app.models import Chapter, ComicMeta, FetchedComic, RemotePage
-
             mock_api_client = MagicMock()
             mock_api_client.API_ALBUM = "/album"
             mock_api_client.API_CHAPTER = "/chapter"

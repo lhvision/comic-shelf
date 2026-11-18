@@ -1,12 +1,10 @@
 from __future__ import annotations
 
-import sys
 import unittest
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-
-from app.models import Chapter, FetchedComic, RemotePage
+from app.models import FetchedComic, RemotePage
 from app.providers.picacg import (
     PicacgProvider,
     _apply_pacing,
@@ -396,7 +394,6 @@ class TestPicacgProvider(unittest.TestCase):
     def test_save_token_secure_permissions(self) -> None:
         import os
         import tempfile
-        from pathlib import Path
 
         with tempfile.TemporaryDirectory() as tmp_dir:
             tmp_session = Path(tmp_dir) / "test_pica_session.json"
@@ -451,8 +448,8 @@ class TestPicacgProvider(unittest.TestCase):
         mock_get_prov: MagicMock,
         mock_load: MagicMock,
     ) -> None:
-        from app.routers.library import import_comic
         from app.models import ComicMeta, FetchedComic, ImportRequest
+        from app.routers.library import import_comic
 
         # 1. Simulate cached comic has page_count == 0 (historical broken record)
         broken_meta = ComicMeta(

@@ -1,17 +1,17 @@
 from __future__ import annotations
 
-from typing import Any
 import html as html_lib
 import ipaddress
 import json
 import logging
+import posixpath
 import re
 import tempfile
-import time
-from datetime import datetime, timedelta, timezone
-from pathlib import Path
-import posixpath
 import threading
+import time
+from datetime import UTC, datetime, timedelta, timezone
+from pathlib import Path
+from typing import Any
 from urllib.parse import urlparse
 
 from curl_cffi import requests as curl_requests
@@ -24,10 +24,10 @@ from ..config import (
     JM_PROXY,
     JM_USERNAME,
 )
-from ..gate import download_gate
-from ..models import Chapter, ComicMeta, DiscoveryItem, FetchedComic, RemotePage
 from ..diagnostics import log_import_diag
 from ..formatting import format_count
+from ..gate import download_gate
+from ..models import Chapter, ComicMeta, DiscoveryItem, FetchedComic, RemotePage
 from .base import ComicProvider
 
 logger = logging.getLogger("paper_room.provider.jm")
@@ -213,12 +213,7 @@ class JMProvider(ComicProvider):
         p = proxy.strip()
         if not p:
             return ""
-        if not (
-            p.startswith("http://")
-            or p.startswith("https://")
-            or p.startswith("socks5://")
-            or p.startswith("socks5h://")
-        ):
+        if not p.startswith(("http://", "https://", "socks5://", "socks5h://")):
             p = f"http://{p}"
         return p
 
@@ -531,8 +526,8 @@ class JMProvider(ComicProvider):
     @staticmethod
     def _parse_uploader(text: str) -> str | None:
         patterns = [
-            re.compile(r"<(?:h2|span)[^>]*>\s*(?:上传者|上傳者)：?\s*</(?:h2|span)>\s*([^<\s][^<]*)", re.I),
-            re.compile(r"(?:上传者|上傳者)[：:]\s*([^<\s][^<]*)", re.I),
+            re.compile(r"<(?:h2|span)[^>]*>\s*(?:上传者|上傳者)：?\s*</(?:h2|span)>\s*([^<\s][^<]*)", re.IGNORECASE),
+            re.compile(r"(?:上传者|上傳者)[：:]\s*([^<\s][^<]*)", re.IGNORECASE),
         ]
         for pattern in patterns:
             m = pattern.search(text)
@@ -657,7 +652,7 @@ class JMProvider(ComicProvider):
                     raise ValueError(
                         f"禁漫车号 JM{jm_id} 受权限保护（需登录查看），挂载的 jm_session.json 凭据已失效，请在 .env（或数据卷 backend/data/.env / docker-compose.yml）中配置 JM_USERNAME 与 JM_PASSWORD 以便自动重新登录"
                     ) from e_missing
-                raise e_missing
+                raise
 
         album_ms = int((time.perf_counter() - t_album_req) * 1000)
         episodes_cnt = len(detail.episode_list or [])
@@ -758,7 +753,7 @@ class JMProvider(ComicProvider):
                         raise ValueError(
                             f"禁漫话数 {pid} 受权限保护（需登录查看），挂载的 jm_session.json 凭据已失效，请在 .env（或数据卷 backend/data/.env / docker-compose.yml）中配置 JM_USERNAME 与 JM_PASSWORD 以便自动重新登录"
                         ) from e_ep_missing
-                    raise e_ep_missing
+                    raise
 
         html_domain = self._cached_html_domain() or "18comic.vip"
         source_url = f"https://{html_domain}/album/{jm_id}"
@@ -909,7 +904,7 @@ class JMProvider(ComicProvider):
         first_photo = None
         latest_ep_date = ""
 
-        now = datetime.now(timezone.utc).isoformat()
+        now = datetime.now(UTC).isoformat()
 
         if all_ids_match or single_match:
             remote_pages = [RemotePage.model_validate(p.model_dump()) for p in existing.remote_pages]
@@ -1019,8 +1014,7 @@ class JMProvider(ComicProvider):
         )
         # 上架日期单调不后移：若已有记录且更早，保留更早的首发时间（过滤历史 "0" 哨兵值）
         if existing and existing.meta.published_at and existing.meta.published_at != "0" and pub_date:
-            if existing.meta.published_at < pub_date:
-                pub_date = existing.meta.published_at
+            pub_date = min(pub_date, existing.meta.published_at)
 
         raw_update_date = str(getattr(detail, "update_date", "") or "").strip()
         update_date = (
@@ -1153,7 +1147,7 @@ class JMProvider(ComicProvider):
         if content.startswith(b"RIFF") and content[8:12] == b"WEBP":
             return True
         # GIF
-        if content.startswith(b"GIF87a") or content.startswith(b"GIF89a"):
+        if content.startswith((b"GIF87a", b"GIF89a")):
             return True
         # AVIF
         if b"ftypavif" in content[:32] or b"ftypavis" in content[:32]:

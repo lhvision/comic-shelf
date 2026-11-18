@@ -2,12 +2,12 @@
 
 from __future__ import annotations
 
-from collections import OrderedDict
 import hashlib
 import json
 import threading
 import time
-from datetime import datetime, timezone
+from collections import OrderedDict
+from datetime import UTC, datetime
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, Query, Request, Response
@@ -229,7 +229,7 @@ def discovery_ranking(
                 feed = DiscoveryFeed(
                     source=source,
                     timeframe=timeframe,
-                    updated_at=datetime.now(timezone.utc).isoformat(),
+                    updated_at=datetime.now(UTC).isoformat(),
                     items=items,
                 )
                 if items:
@@ -280,7 +280,7 @@ def _sniff_image_media_type(data: bytes) -> str:
         return "image/png"
     if data.startswith(b"\xff\xd8\xff"):
         return "image/jpeg"
-    if data.startswith(b"GIF87a") or data.startswith(b"GIF89a"):
+    if data.startswith((b"GIF87a", b"GIF89a")):
         return "image/gif"
     if len(data) >= 12 and data[:4] == b"RIFF" and data[8:12] == b"WEBP":
         return "image/webp"
@@ -465,7 +465,7 @@ def import_comic(req: ImportRequest) -> ImportResult:
 
     t_save = time.perf_counter()
     fetched.meta.cover_count = max(1, min(req.prefetch_covers or fetched.meta.cover_count, fetched.meta.page_count))
-    now_iso = datetime.now(timezone.utc).isoformat()
+    now_iso = datetime.now(UTC).isoformat()
     fetched.meta.last_auto_checked_at = now_iso
     if not req.refresh and existing is None and get_guest_hide_new_comics():
         fetched.meta.hidden_from_guest = True

@@ -2,14 +2,11 @@
 
 from __future__ import annotations
 
-import json
 import re
 import shutil
-import sys
 import tempfile
 import unittest
 from pathlib import Path
-
 
 from app.models import LocalComicCreateRequest
 from app.providers.local import LocalProvider
@@ -114,6 +111,7 @@ class TestLocalComicId(unittest.TestCase):
 
     def test_import_from_local_dir_duplicate_custom_id_conflict(self) -> None:
         from fastapi import HTTPException
+
         from app.models import LocalPathImportRequest
 
         # Prepare dummy folder with an image

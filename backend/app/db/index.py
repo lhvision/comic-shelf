@@ -6,13 +6,12 @@ import sqlite3
 import sys
 import threading
 import time
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 from ..config import LIBRARY_DIR
 from ..formatting import is_comic_completed, normalize_title
 from ..storage.utils import _write_json_atomic
-from ..zh_conv import to_simplified
 from .connection import _escape_like, get_db
 from .dialogues import delete_comic_dialogues
 
@@ -506,7 +505,7 @@ def _parse_candidate_date(candidate_date: Any) -> float:
         pass
     for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d", "%Y/%m/%d", "%Y.%m.%d"):
         try:
-            return datetime.strptime(s, fmt).replace(tzinfo=timezone.utc).timestamp()
+            return datetime.strptime(s, fmt).replace(tzinfo=UTC).timestamp()
         except Exception:
             pass
     try:

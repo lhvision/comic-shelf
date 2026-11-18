@@ -10,7 +10,6 @@ import time
 from pathlib import Path
 from typing import Any
 
-from ..formatting import normalize_title
 from ..zh_conv import to_simplified
 from .connection import _escape_like, get_data_dir, get_db, get_dialogue_db, get_dialogue_db_path
 
@@ -284,8 +283,7 @@ def sync_comic_dialogues(source: str, source_id: str, force: bool = False) -> in
     for f in ocr_files:
         try:
             mt = f.stat().st_mtime
-            if mt > latest_mtime:
-                latest_mtime = mt
+            latest_mtime = max(latest_mtime, mt)
         except OSError:
             pass
 
@@ -403,7 +401,7 @@ def sync_comic_dialogues(source: str, source_id: str, force: bool = False) -> in
         raw_texts = [t for t in raw_texts if t]
 
         for t in raw_texts:
-            if len(t) >= 8 and len(set(c for c in t if c.isalnum())) >= 5:
+            if len(t) >= 8 and len({c for c in t if c.isalnum()}) >= 5:
                 nt = to_simplified(t)
                 text_chapters.setdefault(nt, set()).add(chap_id)
                 text_pages.setdefault(nt, set()).add(page_idx)
@@ -424,7 +422,7 @@ def sync_comic_dialogues(source: str, source_id: str, force: bool = False) -> in
 
     # 若无 album.json 章节划分，退回整本首尾各 2 页作为边界兜底（全本页数 >= 8 时生效）
     if not chapter_boundary_page_indices and parsed_ocr_items:
-        all_pids = sorted(set(item["page_idx"] for item in parsed_ocr_items))
+        all_pids = sorted({item["page_idx"] for item in parsed_ocr_items})
         if len(all_pids) >= MIN_CHAPTER_PAGES:
             chapter_boundary_page_indices.update(all_pids[:2])
             chapter_boundary_page_indices.update(all_pids[-2:])
@@ -880,11 +878,6 @@ def cleanup_orphan_comic_dialogues(data_dir: Path | None = None) -> int:
             logger.info("Cleaned orphan dialogue index for deleted comic %s/%s", src, sid)
         _bump_vector_version(conn)
     return len(to_delete)
-
-
-def _escape_like(text: str) -> str:
-    """转义 SQLite LIKE 查询中的特殊通配符 %、_ 与转义符自身。"""
-    return text.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
 
 
 def _parse_metric_count(value: Any) -> int | None:

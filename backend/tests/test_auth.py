@@ -1,12 +1,11 @@
-import sys
 import asyncio
 import json
+import tempfile
 from pathlib import Path
 from unittest.mock import MagicMock
 
-
-import tempfile
 from fastapi import HTTPException, Response
+
 import app.auth as auth_mod
 import app.config as config_mod
 import app.db as db_mod
@@ -122,7 +121,7 @@ def test_auth_logic():
     assert auth_mod.is_authenticated(req_curator) is True
     assert auth_mod.is_curator(req_curator) is True
     assert auth_mod.can_read(req_curator) is True
-    c_uid, c_name, c_role = auth_mod.get_user_context(req_curator)
+    c_uid, _c_name, c_role = auth_mod.get_user_context(req_curator)
     assert c_uid == "curator"
     assert c_role == "admin"
 
@@ -240,8 +239,9 @@ def test_guest_visibility_and_discovery_auth():
 
 
 def test_auth_and_security_middleware():
-    from app.main import auth_and_security_middleware
     from unittest.mock import AsyncMock
+
+    from app.main import auth_and_security_middleware
 
     # Ensure guest-key-999 exists in test DB with an active device session
     mid_pass = db_mod.get_guest_pass_by_token("guest-key-999")
@@ -382,6 +382,7 @@ def test_auth_and_security_middleware():
 
 def test_quiet_access_log_filter():
     import logging
+
     from server import QuietAccessLogFilter
 
     f = QuietAccessLogFilter()
@@ -439,6 +440,7 @@ def test_quiet_access_log_filter():
 def test_access_log_redacts_query_credentials():
     """访问日志长期留存：请求行里凭据类查询参数的值必须打码，其余参数一个字都不能动。"""
     import logging
+
     from server import QuietAccessLogFilter
 
     rec = logging.LogRecord(
@@ -463,10 +465,12 @@ def test_access_log_redacts_query_credentials():
 
 
 def test_stepped_covers():
-    from PIL import Image
-    from app.storage import ComicStore
-    from app.models import ComicMeta
     import tempfile
+
+    from PIL import Image
+
+    from app.models import ComicMeta
+    from app.storage import ComicStore
 
     with tempfile.TemporaryDirectory() as td:
         store = ComicStore(root=Path(td))
@@ -546,9 +550,10 @@ def test_custom_cookie_names():
 
 def test_rest_credential_bruteforce_lockout():
     """任何 /api 接口都会拿 token 比馆长口令：猜错必须计入与登录同一个 IP 锁，锁住后连正确口令也挡。"""
+    from unittest.mock import AsyncMock
+
     from app.abuse import clear_ip_login_failures
     from app.main import auth_and_security_middleware
-    from unittest.mock import AsyncMock
 
     ip = "203.0.113.7"
     auth_mod.AUTH_SECRET = "curator-key-888"
@@ -599,9 +604,10 @@ def test_rest_credential_bruteforce_lockout():
 
 def test_same_bad_credential_counted_once():
     """改口令后旧 Cookie 随每个请求重放：同一个错误凭据窗口内只计一次，不能把馆长自己锁在门外。"""
+    from unittest.mock import AsyncMock
+
     from app.abuse import clear_ip_login_failures
     from app.main import auth_and_security_middleware
-    from unittest.mock import AsyncMock
 
     ip = "203.0.113.9"
     auth_mod.AUTH_SECRET = "curator-key-888"
@@ -634,9 +640,10 @@ def test_same_bad_credential_counted_once():
 
 def test_unauthorized_clears_stale_cookie():
     """401 时清掉失效的登录 Cookie，免得浏览器带着它把每张画页都算成一次失败。"""
-    from app.main import auth_and_security_middleware
-    from app.abuse import clear_ip_login_failures
     from unittest.mock import AsyncMock
+
+    from app.abuse import clear_ip_login_failures
+    from app.main import auth_and_security_middleware
 
     auth_mod.AUTH_SECRET = "curator-key-888"
     r = make_mock_request(
@@ -692,8 +699,9 @@ def test_is_request_secure_trust_forwarded_headers():
 
 def test_machine_token_permission_boundaries():
     """验证机器密钥 (MACHINE_TOKEN) 的严格权限收敛：仅放行创建/上传/同步，阻断全目录导入与删除。"""
-    from app.main import auth_and_security_middleware
     from unittest.mock import AsyncMock
+
+    from app.main import auth_and_security_middleware
 
     auth_mod.AUTH_SECRET = "curator-key-999"
     config_mod.AUTH_SECRET = "curator-key-999"
@@ -709,7 +717,7 @@ def test_machine_token_permission_boundaries():
             headers={"X-Machine-Token": "machine-token-abc"},
         )
         r_create.method = "POST"
-        res_create = asyncio.run(auth_and_security_middleware(r_create, call_next))
+        asyncio.run(auth_and_security_middleware(r_create, call_next))
         assert call_next.called
 
         # 2. 允许：上传画页与 OCR 同步

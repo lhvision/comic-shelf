@@ -2,15 +2,13 @@
 
 import os
 import shutil
-import sys
 import tempfile
 import threading
 import time
 import unittest
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from unittest.mock import MagicMock, patch
-
 
 from app.auto_update import run_auto_update_cycle
 from app.db import (
@@ -43,7 +41,7 @@ def make_comic_index_item(source: str, source_id: str, title: str = "Test Comic"
         "uploaded_at": "",
         "published_at": "",
         "updated_at": "",
-        "imported_at": datetime.now(timezone.utc).isoformat(),
+        "imported_at": datetime.now(UTC).isoformat(),
         "hidden_from_guest": 0,
         "mtime": 100.0,
         "auto_update_interval_days": 15,
@@ -110,7 +108,7 @@ class TestAutoUpdateEngine(unittest.TestCase):
         self.assertEqual(candidates[0]["source_id"], "due1")
 
         # Mark as checked now -> should no longer be due
-        checked_now = datetime.now(timezone.utc).isoformat()
+        checked_now = datetime.now(UTC).isoformat()
         record_comic_auto_checked("jm", "due1", checked_now)
         candidates_after = get_comics_due_for_auto_update(max_count=10)
         self.assertEqual(len(candidates_after), 0)
@@ -648,7 +646,7 @@ class TestAutoUpdateEngine(unittest.TestCase):
 
     def test_dormancy_backoff_and_curator_supremacy(self):
         """测试 60 天休眠退避机制与馆长自定义周期的协同（ADR 0029 修订）。"""
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         date_70_days_ago = (now - timedelta(days=70)).strftime("%Y-%m-%d")
         date_10_days_ago = (now - timedelta(days=10)).strftime("%Y-%m-%d")
 
@@ -710,7 +708,7 @@ class TestAutoUpdateEngine(unittest.TestCase):
 
     def test_dormancy_backoff_self_heals_when_new_chapter_found(self):
         """测试休眠状态的漫画在探测到新章节后，自动自愈恢复 15 天基准周期。"""
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         date_70_days_ago = (now - timedelta(days=70)).strftime("%Y-%m-%d")
         today_str = now.strftime("%Y-%m-%d")
 
@@ -930,7 +928,7 @@ class TestAutoUpdateEngine(unittest.TestCase):
 
     def test_120_day_dormancy_cutoff_retires_comic(self):
         """测试停更满 120 天的作品自动永久关停归档（auto_update_interval_days = 0），且馆长自定义不受影响。"""
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         date_130_days_ago = (now - timedelta(days=130)).strftime("%Y-%m-%d")
 
         # 1. 默认 15 天，停更 130 天 -> 应触发 120 天硬关停，且不作为巡检候选
@@ -976,7 +974,7 @@ class TestAutoUpdateEngine(unittest.TestCase):
 
     def test_auto_update_cycle_retires_when_new_chapter_is_final(self):
         """测试自动追更巡检拉取到「最终话」新章节时，合并后自动关停后续巡检。"""
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         chapters = [
             Chapter(id="c1", index=1, title="第 1 话", page_count=2, start=1),
             Chapter(id="c2", index=2, title="第 2 话", page_count=2, start=3),

@@ -68,7 +68,7 @@ _RATE_REFILL_PER_SEC = 3.0  # 180 pages / 60 seconds
 
 
 class _TokenBucket:
-    __slots__ = ("tokens", "last_time")
+    __slots__ = ("last_time", "tokens")
 
     def __init__(self) -> None:
         self.tokens = _RATE_CAPACITY

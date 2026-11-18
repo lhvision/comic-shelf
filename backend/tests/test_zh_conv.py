@@ -1,11 +1,8 @@
 from __future__ import annotations
 
-import sys
 import time
-from pathlib import Path
 
-
-from app.zh_conv import to_simplified, to_traditional, expand_search_variants, _load_tables
+from app.zh_conv import _load_tables, expand_search_variants, to_simplified, to_traditional
 
 
 def test_zh_conv_basic_conversions():
@@ -91,6 +88,7 @@ def test_lazy_loading_and_performance():
 
 def test_astral_plane_and_concurrency():
     import concurrent.futures
+
     import app.zh_conv as zh_mod
 
     # 1. Test SMP Astral plane characters (4-byte UTF-8)

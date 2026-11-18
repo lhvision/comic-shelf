@@ -9,10 +9,10 @@ import os
 import shutil
 import threading
 import time
+from collections.abc import Callable
 from pathlib import Path
-from typing import Any, BinaryIO, Callable
+from typing import Any, BinaryIO
 
-from fastapi import HTTPException
 from PIL import Image, ImageOps
 
 from ..config import (
@@ -507,45 +507,44 @@ class ComicStoreMediaMixin:
                             pass
 
         page_path = self.ensure_page(fetched, index)
-        with self._lock_for_page(meta.source, meta.source_id, index):
-            with self._thumb_semaphore:
-                if target.exists() and target.stat().st_size > 0:
-                    return target
-                with Image.open(page_path) as img:
-                    img = ImageOps.exif_transpose(img)
-                    if getattr(img, "is_animated", False):
-                        img.seek(0)
-                    if img.mode not in {"RGB", "L"}:
-                        img = img.convert("RGB")
-                    ratio = PAGE_THUMB_WIDTH / max(img.width, 1)
-                    if ratio < 1:
-                        size = (PAGE_THUMB_WIDTH, max(1, round(img.height * ratio)))
-                        img = img.resize(size, Image.Resampling.LANCZOS)
-                    target.parent.mkdir(parents=True, exist_ok=True)
-                    if clean_ext == "webp":
-                        tmp_target = target.with_name(f"{target.name}.tmp.{os.getpid()}.{threading.get_ident()}.webp")
-                        try:
-                            img.save(
-                                tmp_target,
-                                format="WEBP",
-                                quality=COVER_WEBP_QUALITY,
-                                method=4,
-                            )
-                            os.replace(tmp_target, target)
-                            try:
-                                legacy_jpg = self.page_thumb_path(meta, index, ext="jpg")
-                                legacy_jpg.unlink(missing_ok=True)
-                            except OSError:
-                                pass
-                        finally:
-                            tmp_target.unlink(missing_ok=True)
-                    else:
-                        img.save(
-                            target,
-                            format="JPEG",
-                            quality=PAGE_THUMB_QUALITY,
-                            optimize=True,
-                            progressive=True,
-                        )
-
+        with self._lock_for_page(meta.source, meta.source_id, index), self._thumb_semaphore:
+            if target.exists() and target.stat().st_size > 0:
                 return target
+            with Image.open(page_path) as img:
+                img = ImageOps.exif_transpose(img)
+                if getattr(img, "is_animated", False):
+                    img.seek(0)
+                if img.mode not in {"RGB", "L"}:
+                    img = img.convert("RGB")
+                ratio = PAGE_THUMB_WIDTH / max(img.width, 1)
+                if ratio < 1:
+                    size = (PAGE_THUMB_WIDTH, max(1, round(img.height * ratio)))
+                    img = img.resize(size, Image.Resampling.LANCZOS)
+                target.parent.mkdir(parents=True, exist_ok=True)
+                if clean_ext == "webp":
+                    tmp_target = target.with_name(f"{target.name}.tmp.{os.getpid()}.{threading.get_ident()}.webp")
+                    try:
+                        img.save(
+                            tmp_target,
+                            format="WEBP",
+                            quality=COVER_WEBP_QUALITY,
+                            method=4,
+                        )
+                        os.replace(tmp_target, target)
+                        try:
+                            legacy_jpg = self.page_thumb_path(meta, index, ext="jpg")
+                            legacy_jpg.unlink(missing_ok=True)
+                        except OSError:
+                            pass
+                    finally:
+                        tmp_target.unlink(missing_ok=True)
+                else:
+                    img.save(
+                        target,
+                        format="JPEG",
+                        quality=PAGE_THUMB_QUALITY,
+                        optimize=True,
+                        progressive=True,
+                    )
+
+            return target

@@ -20,6 +20,7 @@ from ..config import (
     DATA_DIR,
     LIBRARY_DIR,
 )
+from ..formatting import format_count, is_comic_completed
 from ..models import (
     Chapter,
     ComicDetail,
@@ -30,10 +31,9 @@ from ..models import (
     PageRecord,
     RemotePage,
 )
-from ..formatting import format_count, is_comic_completed
 from .utils import (
-    CURRENT_DECODE_VERSION,
     _SAFE,
+    CURRENT_DECODE_VERSION,
     _write_json_atomic,
 )
 
@@ -342,7 +342,7 @@ class ComicStoreBase:
         failures: list[str] = []
         for backup_dir in sorted(path for path in work.iterdir() if path.is_dir() and not path.is_symlink()):
             name = backup_dir.name
-            if name.startswith(".deleted-") or name.startswith(".tmp_"):
+            if name.startswith((".deleted-", ".tmp_")):
                 shutil.rmtree(backup_dir, ignore_errors=True)
                 continue
             if not name.startswith(".save-"):
@@ -483,7 +483,7 @@ class ComicStoreBase:
                     meta.auto_update_interval_days = 0
 
             if not meta.imported_at:
-                meta.imported_at = datetime.datetime.now(datetime.timezone.utc).isoformat()
+                meta.imported_at = datetime.datetime.now(datetime.UTC).isoformat()
 
             album_path = self.album_path(meta.source, meta.source_id)
             remote_path = self.remote_path(meta.source, meta.source_id)
@@ -617,9 +617,9 @@ class ComicStoreBase:
             if not meta.imported_at:
                 try:
                     file_mtime = path.stat().st_mtime
-                    meta.imported_at = datetime.datetime.fromtimestamp(file_mtime, tz=datetime.timezone.utc).isoformat()
+                    meta.imported_at = datetime.datetime.fromtimestamp(file_mtime, tz=datetime.UTC).isoformat()
                 except Exception:
-                    meta.imported_at = datetime.datetime.now(datetime.timezone.utc).isoformat()
+                    meta.imported_at = datetime.datetime.now(datetime.UTC).isoformat()
             elif " " in meta.imported_at:
                 iso = meta.imported_at.replace(" ", "T")
                 if not (iso.endswith("Z") or "+" in iso[10:] or "-" in iso[10:]):
@@ -781,8 +781,8 @@ class ComicStoreBase:
                 from ..db import purge_comic_db_records
 
                 db_purged = bool(purge_comic_db_records(source, source_id))
-            except Exception as e:
-                logger.exception("Failed to purge comic db records for %s/%s: %s", source, source_id, e)
+            except Exception:
+                logger.exception("Failed to purge comic db records for %s/%s", source, source_id)
             return existed or db_purged
 
     def update_metadata(self, source: str, source_id: str, updates: dict[str, Any]) -> ComicMeta:

@@ -1,13 +1,13 @@
 """Unit test for SPAStaticFiles fallback and file extension filtering."""
 
 import asyncio
-import sys
 import tempfile
 from pathlib import Path
 
-
 from fastapi import FastAPI
-from app.main import SPAStaticFiles, app as main_app
+
+from app.main import SPAStaticFiles
+from app.main import app as main_app
 
 
 def create_test_spa_app(dist_dir: Path) -> FastAPI:

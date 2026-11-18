@@ -1,14 +1,10 @@
-import os
-import sys
-import tempfile
 import shutil
+import tempfile
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
-
-from app.models import ComicMeta, FetchedComic, RemotePage, PageRecord
+from app.models import ComicMeta, FetchedComic, PageRecord, RemotePage
 from app.storage import ComicStore
-from app.main import _prefetch_worker
 
 
 def create_test_comic(page_count: int = 15) -> FetchedComic:

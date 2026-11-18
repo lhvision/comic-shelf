@@ -1,10 +1,9 @@
-import sys
 import tempfile
 import time
 from pathlib import Path
 
-
 from starlette.exceptions import HTTPException
+
 import app.db as db_mod
 
 
@@ -202,8 +201,9 @@ def test_db_and_passes_crud():
     db_mod.delete_guest_pass(pid)
 
     # 17. Client IP truncation in get_client_ip
-    from app.auth import get_client_ip, get_user_context
     from unittest.mock import MagicMock
+
+    from app.auth import get_client_ip, get_user_context
 
     req_long_ip = MagicMock()
     req_long_ip.headers.get = lambda k, default="": "192.168.1.1" + "a" * 100 if k.lower() == "x-forwarded-for" else ""
@@ -225,17 +225,19 @@ def test_db_and_passes_crud():
 
     with ThreadPoolExecutor(max_workers=5) as executor:
         futures = [executor.submit(_reg, i) for i in range(5)]
-        results = [f.result() for f in futures]
+        for f in futures:
+            f.result()
 
     race_pass = db_mod.get_guest_pass_by_id(race_pid)
     assert race_pass["device_count"] <= 2, f"Expected <= 2 devices, got {race_pass['device_count']}"
     assert len(race_pass["devices"]) <= 2
 
     # 19. Same-device Re-login Reuses Existing Device Token
+    from fastapi import Response
+
+    import app.auth as auth_mod
     from app.main import auth_login
     from app.models import LoginRequest
-    from fastapi import Response
-    import app.auth as auth_mod
 
     auth_mod.AUTH_SECRET = "curator-test-secret"
     p_relogin = db_mod.create_guest_pass(username="ReloginUser", max_devices=2, pin="1234")
@@ -553,7 +555,7 @@ def test_comics_index_and_pagination():
     assert items_multi_list[0]["source_id"] == "c1"
 
     # No comic has both 同人 and 短篇
-    items_multi_miss, total_multi_miss = db_mod.query_library_index("u1", is_curator=True, tags=["同人", "短篇"])
+    _items_multi_miss, total_multi_miss = db_mod.query_library_index("u1", is_curator=True, tags=["同人", "短篇"])
     assert total_multi_miss == 0
 
     # Defensive truncation: passing > 5 tags truncates to first 5 tags (6th tag '短篇' is dropped)
@@ -708,11 +710,13 @@ def test_comics_index_and_pagination():
 
 
 def test_curator_sessions_and_zero_exposure():
+    from unittest.mock import MagicMock
+
+    from fastapi import Response
+
     import app.auth as auth_mod
     from app.models import LoginRequest
     from app.routers import auth as auth_router_mod
-    from unittest.mock import MagicMock
-    from fastapi import Response
 
     temp_dir = tempfile.mkdtemp()
     temp_db = Path(temp_dir) / "test_curator_sessions.db"
@@ -796,7 +800,7 @@ def test_curator_sessions_and_zero_exposure():
     req_script.headers.get = lambda k, default="": f"Bearer {curator_secret}" if k.lower() == "authorization" else ""
     req_script.cookies.get = lambda k, default="": ""
     req_script.client.host = "10.0.0.2"
-    s_id, s_name, s_role = auth_mod.get_user_context(req_script)
+    _s_id, s_name, s_role = auth_mod.get_user_context(req_script)
     assert s_role == "admin"
     assert s_name == "馆长"
 
@@ -818,7 +822,7 @@ def test_curator_sessions_and_zero_exposure():
     req_revoked.headers.get = lambda k, default="": f"Bearer {res.token}" if k.lower() == "authorization" else ""
     req_revoked.cookies.get = lambda k, default="": ""
     req_revoked.client.host = "10.0.0.1"
-    r_id, r_name, r_role = auth_mod.get_user_context(req_revoked)
+    _r_id, _r_name, r_role = auth_mod.get_user_context(req_revoked)
     assert r_role != "admin"
 
     # 9. Password Rotation: If master secret is rotated, old sessions are automatically purged

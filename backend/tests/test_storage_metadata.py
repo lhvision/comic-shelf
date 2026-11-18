@@ -4,15 +4,13 @@ from __future__ import annotations
 
 import json
 import os
-import sys
-import time
 import tempfile
 import threading
+import time
 import unittest
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from unittest.mock import patch
-
 
 from app.models import Chapter, ComicMeta, FetchedComic, PageRecord, RemotePage
 from app.storage import ComicStore
@@ -352,7 +350,7 @@ class TestStorageMetadata(unittest.TestCase):
                 fetched.meta.pages[0].chapter = "new"
                 fetched.remote_pages[0].chapter = "new"
 
-                def fail_write(path: Path, data: dict) -> None:
+                def fail_write(path: Path, data: dict, failed_name: str = failed_name) -> None:
                     if path.name == failed_name:
                         raise OSError("disk full")
                     _write_json_atomic(path, data)
@@ -376,9 +374,8 @@ class TestStorageMetadata(unittest.TestCase):
                 raise OSError("disk full")
             _write_json_atomic(path, data)
 
-        with patch("app.storage.base._write_json_atomic", side_effect=fail_album):
-            with self.assertRaises(OSError):
-                self.store.save_fetched(fetched)
+        with patch("app.storage.base._write_json_atomic", side_effect=fail_album), self.assertRaises(OSError):
+            self.store.save_fetched(fetched)
         self.assertFalse(self.path.exists())
         self.assertFalse(self.store.remote_path("jm", "12345").exists())
 
@@ -395,9 +392,9 @@ class TestStorageMetadata(unittest.TestCase):
         with (
             patch("app.storage.base._write_json_atomic", side_effect=OSError("disk full")),
             patch("app.storage.base.shutil.copy2", fail_copy),
+            self.assertRaises(PermissionError),
         ):
-            with self.assertRaises(PermissionError):
-                self.store.save_fetched(fetched, refresh=True)
+            self.store.save_fetched(fetched, refresh=True)
         backups = list((self.store.root / ".work").glob(".save-*/album.json"))
         self.assertEqual(len(backups), 1)
         self.assertEqual(backups[0].read_bytes(), original)
@@ -418,7 +415,7 @@ class TestStorageMetadata(unittest.TestCase):
                 started, resume = threading.Event(), threading.Event()
                 replacement = create_sample_image(color="green")
 
-                def download(*_args) -> bytes:
+                def download(*_args, started=started, resume=resume) -> bytes:
                     started.set()
                     if not resume.wait(5):
                         raise TimeoutError("download was not resumed")
@@ -541,7 +538,7 @@ class TestStorageMetadata(unittest.TestCase):
         self.assertFalse(leftover.exists())
 
     def test_recover_restores_interrupted_save_and_flattens_pages(self) -> None:
-        fetched = self._write_remote_comic()
+        self._write_remote_comic()
         original_album = self.path.read_bytes()
         original_remote = self.store.remote_path("jm", "12345").read_bytes()
         page = self.store.pages_dir("jm", "12345") / "00001.webp"

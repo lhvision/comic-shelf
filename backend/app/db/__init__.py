@@ -2,9 +2,9 @@ from __future__ import annotations
 
 from ..config import DATA_DIR
 from .connection import (
-    _escape_like,
     DEFAULT_DB_PATH,
     DEFAULT_DIALOGUE_DB_PATH,
+    _escape_like,
     get_data_dir,
     get_db,
     get_db_path,
@@ -25,12 +25,6 @@ from .dialogues import (
     PARATEXT_KIND,
     STORY_CONTEXT_MAX_LINES,
     STORY_CONTEXT_MAX_PAGES,
-    _ASCII_LOWER,
-    _CJK_RE,
-    _PARATEXT_RE,
-    _SCANLATOR_RE,
-    _WATERMARK_RE,
-    _VECTOR_CACHE,
     _bump_vector_version,
     _coerce_order_index,
     _comic_signals,
@@ -60,10 +54,6 @@ from .index import (
     _apply_facets_delta,
     _compute_library_facets,
     _copy_facets,
-    _facets_cache,
-    _facets_cache_lock,
-    _facets_compute_lock,
-    _last_facets_invalidated_at,
     batch_find_comic_mirrors,
     delete_comic_index,
     find_comic_mirrors,
@@ -80,8 +70,6 @@ from .index import (
     upsert_comic_index,
 )
 from .passes import (
-    _INVISIBLE_OR_OVERRIDE_CHARS,
-    _device_register_lock,
     _row_to_pass,
     claim_guest_pass,
     clean_expired_curator_sessions,
@@ -109,8 +97,6 @@ from .passes import (
     verify_pin,
 )
 from .schema import (
-    _CREATE_DIALOGUES_FTS,
-    _DIALOGUE_COLUMNS,
     _migrate_dialogue_schema,
     backfill_dialogue_index,
     init_db,
@@ -125,7 +111,7 @@ from .user_state import (
     set_user_progress,
 )
 
-__all__ = [
+__all__ = [  # noqa: RUF022 - 按领域分组排列，字母序会打散分组注释
     # Config & Constants
     "DATA_DIR",
     "_DB_PATH",

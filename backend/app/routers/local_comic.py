@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 import asyncio
-import os
 import re
 import time
 import uuid
 from pathlib import Path
+
+import anyio
 from fastapi import APIRouter, File, Form, HTTPException, Query, UploadFile
 
 from ..config import TMP_DIR
@@ -96,12 +97,12 @@ async def inspect_pdf(
         tmp_pdf = TMP_DIR / f".upload_{uuid.uuid4().hex[:12]}_{safe_name}"
         total_read = 0
         try:
-            with open(tmp_pdf, "wb") as f:
+            async with await anyio.open_file(tmp_pdf, "wb") as f:
                 while chunk := await file.read(1024 * 1024):
                     total_read += len(chunk)
                     if total_read > MAX_PDF_UPLOAD_SIZE:
                         raise HTTPException(status_code=413, detail="PDF 文件体积过大（超过 1GB 上限）。")
-                    f.write(chunk)
+                    await f.write(chunk)
             return await asyncio.to_thread(store.inspect_pdf_file, tmp_pdf)
         finally:
             tmp_pdf.unlink(missing_ok=True)
