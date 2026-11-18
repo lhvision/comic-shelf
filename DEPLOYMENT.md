@@ -398,6 +398,11 @@ backend/data/
    # 环境想放到别处（外置盘/NAS 挂载）：COMIC_SHELF_OCR_VENV=/path/to/env bash scripts/ocr.sh install
    ```
 
+   > **Python 版本**：后端以 **Python 3.14 为硬下限**（源码使用了 3.14 才有的语法，旧解释器一 import 就 `SyntaxError`）。
+   > 算力机上凡是要 import 后端的动作——`--sync-local`、`scripts/sync_ocr.py`——都必须跑在 3.14 上，`--sync-local`
+   > 在旧解释器下会开跑前直接拒绝；纯提取 + `--api-url` 通知 NAS 入库不 import 后端。`ocr.sh install` 建出的
+   > `.venv-ocr` 沿用应用 `.venv` 的解释器，所以先 `vpr setup:py` 再 `ocr.sh install` 就是 3.14。
+
    回落是**显式**的：`.venv-ocr` 不存在时 `run` 会打一行 `⚠️ 检测到宿主有 NVIDIA 显卡，但 GPU 算力环境
    未创建，本轮按 CPU 跑` 并给出建环境的命令；`--gpu` 时环境缺失直接拒绝（exit 1）。环境在、但 Det/Cls/Rec 三段会话里有一段没跑在 CUDA 上（CPU 版 `onnxruntime` 覆盖了 GPU 版，或 `LD_LIBRARY_PATH` 没挂上 venv 内的 CUDA 库），`build_engine` 也会当场报错退出，绝不静默降级。
 

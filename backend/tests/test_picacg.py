@@ -448,8 +448,12 @@ class TestPicacgProvider(unittest.TestCase):
         mock_get_prov: MagicMock,
         mock_load: MagicMock,
     ) -> None:
+        from app.db import init_db
         from app.models import ComicMeta, FetchedComic, ImportRequest
         from app.routers.library import import_comic
+
+        # import_comic 会查镜像索引；应用启动时由 lifespan 建表，这里自己建（数据目录是本轮一次性的）
+        init_db()
 
         # 1. Simulate cached comic has page_count == 0 (historical broken record)
         broken_meta = ComicMeta(

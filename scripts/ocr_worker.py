@@ -605,6 +605,15 @@ def build_arg_parser() -> argparse.ArgumentParser:
 
 def main() -> int:
     args = build_arg_parser().parse_args()
+    # --sync-local 要 import 后端（app.db），而后端源码用了 3.14 才有的语法；旧解释器下每一本的同步都会
+    # 在 import 处失败并被逐本吞成一行警告，跑完才发现索引是空的。所以开跑前就拒绝。
+    if args.sync_local and sys.version_info < (3, 14):
+        print(
+            f"❌ --sync-local 需要 Python 3.14+（当前 {sys.version_info.major}.{sys.version_info.minor}）："
+            "后端代码以 3.14 为基线。请用 3.14 重建环境，或改用 --api-url 让 NAS 端入库。",
+            file=sys.stderr,
+        )
+        return 1
     data_dir = resolve_data_dir(args.data_dir)
 
     print(f"📁 目标漫画数据目录: {data_dir}")

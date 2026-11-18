@@ -13,6 +13,7 @@ import { illustrationsPlugin } from './plugins/illustrations'
 export default defineConfig({
   staged: {
     '*': 'vp check --fix',
+    '*.py': ['uv run ruff check --fix', 'uv run ruff format'],
   },
   fmt: {
     semi: false,

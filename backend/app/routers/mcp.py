@@ -887,8 +887,8 @@ TOOL_HANDLERS: dict[str, Callable[[dict[str, Any]], dict[str, Any]]] = {
 
 async def execute_tool(name: str | None, arguments: dict[str, Any]) -> dict[str, Any]:
     """Executes an MCP tool via registry dispatch and returns a standard JSON-RPC Tool Result."""
-    # 请求里缺 `params.name` 时这里拿到 None，与未注册的名字一样按未知工具回话
-    handler = TOOL_HANDLERS.get(name) if name is not None else None
+    # 缺 `params.name`（None）或类型不对（如数组，不可哈希）时，与未注册的名字一样按未知工具回话
+    handler = TOOL_HANDLERS.get(name) if isinstance(name, str) else None
     if not handler:
         return {
             "content": [{"type": "text", "text": f"未知的 MCP 工具: {name}"}],
@@ -979,8 +979,8 @@ RESOURCE_HANDLERS: dict[str, Callable[[], dict[str, Any]]] = {
 
 async def read_resource(uri: str | None) -> dict[str, Any]:
     """Reads the contents of an MCP resource by URI."""
-    # 请求里缺 `params.uri` 时这里拿到 None，与未注册的 URI 一样报 Resource not found
-    handler = RESOURCE_HANDLERS.get(uri) if uri is not None else None
+    # 缺 `params.uri`（None）或类型不对时，与未注册的 URI 一样报 Resource not found
+    handler = RESOURCE_HANDLERS.get(uri) if isinstance(uri, str) else None
     if not handler:
         raise ValueError(f"Resource not found: {uri}")
     # 同 execute_tool：资源读取也是同步 SQLite 查询，不能占着事件循环
@@ -1008,6 +1008,15 @@ async def _process_single_jsonrpc_request(req_data: Any) -> dict[str, Any] | Non
         if method == "notifications/initialized":
             logger.info("MCP Client connected and initialized")
         return None
+
+    # params 与 params.arguments 都必须是对象：否则下面的 .get() 会抛 AttributeError，变成一个 500
+    arguments = (params.get("arguments") or {}) if isinstance(params, dict) else None
+    if not isinstance(arguments, dict):
+        return {
+            "jsonrpc": "2.0",
+            "id": msg_id,
+            "error": {"code": -32602, "message": "Invalid params: params 与 params.arguments 必须是 JSON 对象"},
+        }
 
     if method == "initialize":
         return {
@@ -1043,7 +1052,6 @@ async def _process_single_jsonrpc_request(req_data: Any) -> dict[str, Any] | Non
 
     elif method == "tools/call":
         tool_name = params.get("name")
-        arguments = params.get("arguments", {}) or {}
         tool_result = await execute_tool(tool_name, arguments)
         return {
             "jsonrpc": "2.0",
@@ -1084,7 +1092,7 @@ async def _process_single_jsonrpc_request(req_data: Any) -> dict[str, Any] | Non
     elif method == "prompts/get":
         prompt_name = params.get("name")
         if prompt_name == "find_comic_by_scene":
-            clue = params.get("arguments", {}).get("clue", "")
+            clue = arguments.get("clue", "")
             return {
                 "jsonrpc": "2.0",
                 "id": msg_id,
@@ -1107,7 +1115,7 @@ async def _process_single_jsonrpc_request(req_data: Any) -> dict[str, Any] | Non
                 },
             }
         elif prompt_name == "recommend_comic":
-            pref = params.get("arguments", {}).get("preference", "热门")
+            pref = arguments.get("preference", "热门")
             return {
                 "jsonrpc": "2.0",
                 "id": msg_id,

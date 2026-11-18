@@ -1015,6 +1015,33 @@ def test_mcp_tool_rate_limiting():
     print("  ✓ MCP tool rate limiting passed")
 
 
+def test_mcp_malformed_params_are_protocol_errors_not_crashes():
+    """params / arguments / name 类型不对时回协议级或工具级错误，不能抛异常变成 500。"""
+
+    def rpc(method: str, params: Any) -> dict[str, Any]:
+        res = asyncio.run(process_jsonrpc_request({"jsonrpc": "2.0", "id": 1, "method": method, "params": params}))
+        assert isinstance(res, dict), res
+        return res
+
+    for method, params in [
+        ("tools/call", [1]),
+        ("tools/call", "x"),
+        ("tools/call", {"name": "get_shelf_stats", "arguments": [1]}),
+        ("prompts/get", {"name": "recommend_comic", "arguments": "x"}),
+        ("resources/read", [1]),
+    ]:
+        assert rpc(method, params)["error"]["code"] == -32602, (method, params)
+
+    # name / uri 是不可哈希类型：按"未知工具 / 未知资源"回话
+    assert rpc("tools/call", {"name": ["x"]})["result"]["isError"] is True
+    assert rpc("resources/read", {"uri": ["x"]})["error"]["code"] == -32602
+
+    # arguments 缺省或为 null 仍然合法
+    assert "result" in rpc("prompts/get", {"name": "recommend_comic", "arguments": None})
+    assert "result" in rpc("tools/list", None)
+    print("  ✓ MCP malformed params handled as protocol errors")
+
+
 if __name__ == "__main__":
     print("Running MCP Server unit tests...")
     test_mcp_protocol_initialize_and_tools()
@@ -1030,6 +1057,7 @@ if __name__ == "__main__":
     test_mcp_scoped_credential_and_hidden_book_refusal()
     test_mcp_handshake_url_is_credential_free_and_failures_get_locked()
     test_mcp_handlers_run_off_event_loop()
+    test_mcp_malformed_params_are_protocol_errors_not_crashes()
     test_mcp_search_by_meaning_forwards_reason()
     test_mcp_tool_rate_limiting()
     print("All MCP Server tests passed successfully!")

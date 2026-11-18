@@ -24,13 +24,23 @@ while IFS= read -r f; do
   [ -n "$f" ] && TEST_FILES+=("$f")
 done < <(find backend/tests -maxdepth 1 -name 'test_*.py' | sort)
 
+# 每个测试文件一个进程、一个一次性数据目录：app.config 在 import 期读取 COMIC_SHELF_DATA，
+# 不重定向的话测试会写进真实书库 backend/data/（不变量 1）。
+run_test() {
+  local data_dir status=0
+  data_dir="$(mktemp -d "${TMPDIR:-/tmp}/paper-room-test.XXXXXX")"
+  COMIC_SHELF_DATA="$data_dir" "$PYTHON" "$1" || status=$?
+  rm -rf "$data_dir"
+  return "$status"
+}
+
 # Support running specific tests (e.g. vpr test:py auth) or all by default
 if [ $# -gt 0 ]; then
   for arg in "$@"; do
     matched=false
     for t in "${TEST_FILES[@]}"; do
       if [[ "$t" == *"$arg"* ]]; then
-        "$PYTHON" "$t"
+        run_test "$t"
         matched=true
       fi
     done
@@ -41,6 +51,6 @@ if [ $# -gt 0 ]; then
   done
 else
   for t in "${TEST_FILES[@]}"; do
-    "$PYTHON" "$t"
+    run_test "$t"
   done
 fi
