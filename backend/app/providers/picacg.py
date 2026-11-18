@@ -395,7 +395,6 @@ class PicacgProvider(ComicProvider):
         *,
         existing: FetchedComic | None = None,
         groups_to_fetch: list[str] | None = None,
-        **kwargs: Any,
     ) -> FetchedComic:
         """Fetches comic metadata and page URLs without downloading image bytes."""
         comic_id = self.normalize_id(raw_id)

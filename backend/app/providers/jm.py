@@ -1090,7 +1090,6 @@ class JMProvider(ComicProvider):
         *,
         existing: FetchedComic | None = None,
         groups_to_fetch: list[str] | None = None,
-        **kwargs: Any,
     ) -> FetchedComic:
         jm_id = self.normalize_id(raw_id)
         t_jm_fetch = time.perf_counter()
@@ -1210,7 +1209,6 @@ class JMProvider(ComicProvider):
         if not cdn_candidates:
             raise RuntimeError(f"未找到可信安全的图片 CDN 域名（原始域名受限或已被阻断: {orig_domain}）")
 
-        transient = {401, 403, 429, 500, 502, 503, 504}
         last_err: RuntimeError | None = None
         max_attempts = max(4, min(len(cdn_candidates), 6))
 
@@ -1238,13 +1236,6 @@ class JMProvider(ComicProvider):
                     time.sleep(0.3 * (attempt + 1))
                     continue
                 return self._decode_page(page, resp.content)
-
-            if resp.status_code in transient:
-                last_err = RuntimeError(
-                    f"下载图片失败 {comic.meta.display_id} 第{page.index}页 ({curr_domain}): HTTP {resp.status_code}"
-                )
-                time.sleep(0.3 * (attempt + 1))
-                continue
 
             last_err = RuntimeError(
                 f"下载图片失败 {comic.meta.display_id} 第{page.index}页 ({curr_domain}): HTTP {resp.status_code}"

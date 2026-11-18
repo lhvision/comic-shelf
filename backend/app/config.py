@@ -173,4 +173,3 @@ COPY_BASE_URL = os.getenv("COPY_BASE_URL", os.getenv("COMIC_SHELF_COPY_BASE_URL"
 COPY_TOKEN = os.getenv("COPY_TOKEN", os.getenv("COMIC_SHELF_COPY_TOKEN", "")).strip()
 COPY_USERNAME = os.getenv("COPY_USERNAME", os.getenv("COMIC_SHELF_COPY_USERNAME", "")).strip()
 COPY_PASSWORD = os.getenv("COPY_PASSWORD", os.getenv("COMIC_SHELF_COPY_PASSWORD", "")).strip()
-COPY_PROXY = get_proxy_for_source("copymanga")

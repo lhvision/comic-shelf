@@ -83,7 +83,7 @@ def test_dialogue_fts_lifecycle():
         pages_dir.mkdir(parents=True, exist_ok=True)
 
         config_mod.DATA_DIR = temp_dir
-        db_mod.DATA_DIR = temp_dir
+        db_mod.set_data_dir(temp_dir)
 
         ocr_p1 = {
             "version": 1,
@@ -206,7 +206,7 @@ def test_dialogue_guest_filtering_and_multi_chapter():
         db_mod.init_db(temp_db)
 
         config_mod.DATA_DIR = temp_dir
-        db_mod.DATA_DIR = temp_dir
+        db_mod.set_data_dir(temp_dir)
 
         # Comic A: public
         dir_a = temp_dir / "library" / "local" / "comic_a" / "pages"
@@ -287,7 +287,7 @@ def test_dialogue_api_endpoints_and_auth():
         db_mod.init_db(temp_db)
 
         config_mod.DATA_DIR = temp_dir
-        db_mod.DATA_DIR = temp_dir
+        db_mod.set_data_dir(temp_dir)
         config_mod.LIBRARY_DIR = temp_dir / "library"
         store.root = temp_dir / "library"
 
@@ -457,7 +457,7 @@ def test_paratext_indexed_but_excluded_from_search():
         db_mod.set_db_path(temp_db)
         db_mod.init_db(temp_db)
         config_mod.DATA_DIR = temp_dir
-        db_mod.DATA_DIR = temp_dir
+        db_mod.set_data_dir(temp_dir)
 
         pages_dir = temp_dir / "library" / "local" / "comic_kind" / "pages"
         pages_dir.mkdir(parents=True)
@@ -567,7 +567,7 @@ def test_reading_order_roundtrip_and_legacy_rebuild():
         db_mod.set_db_path(temp_db)
         db_mod.init_db(temp_db)
         config_mod.DATA_DIR = temp_dir
-        db_mod.DATA_DIR = temp_dir
+        db_mod.set_data_dir(temp_dir)
 
         pages_dir = temp_dir / "library" / "local" / "comic_order" / "pages"
         pages_dir.mkdir(parents=True, exist_ok=True)
@@ -665,7 +665,7 @@ def test_bm25_relevance_ordering():
         db_mod.set_db_path(temp_db)
         db_mod.init_db(temp_db)
         config_mod.DATA_DIR = temp_dir
-        db_mod.DATA_DIR = temp_dir
+        db_mod.set_data_dir(temp_dir)
 
         pages_dir = temp_dir / "library" / "local" / "comic_rank" / "pages"
         pages_dir.mkdir(parents=True, exist_ok=True)
@@ -730,7 +730,7 @@ def test_dialogue_script_normalization_recall():
         db_mod.set_db_path(temp_db)
         db_mod.init_db(temp_db)
         config_mod.DATA_DIR = temp_dir
-        db_mod.DATA_DIR = temp_dir
+        db_mod.set_data_dir(temp_dir)
 
         pages_dir = temp_dir / "library" / "local" / "comic_script" / "pages"
         pages_dir.mkdir(parents=True, exist_ok=True)
@@ -796,7 +796,7 @@ def test_page_level_aggregation():
         db_mod.set_db_path(temp_db)
         db_mod.init_db(temp_db)
         config_mod.DATA_DIR = temp_dir
-        db_mod.DATA_DIR = temp_dir
+        db_mod.set_data_dir(temp_dir)
 
         pages_dir = temp_dir / "library" / "local" / "comic_agg" / "pages"
         pages_dir.mkdir(parents=True, exist_ok=True)
@@ -942,7 +942,7 @@ def test_dialogue_business_signal_ranking():
         db_mod.set_db_path(temp_db)
         db_mod.init_db(temp_db)
         config_mod.DATA_DIR = temp_dir
-        db_mod.DATA_DIR = temp_dir
+        db_mod.set_data_dir(temp_dir)
 
         # A / B 气泡文本逐字相同 → bm25 必然相同 → 相关度打平；C 是同词的长句 → 密度最低
         same_line = "我喜欢你"
@@ -1027,7 +1027,7 @@ def test_dialogue_rank_score_scale_hides_hidden_books():
         db_mod.set_db_path(temp_db)
         db_mod.init_db(temp_db)
         config_mod.DATA_DIR = temp_dir
-        db_mod.DATA_DIR = temp_dir
+        db_mod.set_data_dir(temp_dir)
 
         # 三本文字长度递增 → 相关度严格递减；最相关的那本对访客隐藏
         long_line = "他在心里反复排练着喜欢你这句话，可是到了嘴边却变成了别的话题，那天夜里下了很大的雨。"
@@ -1074,7 +1074,7 @@ def test_story_context_export_slice():
         db_mod.set_db_path(temp_db)
         db_mod.init_db(temp_db)
         config_mod.DATA_DIR = temp_dir
-        db_mod.DATA_DIR = temp_dir
+        db_mod.set_data_dir(temp_dir)
 
         pages_dir = temp_dir / "library" / "local" / "comic_ctx" / "pages"
         pages_dir.mkdir(parents=True)
@@ -1186,7 +1186,7 @@ def test_dirty_sidecar_values_stay_contained():
         db_mod.set_db_path(temp_db)
         db_mod.init_db(temp_db)
         config_mod.DATA_DIR = temp_dir
-        db_mod.DATA_DIR = temp_dir
+        db_mod.set_data_dir(temp_dir)
 
         pages_dir = temp_dir / "library" / "local" / "comic_dirty" / "pages"
         pages_dir.mkdir(parents=True)
@@ -1257,7 +1257,7 @@ def test_dialogue_index_backfills_after_rebuild():
     temp_dir = Path(tempfile.mkdtemp())
     try:
         config_mod.DATA_DIR = temp_dir
-        db_mod.DATA_DIR = temp_dir
+        db_mod.set_data_dir(temp_dir)
 
         pages_dir = temp_dir / "library" / "jm" / "88001" / "pages"
         pages_dir.mkdir(parents=True)
@@ -1324,7 +1324,7 @@ def test_half_synced_rows_resynced_on_startup():
     temp_dir = Path(tempfile.mkdtemp())
     try:
         config_mod.DATA_DIR = temp_dir
-        db_mod.DATA_DIR = temp_dir
+        db_mod.set_data_dir(temp_dir)
         shelf_db = temp_dir / "comic_shelf.db"
         db_mod.set_db_path(shelf_db)
         db_mod.init_db(shelf_db)
@@ -1372,7 +1372,7 @@ def test_dialogue_key_normalization_roundtrip():
         db_mod.set_db_path(temp_db)
         db_mod.init_db(temp_db)
         config_mod.DATA_DIR = temp_dir
-        db_mod.DATA_DIR = temp_dir
+        db_mod.set_data_dir(temp_dir)
 
         # 目录名就是存储层清洗后的形态；"Foo Bar!" 经 re.sub + strip 恰好得到 Foo_Bar
         pages_dir = temp_dir / "library" / "local" / "Foo_Bar" / "pages"
@@ -1433,7 +1433,7 @@ def test_dialogue_context_http_endpoint():
         db_mod.set_db_path(temp_db)
         db_mod.init_db(temp_db)
         config_mod.DATA_DIR = temp_dir
-        db_mod.DATA_DIR = temp_dir
+        db_mod.set_data_dir(temp_dir)
 
         pages_dir = temp_dir / "library" / "local" / "comic_http" / "pages"
         pages_dir.mkdir(parents=True)
@@ -1518,7 +1518,7 @@ def test_ascii_case_folding_and_unparsable_query():
         db_mod.set_db_path(temp_db)
         db_mod.init_db(temp_db)
         config_mod.DATA_DIR = temp_dir
-        db_mod.DATA_DIR = temp_dir
+        db_mod.set_data_dir(temp_dir)
 
         pages_dir = temp_dir / "library" / "local" / "comic_case" / "pages"
         pages_dir.mkdir(parents=True)
@@ -1559,7 +1559,7 @@ def test_multi_chapter_scanlator_deduplication():
         db_mod.set_db_path(temp_db)
         db_mod.init_db(temp_db)
         config_mod.DATA_DIR = temp_dir
-        db_mod.DATA_DIR = temp_dir
+        db_mod.set_data_dir(temp_dir)
 
         pages_dir = temp_dir / "library" / "copymanga" / "shadow_garden" / "pages"
         pages_dir.mkdir(parents=True)

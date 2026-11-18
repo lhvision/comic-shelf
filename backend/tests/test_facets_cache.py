@@ -94,19 +94,21 @@ def test_facets_cache_toctou_write_during_compute():
     assert res1["stats"]["total_books"] == 1
 
     # 模拟计算中途发生写操作
-    original_compute = db_mod._compute_library_facets
+    import app.db.index as index_mod
+
+    original_compute = index_mod._compute_library_facets
 
     def _simulated_compute(is_curator: bool, source: str | None = None):
         # 在计算开始后模拟并发写入新书
         db_mod.upsert_comic_index(_make_comic("c2", "并发漫画", ["并发标签"], 20))
         return original_compute(is_curator=is_curator, source=source)
 
-    db_mod._compute_library_facets = _simulated_compute
+    index_mod._compute_library_facets = _simulated_compute
     try:
         # bypass_cache 触发重算
         db_mod.get_library_facets(is_curator=True, bypass_cache=True)
     finally:
-        db_mod._compute_library_facets = original_compute
+        index_mod._compute_library_facets = original_compute
 
     # 下一次正常读必须能够发现缓存失效并拿到最新结果（包含并发写入的书）
     res3 = db_mod.get_library_facets(is_curator=True)

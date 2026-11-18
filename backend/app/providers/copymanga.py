@@ -246,7 +246,6 @@ class CopyMangaProvider(ComicProvider):
         *,
         existing: FetchedComic | None = None,
         groups_to_fetch: list[str] | None = None,
-        **kwargs: Any,
     ) -> FetchedComic:
         """Fetch metadata + page URLs for a CopyManga comic."""
         comic_id = self.normalize_id(raw_id)

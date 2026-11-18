@@ -628,9 +628,9 @@ def test_http_direct_rpc_and_sandbox_middleware():
 def test_mcp_dialogue_deep_link_and_story_context():
     """MCP 臂必须被断言：台词直达链接要真能高亮，取料出口要守三条边界纪律。"""
     tmp_dir = setup_test_env()
-    old_data_dir = db_mod.DATA_DIR
+    old_data_dir = db_mod.get_data_dir()
     try:
-        db_mod.DATA_DIR = tmp_dir
+        db_mod.set_data_dir(tmp_dir)
         comic_dir = tmp_dir / "library" / "local" / "mcp_test_comic"
         pages = comic_dir / "pages"
         pages.mkdir(parents=True, exist_ok=True)
@@ -731,7 +731,7 @@ def test_mcp_dialogue_deep_link_and_story_context():
         too_long = asyncio.run(execute_tool("search_by_meaning", {"meaning": "喜" * 201}))
         assert too_long["isError"] is True
     finally:
-        db_mod.DATA_DIR = old_data_dir
+        db_mod.set_data_dir(old_data_dir)
         shutil.rmtree(tmp_dir, ignore_errors=True)
 
 

@@ -388,6 +388,39 @@ class ComicStoreBase:
         if failures:
             raise RuntimeError("Could not restore interrupted saves: " + ", ".join(failures))
 
+    def upsert_index_row(self, meta: ComicMeta, mtime: float) -> None:
+        """把一本书的元数据写进 SQLite 影子索引（书架分页、筛选与镜像查重都读它）。"""
+        from ..db import upsert_comic_index
+
+        cached_pages = self.cached_page_count(meta)
+        upsert_comic_index(
+            {
+                "source": meta.source,
+                "source_id": meta.source_id,
+                "display_id": meta.display_id,
+                "title": meta.title,
+                "authors_json": json.dumps(meta.authors, ensure_ascii=False),
+                "works_json": json.dumps(meta.works, ensure_ascii=False),
+                "actors_json": json.dumps(meta.actors, ensure_ascii=False),
+                "tags_json": json.dumps(meta.tags, ensure_ascii=False),
+                "chapter_titles_json": json.dumps([c.title for c in meta.chapters], ensure_ascii=False),
+                "page_count": meta.page_count,
+                "cached_pages": cached_pages,
+                "cover_count": meta.cover_count,
+                "cover_indices_json": json.dumps(meta.cover_indices, ensure_ascii=False),
+                "views": str(meta.views),
+                "likes": str(meta.likes),
+                "uploaded_at": meta.published_at,
+                "published_at": meta.published_at,
+                "updated_at": meta.updated_at,
+                "imported_at": meta.imported_at,
+                "hidden_from_guest": 1 if getattr(meta, "hidden_from_guest", False) else 0,
+                "mtime": mtime,
+                "auto_update_interval_days": getattr(meta, "auto_update_interval_days", 15),
+                "last_auto_checked_at": getattr(meta, "last_auto_checked_at", ""),
+            }
+        )
+
     def _invalidate_cache(self, source: str, source_id: str) -> None:
         with self._cache_guard:
             self._meta_cache.pop((source, source_id), None)
@@ -397,40 +430,11 @@ class ComicStoreBase:
             if album_path.exists():
                 meta = self.load_meta(source, source_id)
                 if meta:
-                    from ..db import upsert_comic_index
-
                     try:
                         mtime = album_path.stat().st_mtime
                     except Exception:
                         mtime = 0.0
-                    cached_pages = self.cached_page_count(meta)
-                    upsert_comic_index(
-                        {
-                            "source": meta.source,
-                            "source_id": meta.source_id,
-                            "display_id": meta.display_id,
-                            "title": meta.title,
-                            "authors_json": json.dumps(meta.authors, ensure_ascii=False),
-                            "works_json": json.dumps(meta.works, ensure_ascii=False),
-                            "actors_json": json.dumps(meta.actors, ensure_ascii=False),
-                            "tags_json": json.dumps(meta.tags, ensure_ascii=False),
-                            "chapter_titles_json": json.dumps([c.title for c in meta.chapters], ensure_ascii=False),
-                            "page_count": meta.page_count,
-                            "cached_pages": cached_pages,
-                            "cover_count": meta.cover_count,
-                            "cover_indices_json": json.dumps(meta.cover_indices, ensure_ascii=False),
-                            "views": str(meta.views),
-                            "likes": str(meta.likes),
-                            "uploaded_at": meta.published_at,
-                            "published_at": meta.published_at,
-                            "updated_at": meta.updated_at,
-                            "imported_at": meta.imported_at,
-                            "hidden_from_guest": 1 if getattr(meta, "hidden_from_guest", False) else 0,
-                            "mtime": mtime,
-                            "auto_update_interval_days": getattr(meta, "auto_update_interval_days", 15),
-                            "last_auto_checked_at": getattr(meta, "last_auto_checked_at", ""),
-                        }
-                    )
+                    self.upsert_index_row(meta, mtime)
             else:
                 from ..db import purge_comic_db_records
 

@@ -60,7 +60,7 @@ def _setup(temp_dir: Path) -> None:
     db_mod.set_dialogue_db_path(temp_dir / "dialogues.db")
     db_mod.init_db(temp_db)
     config_mod.DATA_DIR = temp_dir
-    db_mod.DATA_DIR = temp_dir
+    db_mod.set_data_dir(temp_dir)
 
 
 def _comic(temp_dir: Path, source_id: str, lines: list[tuple[int, str]]) -> None:

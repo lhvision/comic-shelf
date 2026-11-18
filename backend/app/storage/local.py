@@ -1672,39 +1672,6 @@ class ComicStoreLocalMixin:
                         except Exception as e:
                             logger.warning("Failed to regenerate cover %d for %s/%s: %s", i, source, source_id, e)
                     return meta
-
-                    meta.custom_pages = True
-                    meta.cover_count = min(4, meta.page_count)
-                    meta.cover_indices = []
-                    meta.updated_at = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                    try:
-                        self.save_fetched(fetched, refresh=False, backup_dir=backup_dir)
-                    except Exception:
-                        shutil.rmtree(staging_dir, ignore_errors=True)
-                        raise
-
-                    thumbs_dir = self.thumbs_dir(source, source_id)
-                    covers_dir = self.covers_dir(source, source_id)
-                    shutil.rmtree(thumbs_dir, ignore_errors=True)
-                    shutil.rmtree(covers_dir, ignore_errors=True)
-                    thumbs_dir.mkdir(parents=True, exist_ok=True)
-                    covers_dir.mkdir(parents=True, exist_ok=True)
-
-                    if meta.chapters:
-                        for ch in meta.chapters:
-                            try:
-                                self.ensure_webp_chapter_cover(meta, fetched, ch)
-                                self.ensure_webp_chapter_cover(meta, fetched, ch, COVER_THUMB_WIDTH)
-                            except Exception as e:
-                                logger.warning("Failed to generate chapter cover for %s: %s", ch.id, e)
-
-                    for i in range(1, min(5, meta.page_count + 1)):
-                        try:
-                            self.ensure_webp_cover(meta, fetched, i)
-                            self.ensure_webp_cover(meta, fetched, i, COVER_THUMB_WIDTH)
-                        except Exception as e:
-                            logger.warning("Failed to regenerate cover %d for %s/%s: %s", i, source, source_id, e)
-                    return meta
             finally:
                 for d in pdf_temp_dirs:
                     shutil.rmtree(d, ignore_errors=True)

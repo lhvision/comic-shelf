@@ -143,7 +143,6 @@ def classify_dialogue_kind(
     is_chapter_tail: bool = False,
     is_chapter_boundary: bool = False,
     is_recurring_template: bool = False,
-    page_has_scanlator: bool | None = None,
     page_recurring_ratio: float = 0.0,
 ) -> str | None:
     """判定一条 OCR 文本的语料类别。
@@ -156,7 +155,6 @@ def classify_dialogue_kind(
         is_chapter_tail: 是否为所属章节末尾 1~2 页（兼容历史传参）。
         is_chapter_boundary: 是否为所属章节首尾 1~2 页（且该章页数 >= 8）。
         is_recurring_template: 该条文本是否为跨话/跨页高频重复模板。
-        page_has_scanlator: 该页是否含有汉化组/平台广告强特征词（传入 None 时从 page_texts 现场计算）。
         page_recurring_ratio: 该页模板文本行占全页文本行的比例（0.0 ~ 1.0）。
 
     Returns:

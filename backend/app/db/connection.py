@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import sqlite3
-import sys
 from collections.abc import Generator
 from contextlib import contextmanager
 from pathlib import Path
@@ -10,20 +9,21 @@ from ..config import DATA_DIR
 
 DEFAULT_DB_PATH = DATA_DIR / "comic_shelf.db"
 _DB_PATH: Path = DEFAULT_DB_PATH
+_DATA_DIR: Path = DATA_DIR
 
 DEFAULT_DIALOGUE_DB_PATH = DATA_DIR / "comic_dialogues.db"
 _DIALOGUE_DB_PATH: Path = DEFAULT_DIALOGUE_DB_PATH
 
 
 def get_data_dir() -> Path:
-    """Return the active DATA_DIR, allowing tests to override `app.db.DATA_DIR` or `app.config.DATA_DIR`."""
-    app_db = sys.modules.get("app.db")
-    if app_db and hasattr(app_db, "DATA_DIR"):
-        return Path(app_db.DATA_DIR)
-    config = sys.modules.get("app.config")
-    if config and hasattr(config, "DATA_DIR"):
-        return Path(config.DATA_DIR)
-    return DATA_DIR
+    """当前生效的数据目录（台词伴生文件从它下面的 library/ 读取）。"""
+    return _DATA_DIR
+
+
+def set_data_dir(path: Path) -> None:
+    """重定向数据目录，供测试使用；与 set_db_path() 一样必须显式调用，不要给模块属性赋值。"""
+    global _DATA_DIR
+    _DATA_DIR = Path(path)
 
 
 def set_db_path(path: Path) -> None:

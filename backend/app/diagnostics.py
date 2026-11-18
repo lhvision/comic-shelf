@@ -4,7 +4,6 @@ import logging
 import re
 import threading
 from datetime import UTC, datetime
-from pathlib import Path
 from typing import Any
 
 from app.config import (
@@ -35,11 +34,6 @@ def _mask_diag_text(text: str) -> str:
         if secret and len(secret) >= 4 and secret in masked:
             masked = masked.replace(secret, "******")
     return masked
-
-
-def get_diag_log_path() -> Path:
-    """获取入库诊断日志文件的绝对路径。"""
-    return _DIAG_LOG_PATH
 
 
 def log_import_diag(category: str, message: str = "", **kwargs: Any) -> None:

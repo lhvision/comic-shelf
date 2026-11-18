@@ -26,9 +26,15 @@ done < <(find backend/tests -maxdepth 1 -name 'test_*.py' | sort)
 
 # 每个测试文件一个进程、一个一次性数据目录：app.config 在 import 期读取 COMIC_SHELF_DATA，
 # 不重定向的话测试会写进真实书库 backend/data/（不变量 1）。
+# 目录从一份已建好表的模板复制而来：应用启动时由 lifespan 调 init_db()，测试直接用 store 时没有这一步。
+DATA_TEMPLATE="$(mktemp -d "${TMPDIR:-/tmp}/paper-room-test-template.XXXXXX")"
+trap 'rm -rf "$DATA_TEMPLATE"' EXIT
+COMIC_SHELF_DATA="$DATA_TEMPLATE" "$PYTHON" -c 'from app.db import init_db; init_db()'
+
 run_test() {
   local data_dir status=0
   data_dir="$(mktemp -d "${TMPDIR:-/tmp}/paper-room-test.XXXXXX")"
+  cp -R "$DATA_TEMPLATE/." "$data_dir"
   COMIC_SHELF_DATA="$data_dir" "$PYTHON" "$1" || status=$?
   rm -rf "$data_dir"
   return "$status"

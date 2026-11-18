@@ -6,7 +6,7 @@ import os
 import time
 from abc import ABC, abstractmethod
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 from ..models import DiscoveryItem, FetchedComic, RemotePage
 
@@ -94,7 +94,6 @@ class ComicProvider(ABC):
         *,
         existing: FetchedComic | None = None,
         groups_to_fetch: list[str] | None = None,
-        **kwargs: Any,
     ) -> FetchedComic:
         """Fetch metadata + page URLs. Must not download page bytes here.
 

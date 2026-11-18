@@ -83,7 +83,7 @@ def extract_device_token(request: Request) -> str:
 def get_user_context(request: Request) -> tuple[str, str, str]:
     """Returns (user_id, username, role) where role is 'admin' | 'guest' | 'unauthorized' | 'expired'."""
     if hasattr(request.state, "user_context"):
-        return request.state.user_context  # type: ignore[no-any-return]
+        return request.state.user_context
 
     if not is_auth_required():
         ctx = ("curator", "馆长", "admin")
@@ -154,7 +154,6 @@ def get_user_context(request: Request) -> tuple[str, str, str]:
         dp = get_direct_pass(token)
         if dp is not None:
             ctx = (f"direct:{dp['source']}:{dp['source_id']}", "临时单本读者", "guest")
-            request.state.direct_pass = dp
             request.state.user_context = ctx
             return ctx
 
@@ -239,12 +238,6 @@ def enforce_credential_attempts(request: Request) -> None:
             detail="口令尝试过于频繁，该网络地址已临时锁定 5 分钟，请稍后再试",
             headers={"Retry-After": "300"},
         )
-
-
-def get_user_role(request: Request) -> str:
-    """Returns 'admin', 'machine', 'guest', or 'unauthorized'."""
-    role = get_user_context(request)[2]
-    return role if role in ("admin", "machine", "guest") else "unauthorized"
 
 
 def require_curator(request: Request) -> None:

@@ -46,7 +46,7 @@ def test_dialogue_search_http_through_real_middleware_stack():
         db_mod.set_db_path(temp_db)
         db_mod.init_db(temp_db)
         config_mod.DATA_DIR = temp_dir
-        db_mod.DATA_DIR = temp_dir
+        db_mod.set_data_dir(temp_dir)
         config_mod.LIBRARY_DIR = temp_dir / "library"
         # main.py 在 import 期把 LIBRARY_DIR 绑成了自己的名字，只改 config 改不到写锁落点
         main_mod.LIBRARY_DIR = temp_dir / "library"

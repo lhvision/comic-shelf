@@ -42,13 +42,9 @@ from .db import (
     init_db,
     migrate_legacy_favorites,
     purge_comic_db_records,
-    upsert_comic_index,
 )
-from .events import broadcast_event, shutdown_events
 from .events import router as events_router
-from .imsearch import check_imsearch_status, search_imsearch
-from .jobs import start_job
-from .providers import get_provider
+from .events import shutdown_events
 from .routers import (
     auth_router,
     chapters_router,
@@ -59,67 +55,12 @@ from .routers import (
     search_router,
     system_router,
 )
-from .routers.auth import (
-    auth_claim,
-    auth_login,
-    auth_logout,
-    auth_status,
-    curator_create_pass,
-    curator_delete_pass,
-    curator_delete_pass_device,
-    curator_list_passes,
-    curator_update_pass,
-)
-from .routers.chapters import (
-    cache_chapter,
-    chapter_cache_progress,
-    chapter_cover,
-    delete_chapter,
-    update_chapter_title,
-)
-from .routers.common import (
-    _client_accepts_webp,
-    _guess_media_type,
-    _prefetch_worker,
-    _require_known_source,
-    _require_meta,
-    _serve_negotiated_image,
-    store,
-)
-from .routers.library import (
-    comic_detail,
-    delete_comic,
-    discovery_ranking,
-    get_reading_progress_api,
-    import_comic,
-    library,
-    library_facets,
-    save_reading_progress_api,
-    set_favorite,
-    update_comic_metadata,
-)
-from .routers.local_comic import (
-    create_local_comic,
-    import_local_path,
-    replace_comic_pages,
-    replace_comic_pages_from_path,
-    upload_comic_pages,
-)
-from .routers.media import (
-    cache_all,
-    cache_job,
-    cache_progress,
-    cover_file,
-    page_file,
-    page_info,
-    page_thumbnail,
-)
-from .routers.search import (
-    image_search,
-    image_search_status,
-    search_dialogue_endpoint,
-    sync_ocr_endpoint,
-)
+from .routers.auth import auth_login
+from .routers.chapters import chapter_cover
+from .routers.common import store
+from .routers.library import delete_comic
+from .routers.media import cover_file, page_info, page_thumbnail
+from .routers.search import search_dialogue_endpoint, sync_ocr_endpoint
 from .storage import ComicStore
 from .storage.utils import _write_json_atomic, acquire_library_writer_lock
 
@@ -201,34 +142,7 @@ def sync_library_index(store: ComicStore) -> None:
                 if healed_persisted:
                     continue
 
-                cached_pages = store.cached_page_count(meta)
-                upsert_comic_index(
-                    {
-                        "source": meta.source,
-                        "source_id": meta.source_id,
-                        "display_id": meta.display_id,
-                        "title": meta.title,
-                        "authors_json": json.dumps(meta.authors, ensure_ascii=False),
-                        "works_json": json.dumps(meta.works, ensure_ascii=False),
-                        "actors_json": json.dumps(meta.actors, ensure_ascii=False),
-                        "tags_json": json.dumps(meta.tags, ensure_ascii=False),
-                        "chapter_titles_json": json.dumps([c.title for c in meta.chapters], ensure_ascii=False),
-                        "page_count": meta.page_count,
-                        "cached_pages": cached_pages,
-                        "cover_count": meta.cover_count,
-                        "cover_indices_json": json.dumps(meta.cover_indices, ensure_ascii=False),
-                        "views": str(meta.views),
-                        "likes": str(meta.likes),
-                        "uploaded_at": meta.published_at,
-                        "published_at": meta.published_at,
-                        "updated_at": meta.updated_at,
-                        "imported_at": meta.imported_at,
-                        "hidden_from_guest": 1 if getattr(meta, "hidden_from_guest", False) else 0,
-                        "mtime": mtime,
-                        "auto_update_interval_days": getattr(meta, "auto_update_interval_days", 15),
-                        "last_auto_checked_at": getattr(meta, "last_auto_checked_at", ""),
-                    }
-                )
+                store.upsert_index_row(meta, mtime)
 
         for source, source_id in set(existing_mtimes.keys()) - disk_keys:
             purge_comic_db_records(source, source_id)
@@ -522,60 +436,15 @@ if _DIST_DIR.exists() and (_DIST_DIR / "index.html").exists():
 # Re-export public symbols for backward-compatibility with tests and external consumers
 __all__ = [
     "SPAStaticFiles",
-    "_client_accepts_webp",
-    "_guess_media_type",
-    "_prefetch_worker",
-    "_require_known_source",
-    "_require_meta",
-    "_resolve_dist_dir",
-    "_serve_negotiated_image",
     "app",
     "auth_and_security_middleware",
-    "auth_claim",
     "auth_login",
-    "auth_logout",
-    "auth_status",
-    "broadcast_event",
-    "cache_all",
-    "cache_chapter",
-    "cache_job",
-    "cache_progress",
-    "chapter_cache_progress",
     "chapter_cover",
-    "check_imsearch_status",
-    "comic_detail",
     "cover_file",
-    "create_local_comic",
-    "curator_create_pass",
-    "curator_delete_pass",
-    "curator_delete_pass_device",
-    "curator_list_passes",
-    "curator_update_pass",
-    "delete_chapter",
     "delete_comic",
-    "discovery_ranking",
-    "get_provider",
-    "get_reading_progress_api",
-    "image_search",
-    "image_search_status",
-    "import_comic",
-    "import_local_path",
-    "library",
-    "library_facets",
-    "page_file",
     "page_info",
     "page_thumbnail",
-    "replace_comic_pages",
-    "replace_comic_pages_from_path",
-    "save_reading_progress_api",
     "search_dialogue_endpoint",
-    "search_imsearch",
-    "set_favorite",
-    "start_job",
     "store",
-    "sync_library_index",
     "sync_ocr_endpoint",
-    "update_chapter_title",
-    "update_comic_metadata",
-    "upload_comic_pages",
 ]

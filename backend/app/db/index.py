@@ -3,7 +3,6 @@ from __future__ import annotations
 import json
 import logging
 import sqlite3
-import sys
 import threading
 import time
 from datetime import UTC, datetime
@@ -1019,8 +1018,7 @@ def get_library_facets(
                         return _copy_facets(cached_data)
 
         compute_started_at = time.monotonic()
-        compute_fn = getattr(sys.modules.get("app.db"), "_compute_library_facets", _compute_library_facets)
-        result = compute_fn(is_curator=is_curator, source=source)
+        result = _compute_library_facets(is_curator=is_curator, source=source)
 
         with _facets_cache_lock:
             if key not in _facets_cache and len(_facets_cache) >= 32:
