@@ -43,7 +43,7 @@ RUN if [ -f /etc/apt/sources.list.d/debian.sources ]; then sed -i 's/deb.debian.
 
 # uv 只在本层以挂载方式借用，不进最终镜像；依赖按 uv.lock 逐字节复现（镜像源已写在 pyproject.toml）。
 # 装进系统解释器而非 .venv：CMD 的 python 与事后 `pip install` 追加可选推理依赖（DEPLOYMENT.md §5.1.2）都指向同一处。
-# --inexact 保留基础镜像自带的 pip。
+# --inexact：只装不卸，不动基础镜像里已有的包。
 RUN --mount=from=ghcr.io/astral-sh/uv:0.12.5,source=/uv,target=/bin/uv \
     --mount=type=cache,target=/root/.cache/uv \
     --mount=type=bind,source=pyproject.toml,target=pyproject.toml \

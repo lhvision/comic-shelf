@@ -1016,9 +1016,9 @@
 
 ### 160. 数据库子包模块化与动态路径只读隔离（PEP 562 属性陷阱）
 
-- **症状**：测试或脚本中尝试通过 `backend.app.db._DB_PATH = mock_path` 篡改数据库路径时，实际底层 SQLite 连接（`connection._DB_PATH`）未改变，导致测试操作真实数据库或产生静默数据污染。
+- **症状**：测试或脚本中尝试通过 `app.db._DB_PATH = mock_path` 篡改数据库路径时，实际底层 SQLite 连接（`connection._DB_PATH`）未改变，导致测试操作真实数据库或产生静默数据污染。
 - **根因**：巨型 `db.py` 拆解为 `backend/app/db/` 子包后，`__init__.py` 仅通过 PEP 562 `__getattr__` 暴露了动态计算属性；直接对包模块属性赋值只会写入包自身的 `__dict__`，无法联动触发底层 `set_db_path()`。
-- **红线**：严禁对 `backend.app.db` 包内私有属性直接赋值；重定向数据库必须统一调用 `db.set_db_path()` 与 `db.set_dialogue_db_path()`，保持单向数据流与连接池同步。
+- **红线**：严禁对 `app.db` 包内私有属性直接赋值；重定向数据库必须统一调用 `db.set_db_path()` 与 `db.set_dialogue_db_path()`，保持单向数据流与连接池同步。
 
 ### 161. 全书尾页护栏与平台中文水印误杀防线（水印不能替整页定性）
 

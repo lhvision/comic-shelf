@@ -16,14 +16,15 @@ dependencies = [
   "watchfiles==1.2.0",
   "pymupdf==1.28.2",
   "pycryptodome==3.23.0",
-  # 代码里直接 import，版本跟随 fastapi 的约束，由 uv.lock 锁定
-  "anyio",
-  "pydantic",
-  "starlette",
+  # fastapi 的传递依赖，但代码里直接 import，所以同样显式声明并锁定
+  "anyio==4.16.0",
+  "pydantic==2.14.3",
+  "starlette==1.10.0",
 ]
 
 [dependency-groups]
-dev = ["httpx2>=2.13", "ruff", "ty"]
+# numpy：test_dialogue_semantic 在模块级 import，干净环境下缺它会中断整轮 test:py
+dev = ["httpx2>=2.13", "numpy", "ruff", "ty"]
 
 [tool.uv]
 # 这是应用不是库：不构建、不安装自身，只管理依赖

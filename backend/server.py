@@ -18,7 +18,7 @@ class QuietAccessLogFilter(logging.Filter):
     QUIET_PATHS = ("/api/health", "/api/search/image/status")
 
     def filter(self, record: logging.LogRecord) -> bool:
-        if isinstance(record.args, tuple) and len(record.args) >= 5:
+        if isinstance(record.args, (tuple, list)) and len(record.args) >= 5:
             try:
                 # record.args: (client_addr, method, full_path, http_version, status_code)
                 path = str(record.args[2]).split("?")[0]
