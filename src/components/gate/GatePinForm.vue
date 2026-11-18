@@ -33,9 +33,7 @@ function handleBackToSecret() {
         <AppIcon name="book-open" size="xs" />
         <span>读者借书证</span>
       </div>
-      <div class="claim-meta">
-        读者：<strong>{{ username || '已认领访客' }}</strong>
-      </div>
+      <div class="claim-meta">读者：<strong>{{ username || '已认领访客' }}</strong></div>
     </div>
 
     <div class="form-item">

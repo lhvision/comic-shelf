@@ -295,9 +295,8 @@ function prefetchReader() {
     <Modal :open="restartOpen" size="sm" title="从第 1 页重新开始？" @cancel="restartOpen = false">
       <p class="restart-copy">
         《{{ title }}》当前已读至<template v-if="restartChapterLocation"
-          ><strong>{{ restartChapterLocation }}</strong
-          >（全书第 <strong>{{ lastRead }}</strong> 页 / 共
-          <strong>{{ pageCount }}</strong> 页）</template
+          ><strong>{{ restartChapterLocation }}</strong>（全书第 <strong>{{ lastRead }}</strong> 页
+          / 共 <strong>{{ pageCount }}</strong> 页）</template
         ><template v-else
           >第 <strong>{{ lastRead }}</strong> 页（共 <strong>{{ pageCount }}</strong> 页）</template
         >。从头开始阅读将更新你的阅读断点，确定要从卷首重新开始吗？

@@ -34,9 +34,7 @@ function handleBackToSecret() {
         <AppIcon name="lock" size="xs" />
         <span>待认领凭证</span>
       </div>
-      <div class="claim-meta">
-        读者初始称呼：<strong>{{ username || '访客读者' }}</strong>
-      </div>
+      <div class="claim-meta">读者初始称呼：<strong>{{ username || '访客读者' }}</strong></div>
     </div>
 
     <div class="form-item">
