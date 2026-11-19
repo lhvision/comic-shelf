@@ -192,9 +192,9 @@ JmImageTool.decode_and_save(num, source_image, save_path)
 - **连接池复用**：通过 `threading.local()` 维持线程级 Keep-Alive 连接池，规避并发下载时的 TCP 握手开销与套接字耗尽；
 - **多 CDN 容灾分流**：画页支持官方多分流轮换（`storage1.bwaa.co`、`storage.wikawika.xyz`、`storage2.bwaa.co`、`storage3.bwaa.co` 及配置的 `PICA_EXTRA_CDN_HOSTS`），`download_page` 自动进行节点探测与故障轮换降级；
 - **零信任网络安全防御**：
-  1. **SSRF 与 DNS 防重绑定**：严格拦截私有网络、保留 IP、直接 IP 访问，阻断 `*.nip.io` / `*.sslip.io` 及 `.local` / `.internal` 域名，实施官方 CDN 白名单域名后缀校验；
+  1. **SSRF 与 DNS 防重绑定**：严格拦截私有网络、保留 IP、直接 IP 访问，阻断 `*.nip.io` / `*.sslip.io` 及 `.local` / `.internal` 域名，实施官方 CDN 白名单域名后缀校验。哔咔 CDN 平时就用 301 在节点间转发，画页与封面下载统一经 `_get_image` 自行跟随（至多 3 跳），每一跳重新校验协议、端口（仅 80/443）与主机白名单，不交给 curl 自动跟随（PITFALLS #182）；
   2. **代理凭据自动脱敏**：`sanitize_proxy_url` 自动在所有错误信息与调试日志中打码 `user:pass`，防止代理密码泄露到 502 JSON；
-  3. **图片魔数强校验**：严格校验 JPEG/PNG/WebP/GIF/AVIF 前导魔数，识别并拦截上游 WAF 返回的伪装 HTML/JSON 报文；
+  3. **图片魔数强校验**：三家图源共用 `providers/base.py` 的 `is_valid_image`，严格校验 JPEG/PNG/WebP/GIF/AVIF 前导魔数（AVIF 看 `ftyp` 盒品牌列表里是否有 `avif` / `avis`，纯 HEIC 不放行），识别并拦截上游 WAF 返回的伪装 HTML/JSON 报文；
   4. **封面动态收敛**：`cover_count = min(COVER_COUNT, total_page_count)` 防御短篇画卷越界 404；
 - **宽容输入清洗**：输入端兼容 24 位 16 进制 ID、`PICA:` 前缀及镜像站分享直链，服务端统一正则归一化为 24 位 ID。
 
@@ -332,7 +332,7 @@ JmImageTool.decode_and_save(num, source_image, save_path)
   - 端点：`GET /api/discovery/cover`（受 `require_curator` 权限保护）；
   - **零磁盘冗余机制（Zero Disk Waste）**：发现页属于高频流转榜单，严禁将未收录的临时条目图片下载落盘。后端采用线程安全的内存 `OrderedDict` 真实 LRU 缓存（上限 100 份、TTL 3600 秒），并配备轻量级在途 Singleflight 并发请求合并，当榜单轮换或自然淘汰时，相关内存随之释放，磁盘保持绝对纯净；
   - **多 CDN 自动容灾与 SSRF 深度防御**：
-    - 哔咔：通过 `_validate_download_host` 校验远端主机名，并在候选 CDN 节点（`PICA_STORAGE_FALLBACKS`）中依次重试；
+    - 哔咔：通过 `_get_image` 逐跳校验远端主机名并跟随白名单内的重定向，在候选 CDN 节点（`PICA_STORAGE_FALLBACKS`）中依次重试；
     - 禁漫：通过 `download_cover_by_url` 实施严格前置校验（路径限定 `/media/albums/` 与 `/media/photos/`，Host 限定官方 CDN 白名单与分流后缀，禁用重定向跟随 `allow_redirects=False` 防 302 跨域绕过），并在候选 CDN 集群中动态轮换，支持 `_3x4.jpg` 到 `.jpg` 兜底及全量二进制魔数防伪。
 
 ### 4.10 服务端 MCP 架构与传输流控规范（MCP Server & Transport Protocols）
@@ -408,7 +408,7 @@ JmImageTool.decode_and_save(num, source_image, save_path)
 | `backend/app/gate.py`               | 运行时下载并发控制闸门（支持环境变量锁定与设置持久化）                                                                                                             |
 | `backend/app/jobs.py`               | 后台异步缓存任务执行器与进度追踪                                                                                                                                   |
 | `backend/app/models.py`             | 通用模型：`ComicMeta`（含 `Chapter`/`chapters`）/ `PageRecord.chapter` / `RemotePage` / `FetchedComic`                                                             |
-| `backend/app/providers/base.py`     | Provider 接口                                                                                                                                                      |
+| `backend/app/providers/base.py`     | Provider 接口、凭据会话的安全落盘、三家图源共用的图片魔数校验 `is_valid_image`                                                                                     |
 | `backend/app/providers/jm.py`       | JM HTML 元数据、上传者解析、车号规范化（支持 3~10 位数字）、**多章节 episode 逐话拉取**、图片下载 + 解密                                                           |
 | `backend/app/providers/local.py`    | 本地自建、外部白名单目录扫描、视频拆帧与多章节追加、重新装订；`normalize_id` / `generate_id` / `display_id`（ADR 0027）                                            |
 | `backend/app/providers/picacg.py`   | 哔咔 App REST 接口签名（HMAC-SHA256）、车号宽容清洗、多章节分卷映射与 3-CDN 容灾下载                                                                               |

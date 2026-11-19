@@ -3,6 +3,7 @@ from __future__ import annotations
 import unittest
 from pathlib import Path
 from unittest.mock import MagicMock, patch
+from urllib.parse import urlparse
 
 from app.models import FetchedComic, RemotePage
 from app.providers.picacg import (
@@ -306,6 +307,66 @@ class TestPicacgProvider(unittest.TestCase):
         fake_empty_comic = MagicMock()
         fake_empty_comic.meta.raw = {}
         self.assertIsNone(self.provider.download_cover(fake_empty_comic))
+
+    @staticmethod
+    def _resp(status: int, content: bytes = b"", location: str = "") -> MagicMock:
+        resp = MagicMock()
+        resp.status_code = status
+        resp.content = content
+        resp.headers = {"Location": location} if location else {}
+        return resp
+
+    @patch("app.providers.picacg.curl_requests.Session")
+    def test_download_follows_redirects_only_within_cdn_allowlist(self, mock_session_cls: MagicMock) -> None:
+        mock_session = mock_session_cls.return_value
+        valid_webp = b"RIFF\x00\x01\x00\x00WEBPVP8 " + (b"\x00" * 200)
+        page = RemotePage(
+            index=1, url="https://storage1.picacomic.com/static/a/001.webp", file="00001.webp", ext="webp", chapter="1"
+        )
+
+        # 白名单内的 301（哔咔 CDN 的日常转发）要跟过去，而且自己逐跳发请求，不交给 curl 自动跟随
+        mock_session.get.side_effect = [
+            self._resp(301, location="https://storage-b.picacomic.com/a/001.webp"),
+            self._resp(200, valid_webp),
+        ]
+        self.assertEqual(self.provider.download_page(MagicMock(), page), valid_webp)
+        self.assertEqual(
+            [c.args[0] for c in mock_session.get.call_args_list],
+            ["https://storage1.picacomic.com/static/a/001.webp", "https://storage-b.picacomic.com/a/001.webp"],
+        )
+        self.assertTrue(all(c.kwargs["allow_redirects"] is False for c in mock_session.get.call_args_list))
+
+        # 官方封面同理：storage1 → img.picacomic.com
+        mock_session.get.reset_mock()
+        mock_session.get.side_effect = [
+            self._resp(301, location="//img.picacomic.com/cover.jpg"),
+            self._resp(200, b"\xff\xd8\xff\xe0" + (b"\x00" * 200)),
+        ]
+        cover = self.provider.download_cover_by_url("https://storage1.picacomic.com/static/cover.jpg")
+        assert cover is not None
+        self.assertEqual(mock_session.get.call_args_list[1].args[0], "https://img.picacomic.com/cover.jpg")
+
+        # 跳向内网、白名单外主机或非常规端口：一律不发出那一跳的请求
+        for target in (
+            "http://169.254.169.254/latest/meta-data/",
+            "http://127.0.0.1:8000/api/library",
+            "https://evil-attacker.com/x.webp",
+            "https://storage1.picacomic.com:8443/x.webp",
+        ):
+            mock_session.get.reset_mock()
+            mock_session.get.side_effect = lambda url, _to=target, **_kw: self._resp(302, location=_to)
+            with self.assertRaises(RuntimeError):
+                self.provider.download_page(MagicMock(), page)
+            requested = [c.args[0] for c in mock_session.get.call_args_list]
+            self.assertNotIn(target, requested)
+            self.assertTrue(all(urlparse(u).port is None for u in requested))
+            self.assertIsNone(self.provider.download_cover_by_url("https://storage1.picacomic.com/static/cover.jpg"))
+
+        # 白名单内的重定向死循环有上限
+        mock_session.get.reset_mock()
+        mock_session.get.side_effect = lambda url, **_kw: self._resp(302, location=url)
+        with self.assertRaises(RuntimeError):
+            self.provider.download_page(MagicMock(), page)
 
     def test_download_page_ssrf_and_host_validation(self) -> None:
         # 1. Localhost and private IPs must be rejected

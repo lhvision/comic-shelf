@@ -12,7 +12,7 @@ import time
 import uuid
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
-from urllib.parse import urlparse
+from urllib.parse import urljoin, urlparse
 
 from curl_cffi import requests as curl_requests
 
@@ -592,7 +592,30 @@ class PicacgProvider(ComicProvider):
         else:
             target_url = f"{file_server}/static/{path}"
 
-        return self.download_cover_by_url(target_url)
+        cover = self.download_cover_by_url(target_url)
+        if cover is None:
+            logger.warning("哔咔官方封面下载失败，封面将改用第 1 页: %s", comic.meta.source_id)
+        return cover
+
+    def _get_image(self, url: str, *, headers: dict[str, str], proxies: ProxySpec | None, timeout: int) -> Any:
+        """GET 一张图，自己跟随至多 3 跳重定向，每一跳都重新校验协议、端口与主机白名单。
+
+        哔咔 CDN 平时就用 301 在节点间转发（storage1 → storage-b / img），所以不能一禁了之；
+        交给 curl 自动跟随则只校验了第一跳，白名单内的主机一个 302 就能把请求带到内网（SSRF）。
+        """
+        for _hop in range(4):
+            parsed = urlparse(url)
+            if parsed.scheme not in ("http", "https"):
+                raise ValueError(f"非法的画页下载协议: {parsed.scheme}")
+            if parsed.port and parsed.port not in (80, 443):
+                raise ValueError(f"禁止访问非常规端口的画页目标: {parsed.port}")
+            _validate_download_host((parsed.hostname or "").lower())
+            resp = self._session().get(url, headers=headers, proxies=proxies, timeout=timeout, allow_redirects=False)
+            location = resp.headers.get("Location") if resp.status_code in (301, 302, 303, 307, 308) else None
+            if not location:
+                return resp
+            url = urljoin(url, location)
+        raise RuntimeError("哔咔图片重定向次数过多")
 
     def download_cover_by_url(self, cover_url: str) -> bytes | None:
         """Downloads cover image bytes directly from a verified cover URL with candidate CDN fallbacks."""
@@ -624,12 +647,10 @@ class PicacgProvider(ComicProvider):
             "Accept": "image/webp,image/apng,image/*,*/*;q=0.8",
         }
         proxies: ProxySpec | None = {"http": PICA_PROXY, "https": PICA_PROXY} if PICA_PROXY else None
-        session = self._session()
 
         for url in candidate_urls:
             try:
-                _validate_download_host((urlparse(url).hostname or "").lower())
-                resp = session.get(url, headers=headers, proxies=proxies, timeout=15, allow_redirects=False)
+                resp = self._get_image(url, headers=headers, proxies=proxies, timeout=15)
                 if (
                     resp.status_code == 200
                     and 100 <= len(resp.content) <= 10 * 1024 * 1024
@@ -663,12 +684,11 @@ class PicacgProvider(ComicProvider):
         }
         proxies: ProxySpec | None = {"http": PICA_PROXY, "https": PICA_PROXY} if PICA_PROXY else None
 
-        session = self._session()
         last_error: Exception | None = None
         with download_gate:
             for url in candidate_urls:
                 try:
-                    resp = session.get(url, headers=headers, proxies=proxies, timeout=20)
+                    resp = self._get_image(url, headers=headers, proxies=proxies, timeout=20)
                     if resp.status_code == 200 and len(resp.content) >= 100:
                         if is_valid_image(resp.content):
                             if PICA_DOWNLOAD_PACING_MS > 0:
