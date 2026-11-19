@@ -30,24 +30,6 @@ def make_mock_request(path="/api/library", token=""):
 
 
 def test_visibility_filtering():
-    # Setup test store
-    meta_public = ComicMeta(
-        source="local",
-        source_id="pub_1",
-        display_id="LOC_pub_1",
-        title="Public Book",
-        hidden_from_guest=False,
-        page_count=10,
-    )
-    meta_private = ComicMeta(
-        source="local",
-        source_id="priv_1",
-        display_id="LOC_priv_1",
-        title="Secret Book",
-        hidden_from_guest=True,
-        page_count=5,
-    )
-
     auth_mod.AUTH_SECRET = "admin-secret-123"
     if not db_mod.get_guest_pass_by_token("guest-secret-456"):
         db_mod.create_guest_pass("VisGuest", expires_days=30, custom_token="guest-secret-456")
@@ -59,12 +41,6 @@ def test_visibility_filtering():
     # Curator request
     req_curator = make_mock_request("/api/library", token="admin-secret-123")
     assert auth_mod.is_curator(req_curator) is True
-
-    # Test summary
-    sum_pub = main_mod.store.summary(meta_public)
-    sum_priv = main_mod.store.summary(meta_private)
-    assert sum_pub.hidden_from_guest is False
-    assert sum_priv.hidden_from_guest is True
 
 
 def test_detail_favorite_stays_per_reader():

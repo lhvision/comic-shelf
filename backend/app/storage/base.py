@@ -27,7 +27,6 @@ from ..models import (
     ComicMeta,
     DiscoveryFeed,
     FetchedComic,
-    LibrarySummary,
     PageRecord,
     RemotePage,
 )
@@ -727,35 +726,6 @@ class ComicStoreBase:
             with self._cache_guard:
                 self._fetched_cache[(source, source_id)] = (album_mtime, remote_mtime, fetched)
             return fetched
-
-    # ------------------------------------------------------------------
-    # library queries & summary helpers
-    # ------------------------------------------------------------------
-    def summary(self, meta: ComicMeta) -> LibrarySummary:
-        cached_count = self.cached_page_count(meta)
-        return LibrarySummary(
-            source=meta.source,
-            source_id=meta.source_id,
-            display_id=meta.display_id,
-            title=meta.title,
-            authors=meta.authors,
-            works=meta.works,
-            actors=meta.actors,
-            tags=meta.tags,
-            favorite=meta.favorite,
-            hidden_from_guest=getattr(meta, "hidden_from_guest", False),
-            page_count=meta.page_count,
-            views=meta.views,
-            likes=meta.likes,
-            uploaded_at=meta.published_at,
-            published_at=meta.published_at,
-            updated_at=meta.updated_at,
-            imported_at=meta.imported_at,
-            cover_paths=meta.cover_paths(),
-            cached_pages=cached_count,
-            cover_count=meta.cover_count,
-            chapter_titles=[c.title for c in meta.chapters],
-        )
 
     def detail(self, meta: ComicMeta) -> ComicDetail:
         cached = self.reconcile_cached_pages(meta)

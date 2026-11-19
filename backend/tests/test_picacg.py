@@ -216,7 +216,6 @@ class TestPicacgProvider(unittest.TestCase):
         self.assertEqual(meta.likes, "999")
 
         # Verify multi-chapter structure
-        self.assertTrue(meta.is_multi_chapter)
         self.assertEqual(len(meta.chapters), 2)
         self.assertEqual(meta.chapters[0].title, "第 1 話")
         self.assertEqual(meta.chapters[0].start, 1)

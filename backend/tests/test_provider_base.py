@@ -31,7 +31,7 @@ class TestProviderBaseSecureSession(unittest.TestCase):
     def tearDown(self) -> None:
         self.tmp_dir.cleanup()
 
-    def test_save_load_clear_lifecycle_and_permissions(self) -> None:
+    def test_save_load_lifecycle_and_permissions(self) -> None:
         data = {"token": "secret_xyz", "uid": 12345, "roles": ["vip"]}
 
         # 1. Save session (auto creates parent directories and enforces 0o600)
@@ -45,11 +45,6 @@ class TestProviderBaseSecureSession(unittest.TestCase):
         # 2. Load session
         loaded = self.provider.load_secure_session(self.session_file)
         self.assertEqual(loaded, data)
-
-        # 3. Clear session
-        self.provider.clear_secure_session(self.session_file)
-        self.assertFalse(self.session_file.exists())
-        self.assertIsNone(self.provider.load_secure_session(self.session_file))
 
     def test_load_non_existent_and_invalid_json(self) -> None:
         # Non-existent

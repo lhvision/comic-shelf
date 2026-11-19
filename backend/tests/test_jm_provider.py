@@ -243,10 +243,6 @@ class TestJMProvider(unittest.TestCase):
             )
             self.assertEqual(self.provider._load_session_cache(), {"AVS": "manual_token"})
 
-            # Clear cache using base method
-            self.provider.clear_secure_session(self.provider._session_cache_file)
-            self.assertIsNone(self.provider._load_session_cache())
-
     def test_get_valid_cookies_concurrent_refresh_grace_window(self) -> None:
         with patch("app.providers.jm.JM_USERNAME", "alice"), patch("app.providers.jm.JM_PASSWORD", "secret123"):
             # Simulate thread 1 just completed login and cached cookies 2 seconds ago

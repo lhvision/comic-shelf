@@ -93,10 +93,6 @@ class ComicMeta(BaseModel):
         description="ISO timestamp when the comic was last checked by the auto-update worker",
     )
 
-    @property
-    def is_multi_chapter(self) -> bool:
-        return len(self.chapters) > 1
-
     def cover_paths(self) -> list[str]:
         if self.page_count == 0:
             return []

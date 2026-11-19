@@ -74,15 +74,6 @@ class ComicProvider(ABC):
             logger.warning("Failed to load secure session file %s: %s", path.name, exc)
             return None
 
-    @staticmethod
-    def clear_secure_session(path: Path) -> None:
-        """Safely remove a session file."""
-        try:
-            if path.is_file():
-                path.unlink(missing_ok=True)
-        except Exception as exc:
-            logger.warning("Failed to clear secure session file %s: %s", path.name, exc)
-
     @abstractmethod
     def normalize_id(self, raw: str) -> str:
         """Turn user input into the canonical provider id."""
