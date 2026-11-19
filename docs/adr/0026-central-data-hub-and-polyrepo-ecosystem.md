@@ -26,7 +26,7 @@
   - **存储与元数据层**：接管全站漫画文件（`backend/data/library/`）、增量 WebP 缩略图生成与 SQLite 影子索引；
   - **重型特征与检索层**：内置 `imsearch` 局部视觉特征倒排索引与 SQLite FTS5 对白全文检索；
   - **控制与通信平面**：暴露标准 REST API、Server-Side MCP 端点（`/mcp/sse` 与 stdio）及前端 WebMCP 工具；
-  - **沙箱安全防线**：提供单本锁定的带时效临时凭据（`temp_token` via `POST /api/auth/direct-pass`）与机器专用令牌（`MACHINE_API_TOKEN`）。
+  - **沙箱安全防线**：提供单本锁定的带时效临时凭据（`temp_token` via `POST /api/auth/direct-pass`）与机器专用令牌（`COMIC_SHELF_MACHINE_TOKEN`）。
 
 ### 2. 确立多项目独立仓库拓扑（Polyrepo Architecture）
 

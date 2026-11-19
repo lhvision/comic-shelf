@@ -74,10 +74,10 @@ ENABLE_AUTO_UPDATE = os.getenv("COMIC_SHELF_ENABLE_AUTO_UPDATE", "true").lower()
 AUTO_UPDATE_INTERVAL_SECONDS = int(os.getenv("COMIC_SHELF_AUTO_UPDATE_INTERVAL_SECONDS", "172800"))  # 172800s = 2 days
 
 # Curator key for full access (blank = open access, non-blank = protected)
-AUTH_SECRET = os.getenv("COMIC_SHELF_SECRET", os.getenv("COMIC_SHELF_AUTH_TOKEN", "")).strip()
+AUTH_SECRET = os.getenv("COMIC_SHELF_SECRET", "").strip()
 
 # Machine API token for external pipeline / Paper Studio synchronization
-MACHINE_TOKEN = os.getenv("COMIC_SHELF_MACHINE_TOKEN", os.getenv("MACHINE_API_TOKEN", "")).strip()
+MACHINE_TOKEN = os.getenv("COMIC_SHELF_MACHINE_TOKEN", "").strip()
 
 # MCP 子凭据：交给外部智能体（Claude/Cursor/Bot）的那把钥匙，可随时更换而不牵连其他通道。
 # 留空 = MCP 只认馆长口令；机器密钥任何时候都进不了 MCP。

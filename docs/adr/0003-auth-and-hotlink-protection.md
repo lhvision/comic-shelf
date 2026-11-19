@@ -15,7 +15,7 @@
 ## 决策
 
 1. **渐进式单访问密钥（Zero-Friction Single Secret）**：
-   - 采用环境变量 `COMIC_SHELF_SECRET`（或 `COMIC_SHELF_AUTH_TOKEN`）控制门禁开关：
+   - 采用环境变量 `COMIC_SHELF_SECRET`控制门禁开关：
      - **未配置（默认）**：保持 100% 零门槛免密状态，局域网与单机开发即开即用。
      - **配置后**：全站启用访问保护。未授权请求拦截 401 并唤起私人阅览室通行口令输入卡片。
    - 验证链路采用 **双轨凭证（Cookie + Bearer Header）**：
