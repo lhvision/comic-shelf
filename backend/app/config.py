@@ -84,7 +84,7 @@ MACHINE_TOKEN = os.getenv("COMIC_SHELF_MACHINE_TOKEN", os.getenv("MACHINE_API_TO
 MCP_TOKEN = os.getenv("COMIC_SHELF_MCP_TOKEN", "").strip()
 
 # 公网访问基准地址（供 MCP 等外部智能体签发单本沙箱直达免密阅读链接时拼接绝对 URL，如 https://comic.example.com）
-PUBLIC_URL = os.getenv("COMIC_SHELF_PUBLIC_URL", os.getenv("COMIC_SHELF_BASE_URL", "")).strip().rstrip("/")
+PUBLIC_URL = os.getenv("COMIC_SHELF_PUBLIC_URL", "").strip().rstrip("/")
 
 # Trust reverse-proxy headers (CF-Connecting-IP, X-Forwarded-For) for client IP detection
 TRUST_FORWARDED_HEADERS = os.getenv("COMIC_SHELF_TRUST_FORWARDED_HEADERS", "true").lower() in ("1", "true", "yes")
@@ -127,15 +127,15 @@ def get_proxy_for_source(source: str) -> str:
     """
     key = source.lower().strip()
     if key in ("copymanga", "copy"):
-        val = os.getenv("COPY_PROXY", os.getenv("COMIC_SHELF_COPY_PROXY", "")).strip()
+        val = os.getenv("COPY_PROXY", "").strip()
         if val:
             return val
     elif key == "jm":
-        val = os.getenv("JM_PROXY", os.getenv("COMIC_SHELF_JM_PROXY", "")).strip()
+        val = os.getenv("JM_PROXY", "").strip()
         if val:
             return val
     elif key == "picacg":
-        val = os.getenv("PICA_PROXY", os.getenv("COMIC_SHELF_PICA_PROXY", "")).strip()
+        val = os.getenv("PICA_PROXY", "").strip()
         if val:
             return val
 
@@ -152,24 +152,20 @@ def get_proxy_for_source(source: str) -> str:
 
 
 # PicAcg (哔咔漫画) provider settings
-PICA_EMAIL = os.getenv("PICA_EMAIL", os.getenv("COMIC_SHELF_PICA_EMAIL", "")).strip()
-PICA_PASSWORD = os.getenv("PICA_PASSWORD", os.getenv("COMIC_SHELF_PICA_PASSWORD", "")).strip()
+PICA_EMAIL = os.getenv("PICA_EMAIL", "").strip()
+PICA_PASSWORD = os.getenv("PICA_PASSWORD", "").strip()
 PICA_PROXY = get_proxy_for_source("picacg")
 PICA_API_URL = os.getenv("PICA_API_URL", "https://picaapi.picacomic.com").rstrip("/")
 PICA_CHANNEL = os.getenv("PICA_CHANNEL", "2").strip()
 
 # JMComic (禁漫天堂) provider settings
-JM_USERNAME = os.getenv("JM_USERNAME", os.getenv("COMIC_SHELF_JM_USERNAME", "")).strip()
-JM_PASSWORD = os.getenv("JM_PASSWORD", os.getenv("COMIC_SHELF_JM_PASSWORD", "")).strip()
+JM_USERNAME = os.getenv("JM_USERNAME", "").strip()
+JM_PASSWORD = os.getenv("JM_PASSWORD", "").strip()
 JM_PROXY = get_proxy_for_source("jm")
-JM_IMAGE_PROXY_MODE = (
-    os.getenv("JM_IMAGE_PROXY_MODE", os.getenv("COMIC_SHELF_JM_IMAGE_PROXY_MODE", "auto")).strip().lower()
-)
+JM_IMAGE_PROXY_MODE = os.getenv("JM_IMAGE_PROXY_MODE", "auto").strip().lower()
 
 # CopyManga (拷贝漫画) provider settings
-COPY_BASE_URL = os.getenv("COPY_BASE_URL", os.getenv("COMIC_SHELF_COPY_BASE_URL", "https://www.mangacopy.com")).rstrip(
-    "/"
-)
-COPY_TOKEN = os.getenv("COPY_TOKEN", os.getenv("COMIC_SHELF_COPY_TOKEN", "")).strip()
-COPY_USERNAME = os.getenv("COPY_USERNAME", os.getenv("COMIC_SHELF_COPY_USERNAME", "")).strip()
-COPY_PASSWORD = os.getenv("COPY_PASSWORD", os.getenv("COMIC_SHELF_COPY_PASSWORD", "")).strip()
+COPY_BASE_URL = os.getenv("COPY_BASE_URL", "https://www.mangacopy.com").rstrip("/")
+COPY_TOKEN = os.getenv("COPY_TOKEN", "").strip()
+COPY_USERNAME = os.getenv("COPY_USERNAME", "").strip()
+COPY_PASSWORD = os.getenv("COPY_PASSWORD", "").strip()
