@@ -206,16 +206,93 @@ class ComicStoreLocalMixin:
         display_id = provider.display_id(source_id)
         return source_id, display_id
 
+    def _require_free_local_id(self: Any, requested_id: str | None, source_id: str) -> None:
+        """显式指定的标识已被占用时拒绝，不覆盖已有画卷；须在该作品的锁内调用。"""
+        if requested_id and self.load_meta("local", source_id) is not None:
+            raise HTTPException(
+                status_code=409,
+                detail=f"已存在唯一标识为「{source_id}」的漫画，请指定新的标识或留空由系统自动生成。",
+            )
+
+    @staticmethod
+    def _new_local_meta(
+        req: Any,
+        source_id: str,
+        display_id: str,
+        *,
+        title: str,
+        default_uploader: str,
+        chapters: list[Chapter],
+        pages: list[PageRecord] | None = None,
+        fallback_author: str = "",
+    ) -> ComicMeta:
+        """本地自建画卷的元数据骨架：五条建卷路径只在标题、默认上传者与画页来源上不同。"""
+        now_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        pages = pages or []
+        return ComicMeta(
+            source="local",
+            source_id=source_id,
+            display_id=display_id,
+            title=title,
+            authors=req.authors or ([fallback_author] if fallback_author else ["自制"]),
+            works=req.works or [],
+            actors=req.actors or [],
+            tags=req.tags or [],
+            description=req.description or "",
+            uploader=req.uploader or default_uploader,
+            page_count=len(pages),
+            cover_count=4,
+            cover_indices=getattr(req, "cover_indices", []) or [],
+            published_at=now_str,
+            updated_at=now_str,
+            imported_at=datetime.datetime.now(datetime.UTC).isoformat(),
+            pages=pages,
+            chapters=chapters,
+            hidden_from_guest=getattr(req, "hidden_from_guest", False) or get_guest_hide_new_comics(),
+        )
+
+    def _promote_flat_to_first_chapter(self: Any, fetched: FetchedComic) -> None:
+        """平铺画卷首次追加新话前，把已有画页归整为「第 1 话」；已有章节或没有画页时不动。"""
+        meta = fetched.meta
+        if meta.chapters or not meta.pages:
+            return
+        first_chap_id = "c1"
+        self._migrate_flat_to_chapter(meta, first_chap_id)
+        for p in meta.pages:
+            p.chapter = first_chap_id
+        for rp in fetched.remote_pages:
+            rp.chapter = first_chap_id
+        first_chap = Chapter(id=first_chap_id, index=1, title="第 1 话", page_count=len(meta.pages), start=1)
+        meta.chapters = [first_chap]
+        try:
+            self.ensure_webp_chapter_cover(meta, fetched, first_chap)
+        except Exception as e:
+            logger.warning("Failed to generate cover for synthesized Chapter 1 %s: %s", meta.source_id, e)
+
+    @staticmethod
+    def _renumber_by_chapter(fetched: FetchedComic, chap_page_map: dict[str, list[PageRecord]]) -> None:
+        """按章节顺序把画页重排成全书连续的全局页码，同步各章 start / page_count 与摄取清单。"""
+        meta = fetched.meta
+        pages: list[PageRecord] = []
+        remote_pages: list[RemotePage] = []
+        for ch in meta.chapters:
+            ch.start = len(pages) + 1
+            ch_pages = chap_page_map.get(ch.id, [])
+            ch.page_count = len(ch_pages)
+            for p in ch_pages:
+                p.index = len(pages) + 1
+                pages.append(p)
+                remote_pages.append(RemotePage(index=p.index, url="", file=p.file, ext=p.ext, chapter=ch.id))
+        meta.pages = pages
+        fetched.remote_pages = remote_pages
+        meta.page_count = len(pages)
+
     def create_local_comic(self: Any, req: Any) -> ComicMeta:
         provider = LocalProvider()
         source_id, display_id = self._allocate_local_id(req.id)
 
         with self._lock_for("local", source_id):
-            if req.id and self.load_meta("local", source_id) is not None:
-                raise HTTPException(
-                    status_code=409,
-                    detail=f"已存在唯一标识为「{source_id}」的漫画，请指定新的标识或留空由系统自动生成。",
-                )
+            self._require_free_local_id(req.id, source_id)
 
             comic_dir = self.comic_dir("local", source_id)
             comic_dir.mkdir(parents=True, exist_ok=True)
@@ -228,27 +305,8 @@ class ComicStoreLocalMixin:
                     title = getattr(c, "title", "") or f"第 {idx} 话"
                     chapters.append(Chapter(id=cid, index=idx, title=title, page_count=0, start=1))
 
-            now_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            now_iso = datetime.datetime.now(datetime.UTC).isoformat()
-            meta = ComicMeta(
-                source="local",
-                source_id=source_id,
-                display_id=display_id,
-                title=req.title,
-                authors=req.authors or ["自制"],
-                works=req.works or [],
-                actors=req.actors or [],
-                tags=req.tags or [],
-                description=req.description or "",
-                uploader=req.uploader or "自制",
-                page_count=0,
-                cover_count=4,
-                cover_indices=getattr(req, "cover_indices", []) or [],
-                published_at=now_str,
-                updated_at=now_str,
-                imported_at=now_iso,
-                chapters=chapters,
-                hidden_from_guest=getattr(req, "hidden_from_guest", False) or get_guest_hide_new_comics(),
+            meta = self._new_local_meta(
+                req, source_id, display_id, title=req.title, default_uploader="自制", chapters=chapters
             )
 
             _write_json_atomic(self.album_path("local", source_id), meta.model_dump())
@@ -264,11 +322,7 @@ class ComicStoreLocalMixin:
         source_id, display_id = self._allocate_local_id(req.id, pdf_path.stem)
 
         with self._lock_for("local", source_id):
-            if req.id and self.load_meta("local", source_id) is not None:
-                raise HTTPException(
-                    status_code=409,
-                    detail=f"已存在唯一标识为「{source_id}」的漫画，请指定新的标识或留空由系统自动生成。",
-                )
+            self._require_free_local_id(req.id, source_id)
 
             staging_dir = TMP_DIR / f".pdf_tmp_{source_id}_{int(time.time() * 1000)}"
             try:
@@ -343,32 +397,15 @@ class ComicStoreLocalMixin:
                         remote_pages.append(RemotePage(index=global_idx, url="", file=dest_name, ext=ext, chapter=""))
                         global_idx += 1
 
-                now_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                now_iso = datetime.datetime.now(datetime.UTC).isoformat()
-                author_val = (
-                    req.authors if req.authors else ([pdf_meta["author"]] if pdf_meta.get("author") else ["自制"])
-                )
-
-                meta = ComicMeta(
-                    source="local",
-                    source_id=source_id,
-                    display_id=display_id,
+                meta = self._new_local_meta(
+                    req,
+                    source_id,
+                    display_id,
                     title=doc_title,
-                    authors=author_val,
-                    works=req.works or [],
-                    actors=req.actors or [],
-                    tags=req.tags or [],
-                    description=req.description or "",
-                    uploader=req.uploader or "PDF导入",
-                    page_count=len(pages),
-                    cover_count=4,
-                    cover_indices=getattr(req, "cover_indices", []) or [],
-                    published_at=now_str,
-                    updated_at=now_str,
-                    imported_at=now_iso,
-                    pages=pages,
+                    default_uploader="PDF导入",
                     chapters=chapters,
-                    hidden_from_guest=getattr(req, "hidden_from_guest", False) or get_guest_hide_new_comics(),
+                    pages=pages,
+                    fallback_author=pdf_meta.get("author") or "",
                 )
 
                 fetched = FetchedComic(meta=meta, remote_pages=remote_pages)
@@ -384,11 +421,7 @@ class ComicStoreLocalMixin:
         source_id, display_id = self._allocate_local_id(req.id, base_dir.name)
 
         with self._lock_for("local", source_id):
-            if req.id and self.load_meta("local", source_id) is not None:
-                raise HTTPException(
-                    status_code=409,
-                    detail=f"已存在唯一标识为「{source_id}」的漫画，请指定新的标识或留空由系统自动生成。",
-                )
+            self._require_free_local_id(req.id, source_id)
 
             pdf_files.sort(key=lambda f: self._natural_key(f.name))
             target_pages_dir = self.pages_dir("local", source_id)
@@ -429,30 +462,9 @@ class ComicStoreLocalMixin:
                     )
                 )
 
-            now_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            now_iso = datetime.datetime.now(datetime.UTC).isoformat()
             title = req.title.strip() if req.title and req.title.strip() else base_dir.name
-
-            meta = ComicMeta(
-                source="local",
-                source_id=source_id,
-                display_id=display_id,
-                title=title,
-                authors=req.authors or ["自制"],
-                works=req.works or [],
-                actors=req.actors or [],
-                tags=req.tags or [],
-                description=req.description or "",
-                uploader=req.uploader or "PDF合集导入",
-                page_count=len(pages),
-                cover_count=4,
-                cover_indices=getattr(req, "cover_indices", []) or [],
-                published_at=now_str,
-                updated_at=now_str,
-                imported_at=now_iso,
-                pages=pages,
-                chapters=chapters,
-                hidden_from_guest=getattr(req, "hidden_from_guest", False) or get_guest_hide_new_comics(),
+            meta = self._new_local_meta(
+                req, source_id, display_id, title=title, default_uploader="PDF合集导入", chapters=chapters, pages=pages
             )
 
             fetched = FetchedComic(meta=meta, remote_pages=remote_pages)
@@ -549,11 +561,7 @@ class ComicStoreLocalMixin:
         source_id, display_id = self._allocate_local_id(req.id)
 
         with self._lock_for("local", source_id):
-            if req.id and self.load_meta("local", source_id) is not None:
-                raise HTTPException(
-                    status_code=409,
-                    detail=f"已存在唯一标识为「{source_id}」的漫画，请指定新的标识或留空由系统自动生成。",
-                )
+            self._require_free_local_id(req.id, source_id)
 
             all_files = [f for f in staging_dir.iterdir() if f.is_file() and f.suffix.lower() in IMAGE_EXTS]
             all_files.sort(key=lambda f: self._natural_key(f.name))
@@ -638,28 +646,8 @@ class ComicStoreLocalMixin:
             finally:
                 shutil.rmtree(staging_dir, ignore_errors=True)
 
-            now_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            now_iso = datetime.datetime.now(datetime.UTC).isoformat()
-            meta = ComicMeta(
-                source="local",
-                source_id=source_id,
-                display_id=display_id,
-                title=req.title,
-                authors=req.authors or ["自制"],
-                works=req.works or [],
-                actors=req.actors or [],
-                tags=req.tags or [],
-                description=req.description or "",
-                uploader=req.uploader or "PDF导入",
-                page_count=len(pages),
-                cover_count=4,
-                cover_indices=getattr(req, "cover_indices", []) or [],
-                published_at=now_str,
-                updated_at=now_str,
-                imported_at=now_iso,
-                pages=pages,
-                chapters=chapters,
-                hidden_from_guest=getattr(req, "hidden_from_guest", False) or get_guest_hide_new_comics(),
+            meta = self._new_local_meta(
+                req, source_id, display_id, title=req.title, default_uploader="PDF导入", chapters=chapters, pages=pages
             )
 
             fetched = FetchedComic(meta=meta, remote_pages=remote_pages)
@@ -695,11 +683,7 @@ class ComicStoreLocalMixin:
         source_id, display_id = self._allocate_local_id(req.id, raw_path.name)
 
         with self._lock_for("local", source_id):
-            if req.id and self.load_meta("local", source_id) is not None:
-                raise HTTPException(
-                    status_code=409,
-                    detail=f"已存在唯一标识为「{source_id}」的漫画，请指定新的标识或留空由系统自动生成。",
-                )
+            self._require_free_local_id(req.id, source_id)
 
             multi_chap_dirs: list[tuple[str, str, list[Path]]] = []
             for d in subdirs:
@@ -799,30 +783,9 @@ class ComicStoreLocalMixin:
                         remote_pages.append(RemotePage(index=global_idx, url="", file=dest_name, ext=ext, chapter=""))
                         global_idx += 1
 
-            now_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            now_iso = datetime.datetime.now(datetime.UTC).isoformat()
             title = req.title.strip() if req.title and req.title.strip() else raw_path.name
-
-            meta = ComicMeta(
-                source="local",
-                source_id=source_id,
-                display_id=display_id,
-                title=title,
-                authors=req.authors or ["自制"],
-                works=req.works or [],
-                actors=req.actors or [],
-                tags=req.tags or [],
-                description=req.description or "",
-                uploader=req.uploader or "本地导入",
-                page_count=len(pages),
-                cover_count=4,
-                cover_indices=getattr(req, "cover_indices", []) or [],
-                published_at=now_str,
-                updated_at=now_str,
-                imported_at=now_iso,
-                pages=pages,
-                chapters=chapters,
-                hidden_from_guest=getattr(req, "hidden_from_guest", False) or get_guest_hide_new_comics(),
+            meta = self._new_local_meta(
+                req, source_id, display_id, title=title, default_uploader="本地导入", chapters=chapters, pages=pages
             )
 
             fetched = FetchedComic(meta=meta, remote_pages=remote_pages)
@@ -841,26 +804,7 @@ class ComicStoreLocalMixin:
         new_chapter_title: str = "",
     ) -> ComicMeta:
         meta = fetched.meta
-        if not meta.chapters and meta.pages:
-            first_chap_id = "c1"
-            self._migrate_flat_to_chapter(meta, first_chap_id)
-            old_count = len(meta.pages)
-            for p in meta.pages:
-                p.chapter = first_chap_id
-            for rp in fetched.remote_pages:
-                rp.chapter = first_chap_id
-            first_chap = Chapter(
-                id=first_chap_id,
-                index=1,
-                title="第 1 话",
-                page_count=old_count,
-                start=1,
-            )
-            meta.chapters = [first_chap]
-            try:
-                self.ensure_webp_chapter_cover(meta, fetched, first_chap)
-            except Exception:
-                pass
+        self._promote_flat_to_first_chapter(fetched)
 
         target_pages_dir = self.pages_dir(source, source_id)
         target_pages_dir.mkdir(parents=True, exist_ok=True)
@@ -1023,26 +967,7 @@ class ComicStoreLocalMixin:
 
                 is_new_chapter = bool(new_chapter_title)
                 if is_new_chapter:
-                    if not meta.chapters and meta.pages:
-                        first_chap_id = "c1"
-                        self._migrate_flat_to_chapter(meta, first_chap_id)
-                        old_count = len(meta.pages)
-                        for p in meta.pages:
-                            p.chapter = first_chap_id
-                        for rp in fetched.remote_pages:
-                            rp.chapter = first_chap_id
-                        first_chap = Chapter(
-                            id=first_chap_id,
-                            index=1,
-                            title="第 1 话",
-                            page_count=old_count,
-                            start=1,
-                        )
-                        meta.chapters = [first_chap]
-                        try:
-                            self.ensure_webp_chapter_cover(meta, fetched, first_chap)
-                        except Exception as e:
-                            logger.warning("Failed to generate cover for synthesized Chapter 1 %s: %s", source_id, e)
+                    self._promote_flat_to_first_chapter(fetched)
 
                     composite_groups = self._group_by_composite_chapter_pattern(items)
                     if composite_groups:
@@ -1170,24 +1095,7 @@ class ComicStoreLocalMixin:
                                 PageRecord(index=0, file=dest_name, ext=ext, cached=True, chapter=chap_id)
                             )
 
-                        rebuilt_pages: list[PageRecord] = []
-                        rebuilt_remote: list[RemotePage] = []
-                        global_idx = 1
-                        for ch in meta.chapters:
-                            ch.start = global_idx
-                            ch_pages = chap_page_map.get(ch.id, [])
-                            ch.page_count = len(ch_pages)
-                            for p in ch_pages:
-                                p.index = global_idx
-                                rebuilt_pages.append(p)
-                                rebuilt_remote.append(
-                                    RemotePage(index=global_idx, url="", file=p.file, ext=p.ext, chapter=ch.id)
-                                )
-                                global_idx += 1
-
-                        meta.pages = rebuilt_pages
-                        fetched.remote_pages = rebuilt_remote
-                        meta.page_count = len(meta.pages)
+                        self._renumber_by_chapter(fetched, chap_page_map)
 
                 if source != "local":
                     meta.custom_pages = True
@@ -1490,24 +1398,7 @@ class ComicStoreLocalMixin:
                         else:
                             chap_page_map[ch.id] = [p for p in meta.pages if p.chapter == ch.id]
 
-                    rebuilt_pages: list[PageRecord] = []
-                    rebuilt_remote: list[RemotePage] = []
-                    global_idx = 1
-                    for ch in meta.chapters:
-                        ch.start = global_idx
-                        ch_pages = chap_page_map.get(ch.id, [])
-                        ch.page_count = len(ch_pages)
-                        for p in ch_pages:
-                            p.index = global_idx
-                            rebuilt_pages.append(p)
-                            rebuilt_remote.append(
-                                RemotePage(index=global_idx, url="", file=p.file, ext=p.ext, chapter=ch.id)
-                            )
-                            global_idx += 1
-
-                    meta.pages = rebuilt_pages
-                    fetched.remote_pages = rebuilt_remote
-                    meta.page_count = len(meta.pages)
+                    self._renumber_by_chapter(fetched, chap_page_map)
                     meta.custom_pages = True
 
                     meta.updated_at = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")

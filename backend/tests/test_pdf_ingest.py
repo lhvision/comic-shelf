@@ -9,9 +9,10 @@ import unittest
 from pathlib import Path
 
 import pymupdf
+from fastapi import HTTPException
 from PIL import Image
 
-from app.models import LocalPathImportRequest
+from app.models import CreateFromStagedPdfRequest, LocalPathImportRequest
 from app.storage import ComicStore
 from app.storage.pdf import (
     detect_pdf_chapters,
@@ -171,6 +172,78 @@ class TestPdfIngest(unittest.TestCase):
         success = self.store.delete_staged_pdf(token)
         self.assertTrue(success)
         self.assertFalse((TMP_DIR / token).exists())
+
+    def test_create_from_staged_pdf_multi_chapter(self) -> None:
+        from app.config import TMP_DIR
+
+        pdf_path = self.tmp_dir / "staged_multi.pdf"
+        self._create_synthetic_pdf(pdf_path, num_pages=6, with_toc=True)
+        resp = self.store.inspect_pdf_file(pdf_path)
+        self.assertEqual(len(resp.chapters), 3)
+
+        meta = self.store.create_from_staged_pdf(
+            CreateFromStagedPdfRequest(
+                staging_token=resp.staging_token,
+                id="staged-multi",
+                title="暂存分步建卷",
+                tags=["测试"],
+                chapters=resp.chapters,
+            )
+        )
+
+        ids = [c.id for c in resp.chapters]
+        self.assertEqual((meta.source, meta.source_id), ("local", "staged-multi"))
+        self.assertEqual(
+            (meta.title, meta.authors, meta.uploader, meta.tags), ("暂存分步建卷", ["自制"], "PDF导入", ["测试"])
+        )
+        self.assertEqual(
+            [(c.id, c.start, c.page_count) for c in meta.chapters], [(ids[0], 1, 2), (ids[1], 3, 2), (ids[2], 5, 2)]
+        )
+        self.assertEqual([p.index for p in meta.pages], [1, 2, 3, 4, 5, 6])
+        self.assertEqual([p.chapter for p in meta.pages], [ids[0], ids[0], ids[1], ids[1], ids[2], ids[2]])
+        # 磁盘上是话内局域序号，与全局页码无关
+        for page in meta.pages:
+            self.assertTrue((self.store.pages_dir("local", "staged-multi") / page.chapter / page.file).is_file())
+        self.assertEqual([p.file[:5] for p in meta.pages if p.chapter == ids[2]], ["00001", "00002"])
+
+        # 落盘的两份清单与返回值一致，暂存区已释放
+        fetched = self.store.load_fetched("local", "staged-multi")
+        assert fetched is not None
+        self.assertEqual(fetched.meta.page_count, 6)
+        self.assertEqual([(rp.index, rp.url, rp.chapter) for rp in fetched.remote_pages][-1], (6, "", ids[2]))
+        self.assertFalse((TMP_DIR / resp.staging_token).exists())
+
+        # 显式指定的标识已被占用时拒绝，不覆盖已有画卷
+        again = self.store.inspect_pdf_file(pdf_path)
+        with self.assertRaises(HTTPException) as ctx:
+            self.store.create_from_staged_pdf(
+                CreateFromStagedPdfRequest(staging_token=again.staging_token, id="staged-multi", title="撞名")
+            )
+        self.assertEqual(ctx.exception.status_code, 409)
+        loaded = self.store.load_meta("local", "staged-multi")
+        assert loaded is not None
+        self.assertEqual(loaded.title, "暂存分步建卷")
+        self.store.delete_staged_pdf(again.staging_token)
+
+    def test_create_from_staged_pdf_flat(self) -> None:
+        pdf_path = self.tmp_dir / "staged_flat.pdf"
+        self._create_synthetic_pdf(pdf_path, num_pages=3)
+        resp = self.store.inspect_pdf_file(pdf_path)
+
+        meta = self.store.create_from_staged_pdf(
+            CreateFromStagedPdfRequest(staging_token=resp.staging_token, title="平铺建卷", authors=["某作者"])
+        )
+
+        self.assertEqual((meta.authors, meta.page_count, meta.chapters), (["某作者"], 3, []))
+        self.assertEqual([(p.index, p.chapter) for p in meta.pages], [(1, ""), (2, ""), (3, "")])
+        for page in meta.pages:
+            self.assertTrue((self.store.pages_dir("local", meta.source_id) / page.file).is_file())
+
+        with self.assertRaises(HTTPException) as ctx:
+            self.store.create_from_staged_pdf(
+                CreateFromStagedPdfRequest(staging_token=resp.staging_token, title="过期")
+            )
+        self.assertEqual(ctx.exception.status_code, 400)
 
     def test_encrypted_pdf_detection(self) -> None:
         import pymupdf
