@@ -24,9 +24,13 @@ def is_valid_image(data: bytes) -> bool:
         return True
     if data.startswith(b"RIFF") and data[8:12] == b"WEBP":
         return True
-    # AVIF：ISO BMFF 的 ftyp 盒，主品牌或兼容品牌里有 avif / avis（纯 HEIC 浏览器显示不了，不放行）
-    brands = data[8:32]
-    return data[4:8] == b"ftyp" and (b"avif" in brands or b"avis" in brands)
+    # AVIF：ISO BMFF 的 ftyp 盒，主品牌或兼容品牌里有 avif / avis（纯 HEIC 浏览器显示不了，不放行）。
+    # 兼容品牌从偏移 16 起每 4 字节一个，一直排到盒子声明的长度；不能按固定字节数截断，avif 可能排在很后面。
+    if data[4:8] != b"ftyp":
+        return False
+    box_end = min(int.from_bytes(data[:4], "big"), len(data))
+    brands = {data[8:12], *(data[i : i + 4] for i in range(16, box_end, 4))}
+    return not brands.isdisjoint((b"avif", b"avis"))
 
 
 class ComicProvider(ABC):

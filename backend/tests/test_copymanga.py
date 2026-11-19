@@ -91,6 +91,8 @@ class TestCopyMangaProvider(unittest.TestCase):
         # Valid AVIF：主品牌是 avif，或主品牌 mif1 但兼容品牌里带 avif
         self.assertTrue(is_valid_image(b"\x00\x00\x00\x1cftypavif\x00\x00\x00\x00"))
         self.assertTrue(is_valid_image(b"\x00\x00\x00\x1cftypmif1\x00\x00\x00\x00mif1avif"))
+        # avif 排在第 5 个兼容品牌（偏移 32）之后也要认：按 ftyp 盒长度读完整品牌列表
+        self.assertTrue(is_valid_image(b"\x00\x00\x00\x28ftypmif1\x00\x00\x00\x00mif1miafMA1Bheicavif"))
         # 纯 HEIC（没有 avif 品牌）浏览器显示不了，不算合法画页
         self.assertFalse(is_valid_image(b"\x00\x00\x00\x1cftypmif1\x00\x00\x00\x00mif1heic"))
 
