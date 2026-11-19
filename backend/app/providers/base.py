@@ -13,6 +13,22 @@ from ..models import DiscoveryItem, FetchedComic, RemotePage
 logger = logging.getLogger("paper_room.provider.base")
 
 
+def is_valid_image(data: bytes) -> bool:
+    """按魔数判断是否为 JPEG / PNG / WebP / GIF / AVIF，三家图源共用。
+
+    上游 WAF / CDN 的质询页常以 HTTP 200 返回，不校验就会被当成画页写进本地缓存（PITFALLS #60）。
+    """
+    if len(data) < 16:
+        return False
+    if data.startswith((b"\xff\xd8\xff", b"\x89PNG\r\n\x1a\n", b"GIF87a", b"GIF89a")):
+        return True
+    if data.startswith(b"RIFF") and data[8:12] == b"WEBP":
+        return True
+    # AVIF：ISO BMFF 的 ftyp 盒，主品牌或兼容品牌里有 avif / avis（纯 HEIC 浏览器显示不了，不放行）
+    brands = data[8:32]
+    return data[4:8] == b"ftyp" and (b"avif" in brands or b"avis" in brands)
+
+
 class ComicProvider(ABC):
     """The extension point for other comic sites.
 

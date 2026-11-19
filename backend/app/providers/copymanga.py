@@ -37,7 +37,7 @@ from ..config import (
 )
 from ..gate import download_gate
 from ..models import Chapter, ComicMeta, FetchedComic, PageRecord, RemotePage
-from .base import ComicProvider
+from .base import ComicProvider, is_valid_image
 
 if TYPE_CHECKING:
     from curl_cffi.requests import ProxySpec
@@ -59,23 +59,6 @@ COPY_ALLOWED_CDN_SUFFIXES = (
 )
 
 COPY_EXTRA_CDN_HOSTS = [h.strip().lower() for h in os.getenv("COPY_EXTRA_CDN_HOSTS", "").split(",") if h.strip()]
-
-
-def is_valid_image(data: bytes) -> bool:
-    """Validate image magic bytes to reject corrupted bytes or HTML/WAF error blocks."""
-    if not data or len(data) < 4:
-        return False
-    if data[:3] == b"\xff\xd8\xff":
-        return True
-    if len(data) >= 8 and data[:8] == b"\x89PNG\r\n\x1a\n":
-        return True
-    if len(data) >= 12 and data[:4] == b"RIFF" and data[8:12] == b"WEBP":
-        return True
-    if len(data) >= 6 and data[:6] in (b"GIF87a", b"GIF89a"):
-        return True
-    if len(data) >= 12 and data[4:8] == b"ftyp" and data[8:12] in (b"avif", b"avis", b"mif1", b"miaf"):
-        return True
-    return False
 
 
 def _validate_download_host(host: str) -> None:

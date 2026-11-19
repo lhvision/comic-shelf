@@ -28,7 +28,7 @@ from ..config import (
 from ..formatting import format_count
 from ..gate import download_gate
 from ..models import Chapter, ComicMeta, DiscoveryItem, FetchedComic, PageRecord, RemotePage
-from .base import ComicProvider
+from .base import ComicProvider, is_valid_image
 
 if TYPE_CHECKING:
     from curl_cffi.requests import ProxySpec
@@ -103,31 +103,6 @@ _PROXY_CRED_RE = re.compile(r"://([^:@\s]+):([^@\s]+)@")
 def sanitize_proxy_url(text: str) -> str:
     """Mask credentials (username:password) in proxy URLs or error messages."""
     return _PROXY_CRED_RE.sub(r"://\1:***@", text)
-
-
-def is_valid_image(data: bytes) -> bool:
-    """Validate that raw bytes start with valid image magic bytes.
-
-    Supports JPEG, PNG, WebP, GIF, and AVIF.
-    """
-    if len(data) < 16:
-        return False
-    # JPEG: FF D8 FF
-    if data.startswith(b"\xff\xd8\xff"):
-        return True
-    # PNG: 89 50 4E 47 0D 0A 1A 0A
-    if data.startswith(b"\x89PNG\r\n\x1a\n"):
-        return True
-    # WebP: RIFF....WEBP
-    if data.startswith(b"RIFF") and len(data) >= 12 and data[8:12] == b"WEBP":
-        return True
-    # GIF: GIF87a / GIF89a
-    if data.startswith((b"GIF87a", b"GIF89a")):
-        return True
-    # AVIF: ....ftypavif / avis
-    if len(data) >= 12 and data[4:8] == b"ftyp" and data[8:12] in (b"avif", b"avis"):
-        return True
-    return False
 
 
 def _validate_download_host(host: str) -> None:

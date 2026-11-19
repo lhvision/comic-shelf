@@ -28,7 +28,7 @@ from ..diagnostics import log_import_diag
 from ..formatting import format_count
 from ..gate import download_gate
 from ..models import Chapter, ComicMeta, DiscoveryItem, FetchedComic, RemotePage
-from .base import ComicProvider
+from .base import ComicProvider, is_valid_image
 
 if TYPE_CHECKING:
     from curl_cffi.requests import ProxySpec
@@ -1132,31 +1132,7 @@ class JMProvider(ComicProvider):
         )
         return fetched
 
-    @staticmethod
-    def _is_image_bytes(content: bytes) -> bool:
-        """Verify binary magic bytes for JPEG, PNG, WebP, GIF, or AVIF.
-
-        Prevents upstream WAF / CDN challenge HTML pages (often returned as HTTP 200)
-        from corrupting the image cache (PITFALLS.md #60).
-        """
-        if len(content) < 16:
-            return False
-        # JPEG
-        if content.startswith(b"\xff\xd8\xff"):
-            return True
-        # PNG
-        if content.startswith(b"\x89PNG\r\n\x1a\n"):
-            return True
-        # WebP: RIFF....WEBP
-        if content.startswith(b"RIFF") and content[8:12] == b"WEBP":
-            return True
-        # GIF
-        if content.startswith((b"GIF87a", b"GIF89a")):
-            return True
-        # AVIF
-        if b"ftypavif" in content[:32] or b"ftypavis" in content[:32]:
-            return True
-        return False
+    _is_image_bytes = staticmethod(is_valid_image)
 
     # One session per thread + connection pooling. Creating a brand new session
     # per page was the biggest cost: each one did a fresh TLS handshake, and any

@@ -79,17 +79,20 @@ class TestCopyMangaProvider(unittest.TestCase):
         self.assertEqual(decrypted, raw_message)
 
     def test_is_valid_image(self) -> None:
+        pad = b"\x00" * 8
         # Valid JPEG
-        self.assertTrue(is_valid_image(b"\xff\xd8\xff\xe0\x00\x10JFIF\x00"))
+        self.assertTrue(is_valid_image(b"\xff\xd8\xff\xe0\x00\x10JFIF\x00" + pad))
         # Valid PNG
         self.assertTrue(is_valid_image(b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR"))
         # Valid WebP
         self.assertTrue(is_valid_image(b"RIFF\x20\x00\x00\x00WEBPVP8 "))
         # Valid GIF
-        self.assertTrue(is_valid_image(b"GIF89a\x01\x00\x01\x00"))
-        # Valid AVIF (avif and mif1 brands)
+        self.assertTrue(is_valid_image(b"GIF89a\x01\x00\x01\x00" + pad))
+        # Valid AVIF：主品牌是 avif，或主品牌 mif1 但兼容品牌里带 avif
         self.assertTrue(is_valid_image(b"\x00\x00\x00\x1cftypavif\x00\x00\x00\x00"))
-        self.assertTrue(is_valid_image(b"\x00\x00\x00\x1cftypmif1\x00\x00\x00\x00"))
+        self.assertTrue(is_valid_image(b"\x00\x00\x00\x1cftypmif1\x00\x00\x00\x00mif1avif"))
+        # 纯 HEIC（没有 avif 品牌）浏览器显示不了，不算合法画页
+        self.assertFalse(is_valid_image(b"\x00\x00\x00\x1cftypmif1\x00\x00\x00\x00mif1heic"))
 
         # Invalid formats / text / WAF errors
         self.assertFalse(is_valid_image(b""))
