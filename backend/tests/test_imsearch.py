@@ -137,16 +137,20 @@ def test_fastapi_endpoints():
             assert exc.status_code == 413
         assert mock_oversized.close.call_count == 1
 
-        # 端点会按书库里的 meta 过滤命中，这条断言只能对着真书跑；临时数据目录或别的机器上没有这本就跳过
-        if store.load_meta("jm", "1242163") is None:
-            print("  - skip image_search visibility filter: jm/1242163 is not in this library")
-            return
+        # 端点按书库里的 meta 过滤命中：自己造一本公开的本子，再混入一条书库里没有的命中
+        from app.models import ComicMeta, FetchedComic, ImageSearchItem
+
+        store.save_fetched(
+            FetchedComic(
+                meta=ComicMeta(source="jm", source_id="1242163", display_id="JM1242163", title="识图测试本"),
+                remote_pages=[],
+            )
+        )
 
         with patch("app.routers.search.search_imsearch") as mock_search:
-            from app.models import ImageSearchItem
-
             mock_search.return_value = [
-                ImageSearchItem(source="jm", source_id="1242163", page_index=5, is_cover=False, score=0.94)
+                ImageSearchItem(source="jm", source_id="1242163", page_index=5, is_cover=False, score=0.94),
+                ImageSearchItem(source="jm", source_id="999999", page_index=1, is_cover=False, score=0.90),
             ]
             mock_upload = MagicMock()
             mock_upload.filename = "test.jpg"

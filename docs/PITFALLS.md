@@ -1207,9 +1207,10 @@
 - **症状**：跑一轮 `vpr test:py`，真实书库 `backend/data/` 下的 `comic_shelf.db`、`settings.json`、`import_diagnostic.log` 被改写，`library/local/` 里多出一本 `mcp_test_comic`；个别用例只有在真实库已建好表时才通过，换台干净机器就失败。
 - **根因**：`app.config` 在 import 期读取 `COMIC_SHELF_DATA` 并就地 `mkdir`，路由层的 `store` 单例随之绑定真实目录。用例只用 `set_db_path()` 换了数据库文件，凡是经 `store`、设置、诊断日志落盘的路径仍指向真实书库——与核心不变量 1 直接冲突。
 - **红线**：
-  1. **后端测试只通过 `vpr test:py` 运行**。`scripts/test_py.sh` 为每个测试文件注入一个一次性的 `COMIC_SHELF_DATA`（从已 `init_db()` 的模板目录复制），跑完即删；直接 `python backend/tests/test_x.py` 会绕过这层隔离。
-  2. 新用例不得假设数据目录里有任何存量内容；需要的表、文件自己建。
-  3. 临时目录必须带上已建好的库结构：只换目录不建表时，用例仍会通过，但走的是"索引刷新失败被 `except` 吞掉"的降级路径——绿灯不等于测到了。
+  1. **后端测试只通过 `vpr test:py` 运行**。`scripts/test_py.sh` 为每个测试文件建一个一次性工作目录，跑完即删：`data/` 注入为 `COMIC_SHELF_DATA`（从已 `init_db()` 的模板目录复制），`tmp/` 注入为 `TMPDIR`。直接 `python backend/tests/test_x.py` 会绕过这层隔离。
+  2. 新用例不得假设数据目录里有任何存量内容；需要的表、文件、本子自己建。依赖某本"真书"的断言在隔离后只会被静默跳过（`test_imsearch` 的可见性过滤曾因此不再运行），等于没有这条用例。
+  3. 测试里 `tempfile.mkdtemp()` 建的目录不必逐个补清理：`TMPDIR` 已指进一次性工作目录。不要绕开它把路径写死成 `/tmp/...`，这台开发机的 `/tmp` 是内存盘，残留占的是内存。
+  4. 临时目录必须带上已建好的库结构：只换目录不建表时，用例仍会通过，但走的是"索引刷新失败被 `except` 吞掉"的降级路径——绿灯不等于测到了。
 
 ### 179. 格式化器跟随 `requires-python` 改写语法，悄悄抬高解释器硬下限
 

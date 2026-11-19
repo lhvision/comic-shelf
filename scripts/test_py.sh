@@ -24,19 +24,21 @@ while IFS= read -r f; do
   [ -n "$f" ] && TEST_FILES+=("$f")
 done < <(find backend/tests -maxdepth 1 -name 'test_*.py' | sort)
 
-# 每个测试文件一个进程、一个一次性数据目录：app.config 在 import 期读取 COMIC_SHELF_DATA，
-# 不重定向的话测试会写进真实书库 backend/data/（不变量 1）。
-# 目录从一份已建好表的模板复制而来：应用启动时由 lifespan 调 init_db()，测试直接用 store 时没有这一步。
+# 每个测试文件一个进程、一个一次性工作目录（跑完即删），里面两样东西：
+#   data/ 作 COMIC_SHELF_DATA：app.config 在 import 期读取它，不重定向的话测试会改动正在使用的开发书库 backend/data/。
+#         从一份已建好表的模板复制而来：应用启动时由 lifespan 调 init_db()，测试直接用 store 时没有这一步。
+#   tmp/  作 TMPDIR：测试里 tempfile.mkdtemp() 建的目录大多不自己清理，指到这里随工作目录一并删除。
 DATA_TEMPLATE="$(mktemp -d "${TMPDIR:-/tmp}/paper-room-test-template.XXXXXX")"
 trap 'rm -rf "$DATA_TEMPLATE"' EXIT
 COMIC_SHELF_DATA="$DATA_TEMPLATE" "$PYTHON" -c 'from app.db import init_db; init_db()'
 
 run_test() {
-  local data_dir status=0
-  data_dir="$(mktemp -d "${TMPDIR:-/tmp}/paper-room-test.XXXXXX")"
-  cp -R "$DATA_TEMPLATE/." "$data_dir"
-  COMIC_SHELF_DATA="$data_dir" "$PYTHON" "$1" || status=$?
-  rm -rf "$data_dir"
+  local work status=0
+  work="$(mktemp -d "${TMPDIR:-/tmp}/paper-room-test.XXXXXX")"
+  mkdir "$work/data" "$work/tmp"
+  cp -R "$DATA_TEMPLATE/." "$work/data"
+  COMIC_SHELF_DATA="$work/data" TMPDIR="$work/tmp" "$PYTHON" "$1" || status=$?
+  rm -rf "$work"
   return "$status"
 }
 
