@@ -9,7 +9,7 @@ import uuid
 from pathlib import Path
 
 import anyio
-from fastapi import APIRouter, File, Form, HTTPException, Query, UploadFile
+from fastapi import APIRouter, File, Form, HTTPException, Query, Request, UploadFile
 
 from ..config import TMP_DIR
 from ..db import sync_comic_dialogues
@@ -25,7 +25,7 @@ from ..models import (
     ReplacePathRequest,
 )
 from ..storage.pdf import is_pdf_file
-from .common import _require_known_source, store
+from .common import _detail_for_reader, _require_known_source, store
 
 router = APIRouter(tags=["local_comic"])
 
@@ -51,14 +51,14 @@ async def _read_uploaded_files(files: list[UploadFile]) -> list[tuple[str, bytes
     return file_tuples
 
 
-def _finish_pages_update(source: str, source_id: str, meta: ComicMeta) -> ComicDetail:
+def _finish_pages_update(source: str, source_id: str, meta: ComicMeta, request: Request) -> ComicDetail:
     """Syncs OCR dialogues, broadcasts library change event, and returns serialized ComicDetail."""
     sync_comic_dialogues(source, source_id)
     broadcast_event(
         "library_changed",
         {"action": "update_pages", "source": source, "source_id": source_id, "timestamp": time.time()},
     )
-    return store.detail(meta)
+    return _detail_for_reader(store.detail(meta), request)
 
 
 @router.post("/api/library/local/create", response_model=ComicDetail)
@@ -137,6 +137,7 @@ def create_from_staged_pdf(req: CreateFromStagedPdfRequest) -> ComicDetail:
 async def upload_comic_pages(
     source: str,
     source_id: str,
+    request: Request,
     chapter_id: str = Query(default="", description="目标章节 id"),
     new_chapter_title: str = Query(default="", description="若创建新章节，传入新章节标题"),
     files: list[UploadFile] = File(...),
@@ -152,7 +153,7 @@ async def upload_comic_pages(
         target_chapter=chapter_id,
         new_chapter_title=new_chapter_title,
     )
-    return _finish_pages_update(source, source_id, meta)
+    return _finish_pages_update(source, source_id, meta, request)
 
 
 @router.post("/api/library/{source}/{source_id}/append", response_model=ComicDetail)
@@ -160,6 +161,7 @@ def append_comic(
     source: str,
     source_id: str,
     req: ComicAppendRequest,
+    request: Request,
 ) -> ComicDetail:
     """Appends pages from a server-side directory to an existing or new chapter."""
     _require_known_source(source)
@@ -172,13 +174,14 @@ def append_comic(
         target_chapter=req.target_chapter,
         new_chapter_title=req.new_chapter_title,
     )
-    return _finish_pages_update(source, source_id, meta)
+    return _finish_pages_update(source, source_id, meta, request)
 
 
 @router.post("/api/library/{source}/{source_id}/replace-pages", response_model=ComicDetail)
 async def replace_comic_pages(
     source: str,
     source_id: str,
+    request: Request,
     chapter_id: str = Query(default="", description="目标章节 id（多章节漫画可选）"),
     files: list[UploadFile] = File(...),
 ) -> ComicDetail:
@@ -192,7 +195,7 @@ async def replace_comic_pages(
         files=file_tuples,
         target_chapter=chapter_id,
     )
-    return _finish_pages_update(source, source_id, meta)
+    return _finish_pages_update(source, source_id, meta, request)
 
 
 @router.post("/api/library/{source}/{source_id}/replace-path", response_model=ComicDetail)
@@ -200,6 +203,7 @@ def replace_comic_pages_from_path(
     source: str,
     source_id: str,
     req: ReplacePathRequest,
+    request: Request,
 ) -> ComicDetail:
     """Replaces comic or chapter pages with images from a server-side directory, purging prior OCR dialogues upon success."""
     _require_known_source(source)
@@ -211,4 +215,4 @@ def replace_comic_pages_from_path(
         server_path=req.server_path.strip(),
         target_chapter=req.target_chapter,
     )
-    return _finish_pages_update(source, source_id, meta)
+    return _finish_pages_update(source, source_id, meta, request)

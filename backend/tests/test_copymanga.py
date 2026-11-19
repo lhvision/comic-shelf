@@ -599,7 +599,9 @@ class TestCopyMangaProvider(unittest.TestCase):
                 patch("app.routers.common.store", test_store),
                 patch("app.routers.chapters.sync_comic_dialogues"),
                 patch("app.routers.chapters.broadcast_event"),
+                patch("app.routers.common.is_user_favorite", return_value=False),
             ):
+                request = MagicMock()
                 # 1. First fetch: default only (ch1 + ch2)
                 initial_fetched = self.provider.fetch("test_slug")
                 self.assertEqual(len(initial_fetched.meta.chapters), 2)
@@ -613,7 +615,7 @@ class TestCopyMangaProvider(unittest.TestCase):
 
                 # 2. Add tankobon group via endpoint
                 req_add = UpdateGroupsRequest(selected_groups=["default", "tankobon"])
-                detail1 = update_comic_groups("copymanga", "test_slug", req_add)
+                detail1 = update_comic_groups("copymanga", "test_slug", req_add, request)
                 self.assertEqual(len(detail1.meta.chapters), 3)
                 self.assertEqual(detail1.meta.raw.get("selected_groups"), ["default", "tankobon"])
 
@@ -625,7 +627,7 @@ class TestCopyMangaProvider(unittest.TestCase):
 
                 # 3. Remove tankobon group via endpoint
                 req_remove = UpdateGroupsRequest(selected_groups=["default"])
-                detail2 = update_comic_groups("copymanga", "test_slug", req_remove)
+                detail2 = update_comic_groups("copymanga", "test_slug", req_remove, request)
                 self.assertEqual(len(detail2.meta.chapters), 2)
                 self.assertEqual(detail2.meta.raw.get("selected_groups"), ["default"])
                 # Confirm vol1 directory was physically deleted
@@ -635,14 +637,14 @@ class TestCopyMangaProvider(unittest.TestCase):
 
                 # 4. Reject non-supported source with 400
                 with self.assertRaises(HTTPException) as ctx:
-                    update_comic_groups("jm", "test_slug", req_add)
+                    update_comic_groups("jm", "test_slug", req_add, request)
                 self.assertEqual(ctx.exception.status_code, 400)
 
                 # 5. Keep only tankobon (1 chapter total) - verify ch1 removed, vol1 retained
                 vol1_dir.mkdir(parents=True, exist_ok=True)
                 (vol1_dir / "00003.jpg").write_bytes(b"data_vol")
                 req_single = UpdateGroupsRequest(selected_groups=["tankobon"])
-                detail3 = update_comic_groups("copymanga", "test_slug", req_single)
+                detail3 = update_comic_groups("copymanga", "test_slug", req_single, request)
                 self.assertEqual(len(detail3.meta.chapters), 1)
                 self.assertEqual(detail3.meta.chapters[0].id, "vol1")
                 # vol1 file still intact and not wiped!

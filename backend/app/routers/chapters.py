@@ -16,6 +16,7 @@ from ..models import CacheProgress, ChapterUpdateRequest, ComicDetail, UpdateGro
 from ..providers import get_provider
 from .common import (
     _client_accepts_webp,
+    _detail_for_reader,
     _require_known_source,
     _require_meta,
     _serve_negotiated_image,
@@ -31,6 +32,7 @@ def update_chapter_title(
     source_id: str,
     chapter_id: str,
     req: ChapterUpdateRequest,
+    request: Request,
 ) -> ComicDetail:
     """Updates the title of a specific chapter within a comic."""
     _require_known_source(source)
@@ -45,11 +47,11 @@ def update_chapter_title(
             "timestamp": time.time(),
         },
     )
-    return store.detail(meta)
+    return _detail_for_reader(store.detail(meta), request)
 
 
 @router.delete("/api/library/{source}/{source_id}/chapters/{chapter_id}", response_model=ComicDetail)
-def delete_chapter(source: str, source_id: str, chapter_id: str) -> ComicDetail:
+def delete_chapter(source: str, source_id: str, chapter_id: str, request: Request) -> ComicDetail:
     """Deletes a specific chapter from a comic, purging its page files and re-indexing remaining pages."""
     _require_known_source(source)
     meta = store.delete_chapter(source, source_id, chapter_id)
@@ -64,7 +66,7 @@ def delete_chapter(source: str, source_id: str, chapter_id: str) -> ComicDetail:
             "timestamp": time.time(),
         },
     )
-    return store.detail(meta)
+    return _detail_for_reader(store.detail(meta), request)
 
 
 @router.get("/api/library/{source}/{source_id}/chapters/{chapter_id}/cache", response_model=CacheProgress)
@@ -163,6 +165,7 @@ def update_comic_groups(
     source: str,
     source_id: str,
     req: UpdateGroupsRequest,
+    request: Request,
 ) -> ComicDetail:
     """Updates the selected chapter groups for a comic (e.g. including or excluding tankobon)."""
     _require_known_source(source)
@@ -226,4 +229,4 @@ def update_comic_groups(
             "timestamp": time.time(),
         },
     )
-    return store.detail(meta)
+    return _detail_for_reader(store.detail(meta), request)

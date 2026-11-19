@@ -8,8 +8,17 @@ import app.auth as auth_mod
 import app.db as db_mod
 import app.main as main_mod
 import app.storage.base as storage_base_mod
-from app.models import ComicMeta, DiscoveryFeed, DiscoveryItem, FetchedComic
-from app.routers.library import comic_detail
+from app.models import (
+    Chapter,
+    ChapterUpdateRequest,
+    ComicMeta,
+    DiscoveryFeed,
+    DiscoveryItem,
+    FetchedComic,
+    MetadataUpdateRequest,
+)
+from app.routers.chapters import update_chapter_title
+from app.routers.library import comic_detail, update_comic_metadata
 
 # 整个模块跑在临时数据目录里：下面要签一张口令已知的访客通行证（guest-secret-456），
 # 还要写发现页缓存。落进真库就是一张谁都能用的有效访客证，落进真 discovery/ 就是拿假榜单盖掉真缓存
@@ -48,7 +57,13 @@ def test_detail_favorite_stays_per_reader():
     store = main_mod.store
     store.save_fetched(
         FetchedComic(
-            meta=ComicMeta(source="local", source_id="fav_1", display_id="LOC_fav_1", title="Fav Book"),
+            meta=ComicMeta(
+                source="local",
+                source_id="fav_1",
+                display_id="LOC_fav_1",
+                title="Fav Book",
+                chapters=[Chapter(id="c1", index=1, title="第 1 话", start=1)],
+            ),
             remote_pages=[],
         )
     )
@@ -61,6 +76,12 @@ def test_detail_favorite_stays_per_reader():
     assert cached is not None and cached.favorite is False
 
     store.update_metadata("local", "fav_1", {"tags": ["改一次标签"]})
+    assert json.loads(store.album_path("local", "fav_1").read_text(encoding="utf-8"))["favorite"] is False
+
+    # 修改类接口同样返回详情（章节改名的响应会被前端直接当成新详情）：喜欢也得是当前读者自己的
+    assert update_comic_metadata("local", "fav_1", MetadataUpdateRequest(tags=["再改一次"]), req).meta.favorite is True
+    renamed = update_chapter_title("local", "fav_1", "c1", ChapterUpdateRequest(title="改名"), req)
+    assert renamed.meta.favorite is True
     assert json.loads(store.album_path("local", "fav_1").read_text(encoding="utf-8"))["favorite"] is False
 
 

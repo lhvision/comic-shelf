@@ -11,9 +11,10 @@ from typing import Any
 from fastapi import HTTPException, Request
 from fastapi.responses import FileResponse
 
-from ..auth import is_curator
+from ..auth import get_current_user_id, is_curator
+from ..db import is_user_favorite
 from ..events import broadcast_event
-from ..models import ComicMeta, FetchedComic
+from ..models import ComicDetail, ComicMeta, FetchedComic
 from ..providers import provider_list
 from ..storage import ComicStore
 
@@ -44,6 +45,17 @@ def _require_meta(source: str, source_id: str, request: Request | None = None) -
     if request is not None and not is_curator(request) and getattr(meta, "hidden_from_guest", False):
         raise HTTPException(status_code=404, detail="本子还没有导入本地书库")
     return meta
+
+
+def _detail_for_reader(detail: ComicDetail, request: Request) -> ComicDetail:
+    """把详情响应里的喜欢状态换成当前读者自己的；返回已有本子详情的接口（查看、改资料、改章节、增删画页）都经过这里。
+
+    detail.meta 是全体读者共享的缓存对象：喜欢属于读者个人，只能设在副本上，否则会随下一次元数据保存落进 album.json（PITFALLS #181）。
+    """
+    meta = detail.meta
+    favorite = is_user_favorite(get_current_user_id(request), meta.source, meta.source_id)
+    detail.meta = meta.model_copy(update={"favorite": favorite})
+    return detail
 
 
 def _guess_media_type(suffix: str) -> str:

@@ -18,7 +18,6 @@ from ..db import (
     find_comic_mirrors,
     get_library_facets,
     get_user_progress,
-    is_user_favorite,
     query_library_index,
     set_user_favorite,
     set_user_progress,
@@ -46,7 +45,7 @@ from ..models import (
     ReadingProgressResponse,
 )
 from ..providers import get_provider
-from .common import _prefetch_worker, _require_known_source, _require_meta, store
+from .common import _detail_for_reader, _prefetch_worker, _require_known_source, _require_meta, store
 
 router = APIRouter(tags=["library"])
 
@@ -505,10 +504,7 @@ def import_comic(req: ImportRequest) -> ImportResult:
 def comic_detail(source: str, source_id: str, request: Request) -> ComicDetail:
     """Returns comprehensive comic details, chapter index, page list, and user favorite status."""
     meta = _require_meta(source, source_id, request)
-    detail = store.detail(meta)
-    user_id = get_current_user_id(request)
-    # meta 是全体读者共享的缓存对象：喜欢属于读者个人，只能设在副本上，否则会随下一次元数据保存落进 album.json
-    detail.meta = meta.model_copy(update={"favorite": is_user_favorite(user_id, source, source_id)})
+    detail = _detail_for_reader(store.detail(meta), request)
     is_cur = is_curator(request)
     mirrors = find_comic_mirrors(source, source_id, title=meta.title, is_curator=is_cur)
     detail.mirrors = [DuplicateCheckMatch(**m) for m in mirrors]
@@ -529,7 +525,7 @@ def delete_comic(source: str, source_id: str) -> DeleteResponse:
 
 
 @router.patch("/api/library/{source}/{source_id}/metadata", response_model=ComicDetail)
-def update_comic_metadata(source: str, source_id: str, req: MetadataUpdateRequest) -> ComicDetail:
+def update_comic_metadata(source: str, source_id: str, req: MetadataUpdateRequest, request: Request) -> ComicDetail:
     """Updates editable metadata fields (title, authors, tags, works, actors) of a comic."""
     _require_known_source(source)
     updates = req.model_dump(exclude_unset=True)
@@ -538,7 +534,7 @@ def update_comic_metadata(source: str, source_id: str, req: MetadataUpdateReques
         "library_changed",
         {"action": "update_metadata", "source": source, "source_id": source_id, "timestamp": time.time()},
     )
-    return store.detail(meta)
+    return _detail_for_reader(store.detail(meta), request)
 
 
 @router.patch("/api/library/{source}/{source_id}/favorite", response_model=FavoriteResponse)
