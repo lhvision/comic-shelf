@@ -198,6 +198,8 @@ API 工作进程数固定为 1，不属于可调参数；这里的下载与缩�
 | `COMIC_SHELF_COVER_THUMB_WIDTH`            | `360`           | 书架阶梯封面 1x 缩略图宽度（px，默认 360 配合 HTML5 srcset 降低低密设备内存开销）。                                                                           |
 | `COMIC_SHELF_COVER_QUALITY`                | `80`            | 大封面 JPEG 质量（默认 80 兼顾微秒级传输与典藏画质）。                                                                                                        |
 | `COMIC_SHELF_COVER_COUNT`                  | `4`             | 每本漫画默认生成的封面预览张数。                                                                                                                              |
+| `COMIC_SHELF_COVER_WEBP_QUALITY`           | `80`            | WebP 封面与 WebP 页缩略图的压缩质量。浏览器支持 WebP 时走这一档，`COMIC_SHELF_COVER_QUALITY` 与 `COMIC_SHELF_PAGE_THUMB_QUALITY` 只管 JPEG 回退格式。         |
+| `COMIC_SHELF_COVER_CONCURRENCY`            | `2`             | **后台补生成封面的线程数**。收录后第 2 张起的预览封面与各话封面在这里排队生成，低配 NAS 可降为 `1`。                                                          |
 | `COMIC_SHELF_LOG_LEVEL`                    | `info`          | 后端运行日志级别（可选 `debug`, `info`, `warning`, `error`）。                                                                                                |
 | `COMIC_SHELF_ENABLE_AUTO_UPDATE`           | `true`          | 是否开启多章节连载后台自动追更巡检。设为 `false` 可完全关闭后台自动探测。每本漫画的更新周期可在元数据面板单独设置或设为 `0` 禁用。                            |
 | `COMIC_SHELF_AUTO_UPDATE_INTERVAL_SECONDS` | `172800`        | 后台自动追更巡检轮询周期（秒）。默认 `172800`（2 天），防止对远端接口过于频繁唤醒。                                                                           |
@@ -212,6 +214,7 @@ API 工作进程数固定为 1，不属于可调参数；这里的下载与缩�
 | `PICA_PASSWORD`           | ⚪ **可选（收录哔咔设）** | _(留空)_                         | **哔咔漫画登录密码**。与账号配合自动登录。                                                                      |
 | `PICA_PROXY`              | ⚪ **可选（网络代理）**   | _(留空)_                         | **HTTP / SOCKS5 代理地址**（如 `http://192.168.1.10:7890`）。用于突破大陆网络对哔咔 API 及分流 CDN 的连接阻断。 |
 | `PICA_API_URL`            | ⚪ **可选自定义**         | `https://picaapi.picacomic.com/` | 哔咔官方移动端 REST API 入口，支持切换自建或第三方反代镜像。                                                    |
+| `PICA_CHANNEL`            | ⚪ **可选自定义**         | `2`                              | **哔咔分流线路编号**。随请求头 `app-channel` 发给官方接口，通常无需修改。                                       |
 | `PICA_EXTRA_CDN_HOSTS`    | ⚪ **可选自定义**         | _(留空)_                         | **额外分流 CDN 域名白名单**（英文逗号分隔）。用于局域网自建反代缓存或特定网络镜像 CDN 节点放行。                |
 | `PICA_DOWNLOAD_PACING_MS` | ⚪ **可选自定义**         | `250`                            | **哔咔画页批量下载平滑微休眠**（毫秒，内置 ±20% 拟人化抖动）。设为 `0` 可完全关闭节流。                         |
 | `PICA_API_PACING_MS`      | ⚪ **可选自定义**         | `150`                            | **哔咔多分卷元数据 API 请求间隔**（毫秒）。在解析多章节时防止突发并发请求冲击官方接口。设为 `0` 可关闭。        |
