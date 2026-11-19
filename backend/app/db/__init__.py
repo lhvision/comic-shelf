@@ -60,7 +60,6 @@ from .user_state import (
     get_user_favorites,
     get_user_progress,
     is_user_favorite,
-    migrate_legacy_favorites,
     set_user_favorite,
     set_user_progress,
 )
@@ -108,7 +107,6 @@ __all__ = [
     "invalidate_facets_cache",
     "is_user_favorite",
     "list_guest_passes",
-    "migrate_legacy_favorites",
     "purge_comic_db_records",
     "query_library_index",
     "rebuild_dialogue_vectors",

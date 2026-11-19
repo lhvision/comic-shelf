@@ -507,7 +507,8 @@ def comic_detail(source: str, source_id: str, request: Request) -> ComicDetail:
     meta = _require_meta(source, source_id, request)
     detail = store.detail(meta)
     user_id = get_current_user_id(request)
-    detail.meta.favorite = is_user_favorite(user_id, source, source_id)
+    # meta 是全体读者共享的缓存对象：喜欢属于读者个人，只能设在副本上，否则会随下一次元数据保存落进 album.json
+    detail.meta = meta.model_copy(update={"favorite": is_user_favorite(user_id, source, source_id)})
     is_cur = is_curator(request)
     mirrors = find_comic_mirrors(source, source_id, title=meta.title, is_curator=is_cur)
     detail.mirrors = [DuplicateCheckMatch(**m) for m in mirrors]

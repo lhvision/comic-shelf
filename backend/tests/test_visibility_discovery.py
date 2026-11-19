@@ -1,3 +1,4 @@
+import json
 import tempfile
 import time
 from pathlib import Path
@@ -7,7 +8,8 @@ import app.auth as auth_mod
 import app.db as db_mod
 import app.main as main_mod
 import app.storage.base as storage_base_mod
-from app.models import ComicMeta, DiscoveryFeed, DiscoveryItem
+from app.models import ComicMeta, DiscoveryFeed, DiscoveryItem, FetchedComic
+from app.routers.library import comic_detail
 
 # 整个模块跑在临时数据目录里：下面要签一张口令已知的访客通行证（guest-secret-456），
 # 还要写发现页缓存。落进真库就是一张谁都能用的有效访客证，落进真 discovery/ 就是拿假榜单盖掉真缓存
@@ -63,6 +65,27 @@ def test_visibility_filtering():
     sum_priv = main_mod.store.summary(meta_private)
     assert sum_pub.hidden_from_guest is False
     assert sum_priv.hidden_from_guest is True
+
+
+def test_detail_favorite_stays_per_reader():
+    """详情接口的喜欢状态属于当前读者：不得写到全体读者共享的元数据缓存上，更不得随后续保存落进 album.json。"""
+    store = main_mod.store
+    store.save_fetched(
+        FetchedComic(
+            meta=ComicMeta(source="local", source_id="fav_1", display_id="LOC_fav_1", title="Fav Book"),
+            remote_pages=[],
+        )
+    )
+    auth_mod.AUTH_SECRET = "admin-secret-123"
+    req = make_mock_request("/api/library/local/fav_1", token="admin-secret-123")
+    db_mod.set_user_favorite(auth_mod.get_current_user_id(req), "local", "fav_1", True)
+
+    assert comic_detail("local", "fav_1", req).meta.favorite is True
+    cached = store.load_meta("local", "fav_1")
+    assert cached is not None and cached.favorite is False
+
+    store.update_metadata("local", "fav_1", {"tags": ["改一次标签"]})
+    assert json.loads(store.album_path("local", "fav_1").read_text(encoding="utf-8"))["favorite"] is False
 
 
 def test_discovery_models():
@@ -363,6 +386,7 @@ def test_discovery_cover_router():
 
 if __name__ == "__main__":
     test_visibility_filtering()
+    test_detail_favorite_stays_per_reader()
     test_discovery_models()
     test_picacg_ranking_fetch()
     test_discovery_ranking_router()

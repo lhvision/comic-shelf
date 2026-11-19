@@ -151,7 +151,7 @@ flowchart TD
 ### 4.1 本地优先与元数据双轨（album.json 与 remote.json）
 
 - **双轨分工不变量**：
-  - `album.json`（领域元数据 / Domain Metadata）：面向读者与前端的纯净数据（标题、作者、分话目录、页码、阅读进度、各页宽高与缓存标记 `cached: true`），**绝不包含爬虫下载 URL、Header 或解密参数**。
+  - `album.json`（领域元数据 / Domain Metadata）：面向读者与前端的纯净数据（标题、作者、分话目录、页码、各页宽高与缓存标记 `cached: true`），**绝不包含爬虫下载 URL、Header 或解密参数**，也不承载读者个人状态（喜欢、阅读进度按读者存在 SQLite；`favorite` 字段是历史遗留，详情接口只在副本上按当前读者覆盖，见 PITFALLS #181）。
   - `remote.json`（摄取清单 / Ingestion Manifest）：记录作品初次收录时的原始远端下载凭据（`RemotePage.url`、`headers`、`scramble_id`、`chapter`）及解密版本号 `decode_version`。
 - **永久伴生与不可删除不变量（Permanent Ingestion Manifest）**：
   - **下载完成后绝对禁止删除 `remote.json`**：它并非临时下载队列，而是长期核心资产。它是多章节增量追更（ADR 0029）实现旧章节 0 网络开销复用的唯一基准，也是图片就地解密自愈（`_migrate_decode_v2`）与坏页靶向补拉的技术依赖。

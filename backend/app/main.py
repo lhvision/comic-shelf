@@ -38,9 +38,7 @@ from .db import (
     clean_expired_curator_sessions,
     clean_expired_direct_passes,
     get_all_indexed_mtimes,
-    get_user_favorites,
     init_db,
-    migrate_legacy_favorites,
     purge_comic_db_records,
 )
 from .events import router as events_router
@@ -65,28 +63,6 @@ from .storage import ComicStore
 from .storage.utils import _write_json_atomic, acquire_library_writer_lock
 
 logger = logging.getLogger(__name__)
-
-
-def _migrate_existing_favorites_to_db() -> None:
-    try:
-        curator_favs = get_user_favorites("curator")
-        if curator_favs:
-            return
-        legacy_favs = []
-        if LIBRARY_DIR.exists():
-            for s_dir in LIBRARY_DIR.iterdir():
-                if not s_dir.is_dir() or s_dir.name.startswith("."):
-                    continue
-                for c_dir in s_dir.iterdir():
-                    if not c_dir.is_dir() or c_dir.name.startswith("."):
-                        continue
-                    meta = store.load_meta(s_dir.name, c_dir.name)
-                    if meta and getattr(meta, "favorite", False):
-                        legacy_favs.append((s_dir.name, c_dir.name))
-        if legacy_favs:
-            migrate_legacy_favorites(legacy_favs, "curator")
-    except Exception:
-        pass
 
 
 def sync_library_index(store: ComicStore) -> None:
@@ -160,7 +136,6 @@ async def lifespan(app: FastAPI):
             init_db()
             clean_expired_direct_passes()
             clean_expired_curator_sessions()
-            _migrate_existing_favorites_to_db()
         except Exception as exc:
             logger.warning("Startup initialization error: %s", exc)
         store.recover_interrupted_saves()

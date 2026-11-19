@@ -1228,6 +1228,15 @@
   2. 本地同步一律 `vpr setup:py`（`uv sync --inexact`）；增删依赖用 `uv add <pkg>` / `uv remove --no-sync <pkg>` 后再 `vpr setup:py`；Dockerfile 的安装层同样带 `--inexact`。
   3. 测试在模块级 import 的包必须进 `[dependency-groups].dev`：缺一个，`set -e` 的 `test_py.sh` 就在那个文件处中断，后面的测试文件全部不执行。
 
+### 181. 把读者个人状态写到共享元数据缓存上：取消的喜欢在重启后复活
+
+- **症状**：馆长取消某本的喜欢，重启服务后它又回到"只看喜欢"里；有访客时，访客点的喜欢也可能变成馆长的。
+- **根因**：三环相扣。(a) `store.load_meta()` 返回的是 `_meta_cache` 里全体读者共享的同一个对象，详情接口却直接在它上面写 `meta.favorite = 当前读者是否喜欢`；(b) 之后任何一次元数据保存（改标签、追更）都会把这个值连同整份 meta 落进 `album.json`；(c) 启动时的"旧喜欢迁移"在馆长喜欢为空时把所有 `favorite: true` 的本子导回馆长名下。
+- **红线**：
+  1. `load_meta()` / `load_fetched()` 的返回值按只读对待；要按请求改字段，先 `model_copy()`，改副本。
+  2. 读者个人状态（喜欢、阅读进度）只存 SQLite 并按 `user_id` 隔离，不写进 `album.json`；`ComicMeta.favorite` 只是历史字段，响应里的值一律来自数据库。
+  3. 一次性数据迁移上线并跑过之后要删掉，不要留成每次启动都执行的常驻逻辑：条件一旦再次成立（这里是"馆长喜欢为空"），它就会把旧数据重新灌回来。
+
 ---
 
 ## 🚦 交付门禁

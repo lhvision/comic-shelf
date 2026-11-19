@@ -44,25 +44,6 @@ def set_user_favorite(user_id: str, source: str, source_id: str, favorite: bool)
     return favorite
 
 
-def migrate_legacy_favorites(album_favorites: list[tuple[str, str]], curator_id: str = "curator") -> int:
-    """首次初始化时，将 album.json 中历史标记的 favorite: true 迁移到馆长的独立喜欢库中"""
-    now = int(time.time())
-    count = 0
-    with get_db() as conn:
-        for source, source_id in album_favorites:
-            cur = conn.execute(
-                """
-                INSERT OR IGNORE INTO user_favorites (user_id, source, source_id, created_at)
-                VALUES (?, ?, ?, ?)
-                """,
-                (curator_id, source, source_id, now),
-            )
-            if cur.rowcount > 0:
-                count += 1
-        conn.commit()
-    return count
-
-
 # ----------------------------------------------------------------------
 # 用户专属阅读进度（User Reading Progress）
 # ----------------------------------------------------------------------
