@@ -522,5 +522,9 @@ JmImageTool.decode_and_save(num, source_image, save_path)
 - 抑制必须点名规则并写明原因：`# noqa: <规则>` / `# ty: ignore[<规则>]`，禁止裸 `# type: ignore`。`BLE001` / `S110` / `S112`（吞异常）目前是暂缓而非豁免，新代码不要再添。
 - 导入根只有一个：后端代码与测试一律 `from app.xxx` / `from tests.xxx`（`scripts/` 下的工具用 `from scripts.xxx`），由 `scripts/test_py.sh` 统一设置 `PYTHONPATH`；测试文件里不要再写 `sys.path.insert`，也不要出现 `backend.app.xxx` 这第二个导入根（同一模块会被加载两次，进程内锁与缓存各持一份）。
 - 再跑 `vpr test:py`（`scripts/test_py.sh`）：逐文件独立进程运行 `backend/tests/test_*.py` 全部套件，要求全绿。逐进程是有意为之——`app.config` 在 import 期读取环境变量与 dotenv，进程隔离保证用例互不污染。
+- **测试不碰真实书库**：脚本给每个测试文件注入一次性的 `COMIC_SHELF_DATA`（从已建表的模板目录复制，跑完即删）。所以后端测试只通过 `vpr test:py` 跑，不要直接 `python backend/tests/test_x.py`；新用例不得依赖数据目录里的存量内容（见 `docs/PITFALLS.md` #178）。
+- 测试里重定向路径只用显式入口：`db.set_db_path()` / `db.set_dialogue_db_path()` / `db.set_data_dir()`；做故障注入时 patch 定义函数的子模块，不 patch `app.db` 上的转出名（#160）。
+- `app.main` / `app.db` / `app.storage` 的 `__all__` 只保留确有外部使用者的名字，不为"以后可能有人用"预留转出；包内代码直接从子模块导入。
+- 提交钩子（`vite.config.ts` 的 `staged`）会对暂存的 `.py` 跑 `ruff check --fix` 与 `ruff format`；`ty` 与测试不在钩子里，仍需手动跑。
 - 只跑某一个套件：`vpr test:py <文件名关键词>`，如 `vpr test:py auth`。
 - 中间件全链路（鉴权、`no-store`、401）由 `backend/tests/test_dialogue_http_stack.py` 这类用例用真 HTTP 请求锁住，改中间件或路由后必须一起过。

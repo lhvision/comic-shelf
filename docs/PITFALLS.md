@@ -1017,8 +1017,8 @@
 ### 160. 数据库子包模块化与动态路径只读隔离（PEP 562 属性陷阱）
 
 - **症状**：测试或脚本中尝试通过 `app.db._DB_PATH = mock_path` 篡改数据库路径时，实际底层 SQLite 连接（`connection._DB_PATH`）未改变，导致测试操作真实数据库或产生静默数据污染。
-- **根因**：巨型 `db.py` 拆解为 `backend/app/db/` 子包后，`__init__.py` 仅通过 PEP 562 `__getattr__` 暴露了动态计算属性；直接对包模块属性赋值只会写入包自身的 `__dict__`，无法联动触发底层 `set_db_path()`。
-- **红线**：严禁对 `app.db` 包内私有属性直接赋值；重定向数据库必须统一调用 `db.set_db_path()` 与 `db.set_dialogue_db_path()`，保持单向数据流与连接池同步。
+- **根因**：巨型 `db.py` 拆解为 `backend/app/db/` 子包后，路径状态住在 `db/connection.py` 的模块全局里；直接对包模块属性赋值只会写入包自身的 `__dict__`，底层连接读不到。曾经用 PEP 562 `__getattr__` 与 `sys.modules.get` 反射去"兼容"这种赋值，结果是又一条 #103 的红线违规，均已删除。
+- **红线**：严禁对 `app.db` 的模块属性赋值来重定向路径；数据库走 `db.set_db_path()` / `db.set_dialogue_db_path()`，数据目录（台词伴生文件所在）走 `db.set_data_dir()`，读取走对应的 `get_*()`。要替换包内函数做故障注入时，patch **定义它的子模块**（如 `app.db.index._compute_library_facets`），不要 patch `app.db` 上的转出名。
 
 ### 161. 全书尾页护栏与平台中文水印误杀防线（水印不能替整页定性）
 
@@ -1201,6 +1201,32 @@
 - **红线**：
   1. **动效卡片严禁硬套 Stretched Link 伪元素**：凡含有 3D `perspective`、`transform` 或多书叶展开的复合卡片，杜绝采用外层伪元素大面积铺满；
   2. **冒泡防御优先于结构过度重构**：保持卡片主体语义清晰，次级交互控件通过 `@click.stop.prevent` 原生阻断冒泡，简单可靠优先，杜绝为了教条式校验牺牲交互体验。
+
+### 178. 后端测试直写真实书库：数据目录在 import 期定型，测试却没有重定向
+
+- **症状**：跑一轮 `vpr test:py`，真实书库 `backend/data/` 下的 `comic_shelf.db`、`settings.json`、`import_diagnostic.log` 被改写，`library/local/` 里多出一本 `mcp_test_comic`；个别用例只有在真实库已建好表时才通过，换台干净机器就失败。
+- **根因**：`app.config` 在 import 期读取 `COMIC_SHELF_DATA` 并就地 `mkdir`，路由层的 `store` 单例随之绑定真实目录。用例只用 `set_db_path()` 换了数据库文件，凡是经 `store`、设置、诊断日志落盘的路径仍指向真实书库——与核心不变量 1 直接冲突。
+- **红线**：
+  1. **后端测试只通过 `vpr test:py` 运行**。`scripts/test_py.sh` 为每个测试文件注入一个一次性的 `COMIC_SHELF_DATA`（从已 `init_db()` 的模板目录复制），跑完即删；直接 `python backend/tests/test_x.py` 会绕过这层隔离。
+  2. 新用例不得假设数据目录里有任何存量内容；需要的表、文件自己建。
+  3. 临时目录必须带上已建好的库结构：只换目录不建表时，用例仍会通过，但走的是"索引刷新失败被 `except` 吞掉"的降级路径——绿灯不等于测到了。
+
+### 179. 格式化器跟随 `requires-python` 改写语法，悄悄抬高解释器硬下限
+
+- **症状**：`pyproject.toml` 声明 `requires-python = ">=3.14"` 后跑一次 `ruff format`，14 处 `except (A, B):` 被改写为 3.14 才合法的无括号写法；AST 完全等价，评审和测试都看不出差别，但 3.13 及以下的解释器 import 后端即 `SyntaxError`。算力机上旧 Python 的 `ocr_worker.py --sync-local` 因此每一本都同步失败，又被逐本 `except Exception` 吞成一行警告。
+- **根因**：ruff 的目标版本默认取自 `requires-python`，格式化与 `UP` 规则会主动采用该版本的新语法；"声明基线"因此等同于"放弃更低版本"，而不只是一句文档。
+- **红线**：
+  1. 后端的 Python **3.14 是硬下限**，Docker 基础镜像、`.venv`、`.venv-ocr` 与一切会 import 后端的脚本必须同版本；调低基线前先改 `requires-python` 并重新格式化。
+  2. 跨进程调用后端的脚本要在入口显式校验解释器版本并直接退出，不得依赖下游 `except Exception` 的兜底把"环境不对"降级成逐条警告。
+
+### 180. uv 迁移的两个默认行为：锁定模式不许换源、精确同步会卸载手动追加的包
+
+- **症状**：(a) 构建时用 `UV_DEFAULT_INDEX` 把索引临时指向国内镜像，`uv sync --locked` 报锁文件需要更新并退出；(b) 跑一次裸 `uv sync` 或 `uv remove <pkg>` 后，`.venv` 里按 DEPLOYMENT §5.1.2 手动 `pip install` 的 onnxruntime / tokenizers 消失，语义检索静默降级。
+- **根因**：(a) `uv.lock` 把每个包的来源索引一并锁定，安装期换源即视为锁文件不一致；(b) `uv sync` 默认精确同步，会移除锁文件之外的一切包，而 `uv run` / `uv add` 不会。
+- **红线**：
+  1. 镜像源写在 `pyproject.toml` 的 `[[tool.uv.index]]` 里并随锁文件提交（与 `.npmrc` 同一做法），不在构建命令或环境变量里临时指定。
+  2. 本地同步一律 `vpr setup:py`（`uv sync --inexact`）；增删依赖用 `uv add <pkg>` / `uv remove --no-sync <pkg>` 后再 `vpr setup:py`；Dockerfile 的安装层同样带 `--inexact`。
+  3. 测试在模块级 import 的包必须进 `[dependency-groups].dev`：缺一个，`set -e` 的 `test_py.sh` 就在那个文件处中断，后面的测试文件全部不执行。
 
 ---
 
