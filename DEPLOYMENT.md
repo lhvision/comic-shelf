@@ -393,8 +393,9 @@ backend/data/
    # 巡检：OCR 伴生覆盖率 + 宿主显卡 + 本轮默认算力线 + 两条线各自的"会话级"实际推理设备 + FTS5 条目
    vpr ocr status              # 等价于 bash scripts/ocr.sh status
 
-   # 装依赖：检测到 NVIDIA 显卡 → 在项目内建 .venv-ocr/（已 gitignore，约 1.7GB）并装 GPU 栈；
-   # 没检测到卡 → 只往应用 .venv 里装 CPU 依赖。装完 GPU 环境后，run/test/status 自动优先用它。
+   # 装依赖（需要 uv）：版本全部来自 uv.lock，依赖声明在 pyproject.toml 的 ocr / ocr-gpu 两个依赖组里。
+   # 检测到 NVIDIA 显卡 → 在项目内建 .venv-ocr/（已 gitignore，约 2.8GB），里面只有 ocr-gpu 组；
+   # 没检测到卡 → 往应用 .venv 里追加 ocr 组。装完 GPU 环境后，run/test/status 自动优先用它。
    bash scripts/ocr.sh install
    # 明确只要 CPU（无卡机、或与宿主争卡时）：
    bash scripts/ocr.sh install --cpu
@@ -403,16 +404,21 @@ backend/data/
 
    > **Python 版本**：后端以 **Python 3.14 为硬下限**（源码使用了 3.14 才有的语法，旧解释器一 import 就 `SyntaxError`）。
    > 算力机上凡是要 import 后端的动作——`--sync-local`、`scripts/sync_ocr.py`——都必须跑在 3.14 上，`--sync-local`
-   > 在旧解释器下会开跑前直接拒绝；纯提取 + `--api-url` 通知 NAS 入库不 import 后端。`ocr.sh install` 建出的
-   > `.venv-ocr` 沿用应用 `.venv` 的解释器，所以先 `vpr setup:py` 再 `ocr.sh install` 就是 3.14。
+   > 开跑前会先试着导入后端，导不了（解释器太旧，或环境里没有后端依赖）就直接拒绝；纯提取 + `--api-url` 通知 NAS 入库不 import 后端。`ocr.sh install` 建出的
+   > `.venv-ocr` 由 uv 按仓库的 `.python-version` 选解释器，同样是 3.14。
+
+   > **这些依赖与运行时无关**：两个 OCR 依赖组都不是默认组，Dockerfile 的 `uv sync --no-dev` 与 `vpr setup:py`
+   > 都不会装它们，生产镜像的包清单与体积不变（`backend/tests/test_ocr_worker.py` 有用例钉住）。
+   > 用旧版脚本（pip + `requirements-ocr*.txt`）建过 `.venv-ocr` 的机器，请先删掉该目录再 `install`：
+   > 旧脚本在里面留了一份 uv 卸不掉的 CPU 版 `onnxruntime` 安装记录。
 
    回落是**显式**的：`.venv-ocr` 不存在时 `run` 会打一行 `⚠️ 检测到宿主有 NVIDIA 显卡，但 GPU 算力环境
    未创建，本轮按 CPU 跑` 并给出建环境的命令；`--gpu` 时环境缺失直接拒绝（exit 1）。环境在、但 Det/Cls/Rec 三段会话里有一段没跑在 CUDA 上（CPU 版 `onnxruntime` 覆盖了 GPU 版，或 `LD_LIBRARY_PATH` 没挂上 venv 内的 CUDA 库），`build_engine` 也会当场报错退出，绝不静默降级。
 
    > ⚠️ **不要**手动把 `onnxruntime-gpu` 与 CPU 版 `onnxruntime` 混装进同一个环境：两个 wheel
    > 共用 `site-packages/onnxruntime/` 目录，覆盖安装会留下混合文件，`get_available_providers()`
-   > 照样列出 CUDA 但推理静默退回 CPU。`install` 已按"先删目录再装 GPU 版"的顺序处理，
-   > 原理与实测数据见 `docs/PITFALLS.md` #137。
+   > 照样列出 CUDA 但推理静默退回 CPU。两个依赖组已在 `pyproject.toml` 里声明互斥，
+   > uv 会拒绝同时安装；原理与实测数据见 `docs/PITFALLS.md` #137。
 
 2. **高性能机批量提取 OCR 伴生文件并通知 NAS**：
 
@@ -423,12 +429,24 @@ backend/data/
    # 强制回落应用的 CPU 线：
    bash scripts/ocr.sh run --cpu --source jm
 
-   # 批量对指定漫画跑 OCR，并在完成后自动通过 API 通知远程 NAS 入库：
-   bash scripts/ocr.sh run --source jm --id 1059521 --api-url http://192.168.1.100:8000 --token "你的MachineToken"
+   # 机器密钥放环境变量，不写在命令行（进程列表与 shell 历史里可见）；--token 仍可用，优先级更高：
+   export COMIC_SHELF_MACHINE_TOKEN="你的MachineToken"
 
-   # 全库扫描处理（自动跳过已有伴生文件的画页，支持 --limit 限定册数）：
-   bash scripts/ocr.sh run --limit 10 --api-url http://192.168.1.100:8000 --token "你的MachineToken"
+   # 批量对指定漫画跑 OCR，并在完成后自动通过 API 通知远程 NAS 入库：
+   bash scripts/ocr.sh run --source jm --id 1059521 --api-url http://192.168.1.100:8000
+
+   # 全库扫描处理（自动跳过已有伴生文件的画页；--limit 只数确有待提取画页的本，
+   # 已完成的不占名额，所以反复执行同一条命令就是分批跑完全库）：
+   bash scripts/ocr.sh run --limit 10 --api-url http://192.168.1.100:8000
    ```
+
+   > **跑批结果看退出码**：有画页提取失败、或有本的索引没更新成功（通知 NAS 失败、`--sync-local` 异常）时，
+   > 结尾会列出失败页数与涉及的本，并以退出码 1 结束；失败的页不留伴生文件，重跑同一条命令即重试。
+   > 图源取 `library/` 下实际存在的目录（含 `copymanga`），`--source` 指向不存在的目录直接报错。
+   > `--page` 写错（如 `--page abc`）在开跑前就拒绝；多章节本各话都有同名页，不支持 `--page`，请改用
+   > `--image <画页路径>`。通知 NAS 的等待上限是 120 秒（NAS 端入库后还要重编这一本的台词向量）。
+   > `--sync-local` 要在算力进程里导入后端，GPU 环境 `.venv-ocr` 没有后端依赖，开跑前就会拒绝；
+   > 同机入库请提取完再跑 `bash scripts/ocr.sh sync`。
 
    > `--workers` 在 CPU 线上**不要超过 2**：单个引擎内部已吃满多核，加线程只是在抢核。v6 的同页对照
    > （`jm/1249304` 全 153 页，两点差法扣掉模型加载，走 `ocr.sh lines` 离线 harness）：
@@ -466,8 +484,8 @@ backend/data/
    ```bash
    # 全库增量同步（智能感知 /mnt/nas_manga 或 COMIC_SHELF_DATA）：
    vpr ocr:sync
-   # 或指定单本：
-   python3 scripts/sync_ocr.py --source jm --id 1059521
+   # 或指定单本（经 ocr.sh 走应用 .venv 的解释器，并把探测到的数据目录传下去）：
+   bash scripts/ocr.sh sync --source jm --id 1059521
    ```
 
 4. **单张画页快速测试与气泡聚类预览**：
@@ -482,18 +500,20 @@ backend/data/
 
 上面整套流水线的前提是**算存分离**：NAS 容器不做法向推理，只收 `{index}.ocr.json` 并重建 SQLite FTS5。
 `backend/app/storage/pdf.py::_extract_chapters_from_ocr`（导入 PDF 且**没有**电子书签时的第二轨分话探测）
-按 ADR 0024 的口径是"该包属可选依赖，未安装时本轨自动跳过"，因此 `rapidocr` **不在** `pyproject.toml` 的依赖表里，
-别顺手加进来——它只服务"无书签 PDF 要自动切话"这一件事，代价是镜像多 33MB（PP-OCRv6 的三个 `.onnx` 就在包里，
-不需要联网下模型）。
+按 ADR 0024 的口径是"该包属可选依赖，未安装时本轨自动跳过"，因此 `rapidocr` **不在** `pyproject.toml` 的运行时依赖表
+（`[project].dependencies`）里，只在点名才装的 `ocr` 依赖组里，别顺手挪进运行时依赖——它只服务"无书签 PDF 要自动切话"
+这一件事，代价是镜像变大：`rapidocr` 本身约 33MB（PP-OCRv6 的三个 `.onnx` 就在包里，不需要联网下模型），
+外加 `onnxruntime`、`opencv-python`、`numpy`。装之前请对照 300 MiB 的镜像体积预算自行权衡。
 
 缺它时的行为：该 PDF 平铺成单章，导入照常完成，日志打一行 **WARNING**「跳过 PDF 扉页自动分话」。
 （这里必须是 warning：uvicorn 默认不给 root logger 设级别，info 会被整条丢掉，就变成"没人知道为什么没有话目录"。）
 
-经常在 NAS 上导入无书签 PDF、想要自动分话的话，要补两个包：`rapidocr` 3.x 不自带推理后端，得另装 CPU 版 `onnxruntime`（已按 §5.1.2 装过语义腿的，这个包已经在了，只补 `rapidocr`）：
+经常在 NAS 上导入无书签 PDF、想要自动分话的话，在**你自己的** Dockerfile 里给安装层的同步命令加上 `ocr` 依赖组
+（与算力机 CPU 线是同一组包，版本同样由 `uv.lock` 锁定；仓库自带的 Dockerfile 保持不带组）：
 
 ```dockerfile
-# Dockerfile 的 uv sync 安装层后追加：
-RUN pip install "rapidocr>=3.9.2" "onnxruntime>=1.20" -i https://pypi.tuna.tsinghua.edu.cn/simple
+# Dockerfile 安装层的最后一行改为：
+    uv sync --locked --no-dev --inexact --group ocr
 ```
 
 #### 5.1.2 语义检索「按意思找台词」（可选能力，默认不启用）
@@ -886,7 +906,7 @@ curl -X POST "http://<NAS_IP>:8000/api/mcp/rpc" \
 
 | 调用方                                               | 发哪把                            | 备注                                                                                          |
 | :--------------------------------------------------- | :-------------------------------- | :-------------------------------------------------------------------------------------------- |
-| OCR 算力机（`ocr.sh run --api-url … --token …`）     | `COMIC_SHELF_MACHINE_TOKEN`       | 这条流水线只调 `*/ocr/sync`，**根本不经过 MCP**                                               |
+| OCR 算力机（`ocr.sh run --api-url …`）               | `COMIC_SHELF_MACHINE_TOKEN`       | 这条流水线只调 `*/ocr/sync`，**根本不经过 MCP**                                               |
 | Paper Studio、NAS 定时同步脚本等内网自动写库任务     | `COMIC_SHELF_MACHINE_TOKEN`       | 建本与上传画页走 `POST /api/library/local/*`                                                  |
 | 外部智能体（Claude / Cursor / 飞书 Bot 的 MCP 配置） | `COMIC_SHELF_MCP_TOKEN`           | 只需 MCP；它拿不到任何 REST 写端点                                                            |
 | 馆长自己的浏览器                                     | `COMIC_SHELF_SECRET`              | 登录校验后签发高熵随机会话令牌（`cs_curator_<hex>`）由 HttpOnly Cookie 承载，根口令不落地存储 |

@@ -14,53 +14,33 @@ BACKEND_DIR = PROJECT_ROOT / "backend"
 sys.path.insert(0, str(PROJECT_ROOT))
 sys.path.insert(0, str(BACKEND_DIR))
 
-
-def detect_data_dir() -> Path:
-    """Smartly detects data directory from env, NAS mount, or local backend."""
-    env_val = os.getenv("COMIC_SHELF_DATA", "").strip()
-    if env_val:
-        p = Path(env_val).expanduser().resolve()
-        if p.is_dir():
-            return p
-
-    nas_cand = Path("/mnt/nas_manga/library")
-    if nas_cand.is_dir():
-        return Path("/mnt/nas_manga")
-
-    default_data = BACKEND_DIR / "data"
-    default_data.mkdir(parents=True, exist_ok=True)
-    return default_data
+from scripts.ocr_worker import list_comics, resolve_data_dir
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Sync sidecar *.ocr.json comic dialogues into SQLite FTS5 table")
-    parser.add_argument("--source", type=str, default=None, help="Target comic source (e.g. jm, local, picacg)")
+    parser.add_argument(
+        "--source",
+        type=str,
+        default=None,
+        help="Target comic source, a directory under library/ (e.g. jm, local, picacg, copymanga)",
+    )
     parser.add_argument("--id", type=str, default=None, help="Target comic ID")
     parser.add_argument("--data-dir", type=str, default=None, help="Explicit data directory path")
     parser.add_argument("--force", action="store_true", help="Force re-indexing even if OCR files are unchanged")
     parser.add_argument("--no-cleanup", action="store_true", help="Disable orphan dialogue cleanup")
     args = parser.parse_args()
 
-    if args.data_dir:
-        data_dir = Path(args.data_dir).expanduser().resolve()
-    else:
-        data_dir = detect_data_dir()
+    # 自动探测与 worker 共用一份，两边认的永远是同一个书库
+    data_dir = Path(args.data_dir).expanduser().resolve() if args.data_dir else resolve_data_dir()
 
     print(f"📁 Using data directory: {data_dir}")
 
-    # Set DB path and initialize
+    # 后端在 import 时按这个变量定数据目录与两个库文件的位置，所以必须先设再导入
     os.environ["COMIC_SHELF_DATA"] = str(data_dir)
-    from app.db import (
-        cleanup_orphan_comic_dialogues,
-        get_dialogue_db,
-        init_db,
-        set_db_path,
-        sync_comic_dialogues,
-    )
+    from app.db import cleanup_orphan_comic_dialogues, get_dialogue_db, init_db, sync_comic_dialogues
 
-    db_file = data_dir / "comic_shelf.db"
-    set_db_path(db_file)
-    init_db(db_file)
+    init_db()
 
     # 1. 自动清理已从磁盘删除的孤儿漫画索引
     if not args.no_cleanup:
@@ -74,22 +54,11 @@ def main() -> None:
         return
 
     # Collect target comics (source, source_id)
-    targets: list[tuple[str, str]] = []
+    # 点名单本时不要求目录还在：书已删除的话，这一步会把它残留的索引清掉
     if args.source and args.id:
-        targets.append((args.source, args.id))
-    elif args.source:
-        src_dir = library_dir / args.source
-        if src_dir.is_dir():
-            for comic_dir in sorted(src_dir.iterdir()):
-                if comic_dir.is_dir() and not comic_dir.name.startswith("."):
-                    targets.append((args.source, comic_dir.name))
+        targets = [(args.source, args.id)]
     else:
-        for src_dir in sorted(library_dir.iterdir()):
-            if src_dir.is_dir() and not src_dir.name.startswith("."):
-                source_name = src_dir.name
-                for comic_dir in sorted(src_dir.iterdir()):
-                    if comic_dir.is_dir() and not comic_dir.name.startswith("."):
-                        targets.append((source_name, comic_dir.name))
+        targets = [(src, cid) for src, cid, _ in list_comics(library_dir, args.source)]
 
     print(f"🔍 Discovered {len(targets)} comic(s) to scan...")
     total_indexed = 0

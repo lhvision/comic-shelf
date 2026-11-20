@@ -7,7 +7,7 @@
    与气泡面积分布，用来判断一版判据改动是拆开了误并、还是把真气泡也拆碎了。
 3. `--image`：只识别一张图并打印聚类后的气泡，不写任何文件（`ocr.sh test` 走这里）。
 
-侧车本身不存原始行（体积要考虑阅读器每页解析），所以这个 dump 就是唯一的离线复现入口。
+侧车只存聚类后的气泡、不存原始行，所以这个 dump 就是唯一的离线复现入口。
 引擎构造、置信度门槛与画页清单全部直接用 worker 的，实验台量到的就是实跑的那一套。
 """
 
@@ -28,6 +28,7 @@ from scripts.ocr_worker import (
     cluster_blocks,
     collect_comic_pages,
     get_engine,
+    list_comics,
     resolve_data_dir,
     rows_to_blocks,
     run_engine,
@@ -35,17 +36,9 @@ from scripts.ocr_worker import (
 
 
 def _images(data_dir: Path, source: str | None, source_id: str | None, limit_pages: int) -> list[Path]:
-    root = data_dir / "library"
-    if source and source_id:
-        books = [root / source / source_id]
-    elif source:
-        # 只给 --source 时不许退化成全库扫描，否则一轮无谓推理藏在"我只跑 jm"这句话里
-        books = sorted((root / source).glob("*")) if (root / source).is_dir() else []
-    else:
-        books = sorted(root.glob("*/*"))
     imgs: list[Path] = []
-    for book in books:
-        # 画页清单与 worker 同源：分章节的本把图放在 pages/ 下的子目录里，只扫一层会整本漏掉
+    # 选本与画页清单都与 worker 同源：只给 --source 不会退化成全库扫描；分章节的本把图放在 pages/ 的子目录里
+    for _, _, book in list_comics(data_dir / "library", source, source_id):
         found = [img for img, _ in collect_comic_pages(book)]
         imgs.extend(found[:limit_pages] if limit_pages else found)
     return imgs

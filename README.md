@@ -142,7 +142,7 @@
   - **阅读器气泡呼吸微光直达**：URL 支持携带 `?page=42&bubble_box=0.1,0.2,0.3,0.4`（同页其余命中气泡由 `&bubble_boxes=a;b;c` 一并带来：代表气泡呼吸、其余命中气泡静态描边，前后端都按一页最多 6 处封顶），画卷视口加载就绪后，在台词气泡上浮现暖纸朱砂金色微光（2.2s 脉冲渐隐），强制挂载 `pointer-events: none` 零阻碍交互手势，底图加载门禁防止动画提前夭折，顶部分镜自适应翻转防溢出；
   - **幽灵索引自愈与删改联动**：漫画删除或重新装订（`replace-pages`）时原子清空 FTS5 记录，多章节分卷自动映射至全书拍平物理页码；
   - **多层纵深安全与沙箱隔离**：严格过滤 `hidden_from_guest` 隐私漫画，禁止未授权访客嗅探；路径穿越沙箱硬边界校验；查询入参限制 `max_length=200` 防 DoS；对白摘要严格转义彻底免疫 XSS；
-  - **NAS 离线同步脚本**：提供 `python3 scripts/sync_ocr.py`，智能感知 NAS 挂载路径（`/mnt/nas_manga`）并一键批量建立台词索引。
+  - **NAS 离线同步脚本**：提供 `vpr ocr:sync`（即 `bash scripts/ocr.sh sync`），智能感知 NAS 挂载路径（`/mnt/nas_manga`）并一键批量建立台词索引。
 - **智能体协同中枢与模型上下文协议（Model Context Protocol / MCP & WebMCP）**：
   - **三模服务端 MCP 协议架构**：FastAPI 提供标准 JSON-RPC 2.0 协议支持，包括 SSE 流式传输（`/api/mcp/sse` 与 `/mcp/sse`）、长连接消息端点（`/api/mcp/messages`）、直连 HTTP RPC（`POST /mcp` 与 `/api/mcp/rpc`）以及原生 Stdio 命令行模式（`python3 backend/app/mcp_server.py`），无缝直连 Claude Desktop、Antigravity、Cursor、飞书 Bot 与局域网微服务；SSE 握手只回发一次性 `session_id`（凭据不进 URL、不留反代日志），鉴权失败按登录同一套 IP 锁规则计数（与网页登录分开记账）；
   - **9 大原子数据工具**：`search_by_image`（局部特征识图）、`search_by_dialogue`（台词倒排全文检索）、`search_by_meaning`（按意思找台词，字面不通也能召回）、`query_shelf`（多维藏书筛选）、`get_comic_detail`（完整元数据与章节）、`recommend_unread`（智能未读书籍淘选）、`create_direct_pass`（单本沙箱免密直达凭据签发）、`get_shelf_stats`（书架聚合统计）、`get_story_context`（按页码区间取原始台词流，供分镜/脚本/对话生成管线）；
@@ -167,7 +167,8 @@ vp install
 
 # 3.（可选）台词 OCR 算力依赖——只有要跑 scripts/ocr.sh 的机器需要，读者端不用装
 bash scripts/ocr.sh install       # 检测到 NVIDIA 显卡即在项目内建 .venv-ocr/ 并默认走 GPU
-# 必须在 setup:py 之后执行：否则脚本会拿宿主 python 装依赖（Homebrew 的 python 会直接拒绝）
+# 同样用 uv 按 uv.lock 安装（pyproject.toml 的 ocr / ocr-gpu 依赖组）；这两组不是运行时依赖，不进 Docker 镜像
+# 无卡机器装的是 CPU 线，追加在应用 .venv 里，所以要在 setup:py 之后执行
 # Apple 机器装不出加速器（onnxruntime 无 macOS CUDA 构建），留 CPU 线即可，大批量交给带卡机器
 
 # 4. 启动开发环境（前后端热重载）

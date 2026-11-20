@@ -162,12 +162,18 @@ class TestOCRWorker(unittest.TestCase):
 
     def test_parse_page_filter(self):
         """测试单页、列表与连续范围页码解析"""
-        self.assertIsNone(parse_page_filter(None))
-        self.assertIsNone(parse_page_filter(""))
         self.assertEqual(parse_page_filter("3"), {3})
         self.assertEqual(parse_page_filter("1, 3, 5"), {1, 3, 5})
         self.assertEqual(parse_page_filter("10-13"), {10, 11, 12, 13})
         self.assertEqual(parse_page_filter("1, 5-7, 10"), {1, 5, 6, 7, 10})
+
+    def test_parse_page_filter_rejects_garbage(self):
+        """坏片段必须整体拒绝：忽略它会得到空集，空集又被当成"没给过滤条件"，带 --force 就是全库重提。"""
+        import argparse
+
+        for bad in ("abc", "", "1,x", "3-", "-3", "5-2", "0", "1,,2"):
+            with self.assertRaises(argparse.ArgumentTypeError, msg=f"--page {bad!r} 不该被接受"):
+                parse_page_filter(bad)
 
     def test_is_valid_ocr_sidecar(self):
         """测试伴生文件合法性与脏缓存自愈判定"""
@@ -344,7 +350,267 @@ class TestEngineAdapter(unittest.TestCase):
         )
 
 
+class TestBatchRun(unittest.TestCase):
+    """批量主流程：用假引擎跑真实的 main()，书库是一次性临时目录。"""
+
+    def setUp(self):
+        import tempfile
+
+        self.data_dir = Path(tempfile.mkdtemp())
+        self.library = self.data_dir / "library"
+
+    def tearDown(self):
+        import shutil
+
+        shutil.rmtree(self.data_dir, ignore_errors=True)
+
+    def _page(self, rel: str) -> Path:
+        from PIL import Image
+
+        path = self.library / rel
+        path.parent.mkdir(parents=True, exist_ok=True)
+        Image.new("RGB", (40, 60), "white").save(path)
+        return path
+
+    def _run(self, *argv, fail_on=(), notify_ok=True):
+        """跑一次 main()，返回 (退出码, 建引擎次数, 通知过的本)。`fail_on` 里的文件名推理时抛错。"""
+        import contextlib
+        import io
+        import threading
+        from unittest import mock
+
+        builds = []
+        notified = []
+
+        def fake_run_engine(_engine, img_path):
+            if img_path.name in fail_on:
+                raise RuntimeError("模拟推理失败")
+            return [([[1.0, 1.0], [9.0, 1.0], [9.0, 30.0], [1.0, 30.0]], "台词", 0.9)]
+
+        def fake_notify(_url, source, source_id, token=None):
+            notified.append(f"{source}/{source_id}")
+            return notify_ok
+
+        with (
+            mock.patch.object(sys, "argv", ["ocr_worker.py", "--data-dir", str(self.data_dir), *argv]),
+            mock.patch.object(ocr_worker, "RapidOCR", object()),
+            mock.patch.object(ocr_worker, "_thread_local", threading.local()),
+            mock.patch.object(ocr_worker, "build_engine", lambda *a: builds.append(1) or object()),
+            mock.patch.object(ocr_worker, "run_engine", fake_run_engine),
+            mock.patch.object(ocr_worker, "notify_nas_sync", fake_notify),
+            contextlib.redirect_stdout(io.StringIO()),
+            contextlib.redirect_stderr(io.StringIO()),
+        ):
+            code = ocr_worker.main()
+        return code, len(builds), notified
+
+    def test_every_source_directory_is_scanned(self):
+        """图源按 library/ 下的实际目录遍历：清单写死时，后接入的 copymanga 批量跑永远扫不到。"""
+        self._page("jm/1/pages/00001.png")
+        page = self._page("copymanga/slug/pages/c1/00001.png")
+        self.assertEqual(0, self._run()[0])
+        self.assertTrue(page.with_name("00001.ocr.json").is_file(), "copymanga 的画页没有被提取")
+        self.assertEqual(
+            [("copymanga", "slug"), ("jm", "1")],
+            [(src, sid) for src, sid, _ in ocr_worker.list_comics(self.library)],
+        )
+        # 限定一个不存在的图源要报错，而不是安静地"未发现待处理漫画"
+        self.assertEqual(1, self._run("--source", "nope")[0])
+
+    def test_multi_chapter_pages_keep_chapter_order_and_refuse_page_filter(self):
+        """多章节本各话都有 00001：只按文件名排会把两话交错，页码也指不到唯一一页。"""
+        for rel in ("c1/00001.png", "c1/00002.png", "c2/00001.png"):
+            self._page(f"local/multi/pages/{rel}")
+        comic = self.library / "local" / "multi"
+        order = [f"{img.parent.name}/{img.name}" for img, _ in ocr_worker.collect_comic_pages(comic)]
+        self.assertEqual(["c1/00001.png", "c1/00002.png", "c2/00001.png"], order)
+        with self.assertRaises(ValueError):
+            ocr_worker.collect_comic_pages(comic, page_filter={1})
+
+        # 批量带 --page 遇到多章节本：这一本不处理、整批以失败退出，单章节本照常
+        single = self._page("jm/1/pages/00001.png")
+        self.assertEqual(1, self._run("--page", "1")[0])
+        self.assertTrue(single.with_name("00001.ocr.json").is_file())
+        self.assertEqual([], list(comic.rglob("*.ocr.json")), "多章节本不该被按错的页码提取")
+
+    def test_failed_page_leaves_no_sidecar_and_fails_the_run(self):
+        """推理失败的页不许记成"0 条对白"：不留侧车（下次重试），整批退出码非 0。"""
+        good = self._page("jm/1/pages/00001.png")
+        bad = self._page("jm/1/pages/00002.png")
+        code, _, _ = self._run(fail_on={"00002.png"})
+        self.assertEqual(1, code)
+        self.assertTrue(good.with_name("00001.ocr.json").is_file())
+        self.assertFalse(bad.with_name("00002.ocr.json").exists())
+        self.assertEqual([], list(self.library.rglob("*.tmp")))
+        # 重跑同一条命令只补失败的那一页
+        self.assertEqual(0, self._run()[0])
+        self.assertTrue(bad.with_name("00002.ocr.json").is_file())
+
+    def test_failed_index_notification_fails_the_run(self):
+        """通知 NAS 入库失败（token 写错、NAS 不在线）时侧车照常落盘，但退出码必须非 0。"""
+        page = self._page("jm/1/pages/00001.png")
+        code, _, notified = self._run("--api-url", "http://nas.invalid", notify_ok=False)
+        self.assertEqual(1, code)
+        self.assertEqual(["jm/1"], notified)
+        self.assertTrue(page.with_name("00001.ocr.json").is_file())
+
+    def test_limit_counts_only_comics_with_pending_pages(self):
+        """--limit 只数确有待提取画页的本：先截断再跳过的话，反复跑 --limit 1 永远卡在已完成的第一本。"""
+        for sid in ("1", "2", "3"):
+            self._page(f"jm/{sid}/pages/00001.png")
+        for expected in (1, 2, 3, 3):
+            self.assertEqual(0, self._run("--limit", "1")[0])
+            self.assertEqual(expected, len(list(self.library.rglob("*.ocr.json"))))
+
+    def test_engines_are_built_once_per_thread_not_per_comic(self):
+        """线程池全程只有一个：每本各建一个池，就等于每本都重建一轮引擎。"""
+        for sid in ("1", "2", "3", "4"):
+            for name in ("00001.png", "00002.png"):
+                self._page(f"jm/{sid}/pages/{name}")
+        code, builds, _ = self._run("--workers", "2")
+        self.assertEqual(0, code)
+        self.assertEqual(8, len(list(self.library.rglob("*.ocr.json"))))
+        self.assertLessEqual(builds, 3, "主线程预热 1 次 + 2 个工作线程各 1 次")
+
+    @staticmethod
+    def _fake_backend(sync):
+        """用替身顶掉后端包：`sync` 为 None 时模拟"这个环境导入不了后端"。"""
+        import types
+        from unittest import mock
+
+        fake_db = None
+        if sync is not None:
+            fake_db = types.ModuleType("app.db")
+            fake_db.sync_comic_dialogues = sync
+        return mock.patch.dict(sys.modules, {"app": types.ModuleType("app"), "app.db": fake_db})
+
+    def test_sync_local_indexes_the_library_given_by_data_dir(self):
+        """后端在 import 时按 COMIC_SHELF_DATA 定数据目录：不先把它指到 --data-dir，
+        侧车写进这个库、索引却同步到后端默认的那个库，还报回一个不相干的旧计数。"""
+        import os
+        from unittest import mock
+
+        self._page("jm/1/pages/00001.png")
+        seen = []
+
+        def fake_sync(source, source_id):
+            seen.append((os.environ.get("COMIC_SHELF_DATA"), source, source_id))
+            return 1
+
+        with mock.patch.dict(os.environ, {"COMIC_SHELF_DATA": "/somewhere/else"}), self._fake_backend(fake_sync):
+            self.assertEqual(0, self._run("--sync-local")[0])
+        self.assertEqual([(str(self.data_dir.resolve()), "jm", "1")], seen)
+
+    def test_sync_local_refuses_before_any_work_when_backend_is_missing(self):
+        """GPU 算力环境里没有后端依赖：必须开跑前拒绝，而不是提取完整批再逐本报"同步异常"。"""
+        import os
+        from unittest import mock
+
+        self._page("jm/1/pages/00001.png")
+        with mock.patch.dict(os.environ), self._fake_backend(None):
+            code, builds, _ = self._run("--sync-local")
+        self.assertEqual(1, code)
+        self.assertEqual(0, builds, "还没确认后端可用就开始建引擎了")
+        self.assertEqual([], list(self.library.rglob("*.ocr.json")))
+
+    def test_notify_waits_long_enough_for_a_slow_nas(self):
+        """NAS 端入库是同步的，还要重编台词向量：10 秒超时会把"还在入库"报成网络异常。"""
+        import io
+        from unittest import mock
+
+        seen = {}
+
+        def fake_urlopen(req, timeout):
+            seen["timeout"] = timeout
+            resp = mock.MagicMock(status=200)
+            resp.read.return_value = b'{"ok": true, "count": 7}'
+            resp.__enter__.return_value = resp
+            return resp
+
+        with mock.patch("urllib.request.urlopen", fake_urlopen), mock.patch("sys.stdout", io.StringIO()):
+            self.assertTrue(ocr_worker.notify_nas_sync("http://nas.invalid/", "jm", "1"))
+        self.assertGreaterEqual(seen["timeout"], 120)
+
+
+class TestDependencyIsolation(unittest.TestCase):
+    """OCR 提取是算力机上的离线工具，不是运行时：它的依赖不许进生产镜像（docs/PITFALLS.md #168）。"""
+
+    ROOT = Path(__file__).resolve().parents[2]
+    HEAVY = ("onnxruntime", "rapidocr", "opencv", "nvidia", "numpy")
+
+    def _closure(self, group: str | None) -> set[str]:
+        """按 uv.lock 展开一组依赖的全部传递依赖。`group=None` 即运行时依赖（Dockerfile 装的那一份）。"""
+        import tomllib
+
+        lock = tomllib.loads((self.ROOT / "uv.lock").read_text(encoding="utf-8"))
+        packages: dict[str, list[dict]] = {}
+        for pkg in lock["package"]:
+            packages.setdefault(pkg["name"], []).append(pkg)
+        root = packages["paper-room"][0]
+        todo = list(root["dev-dependencies"][group] if group else root["dependencies"])
+        seen: set[str] = set()
+        while todo:
+            dep = todo.pop()
+            for pkg in packages[dep["name"]]:
+                todo.extend(pkg.get("dependencies", []))
+                for extra in dep.get("extra", []):
+                    todo.extend(pkg.get("optional-dependencies", {}).get(extra, []))
+            seen.add(dep["name"])
+        return seen
+
+    def test_runtime_image_carries_no_ocr_dependency(self):
+        runtime = self._closure(None)
+        heavy = sorted(n for n in runtime if n.startswith(self.HEAVY))
+        self.assertEqual([], heavy, "推理依赖漏进了运行时依赖表，生产镜像会跟着变大")
+        # 对照：同一套展开逻辑在 OCR 组上确实找得到这些包，上面的"没有"才算数
+        self.assertTrue({"rapidocr", "onnxruntime", "opencv-python"} <= self._closure("ocr"))
+        self.assertTrue({"rapidocr", "onnxruntime-gpu", "nvidia-cudnn-cu13"} <= self._closure("ocr-gpu"))
+
+    def test_image_and_dev_setup_never_install_the_ocr_groups(self):
+        """两个 OCR 组必须保持"点名才装"：不是默认组，Dockerfile 与 setup:py 的同步命令也不带组。"""
+        import json
+        import tomllib
+
+        pyproject = tomllib.loads((self.ROOT / "pyproject.toml").read_text(encoding="utf-8"))
+        self.assertNotIn("default-groups", pyproject["tool"]["uv"], "默认组一旦含 ocr，每次同步都会装上推理依赖")
+        dockerfile = (self.ROOT / "Dockerfile").read_text(encoding="utf-8")
+        setup_py = json.loads((self.ROOT / "package.json").read_text(encoding="utf-8"))["scripts"]["setup:py"]
+        for where, text in (("Dockerfile", dockerfile), ("setup:py", setup_py)):
+            self.assertIn("uv sync", text)
+            self.assertNotRegex(text, r"--(only-)?group|--all-groups", f"{where} 的同步命令不许带依赖组")
+
+    def test_cpu_and_gpu_groups_cannot_be_installed_together(self):
+        """两个 onnxruntime wheel 共用一个包目录，混装后 CUDA 静默失效；互斥声明让 uv 直接拒绝。"""
+        import tomllib
+
+        conflicts = tomllib.loads((self.ROOT / "pyproject.toml").read_text(encoding="utf-8"))["tool"]["uv"]["conflicts"]
+        self.assertIn([{"group": "ocr"}, {"group": "ocr-gpu"}], conflicts)
+        self.assertNotIn("onnxruntime", self._closure("ocr-gpu"), "GPU 组里混进了 CPU 版 onnxruntime")
+
+
 class TestCommandLine(unittest.TestCase):
+    def test_bad_page_spec_stops_before_any_work(self):
+        """--page 写错要在参数解析阶段就退出，不进入任何处理。"""
+        import contextlib
+        import io
+        from unittest import mock
+
+        with mock.patch.object(sys, "argv", ["ocr_worker.py", "--page", "abc", "--force"]):
+            with contextlib.redirect_stderr(io.StringIO()):
+                with self.assertRaises(SystemExit) as ctx:
+                    ocr_worker.main()
+        self.assertEqual(2, ctx.exception.code)
+
+    def test_token_defaults_to_the_environment_variable(self):
+        """机器密钥能替换任意一本的画页，不该只能写在命令行里（进程列表与 shell 历史可见）。"""
+        import os
+        from unittest import mock
+
+        with mock.patch.dict(os.environ, {"COMIC_SHELF_MACHINE_TOKEN": "from-env"}):
+            self.assertEqual("from-env", ocr_worker.build_arg_parser().parse_args([]).token)
+            self.assertEqual("cli", ocr_worker.build_arg_parser().parse_args(["--token", "cli"]).token)
+            self.assertNotIn("from-env", ocr_worker.build_arg_parser().format_help(), "帮助文案不许印出密钥")
+
     def test_no_engine_track_option_remains(self):
         """引擎必须只剩一条线：只要还留着"轨道"开关，忘了带参数就会把 v3 那种 5 个假名
         的字符表产出的乱码灌进语料，而且没人会察觉。历史 v3 侧车仍合法，不需迁移。

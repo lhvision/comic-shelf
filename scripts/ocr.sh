@@ -3,9 +3,10 @@
 # 支持命令: status | run | sync | install | test | lines
 #
 # 算力环境两条线（**默认走 GPU**，没有卡的机器才回落 CPU，回落时脚本会说明原因）：
-#   GPU（默认）   本脚本创建的项目内 .venv-ocr/，装 requirements-ocr.txt + requirements-ocr-gpu.txt
-#   CPU（--cpu）  复用应用的 .venv，只装 requirements-ocr.txt
+#   GPU（默认）   本脚本创建的项目内 .venv-ocr/，只装 pyproject.toml 的 ocr-gpu 依赖组
+#   CPU（--cpu）  复用应用的 .venv，追加 ocr 依赖组
 # 两条线互不干扰：GPU wheel 与 CPU wheel 共用同一个 onnxruntime 包目录，混装会静默失去 CUDA。
+# 版本全部来自 uv.lock（含 opencv / numpy 等传递依赖），两台算力机装出来的是同一套。
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
@@ -14,8 +15,6 @@ if [ -n "${COMIC_SHELF_DATA:-}" ] && [ -d "$COMIC_SHELF_DATA" ]; then
   DATA_DIR="$COMIC_SHELF_DATA"
 elif [ -d "/mnt/nas_manga/library" ]; then
   DATA_DIR="/mnt/nas_manga"
-elif [ -d "backend/data/library" ]; then
-  DATA_DIR="backend/data"
 else
   DATA_DIR="backend/data"
 fi
@@ -197,7 +196,7 @@ cmd_lines() {
 cmd_sync() {
   echo "🔄 正在同步 OCR 伴生文件至 SQLite FTS5 索引 (目标目录: $DATA_DIR)..."
   echo "   (入库走应用 .venv：需要 backend 依赖，与 OCR 算力环境无关)"
-  "$PYTHON" scripts/sync_ocr.py ${@+"$@"}
+  "$PYTHON" scripts/sync_ocr.py --data-dir "$DATA_DIR" ${@+"$@"}
 }
 
 cmd_install() {
@@ -216,9 +215,15 @@ cmd_install() {
     fi
   fi
 
+  if ! command -v uv >/dev/null 2>&1; then
+    echo "❌ 错误: 找不到 uv。OCR 依赖按 uv.lock 安装，请先装 uv 并跑过 vpr setup:py。" >&2
+    exit 1
+  fi
+
   if [ "$MODE" = "cpu" ]; then
-    echo "📦 正在为当前环境安装 OCR 算力依赖 (scripts/requirements-ocr.txt)..."
-    "$PYTHON" -m pip install -r scripts/requirements-ocr.txt
+    echo "📦 正在往应用环境 .venv 追加 OCR 算力依赖 (pyproject.toml 的 ocr 依赖组)..."
+    # --inexact：只装不卸，保留 .venv 里手动追加的可选推理依赖（docs/PITFALLS.md #180）
+    uv sync --locked --inexact --group ocr
     echo "✅ 依赖安装完成！"
     echo "   带 NVIDIA 显卡的算力机直接 bash scripts/ocr.sh install 即装 GPU 环境（默认就走 GPU）"
     return 0
@@ -228,60 +233,26 @@ cmd_install() {
     echo "   ⚠️ 未检测到 NVIDIA 显卡，仍按要求装 GPU 环境；末尾自检大概率失败，无卡机器请改用 install --cpu。"
   fi
 
-  local vpy="$OCR_VENV/bin/python" site
-  # 绝不允许把 GPU 栈装进应用环境：GPU/CPU 两个 onnxruntime wheel 共用同一个包目录，
-  # 一旦装进 .venv，后端 import onnxruntime 拿到的就是 GPU 构建，且 run --cpu 会被预检挡死。
+  local vpy="$OCR_VENV/bin/python"
+  # 绝不允许把 GPU 栈装进应用环境：下面是精确同步，会把 ocr-gpu 组之外的包全部卸掉，
+  # 指到应用 .venv 就等于把后端依赖卸光。
   local app_prefix
   app_prefix="$("$PYTHON" -c 'import sys; print(sys.prefix)')"
   if [ "$app_prefix" = "$OCR_VENV" ]; then
     echo "❌ 错误: COMIC_SHELF_OCR_VENV 指向了应用环境本身 ($OCR_VENV)，拒绝在其中装 GPU 依赖" >&2
     exit 1
   fi
-
-  echo "📦 正在创建 GPU 算力环境: $OCR_VENV"
-  "$PYTHON" -m venv "$OCR_VENV" 2>/dev/null || "$PYTHON" -m venv --without-pip "$OCR_VENV"
-  site="$("$vpy" -c 'import sysconfig; print(sysconfig.get_paths()["purelib"])')"
-  # 下面要按目录清理 onnxruntime，路径解析异常时必须立刻停下，绝不能拿着空串/别人的目录去 rm
-  if [ -z "$site" ] || [ ! -d "$site" ]; then
-    echo "❌ 错误: 无法解析 $OCR_VENV 的 site-packages 路径" >&2
+  # 同理：目录已存在却不是虚拟环境（没有 pyvenv.cfg）时不碰它，多半是路径写错了
+  if [ -e "$OCR_VENV" ] && [ ! -f "$OCR_VENV/pyvenv.cfg" ]; then
+    echo "❌ 错误: $OCR_VENV 已存在但不是 Python 虚拟环境，拒绝在其中安装" >&2
     exit 1
   fi
-  case "$site" in
-    "$OCR_VENV"/*) ;;
-    *)
-      echo "❌ 错误: site-packages ($site) 不在目标环境 ($OCR_VENV) 内，拒绝执行清理" >&2
-      exit 1
-      ;;
-  esac
 
-  # Debian/Ubuntu 把 ensurepip 拆进了 python3.X-venv 包，缺它时上面只能建出一个没有 pip 的 venv。
-  # 根治就是装上这个包，不从应用环境拷 pip 凑合
-  if ! "$vpy" -m pip --version >/dev/null 2>&1; then
-    local venv_pkg
-    venv_pkg="$("$PYTHON" -c 'import sys; print("python%d.%d-venv" % sys.version_info[:2])')"
-    echo "❌ 错误: $OCR_VENV 里没有 pip（宿主 Python 缺 ensurepip）。" >&2
-    echo "💡 建议: sudo apt install $venv_pkg 后重跑 bash scripts/ocr.sh install" >&2
-    exit 1
-  fi
-  "$vpy" -m pip install --upgrade pip >/dev/null
-
-  echo "📥 安装 CPU 基线 (rapidocr + pillow)..."
-  "$vpy" -m pip install -r scripts/requirements-ocr.txt
-  echo "📥 换装 GPU 构建 (onnxruntime-gpu + CUDA/cuDNN 运行库, 约 1.7GB)..."
-  # 两个 wheel 共用 site-packages/onnxruntime/ 目录，覆盖安装会留下混合文件让 CUDA EP 静默失效，
-  # 所以要把两个发行版都卸干净、目录也删干净再装。两件事都不能省：
-  #   - 只 rm -rf 不 pip uninstall：pip 只认 dist-info，目录没了而 onnxruntime_gpu 的 dist-info
-  #     还在，它就直接回 "Requirement already satisfied" 什么都不装，留下一个 import 即失败的空壳
-  #     环境（2026-09-22 重跑 install 时真实踩到，之后整个 GPU 线跑不了）；
-  #   - 只 pip uninstall 不 rm -rf：两边共用的文件可能留下 CPU wheel 独有的残留，CUDA EP 又会静默失效。
-  "$vpy" -m pip uninstall -y onnxruntime onnxruntime-gpu
-  rm -rf "$site/onnxruntime" "$site"/onnxruntime-*.dist-info
-  "$vpy" -m pip install -r scripts/requirements-ocr-gpu.txt
-  # 文件真的落地了没有——只看 pip 的返回值会被 "already satisfied" 骗过
-  if ! "$vpy" -c "import onnxruntime, pathlib; p = pathlib.Path(onnxruntime.__file__); print('   onnxruntime', onnxruntime.__version__, '来自', p)" ; then
-    echo "❌ 错误: 装完 onnxruntime 仍然无法 import（$site/onnxruntime 缺失或未装全）" >&2
-    exit 1
-  fi
+  echo "📦 正在同步 GPU 算力环境: $OCR_VENV (ocr-gpu 依赖组，装完约占 2.8GB)"
+  # --only-group：环境里只有 ocr-gpu 组，不带后端依赖；精确同步会卸掉组外的包，包括误装进来的 CPU 版 onnxruntime。
+  # --reinstall-package：CPU 与 GPU 两个 wheel 共用 site-packages/onnxruntime/ 目录，卸掉 CPU 版会连带删走共用文件，
+  # 而 uv 只看安装记录、仍认为 GPU 版"已装好"，留下一个残缺的包（docs/PITFALLS.md #140）。每次重装它即可根治。
+  UV_PROJECT_ENVIRONMENT="$OCR_VENV" uv sync --locked --only-group ocr-gpu --reinstall-package onnxruntime-gpu
 
   echo "🔎 自检 CUDA 是否真的生效..."
   export_cuda_ld "$vpy"
@@ -368,16 +339,16 @@ case "$ACTION" in
     echo "  status                  - 查看书库 OCR 伴生覆盖率、硬件与双环境实际推理设备、FTS5 统计"
     echo "  run [options]           - 批量或定向对画页提取 OCR 伴生文件 ({index}.ocr.json)"
     echo "     --workers <N>        - 并发线程数 (GPU 推荐 4；CPU 线保持 2，再加会因抢核反而变慢)"
-    echo "     --source <src>       - 限定数据源 (jm / local / picacg)"
+    echo "     --source <src>       - 限定数据源，即 library/ 下的目录名 (jm / local / picacg / copymanga)"
     echo "     --id <comic_id>      - 限定单本漫画 ID"
-    echo "     --page <pages>       - 限定提取特定页码 (如 --page 3 或 --page 1,3,5 或 --page 10-20)"
+    echo "     --page <pages>       - 限定提取特定页码 (如 --page 3 或 --page 1,3,5 或 --page 10-20；多章节本请改用 --image)"
     echo "     --image <path>       - 直接指定单张画页图片路径进行单页处理"
     echo "     --min-score <float>  - 识别置信度下限，直接交给引擎 (默认 0.5，调低调高都生效；过滤拟声词与背景噪点)"
     echo "     --force              - 强制重新处理已存在的伴生文件"
-    echo "     --limit <N>          - 最多处理册数"
+    echo "     --limit <N>          - 最多处理册数（只数确有待提取画页的本，已完成的不占名额）"
     echo "     --api-url <URL>      - 远程 NAS 纸间 API 地址 (如 http://192.168.1.100:8000)，处理后自动通知入库"
-    echo "     --token <TOKEN>      - 纸间 Machine API Token"
-    echo "     --sync-local         - 处理完毕后直接同步本地 SQLite 索引"
+    echo "     --token <TOKEN>      - 纸间 Machine API Token（建议改设环境变量 COMIC_SHELF_MACHINE_TOKEN，不写在命令行）"
+    echo "     --sync-local         - 处理完毕后直接同步本地 SQLite 索引（环境里要有后端依赖，GPU 环境没有，请改用 sync）"
     echo "  sync [options]          - 将已存在的伴生文件全量/增量扫入 SQLite FTS5"
     echo "  test [image]            - 单张画页试跑并打印气泡（与 run 同一套引擎与过滤，只打印不写盘）"
     echo "  lines [options]         - 气泡聚类判据的离线实验台，改 cluster_blocks 前先用它："

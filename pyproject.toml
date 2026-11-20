@@ -5,7 +5,7 @@ description = "纸间 Paper Room 后端：本地优先的个人漫画收藏夹"
 license = "AGPL-3.0-or-later"
 requires-python = ">=3.14"
 # 直接依赖一律精准锁定（==），传递依赖由 uv.lock 全量锁死（见 docs/PITFALLS.md #168）。
-# 台词 OCR 与语义检索的推理依赖不在这张表里：前者见 scripts/requirements-ocr*.txt，后者见 DEPLOYMENT.md §5.1.2。
+# 台词 OCR 与语义检索的推理依赖不在这张表里：前者是下面的 ocr / ocr-gpu 依赖组，后者见 DEPLOYMENT.md §5.1.2。
 dependencies = [
   "jmcomic==2.7.4",
   "fastapi==0.141.1",
@@ -25,10 +25,22 @@ dependencies = [
 [dependency-groups]
 # numpy：test_dialogue_semantic 在模块级 import，干净环境下缺它会中断整轮 test:py
 dev = ["httpx2>=2.13", "numpy", "ruff", "ty"]
+# 台词 OCR 提取的算力依赖，只在跑 scripts/ocr.sh 的算力机上装（bash scripts/ocr.sh install）。
+# 它们不是运行时依赖：两个组都不是默认组，Dockerfile 的 `uv sync --no-dev` 与 `vpr setup:py` 都不会装，
+# 生产镜像的包清单与体积不受影响（test_ocr_worker.py 有用例钉住这一点，见 docs/PITFALLS.md #168）。
+# 直接依赖精确锁定、传递依赖（opencv / numpy 等）由 uv.lock 锁死：伴生文件只记 engine_track 不记包版本，
+# 版本一漂移，同一张画页在两台算力机上就可能识别出不同的字。升级后要用 ocr.sh lines 对比新旧结果。
+# rapidocr 3.x 不声明推理后端，onnxruntime 必须显式列出，否则得到一个 import 即失败的环境。
+ocr = ["pillow==12.3.0", "rapidocr==3.9.2", "onnxruntime==1.30.0"]
+# GPU 线：[cuda] / [cudnn] 把 CUDA 13 与 cuDNN 9 的运行库装进环境，由 ocr.sh 挂进 LD_LIBRARY_PATH。
+ocr-gpu = ["pillow==12.3.0", "rapidocr==3.9.2", "onnxruntime-gpu[cuda,cudnn]==1.30.0"]
 
 [tool.uv]
 # 这是应用不是库：不构建、不安装自身，只管理依赖
 package = false
+# onnxruntime 与 onnxruntime-gpu 两个 wheel 共用同一个 site-packages/onnxruntime/ 目录，装进同一个环境
+# 会互相覆盖，结果是 CUDA 静默失效（docs/PITFALLS.md #137、#140）。声明互斥后 uv 直接拒绝同时装两个组。
+conflicts = [[{ group = "ocr" }, { group = "ocr-gpu" }]]
 
 # 国内镜像源写进仓库，与 .npmrc 的做法一致：uv 在 --locked 下不允许安装时临时换源（会判定锁文件失效）。
 # 海外使用者删掉本段后重跑 `uv lock` 即可切回官方 PyPI。
