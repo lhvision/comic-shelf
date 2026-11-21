@@ -3,23 +3,36 @@
 纸间 (Paper Room) · 高性能机漫画台词 OCR 提取与聚类工作流 Worker
 功能：
 1. 智能探测数据目录（COMIC_SHELF_DATA -> /mnt/nas_manga -> backend/data）；
-2. 批量扫描画页（.webp, .jpg, .png），调用 RapidOCR 识别中日文分镜台词；
+2. 批量扫描现有 Pillow 可读的光栅画页（动图 / 多页图片只取首帧），调用 RapidOCR 识别中日文分镜台词；
 3. 气泡级多行文本几何聚类（Bubble-level Line Clustering），计算右向左（竖排）/上向下（横排）阅读流与 Union 归一化百分比坐标；
 4. 产出伴生文件 {index}.ocr.json；
-5. 支持通过 HTTP API 自动通知远程 NAS 纸间服务或同步本地 SQLite FTS5 索引。
+5. 支持普通图片目录、本地路径与映射盘路径；索引同步由命令入口单独执行。
 """
 
 import argparse
 import concurrent.futures
-import json
+import math
 import os
 import sys
 import threading
 import time
-import urllib.error
-import urllib.request
 from pathlib import Path
 from typing import Any
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "backend"))
+
+from app.file_io import file_stamp, open_regular, read_json, write_json_atomic
+from app.ocr_files import (
+    collect_comic_pages,
+    collect_images,
+    image_extensions,
+    image_formats,
+    image_output,
+    list_comics,
+    parse_directory_name,
+    parse_path,
+    resolve_data_dir,
+)
 
 # 尝试导入 OCR 与图像依赖
 try:
@@ -36,25 +49,6 @@ except ImportError:
     RapidOCR = None
     ModelType = None
     OCRVersion = None
-
-
-def resolve_data_dir(custom_path: str | None = None) -> Path:
-    """按优先级解析有效漫画数据目录"""
-    if custom_path:
-        p = Path(custom_path).resolve()
-        if p.is_dir():
-            return p
-        print(f"⚠️ 指定的数据目录不存在: {custom_path}，转入自动探测...", file=sys.stderr)
-
-    env_dir = os.environ.get("COMIC_SHELF_DATA")
-    if env_dir and Path(env_dir).is_dir():
-        return Path(env_dir).resolve()
-
-    nas_mount = Path("/mnt/nas_manga")
-    if (nas_mount / "library").is_dir():
-        return nas_mount.resolve()
-
-    return Path(__file__).resolve().parent.parent / "backend" / "data"
 
 
 def sort_bubbles_by_reading_order(
@@ -301,26 +295,55 @@ def build_engine(use_gpu: bool, min_score: float = DEFAULT_MIN_SCORE) -> Any:
     return engine
 
 
+def _load_ocr_sidecar(out_path: Path, root: Path | None = None) -> dict[str, Any] | None:
+    """合法空页允许无气泡；非空页至少有文字及四个有限、顺序正确的坐标。"""
+    try:
+        data = read_json(out_path, root=root)
+    except OSError, ValueError:
+        return None
+    if not isinstance(data, dict) or data.get("engine") != "rapidocr" or not isinstance(data.get("bubbles"), list):
+        return None
+    for bubble in data["bubbles"]:
+        if not isinstance(bubble, dict) or not isinstance(bubble.get("text"), str) or not bubble["text"].strip():
+            return None
+        box = bubble.get("box")
+        if not isinstance(box, list) or len(box) != 4:
+            return None
+        if not all(
+            isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value) for value in box
+        ):
+            return None
+        if box[0] > box[2] or box[1] > box[3]:
+            return None
+        if "confidence" in bubble and (
+            not isinstance(bubble["confidence"], (int, float))
+            or isinstance(bubble["confidence"], bool)
+            or not 0 <= bubble["confidence"] <= 1
+        ):
+            return None
+    return data
+
+
 def is_valid_ocr_sidecar(out_path: Path) -> bool:
-    """检查伴生文件是否合法：读得出 JSON，且带有 engine: rapidocr 与 bubbles 数组。
-    不存在、为空、残缺或手工 mock 的旧数据都视为脏缓存，自动触发自愈重提。
-    """
-    try:
-        data = json.loads(out_path.read_text(encoding="utf-8"))
-    except Exception:
+    """检查可解析及基本气泡结构，保留历史 v3 伴生文件兼容性。"""
+    return _load_ocr_sidecar(out_path) is not None
+
+
+def sidecar_is_fresh(img_path: Path, out_path: Path, *, root: Path | None = None) -> bool:
+    """新结果绑定识别时的源图状态；历史伴生文件仍使用修改时间判断。"""
+    data = _load_ocr_sidecar(out_path, root)
+    if data is None:
         return False
-    return isinstance(data, dict) and data.get("engine") == "rapidocr" and isinstance(data.get("bubbles"), list)
-
-
-def sidecar_is_fresh(img_path: Path, out_path: Path) -> bool:
-    """伴生文件合法且不早于画页时无需重提；画页在它之后改过（如重新下载）就得重提。"""
     try:
-        return is_valid_ocr_sidecar(out_path) and img_path.stat().st_mtime <= out_path.stat().st_mtime
-    except OSError:
+        stamp = file_stamp(img_path, root=root)
+        if "source_image" in data:
+            return data["source_image"] == {"size": stamp[2], "mtime_ns": stamp[3]}
+        return stamp[3] <= file_stamp(out_path, root=root)[3]
+    except OSError, ValueError:
         return False
 
 
-def run_engine(engine: Any, img_path: Path) -> list[tuple[Any, str, float]]:
+def run_engine(engine: Any, img_path: Any) -> list[tuple[Any, str, float]]:
     """把引擎返回拍平成 `[(box, text, score), ...]`，行序即检测器的输出序。
 
     `rapidocr` 3.x 返回 `RapidOCROutput` 对象，`boxes`/`txts`/`scores` 是三个并列字段。
@@ -329,7 +352,7 @@ def run_engine(engine: Any, img_path: Path) -> list[tuple[Any, str, float]]:
     `getattr(...) or []`）；boxes 里的角点是 float32、直接进侧车会让 json.dumps 抛
     "Object of type float32 is not JSON serializable"。
     """
-    out = engine(str(img_path))
+    out = engine(str(img_path) if isinstance(img_path, Path) else img_path)
     texts = getattr(out, "txts", None)
     if texts is None:
         return []
@@ -370,30 +393,45 @@ def rows_to_blocks(rows: list[tuple[Any, str, float]]) -> list[dict[str, Any]]:
     return blocks
 
 
-def process_image(img_path: Path, out_path: Path) -> int:
-    """识别单张画页并写入伴生文件，返回气泡数。要不要跳过由调用方用 `sidecar_is_fresh` 判定。
+def recognize_page(
+    img_path: Path, engine: Any, *, root: Path | None = None
+) -> tuple[int, int, list[tuple[Any, str, float]], tuple[int, int, int, int, int]]:
+    """提取、预览和原始行 dump 共用解码：第 0 帧、EXIF 方位及识别期间源图变化检查。"""
+    from PIL import ImageOps
 
-    读图、推理、写盘任一步失败都直接抛出，由调用方记成失败页：这一页不留侧车，下次运行自然重试。
-    以前失败时返回 0，和"这页确实没有台词"无法区分，整批照样报完成。
-    """
-    with Image.open(img_path) as im:
-        w, h = im.size
-    bubbles = cluster_blocks(rows_to_blocks(run_engine(get_engine(), img_path)), w, h)
+    with open_regular(img_path, root=root) as file:
+        info = os.fstat(file.fileno())
+        stamp = info.st_dev, info.st_ino, info.st_size, info.st_mtime_ns, info.st_ctime_ns
+        with Image.open(file) as page:
+            if page.format not in image_formats():
+                raise ValueError(f"不是可直接读取的光栅图片: {img_path} ({page.format})")
+            decoded = ImageOps.exif_transpose(page)
+            if decoded.mode == "P":
+                decoded = decoded.convert("RGBA" if "transparency" in decoded.info else "RGB")
+            elif decoded.mode not in {"RGB", "RGBA", "L", "LA"}:
+                decoded = decoded.convert("RGB")
+            w, h = decoded.size
+            rows = run_engine(engine, decoded)
+        if file_stamp(img_path, root=root) != stamp:
+            raise RuntimeError(f"识别期间画页发生变化，结果未发布，请重试: {img_path}")
+    return w, h, rows, stamp
 
+
+def process_image(img_path: Path, out_path: Path, *, root: Path | None = None) -> int:
+    """识别并原子发布；任何失败均保留旧结果，后续通过源图状态决定是否重提。"""
+    w, h, rows, stamp = recognize_page(img_path, get_engine(), root=root)
+    bubbles = cluster_blocks(rows_to_blocks(rows), w, h)
     payload = {
         "version": 1,
         "lang": "zh",
-        # engine 字段是 `is_valid_ocr_sidecar` 认的合法性标记，缺它会被当脏缓存无限重提；
-        # engine_track 只作溯源——历史上有一批 v3 侧车与更早的无此字段文件混在库里。
         "engine": "rapidocr",
         "engine_track": ENGINE_TRACK,
+        "source_image": {"size": stamp[2], "mtime_ns": stamp[3]},
         "bubbles": bubbles,
     }
-
-    temp_path = out_path.with_suffix(".tmp")
-    with open(temp_path, "w", encoding="utf-8") as f:
-        json.dump(payload, f, ensure_ascii=False, indent=2)
-    temp_path.replace(out_path)
+    if file_stamp(img_path, root=root) != stamp:
+        raise RuntimeError(f"发布前画页发生变化，结果未发布，请重试: {img_path}")
+    write_json_atomic(out_path, payload, root=root)
     return len(bubbles)
 
 
@@ -416,111 +454,6 @@ def parse_page_filter(page_spec: str) -> set[int]:
     return pages
 
 
-def collect_comic_pages(comic_dir: Path, page_filter: set[int] | None = None) -> list[tuple[Path, Path]]:
-    """收集指定漫画目录下的全部有效画页图片及对应伴生文件路径，按「章节目录、文件名」排序。
-    若指定 page_filter，仅保留匹配该页码（1-based 序号或文件名数字）的画页。
-
-    多章节本带 page_filter 时抛 ValueError：各话都有同名页，页码指不到唯一一页。
-    """
-    pages_dir = comic_dir / "pages"
-    if not pages_dir.is_dir():
-        return []
-
-    exts = {".webp", ".jpg", ".jpeg", ".png"}
-    all_pages: list[tuple[Path, Path]] = []
-
-    # 支持单话平铺或分章节 c1/c2
-    for root, _, files in os.walk(pages_dir):
-        root_path = Path(root)
-        for f in sorted(files):
-            p = root_path / f
-            if p.suffix.lower() in exts and not p.name.startswith("."):
-                out_name = f"{p.stem}.ocr.json"
-                out_path = root_path / out_name
-                all_pages.append((p, out_path))
-
-    # 按完整路径排：只按文件名排的话，多章节本各话的同名页会交错在一起
-    all_pages.sort()
-
-    if not page_filter:
-        return all_pages
-    if len({img_path.parent for img_path, _ in all_pages}) > 1:
-        raise ValueError("多章节本不支持 --page（各话都有同名页，页码指不到唯一一页），请改用 --image <画页路径>")
-
-    filtered: list[tuple[Path, Path]] = []
-    for seq_idx, (img_path, out_path) in enumerate(all_pages, start=1):
-        stem_num = None
-        try:
-            stem_num = int(img_path.stem)
-        except ValueError:
-            pass
-        if seq_idx in page_filter or (stem_num is not None and stem_num in page_filter):
-            filtered.append((img_path, out_path))
-
-    return filtered
-
-
-def notify_nas_sync(api_url: str, source: str, source_id: str, token: str | None = None) -> bool:
-    """通过 HTTP API 通知 NAS 纸间服务更新 SQLite FTS5 索引"""
-    url = f"{api_url.rstrip('/')}/api/library/{source}/{source_id}/ocr/sync"
-    req = urllib.request.Request(url, method="POST")
-    if token:
-        req.add_header("Authorization", f"Bearer {token}")
-
-    try:
-        # NAS 端同步执行：入库后还顺手重编这一本的台词向量，大部头在低功耗机器上要跑很久。
-        # 超时给短了，算力机会报"网络异常"而 NAS 其实仍在正常入库
-        with urllib.request.urlopen(req, timeout=120) as resp:
-            if resp.status == 200:
-                data = json.loads(resp.read().decode("utf-8"))
-                print(f"  📡 NAS 索引同步响应: 成功入库 {data.get('count', 0)} 条对白")
-                return True
-    except urllib.error.HTTPError as e:
-        print(f"  ❌ 通知 NAS 同步失败 (HTTP {e.code}): {e.reason}", file=sys.stderr)
-    except Exception as e:
-        print(f"  ❌ 通知 NAS 同步网络异常: {e}", file=sys.stderr)
-    return False
-
-
-def sync_index(args: argparse.Namespace, source: str, source_id: str) -> bool:
-    """一本提取完后更新台词索引：给了 --api-url 就通知 NAS，给了 --sync-local 就直接写本机库，
-    都没给则什么也不做。返回 False 表示索引没有更新成功。
-    """
-    if args.api_url:
-        return notify_nas_sync(args.api_url, source, source_id, token=args.token)
-    if args.sync_local:
-        try:
-            # 后端能否导入已在 main() 开跑前验过
-            from app.db import sync_comic_dialogues
-
-            synced = sync_comic_dialogues(source, source_id)
-            print(f"  💾 本地 SQLite 索引已同步 ({source}/{source_id}: {synced} 条)")
-        except Exception as e:
-            print(f"  ⚠️ 本地 SQLite 同步异常: {e}", file=sys.stderr)
-            return False
-    return True
-
-
-def list_comics(
-    library_dir: Path, source: str | None = None, comic_id: str | None = None
-) -> list[tuple[str, str, Path]]:
-    """列出书库里的漫画 `(图源, 书号, 目录)`，可限定图源与书号。
-
-    图源就是 library/ 下实际存在的子目录，不维护清单：清单写死成 jm/local/picacg 时，
-    后接入的 copymanga 批量跑永远扫不到。
-    """
-
-    def subdirs(d: Path) -> list[Path]:
-        return sorted(p for p in d.iterdir() if p.is_dir() and not p.name.startswith(".")) if d.is_dir() else []
-
-    comics: list[tuple[str, str, Path]] = []
-    for s_dir in [library_dir / source] if source else subdirs(library_dir):
-        for c_dir in [s_dir / comic_id] if comic_id else subdirs(s_dir):
-            if c_dir.is_dir():
-                comics.append((s_dir.name, c_dir.name, c_dir))
-    return comics
-
-
 def get_library_stats(data_dir: Path) -> dict[str, Any]:
     """扫描统计当前书库的 OCR 伴生覆盖率"""
     library_dir = data_dir / "library"
@@ -529,7 +462,6 @@ def get_library_stats(data_dir: Path) -> dict[str, Any]:
         "ocr_comics": 0,
         "total_pages": 0,
         "ocr_pages": 0,
-        "fts_dialogues": 0,
     }
     if not library_dir.is_dir():
         return stats
@@ -545,28 +477,13 @@ def get_library_stats(data_dir: Path) -> dict[str, Any]:
         if comic_has_ocr:
             stats["ocr_comics"] += 1
 
-    # 检查独立的 comic_dialogues.db 数据库条目数
-    diag_db_path = data_dir / "comic_dialogues.db"
-    if diag_db_path.is_file():
-        try:
-            import sqlite3
-
-            conn = sqlite3.connect(diag_db_path)
-            cur = conn.cursor()
-            cur.execute("SELECT count(*) FROM sqlite_master WHERE type='table' AND name='comic_dialogues_fts'")
-            if cur.fetchone()[0]:
-                cur.execute("SELECT count(*) FROM comic_dialogues_fts")
-                stats["fts_dialogues"] = cur.fetchone()[0]
-            conn.close()
-        except Exception:
-            pass
-
     return stats
 
 
 def build_arg_parser() -> argparse.ArgumentParser:
     """构造 worker 命令行。单列成函数是为了让"默认轨道/默认阈值"这类契约能被单测钉住。"""
     parser = argparse.ArgumentParser(
+        allow_abbrev=False,
         description="纸间 (Paper Room) · 高性能机漫画台词 OCR 提取与伴生处理 Worker",
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
@@ -583,15 +500,23 @@ def build_arg_parser() -> argparse.ArgumentParser:
         help="要求用 CUDA 推理：环境用不上 CUDA 时直接报错退出，而不是静默按 CPU 跑完大批量"
         "（GPU 环境由 bash scripts/ocr.sh install 创建，之后 run/test 默认就带上本参数）",
     )
-    parser.add_argument("--data-dir", help="指定漫画数据目录（默认智能探测 NAS 或本地目录）")
-    parser.add_argument("--source", help="限定数据源（library/ 下的目录名，如 jm / local / picacg / copymanga）")
-    parser.add_argument("--id", help="限定单本漫画 ID（如 1059521）")
+    parser.add_argument("--data-dir", type=parse_path, help="指定漫画数据目录（默认智能探测 NAS 或本地目录）")
+    parser.add_argument(
+        "--source",
+        type=parse_directory_name,
+        help="限定数据源（library/ 下的目录名，如 jm / local / picacg / copymanga）",
+    )
+    parser.add_argument("--id", type=parse_directory_name, help="限定单本漫画 ID（如 1059521）")
     parser.add_argument(
         "--page",
         type=parse_page_filter,
         help="限定处理特定页码（支持单页 3、列表 1,3,5、范围 10-20；多章节本请改用 --image）",
     )
-    parser.add_argument("--image", help="直接指定单张画页图片路径进行定向提取")
+    inputs = parser.add_mutually_exclusive_group()
+    inputs.add_argument("--image", type=parse_path, help="直接指定单张画页图片路径进行定向提取")
+    inputs.add_argument(
+        "--directory", type=parse_path, help="递归处理普通图片目录（本地或映射盘）；仅提取，不推断作品身份"
+    )
     parser.add_argument(
         "--min-score",
         type=float,
@@ -599,61 +524,97 @@ def build_arg_parser() -> argparse.ArgumentParser:
         help=f"识别置信度下限，直接交给引擎（默认 {DEFAULT_MIN_SCORE}，调低调高都生效；过滤拟声词噪点）",
     )
     parser.add_argument("--force", action="store_true", help="强制重新提取已存在的 OCR 伴生文件")
-    parser.add_argument("--limit", type=int, default=0, help="最多处理漫画册数，只数确有待提取画页的本（0 为无限制）")
     parser.add_argument(
-        "--api-url", help="NAS 纸间服务 API 地址（如 http://192.168.1.100:8000），处理完毕后自动远程通知入库"
+        "--limit",
+        type=int,
+        default=0,
+        help="最多产出新页的漫画册数（0 为无限制）；全页失败的本不占名额，本轮尝试册数可能更多",
     )
-    parser.add_argument(
-        "--token",
-        default=os.environ.get("COMIC_SHELF_MACHINE_TOKEN"),
-        help="纸间 Machine API Token。建议不写在命令行（进程列表与 shell 历史里可见），"
-        "改设环境变量 COMIC_SHELF_MACHINE_TOKEN，本参数缺省时读它",
-    )
-    parser.add_argument(
-        "--sync-local", action="store_true", help="处理完成后直接同步本地 SQLite 索引（同机/本地测试适用）"
-    )
+    parser.add_argument("--check", action="store_true", help=argparse.SUPPRESS)
     parser.add_argument("--status", action="store_true", help="仅查看书库 OCR 伴生文件覆盖统计")
     return parser
 
 
 def main() -> int:
-    args = build_arg_parser().parse_args()
-    data_dir = resolve_data_dir(args.data_dir)
+    parser = build_arg_parser()
+    args = parser.parse_args()
+    if args.limit < 0 or args.workers < 1:
+        parser.error("--limit 必须大于或等于 0，--workers 必须大于 0")
+    if args.image or args.directory:
+        if args.source is not None or args.id is not None or args.page is not None or args.limit or args.status:
+            parser.error("--image / --directory 不能与 --source、--id、--page、--limit、--status 混用")
+    if not 0 <= args.min_score <= 1:
+        parser.error("--min-score 必须在 0 到 1 之间")
 
-    print(f"📁 目标漫画数据目录: {data_dir}")
+    img_p = None
+    file_root = None
+    target_jobs = []
+    failed_comics: list[str] = []
+    try:
+        # 普通文件作业不依赖书库，也不读取数据目录的默认环境变量。
+        if args.image or args.directory:
+            if args.data_dir is not None:
+                resolve_data_dir(args.data_dir)
+            target = Path(args.image or args.directory).expanduser()
+            if args.image:
+                if not target.is_file() or target.is_symlink() or target.suffix.lower() not in image_extensions():
+                    raise ValueError(f"指定图片不存在、是符号链接或格式不受支持: {target}")
+                img_p = target.resolve()
+                file_root = img_p.parent
+                image_output(img_p)
+            else:
+                if not target.is_dir():
+                    raise ValueError(f"指定的图片目录不存在或不是目录: {target}")
+                file_root = target.resolve()
+                target_jobs = [(str(target), collect_images(file_root))]
+        else:
+            data_dir = resolve_data_dir(args.data_dir)
+            file_root = data_dir
+            library_dir = data_dir / "library"
+            if not library_dir.is_dir():
+                raise ValueError(f"未在数据目录中找到 library 子目录: {library_dir}")
+            if args.source is not None and not (library_dir / args.source).is_dir():
+                raise ValueError(f"书库里没有图源目录 {args.source}")
+            target_comics = list_comics(library_dir, args.source, args.id)
+            if not target_comics and (args.source is not None or args.id is not None):
+                raise ValueError(f"书库里没有指定的漫画 {args.source or '*'}/{args.id or '*'}")
+            print(f"📁 目标漫画数据目录: {data_dir}")
+            if args.status:
+                stats = get_library_stats(data_dir)
+                print(f"📚 藏书: {stats['total_comics']} 本，已有 OCR 伴生: {stats['ocr_comics']} 本")
+                print(f"📄 画页: {stats['total_pages']} 页，已有 OCR 伴生: {stats['ocr_pages']} 页")
+                return 0
+            for source, sid, comic in target_comics:
+                label = f"{source}/{sid}"
+                try:
+                    target_jobs.append((label, collect_comic_pages(comic, args.page)))
+                except ValueError as exc:
+                    print(f"❌ 跳过 {label}: {exc}", file=sys.stderr)
+                    failed_comics.append(label)
+    except (ValueError, OSError) as exc:
+        print(f"❌ 错误: {exc}", file=sys.stderr)
+        return 1
+    if args.check:
+        return 1 if failed_comics else 0
 
-    if args.status:
-        print("🔍 正在统计全库漫画 OCR 伴生文件覆盖率...")
-        st = get_library_stats(data_dir)
-        total_c = st["total_comics"]
-        ocr_c = st["ocr_comics"]
-        total_p = st["total_pages"]
-        ocr_p = st["ocr_pages"]
-        pct_c = (ocr_c / total_c * 100) if total_c else 0
-        pct_p = (ocr_p / total_p * 100) if total_p else 0
-        print("=" * 56)
-        print(f"📚 藏书册数:     {total_c} 本 (已有 OCR 伴生: {ocr_c} 本, 覆盖率 {pct_c:.1f}%)")
-        print(f"📄 画页总数:     {total_p} 页 (已有 OCR 伴生: {ocr_p} 页, 覆盖率 {pct_p:.1f}%)")
-        print(f"💬 FTS5 索引台词: {st['fts_dialogues']} 条")
-        print("=" * 56)
+    # 全部增量命中时不需要推理环境；本机同步仍由 shell 在提取返回后执行。
+    pending_jobs = []
+    total_skipped_pages = 0
+    for label, pages in target_jobs:
+        pending = pages if args.force else [pair for pair in pages if not sidecar_is_fresh(*pair, root=file_root)]
+        total_skipped_pages += len(pages) - len(pending)
+        if pending:
+            pending_jobs.append((label, pending))
+    if (
+        img_p is not None
+        and not args.force
+        and sidecar_is_fresh(img_p, img_p.with_name(f"{img_p.stem}.ocr.json"), root=file_root)
+    ):
+        print("⚡ 画页伴生文件已是最新且合法，无需更新。")
         return 0
-
-    if args.sync_local and not args.api_url:
-        # 后端在 import 时按这个变量定数据目录：不设的话，侧车写进 data_dir、索引却同步到后端默认的书库
-        os.environ["COMIC_SHELF_DATA"] = str(data_dir)
-        # 开跑前先把后端导进来，导不了就拒绝：GPU 算力环境 (.venv-ocr) 里没有后端依赖，3.14 之前的解释器
-        # 连后端源码都解析不了。等提取完才逐本报错，就白跑了一轮。
-        sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "backend"))
-        try:
-            from app.db import sync_comic_dialogues  # noqa: F401
-        except Exception as exc:
-            print(f"❌ 错误: --sync-local 要在本进程里导入后端，但导入失败: {exc}", file=sys.stderr)
-            print(
-                "💡 这个环境没装后端依赖（GPU 算力环境即如此），或解释器低于 3.14。去掉 --sync-local，提取完再跑 "
-                "bash scripts/ocr.sh sync；或用 --api-url 让纸间服务端入库。",
-                file=sys.stderr,
-            )
-            return 1
+    if img_p is None and not pending_jobs:
+        print(f"⚡ 无待提取画页，增量跳过 {total_skipped_pages} 页。")
+        return 1 if failed_comics else 0
 
     # 依赖预检：只剩一条引擎线，缺包就说清楚缺哪个
     if RapidOCR is None or Image is None:
@@ -665,6 +626,7 @@ def main() -> int:
 
     global USE_GPU, MIN_SCORE
     MIN_SCORE = args.min_score
+    USE_GPU = args.gpu
     # 要求 GPU 就必须真用上，否则宁可拒跑——静默按 CPU 跑完几千页是这套脚本最贵的失败方式。
     if args.gpu:
         ok, reason = cuda_ready()
@@ -672,7 +634,6 @@ def main() -> int:
             print(f"❌ 错误: 命令行指定了 --gpu，但当前环境用不上 CUDA: {reason}", file=sys.stderr)
             print("💡 请重跑 bash scripts/ocr.sh install 重建 GPU 环境（或显式改用 --cpu 跑）", file=sys.stderr)
             return 1
-        USE_GPU = True
     else:
         # 环境装的是 GPU 构建却没带 --gpu，几乎只可能是绕开 ocr.sh 直接调解释器
         # （这时 LD_LIBRARY_PATH 没挂上，推理会悄悄退回 CPU）。不挡路，但要说出来。
@@ -696,135 +657,55 @@ def main() -> int:
     print(f"✅ OCR 引擎初始化就绪 ({time.time() - t0:.2f}s)")
 
     # 1. 单张画页定向处理模式
-    if args.image:
-        img_p = Path(args.image).resolve()
-        if not img_p.is_file():
-            print(f"❌ 错误: 指定的图片文件不存在 ({args.image})", file=sys.stderr)
-            return 1
+    if img_p is not None:
         out_p = img_p.with_name(f"{img_p.stem}.ocr.json")
         print(f"🎯 单张画页定向处理: {img_p.name}")
         t1 = time.time()
         try:
-            if not args.force and sidecar_is_fresh(img_p, out_p):
-                print(f"⚡ 画页伴生文件已是最新且合法，无需更新 ({out_p.name})。如需强制重提请加 --force")
-                return 0
-            res = process_image(img_p, out_p)
+            res = process_image(img_p, out_p, root=file_root)
+            print(f"✅ 处理完成 ({time.time() - t1:.2f}s): 提取对白 {res} 条 ➔ {out_p.name}")
         except Exception as e:
             print(f"❌ 处理画页失败 {img_p.name}: {e}", file=sys.stderr)
             return 1
-        print(f"✅ 处理完成 ({time.time() - t1:.2f}s): 提取对白 {res} 条 ➔ {out_p.name}")
-        parts = img_p.parts
-        if "library" in parts and len(parts) > parts.index("library") + 2:
-            lib_idx = parts.index("library")
-            if not sync_index(args, parts[lib_idx + 1], parts[lib_idx + 2]):
-                return 1
         return 0
 
-    # 2. 批量扫描待处理漫画
-    library_dir = data_dir / "library"
-    if not library_dir.is_dir():
-        print(f"❌ 错误: 未在数据目录中找到 library 子目录 ({library_dir})", file=sys.stderr)
-        return 1
-    if args.source and not (library_dir / args.source).is_dir():
-        print(f"❌ 错误: 书库里没有图源目录 {args.source} ({library_dir / args.source})", file=sys.stderr)
-        return 1
-
-    if args.page:
-        print(f"🎯 页码过滤模式已启用: 限定提取页码 {sorted(args.page)}")
-
-    target_comics = list_comics(library_dir, args.source, args.id)
-    if not target_comics:
-        print("ℹ️ 未发现符合条件的待处理漫画。")
-        return 0
-
-    print(f"🎯 扫描漫画: 共 {len(target_comics)} 本")
-
-    total_extracted_dialogues = 0
-    total_processed_pages = 0
-    total_skipped_pages = 0
-    started_comics = 0
-    failed_pages = 0
-    # 被拒绝（多章节本带 --page）或索引没更新成功的本
-    failed_comics: list[str] = []
-
-    # 线程池全程只建一次：引擎挂在线程上，每本各建一个池就等于每本都重建一轮引擎
-    with concurrent.futures.ThreadPoolExecutor(max_workers=max(1, args.workers)) as executor:
-        for idx, (src, sid, c_dir) in enumerate(target_comics, start=1):
-            try:
-                pages = collect_comic_pages(c_dir, page_filter=args.page)
-            except ValueError as e:
-                print(f"[{idx}/{len(target_comics)}] ❌ 跳过 {src}/{sid}: {e}", file=sys.stderr)
-                failed_comics.append(f"{src}/{sid}")
-                continue
-            if not pages:
-                continue
-
-            # 增量：伴生文件仍然有效的页不重提，除非 --force
-            pending_pages = pages if args.force else [pg for pg in pages if not sidecar_is_fresh(*pg)]
-
-            if not pending_pages:
-                total_skipped_pages += len(pages)
-                print(
-                    f"[{idx}/{len(target_comics)}] ⚡ 跳过 {src}/{sid}: 全部 {len(pages)} 页伴生文件已是最新 (0ms 增量命中)"
-                )
-                continue
-
-            # --limit 只数确有待提取画页的本：先截断再跳过的话，反复跑 --limit N 看的永远是同一批已完成的本
-            if args.limit > 0 and started_comics >= args.limit:
-                print(f"\n⏹ 已处理 {args.limit} 本（--limit），其余留待下次运行。")
+    print(f"🎯 扫描作业: 共 {len(target_jobs)} 项，{len(pending_jobs)} 项待提取")
+    total_extracted_dialogues = total_processed_pages = processed_comics = failed_pages = 0
+    # 线程池全程只建一次，引擎在线程上复用。
+    with concurrent.futures.ThreadPoolExecutor(max_workers=args.workers) as executor:
+        for label, pending_pages in pending_jobs:
+            if args.limit and processed_comics >= args.limit:
+                print(f"⏹ 已有 {args.limit} 本产出新页（--limit），其余留待下次运行。")
                 break
-            started_comics += 1
-
-            skipped_in_comic = len(pages) - len(pending_pages)
-            total_skipped_pages += skipped_in_comic
-            print(
-                f"\n[{idx}/{len(target_comics)}] 开始提取 {src}/{sid} (待处理 {len(pending_pages)}/{len(pages)} 页, 线程数: {args.workers})..."
-            )
-            comic_dialogues = 0
-            comic_new_pages = 0
-            comic_failed_pages = 0
-
-            future_to_page = {executor.submit(process_image, img_p, out_p): img_p for img_p, out_p in pending_pages}
-            for done_count, future in enumerate(concurrent.futures.as_completed(future_to_page), start=1):
+            comic_dialogues = comic_new_pages = comic_failed_pages = 0
+            print(f"开始提取 {label}: {len(pending_pages)} 页")
+            futures = {
+                executor.submit(process_image, image, output, root=file_root): image for image, output in pending_pages
+            }
+            for done_count, future in enumerate(concurrent.futures.as_completed(futures), start=1):
                 try:
                     comic_dialogues += future.result()
                     comic_new_pages += 1
-                except Exception as e:
+                except Exception as exc:
                     comic_failed_pages += 1
-                    print(f"\n⚠️ 处理画页失败 {future_to_page[future].name}: {e}", file=sys.stderr)
-
-                sys.stdout.write(
-                    f"\r  - 进度: {done_count}/{len(pending_pages)} 页完成 (本册累计检出 {comic_dialogues} 处对白)"
-                )
-                sys.stdout.flush()
-
+                    print(f"\n⚠️ 处理画页失败 {futures[future]}: {exc}", file=sys.stderr)
+                print(f"\r  进度: {done_count}/{len(pending_pages)} 页", end="", flush=True)
             total_processed_pages += comic_new_pages
             total_extracted_dialogues += comic_dialogues
             failed_pages += comic_failed_pages
+            processed_comics += bool(comic_new_pages)
+            if comic_failed_pages:
+                failed_comics.append(label)
             print(
-                f"\r  ✓ 完成 {src}/{sid}: 新提取 {comic_new_pages} 页, 增量跳过 {skipped_in_comic} 页, "
-                f"失败 {comic_failed_pages} 页, 获得 {comic_dialogues} 处对白"
+                f"\n  完成 {label}: 新提取 {comic_new_pages} 页，失败 {comic_failed_pages} 页，{comic_dialogues} 条对白"
             )
-
-            # 触发同步回调 (当有新画页提取或开启 force 时)
-            if (comic_new_pages > 0 or args.force) and not sync_index(args, src, sid):
-                failed_comics.append(f"{src}/{sid}")
-
-    failed = failed_pages > 0 or bool(failed_comics)
-    print("\n" + "=" * 56)
+    failed = bool(failed_pages or failed_comics)
     print(
-        f"{'⚠️ 批处理结束，但有失败' if failed else '🎉 批处理完成'}！新处理画页: {total_processed_pages} 页, "
-        f"增量跳过: {total_skipped_pages} 页, 提取对白: {total_extracted_dialogues} 条"
+        f"{'⚠️ 批处理有失败' if failed else '🎉 批处理完成'}：新处理 {total_processed_pages} 页，"
+        f"增量跳过 {total_skipped_pages} 页，提取对白 {total_extracted_dialogues} 条"
     )
-    if failed_pages:
-        print(f"❌ 提取失败 {failed_pages} 页（未留侧车，重跑同一条命令即重试）", file=sys.stderr)
     if failed_comics:
-        print(f"❌ 被跳过或索引未更新 {len(failed_comics)} 本: {', '.join(failed_comics)}", file=sys.stderr)
-    if not args.api_url and not args.sync_local:
-        print("💡 提示: 伴生文件已安全落盘至漫画画页目录。若要写入 SQLite FTS5，请执行:")
-        print("   bash scripts/ocr.sh sync (或通过 HTTP 通知 NAS API)")
-    print("=" * 56)
-
+        print(f"❌ 失败作业: {', '.join(failed_comics)}；重跑会补失败页，已有有效伴生文件保留。", file=sys.stderr)
     return 1 if failed else 0
 
 

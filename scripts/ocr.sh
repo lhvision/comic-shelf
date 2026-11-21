@@ -10,24 +10,9 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-# 智能探测数据目录（优先顺序: 环境变量 COMIC_SHELF_DATA -> /mnt/nas_manga -> 本地 backend/data）
-if [ -n "${COMIC_SHELF_DATA:-}" ] && [ -d "$COMIC_SHELF_DATA" ]; then
-  DATA_DIR="$COMIC_SHELF_DATA"
-elif [ -d "/mnt/nas_manga/library" ]; then
-  DATA_DIR="/mnt/nas_manga"
-else
-  DATA_DIR="backend/data"
-fi
-
 # GPU 算力环境目录，可用 COMIC_SHELF_OCR_VENV 指到别处（如外置盘）。
-# 这里把它规范成绝对路径并去掉尾斜杠：后面的守卫要拿它和 site-packages 前缀比对，
-# 相对路径或 "path/" 会让比对误判（实测：先建完 venv 才在守卫处被拒，文案误导）。
+# 选好应用解释器后解析真实路径，避免相对路径、.. 或符号链接绕过安装保护。
 OCR_VENV="${COMIC_SHELF_OCR_VENV:-$PWD/.venv-ocr}"
-case "$OCR_VENV" in
-  /*) ;;
-  *) OCR_VENV="$PWD/$OCR_VENV" ;;
-esac
-while [ "${OCR_VENV%/}" != "$OCR_VENV" ]; do OCR_VENV="${OCR_VENV%/}"; done
 # MODE 取值 gpu|cpu。默认走 GPU：只要 .venv-ocr 就绪就优先用它（装它本身就是 opt-in），
 # 显式 --cpu 才回落。绝不让人在带卡的机器上默认烧 CPU 还浑然不觉。
 MODE=""
@@ -44,6 +29,7 @@ done
 if [ -z "$PYTHON" ]; then
   PYTHON="$(command -v python3 || command -v python || echo "python3")"
 fi
+OCR_VENV="$("$PYTHON" -c 'import sys; from pathlib import Path; print(Path(sys.argv[1]).resolve())' "$OCR_VENV")"
 
 # 宿主有没有 NVIDIA 卡。WSL2 的 nvidia-smi 不在 PATH 里、只存在于 /usr/lib/wsl/lib，
 # 只查 command -v 会把带显卡的机器误判成"纯 CPU 宿主机"（本项目踩过）。
@@ -152,17 +138,16 @@ report_host_gpu() {
 cmd_status() {
   echo "📊 纸间 · 漫画台词 OCR 处理与索引状态"
   resolve_mode
-  echo "   - 当前生效数据目录: $DATA_DIR"
   echo "   - 本轮默认算力线: $MODE"
   echo "   - CPU 解释器: $PYTHON"
   echo "   - GPU 算力环境: $OCR_VENV $([ -x "$OCR_VENV/bin/python" ] && echo '(已就绪)' || echo '(未创建)')"
+  "$(resolve_python)" scripts/ocr_worker.py --status ${@+"$@"}
   report_host_gpu
   probe_engine_device "$PYTHON" "CPU" || true
   if [ -x "$OCR_VENV/bin/python" ]; then
     export_cuda_ld "$OCR_VENV/bin/python"
   fi
   probe_engine_device "$OCR_VENV/bin/python" "GPU" || true
-  "$(resolve_python)" scripts/ocr_worker.py --data-dir "$DATA_DIR" --status
 }
 
 # run/lines/test 共用：定算力线、取解释器；GPU 线挂上 CUDA 库并把 --gpu 透传给脚本——
@@ -182,21 +167,69 @@ run_py() {
 }
 
 cmd_run() {
+  local sync_local=0 status=0 arg
+  local run_args=() sync_args=()
+  while [ "$#" -gt 0 ]; do
+    arg="$1"
+    shift
+    case "$arg" in
+      --sync-local) sync_local=1 ;;
+      --source|--id|--data-dir|--image)
+        if [ "$#" -eq 0 ]; then
+          echo "❌ 错误: $arg 缺少参数值" >&2
+          return 1
+        fi
+        run_args+=("$arg" "$1")
+        sync_args+=("$arg" "$1")
+        shift
+        ;;
+      --source=*|--id=*|--data-dir=*|--image=*)
+        run_args+=("$arg")
+        sync_args+=("$arg")
+        ;;
+      *) run_args+=("$arg") ;;
+    esac
+  done
+  for arg in "${run_args[@]}"; do
+    if [ "$arg" = "--help" ] || [ "$arg" = "-h" ]; then
+      "$PYTHON" scripts/ocr_worker.py --help
+      echo "  --sync-local   提取后用应用环境同步本机索引；增量跳过也会同步（仅 ocr.sh run 支持）"
+      return 0
+    fi
+  done
   resolve_mode
-  echo "🚀 开始执行漫画台词 OCR 批量提取 (目标目录: $DATA_DIR · 算力线: $MODE)..."
-  run_py scripts/ocr_worker.py --data-dir "$DATA_DIR" ${@+"$@"}
+  echo "🚀 开始执行漫画台词 OCR 批量提取 (算力线: $MODE)..."
+  if [ "$sync_local" = 1 ]; then
+    for arg in "${run_args[@]}"; do
+      case "$arg" in
+        --directory|--directory=*|--status|--check|--help|-h)
+          echo "❌ 错误: --sync-local 只用于书库或书库内单张画页的提取" >&2
+          return 1
+          ;;
+      esac
+    done
+    # 先校验全部提取参数，再用应用环境建台词表；失败时不开始推理。
+    run_py scripts/ocr_worker.py --check "${run_args[@]}" || return "$?"
+    "$PYTHON" scripts/sync_ocr.py --check "${sync_args[@]}" || return "$?"
+  fi
+  run_py scripts/ocr_worker.py "${run_args[@]}" || status=$?
+  if [ "$sync_local" = 1 ]; then
+    # 失败页不妨碍同步已落盘的结果；增量跳过也必须补入库。提取失败的退出码保留。
+    "$PYTHON" scripts/sync_ocr.py --no-cleanup "${sync_args[@]}" || status=1
+  fi
+  return "$status"
 }
 
 # 聚类判据的离线实验台：dump 画页的原始识别行 / 读回 dump 重跑当前聚类。
 # 改 cluster_blocks 的判据不必再"每改一版烧一轮 GPU"——推理只跑一次，之后都在本地量。
 cmd_lines() {
-  run_py scripts/ocr_lines.py --data-dir "$DATA_DIR" ${@+"$@"}
+  run_py scripts/ocr_lines.py ${@+"$@"}
 }
 
 cmd_sync() {
-  echo "🔄 正在同步 OCR 伴生文件至 SQLite FTS5 索引 (目标目录: $DATA_DIR)..."
+  echo "🔄 正在同步 OCR 伴生文件至本机 SQLite FTS5 索引..."
   echo "   (入库走应用 .venv：需要 backend 依赖，与 OCR 算力环境无关)"
-  "$PYTHON" scripts/sync_ocr.py --data-dir "$DATA_DIR" ${@+"$@"}
+  "$PYTHON" scripts/sync_ocr.py ${@+"$@"}
 }
 
 cmd_install() {
@@ -237,8 +270,8 @@ cmd_install() {
   # 绝不允许把 GPU 栈装进应用环境：下面是精确同步，会把 ocr-gpu 组之外的包全部卸掉，
   # 指到应用 .venv 就等于把后端依赖卸光。
   local app_prefix
-  app_prefix="$("$PYTHON" -c 'import sys; print(sys.prefix)')"
-  if [ "$app_prefix" = "$OCR_VENV" ]; then
+  app_prefix="$("$PYTHON" -c 'import sys; from pathlib import Path; print(Path(sys.prefix).resolve())')"
+  if [ "$app_prefix" -ef "$OCR_VENV" ]; then
     echo "❌ 错误: COMIC_SHELF_OCR_VENV 指向了应用环境本身 ($OCR_VENV)，拒绝在其中装 GPU 依赖" >&2
     exit 1
   fi
@@ -270,12 +303,11 @@ cmd_install() {
 cmd_test() {
   local target_img="${1:-}"
   if [ -z "$target_img" ]; then
-    # 自动探测第一张画页用于测试
-    target_img="$(find "$DATA_DIR/library" -type f \( -name "*.webp" -o -name "*.jpg" -o -name "*.png" \) 2>/dev/null | head -n 1 || true)"
+    target_img="$(PYTHONPATH="$PWD/backend${PYTHONPATH:+:$PYTHONPATH}" "$PYTHON" -c 'from app.ocr_files import image_extensions, resolve_data_dir, scan_files; print(next((str(path) for path in scan_files(resolve_data_dir() / "library", image_extensions())), ""))')"
   fi
 
   if [ -z "$target_img" ] || [ ! -f "$target_img" ]; then
-    echo "❌ 错误: 未指定测试画页，且在 $DATA_DIR 未找到测试图片。"
+    echo "❌ 错误: 未指定有效测试画页，或目标书库里没有测试图片。"
     echo "用法: bash scripts/ocr.sh test [--cpu] <图片路径>"
     exit 1
   fi
@@ -312,7 +344,7 @@ fi
 
 case "$ACTION" in
   status)
-    cmd_status
+    cmd_status ${ARGS+"${ARGS[@]}"}
     ;;
   run)
     cmd_run ${ARGS+"${ARGS[@]}"}
@@ -336,24 +368,24 @@ case "$ACTION" in
     echo ""
     echo "  install [--gpu|--cpu]   - 装 OCR 推理依赖。检测到 NVIDIA 显卡即装 GPU 环境 (.venv-ocr/)，"
     echo "                              无卡机器加 --cpu 只装 CPU 依赖"
-    echo "  status                  - 查看书库 OCR 伴生覆盖率、硬件与双环境实际推理设备、FTS5 统计"
+    echo "  status                  - 查看书库 OCR 伴生覆盖率、硬件与双环境实际推理设备"
     echo "  run [options]           - 批量或定向对画页提取 OCR 伴生文件 ({index}.ocr.json)"
     echo "     --workers <N>        - 并发线程数 (GPU 推荐 4；CPU 线保持 2，再加会因抢核反而变慢)"
     echo "     --source <src>       - 限定数据源，即 library/ 下的目录名 (jm / local / picacg / copymanga)"
     echo "     --id <comic_id>      - 限定单本漫画 ID"
     echo "     --page <pages>       - 限定提取特定页码 (如 --page 3 或 --page 1,3,5 或 --page 10-20；多章节本请改用 --image)"
     echo "     --image <path>       - 直接指定单张画页图片路径进行单页处理"
+    echo "     --directory <path>   - 递归提取普通图片目录（本地/映射盘）；不与书库过滤条件或 --limit 混用"
+    echo "     --data-dir <path>    - 指定纸间 data 目录；本机同步时必须使用本地磁盘上的目标库"
     echo "     --min-score <float>  - 识别置信度下限，直接交给引擎 (默认 0.5，调低调高都生效；过滤拟声词与背景噪点)"
     echo "     --force              - 强制重新处理已存在的伴生文件"
-    echo "     --limit <N>          - 最多处理册数（只数确有待提取画页的本，已完成的不占名额）"
-    echo "     --api-url <URL>      - 远程 NAS 纸间 API 地址 (如 http://192.168.1.100:8000)，处理后自动通知入库"
-    echo "     --token <TOKEN>      - 纸间 Machine API Token（建议改设环境变量 COMIC_SHELF_MACHINE_TOKEN，不写在命令行）"
-    echo "     --sync-local         - 处理完毕后直接同步本地 SQLite 索引（环境里要有后端依赖，GPU 环境没有，请改用 sync）"
-    echo "  sync [options]          - 将已存在的伴生文件全量/增量扫入 SQLite FTS5"
+    echo "     --limit <N>          - 最多产出新页的册数（全页失败的本不占名额，尝试册数可能更多）"
+    echo "     --sync-local         - 提取后本机增量入库（入库用应用环境，GPU 环境仍只做 OCR）；失败可直接重跑"
+    echo "  sync [options]          - 在书库所在机器把本机伴生文件扫入 SQLite FTS5"
     echo "  test [image]            - 单张画页试跑并打印气泡（与 run 同一套引擎与过滤，只打印不写盘）"
     echo "  lines [options]         - 气泡聚类判据的离线实验台，改 cluster_blocks 前先用它："
     echo "     --source <src> [--id <id>] [--pages N] [--out DIR]"
-    echo "                            - dump 该批画页的**原始识别行**到 DIR（默认 /tmp/paper-room-ocr-lines），"
+    echo "                            - dump 该批画页的**原始识别行**到 DIR（默认随机私有临时目录），"
     echo "                              只跑一次推理，**绝不写 backend/data**；省掉 --id 即该源全部画页"
     echo "     --recluster DIR       - 不跑推理：读回 dump，用当前聚类重跑并打印气泡数/字数/面积分布/疑似误并"
     echo "     --image <path>        - 只识别这一张并打印聚类后的气泡，不写任何文件（test 走的就是它）"

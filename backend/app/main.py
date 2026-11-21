@@ -58,7 +58,7 @@ from .routers.chapters import chapter_cover
 from .routers.common import store
 from .routers.library import delete_comic
 from .routers.media import cover_file, page_info, page_thumbnail
-from .routers.search import search_dialogue_endpoint, sync_ocr_endpoint
+from .routers.search import search_dialogue_endpoint
 from .storage import ComicStore
 from .storage.utils import _write_json_atomic, acquire_library_writer_lock
 
@@ -283,15 +283,14 @@ async def auth_and_security_middleware(request: Request, call_next):
     if is_write:
         if not is_curator(request):
             if is_machine(request):
-                # Machine token is strictly scoped to comic creation, page uploads, and OCR sync (ADR 0008)
+                # Machine token is strictly scoped to comic creation and page uploads (ADR 0008)
                 is_machine_allowed_write = (
-                    path == "/api/library/local/create"
-                    or path.endswith(("/upload-pages", "/replace-pages", "/ocr/sync"))
+                    path == "/api/library/local/create" or path.endswith(("/upload-pages", "/replace-pages"))
                 ) and request.method != "DELETE"
                 if not is_machine_allowed_write:
                     return JSONResponse(
                         status_code=403,
-                        content={"detail": "机器密钥仅限执行作品创作入库与伴生同步，禁止执行全站管理或删除操作"},
+                        content={"detail": "机器密钥仅限执行作品创作入库与画页上传，禁止执行全站管理或删除操作"},
                     )
             elif is_guest(request):
                 return JSONResponse(
@@ -421,5 +420,4 @@ __all__ = [
     "page_thumbnail",
     "search_dialogue_endpoint",
     "store",
-    "sync_ocr_endpoint",
 ]

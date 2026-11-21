@@ -1,5 +1,7 @@
 # ADR 0017 — 漫画台词全文检索（SQLite FTS5 + Trigram）与阅读器气泡呼吸高亮定位架构
 
+> 2026-11-22 更新：OCR HTTP 同步入口已由 [ADR 0041](./0041-ocr-file-extraction-boundary.md) 撤销；现在使用本机 CLI 增量同步，本文中的原接口描述仅记录历史。
+
 - **日期**：2026-09-12
 - **状态**：Accepted
 - **关联**：扩充 `CONTEXT.md`「台词全文检索 (FTS5)」「气泡呼吸高亮」「伴生资产协议」，演进 `DESIGN_NOTES.md` §62，关联 `docs/PITFALLS.md` 避坑条目 79 与 80，落地 `docs/AI_ECOSYSTEM_ROADMAP.md` 阶段一先行项

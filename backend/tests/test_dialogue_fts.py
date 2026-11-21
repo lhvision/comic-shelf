@@ -15,7 +15,6 @@ from app.main import (
     delete_comic,
     search_dialogue_endpoint,
     store,
-    sync_ocr_endpoint,
 )
 
 
@@ -317,22 +316,8 @@ def test_dialogue_api_endpoints_and_auth():
         )
         db_mod.upsert_comic_index(make_comic_item("local", "comic_api", "API测试漫画", 0))
 
-        # 1. Test POST /api/library/local/comic_api/ocr/sync with machine token
-        req_machine = make_mock_request(
-            "/api/library/local/comic_api/ocr/sync",
-            headers={"X-Machine-Token": "test-machine-token"},
-        )
-        sync_resp = sync_ocr_endpoint("local", "comic_api", req_machine)
-        assert sync_resp.ok is True
-        assert sync_resp.count == 1
-
-        # 2. Test sync without auth -> 401
-        req_unauth = make_mock_request("/api/library/local/comic_api/ocr/sync")
-        try:
-            sync_ocr_endpoint("local", "comic_api", req_unauth)
-            assert False, "Should raise 401"
-        except HTTPException as exc:
-            assert exc.status_code == 401
+        # 本机同步入库，搜索接口继续使用这份索引。
+        assert db_mod.sync_comic_dialogues("local", "comic_api") == 1
 
         # 3. Test GET /api/search/dialogue with curator auth
         req_curator = make_mock_request(
@@ -360,7 +345,7 @@ def test_dialogue_api_endpoints_and_auth():
         search_after_del = search_dialogue_endpoint(req_curator, q="API测试台词")
         assert search_after_del.total == 0
 
-        print("  ✓ Dialogue API endpoints, machine token auth, and deletion hooks passed")
+        print("  ✓ Dialogue API endpoints, permissions, and deletion hooks passed")
     finally:
         store.root = old_root
         config_mod.AUTH_SECRET = ""
@@ -1347,7 +1332,9 @@ def test_half_synced_rows_resynced_on_startup():
                 " VALUES ('jm', '88003', 2, 1, ?, 'zh', '[0.2, 0.1, 0.4, 0.5]')",
                 (text,),
             )
-            conn.execute("INSERT OR REPLACE INTO comic_ocr_sync_meta VALUES ('jm', '88003', 9e12, 1, 0)")
+            conn.execute(
+                "INSERT OR REPLACE INTO comic_ocr_sync_meta (source, source_id, last_synced_mtime, dialogue_count, updated_at) VALUES ('jm', '88003', 9e12, 1, 0)"
+            )
         assert db_mod.search_dialogues("也得搜得到", source="jm") == [], "前提不成立：新列为 NULL 的行本就搜得到"
 
         db_mod.init_dialogue_db()
@@ -1421,8 +1408,6 @@ def test_dialogue_context_http_endpoint():
     """取料端点：访客必须被挡在外面，馆长拿到的必须是剧情原序且不带展示态字段。"""
     from types import SimpleNamespace
     from unittest import mock
-
-    from fastapi import HTTPException
 
     from app.models import StoryContextResponse
     from app.routers import search as search_router

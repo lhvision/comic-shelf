@@ -78,6 +78,12 @@ def test_dialogue_search_http_through_real_middleware_stack():
 
             curator = client.get(url, params=params, headers={"Authorization": "Bearer stack-secret"})
             assert curator.status_code == 200, curator.text
+            removed = client.post(
+                "/api/library/local/stack_hi/ocr/sync", headers={"Authorization": "Bearer stack-secret"}
+            )
+            # 有 SPA 静态挂载时，未匹配的 POST 由 StaticFiles 返回 405；没有挂载时为 404。
+            assert removed.status_code in {404, 405}, removed.text
+            assert "/api/library/{source}/{source_id}/ocr/sync" not in app.openapi()["paths"]
             # 个性化投影的出口：共享缓存一旦把馆长的排序端给下一个人，读偏好就漏了
             assert curator.headers["cache-control"] == "no-store", curator.headers
 

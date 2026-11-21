@@ -296,7 +296,7 @@ WebMCP 作为运行在浏览器宿主内的模型上下文通道，遵循**最�
 在将 OCR 与剧本语料引入生产环境时，必须筑牢五道质量防线：
 
 1. **伴生文件被动感知与幽灵索引清理（Sidecar Ingestion Sync & Ghost Index Mitigation）**：
-   - 外部 Studio 产出 `{index}.ocr.json` 后，通过 `POST /api/library/:source/:source_id/ocr/sync` 或 CLI `bash scripts/ocr.sh sync` 增量同步进 SQLite FTS5，避免每次重启全盘轮询卡死；
+   - 外部 Studio 产出 `{index}.ocr.json` 后，通过本机 CLI `bash scripts/ocr.sh sync`（容器内为 `python -m app.sync_ocr`） 增量同步进 SQLite FTS5，避免每次重启全盘轮询卡死；
    - 漫画被删除或重新装订（Re-binding）时，联动事务原子清空该作品所有 FTS5 记录，彻底杜绝“搜得出台词但画页不存在或页码错位”的幽灵索引。
 2. **简繁双向互通归一化（Simplified/Traditional Bidirectional Search）**：✅ 已落地并升级
    - 汉化组多为港台或民间繁体，读者常输入简体。**台词出口采用索引侧归一**：`comic_dialogues_fts.text_norm` 在写入时折成简体字形，倒排只建这一列，查询侧单次归一，繁简混排行不再漏召回（全库 100% 可命中，展示与高亮仍保留页面原字形）；书架元数据出口因写入侧无法规范，继续走查询侧多组 `LIKE` OR 补偿。详见 [ADR 0017](docs/adr/0017-dialogue-search-fts5.md)「决策 2 · 修订」。

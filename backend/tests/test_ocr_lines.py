@@ -77,22 +77,137 @@ class TestDump(unittest.TestCase):
             rows = [_row("有效台词", 10, 10, 90, 40), _row("   ", 10, 100, 90, 130)]
             with (
                 mock.patch.object(ocr_lines, "get_engine", return_value=object()),
-                mock.patch.object(ocr_lines, "run_engine", return_value=rows),
+                mock.patch.object(ocr_worker, "run_engine", return_value=rows),
             ):
-                name, info = ocr_lines._dump_one(img, out_dir)
-                self.assertEqual(ocr_lines._dump_one(img, out_dir)[1], "已存在，跳过", "重跑必须跳过已 dump 的页")
+                name, info = ocr_lines._dump_one(img, out_dir, tmp / "data/library")
+                self.assertEqual(
+                    ocr_lines._dump_one(img, out_dir, tmp / "data/library")[1],
+                    "已存在，跳过",
+                    "重跑必须跳过已 dump 的页",
+                )
                 # 各话的同名页不许撞成同一个文件，否则后一话会被当成"已存在"整话跳过
-                self.assertEqual(ocr_lines._dump_one(chapter_img, out_dir)[0], "a_c2_00001.json")
+                self.assertEqual(
+                    ocr_lines._dump_one(chapter_img, out_dir, tmp / "data/library")[0], "jm/a/pages/c2/00001.json"
+                )
 
             self.assertEqual(info, "1 行")
-            self.assertEqual(name, "a_00001.json")
-            dumped = json.loads((out_dir / "a_00001.json").read_text(encoding="utf-8"))
+            self.assertEqual(name, "jm/a/pages/00001.json")
+            dumped = json.loads((out_dir / "jm/a/pages/00001.json").read_text(encoding="utf-8"))
             self.assertEqual((dumped["w"], dumped["h"]), (800, 1200), "页面尺寸没按原图记录，聚类比例会全错")
             self.assertEqual([b["text"] for b in dumped["blocks"]], ["有效台词"])
             self.assertEqual(dumped["blocks"][0]["xmin"], 10)
             self.assertEqual(_files(tmp / "data"), before, "dump 往数据目录里写了东西")
         finally:
             shutil.rmtree(tmp, ignore_errors=True)
+
+    def test_same_book_and_page_names_across_sources_do_not_collide(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            library = root / "library"
+            out = root / "dump"
+            out.mkdir()
+            images = [_png(library / source / "same/pages/00001.png") for source in ("jm", "local")]
+            with (
+                mock.patch.object(ocr_lines, "get_engine", return_value=object()),
+                mock.patch.object(ocr_worker, "run_engine", return_value=[]),
+            ):
+                names = [ocr_lines._dump_one(image, out, library)[0] for image in images]
+            self.assertEqual(["jm/same/pages/00001.json", "local/same/pages/00001.json"], names)
+            self.assertEqual(2, len(list(out.rglob("*.json"))))
+
+    def test_invalid_cached_dump_and_links_are_rejected_without_overwrite(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            library = root / "library"
+            image = _png(library / "jm/book/pages/00001.png")
+            out = root / "dump"
+            destination = out / "jm/book/pages/00001.json"
+            destination.parent.mkdir(parents=True)
+            for content in ("", "null", "{}", "broken json"):
+                destination.write_text(content)
+                with self.subTest(content=content), self.assertRaises(ValueError):
+                    ocr_lines._dump_one(image, out, library)
+                self.assertEqual(content, destination.read_text())
+            destination.unlink()
+            victim = root / "victim.json"
+            destination.symlink_to(victim)
+            with self.assertRaises(OSError):
+                ocr_lines._dump_one(image, out, library)
+            self.assertFalse(victim.exists())
+
+    def test_default_dump_directory_is_private_and_unique(self):
+        import os
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            data = root / "data"
+            _png(data / "library/jm/book/pages/00001.png")
+            args = argparse.Namespace(data_dir=str(data), source="jm", id="book", pages=0, out=None, workers=1)
+            with (
+                mock.patch.object(ocr_lines.tempfile, "gettempdir", return_value=str(root)),
+                mock.patch.object(ocr_lines, "get_engine", return_value=object()),
+                mock.patch.object(ocr_worker, "run_engine", return_value=[]),
+                redirect_stdout(io.StringIO()),
+            ):
+                self.assertEqual(0, ocr_lines.cmd_dump(args))
+                self.assertEqual(0, ocr_lines.cmd_dump(args))
+            outputs = sorted(root.glob("paper-room-ocr-lines-*"))
+            self.assertEqual(2, len(outputs))
+            for directory in outputs:
+                self.assertEqual(os.geteuid(), directory.stat().st_uid)
+                self.assertEqual(0o700, directory.stat().st_mode & 0o777)
+
+    def test_untrusted_output_permissions_and_directory_links_are_rejected(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            shared = root / "shared"
+            shared.mkdir(mode=0o777)
+            shared.chmod(0o777)
+            with self.assertRaisesRegex(ValueError, "其他用户修改"):
+                ocr_lines._output_directory(shared)
+            link = root / "link"
+            link.symlink_to(shared, target_is_directory=True)
+            with self.assertRaisesRegex(ValueError, "符号链接"):
+                ocr_lines._output_directory(link)
+
+    def test_directory_replaced_by_link_during_creation_is_rejected(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            output = root / "output"
+            victim = root / "victim"
+            victim.mkdir()
+            original_mkdir = Path.mkdir
+
+            def substitute_link(path, *args, **kwargs):
+                if path == output:
+                    path.symlink_to(victim, target_is_directory=True)
+                else:
+                    original_mkdir(path, *args, **kwargs)
+
+            with mock.patch.object(Path, "mkdir", substitute_link), self.assertRaises(ValueError):
+                ocr_lines._output_directory(output)
+            self.assertEqual([], list(victim.iterdir()))
+
+    def test_concurrent_dump_publication_is_atomic_and_does_not_overwrite(self):
+        from concurrent.futures import ThreadPoolExecutor
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            library = root / "library"
+            image = _png(library / "jm/book/pages/00001.png")
+            out = root / "dump"
+            out.mkdir()
+            with (
+                mock.patch.object(ocr_lines, "get_engine", return_value=object()),
+                mock.patch.object(ocr_worker, "run_engine", return_value=[]),
+                ThreadPoolExecutor(max_workers=2) as pool,
+            ):
+                futures = [pool.submit(ocr_lines._dump_one, image, out, library) for _ in range(2)]
+                results = [future.result(timeout=10) for future in futures]
+            self.assertEqual({"0 行", "已存在，跳过"}, {result[1] for result in results})
+            destination = out / "jm/book/pages/00001.json"
+            self.assertEqual(str(image), json.loads(destination.read_text())["image"])
+            self.assertEqual([], list(out.rglob("*.tmp")))
 
 
 class TestImage(unittest.TestCase):
@@ -105,7 +220,7 @@ class TestImage(unittest.TestCase):
             buf = io.StringIO()
             with (
                 mock.patch.object(ocr_lines, "get_engine", return_value=object()),
-                mock.patch.object(ocr_lines, "run_engine", return_value=[_row("老师", 100, 60, 120, 120)]),
+                mock.patch.object(ocr_worker, "run_engine", return_value=[_row("老师", 100, 60, 120, 120)]),
                 redirect_stdout(buf),
             ):
                 rc = ocr_lines.cmd_image(argparse.Namespace(image=str(img)))

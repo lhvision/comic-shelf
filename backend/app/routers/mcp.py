@@ -1169,7 +1169,7 @@ async def process_jsonrpc_request(req_data: Any) -> Any:
 def _require_mcp_auth(request: Request) -> None:
     """MCP 面只认馆长口令，外加一把可单独撤销的子凭据 `COMIC_SHELF_MCP_TOKEN`。
 
-    不认机器密钥：那把钥匙同时握在 OCR 流水线手里（入库与伴生同步都要用），外发到智能体配置里
+    不认机器密钥：那把钥匙同时握在外部创作端手里（建本与画页上传都要用），外发到智能体配置里
     等于连"往库里写东西"一起交出去，换它得连流水线一起重启；而 MCP 工具按馆长视角取料，
     机器密钥进来就能读到隐藏本台词。
 

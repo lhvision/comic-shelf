@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 import math
@@ -10,6 +11,8 @@ import time
 from pathlib import Path
 from typing import Any
 
+from ..file_io import file_stamp, read_json
+from ..ocr_files import normalize_library_name, scan_files
 from ..zh_conv import to_simplified
 from .connection import _escape_like, get_data_dir, get_db, get_dialogue_db, get_dialogue_db_path
 
@@ -219,13 +222,25 @@ def _dialogue_key(source: str, source_id: str) -> tuple[str, str]:
     同一本书就会在索引里挂到两个键上，删除时只清得掉一个。
     """
 
-    def clean(v: object) -> str:
-        s = re.sub(r"[^a-zA-Z0-9_\-\.]+", "_", str(v)).strip("._") or "_"
-        while ".." in s:
-            s = s.replace("..", "_")
-        return s
+    return normalize_library_name(source), normalize_library_name(source_id)
 
-    return clean(source), clean(source_id)
+
+def _ocr_source_state(data_dir: Path, comic_dir: Path) -> tuple[list[Path], str, float]:
+    """文件清单与 album 共同决定增量；删除、替换、保留旧 mtime 的复制也能感知。"""
+    pages_dir = comic_dir / "pages"
+    for directory in (data_dir / "library", comic_dir.parent, comic_dir, pages_dir):
+        if directory.is_symlink():
+            raise ValueError(f"台词同步目录不能是符号链接: {directory}")
+    files = scan_files(pages_dir, (".ocr.json",))
+    entries = [(file.relative_to(comic_dir).as_posix(), file_stamp(file, root=data_dir)) for file in files]
+    album = comic_dir / "album.json"
+    try:
+        album_stamp = file_stamp(album, root=data_dir)
+    except FileNotFoundError:
+        album_stamp = None
+    signature = hashlib.sha256(json.dumps([entries, album_stamp], separators=(",", ":")).encode()).hexdigest()
+    latest_mtime = max((entry[1][3] / 1e9 for entry in entries), default=0.0)
+    return files, signature, latest_mtime
 
 
 def sync_comic_dialogues(source: str, source_id: str, force: bool = False) -> int:
@@ -249,98 +264,51 @@ def sync_comic_dialogues(source: str, source_id: str, force: bool = False) -> in
     # 找目录、写库、查元数据、删除统一用清洗后的键，否则会留下删不掉的孤儿语料（见 _dialogue_key）
     source, source_id = safe_source, safe_id
 
-    data_dir = get_data_dir()
-    data_resolved = data_dir.resolve()
-    candidates = [
-        data_dir / "library" / safe_source / safe_id / "pages",
-        data_dir / safe_source / safe_id / "pages",
-        data_dir / "library" / safe_source / safe_id,
-    ]
-    target_dir: Path | None = None
-    for cand in candidates:
-        try:
-            cand_resolved = cand.resolve()
-            if cand_resolved.is_relative_to(data_resolved) and cand_resolved.is_dir():
-                target_dir = cand_resolved
-                break
-        except Exception:
-            continue
+    data_resolved = get_data_dir().resolve()
+    comic_dir = data_resolved / "library" / safe_source / safe_id
+    ocr_files, source_signature, latest_mtime = _ocr_source_state(data_resolved, comic_dir)
 
-    ocr_files: list[Path] = []
-    if target_dir is not None:
-        if target_dir.name == "pages":
-            ocr_files = sorted(target_dir.glob("**/*.ocr.json"))
-        else:
-            pages_sub = target_dir / "pages"
-            if pages_sub.is_dir():
-                ocr_files = sorted(pages_sub.glob("**/*.ocr.json"))
-            else:
-                ocr_files = sorted(target_dir.glob("*.ocr.json"))
-
-    latest_mtime: float = 0.0
-    for f in ocr_files:
-        try:
-            mt = f.stat().st_mtime
-            latest_mtime = max(latest_mtime, mt)
-        except OSError:
-            pass
-
-    # 增量检查放在解析之前：OCR 文件自上次入库以来没变就直接返回已有计数，不读不解析
+    # 先比文件状态，再解析正文；旧库签名为空会在首次同步时修正一次索引。
     if not force:
         with get_dialogue_db() as conn:
             row = conn.execute(
-                "SELECT last_synced_mtime, dialogue_count FROM comic_ocr_sync_meta WHERE source = ? AND source_id = ?",
+                "SELECT source_signature, dialogue_count FROM comic_ocr_sync_meta WHERE source = ? AND source_id = ?",
                 (source, source_id),
             ).fetchone()
-            if row:
-                stored_mtime = float(row["last_synced_mtime"])
-                stored_count = int(row["dialogue_count"])
-                # 当 OCR 文件未变动（或原本就无 OCR 文件且已同步记录为 0）时直接命中增量缓存
-                if stored_mtime >= latest_mtime and (latest_mtime > 0 or stored_count == 0):
-                    return stored_count
+            if row and row["source_signature"] == source_signature:
+                return int(row["dialogue_count"])
 
     # 读取 album.json 以便建立多章节全局页号映射与单话边界上下文
     page_map: dict[str, int] = {}
     page_to_chapter: dict[int, str] = {}
     chapter_page_map: dict[str, list[int]] = {}
     page_count = 0
-    album_candidates = []
-    if target_dir is not None:
-        if target_dir.name == "pages":
-            album_candidates.append(target_dir.parent / "album.json")
-        else:
-            album_candidates.append(target_dir / "album.json")
-    album_candidates.append(data_dir / "library" / safe_source / safe_id / "album.json")
-    for ac in album_candidates:
+    album_path = comic_dir / "album.json"
+    if album_path.is_file():
         try:
-            ac_resolved = ac.resolve()
-            if not ac_resolved.is_relative_to(data_resolved):
-                continue
-            if ac_resolved.is_file():
-                meta_dict = json.loads(ac_resolved.read_text(encoding="utf-8"))
-                pages = meta_dict.get("pages", [])
-                try:
-                    page_count = int(meta_dict.get("page_count") or len(pages))
-                except TypeError, ValueError, OverflowError:
-                    page_count = len(pages)
-                for p in pages:
-                    idx_val = p.get("index")
-                    f_val = p.get("file", "")
-                    chap_val = p.get("chapter", "")
-                    if idx_val is not None:
-                        try:
-                            pid = int(idx_val)
-                        except ValueError, TypeError:
-                            continue
-                        s = Path(f_val).stem
-                        page_map[s] = pid
-                        if chap_val:
-                            page_map[f"{chap_val}/{s}"] = pid
-                        chap_str = str(chap_val or "")
-                        page_to_chapter[pid] = chap_str
-                        chapter_page_map.setdefault(chap_str, []).append(pid)
-                break
-        except Exception:
+            meta_dict = read_json(album_path, root=data_resolved)
+            pages = meta_dict.get("pages", [])
+            try:
+                page_count = int(meta_dict.get("page_count") or len(pages))
+            except TypeError, ValueError, OverflowError:
+                page_count = len(pages)
+            for page in pages:
+                idx_val = page.get("index")
+                f_val = page.get("file", "")
+                chap_val = page.get("chapter", "")
+                if idx_val is not None:
+                    try:
+                        pid = int(idx_val)
+                    except ValueError, TypeError:
+                        continue
+                    stem = Path(f_val).stem
+                    page_map[stem] = pid
+                    if chap_val:
+                        page_map[f"{chap_val}/{stem}"] = pid
+                    chap_str = str(chap_val or "")
+                    page_to_chapter[pid] = chap_str
+                    chapter_page_map.setdefault(chap_str, []).append(pid)
+        except json.JSONDecodeError, UnicodeDecodeError, TypeError, ValueError, AttributeError:
             pass
 
     # 统计单话首尾 1~2 页（仅当该话页数 >= 8 时判定，防止误杀极短单篇与番外）
@@ -358,8 +326,8 @@ def sync_comic_dialogues(source: str, source_id: str, force: bool = False) -> in
 
     for f in ocr_files:
         try:
-            payload = json.loads(f.read_text(encoding="utf-8"))
-        except Exception:
+            payload = read_json(f, root=data_resolved)
+        except json.JSONDecodeError, UnicodeDecodeError:
             continue
         if not isinstance(payload, dict):
             continue
@@ -482,6 +450,9 @@ def sync_comic_dialogues(source: str, source_id: str, force: bool = False) -> in
                 )
             )
 
+    if _ocr_source_state(data_resolved, comic_dir)[1] != source_signature:
+        raise RuntimeError(f"同步期间伴生资产或页码映射发生变化，请重试: {source}/{source_id}")
+
     with get_dialogue_db() as conn:
         conn.execute(
             "DELETE FROM comic_dialogues_fts WHERE source = ? AND source_id = ?",
@@ -499,10 +470,10 @@ def sync_comic_dialogues(source: str, source_id: str, force: bool = False) -> in
         conn.execute(
             """
             INSERT OR REPLACE INTO comic_ocr_sync_meta (
-                source, source_id, last_synced_mtime, dialogue_count, updated_at
-            ) VALUES (?, ?, ?, ?, ?)
+                source, source_id, last_synced_mtime, dialogue_count, updated_at, source_signature
+            ) VALUES (?, ?, ?, ?, ?, ?)
             """,
-            (source, source_id, latest_mtime, len(records), int(time.time())),
+            (source, source_id, latest_mtime, len(records), int(time.time()), source_signature),
         )
 
     # 向量重建放在 FTS 事务**外面**：模型冷启动可达秒级，扣着写锁会卡住关键词入库。

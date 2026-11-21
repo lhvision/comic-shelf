@@ -720,7 +720,7 @@ def test_machine_token_permission_boundaries():
         asyncio.run(auth_and_security_middleware(r_create, call_next))
         assert call_next.called
 
-        # 2. 允许：上传画页与 OCR 同步
+        # 2. 允许：上传画页
         call_next.reset_mock()
         r_upload = make_mock_request(
             "/api/library/local/c1/upload-pages",
@@ -728,15 +728,6 @@ def test_machine_token_permission_boundaries():
         )
         r_upload.method = "POST"
         asyncio.run(auth_and_security_middleware(r_upload, call_next))
-        assert call_next.called
-
-        call_next.reset_mock()
-        r_ocr = make_mock_request(
-            "/api/library/local/c1/ocr/sync",
-            headers={"X-Machine-Token": "machine-token-abc"},
-        )
-        r_ocr.method = "POST"
-        asyncio.run(auth_and_security_middleware(r_ocr, call_next))
         assert call_next.called
 
         # 3. 拒绝：禁止机器密钥直接触发整目录导入 (import-path)
@@ -748,7 +739,7 @@ def test_machine_token_permission_boundaries():
         r_import.method = "POST"
         res_import = asyncio.run(auth_and_security_middleware(r_import, call_next))
         assert res_import.status_code == 403
-        assert "仅限执行作品创作入库与伴生同步" in res_import.body.decode("utf-8")
+        assert "仅限执行作品创作入库与画页上传" in res_import.body.decode("utf-8")
         assert not call_next.called
 
         # 4. 拒绝：禁止机器密钥执行删除

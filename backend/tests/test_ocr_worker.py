@@ -372,24 +372,23 @@ class TestBatchRun(unittest.TestCase):
         Image.new("RGB", (40, 60), "white").save(path)
         return path
 
-    def _run(self, *argv, fail_on=(), notify_ok=True):
-        """跑一次 main()，返回 (退出码, 建引擎次数, 通知过的本)。`fail_on` 里的文件名推理时抛错。"""
+    def _run(self, *argv, fail_on=()):
+        """跑一次 main()，返回 (退出码, 建引擎次数)。`fail_on` 里的文件名推理时抛错。"""
         import contextlib
         import io
         import threading
         from unittest import mock
 
         builds = []
-        notified = []
+        original_recognize = ocr_worker.recognize_page
 
-        def fake_run_engine(_engine, img_path):
+        def fake_recognize(img_path, engine, **kwargs):
             if img_path.name in fail_on:
                 raise RuntimeError("模拟推理失败")
-            return [([[1.0, 1.0], [9.0, 1.0], [9.0, 30.0], [1.0, 30.0]], "台词", 0.9)]
+            return original_recognize(img_path, engine, **kwargs)
 
-        def fake_notify(_url, source, source_id, token=None):
-            notified.append(f"{source}/{source_id}")
-            return notify_ok
+        def fake_run_engine(_engine, img_path):
+            return [([[1.0, 1.0], [9.0, 1.0], [9.0, 30.0], [1.0, 30.0]], "台词", 0.9)]
 
         with (
             mock.patch.object(sys, "argv", ["ocr_worker.py", "--data-dir", str(self.data_dir), *argv]),
@@ -397,12 +396,12 @@ class TestBatchRun(unittest.TestCase):
             mock.patch.object(ocr_worker, "_thread_local", threading.local()),
             mock.patch.object(ocr_worker, "build_engine", lambda *a: builds.append(1) or object()),
             mock.patch.object(ocr_worker, "run_engine", fake_run_engine),
-            mock.patch.object(ocr_worker, "notify_nas_sync", fake_notify),
+            mock.patch.object(ocr_worker, "recognize_page", fake_recognize),
             contextlib.redirect_stdout(io.StringIO()),
             contextlib.redirect_stderr(io.StringIO()),
         ):
             code = ocr_worker.main()
-        return code, len(builds), notified
+        return code, len(builds)
 
     def test_every_source_directory_is_scanned(self):
         """图源按 library/ 下的实际目录遍历：清单写死时，后接入的 copymanga 批量跑永远扫不到。"""
@@ -437,7 +436,7 @@ class TestBatchRun(unittest.TestCase):
         """推理失败的页不许记成"0 条对白"：不留侧车（下次重试），整批退出码非 0。"""
         good = self._page("jm/1/pages/00001.png")
         bad = self._page("jm/1/pages/00002.png")
-        code, _, _ = self._run(fail_on={"00002.png"})
+        code, _ = self._run(fail_on={"00002.png"})
         self.assertEqual(1, code)
         self.assertTrue(good.with_name("00001.ocr.json").is_file())
         self.assertFalse(bad.with_name("00002.ocr.json").exists())
@@ -445,14 +444,6 @@ class TestBatchRun(unittest.TestCase):
         # 重跑同一条命令只补失败的那一页
         self.assertEqual(0, self._run()[0])
         self.assertTrue(bad.with_name("00002.ocr.json").is_file())
-
-    def test_failed_index_notification_fails_the_run(self):
-        """通知 NAS 入库失败（token 写错、NAS 不在线）时侧车照常落盘，但退出码必须非 0。"""
-        page = self._page("jm/1/pages/00001.png")
-        code, _, notified = self._run("--api-url", "http://nas.invalid", notify_ok=False)
-        self.assertEqual(1, code)
-        self.assertEqual(["jm/1"], notified)
-        self.assertTrue(page.with_name("00001.ocr.json").is_file())
 
     def test_limit_counts_only_comics_with_pending_pages(self):
         """--limit 只数确有待提取画页的本：先截断再跳过的话，反复跑 --limit 1 永远卡在已完成的第一本。"""
@@ -462,74 +453,346 @@ class TestBatchRun(unittest.TestCase):
             self.assertEqual(0, self._run("--limit", "1")[0])
             self.assertEqual(expected, len(list(self.library.rglob("*.ocr.json"))))
 
+    def test_limit_continues_past_comics_with_only_failed_pages(self):
+        """永久失败的第一页不占产出名额，重跑 --limit 1 仍能逐批处理后面的书。"""
+        self._page("jm/1/pages/bad.png")
+        for sid in ("2", "3"):
+            self._page(f"jm/{sid}/pages/good.png")
+        for expected in (1, 2, 2):
+            self.assertEqual(1, self._run("--limit", "1", fail_on={"bad.png"})[0])
+            self.assertEqual(expected, len(list(self.library.rglob("*.ocr.json"))))
+
+    def test_limit_counts_a_comic_that_produces_pages_despite_partial_failure(self):
+        """部分成功的本占一个名额；下一轮只剩失败页时不再挡住后续书籍。"""
+        self._page("jm/1/pages/bad.png")
+        self._page("jm/1/pages/good.png")
+        next_page = self._page("jm/2/pages/good.png")
+        self.assertEqual(1, self._run("--limit", "1", fail_on={"bad.png"})[0])
+        self.assertFalse(next_page.with_name("good.ocr.json").exists())
+        self.assertEqual(1, self._run("--limit", "1", fail_on={"bad.png"})[0])
+        self.assertTrue(next_page.with_name("good.ocr.json").is_file())
+
+    def test_invalid_scope_is_rejected_before_engine_initialization(self):
+        from unittest import mock
+
+        self._page("jm/1/pages/00001.png")
+        for argv in (
+            ("--data-dir", str(self.data_dir / "missing")),
+            ("--source", "missing"),
+            ("--source", "jm", "--id", "missing"),
+            ("--id", "missing"),
+        ):
+            with self.subTest(argv=argv), mock.patch.dict(sys.modules, {"app.db": None}):
+                code, builds = self._run(*argv, "--force")
+                self.assertEqual(1, code)
+                self.assertEqual(0, builds)
+                self.assertEqual([], list(self.library.rglob("*.ocr.json")))
+
     def test_engines_are_built_once_per_thread_not_per_comic(self):
         """线程池全程只有一个：每本各建一个池，就等于每本都重建一轮引擎。"""
         for sid in ("1", "2", "3", "4"):
             for name in ("00001.png", "00002.png"):
                 self._page(f"jm/{sid}/pages/{name}")
-        code, builds, _ = self._run("--workers", "2")
+        code, builds = self._run("--workers", "2")
         self.assertEqual(0, code)
         self.assertEqual(8, len(list(self.library.rglob("*.ocr.json"))))
         self.assertLessEqual(builds, 3, "主线程预热 1 次 + 2 个工作线程各 1 次")
 
-    @staticmethod
-    def _fake_backend(sync):
-        """用替身顶掉后端包：`sync` 为 None 时模拟"这个环境导入不了后端"。"""
-        import types
+    def test_malformed_bubble_structure_is_reextracted(self):
+        import json
+
+        page = self._page("jm/1/pages/page.png")
+        output = page.with_name("page.ocr.json")
+        for bubble in (None, {}, {"text": "台词", "box": [0, 1]}, {"text": "台词", "box": [0, 0, float("nan"), 1]}):
+            with self.subTest(bubble=bubble):
+                output.write_text(json.dumps({"engine": "rapidocr", "bubbles": [bubble]}))
+                self.assertFalse(ocr_worker.is_valid_ocr_sidecar(output))
+                self.assertEqual(0, self._run()[0])
+                self.assertTrue(ocr_worker.sidecar_is_fresh(page, output))
+
+    def test_image_replaced_during_inference_keeps_old_output(self):
         from unittest import mock
 
-        fake_db = None
-        if sync is not None:
-            fake_db = types.ModuleType("app.db")
-            fake_db.sync_comic_dialogues = sync
-        return mock.patch.dict(sys.modules, {"app": types.ModuleType("app"), "app.db": fake_db})
+        from PIL import Image
 
-    def test_sync_local_indexes_the_library_given_by_data_dir(self):
-        """后端在 import 时按 COMIC_SHELF_DATA 定数据目录：不先把它指到 --data-dir，
-        侧车写进这个库、索引却同步到后端默认的那个库，还报回一个不相干的旧计数。"""
-        import os
+        page = self._page("jm/1/pages/page.png")
+        self.assertEqual(0, self._run()[0])
+        output = page.with_name("page.ocr.json")
+        before = output.read_bytes(), output.stat().st_mtime_ns
+
+        def replace_during_inference(*_args):
+            Image.new("RGB", (80, 90), "black").save(page)
+            return []
+
+        with (
+            mock.patch.object(ocr_worker, "get_engine", return_value=object()),
+            mock.patch.object(ocr_worker, "run_engine", side_effect=replace_during_inference),
+            self.assertRaisesRegex(RuntimeError, "画页发生变化"),
+        ):
+            ocr_worker.process_image(page, output, root=self.data_dir)
+        self.assertEqual(before, (output.read_bytes(), output.stat().st_mtime_ns))
+        self.assertFalse(ocr_worker.sidecar_is_fresh(page, output))
+
+    def test_late_image_change_cannot_make_old_results_fresh(self):
         from unittest import mock
 
-        self._page("jm/1/pages/00001.png")
-        seen = []
+        from PIL import Image
 
-        def fake_sync(source, source_id):
-            seen.append((os.environ.get("COMIC_SHELF_DATA"), source, source_id))
-            return 1
+        from app.file_io import write_json_atomic
 
-        with mock.patch.dict(os.environ, {"COMIC_SHELF_DATA": "/somewhere/else"}), self._fake_backend(fake_sync):
-            self.assertEqual(0, self._run("--sync-local")[0])
-        self.assertEqual([(str(self.data_dir.resolve()), "jm", "1")], seen)
+        page = self._page("jm/1/pages/page.png")
+        output = page.with_name("page.ocr.json")
 
-    def test_sync_local_refuses_before_any_work_when_backend_is_missing(self):
-        """GPU 算力环境里没有后端依赖：必须开跑前拒绝，而不是提取完整批再逐本报"同步异常"。"""
-        import os
-        from unittest import mock
+        def change_before_publish(path, payload, **kwargs):
+            Image.new("RGB", (80, 90), "black").save(page)
+            write_json_atomic(path, payload, **kwargs)
 
-        self._page("jm/1/pages/00001.png")
-        with mock.patch.dict(os.environ), self._fake_backend(None):
-            code, builds, _ = self._run("--sync-local")
-        self.assertEqual(1, code)
-        self.assertEqual(0, builds, "还没确认后端可用就开始建引擎了")
+        with (
+            mock.patch.object(ocr_worker, "get_engine", return_value=object()),
+            mock.patch.object(ocr_worker, "run_engine", return_value=[]),
+            mock.patch.object(ocr_worker, "write_json_atomic", side_effect=change_before_publish),
+        ):
+            self.assertEqual(0, ocr_worker.process_image(page, output, root=self.data_dir))
+        self.assertFalse(ocr_worker.sidecar_is_fresh(page, output))
+
+    def test_ambiguous_library_names_fail_before_extraction(self):
+        self._page("jm/book..1/pages/page.png")
+        self._page("jm/book_1/pages/page.png")
+        self.assertEqual((1, 0), self._run())
         self.assertEqual([], list(self.library.rglob("*.ocr.json")))
+        self.assertEqual(0, self._run("--source", "jm", "--id", "book_1")[0])
 
-    def test_notify_waits_long_enough_for_a_slow_nas(self):
-        """NAS 端入库是同步的，还要重编台词向量：10 秒超时会把"还在入库"报成网络异常。"""
-        import io
+    def test_additional_formats_use_the_current_pillow_decoders(self):
+        from app.ocr_files import image_extensions
+
+        extensions = image_extensions()
+        for extension in (".gif", ".bmp", ".avif", ".tif", ".tiff", ".ico", ".jfif"):
+            self.assertIn(extension, extensions)
+            self._page(f"plain/image-{extension[1:]}{extension}")
+        self.assertEqual(0, self._run("--directory", str(self.library / "plain"))[0])
+        self.assertEqual(7, len(list((self.library / "plain").glob("*.ocr.json"))))
+        self.assertTrue({".pdf", ".svg", ".eps", ".ps", ".wmf", ".emf", ".mpeg", ".h5"}.isdisjoint(extensions))
+
+    def test_multiframe_images_use_only_the_first_frame(self):
         from unittest import mock
 
-        seen = {}
+        from PIL import Image
 
-        def fake_urlopen(req, timeout):
-            seen["timeout"] = timeout
-            resp = mock.MagicMock(status=200)
-            resp.read.return_value = b'{"ok": true, "count": 7}'
-            resp.__enter__.return_value = resp
-            return resp
+        first = Image.new("RGB", (30, 40), "white")
+        second = Image.new("RGB", (30, 40), "black")
+        for extension in (".gif", ".tiff"):
+            path = self.data_dir / f"frames{extension}"
+            first.save(path, save_all=True, append_images=[second])
 
-        with mock.patch("urllib.request.urlopen", fake_urlopen), mock.patch("sys.stdout", io.StringIO()):
-            self.assertTrue(ocr_worker.notify_nas_sync("http://nas.invalid/", "jm", "1"))
-        self.assertGreaterEqual(seen["timeout"], 120)
+            def check_first_frame(_engine, image):
+                self.assertEqual((255, 255, 255), image.convert("RGB").getpixel((0, 0)))
+                return []
+
+            with mock.patch.object(ocr_worker, "run_engine", side_effect=check_first_frame):
+                self.assertEqual((30, 40), ocr_worker.recognize_page(path, object())[0:2])
+
+    def test_exif_orientation_is_applied_before_coordinate_normalization(self):
+        from unittest import mock
+
+        from PIL import Image
+
+        path = self.data_dir / "rotated.jpg"
+        exif = Image.Exif()
+        exif[274] = 6
+        Image.new("RGB", (30, 40), "white").save(path, exif=exif)
+        with mock.patch.object(ocr_worker, "run_engine", return_value=[]):
+            self.assertEqual((40, 30), ocr_worker.recognize_page(path, object())[0:2])
+
+    def test_document_disguised_as_image_is_rejected_before_rendering(self):
+        from unittest import mock
+
+        from PIL import Image
+
+        path = self.data_dir / "disguised.jpg"
+        Image.new("RGB", (30, 40), "white").save(path, format="EPS")
+        with mock.patch.object(ocr_worker, "run_engine") as infer, self.assertRaisesRegex(ValueError, "光栅图片"):
+            ocr_worker.recognize_page(path, object())
+        infer.assert_not_called()
+
+    def test_plain_directory_is_recursive_incremental_and_skips_hidden_and_symlink_items(self):
+        good = self._page("plain/chapter/page.png")
+        hidden = self._page("plain/.hidden/page.png")
+        outside = self._page("outside/page.png")
+        plain = self.library / "plain"
+        (plain / "linked-directory").symlink_to(outside.parent, target_is_directory=True)
+        (plain / "linked-image.png").symlink_to(outside)
+        self.assertEqual(0, self._run("--directory", str(plain))[0])
+        output = good.with_name("page.ocr.json")
+        self.assertTrue(output.is_file())
+        self.assertEqual(good.stat().st_mode & 0o777, output.stat().st_mode & 0o777)
+        self.assertFalse(hidden.with_name("page.ocr.json").exists())
+        self.assertFalse(outside.with_name("page.ocr.json").exists())
+        before = output.read_bytes(), output.stat().st_mtime_ns
+        code, builds = self._run("--directory", str(plain))
+        self.assertEqual((0, 0), (code, builds))
+        self.assertEqual(before, (output.read_bytes(), output.stat().st_mtime_ns))
+        self.assertFalse((plain / "album.json").exists(), "普通目录提取不能自动收录漫画")
+        self.assertEqual([], list(self.data_dir.glob("*.db")))
+
+    def test_plain_directory_does_not_require_a_library_or_valid_data_environment(self):
+        import contextlib
+        import io
+        import os
+        from unittest import mock
+
+        page = self._page("plain/page.png")
+        with (
+            mock.patch.dict(os.environ, {"COMIC_SHELF_DATA": str(self.data_dir / "missing")}),
+            mock.patch.object(sys, "argv", ["ocr", "--directory", str(page.parent), "--check"]),
+            contextlib.redirect_stdout(io.StringIO()),
+        ):
+            self.assertEqual(0, ocr_worker.main())
+
+    def test_same_stem_images_are_rejected_before_inference(self):
+        png = self._page("jm/1/pages/page.png")
+        self._page("jm/1/pages/page.jpg")
+        for args in ((), ("--directory", str(png.parent)), ("--image", str(png))):
+            with self.subTest(args=args):
+                self.assertEqual((1, 0), self._run(*args))
+                self.assertEqual([], list(png.parent.glob("*.ocr.json")))
+
+    def test_force_failure_preserves_valid_output_and_cleans_partial_temp_files(self):
+        from unittest import mock
+
+        page = self._page("jm/1/pages/page.png")
+        self.assertEqual(0, self._run()[0])
+        output = page.with_name("page.ocr.json")
+        before = output.read_bytes(), output.stat().st_mtime_ns
+
+        with mock.patch("app.file_io.os.fsync", side_effect=OSError("模拟刷盘失败")):
+            self.assertEqual(1, self._run("--force")[0])
+        self.assertEqual(before, (output.read_bytes(), output.stat().st_mtime_ns))
+        self.assertEqual([], list(page.parent.glob("*.tmp")))
+        with mock.patch("app.file_io.os.replace", side_effect=OSError("模拟替换失败")):
+            self.assertEqual(1, self._run("--force")[0])
+        self.assertEqual(before, (output.read_bytes(), output.stat().st_mtime_ns))
+        self.assertEqual([], list(page.parent.glob("*.tmp")))
+
+    def test_concurrent_writers_use_distinct_temp_files(self):
+        import os
+        import threading
+        from concurrent.futures import ThreadPoolExecutor
+        from unittest import mock
+
+        page = self._page("jm/1/pages/page.png")
+        output = page.with_name("page.ocr.json")
+        barrier = threading.Barrier(2)
+        names = []
+        original_open, original_replace = os.open, os.replace
+
+        def spy_open(path, flags, *args, **kwargs):
+            if flags & os.O_EXCL:
+                names.append(str(path))
+            return original_open(path, flags, *args, **kwargs)
+
+        def synchronized_replace(*args, **kwargs):
+            barrier.wait(timeout=5)
+            return original_replace(*args, **kwargs)
+
+        with (
+            mock.patch.object(ocr_worker, "get_engine", return_value=object()),
+            mock.patch.object(ocr_worker, "run_engine", return_value=[]),
+            mock.patch("app.file_io.os.open", spy_open),
+            mock.patch("app.file_io.os.replace", synchronized_replace),
+            ThreadPoolExecutor(max_workers=2) as pool,
+        ):
+            futures = [pool.submit(ocr_worker.process_image, page, output) for _ in range(2)]
+            self.assertEqual([0, 0], [future.result(timeout=10) for future in futures])
+        self.assertEqual(2, len(set(names)))
+        self.assertTrue(ocr_worker.is_valid_ocr_sidecar(output))
+        self.assertEqual([], list(page.parent.glob("*.tmp")))
+
+
+class TestOCRInstall(unittest.TestCase):
+    """用真实解释器和 uv 替身运行安装脚本，验证路径保护，不安装任何包。"""
+
+    def test_gpu_install_rejects_application_environment_aliases(self):
+        import os
+        import shutil
+        import subprocess
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "scripts").mkdir()
+            shutil.copyfile(Path(__file__).resolve().parents[2] / "scripts/ocr.sh", root / "scripts/ocr.sh")
+            (root / ".venv").symlink_to(sys.prefix, target_is_directory=True)
+            (root / "application-link").symlink_to(root / ".venv", target_is_directory=True)
+            bin_dir = root / "stub-bin"
+            bin_dir.mkdir()
+            uv = bin_dir / "uv"
+            uv.write_text('#!/bin/sh\nprintf "%s" "$UV_PROJECT_ENVIRONMENT" > "$OCR_TEST_UV_LOG"\nexit 73\n')
+            uv.chmod(0o755)
+            log = root / "uv-called"
+            env = {**os.environ, "PATH": f"{bin_dir}{os.pathsep}{os.environ['PATH']}", "OCR_TEST_UV_LOG": str(log)}
+            for target in (".venv", ".venv/../.venv", "application-link", str(root / "application-link") + "/"):
+                with self.subTest(target=target):
+                    result = subprocess.run(
+                        ["bash", "scripts/ocr.sh", "install", "--gpu"],
+                        cwd=root,
+                        env={**env, "COMIC_SHELF_OCR_VENV": target},
+                        capture_output=True,
+                        text=True,
+                        timeout=10,
+                        check=False,
+                    )
+                    self.assertEqual(1, result.returncode, result.stdout + result.stderr)
+                    self.assertIn("指向了应用环境本身", result.stderr)
+                    self.assertFalse(log.exists(), "路径保护失效，已调用 uv 修改应用环境")
+
+            # 对照：允许一个尚不存在的独立环境进入安装步骤，替身在改环境之前停止。
+            result = subprocess.run(
+                ["bash", "scripts/ocr.sh", "install", "--gpu"],
+                cwd=root,
+                env={**env, "COMIC_SHELF_OCR_VENV": ".venv-ocr/"},
+                capture_output=True,
+                text=True,
+                timeout=10,
+                check=False,
+            )
+            self.assertEqual(73, result.returncode, result.stdout + result.stderr)
+            self.assertEqual(str(root / ".venv-ocr"), log.read_text())
+
+    def test_test_command_uses_the_worker_data_directory_resolver(self):
+        """自动试跑选图必须调用共享探测函数，不能另按 shell 环境变量选一个书库。"""
+        import os
+        import shutil
+        import subprocess
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            scripts = root / "scripts"
+            scripts.mkdir()
+            shutil.copyfile(Path(__file__).resolve().parents[2] / "scripts/ocr.sh", scripts / "ocr.sh")
+            (root / ".venv").symlink_to(sys.prefix, target_is_directory=True)
+            (root / "backend/app").mkdir(parents=True)
+            (root / "backend/app/__init__.py").touch()
+            (root / "backend/app/ocr_files.py").write_text(
+                'from pathlib import Path\ndef resolve_data_dir(): return Path("chosen-data").resolve()\ndef image_extensions(): return {".png"}\ndef scan_files(root, exts): return sorted(root.rglob("*.png"))\n'
+            )
+            (scripts / "ocr_lines.py").write_text('import sys\nprint("IMAGE=" + sys.argv[-1])\n')
+            page = root / "chosen-data/library/jm/1/pages/00001.png"
+            page.parent.mkdir(parents=True)
+            page.touch()
+            wrong_data = root / "other-data"
+            wrong_data.mkdir()
+            result = subprocess.run(
+                ["bash", "scripts/ocr.sh", "test", "--cpu"],
+                cwd=root,
+                env={**os.environ, "COMIC_SHELF_DATA": str(wrong_data)},
+                capture_output=True,
+                text=True,
+                timeout=10,
+                check=False,
+            )
+            self.assertEqual(0, result.returncode, result.stdout + result.stderr)
+            self.assertIn(f"IMAGE={page}", result.stdout)
 
 
 class TestDependencyIsolation(unittest.TestCase):
@@ -587,8 +850,165 @@ class TestDependencyIsolation(unittest.TestCase):
         self.assertIn([{"group": "ocr"}, {"group": "ocr-gpu"}], conflicts)
         self.assertNotIn("onnxruntime", self._closure("ocr-gpu"), "GPU 组里混进了 CPU 版 onnxruntime")
 
+    def test_cpu_and_gpu_shared_dependencies_have_identical_pins(self):
+        """共用直接依赖升级必须同步，不能靠互斥组让 uv 各锁一个识别版本。"""
+        import tomllib
+
+        groups = tomllib.loads((self.ROOT / "pyproject.toml").read_text(encoding="utf-8"))["dependency-groups"]
+        versions = {}
+        for group in ("ocr", "ocr-gpu"):
+            versions[group] = {}
+            for requirement in groups[group]:
+                name, equal, version = requirement.partition("==")
+                self.assertEqual("==", equal, f"{group} 的依赖必须精确锁定: {requirement}")
+                versions[group][name.split("[", 1)[0]] = version
+        shared = versions["ocr"].keys() & versions["ocr-gpu"].keys()
+        self.assertTrue({"pillow", "rapidocr"} <= shared)
+        for name in shared:
+            self.assertEqual(versions["ocr"][name], versions["ocr-gpu"][name], f"两条线的 {name} 版本不一致")
+
+
+class TestDataDirectory(unittest.TestCase):
+    """书库目录解析的错误与优先级，所有目录都只读或来自一次性目录。"""
+
+    def test_explicit_invalid_directory_never_falls_back(self):
+        import os
+        import tempfile
+        from unittest import mock
+
+        with tempfile.TemporaryDirectory() as tmp, mock.patch.dict(os.environ, {"COMIC_SHELF_DATA": tmp}):
+            file = Path(tmp) / "file"
+            file.touch()
+            for path in ("", "  ", str(Path(tmp) / "missing"), str(file)):
+                with self.subTest(path=path), self.assertRaises(ValueError):
+                    ocr_worker.resolve_data_dir(path)
+
+    def test_explicit_directory_overrides_invalid_environment(self):
+        import os
+        import tempfile
+        from unittest import mock
+
+        with tempfile.TemporaryDirectory() as tmp:
+            with mock.patch.dict(os.environ, {"COMIC_SHELF_DATA": str(Path(tmp) / "missing")}):
+                with self.assertRaises(ValueError):
+                    ocr_worker.resolve_data_dir()
+                self.assertEqual(Path(tmp).resolve(), ocr_worker.resolve_data_dir(tmp))
+                self.assertEqual(Path.home().resolve(), ocr_worker.resolve_data_dir("~"))
+
 
 class TestCommandLine(unittest.TestCase):
+    def test_sync_preserves_single_book_selection_and_deleted_book_cleanup(self):
+        """同步脚本只给 --id 也必须限定书号，点名已删除的本仍可清理其残留索引。"""
+        import subprocess
+        import tempfile
+        import textwrap
+
+        script = textwrap.dedent("""
+            import shutil
+            import sys
+            from unittest import mock
+            from scripts import sync_ocr
+            from tests.test_ocr_worker import TestBatchRun
+
+            case = TestBatchRun()
+            case.setUp()
+            try:
+                for sid in ("1", "2"):
+                    case._page(f"jm/{sid}/pages/00001.png")
+                assert case._run()[0] == 0
+                with mock.patch.object(sys, "argv", ["sync", "--data-dir", str(case.data_dir), "--id", "1"]):
+                    sync_ocr.main()
+                from app.db import get_dialogue_db
+                with get_dialogue_db() as conn:
+                    assert conn.execute("SELECT source_id FROM comic_dialogues_fts").fetchone()[0] == "1"
+                    assert conn.execute("SELECT count(*) FROM comic_dialogues_fts").fetchone()[0] == 1
+                shutil.rmtree(case.library / "jm/1")
+                with mock.patch.object(sys, "argv", [
+                    "sync", "--data-dir", str(case.data_dir), "--source", "jm", "--id", "1", "--no-cleanup"
+                ]):
+                    sync_ocr.main()
+                with get_dialogue_db() as conn:
+                    assert conn.execute("SELECT count(*) FROM comic_dialogues_fts").fetchone()[0] == 0
+            finally:
+                case.tearDown()
+        """)
+        with tempfile.TemporaryDirectory() as tmp:
+            result = subprocess.run(
+                [sys.executable, "-c", script],
+                cwd=tmp,
+                capture_output=True,
+                text=True,
+                timeout=30,
+                check=False,
+            )
+        self.assertEqual(0, result.returncode, result.stdout + result.stderr)
+
+    def test_all_ocr_commands_reject_empty_scope_and_path_arguments(self):
+        import contextlib
+        import io
+        from unittest import mock
+
+        from scripts import ocr_lines, sync_ocr
+
+        commands = (
+            (ocr_worker.main, ("--source", "--id", "--data-dir", "--image", "--directory")),
+            (ocr_lines.main, ("--source", "--id", "--data-dir", "--image", "--recluster", "--out")),
+            (sync_ocr.main, ("--source", "--id", "--data-dir")),
+        )
+        for main, flags in commands:
+            for flag in flags:
+                for value in ("", " \t "):
+                    with (
+                        self.subTest(command=main.__module__, flag=flag, value=value),
+                        mock.patch.object(sys, "argv", ["ocr", flag, value]),
+                        contextlib.redirect_stderr(io.StringIO()),
+                        self.assertRaises(SystemExit) as error,
+                    ):
+                        main()
+                    self.assertEqual(2, error.exception.code)
+
+    def test_scope_arguments_cannot_escape_the_library(self):
+        import contextlib
+        import io
+        from unittest import mock
+
+        for flag in ("--source", "--id"):
+            for value in (".", "..", "../jm", "jm/1", "jm\\1", "book..1", "中文", "book name", "_book", "book_"):
+                with (
+                    self.subTest(flag=flag, value=value),
+                    mock.patch.object(sys, "argv", ["ocr", flag, value, "--force"]),
+                    contextlib.redirect_stderr(io.StringIO()),
+                    self.assertRaises(SystemExit) as error,
+                ):
+                    ocr_worker.main()
+                self.assertEqual(2, error.exception.code)
+
+    def test_all_ocr_commands_reject_invalid_explicit_directory(self):
+        import contextlib
+        import io
+        import os
+        import tempfile
+        from unittest import mock
+
+        from scripts import ocr_lines, sync_ocr
+
+        with tempfile.TemporaryDirectory() as tmp, mock.patch.dict(os.environ, {"COMIC_SHELF_DATA": tmp}):
+            (Path(tmp) / "library").mkdir()
+            for main in (ocr_worker.main, ocr_lines.main, sync_ocr.main):
+                with (
+                    self.subTest(command=main.__module__),
+                    mock.patch.object(sys, "argv", ["ocr", "--data-dir", str(Path(tmp) / "missing")]),
+                    contextlib.redirect_stdout(io.StringIO()),
+                    contextlib.redirect_stderr(io.StringIO()),
+                ):
+                    if main is sync_ocr.main:
+                        with self.assertRaises(SystemExit) as error:
+                            main()
+                        self.assertEqual(2, error.exception.code)
+                    else:
+                        self.assertEqual(1, main())
+                self.assertEqual([], list(Path(tmp).glob("*.db")))
+
     def test_bad_page_spec_stops_before_any_work(self):
         """--page 写错要在参数解析阶段就退出，不进入任何处理。"""
         import contextlib
@@ -601,15 +1021,18 @@ class TestCommandLine(unittest.TestCase):
                     ocr_worker.main()
         self.assertEqual(2, ctx.exception.code)
 
-    def test_token_defaults_to_the_environment_variable(self):
-        """机器密钥能替换任意一本的画页，不该只能写在命令行里（进程列表与 shell 历史可见）。"""
-        import os
-        from unittest import mock
+    def test_removed_http_parameters_are_rejected(self):
+        import contextlib
+        import io
 
-        with mock.patch.dict(os.environ, {"COMIC_SHELF_MACHINE_TOKEN": "from-env"}):
-            self.assertEqual("from-env", ocr_worker.build_arg_parser().parse_args([]).token)
-            self.assertEqual("cli", ocr_worker.build_arg_parser().parse_args(["--token", "cli"]).token)
-            self.assertNotIn("from-env", ocr_worker.build_arg_parser().format_help(), "帮助文案不许印出密钥")
+        for argv in (("--api-url", "http://nas.invalid"), ("--token", "secret")):
+            with (
+                self.subTest(argv=argv),
+                contextlib.redirect_stderr(io.StringIO()),
+                self.assertRaises(SystemExit) as error,
+            ):
+                ocr_worker.build_arg_parser().parse_args(argv)
+            self.assertEqual(2, error.exception.code)
 
     def test_no_engine_track_option_remains(self):
         """引擎必须只剩一条线：只要还留着"轨道"开关，忘了带参数就会把 v3 那种 5 个假名

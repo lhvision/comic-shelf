@@ -163,7 +163,7 @@ docker run -d \
 | 环境变量                                | 必填等级                     | 默认值                                        | 说明                                                                                                                                                                                                                                                                                                                                                                     |
 | :-------------------------------------- | :--------------------------- | :-------------------------------------------- | :----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `COMIC_SHELF_SECRET`                    | 🔴 **公网必设** / 内网免密   | _(留空)_                                      | **馆长访问口令**。留空则为局域网免密模式；公网或多用户部署强烈建议设置。输入此口令后获得全站收录、编辑元数据、删除、全量缓存等全部读写管理权限。                                                                                                                                                                                                                         |
-| `COMIC_SHELF_MACHINE_TOKEN`             | ⚪ **局域网应用/Bot可选**    | _(留空)_                                      | **内网机器与自动化专用密钥 (Machine API Token)**。供局域网内其他应用（飞书 Bot、OCR 流水线、微服务等）通过 `X-Machine-Token` 或 Bearer Token 调用 REST API 与入库同步，与网页端馆长密码完全解耦互不干扰。这把密钥**不能开 MCP**（MCP 只认馆长口令与 `COMIC_SHELF_MCP_TOKEN`）。                                                                                          |
+| `COMIC_SHELF_MACHINE_TOKEN`             | ⚪ **局域网应用/Bot可选**    | _(留空)_                                      | **内网机器与自动化专用密钥 (Machine API Token)**。供局域网内其他应用（飞书 Bot、Paper Studio、微服务等）通过 `X-Machine-Token` 或 Bearer Token 调用 REST API 建本及上传画页，与网页端馆长密码完全解耦互不干扰。这把密钥**不能开 MCP**（MCP 只认馆长口令与 `COMIC_SHELF_MCP_TOKEN`）。                                                                                    |
 | `COMIC_SHELF_MCP_TOKEN`                 | ⚪ **接外部智能体时建议设**  | _(留空)_                                      | **MCP 子凭据**：只解锁 `/api/mcp` 与 MCP 工具，交给 Claude/Cursor/Bot 后可随时换掉，不牵连站长登录与 OCR 流水线。不设时 MCP 只认馆长口令。MCP 工具仍是馆长级可见（含对访客隐藏的本），但 `create_direct_pass` 拒绝为隐藏本签发公开链接。                                                                                                                                 |
 | `COMIC_SHELF_PUBLIC_URL`                | ⚪ **MCP生成分享外链可选**   | _(留空)_                                      | **公网访问基准地址 (Public Base URL)**。供 MCP 外部智能体签发单本直达链接（Direct Pass）时拼接完整绝对 URL（如 `https://comic.example.com`，末尾斜杠自动清洗）。未配置时默认输出相对路径 `/comic/...`。                                                                                                                                                                  |
 | `COMIC_SHELF_ALLOWED_DIRS`              | 🔵 **直扫NAS外部目录时必设** | _(留空)_                                      | **允许从服务器本地路径扫描导入的额外根目录白名单**（安全沙箱放行）。用于将 NAS 现有图库目录或挂载盘快速录入纸间。多个路径在 Linux/macOS 使用冒号 `:` 分隔，Windows 使用分号 `;` 分隔（例：`/mnt/tank/comics:/mnt/media/downloads`）。                                                                                                                                    |
@@ -384,13 +384,19 @@ backend/data/
 
 ### 5.1 漫画台词全文索引与 OCR 提取流水线（`scripts/ocr.sh` & `scripts/sync_ocr.py`）
 
-纸间支持 **“高性能算力机提取 OCR + 低功耗 NAS 存储与服务”** 的算存分离架构（Compute-Storage Decoupling）。
-高性能电脑（带 GPU/多核 CPU）通过挂载 `/mnt/nas_manga` 跑 OCR 并生成伴生文件 `{index}.ocr.json`，处理完成后通知 NAS 更新 `comic_dialogues.db` 中的 SQLite FTS5 索引：
+高性能机器直接处理本地或局域网映射路径中的画页，生成图片旁的 `{index}.ocr.json`。
+OCR 提取与台词索引同步各自增量：提取按页跳过新鲜合法结果；同步按本检查伴生文件清单、文件状态和 `album.json`，
+只有发生变化的书才重新入库及尝试编码语义向量。台词索引独立存于 `comic_dialogues.db`，正常本机同步无需停服务或重启。
+
+本机 `data` 可以一条命令完成提取及索引同步。映射盘用于读画页、写伴生文件；若服务在 NAS 上，
+就在 NAS 本机或服务容器中执行同步。SQLite WAL 要求访问数据库的进程在同一主机，
+不能让算力机通过 NFS/SMB/SSHFS 打开 NAS 的数据库（见 [SQLite WAL 限制](https://sqlite.org/wal.html)）。
+OCR 专用 HTTP 同步接口及其 URL、令牌参数已移除；文件提取和本机同步均不需要机器令牌。
 
 1. **高性能机一键状态巡检与依赖安装**（**默认即 GPU**，不需要记 `--gpu`）：
 
    ```bash
-   # 巡检：OCR 伴生覆盖率 + 宿主显卡 + 本轮默认算力线 + 两条线各自的"会话级"实际推理设备 + FTS5 条目
+   # 巡检：OCR 伴生覆盖率 + 宿主显卡 + 本轮默认算力线 + 两条线各自的"会话级"实际推理设备
    vpr ocr status              # 等价于 bash scripts/ocr.sh status
 
    # 装依赖（需要 uv）：版本全部来自 uv.lock，依赖声明在 pyproject.toml 的 ocr / ocr-gpu 两个依赖组里。
@@ -403,12 +409,13 @@ backend/data/
    ```
 
    > **Python 版本**：后端以 **Python 3.14 为硬下限**（源码使用了 3.14 才有的语法，旧解释器一 import 就 `SyntaxError`）。
-   > 算力机上凡是要 import 后端的动作——`--sync-local`、`scripts/sync_ocr.py`——都必须跑在 3.14 上，`--sync-local`
-   > 开跑前会先试着导入后端，导不了（解释器太旧，或环境里没有后端依赖）就直接拒绝；纯提取 + `--api-url` 通知 NAS 入库不 import 后端。`ocr.sh install` 建出的
+   > `ocr.sh run --sync-local` 的识别步骤用 OCR 环境，预检与入库步骤另用应用 `.venv`；
+   > `.venv-ocr` 不需要安装后端依赖。本机同步入口 `scripts/sync_ocr.py` / `python -m app.sync_ocr`
+   > 需要应用环境（Python 3.14），会在识别前校验目标并初始化独立台词库；失败时不开始提取。
    > `.venv-ocr` 由 uv 按仓库的 `.python-version` 选解释器，同样是 3.14。
 
    > **这些依赖与运行时无关**：两个 OCR 依赖组都不是默认组，Dockerfile 的 `uv sync --no-dev` 与 `vpr setup:py`
-   > 都不会装它们，生产镜像的包清单与体积不变（`backend/tests/test_ocr_worker.py` 有用例钉住）。
+   > 都不会装它们，生产依赖包清单不变，不增加 OCR 推理包或模型（`backend/tests/test_ocr_worker.py` 有用例钉住）；本轮仅增加轻量本机同步入口的 Python 源码。
    > 用旧版脚本（pip + `requirements-ocr*.txt`）建过 `.venv-ocr` 的机器，请先删掉该目录再 `install`：
    > 旧脚本在里面留了一份 uv 卸不掉的 CPU 版 `onnxruntime` 安装记录。
 
@@ -420,7 +427,7 @@ backend/data/
    > 照样列出 CUDA 但推理静默退回 CPU。两个依赖组已在 `pyproject.toml` 里声明互斥，
    > uv 会拒绝同时安装；原理与实测数据见 `docs/PITFALLS.md` #137。
 
-2. **高性能机批量提取 OCR 伴生文件并通知 NAS**：
+2. **高性能机批量提取，按需在本机同步索引**：
 
    ```bash
    # 默认就走 GPU（v6 实测 94 页/分），推荐把线程数给到 4：
@@ -429,24 +436,34 @@ backend/data/
    # 强制回落应用的 CPU 线：
    bash scripts/ocr.sh run --cpu --source jm
 
-   # 机器密钥放环境变量，不写在命令行（进程列表与 shell 历史里可见）；--token 仍可用，优先级更高：
-   export COMIC_SHELF_MACHINE_TOKEN="你的MachineToken"
+   # 本机书库：同一条命令完成提取与增量入库（GPU 环境也可用）：
+   vpr ocr run --data-dir /path/to/data --source jm --id 1059521 --workers 4 --sync-local
 
-   # 批量对指定漫画跑 OCR，并在完成后自动通过 API 通知远程 NAS 入库：
-   bash scripts/ocr.sh run --source jm --id 1059521 --api-url http://192.168.1.100:8000
+   # 全库分批处理：只计成功产出新页的本，已完成或全页失败的本不占名额：
+   vpr ocr run --data-dir /path/to/data --limit 10 --sync-local
 
-   # 全库扫描处理（自动跳过已有伴生文件的画页；--limit 只数确有待提取画页的本，
-   # 已完成的不占名额，所以反复执行同一条命令就是分批跑完全库）：
-   bash scripts/ocr.sh run --limit 10 --api-url http://192.168.1.100:8000
+   # 普通图片目录：可为本地或映射盘路径，递归提取，不要求纸间书库结构：
+   vpr ocr run --directory /path/to/images --workers 4
    ```
 
-   > **跑批结果看退出码**：有画页提取失败、或有本的索引没更新成功（通知 NAS 失败、`--sync-local` 异常）时，
-   > 结尾会列出失败页数与涉及的本，并以退出码 1 结束；失败的页不留伴生文件，重跑同一条命令即重试。
-   > 图源取 `library/` 下实际存在的目录（含 `copymanga`），`--source` 指向不存在的目录直接报错。
-   > `--page` 写错（如 `--page abc`）在开跑前就拒绝；多章节本各话都有同名页，不支持 `--page`，请改用
-   > `--image <画页路径>`。通知 NAS 的等待上限是 120 秒（NAS 端入库后还要重编这一本的台词向量）。
-   > `--sync-local` 要在算力进程里导入后端，GPU 环境 `.venv-ocr` 没有后端依赖，开跑前就会拒绝；
-   > 同机入库请提取完再跑 `bash scripts/ocr.sh sync`。
+   > **跑批结果看退出码**：画页提取或本机索引同步任一失败均返回非零；已生成的有效伴生文件保留。
+   > 直接重跑会补失败页；指定 `--sync-local` 时，即使全部画页增量跳过也仍会同步索引，
+   > 无需 `--force` 重提。部分坏页不妨碍入库已生成的结果，但整条命令仍返回失败。
+   > `--sync-local` 只由 `ocr.sh run` 编排，直接调用 worker 只做文件提取。
+   > `--limit` 只限制有新页产出的书库册数，每本每轮最多尝试一次；失败较多时尝试册数可能更多。
+   > 普通目录 `--directory` 与单页 `--image` 不能混用，也不接受 `--source` / `--id` / `--page` / `--limit`；
+   > 普通目录不自动收录或猜测作品身份，不支持 `--sync-local`。书库内单页可用 `--image` + `--sync-local`，
+   > 相对所选 `--data-dir` 确定所属漫画；书库外的单页只提取。
+   > 递归扫描跳过隐藏项与内部符号链接；同目录的 `page.jpg` / `page.png` 会共用伴生目标，因此提前拒绝。
+   > 临时文件独占创建、沿用宿主 umask，刷盘后原子替换；写入或推理失败清理临时文件，并保留旧有效结果。
+   > 读取和发布使用限定根目录的描述符，不跟随文件或中间目录链接。识别前后检查源图身份，新结果记录源图
+   > 的大小和修改时间；推理期间换图不发布旧结果，临界发布后的新图也不会被旧结果标为新鲜。
+   > 图片后缀来自现有 Pillow 的读取注册表，实际解码时也校验格式：包括 JPEG、PNG、WebP、GIF、AVIF、BMP、
+   > TIFF、ICO 等可读光栅格式；GIF 和多页 TIFF 只识别首帧 / 首页。EPS、WMF、PDF、SVG 等文档不直接交给 OCR，
+   > 需要先转换为画页；不会为扩展格式额外安装解码包，不可解码的候选图片明确报错。
+   > `--source` / `--id` 必须是后端不会改写的规范目录名，未知图源或书号报错；显式 `--data-dir` 和非空
+   > `COMIC_SHELF_DATA` 写错不会换库。普通目录及单页提取不依赖默认数据目录。
+   > `--page` 写错在提取前拒绝；多章节本各话有同名页，使用 `--image <画页路径>` 定位。
 
    > `--workers` 在 CPU 线上**不要超过 2**：单个引擎内部已吃满多核，加线程只是在抢核。v6 的同页对照
    > （`jm/1249304` 全 153 页，两点差法扣掉模型加载，走 `ocr.sh lines` 离线 harness）：
@@ -468,12 +485,16 @@ backend/data/
    改气泡聚类判据之前，先用离线实验台（推理只跑一次，之后本地迭代，绝不写 `backend/data`）：
 
    ```bash
-   # 1) dump 指定画页的原始识别行到 /tmp/paper-room-ocr-lines
+   # 1) dump 指定画页的原始识别行到本人拥有的实验目录（省略 --out 则打印随机私有临时目录）
    bash scripts/ocr.sh lines --source jm --id 319445 --pages 10 --out /tmp/prl
    # 2) 改完 scripts/ocr_worker.py 的 cluster_blocks 后，不跑推理直接量效果：
    #    打印气泡数 / 字数 / 气泡面积分布 / 疑似误并清单
    bash scripts/ocr.sh lines --recluster /tmp/prl
    ```
+
+   dump 按图源、书号和章节路径存放，避免扁平文件名碰撞；只复用对应同一张画页、结构合法且新鲜的结果。
+   默认输出目录随机创建且权限为 0700；显式 `--out` 要求当前用户拥有，路径不能由其他用户修改。
+   发布采用原子且不覆盖已有文件的方式；损坏、错配或链接目标直接报错。`--recluster` 支持递归读取此目录结构。
 
    判据落地后要覆盖现网侧车就 `bash scripts/ocr.sh run --source jm --id <id> --force`，
    随后 `bash scripts/ocr.sh sync` 重灌索引。侧车里的 `engine: rapidocr` 是
@@ -482,11 +503,27 @@ backend/data/
 3. **宿主机 / NAS 终端一键增量同步已存在的伴生文件**：
 
    ```bash
-   # 全库增量同步（智能感知 /mnt/nas_manga 或 COMIC_SHELF_DATA）：
-   vpr ocr:sync
-   # 或指定单本（经 ocr.sh 走应用 .venv 的解释器，并把探测到的数据目录传下去）：
+   # 在索引所在机器执行全库增量同步（建议明确指定本机 data）：
+   vpr ocr:sync --data-dir /path/to/data
+   # 或指定单本（经 ocr.sh 走应用 .venv 的解释器，目录探测与 worker 共用 app.ocr_files）：
    bash scripts/ocr.sh sync --source jm --id 1059521
    ```
+
+   `sync` 点名 `--source` 与 `--id` 时允许漫画目录已被删除，用于清理该本残留索引；
+   只有 `--id` 时也会按书号筛选。点名同步不清理其他本的孤儿索引；全库同步保留孤儿清理。
+   提取命令 `run` 指定不存在的书号则直接报错。
+
+   增量元数据新增文件状态签名，能感知删页、删章节、保留旧 mtime 的复制和页码映射变化。
+   旧数据库自动追加这一列；旧记录在下次同步对应漫画时更新一次，无需停服务或整库替换。
+
+   默认 Docker 镜像内可直接执行轻量同步入口，不需要 `scripts/` 或 OCR 推理包：
+
+   ```bash
+   docker compose exec -T paper-room python -m app.sync_ocr --source jm --id 1059521
+   ```
+
+   该入口使用容器已有的 `COMIC_SHELF_DATA`、应用依赖与语义模型；未变化的本跳过解析和编码。
+   启用语义检索时应使用与服务一致的模型环境；模型不可用时仍可入库关键词，既有逻辑会清除该本旧向量。
 
 4. **单张画页快速测试与气泡聚类预览**：
    ```bash
@@ -498,23 +535,46 @@ backend/data/
 
 #### 5.1.1 PDF 扉页自动分话：按 ADR 0024 保持**可选**，默认不装
 
-上面整套流水线的前提是**算存分离**：NAS 容器不做法向推理，只收 `{index}.ocr.json` 并重建 SQLite FTS5。
+默认服务镜像不执行画页 OCR 推理；台词同步只读取 `{index}.ocr.json`，增量更新独立索引。
 `backend/app/storage/pdf.py::_extract_chapters_from_ocr`（导入 PDF 且**没有**电子书签时的第二轨分话探测）
 按 ADR 0024 的口径是"该包属可选依赖，未安装时本轨自动跳过"，因此 `rapidocr` **不在** `pyproject.toml` 的运行时依赖表
 （`[project].dependencies`）里，只在点名才装的 `ocr` 依赖组里，别顺手挪进运行时依赖——它只服务"无书签 PDF 要自动切话"
-这一件事，代价是镜像变大：`rapidocr` 本身约 33MB（PP-OCRv6 的三个 `.onnx` 就在包里，不需要联网下模型），
-外加 `onnxruntime`、`opencv-python`、`numpy`。装之前请对照 300 MiB 的镜像体积预算自行权衡。
+这一件事。代价要按整条依赖链估算：Linux x86-64 下 OCR 组额外安装的包解包后约 450 MiB，
+大头是 `opencv-python`、`onnxruntime`、`numpy`，`rapidocr` 自身约 33 MB（含模型）。
+约 277 MiB 的基础镜像因此可能超过 700 MiB，还要计入系统库；这是解包体积估算，
+不是 Docker 实测，不适用于所有平台。该可选定制会超出默认镜像 300 MiB 的预算。
 
 缺它时的行为：该 PDF 平铺成单章，导入照常完成，日志打一行 **WARNING**「跳过 PDF 扉页自动分话」。
 （这里必须是 warning：uvicorn 默认不给 root logger 设级别，info 会被整条丢掉，就变成"没人知道为什么没有话目录"。）
 
-经常在 NAS 上导入无书签 PDF、想要自动分话的话，在**你自己的** Dockerfile 里给安装层的同步命令加上 `ocr` 依赖组
-（与算力机 CPU 线是同一组包，版本同样由 `uv.lock` 锁定；仓库自带的 Dockerfile 保持不带组）：
+经常在 NAS 上导入无书签 PDF、想要自动分话的话，在**你自己的** Dockerfile 里同时补系统库和 `ocr` 依赖组。
+只加 Python 包不够：`opencv-python` 链接 `libGL.so.1`、`libglib-2.0.so.0` 和 `libX11.so.6`，
+精简 Python 镜像缺这些库时，导入仍会失败、分话仍会跳过。仓库默认 Dockerfile 不包含以下可选修改。
+
+先在 uv 安装层之前添加系统依赖（Debian trixie 使用 `libglib2.0-0t64`，较旧 Debian 对应 `libglib2.0-0`）：
+
+```dockerfile
+RUN apt-get update \
+    && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends libgl1 libglib2.0-0t64 libx11-6 \
+    && rm -rf /var/lib/apt/lists/*
+```
+
+再把原有、带 uv 挂载的安装层末行改为下面这一行，保留原有挂载与环境变量配置
+（与算力机 CPU 线是同一组包，版本由 `uv.lock` 锁定）：
 
 ```dockerfile
 # Dockerfile 安装层的最后一行改为：
     uv sync --locked --no-dev --inexact --group ocr
 ```
+
+最后在依赖安装层后加入真正的引擎自检，缺库或推理后端不可用时让构建失败：
+
+```dockerfile
+RUN python -c "from rapidocr import RapidOCR; RapidOCR()"
+```
+
+构建后用 `docker image inspect <你的镜像> --format '{{.Size}}'` 读取实际镜像字节数。
+这些安装说明不改变仓库默认镜像的依赖清单与体积。
 
 #### 5.1.2 语义检索「按意思找台词」（可选能力，默认不启用）
 
@@ -531,7 +591,7 @@ backend/data/
 | 模型体积       | 23MB（量化 `bge-small-zh-v1.5`，ONNX，**不需要 torch**）                                                                                                                                                                                                 |
 | 整库编码一次   | 41 秒（184 行/秒），落库 12.8MB 向量                                                                                                                                                                                                                     |
 | 每次搜索的代价 | 模型侧 2ms（只编码那一句问题）；**整条请求实测 250~300ms**，大头不在模型，在把命中气泡的原文回表（FTS5 的 UNINDEXED 列没有索引，候选池 50 页 = 264ms）。向量矩阵已进程内缓存，剩下这笔是已知待办，见 `docs/HANDOVER_NEXT_STAGE.md`“语义检索的性能待办”。 |
-| 不装时的行为   | 关键词检索与 `*/ocr/sync` 入库完全不受影响（向量那一步只记一行日志）；`/api/search/dialogue-semantic` 返回 `available=false` + `reason=encoder_unavailable`                                                                                              |
+| 不装时的行为   | 关键词检索与 本机台词索引入库完全不受影响（向量那一步只记一行日志）；`/api/search/dialogue-semantic` 返回 `available=false` + `reason=encoder_unavailable`                                                                                               |
 
 ### 🛠️ 如何在 NAS 或本地服务上启用语义检索（按需启用指南）
 
@@ -585,7 +645,7 @@ wget -O tokenizer.json https://hf-mirror.com/Xenova/bge-small-zh-v1.5/resolve/ma
 #### 第三步：建立/同步向量与验证
 
 ```bash
-# 1) 建一次全库向量（只在首次启用或换模型时跑一次；后续 ocr/sync 同步漫画时会自动增量编码单本）：
+# 1) 建一次全库向量（只在首次启用或换模型时跑一次；后续本机同步漫画时会自动增量编码单本）：
 # 若未设置 COMIC_SHELF_SECRET（局域网免密），可去掉 -H 头：
 curl -X POST http://127.0.0.1:8000/api/search/dialogue-vectors/rebuild \
      -H "Authorization: Bearer $COMIC_SHELF_SECRET"
@@ -597,7 +657,7 @@ curl "http://127.0.0.1:8000/api/search/dialogue-semantic?q=告白&limit=3" \
 
 > 💡 **算存分离极速技巧**：如果已经在开发机/PC 上跑过台词同步，开发机生成的 `backend/data/comic_dialogues.db` 里已经包含了算好的全库向量。直接将该 `.db` 文件覆盖到 NAS 的数据目录，NAS 就连上述建库时间都省了，启动即可秒级使用！
 
-日常**不用再手动重建**：`*/ocr/sync` 每同步一本就顺手重编那一本。只有两种情况需要手动跑第 2 步——
+日常**不用再手动重建**：本机台词索引同步每处理一本就顺手重编那一本。只有两种情况需要手动跑第 2 步——
 第一次装模型，以及换模型（状态会报 `dim_mismatch`，新旧向量维度不同不能混着算余弦）。
 
 > ⚠️ 语义出口的 `similarity` 是余弦相似度（-1..1），**只在同一次查询的结果之间比高低**：真命中与噪声的分数区间重叠，
@@ -900,14 +960,14 @@ curl -X POST "http://<NAS_IP>:8000/api/mcp/rpc" \
 | :------------------------------ | :----------------------------- | :--------------------------------------------------- | :---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **`COMIC_SHELF_SECRET`**        | `curator`（馆长 / 超级管理员） | 馆长个人管理、本地/远程 Claude Desktop 调试          | **全站最高绝对特权**：支持全量 MCP 工具、管理后台登入、访客通行证派发/禁用、彻底删除藏书、全站配置修改。                                                                                                                                                                                                                      |
 | **`COMIC_SHELF_MCP_TOKEN`**     | 仅 MCP 面通行                  | 交给外部智能体（Claude / Cursor / Bot 配置里的这把） | **只解锁 `/api/mcp` 与 MCP 工具**，碰不到任何 REST 管理端点。MCP 工具内部按馆长级取数（含对访客隐藏的本），但 `create_direct_pass` 硬拒绝为隐藏本签发公开链接。换掉这一行即可撤销已外发的钥匙（所有智能体共用这一把，换它就是全部断开）。**只在配了 `COMIC_SHELF_SECRET` 时生效**：没配 SECRET 时全站按馆长放行，它形同虚设。 |
-| **`COMIC_SHELF_MACHINE_TOKEN`** | `machine`（外部机器 / 微服务） | OCR 算力机、Paper Studio、NAS 定时同步脚本           | **受限最小特权沙箱**：本地导入与建本（`POST /api/library/local/*`）、伴生同步（`*/ocr/sync`）；**严格禁止访问通行证名册、禁止彻底删除漫画、禁止越权修改系统密钥**。**不能开 MCP**：MCP 工具按馆长视角取料（含隐藏本台词），这把钥匙只给写库流水线用。                                                                         |
+| **`COMIC_SHELF_MACHINE_TOKEN`** | `machine`（外部机器 / 微服务） | Paper Studio 等受限创作端                            | **受限最小特权沙箱**：本地建本（`POST /api/library/local/create`）、画页上传与替换（`/upload-pages`、`/replace-pages`）；**严格禁止访问通行证名册、禁止彻底删除漫画、禁止越权修改系统密钥**。**不能开 MCP**：MCP 工具按馆长视角取料（含隐藏本台词），这把钥匙只给写库流水线用。                                               |
 
 #### 1. 选型速查：谁该拿哪把
 
 | 调用方                                               | 发哪把                            | 备注                                                                                          |
 | :--------------------------------------------------- | :-------------------------------- | :-------------------------------------------------------------------------------------------- |
-| OCR 算力机（`ocr.sh run --api-url …`）               | `COMIC_SHELF_MACHINE_TOKEN`       | 这条流水线只调 `*/ocr/sync`，**根本不经过 MCP**                                               |
-| Paper Studio、NAS 定时同步脚本等内网自动写库任务     | `COMIC_SHELF_MACHINE_TOKEN`       | 建本与上传画页走 `POST /api/library/local/*`                                                  |
+| OCR 文件提取与本机台词同步                           | 无需令牌                          | 直接读取画页 / 伴生文件及本机数据库，不经过 HTTP 或 MCP                                       |
+| Paper Studio 等内网创作任务                          | `COMIC_SHELF_MACHINE_TOKEN`       | 建本与上传画页走 `POST /api/library/local/*`                                                  |
 | 外部智能体（Claude / Cursor / 飞书 Bot 的 MCP 配置） | `COMIC_SHELF_MCP_TOKEN`           | 只需 MCP；它拿不到任何 REST 写端点                                                            |
 | 馆长自己的浏览器                                     | `COMIC_SHELF_SECRET`              | 登录校验后签发高熵随机会话令牌（`cs_curator_<hex>`）由 HttpOnly Cookie 承载，根口令不落地存储 |
 | 朋友与群友阅读                                       | 访客通行证 / `create_direct_pass` | **不是这三把里的任何一把**：限时、限单本、可单独注销                                          |
@@ -919,7 +979,7 @@ curl -X POST "http://<NAS_IP>:8000/api/mcp/rpc" \
 | 留空（默认）            | ✅       | ❌（401） | —      |
 | 已设置                  | ✅       | ❌（401） | ✅     |
 
-一句话规则：**机器密钥永远进不了 MCP**（被拒同样记一次 `mcp:<ip>` 失败）；机器密钥的其他三条路（`*/ocr/sync`、`/api/library/local/*`、`/api/search/dialogue-context`）不受任何影响；取料这条和访客一样看不到对访客隐藏的书。
+一句话规则：**机器密钥永远进不了 MCP**（被拒同样记一次 `mcp:<ip>` 失败）；建本、画页上传 / 替换与 `/api/search/dialogue-context` 的机器令牌权限保留；取料这条和访客一样看不到对访客隐藏的书。
 
 三条运维红线：
 

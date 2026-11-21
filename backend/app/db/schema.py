@@ -5,6 +5,7 @@ import sqlite3
 from pathlib import Path
 
 from ..formatting import normalize_title
+from ..ocr_files import list_comics, scan_files
 from .connection import (
     get_data_dir,
     get_db,
@@ -260,15 +261,13 @@ def backfill_dialogue_index() -> int:
         return 0
 
     total = 0
-    for source_dir in sorted(p for p in library_dir.iterdir() if p.is_dir()):
-        for comic_dir in sorted(p for p in source_dir.iterdir() if p.is_dir()):
-            pages_dir = comic_dir / "pages"
-            if not pages_dir.is_dir() or not any(pages_dir.glob("**/*.ocr.json")):
+    for source, sid, comic in list_comics(library_dir):
+        try:
+            if not scan_files(comic / "pages", (".ocr.json",)):
                 continue
-            try:
-                total += sync_comic_dialogues(source_dir.name, comic_dir.name, force=True)
-            except Exception as exc:
-                logger.warning("台词索引回填失败 %s/%s: %s", source_dir.name, comic_dir.name, exc)
+            total += sync_comic_dialogues(source, sid, force=True)
+        except Exception as exc:
+            logger.warning("台词索引回填失败 %s/%s: %s", source, sid, exc)
     return total
 
 
@@ -290,6 +289,7 @@ def init_dialogue_db(dialogue_db_path: Path | None = None) -> None:
                 last_synced_mtime REAL NOT NULL DEFAULT 0.0,
                 dialogue_count INTEGER NOT NULL DEFAULT 0,
                 updated_at INTEGER NOT NULL DEFAULT 0,
+                source_signature TEXT NOT NULL DEFAULT '',
                 PRIMARY KEY (source, source_id)
             );
 
@@ -311,6 +311,9 @@ def init_dialogue_db(dialogue_db_path: Path | None = None) -> None:
             INSERT OR IGNORE INTO comic_dialogue_vectors_version (id, version) VALUES (1, 0);
             """
         )
+        meta_columns = {row["name"] for row in conn.execute("PRAGMA table_info(comic_ocr_sync_meta)")}
+        if "source_signature" not in meta_columns:
+            conn.execute("ALTER TABLE comic_ocr_sync_meta ADD COLUMN source_signature TEXT NOT NULL DEFAULT ''")
         rebuilt = _migrate_dialogue_schema(conn)
         # 列齐了不会触发重建，只能按行认出热重载用旧 INSERT 回填的半成品（错题本 #145）：清掉它们的元数据，下面逐本重灌
         half_synced = conn.execute(

@@ -2,15 +2,16 @@
 
 from __future__ import annotations
 
-import json
 import logging
 import os
 import re
-import time
 from pathlib import Path
-from typing import Any
 
+from .. import file_io
 from ..config import DATA_DIR, LIBRARY_DIR, TMP_DIR
+
+_write_bytes_atomic = file_io.write_bytes_atomic
+_write_json_atomic = file_io.write_json_atomic
 
 logger = logging.getLogger(__name__)
 
@@ -22,36 +23,6 @@ IMAGE_EXTS = frozenset({".jpg", ".jpeg", ".png", ".webp", ".gif", ".avif", ".bmp
 # jmcomic's official JmImageTool algorithm. Existing v1 caches are migrated
 # locally, without re-downloading anything from the remote site.
 CURRENT_DECODE_VERSION = 2
-
-
-def _write_bytes_atomic(path: Path, payload: bytes) -> None:
-    """Write bytes via an exclusive same-directory temp file and os.replace."""
-    path.parent.mkdir(parents=True, exist_ok=True)
-    temp_file: Path | None = None
-    fd: int | None = None
-    try:
-        temp_file = path.parent / f".{path.name}.tmp.{os.getpid()}_{time.time_ns()}"
-        fd = os.open(str(temp_file), os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o666)
-        with os.fdopen(fd, "wb") as f:
-            fd = None
-            f.write(payload)
-            f.flush()
-            os.fsync(f.fileno())
-        os.replace(temp_file, path)
-        temp_file = None
-    finally:
-        if fd is not None:
-            os.close(fd)
-        if temp_file is not None and temp_file.exists():
-            try:
-                temp_file.unlink(missing_ok=True)
-            except OSError:
-                pass
-
-
-def _write_json_atomic(path: Path, data: Any) -> None:
-    """Writes a JSON document atomically using a temporary file and atomic swap."""
-    _write_bytes_atomic(path, json.dumps(data, ensure_ascii=False, indent=2).encode("utf-8"))
 
 
 def acquire_library_writer_lock(library_dir: Path) -> int:

@@ -50,7 +50,7 @@ flowchart TD
         AuthRouter["认证与通行证 (routers/auth.py)<br/>• 访客簿 / PIN认领 / 单本临时直达"]
         LibraryRouter["书架检索与导入 (routers/library.py)<br/>• 影子索引分页 / 分面聚合 / 排行榜"]
         MediaRouter["媒体流式推流 (routers/media.py)<br/>• WebP内容协商 / 双模封面 / 懒下载"]
-        SearchRouter["复合搜索路由 (routers/search.py)<br/>• 识图代理 / 台词全文检索 / OCR同步"]
+        SearchRouter["复合搜索路由 (routers/search.py)<br/>• 识图代理 / 台词全文检索"]
         ChaptersRouter["章节编排 (routers/chapters.py)<br/>• 单话重订与物理裁剪 / 多分组动态重组"]
         LocalRouter["自建工坊 (routers/local_comic.py)"]
     end
@@ -289,7 +289,7 @@ JmImageTool.decode_and_save(num, source_image, save_path)
 - **四态权限角色模型（Role Matrix）**：
   1. `admin`（馆长）：由 `COMIC_SHELF_SECRET` 鉴权，拥有全库浏览、收录、元数据修改、访客通行证派发与高危物理删除（`DELETE`）等全权权限；
   2. `machine`（机器专属流水线）：由 `MACHINE_TOKEN`（`COMIC_SHELF_MACHINE_TOKEN`）鉴权，遵循**最小特权原则（Least Privilege）**：
-     - 精确放行自动化创作端点（`POST /api/library/local/create`）、增量画页追加/替换（`/upload-pages`、`/replace-pages`）、OCR 台词同步（`/ocr/sync`）与台词取料（`/api/search/dialogue-context`）；未配置 `COMIC_SHELF_MCP_TOKEN` 时兼作 MCP 入口，配置后就进不了 MCP；
+     - 精确放行自动化创作端点（`POST /api/library/local/create`）、增量画页追加/替换（`/upload-pages`、`/replace-pages`）与台词取料（`/api/search/dialogue-context`）；未配置 `COMIC_SHELF_MCP_TOKEN` 时兼作 MCP 入口，配置后就进不了 MCP；
      - 与访客一样看不到对访客隐藏的书（读接口经 `_require_meta(..., request)` 过滤）；
      - **严格禁止**执行全库物理删除（`DELETE /api/library/...`）、删除章节、注销访客通行证或注销设备会话，**禁止触发 `/import-path` 与 `/inspect-pdf`**（宿主机任意目录与 PDF 解析导入必须由馆长亲自触发，HTTP 403 阻断）；
      - 支持请求头 `Authorization: Bearer <TOKEN>`、`X-Machine-Token: <TOKEN>` 或 Query 参数 `token=<TOKEN>`；
@@ -455,7 +455,6 @@ JmImageTool.decode_and_save(num, source_image, save_path)
 - `GET /api/search/dialogue-semantic?q=`（台词语义召回，独立 `similarity`，没走检索时带 `reason`，ADR 0028）
 - `GET /api/search/dialogue-context`（按页区间取原始台词物料，仅馆长与机器密钥；机器密钥看不到隐藏本；页跨度 ≤200、行预算 ≤400，撞顶回报 `truncated`）
 - `POST /api/search/dialogue-vectors/rebuild`（全库重新编码台词向量，仅馆长）
-- `POST /api/library/{source}/{id}/ocr/sync`（把 OCR 伴生侧车同步进台词库并重编该书向量，馆长或机器密钥）
 - `GET /api/curator/passes`（馆长获取访客名册列表）
 - `POST /api/curator/passes` `{username, expires_days, custom_token}`（馆长登记印发专属通行证）
 - `PATCH /api/curator/passes/{id}` `{username, is_active, extend_days, reset_token}`（通行证续期、密钥换新、启停）

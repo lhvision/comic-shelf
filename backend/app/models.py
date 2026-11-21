@@ -591,11 +591,6 @@ class DialogueVectorsResponse(BaseModel):
     dim: int = 0
 
 
-class OcrSyncResponse(BaseModel):
-    ok: bool = True
-    count: int = 0
-
-
 class StoryContextLine(BaseModel):
     """一行原始台词。line_id 是 "页号:气泡号"，用于把 boxes 数组对回对应行。"""
 
