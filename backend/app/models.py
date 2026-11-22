@@ -578,7 +578,8 @@ class SemanticDialogueResponse(BaseModel):
     results: list[SemanticDialogueItem] = Field(default_factory=list)
     total: int = 0
     # 没有分数下限；"这次没走检索"只能看 reason。走了检索也可能返回空列表、reason 为空（source 或访客可见性过滤后没剩下）：
-    # encoder_unavailable / vectors_missing / dim_mismatch（available=False）、query_too_short（available=True）
+    # encoder_unavailable / vectors_missing / dim_mismatch / model_mismatch（available=False）
+    # query_too_short（available=True）；model_mismatch 也包括旧向量缺少可核验签名。
     available: bool = True
     reason: str = ""
 

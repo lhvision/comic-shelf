@@ -38,18 +38,18 @@ def _fake_dim() -> int:
     return 2
 
 
-def _fake_docs(texts: list[str], batch: int = 64) -> np.ndarray:
+def _fake_docs(texts: list[str], batch: int = 64, *, expected_signature: str | None = None) -> np.ndarray:
     # 表里没有的行给零向量：余弦恒为 0，断言"只有语义相近那条排上来"才干净
     return np.stack([_norm(SEMANTIC.get(t, (0.0, 0.0))) for t in texts])
 
 
-def _fake_query(text: str) -> np.ndarray:
+def _fake_query(text: str, *, expected_signature: str | None = None) -> np.ndarray:
     return _norm(SEMANTIC.get(text, (0.0, 0.0)))
 
 
 def _patched_encoder():
     return (
-        mock.patch.object(embedding_mod, "dim", _fake_dim),
+        mock.patch.multiple(embedding_mod, dim=_fake_dim, model_signature=lambda: "test-model"),
         mock.patch.object(embedding_mod, "encode_documents", _fake_docs),
         mock.patch.object(embedding_mod, "encode_query", _fake_query),
     )

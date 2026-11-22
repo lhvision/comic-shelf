@@ -225,6 +225,7 @@ JmImageTool.decode_and_save(num, source_image, save_path)
 - `backend/server.py` 固定单 API worker；启动时对书库目录加 `library/.writer.lock` 排他锁。漫画锁、缓存和后台任务均为进程内状态，同一书库不支持多个写实例。
 - `_lock_for` 在线程重入锁之外，共用 `library/.ocr-locks/` 下本机书籍文件锁，协调存储修改与 OCR 索引提交。
   索引暂存期间不持书籍锁，提交内检查源签名及预期全局索引版本，遇并发新提交失败重试；运行时不得删除锁目录。
+  缺失漫画的 `load_meta()` / `load_fetched()` 在加锁前返回；锁文件由程序管理，服务与本机同步使用同一 UID。
 - 下载网络 I/O 不持漫画锁；原图提交前重新获取漫画锁，校验目录及远端描述版本，并检查当前画页路径和重新装订保护。不要只校验缓存标记而漏掉图片替换。
 - `save_fetched` 在刷新时保留本地隐藏状态，并在保存前把 JSON 备份进 `library/.work/.save-*`；可捕获的失败会回退本次迁移与 JSON。进程中断且残留 `.in-progress` 时，下次启动把上一份 JSON 复制回去，若备份里有装订/暂存建卷前的画页目录也一并还原；恢复失败则启动失败。删除整本先改名进 `library/.work/.deleted-*`。启动只 `iterdir` `.work`，不遍历漫画目录。追加画页不回滚已写入的文件。路径 PDF 首次导入没有旧画页可还原，中断后按首次保存清掉半成品目录。
 - 验证对应 `backend/tests/test_storage_metadata.py`、`backend/tests/test_replace_pages.py` 与 `backend/tests/test_server_workers.py`；运维处理见 [部署指南 §11](../../DEPLOYMENT.md#11-本地书库的并发与故障恢复边界)。不引入 WAL 或跨文件事务。
@@ -522,6 +523,12 @@ JmImageTool.decode_and_save(num, source_image, save_path)
 
 - OCR 输入预算和原图核验集中在 `app/ocr/assets.py`；超过预算、原图变化或缺失时拒绝发布，历史无源状态单独统计。
   HTTP 搜索并发与限频在 `app/ocr/search_limits.py`，继承现有客户端 IP 解析；限流 429 同样必须经真实中间件返回 `no-store`。
+- `embedding.py` 以完整模型状态绑定会话、维度和签名；每次编码固定该状态，建库每批及查询校验预期签名。
+  初始化时观察到模型文件变化不发布状态。存量向量缺少源签名、模型签名或同步元数据时报告 `model_mismatch`，
+  保留旧向量与关键词，普通本机同步补建后恢复；没有向量的待建漫画不会阻断已核验向量。
+  状态统计和语义查询共用调用方的 SQLite 读快照；模型签名按该次状态复用，避免统计混入另一次模型版本。
+- 默认镜像只增加后端源码，模型状态、签名及文件锁依赖标准库；可选推理包不进默认生产依赖，
+  测试、文档、模型和书库数据不复制进镜像。镜像、容器可写层与数据卷的体积口径见 `DEPLOYMENT.md` §6。
 
 - 工具链配置集中在仓库根 `pyproject.toml`：依赖（`uv.lock` 全量锁定）、ruff、ty。环境初始化 `vpr setup:py`。
 - 改了 Python 先跑 `vpr check:py`：`ruff check`（lint）→ `ruff format --check`（行宽 120）→ `ty check`（类型，只卡 `backend/app/` 与 `backend/server.py`），三者都要 0 诊断。自动修复用 `uv run ruff check --fix && uv run ruff format`。

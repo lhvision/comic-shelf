@@ -580,8 +580,11 @@ class ComicStoreBase:
 
     def load_meta(self, source: str, source_id: str, verify_cache: bool = False) -> ComicMeta | None:
         """Loads comic metadata from memory cache or album.json with self-healing support."""
+        path = self.album_path(source, source_id)
+        # 缺失本的读取不能创建持久锁；锁内再检查，防止等待期间被删除。
+        if not path.exists():
+            return None
         with self._lock_for(source, source_id):
-            path = self.album_path(source, source_id)
             if not path.exists():
                 return None
 
@@ -685,13 +688,15 @@ class ComicStoreBase:
 
     def load_fetched(self, source: str, source_id: str, verify_cache: bool = False) -> FetchedComic | None:
         """Loads both metadata and remote page descriptors, executing self-healing decode migrations if needed."""
+        album_path = self.album_path(source, source_id)
+        if not album_path.exists():
+            return None
         with self._lock_for(source, source_id):
             meta = self.load_meta(source, source_id, verify_cache=verify_cache)
             if meta is None:
                 return None
 
             remote_path = self.remote_path(source, source_id)
-            album_path = self.album_path(source, source_id)
             try:
                 album_mtime = album_path.stat().st_mtime
                 remote_mtime = remote_path.stat().st_mtime if remote_path.exists() else 0.0

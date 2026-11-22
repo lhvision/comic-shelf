@@ -16,7 +16,7 @@ import logging
 import os
 import threading
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, NamedTuple
 
 from .config import DATA_DIR
 
@@ -37,12 +37,19 @@ MODEL_DIR = Path(os.getenv("COMIC_SHELF_EMBED_DIR", str(_DEFAULT_DIR))).expandus
 _MODEL_PATH = MODEL_DIR / "model.onnx"
 _TOKENIZER_PATH = MODEL_DIR / "tokenizer.json"
 
+
+class _EncoderState(NamedTuple):
+    """编码任务固定使用的模型状态；整体发布，推理期间不读取可变全局字段。"""
+
+    session: Any
+    tokenizer: Any
+    dim: int
+    signature: str
+
+
 _LOCK = threading.Lock()
-_SESSION = None
-_TOKENIZER = None
-_DIM: int | None = None
-_FAILED = False
-_LOADED_SIGNATURE = ""
+_STATE: _EncoderState | None = None
+_FAILED_SIGNATURE = ""
 _SIGNATURE_CACHE: tuple[object, str] | None = None
 
 
@@ -51,39 +58,45 @@ def model_present() -> bool:
 
 
 def model_signature() -> str:
-    """模型、分词器及编码参数共同标识向量空间；文件变化才重新计算内容指纹。"""
+    """模型与编码参数共同标识向量空间；文件缺失或不可读时返回空签名，保留关键词降级。"""
     global _SIGNATURE_CACHE
-    if not model_present():
+    try:
+        if not model_present():
+            return ""
+        stamps = tuple(
+            (path.stat().st_ino, path.stat().st_size, path.stat().st_mtime_ns, path.stat().st_ctime_ns)
+            for path in (_MODEL_PATH, _TOKENIZER_PATH)
+        )
+        if _SIGNATURE_CACHE is not None and _SIGNATURE_CACHE[0] == stamps:
+            return _SIGNATURE_CACHE[1]
+        digest = hashlib.sha256(f"bge-cls-l2:{MAX_TOKENS}:{MIN_EMBED_CHARS}".encode())
+        for path in (_MODEL_PATH, _TOKENIZER_PATH):
+            with path.open("rb") as file:
+                for chunk in iter(lambda: file.read(1024 * 1024), b""):
+                    digest.update(chunk)
+    except OSError as exc:
+        _SIGNATURE_CACHE = None
+        logger.warning("语义模型指纹不可用（%s）：关键词检索不受影响", exc)
         return ""
-    stamps = tuple(
-        (path.stat().st_ino, path.stat().st_size, path.stat().st_mtime_ns, path.stat().st_ctime_ns)
-        for path in (_MODEL_PATH, _TOKENIZER_PATH)
-    )
-    if _SIGNATURE_CACHE is not None and _SIGNATURE_CACHE[0] == stamps:
-        return _SIGNATURE_CACHE[1]
-    digest = hashlib.sha256(f"bge-cls-l2:{MAX_TOKENS}:{MIN_EMBED_CHARS}".encode())
-    for path in (_MODEL_PATH, _TOKENIZER_PATH):
-        with path.open("rb") as file:
-            for chunk in iter(lambda: file.read(1024 * 1024), b""):
-                digest.update(chunk)
     signature = digest.hexdigest()
     _SIGNATURE_CACHE = stamps, signature
     return signature
 
 
-def _load():
-    """惰性建会话。装不上就记住"这次进程里别再试了"，避免每次检索都重跑一遍失败路径。"""
-    global _SESSION, _TOKENIZER, _DIM, _FAILED, _LOADED_SIGNATURE
-    signature = model_signature()
-    if _SESSION is not None and signature == _LOADED_SIGNATURE:
-        return _SESSION, _TOKENIZER
-    if not signature or (_FAILED and signature == _LOADED_SIGNATURE):
-        return None, None
+def _load() -> _EncoderState | None:
+    """在锁内取得或发布完整模型状态；失败的同一模型不重复初始化，文件变化后可恢复。"""
+    global _STATE, _FAILED_SIGNATURE
     with _LOCK:
-        if _SESSION is not None and signature == _LOADED_SIGNATURE:
-            return _SESSION, _TOKENIZER
-        _SESSION, _TOKENIZER, _DIM, _FAILED = None, None, None, False
-        _LOADED_SIGNATURE = signature
+        signature = model_signature()
+        if not signature:
+            _STATE = None
+            _FAILED_SIGNATURE = ""
+            return None
+        if _STATE is not None and signature == _STATE.signature:
+            return _STATE
+        if signature == _FAILED_SIGNATURE:
+            return None
+        _STATE = None
         try:
             import numpy as np
             import onnxruntime as ort
@@ -99,16 +112,22 @@ def _load():
             if not isinstance(out, np.ndarray):
                 raise TypeError(f"模型输出不是稠密张量：{type(out).__name__}")
             dim = int(out.shape[-1])
-            _SESSION, _TOKENIZER, _DIM = sess, tok, dim
+            if model_signature() != signature:
+                logger.warning("初始化期间语义模型发生变化，稍后重试")
+                return None
+            state = _EncoderState(sess, tok, dim, signature)
+            _STATE = state
+            _FAILED_SIGNATURE = ""
             logger.info("语义检索编码器就绪：%s（%d 维）", _MODEL_PATH, dim)
+            return state
         except Exception as exc:
-            _FAILED = True
+            _FAILED_SIGNATURE = signature
             logger.warning(
                 "语义检索编码器不可用（%s）：关键词检索不受影响。启用方法见 DEPLOYMENT.md §5.1.2（模型放 %s）",
                 exc,
                 MODEL_DIR,
             )
-    return _SESSION, _TOKENIZER
+            return None
 
 
 def _feed(sess, encoded):
@@ -132,37 +151,38 @@ def _feed(sess, encoded):
 
 
 def dim() -> int | None:
-    _load()
-    return _DIM
+    """返回本次取得的模型维度，不与其他线程随后发布的状态混用。"""
+    state = _load()
+    return state.dim if state is not None else None
 
 
-def encode_documents(texts: list[str], batch: int = 64) -> np.ndarray | None:
-    """把整句台词编成已归一化的向量矩阵（行内积即余弦）；编码器不可用时返回 None。"""
-    sess, tok = _load()
-    if sess is None or not texts:
+def encode_documents(texts: list[str], batch: int = 64, *, expected_signature: str | None = None) -> np.ndarray | None:
+    """用固定状态编码整批台词；编码器缺失或与调用方预期的模型签名不符时返回 None。"""
+    state = _load()
+    if state is None or not texts or (expected_signature is not None and state.signature != expected_signature):
         return None
     import numpy as np
 
-    out = np.empty((len(texts), _DIM or 0), dtype=np.float32)
+    out = np.empty((len(texts), state.dim), dtype=np.float32)
     for i in range(0, len(texts), batch):
         chunk = texts[i : i + batch]
-        encoded = tok.encode_batch(chunk)
-        cls = sess.run(None, _feed(sess, encoded))[0][:, 0, :]
+        encoded = state.tokenizer.encode_batch(chunk)
+        cls = state.session.run(None, _feed(state.session, encoded))[0][:, 0, :]
         norms = np.clip(np.linalg.norm(cls, axis=1, keepdims=True), 1e-9, None)
         out[i : i + len(chunk)] = cls / norms
     return out
 
 
-def encode_query(text: str) -> np.ndarray | None:
-    """编码一条检索问题（带 bge 指令前缀）；编码器不可用时返回 None。"""
+def encode_query(text: str, *, expected_signature: str | None = None) -> np.ndarray | None:
+    """用固定状态编码问题；只向调用方返回与预期向量空间一致的结果。"""
     clean = (text or "").strip()
     if not clean:
         return None
-    sess, tok = _load()
-    if sess is None:
+    state = _load()
+    if state is None or (expected_signature is not None and state.signature != expected_signature):
         return None
     import numpy as np
 
-    encoded = tok.encode_batch([QUERY_INSTRUCTION + clean])
-    cls = sess.run(None, _feed(sess, encoded))[0][:, 0, :]
+    encoded = state.tokenizer.encode_batch([QUERY_INSTRUCTION + clean])
+    cls = state.session.run(None, _feed(state.session, encoded))[0][:, 0, :]
     return (cls[0] / max(float(np.linalg.norm(cls[0])), 1e-9)).astype(np.float32)

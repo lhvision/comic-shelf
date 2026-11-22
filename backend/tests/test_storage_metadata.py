@@ -44,6 +44,14 @@ class TestStorageMetadata(unittest.TestCase):
         (backup / "comic.rel").write_text("jm\n12345\n", encoding="utf-8")
         return backup
 
+    def test_missing_comic_reads_do_not_create_locks(self) -> None:
+        for index in range(25):
+            source_id = f"missing-{index}"
+            self.assertIsNone(self.store.load_meta("jm", source_id))
+            self.assertIsNone(self.store.load_fetched("jm", source_id))
+        self.assertFalse((self.store.root / ".ocr-locks").exists())
+        self.assertEqual({}, self.store._page_locks)
+
     def test_legacy_counts_remain_readable_when_storage_is_unwritable(self) -> None:
         original = self.path.read_bytes()
         with patch("app.storage.base._write_json_atomic", side_effect=PermissionError("read-only library")) as write:

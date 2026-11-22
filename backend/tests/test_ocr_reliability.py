@@ -41,7 +41,7 @@ class TestOCRReliability(unittest.TestCase):
         self.temp.cleanup()
 
     @staticmethod
-    def encode(texts, batch=64):
+    def encode(texts, batch=64, *, expected_signature=None):
         return np.tile(np.array([1.0, 0.0], dtype=np.float32), (len(texts), 1))
 
     def sidecar(self, sid, page, texts):
@@ -120,7 +120,7 @@ class TestOCRReliability(unittest.TestCase):
         self.sidecar("retry", 1, [f"这是第{index}条完整对白" for index in range(130)])
         calls = []
 
-        def fail_second(texts, batch=64):
+        def fail_second(texts, batch=64, *, expected_signature=None):
             calls.append(len(texts))
             if len(calls) == 2:
                 raise RuntimeError("模拟第二批失败")
@@ -149,6 +149,48 @@ class TestOCRReliability(unittest.TestCase):
                 dialogues.sync_comic_dialogues("local", "model", strict_vectors=True)
             self.assertTrue(dialogues.dialogue_vector_status()["available"])
 
+    def test_model_only_reencoding_failure_is_counted_and_retries(self):
+        self.sidecar("model-retry", 1, ["我们明天再见面"])
+        dialogues.sync_comic_dialogues("local", "model-retry", strict_vectors=True)
+        with mock.patch.object(embedding, "model_signature", return_value="changed-model"):
+            with (
+                mock.patch.object(embedding, "encode_documents", side_effect=RuntimeError("模拟模型重编码失败")),
+                self.assertRaisesRegex(RuntimeError, "模拟模型重编码失败"),
+            ):
+                dialogues.sync_comic_dialogues("local", "model-retry", strict_vectors=True)
+            status = dialogues.dialogue_vector_status()
+            self.assertEqual((1, 1), (status["pending_comics"], status["failed_comics"]))
+            with connection.get_dialogue_db() as conn:
+                self.assertEqual(1, conn.execute("SELECT count(*) FROM comic_dialogue_vectors").fetchone()[0])
+            with mock.patch.object(dialogues, "read_sidecar", side_effect=AssertionError("重试不能重读关键词")):
+                dialogues.sync_comic_dialogues("local", "model-retry", strict_vectors=True)
+            status = dialogues.dialogue_vector_status()
+            self.assertTrue(status["complete"])
+            self.assertEqual(0, status["failed_comics"])
+
+    def test_old_model_failure_does_not_mark_successful_reencoding_failed(self):
+        self.sidecar("model-concurrent", 1, ["我们明天再见面"])
+        dialogues.sync_comic_dialogues("local", "model-concurrent", strict_vectors=True)
+
+        def newer_commit(texts, batch=64, *, expected_signature=None):
+            with (
+                mock.patch.object(embedding, "model_signature", return_value="newest-model"),
+                mock.patch.object(embedding, "encode_documents", side_effect=self.encode),
+            ):
+                dialogues.sync_comic_dialogues("local", "model-concurrent", strict_vectors=True)
+            raise RuntimeError("旧编码任务失败")
+
+        with mock.patch.object(embedding, "model_signature", return_value="changed-model"):
+            with (
+                mock.patch.object(embedding, "encode_documents", side_effect=newer_commit),
+                self.assertRaisesRegex(RuntimeError, "旧编码任务失败"),
+            ):
+                dialogues.sync_comic_dialogues("local", "model-concurrent", strict_vectors=True)
+            with mock.patch.object(embedding, "model_signature", return_value="newest-model"):
+                status = dialogues.dialogue_vector_status()
+                self.assertTrue(status["complete"])
+                self.assertEqual(0, status["failed_comics"])
+
     def test_sync_budget_and_skip_vectors_resume(self):
         for sid in ("a", "b", "c"):
             self.sidecar(sid, 1, ["我们明天再见面"])
@@ -170,6 +212,58 @@ class TestOCRReliability(unittest.TestCase):
             self.assertEqual(0, sync_ocr.main())
         with connection.get_dialogue_db() as conn:
             self.assertEqual(1, conn.execute("SELECT count(*) FROM comic_dialogue_vectors").fetchone()[0])
+
+    def test_legacy_vectors_require_reencoding_after_schema_upgrade(self):
+        self.sidecar("legacy-vectors", 1, ["我们明天再见面"])
+        dialogues.sync_comic_dialogues("local", "legacy-vectors", strict_vectors=True)
+        with connection.get_dialogue_db() as conn:
+            conn.execute("ALTER TABLE comic_ocr_sync_meta DROP COLUMN vector_source_signature")
+            conn.execute("ALTER TABLE comic_ocr_sync_meta DROP COLUMN vector_model_signature")
+        schema.init_dialogue_db()
+        status = dialogues.dialogue_vector_status()
+        self.assertFalse(status["available"])
+        self.assertEqual("model_mismatch", status["reason"])
+        self.assertEqual(1, status["pending_comics"])
+        with mock.patch.object(embedding, "encode_query") as query:
+            self.assertEqual(
+                {"results": [], "available": False, "reason": "model_mismatch"},
+                dialogues.search_dialogues_semantic("见面"),
+            )
+            query.assert_not_called()
+        self.assertTrue(dialogues.search_dialogues("见面"))
+        with mock.patch.object(dialogues, "read_sidecar", side_effect=AssertionError("补向量不应重读关键词")):
+            dialogues.sync_comic_dialogues("local", "legacy-vectors", strict_vectors=True)
+        status = dialogues.dialogue_vector_status()
+        self.assertTrue(status["available"])
+        self.assertTrue(status["complete"])
+
+    def test_vectors_without_sync_metadata_are_not_searchable(self):
+        self.sidecar("orphan-vectors", 1, ["我们明天再见面"])
+        dialogues.sync_comic_dialogues("local", "orphan-vectors", strict_vectors=True)
+        with connection.get_dialogue_db() as conn:
+            conn.execute("DELETE FROM comic_ocr_sync_meta")
+        status = dialogues.dialogue_vector_status()
+        self.assertFalse(status["available"])
+        self.assertEqual("model_mismatch", status["reason"])
+
+    def test_unsigned_metadata_without_vectors_does_not_disable_search(self):
+        self.sidecar("ready", 1, ["我们明天再见面"])
+        self.sidecar("short", 1, ["你好"])
+        dialogues.sync_comic_dialogues("local", "ready", strict_vectors=True)
+        dialogues.sync_comic_dialogues("local", "short", sync_vectors=False)
+        self.assertTrue(dialogues.dialogue_vector_status()["available"])
+
+    def test_query_model_change_rejects_search_before_vector_scan(self):
+        self.sidecar("query-model", 1, ["我们明天再见面"])
+        dialogues.sync_comic_dialogues("local", "query-model", strict_vectors=True)
+        with (
+            mock.patch.object(embedding, "encode_query", return_value=None) as query,
+            mock.patch.object(dialogues, "_vector_chunks") as chunks,
+        ):
+            result = dialogues.search_dialogues_semantic("见面")
+            self.assertEqual({"results": [], "available": False, "reason": "model_mismatch"}, result)
+            query.assert_called_once_with("见面", expected_signature="test-model")
+            chunks.assert_not_called()
 
     def test_chunked_recall_matches_cache_across_repeated_pages_and_ties(self):
         self.sidecar("chunks", 1, [f"同页的第{index}条完整台词" for index in range(90)])
@@ -214,7 +308,7 @@ class TestOCRReliability(unittest.TestCase):
         self.sidecar("concurrent", 1, ["我们明天再见面"])
         dialogues.sync_comic_dialogues("local", "concurrent", strict_vectors=True)
 
-        def new_commit(texts, batch=64):
+        def new_commit(texts, batch=64, *, expected_signature=None):
             with connection.get_dialogue_db() as writer:
                 writer.execute(
                     "UPDATE comic_dialogue_vectors SET vec = ?", (np.array([0, 1], dtype=np.float32).tobytes(),)

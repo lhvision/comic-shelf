@@ -287,8 +287,16 @@ def _sync_dialogue_vectors(source: str, source_id: str, source_signature: str, *
             with get_dialogue_db() as conn:
                 conn.execute(
                     "UPDATE comic_ocr_sync_meta SET vector_error = ? WHERE source = ? AND source_id = ? "
-                    "AND source_signature = ? AND vector_source_signature != source_signature",
-                    (type(exc).__name__, source, source_id, source_signature),
+                    "AND source_signature = ? AND vector_model_signature = ? "
+                    "AND (vector_source_signature != source_signature OR vector_model_signature != ?)",
+                    (
+                        type(exc).__name__,
+                        source,
+                        source_id,
+                        source_signature,
+                        row["vector_model_signature"] if row else "",
+                        model_signature,
+                    ),
                 )
         except sqlite3.Error:
             logger.warning("向量失败状态未能写入 %s/%s", source, source_id, exc_info=True)
@@ -390,7 +398,7 @@ def embed_comic_dialogues(source: str, source_id: str) -> int:
         )
         count = 0
         while rows := cursor.fetchmany(64):
-            vectors = embedding.encode_documents([row["text"] for row in rows])
+            vectors = embedding.encode_documents([row["text"] for row in rows], expected_signature=model_signature)
             if vectors is None or vectors.shape != (len(rows), dim):
                 raise RuntimeError(f"台词向量编码未完成，请重试: {source}/{source_id}")
             conn.executemany(
@@ -466,13 +474,10 @@ def rebuild_dialogue_vectors() -> dict[str, Any]:
     }
 
 
-def _vector_status(conn: sqlite3.Connection | None = None) -> tuple[dict[str, Any], tuple[Any, ...]]:
-    """在同一读快照内读取版本和维度，缓存不跨向量提交版本复用。"""
+def _vector_status(conn: sqlite3.Connection) -> tuple[dict[str, Any], tuple[Any, ...]]:
+    """复用调用方的读快照检查向量状态，缓存不跨向量提交版本复用。"""
     from .. import embedding
 
-    if conn is None:
-        with get_dialogue_db() as connection:
-            return _vector_status(connection)
     dim = embedding.dim()
     row = conn.execute(
         "SELECT count(*) AS n, count(DISTINCT dim) AS dims, max(dim) AS dim,"
@@ -483,10 +488,12 @@ def _vector_status(conn: sqlite3.Connection | None = None) -> tuple[dict[str, An
     stored_dim = int(row["dim"] or 0) if stored else 0
     model_signature = embedding.model_signature()
     mismatched_model = (
-        model_signature
+        stored
         and conn.execute(
-            "SELECT 1 FROM comic_ocr_sync_meta WHERE vector_source_signature != '' "
-            "AND vector_model_signature != ? LIMIT 1",
+            "SELECT 1 FROM (SELECT DISTINCT source, source_id FROM comic_dialogue_vectors) v "
+            "LEFT JOIN comic_ocr_sync_meta m USING (source, source_id) "
+            "WHERE coalesce(m.vector_source_signature, '') = '' "
+            "OR coalesce(m.vector_model_signature, '') = '' OR m.vector_model_signature != ? LIMIT 1",
             (model_signature,),
         ).fetchone()
     )
@@ -510,7 +517,7 @@ def dialogue_vector_status() -> dict[str, Any]:
 
     with get_dialogue_db() as conn:
         conn.execute("BEGIN")
-        status = _vector_status(conn)[0]
+        status, stamp = _vector_status(conn)
         progress = conn.execute(
             "WITH eligible AS (SELECT DISTINCT source, source_id FROM comic_dialogues_fts "
             "WHERE kind = ? AND length(text) >= ?) "
@@ -520,7 +527,7 @@ def dialogue_vector_status() -> dict[str, Any]:
             "coalesce(sum(m.vector_error != ''), 0) AS failed_comics, "
             "coalesce(sum(m.vector_model_signature != '' AND m.vector_model_signature != ?), 0) AS model_mismatch_comics "
             "FROM eligible e LEFT JOIN comic_ocr_sync_meta m USING (source, source_id)",
-            (DIALOGUE_KIND, embedding.MIN_EMBED_CHARS, embedding.model_signature(), embedding.model_signature()),
+            (DIALOGUE_KIND, embedding.MIN_EMBED_CHARS, stamp[3], stamp[3]),
         ).fetchone()
         unverified = conn.execute("SELECT coalesce(sum(unverified_pages), 0) FROM comic_ocr_sync_meta").fetchone()[0]
     status.update(dict(progress))
@@ -610,9 +617,12 @@ def search_dialogues_semantic(
         clean_query = (query or "").strip()
         if len(clean_query) < 2:
             return {"results": [], "available": True, "reason": "query_too_short"}
-        qv = embedding.encode_query(clean_query)
+        qv = embedding.encode_query(clean_query, expected_signature=stamp[3])
         if qv is None:
-            return {"results": [], "available": False, "reason": "encoder_unavailable"}
+            reason = "encoder_unavailable" if embedding.dim() is None else "model_mismatch"
+            return {"results": [], "available": False, "reason": reason}
+        if qv.shape != (status["dim"],):
+            return {"results": [], "available": False, "reason": "dim_mismatch"}
         limit = max(1, min(int(limit), 100))
         fetch_limit = min(max(limit * 5, 50), 200)
         allowed = None
