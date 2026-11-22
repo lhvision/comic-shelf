@@ -1,0 +1,80 @@
+{
+  "version": 1,
+  "lang": "zh",
+  "engine": "rapidocr",
+  "engine_track": "v6",
+  "bubbles": [
+    {
+      "box": [0.0, 0.0, 0.1602, 0.944],
+      "text": "人如果不沉醉于色色",
+      "confidence": 0.89,
+      "orientation": "horizontal",
+      "type": "dialogue",
+      "id": 1,
+      "order": 1
+    },
+    {
+      "box": [0.1203, 0.0198, 0.2422, 0.933],
+      "text": "根本就活不下去",
+      "confidence": 1.0,
+      "orientation": "horizontal",
+      "type": "dialogue",
+      "id": 2,
+      "order": 2
+    },
+    {
+      "box": [0.3008, 0.0714, 0.3844, 0.8615],
+      "text": "最新A湖周人雕本最多爱心 總排行 月排行 遮排行 日排行扫码下载JM官方唯一号漢化 日語 CG图集playerz",
+      "confidence": 0.92,
+      "orientation": "horizontal",
+      "type": "dialogue",
+      "id": 3,
+      "order": 3
+    },
+    {
+      "box": [0.4914, 0.4934, 0.5406, 0.6857],
+      "text": "(C103) [Bllitic. (C103) [(CHARA..错乃またたび破乃またたび",
+      "confidence": 0.87,
+      "orientation": "horizontal",
+      "type": "dialogue",
+      "id": 4,
+      "order": 4
+    },
+    {
+      "box": [0.5578, 0.533, 0.5719, 0.5549],
+      "text": "同人",
+      "confidence": 0.94,
+      "orientation": "horizontal",
+      "type": "dialogue",
+      "id": 5,
+      "order": 5
+    },
+    {
+      "box": [0.6039, 0.0758, 0.7055, 0.578],
+      "text": "https://jm365.work/UTvrbT多随茜绑扫描QRCODE不再迷路请用Chorme浏览器开启",
+      "confidence": 0.97,
+      "orientation": "horizontal",
+      "type": "dialogue",
+      "id": 6,
+      "order": 6
+    },
+    {
+      "box": [0.7281, 0.0407, 0.925, 0.9516],
+      "text": "禁漫天堂180080每天独家连载最速更新，晚上满满新漫绝不无聊",
+      "confidence": 0.87,
+      "orientation": "horizontal",
+      "type": "dialogue",
+      "id": 7,
+      "order": 7
+    },
+    {
+      "box": [0.9383, 0.0352, 0.9867, 0.9516],
+      "text": "独特社群系统聊嗨翻天，最速客服系统绝对负责",
+      "confidence": 1.0,
+      "orientation": "horizontal",
+      "type": "dialogue",
+      "id": 8,
+      "order": 8
+    }
+  ]
+}

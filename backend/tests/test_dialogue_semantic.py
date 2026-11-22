@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import shutil
 import tempfile
+from collections import OrderedDict
 from pathlib import Path
 from unittest import mock
 
@@ -10,7 +11,9 @@ import numpy as np
 
 import app.config as config_mod
 import app.db as db_mod
+import app.db.dialogues as dialogues_mod
 import app.embedding as embedding_mod
+from app.ocr import search_limits
 from tests.test_dialogue_fts import make_comic_item
 
 # 手写一个 2 维玩具语义空间：断言的是"字面不通也能连着走"这条链路，不是模型质量。
@@ -293,6 +296,17 @@ def test_semantic_http_endpoints_through_middleware():
                 device = db_mod.register_guest_device(guest_pass["id"])
                 guest = client.post(rebuild, headers={"X-Device-Token": device["device_token"]})
                 assert guest.status_code == 403, guest.text
+
+                status_url = "/api/search/dialogue-vectors/status"
+                assert client.get(status_url).status_code == 401
+                curator_status = client.get(status_url, headers={"Authorization": "Bearer semi-secret"})
+                assert curator_status.status_code == 200, curator_status.text
+                status_body = curator_status.json()
+                assert status_body["complete"] and status_body["eligible_comics"] == 1, status_body
+                assert status_body["pending_comics"] == status_body["failed_comics"] == 0, status_body
+                assert curator_status.headers["cache-control"] == "no-store"
+                assert client.get(status_url, headers={"X-Machine-Token": "semi-machine"}).status_code == 403
+                assert client.get(status_url, headers={"X-Device-Token": device["device_token"]}).status_code == 403
     finally:
         auth_mod.MACHINE_TOKEN = ""
         main_mod.store.root = old_root
@@ -302,12 +316,18 @@ def test_semantic_http_endpoints_through_middleware():
 
 if __name__ == "__main__":
     print("Running dialogue semantic retrieval tests...")
-    test_semantic_vectors_built_with_sync_and_searchable()
-    test_semantic_one_row_per_page_and_short_query()
-    test_semantic_guest_filter_and_delete_hook()
-    test_semantic_guest_hidden_books_do_not_eat_quota()
-    test_semantic_degrades_without_encoder()
-    test_semantic_reports_stale_vector_store()
-    test_rebuild_vectors_counts_whole_library()
-    test_semantic_http_endpoints_through_middleware()
+    for cache_budget in (0, 32 * 1024 * 1024):
+        with (
+            mock.patch.object(dialogues_mod, "_VECTOR_CACHE_MAX_BYTES", cache_budget),
+            mock.patch.object(search_limits, "_BUCKETS", OrderedDict()),
+        ):
+            test_semantic_vectors_built_with_sync_and_searchable()
+            test_semantic_one_row_per_page_and_short_query()
+            test_semantic_guest_filter_and_delete_hook()
+            test_semantic_guest_hidden_books_do_not_eat_quota()
+            test_semantic_degrades_without_encoder()
+            test_semantic_reports_stale_vector_store()
+            test_rebuild_vectors_counts_whole_library()
+            test_semantic_http_endpoints_through_middleware()
+        print(f"  ✓ Semantic cache budget {cache_budget} passed")
     print("All dialogue semantic retrieval tests passed successfully!")

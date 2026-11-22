@@ -356,80 +356,36 @@ def test_dialogue_api_endpoints_and_auth():
 
 
 def test_classify_dialogue_kind_rules():
-    """语料分类只靠页位与文本特征，不做任何像素运算。"""
+    """保守规则不凭位置、普通词或重复次数排除正文；广告使用组合证据。"""
     cls = db_mod.classify_dialogue_kind
-
-    # 水印与页码：汉化组站点名的十几种 OCR 变体一律不入库
     for noise in ("jmcomic", "mcomic", "imcomic", "nenic", "20", "139", "R18", "..."):
-        assert cls(10, 42, [noise], noise) is None, f"噪声未识别: {noise!r}"
-    # 但长度超标或带中日文字形就不是噪声
-    assert cls(10, 42, ["x"], "这是一句很长的纯拉丁台词吗显然不是") == db_mod.DIALOGUE_KIND
-
-    # 特征词在任意页都生效
-    assert cls(10, 42, ["本页其他文本"], "图源：七曜苏醒 翻校：有川") == db_mod.PARATEXT_KIND
-    assert cls(10, 42, ["本页其他文本"], "诚聘嵌字，审核QQ群：690300374") == db_mod.PARATEXT_KIND
-    assert cls(10, 42, ["本页其他文本"], "PixivId:5561441 @kon_ka827") == db_mod.PARATEXT_KIND
-
-    # 书名页标题没有特征词，靠页位兜住（前 2 页）
-    assert cls(1, 42, ["只属于老师的坏坏搞蛋鬼"], "只属于老师的坏坏搞蛋鬼") == db_mod.PARATEXT_KIND
-    assert cls(3, 42, ["正常正文页的一句話"], "正常正文页的一句話") == db_mod.DIALOGUE_KIND
-
-    # 尾页护栏：剧情常一直画到最后几页，整页像后记才连片判定
-    afterword = "后记里的长段落会一直讲创作思路、角色关系与后续计划，句子普遍很长。"
-    assert cls(41, 42, [afterword], afterword) == db_mod.PARATEXT_KIND
-    short_lines = ["谢谢大家", "老师那个", "还有精神的样子"]
-    assert cls(24, 27, short_lines, "谢谢大家") == db_mod.DIALOGUE_KIND, "剧情尾页不得被误判为后记"
-    # 尾页里只要有一句带特征词，整页判为副文本（恶搞谢恩页场景）
-    assert cls(25, 27, ["还远没到结束的时候", "Mascox:@masco_xxxx"], "还远没到结束的时候") == db_mod.PARATEXT_KIND
-    # 但"噪声行"没有这个权力：水印与页码本来就单独不入库，而正文页上也满是水印。
-    # 真库 jm/319445 p21 就是被一行认成 "888" 的 "？？？" 连累整页从台词检索里消失（误杀 26 页）
-    tail_with_watermark = ["刚刚不是有说还没回礼吗", "圣诞礼物…？", "jmcomic", "888"]
-    assert cls(21, 22, tail_with_watermark, "刚刚不是有说还没回礼吗") == db_mod.DIALOGUE_KIND, (
-        "尾页有水印就整页判副文本 —— 噪声行不能替整页定性"
-    )
-    # 水印行自己仍然不入库（两件事互不牵连）
-    assert cls(21, 22, tail_with_watermark, "jmcomic") is None
-
-    # 拷贝漫画、禁漫天堂等中文平台全页水印同样不能替整页定性，正文剧情对白 100% 完好入库
-    tail_with_cjk_watermark = ["刚刚不是有说还没回礼吗", "圣诞礼物…？", "拷贝漫画", "禁漫天堂"]
-    assert cls(21, 22, tail_with_cjk_watermark, "刚刚不是有说还没回礼吗") == db_mod.DIALOGUE_KIND, (
-        "尾页中文水印导致正文被误判为副文本"
-    )
-    assert cls(21, 22, tail_with_cjk_watermark, "拷贝漫画", is_chapter_boundary=True) is None
-    assert cls(21, 22, tail_with_cjk_watermark, "禁漫天堂", is_chapter_boundary=True) is None
-
-    # 繁体汉化组特征词识别（繁简混排与纯繁体均能捕捉）
-    assert cls(10, 42, ["本页其他文本"], "For Adults ONLYFINAL個人漢化") == db_mod.PARATEXT_KIND
-    assert cls(10, 42, ["本页其他文本"], "圖源：小明，校對：小紅，壓制：小剛") == db_mod.PARATEXT_KIND
-    assert cls(10, 42, ["本页其他文本"], "僅供交流學習，嚴禁商用") == db_mod.PARATEXT_KIND
-    assert cls(10, 42, ["本页其他文本"], "愛發電贊助：paperroom") == db_mod.PARATEXT_KIND
-
-    # 单话末尾整页熔断：末页命中汉化组特征词，整页全部气泡丢弃（return None）
-    scanlator_tail = ["感謝大家閱讀", "本漢化組誠聘嵌字與初翻", "QQ群：987654321", "下周同一時間再見"]
-    for t in scanlator_tail:
-        assert cls(10, 42, scanlator_tail, t, is_chapter_tail=True) is None, f"尾页汉化组文本未熔断丢弃: {t}"
-
-    # 单话末尾剧情对白：无汉化组特征词时，最后一页台词 100% 完好保全
-    story_tail = ["下一次見面就是敵人了！", "待續"]
-    assert cls(10, 42, story_tail, "下一次見面就是敵人了！", is_chapter_tail=True) == db_mod.DIALOGUE_KIND, (
-        "剧情最后一页被误杀"
-    )
-
-    # 单话首尾混排正文保护：首尾页剧情对白 + 角落汉化水印，仅水印行丢弃，正文对白 100% 保全
-    mixed_boundary = ["老师，我们明天还在这里见面吗？", "好啊，一言为定！", "XX汉化组制作"]
-    assert (
-        cls(10, 42, mixed_boundary, "老师，我们明天还在这里见面吗？", is_chapter_boundary=True) == db_mod.DIALOGUE_KIND
-    )
-    assert cls(10, 42, mixed_boundary, "好啊，一言为定！", is_chapter_boundary=True) == db_mod.DIALOGUE_KIND
-    assert cls(10, 42, mixed_boundary, "XX汉化组制作", is_chapter_boundary=True) is None
-
-    # 跨话重复高频模板丢弃
-    assert cls(10, 42, ["模板标语"], "模板标语", is_recurring_template=True, is_chapter_tail=True) is None
-
-    # 册页数不足以谈"书头书尾"时，位置规则整体失效，只认特征词
-    assert cls(1, 6, ["第一页的一句话"], "第一页的一句话") == db_mod.DIALOGUE_KIND
-    assert cls(1, 0, ["无 album.json"], "无 album.json 的一句话") == db_mod.DIALOGUE_KIND
-    print("  ✓ classify_dialogue_kind rules passed")
+        assert cls(noise) is None
+    for text in (
+        "OK",
+        "No!",
+        "I love you",
+        "把你的邮箱给我",
+        "我们扫描二维码进去吧",
+        "谢谢你的赞助",
+        "请帮我翻译这句话",
+        "第一页就开始剧情",
+        "这一切都是为了明天再次与你相见",
+    ):
+        assert cls(text) == db_mod.DIALOGUE_KIND, text
+    for text in (
+        "图源：小明，校对：小红",
+        "本汉化组诚聘嵌字与初翻",
+        "后记：感谢大家阅读",
+        "PixivId:5561441 @kon_ka827",
+        "仅供交流学习，严禁商用",
+    ):
+        assert cls(text) == db_mod.PARATEXT_KIND, text
+    mixed = ["老师，我们明天还在这里见面吗？", "好啊，一言为定！", "XX汉化组制作"]
+    assert cls(mixed[0]) == db_mod.DIALOGUE_KIND
+    assert cls(mixed[2]) == db_mod.PARATEXT_KIND
+    long_story = "我一直以为离开这里就能忘掉过去，可是直到今天我才发现，你始终是我最想见的人。"
+    assert cls(long_story) == db_mod.DIALOGUE_KIND
+    print("  ✓ Conservative dialogue classification passed")
 
 
 def test_paratext_indexed_but_excluded_from_search():
@@ -475,7 +431,7 @@ def test_paratext_indexed_but_excluded_from_search():
             )
 
         # 「喜欢你」同时出现在正文与副文本里，只有正文那条允许被搜到
-        write_page(1, ["只属于老师的坏坏搞蛋鬼", "喜欢你这句话印在封面上"])
+        write_page(1, ["版权：只属于老师的坏坏搞蛋鬼", "图源：喜欢你这句话印在封面上"])
         write_page(20, ["我喜欢你", "jmcomic", "20"])
         write_page(41, ["后记α首先我想说的是、这次登场的老师跟之前不是同一个人，也就是平行世界的感觉。"])
 
@@ -1100,8 +1056,8 @@ def test_story_context_export_slice():
             ],
         )
         write_bubbles(13, [(2, 2, "第十三页次句台词"), (1, 1, "第十三页首句台词")])
-        # 第 1 页是书名页（前 2 页规则）：取料也不该把 credits 当剧情喂给模型
-        write_bubbles(1, [(1, 1, "封面书名与汉化组credits信息")])
+        # 制作说明有明确标签，不能仅凭第 1 页位置把正文排除。
+        write_bubbles(1, [(1, 1, "版权：封面书名与汉化组credits信息")])
         assert db_mod.sync_comic_dialogues("local", "comic_ctx") == 6
 
         ctx = db_mod.get_story_context("local", "comic_ctx", 12, 13)
@@ -1582,7 +1538,12 @@ def test_multi_chapter_scanlator_deduplication():
                         "version": 1,
                         "engine": "rapidocr",
                         "bubbles": [
-                            {"id": idx, "order": idx, "box": [0.1 * idx, 0.1, 0.1 * idx + 0.05, 0.4], "text": t}
+                            {
+                                "id": idx,
+                                "order": idx,
+                                "box": [0.15 * (idx - 1), 0.1, 0.15 * (idx - 1) + 0.12, 0.9],
+                                "text": t,
+                            }
                             for idx, t in enumerate(texts, start=1)
                         ],
                     },
@@ -1597,7 +1558,7 @@ def test_multi_chapter_scanlator_deduplication():
         # Page 3 (正文开始)："...尤金先生"，正常入库
         # Page 9 (剧情高潮)：正常入库
         # Page 10 (单话尾页汉化招新)：熔断丢弃（0 行入库）
-        write_ocr(1, ["想要成为影之实力者 第一卷"])
+        write_ocr(1, ["版权：想要成为影之实力者 第一卷"])
         write_ocr(
             2,
             [
@@ -1634,14 +1595,20 @@ def test_multi_chapter_scanlator_deduplication():
             ad_rows = conn.execute(
                 "SELECT page_index, text FROM comic_dialogues_fts WHERE source = 'copymanga' AND source_id = 'shadow_garden' AND page_index IN (2, 10, 11, 20, 30)"
             ).fetchall()
-            assert len(ad_rows) == 0, f"首尾广告页未被丢弃，仍入库了: {[dict(r) for r in ad_rows]}"
+            assert ad_rows, "广告文字应作为副文本保存"
+            assert (
+                conn.execute(
+                    "SELECT count(*) FROM comic_dialogues_fts WHERE page_index IN (2,10,11,20,30) AND kind = 'dialogue'"
+                ).fetchone()[0]
+                == 0
+            ), "广告页不得参与台词检索"
 
             # 边界剧情页（第 19 页）混排的水印应单独被剔除，仅保留剧情对白（共 1 行）
             p19_rows = conn.execute(
                 "SELECT text, kind FROM comic_dialogues_fts WHERE source = 'copymanga' AND source_id = 'shadow_garden' AND page_index = 19"
             ).fetchall()
-            assert len(p19_rows) == 1 and p19_rows[0]["kind"] == db_mod.DIALOGUE_KIND
-            assert "禁止轉載" not in p19_rows[0]["text"]
+            assert sum(row["kind"] == db_mod.DIALOGUE_KIND for row in p19_rows) == 1
+            assert any(row["kind"] == db_mod.PARATEXT_KIND for row in p19_rows), "制作说明应保留为副文本"
 
             # 封面（第 1 页）应作为 paratext 正常归档保留
             cover_rows = conn.execute(
@@ -1653,9 +1620,7 @@ def test_multi_chapter_scanlator_deduplication():
             story_rows = conn.execute(
                 "SELECT page_index, text, kind FROM comic_dialogues_fts WHERE source = 'copymanga' AND source_id = 'shadow_garden' AND page_index IN (3, 9, 12, 19, 29)"
             ).fetchall()
-            assert len(story_rows) == 5, f"剧情对白被误杀: {[dict(r) for r in story_rows]}"
-            for r in story_rows:
-                assert r["kind"] == db_mod.DIALOGUE_KIND
+            assert sum(row["kind"] == db_mod.DIALOGUE_KIND for row in story_rows) == 5, "剧情对白被误杀"
 
         # 检索测试：
         # 1. 搜平台/APP广告（禁漫天堂 / APP正式启动 / QRCODE / 987654321 / 嵌字 / 禁止轉載）应该 0 命中

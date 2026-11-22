@@ -10,6 +10,7 @@ import shutil
 import threading
 import uuid
 from concurrent.futures import ThreadPoolExecutor
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 
@@ -160,9 +161,15 @@ class ComicStoreBase:
     # ------------------------------------------------------------------
     # locks & cache
     # ------------------------------------------------------------------
-    def _lock_for(self, source: str, source_id: str) -> threading.RLock:
+    @contextmanager
+    def _lock_for(self, source: str, source_id: str):
+        """保留线程重入锁，并与本机 OCR 索引提交共用书籍文件锁。"""
+        from ..ocr.assets import comic_asset_lock
+
         with self._locks_guard:
-            return self._page_locks.setdefault((source, source_id), threading.RLock())
+            lock = self._page_locks.setdefault((source, source_id), threading.RLock())
+        with lock, comic_asset_lock(self.root, self._safe(source), self._safe(source_id)):
+            yield
 
     def _lock_for_page(self, source: str, source_id: str, index: int) -> threading.RLock:
         with self._locks_guard:

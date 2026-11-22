@@ -510,6 +510,49 @@ class TestBatchRun(unittest.TestCase):
                 self.assertEqual(0, self._run()[0])
                 self.assertTrue(ocr_worker.sidecar_is_fresh(page, output))
 
+    def test_extraction_threshold_and_revision_invalidate_cached_sidecars(self):
+        import json
+        from unittest import mock
+
+        page = self._page("jm/1/pages/page.png")
+        output = page.with_name("page.ocr.json")
+        self.assertEqual(0, self._run()[0])
+        self.assertTrue(ocr_worker.sidecar_is_fresh(page, output))
+        self.assertFalse(ocr_worker.sidecar_is_fresh(page, output, min_score=0.3))
+        with mock.patch.object(ocr_worker, "EXTRACTION_VERSION", 999):
+            self.assertFalse(ocr_worker.sidecar_is_fresh(page, output))
+        legacy = json.loads(output.read_text())
+        legacy.pop("extraction_config")
+        output.write_text(json.dumps(legacy))
+        self.assertFalse(ocr_worker.sidecar_is_fresh(page, output))
+
+    def test_image_budgets_reject_before_decoding_or_inference(self):
+        from unittest import mock
+
+        page = self._page("jm/1/pages/budget.png")
+        for budget in (
+            mock.patch.object(ocr_worker, "MAX_IMAGE_BYTES", 1),
+            mock.patch.object(ocr_worker, "MAX_IMAGE_PIXELS", 1),
+        ):
+            with (
+                budget,
+                mock.patch.object(ocr_worker, "run_engine") as engine,
+                self.assertRaisesRegex(ValueError, "预算"),
+            ):
+                ocr_worker.recognize_page(page, object())
+            engine.assert_not_called()
+
+    def test_oversized_ocr_output_preserves_existing_sidecar(self):
+        from unittest import mock
+
+        page = self._page("jm/1/pages/output.png")
+        self.assertEqual(0, self._run()[0])
+        output = page.with_name("output.ocr.json")
+        before = output.read_bytes()
+        with mock.patch.object(ocr_worker, "MAX_SIDECAR_BYTES", 1):
+            self.assertEqual(1, self._run("--force")[0])
+        self.assertEqual(before, output.read_bytes())
+
     def test_image_replaced_during_inference_keeps_old_output(self):
         from unittest import mock
 
@@ -563,7 +606,7 @@ class TestBatchRun(unittest.TestCase):
         self.assertEqual(0, self._run("--source", "jm", "--id", "book_1")[0])
 
     def test_additional_formats_use_the_current_pillow_decoders(self):
-        from app.ocr_files import image_extensions
+        from app.ocr.files import image_extensions
 
         extensions = image_extensions()
         for extension in (".gif", ".bmp", ".avif", ".tif", ".tiff", ".ico", ".jfif"):
@@ -773,7 +816,9 @@ class TestOCRInstall(unittest.TestCase):
             (root / ".venv").symlink_to(sys.prefix, target_is_directory=True)
             (root / "backend/app").mkdir(parents=True)
             (root / "backend/app/__init__.py").touch()
-            (root / "backend/app/ocr_files.py").write_text(
+            (root / "backend/app/ocr").mkdir()
+            (root / "backend/app/ocr/__init__.py").touch()
+            (root / "backend/app/ocr/files.py").write_text(
                 'from pathlib import Path\ndef resolve_data_dir(): return Path("chosen-data").resolve()\ndef image_extensions(): return {".png"}\ndef scan_files(root, exts): return sorted(root.rglob("*.png"))\n'
             )
             (scripts / "ocr_lines.py").write_text('import sys\nprint("IMAGE=" + sys.argv[-1])\n')

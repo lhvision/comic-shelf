@@ -47,7 +47,7 @@ def resolve_data_dir(custom_path: str | None = None) -> Path:
     nas_mount = Path("/mnt/nas_manga")
     if (nas_mount / "library").is_dir():
         return nas_mount.resolve()
-    return Path(__file__).resolve().parents[1] / "data"
+    return Path(__file__).resolve().parents[2] / "data"
 
 
 def parse_path(value: str) -> str:

@@ -27,7 +27,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "backend"))
 
 from app.file_io import file_stamp, read_json, write_json_atomic
-from app.ocr_files import (
+from app.ocr.files import (
     collect_comic_pages,
     list_comics,
     parse_directory_name,

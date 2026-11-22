@@ -68,17 +68,19 @@ _RATE_REFILL_PER_SEC = 3.0  # 180 pages / 60 seconds
 
 
 class _TokenBucket:
-    __slots__ = ("last_time", "tokens")
+    __slots__ = ("capacity", "last_time", "refill", "tokens")
 
-    def __init__(self) -> None:
-        self.tokens = _RATE_CAPACITY
-        self.last_time = time.time()
+    def __init__(self, capacity: float = _RATE_CAPACITY, refill: float = _RATE_REFILL_PER_SEC) -> None:
+        self.capacity = capacity
+        self.refill = refill
+        self.tokens = capacity
+        self.last_time = time.monotonic()
 
     def consume(self, amount: float = 1.0) -> bool:
-        now = time.time()
+        now = time.monotonic()
         elapsed = now - self.last_time
         self.last_time = now
-        self.tokens = min(_RATE_CAPACITY, self.tokens + elapsed * _RATE_REFILL_PER_SEC)
+        self.tokens = min(self.capacity, self.tokens + elapsed * self.refill)
         if self.tokens >= amount:
             self.tokens -= amount
             return True

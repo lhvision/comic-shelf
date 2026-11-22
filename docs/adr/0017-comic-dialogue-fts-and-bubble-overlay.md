@@ -70,6 +70,11 @@
 
 ## 核心决策
 
+> **2026-11-22 修订**：本节的旧 HTTP 同步、前两页位置规则、短英文噪声规则及重复模板整页丢弃
+> 已由 [ADR 0041 补充](./0041-ocr-file-extraction-boundary.md#2026-11-22-补充保守分类失败恢复与资源边界) 取代。
+> 当前使用 `python -m app.ocr.sync`；组合证据确认的广告保存为副文本，普通词、开篇剧情、英文短句与重复对白保留。
+> 以下历史实测记录用于解释演进，不作为当前执行规则。
+
 1. **底层存储**：在台词专库初始化 `comic_dialogues_fts`（Trigram 分词），收录 `(source, source_id, page_index, bubble_id, text, lang, box_json, reading_order, kind, text_norm)`。倒排只建在 `text_norm`（写入时 `to_simplified(text)`）上，其余列全部 `UNINDEXED`；`text` 是展示用的原文副本（决策 2 · 修订）。FTS5 不能 `ALTER TABLE ADD COLUMN`，加列的做法是 `init_dialogue_db` 发现缺列就整表重建、清空 `comic_ocr_sync_meta` 再回填（错题本 #136/#145）；
 2. **同步管线**：提供 API `POST /api/library/{source}/{source_id}/ocr/sync`（Machine Token / Curator 鉴权）与离线 CLI `scripts/sync_ocr.py`（支持 NAS 挂载检测与多进程同步）；
 3. **检索端点**：提供 `GET /api/search/dialogue`，查询侧单次 `to_simplified` 归一（决策 2 · 修订），支持长度上限 200 字符限制与访客权限隔离；

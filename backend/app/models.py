@@ -591,6 +591,21 @@ class DialogueVectorsResponse(BaseModel):
     dim: int = 0
 
 
+class DialogueVectorStatusResponse(BaseModel):
+    """仅馆长可见的全库向量完成状态，与检索入口的 available 分开。"""
+
+    available: bool
+    reason: str
+    complete: bool
+    vectors: int
+    dim: int
+    eligible_comics: int
+    pending_comics: int
+    failed_comics: int
+    model_mismatch_comics: int
+    unverified_pages: int
+
+
 class StoryContextLine(BaseModel):
     """一行原始台词。line_id 是 "页号:气泡号"，用于把 boxes 数组对回对应行。"""
 

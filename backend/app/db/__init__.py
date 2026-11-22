@@ -1,10 +1,10 @@
 from __future__ import annotations
 
+from ..ocr.classification import PARATEXT_KIND
 from .connection import get_data_dir, get_db, get_dialogue_db, set_data_dir, set_db_path, set_dialogue_db_path
 from .dialogues import (
     DIALOGUE_KIND,
     MAX_PAGE_BOXES,
-    PARATEXT_KIND,
     STORY_CONTEXT_MAX_LINES,
     _parse_metric_count,
     classify_dialogue_kind,

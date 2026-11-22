@@ -11,18 +11,29 @@
 
 import argparse
 import concurrent.futures
-import math
+import json
 import os
 import sys
 import threading
 import time
+from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 from typing import Any
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "backend"))
 
-from app.file_io import file_stamp, open_regular, read_json, write_json_atomic
-from app.ocr_files import (
+from app.file_io import file_stamp, open_regular, write_json_atomic
+from app.ocr.assets import (
+    MAX_IMAGE_BYTES,
+    MAX_IMAGE_PIXELS,
+    MAX_PAGE_BUBBLES,
+    MAX_SIDECAR_BYTES,
+    MAX_TEXT_CHARS,
+    normalize_box,
+    read_sidecar,
+    validate_sidecar,
+)
+from app.ocr.files import (
     collect_comic_pages,
     collect_images,
     image_extensions,
@@ -235,6 +246,22 @@ USE_GPU = False
 MIN_SCORE = DEFAULT_MIN_SCORE
 # 侧车里记录产出引擎，供混跑后溯源（历史数据里有 v3 与更早无此字段的文件）
 ENGINE_TRACK = "v6"
+EXTRACTION_VERSION = 2
+
+
+def extraction_config(min_score: float) -> dict[str, Any]:
+    """把引擎版本、置信度和聚类修订纳入缓存身份，参数变化时重新提取。"""
+    try:
+        package_version = version("rapidocr")
+    except PackageNotFoundError:
+        package_version = ""
+    return {
+        "revision": EXTRACTION_VERSION,
+        "engine_track": ENGINE_TRACK,
+        "model_type": "small",
+        "rapidocr_version": package_version,
+        "min_score": min_score,
+    }
 
 
 def cuda_ready() -> tuple[bool, str]:
@@ -298,22 +325,13 @@ def build_engine(use_gpu: bool, min_score: float = DEFAULT_MIN_SCORE) -> Any:
 def _load_ocr_sidecar(out_path: Path, root: Path | None = None) -> dict[str, Any] | None:
     """合法空页允许无气泡；非空页至少有文字及四个有限、顺序正确的坐标。"""
     try:
-        data = read_json(out_path, root=root)
-    except OSError, ValueError:
+        data = read_sidecar(out_path, root=root)
+    except OSError, ValueError, TypeError:
         return None
-    if not isinstance(data, dict) or data.get("engine") != "rapidocr" or not isinstance(data.get("bubbles"), list):
+    if data.get("engine") != "rapidocr":
         return None
     for bubble in data["bubbles"]:
-        if not isinstance(bubble, dict) or not isinstance(bubble.get("text"), str) or not bubble["text"].strip():
-            return None
-        box = bubble.get("box")
-        if not isinstance(box, list) or len(box) != 4:
-            return None
-        if not all(
-            isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value) for value in box
-        ):
-            return None
-        if box[0] > box[2] or box[1] > box[3]:
+        if not bubble["text"].strip() or normalize_box(bubble.get("box")) is None:
             return None
         if "confidence" in bubble and (
             not isinstance(bubble["confidence"], (int, float))
@@ -329,10 +347,14 @@ def is_valid_ocr_sidecar(out_path: Path) -> bool:
     return _load_ocr_sidecar(out_path) is not None
 
 
-def sidecar_is_fresh(img_path: Path, out_path: Path, *, root: Path | None = None) -> bool:
-    """新结果绑定识别时的源图状态；历史伴生文件仍使用修改时间判断。"""
+def sidecar_is_fresh(
+    img_path: Path, out_path: Path, *, root: Path | None = None, min_score: float = DEFAULT_MIN_SCORE
+) -> bool:
+    """源图和提取配置都匹配才跳过；历史无配置资产在下一次提取时更新一次。"""
     data = _load_ocr_sidecar(out_path, root)
     if data is None:
+        return False
+    if data.get("extraction_config") != extraction_config(min_score):
         return False
     try:
         stamp = file_stamp(img_path, root=root)
@@ -374,8 +396,12 @@ def rows_to_blocks(rows: list[tuple[Any, str, float]]) -> list[dict[str, Any]]:
     不再按置信度过滤：低分行已由引擎按 `Global.text_score` 滤掉（见 `build_engine`）。
     """
     blocks: list[dict[str, Any]] = []
+    if len(rows) > MAX_PAGE_BUBBLES:
+        raise ValueError(f"单页识别行数超过 {MAX_PAGE_BUBBLES} 条预算")
     for box, text, score in rows:
         text_str = str(text).strip()
+        if len(text_str) > MAX_TEXT_CHARS:
+            raise ValueError(f"单条识别文字超过 {MAX_TEXT_CHARS} 字符预算")
         if not text_str:
             continue
         xs = [p[0] for p in box]
@@ -401,10 +427,14 @@ def recognize_page(
 
     with open_regular(img_path, root=root) as file:
         info = os.fstat(file.fileno())
+        if info.st_size > MAX_IMAGE_BYTES:
+            raise ValueError(f"图片超过 {MAX_IMAGE_BYTES} 字节预算: {img_path}")
         stamp = info.st_dev, info.st_ino, info.st_size, info.st_mtime_ns, info.st_ctime_ns
         with Image.open(file) as page:
             if page.format not in image_formats():
                 raise ValueError(f"不是可直接读取的光栅图片: {img_path} ({page.format})")
+            if page.width * page.height > MAX_IMAGE_PIXELS:
+                raise ValueError(f"图片超过 {MAX_IMAGE_PIXELS} 像素预算: {img_path}")
             decoded = ImageOps.exif_transpose(page)
             if decoded.mode == "P":
                 decoded = decoded.convert("RGBA" if "transparency" in decoded.info else "RGB")
@@ -426,9 +456,13 @@ def process_image(img_path: Path, out_path: Path, *, root: Path | None = None) -
         "lang": "zh",
         "engine": "rapidocr",
         "engine_track": ENGINE_TRACK,
+        "extraction_config": extraction_config(MIN_SCORE),
         "source_image": {"size": stamp[2], "mtime_ns": stamp[3]},
         "bubbles": bubbles,
     }
+    validate_sidecar(payload)
+    if len(json.dumps(payload, ensure_ascii=False, indent=2).encode("utf-8")) > MAX_SIDECAR_BYTES:
+        raise ValueError(f"OCR 输出超过 {MAX_SIDECAR_BYTES} 字节预算: {out_path}")
     if file_stamp(img_path, root=root) != stamp:
         raise RuntimeError(f"发布前画页发生变化，结果未发布，请重试: {img_path}")
     write_json_atomic(out_path, payload, root=root)
@@ -601,14 +635,18 @@ def main() -> int:
     pending_jobs = []
     total_skipped_pages = 0
     for label, pages in target_jobs:
-        pending = pages if args.force else [pair for pair in pages if not sidecar_is_fresh(*pair, root=file_root)]
+        pending = (
+            pages
+            if args.force
+            else [pair for pair in pages if not sidecar_is_fresh(*pair, root=file_root, min_score=args.min_score)]
+        )
         total_skipped_pages += len(pages) - len(pending)
         if pending:
             pending_jobs.append((label, pending))
     if (
         img_p is not None
         and not args.force
-        and sidecar_is_fresh(img_p, img_p.with_name(f"{img_p.stem}.ocr.json"), root=file_root)
+        and sidecar_is_fresh(img_p, img_p.with_name(f"{img_p.stem}.ocr.json"), root=file_root, min_score=args.min_score)
     ):
         print("⚡ 画页伴生文件已是最新且合法，无需更新。")
         return 0

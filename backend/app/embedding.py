@@ -11,6 +11,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import logging
 import os
 import threading
@@ -41,22 +42,48 @@ _SESSION = None
 _TOKENIZER = None
 _DIM: int | None = None
 _FAILED = False
+_LOADED_SIGNATURE = ""
+_SIGNATURE_CACHE: tuple[object, str] | None = None
 
 
 def model_present() -> bool:
     return _MODEL_PATH.is_file() and _TOKENIZER_PATH.is_file()
 
 
+def model_signature() -> str:
+    """模型、分词器及编码参数共同标识向量空间；文件变化才重新计算内容指纹。"""
+    global _SIGNATURE_CACHE
+    if not model_present():
+        return ""
+    stamps = tuple(
+        (path.stat().st_ino, path.stat().st_size, path.stat().st_mtime_ns, path.stat().st_ctime_ns)
+        for path in (_MODEL_PATH, _TOKENIZER_PATH)
+    )
+    if _SIGNATURE_CACHE is not None and _SIGNATURE_CACHE[0] == stamps:
+        return _SIGNATURE_CACHE[1]
+    digest = hashlib.sha256(f"bge-cls-l2:{MAX_TOKENS}:{MIN_EMBED_CHARS}".encode())
+    for path in (_MODEL_PATH, _TOKENIZER_PATH):
+        with path.open("rb") as file:
+            for chunk in iter(lambda: file.read(1024 * 1024), b""):
+                digest.update(chunk)
+    signature = digest.hexdigest()
+    _SIGNATURE_CACHE = stamps, signature
+    return signature
+
+
 def _load():
     """惰性建会话。装不上就记住"这次进程里别再试了"，避免每次检索都重跑一遍失败路径。"""
-    global _SESSION, _TOKENIZER, _DIM, _FAILED
-    if _SESSION is not None:
+    global _SESSION, _TOKENIZER, _DIM, _FAILED, _LOADED_SIGNATURE
+    signature = model_signature()
+    if _SESSION is not None and signature == _LOADED_SIGNATURE:
         return _SESSION, _TOKENIZER
-    if _FAILED or not model_present():
+    if not signature or (_FAILED and signature == _LOADED_SIGNATURE):
         return None, None
     with _LOCK:
-        if _SESSION is not None or _FAILED:
+        if _SESSION is not None and signature == _LOADED_SIGNATURE:
             return _SESSION, _TOKENIZER
+        _SESSION, _TOKENIZER, _DIM, _FAILED = None, None, None, False
+        _LOADED_SIGNATURE = signature
         try:
             import numpy as np
             import onnxruntime as ort

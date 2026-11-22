@@ -66,7 +66,7 @@ class TestLocalSync(unittest.TestCase):
             textwrap.dedent("""
             import json, os, sys
             from unittest import mock
-            from app.sync_ocr import main
+            from app.ocr.sync import main
             with open(os.environ["OCR_TEST_LOG"], "a") as log:
                 log.write(json.dumps(["sync", sys.executable, sys.argv[1:]]) + "\\n")
             if os.environ.get("OCR_TEST_FAIL_INIT"):
@@ -75,7 +75,7 @@ class TestLocalSync(unittest.TestCase):
                     raise SystemExit(main())
             if os.environ.get("OCR_TEST_FAIL_SYNC") and "--check" not in sys.argv:
                 os.environ["COMIC_SHELF_DATA"] = os.environ["OCR_TEST_DATA"]
-                with mock.patch("app.db.dialogues.sync_comic_dialogues", side_effect=OSError("模拟入库失败")):
+                with mock.patch("app.db.dialogues.comic_dialogues_need_sync", return_value=True), mock.patch("app.db.dialogues.sync_comic_dialogues", side_effect=OSError("模拟入库失败")):
                     raise SystemExit(main())
             raise SystemExit(main())
         """)
@@ -135,6 +135,18 @@ class TestLocalSync(unittest.TestCase):
                 self.assertEqual(1, conn.execute("SELECT count(*) FROM comic_dialogues_fts").fetchone()[0])
         self.assertFalse((self.page.parent / "bad.ocr.json").exists())
 
+    def test_shell_sync_budget_and_skip_vectors_reach_application_environment(self):
+        result = self.run_ocr("--sync-limit", "1", "--skip-vectors", "--source", "jm")
+        self.assertEqual(0, result.returncode, result.stdout + result.stderr)
+        calls = [json.loads(line) for line in self.log.read_text().splitlines()]
+        for kind, _, args in calls:
+            if kind == "ocr":
+                self.assertNotIn("--skip-vectors", args)
+                self.assertNotIn("--sync-limit", args)
+            else:
+                self.assertIn("--skip-vectors", args)
+                self.assertEqual("1", args[args.index("--limit") + 1])
+
     def test_module_entry_works_with_only_the_container_app_directory(self):
         repo = Path(__file__).resolve().parents[2]
         isolated = self.root / "container"
@@ -151,7 +163,7 @@ class TestLocalSync(unittest.TestCase):
             )
         )
         result = subprocess.run(
-            [sys.executable, "-m", "app.sync_ocr", "--source", "jm", "--id", "1"],
+            [sys.executable, "-m", "app.ocr.sync", "--source", "jm", "--id", "1"],
             cwd=isolated,
             env={**self.env, "PYTHONPATH": str(isolated), "COMIC_SHELF_DATA": str(self.data)},
             capture_output=True,
@@ -173,7 +185,7 @@ class TestLocalSync(unittest.TestCase):
                 "box_json, reading_order, kind, text_norm FROM comic_dialogues_fts WHERE source_id = '1'"
             )
         result = subprocess.run(
-            [sys.executable, "-m", "app.sync_ocr", "--data-dir", str(self.data), "--id", "1"],
+            [sys.executable, "-m", "app.ocr.sync", "--data-dir", str(self.data), "--id", "1"],
             cwd=self.root,
             env=self.env,
             capture_output=True,
@@ -220,7 +232,7 @@ class TestIndexBoundaries(unittest.TestCase):
         self.old_db = connection.get_dialogue_db_path()
         connection.set_data_dir(self.data)
         schema.init_dialogue_db(self.data / "dialogues.db")
-        self.embedding = mock.patch.object(dialogues, "embed_comic_dialogues", return_value=0)
+        self.embedding = mock.patch("app.embedding.dim", return_value=None)
         self.embedding.start()
 
     def tearDown(self):
@@ -318,7 +330,7 @@ class TestIndexBoundaries(unittest.TestCase):
         self.assertEqual(1, self.dialogues.sync_comic_dialogues("local", "book"))
         foreign = self.data / "foreign.json"
         foreign.write_text(json.dumps({"bubbles": [{"text": "不能读入的台词"}]}))
-        original_read = self.dialogues.read_json
+        original_read = self.dialogues.read_sidecar
 
         def swap_link(file, **kwargs):
             if file == path:
@@ -326,7 +338,7 @@ class TestIndexBoundaries(unittest.TestCase):
                 path.symlink_to(foreign)
             return original_read(file, **kwargs)
 
-        with mock.patch.object(self.dialogues, "read_json", side_effect=swap_link), self.assertRaises(OSError):
+        with mock.patch.object(self.dialogues, "read_sidecar", side_effect=swap_link), self.assertRaises(OSError):
             self.dialogues.sync_comic_dialogues("local", "book", force=True)
         self.assertEqual([(1, "原本的台词")], self.records())
 
@@ -347,7 +359,7 @@ class TestIndexBoundaries(unittest.TestCase):
 
         path = self.sidecar("00001.ocr.json", "原本的台词")
         self.assertEqual(1, self.dialogues.sync_comic_dialogues("local", "book"))
-        original_read = self.dialogues.read_json
+        original_read = self.dialogues.read_sidecar
 
         def change_after_read(file, **kwargs):
             data = original_read(file, **kwargs)
@@ -356,7 +368,7 @@ class TestIndexBoundaries(unittest.TestCase):
             return data
 
         with (
-            mock.patch.object(self.dialogues, "read_json", side_effect=change_after_read),
+            mock.patch.object(self.dialogues, "read_sidecar", side_effect=change_after_read),
             self.assertRaisesRegex(RuntimeError, "发生变化"),
         ):
             self.dialogues.sync_comic_dialogues("local", "book", force=True)

@@ -7,12 +7,20 @@ import math
 import re
 import sqlite3
 import string
+import threading
 import time
 from pathlib import Path
 from typing import Any
 
 from ..file_io import file_stamp, read_json
-from ..ocr_files import normalize_library_name, scan_files
+from ..ocr.assets import comic_asset_lock, normalize_box, read_sidecar, verify_source_image
+from ..ocr.classification import (
+    CLASSIFICATION_VERSION,
+    DIALOGUE_KIND,
+    advertisement_page_reason,
+    classify_dialogue_kind,
+)
+from ..ocr.files import image_extensions, normalize_library_name, scan_files
 from ..zh_conv import to_simplified
 from .connection import _escape_like, get_data_dir, get_db, get_dialogue_db, get_dialogue_db_path
 
@@ -28,24 +36,6 @@ MAX_PAGE_BOXES = 6
 # 只折 ASCII 大小写，与 LIKE 和 SQLite lower() 同一口径。不用 str.lower()：它会把个别字符
 # 变长（'İ' → 'i̇'），折完的下标就对不回原文了
 _ASCII_LOWER = str.maketrans(string.ascii_uppercase, string.ascii_lowercase)
-
-
-def _normalize_box(raw: Any) -> list[float] | None:
-    """把侧车里的 box 收敛成 4 个有限数值，形状不对就整条判废。
-
-    只判长度拦不住 4 键 dict 与嵌套四点表，放过去会在响应模型校验时让检索端点 500。
-    """
-    if not isinstance(raw, list) or len(raw) != 4:
-        return None
-    out: list[float] = []
-    for v in raw:
-        if isinstance(v, bool) or not isinstance(v, (int, float)):
-            return None
-        f = float(v)
-        if not math.isfinite(f):
-            return None
-        out.append(f)
-    return out
 
 
 def _coerce_order_index(raw: Any, fallback: int) -> int:
@@ -86,135 +76,6 @@ def _make_snippet(raw: str, norm: str, needle: str, max_chars: int = 60) -> str:
     return f"{prefix}{marked}{suffix}"
 
 
-DIALOGUE_KIND = "dialogue"
-PARATEXT_KIND = "paratext"
-
-# 书名页与版权页在书头，后记与通告在书尾：页位 + 特征词比几何轮廓判据可靠（ADR 0017 决策 7）
-FRONT_MATTER_PAGES = 2
-BACK_MATTER_PAGES = 4
-# 短篇整本都是正文，位置规则对它没有意义；册页数不足此数时只认特征词。
-MIN_PAGES_FOR_POSITION_RULE = 10
-# 后记是成段的长文，正文页平均每句只有十来字，用它兜住没有特征词的后记页
-BACK_MATTER_MEAN_LINE_CHARS = 25
-
-# 水印与页码：真台词一定有中日文字形，纯拉丁/数字且极短的就是噪声（站点名的 OCR 变体列举不完）
-_CJK_RE = re.compile(r"[぀-ヿ一-鿿＀-￯]")
-NOISE_MAX_CHARS = 12
-
-# 汉化组/发布组/平台宣传专属强特征词（简繁双轨）：涵盖制作分工、招募、社交平台、赞助打赏、APP推广与水印
-_SCANLATOR_RE = re.compile(
-    r"(图源|圖源|翻校|嵌字|扫图|掃圖|校对|校對|压制|壓制|汉化|漢化|初翻|招募|招新"
-    r"|爱发电|愛發電|赞助|贊助|打赏|打賞|仅供交流|僅供交流|禁止商用|禁止商業|严禁商用|嚴禁商用"
-    r"|qq群|加群|加羣|微信群|微信羣|交流群|交流羣|群号|羣號|微博|邮箱|郵箱|@[A-Za-z0-9]|pixiv|fanbox|twitter"
-    r"|禁漫天堂|禁漫食堂|禁漫娘|拷贝漫画|拷貝漫畫"
-    r"|app正式启动|app正式啟動|永久免费|永久免費|不再迷路|二维码|二維碼|qrcode|扫码|掃碼|扫码下载|掃碼下載"
-    r"|presented by|凳行|尧行|印刷)",
-    re.IGNORECASE,
-)
-
-# 平台水印与汉化组广告特征词：不得具备替整页定性为副文本（后记/版权页）的权力（ADR 0017 决策 7）
-_WATERMARK_RE = re.compile(
-    r"(图源|圖源|翻校|嵌字|扫图|掃圖|校对|校對|压制|壓制|汉化|漢化|初翻|招募|招新"
-    r"|爱发电|愛發電|赞助|贊助|打赏|打賞|仅供交流|僅供交流|禁止商用|禁止商業|严禁商用|嚴禁商用"
-    r"|qq群|加群|加羣|微信群|微信羣|交流群|交流羣|群号|羣號|微博|邮箱|郵箱"
-    r"|禁漫天堂|禁漫食堂|禁漫娘|拷贝漫画|拷貝漫畫"
-    r"|app正式启动|app正式啟動|永久免费|永久免費|不再迷路|二维码|二維碼|qrcode|扫码|掃碼|扫码下载|掃碼下載)",
-    re.IGNORECASE,
-)
-
-# 刻意不收「我是」「禁止」这类真台词里也常见的宽词；简繁双轨支持
-_PARATEXT_RE = re.compile(
-    r"(图源|圖源|翻校|嵌字|扫图|掃圖|校对|校對|压制|壓制|汉化|漢化|翻译|翻譯|初翻|仅供|僅供|转载|轉載|商业|商業|邮箱|郵箱|@[A-Za-z0-9]"
-    r"|https?://|www\.|pixiv|fanbox|twitter|comiket|comic\s*market|qq群|群号|羣號|加群|加羣|微信群|微信羣|交流群|交流羣|微博|爱发电|愛發電|赞助|贊助|打赏|打賞"
-    r"|禁漫天堂|禁漫食堂|禁漫娘|拷贝漫画|拷貝漫畫"
-    r"|app正式启动|app正式啟動|永久免费|永久免費|不再迷路|二维码|二維碼|qrcode|扫码|掃碼|扫码下载|掃碼下載"
-    r"|后记|後記|前言|附录|附錄|完结感言|完結感言|番外篇|特典|商业志|商業誌|presented by|凳行|尧行|印刷)",
-    re.IGNORECASE,
-)
-
-
-def _is_noise_line(text: str) -> bool:
-    return not _CJK_RE.search(text) and len(text) <= NOISE_MAX_CHARS
-
-
-def classify_dialogue_kind(
-    page_index: int,
-    page_count: int,
-    page_texts: list[str],
-    text: str,
-    *,
-    is_chapter_tail: bool = False,
-    is_chapter_boundary: bool = False,
-    is_recurring_template: bool = False,
-    page_recurring_ratio: float = 0.0,
-) -> str | None:
-    """判定一条 OCR 文本的语料类别。
-
-    Args:
-        page_index: 全书拍平后的全局页号（1 起）。
-        page_count: 该漫画总页数；取不到时传 0，位置规则自动失效。
-        page_texts: 同一页上的全部文本，用于判断整页是否像后记。
-        text: 待判定的单条文本。
-        is_chapter_tail: 是否为所属章节末尾 1~2 页（兼容历史传参）。
-        is_chapter_boundary: 是否为所属章节首尾 1~2 页（且该章页数 >= 8）。
-        is_recurring_template: 该条文本是否为跨话/跨页高频重复模板。
-        page_recurring_ratio: 该页模板文本行占全页文本行的比例（0.0 ~ 1.0）。
-
-    Returns:
-        'dialogue' 分镜台词、'paratext' 书名页/版权页/后记等副文本，
-        None 表示纯噪声（水印、页码、汉化组首尾页广告、重复模板），不该进索引。
-    """
-    if _is_noise_line(text):
-        return None
-
-    norm_text = to_simplified(text)
-    # 噪声行不能替整页定性（ADR 0017 决策 7）
-    meaningful_texts = [t for t in page_texts if not _is_noise_line(t)]
-    norm_page_texts = [to_simplified(t) for t in meaningful_texts]
-
-    is_boundary = is_chapter_boundary or is_chapter_tail
-    scan_count = sum(1 for t in norm_page_texts if _SCANLATOR_RE.search(t))
-    scan_ratio = (scan_count / len(norm_page_texts)) if norm_page_texts else 0.0
-
-    # 1. 单话首尾边界熔断（全书封面第 1 页除外）：
-    # - 若单条自身为汉化组广告词或高频跨话模板，在首尾边界页直接丢弃（不入库）
-    # - 若整页由模板主导（>= 50%）、广告特征词占多数（>= 2 行且 >= 50%），整页一律不入库
-    # - 对于正文与水印混排的边界页，仅丢弃水印行，完好保全正文剧情对白（ADR 0017 决策 7 & 10）
-    if is_boundary and page_index != 1:
-        if _SCANLATOR_RE.search(norm_text) or is_recurring_template:
-            return None
-        if page_recurring_ratio >= 0.5 or (scan_count >= 2 and scan_ratio >= 0.5):
-            return None
-
-    # 2. 纯广告海报全位置熔断：若整页所有有效行均由广告/汉化词构成（0 剧情正文），整页一律不入库
-    if page_index != 1 and norm_page_texts and all(_SCANLATOR_RE.search(t) for t in norm_page_texts):
-        return None
-
-    # 3. 跨话高频重复的水印/广告模板（如全局重复出现的网站域名或赞助标语）直接丢弃
-    if is_recurring_template and _SCANLATOR_RE.search(norm_text):
-        return None
-
-    # 4. 基础特征词匹配：优先识别副文本（如作者后记、版权信息、刊物说明等）
-    if _PARATEXT_RE.search(norm_text):
-        return PARATEXT_KIND
-
-    # 5. 全书位置护栏（仅在全书页数 >= 10 时启用）
-    if page_count >= MIN_PAGES_FOR_POSITION_RULE:
-        if page_index <= FRONT_MATTER_PAGES:
-            return PARATEXT_KIND
-        if page_index > page_count - BACK_MATTER_PAGES and page_texts:
-            mean_line_chars = sum(len(t) for t in meaningful_texts) / len(meaningful_texts) if meaningful_texts else 0
-            long_form_page = mean_line_chars >= BACK_MATTER_MEAN_LINE_CHARS
-            # 只有作者本人的后记/版权/谢恩词（后记、前言、附录、特典、推特号等）或长段文本才有资格定性整页为副文本；
-            # 平台水印与汉化组广告（_WATERMARK_RE）绝不能替整页定性（错题本 #7 / ADR 0017 决策 7）
-            author_texts = [t for t in norm_page_texts if not _WATERMARK_RE.search(t)]
-            credit_page = any(_PARATEXT_RE.search(t) for t in author_texts)
-            if long_form_page or credit_page:
-                return PARATEXT_KIND
-
-    return DIALOGUE_KIND
-
-
 def _dialogue_key(source: str, source_id: str) -> tuple[str, str]:
     """台词库的统一主键清洗：与存储层 `comic_dir()` 定位目录用的是同一套字符集。
 
@@ -225,264 +86,215 @@ def _dialogue_key(source: str, source_id: str) -> tuple[str, str]:
     return normalize_library_name(source), normalize_library_name(source_id)
 
 
-def _ocr_source_state(data_dir: Path, comic_dir: Path) -> tuple[list[Path], str, float]:
+def _ocr_source_state(data_dir: Path, comic_dir: Path) -> tuple[list[Path], str, dict[Path, Path]]:
     """文件清单与 album 共同决定增量；删除、替换、保留旧 mtime 的复制也能感知。"""
     pages_dir = comic_dir / "pages"
     for directory in (data_dir / "library", comic_dir.parent, comic_dir, pages_dir):
         if directory.is_symlink():
             raise ValueError(f"台词同步目录不能是符号链接: {directory}")
-    files = scan_files(pages_dir, (".ocr.json",))
-    entries = [(file.relative_to(comic_dir).as_posix(), file_stamp(file, root=data_dir)) for file in files]
+    all_files = scan_files(pages_dir, (".ocr.json", *image_extensions()))
+    files = [file for file in all_files if file.name.lower().endswith(".ocr.json")]
+    entries = [(file.relative_to(comic_dir).as_posix(), file_stamp(file, root=data_dir)) for file in all_files]
+    images: dict[Path, Path] = {}
+    for image in all_files:
+        if image.name.lower().endswith(".ocr.json"):
+            continue
+        sidecar = image.with_name(f"{image.stem}.ocr.json")
+        if sidecar in images:
+            raise ValueError(f"同名画页导致 OCR 原图有歧义: {image}")
+        images[sidecar] = image
     album = comic_dir / "album.json"
     try:
         album_stamp = file_stamp(album, root=data_dir)
     except FileNotFoundError:
         album_stamp = None
-    signature = hashlib.sha256(json.dumps([entries, album_stamp], separators=(",", ":")).encode()).hexdigest()
-    latest_mtime = max((entry[1][3] / 1e9 for entry in entries), default=0.0)
-    return files, signature, latest_mtime
+    signature = hashlib.sha256(
+        json.dumps([1, CLASSIFICATION_VERSION, entries, album_stamp], separators=(",", ":")).encode()
+    ).hexdigest()
+    return files, signature, images
 
 
-def sync_comic_dialogues(source: str, source_id: str, force: bool = False) -> int:
-    """Syncs comic page OCR dialogues (*.ocr.json) into the comic_dialogues_fts table.
+def comic_dialogues_need_sync(source: str, source_id: str, *, sync_vectors: bool = True) -> bool:
+    """给分批 CLI 判断待更新的本；已完成的本不占册数预算，未启用模型不反复排队。"""
+    from .. import embedding
 
-    Security sandbox and atomicity guarantees:
-    1. Strictly sanitizes directory path symbols and bounds traversal within DATA_DIR.
-    2. Atomically clears prior index rows for this comic before inserting new records.
-
-    入库时按 classify_dialogue_kind 打上 kind：副文本只登记不检索，水印与页码直接丢弃。
-
-    Args:
-        source: Provider key (e.g., 'jm', 'picacg', 'local').
-        source_id: Unique comic identifier.
-        force: If True, bypasses mtime check and forces a full re-index.
-
-    Returns:
-        The total number of dialogue bubble records indexed.
-    """
-    safe_source, safe_id = _dialogue_key(source, source_id)
-    # 找目录、写库、查元数据、删除统一用清洗后的键，否则会留下删不掉的孤儿语料（见 _dialogue_key）
-    source, source_id = safe_source, safe_id
-
-    data_resolved = get_data_dir().resolve()
-    comic_dir = data_resolved / "library" / safe_source / safe_id
-    ocr_files, source_signature, latest_mtime = _ocr_source_state(data_resolved, comic_dir)
-
-    # 先比文件状态，再解析正文；旧库签名为空会在首次同步时修正一次索引。
-    if not force:
-        with get_dialogue_db() as conn:
-            row = conn.execute(
-                "SELECT source_signature, dialogue_count FROM comic_ocr_sync_meta WHERE source = ? AND source_id = ?",
-                (source, source_id),
-            ).fetchone()
-            if row and row["source_signature"] == source_signature:
-                return int(row["dialogue_count"])
-
-    # 读取 album.json 以便建立多章节全局页号映射与单话边界上下文
-    page_map: dict[str, int] = {}
-    page_to_chapter: dict[int, str] = {}
-    chapter_page_map: dict[str, list[int]] = {}
-    page_count = 0
-    album_path = comic_dir / "album.json"
-    if album_path.is_file():
-        try:
-            meta_dict = read_json(album_path, root=data_resolved)
-            pages = meta_dict.get("pages", [])
-            try:
-                page_count = int(meta_dict.get("page_count") or len(pages))
-            except TypeError, ValueError, OverflowError:
-                page_count = len(pages)
-            for page in pages:
-                idx_val = page.get("index")
-                f_val = page.get("file", "")
-                chap_val = page.get("chapter", "")
-                if idx_val is not None:
-                    try:
-                        pid = int(idx_val)
-                    except ValueError, TypeError:
-                        continue
-                    stem = Path(f_val).stem
-                    page_map[stem] = pid
-                    if chap_val:
-                        page_map[f"{chap_val}/{stem}"] = pid
-                    chap_str = str(chap_val or "")
-                    page_to_chapter[pid] = chap_str
-                    chapter_page_map.setdefault(chap_str, []).append(pid)
-        except json.JSONDecodeError, UnicodeDecodeError, TypeError, ValueError, AttributeError:
-            pass
-
-    # 统计单话首尾 1~2 页（仅当该话页数 >= 8 时判定，防止误杀极短单篇与番外）
-    MIN_CHAPTER_PAGES = 8
-    chapter_boundary_page_indices: set[int] = set()
-    for chap_str, p_list in chapter_page_map.items():
-        if len(p_list) >= MIN_CHAPTER_PAGES:
-            chapter_boundary_page_indices.update(p_list[:2])
-            chapter_boundary_page_indices.update(p_list[-2:])
-
-    # 预先解析所有 OCR 文件并提取文本，用于全局模板频次去重与整页结构分析
-    parsed_ocr_items: list[dict[str, Any]] = []
-    text_chapters: dict[str, set[str]] = {}
-    text_pages: dict[str, set[int]] = {}
-
-    for f in ocr_files:
-        try:
-            payload = read_json(f, root=data_resolved)
-        except json.JSONDecodeError, UnicodeDecodeError:
-            continue
-        if not isinstance(payload, dict):
-            continue
-
-        page_idx: int | None = None
-        if payload.get("page_index") is not None:
-            try:
-                page_idx = int(payload["page_index"])
-            except ValueError, TypeError, OverflowError:
-                pass
-        elif payload.get("page") is not None:
-            try:
-                page_idx = int(payload["page"])
-            except ValueError, TypeError, OverflowError:
-                pass
-
-        if page_idx is None:
-            stem = f.name[:-9] if f.name.endswith(".ocr.json") else f.stem
-            chap_stem = f"{f.parent.name}/{stem}"
-            if chap_stem in page_map:
-                page_idx = page_map[chap_stem]
-            elif stem in page_map:
-                page_idx = page_map[stem]
-            elif stem.isdigit():
-                page_idx = int(stem)
-            else:
-                m = re.search(r"\d+", stem)
-                page_idx = int(m.group(0)) if m else 1
-
-        top_lang = payload.get("lang") or "zh"
-        bubbles = payload.get("bubbles", [])
-        if not isinstance(bubbles, list):
-            continue
-
-        chap_id = page_to_chapter.get(page_idx, f.parent.name)
-        raw_texts = [str(b.get("text", "")).strip() for b in bubbles if isinstance(b, dict)]
-        raw_texts = [t for t in raw_texts if t]
-
-        for t in raw_texts:
-            if len(t) >= 8 and len({c for c in t if c.isalnum()}) >= 5:
-                nt = to_simplified(t)
-                text_chapters.setdefault(nt, set()).add(chap_id)
-                text_pages.setdefault(nt, set()).add(page_idx)
-
-        parsed_ocr_items.append(
-            {
-                "page_idx": page_idx,
-                "top_lang": top_lang,
-                "bubbles": bubbles,
-                "page_texts": raw_texts,
-            }
-        )
-
-    # 判定为跨话/跨页高频模板的文本集合（单本内跨 >= 3 话，或跨 >= 4 页出现）
-    recurring_templates: set[str] = {
-        nt for nt, chaps in text_chapters.items() if len(chaps) >= 3 or len(text_pages.get(nt, set())) >= 4
-    }
-
-    # 若无 album.json 章节划分，退回整本首尾各 2 页作为边界兜底（全本页数 >= 8 时生效）
-    if not chapter_boundary_page_indices and parsed_ocr_items:
-        all_pids = sorted({item["page_idx"] for item in parsed_ocr_items})
-        if len(all_pids) >= MIN_CHAPTER_PAGES:
-            chapter_boundary_page_indices.update(all_pids[:2])
-            chapter_boundary_page_indices.update(all_pids[-2:])
-
-    records: list[tuple[str, str, int, int | str, str, str, str, int, str, str]] = []
-    for item in parsed_ocr_items:
-        page_idx = item["page_idx"]
-        top_lang = item["top_lang"]
-        bubbles = item["bubbles"]
-        page_texts = item["page_texts"]
-
-        is_boundary = page_idx in chapter_boundary_page_indices
-        norm_page_texts = [to_simplified(t) for t in page_texts]
-
-        template_count = sum(1 for t in norm_page_texts if t in recurring_templates)
-        page_recurring_ratio = (template_count / len(page_texts)) if page_texts else 0.0
-
-        for b_idx, b in enumerate(bubbles, start=1):
-            if not isinstance(b, dict):
-                continue
-            text = str(b.get("text", "")).strip()
-            if not text:
-                continue
-            is_rec = to_simplified(text) in recurring_templates
-            kind = classify_dialogue_kind(
-                page_idx,
-                page_count,
-                page_texts,
-                text,
-                is_chapter_tail=is_boundary,
-                is_chapter_boundary=is_boundary,
-                is_recurring_template=is_rec,
-                page_recurring_ratio=page_recurring_ratio,
-            )
-            if kind is None:
-                continue
-            bubble_id = b.get("id", b_idx)
-            if isinstance(bubble_id, bool) or not isinstance(bubble_id, (int, str)):
-                bubble_id = b_idx
-            lang = b.get("lang") or top_lang
-            # 形状不合法的 box 存空数组：宁可丢坐标，不能让一行脏侧车毒化整条检索链路
-            box = _normalize_box(b.get("box")) or []
-            box_json = json.dumps(box, ensure_ascii=False)
-            # 旧伴生文件没有 order，只能退回数组下标（其顺序为检测模型输出，并非阅读顺序）；
-            # 这类文件需用 ocr_worker --force 重跑，才能拿到真正的 reading_order
-            reading_order = _coerce_order_index(b.get("order"), b_idx)
-            records.append(
-                (
-                    source,
-                    source_id,
-                    page_idx,
-                    bubble_id,
-                    text,
-                    str(lang),
-                    box_json,
-                    reading_order,
-                    kind,
-                    to_simplified(text),
-                )
-            )
-
-    if _ocr_source_state(data_resolved, comic_dir)[1] != source_signature:
-        raise RuntimeError(f"同步期间伴生资产或页码映射发生变化，请重试: {source}/{source_id}")
-
+    source, source_id = _dialogue_key(source, source_id)
+    data = get_data_dir().resolve()
+    signature = _ocr_source_state(data, data / "library" / source / source_id)[1]
     with get_dialogue_db() as conn:
-        conn.execute(
-            "DELETE FROM comic_dialogues_fts WHERE source = ? AND source_id = ?",
-            (source, source_id),
+        row = conn.execute(
+            "SELECT * FROM comic_ocr_sync_meta WHERE source = ? AND source_id = ?", (source, source_id)
+        ).fetchone()
+    if row is None or row["source_signature"] != signature:
+        return True
+    return (
+        sync_vectors
+        and embedding.dim() is not None
+        and (
+            row["vector_source_signature"] != signature or row["vector_model_signature"] != embedding.model_signature()
         )
-        if records:
-            conn.executemany(
-                """
-                INSERT INTO comic_dialogues_fts (
-                    source, source_id, page_index, bubble_id, text, lang, box_json, reading_order, kind, text_norm
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                records,
-            )
-        conn.execute(
-            """
-            INSERT OR REPLACE INTO comic_ocr_sync_meta (
-                source, source_id, last_synced_mtime, dialogue_count, updated_at, source_signature
-            ) VALUES (?, ?, ?, ?, ?, ?)
-            """,
-            (source, source_id, latest_mtime, len(records), int(time.time()), source_signature),
-        )
+    )
 
-    # 向量重建放在 FTS 事务**外面**：模型冷启动可达秒级，扣着写锁会卡住关键词入库。
-    # 失败只记日志：关键词已经提交，可选的语义腿出错不能把这次同步报成 500
+
+def sync_comic_dialogues(
+    source: str, source_id: str, force: bool = False, *, sync_vectors: bool = True, strict_vectors: bool = False
+) -> int:
+    """逐页整理到临时 SQLite 表，再事务替换单本索引；坏资产不发布部分结果。
+
+    关键词和向量分别记录完成状态。关键词增量命中也可补建失败向量，模型缺失保持
+    关键词可用；实际编码或写库失败上抛，让 CLI 回报失败并允许普通重跑恢复。
+    """
+    source, source_id = _dialogue_key(source, source_id)
+    data_resolved = get_data_dir().resolve()
+    comic_dir = data_resolved / "library" / source / source_id
+    ocr_files, source_signature, images = _ocr_source_state(data_resolved, comic_dir)
+    with get_dialogue_db() as conn:
+        conn.execute("BEGIN")
+        row = conn.execute(
+            "SELECT source_signature, dialogue_count FROM comic_ocr_sync_meta WHERE source = ? AND source_id = ?",
+            (source, source_id),
+        ).fetchone()
+        expected_version = conn.execute("SELECT version FROM comic_dialogue_vectors_version WHERE id = 1").fetchone()[0]
+    if not force and row and row["source_signature"] == source_signature:
+        if sync_vectors:
+            _sync_dialogue_vectors(source, source_id, source_signature, strict=strict_vectors)
+        return int(row["dialogue_count"])
+
+    page_map: dict[str, int] = {}
+    album = comic_dir / "album.json"
+    if album.exists():
+        meta = read_json(album, root=data_resolved)
+        if not isinstance(meta, dict) or not isinstance(meta.get("pages", []), list):
+            raise ValueError(f"页码映射损坏，未更新索引: {album}")
+        pages = meta.get("pages", [])
+        stem_indices: dict[str, list[int]] = {}
+        for page in pages:
+            if not isinstance(page, dict) or page.get("index") is None:
+                raise ValueError(f"画页映射损坏，未更新索引: {album}")
+            index = int(page["index"])
+            stem = Path(page.get("file", "")).stem
+            chapter = page.get("chapter", "")
+            page_map[f"{chapter}/{stem}" if chapter else stem] = index
+            stem_indices.setdefault(stem, []).append(index)
+        # 历史扁平目录可按唯一文件名定位；跨话同名页不允许猜测。
+        for stem, indices in stem_indices.items():
+            if len(indices) == 1:
+                page_map[stem] = indices[0]
+
+    # temp_store=FILE：按页暂存，避免保留整本 Python 对象；临时表与连接一起释放。
+    with get_dialogue_db() as conn:
+        conn.execute("PRAGMA temp_store = FILE")
+        conn.execute("PRAGMA temp.cache_size = -2048")
+        conn.execute(
+            "CREATE TEMP TABLE staged_dialogues (source, source_id, page_index, bubble_id, text, lang, "
+            "box_json, reading_order, kind, text_norm)"
+        )
+        count = unverified_pages = 0
+        for file in ocr_files:
+            payload = read_sidecar(file, root=data_resolved)
+            unverified_pages += not verify_source_image(payload, images.get(file), root=data_resolved)
+            bubbles = payload["bubbles"]
+            stem = file.name[:-9]
+            relative = file.relative_to(comic_dir / "pages").with_name(stem).as_posix()
+            page_index = payload.get("page_index", payload.get("page"))
+            if page_index is None:
+                page_index = page_map.get(relative)
+            if page_index is None:
+                if page_map:
+                    raise ValueError(f"伴生资产不在当前页码映射中，未更新索引: {file}")
+                match = re.search(r"\d+", stem)
+                page_index = int(match.group(0)) if match else 1
+            page_index = int(page_index)
+            if page_index < 1:
+                raise ValueError(f"伴生资产页码必须大于 0: {file}")
+            page_texts = [b["text"] for b in bubbles]
+            advertisement = advertisement_page_reason(page_texts, bubbles)
+            if advertisement:
+                logger.info("台词分类 %s/%s 第 %d 页: %s", source, source_id, page_index, advertisement)
+            records = []
+            for fallback, bubble in enumerate(bubbles, start=1):
+                text = bubble["text"].strip()
+                kind = classify_dialogue_kind(text, is_advertisement=bool(advertisement))
+                if kind is None:
+                    continue
+                bubble_id = bubble.get("id", fallback)
+                if isinstance(bubble_id, bool) or not isinstance(bubble_id, (int, str)):
+                    bubble_id = fallback
+                records.append(
+                    (
+                        source,
+                        source_id,
+                        page_index,
+                        bubble_id,
+                        text,
+                        str(bubble.get("lang") or payload.get("lang") or "zh"),
+                        json.dumps(normalize_box(bubble.get("box")) or []),
+                        _coerce_order_index(bubble.get("order"), fallback),
+                        kind,
+                        to_simplified(text),
+                    )
+                )
+            conn.executemany("INSERT INTO staged_dialogues VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", records)
+            count += len(records)
+        conn.commit()
+        with comic_asset_lock(data_resolved / "library", source, source_id):
+            conn.execute("BEGIN IMMEDIATE")
+            if (
+                conn.execute("SELECT version FROM comic_dialogue_vectors_version WHERE id = 1").fetchone()[0]
+                != expected_version
+            ):
+                raise RuntimeError(f"同步期间索引已有新提交，请重试: {source}/{source_id}")
+            if _ocr_source_state(data_resolved, comic_dir)[1] != source_signature:
+                raise RuntimeError(f"同步期间伴生资产、原图或页码映射发生变化，请重试: {source}/{source_id}")
+            conn.execute("DELETE FROM comic_dialogues_fts WHERE source = ? AND source_id = ?", (source, source_id))
+            conn.execute(
+                "INSERT INTO comic_dialogues_fts (source, source_id, page_index, bubble_id, text, lang, box_json, "
+                "reading_order, kind, text_norm) SELECT * FROM staged_dialogues"
+            )
+            conn.execute("DELETE FROM comic_dialogue_vectors WHERE source = ? AND source_id = ?", (source, source_id))
+            _bump_vector_version(conn)
+            conn.execute(
+                "INSERT OR REPLACE INTO comic_ocr_sync_meta "
+                "(source, source_id, dialogue_count, updated_at, source_signature, unverified_pages) "
+                "VALUES (?, ?, ?, ?, ?, ?)",
+                (source, source_id, count, int(time.time()), source_signature, unverified_pages),
+            )
+            conn.commit()
+    if sync_vectors:
+        _sync_dialogue_vectors(source, source_id, source_signature, strict=strict_vectors)
+    return count
+
+
+def _sync_dialogue_vectors(source: str, source_id: str, source_signature: str, *, strict: bool = False) -> None:
+    """模型可用时，只补当前源签名尚未完成或模型已变更的向量。"""
+    from .. import embedding
+
+    model_signature = embedding.model_signature()
+    with get_dialogue_db() as conn:
+        row = conn.execute(
+            "SELECT vector_source_signature, vector_model_signature FROM comic_ocr_sync_meta "
+            "WHERE source = ? AND source_id = ?",
+            (source, source_id),
+        ).fetchone()
+    if row and row["vector_source_signature"] == source_signature and row["vector_model_signature"] == model_signature:
+        return
+    if embedding.dim() is None:
+        return
     try:
         embed_comic_dialogues(source, source_id)
     except Exception as exc:
-        logger.warning("台词向量重编失败 %s/%s: %s", source, source_id, exc)
-    return len(records)
+        try:
+            with get_dialogue_db() as conn:
+                conn.execute(
+                    "UPDATE comic_ocr_sync_meta SET vector_error = ? WHERE source = ? AND source_id = ? "
+                    "AND source_signature = ? AND vector_source_signature != source_signature",
+                    (type(exc).__name__, source, source_id, source_signature),
+                )
+        except sqlite3.Error:
+            logger.warning("向量失败状态未能写入 %s/%s", source, source_id, exc_info=True)
+        if strict:
+            raise
+        logger.warning("关键词已同步，台词向量待重试 %s/%s", source, source_id, exc_info=True)
 
 
 def delete_comic_dialogues(source: str, source_id: str) -> None:
@@ -545,55 +357,84 @@ def _dialogue_comics_meta_map(keys: list[tuple[str, str]], user_id: str) -> dict
 
 
 def embed_comic_dialogues(source: str, source_id: str) -> int:
-    """把一本书的对白行重编成语义向量写进 `comic_dialogue_vectors`。
-
-    Returns:
-        实际写入的向量条数。编码器不可用（没放模型、缺 numpy）时返回 0，不打断关键词链路——
-        语义检索是增量能力。
-    """
+    """每批编码 64 条并暂存到磁盘；完成后验证源签名并事务发布，失败可单独重试。"""
     from .. import embedding
 
     dim = embedding.dim()
     source, source_id = _dialogue_key(source, source_id)
-    rows: list[sqlite3.Row] = []
-    if dim is not None:
-        with get_dialogue_db() as conn:
-            rows = conn.execute(
-                "SELECT page_index, bubble_id, text FROM comic_dialogues_fts"
-                " WHERE source = :source AND source_id = :source_id AND kind = :kind"
-                "  AND length(text) >= :min_chars",
-                {
-                    "source": source,
-                    "source_id": source_id,
-                    "kind": DIALOGUE_KIND,
-                    "min_chars": embedding.MIN_EMBED_CHARS,
-                },
-            ).fetchall()
-    try:
-        vectors = embedding.encode_documents([r["text"] for r in rows]) if rows else None
-    except Exception as exc:
-        # 编码中途出错按编码器不可用处理：旧向量同样对不上刚重写的 FTS 行，要一起删掉
-        logger.warning("台词向量编码失败 %s/%s: %s", source, source_id, exc)
-        vectors = None
-    # 编不出新向量（编码器不可用、或这本书已没有可编的对白）就把旧的一并删掉：
-    # FTS 行刚被重写，留着它们就是相似度按旧文本算、展示的却是新文本
+    if dim is None:
+        return 0
+    model_signature = embedding.model_signature()
     with get_dialogue_db() as conn:
+        conn.execute("BEGIN")
+        meta = conn.execute(
+            "SELECT source_signature FROM comic_ocr_sync_meta WHERE source = ? AND source_id = ?", (source, source_id)
+        ).fetchone()
+        source_signature = meta["source_signature"] if meta else ""
+        vector_version = conn.execute("SELECT version FROM comic_dialogue_vectors_version WHERE id = 1").fetchone()[0]
+        conn.execute("PRAGMA temp_store = FILE")
+        conn.execute("PRAGMA temp.cache_size = -2048")
         conn.execute(
-            "DELETE FROM comic_dialogue_vectors WHERE source = ? AND source_id = ?",
-            (source, source_id),
+            "CREATE TEMP TABLE staged_vectors (source, source_id, page_index, bubble_id, dim, vec, updated_at)"
         )
-        if vectors is not None:
-            now = int(time.time())
+        cursor = conn.execute(
+            "SELECT page_index, bubble_id, text FROM comic_dialogues_fts"
+            " WHERE source = :source AND source_id = :source_id AND kind = :kind"
+            "  AND length(text) >= :min_chars ORDER BY rowid",
+            {
+                "source": source,
+                "source_id": source_id,
+                "kind": DIALOGUE_KIND,
+                "min_chars": embedding.MIN_EMBED_CHARS,
+            },
+        )
+        count = 0
+        while rows := cursor.fetchmany(64):
+            vectors = embedding.encode_documents([row["text"] for row in rows])
+            if vectors is None or vectors.shape != (len(rows), dim):
+                raise RuntimeError(f"台词向量编码未完成，请重试: {source}/{source_id}")
             conn.executemany(
-                "INSERT INTO comic_dialogue_vectors (source, source_id, page_index, bubble_id, dim, vec, updated_at)"
-                " VALUES (?, ?, ?, ?, ?, ?, ?)",
-                [
-                    (source, source_id, int(r["page_index"]), str(r["bubble_id"]), dim, vectors[i].tobytes(), now)
-                    for i, r in enumerate(rows)
-                ],
+                "INSERT INTO staged_vectors VALUES (?, ?, ?, ?, ?, ?, ?)",
+                (
+                    (
+                        source,
+                        source_id,
+                        int(row["page_index"]),
+                        str(row["bubble_id"]),
+                        dim,
+                        vectors[i].tobytes(),
+                        int(time.time()),
+                    )
+                    for i, row in enumerate(rows)
+                ),
             )
+            count += len(rows)
+        cursor.close()
+        # 释放编码期间的读快照，再用短写事务校验并发布，旧任务不能覆盖新提交。
+        conn.commit()
+        conn.execute("BEGIN IMMEDIATE")
+        current_meta = conn.execute(
+            "SELECT source_signature FROM comic_ocr_sync_meta WHERE source = ? AND source_id = ?",
+            (source, source_id),
+        ).fetchone()
+        if (current_meta["source_signature"] if current_meta else "") != source_signature:
+            raise RuntimeError(f"编码期间台词索引发生变化，请重试: {source}/{source_id}")
+        if embedding.model_signature() != model_signature:
+            raise RuntimeError("编码期间语义模型发生变化，请重试")
+        if (
+            conn.execute("SELECT version FROM comic_dialogue_vectors_version WHERE id = 1").fetchone()[0]
+            != vector_version
+        ):
+            raise RuntimeError(f"编码期间向量索引发生变化，请重试: {source}/{source_id}")
+        conn.execute("DELETE FROM comic_dialogue_vectors WHERE source = ? AND source_id = ?", (source, source_id))
+        conn.execute("INSERT INTO comic_dialogue_vectors SELECT * FROM staged_vectors")
+        conn.execute(
+            "UPDATE comic_ocr_sync_meta SET vector_source_signature = ?, vector_model_signature = ?, vector_error = '' "
+            "WHERE source = ? AND source_id = ? AND source_signature = ?",
+            (source_signature, model_signature, source, source_id, source_signature),
+        )
         _bump_vector_version(conn)
-    return len(rows) if vectors is not None else 0
+    return count
 
 
 def rebuild_dialogue_vectors() -> dict[str, Any]:
@@ -608,85 +449,143 @@ def rebuild_dialogue_vectors() -> dict[str, Any]:
             "SELECT DISTINCT source, source_id FROM comic_dialogues_fts WHERE kind = :kind",
             {"kind": DIALOGUE_KIND},
         ).fetchall()
-    encoded = 0
+    encoded = failed = 0
     for b in books:
         try:
             encoded += embed_comic_dialogues(b["source"], b["source_id"])
         except Exception as exc:
+            failed += 1
             logger.warning("台词向量重建失败 %s/%s: %s", b["source"], b["source_id"], exc)
     logger.info("台词向量重建完成：%d 本 / %d 条", len(books), encoded)
-    return {"ok": True, "reason": "", "encoded": encoded, "comics": len(books), "dim": dim}
+    return {
+        "ok": failed == 0,
+        "reason": "partial_failure" if failed else "",
+        "encoded": encoded,
+        "comics": len(books),
+        "dim": dim,
+    }
 
 
-def _vector_status() -> tuple[dict[str, Any], tuple[Any, ...]]:
-    """语义腿的状态与向量矩阵的缓存戳子，一次查询同时给出。
-
-    戳子是 (台词库路径, 写入版本号, 维度)：库路径让测试与"换库"读不到上一个库的矩阵；
-    版本号记在库里，和向量写在同一个事务里推进，所以 `ocr.sh sync` 这类别的进程写完，
-    服务不重启也能看到新矩阵，同一秒内重编、条数不变也不会读到旧矩阵。
-    """
+def _vector_status(conn: sqlite3.Connection | None = None) -> tuple[dict[str, Any], tuple[Any, ...]]:
+    """在同一读快照内读取版本和维度，缓存不跨向量提交版本复用。"""
     from .. import embedding
 
+    if conn is None:
+        with get_dialogue_db() as connection:
+            return _vector_status(connection)
     dim = embedding.dim()
-    with get_dialogue_db() as conn:
-        row = conn.execute(
-            "SELECT count(*) AS n, count(DISTINCT dim) AS dims, max(dim) AS dim,"
-            " (SELECT version FROM comic_dialogue_vectors_version) AS version"
-            " FROM comic_dialogue_vectors"
-        ).fetchone()
+    row = conn.execute(
+        "SELECT count(*) AS n, count(DISTINCT dim) AS dims, max(dim) AS dim,"
+        " (SELECT version FROM comic_dialogue_vectors_version WHERE id = 1) AS version"
+        " FROM comic_dialogue_vectors"
+    ).fetchone()
     stored = int(row["n"] or 0)
     stored_dim = int(row["dim"] or 0) if stored else 0
+    model_signature = embedding.model_signature()
+    mismatched_model = (
+        model_signature
+        and conn.execute(
+            "SELECT 1 FROM comic_ocr_sync_meta WHERE vector_source_signature != '' "
+            "AND vector_model_signature != ? LIMIT 1",
+            (model_signature,),
+        ).fetchone()
+    )
     if dim is None:
         reason = "encoder_unavailable"
     elif stored == 0:
         reason = "vectors_missing"
     elif row["dims"] > 1 or stored_dim != dim:
-        # 换过模型（维度不同）却没重建：新旧向量混在一堆里算余弦，分数会莫名其妙
         reason = "dim_mismatch"
+    elif mismatched_model:
+        reason = "model_mismatch"
     else:
         reason = ""
     status = {"available": reason == "", "reason": reason, "vectors": stored, "dim": stored_dim or (dim or 0)}
-    return status, (str(get_dialogue_db_path()), row["version"], stored_dim)
+    return status, (str(get_dialogue_db_path()), row["version"], stored_dim, model_signature)
 
 
 def dialogue_vector_status() -> dict[str, Any]:
-    """语义检索这条腿现在能不能走，以及为什么不能。"""
-    return _vector_status()[0]
+    """馆长/本机使用的编码进度；不向访客搜索响应暴露全库或隐藏本数量。"""
+    from .. import embedding
+
+    with get_dialogue_db() as conn:
+        conn.execute("BEGIN")
+        status = _vector_status(conn)[0]
+        progress = conn.execute(
+            "WITH eligible AS (SELECT DISTINCT source, source_id FROM comic_dialogues_fts "
+            "WHERE kind = ? AND length(text) >= ?) "
+            "SELECT count(*) AS eligible_comics, "
+            "coalesce(sum(m.vector_source_signature != m.source_signature OR m.vector_model_signature != ? "
+            "OR m.source_signature IS NULL), 0) AS pending_comics, "
+            "coalesce(sum(m.vector_error != ''), 0) AS failed_comics, "
+            "coalesce(sum(m.vector_model_signature != '' AND m.vector_model_signature != ?), 0) AS model_mismatch_comics "
+            "FROM eligible e LEFT JOIN comic_ocr_sync_meta m USING (source, source_id)",
+            (DIALOGUE_KIND, embedding.MIN_EMBED_CHARS, embedding.model_signature(), embedding.model_signature()),
+        ).fetchone()
+        unverified = conn.execute("SELECT coalesce(sum(unverified_pages), 0) FROM comic_ocr_sync_meta").fetchone()[0]
+    status.update(dict(progress))
+    status.update(complete=progress["pending_comics"] == 0, unverified_pages=unverified)
+    return status
 
 
 _VECTOR_CACHE: tuple[Any, ...] | None = None
+_VECTOR_CACHE_LOCK = threading.Lock()
+_VECTOR_CACHE_MAX_BYTES = 32 * 1024 * 1024
+_VECTOR_SCAN_BATCH = 1024
 
 
 def _bump_vector_version(conn: sqlite3.Connection) -> None:
-    """写或删向量的事务里调用：版本号与向量一起提交，读者不会把旧矩阵记在新版本号下。"""
-    conn.execute("UPDATE comic_dialogue_vectors_version SET version = version + 1")
+    """向量和失效版本在同一事务提交。"""
+    conn.execute("UPDATE comic_dialogue_vectors_version SET version = version + 1 WHERE id = 1")
 
 
-def _vector_store(stamp: tuple[Any, ...], dim: int) -> tuple[list[tuple[str, str, int, str]], Any]:
-    """取回 (键列表, 向量矩阵)，按 `_vector_status` 给的戳子做进程内缓存。
-
-    不缓存的话每次检索都要重读全部 BLOB 再 np.stack，这是语义检索里最大的一笔开销。
-    整体一次性赋值，不留"半个新矩阵被别的线程看见"的窗口。
-    """
-    global _VECTOR_CACHE
-    if _VECTOR_CACHE is not None and _VECTOR_CACHE[0] == stamp:
-        return _VECTOR_CACHE[1], _VECTOR_CACHE[2]
-    with get_dialogue_db() as conn:
-        rows = conn.execute(
-            "SELECT source, source_id, page_index, bubble_id, vec FROM comic_dialogue_vectors WHERE dim = ?",
-            (dim,),
-        ).fetchall()
-
+def _vector_chunks(conn: sqlite3.Connection, stamp: tuple[Any, ...], dim: int, count: int):
+    """小库缓存受预算约束，大库每次只读取一个块；不用全库 BLOB 副本和分数数组。"""
     import numpy as np
 
-    keys = [(r["source"], r["source_id"], int(r["page_index"]), str(r["bubble_id"])) for r in rows]
-    matrix = (
-        np.stack([np.frombuffer(r["vec"], dtype=np.float32) for r in rows])
-        if rows
-        else np.zeros((0, dim), dtype=np.float32)
+    global _VECTOR_CACHE
+    estimated = count * (dim * 4 + 256)
+    if estimated <= _VECTOR_CACHE_MAX_BYTES:
+        with _VECTOR_CACHE_LOCK:
+            cache = _VECTOR_CACHE
+            if cache is None or cache[0] != stamp:
+                keys = []
+                matrix = np.empty((count, dim), dtype=np.float32)
+                cursor = conn.execute(
+                    "SELECT rowid, source, source_id, page_index, bubble_id, vec FROM comic_dialogue_vectors "
+                    "WHERE dim = ? ORDER BY rowid",
+                    (dim,),
+                )
+                offset = 0
+                while rows := cursor.fetchmany(_VECTOR_SCAN_BATCH):
+                    for row in rows:
+                        keys.append(
+                            (
+                                row["rowid"],
+                                (row["source"], row["source_id"], int(row["page_index"]), str(row["bubble_id"])),
+                            )
+                        )
+                        matrix[offset] = np.frombuffer(row["vec"], dtype=np.float32)
+                        offset += 1
+                cache = stamp, keys, matrix
+                _VECTOR_CACHE = cache
+        for offset in range(0, count, _VECTOR_SCAN_BATCH):
+            yield cache[1][offset : offset + _VECTOR_SCAN_BATCH], cache[2][offset : offset + _VECTOR_SCAN_BATCH]
+        return
+    with _VECTOR_CACHE_LOCK:
+        _VECTOR_CACHE = None
+    cursor = conn.execute(
+        "SELECT rowid, source, source_id, page_index, bubble_id, vec FROM comic_dialogue_vectors "
+        "WHERE dim = ? ORDER BY rowid",
+        (dim,),
     )
-    _VECTOR_CACHE = (stamp, keys, matrix)
-    return keys, matrix
+    while rows := cursor.fetchmany(_VECTOR_SCAN_BATCH):
+        keys = [
+            (row["rowid"], (row["source"], row["source_id"], int(row["page_index"]), str(row["bubble_id"])))
+            for row in rows
+        ]
+        matrix = np.stack([np.frombuffer(row["vec"], dtype=np.float32) for row in rows])
+        yield keys, matrix
 
 
 def search_dialogues_semantic(
@@ -696,104 +595,86 @@ def search_dialogues_semantic(
     is_guest: bool = False,
     user_id: str = "",
 ) -> dict[str, Any]:
-    """按意思找台词：把问题编码成向量，与语料向量取余弦近邻。
+    """分块精确余弦召回，先过滤权限，再有界保留最佳画页；同分按入库顺序。
 
-    与 `search_dialogues` 刻意分成两个出口（ADR 0028）：每页只留最相似的气泡、不吐 snippet；
-    分数是 `similarity`（余弦，只在同一次查询内比高低），不复用 `rank_score`，也不掺业务信号。
-    访客隐藏本与未收录本的过滤规则与关键词出口一致。
-
-    Returns:
-        `{"results": [...], "available": bool, "reason": str}`。没有分数下限，能检索时总会给出
-        最近的若干页，所以"没走检索"只能靠 `reason` 说：`encoder_unavailable` /
-        `vectors_missing` / `dim_mismatch` 时 `available` 为 False（这台机器走不了语义腿）；
-        `query_too_short` 时 `available` 为 True（腿是好的，问题太短）；正常检索为空串。
+    状态、向量扫描及文字回表共享一个 SQLite 读快照，防止并发同步混用旧分数和新文字。
+    仅缓存小库矩阵，权限每请求重新读取；大库以内存块及候选页预算换取额外磁盘读取。
     """
     from .. import embedding
 
-    status, stamp = _vector_status()
-    if not status["available"]:
-        return {"results": [], "available": False, "reason": status["reason"]}
-    clean_query = (query or "").strip()
-    if len(clean_query) < 2:
-        return {"results": [], "available": True, "reason": "query_too_short"}
-    qv = embedding.encode_query(clean_query)
-    if qv is None:
-        return {"results": [], "available": False, "reason": "encoder_unavailable"}
-
-    limit = max(1, min(int(limit), 100))
-    fetch_limit = min(max(limit * 5, 50), 200)
-
-    keys_all, matrix = _vector_store(stamp, int(qv.shape[0]))
-    import numpy as np
-
-    # 书级过滤先于取前 K：访客隐藏本若等到取完才剔除，会白占名额让访客拿到的结果少于 limit
-    book_keys = sorted({(k[0], k[1]) for k in keys_all if not source or k[0] == source})
-    comics_map = _dialogue_comics_meta_map(book_keys, user_id)
-    allowed = {
-        b
-        for b in book_keys
-        if not is_guest or (comics_map.get(b) is not None and not comics_map[b]["hidden_from_guest"])
-    }
-    mask = np.fromiter(((k[0], k[1]) in allowed for k in keys_all), dtype=bool, count=len(keys_all))
-    sims = np.where(mask, matrix @ qv, -np.inf)
-    valid = int(mask.sum())
-
-    # 同页只留相似度最高的气泡；按页去重后不够数就把 K 翻倍重取，直到够数或候选取尽
-    hits: list[tuple[tuple[str, str, int, str], float]] = []
-    pages: set[tuple[str, str, int]] = set()
-    k = min(fetch_limit, valid)
-    while k > 0:
-        # 先按下标排再稳定排序：同分时保持入库顺序，与全量 argsort 的结果一致
-        top = np.sort(np.argpartition(-sims, k - 1)[:k])
-        hits, pages = [], set()
-        for i in top[np.argsort(-sims[top], kind="stable")]:
-            key = keys_all[int(i)]
-            if key[:3] in pages:
-                continue
-            pages.add(key[:3])
-            hits.append((key, float(sims[int(i)])))
-            if len(hits) >= fetch_limit:
-                break
-        if len(hits) >= fetch_limit or k >= valid:
-            break
-        k = min(k * 2, valid)
-    # 原文按气泡回表：向量表只存坐标外的最小信息，文本/框仍以 FTS 那行为准，
-    # 避免两个表说同一句话的不同版本。
-    texts: dict[tuple[str, str, int, str], sqlite3.Row] = {}
-    if pages:
-        clause = " OR ".join(["(f.source = ? AND f.source_id = ? AND f.page_index = ?)"] * len(pages))
-        flat: list[Any] = [p for k in pages for p in k]
-        with get_dialogue_db() as conn:
-            for r in conn.execute(
-                f"SELECT f.source, f.source_id, f.page_index, f.bubble_id, f.text, f.lang, f.box_json"
-                f" FROM comic_dialogues_fts f WHERE ({clause}) AND f.kind = ?",
-                [*flat, DIALOGUE_KIND],
-            ).fetchall():
-                texts[(r["source"], r["source_id"], int(r["page_index"]), str(r["bubble_id"]))] = r
-
-    results: list[dict[str, Any]] = []
-    for key, sim in hits:
-        r = texts.get(key)
-        if r is None:
-            continue
-        ci = comics_map.get((key[0], key[1]))
-        results.append(
-            {
-                "source": key[0],
-                "source_id": key[1],
-                **_dialogue_book_fields(key[0], key[1], ci),
-                "page_index": key[2],
-                "bubble_id": r["bubble_id"],
-                "text": r["text"] or "",
-                # 与关键词出口同理：写入口已归一，读侧不再重复校验
-                "box": json.loads(r["box_json"]),
-                "lang": r["lang"] or "zh",
-                "similarity": round(sim, 4),
+    with get_dialogue_db() as conn:
+        conn.execute("BEGIN")
+        status, stamp = _vector_status(conn)
+        if not status["available"]:
+            return {"results": [], "available": False, "reason": status["reason"]}
+        clean_query = (query or "").strip()
+        if len(clean_query) < 2:
+            return {"results": [], "available": True, "reason": "query_too_short"}
+        qv = embedding.encode_query(clean_query)
+        if qv is None:
+            return {"results": [], "available": False, "reason": "encoder_unavailable"}
+        limit = max(1, min(int(limit), 100))
+        fetch_limit = min(max(limit * 5, 50), 200)
+        allowed = None
+        if is_guest:
+            with get_db() as shelf:
+                allowed = {
+                    (row["source"], row["source_id"])
+                    for row in shelf.execute("SELECT source, source_id FROM comics_index WHERE hidden_from_guest = 0")
+                }
+        candidates: dict[tuple[str, str, int], tuple[float, int, tuple[str, str, int, str]]] = {}
+        for keys, matrix in _vector_chunks(conn, stamp, int(qv.shape[0]), status["vectors"]):
+            scores = matrix @ qv
+            for (rowid, key), score in zip(keys, scores, strict=True):
+                if source and key[0] != source:
+                    continue
+                if allowed is not None and key[:2] not in allowed:
+                    continue
+                item = float(score), rowid, key
+                previous = candidates.get(key[:3])
+                if previous is None or (item[0], -item[1]) > (previous[0], -previous[1]):
+                    candidates[key[:3]] = item
+            candidates = {
+                item[2][:3]: item
+                for item in sorted(candidates.values(), key=lambda item: (-item[0], item[1]))[:fetch_limit]
             }
-        )
-        if len(results) >= limit:
-            break
-    return {"results": results, "available": True, "reason": ""}
+        hits = sorted(candidates.values(), key=lambda item: (-item[0], item[1]))
+        pages = {item[2][:3] for item in hits}
+        texts = {}
+        if pages:
+            clause = " OR ".join(["(f.source = ? AND f.source_id = ? AND f.page_index = ?)"] * len(pages))
+            flat = [part for key in pages for part in key]
+            for row in conn.execute(
+                "SELECT f.source, f.source_id, f.page_index, f.bubble_id, f.text, f.lang, f.box_json "
+                f"FROM comic_dialogues_fts f WHERE ({clause}) AND f.kind = ?",
+                [*flat, DIALOGUE_KIND],
+            ):
+                texts[(row["source"], row["source_id"], int(row["page_index"]), str(row["bubble_id"]))] = row
+        comics_map = _dialogue_comics_meta_map(sorted({item[2][:2] for item in hits}), user_id)
+        results = []
+        for similarity, _, key in hits:
+            row = texts.get(key)
+            if row is None:
+                continue
+            ci = comics_map.get(key[:2])
+            if is_guest and (ci is None or ci["hidden_from_guest"]):
+                continue
+            results.append(
+                {
+                    "source": key[0],
+                    "source_id": key[1],
+                    **_dialogue_book_fields(key[0], key[1], ci),
+                    "page_index": key[2],
+                    "bubble_id": row["bubble_id"],
+                    "text": row["text"] or "",
+                    "box": json.loads(row["box_json"]),
+                    "lang": row["lang"] or "zh",
+                    "similarity": round(similarity, 4),
+                }
+            )
+            if len(results) >= limit:
+                break
+        return {"results": results, "available": True, "reason": ""}
 
 
 def _safe_json_list(raw: Any) -> list[Any]:

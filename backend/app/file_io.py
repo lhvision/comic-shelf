@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import os
 import stat
+import threading
 import uuid
 from collections.abc import Generator
 from contextlib import ExitStack, contextmanager
@@ -55,10 +56,52 @@ def file_stamp(path: Path, *, root: Path | None = None) -> tuple[int, int, int, 
         return info.st_dev, info.st_ino, info.st_size, info.st_mtime_ns, info.st_ctime_ns
 
 
-def read_json(path: Path, *, root: Path | None = None) -> Any:
-    """从经过普通文件及目录边界校验的文件读取 JSON。"""
+def read_json(path: Path, *, root: Path | None = None, max_bytes: int | None = None) -> Any:
+    """从普通文件读取 JSON；有预算时先有界读取，超限不进入解析器。"""
     with open_regular(path, root=root) as file:
-        return json.load(file)
+        if max_bytes is None:
+            return json.load(file)
+        content = file.read(max_bytes + 1)
+        if len(content) > max_bytes:
+            raise ValueError(f"JSON 文件超过 {max_bytes} 字节预算: {path}")
+        try:
+            return json.loads(content)
+        except RecursionError as exc:
+            raise ValueError(f"JSON 嵌套过深: {path}") from exc
+
+
+_LOCKED_FILES = threading.local()
+
+
+@contextmanager
+def exclusive_file_lock(path: Path, *, root: Path) -> Generator[None]:
+    """本机进程及线程共享、同线程可重入的文件锁；锁文件必须位于可信根目录内。
+
+    仅用于持久化目录的本机操作，不通过网络文件系统实现分布式锁。路径固定在书库
+    的隐藏锁目录中，书籍删除或重装订不能替换锁的身份。
+    """
+    import fcntl
+
+    key = str(path.absolute())
+    held = getattr(_LOCKED_FILES, "held", None)
+    if held is None:
+        held = _LOCKED_FILES.held = set()
+    if key in held:
+        yield
+        return
+    with _parent_fd(path, root) as directory:
+        fd = os.open(path.name, os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW | os.O_NONBLOCK, 0o600, dir_fd=directory)
+        try:
+            if not stat.S_ISREG(os.fstat(fd).st_mode):
+                raise ValueError(f"锁文件不是普通文件: {path}")
+            fcntl.flock(fd, fcntl.LOCK_EX)
+            held.add(key)
+            try:
+                yield
+            finally:
+                held.remove(key)
+        finally:
+            os.close(fd)
 
 
 def write_bytes_atomic(path: Path, payload: bytes, *, root: Path | None = None, overwrite: bool = True) -> None:

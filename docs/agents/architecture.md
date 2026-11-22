@@ -223,6 +223,8 @@ JmImageTool.decode_and_save(num, source_image, save_path)
 ### 存储并发与保存边界
 
 - `backend/server.py` 固定单 API worker；启动时对书库目录加 `library/.writer.lock` 排他锁。漫画锁、缓存和后台任务均为进程内状态，同一书库不支持多个写实例。
+- `_lock_for` 在线程重入锁之外，共用 `library/.ocr-locks/` 下本机书籍文件锁，协调存储修改与 OCR 索引提交。
+  索引暂存期间不持书籍锁，提交内检查源签名及预期全局索引版本，遇并发新提交失败重试；运行时不得删除锁目录。
 - 下载网络 I/O 不持漫画锁；原图提交前重新获取漫画锁，校验目录及远端描述版本，并检查当前画页路径和重新装订保护。不要只校验缓存标记而漏掉图片替换。
 - `save_fetched` 在刷新时保留本地隐藏状态，并在保存前把 JSON 备份进 `library/.work/.save-*`；可捕获的失败会回退本次迁移与 JSON。进程中断且残留 `.in-progress` 时，下次启动把上一份 JSON 复制回去，若备份里有装订/暂存建卷前的画页目录也一并还原；恢复失败则启动失败。删除整本先改名进 `library/.work/.deleted-*`。启动只 `iterdir` `.work`，不遍历漫画目录。追加画页不回滚已写入的文件。路径 PDF 首次导入没有旧画页可还原，中断后按首次保存清掉半成品目录。
 - 验证对应 `backend/tests/test_storage_metadata.py`、`backend/tests/test_replace_pages.py` 与 `backend/tests/test_server_workers.py`；运维处理见 [部署指南 §11](../../DEPLOYMENT.md#11-本地书库的并发与故障恢复边界)。不引入 WAL 或跨文件事务。
@@ -416,6 +418,7 @@ JmImageTool.decode_and_save(num, source_image, save_path)
 | `backend/app/routers/mcp.py`        | 模型上下文协议（MCP）服务端路由（SSE流式、消息派发、直接RPC、9大工具、3大资源、2大Prompts）                                                                        |
 | `backend/app/mcp_server.py`         | MCP 原生 Stdio 命令行模式运行入口（标准管道集成）                                                                                                                  |
 | `backend/app/imsearch.py`           | 局部特征识图客户端（ORB 特征匹配、健康探测、路径解析）                                                                                                             |
+| `backend/app/ocr/`                  | OCR 文件扫描、保守语料分类、本机索引同步 CLI（`python -m app.ocr.sync`）；不在导入时初始化推理环境                                                                 |
 | `backend/app/config.py`             | 数据目录、访问密钥、防盗链开关、封面尺寸、识图服务地址配置                                                                                                         |
 
 - `GET /api/mcp/sse` / `GET /mcp/sse`（MCP SSE 握手与实时下行事件流，支持馆长/机器鉴权）
@@ -455,6 +458,7 @@ JmImageTool.decode_and_save(num, source_image, save_path)
 - `GET /api/search/dialogue-semantic?q=`（台词语义召回，独立 `similarity`，没走检索时带 `reason`，ADR 0028）
 - `GET /api/search/dialogue-context`（按页区间取原始台词物料，仅馆长与机器密钥；机器密钥看不到隐藏本；页跨度 ≤200、行预算 ≤400，撞顶回报 `truncated`）
 - `POST /api/search/dialogue-vectors/rebuild`（全库重新编码台词向量，仅馆长）
+- `GET /api/search/dialogue-vectors/status`（全库编码完成状态、待建／失败／模型不匹配册数和历史未核验页数，仅馆长；不向访客或机器凭据开放）
 - `GET /api/curator/passes`（馆长获取访客名册列表）
 - `POST /api/curator/passes` `{username, expires_days, custom_token}`（馆长登记印发专属通行证）
 - `PATCH /api/curator/passes/{id}` `{username, is_active, extend_days, reset_token}`（通行证续期、密钥换新、启停）
@@ -502,7 +506,7 @@ JmImageTool.decode_and_save(num, source_image, save_path)
   - **台词全文检索与上下文**（实测真机数据）：
     - **3.5万页（~14万对白气泡）**：FTS5 Trigram MATCH 检索延迟 ~189ms；2 字符短词 LIKE 扫描 ~163ms；单卷故事上下文切片（`get_story_context`，100 页 / 400 气泡）仅 ~47ms；向量常驻内存 ~195MB。
     - **30万页（~120万对白气泡，约 80万条有效向量）**：FTS5 倒排求交检索 200~500ms；2 字符全表短词扫描 ~1.1s（个人阅览室场景完全可用）；故事上下文切片 ~390ms；NumPy 512 维 float32 矩阵点乘仅 **~98ms**，Top-50 argpartition 仅 **~11ms**。
-    - **台词向量内存基线**：30万页下 80万条向量矩阵约 1.56GB + 键映射约 150MB ≈ **1.8GB RAM**（初始化加载瞬时峰值 ~3.5GB），部署台词语义召回建议主机配备 **$\ge$ 4GB 可用内存**。
+    - **台词向量内存边界**：小库按矩阵与键映射的 32 MiB 估算预算缓存；超预算时每块从 SQLite 读取 1024 条精确召回，不加载全库矩阵。关键词逐页、向量每批 64 条磁盘暂存后发布；大库仍有 CPU 与 I/O 成本，容量估算及分批命令见 `DEPLOYMENT.md` §5.1.3。
     - **未来演进备忘**：当规模进一步突破 50万~100万页时，可平滑引入 `sqlite-vec` 磁盘分页扩展压降内存，以及在向量表中增加 `fts_rowid` 替代二次回表；当前阶段坚持 Python 标准库与 NumPy 原生矩阵运算，避免引入 C 动态扩展编译依赖以保障跨平台（macOS/Alpine/Docker）零摩擦交付。
 - **十万本级（100,000 本，数百万页，大型 NAS / 私人资料库）**：
   - **核心书库**：冷启动全量扫描耗时 ~~1-2 秒，内存占用约 300~~600MB；详情与阅读完全不受总书量影响（直接路径查找）。
@@ -515,6 +519,9 @@ JmImageTool.decode_and_save(num, source_image, save_path)
 - **设计定位备忘**：纸间品牌定位为「本地优先的个人漫画收藏夹」（个人阅览室），避免为了千万级泛化爬虫场景过早引入重型数据库抽象，遵循当前极简无依赖的高效设计。
 
 ## 8. 后端静态检查与测试
+
+- OCR 输入预算和原图核验集中在 `app/ocr/assets.py`；超过预算、原图变化或缺失时拒绝发布，历史无源状态单独统计。
+  HTTP 搜索并发与限频在 `app/ocr/search_limits.py`，继承现有客户端 IP 解析；限流 429 同样必须经真实中间件返回 `no-store`。
 
 - 工具链配置集中在仓库根 `pyproject.toml`：依赖（`uv.lock` 全量锁定）、ruff、ty。环境初始化 `vpr setup:py`。
 - 改了 Python 先跑 `vpr check:py`：`ruff check`（lint）→ `ruff format --check`（行宽 120）→ `ty check`（类型，只卡 `backend/app/` 与 `backend/server.py`），三者都要 0 诊断。自动修复用 `uv run ruff check --fix && uv run ruff format`。

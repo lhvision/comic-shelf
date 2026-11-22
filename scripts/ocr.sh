@@ -174,6 +174,16 @@ cmd_run() {
     shift
     case "$arg" in
       --sync-local) sync_local=1 ;;
+      --skip-vectors) sync_args+=("$arg") ;;
+      --sync-limit)
+        if [ "$#" -eq 0 ]; then
+          echo "❌ 错误: --sync-limit 缺少参数值" >&2
+          return 1
+        fi
+        sync_args+=(--limit "$1")
+        shift
+        ;;
+      --sync-limit=*) sync_args+=(--limit "${arg#*=}") ;;
       --source|--id|--data-dir|--image)
         if [ "$#" -eq 0 ]; then
           echo "❌ 错误: $arg 缺少参数值" >&2
@@ -194,9 +204,21 @@ cmd_run() {
     if [ "$arg" = "--help" ] || [ "$arg" = "-h" ]; then
       "$PYTHON" scripts/ocr_worker.py --help
       echo "  --sync-local   提取后用应用环境同步本机索引；增量跳过也会同步（仅 ocr.sh run 支持）"
+      echo "  --sync-limit N 限制本轮同步的册数，与 OCR --limit 分开；需要 --sync-local"
+      echo "  --skip-vectors 本轮只同步关键词，向量留待后续补建；需要 --sync-local"
       return 0
     fi
   done
+  if [ "$sync_local" = 0 ]; then
+    for arg in "${sync_args[@]}"; do
+      case "$arg" in
+        --limit|--skip-vectors)
+          echo "❌ 错误: --sync-limit / --skip-vectors 需要 --sync-local" >&2
+          return 1
+          ;;
+      esac
+    done
+  fi
   resolve_mode
   echo "🚀 开始执行漫画台词 OCR 批量提取 (算力线: $MODE)..."
   if [ "$sync_local" = 1 ]; then
@@ -303,7 +325,7 @@ cmd_install() {
 cmd_test() {
   local target_img="${1:-}"
   if [ -z "$target_img" ]; then
-    target_img="$(PYTHONPATH="$PWD/backend${PYTHONPATH:+:$PYTHONPATH}" "$PYTHON" -c 'from app.ocr_files import image_extensions, resolve_data_dir, scan_files; print(next((str(path) for path in scan_files(resolve_data_dir() / "library", image_extensions())), ""))')"
+    target_img="$(PYTHONPATH="$PWD/backend${PYTHONPATH:+:$PYTHONPATH}" "$PYTHON" -c 'from app.ocr.files import image_extensions, resolve_data_dir, scan_files; print(next((str(path) for path in scan_files(resolve_data_dir() / "library", image_extensions())), ""))')"
   fi
 
   if [ -z "$target_img" ] || [ ! -f "$target_img" ]; then
@@ -381,6 +403,8 @@ case "$ACTION" in
     echo "     --force              - 强制重新处理已存在的伴生文件"
     echo "     --limit <N>          - 最多产出新页的册数（全页失败的本不占名额，尝试册数可能更多）"
     echo "     --sync-local         - 提取后本机增量入库（入库用应用环境，GPU 环境仍只做 OCR）；失败可直接重跑"
+    echo "     --sync-limit <N>     - 配合 --sync-local 限制本轮更新的册数（与提取 --limit 分开）"
+    echo "     --skip-vectors       - 配合 --sync-local 只同步关键词，向量留待后续普通 sync 补建"
     echo "  sync [options]          - 在书库所在机器把本机伴生文件扫入 SQLite FTS5"
     echo "  test [image]            - 单张画页试跑并打印气泡（与 run 同一套引擎与过滤，只打印不写盘）"
     echo "  lines [options]         - 气泡聚类判据的离线实验台，改 cluster_blocks 前先用它："

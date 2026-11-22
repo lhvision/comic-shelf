@@ -9,6 +9,7 @@ from fastapi import APIRouter, File, HTTPException, Query, Request, UploadFile
 from ..auth import can_read, get_current_user_id, is_curator, is_machine, require_curator
 from ..db import (
     STORY_CONTEXT_MAX_LINES,
+    dialogue_vector_status,
     get_story_context,
     rebuild_dialogue_vectors,
     search_dialogues,
@@ -23,11 +24,13 @@ from ..imsearch import (
 from ..models import (
     DialogueSearchResponse,
     DialogueVectorsResponse,
+    DialogueVectorStatusResponse,
     ImageSearchItem,
     ImageSearchStatusResponse,
     SemanticDialogueResponse,
     StoryContextResponse,
 )
+from ..ocr.search_limits import dialogue_search_slot
 from .common import _require_meta, store
 
 router = APIRouter(tags=["search"])
@@ -88,13 +91,14 @@ def search_dialogue_endpoint(
     limit_val = limit if isinstance(limit, int) else 20
     source_val = source.strip() if isinstance(source, str) and source.strip() else None
     q_val = q if isinstance(q, str) else ""
-    results = search_dialogues(
-        query=q_val,
-        source=source_val,
-        limit=limit_val,
-        is_guest=is_guest_user,
-        user_id=get_current_user_id(request),
-    )
+    with dialogue_search_slot(request):
+        results = search_dialogues(
+            query=q_val,
+            source=source_val,
+            limit=limit_val,
+            is_guest=is_guest_user,
+            user_id=get_current_user_id(request),
+        )
     return DialogueSearchResponse(results=results, total=len(results))
 
 
@@ -118,13 +122,14 @@ def search_dialogue_semantic_endpoint(
     """
     if not can_read(request):
         raise HTTPException(status_code=401, detail="未授权访问，需要提供有效的通行口令")
-    out = search_dialogues_semantic(
-        query=q if isinstance(q, str) else "",
-        source=source.strip() if isinstance(source, str) and source.strip() else None,
-        limit=limit if isinstance(limit, int) else 20,
-        is_guest=not is_curator(request),
-        user_id=get_current_user_id(request),
-    )
+    with dialogue_search_slot(request, semantic=True):
+        out = search_dialogues_semantic(
+            query=q if isinstance(q, str) else "",
+            source=source.strip() if isinstance(source, str) and source.strip() else None,
+            limit=limit if isinstance(limit, int) else 20,
+            is_guest=not is_curator(request),
+            user_id=get_current_user_id(request),
+        )
     return SemanticDialogueResponse(total=len(out["results"]), **out)
 
 
@@ -138,6 +143,14 @@ def rebuild_dialogue_vectors_endpoint(request: Request) -> DialogueVectorsRespon
     require_curator(request)
     status = rebuild_dialogue_vectors()
     return DialogueVectorsResponse(**status)
+
+
+@router.get("/api/search/dialogue-vectors/status", response_model=DialogueVectorStatusResponse)
+def dialogue_vectors_status_endpoint(request: Request) -> DialogueVectorStatusResponse:
+    """馆长查看全库待建及失败状态；机器和访客不能推断隐藏书库数量。"""
+    require_curator(request)
+    with dialogue_search_slot(request, semantic=True):
+        return DialogueVectorStatusResponse(**dialogue_vector_status())
 
 
 @router.get("/api/search/dialogue-context", response_model=StoryContextResponse)

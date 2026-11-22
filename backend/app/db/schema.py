@@ -5,7 +5,7 @@ import sqlite3
 from pathlib import Path
 
 from ..formatting import normalize_title
-from ..ocr_files import list_comics, scan_files
+from ..ocr.files import list_comics, scan_files
 from .connection import (
     get_data_dir,
     get_db,
@@ -226,7 +226,7 @@ def _migrate_dialogue_schema(conn: sqlite3.Connection) -> bool:
     """FTS5 虚拟表不支持 ALTER TABLE ADD COLUMN，缺任何一列都只能整表重建。
 
     comic_dialogues_fts 是 pages/*.ocr.json 的派生索引，删表不丢原始数据。但必须
-    在同一事务里清空 comic_ocr_sync_meta：sync_comic_dialogues 靠 mtime 比对做增量，
+    在同一事务里清空 comic_ocr_sync_meta：sync_comic_dialogues 靠文件与分类版本签名做增量，
     元数据若留着，重灌会被静默跳过，台词检索从此永远返回空。
 
     Returns:
@@ -290,6 +290,10 @@ def init_dialogue_db(dialogue_db_path: Path | None = None) -> None:
                 dialogue_count INTEGER NOT NULL DEFAULT 0,
                 updated_at INTEGER NOT NULL DEFAULT 0,
                 source_signature TEXT NOT NULL DEFAULT '',
+                vector_source_signature TEXT NOT NULL DEFAULT '',
+                vector_model_signature TEXT NOT NULL DEFAULT '',
+                vector_error TEXT NOT NULL DEFAULT '',
+                unverified_pages INTEGER NOT NULL DEFAULT 0,
                 PRIMARY KEY (source, source_id)
             );
 
@@ -312,8 +316,11 @@ def init_dialogue_db(dialogue_db_path: Path | None = None) -> None:
             """
         )
         meta_columns = {row["name"] for row in conn.execute("PRAGMA table_info(comic_ocr_sync_meta)")}
-        if "source_signature" not in meta_columns:
-            conn.execute("ALTER TABLE comic_ocr_sync_meta ADD COLUMN source_signature TEXT NOT NULL DEFAULT ''")
+        for name in ("source_signature", "vector_source_signature", "vector_model_signature", "vector_error"):
+            if name not in meta_columns:
+                conn.execute(f"ALTER TABLE comic_ocr_sync_meta ADD COLUMN {name} TEXT NOT NULL DEFAULT ''")
+        if "unverified_pages" not in meta_columns:
+            conn.execute("ALTER TABLE comic_ocr_sync_meta ADD COLUMN unverified_pages INTEGER NOT NULL DEFAULT 0")
         rebuilt = _migrate_dialogue_schema(conn)
         # 列齐了不会触发重建，只能按行认出热重载用旧 INSERT 回填的半成品（错题本 #145）：清掉它们的元数据，下面逐本重灌
         half_synced = conn.execute(
