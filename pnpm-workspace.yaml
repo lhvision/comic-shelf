@@ -19,8 +19,8 @@ peerDependencyRules:
     - 'vue'
 catalog:
   vue: rc
-  vite: npm:@voidzero-dev/vite-plus-core@8.3.8000
-  vite-plus: 1.7.0
+  vite: npm:@voidzero-dev/vite-plus-core@8.3.8001
+  vite-plus: 1.8.0
 allowBuilds:
   '@ffmpeg-installer/linux-x64': true
   esbuild: true
@@ -72,16 +72,16 @@ minimumReleaseAgeExclude:
   - '@tsrs/linux-x64-musl@7.1.0-beta.tsrs2'
   - '@tsrs/win32-arm64@7.1.0-beta.tsrs2'
   - '@tsrs/win32-x64@7.1.0-beta.tsrs2'
-  - '@voidzero-dev/vite-plus-core@8.3.8000'
-  - '@voidzero-dev/vite-plus-darwin-arm64@1.7.0'
-  - '@voidzero-dev/vite-plus-darwin-x64@1.7.0'
-  - '@voidzero-dev/vite-plus-linux-arm64-gnu@1.7.0'
-  - '@voidzero-dev/vite-plus-linux-arm64-musl@1.7.0'
-  - '@voidzero-dev/vite-plus-linux-x64-gnu@1.7.0'
-  - '@voidzero-dev/vite-plus-linux-x64-musl@1.7.0'
-  - '@voidzero-dev/vite-plus-win32-arm64-msvc@1.7.0'
-  - '@voidzero-dev/vite-plus-win32-x64-msvc@1.7.0'
+  - '@voidzero-dev/vite-plus-core@8.3.8000 || 8.3.8001'
+  - '@voidzero-dev/vite-plus-darwin-arm64@1.7.0 || 1.8.0'
+  - '@voidzero-dev/vite-plus-darwin-x64@1.7.0 || 1.8.0'
+  - '@voidzero-dev/vite-plus-linux-arm64-gnu@1.7.0 || 1.8.0'
+  - '@voidzero-dev/vite-plus-linux-arm64-musl@1.7.0 || 1.8.0'
+  - '@voidzero-dev/vite-plus-linux-x64-gnu@1.7.0 || 1.8.0'
+  - '@voidzero-dev/vite-plus-linux-x64-musl@1.7.0 || 1.8.0'
+  - '@voidzero-dev/vite-plus-win32-arm64-msvc@1.7.0 || 1.8.0'
+  - '@voidzero-dev/vite-plus-win32-x64-msvc@1.7.0 || 1.8.0'
   - oxfmt@0.79.0
   - oxlint@1.94.0
   - tsrs@7.1.0-beta.tsrs2
-  - vite-plus@1.7.0
+  - vite-plus@1.7.0 || 1.8.0
