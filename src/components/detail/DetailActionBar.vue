@@ -423,6 +423,10 @@ function prefetchReader() {
     gap: var(--space-1);
   }
 
+  .cache-summary-bar {
+    flex: none;
+  }
+
   .cache-summary-text {
     text-align: right;
   }
