@@ -160,27 +160,10 @@ function confirmKick(deviceId: number) {
   font-size: var(--text-caption);
   padding: var(--space-0-5) var(--space-1-5);
   min-height: 24px;
-  border-radius: var(--radius-1);
-  border: 1px solid var(--line);
-  background: var(--paper-1);
-  color: var(--ink-1);
-  cursor: pointer;
-  transition:
-    background-color var(--duration-1) var(--ease-out),
-    border-color var(--duration-1) var(--ease-out),
-    color var(--duration-1) var(--ease-out);
 }
 
 .device-kick-action.confirm-yes {
-  background: var(--accent-soft);
-  border-color: color-mix(in oklab, var(--accent) 40%, transparent);
-  color: var(--accent);
   font-weight: 600;
-}
-
-.device-kick-action.confirm-no {
-  background: var(--paper-0);
-  color: var(--ink-2);
 }
 
 .device-kick-btn {

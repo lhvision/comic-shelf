@@ -39,6 +39,7 @@
    - [3.10 `ToggleEvent` 体系（`beforetoggle` / `toggle` 与 `source` 属性）](#310-toggleevent-体系beforetoggle--toggle-与-source-属性)
    - [3.11 CSS Carousel 原生轮播体系（`::scroll-button()` / `::scroll-marker()` 与 `:target-current`）](#311-css-carousel-原生轮播体系scroll-button--scroll-marker-与-target-current)
    - [3.12 `CSS Gap Decorations`（`column-rule` / `row-rule` / `rule-break` / `rule-visibility-items`）— Flex/Grid 间隙装饰线体系](#312-css-gap-decorationscolumn-rule--row-rule--rule-break--rule-visibility-items-flexgrid-间隙装饰线体系)
+   - [3.13 `flex-wrap: balance` — 弹性多行胶囊平衡折行](#313-flex-wrap-balance--弹性多行胶囊平衡折行)
 4. [实验草案特性（Experimental / Stage 1-2）](#4-实验草案特性experimental--stage-1-2)
    - [4.1 CSS `if()` 行内条件函数](#41-css-if-行内条件函数)
    - [4.2 CSS `@function` 自定义函数](#42-css-function-自定义函数)
@@ -74,6 +75,7 @@
 | **HTML Popover (`hint`)**                            |              151+               |               153+               |                  ⏳                   |               🔶 Newly Available 2026                |                          ✅ 渐进增强（`AppTooltip.vue` 轻量气泡提示）                           |
 | **CSS Carousel (`::scroll-marker/button`)**          |              135+               |                ⏳                |                  ⏳                   |               🔶 Newly Available 2025                |     ✅ 渐进增强（`CoverCarousel.vue` 零 JS 标记与切换，构建时 LightningCSS 提示非致命告警）     |
 | **CSS Gap Decorations (`row-rule` / `column-rule`)** |              149+               |                ⏳                |                  ⏳                   |               🔶 Newly Available 2026                |                        ✅ 渐进增强（`MetadataPanel.vue` 双列网格装饰线）                        |
+| **`flex-wrap: balance`**                             |              150+               |                ⏳                |                  ⏳                   |               🔶 Limited Availability                |             ✅ 渐进增强（`main.css` `.cluster` / `TagFilterBar.vue` 标签平衡换行）              |
 | **HTML5 `<dialog>` (Top Layer)**                     |               37+               |               98+                |                 15.4+                 |                   ✅ Baseline 2022                   |                              ✅ 已落地（`Modal.vue` 核心弹窗基建）                              |
 | **`<dialog closedby="any">`**                        |              134+               |               141+               |                  ⏳                   |               🔶 Newly Available 2025                |                       ✅ 渐进增强（`Modal.vue` 原生属性 + 蒙层点击兜底）                        |
 | **Invoker Commands (`commandfor`)**                  |              135+               |               144+               |                 26.2+                 |                ✅ Baseline 2025/2026                 |                      ✅ 渐进增强（支持原生调用，由 ToggleEvent 联动同步）                       |
@@ -1340,6 +1342,29 @@ CSS Overflow Level 5 彻底打破了“写轮播必须引入 JS 监听、状态�
 #### 设计边界与防过度工程红线（Zero-Slop Rule）
 
 - **分组语义优先于盲目去 DOM 化**：对于 `TagFilterBar.vue`（分类标签栏）中「只看喜欢 ｜ 阅读状态 ｜ 全部标签」这三类异构功能块之间的分隔，其分割线具有明确的局部语义分段意图。如果强行用全局 `column-rule`，会导致流式 Chip 之间也被画满竖线，必须强行嵌套多个子 `div` 包装，反而增加 DOM 复杂度与样式层级。因此对此类非均匀语义分组，坚决保持 `<span class="filter-divider" aria-hidden="true" />`，避免为了使用新 CSS 特性而增加抽象复杂度。
+
+---
+
+### 3.13 `flex-wrap: balance` — 弹性多行胶囊平衡折行
+
+**规范**：[CSS Flexbox Level 2 (`flex-wrap: balance`)](https://drafts.csswg.org/css-flexbox-2/)  
+**可用**：Chrome / Edge 150+ · Firefox ⏳ · Safari ⏳  
+**本项目落地状态**：✅ **渐进增强（已在 `src/styles/main.css` `.cluster` 与 `TagFilterBar.vue` `.overflow-cluster` 落地）**
+
+#### 核心机制与回退保护
+
+针对分类标签流折行时末行常仅剩 1~2 枚孤立胶囊（Orphan Chip）的视觉失衡问题，在声明标准 `flex-wrap: wrap` 之后追加 `flex-wrap: balance`：
+
+```css
+.cluster {
+  display: flex;
+  flex-wrap: wrap; /* Firefox / Safari / 旧内核无缝回退 */
+  flex-wrap: balance; /* Chrome 150+ 各行胶囊数量自动均衡 */
+  gap: var(--space-2);
+}
+```
+
+不支持该关键字的引擎会自动忽略第二条声明，不破坏基础布局；仅用于流式标签胶囊组（`.cluster`、`.overflow-cluster`），不强行套用于固定列数栅格。
 
 ---
 

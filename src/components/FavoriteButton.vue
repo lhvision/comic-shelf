@@ -87,14 +87,14 @@ async function toggle() {
   display: grid;
   place-items: center;
   border-radius: 50%;
-  color: var(--paper-0);
+  color: var(--reader-ink);
 }
 
 .favorite-button {
   width: 2.25rem;
   height: 2.25rem;
-  border: 1px solid var(--reader-line);
-  background: color-mix(in oklab, var(--ink-0) 78%, transparent);
+  border: 1px solid var(--reader-line-strong);
+  background: var(--reader-scrim-strong);
   box-shadow: 0 2px 8px rgb(0 0 0 / 35%);
   transition:
     transform var(--duration-1) var(--ease-out),
@@ -104,6 +104,24 @@ async function toggle() {
 
 .favorite-button:hover {
   transform: scale(1.08);
+}
+
+@media (hover: none) {
+  .favorite-button:hover {
+    transform: none;
+  }
+}
+
+@media (pointer: coarse) {
+  .favorite-button::before {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    min-width: var(--target-size);
+    min-height: var(--target-size);
+  }
 }
 
 .favorite-button svg {
@@ -137,6 +155,7 @@ async function toggle() {
   height: 1.85rem;
   border: 1px solid rgb(255 255 255 / 20%);
   background: color-mix(in oklab, var(--accent) 85%, rgb(0 0 0 / 40%));
+  color: var(--accent-contrast);
   box-shadow: 0 2px 6px rgb(0 0 0 / 30%);
   pointer-events: none;
 }

@@ -345,6 +345,26 @@ describe('Modern Floating System', () => {
       expect(wrapper.find('.item-leading').exists()).toBe(false)
       expect(items[1]?.classes()).not.toContain('is-selected')
     })
+
+    it('lets Enter on a focused dropdown-item activate that item instead of stale activeIndex', async () => {
+      const wrapper = mount(AppDropdown, {
+        props: {
+          options,
+          modelValue: 'opt1',
+        },
+      })
+
+      const trigger = wrapper.find('.dropdown-trigger')
+      await trigger.trigger('click')
+
+      const items = wrapper.findAll('.dropdown-item')
+      await items[2]?.trigger('focus')
+      await items[2]?.trigger('keydown', { key: 'Enter' })
+      await items[2]?.trigger('click')
+
+      expect(wrapper.emitted('update:modelValue')?.[0]).toEqual(['danger'])
+      expect(wrapper.emitted('select')?.[0]?.[0]).toMatchObject({ key: 'danger' })
+    })
   })
 
   describe('ThemeSelect Integration', () => {
@@ -370,6 +390,26 @@ describe('Modern Floating System', () => {
 
       expect(wrapper.emitted('update:modelValue')?.[0]).toEqual(['title'])
       expect(wrapper.emitted('change')?.[0]).toEqual(['title'])
+    })
+
+    it('forwards triggerAttrs to custom trigger slots', () => {
+      const wrapper = mount(ThemeSelect, {
+        props: {
+          modelValue: 'recent',
+          options: [
+            { value: 'recent', label: '最近收录' },
+            { value: 'title', label: '标题' },
+          ],
+        },
+        slots: {
+          trigger:
+            '<template #trigger="{ triggerAttrs }"><button class="theme-custom-trigger" v-bind="triggerAttrs">排序</button></template>',
+        },
+      })
+
+      const trigger = wrapper.find('.theme-custom-trigger')
+      expect(trigger.attributes('aria-haspopup')).toBe('listbox')
+      expect(trigger.attributes('aria-expanded')).toBe('false')
     })
   })
 

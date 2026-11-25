@@ -14,7 +14,8 @@ import { refAutoReset } from '@vueuse/core'
 import AppButton from '@/components/AppButton.vue'
 import AppIcon from '@/components/AppIcon.vue'
 import GuestDeviceList from './GuestDeviceList.vue'
-import { formatTimestamp, maskToken } from './guestUtils'
+import GuestPassActions from './GuestPassActions.vue'
+import { formatTimestamp } from './guestUtils'
 import { useGuestPasses } from '@/composables/useGuestPasses'
 import type { GuestPass } from '@/types'
 
@@ -32,32 +33,14 @@ const {
   removePass,
   removeDevice,
   updateMaxDevices,
-  copyToken,
-  copyShareLink,
 } = useGuestPasses()
 
-/** 直达链接复制成功微反馈（1.5s 后自动归位） */
-const copiedLink = refAutoReset(false, 1500)
-/** 口令复制成功微反馈（1.5s 后自动归位） */
-const copiedToken = refAutoReset(false, 1500)
 /** 重置密钥二次确认弹层状态（4s 未操作自动归位） */
 const isConfirmingReset = refAutoReset(false, 4000)
 /** 清空 PIN 码二次确认弹层状态（4s 未操作自动归位） */
 const isConfirmingResetPin = refAutoReset(false, 4000)
 /** 注销通行证二次确认弹层状态（4s 未操作自动归位） */
 const isConfirmingDelete = refAutoReset(false, 4000)
-
-/** 处理复制免密直达链接 */
-async function handleCopyLink() {
-  const ok = await copyShareLink(props.item)
-  if (ok) copiedLink.value = true
-}
-
-/** 处理复制授权口令 */
-async function handleCopyToken() {
-  const ok = await copyToken(props.item)
-  if (ok) copiedToken.value = true
-}
 
 /** 移除单台已授权设备 */
 function handleRemoveDevice(passId: number, deviceId: number) {
@@ -137,35 +120,7 @@ function handleRemovePass() {
     </div>
 
     <!-- 核心高频动作区（主次分明，带就地微反馈） -->
-    <div class="hero-actions">
-      <AppButton
-        :variant="copiedLink ? 'success' : 'soft'"
-        size="sm"
-        class="hero-btn primary"
-        :class="{ copied: copiedLink }"
-        :title="`复制「${item.username}」免密直达专属链接`"
-        @click="handleCopyLink"
-      >
-        <template #prefix>
-          <AppIcon :name="copiedLink ? 'check' : 'external-link'" size="sm" />
-        </template>
-        <span>{{ copiedLink ? '已复制专属直达链接' : '复制专属直达链接' }}</span>
-      </AppButton>
-
-      <AppButton
-        :variant="copiedToken ? 'success' : 'ghost'"
-        size="sm"
-        class="hero-btn secondary"
-        :class="{ copied: copiedToken }"
-        :title="`复制通行口令：${item.token}`"
-        @click="handleCopyToken"
-      >
-        <template #prefix>
-          <AppIcon :name="copiedToken ? 'check' : 'copy'" size="sm" />
-        </template>
-        <span>{{ copiedToken ? '已复制口令' : `口令：${maskToken(item.token)}` }}</span>
-      </AppButton>
-    </div>
+    <GuestPassActions :pass="item" variant="card" />
 
     <!-- 物理设备与会话托盘 -->
     <div class="device-tray">
@@ -273,18 +228,12 @@ function handleRemovePass() {
             <AppButton
               variant="danger"
               size="xs"
-              class="confirm-act confirm-yes"
               :disabled="operatingId !== null"
               @click="handleResetToken"
             >
               确定
             </AppButton>
-            <AppButton
-              variant="ghost"
-              size="xs"
-              class="confirm-act confirm-no"
-              @click="isConfirmingReset = false"
-            >
+            <AppButton variant="ghost" size="xs" @click="isConfirmingReset = false">
               取消
             </AppButton>
           </div>
@@ -308,18 +257,12 @@ function handleRemovePass() {
             <AppButton
               variant="danger"
               size="xs"
-              class="confirm-act confirm-yes"
               :disabled="operatingId !== null"
               @click="handleResetPin"
             >
               确定
             </AppButton>
-            <AppButton
-              variant="ghost"
-              size="xs"
-              class="confirm-act confirm-no"
-              @click="isConfirmingResetPin = false"
-            >
+            <AppButton variant="ghost" size="xs" @click="isConfirmingResetPin = false">
               取消
             </AppButton>
           </div>
@@ -344,7 +287,7 @@ function handleRemovePass() {
             v-if="!isConfirmingDelete"
             variant="danger"
             size="xs"
-            class="sub-tool-btn danger"
+            class="sub-tool-btn"
             title="从名册中彻底注销该访客"
             :disabled="operatingId !== null"
             @click="isConfirmingDelete = true"
@@ -356,18 +299,12 @@ function handleRemovePass() {
             <AppButton
               variant="danger"
               size="xs"
-              class="confirm-act confirm-yes danger"
               :disabled="operatingId !== null"
               @click="handleRemovePass"
             >
               删除
             </AppButton>
-            <AppButton
-              variant="ghost"
-              size="xs"
-              class="confirm-act confirm-no"
-              @click="isConfirmingDelete = false"
-            >
+            <AppButton variant="ghost" size="xs" @click="isConfirmingDelete = false">
               取消
             </AppButton>
           </div>
@@ -515,60 +452,6 @@ function handleRemovePass() {
   color: var(--warning);
   background: color-mix(in oklab, var(--warning) 8%, var(--paper-0));
   border: 1px solid color-mix(in oklab, var(--warning) 30%, transparent);
-}
-
-/* 核心高频动作区 */
-.hero-actions {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
-}
-
-.hero-btn {
-  width: 100%;
-  min-height: 42px;
-  padding: 0 var(--space-3);
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: var(--space-2);
-  border-radius: var(--radius-1);
-  font-size: var(--text-caption);
-  cursor: pointer;
-  transition:
-    background-color var(--duration-2) var(--ease-out),
-    border-color var(--duration-2) var(--ease-out),
-    color var(--duration-2) var(--ease-out);
-}
-
-.hero-btn.primary:not(.btn-success) {
-  background: color-mix(in oklab, var(--accent) 10%, var(--paper-0));
-  border: 1px solid color-mix(in oklab, var(--accent) 30%, var(--line));
-  color: var(--accent);
-  font-weight: 600;
-}
-
-.hero-btn.primary:not(.btn-success):hover {
-  background: var(--accent);
-  color: var(--accent-contrast);
-  border-color: var(--accent);
-}
-
-.hero-btn.secondary:not(.btn-success) {
-  background: var(--paper-1);
-  border: 1px dashed var(--line);
-  color: var(--ink-1);
-  font-family: var(--font-mono);
-}
-
-.hero-btn.secondary:not(.btn-success):hover {
-  border-color: var(--ink-0);
-  color: var(--ink-0);
-}
-
-/* 复制成功后的 success 微状态（1.5s 后平滑恢复，由 AppButton variant="success" 承载） */
-.hero-btn.copied {
-  font-weight: 600;
 }
 
 /* 物理设备与会话托盘 */
@@ -731,32 +614,10 @@ function handleRemovePass() {
   min-height: 36px;
   padding: 0 var(--space-2);
   border-radius: var(--radius-1);
-  border: 1px solid var(--line);
-  background: var(--paper-0);
   font-size: var(--text-caption);
-  color: var(--ink-1);
-  cursor: pointer;
-  transition:
-    border-color var(--duration-1) var(--ease-out),
-    color var(--duration-1) var(--ease-out);
-}
-
-.sub-tool-btn:hover:not(:disabled) {
-  border-color: var(--ink-0);
-  color: var(--ink-0);
-}
-
-.sub-tool-btn:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
 }
 
 .sub-tool-btn.warning:hover:not(:disabled) {
-  border-color: var(--accent);
-  color: var(--accent);
-}
-
-.sub-tool-btn.danger:hover:not(:disabled) {
   border-color: var(--accent);
   color: var(--accent);
 }
@@ -781,30 +642,6 @@ function handleRemovePass() {
   color: var(--ink-1);
 }
 
-.confirm-act {
-  min-height: 32px;
-  padding: 0 var(--space-2);
-  font-size: var(--text-caption);
-  border-radius: var(--radius-1);
-  border: none;
-  cursor: pointer;
-}
-
-.confirm-act.confirm-yes {
-  background: var(--ink-0);
-  color: var(--paper-0);
-}
-
-.confirm-act.confirm-yes.danger {
-  background: var(--accent);
-  color: var(--paper-0);
-}
-
-.confirm-act.confirm-no {
-  background: transparent;
-  color: var(--ink-2);
-}
-
 @media (max-width: 680px) {
   .card-footer {
     flex-direction: column;
@@ -825,7 +662,6 @@ function handleRemovePass() {
   }
 
   .sub-tool-btn {
-    min-height: 36px;
     padding: 0 var(--space-2-5);
   }
 }

@@ -93,35 +93,6 @@ const emit = defineEmits<{
 }
 
 .update-card-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-1);
-  height: var(--control-xs);
-  padding: 0 var(--space-2-5);
-  border: 1px solid color-mix(in oklab, var(--accent) 60%, transparent);
-  border-radius: var(--radius-1);
-  background: var(--accent);
-  color: var(--accent-contrast);
-  font-size: var(--text-xs);
-  font-weight: 500;
-  cursor: pointer;
-  white-space: nowrap;
   flex: 0 0 auto;
-  transition:
-    background-color var(--duration-1) var(--ease-out),
-    border-color var(--duration-1) var(--ease-out);
-}
-
-.update-card-btn:hover:not(:disabled) {
-  background: var(--accent-strong);
-}
-
-.update-card-btn:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-}
-
-.is-spinning {
-  animation: spin 1s linear infinite;
 }
 </style>

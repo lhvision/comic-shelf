@@ -729,9 +729,9 @@ defineExpose({
   align-items: center;
   padding: var(--space-1) var(--space-3);
   border-radius: var(--radius-pill);
-  background: color-mix(in oklab, var(--accent) 18%, transparent);
-  color: var(--accent);
-  border: 1px solid color-mix(in oklab, var(--accent) 35%, transparent);
+  background: color-mix(in oklab, var(--reader-accent) 18%, transparent);
+  color: var(--reader-accent);
+  border: 1px solid color-mix(in oklab, var(--reader-accent) 35%, transparent);
   font-family: var(--font-mono);
   font-size: var(--text-xs);
   letter-spacing: 0.1em;

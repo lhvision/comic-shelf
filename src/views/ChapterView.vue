@@ -222,8 +222,9 @@ onMounted(() => {
 
           <div v-if="canWrite && isOnline && !store.isOffline" class="chapter-mgmt-group">
             <AppDropdown :options="chapterMoreOptions" align="end" @select="onChapterMoreSelect">
-              <template #trigger="{ open }">
+              <template #trigger="{ open, triggerAttrs }">
                 <AppButton
+                  v-bind="triggerAttrs"
                   variant="ghost"
                   size="sm"
                   shape="square"
@@ -510,10 +511,6 @@ onMounted(() => {
   margin-left: auto;
 }
 
-.more-trigger {
-  min-width: 2.25rem;
-}
-
 .edit-chap-form {
   display: flex;
   flex-direction: column;
@@ -583,8 +580,9 @@ onMounted(() => {
   }
 
   .more-trigger {
-    min-width: 2.75rem; /* 44px 移动端触控底线 */
-    min-height: 2.75rem; /* 44px 移动端触控底线 */
+    width: var(--control-md);
+    height: var(--control-md);
+    min-height: var(--control-md);
   }
 
   .chapter-head-main h1 {

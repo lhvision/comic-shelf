@@ -45,15 +45,15 @@ const emit = defineEmits<{
 }>()
 
 const instance = getCurrentInstance()
-const hasModelBinding = computed(() => {
+const hasModelBinding = (() => {
   const vnodeProps = instance?.vnode.props
   return Boolean(vnodeProps && ('onUpdate:modelValue' in vnodeProps || 'modelValue' in vnodeProps))
-})
+})()
 
 const isSelectMode = computed(() => {
   if (props.selectable !== undefined) return props.selectable
   if (modelValue.value !== null && modelValue.value !== undefined) return true
-  return hasModelBinding.value
+  return hasModelBinding
 })
 const hasIcons = computed(() => props.options.some((opt) => !!opt.icon))
 
@@ -183,6 +183,10 @@ function onTriggerKeydown(event: KeyboardEvent) {
     event.preventDefault()
     moveToLast()
   } else if (key === 'Enter' || key === ' ' || key === 'Spacebar') {
+    const target = event.target as HTMLElement | null
+    if (target?.closest?.('.dropdown-item')) {
+      return
+    }
     event.preventDefault()
     const activeOpt = props.options[activeIndex.value]
     if (activeOpt) selectOption(activeOpt)
@@ -274,6 +278,7 @@ function onTriggerKeydown(event: KeyboardEvent) {
             :disabled="option.disabled"
             :title="option.hint ? `${option.label} (${option.hint})` : option.label"
             @click="selectOption(option)"
+            @focus="!option.disabled && (activeIndex = idx)"
             @mouseenter="!option.disabled && (activeIndex = idx)"
           >
             <!-- 勾选指示器 / 图标（仅在选择模式或有图标时保留前导空间） -->
@@ -460,6 +465,14 @@ function onTriggerKeydown(event: KeyboardEvent) {
 
 .item-icon {
   color: var(--ink-2);
+  transition: color var(--duration-1) var(--ease-out);
+}
+
+.dropdown-item:hover:not(:disabled) .item-icon,
+.dropdown-item.is-active:not(:disabled) .item-icon,
+.dropdown-item.is-selected .item-icon,
+.dropdown-item.is-danger .item-icon {
+  color: currentColor;
 }
 
 .item-leading-placeholder {

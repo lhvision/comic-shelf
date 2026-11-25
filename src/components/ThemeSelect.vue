@@ -74,6 +74,7 @@ const dropdownOptions = computed<DropdownOption<string>[]>(() =>
             : null
         "
         :label="slotProps.label"
+        :trigger-attrs="slotProps.triggerAttrs"
       />
     </template>
   </AppDropdown>

@@ -65,23 +65,12 @@ function scrollToTop() {
 }
 
 .back-to-top-btn {
-  display: inline-grid;
-  place-items: center;
   width: var(--control-md);
   height: var(--control-md);
-  border: 1px solid var(--line-strong);
-  border-radius: 50%;
+  border-color: var(--line-strong);
   background: var(--paper-1);
   color: var(--ink-0);
   box-shadow: var(--shadow-2);
-  cursor: pointer;
-  padding: 0;
-  transition:
-    transform var(--duration-1) var(--ease-spring),
-    background-color var(--duration-1) var(--ease-out),
-    border-color var(--duration-1) var(--ease-out),
-    color var(--duration-1) var(--ease-out),
-    box-shadow var(--duration-1) var(--ease-out);
 }
 
 .back-to-top-btn:hover {
@@ -95,11 +84,6 @@ function scrollToTop() {
 .back-to-top-btn:active {
   transform: translateY(0);
   box-shadow: var(--shadow-1);
-}
-
-.back-to-top-btn:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 2px;
 }
 
 /* 动效：上浮淡入淡出 */

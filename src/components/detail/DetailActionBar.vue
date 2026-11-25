@@ -63,13 +63,11 @@ const moreOptions = computed<DropdownOption[]>(() => {
       {
         key: 'share_direct',
         label: '分享单本…',
-        icon: 'external-link',
         hint: '直达链接',
       },
       {
         key: 'append_pages',
         label: '增量追加…',
-        icon: 'plus',
         hint: '加页/加话',
       },
     )
@@ -77,7 +75,6 @@ const moreOptions = computed<DropdownOption[]>(() => {
       list.push({
         key: 'refresh_metadata',
         label: props.refreshing ? '刷新中…' : '刷新资料',
-        icon: 'refresh',
         disabled: props.refreshing || props.caching,
         hint: '同步远端',
       })
@@ -105,7 +102,6 @@ const moreOptions = computed<DropdownOption[]>(() => {
   list.push({
     key: 'remove',
     label: '移除本地缓存…',
-    icon: 'trash',
     danger: true,
     hint: '不可撤销',
   })

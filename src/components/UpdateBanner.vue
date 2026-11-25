@@ -36,7 +36,7 @@ const isVisible = computed(() => showPrompt.value && !isReaderView.value)
           <AppButton
             variant="soft"
             size="xs"
-            class="banner-btn apply-btn"
+            class="apply-btn"
             :loading="isUpdating"
             @click="applyUpdate"
           >
@@ -48,7 +48,7 @@ const isVisible = computed(() => showPrompt.value && !isReaderView.value)
           <AppButton
             variant="ghost"
             size="xs"
-            class="banner-btn dismiss-btn"
+            class="dismiss-btn"
             title="稍后装订（收起至顶栏设备卡片）"
             aria-label="稍后装订，收起提示"
             @click="dismissPrompt"
@@ -124,55 +124,6 @@ const isVisible = computed(() => showPrompt.value && !isReaderView.value)
   align-items: center;
   gap: var(--space-2);
   flex: 0 0 auto;
-}
-
-.banner-btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: var(--space-1);
-  height: var(--control-xs);
-  padding: 0 var(--space-3);
-  border-radius: var(--radius-2);
-  font-size: var(--text-xs);
-  cursor: pointer;
-  transition:
-    background-color var(--duration-1) var(--ease-out),
-    border-color var(--duration-1) var(--ease-out),
-    color var(--duration-1) var(--ease-out);
-  white-space: nowrap;
-}
-
-.apply-btn {
-  border: 1px solid color-mix(in oklab, var(--accent) 55%, transparent);
-  background: color-mix(in oklab, var(--accent) 12%, var(--paper-0));
-  color: var(--accent-strong);
-  font-weight: 500;
-}
-
-.apply-btn:hover:not(:disabled) {
-  background: color-mix(in oklab, var(--accent) 20%, var(--paper-0));
-  border-color: var(--accent);
-}
-
-.apply-btn:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-}
-
-.dismiss-btn {
-  border: 1px solid var(--line);
-  background: transparent;
-  color: var(--ink-2);
-}
-
-.dismiss-btn:hover {
-  background: var(--paper-1);
-  color: var(--ink-1);
-}
-
-.is-spinning {
-  animation: spin 1s linear infinite;
 }
 
 .update-banner-enter-active,

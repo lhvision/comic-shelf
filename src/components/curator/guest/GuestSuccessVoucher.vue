@@ -9,13 +9,12 @@
  * - 提供「继续印发」与「查看名册」快捷动作按钮。
  */
 
-import { refAutoReset } from '@vueuse/core'
 import AppButton from '@/components/AppButton.vue'
-import { formatTimestamp, maskToken } from './guestUtils'
-import { useGuestPasses } from '@/composables/useGuestPasses'
+import GuestPassActions from './GuestPassActions.vue'
+import { formatTimestamp } from './guestUtils'
 import type { GuestPass } from '@/types'
 
-const props = defineProps<{
+defineProps<{
   /** 新生成的通行证实体 */
   pass: GuestPass
 }>()
@@ -26,25 +25,6 @@ const emit = defineEmits<{
   /** 触发返回现存名册 */
   viewRoster: []
 }>()
-
-const { copyShareLink, copyToken } = useGuestPasses()
-
-/** 直达链接复制成功反馈 */
-const copiedLink = refAutoReset(false, 1500)
-/** 口令复制成功反馈 */
-const copiedToken = refAutoReset(false, 1500)
-
-/** 复制免密链接 */
-async function handleCopyLink() {
-  const ok = await copyShareLink(props.pass)
-  if (ok) copiedLink.value = true
-}
-
-/** 复制通行口令 */
-async function handleCopyToken() {
-  const ok = await copyToken(props.pass)
-  if (ok) copiedToken.value = true
-}
 </script>
 
 <template>
@@ -59,31 +39,7 @@ async function handleCopyToken() {
       </p>
     </div>
 
-    <div class="voucher-actions">
-      <AppButton
-        :variant="copiedLink ? 'success' : 'soft'"
-        size="md"
-        block
-        class="hero-btn primary voucher-hero-btn"
-        :class="{ copied: copiedLink }"
-        :icon="copiedLink ? 'check' : 'external-link'"
-        @click="handleCopyLink"
-      >
-        <span>{{ copiedLink ? '已复制免密直达链接' : '复制专属免密直达链接' }}</span>
-      </AppButton>
-
-      <AppButton
-        :variant="copiedToken ? 'success' : 'ghost'"
-        size="md"
-        block
-        class="hero-btn secondary voucher-hero-btn"
-        :class="{ copied: copiedToken }"
-        :icon="copiedToken ? 'check' : 'copy'"
-        @click="handleCopyToken"
-      >
-        <span>{{ copiedToken ? '已复制口令' : `口令：${maskToken(pass.token)}` }}</span>
-      </AppButton>
-    </div>
+    <GuestPassActions :pass="pass" variant="voucher" />
 
     <div class="voucher-foot">
       <AppButton
@@ -147,63 +103,6 @@ async function handleCopyToken() {
   margin: 0;
   font-size: var(--text-caption);
   color: var(--ink-2);
-}
-
-.voucher-actions {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2-5);
-}
-
-.hero-btn {
-  width: 100%;
-  min-height: 42px;
-  padding: 0 var(--space-3);
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: var(--space-2);
-  border-radius: var(--radius-1);
-  font-size: var(--text-caption);
-  cursor: pointer;
-  transition:
-    background-color var(--duration-2) var(--ease-out),
-    border-color var(--duration-2) var(--ease-out),
-    color var(--duration-2) var(--ease-out);
-}
-
-.hero-btn.primary:not(.btn-success) {
-  background: color-mix(in oklab, var(--accent) 10%, var(--paper-0));
-  border: 1px solid color-mix(in oklab, var(--accent) 30%, var(--line));
-  color: var(--accent);
-  font-weight: 600;
-}
-
-.hero-btn.primary:not(.btn-success):hover {
-  background: var(--accent);
-  color: var(--accent-contrast);
-  border-color: var(--accent);
-}
-
-.hero-btn.secondary:not(.btn-success) {
-  background: var(--paper-1);
-  border: 1px dashed var(--line);
-  color: var(--ink-1);
-  font-family: var(--font-mono);
-}
-
-.hero-btn.secondary:not(.btn-success):hover {
-  border-color: var(--ink-0);
-  color: var(--ink-0);
-}
-
-.hero-btn.copied {
-  font-weight: 600;
-}
-
-.voucher-hero-btn {
-  min-height: 46px;
-  font-size: var(--text-md);
 }
 
 .voucher-foot {

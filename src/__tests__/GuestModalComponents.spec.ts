@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vite-plus/test'
 import { mount } from '@vue/test-utils'
 import GuestDeviceList from '@/components/curator/guest/GuestDeviceList.vue'
 import GuestCard from '@/components/curator/guest/GuestCard.vue'
+import GuestPassActions from '@/components/curator/guest/GuestPassActions.vue'
 import GuestSuccessVoucher from '@/components/curator/guest/GuestSuccessVoucher.vue'
 import GuestRosterTab from '@/components/curator/guest/GuestRosterTab.vue'
 import GuestIssueTab from '@/components/curator/guest/GuestIssueTab.vue'
@@ -94,6 +95,55 @@ describe('Guest Modal Components', () => {
       })
       expect(wrapper.find('.pass-name').text()).toBe('TestUser')
       expect(wrapper.find('.status-seal').text()).toContain('活跃 · 1/2台')
+      expect(wrapper.find('.pass-link-btn').text()).toContain('复制专属直达链接')
+    })
+
+    it('uses pure danger AppButton styling for destructive confirmations without confirm-act override', async () => {
+      const wrapper = mount(GuestCard, {
+        props: {
+          item: samplePass,
+        },
+      })
+
+      const deleteTrigger = wrapper.findAll('button').find((b) => b.text().includes('注销'))
+      expect(deleteTrigger).toBeDefined()
+      expect(deleteTrigger!.classes()).toContain('btn-danger')
+      await deleteTrigger!.trigger('click')
+
+      const confirmBtn = wrapper.findAll('button').find((b) => b.text() === '删除')
+      expect(confirmBtn).toBeDefined()
+      expect(confirmBtn!.classes()).toContain('btn-danger')
+      expect(confirmBtn!.classes()).not.toContain('confirm-act')
+    })
+  })
+
+  describe('GuestPassActions', () => {
+    it('copies direct link and token and switches to copied feedback state', async () => {
+      mockCopy.mockResolvedValueOnce(undefined).mockResolvedValueOnce(undefined)
+      const wrapper = mount(GuestPassActions, {
+        props: {
+          pass: samplePass,
+        },
+      })
+
+      const linkBtn = wrapper.find('.pass-link-btn')
+      const tokenBtn = wrapper.find('.pass-token-btn')
+      expect(tokenBtn.text()).toContain('token1••••567890')
+
+      await linkBtn.trigger('click')
+      await Promise.resolve()
+      expect(mockCopy).toHaveBeenNthCalledWith(
+        1,
+        expect.stringContaining(`token=${samplePass.token}`),
+      )
+      expect(linkBtn.text()).toContain('已复制专属直达链接')
+      expect(linkBtn.classes()).toContain('btn-success')
+
+      await tokenBtn.trigger('click')
+      await Promise.resolve()
+      expect(mockCopy).toHaveBeenNthCalledWith(2, samplePass.token)
+      expect(tokenBtn.text()).toContain('已复制口令')
+      expect(tokenBtn.classes()).toContain('btn-success')
     })
   })
 
@@ -106,6 +156,7 @@ describe('Guest Modal Components', () => {
       })
       expect(wrapper.text()).toContain('通行凭据已印发')
       expect(wrapper.text()).toContain('TestUser')
+      expect(wrapper.find('.pass-link-btn').text()).toContain('复制专属免密直达链接')
 
       const navBtns = wrapper.findAllComponents('.voucher-nav-btn')
       expect(navBtns.length).toBe(2)
