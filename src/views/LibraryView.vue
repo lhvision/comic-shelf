@@ -468,7 +468,7 @@ watch([() => store.error, imageSearch.error], ([err1, err2]) => {
 }
 
 .shelf {
-  padding-top: var(--space-4);
+  padding-top: var(--space-6);
 }
 
 .shelf-head {
@@ -623,6 +623,10 @@ watch([() => store.error, imageSearch.error], ([err1, err2]) => {
 }
 
 @media (max-width: 680px) {
+  .shelf {
+    padding-top: var(--space-4);
+  }
+
   .shelf-head {
     grid-template-columns: 1fr;
   }

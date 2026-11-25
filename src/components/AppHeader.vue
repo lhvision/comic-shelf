@@ -495,6 +495,21 @@ onAuthSuccess(fetchProviders)
   }
 }
 
+@media (max-width: 960px) {
+  .site-header,
+  .header-left {
+    gap: var(--space-3);
+  }
+
+  .site-nav {
+    gap: var(--space-2-5);
+  }
+
+  .header-right {
+    gap: var(--space-2);
+  }
+}
+
 @media (max-width: 680px) {
   .site-header {
     gap: var(--space-2);

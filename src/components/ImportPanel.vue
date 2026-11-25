@@ -585,7 +585,43 @@ function incConcurrency() {
   color: var(--accent);
 }
 
+@media (max-width: 960px) {
+  .import-panel,
+  .import-panel.is-source-locked {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3-5);
+    padding: var(--space-4) var(--space-5);
+    max-width: none;
+    justify-self: stretch;
+  }
+
+  .import-panel.is-source-locked .import-info {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: var(--space-1) var(--space-3);
+  }
+
+  .import-panel.is-source-locked .import-info .hint {
+    margin-top: 0;
+  }
+
+  .download-settings {
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-2) var(--space-5);
+  }
+}
+
 @media (max-width: 680px) {
+  .download-settings {
+    flex-direction: column;
+    align-items: stretch;
+    gap: var(--space-1-5);
+  }
+
   .import-panel,
   .import-panel.is-source-locked {
     display: flex;

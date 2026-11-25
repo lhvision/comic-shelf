@@ -125,10 +125,9 @@ function onKeydown(event: KeyboardEvent, index: number) {
 .segmented-tabs {
   display: inline-flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: var(--space-1);
   max-width: 100%;
-  overflow-x: auto;
-  scrollbar-width: none;
   padding: var(--space-1);
   border: 1px solid var(--line);
   border-radius: var(--radius-2);
@@ -136,10 +135,6 @@ function onKeydown(event: KeyboardEvent, index: number) {
   box-sizing: border-box;
   position: relative;
   isolation: isolate;
-}
-
-.segmented-tabs::-webkit-scrollbar {
-  display: none;
 }
 
 /* CSS Anchor 动态滑动胶囊指示器 */
@@ -264,9 +259,14 @@ function onKeydown(event: KeyboardEvent, index: number) {
 }
 
 @media (pointer: coarse) {
-  .segmented-tabs--sm .segmented-tab,
-  .segmented-tabs--md .segmented-tab {
-    min-height: var(--control-md);
+  .segmented-tab::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 0;
+    right: 0;
+    transform: translateY(-50%);
+    min-height: var(--target-size);
   }
 }
 

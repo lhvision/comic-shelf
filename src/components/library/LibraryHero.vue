@@ -110,7 +110,7 @@ const heroLede = computed(
   grid-template-columns: minmax(17rem, 0.85fr) minmax(22rem, 1.35fr);
   gap: var(--space-8);
   align-items: center;
-  padding-block: var(--space-7) var(--space-5);
+  padding-block: var(--space-8) var(--space-6);
 }
 
 .hero.hero--single {
@@ -160,7 +160,8 @@ const heroLede = computed(
 @media (max-width: 960px) {
   .hero {
     grid-template-columns: 1fr;
-    padding-block: var(--space-8) var(--space-6);
+    gap: var(--space-4);
+    padding-block: var(--space-5) var(--space-4);
   }
 }
 

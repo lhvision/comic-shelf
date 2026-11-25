@@ -231,4 +231,33 @@ function handleSubmit() {
 .tooltip-icon:hover {
   color: var(--accent);
 }
+
+@media (max-width: 960px) {
+  .import-field {
+    min-height: var(--control-lg);
+    padding: var(--space-2) var(--space-4);
+    border-radius: var(--radius-2);
+  }
+
+  .import-submit-btn {
+    width: auto;
+    min-width: 7.5rem;
+    min-height: var(--control-lg);
+    padding: 0 var(--space-5);
+    border-radius: var(--radius-2);
+  }
+
+  .vertical-text {
+    flex-direction: row;
+    gap: 0.04em;
+    letter-spacing: 0.04em;
+  }
+}
+
+@media (max-width: 680px) {
+  .import-submit-btn {
+    min-width: 6.25rem;
+    padding: 0 var(--space-3-5);
+  }
+}
 </style>
