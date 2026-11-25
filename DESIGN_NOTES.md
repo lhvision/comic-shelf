@@ -582,7 +582,7 @@
    - **中层（主标题与文档属性）**：大标题（Serif Display）+ 典雅元数据（“全书第 1–24 页 · 本子「…」”），剥离底层数据库“全局页”工程术语；
    - **下层（触控友好双按钮）**：移动端 Primary「开始/继续阅读」与 Secondary「缓存本话」等分撑满（`flex: 1 1 0`，高度 `min-height: 2.75rem` 满足 44px 触控底线），管理动作（编辑名称/删除/重订/追加）全量收敛进右侧独立的 44×44px 正方形 `···` 胶囊。
 2. **通边画卷、滑动窗口与 CSS 滚动渐隐遮罩（Full-bleed Windowed Switcher & Scroll-driven Mask）**：
-   - 横向切话卷轴（`ChapterSwitcher`）在移动端通过负外边距（`margin-inline: calc(-1 * var(--space-3-5))`）冲破卡片内边距局限，实现全宽通边探索；超过 48 话自动启用以当前话为中心的 `±16` 邻域滑动窗口，并在外侧挂载基于原生 Top Layer `AppPopover` 的快速跳话浮层（支持话号/标题过滤、百话分段与 40 条渲染上限）；
+   - 横向切话卷轴（`ChapterSwitcher`）在移动端通过负外边距（`margin-inline: calc(-1 * var(--space-3-5))`）冲破卡片内边距局限，实现全宽通边探索；超过 48 话自动启用以当前话为中心的 `±16` 邻域滑动窗口，并在外侧挂载独立子组件 `ChapterJumpPopover`（基于原生 Top Layer `AppPopover`，支持话号/标题过滤、百话分段与 40 条渲染上限）；
    - 废除 JS 滚动状态轮询与 `useScroll` `arrivedState` 绑定，优先由 `@property --mask-left` / `--mask-right`、`mask: ... subtract` 与 `animation-timeline: scroll(self inline)` + `scroll-padding-inline` 驱动纯 CSS 边缘渐隐（不支持时由首尾哨兵 `IntersectionObserver` 兜底）；
    - 胶囊按钮、端点省略触发与外置跳话按钮在移动端高度坚守 44px 底线（`min-height: 2.75rem`），彻底根除单手误触。
 3. **单章节幽灵分页防退化与页面级快捷键**：

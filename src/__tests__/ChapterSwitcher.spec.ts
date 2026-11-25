@@ -332,4 +332,238 @@ describe('ChapterSwitcher', () => {
 
     wrapper.unmount()
   })
+
+  it('retains keyboard focus with preventScroll after windowed async activeId update', async () => {
+    const chapters = makeChapters(1000)
+    const wrapper = mount(ChapterSwitcher, {
+      props: {
+        chapters,
+        activeId: 'chap_500',
+      },
+      attachTo: document.body,
+    })
+
+    await nextTick()
+    const focusSpy = vi.spyOn(HTMLElement.prototype, 'focus')
+    const initialActiveBtn = wrapper.find('button.chapter-chip[data-active="true"]')
+      .element as HTMLElement
+    initialActiveBtn.focus()
+
+    await wrapper.find('.chapter-switcher').trigger('keydown', { key: 'End' })
+    expect(wrapper.emitted('change')?.[0]).toEqual(['chap_1000'])
+
+    await (
+      wrapper as unknown as { setProps: (p: Record<string, unknown>) => Promise<void> }
+    ).setProps({ activeId: 'chap_1000' })
+    await nextTick()
+
+    const activeBtn = wrapper.find('button.chapter-chip[data-active="true"]').element as HTMLElement
+    expect(document.activeElement).toBe(activeBtn)
+    expect(focusSpy).toHaveBeenCalledWith({ preventScroll: true })
+
+    // External navigation to another id clears stale pendingFocusId
+    focusSpy.mockClear()
+    await wrapper.find('.chapter-switcher').trigger('keydown', { key: 'Home' })
+    expect(wrapper.emitted('change')?.[1]).toEqual(['chap_1'])
+    await (
+      wrapper as unknown as { setProps: (p: Record<string, unknown>) => Promise<void> }
+    ).setProps({ activeId: 'chap_999' })
+    await nextTick()
+    expect(focusSpy).not.toHaveBeenCalled()
+    await (
+      wrapper as unknown as { setProps: (p: Record<string, unknown>) => Promise<void> }
+    ).setProps({ activeId: 'chap_1' })
+    await nextTick()
+    expect(focusSpy).not.toHaveBeenCalled()
+
+    wrapper.unmount()
+  })
+
+  it('cancels pending requestAnimationFrame on rapid changes and unmount', async () => {
+    const chapters = makeChapters(10)
+    const cancelSpy = vi.spyOn(globalThis, 'cancelAnimationFrame')
+    const wrapper = mount(ChapterSwitcher, {
+      props: {
+        chapters,
+        activeId: 'chap_1',
+      },
+      attachTo: document.body,
+    })
+
+    await (
+      wrapper as unknown as { setProps: (p: Record<string, unknown>) => Promise<void> }
+    ).setProps({ activeId: 'chap_2' })
+    await nextTick()
+    await (
+      wrapper as unknown as { setProps: (p: Record<string, unknown>) => Promise<void> }
+    ).setProps({ activeId: 'chap_3' })
+    await nextTick()
+
+    expect(cancelSpy).toHaveBeenCalled()
+    cancelSpy.mockClear()
+
+    wrapper.unmount()
+    expect(cancelSpy).toHaveBeenCalled()
+  })
+
+  it('opens tail segment from right edge jump near segment boundary', async () => {
+    const chapters = makeChapters(1000)
+    const wrapper = mount(ChapterSwitcher, {
+      props: {
+        chapters,
+        activeId: 'chap_95',
+      },
+      attachTo: document.body,
+    })
+
+    const rightEdgeBtn = wrapper.find('button.chapter-edge-jump--end')
+    expect(rightEdgeBtn.text()).toContain('112–1000')
+    await rightEdgeBtn.trigger('click')
+    await nextTick()
+
+    const segmentTabs = wrapper.findAll('.chapter-segment-btn')
+    expect(segmentTabs[1]!.attributes('aria-selected')).toBe('true')
+    expect(wrapper.findAll('.chapter-jump-item')[0]!.find('.chapter-jump-idx').text()).toBe('101')
+
+    wrapper.unmount()
+  })
+
+  it('supports segment switching, expanding all 100 items, empty state, and click selection', async () => {
+    const chapters = makeChapters(1000)
+    const wrapper = mount(ChapterSwitcher, {
+      props: {
+        chapters,
+        activeId: 'chap_12',
+      },
+      attachTo: document.body,
+    })
+
+    await wrapper.find('.chapter-jump-trigger').trigger('click')
+    await nextTick()
+
+    // Switch to 3rd segment (201-300) and expand full 100 items
+    await wrapper.findAll('.chapter-segment-btn')[2]!.trigger('click')
+    expect(wrapper.findAll('.chapter-jump-item').length).toBe(40)
+    await wrapper.find('.chapter-jump-expand').trigger('click')
+    expect(wrapper.findAll('.chapter-jump-item').length).toBe(100)
+
+    // Empty query renders message outside listbox role
+    const input = wrapper.find('.chapter-jump-input')
+    await input.setValue('不存在的章节XYZ')
+    expect(wrapper.find('[role="listbox"]').exists()).toBe(false)
+    expect(wrapper.find('.chapter-jump-empty').text()).toContain('未找到匹配章节')
+
+    // Valid search & item click emits change
+    await input.setValue('205')
+    await wrapper.find('.chapter-jump-item').trigger('click')
+    expect(wrapper.emitted('change')?.[0]).toEqual(['chap_205'])
+
+    wrapper.unmount()
+  })
+
+  it('preserves duplicate chapter ordinals and non-1-based edge labels', async () => {
+    const chapters: Chapter[] = Array.from({ length: 60 }, (_, i) => ({
+      id: `chap_${i}`,
+      index: i === 58 ? 5 : i,
+      title: `话 ${i}`,
+      start: i * 10 + 1,
+      page_count: 10,
+      cover_path: `/cover_${i}.webp`,
+    }))
+
+    const wrapper = mount(ChapterSwitcher, {
+      props: {
+        chapters,
+        activeId: 'chap_30',
+      },
+      attachTo: document.body,
+    })
+
+    const leftEdgeBtn = wrapper.find('button.chapter-edge-jump--start')
+    expect(leftEdgeBtn.find('.chapter-edge-range').text()).toBe('0–13')
+
+    await wrapper.find('.chapter-jump-trigger').trigger('click')
+    await nextTick()
+    await wrapper.find('.chapter-jump-input').setValue('5')
+
+    const exactMatches = wrapper
+      .findAll('.chapter-jump-item')
+      .filter((item) => item.find('.chapter-jump-idx').text() === '5')
+    expect(exactMatches.length).toBe(2)
+
+    wrapper.unmount()
+  })
+
+  it('falls back to sentinel IntersectionObserver when scroll-timeline is unsupported', async () => {
+    const hadCSS = 'CSS' in globalThis
+    const originalCSS = globalThis.CSS
+    const originalIO = globalThis.IntersectionObserver
+
+    let capturedCallback: IntersectionObserverCallback | null = null
+    const observedTargets: Element[] = []
+    const disconnectSpy = vi.fn<() => void>()
+
+    globalThis.CSS = {
+      ...globalThis.CSS,
+      supports: () => false,
+    } as typeof CSS
+
+    globalThis.IntersectionObserver = class MockIO {
+      constructor(cb: IntersectionObserverCallback) {
+        capturedCallback = cb
+      }
+      observe(target: Element) {
+        observedTargets.push(target)
+      }
+      disconnect() {
+        disconnectSpy()
+      }
+      unobserve() {}
+      takeRecords() {
+        return []
+      }
+      readonly root = null
+      readonly rootMargin = ''
+      readonly thresholds = [0]
+    } as unknown as typeof IntersectionObserver
+
+    try {
+      const wrapper = mount(ChapterSwitcher, {
+        props: {
+          chapters: makeChapters(5),
+          activeId: 'chap_3',
+        },
+        attachTo: document.body,
+      })
+
+      await nextTick()
+      expect(observedTargets.length).toBe(2)
+      expect(capturedCallback).toBeTruthy()
+
+      const startSentinel = wrapper.find('.scroll-sentinel--start').element
+      const endSentinel = wrapper.find('.scroll-sentinel--end').element
+
+      capturedCallback!(
+        [
+          { target: startSentinel, isIntersecting: false } as IntersectionObserverEntry,
+          { target: endSentinel, isIntersecting: true } as IntersectionObserverEntry,
+        ],
+        {} as IntersectionObserver,
+      )
+
+      const container = wrapper.find('.chapter-switcher').element as HTMLElement
+      expect(container.dataset.scrollLeft).toBe('true')
+      expect(container.dataset.scrollRight).toBe('false')
+
+      wrapper.unmount()
+      expect(disconnectSpy).toHaveBeenCalled()
+    } finally {
+      if (hadCSS) {
+        globalThis.CSS = originalCSS
+      } else {
+        delete (globalThis as Partial<typeof globalThis>).CSS
+      }
+      globalThis.IntersectionObserver = originalIO
+    }
+  })
 })
