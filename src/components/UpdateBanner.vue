@@ -83,7 +83,6 @@ const isVisible = computed(() => showPrompt.value && !isReaderView.value)
   border-radius: var(--radius-3);
   box-shadow: var(--shadow-2);
   color: var(--ink-0);
-  backdrop-filter: blur(8px);
 }
 
 .banner-stamp {

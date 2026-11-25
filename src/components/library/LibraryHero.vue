@@ -110,13 +110,13 @@ const heroLede = computed(
   grid-template-columns: minmax(17rem, 0.85fr) minmax(22rem, 1.35fr);
   gap: var(--space-8);
   align-items: center;
-  padding-block: var(--space-10) var(--space-8);
+  padding-block: var(--space-7) var(--space-5);
 }
 
 .hero.hero--single {
   grid-template-columns: 1fr;
   max-width: 48rem;
-  padding-block: var(--space-8) var(--space-6);
+  padding-block: var(--space-6) var(--space-4);
 }
 
 .hero h1 {
@@ -222,14 +222,23 @@ const heroLede = computed(
     padding: var(--space-2) var(--space-3);
     min-height: 28px;
     box-sizing: border-box;
+  }
+}
+
+@media (pointer: coarse) {
+  .hero-source-pill {
     position: relative;
   }
 
-  /* 移动端无障碍触控靶心扩展（在保持 28px 精致紧凑视觉的同时提供 ≥44px 点击判定热区） */
+  /* 触控端无障碍触控靶心扩展（在保持精致紧凑视觉的同时提供 ≥44px 点击判定热区） */
   .hero-source-pill::after {
     content: '';
     position: absolute;
-    inset: -8px 0;
+    top: 50%;
+    left: 0;
+    right: 0;
+    transform: translateY(-50%);
+    min-height: var(--target-size);
     pointer-events: auto;
   }
 }

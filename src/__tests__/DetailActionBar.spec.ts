@@ -17,22 +17,18 @@ describe('DetailActionBar', () => {
     customPages: false,
   }
 
-  it('renders "刷新资料" button when refreshing is false', () => {
+  it('renders "刷新资料" menu item inside 更多 menu when refreshing is false', () => {
     const wrapper = mount(DetailActionBar, {
       props: defaultProps,
     })
 
-    const buttons = wrapper.findAll('button')
-    const refreshBtn = buttons.find((btn) =>
-      btn.attributes('title')?.includes('同步作品章节与最新元数据'),
-    )
-    expect(refreshBtn).toBeDefined()
-    expect(refreshBtn?.text()).toContain('刷新资料')
-    expect(refreshBtn?.classes()).not.toContain('is-loading')
-    expect(refreshBtn?.attributes('disabled')).toBeUndefined()
+    const items = wrapper.findAll('[role="menuitem"]')
+    const refreshItem = items.find((item) => item.text().includes('刷新资料'))
+    expect(refreshItem).toBeDefined()
+    expect(refreshItem?.attributes('disabled')).toBeUndefined()
   })
 
-  it('renders spinner and disabled state when refreshing is true', () => {
+  it('disables "刷新资料" and shows refreshing label when refreshing is true', () => {
     const wrapper = mount(DetailActionBar, {
       props: {
         ...defaultProps,
@@ -40,15 +36,10 @@ describe('DetailActionBar', () => {
       },
     })
 
-    const buttons = wrapper.findAll('button')
-    const refreshBtn = buttons.find((btn) =>
-      btn.attributes('title')?.includes('同步作品章节与最新元数据'),
-    )
-    expect(refreshBtn).toBeDefined()
-    expect(refreshBtn?.classes()).toContain('is-loading')
-    expect(refreshBtn?.find('.btn-spinner').exists()).toBe(true)
-    expect(refreshBtn?.attributes('disabled')).toBeDefined()
-    expect(refreshBtn?.attributes('aria-busy')).toBe('true')
+    const items = wrapper.findAll('[role="menuitem"]')
+    const refreshItem = items.find((item) => item.text().includes('刷新中…'))
+    expect(refreshItem).toBeDefined()
+    expect(refreshItem?.attributes('disabled')).toBeDefined()
   })
 
   it('disables "刷新资料" when caching is in progress', () => {
@@ -59,12 +50,10 @@ describe('DetailActionBar', () => {
       },
     })
 
-    const buttons = wrapper.findAll('button')
-    const refreshBtn = buttons.find((btn) =>
-      btn.attributes('title')?.includes('同步作品章节与最新元数据'),
-    )
-    expect(refreshBtn).toBeDefined()
-    expect(refreshBtn?.attributes('disabled')).toBeDefined()
+    const items = wrapper.findAll('[role="menuitem"]')
+    const refreshItem = items.find((item) => item.text().includes('刷新资料'))
+    expect(refreshItem).toBeDefined()
+    expect(refreshItem?.attributes('disabled')).toBeDefined()
   })
 
   it('disables "缓存全部" when refreshing is in progress', () => {
@@ -81,17 +70,15 @@ describe('DetailActionBar', () => {
     expect(cacheBtn?.attributes('disabled')).toBeDefined()
   })
 
-  it('emits refreshMetadata when clicked while enabled', async () => {
+  it('emits refreshMetadata when clicking "刷新资料" in 更多 menu', async () => {
     const wrapper = mount(DetailActionBar, {
       props: defaultProps,
     })
 
-    const buttons = wrapper.findAll('button')
-    const refreshBtn = buttons.find((btn) =>
-      btn.attributes('title')?.includes('同步作品章节与最新元数据'),
-    )
-    expect(refreshBtn).toBeDefined()
-    await refreshBtn?.trigger('click')
+    const items = wrapper.findAll('[role="menuitem"]')
+    const refreshItem = items.find((item) => item.text().includes('刷新资料'))
+    expect(refreshItem).toBeDefined()
+    await refreshItem?.trigger('click')
     expect(wrapper.emitted('refreshMetadata')).toHaveLength(1)
   })
 

@@ -176,7 +176,7 @@ function onCustomBlur() {
         </div>
         <AppButton
           v-if="isInheritingGlobal"
-          variant="ghost"
+          variant="soft"
           size="xs"
           theme="reader"
           class="scope-jump-link"
@@ -422,6 +422,7 @@ function onCustomBlur() {
           <AppButton
             v-if="activeScopeTab === 'comic'"
             variant="ghost"
+            theme="reader"
             size="sm"
             type="button"
             :disabled="isInheritingGlobal"
@@ -429,10 +430,23 @@ function onCustomBlur() {
           >
             恢复跟随全局
           </AppButton>
-          <AppButton v-else variant="ghost" size="sm" type="button" @click="resetGlobalBaseline">
+          <AppButton
+            v-else
+            variant="ghost"
+            theme="reader"
+            size="sm"
+            type="button"
+            @click="resetGlobalBaseline"
+          >
             恢复出厂默认
           </AppButton>
-          <AppButton variant="primary" size="sm" type="button" @click="emit('close')">
+          <AppButton
+            variant="primary"
+            theme="reader"
+            size="sm"
+            type="button"
+            @click="emit('close')"
+          >
             完成
           </AppButton>
         </div>
@@ -475,10 +489,10 @@ function onCustomBlur() {
   font-weight: 500;
   cursor: pointer;
   transition:
-    color 160ms cubic-bezier(0.2, 0, 0, 1),
-    background-color 160ms cubic-bezier(0.2, 0, 0, 1),
-    border-color 160ms cubic-bezier(0.2, 0, 0, 1),
-    box-shadow 160ms cubic-bezier(0.2, 0, 0, 1);
+    color var(--duration-1) var(--ease-out),
+    background-color var(--duration-1) var(--ease-out),
+    border-color var(--duration-1) var(--ease-out),
+    box-shadow var(--duration-1) var(--ease-out);
 }
 
 .scope-tab-btn:hover {
@@ -489,7 +503,7 @@ function onCustomBlur() {
 .scope-tab-btn.is-active {
   color: var(--reader-ink);
   background: var(--reader-bg);
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.45);
+  box-shadow: 0 1px 4px var(--reader-scrim);
   border-color: var(--reader-line-strong);
 }
 
@@ -502,15 +516,15 @@ function onCustomBlur() {
 }
 
 .scope-status-tag.is-strip {
-  background: color-mix(in oklab, var(--accent) 18%, transparent);
-  color: var(--accent);
-  border: 1px solid color-mix(in oklab, var(--accent) 35%, transparent);
+  background: color-mix(in oklab, var(--reader-accent) 18%, transparent);
+  color: var(--reader-accent);
+  border: 1px solid color-mix(in oklab, var(--reader-accent) 35%, transparent);
 }
 
 .scope-status-tag.is-override {
-  background: color-mix(in oklab, var(--warning) 18%, transparent);
-  color: var(--warning);
-  border: 1px solid color-mix(in oklab, var(--warning) 35%, transparent);
+  background: color-mix(in oklab, var(--reader-warning) 18%, transparent);
+  color: var(--reader-warning);
+  border: 1px solid color-mix(in oklab, var(--reader-warning) 35%, transparent);
 }
 
 .scope-status-tag.is-inherited {
@@ -561,20 +575,8 @@ function onCustomBlur() {
 }
 
 .scope-jump-link {
-  background: transparent;
-  border: none;
-  color: var(--accent);
-  font-size: var(--text-xs);
-  cursor: pointer;
-  padding: var(--space-1) var(--space-2);
-  text-decoration: underline;
-  text-underline-offset: 2px;
   white-space: nowrap;
   flex-shrink: 0;
-}
-
-.scope-jump-link:hover {
-  color: var(--accent-strong);
 }
 
 @media (max-width: 480px) {
@@ -617,7 +619,7 @@ function onCustomBlur() {
 .constraint-badge {
   font-family: var(--font-mono);
   font-size: var(--text-caption);
-  color: var(--accent);
+  color: var(--reader-accent);
   background: var(--accent-soft);
   padding: var(--space-badge-y) var(--space-badge-x);
   border-radius: var(--radius-1);
@@ -703,7 +705,7 @@ function onCustomBlur() {
 
 .switch[aria-checked='true']::after {
   translate: calc(var(--control-md) - var(--space-4) - 2 * var(--space-1)) -50%;
-  background: var(--paper-0);
+  background: var(--accent-contrast);
 }
 
 .switch:focus-visible {

@@ -386,8 +386,8 @@ dialog:not([open]) {
   position: absolute;
   inset: 0;
   background: var(--reader-scrim-strong);
-  backdrop-filter: blur(4px);
   -webkit-backdrop-filter: blur(4px);
+  backdrop-filter: blur(4px);
 }
 
 .modal-panel {

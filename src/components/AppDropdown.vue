@@ -1,5 +1,5 @@
 <script setup lang="ts" generic="T extends string | number">
-import { computed, nextTick, ref, useId, useTemplateRef, watch } from 'vue'
+import { computed, getCurrentInstance, nextTick, ref, useId, useTemplateRef, watch } from 'vue'
 import AppIcon from '@/components/AppIcon.vue'
 import AppPopover from '@/components/AppPopover.vue'
 import type { DropdownOption } from '@/types'
@@ -20,6 +20,8 @@ const props = withDefaults(
     block?: boolean
     width?: string
     closeOnSelect?: boolean
+    /** 显式控制是否为可选中模式；缺省时仅在绑定 v-model 或传入非空 modelValue 时启用 */
+    selectable?: boolean
     ariaLabel?: string
   }>(),
   {
@@ -32,6 +34,7 @@ const props = withDefaults(
     block: false,
     width: undefined,
     closeOnSelect: true,
+    selectable: undefined,
     ariaLabel: '下拉菜单',
   },
 )
@@ -41,7 +44,17 @@ const emit = defineEmits<{
   select: [option: DropdownOption<T>]
 }>()
 
-const isSelectMode = computed(() => modelValue.value !== null && modelValue.value !== undefined)
+const instance = getCurrentInstance()
+const hasModelBinding = computed(() => {
+  const vnodeProps = instance?.vnode.props
+  return Boolean(vnodeProps && ('onUpdate:modelValue' in vnodeProps || 'modelValue' in vnodeProps))
+})
+
+const isSelectMode = computed(() => {
+  if (props.selectable !== undefined) return props.selectable
+  if (modelValue.value !== null && modelValue.value !== undefined) return true
+  return hasModelBinding.value
+})
 const hasIcons = computed(() => props.options.some((opt) => !!opt.icon))
 
 const selectedOption = computed(() => {
@@ -130,12 +143,21 @@ function moveToLast() {
 function selectOption(option: DropdownOption<T>) {
   if (option.disabled || option.separator) return
   emit('select', option)
-  modelValue.value = option.key
+  if (isSelectMode.value) {
+    modelValue.value = option.key
+  }
   emit('change', option.key)
   if (props.closeOnSelect) {
     isOpen.value = false
   }
 }
+
+const triggerAttrs = computed(() => ({
+  'aria-haspopup': isSelectMode.value ? ('listbox' as const) : ('menu' as const),
+  'aria-expanded': isOpen.value,
+  'aria-controls': listboxId,
+  onKeydown: onTriggerKeydown,
+}))
 
 function onTriggerKeydown(event: KeyboardEvent) {
   if (props.disabled) return
@@ -191,6 +213,7 @@ function onTriggerKeydown(event: KeyboardEvent) {
         :selected="selectedOption"
         :label="triggerText"
         :target-id="targetId"
+        :trigger-attrs="triggerAttrs"
       >
         <button
           class="dropdown-trigger btn"
@@ -199,7 +222,7 @@ function onTriggerKeydown(event: KeyboardEvent) {
             [`btn-${size}`]: true,
           }"
           type="button"
-          :aria-haspopup="'listbox'"
+          :aria-haspopup="isSelectMode ? 'listbox' : 'menu'"
           :aria-expanded="open"
           :aria-controls="listboxId"
           :disabled="disabled"

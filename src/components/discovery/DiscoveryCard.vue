@@ -306,10 +306,24 @@ function retryCover() {
     border-color var(--duration-1) var(--ease-out);
 }
 
-.discovery-card:hover {
-  transform: translateY(-2px);
-  box-shadow: var(--shadow-2);
-  border-color: color-mix(in oklab, var(--accent) 30%, var(--line));
+@media (hover: hover) {
+  .discovery-card:hover {
+    transform: translateY(-2px);
+    box-shadow: var(--shadow-2);
+    border-color: color-mix(in oklab, var(--accent) 30%, var(--line));
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .discovery-card {
+    transition:
+      box-shadow var(--duration-2) var(--ease-out),
+      border-color var(--duration-1) var(--ease-out);
+  }
+
+  .discovery-card:hover {
+    transform: none;
+  }
 }
 
 .card-cover-wrapper {
@@ -506,11 +520,11 @@ function retryCover() {
 
 .mirror-seal {
   position: absolute;
-  top: var(--space-2);
-  right: var(--space-2);
+  bottom: var(--space-2);
+  left: var(--space-2);
   display: inline-flex;
   align-items: center;
-  padding: var(--space-0-5) var(--space-1);
+  padding: var(--space-0-5) var(--space-1-5);
   border-radius: var(--radius-1);
   font-family: var(--font-body);
   font-size: var(--text-caption);
@@ -518,7 +532,7 @@ function retryCover() {
   background: color-mix(in oklab, var(--amber) 88%, var(--reader-bg));
   color: var(--accent-contrast);
   z-index: var(--z-card-stamp);
-  box-shadow: 0 1px 3px rgb(0 0 0 / 18%);
+  box-shadow: var(--shadow-1);
 }
 
 .mirror-action-split {
@@ -527,10 +541,10 @@ function retryCover() {
   width: 100%;
 }
 
-.mirror-btn {
+.mirror-action-split .mirror-btn {
   flex: 1;
   min-width: 0;
-  font-size: var(--text-caption) !important;
+  font-size: var(--text-caption);
 }
 
 .mirror-ingest-btn {
@@ -566,7 +580,7 @@ function retryCover() {
     border-color var(--duration-1) var(--ease-out),
     transform var(--duration-1) var(--ease-out),
     box-shadow var(--duration-1) var(--ease-out);
-  z-index: 2;
+  z-index: var(--z-card-stamp);
 }
 
 .cover-action-trigger:hover {
@@ -589,10 +603,9 @@ function retryCover() {
   font-size: var(--text-caption);
   font-weight: 500;
   color: var(--accent-contrast);
-  background: rgb(0 0 0 / 65%);
-  backdrop-filter: blur(4px);
-  border: 1px solid rgb(255 255 255 / 20%);
-  box-shadow: 0 2px 4px rgb(0 0 0 / 25%);
+  background: var(--reader-scrim-strong);
+  border: 1px solid var(--reader-line-strong);
+  box-shadow: var(--shadow-1);
   cursor: pointer;
   transition:
     background-color var(--duration-1) var(--ease-out),
@@ -600,14 +613,27 @@ function retryCover() {
     border-color var(--duration-1) var(--ease-out),
     transform var(--duration-1) var(--ease-out),
     box-shadow var(--duration-1) var(--ease-out);
-  z-index: 2;
+  z-index: var(--z-card-stamp);
 }
 
 .cover-toggle-overlay-btn:hover {
-  background: rgb(0 0 0 / 85%);
+  background: var(--reader-bg);
   color: var(--accent-contrast);
   border-color: var(--accent);
   transform: translateY(-1px);
+}
+
+@media (pointer: coarse) {
+  .cover-action-trigger::before,
+  .cover-toggle-overlay-btn::before {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    min-width: var(--target-size);
+    min-height: var(--target-size);
+  }
 }
 
 .cover-image-wrap {

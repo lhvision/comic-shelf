@@ -192,10 +192,11 @@ onAuthSuccess(fetchProviders)
         type="button"
         class="guest-roster-btn"
         title="打开访客簿，管理与印发专属通行证"
+        aria-label="打开访客簿"
         @click="handleOpenGuestModal"
       >
         <AppIcon name="users" size="xs" :stroke-width="1.8" />
-        <span class="guest-roster-label">〔 访客簿 〕</span>
+        <span class="guest-roster-label">访客簿</span>
       </button>
 
       <!-- 访客借阅凭证卡（仅持证访客可见，零馆长痕迹） -->
@@ -207,10 +208,11 @@ onAuthSuccess(fetchProviders)
         type="button"
         class="auth-badge-btn curator"
         title="馆长管理中（点击退出登录回到门禁）"
+        aria-label="馆长已入座，点击退出登录"
         @click="logout"
       >
         <AppIcon name="unlock" size="xs" :stroke-width="2" />
-        <span class="auth-label">〔 馆长已入座 〕</span>
+        <span class="auth-label">馆长已入座</span>
       </button>
     </div>
     <GuestModal v-if="canWrite && guestModalEverOpened" />
@@ -221,7 +223,7 @@ onAuthSuccess(fetchProviders)
 .site-header {
   position: sticky;
   top: 0;
-  z-index: 40;
+  z-index: var(--z-header);
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -229,9 +231,9 @@ onAuthSuccess(fetchProviders)
   min-height: var(--header-h);
   padding: 0 var(--page-pad);
   border-bottom: 1px solid var(--line);
-  background: color-mix(in oklab, var(--paper-0) 82%, transparent);
-  -webkit-backdrop-filter: blur(14px);
-  backdrop-filter: blur(14px);
+  background: color-mix(in oklab, var(--paper-0) 84%, transparent);
+  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(12px);
   contain: layout style;
   isolation: isolate;
   transform: translateZ(0);
@@ -260,7 +262,7 @@ onAuthSuccess(fetchProviders)
   width: 2.25rem;
   height: 2.25rem;
   object-fit: contain;
-  border-radius: 0.5rem;
+  border-radius: var(--radius-2);
   background: color-mix(in oklab, var(--ink-0) 6%, transparent);
   transition: rotate var(--duration-2) var(--ease-spring);
   flex-shrink: 0;
@@ -487,6 +489,12 @@ onAuthSuccess(fetchProviders)
   background: color-mix(in oklab, var(--accent) 22%, var(--paper-0));
 }
 
+@media (max-width: 1024px) {
+  .header-note {
+    display: none;
+  }
+}
+
 @media (max-width: 680px) {
   .site-header {
     gap: var(--space-2);
@@ -499,10 +507,6 @@ onAuthSuccess(fetchProviders)
 
   .header-right {
     gap: var(--space-2);
-  }
-
-  .header-note {
-    display: none;
   }
 
   .site-nav {

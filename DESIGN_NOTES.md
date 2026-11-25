@@ -59,7 +59,7 @@
 ### 1.2 显式禁止清单（Anti-Patterns & Slop Redlines）
 
 - ❌ **严禁紫色渐变 / 霓虹极光**（严禁 AI 高频模板默认的紫蓝渐变背景与发光描边）；
-- ❌ **严禁玻璃拟态堆叠**（严禁全屏滥用重度 `backdrop-filter: blur` 造成文字亚像素发虚与层次混乱）；
+- ❌ **严禁玻璃拟态堆叠**（禁止多层叠加模糊或在长列表卡片上高频使用；允许顶栏、弹窗遮罩与阅读器悬浮控制台采用克制的单层磨砂以体现现代层次感，避免造成文字亚像素发虚与 GPU 卡顿）；
 - ❌ **严禁 Unicode 伪字符 / Emoji 当图标**（严禁 `'✕'`, `'✓'`, `'×'`, `'⋯'`, `'←'`, `'→'` 或手写内联 SVG，全站统一基于 `src/components/icons/` 矢量单源扩展）；
 - ❌ **严禁无节制的巨型圆角胶囊**（限制为系统统一的 4 档 Radius 规范）；
 - ❌ **严禁无意义的英文 Eyebrow 标签**（如在主标题上生硬堆砌小写灰色英文造成视觉噪音）；
@@ -75,9 +75,9 @@
 
 - **纸张底色（Paper）**：`--paper-0`（纯白卡片）、`--paper-1`（暖纸底色）、`--paper-2`（深层纸背）、`--paper-warm`（泛黄书页质感）；
 - **墨色层级（Ink）**：`--ink-0`（主标题浓墨）、`--ink-1`（正文浓淡）、`--ink-2`（次要信息与元数据淡墨）、`--ink-3`（边框淡墨与分割线）；
-- **品牌点缀（Accent）**：`--accent`（朱砂朱红 `oklch(0.59 0.17 38)`）、`--accent-soft`（朱砂印泥淡底）、`--accent-strong`（深朱砂选中态）、`--accent-contrast`（`#fff8f2`，朱砂主色背景上的高对比反衬文本色）；
-- **状态感知（Status）**：`--success`（松石绿已缓存/就绪态）、`--danger`（朱红警示与危险操作）、`--line`（纸质装订压痕线）；
-- **阅览室暗室（Reader Dark Room）**：`--reader-bg`（纯黑暗室底）、`--reader-panel`（暗调磨砂控制面板）、`--reader-text`（防刺眼高对比柔白）。
+- **品牌点缀（Accent）**：`--accent`（朱砂朱红 `oklch(0.59 0.17 38)`）、`--accent-soft`（朱砂印泥淡底，含深色模式适配）、`--accent-strong`（深朱砂选中态）、`--accent-contrast`（`#fff8f2`，朱砂/实底状态背景上的高对比反衬文本色——深色模式下严禁用 `--paper-0` 代替）；
+- **状态感知（Status）**：`--success`（松石绿已缓存/就绪态）、`--warning`（琥珀警示态）、`--danger` / `--danger-soft`（朱红警示与危险操作，均含深色模式低晕光适配）、`--line`（纸质装订压痕线）；
+- **阅览室暗室（Reader Dark Room）**：`--reader-bg`（纯黑暗室底）、`--reader-panel`（暗调磨砂控制面板）、`--reader-text`（防刺眼高对比柔白）、`--reader-accent`（暗房提亮朱砂）、`--reader-warning`（暗房提亮琥珀）；
 
 ### 2.2 间距与字阶体系（Spacing & Typography）
 
@@ -345,7 +345,7 @@
 
 - **滚动逃逸根治**：页面索引与书架网格彻底废除长距离 `useIntersectionObserver` 引起的贪婪无节制自动追加，避免读者在浏览时纵向滚动条持续失控伸长；
 - **尾格余量折叠卡与单源焦点**：
-  1. **页面索引（PageIndexGrid）**：超出首屏预算的画页在网格末尾以独立的 `.page-fold-card`（保留 `.page-tile-overflow` 兼容）收纳卡呈现，视觉与交互完全与书架函套卡对齐（朱砂徽印、标题说明、主步进 `btn-primary`、展开全部 `btn-ghost` 与收拢出口）；面对超大画卷（如 900+ 拆帧）统一接入 `DEFAULT_LOAD_ALL_CAP = 120` 顶线保护，梯次顺延展开；折叠卡采用紧凑 `btn-xs` 与次级操作并排布局（`.fold-card-sub-actions`），精简等宽副标题（`已展现 N 页 · 余 M 页`），确保在 `aspect-ratio: 3 / 4.15` 缩略图卡位内盒模型呼吸充裕、零垂直溢出；折叠态严禁在网格外部同时渲染底部控制条（消除认知混淆与双重控件），仅在全量展开后于底部呈现 `.page-sentinel` 典雅收整条；严禁以透明蒙层盖死最后一个内容画页，彻底杜绝 DOM `RouterLink` 幽灵焦点与读屏语音冲突；
+  1. **页面索引（PageIndexGrid）**：超出首屏预算的画页在网格末尾以独立的 `.page-fold-card`（保留 `.page-tile-overflow` 兼容）收纳卡呈现，视觉与交互与书架函套卡对齐；为保持约 `120×166px` 窄缩略图格内零拥挤与零行高畸变，折叠卡内仅保留单个主步进按钮「再展开 N 页」，将「展开全部」与「收起画卷」统一收敛至底部 `.page-sentinel` 控制条（两者职责正交、零重复控件），面对超大画卷接入 `DEFAULT_LOAD_ALL_CAP = 120` 顶线保护；严禁以透明蒙层盖死最后一个内容画页，彻底杜绝 DOM `RouterLink` 幽灵焦点与读屏语音冲突；
   2. **书架网格（ComicGrid）**：未展开藏书在网格末尾以函套收纳卡（`.shelf-fold-card`）呈现，严格采用 `var(--radius-3)` 与 26rem 最小高度，彻底根治单卡成行时的断层塌陷；全部展开后底部呈现 `.shelf-sentinel` 单按钮收整书架；
 - **尺寸插值与溢出标签顶层浮层演进（interpolate-size & Overflow Tag Popover）**：
   1. **尾部归档抽屉插值**：位于书架尾部、不推挤复杂图形卡片的归档专匣（`.archive-drawer-body`）采用 `interpolate-size: allow-keywords; height: 0 ⇄ auto;` 实现平滑展开，并通过 `@supports not` 降级；
@@ -354,7 +354,7 @@
   4. **常驻合成层与滤镜瘦身铁律（Zero Idle VT Footprint & De-blurred Stamps）**：网格卡片禁止常驻绑定静态 `viewTransitionName`（仅在激活/点击目标上动态挂载 `comic-cover-active`），避免 Blink 为全架数十张卡片在位移时维护独立合成快照图层；大面积位移重排的微标印章（`.id-stamp`、`.match-stamp`、`.reading-stamp`）严禁滥用 `backdrop-filter: blur(...)`，改用高感知半透明墨色背景（`color-mix(in oklab, var(--ink-0) 88%, transparent)`）配合微阴影，彻底消除低配核显与软解模式下的每秒数千次高斯模糊重采样卡顿；吸顶栏增加 `contain: layout style; isolation: isolate;`，全屏水印增加 `contain: strict; will-change: opacity;`；
 - **网格长列表禁绝 `<TransitionGroup>`（No TransitionGroup on Mass Grids）**：书架（`comic-grid`）、画页（`page-grid`）与章节目录（`chapter-grid`）等大容量动态网格全面废除 `<TransitionGroup>`（及其遗留的 `.leave-active` 绝对定位反模式），统一采用原生标准 `<div>` 容器 + 现代 CSS `@starting-style` 合成器补间，彻底杜绝 FLIP 算法与 render 阶段子节点连环 `getBoundingClientRect` 测量的强制同步重排；
 - **触控靶心底线与防迷航回滚**：
-  1. **移动端 WCAG 2.5.5 与次级操作并列（Mobile Action Row Layout）**：在 `max-width: 680px` 下，所有折叠步进与全量展开按钮强制保底 `min-height: 44px;`；次级操作（展开全部与收拢归档）收敛于 `.fold-card-sub-actions` 并列容器中横向均分并排呈现，彻底根治移动端纵向堆叠导致的 48px 异常拉伸与画页视野挤占；
+  1. **移动端 WCAG 2.5.5 与折叠卡片防畸变**：在 `max-width: 680px` 下，所有折叠步进与全量展开按钮保底 `min-height: var(--control-md)`（44px）；窄画页折叠卡保持 `aspect-ratio: 3 / 4.15` 单按钮排布，次级操作（展开全部与收起画卷）统一由 `.page-sentinel` 底部控制条承载，根治画页网格行高畸变；
   2. **视口锚点自愈与动效无障碍（Reduced Motion Adaptation）**：点击收起时通过 `@/utils/is` 的 `prefersReducedMotion()` 探测读者系统动效偏好，在开启减少动效时以 `behavior: 'auto'` 瞬间就位，关闭时以 `behavior: 'smooth'` 平滑回退至网格顶部锚点，兼顾防迷航与前庭功能障碍读者的视觉舒适度。
 
 <a id="sec-56"></a>

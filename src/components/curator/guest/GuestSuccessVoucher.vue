@@ -61,7 +61,7 @@ async function handleCopyToken() {
 
     <div class="voucher-actions">
       <AppButton
-        variant="soft"
+        :variant="copiedLink ? 'success' : 'soft'"
         size="md"
         block
         class="hero-btn primary voucher-hero-btn"
@@ -73,7 +73,7 @@ async function handleCopyToken() {
       </AppButton>
 
       <AppButton
-        variant="ghost"
+        :variant="copiedToken ? 'success' : 'ghost'"
         size="md"
         block
         class="hero-btn secondary voucher-hero-btn"
@@ -172,43 +172,33 @@ async function handleCopyToken() {
     color var(--duration-2) var(--ease-out);
 }
 
-.hero-btn.primary {
+.hero-btn.primary:not(.btn-success) {
   background: color-mix(in oklab, var(--accent) 10%, var(--paper-0));
   border: 1px solid color-mix(in oklab, var(--accent) 30%, var(--line));
   color: var(--accent);
   font-weight: 600;
 }
 
-.hero-btn.primary:hover {
+.hero-btn.primary:not(.btn-success):hover {
   background: var(--accent);
-  color: var(--paper-0);
+  color: var(--accent-contrast);
   border-color: var(--accent);
 }
 
-.hero-btn.secondary {
+.hero-btn.secondary:not(.btn-success) {
   background: var(--paper-1);
   border: 1px dashed var(--line);
   color: var(--ink-1);
   font-family: var(--font-mono);
 }
 
-.hero-btn.secondary:hover {
+.hero-btn.secondary:not(.btn-success):hover {
   border-color: var(--ink-0);
   color: var(--ink-0);
 }
 
 .hero-btn.copied {
-  border-color: color-mix(in oklab, var(--success) 45%, transparent) !important;
-  background: color-mix(in oklab, var(--success) 8%, var(--paper-0)) !important;
-  color: var(--success) !important;
-  border-style: solid !important;
   font-weight: 600;
-}
-
-.hero-btn.copied:hover {
-  border-color: color-mix(in oklab, var(--success) 60%, transparent) !important;
-  background: color-mix(in oklab, var(--success) 14%, var(--paper-0)) !important;
-  color: var(--success) !important;
 }
 
 .voucher-hero-btn {

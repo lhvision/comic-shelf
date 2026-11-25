@@ -272,7 +272,7 @@ defineExpose({
 .day-pill.active {
   background: var(--accent);
   border-color: var(--accent);
-  color: var(--paper-0);
+  color: var(--accent-contrast);
   font-weight: 600;
 }
 

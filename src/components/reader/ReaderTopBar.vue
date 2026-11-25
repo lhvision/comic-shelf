@@ -49,7 +49,10 @@ defineEmits<{
   position: absolute;
   inset: 0 0 auto;
   z-index: 5;
-  background: linear-gradient(var(--reader-scrim-strong), transparent);
+  background: color-mix(in oklab, var(--reader-bg) 78%, transparent);
+  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(12px);
+  border-bottom: 1px solid var(--reader-line-soft);
   transition:
     opacity var(--duration-2) var(--ease-out),
     translate var(--duration-2) var(--ease-out),

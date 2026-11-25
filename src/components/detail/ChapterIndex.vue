@@ -94,7 +94,6 @@ watch(
   <section ref="indexWrapEl" class="chapter-index" aria-labelledby="chapter-index-title">
     <div class="chapter-index-head">
       <div>
-        <p class="eyebrow">Table of contents</p>
         <h2 id="chapter-index-title">章节目录</h2>
       </div>
       <div class="chapter-index-head-actions">
@@ -102,7 +101,7 @@ watch(
         <AppButton
           v-if="canWrite"
           variant="ghost"
-          size="xs"
+          size="sm"
           icon="plus"
           type="button"
           title="为本作品追加新一话章节"

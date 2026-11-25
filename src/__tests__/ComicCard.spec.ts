@@ -145,4 +145,43 @@ describe('ComicCard component', () => {
     expect(readingStamp.exists()).toBe(true)
     expect(readingStamp.text()).toBe('5P / 2846P')
   })
+
+  it('keeps match-stamp click isolated from outer card-link navigation', async () => {
+    const comic = createSampleComic({
+      source: 'jm',
+      source_id: '998877',
+      display_id: 'JM998877',
+    })
+
+    const wrapper = mount(ComicCard, {
+      props: {
+        comic,
+        searchMatch: { bestMatchPage: 12, bestScore: 0.92 },
+      },
+      global: {
+        stubs: {
+          RouterLink: {
+            props: ['to'],
+            template: '<a :href="String(to)"><slot /></a>',
+          },
+          AppTextClamp: true,
+          FavoriteButton: true,
+        },
+      },
+    })
+
+    const outerLink = wrapper.find('a.card-link')
+    const matchStamp = wrapper.find('a.match-stamp')
+    expect(outerLink.exists()).toBe(true)
+    expect(matchStamp.exists()).toBe(true)
+    expect(matchStamp.attributes('href')).toBe('/comic/jm/998877/read/12')
+    expect(outerLink.element.contains(matchStamp.element)).toBe(true)
+
+    let outerClicked = false
+    outerLink.element.addEventListener('click', () => {
+      outerClicked = true
+    })
+    await matchStamp.trigger('click')
+    expect(outerClicked).toBe(false)
+  })
 })

@@ -298,7 +298,9 @@ watch([() => store.error, imageSearch.error], ([err1, err2]) => {
     <section class="shelf container" aria-labelledby="shelf-title">
       <div class="shelf-head">
         <div>
-          <h2 id="shelf-title">{{ shelfTitle }}</h2>
+          <h2 id="shelf-title" :class="{ 'is-source-scoped': Boolean(activeSource) }">
+            {{ shelfTitle }}
+          </h2>
         </div>
 
         <div ref="searchContainerEl" class="search-container">
@@ -337,7 +339,7 @@ watch([() => store.error, imageSearch.error], ([err1, err2]) => {
               class="camera-btn"
               shape="circle"
               variant="ghost"
-              size="md"
+              size="sm"
               icon="camera"
               :class="{
                 'is-muted': !imageSearch.isAvailable.value,
@@ -466,7 +468,7 @@ watch([() => store.error, imageSearch.error], ([err1, err2]) => {
 }
 
 .shelf {
-  padding-top: var(--space-6);
+  padding-top: var(--space-4);
 }
 
 .shelf-head {
@@ -476,12 +478,17 @@ watch([() => store.error, imageSearch.error], ([err1, err2]) => {
   grid-template-columns: auto minmax(16rem, 26rem) auto;
   gap: var(--space-4);
   align-items: end;
-  padding-bottom: var(--space-5);
+  padding-bottom: var(--space-4);
   border-bottom: 1px solid var(--line-strong);
 }
 
 .shelf-head h2 {
   font-size: var(--text-2xl);
+}
+
+.shelf-head h2.is-source-scoped {
+  font-size: var(--text-lg);
+  color: var(--ink-1);
 }
 
 .search-container {
@@ -512,18 +519,7 @@ watch([() => store.error, imageSearch.error], ([err1, err2]) => {
 
 .camera-btn {
   flex-shrink: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 44px;
-  min-height: 44px;
-  width: 2.25rem;
-  height: 2.25rem;
   color: var(--ink-2);
-  transition:
-    color var(--duration-2) var(--ease-out),
-    opacity var(--duration-2) var(--ease-out);
-  cursor: pointer;
 }
 
 .camera-btn:hover {
@@ -536,11 +532,6 @@ watch([() => store.error, imageSearch.error], ([err1, err2]) => {
 
 .camera-btn.is-muted:hover {
   opacity: 0.9;
-}
-
-.camera-btn.is-loading {
-  opacity: 0.35;
-  cursor: wait;
 }
 
 .sort-field {

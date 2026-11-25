@@ -262,14 +262,13 @@ if (import.meta.env.DEV) {
   min-height: var(--control-lg);
 }
 
-/* 图标按钮 ghost 变体质感（对齐旧 .icon-btn 典藏质感） */
+/* 图标按钮 ghost 变体质感（实墨暖纸轻透底，避免长列表全量高频 blur） */
 .btn-shape-circle.btn-ghost,
 .btn-shape-square.btn-ghost {
   border: 1px solid var(--line);
-  background: color-mix(in oklab, var(--paper-0) 82%, transparent);
+  background: color-mix(in oklab, var(--paper-0) 92%, transparent);
   color: var(--ink-1);
   box-shadow: var(--shadow-1);
-  backdrop-filter: blur(8px);
 }
 
 .btn-shape-circle.btn-ghost:hover:not(.is-disabled):not(:disabled),
@@ -281,11 +280,12 @@ if (import.meta.env.DEV) {
 }
 
 /* 链接多态下的禁用态表现 */
-.btn.is-disabled {
+.btn.is-disabled,
+.btn.is-disabled:hover {
   cursor: not-allowed;
   opacity: 0.55;
-  transform: none !important;
-  box-shadow: none !important;
+  transform: none;
+  box-shadow: none;
   pointer-events: auto;
 }
 
@@ -335,22 +335,24 @@ if (import.meta.env.DEV) {
 }
 
 @media (pointer: coarse) {
-  .btn-shape-circle.btn-md,
-  .btn-shape-square.btn-md,
-  .is-icon-only.btn-md {
-    position: relative;
-  }
-
-  .btn-shape-circle.btn-md::before,
-  .btn-shape-square.btn-md::before,
-  .is-icon-only.btn-md::before {
+  .btn-xs::before,
+  .btn-sm::before,
+  .btn-shape-circle::before,
+  .btn-shape-square::before,
+  .is-icon-only::before {
     content: '';
     position: absolute;
     top: 50%;
     left: 50%;
     transform: translate(-50%, -50%);
-    min-width: var(--target-size);
+    min-width: 100%;
     min-height: var(--target-size);
+  }
+
+  .btn-shape-circle::before,
+  .btn-shape-square::before,
+  .is-icon-only::before {
+    min-width: var(--target-size);
   }
 }
 </style>

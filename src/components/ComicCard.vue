@@ -218,6 +218,8 @@ const effectiveCover = computed(() => {
   border: 1px solid var(--line);
   box-shadow: var(--shadow-1);
   overflow: hidden;
+  color: inherit;
+  text-decoration: none;
   transition:
     translate var(--duration-2) var(--ease-out),
     box-shadow var(--duration-2) var(--ease-out),
@@ -231,6 +233,11 @@ const effectiveCover = computed(() => {
   translate: 0 -0.35rem;
   border-color: var(--line-strong);
   box-shadow: var(--shadow-2);
+}
+
+.card-link:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 
 .cover-deck {
@@ -248,14 +255,16 @@ const effectiveCover = computed(() => {
 
 .deck-leaf {
   position: absolute;
-  inset: 7% 16% 0;
+  inset: 7% 13% 0;
   border-radius: var(--radius-2);
   background-color: color-mix(in oklab, var(--paper-2) 88%, var(--ink-2) 12%);
   overflow: hidden;
   border: 1px solid color-mix(in oklab, var(--ink-0) 12%, transparent);
   transform-origin: center bottom;
-  opacity: 0.48;
-  transition: transform var(--duration-3) var(--ease-out);
+  opacity: 0.65;
+  transition:
+    transform var(--duration-3) var(--ease-out),
+    opacity var(--duration-2) var(--ease-out);
 }
 
 .deck-leaf-img {
@@ -267,33 +276,37 @@ const effectiveCover = computed(() => {
 }
 
 .deck-leaf[data-deck-index='0'] {
-  transform: translateX(-13%) rotate(5deg);
+  transform: translateY(-4px) scale(0.96);
 }
 
 .deck-leaf[data-deck-index='1'] {
-  transform: translateX(0) rotate(0deg) translateY(3%);
+  transform: translateY(-8px) scale(0.92);
 }
 
 .deck-leaf[data-deck-index='2'] {
-  transform: translateX(13%) rotate(-5deg) translateY(6%);
+  transform: translateY(0) scale(0.9);
+  opacity: 0;
 }
 
 .comic-card:hover .deck-leaf[data-deck-index='0'],
 .comic-card:focus-within .deck-leaf[data-deck-index='0'],
 .card-link:focus-visible .deck-leaf[data-deck-index='0'] {
-  transform: translateX(-16%) rotate(7deg);
+  opacity: 0.85;
+  transform: translateX(-14%) rotate(5deg) scale(0.96);
 }
 
 .comic-card:hover .deck-leaf[data-deck-index='1'],
 .comic-card:focus-within .deck-leaf[data-deck-index='1'],
 .card-link:focus-visible .deck-leaf[data-deck-index='1'] {
-  transform: translateX(0) rotate(0deg) translateY(4%);
+  opacity: 0.85;
+  transform: translateY(-6%) scale(0.96);
 }
 
 .comic-card:hover .deck-leaf[data-deck-index='2'],
 .comic-card:focus-within .deck-leaf[data-deck-index='2'],
 .card-link:focus-visible .deck-leaf[data-deck-index='2'] {
-  transform: translateX(16%) rotate(-7deg) translateY(8%);
+  opacity: 0.85;
+  transform: translateX(14%) rotate(-5deg) scale(0.96);
 }
 
 .cover-front {
@@ -314,14 +327,37 @@ const effectiveCover = computed(() => {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .card-link:hover,
+  .card-link,
+  .deck-leaf,
+  .cover-front {
+    transition: none;
+  }
+
+  .comic-card:hover .card-link,
+  .comic-card:focus-within .card-link,
   .card-link:focus-visible {
     translate: none;
   }
 
-  .deck-leaf,
-  .cover-front {
-    transition: none;
+  .comic-card:hover .deck-leaf[data-deck-index='0'],
+  .comic-card:focus-within .deck-leaf[data-deck-index='0'],
+  .card-link:focus-visible .deck-leaf[data-deck-index='0'] {
+    opacity: 0.65;
+    transform: translateY(-4px) scale(0.96);
+  }
+
+  .comic-card:hover .deck-leaf[data-deck-index='1'],
+  .comic-card:focus-within .deck-leaf[data-deck-index='1'],
+  .card-link:focus-visible .deck-leaf[data-deck-index='1'] {
+    opacity: 0.65;
+    transform: translateY(-8px) scale(0.92);
+  }
+
+  .comic-card:hover .deck-leaf[data-deck-index='2'],
+  .comic-card:focus-within .deck-leaf[data-deck-index='2'],
+  .card-link:focus-visible .deck-leaf[data-deck-index='2'] {
+    opacity: 0;
+    transform: translateY(0) scale(0.9);
   }
 
   .comic-card:hover .cover-front,
@@ -382,7 +418,7 @@ const effectiveCover = computed(() => {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  z-index: 2;
+  z-index: var(--z-card-stamp);
 }
 
 .match-stamp {
@@ -394,7 +430,7 @@ const effectiveCover = computed(() => {
   gap: var(--space-1);
   padding: var(--space-0-5) var(--space-2);
   background: color-mix(in oklab, var(--accent) 92%, black 8%);
-  color: var(--paper-0);
+  color: var(--accent-contrast);
   border: 1px solid color-mix(in oklab, var(--paper-0) 30%, transparent);
   border-radius: var(--radius-1);
   font-family: var(--font-mono);
@@ -404,7 +440,7 @@ const effectiveCover = computed(() => {
   font-weight: 600;
   text-decoration: none;
   box-shadow: var(--shadow-1);
-  z-index: 2;
+  z-index: 6;
   transition: opacity var(--duration-1) var(--ease-out);
 }
 
@@ -477,7 +513,7 @@ const effectiveCover = computed(() => {
   font-size-adjust: ch-width 0.48;
   letter-spacing: 0.04em;
   font-weight: 500;
-  z-index: 2;
+  z-index: var(--z-card-stamp);
   box-shadow: var(--shadow-1);
   overflow: hidden;
   text-overflow: ellipsis;
@@ -500,19 +536,7 @@ const effectiveCover = computed(() => {
 
 .reading-stamp.is-reading {
   background: color-mix(in oklab, var(--accent) 92%, black 8%);
-  color: var(--paper-0);
-  border: 1px solid color-mix(in oklab, var(--paper-0) 28%, transparent);
-}
-
-.comic-card[data-completed='true'] .card-link {
-  opacity: 0.82;
-  filter: grayscale(0.12);
-}
-
-.comic-card[data-completed='true']:hover .card-link,
-.comic-card[data-completed='true']:focus-within .card-link,
-.comic-card[data-completed='true'] .card-link:focus-visible {
-  opacity: 1;
-  filter: none;
+  color: var(--accent-contrast);
+  border: 1px solid color-mix(in oklab, var(--accent-contrast) 28%, transparent);
 }
 </style>

@@ -531,7 +531,6 @@ function handleThumbLoad(page: number, e: Event) {
   inset: 0;
   z-index: calc(var(--z-dropdown, 35) - 1);
   background: var(--reader-scrim-soft);
-  backdrop-filter: blur(2px);
   cursor: pointer;
 }
 
@@ -544,7 +543,8 @@ function handleThumbLoad(page: number, e: Event) {
   display: flex;
   flex-direction: column;
   background: var(--reader-scrim-strong);
-  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(18px);
+  backdrop-filter: blur(18px);
   border-top: 1px solid var(--reader-line-strong);
   box-shadow: 0 -12px 36px var(--reader-backdrop);
   user-select: none;
@@ -572,11 +572,11 @@ function handleThumbLoad(page: number, e: Event) {
 .filmstrip-label {
   font-weight: 600;
   letter-spacing: 0.04em;
-  color: var(--accent);
+  color: var(--reader-accent);
 }
 
 .filmstrip-chapter-title {
-  max-width: 200px;
+  max-width: 12.5rem;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -594,6 +594,7 @@ function handleThumbLoad(page: number, e: Event) {
 }
 
 .filmstrip-chap-btn {
+  position: relative;
   display: inline-flex;
   align-items: center;
   gap: var(--space-1);
@@ -613,6 +614,7 @@ function handleThumbLoad(page: number, e: Event) {
 }
 
 .filmstrip-close-btn {
+  position: relative;
   width: var(--control-sm);
   height: var(--control-sm);
   display: grid;
@@ -629,7 +631,7 @@ function handleThumbLoad(page: number, e: Event) {
   background: var(--reader-surface-hover);
 }
 
-/* 核心滚动轨 */
+/* 核心滚动轨：显式点击居中由 JS 控制 smooth，拖拽与滚轮保持零粘滞跟手 */
 .filmstrip-rail {
   display: flex;
   align-items: center;
@@ -638,7 +640,6 @@ function handleThumbLoad(page: number, e: Event) {
     max(var(--space-2), env(safe-area-inset-bottom)) max(var(--space-4), env(safe-area-inset-left));
   overflow-x: auto;
   overflow-y: hidden;
-  scroll-behavior: smooth;
   scrollbar-width: thin;
   scrollbar-color: var(--reader-line) transparent;
 }
@@ -676,8 +677,8 @@ function handleThumbLoad(page: number, e: Event) {
 /* 单张胶片单元 */
 .filmstrip-tile {
   position: relative;
-  width: 52px;
-  height: 68px;
+  width: 3.25rem;
+  height: 4.25rem;
   border-radius: var(--radius-1);
   overflow: hidden;
   background: var(--reader-page-bg);
@@ -744,7 +745,7 @@ function handleThumbLoad(page: number, e: Event) {
   background: var(--reader-scrim-strong);
   color: var(--reader-ink);
   font-family: var(--font-mono);
-  font-size: 0.625rem;
+  font-size: var(--text-caption);
   line-height: 1.2;
 }
 
@@ -775,10 +776,23 @@ function handleThumbLoad(page: number, e: Event) {
   }
 }
 
+@media (pointer: coarse) {
+  .filmstrip-chap-btn::before,
+  .filmstrip-close-btn::before {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    min-width: var(--target-size);
+    min-height: var(--target-size);
+  }
+}
+
 @media (max-width: 680px) {
   .filmstrip-tile {
-    width: 44px;
-    height: 58px;
+    width: 2.75rem;
+    height: 3.625rem;
   }
 
   .filmstrip-chap-btn {

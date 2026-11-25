@@ -74,7 +74,7 @@ function handleInc() {
           aria-label="减少下载并发"
           @click="handleDec"
         >
-          −
+          <AppIcon name="minus" size="xs" />
         </button>
         <span class="stepper__value">{{ concurrency }}</span>
         <button
@@ -84,7 +84,7 @@ function handleInc() {
           aria-label="增加下载并发"
           @click="handleInc"
         >
-          ＋
+          <AppIcon name="plus" size="xs" />
         </button>
       </div>
 

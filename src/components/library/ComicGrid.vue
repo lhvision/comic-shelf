@@ -1162,8 +1162,8 @@ watch(
 @media (prefers-reduced-motion: reduce) {
   .archive-drawer-body,
   .stream-loading-spinner {
-    transition: none !important;
-    animation: none !important;
+    transition: none;
+    animation: none;
   }
 }
 </style>

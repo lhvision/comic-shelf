@@ -72,9 +72,11 @@ const { brandIcon } = useBrandIcon()
 .gate-viewport {
   position: fixed;
   inset: 0;
-  z-index: 100;
+  z-index: var(--z-gate);
   display: grid;
-  place-items: center;
+  place-items: safe center;
+  overflow-y: auto;
+  overscroll-behavior: contain;
   padding: var(--space-4);
   background: var(--paper-0);
   min-height: 100dvh;
@@ -84,7 +86,7 @@ const { brandIcon } = useBrandIcon()
   position: relative;
   isolation: isolate;
   overflow: hidden;
-  width: min(100%, 430px);
+  width: min(100%, 27rem);
   background: var(--paper-1);
   border: 1px solid var(--line-strong);
   border-radius: var(--radius-3);

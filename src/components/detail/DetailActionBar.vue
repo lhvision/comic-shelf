@@ -6,17 +6,16 @@ import AppProgressBar from '@/components/AppProgressBar.vue'
 import { computed, ref } from 'vue'
 
 /**
- * 详情页操作栏 —— 阅读/缓存/刷新 + 「更多」菜单（含危险移除）+ 缓存进度条。
+ * 详情页操作栏 —— 阅读/缓存/编辑 + 「更多」收纳菜单（分享/追加/刷新/分组/重订/危险移除）+ 紧凑进度条。
  * 纯展示组件：需要父级配合的值由 props 传入，动作以 emit 上抛。
  *
- * 主次层级（票据 02）：只有「继续阅读」是主按钮；读页/缓存/刷新统一次级 btn-ghost。
- * 危险操作（Impeccable 重设计）：
- * - 「移除本地」不再摆在操作栏里，而是收进「更多 ⋯」菜单（本地缓存删了可惜，应弱化入口）；
- * - 点到后弹 Modal 做「二次确认」，且必须勾选「我已了解」才能点确认，防止误删。
+ * 主次层级：
+ * - 主操作仅「继续阅读」使用 primary；「从第 1 页开始」「缓存全部」「编辑资料」作为高频次级按钮外露；
+ * - 「分享单本…」「增量追加…」「刷新资料」「章节分组管理…」「重新装订…」「移除本地缓存…」按分组收拢进「更多 ⋯」下拉菜单；
+ * - 「移除本地缓存」弹窗强制二次确认并勾选「我已了解」方可激活。
  * 从头阅读保护：
- * - 读者在「在读（1 < lastRead < pageCount）」状态下点击「从第 1 页开始」，弹轻量 Modal 进行二次确认，
- *   防范误触导致辛苦读到的阅读断点被即时冲掉；
- * - 未读（lastRead <= 1）或已读完（lastRead >= pageCount）则直接开读，零摩擦进入。
+ * - 读者在「在读（1 < lastRead < pageCount）」状态下点击「从第 1 页开始」，弹轻量 Modal 进行二次确认；
+ * - 未读（lastRead <= 1）或已读完（lastRead >= pageCount）则直接开读。
  */
 const props = withDefaults(
   defineProps<{
@@ -59,23 +58,54 @@ const ackRemove = ref(false)
 
 const moreOptions = computed<DropdownOption[]>(() => {
   const list: DropdownOption[] = []
-  if (props.hasMultipleGroups && props.canWrite) {
-    list.push({
-      key: 'manage_groups',
-      label: '章节分组管理…',
-      hint: '连载/单行本',
-    })
-  }
   if (props.canWrite) {
+    list.push(
+      {
+        key: 'share_direct',
+        label: '分享单本…',
+        icon: 'external-link',
+        hint: '直达链接',
+      },
+      {
+        key: 'append_pages',
+        label: '增量追加…',
+        icon: 'plus',
+        hint: '加页/加话',
+      },
+    )
+    if (props.source !== 'local' && !props.customPages) {
+      list.push({
+        key: 'refresh_metadata',
+        label: props.refreshing ? '刷新中…' : '刷新资料',
+        icon: 'refresh',
+        disabled: props.refreshing || props.caching,
+        hint: '同步远端',
+      })
+    }
+    if (props.hasMultipleGroups) {
+      list.push({
+        key: 'manage_groups',
+        label: '章节分组管理…',
+        hint: '连载/单行本',
+      })
+    }
     list.push({
       key: 'replace_pages',
       label: '重新装订…',
       hint: '重订画页',
     })
   }
+  if (list.length > 0) {
+    list.push({
+      key: 'sep_danger',
+      label: '',
+      separator: true,
+    })
+  }
   list.push({
     key: 'remove',
     label: '移除本地缓存…',
+    icon: 'trash',
     danger: true,
     hint: '不可撤销',
   })
@@ -85,6 +115,12 @@ const moreOptions = computed<DropdownOption[]>(() => {
 function onMoreSelect(option: DropdownOption) {
   if (option.key === 'remove') {
     requestRemove()
+  } else if (option.key === 'share_direct') {
+    emit('shareDirect')
+  } else if (option.key === 'append_pages') {
+    emit('appendPages')
+  } else if (option.key === 'refresh_metadata') {
+    emit('refreshMetadata')
   } else if (option.key === 'replace_pages') {
     emit('replacePages')
   } else if (option.key === 'manage_groups') {
@@ -176,39 +212,11 @@ function prefetchReader() {
       </AppButton>
 
       <AppButton
-        v-if="canWrite"
-        variant="ghost"
-        type="button"
-        title="编辑作品标题、作者、标签与元数据"
-        @click="emit('editMetadata')"
-      >
-        编辑资料
-      </AppButton>
-
-      <AppButton
-        v-if="canWrite"
-        variant="ghost"
-        type="button"
-        title="签发单本沙箱临时直达阅读链接"
-        @click="emit('shareDirect')"
-      >
-        分享单本…
-      </AppButton>
-
-      <AppButton
-        v-if="canWrite"
-        variant="ghost"
-        type="button"
-        title="增量追加新页面或新章节到作品"
-        @click="emit('appendPages')"
-      >
-        增量追加…
-      </AppButton>
-
-      <AppButton
         v-if="canWrite && source !== 'local'"
         variant="ghost"
+        class="btn-cache"
         type="button"
+        :loading="caching"
         :disabled="caching || cacheComplete || customPages || refreshing"
         :title="
           customPages
@@ -228,24 +236,18 @@ function prefetchReader() {
               ? '已全部本地化'
               : caching
                 ? `缓存中 ${cachePercent}%`
-                : `缓存全部（已缓存 ${cachedPages}/${pageCount}）`
+                : '缓存全部'
         }}
       </AppButton>
 
       <AppButton
-        v-if="canWrite && source !== 'local' && !customPages"
+        v-if="canWrite"
         variant="ghost"
         type="button"
-        :loading="refreshing"
-        :disabled="refreshing || caching"
-        :title="
-          refreshing
-            ? '正在从远端重新同步作品章节与最新元数据…'
-            : '从远端重新同步作品章节与最新元数据'
-        "
-        @click="emit('refreshMetadata')"
+        title="编辑作品标题、作者、标签与元数据"
+        @click="emit('editMetadata')"
       >
-        {{ refreshing ? '刷新中…' : '刷新资料' }}
+        编辑资料
       </AppButton>
 
       <AppDropdown
@@ -255,8 +257,9 @@ function prefetchReader() {
         align="end"
         @select="onMoreSelect"
       >
-        <template #trigger="{ open }">
+        <template #trigger="{ open, triggerAttrs }">
           <AppButton
+            v-bind="triggerAttrs"
             variant="ghost"
             class="more-trigger"
             :class="{ 'is-open': open }"
@@ -312,19 +315,21 @@ function prefetchReader() {
       </template>
     </Modal>
 
-    <AppProgressBar
-      class="cache-summary-bar"
-      :value="cachedPages"
-      :max="pageCount"
-      variant="track"
-      :color="cacheComplete ? 'success' : 'accent'"
-      :animated="caching && !cacheComplete"
-      :label="`本地缓存 ${cachedPages} / ${pageCount} 页（${cachePercent}%）`"
-      :value-text="`本地缓存 ${cachedPages} / ${pageCount} 页（${cachePercent}%）`"
-    />
-    <p class="cache-summary-text">
-      本地缓存 {{ cachedPages }} / {{ pageCount }} 页（{{ cachePercent }}%）
-    </p>
+    <div class="cache-summary-row">
+      <AppProgressBar
+        class="cache-summary-bar"
+        :value="cachedPages"
+        :max="pageCount"
+        variant="track"
+        :color="cacheComplete ? 'success' : 'accent'"
+        :animated="caching && !cacheComplete"
+        :label="`本地缓存 ${cachedPages} / ${pageCount} 页（${cachePercent}%）`"
+        :value-text="`本地缓存 ${cachedPages} / ${pageCount} 页（${cachePercent}%）`"
+      />
+      <p class="cache-summary-text">
+        本地缓存 {{ cachedPages }} / {{ pageCount }} 页 · {{ cachePercent }}%
+      </p>
+    </div>
   </div>
 </template>
 
@@ -382,21 +387,48 @@ function prefetchReader() {
   accent-color: var(--accent);
 }
 
-.cache-summary-bar {
+.cache-summary-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
   margin-top: var(--space-3);
 }
 
+.cache-summary-bar {
+  flex: 1;
+  min-width: 0;
+}
+
 .cache-summary-text {
-  margin-top: var(--space-1);
+  flex-shrink: 0;
   font-family: var(--font-mono);
   font-size: var(--text-xs);
   color: var(--ink-2);
-  text-align: right;
+  white-space: nowrap;
 }
 
 @media (max-width: 680px) {
+  .action-bar {
+    gap: var(--space-2);
+    padding: var(--space-3);
+  }
+
+  .btn-read {
+    flex: 1 1 100%;
+  }
+
   .more-menu {
-    margin-left: 0;
+    margin-left: auto;
+  }
+
+  .cache-summary-row {
+    flex-direction: column;
+    align-items: stretch;
+    gap: var(--space-1);
+  }
+
+  .cache-summary-text {
+    text-align: right;
   }
 }
 </style>

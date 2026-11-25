@@ -184,6 +184,7 @@ function handleRemove(event: MouseEvent) {
 }
 
 .chip-del-btn {
+  position: relative;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -200,6 +201,32 @@ function handleRemove(event: MouseEvent) {
   transition:
     color var(--duration-1) var(--ease-out),
     background-color var(--duration-1) var(--ease-out);
+}
+
+@media (pointer: coarse) {
+  .chip-button {
+    position: relative;
+  }
+
+  .chip-button::before {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 0;
+    right: 0;
+    transform: translateY(-50%);
+    min-height: var(--target-size);
+  }
+
+  .chip-del-btn::before {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    min-width: var(--target-size);
+    min-height: var(--target-size);
+  }
 }
 
 .chip-del-btn:hover {

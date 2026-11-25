@@ -106,7 +106,7 @@ defineEmits<{
 
 .reader-chapter-banner:hover {
   background-color: var(--accent);
-  color: var(--paper-0);
+  color: var(--accent-contrast);
 }
 
 .reader-chapter-banner:disabled {
@@ -141,7 +141,7 @@ defineEmits<{
 @media (max-width: 680px) {
   .reader-chapter-banner {
     bottom: calc(
-      var(--control-md) + max(var(--space-4), env(safe-area-inset-bottom, 0px)) + var(--space-2)
+      var(--control-md) + max(var(--space-5), env(safe-area-inset-bottom, 0px)) + var(--space-4)
     );
     max-width: calc(100vw - var(--space-4) * 2);
     padding: 0 var(--space-2-5);

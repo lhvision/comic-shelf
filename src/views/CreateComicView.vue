@@ -66,7 +66,6 @@ const {
         @click="goUpFromCreate"
       />
       <div>
-        <p class="eyebrow">Local Workshop / 自建工坊</p>
         <h1>收录自建图集与本地拆帧</h1>
       </div>
     </header>
@@ -165,7 +164,11 @@ const {
                 :key="ch.id"
                 class="pdf-breakdown-item"
                 :class="{ 'is-active': activeChapterIdx === idx }"
+                role="button"
+                tabindex="0"
                 @click="activeChapterIdx = idx"
+                @keydown.enter.self.prevent="activeChapterIdx = idx"
+                @keydown.space.self.prevent="activeChapterIdx = idx"
               >
                 <span class="pdf-item-idx">#{{ idx + 1 }}</span>
                 <input
@@ -313,7 +316,7 @@ const {
 
         <form class="meta-form" @submit.prevent="submit">
           <div class="field-group">
-            <label class="form-label" for="meta-title">作品标题 (Title) *</label>
+            <label class="form-label" for="meta-title">作品标题 *</label>
             <input
               id="meta-title"
               v-model="title"
@@ -326,7 +329,7 @@ const {
 
           <div class="grid-2">
             <div class="field-group">
-              <label class="form-label" for="meta-slug">车号 Slug（选填，留空自动生成）</label>
+              <label class="form-label" for="meta-slug">本地标识 Slug（选填，留空自动生成）</label>
               <div class="slug-field">
                 <span class="slug-prefix">LOC_</span>
                 <input
@@ -340,7 +343,7 @@ const {
             </div>
 
             <div class="field-group">
-              <label class="form-label" for="meta-works">原作 / 企划 (Works)</label>
+              <label class="form-label" for="meta-works">原作 / 企划</label>
               <input
                 id="meta-works"
                 v-model="works"
@@ -353,7 +356,7 @@ const {
 
           <div class="grid-2">
             <div class="field-group">
-              <label class="form-label" for="meta-authors">创作者 (Authors)</label>
+              <label class="form-label" for="meta-authors">创作者</label>
               <input
                 id="meta-authors"
                 v-model="authors"
@@ -364,7 +367,7 @@ const {
             </div>
 
             <div class="field-group">
-              <label class="form-label" for="meta-actors">登场人物 (Actors)</label>
+              <label class="form-label" for="meta-actors">登场人物</label>
               <input
                 id="meta-actors"
                 v-model="actors"
@@ -376,7 +379,7 @@ const {
           </div>
 
           <div class="field-group">
-            <label class="form-label" for="meta-uploader">上传 / 整理者 (Uploader)</label>
+            <label class="form-label" for="meta-uploader">上传 / 整理者</label>
             <input
               id="meta-uploader"
               v-model="uploader"
@@ -387,17 +390,17 @@ const {
           </div>
 
           <div class="field-group">
-            <label class="form-label">封面展示页码 (Cover Pages · 轮播 4 张)</label>
+            <label class="form-label">封面展示页码（轮播 4 张）</label>
             <CoverIndicesPicker v-model="coverIndices" :max-page="coverMaxPage" />
           </div>
 
           <div class="field-group">
-            <label class="form-label">分类标签 (Tags)</label>
+            <label class="form-label">分类标签</label>
             <TagManager v-model="tags" source="local" />
           </div>
 
           <div class="field-group">
-            <label class="form-label" for="meta-desc">作品叙述 (Description)</label>
+            <label class="form-label" for="meta-desc">作品叙述</label>
             <textarea
               id="meta-desc"
               v-model="description"
@@ -544,7 +547,7 @@ const {
 
 .chap-badge {
   font-family: var(--font-mono);
-  font-size: 0.7rem;
+  font-size: var(--text-caption);
   color: var(--ink-2);
 }
 
@@ -553,7 +556,7 @@ const {
   background: transparent;
   color: var(--ink-2);
   cursor: pointer;
-  font-size: 0.85rem;
+  font-size: var(--text-sm);
 }
 
 .chap-del-btn:hover {
@@ -671,8 +674,9 @@ const {
 .pdf-breakdown-list {
   display: grid;
   gap: var(--space-1-5);
-  max-height: 280px;
+  max-height: 17.5rem;
   overflow-y: auto;
+  overscroll-behavior: contain;
   padding-right: var(--space-1);
 }
 
@@ -701,7 +705,7 @@ const {
   font-family: var(--font-mono);
   font-size: var(--text-xs);
   color: var(--ink-2);
-  min-width: 24px;
+  min-width: 1.5rem;
 }
 
 .pdf-item-title-input {
@@ -832,6 +836,27 @@ const {
 @media (max-width: 960px) {
   .create-grid {
     grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 680px) {
+  .create-head {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--space-2);
+  }
+
+  .staging-col,
+  .form-col {
+    padding: var(--space-4);
+  }
+
+  .form-actions {
+    flex-direction: column-reverse;
+  }
+
+  .form-actions .btn {
+    width: 100%;
   }
 }
 </style>

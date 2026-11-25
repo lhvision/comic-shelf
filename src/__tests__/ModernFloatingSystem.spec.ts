@@ -319,6 +319,32 @@ describe('Modern Floating System', () => {
       const label = wrapper.find('.item-label')
       expect(label.text()).toBe('移除本地缓存…')
     })
+
+    it('keeps action menu stateless without checkmarks after clicking an option when v-model is omitted', async () => {
+      const actionOptions: DropdownOption[] = [
+        { key: 'share', label: '分享单本…' },
+        { key: 'remove', label: '移除本地缓存…', danger: true },
+      ]
+      const wrapper = mount(AppDropdown, {
+        props: {
+          options: actionOptions,
+        },
+        slots: {
+          trigger:
+            '<template #trigger="{ triggerAttrs }"><button class="custom-trigger" v-bind="triggerAttrs">更多</button></template>',
+        },
+      })
+
+      const trigger = wrapper.find('.custom-trigger')
+      expect(trigger.attributes('aria-haspopup')).toBe('menu')
+
+      const items = wrapper.findAll('.dropdown-item')
+      await items[1]?.trigger('click')
+
+      expect(wrapper.emitted('select')?.[0]?.[0]).toMatchObject({ key: 'remove' })
+      expect(wrapper.find('.item-leading').exists()).toBe(false)
+      expect(items[1]?.classes()).not.toContain('is-selected')
+    })
   })
 
   describe('ThemeSelect Integration', () => {

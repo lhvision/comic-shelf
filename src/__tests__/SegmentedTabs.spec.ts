@@ -54,4 +54,27 @@ describe('SegmentedTabs', () => {
     expect(tabs[0]?.text()).toBe('jm')
     expect(tabs[0]?.classes()).toContain('is-active')
   })
+
+  it('skips disabled tabs and moves focus on ArrowRight / End / Home', async () => {
+    const wrapper = mount(SegmentedTabs, {
+      attachTo: document.body,
+      props: {
+        modelValue: 'week',
+        items: [
+          { key: 'week', label: '本周' },
+          { key: 'month', label: '本月', disabled: true },
+          { key: 'day', label: '今日' },
+        ],
+      },
+    })
+
+    const tabs = wrapper.findAll<HTMLButtonElement>('.segmented-tab')
+    tabs[0]!.element.focus()
+    await tabs[0]!.trigger('keydown', { key: 'ArrowRight' })
+
+    expect(wrapper.emitted('update:modelValue')?.[0]).toEqual(['day'])
+    expect(document.activeElement).toBe(tabs[2]!.element)
+
+    wrapper.unmount()
+  })
 })

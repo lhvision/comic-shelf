@@ -106,6 +106,10 @@
   --reader-text: var(--reader-ink);
   --reader-muted: #938d80;
   --reader-muted: oklch(0.645 0.02 86);
+  --reader-accent: #e87a58;
+  --reader-accent: oklch(0.71 0.15 38);
+  --reader-warning: #e5b24c;
+  --reader-warning: oklch(0.78 0.13 78);
   --reader-line: color-mix(in oklab, var(--reader-ink) 14%, transparent);
   --reader-line-strong: color-mix(in oklab, var(--reader-ink) 20%, transparent);
   --reader-line-soft: color-mix(in oklab, var(--reader-ink) 10%, transparent);
@@ -183,10 +187,16 @@
     --accent: oklch(0.67 0.16 38);
     --accent-strong: #f08a68;
     --accent-strong: oklch(0.74 0.14 40);
+    --accent-soft: color-mix(in oklab, var(--accent) 18%, transparent);
     --line: color-mix(in oklab, var(--ink-0) 13%, transparent);
     --line-strong: color-mix(in oklab, var(--ink-0) 24%, transparent);
+    --success: #5ea072;
+    --success: oklch(0.67 0.11 145);
+    --warning: #e5a93c;
+    --warning: oklch(0.76 0.13 78);
     --danger: #ff6b6b;
     --danger: oklch(0.65 0.2 25);
+    --danger-soft: color-mix(in oklab, var(--danger) 18%, transparent);
     --amber: #f59e0b;
     --amber: oklch(0.75 0.16 72);
     --shadow-1: 0 1px 2px rgb(0 0 0 / 35%);

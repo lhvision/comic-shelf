@@ -66,7 +66,7 @@ const emit = defineEmits<{
   padding: var(--space-badge-y) var(--space-badge-x);
   border-radius: var(--radius-1);
   background: var(--accent);
-  color: var(--paper-0);
+  color: var(--accent-contrast);
   font-size: var(--text-caption);
   font-weight: 600;
   line-height: 1;
@@ -87,7 +87,7 @@ const emit = defineEmits<{
 }
 
 .update-card-sub {
-  font-size: 0.625rem;
+  font-size: var(--text-caption);
   color: var(--ink-2);
   line-height: 1.2;
 }
@@ -101,7 +101,7 @@ const emit = defineEmits<{
   border: 1px solid color-mix(in oklab, var(--accent) 60%, transparent);
   border-radius: var(--radius-1);
   background: var(--accent);
-  color: var(--paper-0);
+  color: var(--accent-contrast);
   font-size: var(--text-xs);
   font-weight: 500;
   cursor: pointer;

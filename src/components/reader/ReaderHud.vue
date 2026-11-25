@@ -147,6 +147,21 @@ const autoTurnActionLabel = () => (props.autoTurnPaused || props.settingsOpen ? 
   background: var(--reader-surface-strong);
   color: var(--reader-ink);
   font-size: var(--text-sm);
+  transition:
+    background-color var(--duration-1) var(--ease-out),
+    color var(--duration-1) var(--ease-out);
+}
+
+.reader-page-indicator button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 50%;
+}
+
+@media (hover: hover) {
+  .reader-page-indicator button:hover:not(:disabled) {
+    background: var(--reader-surface-hover);
+  }
 }
 
 .reader-page-indicator button:disabled {
@@ -193,7 +208,7 @@ const autoTurnActionLabel = () => (props.autoTurnPaused || props.settingsOpen ? 
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  color: var(--accent);
+  color: var(--reader-accent);
 }
 
 .auto-turn-action {
@@ -239,10 +254,11 @@ const autoTurnActionLabel = () => (props.autoTurnPaused || props.settingsOpen ? 
   border: 1px solid var(--reader-line-strong);
   border-radius: var(--radius-pill);
   background: var(--reader-scrim);
+  -webkit-backdrop-filter: blur(10px);
   backdrop-filter: blur(10px);
   color: var(--reader-ink);
   font-family: var(--font-mono);
-  font-size: 0.625rem;
+  font-size: var(--text-caption);
   cursor: pointer;
   transition:
     background-color var(--duration-1) var(--ease-out),
@@ -250,15 +266,17 @@ const autoTurnActionLabel = () => (props.autoTurnPaused || props.settingsOpen ? 
     color var(--duration-1) var(--ease-out);
 }
 
-.filmstrip-toggle-btn:hover {
-  background: var(--reader-surface-hover);
-  border-color: var(--reader-line);
+@media (hover: hover) {
+  .filmstrip-toggle-btn:hover {
+    background: var(--reader-surface-hover);
+    border-color: var(--reader-line);
+  }
 }
 
 .filmstrip-toggle-btn[data-active='true'] {
   background: color-mix(in oklab, var(--accent) 20%, var(--reader-scrim));
   border-color: var(--accent);
-  color: var(--accent);
+  color: var(--reader-accent);
 }
 
 .filmstrip-toggle-tip {

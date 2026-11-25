@@ -105,7 +105,7 @@ useIntersectionObserver(
                   class="rec-cover-img"
                   :src="item.cover_paths[0]"
                   :srcset="coverSrcset(item.cover_paths[0])"
-                  sizes="(max-width: 680px) 120px, 220px"
+                  sizes="(max-width: 680px) 120px, 240px"
                   :alt="item.title"
                   loading="lazy"
                   decoding="async"
@@ -135,7 +135,7 @@ useIntersectionObserver(
               class="rec-detail-btn"
               shape="circle"
               variant="ghost"
-              size="md"
+              size="sm"
               icon="info"
               theme="reader"
               title="查看作品详情"
@@ -215,9 +215,9 @@ useIntersectionObserver(
   font-size: var(--text-caption);
   font-size-adjust: ch-width 0.48;
   letter-spacing: 0.12em;
-  color: var(--accent);
+  color: var(--reader-accent);
   padding: var(--space-0-5) var(--space-2);
-  border: 1px solid color-mix(in oklab, var(--accent) 45%, transparent);
+  border: 1px solid color-mix(in oklab, var(--reader-accent) 45%, transparent);
   border-radius: var(--radius-1);
   background: color-mix(in oklab, var(--accent) 10%, transparent);
 }
@@ -253,7 +253,7 @@ useIntersectionObserver(
 }
 
 .rec-icon {
-  color: var(--accent);
+  color: var(--reader-accent);
 }
 
 .recommend-eyebrow {
@@ -344,8 +344,8 @@ useIntersectionObserver(
 
 .rec-status-badge.is-reading {
   background: color-mix(in oklab, var(--accent) 90%, black 10%);
-  color: var(--paper-0);
-  border: 1px solid color-mix(in oklab, var(--paper-0) 25%, transparent);
+  color: var(--accent-contrast);
+  border: 1px solid color-mix(in oklab, var(--accent-contrast) 25%, transparent);
 }
 
 .rec-status-badge.is-unread {
@@ -380,36 +380,13 @@ useIntersectionObserver(
   position: absolute;
   right: var(--space-2);
   top: var(--space-2);
-  width: 2rem;
-  height: 2rem;
-  min-width: 2rem;
-  min-height: 2rem;
-  padding: 0;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: var(--radius-1);
-  background: color-mix(in oklab, var(--paper-0) 8%, var(--reader-bg));
-  color: color-mix(in oklab, var(--reader-text) 85%, transparent);
-  border: 1px solid color-mix(in oklab, var(--paper-0) 18%, transparent);
-  cursor: pointer;
   z-index: 2;
-  transition:
-    color var(--duration-1) var(--ease-out),
-    background-color var(--duration-1) var(--ease-out);
-}
-
-/* 扩展触控热区至 ≥ 44×44px，满足移动端无障碍底线 */
-.rec-detail-btn::before {
-  content: '';
-  position: absolute;
-  inset: -6px;
 }
 
 .rec-detail-btn:hover {
-  color: var(--paper-0);
+  color: var(--accent-contrast);
   background: color-mix(in oklab, var(--accent) 85%, black 15%);
-  border-color: color-mix(in oklab, var(--paper-0) 30%, transparent);
+  border-color: color-mix(in oklab, var(--accent-contrast) 30%, transparent);
 }
 
 .rec-detail-btn:focus-visible {
@@ -530,13 +507,11 @@ useIntersectionObserver(
   }
 
   .rec-detail-btn {
-    position: static;
+    position: relative;
+    top: auto;
+    right: auto;
     translate: none;
     flex-shrink: 0;
-    width: 2.25rem;
-    height: 2.25rem;
-    min-width: 2.25rem;
-    min-height: 2.25rem;
     margin-inline: var(--space-2) var(--space-3);
   }
 

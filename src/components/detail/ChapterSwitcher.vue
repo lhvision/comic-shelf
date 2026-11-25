@@ -252,7 +252,7 @@ function chapterState(id: string): 'past' | 'active' | 'upcoming' {
 
 .chapter-switcher button[data-active='true'] .chapter-ordinal {
   background: var(--accent);
-  color: var(--paper-0);
+  color: var(--accent-contrast);
 }
 
 .chapter-title {
@@ -266,7 +266,7 @@ function chapterState(id: string): 'past' | 'active' | 'upcoming' {
   padding: var(--space-0-5) var(--space-2);
   border-radius: var(--radius-1);
   background: var(--accent);
-  color: var(--paper-0);
+  color: var(--accent-contrast);
   font-size: var(--text-caption);
 }
 

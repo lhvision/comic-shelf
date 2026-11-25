@@ -316,7 +316,7 @@ onMounted(async () => {
 .detail-loading,
 :deep(.detail-actions),
 :deep(.chapter-index),
-:deep(.page-index-grid) {
+:deep(.page-section) {
   position: relative;
   z-index: 1;
 }

@@ -265,7 +265,6 @@ function clearAllFilters() {
                     remove-aria-label="清除该次级标签筛选"
                     :count="getTagCount(tag)"
                     @remove="removeTag(tag)"
-                    @click="removeTag(tag)"
                   >
                     {{ tag }}
                   </AppChip>

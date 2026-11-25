@@ -74,7 +74,6 @@ function handleCollapse() {
   <section ref="sectionEl" class="page-section" aria-labelledby="pages-title">
     <div class="page-section-head">
       <div>
-        <p class="eyebrow">All pages</p>
         <h2 id="pages-title">页面索引</h2>
       </div>
       <p>点击任意页面直接进入阅读</p>
@@ -102,7 +101,7 @@ function handleCollapse() {
         @cached="(idx) => emit('pageCached', idx)"
       />
 
-      <!-- 画卷余页尾格折叠卡：独立排布在网格最后，结构与首页书架保持高度一致 -->
+      <!-- 画卷余页尾格折叠卡：仅保留核心单步展开按钮，保持网格列宽与高度齐整 -->
       <div
         v-if="remainingPages > 0"
         key="page-fold-card"
@@ -116,9 +115,6 @@ function handleCollapse() {
             <span class="fold-badge-stamp">+{{ remainingPages }} 页已收纳</span>
           </div>
           <h4 class="fold-card-title">画卷余页已收纳</h4>
-          <p class="fold-card-hint">
-            已展现 {{ pages.length }} / {{ pages.length + remainingPages }} 页
-          </p>
           <div class="fold-card-actions">
             <AppButton
               variant="primary"
@@ -129,43 +125,37 @@ function handleCollapse() {
             >
               再展开 {{ Math.min(pageStep, remainingPages) }} 页
             </AppButton>
-            <div class="fold-card-sub-actions" :class="{ 'has-collapse': canCollapse }">
-              <AppButton
-                variant="ghost"
-                size="xs"
-                :icon="canCollapse ? undefined : 'book-open'"
-                type="button"
-                @click.prevent="emit('loadAll')"
-              >
-                {{ canCollapse ? '全展开' : '展开全部' }}
-              </AppButton>
-              <AppButton
-                v-if="canCollapse"
-                variant="ghost"
-                size="xs"
-                icon="chevron-up"
-                type="button"
-                @click.prevent="handleCollapse"
-              >
-                收起
-              </AppButton>
-            </div>
           </div>
         </div>
       </div>
     </div>
 
-    <!-- 全卷画页全量展开后的收整条：折叠态收敛至网格卡片内部，全部展开后呈现底部收起条 -->
-    <div v-if="canCollapse && remainingPages === 0" class="page-sentinel page-fold-bar surface">
+    <!-- 画卷底部控制条：统一承载「展开全部」与「收起画卷」，避免在窄缩略图格内挤压多按钮 -->
+    <div v-if="canCollapse || remainingPages > 0" class="page-sentinel page-fold-bar surface">
       <div class="sentinel-info">
         <AppIcon name="book-open" size="sm" class="sentinel-icon" />
         <span class="sentinel-note">
-          已呈现 {{ pages.length }} / {{ pages.length }} 页画卷（全卷画页已展开）
+          {{
+            remainingPages > 0
+              ? `已展现 ${pages.length} / ${pages.length + remainingPages} 页（余 ${remainingPages} 页已折叠）`
+              : `已呈现 ${pages.length} / ${pages.length} 页画卷（全卷画页已展开）`
+          }}
         </span>
       </div>
 
       <div class="sentinel-actions">
         <AppButton
+          v-if="remainingPages > 0"
+          variant="ghost"
+          size="sm"
+          icon="book-open"
+          type="button"
+          @click.prevent="emit('loadAll')"
+        >
+          展开全部
+        </AppButton>
+        <AppButton
+          v-if="canCollapse"
           variant="ghost"
           size="sm"
           icon="chevron-up"
@@ -314,25 +304,6 @@ function handleCollapse() {
   margin-top: var(--space-1);
 }
 
-.fold-card-sub-actions {
-  display: flex;
-  flex-direction: row;
-  gap: var(--space-1);
-  width: 100%;
-}
-
-.fold-card-sub-actions .btn {
-  flex: 1;
-  min-width: 0;
-  overflow: hidden;
-}
-
-.fold-card-sub-actions .btn :deep(.btn-content) {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
 .fold-card-actions .btn {
   width: 100%;
   min-height: 1.65rem;
@@ -342,11 +313,6 @@ function handleCollapse() {
   justify-content: center;
   border-radius: var(--radius-1);
   white-space: nowrap;
-}
-
-.fold-card-sub-actions.has-collapse .btn {
-  padding: var(--space-badge-y) var(--space-0-5);
-  gap: var(--space-0-5);
 }
 
 .page-sentinel {
@@ -392,17 +358,6 @@ function handleCollapse() {
     padding: var(--space-2-5) var(--space-2);
   }
 
-  .fold-card-sub-actions {
-    flex-direction: row;
-    gap: var(--space-1);
-  }
-
-  .fold-card-sub-actions .btn {
-    flex: 1;
-    min-width: 0;
-    padding: 0 var(--space-1);
-  }
-
   .page-sentinel {
     flex-direction: column;
     align-items: stretch;
@@ -414,7 +369,7 @@ function handleCollapse() {
 
   .fold-card-actions .btn,
   .sentinel-actions .btn {
-    min-height: 44px;
+    min-height: var(--control-md);
   }
 }
 

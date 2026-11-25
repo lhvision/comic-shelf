@@ -423,7 +423,7 @@ onMounted(() => {
 
 .chapter-head,
 .chapter-loading,
-:deep(.page-index-grid) {
+:deep(.page-section) {
   position: relative;
   z-index: 1;
 }

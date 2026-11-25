@@ -120,7 +120,7 @@ const commandIcons: Record<SearchCommandType, string> = {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .command-chip {
+  .search-command-chip {
     animation: none;
   }
 }

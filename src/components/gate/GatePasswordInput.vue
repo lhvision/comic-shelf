@@ -83,7 +83,6 @@ defineExpose({
       class="btn-toggle-eye"
       :aria-label="showPassword ? '隐藏口令' : '显示口令'"
       :disabled="disabled"
-      tabindex="-1"
       @click="showPassword = !showPassword"
     >
       <AppIcon :name="showPassword ? 'eye-off' : 'eye'" size="18" />
@@ -153,6 +152,7 @@ defineExpose({
 }
 
 .btn-toggle-eye {
+  position: relative;
   display: grid;
   place-items: center;
   padding: var(--space-2) var(--space-3);
@@ -166,5 +166,17 @@ defineExpose({
 
 .btn-toggle-eye:hover {
   color: var(--ink-0);
+}
+
+@media (pointer: coarse) {
+  .btn-toggle-eye::before {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    min-width: var(--target-size);
+    min-height: var(--target-size);
+  }
 }
 </style>

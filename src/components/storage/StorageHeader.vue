@@ -75,7 +75,7 @@ const emit = defineEmits<{
 
 .panel-subtitle {
   display: block;
-  font-size: 0.625rem;
+  font-size: var(--text-caption);
   color: var(--ink-2);
   letter-spacing: 0.04em;
   margin-top: 1px;

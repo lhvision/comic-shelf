@@ -1,5 +1,5 @@
 <script setup lang="ts" generic="T extends string | number">
-import { computed, useId } from 'vue'
+import { computed, nextTick, useId, useTemplateRef } from 'vue'
 
 export interface TabItem<T = string | number> {
   key: T
@@ -32,6 +32,7 @@ const emit = defineEmits<{
 
 const uid = useId().replace(/[^a-zA-Z0-9_-]+/g, '')
 const activeAnchorName = computed(() => `--tab-active-${uid}`)
+const tablistEl = useTemplateRef<HTMLElement>('tablistEl')
 
 function normalizeItem(item: TabItem<T> | string): TabItem<T> {
   if (typeof item === 'string') {
@@ -46,30 +47,45 @@ function onSelect(key: T) {
   emit('change', key)
 }
 
+function findEnabledIndex(normItems: TabItem<T>[], startIdx: number, step: 1 | -1): number {
+  const len = normItems.length
+  for (let offset = 0; offset < len; offset++) {
+    const idx = (startIdx + offset * step + len) % len
+    if (!normItems[idx]?.disabled) return idx
+  }
+  return -1
+}
+
 function onKeydown(event: KeyboardEvent, index: number) {
+  if (props.disabled) return
   const normItems = props.items.map(normalizeItem)
-  let targetIdx = index
+  let targetIdx = -1
   if (event.key === 'ArrowRight') {
-    targetIdx = (index + 1) % normItems.length
+    targetIdx = findEnabledIndex(normItems, index + 1, 1)
   } else if (event.key === 'ArrowLeft') {
-    targetIdx = (index - 1 + normItems.length) % normItems.length
+    targetIdx = findEnabledIndex(normItems, index - 1, -1)
   } else if (event.key === 'Home') {
-    targetIdx = 0
+    targetIdx = findEnabledIndex(normItems, 0, 1)
   } else if (event.key === 'End') {
-    targetIdx = normItems.length - 1
+    targetIdx = findEnabledIndex(normItems, normItems.length - 1, -1)
   } else {
     return
   }
   event.preventDefault()
-  const targetItem = normItems[targetIdx]
-  if (targetItem && !targetItem.disabled) {
+  const targetItem = targetIdx >= 0 ? normItems[targetIdx] : undefined
+  if (targetItem) {
     onSelect(targetItem.key)
+    void nextTick(() => {
+      const tabs = tablistEl.value?.querySelectorAll<HTMLButtonElement>('[role="tab"]')
+      tabs?.[targetIdx]?.focus()
+    })
   }
 }
 </script>
 
 <template>
   <div
+    ref="tablistEl"
     class="segmented-tabs"
     :class="[
       `segmented-tabs--${size}`,
@@ -110,6 +126,9 @@ function onKeydown(event: KeyboardEvent, index: number) {
   display: inline-flex;
   align-items: center;
   gap: var(--space-1);
+  max-width: 100%;
+  overflow-x: auto;
+  scrollbar-width: none;
   padding: var(--space-1);
   border: 1px solid var(--line);
   border-radius: var(--radius-2);
@@ -117,6 +136,10 @@ function onKeydown(event: KeyboardEvent, index: number) {
   box-sizing: border-box;
   position: relative;
   isolation: isolate;
+}
+
+.segmented-tabs::-webkit-scrollbar {
+  display: none;
 }
 
 /* CSS Anchor 动态滑动胶囊指示器 */
@@ -238,6 +261,13 @@ function onKeydown(event: KeyboardEvent, index: number) {
 
 .segmented-tab.is-active .tab-sub {
   color: var(--accent);
+}
+
+@media (pointer: coarse) {
+  .segmented-tabs--sm .segmented-tab,
+  .segmented-tabs--md .segmented-tab {
+    min-height: var(--control-md);
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {

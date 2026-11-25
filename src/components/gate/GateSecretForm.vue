@@ -23,7 +23,9 @@ async function handleSecretSubmit() {
 
 <template>
   <form class="gate-form" @submit.prevent="handleSecretSubmit">
+    <label for="gate-secret" class="visually-hidden">通行口令</label>
     <GatePasswordInput
+      id="gate-secret"
       v-model="inputSecret"
       placeholder="输入通行口令 (馆长密钥或访客口令)"
       autocomplete="current-password"

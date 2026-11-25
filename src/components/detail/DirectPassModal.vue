@@ -610,7 +610,7 @@ function handleClose() {
   top: -6px;
   right: -4px;
   padding: 1px 4px;
-  font-size: 0.625rem;
+  font-size: var(--text-caption);
   font-weight: 600;
   line-height: 1;
   color: var(--accent-contrast);
@@ -698,7 +698,7 @@ function handleClose() {
 
 .bookplate-mono {
   font-family: var(--font-mono);
-  font-size: 0.625rem;
+  font-size: var(--text-caption);
   letter-spacing: 0.05em;
   color: var(--ink-2);
 }

@@ -48,30 +48,31 @@ describe('PageIndexGrid', () => {
     // Renders all 24 page tiles unblocked
     expect(wrapper.findAll('.mock-page-tile').length).toBe(24)
 
-    // Independent fold card appended to grid
+    // Independent fold card appended to grid (single primary expand button)
     const foldCard = wrapper.find('.page-fold-card')
     expect(foldCard.exists()).toBe(true)
     expect(foldCard.text()).toContain('+50 页已收纳')
     expect(foldCard.text()).toContain('画卷余页已收纳')
     expect(foldCard.text()).toContain('再展开 24 页')
-    expect(foldCard.text()).toContain('展开全部')
 
-    // Sentinel bar is hidden while folded to eliminate double controls
-    expect(wrapper.find('.page-sentinel').exists()).toBe(false)
+    // Sentinel bar at bottom holds secondary actions (展开全部 / 收起画卷)
+    const sentinel = wrapper.find('.page-sentinel')
+    expect(sentinel.exists()).toBe(true)
+    expect(sentinel.text()).toContain('展开全部')
 
     // Click stepped expand button in fold card triggers loadMore emit
     await foldCard.find('button.btn-primary').trigger('click')
     expect(wrapper.emitted('loadMore')).toBeTruthy()
     expect(wrapper.emitted('loadMore')?.length).toBe(1)
 
-    // Click expand all in fold card triggers loadAll emit
-    const allBtn = foldCard.findAll('button').find((b) => b.text().includes('展开全部'))
+    // Click expand all in sentinel bar triggers loadAll emit
+    const allBtn = sentinel.findAll('button').find((b) => b.text().includes('展开全部'))
     expect(allBtn).toBeDefined()
     await allBtn!.trigger('click')
     expect(wrapper.emitted('loadAll')).toBeTruthy()
   })
 
-  it('provides collapse control in the fold card when canCollapse is true', async () => {
+  it('provides collapse control in sentinel bar when canCollapse is true', async () => {
     const pages = makePages(48)
     const wrapper = mount(PageIndexGrid, {
       props: {
@@ -87,14 +88,15 @@ describe('PageIndexGrid', () => {
 
     const foldCard = wrapper.find('.page-fold-card')
     expect(foldCard.exists()).toBe(true)
-    expect(wrapper.find('.page-sentinel').exists()).toBe(false)
+    expect(foldCard.findAll('button').length).toBe(1)
 
-    // Buttons in card: 1: 再展开 24 页, 2: 展开全部, 3: 收起画卷
-    const buttons = foldCard.findAll('button')
-    expect(buttons.length).toBe(3)
+    const sentinel = wrapper.find('.page-sentinel')
+    expect(sentinel.exists()).toBe(true)
+    const collapseBtn = sentinel.findAll('button').find((b) => b.text().includes('收起画卷'))
+    expect(collapseBtn).toBeDefined()
 
     // Click collapse
-    await buttons[2]!.trigger('click')
+    await collapseBtn!.trigger('click')
     expect(wrapper.emitted('collapse')).toBeTruthy()
   })
 
