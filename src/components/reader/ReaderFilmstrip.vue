@@ -599,13 +599,13 @@ function handleThumbLoad(page: number, e: Event) {
   gap: var(--space-1);
   height: var(--control-sm);
   padding: 0 var(--space-2);
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-1);
   border: 1px solid var(--reader-line);
   background: var(--reader-surface);
   color: var(--reader-ink);
-  font-size: 0.6875rem;
+  font-size: var(--text-caption);
   cursor: pointer;
-  transition: background var(--duration-1) var(--ease-out);
+  transition: background-color var(--duration-1) var(--ease-out);
 }
 
 .filmstrip-chap-btn:hover {
@@ -622,7 +622,7 @@ function handleThumbLoad(page: number, e: Event) {
   background: var(--reader-surface);
   color: var(--reader-ink);
   cursor: pointer;
-  transition: background var(--duration-1) var(--ease-out);
+  transition: background-color var(--duration-1) var(--ease-out);
 }
 
 .filmstrip-close-btn:hover {
@@ -639,7 +639,6 @@ function handleThumbLoad(page: number, e: Event) {
   overflow-x: auto;
   overflow-y: hidden;
   scroll-behavior: smooth;
-  -webkit-overflow-scrolling: touch;
   scrollbar-width: thin;
   scrollbar-color: var(--reader-line) transparent;
 }
@@ -650,7 +649,7 @@ function handleThumbLoad(page: number, e: Event) {
 
 .filmstrip-rail::-webkit-scrollbar-thumb {
   background: var(--reader-line-strong);
-  border-radius: var(--radius-full);
+  border-radius: var(--radius-pill);
 }
 
 /* 分屏成组与组级光标框 */
@@ -660,7 +659,7 @@ function handleThumbLoad(page: number, e: Event) {
   align-items: center;
   gap: var(--space-1);
   padding: 2px;
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-1);
   border: 2px solid transparent;
   transition:
     border-color var(--duration-1) var(--ease-out),
@@ -679,7 +678,7 @@ function handleThumbLoad(page: number, e: Event) {
   position: relative;
   width: 52px;
   height: 68px;
-  border-radius: var(--radius-xs);
+  border-radius: var(--radius-1);
   overflow: hidden;
   background: var(--reader-page-bg);
   box-shadow: 0 2px 6px var(--reader-scrim);
@@ -741,7 +740,7 @@ function handleThumbLoad(page: number, e: Event) {
   right: 2px;
   bottom: 2px;
   padding: 0 3px;
-  border-radius: var(--radius-xs);
+  border-radius: var(--radius-1);
   background: var(--reader-scrim-strong);
   color: var(--reader-ink);
   font-family: var(--font-mono);
@@ -751,7 +750,7 @@ function handleThumbLoad(page: number, e: Event) {
 
 .filmstrip-tile[data-page-active='true'] .tile-badge {
   background: var(--accent);
-  color: var(--accent-contrast, #fff);
+  color: var(--accent-contrast);
   font-weight: 600;
 }
 

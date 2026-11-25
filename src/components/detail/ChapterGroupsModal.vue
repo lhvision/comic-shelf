@@ -214,19 +214,19 @@ async function handleSave() {
 .groups-hint {
   display: flex;
   align-items: flex-start;
-  gap: var(--space-2, 0.5rem);
-  padding: var(--space-3, 0.75rem);
-  border-radius: var(--radius-md, 0.5rem);
-  background: var(--color-bg-subtle, rgba(0, 0, 0, 0.03));
-  border: 1px solid var(--color-border-subtle, rgba(0, 0, 0, 0.08));
-  font-size: var(--font-size-xs, 0.75rem);
-  color: var(--color-text-muted, #666);
-  line-height: 1.5;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  border-radius: var(--radius-2);
+  background: var(--paper-1);
+  border: 1px solid var(--line);
+  font-size: var(--text-xs);
+  color: var(--ink-2);
+  line-height: var(--leading-normal);
 }
 
 .hint-icon {
   font-size: 1rem;
-  color: var(--color-text-muted, #666);
+  color: var(--ink-2);
   flex-shrink: 0;
   margin-top: 0.125rem;
 }
@@ -234,30 +234,32 @@ async function handleSave() {
 .groups-list {
   display: flex;
   flex-direction: column;
-  gap: var(--space-2, 0.5rem);
+  gap: var(--space-2);
 }
 
 .group-item {
   display: flex;
   align-items: center;
-  gap: var(--space-3, 0.75rem);
-  padding: var(--space-3, 0.75rem) var(--space-4, 1rem);
-  border-radius: var(--radius-md, 0.5rem);
-  border: 1px solid var(--color-border-subtle, rgba(0, 0, 0, 0.1));
-  background: var(--color-bg-card, #fff);
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-2);
+  border: 1px solid var(--line);
+  background: var(--paper-0);
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition:
+    border-color var(--duration-1) var(--ease-out),
+    background-color var(--duration-1) var(--ease-out);
   user-select: none;
 }
 
 .group-item:hover {
-  border-color: var(--color-border-main, rgba(0, 0, 0, 0.2));
-  background: var(--color-bg-hover, rgba(0, 0, 0, 0.02));
+  border-color: var(--line-strong);
+  background: color-mix(in oklab, var(--paper-1) 60%, var(--paper-0));
 }
 
 .group-item.is-default {
   cursor: default;
-  background: var(--color-bg-subtle, rgba(0, 0, 0, 0.02));
+  background: var(--paper-1);
 }
 
 .group-checkbox-wrap {
@@ -269,7 +271,7 @@ async function handleSave() {
 .group-checkbox {
   width: 1.125rem;
   height: 1.125rem;
-  accent-color: var(--color-primary, #1e293b);
+  accent-color: var(--accent);
   cursor: pointer;
 }
 
@@ -281,65 +283,65 @@ async function handleSave() {
 .group-info {
   display: flex;
   flex-direction: column;
-  gap: 0.25rem;
+  gap: var(--space-1);
   flex: 1;
 }
 
 .group-title-row {
   display: flex;
   align-items: center;
-  gap: var(--space-2, 0.5rem);
+  gap: var(--space-2);
 }
 
 .group-name {
-  font-size: var(--font-size-sm, 0.875rem);
+  font-size: var(--text-sm);
   font-weight: 600;
-  color: var(--color-text-main, #1e293b);
+  color: var(--ink-0);
 }
 
 .group-badge {
   display: inline-flex;
   align-items: center;
-  gap: 0.25rem;
-  font-size: var(--font-size-xs, 0.75rem);
-  padding: 0.125rem 0.375rem;
-  border-radius: var(--radius-xs, 0.25rem);
+  gap: var(--space-1);
+  font-size: var(--text-xs);
+  padding: var(--space-0-5) var(--space-1-5);
+  border-radius: var(--radius-1);
 }
 
 .main-badge {
-  background: var(--color-bg-subtle, rgba(0, 0, 0, 0.06));
-  color: var(--color-text-muted, #64748b);
-  font-size: 0.7rem;
+  background: var(--paper-1);
+  color: var(--ink-2);
+  font-size: var(--text-caption);
 }
 
 .badge-icon {
-  font-size: 0.75rem;
+  font-size: var(--text-xs);
 }
 
 .group-meta {
-  font-size: var(--font-size-xs, 0.75rem);
-  color: var(--color-text-muted, #64748b);
+  font-size: var(--text-xs);
+  color: var(--ink-2);
 }
 
 /* 危险提示区 */
 .danger-warning-box {
   display: flex;
   flex-direction: column;
-  gap: var(--space-2, 0.5rem);
-  padding: var(--space-3, 0.75rem);
-  border-radius: var(--radius-md, 0.5rem);
-  background: rgba(239, 68, 68, 0.08);
-  border: 1px solid rgba(239, 68, 68, 0.25);
-  margin-top: var(--space-1, 0.25rem);
+  gap: var(--space-2);
+  padding: var(--space-3);
+  border-radius: var(--radius-2);
+  background: var(--danger-soft);
+  border: 1px solid color-mix(in oklab, var(--danger) 30%, transparent);
+  margin-top: var(--space-1);
 }
 
 .warning-header {
   display: flex;
   align-items: center;
-  gap: var(--space-2, 0.5rem);
-  color: var(--color-danger, #ef4444);
+  gap: var(--space-2);
+  color: var(--danger);
   font-weight: 600;
-  font-size: var(--font-size-sm, 0.875rem);
+  font-size: var(--text-sm);
 }
 
 .warning-icon {
@@ -347,36 +349,36 @@ async function handleSave() {
 }
 
 .warning-desc {
-  font-size: var(--font-size-xs, 0.75rem);
-  color: var(--color-text-main, #333);
-  line-height: 1.5;
+  font-size: var(--text-xs);
+  color: var(--ink-1);
+  line-height: var(--leading-normal);
 }
 
 .ack-checkbox-row {
   display: flex;
   align-items: center;
-  gap: var(--space-2, 0.5rem);
+  gap: var(--space-2);
   cursor: pointer;
-  margin-top: 0.25rem;
+  margin-top: var(--space-1);
 }
 
 .ack-checkbox {
   width: 1rem;
   height: 1rem;
-  accent-color: var(--color-danger, #ef4444);
+  accent-color: var(--danger);
   cursor: pointer;
 }
 
 .ack-text {
-  font-size: var(--font-size-xs, 0.75rem);
+  font-size: var(--text-xs);
   font-weight: 500;
-  color: var(--color-danger, #ef4444);
+  color: var(--danger);
 }
 
 .modal-actions {
   display: flex;
   justify-content: flex-end;
-  gap: var(--space-2, 0.5rem);
+  gap: var(--space-2);
 }
 
 .fade-enter-active,

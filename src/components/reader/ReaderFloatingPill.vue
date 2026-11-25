@@ -50,7 +50,7 @@ const props = withDefaults(defineProps<ReaderFloatingPillProps>(), {
   gap: var(--space-1);
   padding: var(--space-1) var(--space-3);
   border: 1px solid var(--reader-line-strong);
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   background: color-mix(in oklab, var(--reader-scrim) 94%, transparent);
   box-shadow: 0 2px 8px rgb(0 0 0 / 30%);
   font-family: var(--font-mono);

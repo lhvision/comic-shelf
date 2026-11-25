@@ -438,10 +438,12 @@ function clearAllFilters() {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
+  flex-wrap: balance;
   gap: var(--space-2);
-  max-height: min(50vh, 22rem);
+  max-height: min(50dvh, 22rem);
   overflow-y: auto;
   overscroll-behavior: contain;
+  scrollbar-gutter: stable;
   padding-right: var(--space-1);
   padding-block: 2px;
 }

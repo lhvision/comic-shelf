@@ -312,7 +312,7 @@ defineExpose({
   box-shadow: var(--shadow-2);
   font-size: var(--text-xs);
   font-family: var(--font-body);
-  line-height: 1.6;
+  line-height: var(--leading-relaxed);
   text-align: left;
   white-space: pre-wrap;
   overflow-wrap: anywhere;

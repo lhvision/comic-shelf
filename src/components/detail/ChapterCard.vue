@@ -104,6 +104,7 @@ function onCoverError() {
 
 <style scoped>
 .chapter-card {
+  container-type: inline-size;
   display: grid;
   grid-template-columns: minmax(4.6rem, 0.62fr) minmax(0, 1fr);
   gap: var(--space-3);
@@ -199,18 +200,35 @@ function onCoverError() {
 }
 
 .chapter-cache-btn {
+  position: relative;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   width: 1.35rem;
   height: 1.35rem;
   padding: 0;
-  border-radius: var(--radius-full);
+  border-radius: var(--radius-pill);
   border: 1px solid var(--line);
   background: var(--paper-1);
   color: var(--ink-2);
   cursor: pointer;
-  transition: all var(--duration-1) var(--ease-out);
+  transition:
+    border-color var(--duration-1) var(--ease-out),
+    color var(--duration-1) var(--ease-out),
+    background-color var(--duration-1) var(--ease-out),
+    transform var(--duration-1) var(--ease-out);
+}
+
+@media (pointer: coarse) {
+  .chapter-cache-btn::before {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    min-width: var(--target-size);
+    min-height: var(--target-size);
+  }
 }
 
 .chapter-cache-btn:hover:not(:disabled) {
@@ -225,15 +243,17 @@ function onCoverError() {
   cursor: not-allowed;
 }
 
-@media (max-width: 480px) {
-  .chapter-card {
-    grid-template-columns: minmax(4.2rem, 0.7fr) minmax(0, 1fr);
-  }
-
+@container (max-width: 300px) {
   .chapter-meta-row {
     flex-direction: column;
     align-items: flex-start;
     gap: var(--space-1);
+  }
+}
+
+@media (max-width: 480px) {
+  .chapter-card {
+    grid-template-columns: minmax(4.2rem, 0.7fr) minmax(0, 1fr);
   }
 }
 </style>

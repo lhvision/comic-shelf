@@ -418,7 +418,7 @@ function handleRemovePass() {
 }
 
 .pass-name {
-  font-size: var(--text-body);
+  font-size: var(--text-md);
   font-weight: 700;
   color: var(--ink-0);
   overflow: hidden;
@@ -535,7 +535,10 @@ function handleRemovePass() {
   border-radius: var(--radius-1);
   font-size: var(--text-caption);
   cursor: pointer;
-  transition: all var(--duration-2) var(--ease-out);
+  transition:
+    background-color var(--duration-2) var(--ease-out),
+    border-color var(--duration-2) var(--ease-out),
+    color var(--duration-2) var(--ease-out);
 }
 
 .hero-btn.primary {
@@ -696,10 +699,13 @@ function handleRemovePass() {
   color: var(--ink-1);
   cursor: pointer;
   padding: 0;
-  transition: all var(--duration-1) var(--ease-out);
+  transition:
+    color var(--duration-1) var(--ease-out),
+    border-color var(--duration-1) var(--ease-out),
+    background-color var(--duration-1) var(--ease-out);
 }
 
-/* WCAG 触控热区扩展至 36px */
+/* 触控热区扩充（pointer: coarse 下保证 >= 44px，桌面维持 36px） */
 .quota-step-btn::before {
   content: '';
   position: absolute;
@@ -707,6 +713,17 @@ function handleRemovePass() {
   bottom: -7px;
   left: -7px;
   right: -7px;
+}
+
+@media (pointer: coarse) {
+  .quota-step-btn::before {
+    inset: auto;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    min-width: var(--target-size);
+    min-height: var(--target-size);
+  }
 }
 
 .quota-step-btn:hover:not(:disabled) {
@@ -729,7 +746,9 @@ function handleRemovePass() {
   font-size: var(--text-caption);
   color: var(--ink-1);
   cursor: pointer;
-  transition: all var(--duration-1) var(--ease-out);
+  transition:
+    border-color var(--duration-1) var(--ease-out),
+    color var(--duration-1) var(--ease-out);
 }
 
 .sub-tool-btn:hover:not(:disabled) {
@@ -796,7 +815,7 @@ function handleRemovePass() {
   color: var(--ink-2);
 }
 
-@media (max-width: 640px) {
+@media (max-width: 680px) {
   .card-footer {
     flex-direction: column;
     align-items: stretch;

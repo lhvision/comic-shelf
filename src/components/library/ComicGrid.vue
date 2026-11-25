@@ -803,7 +803,7 @@ watch(
   padding: var(--space-1) var(--space-3);
   background: color-mix(in oklab, var(--paper-0) 70%, var(--paper-1));
   border: 1px solid var(--line);
-  border-radius: var(--radius-full);
+  border-radius: var(--radius-pill);
   font-family: var(--font-mono);
   font-size: var(--text-xs);
   color: var(--ink-2);
@@ -868,7 +868,7 @@ watch(
 }
 
 .fold-card-title {
-  font-size: var(--text-base);
+  font-size: var(--text-md);
   font-weight: 600;
   color: var(--ink-0);
   margin: 0;
@@ -925,7 +925,7 @@ watch(
   flex-wrap: wrap;
 }
 
-@media (max-width: 640px) {
+@media (max-width: 680px) {
   .shelf-sentinel {
     flex-direction: column;
     align-items: stretch;
@@ -1048,7 +1048,7 @@ watch(
   color: var(--ink-2);
 }
 
-@media (max-width: 640px) {
+@media (max-width: 680px) {
   .archive-title-hint {
     display: none;
   }

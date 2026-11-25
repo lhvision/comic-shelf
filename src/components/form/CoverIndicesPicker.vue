@@ -139,7 +139,7 @@ function normalizeCover(index: number) {
   line-height: 1.4;
 }
 
-@media (max-width: 640px) {
+@media (max-width: 680px) {
   .covers-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }

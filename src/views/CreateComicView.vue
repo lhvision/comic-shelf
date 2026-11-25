@@ -626,8 +626,8 @@ const {
   padding: var(--space-1) var(--space-2);
   border-radius: var(--radius-1);
   background: var(--accent);
-  color: #fff;
-  font-size: var(--text-2xs);
+  color: var(--accent-contrast);
+  font-size: var(--text-caption);
   font-weight: 600;
   letter-spacing: 0.04em;
 }
@@ -685,7 +685,7 @@ const {
   border-radius: var(--radius-2);
   background: var(--paper-0);
   cursor: pointer;
-  transition: border-color var(--duration-fast) var(--ease-out);
+  transition: border-color var(--duration-1) var(--ease-out);
 }
 
 .pdf-breakdown-item:hover {
@@ -713,7 +713,9 @@ const {
   background: transparent;
   color: var(--ink-0);
   font-size: var(--text-xs);
-  transition: all var(--duration-fast) var(--ease-out);
+  transition:
+    background-color var(--duration-1) var(--ease-out),
+    border-color var(--duration-1) var(--ease-out);
 }
 
 .pdf-item-title-input:focus {
@@ -769,7 +771,7 @@ const {
   background: var(--paper-1);
   font-size: var(--text-xs);
   color: var(--ink-1);
-  line-height: 1.6;
+  line-height: var(--leading-relaxed);
 }
 
 .path-guide h3 {

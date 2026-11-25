@@ -6,7 +6,7 @@
  * 核心架构：
  * - 选项卡：远端车号收录（`ImportRemoteTab`） vs 本地自建/拆帧（`ImportLocalTab`）；
  * - 设置项：全站新入库默认对访客隐藏 + 下载并发步进器（`ImportConcurrencyStepper`）；
- * - 响应式折叠：移动端（≤640px）通过 VueUse `useMediaQuery` 驱动网格抽屉折叠与弹性展开过渡。
+ * - 响应式折叠：移动端（≤680px）通过 VueUse `useMediaQuery` 驱动网格抽屉折叠与弹性展开过渡。
  */
 
 import { computed, onMounted, ref, useId, watch } from 'vue'
@@ -48,7 +48,7 @@ const { broadcastLocalChange } = useSystemEvents()
 
 const contentId = useId()
 const isMobileExpanded = ref(false)
-const isDesktop = useMediaQuery('(min-width: 640px)')
+const isDesktop = useMediaQuery('(min-width: 681px)')
 
 watch(isDesktop, (desktop) => {
   if (desktop && isMobileExpanded.value) {
@@ -450,7 +450,10 @@ function incConcurrency() {
   line-height: 1.2;
   color: var(--ink-1);
   cursor: pointer;
-  transition: all var(--duration-1) var(--ease-out);
+  transition:
+    color var(--duration-1) var(--ease-out),
+    background-color var(--duration-1) var(--ease-out),
+    box-shadow var(--duration-1) var(--ease-out);
 }
 
 .panel-tab:hover:not(.is-active) {
@@ -478,7 +481,7 @@ function incConcurrency() {
   max-width: 24rem;
   color: var(--ink-1);
   font-size: var(--text-sm);
-  line-height: 1.6;
+  line-height: var(--leading-relaxed);
 }
 
 .import-controls {
@@ -521,6 +524,7 @@ function incConcurrency() {
 }
 
 .tooltip-icon {
+  position: relative;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -530,6 +534,18 @@ function incConcurrency() {
   cursor: pointer;
   padding: var(--space-0-5);
   border-radius: var(--radius-1);
+}
+
+@media (pointer: coarse) {
+  .tooltip-icon::before {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    min-width: var(--target-size);
+    min-height: var(--target-size);
+  }
 }
 
 .tooltip-icon:hover {
@@ -569,7 +585,7 @@ function incConcurrency() {
   color: var(--accent);
 }
 
-@media (max-width: 640px) {
+@media (max-width: 680px) {
   .import-panel,
   .import-panel.is-source-locked {
     display: flex;

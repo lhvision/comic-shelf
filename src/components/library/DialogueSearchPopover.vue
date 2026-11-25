@@ -449,6 +449,12 @@ function onMouseEnterItem(index: number) {
   }
 }
 
+@media (prefers-reduced-motion: reduce) {
+  .loading-bar::after {
+    animation-duration: 3.6s;
+  }
+}
+
 /* 错误状态 */
 .popover-error {
   display: flex;
@@ -465,8 +471,10 @@ function onMouseEnterItem(index: number) {
 
 /* 结果列表 */
 .results-list {
-  max-height: min(24rem, 55vh);
+  max-height: min(24rem, 55dvh);
   overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
   padding: var(--space-1);
   display: flex;
   flex-direction: column;
@@ -694,7 +702,7 @@ function onMouseEnterItem(index: number) {
   transform: translateY(-4px);
 }
 
-@media (max-width: 681px) {
+@media (max-width: 680px) {
   .dialogue-popover {
     max-width: 100%;
   }

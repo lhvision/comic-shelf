@@ -456,7 +456,7 @@ watch([() => store.error, imageSearch.error], ([err1, err2]) => {
   isolation: isolate;
   overflow-x: clip;
   padding-bottom: var(--space-10);
-  min-height: 100vh;
+  min-height: 100dvh;
 }
 
 .shelf,
@@ -580,7 +580,7 @@ watch([() => store.error, imageSearch.error], ([err1, err2]) => {
   margin-top: var(--space-4);
   padding: var(--space-2) var(--space-3);
   border: 1px solid var(--line);
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   background: color-mix(in oklab, var(--paper-0) 72%, var(--paper-1));
   color: var(--ink-2);
   font-family: var(--font-mono);
@@ -590,7 +590,7 @@ watch([() => store.error, imageSearch.error], ([err1, err2]) => {
 .cache-active-note__dot {
   width: 0.45rem;
   height: 0.45rem;
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   background: var(--accent);
   animation: cache-note-pulse var(--duration-2) var(--ease-out) infinite;
 }
@@ -631,7 +631,7 @@ watch([() => store.error, imageSearch.error], ([err1, err2]) => {
   }
 }
 
-@media (max-width: 560px) {
+@media (max-width: 680px) {
   .shelf-head {
     grid-template-columns: 1fr;
   }

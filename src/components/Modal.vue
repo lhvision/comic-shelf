@@ -365,7 +365,7 @@ dialog:not([open]) {
   place-items: center;
   padding: var(--space-5);
   margin: 0;
-  width: 100vw;
+  width: 100%;
   height: 100dvh;
   max-width: none;
   max-height: none;
@@ -552,6 +552,8 @@ dialog:not([open]) {
 .modal-body {
   flex: 1 1 auto;
   overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
   padding: var(--space-5);
   font-size: var(--text-sm);
   line-height: 1.7;

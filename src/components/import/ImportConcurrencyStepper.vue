@@ -142,7 +142,9 @@ function handleInc() {
   font-size: var(--text-sm);
   cursor: pointer;
   user-select: none;
-  transition: all var(--duration-1) var(--ease-out);
+  transition:
+    background-color var(--duration-1) var(--ease-out),
+    color var(--duration-1) var(--ease-out);
 }
 
 .stepper__btn:hover:not(:disabled) {

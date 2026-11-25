@@ -218,7 +218,7 @@ watch(isOnline, (online, wasOnline) => {
 
 .comic-page-image[data-state='loading'] {
   width: 100%;
-  min-height: clamp(16rem, 55vh, 48rem);
+  min-height: clamp(16rem, 55dvh, 48rem);
   aspect-ratio: 0.72;
 }
 

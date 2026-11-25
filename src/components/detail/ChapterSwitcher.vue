@@ -191,7 +191,7 @@ function chapterState(id: string): 'past' | 'active' | 'upcoming' {
 
 .chapter-switcher::-webkit-scrollbar-thumb {
   background: color-mix(in oklab, var(--accent) 45%, transparent);
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
 }
 
 .chapter-switcher::-webkit-scrollbar-thumb:hover {

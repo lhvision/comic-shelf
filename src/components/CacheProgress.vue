@@ -82,7 +82,7 @@ const label = computed(() => {
 .cache-progress__dot {
   width: 0.45rem;
   height: 0.45rem;
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   background: var(--accent);
   box-shadow: 0 0 0 0 color-mix(in oklab, var(--accent) 35%, transparent);
   animation: pulse var(--duration-2) var(--ease-out) infinite;

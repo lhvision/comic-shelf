@@ -223,7 +223,7 @@ useIntersectionObserver(
 }
 
 .end-title {
-  font-family: var(--font-serif);
+  font-family: var(--font-display);
   font-size: var(--text-2xl);
   font-weight: 500;
   letter-spacing: 0.02em;
@@ -425,55 +425,6 @@ useIntersectionObserver(
   margin-top: var(--space-2);
 }
 
-.end-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-2);
-  min-height: 2.75rem;
-  padding: 0 var(--space-5);
-  font-size: var(--text-sm);
-  font-weight: 500;
-  border-radius: var(--radius-2);
-  cursor: pointer;
-  transition:
-    background-color var(--duration-1) var(--ease-out),
-    border-color var(--duration-1) var(--ease-out),
-    color var(--duration-1) var(--ease-out),
-    transform var(--duration-1) var(--ease-out);
-}
-
-.end-btn.btn-primary {
-  background: var(--accent);
-  color: var(--paper-0);
-  border: 1px solid transparent;
-}
-
-.end-btn.btn-primary:hover {
-  background: color-mix(in oklab, var(--accent) 85%, black 15%);
-  transform: translateY(-1px);
-}
-
-.end-btn.btn-primary:active {
-  transform: translateY(0);
-}
-
-.end-btn.btn-ghost {
-  color: var(--reader-ink);
-  background: var(--reader-surface-strong);
-  border: 1px solid var(--reader-line-strong);
-}
-
-.end-btn.btn-ghost:hover {
-  color: var(--paper-0);
-  background: var(--reader-surface-hover);
-  border-color: color-mix(in oklab, var(--reader-ink) 35%, transparent);
-  transform: translateY(-1px);
-}
-
-.end-btn.btn-ghost:active {
-  transform: translateY(0);
-}
-
 @media (max-width: 680px) {
   .reader-end {
     min-height: 100dvh;
@@ -600,7 +551,7 @@ useIntersectionObserver(
   .end-btn {
     flex: 1;
     justify-content: center;
-    min-height: 2.6rem;
+    min-height: var(--control-md);
     padding: 0 var(--space-4);
   }
 }

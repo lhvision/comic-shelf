@@ -285,7 +285,9 @@ function resetFilters() {
   cursor: pointer;
   white-space: nowrap;
   flex-shrink: 0;
-  transition: all var(--duration-1) var(--ease-out);
+  transition:
+    color var(--duration-1) var(--ease-out),
+    border-color var(--duration-1) var(--ease-out);
 }
 
 .refresh-btn:hover {
@@ -342,9 +344,9 @@ function resetFilters() {
 
 .filter-badge {
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: var(--text-caption);
   padding: 0 6px;
-  border-radius: 9999px;
+  border-radius: var(--radius-pill);
   background: var(--paper-2);
   color: var(--ink-2);
 }
@@ -359,7 +361,7 @@ function resetFilters() {
   padding: var(--space-8) var(--space-4);
   text-align: center;
   color: var(--ink-2);
-  font-size: var(--text-body);
+  font-size: var(--text-md);
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -383,7 +385,7 @@ function resetFilters() {
 
 .empty-seal {
   font-family: var(--font-display);
-  font-size: var(--text-title);
+  font-size: var(--text-lg);
   color: var(--ink-2);
   border: 1px solid var(--line);
   padding: var(--space-2) var(--space-4);
@@ -411,7 +413,7 @@ function resetFilters() {
   animation: spin 1s linear infinite;
 }
 
-@media (max-width: 640px) {
+@media (max-width: 680px) {
   .roster-toolbar {
     flex-direction: row;
     align-items: center;

@@ -387,7 +387,7 @@ defineExpose({
   display: flex;
   align-items: center;
   justify-content: center;
-  background: color-mix(in oklab, var(--paper-0) 4%, #111210);
+  background: color-mix(in oklab, var(--paper-0) 4%, var(--reader-page-bg));
   border: 1px dashed color-mix(in oklab, var(--line) 18%, transparent);
   border-radius: var(--radius-1);
   box-shadow: var(--shadow-2);
@@ -703,7 +703,7 @@ defineExpose({
   display: flex;
   justify-content: center;
   align-items: center;
-  padding: var(--space-8) var(--reader-gutter) clamp(6rem, 25vh, 16rem);
+  padding: var(--space-8) var(--reader-gutter) clamp(6rem, 25dvh, 16rem);
   width: 100%;
   box-sizing: border-box;
 }
@@ -728,7 +728,7 @@ defineExpose({
   display: inline-flex;
   align-items: center;
   padding: var(--space-1) var(--space-3);
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   background: color-mix(in oklab, var(--accent) 18%, transparent);
   color: var(--accent);
   border: 1px solid color-mix(in oklab, var(--accent) 35%, transparent);

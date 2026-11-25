@@ -5,7 +5,8 @@
 
 import { computed, onUnmounted, ref, useTemplateRef, watch } from 'vue'
 import { onBeforeRouteLeave, useRoute, useRouter } from 'vue-router'
-import { usePreferredReducedMotion, useScrollLock, useToggle } from '@vueuse/core'
+import { useMediaQuery, useScrollLock, useToggle } from '@vueuse/core'
+import { REDUCED_MOTION_QUERY } from '@/utils/is'
 import { useReaderSettings } from '@/composables/useReaderSettings'
 import { useReaderPaging } from '@/composables/useReaderPaging'
 import { useReaderChrome } from '@/composables/useReaderChrome'
@@ -40,7 +41,7 @@ const currentGroupIndex = ref(initP > 0 ? Math.max(0, initP - 1) : 0)
 const userInteracted = ref(false)
 const [settingsOpen] = useToggle(false)
 const [filmstripOpen, toggleFilmstrip] = useToggle(false)
-const reducedMotion = usePreferredReducedMotion()
+const reducedMotion = useMediaQuery(REDUCED_MOTION_QUERY)
 const viewportRef = useTemplateRef<{ scrollEl: HTMLElement | null }>('viewportRef')
 const scrollEl = computed(() => viewportRef.value?.scrollEl ?? null)
 
@@ -92,7 +93,7 @@ const {
   onPagePointerDown, onPagePointerMove, onPagePointerUp, onPagePointerCancel,
 } = useReaderInteraction({
   userInteracted, currentPage, currentGroupIndex, settingsOpen, filmstripOpen, toggleFilmstrip,
-  reducedMotion: computed(() => Boolean(reducedMotion.value)),
+  reducedMotion,
   route, router, settings: readerSettings, bubble: readerBubble, data: readerData,
   paging: readerPaging, chrome: readerChrome, navigation: readerNavigation, autoTurn: readerAutoTurn,
 })
@@ -269,7 +270,7 @@ onUnmounted(() => {
 
 <style scoped>
 .reader-view {
-  --reader-chrome-h: clamp(4.4rem, 8vh, 6.2rem);
+  --reader-chrome-h: clamp(4.4rem, 8dvh, 6.2rem);
   --reader-gutter: clamp(var(--space-2), 2vw, var(--space-5));
   --reader-gap: clamp(var(--space-1), 1.4vw, var(--space-3));
   --reader-gap-tight: clamp(var(--space-1), 1.2vw, var(--space-3));

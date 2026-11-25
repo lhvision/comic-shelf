@@ -474,7 +474,11 @@ function onCustomBlur() {
   font-size: var(--text-sm);
   font-weight: 500;
   cursor: pointer;
-  transition: all 160ms cubic-bezier(0.2, 0, 0, 1);
+  transition:
+    color 160ms cubic-bezier(0.2, 0, 0, 1),
+    background-color 160ms cubic-bezier(0.2, 0, 0, 1),
+    border-color 160ms cubic-bezier(0.2, 0, 0, 1),
+    box-shadow 160ms cubic-bezier(0.2, 0, 0, 1);
 }
 
 .scope-tab-btn:hover {
@@ -656,7 +660,7 @@ function onCustomBlur() {
   width: var(--control-md);
   height: var(--control-md);
   border: 0;
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   background: transparent;
   cursor: pointer;
 }
@@ -670,7 +674,7 @@ function onCustomBlur() {
   height: 1.5rem;
   translate: 0 -50%;
   border: 1px solid var(--reader-line-strong);
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   background: var(--reader-surface-strong);
   transition:
     background-color var(--duration-2) var(--ease-out),

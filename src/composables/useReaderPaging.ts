@@ -110,7 +110,7 @@ export function useReaderPaging(options: UseReaderPagingOptions) {
   const orderedGroups = computed(() => {
     const withIndex = pageGroups.value.map((pages, index) => ({ pages, index }))
     return currentSettings.value.direction === 'rtl' && currentSettings.value.mode === 'horizontal'
-      ? [...withIndex].reverse()
+      ? withIndex.toReversed()
       : withIndex
   })
 

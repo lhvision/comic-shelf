@@ -65,7 +65,7 @@ const illustrationSrc = computed(() => getIllustration(props.variant))
   gap: var(--space-3);
   padding: var(--space-3-5) var(--space-3-5) var(--space-3);
   border-radius: var(--radius-2);
-  background: color-mix(in oklab, var(--paper-0) 8%, #141512);
+  background: color-mix(in oklab, var(--paper-0) 8%, var(--reader-page-bg));
   border: 1px solid color-mix(in oklab, var(--line) 16%, transparent);
   box-shadow: 0 16px 36px -6px rgb(0 0 0 / 52%);
   contain: layout style;
@@ -83,7 +83,7 @@ const illustrationSrc = computed(() => getIllustration(props.variant))
 
 .reader-loading-state.is-full-frame .illustration-frame {
   aspect-ratio: 16 / 10;
-  max-height: clamp(14rem, 42vh, 28rem);
+  max-height: clamp(14rem, 42dvh, 28rem);
 }
 
 /* 紧凑微型模式 */
@@ -153,7 +153,7 @@ const illustrationSrc = computed(() => getIllustration(props.variant))
   }
 }
 
-@media (max-width: 640px) {
+@media (max-width: 680px) {
   .reader-loading-state.is-full-frame .loading-card {
     max-width: 90vw;
     padding: var(--space-3);

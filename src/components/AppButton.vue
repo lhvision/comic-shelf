@@ -333,4 +333,24 @@ if (import.meta.env.DEV) {
     min-height: var(--control-sm);
   }
 }
+
+@media (pointer: coarse) {
+  .btn-shape-circle.btn-md,
+  .btn-shape-square.btn-md,
+  .is-icon-only.btn-md {
+    position: relative;
+  }
+
+  .btn-shape-circle.btn-md::before,
+  .btn-shape-square.btn-md::before,
+  .is-icon-only.btn-md::before {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    min-width: var(--target-size);
+    min-height: var(--target-size);
+  }
+}
 </style>

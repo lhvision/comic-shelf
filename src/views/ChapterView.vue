@@ -308,7 +308,7 @@ onMounted(() => {
           <input
             id="chap-title-input"
             v-model="chapterTitleInput"
-            class="form-input"
+            class="field-input"
             type="text"
             placeholder="例如：第 1 话 · 初始篇"
             maxlength="100"
@@ -518,29 +518,6 @@ onMounted(() => {
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
-}
-
-.form-label {
-  font-size: var(--text-xs);
-  font-weight: 500;
-  color: var(--ink-2);
-}
-
-.form-input {
-  width: 100%;
-  padding: var(--space-2) var(--space-3);
-  font-size: var(--text-sm);
-  border: 1px solid var(--line-strong);
-  border-radius: var(--radius-2);
-  background: var(--paper-0);
-  color: var(--ink-0);
-  font-family: inherit;
-}
-
-.form-input:focus {
-  outline: none;
-  border-color: var(--accent);
-  box-shadow: 0 0 0 1px var(--accent);
 }
 
 .remove-copy {

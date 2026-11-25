@@ -195,6 +195,8 @@ function onClickItem(item: SearchHistoryItem) {
 .menu-list {
   max-height: min(18rem, 45dvh);
   overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
   padding: var(--space-1) 0;
 }
 
@@ -204,13 +206,13 @@ function onClickItem(item: SearchHistoryItem) {
   justify-content: space-between;
   padding: var(--space-2) var(--space-3);
   cursor: pointer;
-  transition: background var(--duration-1) var(--ease-out);
+  transition: background-color var(--duration-1) var(--ease-out);
   gap: var(--space-2);
 }
 
 .menu-item:hover,
 .menu-item.is-focused {
-  background: var(--paper-warm);
+  background: var(--paper-1);
 }
 
 .item-content {

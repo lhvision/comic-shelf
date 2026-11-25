@@ -107,7 +107,9 @@ const emit = defineEmits<{
   cursor: pointer;
   white-space: nowrap;
   flex: 0 0 auto;
-  transition: all var(--duration-1) var(--ease-out);
+  transition:
+    background-color var(--duration-1) var(--ease-out),
+    border-color var(--duration-1) var(--ease-out);
 }
 
 .update-card-btn:hover:not(:disabled) {

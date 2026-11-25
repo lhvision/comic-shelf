@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { nextTick, useTemplateRef } from 'vue'
+import { prefersReducedMotion } from '@/utils/is'
 import PageTile from '@/components/detail/PageTile.vue'
 import AppButton from '@/components/AppButton.vue'
 import AppIcon from '@/components/AppIcon.vue'
@@ -60,11 +61,8 @@ function handleCollapse() {
   emit('collapse')
   void nextTick(() => {
     if (sectionEl.value && typeof sectionEl.value.scrollIntoView === 'function') {
-      const prefersReducedMotion =
-        typeof window !== 'undefined' &&
-        window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches
       sectionEl.value.scrollIntoView({
-        behavior: prefersReducedMotion ? 'auto' : 'smooth',
+        behavior: prefersReducedMotion() ? 'auto' : 'smooth',
         block: 'start',
       })
     }
@@ -288,7 +286,7 @@ function handleCollapse() {
   font-size: var(--text-caption);
   font-weight: 700;
   color: var(--accent);
-  line-height: var(--leading-none);
+  line-height: 1;
 }
 
 .fold-card-title {
@@ -387,7 +385,7 @@ function handleCollapse() {
   flex-wrap: wrap;
 }
 
-@media (max-width: 640px) {
+@media (max-width: 680px) {
   .page-fold-card {
     aspect-ratio: auto;
     min-height: 100%;

@@ -131,7 +131,7 @@ const autoTurnActionLabel = () => (props.autoTurnPaused || props.settingsOpen ? 
   gap: var(--space-1);
   padding: var(--space-2);
   border: 1px solid var(--reader-line-strong);
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   background: var(--reader-scrim);
   backdrop-filter: blur(10px);
   font-family: var(--font-mono);
@@ -162,7 +162,7 @@ const autoTurnActionLabel = () => (props.autoTurnPaused || props.settingsOpen ? 
   place-items: center;
   padding: 0 var(--space-2);
   border: 1px solid var(--reader-line-strong);
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   background: var(--reader-scrim);
   backdrop-filter: blur(10px);
   color: var(--reader-ink);
@@ -237,7 +237,7 @@ const autoTurnActionLabel = () => (props.autoTurnPaused || props.settingsOpen ? 
   min-height: var(--control-md);
   padding: var(--space-1) var(--space-2);
   border: 1px solid var(--reader-line-strong);
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   background: var(--reader-scrim);
   backdrop-filter: blur(10px);
   color: var(--reader-ink);

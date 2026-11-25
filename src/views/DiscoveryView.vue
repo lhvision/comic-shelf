@@ -277,7 +277,7 @@ onMounted(() => {
   }
 }
 
-@media (max-width: 640px) {
+@media (max-width: 680px) {
   .discovery-grid {
     grid-template-columns: repeat(2, 1fr);
     gap: var(--space-3);

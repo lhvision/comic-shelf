@@ -336,7 +336,7 @@ async function save() {
   gap: var(--space-3);
 }
 
-@media (max-width: 640px) {
+@media (max-width: 680px) {
   .grid-2 {
     grid-template-columns: 1fr;
   }

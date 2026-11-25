@@ -225,7 +225,10 @@ async function handleConfirmReturn() {
   cursor: pointer;
   white-space: nowrap;
   flex-shrink: 0;
-  transition: all var(--duration-1) var(--ease-out);
+  transition:
+    background-color var(--duration-1) var(--ease-out),
+    border-color var(--duration-1) var(--ease-out),
+    color var(--duration-1) var(--ease-out);
 }
 
 .reader-badge-btn:hover {
@@ -284,8 +287,8 @@ async function handleConfirmReturn() {
 
 .card-title {
   margin: 0;
-  font-family: var(--font-serif);
-  font-size: var(--text-body);
+  font-family: var(--font-display);
+  font-size: var(--text-sm);
   font-weight: 600;
   color: var(--ink-0);
   letter-spacing: 0.04em;
@@ -332,8 +335,8 @@ async function handleConfirmReturn() {
 }
 
 .plate-name {
-  font-size: var(--text-body);
-  font-family: var(--font-serif);
+  font-size: var(--text-sm);
+  font-family: var(--font-display);
   color: var(--ink-0);
   letter-spacing: 0.02em;
   word-break: break-word;
@@ -422,8 +425,8 @@ async function handleConfirmReturn() {
 }
 
 .confirm-title {
-  font-size: var(--text-body);
-  font-family: var(--font-serif);
+  font-size: var(--text-sm);
+  font-family: var(--font-display);
   font-weight: 600;
   color: var(--ink-0);
 }
@@ -446,8 +449,8 @@ async function handleConfirmReturn() {
   min-height: 36px;
 }
 
-/* 移动端响应式规约（严格遵守 <=640px 规范） */
-@media (max-width: 640px) {
+/* 移动端响应式规约（统一 <=680px 断点 + pointer: coarse 触控热区） */
+@media (max-width: 680px) {
   .reader-label {
     display: none;
   }
@@ -462,15 +465,15 @@ async function handleConfirmReturn() {
   }
 }
 
-@media (max-width: 640px) and (pointer: coarse) {
+@media (pointer: coarse) {
   .reader-badge-btn::before {
     content: '';
     position: absolute;
     top: 50%;
     left: 50%;
     transform: translate(-50%, -50%);
-    min-width: 44px;
-    min-height: 44px;
+    min-width: var(--target-size);
+    min-height: var(--target-size);
     width: 100%;
     height: 100%;
   }

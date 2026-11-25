@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { useWindowScroll } from '@vueuse/core'
+import { prefersReducedMotion } from '@/utils/is'
 import AppButton from '@/components/AppButton.vue'
 import AppIcon from '@/components/AppIcon.vue'
 import AppTooltip from '@/components/AppTooltip.vue'
@@ -19,14 +20,9 @@ const { y } = useWindowScroll()
 const visible = computed(() => y.value > props.threshold)
 
 function scrollToTop() {
-  const prefersReduced =
-    typeof window !== 'undefined' &&
-    typeof window.matchMedia === 'function' &&
-    window.matchMedia('(prefers-reduced-motion: reduce)').matches
-
   window.scrollTo({
     top: 0,
-    behavior: prefersReduced ? 'auto' : 'smooth',
+    behavior: prefersReducedMotion() ? 'auto' : 'smooth',
   })
 
   // 无障碍焦点平滑转移，防止 v-if 销毁后焦点丢失至 body
@@ -120,7 +116,7 @@ function scrollToTop() {
   transform: translateY(8px);
 }
 
-@media (max-width: 640px) {
+@media (max-width: 680px) {
   .back-to-top {
     right: calc(var(--space-4) + env(safe-area-inset-right, 0px));
     bottom: calc(var(--space-4) + env(safe-area-inset-bottom, 0px));

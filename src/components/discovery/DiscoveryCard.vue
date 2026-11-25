@@ -446,7 +446,10 @@ function retryCover() {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  transition: all var(--duration-1) var(--ease-out);
+  transition:
+    background-color var(--duration-1) var(--ease-out),
+    color var(--duration-1) var(--ease-out),
+    border-color var(--duration-1) var(--ease-out);
 }
 
 .source-stamp:hover {
@@ -527,7 +530,7 @@ function retryCover() {
 .mirror-btn {
   flex: 1;
   min-width: 0;
-  font-size: 0.6875rem !important;
+  font-size: var(--text-caption) !important;
 }
 
 .mirror-ingest-btn {
@@ -557,7 +560,12 @@ function retryCover() {
   border: 1px solid var(--line);
   box-shadow: 0 1px 3px rgb(0 0 0 / 12%);
   cursor: pointer;
-  transition: all var(--duration-1) var(--ease-out);
+  transition:
+    background-color var(--duration-1) var(--ease-out),
+    color var(--duration-1) var(--ease-out),
+    border-color var(--duration-1) var(--ease-out),
+    transform var(--duration-1) var(--ease-out),
+    box-shadow var(--duration-1) var(--ease-out);
   z-index: 2;
 }
 
@@ -580,13 +588,18 @@ function retryCover() {
   border-radius: var(--radius-1);
   font-size: var(--text-caption);
   font-weight: 500;
-  color: #ffffff;
+  color: var(--accent-contrast);
   background: rgb(0 0 0 / 65%);
   backdrop-filter: blur(4px);
   border: 1px solid rgb(255 255 255 / 20%);
   box-shadow: 0 2px 4px rgb(0 0 0 / 25%);
   cursor: pointer;
-  transition: all var(--duration-1) var(--ease-out);
+  transition:
+    background-color var(--duration-1) var(--ease-out),
+    color var(--duration-1) var(--ease-out),
+    border-color var(--duration-1) var(--ease-out),
+    transform var(--duration-1) var(--ease-out),
+    box-shadow var(--duration-1) var(--ease-out);
   z-index: 2;
 }
 
@@ -649,15 +662,6 @@ function retryCover() {
   color: var(--accent);
 }
 
-@keyframes spin {
-  from {
-    transform: rotate(0deg);
-  }
-  to {
-    transform: rotate(360deg);
-  }
-}
-
 .loading-label {
   font-size: var(--text-caption);
   color: var(--ink-2);
@@ -672,7 +676,9 @@ function retryCover() {
   background: var(--paper-0);
   color: var(--ink-0);
   cursor: pointer;
-  transition: all var(--duration-1) var(--ease-out);
+  transition:
+    border-color var(--duration-1) var(--ease-out),
+    color var(--duration-1) var(--ease-out);
 }
 
 .cover-retry-btn:hover {

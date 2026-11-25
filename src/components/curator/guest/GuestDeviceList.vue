@@ -165,7 +165,10 @@ function confirmKick(deviceId: number) {
   background: var(--paper-1);
   color: var(--ink-1);
   cursor: pointer;
-  transition: all var(--duration-1) var(--ease-out);
+  transition:
+    background-color var(--duration-1) var(--ease-out),
+    border-color var(--duration-1) var(--ease-out),
+    color var(--duration-1) var(--ease-out);
 }
 
 .device-kick-action.confirm-yes {
@@ -192,11 +195,14 @@ function confirmKick(deviceId: number) {
   background: transparent;
   color: var(--ink-2);
   cursor: pointer;
-  transition: all var(--duration-1) var(--ease-out);
+  transition:
+    color var(--duration-1) var(--ease-out),
+    background-color var(--duration-1) var(--ease-out),
+    border-color var(--duration-1) var(--ease-out);
   flex-shrink: 0;
 }
 
-/* WCAG 触控热区扩展至 40px */
+/* 触控热区扩展（桌面 40px，coarse 指针 >= 44px） */
 .device-kick-btn::before {
   content: '';
   position: absolute;
@@ -204,6 +210,17 @@ function confirmKick(deviceId: number) {
   bottom: -8px;
   left: -8px;
   right: -8px;
+}
+
+@media (pointer: coarse) {
+  .device-kick-btn::before {
+    inset: auto;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    min-width: var(--target-size);
+    min-height: var(--target-size);
+  }
 }
 
 .device-kick-btn:hover:not(:disabled) {

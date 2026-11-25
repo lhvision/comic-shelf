@@ -146,7 +146,10 @@ watch(activeTab, async (tab) => {
   background: transparent;
   color: var(--ink-2);
   cursor: pointer;
-  transition: all var(--duration-1) var(--ease-out);
+  transition:
+    color var(--duration-1) var(--ease-out),
+    border-color var(--duration-1) var(--ease-out),
+    background-color var(--duration-1) var(--ease-out);
 }
 
 .title-info-btn:hover {

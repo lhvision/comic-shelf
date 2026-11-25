@@ -93,7 +93,9 @@ const emit = defineEmits<{
   font-family: var(--font-mono);
   font-size: var(--text-caption);
   cursor: pointer;
-  transition: all var(--duration-1) var(--ease-out);
+  transition:
+    background-color var(--duration-1) var(--ease-out),
+    border-color var(--duration-1) var(--ease-out);
 }
 
 .pwa-install-btn:hover {

@@ -2,6 +2,7 @@ import { createRouter, createWebHistory } from 'vue-router'
 import { nextTick } from 'vue'
 import { useCoverTransition } from '@/composables/useCoverTransition'
 import { withResolvers } from '@/utils/promise'
+import { prefersReducedMotion } from '@/utils/is'
 
 import { useShelfState } from '@/composables/useShelfState'
 import { useAuth } from '@/composables/useAuth'
@@ -114,11 +115,7 @@ router.beforeResolve(async (to, from) => {
     return true
   }
 
-  if (
-    typeof window !== 'undefined' &&
-    typeof window.matchMedia === 'function' &&
-    window.matchMedia('(prefers-reduced-motion: reduce)').matches
-  ) {
+  if (prefersReducedMotion()) {
     return true
   }
 

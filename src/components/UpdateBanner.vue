@@ -137,7 +137,10 @@ const isVisible = computed(() => showPrompt.value && !isReaderView.value)
   border-radius: var(--radius-2);
   font-size: var(--text-xs);
   cursor: pointer;
-  transition: all var(--duration-1) var(--ease-out);
+  transition:
+    background-color var(--duration-1) var(--ease-out),
+    border-color var(--duration-1) var(--ease-out),
+    color var(--duration-1) var(--ease-out);
   white-space: nowrap;
 }
 

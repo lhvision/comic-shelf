@@ -164,7 +164,7 @@ const heroLede = computed(
   }
 }
 
-@media (max-width: 640px) {
+@media (max-width: 680px) {
   .hero {
     padding-block: var(--space-4) var(--space-2);
     gap: var(--space-3);
@@ -292,7 +292,11 @@ const heroLede = computed(
   text-decoration: none;
   font-size: var(--text-xs);
   line-height: 1.2;
-  transition: all var(--duration-1) var(--ease-out);
+  transition:
+    border-color var(--duration-1) var(--ease-out),
+    color var(--duration-1) var(--ease-out),
+    background-color var(--duration-1) var(--ease-out),
+    box-shadow var(--duration-1) var(--ease-out);
 }
 
 .hero-source-pill:hover {

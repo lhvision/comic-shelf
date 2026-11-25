@@ -361,7 +361,7 @@ onMounted(async () => {
   border-left: 1px solid var(--line);
 }
 
-@media (max-width: 980px) {
+@media (max-width: 960px) {
   .detail-hero {
     grid-template-columns: minmax(0, 1fr);
   }
@@ -372,7 +372,7 @@ onMounted(async () => {
   }
 }
 
-@media (max-width: 640px) {
+@media (max-width: 680px) {
   .detail-hero {
     padding: var(--space-3);
   }

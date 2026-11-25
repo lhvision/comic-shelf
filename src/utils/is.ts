@@ -53,3 +53,16 @@ export function isArray<T = unknown>(val: unknown): val is T[] {
 export function isBrowser(): boolean {
   return typeof window !== 'undefined' && typeof document !== 'undefined'
 }
+
+export const REDUCED_MOTION_QUERY = '(prefers-reduced-motion: reduce)' as const
+
+/**
+ * 判定用户操作系统/浏览器是否开启了“减弱动态效果”无障碍偏好。
+ */
+export function prefersReducedMotion(): boolean {
+  return (
+    typeof window !== 'undefined' &&
+    typeof window.matchMedia === 'function' &&
+    window.matchMedia(REDUCED_MOTION_QUERY).matches
+  )
+}

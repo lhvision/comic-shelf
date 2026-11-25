@@ -217,20 +217,22 @@ function onSlideClick(index: number) {
 /* Scroll-driven cover-flow. Browsers without animation-timeline still get
    a normal scroll-snap carousel above. */
 @supports (animation-timeline: view()) {
-  .cover-slide {
-    view-timeline-name: --cover-slide;
-    view-timeline-axis: inline;
-    animation: cover-flow linear both;
-    animation-timeline: --cover-slide;
-    animation-range: cover 0% cover 100%;
-    perspective: 42rem;
-    transform-style: preserve-3d;
-  }
+  @media (prefers-reduced-motion: no-preference) {
+    .cover-slide {
+      view-timeline-name: --cover-slide;
+      view-timeline-axis: inline;
+      animation: cover-flow linear both;
+      animation-timeline: --cover-slide;
+      animation-range: cover 0% cover 100%;
+      perspective: 42rem;
+      transform-style: preserve-3d;
+    }
 
-  .cover-slide-inner {
-    animation: cover-shade linear both;
-    animation-timeline: --cover-slide;
-    animation-range: cover 0% cover 100%;
+    .cover-slide-inner {
+      animation: cover-shade linear both;
+      animation-timeline: --cover-slide;
+      animation-range: cover 0% cover 100%;
+    }
   }
 }
 
@@ -278,10 +280,12 @@ function onSlideClick(index: number) {
     display: inline-block;
     width: 0.5rem;
     height: 0.5rem;
-    border-radius: var(--radius-full);
+    border-radius: var(--radius-pill);
     background: var(--line-strong);
     cursor: pointer;
-    transition: all var(--duration-2) var(--ease-out);
+    transition:
+      background-color var(--duration-2) var(--ease-out),
+      transform var(--duration-2) var(--ease-out);
   }
 
   .cover-slide::scroll-marker:target-current {
@@ -302,7 +306,7 @@ function onSlideClick(index: number) {
   }
 }
 
-@media (max-width: 640px) {
+@media (max-width: 680px) {
   /* 移动端封面顶部给返回按钮留一条窄空间，左右切换保持 PC 同款居中位置 */
   .cover-track {
     padding-top: calc(var(--control-xs) + var(--space-3));

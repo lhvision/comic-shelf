@@ -118,4 +118,10 @@ const commandIcons: Record<SearchCommandType, string> = {
     transform: scale(1);
   }
 }
+
+@media (prefers-reduced-motion: reduce) {
+  .command-chip {
+    animation: none;
+  }
+}
 </style>

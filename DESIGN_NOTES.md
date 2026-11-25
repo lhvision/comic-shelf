@@ -91,16 +91,24 @@
 
 ### 2.3 动效与触控底线（Motion & Touch Floor）
 
-- **时长与缓动**：动效时长仅限 `--duration-1` (150ms)、`--duration-2` (250ms)、`--duration-3` (400ms)；缓动曲线使用 `--ease-out` 与 `--ease-spring`；
-- **无障碍降级**：所有 CSS 动画与 View Transitions 必须对 `prefers-reduced-motion: reduce` 进行静默降级；
-- **触控底线**：移动端与平板触控热区严格保证 **≥ 44×44px**（可通过负 margin + padding 扩充触控区）。
+- **时长与缓动**：动效时长仅限 `--duration-1` (140ms)、`--duration-2` (260ms)、`--duration-3` (420ms)；缓动曲线使用 `--ease-out` 与 `--ease-spring`；
+- **无障碍降级**：禁止在全局使用 `*, *::before, *::after { animation-duration: 0.01ms !important; }` 暴力覆盖（易造成反常闪烁并抹杀纯色反馈）；改为在 View Transitions、骨架屏、位移/循环动画上按规则精准降级，保留色彩与边框等非位移状态反馈。JS 侧统一复用 `@/utils/is` 的 `prefersReducedMotion()` 或 `useMediaQuery(REDUCED_MOTION_QUERY)`（强类型 `Ref<boolean>`，消除字符串比较）；
+- **触控底线与输入能力解耦**：触控热区扩充与视口宽度解耦，统一由 `@media (pointer: coarse)` 驱动 `tokens.css` 中的 `--target-size: 44px`（非触控默认 `24px`），通过 `::before` / `::after` 伪元素保证 **≥ 44×44px** 命中区；悬停预览与隐显交互统一由 `@media (hover: hover)` / `@media (hover: none)` 控制。
 
-### 2.4 响应式断点（Breakpoints）
+### 2.4 响应式三轴模型与统一断点（Space / Input Modality / Budget）
 
-- **桌面视口（> 960px）**：1200px 居中容器，双栏卡片与大网格布局；
-- **平板视口（681px ~ 960px）**：单栏自适应，目录与详情纵向排布；
-- **移动视口（≤ 680px）**：紧凑单列排布，顶部导航栏简化，阅读器强制归一化为单列（`pagesPerView = 1`）；
-- **超窄抽屉（≤ 480px）**：弹窗自动切换为底部抽屉贴边形态。
+全站废除“按 UA 猜测设备类型”的二元心智，严格按三条正交轴处理多端适配：
+
+1. **空间轴（Space / Form Factor）**：
+   - 组件内部自适应优先使用 **`@container (inline-size)`**（已在 `ComicCard`、`MetadataPanel`、`ChapterCard`、`DirectPassModal` 落地）；
+   - 页面级与全局壳层视口断点统一收口为 **3 档**：
+     - **桌面视口（> 960px）**：1200px 居中容器，双栏卡片与大网格布局（发现页 1200px+ 延展至 5 列）；
+     - **平板视口（681px ~ 960px）**：单栏自适应，目录与详情纵向排布；
+     - **移动 / 紧凑视口（≤ 680px）**：紧凑单列排布，顶部导航栏简化，阅读器强制归一化单列（`WIDE_VIEWPORT_QUERY = '(min-width: 681px)'`）与窄视口缓冲（`useReaderHydration`）；
+     - **超窄抽屉（≤ 480px）**：弹窗自动切换为底部抽屉贴边形态，目录单卡微调列宽。
+   - **动态视口与滚动稳定性**：全屏/高度边界统一使用 `100dvh` / `dvh` 替代 `100vh` / `vh`，`html` 配置 `scroll-padding-top` 防止键盘 Tab 聚焦被吸顶顶栏遮挡（WCAG 2.4.11），滚动弹窗与浮层统一配置 `overscroll-behavior: contain` 与 `scrollbar-gutter: stable`。
+2. **输入能力轴（Input Modality）**：由 `pointer: coarse` 与 `hover: hover/none` 独立控制，不与屏幕宽度捆绑。
+3. **宿主平台与资源预算轴（Platform & Budget）**：仅 PWA 安装引导（`usePwaInstall`）保留 iOS/iPadOS 平台特征探测；阅读器注水窗口基于视口、DPR 与 `useNetwork()` 自适应计算。
 
 ### 2.5 Z-Index 标尺与层叠上下文体系（Elevation & Z-Index Scale）
 
@@ -239,7 +247,7 @@
   - 将跨弹窗和页面高频复用的表单控件样式（`.form-label`, `.field-group`, `.form-item`）与画卷投放容器（`.drop-zone`）收敛至 `@layer components`；
   - 彻底拔除各业务组件中近 200 行重复编写的 scoped CSS 样板；
 - **实用类上浮（`@layer utilities`）**：
-  - 将常用的响应式双列栅格（`.grid-2`，桌面 2 列、移动端 ≤640px 自动单列）收敛至 `@layer utilities`；
+  - 将常用的响应式双列栅格（`.grid-2`，桌面 2 列、移动端 ≤680px 自动单列）收敛至 `@layer utilities`；
 - **Scoped 样式安全保证**：
   - CSS `@layer` 规范中，未分层的样式优先级天然高于任何 `@layer` 声明。因此，各 Vue 组件中编写的特化 `<style scoped>` 规则在需要微调时可随时无侵入覆写 `@layer` 基线，无需借助 `!important`，兼具代码极简与特异性纯净。
 
@@ -329,7 +337,7 @@
 - **视口真实触达感知**：严禁在 `onMounted` 钩子中盲目将作品标记为「已读完」；必须使用 VueUse `useIntersectionObserver` 监听末页卡片容器（`cardEl`），仅当读者真正滚动至书末并进入视口后才触发完成事件；
 - **暗室多端响应**：桌面端采用三联卡片网格，移动端（≤680px）采用垂直图文列表排列（封面在左、书名作者在右、右侧附详情入口），兼顾单手点选便捷性与一屏紧凑呈现；底部统一提供「回到详情」与「返回书架」双向离开出口；
 - **触控安全与双向出口**：详情辅助按钮通过 `::before` 伪元素扩展至 ≥ 44×44px 物理判定热区，与大卡片直接开读解耦；底部统一提供「回到详情」与「返回书架」双向离开出口；
-- **阅览室暗室按钮对比度防御（Reader Dark Room Button Isolation）**：阅读器暗室背景（`--reader-bg`）与全站默认浅色模式隔离。全站通用的 `.btn-ghost`（浅色模式下为近黑墨色文本）在暗室环境下会与纯黑底色混为一体导致完全不可见；必须基于暗室专有 Token 为 `.end-btn.btn-ghost` 提供明确的文本墨色（`var(--reader-ink)`）、暗室垫层（`var(--reader-surface-strong)`）与高对比度边框（`var(--reader-line-strong)`），并补充悬浮与激活态反馈，确保末页操作具备 WCAG AA 级（≥ 4.5:1）无障碍可读性。
+- **阅览室暗室按钮对比度防御（Reader Dark Room Button Isolation）**：阅读器暗室背景（`--reader-bg`）与全站默认浅色模式隔离。全站通用的 `.btn-ghost`（浅色模式下为近黑墨色文本）在暗室环境下会与纯黑底色混为一体导致完全不可见；末页操作统一使用 `<AppButton theme="reader">`（基于 `--reader-ink`、`--reader-surface-strong`、`--reader-line-strong` 与悬浮态 Token），确保达到 WCAG AA 级（≥ 4.5:1）无障碍可读性。
 
 <a id="sec-55"></a>
 
@@ -346,8 +354,8 @@
   4. **常驻合成层与滤镜瘦身铁律（Zero Idle VT Footprint & De-blurred Stamps）**：网格卡片禁止常驻绑定静态 `viewTransitionName`（仅在激活/点击目标上动态挂载 `comic-cover-active`），避免 Blink 为全架数十张卡片在位移时维护独立合成快照图层；大面积位移重排的微标印章（`.id-stamp`、`.match-stamp`、`.reading-stamp`）严禁滥用 `backdrop-filter: blur(...)`，改用高感知半透明墨色背景（`color-mix(in oklab, var(--ink-0) 88%, transparent)`）配合微阴影，彻底消除低配核显与软解模式下的每秒数千次高斯模糊重采样卡顿；吸顶栏增加 `contain: layout style; isolation: isolate;`，全屏水印增加 `contain: strict; will-change: opacity;`；
 - **网格长列表禁绝 `<TransitionGroup>`（No TransitionGroup on Mass Grids）**：书架（`comic-grid`）、画页（`page-grid`）与章节目录（`chapter-grid`）等大容量动态网格全面废除 `<TransitionGroup>`（及其遗留的 `.leave-active` 绝对定位反模式），统一采用原生标准 `<div>` 容器 + 现代 CSS `@starting-style` 合成器补间，彻底杜绝 FLIP 算法与 render 阶段子节点连环 `getBoundingClientRect` 测量的强制同步重排；
 - **触控靶心底线与防迷航回滚**：
-  1. **移动端 WCAG 2.5.5 与次级操作并列（Mobile Action Row Layout）**：在 `max-width: 640px` 下，所有折叠步进与全量展开按钮强制保底 `min-height: 44px;`；次级操作（展开全部与收拢归档）收敛于 `.fold-card-sub-actions` 并列容器中横向均分并排呈现，彻底根治移动端纵向堆叠导致的 48px 异常拉伸与画页视野挤占；
-  2. **视口锚点自愈与动效无障碍（Reduced Motion Adaptation）**：点击收起时通过 `window.matchMedia('(prefers-reduced-motion: reduce)').matches` 探测读者系统动效偏好，在开启减少动效时以 `behavior: 'instant'` 瞬间就位，关闭时以 `behavior: 'smooth'` 平滑回退至网格顶部锚点，兼顾防迷航与前庭功能障碍读者的视觉舒适度。
+  1. **移动端 WCAG 2.5.5 与次级操作并列（Mobile Action Row Layout）**：在 `max-width: 680px` 下，所有折叠步进与全量展开按钮强制保底 `min-height: 44px;`；次级操作（展开全部与收拢归档）收敛于 `.fold-card-sub-actions` 并列容器中横向均分并排呈现，彻底根治移动端纵向堆叠导致的 48px 异常拉伸与画页视野挤占；
+  2. **视口锚点自愈与动效无障碍（Reduced Motion Adaptation）**：点击收起时通过 `@/utils/is` 的 `prefersReducedMotion()` 探测读者系统动效偏好，在开启减少动效时以 `behavior: 'auto'` 瞬间就位，关闭时以 `behavior: 'smooth'` 平滑回退至网格顶部锚点，兼顾防迷航与前庭功能障碍读者的视觉舒适度。
 
 <a id="sec-56"></a>
 

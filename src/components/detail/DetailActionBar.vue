@@ -355,7 +355,7 @@ function prefetchReader() {
 .remove-copy,
 .restart-copy {
   color: var(--ink-1);
-  line-height: 1.6;
+  line-height: var(--leading-relaxed);
 }
 
 .restart-copy strong {
@@ -394,7 +394,7 @@ function prefetchReader() {
   text-align: right;
 }
 
-@media (max-width: 681px) {
+@media (max-width: 680px) {
   .more-menu {
     margin-left: 0;
   }

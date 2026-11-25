@@ -62,11 +62,12 @@
 @layer base {
   html {
     background: var(--paper-0);
+    scroll-padding-top: calc(var(--header-h) + var(--space-4));
   }
 
   body {
     min-width: 320px;
-    min-height: 100vh;
+    min-height: 100dvh;
     font-family: var(--font-body);
     font-size: var(--text-md);
     line-height: var(--leading-body);
@@ -144,7 +145,7 @@
   ::-webkit-scrollbar-thumb {
     background: color-mix(in oklab, var(--ink-2) 55%, transparent);
     border: 3px solid transparent;
-    border-radius: 999px;
+    border-radius: var(--radius-pill);
     background-clip: content-box;
   }
 
@@ -364,11 +365,11 @@
     gap: 0.35em;
     padding: 0.28rem 0.72rem;
     border: 1px solid var(--line);
-    border-radius: 999px;
+    border-radius: var(--radius-pill);
     background: color-mix(in oklab, var(--paper-1) 70%, transparent);
     color: var(--ink-1);
     font-size: var(--text-xs);
-    line-height: 1.4;
+    line-height: var(--leading-snug);
     white-space: nowrap;
 
     &[data-tone='accent'] {
@@ -593,6 +594,7 @@
   .cluster {
     display: flex;
     flex-wrap: wrap;
+    flex-wrap: balance;
     gap: var(--space-2);
   }
 
@@ -635,7 +637,7 @@
     gap: var(--space-3);
   }
 
-  @media (max-width: 640px) {
+  @media (max-width: 680px) {
     .grid-2 {
       grid-template-columns: 1fr;
     }
@@ -772,20 +774,34 @@ html:active-view-transition-type(backward) {
   }
 }
 
-/* 无障碍：减弱动效时直接关闭所有 View Transition 动画与高频位移过渡 */
+/* 无障碍：减弱动效时关闭 View Transitions 与位移动画，保留色彩/边框等非位移反馈 */
 @media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+
   ::view-transition-group(*),
   ::view-transition-old(*),
   ::view-transition-new(*) {
     animation: none !important;
   }
 
-  *,
-  *::before,
-  *::after {
-    animation-duration: 0.01ms !important;
-    animation-iteration-count: 1 !important;
-    transition-duration: 0.01ms !important;
-    scroll-behavior: auto !important;
+  .skeleton-shimmer,
+  .skeleton::after {
+    animation: none;
+  }
+
+  .btn,
+  .chip-button,
+  .drop-zone {
+    transition:
+      background-color var(--duration-1) var(--ease-out),
+      border-color var(--duration-1) var(--ease-out),
+      color var(--duration-1) var(--ease-out),
+      opacity var(--duration-1) var(--ease-out);
+
+    &:hover:not(:disabled) {
+      transform: none;
+    }
   }
 }

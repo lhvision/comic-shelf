@@ -139,7 +139,7 @@ const progressStyle = computed(() => {
 /* 变体 1：track 药丸槽（3px 高度，圆角胶囊） */
 .app-progress-bar--track {
   height: 3px;
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   background: var(--paper-2);
 }
 

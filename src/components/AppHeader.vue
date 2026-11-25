@@ -487,7 +487,7 @@ onAuthSuccess(fetchProviders)
   background: color-mix(in oklab, var(--accent) 22%, var(--paper-0));
 }
 
-@media (max-width: 640px) {
+@media (max-width: 680px) {
   .site-header {
     gap: var(--space-2);
     padding: 0 var(--space-3);
@@ -540,7 +540,7 @@ onAuthSuccess(fetchProviders)
   }
 }
 
-@media (max-width: 640px) and (pointer: coarse) {
+@media (pointer: coarse) {
   .guest-roster-btn::before,
   .auth-badge-btn::before {
     content: '';
@@ -548,8 +548,8 @@ onAuthSuccess(fetchProviders)
     top: 50%;
     left: 50%;
     transform: translate(-50%, -50%);
-    min-width: 44px;
-    min-height: 44px;
+    min-width: var(--target-size);
+    min-height: var(--target-size);
   }
 }
 </style>

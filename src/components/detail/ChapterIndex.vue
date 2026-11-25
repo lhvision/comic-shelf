@@ -250,7 +250,7 @@ watch(
   flex-wrap: wrap;
 }
 
-@media (max-width: 640px) {
+@media (max-width: 680px) {
   .chapter-grid {
     grid-template-columns: 1fr;
   }

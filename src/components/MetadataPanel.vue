@@ -212,6 +212,7 @@ const autoUpdateLabel = computed(() => {
 
 <style scoped>
 .metadata-panel {
+  container-type: inline-size;
   display: grid;
   gap: var(--space-5);
   min-width: 0;
@@ -475,7 +476,7 @@ const autoUpdateLabel = computed(() => {
   text-underline-offset: 3px;
 }
 
-@media (max-width: 640px) {
+@container (max-width: 480px) {
   .meta-grid {
     grid-template-columns: minmax(0, 1fr);
   }
@@ -531,7 +532,10 @@ const autoUpdateLabel = computed(() => {
   color: var(--ink-0);
   text-decoration: none;
   font-size: var(--text-caption);
-  transition: all var(--duration-1) var(--ease-out);
+  transition:
+    border-color var(--duration-1) var(--ease-out),
+    color var(--duration-1) var(--ease-out),
+    transform var(--duration-1) var(--ease-out);
 }
 
 .mirror-link-chip:hover {
@@ -554,11 +558,11 @@ const autoUpdateLabel = computed(() => {
 
 .mirror-p {
   color: var(--ink-2);
-  font-size: 0.6875rem;
+  font-size: var(--text-caption);
 }
 
 .mirror-arrow {
   color: var(--ink-2);
-  font-size: 0.75rem;
+  font-size: var(--text-xs);
 }
 </style>

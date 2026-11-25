@@ -223,7 +223,7 @@ defineExpose({
   border-radius: var(--radius-1);
   border: 1px solid var(--line);
   background: var(--paper-0);
-  font-size: var(--text-body);
+  font-size: var(--text-md);
   color: var(--ink-0);
   outline: none;
   transition: border-color var(--duration-1) var(--ease-out);
@@ -258,7 +258,10 @@ defineExpose({
   font-size: var(--text-caption);
   color: var(--ink-1);
   cursor: pointer;
-  transition: all var(--duration-1) var(--ease-out);
+  transition:
+    border-color var(--duration-1) var(--ease-out),
+    color var(--duration-1) var(--ease-out),
+    background-color var(--duration-1) var(--ease-out);
 }
 
 .day-pill:hover {

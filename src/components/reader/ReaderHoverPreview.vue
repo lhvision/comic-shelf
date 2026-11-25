@@ -159,7 +159,7 @@ const popoverStyle = computed(() => {
   align-items: center;
   gap: var(--space-1);
   padding: var(--space-1-5);
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-2);
   border: 1px solid var(--reader-line-strong);
   background: var(--reader-scrim-strong);
   backdrop-filter: blur(16px);
@@ -173,7 +173,7 @@ const popoverStyle = computed(() => {
 /* 渐进降级：未就绪/未注水时以极轻量紧凑胶囊展示页码 */
 .reader-hover-preview:not(.has-image) {
   padding: var(--space-1) var(--space-2-5);
-  border-radius: var(--radius-full);
+  border-radius: var(--radius-pill);
   box-shadow: 0 4px 16px var(--reader-backdrop);
 }
 
@@ -182,7 +182,7 @@ const popoverStyle = computed(() => {
   width: 148px;
   max-width: 40vw;
   aspect-ratio: var(--hover-ratio, 3 / 4);
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-1);
   overflow: hidden;
   background: var(--reader-page-bg);
   box-shadow: 0 2px 8px var(--reader-scrim);
@@ -232,7 +232,7 @@ const popoverStyle = computed(() => {
 }
 
 .preview-group-tip {
-  font-size: 0.6875rem;
+  font-size: var(--text-caption);
   color: var(--reader-muted);
 }
 

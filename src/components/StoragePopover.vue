@@ -193,7 +193,10 @@ async function handleResetAll() {
   cursor: pointer;
   white-space: nowrap;
   flex-shrink: 0;
-  transition: all var(--duration-1) var(--ease-out);
+  transition:
+    background-color var(--duration-1) var(--ease-out),
+    border-color var(--duration-1) var(--ease-out),
+    color var(--duration-1) var(--ease-out);
 }
 
 .storage-badge-btn:hover {
@@ -238,7 +241,7 @@ async function handleResetAll() {
   cursor: pointer;
 }
 
-@media (max-width: 640px) {
+@media (max-width: 680px) {
   .storage-label {
     display: none;
   }
@@ -253,15 +256,15 @@ async function handleResetAll() {
   }
 }
 
-@media (max-width: 640px) and (pointer: coarse) {
+@media (pointer: coarse) {
   .storage-badge-btn::before {
     content: '';
     position: absolute;
     top: 50%;
     left: 50%;
     transform: translate(-50%, -50%);
-    min-width: 44px;
-    min-height: 44px;
+    min-width: var(--target-size);
+    min-height: var(--target-size);
   }
 }
 

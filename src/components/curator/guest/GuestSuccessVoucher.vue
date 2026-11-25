@@ -136,7 +136,7 @@ async function handleCopyToken() {
 .voucher-title {
   margin: 0;
   font-family: var(--font-display);
-  font-size: var(--text-title);
+  font-size: var(--text-lg);
   color: var(--ink-0);
   font-weight: 700;
   max-width: 100%;
@@ -166,7 +166,10 @@ async function handleCopyToken() {
   border-radius: var(--radius-1);
   font-size: var(--text-caption);
   cursor: pointer;
-  transition: all var(--duration-2) var(--ease-out);
+  transition:
+    background-color var(--duration-2) var(--ease-out),
+    border-color var(--duration-2) var(--ease-out),
+    color var(--duration-2) var(--ease-out);
 }
 
 .hero-btn.primary {
@@ -210,7 +213,7 @@ async function handleCopyToken() {
 
 .voucher-hero-btn {
   min-height: 46px;
-  font-size: var(--text-body);
+  font-size: var(--text-md);
 }
 
 .voucher-foot {

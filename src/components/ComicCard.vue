@@ -313,6 +313,24 @@ const effectiveCover = computed(() => {
   transform: rotateX(-3deg) rotateY(4deg) translateY(-0.35rem);
 }
 
+@media (prefers-reduced-motion: reduce) {
+  .card-link:hover,
+  .card-link:focus-visible {
+    translate: none;
+  }
+
+  .deck-leaf,
+  .cover-front {
+    transition: none;
+  }
+
+  .comic-card:hover .cover-front,
+  .comic-card:focus-within .cover-front,
+  .card-link:focus-visible .cover-front {
+    transform: none;
+  }
+}
+
 .cover-image,
 .cover-placeholder {
   width: 100%;
@@ -468,7 +486,7 @@ const effectiveCover = computed(() => {
 
 .reading-stamp.is-new-chapter {
   background: color-mix(in oklab, var(--accent) 92%, black 8%);
-  color: var(--accent-contrast, #fff8f2);
+  color: var(--accent-contrast);
   border: 1px solid color-mix(in oklab, var(--paper-0) 36%, transparent);
   font-weight: 600;
   box-shadow: 0 1px 4px color-mix(in oklab, var(--accent) 45%, transparent);

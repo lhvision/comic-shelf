@@ -68,7 +68,7 @@ export function useReaderHydration(options: UseReaderHydrationOptions) {
   // 1. 设备与网络环境自适应感知（VueUse 标准能力集成）
   const { pixelRatio } = useDevicePixelRatio()
   const { effectiveType, saveData } = useNetwork()
-  const isMobile = useMediaQuery('(max-width: 768px)')
+  const isCompactViewport = useMediaQuery('(max-width: 680px)')
 
   const forwardBuffer = computed(() => {
     if (bufferOverride?.forward != null) return bufferOverride.forward
@@ -76,8 +76,8 @@ export function useReaderHydration(options: UseReaderHydrationOptions) {
     if (saveData.value || effectiveType.value === '2g' || effectiveType.value === '3g') {
       return 5
     }
-    // 移动端或超高 DPR 屏幕（缩减前向避免显存紧张）
-    if (isMobile.value || pixelRatio.value >= 2.5) {
+    // 窄视口或超高 DPR 屏幕（缩减前向避免显存紧张）
+    if (isCompactViewport.value || pixelRatio.value >= 2.5) {
       return 8
     }
     // 桌面宽带环境默认 15 屏
@@ -90,8 +90,8 @@ export function useReaderHydration(options: UseReaderHydrationOptions) {
     if (saveData.value || effectiveType.value === '2g' || effectiveType.value === '3g') {
       return 10
     }
-    // 移动端或超高 DPR 屏幕
-    if (isMobile.value || pixelRatio.value >= 2.5) {
+    // 窄视口或超高 DPR 屏幕
+    if (isCompactViewport.value || pixelRatio.value >= 2.5) {
       return 15
     }
     // 桌面宽带环境默认 30 屏

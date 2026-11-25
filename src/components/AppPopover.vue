@@ -331,6 +331,8 @@ defineExpose({
   max-width: min(calc(100vw - 2rem), 32rem);
   max-height: min(80dvh, 36rem);
   overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
   box-sizing: border-box;
 
   /* CSS Anchor 定位与顶层 */

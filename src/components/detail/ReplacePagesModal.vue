@@ -460,7 +460,9 @@ async function submit() {
   border-radius: var(--radius-2);
   background: var(--paper-0);
   cursor: pointer;
-  transition: all var(--duration-1) var(--ease-out);
+  transition:
+    border-color var(--duration-1) var(--ease-out),
+    background-color var(--duration-1) var(--ease-out);
 }
 
 .radio-card:hover:not(.is-disabled) {
@@ -532,7 +534,7 @@ async function submit() {
   opacity: 0.6;
 }
 
-@media (max-width: 640px) {
+@media (max-width: 680px) {
   .radio-cards {
     grid-template-columns: 1fr;
   }

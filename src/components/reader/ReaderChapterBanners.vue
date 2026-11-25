@@ -89,7 +89,7 @@ defineEmits<{
   max-width: min(calc(100vw - var(--space-6) * 2), 26rem);
   padding: 0 var(--space-3);
   border: 1px solid var(--accent);
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   background: var(--reader-scrim-strong);
   color: var(--reader-ink);
   white-space: nowrap;
@@ -123,7 +123,7 @@ defineEmits<{
   flex-shrink: 0;
   white-space: nowrap;
   font-size: var(--text-xs);
-  font-family: var(--font-sans);
+  font-family: var(--font-body);
   opacity: 0.85;
 }
 

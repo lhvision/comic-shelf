@@ -7,6 +7,7 @@
  * 3. 优雅降级（不支持、用户开启 prefers-reduced-motion 或被后续过渡抢占中断时安全处理 AbortError）
  */
 import { withResolvers, promiseTry } from '@/utils/promise'
+import { prefersReducedMotion } from '@/utils/is'
 
 export interface ViewTransitionOptions {
   /** 目标容器元素（用于 element-scoped view transition） */
@@ -23,11 +24,6 @@ interface GenericViewTransition {
 
 export function useViewTransition() {
   const isSupported = typeof document !== 'undefined' && 'startViewTransition' in document
-
-  const prefersReducedMotion = () =>
-    typeof window !== 'undefined' &&
-    typeof window.matchMedia === 'function' &&
-    window.matchMedia('(prefers-reduced-motion: reduce)').matches
 
   /**
    * 执行带有 View Transition 的状态变更。

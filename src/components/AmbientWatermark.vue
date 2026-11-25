@@ -35,12 +35,12 @@ const watermarkUrl = computed(() => `url("${illustrationSrc.value}")`)
   transition: opacity var(--duration-2) var(--ease-out);
 }
 
-/* 页面级别背景：固定铺满整个浏览器视口（100vw × 100vh），全屏舒展覆盖 */
+/* 页面级别背景：固定铺满整个动态视口，全屏舒展覆盖 */
 .ambient-watermark.is-page {
   position: fixed;
   inset: 0;
-  width: 100vw;
-  height: 100vh;
+  width: 100%;
+  height: 100dvh;
   /* 极浅纸质墨色融合，绝不干扰文字与看图 */
   opacity: 0.038;
   mix-blend-mode: multiply;

@@ -526,6 +526,10 @@ function handleClose() {
   font-weight: 500;
 }
 
+.config-form {
+  container-type: inline-size;
+}
+
 /* 4 档黄金时效卡片栅格 (ARIA RadioGroup) */
 .duration-grid {
   display: grid;
@@ -533,7 +537,7 @@ function handleClose() {
   gap: var(--space-2);
 }
 
-@media (max-width: 540px) {
+@container (max-width: 440px) {
   .duration-grid {
     grid-template-columns: repeat(2, 1fr);
   }

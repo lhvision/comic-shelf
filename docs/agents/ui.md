@@ -92,7 +92,7 @@
 
 ### 5. 响应式适配与双轨落盘：`/impeccable adapt <target>`
 
-- **多端与动效适配**：查阅 `<impeccable-dir>/reference/adapt.md`，处理小屏幕响应式断点（`<=681px` 窄屏折行、触控尺寸 ≥ 44px）与 `prefers-reduced-motion`；
+- **多端与动效适配**：查阅 `<impeccable-dir>/reference/adapt.md`，遵循三轴多端模型（`<=680px` 窄屏折行、`@media (pointer: coarse)` 触控热区 ≥ 44px）与 `prefers-reduced-motion`；
 - **产物双轨落盘铁律（必须物理分开）**：
   1. **评审快照（事实痕迹）**：运行项目便携命令落盘至 `.impeccable/critique/`，**只追加不覆盖**：
      ```bash
