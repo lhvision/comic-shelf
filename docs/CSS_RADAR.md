@@ -94,7 +94,7 @@
 | **局部 Element-Scoped VT**                           |              147+               |                ⏳                |                  ⏳                   |                      🧪 Stage 2                      |                      ✅ 渐进增强（`useViewTransition.ts` 元素级门面封装）                       |
 | `interpolate-size: allow-keywords`                   |              129+               |                ⏳                |                  ⏳                   |               🔶 Limited Availability                |                  ✅ 已落地（TagFilterBar / MetadataPanel / ImportPanel 展开）                   |
 | `::details-content`                                  |              131+               |               143+               |                 18.4+                 |               🔶 Limited Availability                |                            ✅ 渐进增强（main.css 全局 details 动画）                            |
-| `scroll-timeline` / `view-timeline`                  |              115+               |              111+🚩              |                18.0+⏳                |               🔶 Limited Availability                |                              ✅ 已落地（ReaderView 读物双轨渲染）                               |
+| `scroll-timeline` / `view-timeline`                  |              115+               |              111+🚩              |                18.0+⏳                |               🔶 Limited Availability                |                     ✅ 已落地（`ReaderView` / `ChapterSwitcher` 边缘渐隐）                      |
 | `@container scroll-state(...)`                       |              133+               |                ❌                |                  ❌                   |                   🧪 Experimental                    |                             ⚠️ LightningCSS 解析限制，降级为 VueUse                             |
 | `@container style(...)`                              |              111+               |               151+               |                  18+                  |                     🔶 有限支持                      |                                  — 暂未采用（等范围语法成熟）                                   |
 | `CSSStyleSheet` (Constructable)                      |               73+               |               101+               |                 16.4+                 |                   ✅ Baseline 2023                   |                                ⚠️ 与 Vue SFC scoped CSS 模式冲突                                |
@@ -935,7 +935,7 @@ details[open]::details-content {
 **可用**：Chrome 115+, Safari 18+ (部分) · Firefox 需开 Flag  
 **参考**：[张鑫旭 不能落后，好好缕缕CSS滚动动画](https://www.zhangxinxu.com/wordpress/2024/08/css-scroll-timeline/)
 
-**落地场景（`ReaderView.vue`）**：
+**落地场景（`ReaderView.vue` / `ChapterSwitcher.vue`）**：
 
 ```css
 .reader-scroll {
@@ -956,6 +956,8 @@ details[open]::details-content {
   }
 }
 ```
+
+> **横向切话条边缘渐隐（`ChapterSwitcher.vue`）**：结合 `@property --mask-left` / `--mask-right`、`mask: ... subtract` 与 `animation-timeline: scroll(self inline)` + `scroll-padding-inline`，实现 0 JS 滚动监听的自适应渐隐提示；不支持时回退至首尾哨兵 `IntersectionObserver`。
 
 ---
 

@@ -115,6 +115,16 @@ router.beforeResolve(async (to, from) => {
     return true
   }
 
+  // 同本作品的章节子路由内部切话，免去全屏 View Transition 快照阻塞，保证连续切话与快捷键瞬时响应
+  if (
+    to.name === 'comic-chapter' &&
+    from.name === 'comic-chapter' &&
+    to.params.source === from.params.source &&
+    to.params.sourceId === from.params.sourceId
+  ) {
+    return true
+  }
+
   if (prefersReducedMotion()) {
     return true
   }

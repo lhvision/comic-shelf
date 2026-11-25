@@ -210,4 +210,126 @@ describe('ChapterSwitcher', () => {
     delete (HTMLElement.prototype as Partial<HTMLElement>).scrollTo
     wrapper.unmount()
   })
+
+  it('windows 1000 chapters around activeId with O(1) chip count and accurate states', () => {
+    const chapters = makeChapters(1000)
+    const wrapper = mount(ChapterSwitcher, {
+      props: {
+        chapters,
+        activeId: 'chap_500',
+      },
+    })
+
+    const chips = wrapper.findAll('button.chapter-chip')
+    expect(chips.length).toBe(33)
+
+    const activeBtn = wrapper.find('button.chapter-chip[data-active="true"]')
+    expect(activeBtn.attributes('data-state')).toBe('active')
+    expect(activeBtn.find('.chapter-ordinal').text()).toBe('500')
+
+    // First chip in window (484) is past, last chip in window (516) is upcoming
+    expect(chips[0]!.find('.chapter-ordinal').text()).toBe('484')
+    expect(chips[0]!.attributes('data-state')).toBe('past')
+    expect(chips[chips.length - 1]!.find('.chapter-ordinal').text()).toBe('516')
+    expect(chips[chips.length - 1]!.attributes('data-state')).toBe('upcoming')
+
+    const edgeButtons = wrapper.findAll('button.chapter-edge-jump')
+    expect(edgeButtons.length).toBe(2)
+    expect(wrapper.find('.chapter-jump-trigger').text()).toContain('500/1000')
+  })
+
+  it('slides window when navigating Home and End on 1000 chapters', async () => {
+    const chapters = makeChapters(1000)
+    const wrapper = mount(ChapterSwitcher, {
+      props: {
+        chapters,
+        activeId: 'chap_500',
+      },
+      attachTo: document.body,
+    })
+
+    await nextTick()
+    const switcher = wrapper.find('.chapter-switcher')
+    await switcher.trigger('keydown', { key: 'Home' })
+    expect(wrapper.emitted('change')?.[0]).toEqual(['chap_1'])
+
+    await (
+      wrapper as unknown as { setProps: (p: Record<string, unknown>) => Promise<void> }
+    ).setProps({ activeId: 'chap_1' })
+    await nextTick()
+
+    const startChips = wrapper.findAll('button.chapter-chip')
+    expect(startChips.length).toBe(33)
+    expect(startChips[0]!.find('.chapter-ordinal').text()).toBe('1')
+    expect(wrapper.findAll('button.chapter-edge-jump').length).toBe(1)
+
+    await switcher.trigger('keydown', { key: 'End' })
+    expect(wrapper.emitted('change')?.[1]).toEqual(['chap_1000'])
+
+    await (
+      wrapper as unknown as { setProps: (p: Record<string, unknown>) => Promise<void> }
+    ).setProps({ activeId: 'chap_1000' })
+    await nextTick()
+
+    const endChips = wrapper.findAll('button.chapter-chip')
+    expect(endChips.length).toBe(33)
+    expect(endChips[endChips.length - 1]!.find('.chapter-ordinal').text()).toBe('1000')
+    expect(wrapper.findAll('button.chapter-edge-jump').length).toBe(1)
+
+    wrapper.unmount()
+  })
+
+  it('opens quick jump popover, caps rendered items at 40, and jumps on Enter', async () => {
+    const chapters = makeChapters(1000)
+    const wrapper = mount(ChapterSwitcher, {
+      props: {
+        chapters,
+        activeId: 'chap_12',
+      },
+      attachTo: document.body,
+    })
+
+    await wrapper.find('.chapter-jump-trigger').trigger('click')
+    await nextTick()
+
+    // Segment view initially renders <= 40 items
+    expect(wrapper.findAll('.chapter-jump-item').length).toBe(40)
+
+    const input = wrapper.find('.chapter-jump-input')
+    // Broad match still capped at 40 items
+    await input.setValue('第')
+    expect(wrapper.findAll('.chapter-jump-item').length).toBe(40)
+    expect(wrapper.find('.chapter-jump-note').text()).toContain('仅显示前 40 条')
+
+    // Exact chapter number query puts 680 first and Enter emits change
+    await input.setValue('680')
+    const matchedItems = wrapper.findAll('.chapter-jump-item')
+    expect(matchedItems[0]!.find('.chapter-jump-idx').text()).toBe('680')
+
+    await input.trigger('keydown', { key: 'Enter' })
+    expect(wrapper.emitted('change')?.[0]).toEqual(['chap_680'])
+
+    wrapper.unmount()
+  })
+
+  it('opens jump popover on first segment when clicking left edge ellipsis button', async () => {
+    const chapters = makeChapters(1000)
+    const wrapper = mount(ChapterSwitcher, {
+      props: {
+        chapters,
+        activeId: 'chap_500',
+      },
+      attachTo: document.body,
+    })
+
+    const leftEdgeBtn = wrapper.findAll('button.chapter-edge-jump')[0]!
+    await leftEdgeBtn.trigger('click')
+    await nextTick()
+
+    const firstSegmentTab = wrapper.findAll('.chapter-segment-btn')[0]!
+    expect(firstSegmentTab.attributes('aria-selected')).toBe('true')
+    expect(wrapper.findAll('.chapter-jump-item')[0]!.find('.chapter-jump-idx').text()).toBe('1')
+
+    wrapper.unmount()
+  })
 })
