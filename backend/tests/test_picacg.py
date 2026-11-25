@@ -429,10 +429,10 @@ class TestPicacgProvider(unittest.TestCase):
 
     def test_sanitize_proxy_url(self) -> None:
         # Proxy URLs with credentials must be masked
-        msg = "Failed to connect to http://miku:secret123@192.168.1.1:7890/test"
+        msg = "Failed to connect to http://user:secret123@192.168.1.1:7890/test"
         sanitized = sanitize_proxy_url(msg)
         self.assertNotIn("secret123", sanitized)
-        self.assertIn("http://miku:***@192.168.1.1:7890/test", sanitized)
+        self.assertIn("http://user:***@192.168.1.1:7890/test", sanitized)
 
         socks_msg = "Error socks5://admin:p%40ssword@proxy.domain.com:1080"
         self.assertNotIn("p%40ssword", sanitize_proxy_url(socks_msg))

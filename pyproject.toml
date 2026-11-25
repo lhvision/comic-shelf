@@ -28,8 +28,8 @@ dev = ["httpx2>=2.13", "numpy", "ruff", "ty"]
 # 台词 OCR 提取的算力依赖，只在跑 scripts/ocr.sh 的算力机上装（bash scripts/ocr.sh install）。
 # 它们不是运行时依赖：两个组都不是默认组，Dockerfile 的 `uv sync --no-dev` 与 `vpr setup:py` 都不会装，
 # 生产镜像的包清单与体积不受影响（test_ocr_worker.py 有用例钉住这一点，见 docs/PITFALLS.md #168）。
-# 直接依赖精确锁定、传递依赖（opencv / numpy 等）由 uv.lock 锁死：伴生文件只记 engine_track 不记包版本，
-# 版本一漂移，同一张画页在两台算力机上就可能识别出不同的字。升级后要用 ocr.sh lines 对比新旧结果。
+# 直接依赖精确锁定，传递依赖（opencv / numpy 等）由 uv.lock 锁定，避免版本变化造成识别差异。
+# 升级后要用 ocr.sh lines 对比新旧结果。
 # rapidocr 3.x 不声明推理后端，onnxruntime 必须显式列出，否则得到一个 import 即失败的环境。
 ocr = ["pillow==12.3.0", "rapidocr==3.9.2", "onnxruntime==1.30.0"]
 # GPU 线：[cuda] / [cudnn] 把 CUDA 13 与 cuDNN 9 的运行库装进环境，由 ocr.sh 挂进 LD_LIBRARY_PATH。

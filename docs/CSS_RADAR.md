@@ -1511,7 +1511,7 @@ text-fit: <fit-type> <fit-target>;
 **MDN**：[contrast-color()](https://developer.mozilla.org/en-US/docs/Web/CSS/Reference/Values/color_value/contrast-color) · [CSS Color Module Level 5 #contrast-color](https://drafts.csswg.org/css-color-5/#contrast-color)  
 **Baseline**：Newly Available 2026 · Chrome 147+ (2026-04), Firefox 146+ (2025-12), Safari 26+ (2025-09)  
 **参考**：[张鑫旭 CSS contrast-color()函数简介](https://www.zhangxinxu.com/wordpress/2026/06/css-contrast-color/) · [张鑫旭 CSS好用的color-mix颜色函数也可以使用啦](https://www.zhangxinxu.com/wordpress/2024/11/css-color-mix-function/)  
-**本项目落地决策**：🚫 **经 `docs/agents/ui.md` 独立设计评审正式否决，全站生产代码坚决不采用**（评审快照见 [`.impeccable/critique/2026-11-09T16-06-04Z__css-contrast-color-proposal.md`](file:///home/miku/lhvision/comic-shelf/.impeccable/critique/2026-11-09T16-06-04Z__css-contrast-color-proposal.md)）
+**本项目落地决策**：🚫 **经 `docs/agents/ui.md` 独立设计评审正式否决，全站生产代码坚决不采用**（评审快照见 [`.impeccable/critique/2026-11-09T16-06-04Z__css-contrast-color-proposal.md`](../.impeccable/critique/2026-11-09T16-06-04Z__css-contrast-color-proposal.md)）
 
 #### 核心机制与规范现状
 

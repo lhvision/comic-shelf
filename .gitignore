@@ -74,6 +74,9 @@ platform/data/
 # runtime persisted settings
 backend/data/settings.json
 
+# ONNX Runtime telemetry session state
+/:memory:.ses
+
 # AI E2E
 runs.json
 
@@ -103,3 +106,4 @@ public/avatars/
 # Git hooks dispatcher & local agent caches
 .vite-hooks/_/
 .agents/
+.ruff_cache/

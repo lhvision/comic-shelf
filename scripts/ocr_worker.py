@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-纸间 (Paper Room) · 高性能机漫画台词 OCR 提取与聚类工作流 Worker
+纸间 (Paper Room) · 漫画台词 OCR 提取与聚类工作流 Worker
 功能：
 1. 智能探测数据目录（COMIC_SHELF_DATA -> /mnt/nas_manga -> backend/data）；
 2. 批量扫描现有 Pillow 可读的光栅画页（动图 / 多页图片只取首帧），调用 RapidOCR 识别中日文分镜台词；
@@ -518,15 +518,15 @@ def build_arg_parser() -> argparse.ArgumentParser:
     """构造 worker 命令行。单列成函数是为了让"默认轨道/默认阈值"这类契约能被单测钉住。"""
     parser = argparse.ArgumentParser(
         allow_abbrev=False,
-        description="纸间 (Paper Room) · 高性能机漫画台词 OCR 提取与伴生处理 Worker",
+        description="纸间 (Paper Room) · 漫画台词 OCR 提取与伴生处理 Worker",
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     parser.add_argument(
         "--workers",
         type=int,
         default=2,
-        help="并发推理线程数（默认 2。CPU 模式别往上加：单引擎已吃满多核，v6 同页实测 2 线程 37.3 页/分、"
-        "4 线程反而掉到 32.4；GPU 模式给 4。全库口径与复测方法见 DEPLOYMENT.md §5.1）",
+        help="并发推理线程数（默认 2。引擎内部也使用多核，增加线程可能争抢资源；"
+        "请按目标环境复测，方法见 DEPLOYMENT.md §5.1）",
     )
     parser.add_argument(
         "--gpu",

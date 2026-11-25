@@ -409,7 +409,7 @@ describe('useReadingSession', () => {
   it('keeps multi-chapter long series active across sub-chapter boundaries and marks completed only on final page', () => {
     const { session, recordSession } = useReadingSession()
 
-    // 模拟真机实测 3104 页连载长篇，当前处于第 35 话（单话 20 页），全书进度第 697 页
+    // 长篇多章节夹具：单话结束时，全书尚未读完。
     recordSession({
       source: 'jm',
       sourceId: 'long_series_3104',

@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-# 纸间 · 高性能机漫画台词 OCR 提取与伴生处理一键运维脚本
+# 纸间 · 漫画台词 OCR 提取与伴生处理一键运维脚本
 # 支持命令: status | run | sync | install | test | lines
 #
 # 算力环境两条线（**默认走 GPU**，没有卡的机器才回落 CPU，回落时脚本会说明原因）：
 #   GPU（默认）   本脚本创建的项目内 .venv-ocr/，只装 pyproject.toml 的 ocr-gpu 依赖组
 #   CPU（--cpu）  复用应用的 .venv，追加 ocr 依赖组
 # 两条线互不干扰：GPU wheel 与 CPU wheel 共用同一个 onnxruntime 包目录，混装会静默失去 CUDA。
-# 版本全部来自 uv.lock（含 opencv / numpy 等传递依赖），两台算力机装出来的是同一套。
+# 版本全部来自 uv.lock（含 opencv / numpy 等传递依赖），保证不同环境安装一致。
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
@@ -32,7 +32,7 @@ fi
 OCR_VENV="$("$PYTHON" -c 'import sys; from pathlib import Path; print(Path(sys.argv[1]).resolve())' "$OCR_VENV")"
 
 # 宿主有没有 NVIDIA 卡。WSL2 的 nvidia-smi 不在 PATH 里、只存在于 /usr/lib/wsl/lib，
-# 只查 command -v 会把带显卡的机器误判成"纯 CPU 宿主机"（本项目踩过）。
+# 只查 command -v 可能漏掉这个位置的工具，误判为纯 CPU 环境。
 host_gpu_smi() {
   if command -v nvidia-smi >/dev/null 2>&1; then
     echo "nvidia-smi"
@@ -303,7 +303,7 @@ cmd_install() {
     exit 1
   fi
 
-  echo "📦 正在同步 GPU 算力环境: $OCR_VENV (ocr-gpu 依赖组，装完约占 2.8GB)"
+  echo "📦 正在同步 GPU 算力环境: $OCR_VENV (ocr-gpu 依赖组)"
   # --only-group：环境里只有 ocr-gpu 组，不带后端依赖；精确同步会卸掉组外的包，包括误装进来的 CPU 版 onnxruntime。
   # --reinstall-package：CPU 与 GPU 两个 wheel 共用 site-packages/onnxruntime/ 目录，卸掉 CPU 版会连带删走共用文件，
   # 而 uv 只看安装记录、仍认为 GPU 版"已装好"，留下一个残缺的包（docs/PITFALLS.md #140）。每次重装它即可根治。

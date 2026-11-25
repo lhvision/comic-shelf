@@ -16,9 +16,10 @@ docs/
 **/*.py[cod]
 **/.pytest_cache/
 .DS_Store
-.agents
-.claude
-.codex
+.agents/
+.claude/
+.codex/
+.ruff_cache/
 .vscode/
 extension/
 scripts/
