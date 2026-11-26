@@ -37,6 +37,7 @@ import IconPlay from './IconPlay.vue'
 import IconMessageSquare from './IconMessageSquare.vue'
 import IconFilm from './IconFilm.vue'
 import IconTag from './IconTag.vue'
+import IconPictureInPicture from './IconPictureInPicture.vue'
 import type { IconName, IconSize } from './types'
 
 export {
@@ -78,6 +79,7 @@ export {
   IconMessageSquare,
   IconFilm,
   IconTag,
+  IconPictureInPicture,
 }
 export type { IconSize, IconName }
 
@@ -119,4 +121,5 @@ export const ICON_MAP: Record<IconName, Component> = {
   'message-square': IconMessageSquare,
   film: IconFilm,
   tag: IconTag,
+  'picture-in-picture': IconPictureInPicture,
 }

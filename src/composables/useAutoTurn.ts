@@ -31,10 +31,14 @@ export interface UseAutoTurnOptions {
   currentGroupIndex: Ref<number>
   /** 最后一组分屏索引 ComputedRef */
   lastGroupIndex: ComputedRef<number>
+  /** 是否存在下一话（存在时自动翻页会在本话末自动切入下一话） */
+  hasNextChapter?: ComputedRef<boolean>
   /** 设置面板是否处于打开态 Ref */
   settingsOpen: Ref<boolean>
   /** 胶片预览轨是否处于展开态 Ref */
   filmstripOpen?: Ref<boolean>
+  /** 桌面悬浮阅览窗是否处于打开态 Ref */
+  pipOpen?: Ref<boolean>
   /** 顶栏与悬浮控制栏是否处于展开可见态 Ref */
   chromeVisible?: Ref<boolean>
   /** 自动翻页推进回调 */
@@ -52,8 +56,10 @@ export function useAutoTurn(options: UseAutoTurnOptions) {
     settings,
     currentGroupIndex,
     lastGroupIndex,
+    hasNextChapter,
     settingsOpen,
     filmstripOpen,
+    pipOpen,
     onAdvance,
     onScheduleChromeHide,
   } = options
@@ -74,8 +80,9 @@ export function useAutoTurn(options: UseAutoTurnOptions) {
       !autoTurnPaused.value &&
       !settingsOpen.value &&
       !filmstripOpen?.value &&
+      !pipOpen?.value &&
       documentVisibility.value === 'visible' &&
-      currentGroupIndex.value < lastGroupIndex.value
+      (currentGroupIndex.value < lastGroupIndex.value || Boolean(hasNextChapter?.value))
     )
   }
 
@@ -124,7 +131,7 @@ export function useAutoTurn(options: UseAutoTurnOptions) {
       !currentSettings.value.autoTurn ||
       currentSettings.value.mode === 'vertical-continuous' ||
       settingsOpen.value ||
-      currentGroupIndex.value >= lastGroupIndex.value
+      (currentGroupIndex.value >= lastGroupIndex.value && !hasNextChapter?.value)
     ) {
       return
     }
@@ -158,8 +165,9 @@ export function useAutoTurn(options: UseAutoTurnOptions) {
     }
   })
 
-  if (filmstripOpen) {
-    watch(filmstripOpen, (open) => {
+  for (const overlayOpen of [filmstripOpen, pipOpen]) {
+    if (!overlayOpen) continue
+    watch(overlayOpen, (open) => {
       if (open) {
         pauseAutoTurnTick()
       } else {

@@ -472,6 +472,7 @@ function handleThumbLoad(page: number, e: Event) {
         @pointermove="onRailPointerMove"
         @pointerup="onRailPointerUp"
         @pointercancel="onRailPointerUp"
+        @lostpointercapture="onRailPointerUp"
         @contextmenu="onContextMenu"
       >
         <section

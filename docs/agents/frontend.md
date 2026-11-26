@@ -30,11 +30,12 @@
 | `src/composables/useImageSearch.ts`                | 以图搜图状态机：文件上传、剪贴板粘贴、拖拽、置信度与状态管理                                                                                                                                                                                                              |
 | `src/composables/useReaderData.ts`                 | 阅读器数据流与路由状态机：元数据拉取、`AbortController` 竞态取消、URL 同步与返回路径                                                                                                                                                                                      |
 | `src/composables/useReaderPaging.ts`               | 阅读器分页与作用域：分组切片、全局/本地页码映射、跨话首尾探测与边界计算                                                                                                                                                                                                   |
-| `src/composables/useReaderNavigation.ts`           | 阅读器导航与定位：多屏滚动定位、进度计算、横向滚轮适配、跨话切换                                                                                                                                                                                                          |
-| `src/composables/useReaderKeyboard.ts`             | 阅读器键盘与全屏：按键映射（翻页/切话/首末页）、`useFullscreen` 与 ESC 退出                                                                                                                                                                                               |
-| `src/composables/useAutoTurn.ts`                   | 阅读器自动阅读状态机：双轨架构（翻页模式离散倒计时 + 条漫连续 rAF 匀速流卷、Soft Yield 软避让与章末停靠）                                                                                                                                                                 |
+| `src/composables/useReaderNavigation.ts`           | 阅读器导航与定位：多屏滚动定位、进度计算、横向滚轮适配、离散末屏/连续触底贴顶边界超拉自动跨话切换                                                                                                                                                                         |
+| `src/composables/useReaderKeyboard.ts`             | 阅读器键盘与全屏：按键映射（翻页/切话/首末页）、`useFullscreen`、PiP 悬浮态主窗热键互斥与 ESC 还原                                                                                                                                                                        |
+| `src/composables/useAutoTurn.ts`                   | 阅读器自动阅读状态机：离散翻页倒计时（支持自动跨话直至最终话末页）、页面可见性与弹窗/胶片轨/PiP 悬浮态挂起                                                                                                                                                                |
 | `src/composables/useReaderChrome.ts`               | 阅读器顶栏/HUD 延时隐藏与交互唤醒控制                                                                                                                                                                                                                                     |
-| `src/composables/useReaderInteraction.ts`          | 阅读器交互状态机调度：聚合快捷键（`useReaderKeyboard`）、进度上报（`useReaderSync`）、滚轮映射与自动翻页步进                                                                                                                                                              |
+| `src/composables/useReaderInteraction.ts`          | 阅读器交互状态机调度：聚合快捷键（`useReaderKeyboard`）、进度上报（`useReaderSync`）、滚轮/边界触控映射、桌面悬浮阅览窗与自动翻页步进                                                                                                                                     |
+| `src/composables/useReaderPip.ts`                  | 桌面悬浮阅览窗（Document PiP）生命周期：安全上下文探测、样式表迁移、`openingPromise` 并发防重入、路由离场自动销毁与主窗定位还原                                                                                                                                           |
 | `src/composables/useReaderSync.ts`                 | 阅读进度防抖持久化（800ms）、跨标签广播与单本阅读排版偏好记忆                                                                                                                                                                                                             |
 | `src/composables/useComicRatioPool.ts`             | 漫画会话级宽高比共享池：24 条 LRU 有界单例 Map，跨组件实时互通解码物理尺寸，提供 O(1) 瞬态定盘与防抖撑高                                                                                                                                                                  |
 | `src/composables/useReaderCompletion.ts`           | 阅读器末页完读感知、接卷推荐算法计算与直达离开路由                                                                                                                                                                                                                        |
@@ -117,6 +118,7 @@
 | `src/components/reader/ReaderFloatingPill.vue`     | 阅读器浮动画卷页标：条漫无缝拼接模式下的非侵入式页码浮标，滚动感应淡入淡出与 HUD 互斥避让                                                                                                                                                                                 |
 | `src/components/reader/ReaderFilmstrip.vue`        | 阅读器胶片预览轨抽屉：半透明磨砂横向微缩画卷，分屏组级光标、RTL 镜像流向、三阶梯抗抖防反弹与桌面鼠标拖拽漫游                                                                                                                                                              |
 | `src/components/reader/ReaderHoverPreview.vue`     | 阅读器画中画悬停气泡：瞬态定盘、未就绪极简页码胶囊渐进降级与左右 80px 刚性边界安全钳位                                                                                                                                                                                    |
+| `src/components/reader/ReaderPipWindow.vue`        | 桌面悬浮阅览窗（Document PiP Teleport）：自适应单页翻阅、RTL 方向适配、多章节目录直选、末页完读接卷与顶栏快捷换书（单本直达链接隔离）                                                                                                                                     |
 | `src/components/reader/ReaderLoadingState.vue`     | 典藏 WebP 呼吸微光加载组件（整本首屏与单页渐进式加载）                                                                                                                                                                                                                    |
 | `src/styles/tokens.css`                            | 设计 token 与原生 CSS 样式体系                                                                                                                                                                                                                                            |
 | `src/stores/library.ts`                            | 书库 Pinia store（SWR 保持、静默回源、后台缓存轮询与自动清理收录提示）                                                                                                                                                                                                    |
@@ -314,9 +316,9 @@
 - **开本自适应有效阅读线相交与绝对触底夹紧（Adaptive Read-Line & Bottom Clamping）**：
   - 针对条漫切片分幅高度不一、终页高度不足（如终页 584px 矮于视口 900px）导致无法触及顶端的痛点，当滚动容器触底 `position >= max - 24` 时，绝对夹紧至最后一页并激活末话状态；
   - 非极端边界下，以开本自适应阅读线 `threshold = Math.min(el.clientHeight * 0.4, height * 0.5)` 与画页几何相交探测激活当前页码。高画幅长卷保持 40% 视口重心线，矮切片/拆帧画页回退至画页自身高度 50% 中线，彻底消除矮切片被 40% 阅读线超前穿透落入下一页导致的页码误判与自激翻页死锁。
-- **条漫流式行内章末过渡卡片（In-flow Chapter Transition）**：
-  - 竖向连续模式下废除遮挡漫画分镜画面的悬浮下一话横幅，改在画卷尾部以文档流自然内嵌行内过渡卡片（`.reader-webtoon-chapter-end`）；
-  - 卡片下方自带充足呼吸留白，读者流卷到底即可完整入目，点击一键切换下一话。
+- **条漫流式行内章末过渡卡片与全通道边界自动跨话（In-flow & Boundary Auto Chapter Transition）**：
+  - 竖向连续模式下废除遮挡漫画分镜画面的悬浮下一话横幅，改在画卷尾部以文档流自然内嵌行内过渡卡片（`.reader-webtoon-chapter-end`）；卡片下方保留呼吸留白，滚到底部且越过 `220ms` 惯性隔离窗后继续向下滚轮（累计 `>= 80`）或触屏贴底上拉（`>= 48px`）即自动切入下一话，贴顶对称回切上一话（附带 `350ms` 切话冷却与 `280ms` 互斥锁防回弹）；
+  - 离散翻页模式（竖翻/横翻及自动翻页 `autoTurn`）在末屏继续向后、首屏继续向前时自动跨越到邻近章节，直至最终话末页停靠「本子翻完了」结尾卡。
 - `.reader-view` 必须保留 `timeline-scope: --reader-scroll`：进度条是 `.reader-scroll` 的兄弟节点，
   scroll timeline 只有提升作用域后才能跨子树引用；
 - **全场景 CSS 滚动驱动双轨架构**：
@@ -326,9 +328,9 @@
   - JS 轨通过 `useReaderNavigation` 引入 `requestAnimationFrame` 调度节流，杜绝主线程 Layout Thrashing。
 - 竖向连续模式的 `.reader-spread` 不要加 `min-height: 100dvh`，否则移动端每页后会留整屏空白；标准模式下页间间隔由后续 spread 的 `padding-top` 控制，无缝模式下间距归零并施加 `-1px` 亚像素微咬合与浮动页标（`ReaderFloatingPill`）。
 - **自动阅读设计规范（Auto-reading: Paged Discrete Only）**：
-  - **离散翻页模式（竖翻/横翻）**：按固定间隔（5/10/15/30 秒，支持 1~300 秒自定义）定时步进分屏；画面在阅读期间保持 100% 绝对静止，手动翻页/滚动无感重置倒计时；最后一屏停止；
+  - **离散翻页模式（竖翻/横翻）**：按固定间隔（5/10/15/30 秒，支持 1~300 秒自定义）定时步进分屏（存在下一话时末屏自动切入下一话）；画面在阅读期间保持 100% 绝对静止，手动翻页/滚动无感重置倒计时；最终话最后一屏停止；
   - **连续条漫模式（竖向连续）**：设计上彻底豁免自动化，阅读节奏 100% 交由读者指尖触控与滚轮掌控，彻底杜绝连续像素漂移诱发的视动性动晕症（Cybersickness）；设置面板自动收起自动切换选项，底部 HUD 不展示倒计时；
-  - **HUD 状态联动与解耦**：翻页模式运行态显示秒数倒计时，暂停态显示播放图标；末页读卷过程中保持可见，最后一屏自动隐退；顶栏菜单唤出或切后台时即刻安全暂停。
+  - **HUD 状态联动与解耦**：翻页模式运行态显示秒数倒计时，暂停态显示播放图标；末页读卷过程中保持可见，最终话最后一屏自动隐退；顶栏菜单/胶片轨唤出、PiP 小窗悬浮中或切后台时即刻安全暂停。
 - `onKeydown` 必须在 `settingsOpen` 时提前返回（除 Escape），否则方向键/Space 会翻动面板背后的页面，
   且会劫持 switch 等原生 button 的 Space 激活。
 - 自动切换的滚动行为需尊重 `prefers-reduced-motion: reduce`，此时用 `behavior: 'auto'`。

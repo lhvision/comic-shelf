@@ -29,6 +29,10 @@ export interface UseReaderKeyboardOptions {
   filmstripOpen?: Ref<boolean>
   /** 切换胶片预览轨显隐回调 */
   toggleFilmstrip?: () => void
+  /** 桌面悬浮阅览窗是否处于打开状态 Ref */
+  pipOpen?: Ref<boolean>
+  /** 还原（关闭）桌面悬浮阅览窗回调 */
+  onClosePip?: () => void
   /** 阅读器设置（用于判断横纵向与 RTL 翻页方向） */
   settings: ReaderSettings
   /** 当前作用域总页数 */
@@ -68,6 +72,8 @@ export function useReaderKeyboard(options: UseReaderKeyboardOptions) {
     settingsOpen,
     filmstripOpen,
     toggleFilmstrip,
+    pipOpen,
+    onClosePip,
     settings,
     total,
     goToPage,
@@ -118,6 +124,15 @@ export function useReaderKeyboard(options: UseReaderKeyboardOptions) {
     if (filmstripOpen?.value && event.key === 'Escape') {
       event.preventDefault()
       filmstripOpen.value = false
+      return
+    }
+
+    // 3. 桌面悬浮阅览窗打开时，锁定主窗热键防止背景误翻页或误退回详情，ESC 还原主窗
+    if (pipOpen?.value) {
+      if (event.key === 'Escape') {
+        event.preventDefault()
+        onClosePip?.()
+      }
       return
     }
 

@@ -65,6 +65,8 @@ export interface UsePageZoomReturn {
   onPagePointerUp: (page: number, event: PointerEvent) => void
   /** 画页指针取消处理函数 */
   onPagePointerCancel: (page: number, event: PointerEvent) => void
+  /** 画页指针捕获丢失兜底处理函数 */
+  onPageLostPointerCapture: (page: number) => void
 }
 
 /**
@@ -312,6 +314,18 @@ export function usePageZoom(options: UsePageZoomOptions = {}): UsePageZoomReturn
     }
   }
 
+  function releaseDragCapture(target: HTMLElement | null, pointerId: number) {
+    if (!target) return
+    try {
+      if (typeof target.hasPointerCapture === 'function' && !target.hasPointerCapture(pointerId)) {
+        return
+      }
+      target.releasePointerCapture(pointerId)
+    } catch {
+      // ignore
+    }
+  }
+
   function onPagePointerUp(page: number, event: PointerEvent) {
     if (
       (event.button ?? 0) !== 0 ||
@@ -328,12 +342,7 @@ export function usePageZoom(options: UsePageZoomOptions = {}): UsePageZoomReturn
         event.clientY - dragStartClientY,
       )
       hadDrag = dragDist > 6
-      const target = event.currentTarget as HTMLElement | null
-      try {
-        target?.releasePointerCapture(event.pointerId)
-      } catch {
-        // ignore
-      }
+      releaseDragCapture(event.currentTarget as HTMLElement | null, event.pointerId)
       event.stopPropagation?.()
     } else {
       // 未放大状态下：若单次触控过程位移超过 12px（即发生了滑动或滚动手势），则不作为有效点击/双触候选
@@ -385,12 +394,16 @@ export function usePageZoom(options: UsePageZoomOptions = {}): UsePageZoomReturn
     lastTapTime = 0
     if (zoomedPage.value === page && isDragging.value) {
       isDragging.value = false
-      const target = event.currentTarget as HTMLElement | null
-      try {
-        target?.releasePointerCapture(event.pointerId)
-      } catch {
-        // ignore
-      }
+      releaseDragCapture(event.currentTarget as HTMLElement | null, event.pointerId)
+    }
+  }
+
+  /**
+   * 指针捕获意外丢失（元素重排卸载、切窗失焦或系统接管）时的兜底清理，防止 isDragging 卡死。
+   */
+  function onPageLostPointerCapture(page: number) {
+    if (zoomedPage.value === page && isDragging.value) {
+      isDragging.value = false
     }
   }
 
@@ -454,5 +467,6 @@ export function usePageZoom(options: UsePageZoomOptions = {}): UsePageZoomReturn
     onPagePointerMove,
     onPagePointerUp,
     onPagePointerCancel,
+    onPageLostPointerCapture,
   }
 }

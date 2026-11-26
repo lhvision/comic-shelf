@@ -90,7 +90,7 @@
 | **动静分相高分栅格化架构 (ADR 0038)**                |              全通               |               全通               |                 全通                  |             ✅ Baseline Widely Available             |         ✅ 已落地（`usePageZoom.ts` / `ReaderViewport.vue` 1:1 原画清晰度与首帧超采样）         |
 | **`scroll-margin-top` / `scroll-padding`**           |              全通               |               全通               |                 全通                  |             ✅ Baseline Widely Available             |                            ✅ 已落地（画卷折叠平滑回顶吸顶锚点补偿）                            |
 | **`srcset` / `sizes` (`w` 描述符)**                  |      38+<br>_(34+ srcset)_      |               38+                |         9.1+<br>_(8+ srcset)_         |                   ✅ Baseline 2016                   |                 ✅ 已落地（全站统一 `sizes="(max-width: 680px) 120px, 240px"`）                 |
-| **`sizes="auto"` (懒加载原生联动)**                  |              126+               |               150+               |                  27+                  |                   ✅ Baseline 2026                   |                   ⚠️ 实测避坑（双档架构因 DPR 放大拉大图，维持人工低估规范）                    |
+| **`sizes="auto"` (懒加载原生联动)**                  |              126+               |               150+               |            27+ _(partial)_            |                   ✅ Baseline 2026                   |                   ⚠️ 实测避坑（双档架构因 DPR 放大拉大图，维持人工低估规范）                    |
 | **局部 Element-Scoped VT**                           |              147+               |                ⏳                |                  ⏳                   |                      🧪 Stage 2                      |                      ✅ 渐进增强（`useViewTransition.ts` 元素级门面封装）                       |
 | `interpolate-size: allow-keywords`                   |              129+               |                ⏳                |                  ⏳                   |               🔶 Limited Availability                |                  ✅ 已落地（TagFilterBar / MetadataPanel / ImportPanel 展开）                   |
 | `::details-content`                                  |              131+               |               143+               |                 18.4+                 |               🔶 Limited Availability                |                            ✅ 渐进增强（main.css 全局 details 动画）                            |
@@ -584,9 +584,9 @@ overflow: hidden;
 
 **MDN**：[HTMLImageElement: srcset](https://developer.mozilla.org/en-US/docs/Web/API/HTMLImageElement/srcset) · [HTMLImageElement: sizes](https://developer.mozilla.org/en-US/docs/Web/API/HTMLImageElement/sizes)  
 **Baseline**：2016（全网事实标准）· Chrome 38+ · Firefox 38+ · Safari 9.1+  
-**现代演进**：`sizes="auto"`（Chrome 126+, Firefox 150+）  
-**参考**：[张鑫旭 响应式图片srcset全新释义sizes属性w描述符](https://www.zhangxinxu.com/wordpress/2014/10/responsive-images-srcset-size-w-descriptor/)  
-**本项目落地决策**：✅ **全站统一采用 `sizes="(max-width: 680px) 120px, 240px"` 保守低估规范，全终端优先拉取 360px 极速缩略图**
+**现代演进**：`sizes="auto"`（Chrome 126+, Firefox 150+, Safari 27+ _partial_）  
+**参考**：[张鑫旭 响应式图片srcset全新释义sizes属性w描述符](https://www.zhangxinxu.com/wordpress/2014/10/responsive-images-srcset-size-w-descriptor/) · [张鑫旭 懒加载图片新支持了sizes="auto"属性，其作用是？](https://www.zhangxinxu.com/wordpress/2026/10/loading-lazy-img-sizes-auto/)  
+**本项目落地决策**：✅ **全站统一采用 `sizes="(max-width: 680px) 120px, 240px"` 保守低估规范（`ChapterCard` 为 `160px`），全终端优先拉取 360px 极速缩略图**
 
 **核心机制与关键原理**：
 
@@ -600,9 +600,9 @@ overflow: hidden;
    - **痛点复盘**：如果写了 `srcset="... 360w, ... 720w"` 却漏写了 `sizes`，WHATWG 规范规定浏览器默认按 `sizes="100vw"` 处理；
    - **后果**：在桌面 2K/4K 屏幕上，即便书架卡片在界面上只占 180px 宽度，浏览器也会按 2000px+ 视口计算，导致强行下载最大的 720w 超大原图，带来严重的带宽浪费与解码内存暴涨！必须始终配套编写精确的 `sizes`。
 4. **现代演进与实测避坑：`sizes="auto"` 陷阱**：
-   - Chrome 126+、Firefox 150+ 与 Safari 27+ 已原生支持 `sizes="auto"`；
+   - Chrome 126+、Firefox 150+（2026-04）与 Safari 27+（2026-09，`partial_implementation`：与 `object-fit` 混用渲染 SVG 存在变形 bug 324661）已支持在 `loading="lazy"` 时使用 `sizes="auto"` 自动按布局宽匹配 `srcset`；
    - **实测暗坑**：在后端仅提供 `360w` 和 `720w` 粗粒度双档架构下，WHATWG 规范的候选图选择算法具有“保清晰不容忍模糊（向上取整）”特性。现代手机（DPR=3）单列卡片（276px × 3 = 828px）与视网膜高分屏（220px × 1.5/2 = 330~440px）都会被 `auto` 诚实算出的物理像素超出 360w，导致全终端无论手机还是大屏全量被浏览器越级拉取 720w 大图，彻底反噬首屏极速加载初衷！
-   - **纸间最佳工程决策**：全站封面（`ComicCard`、`CoverCarousel`、`ChapterCard`、`ReaderEndCard`）一律采用人工保守低估规范 `sizes="(max-width: 680px) 120px, 240px"`，通过将移动端锁定在 120px（$120 \times 3\text{ (DPR)} = 360\text{px} \le 360\text{w}$），完美守住全终端优先 360px 极速缩略图模式。
+   - **纸间最佳工程决策**：全站封面（`ComicCard`、`CoverCarousel`、`ReaderEndCard`，以及更紧凑的 `ChapterCard` `160px`）一律采用人工保守低估规范 `sizes="(max-width: 680px) 120px, 240px"`，并清理 `ComicCard.vue` 中原 `(max-width: 1200px) 25vw` 断点以防止平板/小窗被高 DPR 触发越级拉取 `720w`，完美守住全终端优先 360px 极速缩略图模式。
 
 **纸间生产落地契约（封面响应式声明标准范式）**：
 
@@ -1649,6 +1649,7 @@ text-fit: <fit-type> <fit-target>;
 | **排版字效** | CSS `font-size-adjust` 属性详解与字形度量                | https://www.zhangxinxu.com/wordpress/2025/02/css-font-size-adjust/                       |
 | **排版字效** | CSS `text-fit` 容器宽度文本自动适配                      | https://www.zhangxinxu.com/wordpress/2026/08/css-text-fit/                               |
 | **媒体管线** | 响应式图片 `srcset` 全新释义、`sizes` 属性与 `w` 描述符  | https://www.zhangxinxu.com/wordpress/2014/10/responsive-images-srcset-size-w-descriptor/ |
+| **媒体管线** | 懒加载图片新支持 `sizes="auto"` 属性与适用边界           | https://www.zhangxinxu.com/wordpress/2026/10/loading-lazy-img-sizes-auto/                |
 | **浮层交互** | CSS `interestfor` 与 Invoker Target/Source 机制          | https://www.zhangxinxu.com/wordpress/2026/03/css-interestfor-invoker-target-source/      |
 | **浮层交互** | 新时代下的 tooltip 提示效果的最佳实现                    | https://www.zhangxinxu.com/wordpress/2026/09/best-tooltip-effect/                        |
 | **浮层交互** | 全新的 CSS `border-shape` 属性简介                       | https://www.zhangxinxu.com/wordpress/2026/06/css-border-shape/                           |

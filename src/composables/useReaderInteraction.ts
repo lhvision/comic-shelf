@@ -14,6 +14,7 @@ import { useReaderKeyboard } from '@/composables/useReaderKeyboard'
 import { useReaderSync } from '@/composables/useReaderSync'
 import { useReaderWebMCP } from '@/composables/useReaderWebMCP'
 import { usePageZoom } from '@/composables/usePageZoom'
+import { useReaderPip } from '@/composables/useReaderPip'
 import { isFiniteNumber } from '@/utils/is'
 import type { useReaderSettings } from '@/composables/useReaderSettings'
 import type { useReaderPaging } from '@/composables/useReaderPaging'
@@ -30,6 +31,7 @@ export interface UseReaderInteractionOptions {
   settingsOpen: Ref<boolean>
   filmstripOpen?: Ref<boolean>
   toggleFilmstrip?: () => void
+  pipOpen?: Ref<boolean>
   reducedMotion: Ref<boolean>
   route: RouteLocationNormalizedLoaded
   router?: Router
@@ -55,7 +57,7 @@ export function useReaderInteraction(options: UseReaderInteractionOptions) {
     settings: { settings, clearActiveComic, applyComicPreferences },
     bubble: { targetBubble, targetPage, dismissBubble },
     data: { detail, loading, source, sourceId, scopeId, backToDetail, lastRead },
-    paging: { scopedPages, total, clampToScope, groupIndexForPage },
+    paging: { scopedPages, total, clampToScope, groupIndexForPage, prevChapter, nextChapter },
     chrome: { toggleChrome, showChromeTemporarily, scheduleChromeHide },
     navigation: {
       scrollToGroup,
@@ -66,6 +68,8 @@ export function useReaderInteraction(options: UseReaderInteractionOptions) {
       advanceAutoTurn: navAdvanceAutoTurn,
       onScroll,
       onWheel,
+      onViewportTouchStart,
+      onViewportTouchEnd,
       preloadAround,
       goNextChapter: navGoNextChapter,
       goPrevChapter: navGoPrevChapter,
@@ -95,7 +99,102 @@ export function useReaderInteraction(options: UseReaderInteractionOptions) {
     onPagePointerMove,
     onPagePointerUp,
     onPagePointerCancel,
+    onPageLostPointerCapture,
   } = pageZoom
+
+  const pipEndOpen = ref(false)
+
+  const {
+    isPipSupported,
+    isPipOpen,
+    pipMountTarget,
+    closePip,
+    togglePip: rawTogglePip,
+  } = useReaderPip({
+    open: options.pipOpen,
+    isZoomed,
+    onResetZoom: resetZoom,
+    onOpen: () => {
+      if (filmstripOpen) {
+        filmstripOpen.value = false
+      }
+    },
+    onClose: () => {
+      pipEndOpen.value = false
+      void nextTick().then(() => {
+        scrollToGroup(currentGroupIndex.value, 'instant')
+      })
+    },
+  })
+
+  function togglePip() {
+    void rawTogglePip(detail.value?.meta.title)
+  }
+
+  watch(
+    () => `${source.value}/${sourceId.value}`,
+    () => {
+      pipEndOpen.value = false
+    },
+  )
+
+  const canPipPrev = computed(() => {
+    if (pipEndOpen.value) return true
+    const pages = scopedPages.value
+    return pages.length > 0 && (currentPage.value > pages[0]! || Boolean(prevChapter.value))
+  })
+
+  const canPipNext = computed(() => {
+    if (pipEndOpen.value) return false
+    return scopedPages.value.length > 0
+  })
+
+  const isPipAtFinalPage = computed(() => {
+    const pages = scopedPages.value
+    if (pages.length === 0) return false
+    return currentPage.value >= pages[pages.length - 1]! && !nextChapter.value
+  })
+
+  function pipPrevPage() {
+    if (pipEndOpen.value) {
+      pipEndOpen.value = false
+      return
+    }
+    const pages = scopedPages.value
+    if (pages.length === 0) return
+    if (currentPage.value > pages[0]!) {
+      goToPage(currentPage.value - 1, 'instant')
+      return
+    }
+    if (prevChapter.value) {
+      goPrevChapter()
+    }
+  }
+
+  function pipNextPage() {
+    if (pipEndOpen.value) return
+    const pages = scopedPages.value
+    if (pages.length === 0) return
+    if (currentPage.value < pages[pages.length - 1]!) {
+      goToPage(currentPage.value + 1, 'instant')
+      return
+    }
+    if (nextChapter.value) {
+      goNextChapter()
+      return
+    }
+    pipEndOpen.value = true
+  }
+
+  function pipRestartComic() {
+    pipEndOpen.value = false
+    const chapters = detail.value?.meta.chapters ?? []
+    if (chapters.length > 1 && chapters[0]) {
+      onSelectChapter(chapters[0].id)
+      return
+    }
+    goToPage(1, 'instant')
+  }
 
   /**
    * 记录初次载入或显式跳转的目标锚点页码与分组。
@@ -286,6 +385,8 @@ export function useReaderInteraction(options: UseReaderInteractionOptions) {
     settingsOpen,
     filmstripOpen,
     toggleFilmstrip,
+    pipOpen: isPipOpen,
+    onClosePip: closePip,
     settings,
     total,
     goToPage,
@@ -370,6 +471,8 @@ export function useReaderInteraction(options: UseReaderInteractionOptions) {
     advanceAutoTurn,
     onPageReady,
     onViewportWheel,
+    onViewportTouchStart,
+    onViewportTouchEnd,
     onUserInteract,
     onContainerScroll,
     onReaderClick,
@@ -390,5 +493,18 @@ export function useReaderInteraction(options: UseReaderInteractionOptions) {
     onPagePointerMove,
     onPagePointerUp,
     onPagePointerCancel,
+    onPageLostPointerCapture,
+    isPipSupported,
+    isPipOpen,
+    pipMountTarget,
+    pipEndOpen,
+    isPipAtFinalPage,
+    togglePip,
+    closePip,
+    canPipPrev,
+    canPipNext,
+    pipPrevPage,
+    pipNextPage,
+    pipRestartComic,
   }
 }

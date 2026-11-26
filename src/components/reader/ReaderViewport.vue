@@ -79,6 +79,10 @@ const emit = defineEmits<{
   readerClick: [event: MouseEvent]
   /** 用户主动交互（触屏/按压） */
   userInteract: []
+  /** 视口触控起点事件（供边界超拉换话判定） */
+  touchStart: [event: TouchEvent]
+  /** 视口触控结束事件（供边界超拉换话判定） */
+  touchEnd: [event: TouchEvent]
   /** 单页图片加载就绪事件（用于连续模式微调定位） */
   pageReady: [page: number]
   /** 点击完结卡片返回详情页 */
@@ -103,6 +107,8 @@ const emit = defineEmits<{
   pagePointerUp: [page: number, event: PointerEvent]
   /** 画页指针取消事件 */
   pagePointerCancel: [page: number, event: PointerEvent]
+  /** 画页指针捕获丢失事件（兜底清理拖拽态） */
+  pageLostPointerCapture: [page: number, event: PointerEvent]
 }>()
 
 const scrollEl = useTemplateRef<HTMLElement>('scrollEl')
@@ -142,8 +148,12 @@ defineExpose({
     tabindex="0"
     @scroll.passive="$emit('scroll', $event)"
     @wheel="$emit('wheel', $event)"
-    @touchstart.passive="$emit('userInteract')"
+    @touchstart.passive="
+      $emit('userInteract');
+      $emit('touchStart', $event)
+    "
     @touchmove.passive="$emit('userInteract')"
+    @touchend.passive="$emit('touchEnd', $event)"
     @pointerdown.passive="$emit('userInteract')"
     @mousemove="$emit('mousemove', $event)"
     @click="$emit('readerClick', $event)"
@@ -185,6 +195,7 @@ defineExpose({
           @pointermove="$emit('pagePointerMove', page, $event)"
           @pointerup="$emit('pagePointerUp', page, $event)"
           @pointercancel="$emit('pagePointerCancel', page, $event)"
+          @lostpointercapture="$emit('pageLostPointerCapture', page, $event)"
         >
           <ComicPageImage
             v-if="isGroupHydrated(group.index)"
@@ -225,7 +236,7 @@ defineExpose({
       data-chapter-end-card="true"
     >
       <div class="webtoon-chapter-end-card">
-        <span class="webtoon-end-badge">本话完</span>
+        <span class="webtoon-end-badge">本话完 · 继续向下滚动自动切换</span>
         <p class="webtoon-next-title">
           下一话：{{
             chapterShortLabel

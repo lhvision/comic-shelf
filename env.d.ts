@@ -12,3 +12,33 @@ declare module '*.css'
 declare module 'virtual:illustrations' {
   export const illustrations: string[]
 }
+
+interface DocumentPictureInPictureOptions {
+  width?: number
+  height?: number
+  disallowReturnToOpener?: boolean
+  preferInitialWindowPlacement?: boolean
+}
+
+interface DocumentPictureInPictureEvent extends Event {
+  readonly window: Window
+}
+
+interface DocumentPictureInPicture extends EventTarget {
+  readonly window: Window | null
+  requestWindow(options?: DocumentPictureInPictureOptions): Promise<Window>
+  addEventListener(
+    type: 'enter',
+    listener: (this: DocumentPictureInPicture, ev: DocumentPictureInPictureEvent) => unknown,
+    options?: boolean | AddEventListenerOptions,
+  ): void
+  addEventListener(
+    type: string,
+    listener: EventListenerOrEventListenerObject,
+    options?: boolean | AddEventListenerOptions,
+  ): void
+}
+
+interface Window {
+  readonly documentPictureInPicture?: DocumentPictureInPicture
+}

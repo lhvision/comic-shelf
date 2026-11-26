@@ -404,13 +404,35 @@ export function useReaderNavigation(options: UseReaderNavigationOptions) {
     resetAutoTurnCountdown()
   }
 
-  /** 翻到上一屏 */
+  /** 翻到上一屏（在离散翻页首屏或连续模式贴顶时自动跨回上一话） */
   function prevGroup(behavior: ScrollBehavior = 'smooth') {
+    if (currentGroupIndex.value <= 0) {
+      if (prevChapter.value) {
+        const el = scrollEl.value
+        if (settings.mode !== 'vertical-continuous' || !el || isAtScrollTop(el)) {
+          goPrevChapter()
+          return
+        }
+      }
+      goToGroup(0, behavior)
+      return
+    }
     goToGroup(currentGroupIndex.value - 1, behavior)
   }
 
-  /** 翻到下一屏 */
+  /** 翻到下一屏（在离散翻页末屏或连续模式贴底时自动切入下一话） */
   function nextGroup(behavior: ScrollBehavior = 'smooth') {
+    if (currentGroupIndex.value >= lastGroupIndex.value) {
+      if (nextChapter.value) {
+        const el = scrollEl.value
+        if (settings.mode !== 'vertical-continuous' || !el || isAtScrollBottom(el)) {
+          goNextChapter()
+          return
+        }
+        el.scrollTo({ left: 0, top: el.scrollHeight, behavior })
+      }
+      return
+    }
     goToGroup(currentGroupIndex.value + 1, behavior)
   }
 
@@ -421,12 +443,62 @@ export function useReaderNavigation(options: UseReaderNavigationOptions) {
   let wheelResetTimer: ReturnType<typeof setTimeout> | null = null
   let recalibrateRafId: number | null = null
 
+  let wasAtBottom = false
+  let wasAtTop = true
+  let bottomReachedAt = 0
+  let topReachedAt = 0
+  let boundaryCooldownUntil = 0
+  let overscrollDelta = 0
+  let overscrollDirection: 'next' | 'prev' | null = null
+  let overscrollResetTimer: ReturnType<typeof setTimeout> | null = null
+  let touchStartY: number | null = null
+  let touchStartedAtBottom = false
+  let touchStartedAtTop = false
+
   const WHEEL_THRESHOLD = 40
   const WHEEL_COOLDOWN_MS = 220
+  const BOUNDARY_SETTLE_MS = 220
+  const OVERSCROLL_THRESHOLD = 80
+  const TOUCH_OVERSCROLL_PX = 48
+
+  function isAtScrollBottom(el: HTMLElement): boolean {
+    if (el.clientHeight <= 0 || el.scrollHeight <= 0) return false
+    return (
+      el.scrollHeight <= el.clientHeight + 24 ||
+      el.scrollTop + el.clientHeight >= el.scrollHeight - 24
+    )
+  }
+
+  function isAtScrollTop(el: HTMLElement): boolean {
+    return el.scrollTop <= 16
+  }
+
+  function resetOverscroll() {
+    overscrollDelta = 0
+    overscrollDirection = null
+    if (overscrollResetTimer !== null) {
+      clearTimeout(overscrollResetTimer)
+      overscrollResetTimer = null
+    }
+  }
+
+  function resetBoundaryTrackers() {
+    resetOverscroll()
+    const now = performance.now()
+    bottomReachedAt = now
+    topReachedAt = now
+    boundaryCooldownUntil = now + 350
+    wasAtBottom = false
+    wasAtTop = false
+    touchStartY = null
+    touchStartedAtBottom = false
+    touchStartedAtTop = false
+  }
 
   if (getCurrentScope()) {
     onScopeDispose(() => {
       stopSwitchRelease()
+      resetOverscroll()
       if (scrollRafId !== null) {
         cancelAnimationFrame(scrollRafId)
         scrollRafId = null
@@ -467,6 +539,21 @@ export function useReaderNavigation(options: UseReaderNavigationOptions) {
     const max = horizontal ? el.scrollWidth - el.clientWidth : el.scrollHeight - el.clientHeight
     const rawProgress = max <= 0 ? 1 : clamp(position / max, 0, 1)
     progressValue.value = rtl ? 1 - rawProgress : rawProgress
+
+    if (!horizontal) {
+      const now = performance.now()
+      const atBottom = isAtScrollBottom(el)
+      if (atBottom && !wasAtBottom) {
+        bottomReachedAt = now
+      }
+      wasAtBottom = atBottom
+
+      const atTop = isAtScrollTop(el)
+      if (atTop && !wasAtTop) {
+        topReachedAt = now
+      }
+      wasAtTop = atTop
+    }
 
     // 处于程序化跳转平滑滑行期或跨话切换过渡期：仅更新滚动进度条 progressValue，禁止被动探测反向抢占当前页码
     if (isProgrammaticScrolling.value || isSwitchingChapter.value) {
@@ -526,15 +613,14 @@ export function useReaderNavigation(options: UseReaderNavigationOptions) {
   }
 
   /**
-   * 在横向翻页排版下拦截纵向鼠标滚轮，执行离散分屏平滑步进；
-   * 对水平为主的手势（触控板滑动或倾斜滚轮）放行原生物理滚动。
+   * 纵向排版触底/贴顶继续滚动自动换话，以及横向排版滚轮离散分屏步进。
+   * 对触控板水平滑动及页面缩放手势放行原生行为。
    *
    * @param event 滚轮事件对象
    */
   function onWheel(event: WheelEvent) {
     if (isSwitchingChapter.value) return
     unlockProgrammaticScroll()
-    if (settings.mode !== 'horizontal') return
     const el = scrollEl.value
     if (!el) return
 
@@ -543,6 +629,47 @@ export function useReaderNavigation(options: UseReaderNavigationOptions) {
 
     // 放行浏览器原生页面缩放手势（Ctrl/Cmd + 滚轮 或 触控板双指捏合）
     if (event.ctrlKey || event.metaKey) return
+
+    const factor = event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? 100 : 1
+    const normalizedDeltaY = event.deltaY * factor
+
+    if (settings.mode !== 'horizontal') {
+      const now = performance.now()
+      if (now < boundaryCooldownUntil) {
+        resetOverscroll()
+        return
+      }
+
+      const dir = normalizedDeltaY > 0 ? 'next' : normalizedDeltaY < 0 ? 'prev' : null
+      const atTargetEdge =
+        dir === 'next'
+          ? Boolean(nextChapter.value) && isAtScrollBottom(el)
+          : dir === 'prev'
+            ? Boolean(prevChapter.value) && isAtScrollTop(el)
+            : false
+      const reachedAt = dir === 'next' ? bottomReachedAt : topReachedAt
+
+      if (dir && atTargetEdge) {
+        if (now - reachedAt < BOUNDARY_SETTLE_MS) return
+        if (overscrollDirection !== dir) {
+          overscrollDelta = 0
+          overscrollDirection = dir
+        }
+        overscrollDelta += Math.abs(normalizedDeltaY)
+        if (overscrollResetTimer !== null) clearTimeout(overscrollResetTimer)
+        overscrollResetTimer = setTimeout(resetOverscroll, 450)
+        if (overscrollDelta >= OVERSCROLL_THRESHOLD) {
+          event.preventDefault()
+          resetOverscroll()
+          if (dir === 'next') goNextChapter()
+          else goPrevChapter()
+        }
+        return
+      }
+
+      resetOverscroll()
+      return
+    }
 
     event.preventDefault()
 
@@ -553,8 +680,7 @@ export function useReaderNavigation(options: UseReaderNavigationOptions) {
 
     if (wheelCooldown) return
 
-    const factor = event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? 100 : 1
-    accumulatedWheelDelta += event.deltaY * factor
+    accumulatedWheelDelta += normalizedDeltaY
 
     if (Math.abs(accumulatedWheelDelta) >= WHEEL_THRESHOLD) {
       const isDown = accumulatedWheelDelta > 0
@@ -576,6 +702,59 @@ export function useReaderNavigation(options: UseReaderNavigationOptions) {
         accumulatedWheelDelta = 0
         wheelResetTimer = null
       }, 150)
+    }
+  }
+
+  /** 记录触屏起始边界，供松手时判定贴底上拉 / 贴顶下拉自动跨话 */
+  function onViewportTouchStart(event: TouchEvent) {
+    const el = scrollEl.value
+    const touch = event.touches?.[0]
+    if (!el || !touch || settings.mode === 'horizontal') {
+      touchStartY = null
+      return
+    }
+    touchStartY = touch.clientY
+    touchStartedAtBottom = isAtScrollBottom(el)
+    touchStartedAtTop = isAtScrollTop(el)
+  }
+
+  /** 触屏贴底上拉 / 贴顶下拉释放时触发自动切话 */
+  function onViewportTouchEnd(event: TouchEvent) {
+    const el = scrollEl.value
+    const touch = event.changedTouches?.[0]
+    const startY = touchStartY
+    const startedAtBottom = touchStartedAtBottom
+    const startedAtTop = touchStartedAtTop
+    touchStartY = null
+    touchStartedAtBottom = false
+    touchStartedAtTop = false
+
+    if (!el || !touch || startY === null || settings.mode === 'horizontal') return
+    if (isSwitchingChapter.value) return
+
+    const now = performance.now()
+    if (now < boundaryCooldownUntil) return
+
+    const swipeDelta = startY - touch.clientY
+    const dir = swipeDelta > 0 ? 'next' : swipeDelta < 0 ? 'prev' : null
+    if (!dir || Math.abs(swipeDelta) < TOUCH_OVERSCROLL_PX) return
+
+    if (
+      dir === 'next' &&
+      startedAtBottom &&
+      nextChapter.value &&
+      isAtScrollBottom(el) &&
+      now - bottomReachedAt >= BOUNDARY_SETTLE_MS
+    ) {
+      goNextChapter()
+    } else if (
+      dir === 'prev' &&
+      startedAtTop &&
+      prevChapter.value &&
+      isAtScrollTop(el) &&
+      now - topReachedAt >= BOUNDARY_SETTLE_MS
+    ) {
+      goPrevChapter()
     }
   }
 
@@ -617,6 +796,7 @@ export function useReaderNavigation(options: UseReaderNavigationOptions) {
 
   /** 切换章节作用域并替换当前路由 URL 查询参数 */
   function setScope(id: string, page: number) {
+    resetBoundaryTrackers()
     isSwitchingChapter.value = true
     startSwitchRelease()
     lockProgrammaticScroll(480)
@@ -674,10 +854,16 @@ export function useReaderNavigation(options: UseReaderNavigationOptions) {
   }
 
   /**
-   * 离散翻页模式自动切换推进逻辑：推进至下一分屏分组
+   * 离散翻页模式自动切换推进逻辑：推进至下一分屏分组（末屏且有下一话时自动切入下一话）
    */
   function advanceAutoTurn(reduced = false) {
     if (settings.mode === 'vertical-continuous') return
+    if (currentGroupIndex.value >= lastGroupIndex.value) {
+      if (nextChapter.value) {
+        goNextChapter()
+      }
+      return
+    }
     const nextIndex = Math.min(currentGroupIndex.value + 1, lastGroupIndex.value)
     currentGroupIndex.value = nextIndex
     currentPage.value = groupFirstPage(nextIndex)
@@ -698,6 +884,8 @@ export function useReaderNavigation(options: UseReaderNavigationOptions) {
     advanceAutoTurn,
     onScroll,
     onWheel,
+    onViewportTouchStart,
+    onViewportTouchEnd,
     preloadAround,
     setScope,
     goNextChapter,

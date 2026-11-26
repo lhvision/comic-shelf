@@ -280,4 +280,22 @@ describe('useReaderKeyboard - Cascading Escape & Filmstrip Toggle', () => {
     state.onKeydown(tabEvent)
     expect(tabSpy).toHaveBeenCalled()
   })
+
+  it('blocks main-window page/chapter navigation when pipOpen is true and restores via Escape', () => {
+    const pipOpen = ref(true)
+    const onClosePip = vi.fn<() => void>()
+    const nextGroup = vi.fn<(behavior?: ScrollBehavior) => void>()
+    const goNextChapter = vi.fn<() => void>()
+    const state = setupKeyboard({ pipOpen, onClosePip, nextGroup, goNextChapter })
+
+    state.onKeydown(new KeyboardEvent('keydown', { key: 'ArrowRight', cancelable: true }))
+    state.onKeydown(new KeyboardEvent('keydown', { key: 'n', cancelable: true }))
+    expect(nextGroup).not.toHaveBeenCalled()
+    expect(goNextChapter).not.toHaveBeenCalled()
+
+    const escEvent = new KeyboardEvent('keydown', { key: 'Escape', cancelable: true })
+    state.onKeydown(escEvent)
+    expect(onClosePip).toHaveBeenCalledTimes(1)
+    expect(state.backToDetail).not.toHaveBeenCalled()
+  })
 })

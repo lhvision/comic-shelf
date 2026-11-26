@@ -672,4 +672,104 @@ describe('useReaderNavigation - Discrete Wheel Stepping & Dual-Axis Discriminati
     const scrollendCalls = addEventListenerSpy.mock.calls.filter(([event]) => event === 'scrollend')
     expect(scrollendCalls.length).toBe(0)
   })
+
+  it('auto-advances and retreats across chapters at boundaries in paged mode and auto-turn', () => {
+    settings.mode = 'vertical-paged'
+    const nextChapter = computed<Chapter | null>(() => ({
+      id: 'ch2',
+      index: 2,
+      title: 'Chapter 2',
+      page_count: 5,
+      start: 7,
+    }))
+    const prevChapter = computed<Chapter | null>(() => ({
+      id: 'ch0',
+      index: 0,
+      title: 'Chapter 0',
+      page_count: 4,
+      start: 1,
+    }))
+    const mockReplace = vi.fn<(_url: string) => Promise<void>>()
+    const mockRouter = {
+      replace: mockReplace,
+      push: vi.fn<(_url: string) => Promise<void>>(),
+    } as unknown as Router
+
+    const nav = createNavigation({ nextChapter, prevChapter, router: mockRouter })
+
+    // At last group -> nextGroup goes to ch2
+    currentGroupIndex.value = 2
+    nav.nextGroup()
+    expect(mockReplace).toHaveBeenCalledWith(expect.stringContaining('chapter=ch2'))
+
+    vi.advanceTimersByTime(360)
+
+    // At first group -> prevGroup goes to ch0
+    currentGroupIndex.value = 0
+    nav.prevGroup()
+    expect(mockReplace).toHaveBeenCalledWith(expect.stringContaining('chapter=ch0'))
+
+    vi.advanceTimersByTime(360)
+
+    // At last group -> advanceAutoTurn goes to ch2
+    currentGroupIndex.value = 2
+    nav.advanceAutoTurn()
+    expect(mockReplace).toHaveBeenCalledTimes(3)
+    expect(mockReplace).toHaveBeenLastCalledWith(expect.stringContaining('chapter=ch2'))
+  })
+
+  it('triggers goNextChapter / goPrevChapter on vertical-continuous overscroll wheel after settle window', () => {
+    settings.mode = 'vertical-continuous'
+    const nextChapter = computed<Chapter | null>(() => ({
+      id: 'ch2',
+      index: 2,
+      title: 'Chapter 2',
+      page_count: 6,
+      start: 7,
+    }))
+    const prevChapter = computed<Chapter | null>(() => ({
+      id: 'ch0',
+      index: 0,
+      title: 'Chapter 0',
+      page_count: 6,
+      start: 1,
+    }))
+    const mockReplace = vi.fn<(_url: string) => Promise<void>>()
+    const mockRouter = {
+      replace: mockReplace,
+      push: vi.fn<(_url: string) => Promise<void>>(),
+    } as unknown as Router
+
+    const nav = createNavigation({ nextChapter, prevChapter, router: mockRouter })
+
+    Object.defineProperty(mockContainer, 'clientHeight', { value: 800, configurable: true })
+    Object.defineProperty(mockContainer, 'scrollHeight', { value: 2400, configurable: true })
+
+    // Scroll to bottom -> settle window (<220ms) ignores inertial ticks
+    Object.defineProperty(mockContainer, 'scrollTop', { value: 1600, configurable: true })
+    nav.onScroll()
+    vi.advanceTimersByTime(16)
+
+    const earlyWheel = new WheelEvent('wheel', { deltaY: 100, cancelable: true })
+    nav.onWheel(earlyWheel)
+    expect(mockReplace).not.toHaveBeenCalled()
+
+    // After settle window (220ms), rolling wheel down switches to next chapter
+    vi.advanceTimersByTime(250)
+    const nextWheel = new WheelEvent('wheel', { deltaY: 100, cancelable: true })
+    nav.onWheel(nextWheel)
+    expect(mockReplace).toHaveBeenCalledWith(expect.stringContaining('chapter=ch2'))
+
+    // Immediately rolling up inside cooldown does NOT bounce back
+    Object.defineProperty(mockContainer, 'scrollTop', { value: 0, configurable: true })
+    nav.onWheel(new WheelEvent('wheel', { deltaY: -120, cancelable: true }))
+    expect(mockReplace).toHaveBeenCalledTimes(1)
+
+    // After cooldown & settle window, rolling wheel up at top goes to prev chapter
+    vi.advanceTimersByTime(400)
+    nav.onScroll()
+    vi.advanceTimersByTime(250)
+    nav.onWheel(new WheelEvent('wheel', { deltaY: -100, cancelable: true }))
+    expect(mockReplace).toHaveBeenCalledWith(expect.stringContaining('chapter=ch0'))
+  })
 })

@@ -12,12 +12,17 @@ defineProps<{
   /** 当前章节文案（如「第 2 話 · 标题」）；单章节作品为空字符串。 */
   chapter?: string
   hidden: boolean
+  /** 桌面悬浮阅览窗是否受当前浏览器支持 */
+  pipSupported?: boolean
+  /** 桌面悬浮阅览窗是否处于打开状态 */
+  pipOpen?: boolean
 }>()
 
 defineEmits<{
   back: []
   openSettings: []
   toggleFullscreen: []
+  togglePip: []
 }>()
 </script>
 
@@ -33,6 +38,17 @@ defineEmits<{
         <span v-if="chapter" class="reader-chapter" :title="chapter">{{ chapter }}</span>
       </div>
       <div class="reader-tools">
+        <AppButton
+          v-if="pipSupported"
+          theme="reader"
+          variant="ghost"
+          size="sm"
+          icon="picture-in-picture"
+          :title="pipOpen ? '还原到主阅读器窗口' : '在桌面悬浮阅览窗中打开'"
+          @click="$emit('togglePip')"
+        >
+          {{ pipOpen ? '还原' : '浮窗' }}
+        </AppButton>
         <AppButton theme="reader" variant="ghost" size="sm" @click="$emit('openSettings')">
           设置
         </AppButton>

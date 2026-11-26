@@ -39,3 +39,4 @@ export type IconName =
   | 'message-square'
   | 'film'
   | 'tag'
+  | 'picture-in-picture'

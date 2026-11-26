@@ -93,8 +93,12 @@ export function useReaderCompletion(options: UseReaderCompletionOptions) {
     }
   }
 
+  const libraryItems = computed(() => libraryStore.items)
+
   return {
     recommendations,
+    libraryItems,
+    isDirectPass,
     onReaderCompleted,
     onSelectComic,
     onOpenComicDetail,

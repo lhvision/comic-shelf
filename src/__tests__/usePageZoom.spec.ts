@@ -166,6 +166,41 @@ describe('usePageZoom', () => {
     })
   })
 
+  it('clears dragging state on lostpointercapture as a defensive fallback', () => {
+    scope.run(() => {
+      const { toggleZoom, onPagePointerDown, onPageLostPointerCapture, isDragging } = usePageZoom()
+      const mockElement = {
+        setPointerCapture: vi.fn<(id: number) => void>(),
+        hasPointerCapture: vi.fn<(id: number) => boolean>(() => false),
+        releasePointerCapture: vi.fn<(id: number) => void>(),
+        getBoundingClientRect: () => ({
+          left: 0,
+          top: 0,
+          width: 400,
+          height: 600,
+          right: 400,
+          bottom: 600,
+          x: 0,
+          y: 0,
+          toJSON: () => {},
+        }),
+      } as unknown as HTMLElement
+
+      toggleZoom(2, { clientX: 200, clientY: 300 }, mockElement)
+      onPagePointerDown(2, {
+        clientX: 200,
+        clientY: 300,
+        pointerId: 7,
+        currentTarget: mockElement,
+        stopPropagation: vi.fn<() => void>(),
+      } as unknown as PointerEvent)
+      expect(isDragging.value).toBe(true)
+
+      onPageLostPointerCapture(2)
+      expect(isDragging.value).toBe(false)
+    })
+  })
+
   it('provides appropriate styles when zoomed vs unzoomed', () => {
     scope.run(() => {
       const { toggleZoom, getPageZoomStyle } = usePageZoom({ scale: 2.5 })

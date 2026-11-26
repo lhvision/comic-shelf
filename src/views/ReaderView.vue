@@ -7,6 +7,7 @@ import { computed, onUnmounted, ref, useTemplateRef, watch } from 'vue'
 import { onBeforeRouteLeave, useRoute, useRouter } from 'vue-router'
 import { useMediaQuery, useScrollLock, useToggle } from '@vueuse/core'
 import { REDUCED_MOTION_QUERY } from '@/utils/is'
+import { pageFileUrl } from '@/api/client'
 import { useReaderSettings } from '@/composables/useReaderSettings'
 import { useReaderPaging } from '@/composables/useReaderPaging'
 import { useReaderChrome } from '@/composables/useReaderChrome'
@@ -26,7 +27,9 @@ import ReaderHud from '@/components/reader/ReaderHud.vue'
 import ReaderFloatingPill from '@/components/reader/ReaderFloatingPill.vue'
 import ReaderSettingsPanel from '@/components/reader/ReaderSettingsPanel.vue'
 import ReaderFilmstrip from '@/components/reader/ReaderFilmstrip.vue'
+import ReaderPipWindow from '@/components/reader/ReaderPipWindow.vue'
 import AppButton from '@/components/AppButton.vue'
+import AppIcon from '@/components/AppIcon.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -41,6 +44,7 @@ const currentGroupIndex = ref(initP > 0 ? Math.max(0, initP - 1) : 0)
 const userInteracted = ref(false)
 const [settingsOpen] = useToggle(false)
 const [filmstripOpen, toggleFilmstrip] = useToggle(false)
+const pipOpen = ref(false)
 const reducedMotion = useMediaQuery(REDUCED_MOTION_QUERY)
 const viewportRef = useTemplateRef<{ scrollEl: HTMLElement | null }>('viewportRef')
 const scrollEl = computed(() => viewportRef.value?.scrollEl ?? null)
@@ -79,27 +83,38 @@ const { progressValue, pillActive, isSwitchingChapter } = readerNavigation
 // prettier-ignore
 const readerAutoTurn = useAutoTurn({
   settings, currentGroupIndex, lastGroupIndex: readerPaging.lastGroupIndex,
-  settingsOpen, filmstripOpen, chromeVisible,
+  hasNextChapter: computed(() => Boolean(nextChapter.value)),
+  settingsOpen, filmstripOpen, pipOpen, chromeVisible,
   onAdvance: () => advanceAutoTurn(), onScheduleChromeHide: readerChrome.scheduleChromeHide,
 })
 const { isAutoTurnActive, autoTurnRemaining, autoTurnPaused, toggleAutoTurnPause } = readerAutoTurn
 
 // prettier-ignore
 const {
-  initReaderView, advanceAutoTurn, onPageReady, onViewportWheel, onUserInteract,
+  initReaderView, advanceAutoTurn, onPageReady, onViewportWheel,
+  onViewportTouchStart, onViewportTouchEnd, onUserInteract,
   onContainerScroll, onReaderClick, onSelectChapter, toggleFullscreen,
   prevGroup, nextGroup, goToPage, goNextChapter, goPrevChapter,
   isZoomed, zoomedPage, resetZoom, getPageZoomStyle, onPageDblClick,
   onPagePointerDown, onPagePointerMove, onPagePointerUp, onPagePointerCancel,
+  onPageLostPointerCapture, isPipSupported, pipMountTarget, pipEndOpen, isPipAtFinalPage,
+  togglePip, closePip, canPipPrev, canPipNext, pipPrevPage, pipNextPage, pipRestartComic,
 } = useReaderInteraction({
   userInteracted, currentPage, currentGroupIndex, settingsOpen, filmstripOpen, toggleFilmstrip,
-  reducedMotion,
+  pipOpen, reducedMotion,
   route, router, settings: readerSettings, bubble: readerBubble, data: readerData,
   paging: readerPaging, chrome: readerChrome, navigation: readerNavigation, autoTurn: readerAutoTurn,
 })
 
-const { recommendations, onReaderCompleted, onSelectComic, onOpenComicDetail, onBackToShelf } =
-  useReaderCompletion({ source, sourceId, detail, total, lastRead })
+const {
+  recommendations,
+  libraryItems,
+  isDirectPass,
+  onReaderCompleted,
+  onSelectComic,
+  onOpenComicDetail,
+  onBackToShelf,
+} = useReaderCompletion({ source, sourceId, detail, total, lastRead })
 
 const { recordSession, deactivateSession } = useReadingSession()
 
@@ -134,14 +149,30 @@ onUnmounted(() => {
       :display-id="detail?.meta.display_id ?? ''"
       :chapter="chapterLabel"
       :hidden="!chromeVisible"
+      :pip-supported="isPipSupported"
+      :pip-open="pipOpen"
       @back="backToDetail"
       @open-settings="settingsOpen = true"
       @toggle-fullscreen="toggleFullscreen"
+      @toggle-pip="togglePip"
     />
 
     <div v-if="loading" class="reader-loading">
       <ReaderLoadingState :variant="loadingVariant" text="正在整理书页…" full-frame />
     </div>
+
+    <section v-else-if="pipOpen" class="reader-pip-placeholder" aria-live="polite">
+      <div class="reader-pip-card">
+        <AppIcon name="picture-in-picture" size="2xl" />
+        <p class="reader-pip-heading">正在桌面悬浮阅览窗中阅读</p>
+        <p class="reader-pip-sub">
+          {{ detail?.meta.title }} · 第 {{ toLocalPage(currentPage) }} / {{ total }} 页
+        </p>
+        <AppButton theme="reader" variant="primary" size="sm" @click="closePip">
+          还原到主窗口
+        </AppButton>
+      </div>
+    </section>
 
     <ReaderViewport
       v-else
@@ -166,6 +197,8 @@ onUnmounted(() => {
       :get-page-zoom-style="getPageZoomStyle"
       @scroll="onContainerScroll"
       @wheel="onViewportWheel"
+      @touch-start="onViewportTouchStart"
+      @touch-end="onViewportTouchEnd"
       @user-interact="onUserInteract"
       @page-ready="onPageReady"
       @mousemove="showChromeTemporarily"
@@ -175,6 +208,7 @@ onUnmounted(() => {
       @page-pointer-move="onPagePointerMove"
       @page-pointer-up="onPagePointerUp"
       @page-pointer-cancel="onPagePointerCancel"
+      @page-lost-pointer-capture="onPageLostPointerCapture"
       @next-chapter="goNextChapter"
       @back-to-detail="backToDetail"
       @back-to-shelf="onBackToShelf"
@@ -186,7 +220,7 @@ onUnmounted(() => {
     <ReaderProgress :progress="progressValue" :invert="rtlHorizontal" />
 
     <ReaderChapterBanners
-      v-if="!loading && !isZoomed"
+      v-if="!loading && !isZoomed && !pipOpen"
       :prev-chapter="prevChapter"
       :next-chapter="nextChapter"
       :at-chapter-start="atChapterStart"
@@ -199,9 +233,9 @@ onUnmounted(() => {
     />
 
     <ReaderHud
-      v-if="!loading"
+      v-if="!loading && !pipOpen"
       :auto-turn="isAutoTurnActive"
-      :at-last-group="atLastGroup"
+      :at-last-group="atLastGroup && !nextChapter"
       :auto-turn-paused="autoTurnPaused"
       :settings-open="settingsOpen"
       :auto-turn-remaining="autoTurnRemaining"
@@ -209,8 +243,13 @@ onUnmounted(() => {
       :total="total"
       :prev-icon="prevIcon"
       :next-icon="nextIcon"
-      :can-prev="currentGroupIndex > 0"
-      :can-next="currentGroupIndex < lastGroupIndex"
+      :can-prev="
+        currentGroupIndex > 0 || (settings.mode !== 'vertical-continuous' && Boolean(prevChapter))
+      "
+      :can-next="
+        currentGroupIndex < lastGroupIndex ||
+        (settings.mode !== 'vertical-continuous' && Boolean(nextChapter))
+      "
       :hidden="!chromeVisible && !isAutoTurnActive"
       :filmstrip-open="filmstripOpen"
       @toggle-auto-turn-pause="toggleAutoTurnPause"
@@ -220,7 +259,7 @@ onUnmounted(() => {
     />
 
     <ReaderFilmstrip
-      v-if="!loading"
+      v-if="!loading && !pipOpen"
       :open="filmstripOpen"
       :source="source"
       :source-id="sourceId"
@@ -244,7 +283,40 @@ onUnmounted(() => {
       :current="toLocalPage(currentPage)"
       :total="total"
       :active="pillActive"
-      :suppressed="chromeVisible || settingsOpen || filmstripOpen || isZoomed"
+      :suppressed="chromeVisible || settingsOpen || filmstripOpen || isZoomed || pipOpen"
+    />
+
+    <ReaderPipWindow
+      v-if="pipOpen"
+      :open="pipOpen"
+      :mount-target="pipMountTarget"
+      :loading="loading"
+      :end-open="pipEndOpen"
+      :at-final-page="isPipAtFinalPage"
+      :title="detail?.meta.title ?? ''"
+      :chapter-label="chapterLabel"
+      :chapters="detail?.meta.chapters"
+      :current-chapter-id="scopeId"
+      :current-source="source"
+      :current-source-id="sourceId"
+      :page-src="pageFileUrl(source, sourceId, currentPage)"
+      :current-local-page="toLocalPage(currentPage)"
+      :total="total"
+      :can-prev="canPipPrev"
+      :can-next="canPipNext"
+      :rtl-horizontal="rtlHorizontal"
+      :prev-icon="prevIcon"
+      :next-icon="nextIcon"
+      :recommendations="recommendations"
+      :library-items="libraryItems"
+      :is-direct-pass="isDirectPass"
+      @prev="pipPrevPage"
+      @next="pipNextPage"
+      @close="closePip"
+      @completed="onReaderCompleted"
+      @restart="pipRestartComic"
+      @select-comic="onSelectComic"
+      @select-chapter="onSelectChapter"
     />
 
     <!-- 放大态悬浮还原胶囊 -->
@@ -289,6 +361,40 @@ onUnmounted(() => {
   height: 100dvh;
   background: var(--reader-bg);
   padding: var(--space-4);
+}
+
+.reader-pip-placeholder {
+  display: grid;
+  place-items: center;
+  height: 100dvh;
+  background: var(--reader-bg);
+  padding: var(--space-5);
+}
+
+.reader-pip-card {
+  display: grid;
+  justify-items: center;
+  gap: var(--space-3);
+  max-width: 24rem;
+  padding: var(--space-6) var(--space-5);
+  text-align: center;
+  color: var(--reader-ink);
+  background: var(--reader-surface);
+  border: 1px solid var(--reader-line);
+  border-radius: var(--radius-3);
+}
+
+.reader-pip-heading {
+  margin: 0;
+  font-size: var(--text-md);
+  font-weight: 600;
+}
+
+.reader-pip-sub {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--reader-muted);
 }
 
 .reader-zoom-reset-bar {
