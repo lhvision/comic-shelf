@@ -112,6 +112,7 @@ export function useReaderInteraction(options: UseReaderInteractionOptions) {
     togglePip: rawTogglePip,
   } = useReaderPip({
     open: options.pipOpen,
+    title: computed(() => detail.value?.meta.title),
     isZoomed,
     onResetZoom: resetZoom,
     onOpen: () => {
@@ -431,6 +432,7 @@ export function useReaderInteraction(options: UseReaderInteractionOptions) {
   watch(
     () => scopeId.value,
     async () => {
+      pipEndOpen.value = false
       if (!detail.value) return
       if (isZoomed.value) resetZoom()
       targetAnchorPage.value = null

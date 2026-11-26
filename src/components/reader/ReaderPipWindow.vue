@@ -6,9 +6,9 @@
  */
 import { computed, nextTick, ref, useTemplateRef, watch } from 'vue'
 import { useEventListener } from '@vueuse/core'
+import { coverSrcset } from '@/api/client'
 import AppButton from '@/components/AppButton.vue'
 import AppIcon from '@/components/AppIcon.vue'
-import type { IconName } from '@/components/icons'
 import type { Chapter, LibrarySummary } from '@/types'
 import { isCompletedComic, isInProgressComic } from '@/utils/is'
 
@@ -33,8 +33,6 @@ const props = withDefaults(
     canPrev: boolean
     canNext: boolean
     rtlHorizontal: boolean
-    prevIcon: IconName
-    nextIcon: IconName
     recommendations?: LibrarySummary[]
     libraryItems?: LibrarySummary[]
     isDirectPass?: boolean
@@ -114,13 +112,33 @@ function formatBookStatus(item: LibrarySummary): string {
   return '未读'
 }
 
-function toggleDrawer(mode: 'chapters' | 'books') {
-  drawerMode.value = drawerMode.value === mode ? null : mode
-  if (drawerMode.value === 'books') {
+function formatBookMeta(item: LibrarySummary, showAuthor: boolean): string {
+  const status = formatBookStatus(item)
+  return showAuthor
+    ? `${status} · ${item.authors.join(' / ') || '佚名'}`
+    : `${item.display_id} · ${status}`
+}
+
+function bookCoverSrcset(cover?: string): string | undefined {
+  if (!cover) return undefined
+  return coverSrcset(cover) || undefined
+}
+
+function openDrawer(mode: 'chapters' | 'books') {
+  drawerMode.value = mode
+  if (mode === 'books') {
     void nextTick(() => {
       searchInputEl.value?.focus()
     })
   }
+}
+
+function toggleDrawer(mode: 'chapters' | 'books') {
+  if (drawerMode.value === mode) {
+    drawerMode.value = null
+    return
+  }
+  openDrawer(mode)
 }
 
 function pickChapter(chapterId: string) {
@@ -180,10 +198,11 @@ function handleRightTap() {
 
 useEventListener(pipKeyTarget, 'keydown', (event: KeyboardEvent) => {
   if (!props.open) return
+  if (event.ctrlKey || event.metaKey || event.altKey) return
   const target = event.target as Partial<Element> | null
   const inInput =
     typeof target?.closest === 'function' &&
-    Boolean(target.closest('input, textarea, [contenteditable]'))
+    Boolean(target.closest('input, textarea, select, [contenteditable]'))
 
   if (event.key === 'Escape') {
     event.preventDefault()
@@ -229,6 +248,7 @@ useEventListener(pipKeyTarget, 'keydown', (event: KeyboardEvent) => {
             v-if="chapterLabel && hasChapters"
             type="button"
             class="pip-reader-chapter is-clickable"
+            :aria-expanded="drawerMode === 'chapters'"
             :title="`切换章节：${chapterLabel}`"
             @click="toggleDrawer('chapters')"
           >
@@ -243,6 +263,7 @@ useEventListener(pipKeyTarget, 'keydown', (event: KeyboardEvent) => {
             theme="reader"
             :variant="drawerMode === 'chapters' ? 'soft' : 'ghost'"
             size="xs"
+            :aria-expanded="drawerMode === 'chapters'"
             title="选择本话章节"
             @click="toggleDrawer('chapters')"
           >
@@ -254,6 +275,7 @@ useEventListener(pipKeyTarget, 'keydown', (event: KeyboardEvent) => {
             :variant="drawerMode === 'books' ? 'soft' : 'ghost'"
             size="xs"
             icon="book-open"
+            :aria-expanded="drawerMode === 'books'"
             title="快捷切换书库作品"
             @click="toggleDrawer('books')"
           >
@@ -285,7 +307,7 @@ useEventListener(pipKeyTarget, 'keydown', (event: KeyboardEvent) => {
                 type="button"
                 class="pip-tab-btn"
                 :class="{ 'is-active': drawerMode === 'chapters' }"
-                @click="drawerMode = 'chapters'"
+                @click="openDrawer('chapters')"
               >
                 本话目录 ({{ chapters.length }})
               </button>
@@ -294,7 +316,7 @@ useEventListener(pipKeyTarget, 'keydown', (event: KeyboardEvent) => {
                 type="button"
                 class="pip-tab-btn"
                 :class="{ 'is-active': drawerMode === 'books' }"
-                @click="toggleDrawer('books')"
+                @click="openDrawer('books')"
               >
                 快捷换书
               </button>
@@ -350,6 +372,8 @@ useEventListener(pipKeyTarget, 'keydown', (event: KeyboardEvent) => {
                 <img
                   v-if="item.cover_paths?.[0]"
                   :src="item.cover_paths[0]"
+                  :srcset="bookCoverSrcset(item.cover_paths[0])"
+                  sizes="120px"
                   :alt="item.title"
                   class="pip-book-cover"
                   loading="lazy"
@@ -358,9 +382,7 @@ useEventListener(pipKeyTarget, 'keydown', (event: KeyboardEvent) => {
                 <div v-else class="pip-book-cover is-empty">{{ item.display_id }}</div>
                 <div class="pip-book-info">
                   <strong class="pip-book-title">{{ item.title }}</strong>
-                  <span class="pip-book-meta">
-                    {{ item.display_id }} · {{ formatBookStatus(item) }}
-                  </span>
+                  <span class="pip-book-meta">{{ formatBookMeta(item, false) }}</span>
                 </div>
               </button>
               <p v-if="quickSwitchBooks.length === 0" class="pip-empty-hint">未找到匹配的藏书</p>
@@ -397,6 +419,8 @@ useEventListener(pipKeyTarget, 'keydown', (event: KeyboardEvent) => {
               <img
                 v-if="item.cover_paths?.[0]"
                 :src="item.cover_paths[0]"
+                :srcset="bookCoverSrcset(item.cover_paths[0])"
+                sizes="120px"
                 :alt="item.title"
                 class="pip-book-cover"
                 loading="lazy"
@@ -405,9 +429,7 @@ useEventListener(pipKeyTarget, 'keydown', (event: KeyboardEvent) => {
               <div v-else class="pip-book-cover is-empty">{{ item.display_id }}</div>
               <div class="pip-book-info">
                 <strong class="pip-book-title">{{ item.title }}</strong>
-                <span class="pip-book-meta">
-                  {{ formatBookStatus(item) }} · {{ item.authors.join(' / ') || '佚名' }}
-                </span>
+                <span class="pip-book-meta">{{ formatBookMeta(item, true) }}</span>
               </div>
             </button>
           </div>
@@ -464,7 +486,7 @@ useEventListener(pipKeyTarget, 'keydown', (event: KeyboardEvent) => {
           theme="reader"
           variant="ghost"
           size="xs"
-          :icon="prevIcon"
+          icon="arrow-left"
           :disabled="rtlHorizontal ? !canNext : !canPrev"
           :aria-label="
             rtlHorizontal ? (atFinalPage ? '完读接卷' : '下一页') : endOpen ? '返回末页' : '上一页'
@@ -482,7 +504,7 @@ useEventListener(pipKeyTarget, 'keydown', (event: KeyboardEvent) => {
           theme="reader"
           variant="ghost"
           size="xs"
-          :icon="nextIcon"
+          icon="arrow-right"
           icon-position="right"
           :disabled="rtlHorizontal ? !canPrev : !canNext"
           :aria-label="
@@ -800,7 +822,7 @@ useEventListener(pipKeyTarget, 'keydown', (event: KeyboardEvent) => {
   display: grid;
   place-items: center;
   font-family: var(--font-mono, monospace);
-  font-size: 0.55rem;
+  font-size: var(--text-caption, 0.6875rem);
   color: var(--reader-muted, #938d80);
 }
 

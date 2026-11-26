@@ -751,13 +751,13 @@ Vue 3.6 Vapor Mode 汲取了 SolidJS 的编译期优化思想，将 SFC 单文�
    - 移动端（Chrome Android / Safari iOS）与桌面 Safari 均不支持该 API，且非 HTTPS 局域网 IP 访问时 `window.documentPictureInPicture` 为 `undefined`；
    - 仅当 `isSecureContext && 'documentPictureInPicture' in window` 且非粗指针触控端时展示顶栏「悬浮窗」入口，其余环境完全隐藏，不打扰核心阅读体验。
 2. **样式隔离迁移与 `@media (display-mode: picture-in-picture)`**：
-   - 通过 `requestWindow({ width, height })` 打开独立同源浏览上下文后，需遍历主文档 `document.styleSheets` 同步至 `pipWindow.document.head`（CORS 样式表回退为 `<link>` 引用），确保 `tokens.css` 暗室变量与组件Scoped CSS 完整生效；
+   - 通过 `requestWindow({ width, height })` 打开独立同源浏览上下文后，需遍历主文档 `document.styleSheets` 同步至 `pipWindow.document.head`（保留 `media` 条件；CORS 样式表回退为 `<link>` 引用），确保 `tokens.css` 暗室变量与组件 Scoped CSS 完整生效；
    - 借助 Vue `<Teleport>` 将轻量单页视图挂载至 `pipWindow.document.body` 容器，保持响应式状态与翻页逻辑单源复用。
 3. **单页同步伴读契约与多章节/接卷连读闭环**：
-   - 小窗固定单页自适应铺满（`object-fit: contain`；注意超长拼接条漫单图在小窗内会等比缩小，推荐回主窗阅览）并遵循作品 RTL 方向，翻页实时推进主阅读器 `currentPage` / `lastRead` 与服务端会话；
-   - 借助同路由组件复用（`/comic/:source/:sourceId/read/:page?` 不重建 `ReaderView`），小窗内置 **多章节目录直选**、**末页「全卷完 · 接卷推荐」** 与 **顶栏「快捷换书」** 抽屉（遵循「单本直达链接」沙箱隐藏跨本切书；快捷换书读取 `libraryStore` 已载入缓存并限制前 30 条，暂不引入独立远端搜索请求以免过度复杂），无需回主窗口即可连贯选话或无缝切换下一本；
-   - 悬浮期间主窗口暂停 `autoTurn`、锁定主窗翻页热键（`Esc` 还原主窗）并隐藏 HUD / 胶片轨，渲染暗室占位提示；
-   - `openPip()` 内置 `openingPromise` 并发防重入锁；监听 `pipWindow` 的 `pagehide` 自动恢复主窗口定位，并在离开阅读器路由（`onScopeDispose`）时主动 `close()` 销毁小窗。
+   - 小窗固定单页自适应铺满（`object-fit: contain`；注意超长拼接条漫单图在小窗内会等比缩小，推荐回主窗阅览）并遵循作品 RTL 方向（底栏保持左/右空间箭头语义），翻页实时推进主阅读器 `currentPage` / `lastRead` 与服务端会话；
+   - 借助同路由组件复用（`/comic/:source/:sourceId/read/:page?` 不重建 `ReaderView`），小窗内置 **多章节目录直选**、**末页「全卷完 · 接卷推荐」** 与 **顶栏「快捷换书」** 抽屉（遵循「单本直达链接」沙箱隐藏跨本切书并在源头置空 `libraryItems`；书目封面接入 `coverSrcset` + `sizes="120px"` 优先 360w 缩略图，快捷换书限制前 30 条），无需回主窗口即可连贯选话或无缝切换下一本（同时响应式同步小窗标题并退出完读页）；
+   - 悬浮期间主窗口保持顶栏可唤醒并暂停 `autoTurn`、锁定主窗翻页热键（`Esc` 还原主窗）并隐藏 HUD / 胶片轨，渲染暗室占位提示；
+   - `openPip()` 内置 `openingPromise` 并发防重入锁与 `isDisposed` 离场竞态兜底（等待授权期间若路由已离开则立即关闭新开窗口）；监听 `pipWindow` 的 `pagehide` 自动恢复主窗口定位，并在离开阅读器路由（`onScopeDispose`）时主动 `close()` 销毁小窗。
 
 ---
 

@@ -4,6 +4,7 @@ import { useTimeoutFn } from '@vueuse/core'
 export interface UseReaderChromeOptions {
   settingsOpen: Ref<boolean>
   filmstripOpen?: Ref<boolean>
+  pipOpen?: Ref<boolean>
   hideDelay?: number
 }
 
@@ -12,12 +13,12 @@ export interface UseReaderChromeOptions {
  * 负责自动排程隐藏、临时唤醒和手动显隐切换。
  */
 export function useReaderChrome(options: UseReaderChromeOptions) {
-  const { settingsOpen, filmstripOpen, hideDelay = 2600 } = options
+  const { settingsOpen, filmstripOpen, pipOpen, hideDelay = 2600 } = options
   const chromeVisible = ref(true)
 
   const { start: startChromeHide, stop: stopChromeHide } = useTimeoutFn(
     () => {
-      if (!settingsOpen.value && !filmstripOpen?.value) {
+      if (!settingsOpen.value && !filmstripOpen?.value && !pipOpen?.value) {
         chromeVisible.value = false
       }
     },
@@ -28,6 +29,17 @@ export function useReaderChrome(options: UseReaderChromeOptions) {
   if (filmstripOpen) {
     watch(filmstripOpen, (open) => {
       if (open) {
+        stopChromeHide()
+      } else {
+        scheduleChromeHide()
+      }
+    })
+  }
+
+  if (pipOpen) {
+    watch(pipOpen, (open) => {
+      if (open) {
+        chromeVisible.value = true
         stopChromeHide()
       } else {
         scheduleChromeHide()

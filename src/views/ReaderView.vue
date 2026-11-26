@@ -66,7 +66,7 @@ const {
   lastGroupIndex, atLastGroup,
 } = readerPaging
 
-const readerChrome = useReaderChrome({ settingsOpen, filmstripOpen })
+const readerChrome = useReaderChrome({ settingsOpen, filmstripOpen, pipOpen })
 const { chromeVisible, showChromeTemporarily } = readerChrome
 
 // prettier-ignore
@@ -305,8 +305,6 @@ onUnmounted(() => {
       :can-prev="canPipPrev"
       :can-next="canPipNext"
       :rtl-horizontal="rtlHorizontal"
-      :prev-icon="prevIcon"
-      :next-icon="nextIcon"
       :recommendations="recommendations"
       :library-items="libraryItems"
       :is-direct-pass="isDirectPass"

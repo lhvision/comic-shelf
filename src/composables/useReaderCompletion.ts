@@ -93,7 +93,7 @@ export function useReaderCompletion(options: UseReaderCompletionOptions) {
     }
   }
 
-  const libraryItems = computed(() => libraryStore.items)
+  const libraryItems = computed(() => (isDirectPass.value ? [] : libraryStore.items))
 
   return {
     recommendations,

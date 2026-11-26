@@ -169,6 +169,46 @@ describe('useReaderPip', () => {
       expect(isPipOpen.value).toBe(true)
     })
   })
+
+  it('closes late-resolved PiP window if scope disposes while requestWindow is pending, and syncs reactive title', async () => {
+    const mockWin = createMockPipWindow()
+    const { promise: pendingWindowPromise, resolve: resolveReq } = Promise.withResolvers<Window>()
+    const requestWindow = vi.fn<() => Promise<Window>>().mockReturnValueOnce(pendingWindowPromise)
+    Object.defineProperty(window, 'isSecureContext', { configurable: true, value: true })
+    Object.defineProperty(window, 'documentPictureInPicture', {
+      configurable: true,
+      value: { window: null, requestWindow },
+    })
+
+    // Case 1: scope disposes before requestWindow resolves
+    let pendingOpen: Promise<boolean> | null = null
+    let disposedPipOpen: ReturnType<typeof ref<boolean>> | null = null
+    scope.run(() => {
+      const { openPip, isPipOpen } = useReaderPip()
+      disposedPipOpen = isPipOpen
+      pendingOpen = openPip('竞态离场')
+    })
+    scope.stop()
+    resolveReq(mockWin)
+    expect(await pendingOpen!).toBe(false)
+    expect(mockWin.__closeSpy).toHaveBeenCalledTimes(1)
+    expect(disposedPipOpen!.value).toBe(false)
+
+    // Case 2: reactive title updates pipWindow.document.title when switching comics
+    const scope2 = effectScope()
+    const mockWin2 = createMockPipWindow()
+    requestWindow.mockResolvedValueOnce(mockWin2)
+    const reactiveTitle = ref<string | undefined>('第一本漫画')
+    await scope2.run(async () => {
+      const { openPip } = useReaderPip({ title: reactiveTitle })
+      await openPip()
+      expect(mockWin2.document.title).toContain('第一本漫画')
+      reactiveTitle.value = '第二本漫画'
+    })
+    await Promise.resolve()
+    expect(mockWin2.document.title).toContain('第二本漫画')
+    scope2.stop()
+  })
 })
 
 describe('ReaderPipWindow', () => {
@@ -189,8 +229,6 @@ describe('ReaderPipWindow', () => {
         canPrev: true,
         canNext: true,
         rtlHorizontal: true,
-        prevIcon: 'arrow-left',
-        nextIcon: 'arrow-right',
       },
     })
 
@@ -198,14 +236,25 @@ describe('ReaderPipWindow', () => {
     expect(img?.getAttribute('src')).toBe('/api/library/jm/1/pages/5/file')
     expect(mountTarget.querySelector('.pip-reader-counter')?.textContent).toBe('5 / 20')
 
+    // Footer buttons point outward in RTL mode: left button = arrow-left (下一页), right button = arrow-right (上一页)
+    const footerButtons = mountTarget.querySelectorAll('footer button')
+    expect(footerButtons[0]?.querySelector('.app-icon--arrow-left')).toBeTruthy()
+    expect(footerButtons[1]?.querySelector('.app-icon--arrow-right')).toBeTruthy()
+
     // In RTL mode, left tap zone advances to next page, right tap zone goes to prev page
     ;(mountTarget.querySelector('.pip-tap-zone.is-left') as HTMLButtonElement).click()
     ;(mountTarget.querySelector('.pip-tap-zone.is-right') as HTMLButtonElement).click()
     expect(wrapper.emitted('next')?.length).toBe(1)
     expect(wrapper.emitted('prev')?.length).toBe(1)
 
-    const buttons = mountTarget.querySelectorAll('header button')
-    ;(buttons[0] as HTMLButtonElement).click()
+    // Modifier keys are bypassed so browser shortcuts (e.g. Alt+ArrowLeft) are not hijacked
+    targetDoc.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowLeft', altKey: true }))
+    expect(wrapper.emitted('next')?.length).toBe(1)
+
+    const closeBtn = mountTarget.querySelector(
+      'header button[title="还原到主阅读器窗口"]',
+    ) as HTMLButtonElement
+    closeBtn.click()
     expect(wrapper.emitted('close')?.length).toBe(1)
 
     wrapper.unmount()
@@ -308,8 +357,6 @@ describe('ReaderPipWindow', () => {
         canPrev: true,
         canNext: true,
         rtlHorizontal: false,
-        prevIcon: 'arrow-left',
-        nextIcon: 'arrow-right',
         recommendations: [sampleBooks[2]!],
         libraryItems: sampleBooks,
         isDirectPass: false,
@@ -337,6 +384,14 @@ describe('ReaderPipWindow', () => {
       (el) => el.textContent,
     )
     expect(bookTitles).toEqual(['在读中的漫画', '已读完的漫画'])
+
+    // Clicking the already-active 快捷换书 tab inside panel keeps drawer open
+    const activeBooksTab = Array.from(mountTarget.querySelectorAll('.pip-tab-btn')).find((b) =>
+      b.textContent?.includes('快捷换书'),
+    ) as HTMLButtonElement
+    activeBooksTab.click()
+    await wrapper.vm.$nextTick()
+    expect(mountTarget.querySelector('.pip-switcher-panel')).toBeTruthy()
 
     // Escape closes drawer first without closing PiP
     targetDoc.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))

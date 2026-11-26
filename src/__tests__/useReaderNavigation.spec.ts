@@ -771,5 +771,16 @@ describe('useReaderNavigation - Discrete Wheel Stepping & Dual-Axis Discriminati
     vi.advanceTimersByTime(250)
     nav.onWheel(new WheelEvent('wheel', { deltaY: -100, cancelable: true }))
     expect(mockReplace).toHaveBeenCalledWith(expect.stringContaining('chapter=ch0'))
+
+    // Single-screen short chapter does NOT immediately auto-skip right when cooldown ends (needs extra settle window)
+    Object.defineProperty(mockContainer, 'scrollHeight', { value: 800, configurable: true })
+    Object.defineProperty(mockContainer, 'scrollTop', { value: 0, configurable: true })
+    vi.advanceTimersByTime(360)
+    nav.onWheel(new WheelEvent('wheel', { deltaY: 100, cancelable: true }))
+    expect(mockReplace).toHaveBeenCalledTimes(2)
+
+    vi.advanceTimersByTime(230)
+    nav.onWheel(new WheelEvent('wheel', { deltaY: 100, cancelable: true }))
+    expect(mockReplace).toHaveBeenCalledTimes(3)
   })
 })

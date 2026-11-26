@@ -8,12 +8,14 @@
  * - 监听小窗 `pagehide` 与组件作用域销毁（`onScopeDispose`），防止路由离开后残留孤儿小窗。
  */
 
-import { computed, onScopeDispose, ref, type Ref } from 'vue'
+import { computed, onScopeDispose, ref, watch, type Ref } from 'vue'
 import { useMediaQuery } from '@vueuse/core'
 
 export interface UseReaderPipOptions {
   /** 外部受控的悬浮窗打开状态 Ref */
   open?: Ref<boolean>
+  /** 当前作品标题（响应式，切换作品时同步更新悬浮窗标题栏） */
+  title?: Ref<string | undefined>
   /** 当前画页是否处于放大态 */
   isZoomed?: Ref<boolean>
   /** 放大态复位回调（开启小窗前退出放大，避免双端状态混淆） */
@@ -24,6 +26,10 @@ export interface UseReaderPipOptions {
   onClose?: () => void
 }
 
+function formatPipTitle(title?: string): string {
+  return title ? `${title} · 悬浮阅览` : '纸间 · 悬浮阅览窗'
+}
+
 function copyStylesToPipWindow(pipWindow: Window): void {
   const targetHead = pipWindow.document.head
   for (const styleSheet of Array.from(document.styleSheets)) {
@@ -32,6 +38,9 @@ function copyStylesToPipWindow(pipWindow: Window): void {
         .map((rule) => rule.cssText)
         .join('\n')
       const style = pipWindow.document.createElement('style')
+      if (styleSheet.media.mediaText) {
+        style.media = styleSheet.media.mediaText
+      }
       style.textContent = cssText
       targetHead.appendChild(style)
     } catch {
@@ -67,7 +76,7 @@ function copyStylesToPipWindow(pipWindow: Window): void {
  * @param options 生命周期与联动选项
  */
 export function useReaderPip(options: UseReaderPipOptions = {}) {
-  const { open, isZoomed, onResetZoom, onOpen, onClose } = options
+  const { open, title, isZoomed, onResetZoom, onOpen, onClose } = options
 
   const isCoarsePointer = useMediaQuery('(pointer: coarse)')
   const isPipSupported = computed(
@@ -83,6 +92,7 @@ export function useReaderPip(options: UseReaderPipOptions = {}) {
   const pipMountTarget = ref<HTMLElement | null>(null)
   let pipWindowRef: Window | null = null
   let openingPromise: Promise<boolean> | null = null
+  let isDisposed = false
 
   function cleanupPipState(triggerCloseCallback: boolean): void {
     const wasOpen = isPipOpen.value || pipMountTarget.value !== null || pipWindowRef !== null
@@ -113,8 +123,8 @@ export function useReaderPip(options: UseReaderPipOptions = {}) {
     }
   }
 
-  async function openPip(title?: string): Promise<boolean> {
-    if (!isPipSupported.value) return false
+  async function openPip(overrideTitle?: string): Promise<boolean> {
+    if (isDisposed || !isPipSupported.value) return false
 
     if (pipWindowRef && !pipWindowRef.closed) {
       pipWindowRef.focus()
@@ -139,8 +149,18 @@ export function useReaderPip(options: UseReaderPipOptions = {}) {
           height: 640,
         })
 
+        // 若等待窗口授权期间作用域已销毁，立即关闭刚打开的孤儿窗口
+        if (isDisposed) {
+          try {
+            pipWindow.close()
+          } catch {
+            // ignore close failure
+          }
+          return false
+        }
+
         pipWindow.document.documentElement.lang = document.documentElement.lang || 'zh-CN'
-        pipWindow.document.title = title ? `${title} · 悬浮阅览` : '纸间 · 悬浮阅览窗'
+        pipWindow.document.title = formatPipTitle(overrideTitle ?? title?.value)
         copyStylesToPipWindow(pipWindow)
 
         const container = pipWindow.document.createElement('div')
@@ -171,15 +191,24 @@ export function useReaderPip(options: UseReaderPipOptions = {}) {
     teardownPipWindow(true)
   }
 
-  async function togglePip(title?: string): Promise<void> {
+  async function togglePip(overrideTitle?: string): Promise<void> {
     if (isPipOpen.value) {
       closePip()
     } else {
-      await openPip(title)
+      await openPip(overrideTitle)
     }
   }
 
+  if (title) {
+    watch(title, (newTitle) => {
+      if (isPipOpen.value && pipWindowRef && !pipWindowRef.closed) {
+        pipWindowRef.document.title = formatPipTitle(newTitle)
+      }
+    })
+  }
+
   onScopeDispose(() => {
+    isDisposed = true
     teardownPipWindow(false)
   })
 
