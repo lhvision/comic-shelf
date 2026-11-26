@@ -503,6 +503,162 @@ describe('ReaderPipWindow', () => {
     nextChapterBtn?.click()
     expect(wrapper.emitted('selectChapter')?.at(-1)).toEqual(['c2'])
 
+    // Without nextChapter, continuous end card emits openEnd
+    await wrapper.setProps({ nextChapter: null } as Record<string, unknown>)
+    const openEndBtn = Array.from(mountTarget.querySelectorAll('.pip-continuous-end button')).find(
+      (btn) => btn.textContent?.includes('查看接卷推荐'),
+    ) as HTMLButtonElement | undefined
+    expect(openEndBtn).toBeTruthy()
+    openEndBtn?.click()
+    expect(wrapper.emitted('openEnd')?.length).toBe(1)
+
+    wrapper.unmount()
+  })
+
+  it('computes directional transition names for horizontal LTR/RTL, vertical-paged, and reset transitions', async () => {
+    const targetDoc = document.implementation.createHTMLDocument('pip-host-4')
+    const mountTarget = targetDoc.createElement('div')
+    targetDoc.body.appendChild(mountTarget)
+
+    const wrapper = mount(ReaderPipWindow, {
+      props: {
+        open: true,
+        mountTarget,
+        title: '动画方向测试',
+        currentSource: 'jm',
+        currentSourceId: 'comic-1',
+        currentChapterId: 'c1',
+        pageSrc: '/api/library/jm/comic-1/pages/1/file',
+        currentPage: 1,
+        currentLocalPage: 1,
+        total: 5,
+        canPrev: false,
+        canNext: true,
+        rtlHorizontal: false,
+        readerMode: 'horizontal',
+        reducedMotion: false,
+      },
+    })
+
+    const getTransitionName = () =>
+      mountTarget.querySelector('transition-stub')?.getAttribute('name')
+
+    expect(getTransitionName()).toBe('pip-slide-none')
+
+    // Horizontal LTR: forward -> left, backward -> right
+    await wrapper.setProps({ currentPage: 2, currentLocalPage: 2 } as Record<string, unknown>)
+    expect(getTransitionName()).toBe('pip-slide-left')
+    await wrapper.setProps({ currentPage: 1, currentLocalPage: 1 } as Record<string, unknown>)
+    expect(getTransitionName()).toBe('pip-slide-right')
+
+    // Horizontal RTL: forward -> right, backward -> left
+    await wrapper.setProps({
+      rtlHorizontal: true,
+      currentPage: 2,
+      currentLocalPage: 2,
+    } as Record<string, unknown>)
+    expect(getTransitionName()).toBe('pip-slide-right')
+    await wrapper.setProps({ currentPage: 1, currentLocalPage: 1 } as Record<string, unknown>)
+    expect(getTransitionName()).toBe('pip-slide-left')
+
+    // Vertical paged: forward -> up, backward -> down
+    await wrapper.setProps({
+      readerMode: 'vertical-paged',
+      rtlHorizontal: false,
+      currentPage: 2,
+      currentLocalPage: 2,
+    } as Record<string, unknown>)
+    expect(getTransitionName()).toBe('pip-slide-up')
+    await wrapper.setProps({ currentPage: 1, currentLocalPage: 1 } as Record<string, unknown>)
+    expect(getTransitionName()).toBe('pip-slide-down')
+
+    // Chapter switch resets transition to none
+    await wrapper.setProps({
+      currentChapterId: 'c2',
+      currentPage: 6,
+      currentLocalPage: 1,
+    } as Record<string, unknown>)
+    expect(getTransitionName()).toBe('pip-slide-none')
+
+    // Reduced motion always uses pip-slide-none
+    await wrapper.setProps({
+      reducedMotion: true,
+      currentPage: 7,
+      currentLocalPage: 2,
+    } as Record<string, unknown>)
+    expect(getTransitionName()).toBe('pip-slide-none')
+
+    wrapper.unmount()
+  })
+
+  it('scrolls continuous strip natively on keyboard navigation and syncs scrollTop with currentPage', async () => {
+    const targetDoc = document.implementation.createHTMLDocument('pip-host-5')
+    const mountTarget = targetDoc.createElement('div')
+    targetDoc.body.appendChild(mountTarget)
+
+    const wrapper = mount(ReaderPipWindow, {
+      props: {
+        open: true,
+        mountTarget,
+        title: '条漫键盘与滚动同步',
+        currentSource: 'jm',
+        currentSourceId: 'comic-2',
+        pageSrc: '/api/library/jm/comic-2/pages/1/file',
+        currentPage: 1,
+        currentLocalPage: 1,
+        total: 3,
+        scopedPages: [1, 2, 3],
+        canPrev: false,
+        canNext: true,
+        rtlHorizontal: false,
+        readerMode: 'vertical-continuous',
+        fit: 'width',
+        seamless: true,
+      },
+    })
+
+    const scroller = mountTarget.querySelector('.pip-continuous-scroll') as HTMLElement
+    expect(scroller).toBeTruthy()
+
+    Object.defineProperty(scroller, 'clientHeight', { configurable: true, value: 500 })
+    Object.defineProperty(scroller, 'scrollHeight', { configurable: true, value: 1500 })
+    const scrollBySpy = vi.fn<(options?: ScrollToOptions) => void>()
+    const scrollToSpy = vi.fn<(options?: ScrollToOptions) => void>()
+    Object.defineProperty(scroller, 'scrollBy', { configurable: true, value: scrollBySpy })
+    Object.defineProperty(scroller, 'scrollTo', { configurable: true, value: scrollToSpy })
+
+    const pageNodes = Array.from(
+      mountTarget.querySelectorAll('.pip-continuous-page'),
+    ) as HTMLElement[]
+    pageNodes.forEach((node, idx) => {
+      Object.defineProperty(node, 'offsetTop', { configurable: true, value: idx * 500 })
+      Object.defineProperty(node, 'offsetHeight', { configurable: true, value: 500 })
+    })
+
+    // Left/Right arrows are ignored in continuous strip mode; Down/Space/PageUp scroll instead of prev/next
+    targetDoc.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowLeft' }))
+    targetDoc.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight' }))
+    targetDoc.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown' }))
+    targetDoc.dispatchEvent(new KeyboardEvent('keydown', { key: ' ' }))
+    targetDoc.dispatchEvent(new KeyboardEvent('keydown', { key: 'PageUp' }))
+
+    expect(wrapper.emitted('prev')).toBeFalsy()
+    expect(wrapper.emitted('next')).toBeFalsy()
+    expect(scrollBySpy).toHaveBeenCalledTimes(3)
+    expect(scrollBySpy).toHaveBeenNthCalledWith(1, { top: 72, left: 0, behavior: 'smooth' })
+    expect(scrollBySpy).toHaveBeenNthCalledWith(2, { top: 425, left: 0, behavior: 'smooth' })
+    expect(scrollBySpy).toHaveBeenNthCalledWith(3, { top: -425, left: 0, behavior: 'smooth' })
+
+    // Scrolling continuous container emits syncPage for page 2
+    scroller.scrollTop = 550
+    scroller.dispatchEvent(new Event('scroll'))
+    await new Promise((resolve) => requestAnimationFrame(() => resolve(undefined)))
+    expect(wrapper.emitted('syncPage')?.at(-1)).toEqual([2])
+
+    // External currentPage update scrolls container to page 3 offsetTop
+    await wrapper.setProps({ currentPage: 3, currentLocalPage: 3 } as Record<string, unknown>)
+    expect(scrollToSpy).toHaveBeenLastCalledWith({ top: 1000, left: 0, behavior: 'smooth' })
+
     wrapper.unmount()
   })
 })

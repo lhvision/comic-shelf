@@ -743,7 +743,7 @@ Vue 3.6 Vapor Mode 汲取了 SolidJS 的编译期优化思想，将 SFC 单文�
 **本项目落地位置**：
 
 - `src/composables/useReaderPip.ts`（桌面悬浮阅览窗生命周期、样式表同步与作用域自销毁）
-- `src/components/reader/ReaderPipWindow.vue`、`ReaderTopBar.vue`、`ReaderView.vue`
+- `src/components/reader/ReaderPipWindow.vue`（及 `src/components/reader/pip/` 子组件群，须静态导入以确保样式表拷贝完整生效）、`ReaderTopBar.vue`、`ReaderView.vue`
 
 #### 核心约束与纸间渐进架构
 

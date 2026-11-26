@@ -1,23 +1,19 @@
 <script setup lang="ts">
 /**
- * ReaderPipWindow.vue — 桌面悬浮阅览窗（Document Picture-in-Picture）内容组件。
- * 通过 Vue `<Teleport>` 挂载到独立置顶 PiP 窗口，支持单页同步翻页与模式一致切换动画、
- * 条漫/宽适配连续滚动长卷、离散模式自动切换倒计时与暂停控制、
- * 多章节直选跳话、末页完读接卷推荐与顶栏快捷换书闭环。
+ * ReaderPipWindow.vue — 桌面悬浮阅览窗（Document Picture-in-Picture）内容外壳。
+ * 通过 Vue `<Teleport>` 挂载到独立置顶 PiP 窗口，负责顶底栏、热键分发、单页自适应切换与状态调度，
+ * 并静态组合连续长卷（ReaderPipContinuousStage）与选话换书抽屉（ReaderPipSwitcherPanel）。
  */
-import { computed, nextTick, onScopeDispose, ref, useTemplateRef, watch } from 'vue'
-import { useEventListener, useTimeoutFn } from '@vueuse/core'
-import { coverSrcset, pageFileUrl } from '@/api/client'
+import { computed, ref, useTemplateRef, watch } from 'vue'
+import { useEventListener } from '@vueuse/core'
 import AppButton from '@/components/AppButton.vue'
 import AppIcon from '@/components/AppIcon.vue'
 import ComicPageImage from '@/components/ComicPageImage.vue'
-import { useReaderHydration, type OrderedGroup } from '@/composables/useReaderHydration'
+import ReaderPipBookItem from '@/components/reader/pip/ReaderPipBookItem.vue'
+import ReaderPipContinuousStage from '@/components/reader/pip/ReaderPipContinuousStage.vue'
+import ReaderPipSwitcherPanel from '@/components/reader/pip/ReaderPipSwitcherPanel.vue'
 import type { FitMode, ReaderMode } from '@/composables/useReaderSettings'
 import type { Chapter, LibrarySummary } from '@/types'
-import { isCompletedComic, isInProgressComic } from '@/utils/is'
-import { binarySearchNearestIndex } from '@/utils/math'
-
-const MAX_SWITCHER_ITEMS = 30
 
 const props = withDefaults(
   defineProps<{
@@ -101,8 +97,8 @@ const pipKeyTarget = computed(
   () => props.mountTarget?.ownerDocument.defaultView ?? props.mountTarget?.ownerDocument ?? null,
 )
 const drawerMode = ref<'chapters' | 'books' | null>(null)
-const searchQuery = ref('')
-const searchInputEl = useTemplateRef<HTMLInputElement>('searchInputEl')
+const continuousStageRef =
+  useTemplateRef<InstanceType<typeof ReaderPipContinuousStage>>('continuousStageRef')
 
 const hasChapters = computed(() => props.chapters.length > 1)
 const canSwitchBooks = computed(() => !props.isDirectPass && props.libraryItems.length > 0)
@@ -127,135 +123,6 @@ const autoTurnAriaLabel = computed(() => {
   if (props.autoTurnPaused) return '自动切换已暂停，点击继续'
   if (props.autoTurnRemaining <= 1) return '即将切换，点击暂停'
   return `${props.autoTurnRemaining} 秒后切换，点击暂停`
-})
-
-const continuousScrollEl = useTemplateRef<HTMLElement>('continuousScrollEl')
-const continuousGroups = computed<OrderedGroup[]>(() =>
-  props.scopedPages.map((page, index) => ({ pages: [page], index })),
-)
-const continuousActiveIndex = computed(() => {
-  const idx = props.scopedPages.indexOf(props.currentPage)
-  return idx >= 0 ? idx : Math.max(0, props.currentLocalPage - 1)
-})
-const { isGroupHydrated, getPageStyle, onPageImageReady } = useReaderHydration({
-  orderedGroups: continuousGroups,
-  currentGroupIndex: continuousActiveIndex,
-  comicKey: computed(() => `${props.currentSource}/${props.currentSourceId}`),
-})
-
-function formatLocalPage(page: number): number {
-  return props.toLocalPage ? props.toLocalPage(page) : page
-}
-
-let continuousRafId: number | null = null
-let isInternalScrollSync = false
-let isProgrammaticContinuousScroll = false
-
-const { start: startContinuousScrollUnlock, stop: stopContinuousScrollUnlock } = useTimeoutFn(
-  () => {
-    isProgrammaticContinuousScroll = false
-  },
-  380,
-  { immediate: false },
-)
-
-function unlockContinuousScroll() {
-  isProgrammaticContinuousScroll = false
-  stopContinuousScrollUnlock()
-}
-
-function scrollContinuousToPage(page: number, behavior: ScrollBehavior = 'instant') {
-  const el = continuousScrollEl.value
-  if (!el) return
-  const target = el.querySelector<HTMLElement>(`[data-pip-page="${page}"]`)
-  if (!target) return
-  if (behavior === 'smooth') {
-    isProgrammaticContinuousScroll = true
-    stopContinuousScrollUnlock()
-    startContinuousScrollUnlock()
-    if ('onscrollend' in window) {
-      el.addEventListener('scrollend', unlockContinuousScroll, { once: true })
-    }
-  }
-  el.scrollTo({ top: target.offsetTop, left: 0, behavior })
-}
-
-function onContinuousScroll() {
-  if (isProgrammaticContinuousScroll || continuousRafId !== null) return
-  continuousRafId = requestAnimationFrame(() => {
-    continuousRafId = null
-    if (isProgrammaticContinuousScroll) return
-    const el = continuousScrollEl.value
-    if (!el || !isContinuousStrip.value || props.scopedPages.length === 0) return
-
-    const pos = el.scrollTop
-    const max = el.scrollHeight - el.clientHeight
-    let matched = props.scopedPages[0]!
-
-    if (max > 0 && pos >= max - 16) {
-      matched = props.scopedPages[props.scopedPages.length - 1]!
-    } else if (pos <= 16) {
-      matched = props.scopedPages[0]!
-    } else {
-      const matchedIdx = binarySearchNearestIndex(
-        props.scopedPages.length,
-        Math.max(0, props.scopedPages.indexOf(props.currentPage)),
-        (mid) => {
-          const pageNum = props.scopedPages[mid]!
-          const node = el.querySelector<HTMLElement>(`[data-pip-page="${pageNum}"]`)
-          if (!node) return null
-          const top = node.offsetTop
-          const height = node.offsetHeight
-          const readLine = pos + Math.min(el.clientHeight * 0.4, height * 0.5)
-          return {
-            intersects: readLine >= top && readLine <= top + height,
-            start: top,
-            size: height,
-            target: readLine,
-          }
-        },
-      )
-      matched = props.scopedPages[matchedIdx] ?? matched
-    }
-
-    if (matched !== props.currentPage) {
-      isInternalScrollSync = true
-      emit('syncPage', matched)
-      void nextTick(() => {
-        isInternalScrollSync = false
-      })
-    }
-  })
-}
-
-watch(
-  [
-    isContinuousStrip,
-    () => props.open,
-    () => props.endOpen,
-    () => Boolean(drawerMode.value),
-    () => props.currentChapterId,
-    () => props.currentPage,
-  ],
-  ([continuous, isOpen, isEnd, hasDrawer, chap, page], prevValues) => {
-    if (!continuous || !isOpen || isEnd || hasDrawer || page <= 0) return
-    if (isInternalScrollSync) return
-    const [prevContinuous, prevOpen, prevEnd, prevHasDrawer, prevChap] = prevValues ?? []
-    const shouldInstant =
-      !prevContinuous || !prevOpen || prevEnd || prevHasDrawer || chap !== prevChap
-    void nextTick(() => {
-      scrollContinuousToPage(page, shouldInstant || props.reducedMotion ? 'instant' : 'smooth')
-    })
-  },
-  { flush: 'post', immediate: true },
-)
-
-onScopeDispose(() => {
-  if (continuousRafId !== null) {
-    cancelAnimationFrame(continuousRafId)
-    continuousRafId = null
-  }
-  emit('drawerChange', false)
 })
 
 const transitionDir = ref<'forward' | 'backward' | 'none'>('none')
@@ -307,70 +174,8 @@ watch(drawerMode, (mode) => {
   emit('drawerChange', Boolean(mode))
 })
 
-const quickSwitchBooks = computed<LibrarySummary[]>(() => {
-  if (!canSwitchBooks.value) return []
-  const query = searchQuery.value.trim().toLocaleLowerCase()
-  const filtered = props.libraryItems.filter((item) => {
-    if (item.source === props.currentSource && item.source_id === props.currentSourceId) {
-      return false
-    }
-    if (!query) return true
-    const haystack = [item.title, item.display_id, ...(item.authors ?? [])]
-      .join('\n')
-      .toLocaleLowerCase()
-    return haystack.includes(query)
-  })
-
-  const statusRank = (item: LibrarySummary) => {
-    if (isInProgressComic(item)) return 0
-    if (!isCompletedComic(item)) return 1
-    return 2
-  }
-
-  return filtered
-    .toSorted((a, b) => {
-      const rankDiff = statusRank(a) - statusRank(b)
-      if (rankDiff !== 0) return rankDiff
-      const timeA = a.imported_at ? Date.parse(a.imported_at) || 0 : 0
-      const timeB = b.imported_at ? Date.parse(b.imported_at) || 0 : 0
-      return timeB - timeA
-    })
-    .slice(0, MAX_SWITCHER_ITEMS)
-})
-
-function formatBookStatus(item: LibrarySummary): string {
-  if (isCompletedComic(item)) return '已读完'
-  if (isInProgressComic(item)) return `在读 ${item.last_page}/${item.page_count}P`
-  return '未读'
-}
-
-function formatBookMeta(item: LibrarySummary, showAuthor: boolean): string {
-  const status = formatBookStatus(item)
-  return showAuthor
-    ? `${status} · ${item.authors.join(' / ') || '佚名'}`
-    : `${item.display_id} · ${status}`
-}
-
-function bookCoverSrcset(cover?: string): string | undefined {
-  if (!cover) return undefined
-  return coverSrcset(cover) || undefined
-}
-
-function openDrawer(mode: 'chapters' | 'books') {
-  drawerMode.value = mode
-  if (mode === 'books') {
-    void nextTick(() => {
-      searchInputEl.value?.focus()
-    })
-  }
-}
-
 function toggleDrawer(mode: 'chapters' | 'books') {
-  if (drawerMode.value === mode) {
-    drawerMode.value = null
-    return
-  }
-  openDrawer(mode)
+  drawerMode.value = drawerMode.value === mode ? null : mode
 }
 
 function pickChapter(chapterId: string) {
@@ -380,15 +185,15 @@ function pickChapter(chapterId: string) {
 
 function pickComic(source: string, sourceId: string) {
   drawerMode.value = null
-  searchQuery.value = ''
   emit('selectComic', source, sourceId)
 }
 
 watch(
-  () => `${props.currentSource}/${props.currentSourceId}`,
-  () => {
-    drawerMode.value = null
-    searchQuery.value = ''
+  [() => `${props.currentSource}/${props.currentSourceId}`, () => props.open],
+  ([comic, isOpen], [prevComic]) => {
+    if (comic !== prevComic || !isOpen) {
+      drawerMode.value = null
+    }
   },
 )
 
@@ -397,16 +202,6 @@ watch(
   (direct) => {
     if (direct && drawerMode.value === 'books') {
       drawerMode.value = null
-    }
-  },
-)
-
-watch(
-  () => props.open,
-  (isOpen) => {
-    if (!isOpen) {
-      drawerMode.value = null
-      searchQuery.value = ''
     }
   },
 )
@@ -456,6 +251,31 @@ useEventListener(pipKeyTarget, 'keydown', (event: KeyboardEvent) => {
   }
 
   if (inInput || drawerMode.value || props.loading) return
+
+  if (isContinuousStrip.value && !props.endOpen) {
+    const stage = continuousStageRef.value
+    if (!stage) return
+    if (event.key === 'ArrowDown') {
+      event.preventDefault()
+      stage.scrollByStep('line-down')
+      return
+    }
+    if (event.key === 'ArrowUp') {
+      event.preventDefault()
+      stage.scrollByStep('line-up')
+      return
+    }
+    if (event.key === 'PageDown' || event.key === ' ') {
+      event.preventDefault()
+      stage.scrollByStep(event.key === ' ' && event.shiftKey ? 'page-up' : 'page-down')
+      return
+    }
+    if (event.key === 'PageUp') {
+      event.preventDefault()
+      stage.scrollByStep('page-up')
+    }
+    return
+  }
 
   if (event.key === 'ArrowLeft') {
     event.preventDefault()
@@ -536,100 +356,21 @@ useEventListener(pipKeyTarget, 'keydown', (event: KeyboardEvent) => {
       </header>
 
       <main class="pip-reader-stage">
-        <section
+        <ReaderPipSwitcherPanel
           v-if="drawerMode"
-          class="pip-switcher-panel"
-          :aria-label="drawerMode === 'chapters' ? '本话章节目录' : '快捷切换藏书'"
-        >
-          <div class="pip-switcher-tabs">
-            <div class="pip-switcher-tab-group">
-              <button
-                v-if="hasChapters"
-                type="button"
-                class="pip-tab-btn"
-                :class="{ 'is-active': drawerMode === 'chapters' }"
-                @click="openDrawer('chapters')"
-              >
-                本话目录 ({{ chapters.length }})
-              </button>
-              <button
-                v-if="canSwitchBooks"
-                type="button"
-                class="pip-tab-btn"
-                :class="{ 'is-active': drawerMode === 'books' }"
-                @click="openDrawer('books')"
-              >
-                快捷换书
-              </button>
-            </div>
-            <AppButton
-              theme="reader"
-              variant="ghost"
-              size="xs"
-              shape="circle"
-              icon="close"
-              aria-label="关闭切换面板"
-              @click="drawerMode = null"
-            />
-          </div>
-
-          <div v-if="drawerMode === 'chapters'" class="pip-switcher-list">
-            <button
-              v-for="ch in chapters"
-              :key="ch.id"
-              type="button"
-              class="pip-chapter-item"
-              :class="{ 'is-current': ch.id === currentChapterId }"
-              @click="pickChapter(ch.id)"
-            >
-              <span class="pip-chapter-name">第 {{ ch.index }} 話 · {{ ch.title }}</span>
-              <span class="pip-chapter-meta">
-                {{ ch.id === currentChapterId ? '在看 · ' : '' }}{{ ch.page_count }}P
-              </span>
-            </button>
-          </div>
-
-          <div v-else class="pip-books-body">
-            <label class="pip-search-box">
-              <AppIcon name="search" size="xs" />
-              <input
-                ref="searchInputEl"
-                v-model="searchQuery"
-                type="search"
-                class="pip-search-input"
-                placeholder="搜标题 / 车号 / 作者…"
-                aria-label="搜索书库藏书"
-              />
-            </label>
-
-            <div class="pip-switcher-list">
-              <button
-                v-for="item in quickSwitchBooks"
-                :key="`${item.source}/${item.source_id}`"
-                type="button"
-                class="pip-book-item"
-                @click="pickComic(item.source, item.source_id)"
-              >
-                <img
-                  v-if="item.cover_paths?.[0]"
-                  :src="item.cover_paths[0]"
-                  :srcset="bookCoverSrcset(item.cover_paths[0])"
-                  sizes="120px"
-                  :alt="item.title"
-                  class="pip-book-cover"
-                  loading="lazy"
-                  decoding="async"
-                />
-                <div v-else class="pip-book-cover is-empty">{{ item.display_id }}</div>
-                <div class="pip-book-info">
-                  <strong class="pip-book-title">{{ item.title }}</strong>
-                  <span class="pip-book-meta">{{ formatBookMeta(item, false) }}</span>
-                </div>
-              </button>
-              <p v-if="quickSwitchBooks.length === 0" class="pip-empty-hint">未找到匹配的藏书</p>
-            </div>
-          </div>
-        </section>
+          :mode="drawerMode"
+          :chapters="chapters"
+          :current-chapter-id="currentChapterId"
+          :current-source="currentSource"
+          :current-source-id="currentSourceId"
+          :library-items="libraryItems"
+          :has-chapters="hasChapters"
+          :can-switch-books="canSwitchBooks"
+          @switch-mode="(mode) => (drawerMode = mode)"
+          @close="drawerMode = null"
+          @select-chapter="pickChapter"
+          @select-comic="pickComic"
+        />
 
         <div v-else-if="loading" class="pip-status-card">
           <p class="pip-status-title">正在翻开书卷…</p>
@@ -650,29 +391,13 @@ useEventListener(pipKeyTarget, 'keydown', (event: KeyboardEvent) => {
           </div>
 
           <div v-if="visibleRecommendations.length > 0" class="pip-rec-list">
-            <button
+            <ReaderPipBookItem
               v-for="item in visibleRecommendations"
               :key="`${item.source}/${item.source_id}`"
-              type="button"
-              class="pip-book-item"
-              @click="pickComic(item.source, item.source_id)"
-            >
-              <img
-                v-if="item.cover_paths?.[0]"
-                :src="item.cover_paths[0]"
-                :srcset="bookCoverSrcset(item.cover_paths[0])"
-                sizes="120px"
-                :alt="item.title"
-                class="pip-book-cover"
-                loading="lazy"
-                decoding="async"
-              />
-              <div v-else class="pip-book-cover is-empty">{{ item.display_id }}</div>
-              <div class="pip-book-info">
-                <strong class="pip-book-title">{{ item.title }}</strong>
-                <span class="pip-book-meta">{{ formatBookMeta(item, true) }}</span>
-              </div>
-            </button>
+              :item="item"
+              show-author
+              @select="pickComic"
+            />
           </div>
 
           <div class="pip-end-actions">
@@ -698,68 +423,24 @@ useEventListener(pipKeyTarget, 'keydown', (event: KeyboardEvent) => {
           </div>
         </section>
 
-        <div
+        <ReaderPipContinuousStage
           v-else-if="isContinuousStrip"
-          ref="continuousScrollEl"
-          class="pip-continuous-scroll"
-          :data-seamless="seamless ? 'true' : undefined"
-          @scroll.passive="onContinuousScroll"
-          @wheel.passive="unlockContinuousScroll"
-          @touchstart.passive="unlockContinuousScroll"
-          @pointerdown.passive="unlockContinuousScroll"
-        >
-          <div
-            v-for="(group, idx) in continuousGroups"
-            :key="`${currentSource}/${currentSourceId}/${group.pages[0]}`"
-            class="pip-continuous-page"
-            :data-pip-page="group.pages[0]"
-            :style="getPageStyle(group.pages[0]!)"
-          >
-            <ComicPageImage
-              v-if="isGroupHydrated(idx)"
-              :src="pageFileUrl(currentSource, currentSourceId, group.pages[0]!)"
-              :alt="`第 ${formatLocalPage(group.pages[0]!)} 页`"
-              :eager="idx <= 2"
-              :loading-variant="loadingVariant"
-              @ready="onPageImageReady(group.pages[0]!, $event)"
-            />
-            <div v-else class="pip-continuous-placeholder" aria-hidden="true">
-              <span>{{ String(formatLocalPage(group.pages[0]!)).padStart(3, '0') }}</span>
-            </div>
-          </div>
-
-          <div class="pip-continuous-end">
-            <template v-if="nextChapter">
-              <span class="pip-end-seal">〔 本话完 〕</span>
-              <p class="pip-continuous-end-title">
-                下一话：{{ nextChapter.title || `第 ${nextChapter.index} 話` }}
-              </p>
-              <AppButton
-                theme="reader"
-                variant="primary"
-                size="xs"
-                icon="arrow-right"
-                icon-position="right"
-                @click="pickChapter(nextChapter.id)"
-              >
-                <span>进入下一话</span>
-              </AppButton>
-            </template>
-            <template v-else>
-              <span class="pip-end-seal">〔 全卷完 · 归阁 〕</span>
-              <p class="pip-continuous-end-title">已翻至本卷末页</p>
-              <AppButton
-                theme="reader"
-                variant="soft"
-                size="xs"
-                icon="book-open"
-                @click="$emit('openEnd')"
-              >
-                <span>查看接卷推荐</span>
-              </AppButton>
-            </template>
-          </div>
-        </div>
+          ref="continuousStageRef"
+          :current-source="currentSource"
+          :current-source-id="currentSourceId"
+          :current-chapter-id="currentChapterId"
+          :current-page="currentPage"
+          :current-local-page="currentLocalPage"
+          :scoped-pages="scopedPages"
+          :to-local-page="toLocalPage"
+          :seamless="seamless"
+          :reduced-motion="reducedMotion"
+          :next-chapter="nextChapter"
+          :loading-variant="loadingVariant"
+          @sync-page="(page) => $emit('syncPage', page)"
+          @select-chapter="pickChapter"
+          @open-end="$emit('openEnd')"
+        />
 
         <div v-else class="pip-page-stage">
           <Transition :name="transitionName">
@@ -1041,78 +722,6 @@ useEventListener(pipKeyTarget, 'keydown', (event: KeyboardEvent) => {
   }
 }
 
-.pip-continuous-scroll {
-  width: 100%;
-  height: 100%;
-  min-height: 0;
-  overflow-y: auto;
-  overflow-x: hidden;
-  scrollbar-width: thin;
-  scrollbar-gutter: stable;
-  overscroll-behavior: contain;
-}
-
-.pip-continuous-page {
-  width: 100%;
-}
-
-.pip-continuous-scroll:not([data-seamless='true']) .pip-continuous-page + .pip-continuous-page {
-  margin-top: var(--space-2, 0.5rem);
-}
-
-.pip-continuous-scroll[data-seamless='true'] .pip-continuous-page + .pip-continuous-page {
-  margin-top: -1px;
-}
-
-.pip-continuous-page :deep(.comic-page-image),
-.pip-continuous-page :deep(.comic-page-img-frame) {
-  width: 100%;
-  height: auto;
-  display: block;
-}
-
-.pip-continuous-page :deep(.comic-page-img) {
-  width: 100%;
-  height: auto;
-  max-width: 100%;
-  max-height: none;
-  object-fit: contain;
-  display: block;
-}
-
-.pip-continuous-scroll[data-seamless='true'] .pip-continuous-page :deep(.comic-page-img) {
-  vertical-align: bottom;
-}
-
-.pip-continuous-placeholder {
-  width: 100%;
-  aspect-ratio: 0.72;
-  display: grid;
-  place-items: center;
-  font-family: var(--font-mono, monospace);
-  font-size: var(--text-xs, 0.75rem);
-  color: var(--reader-muted, #938d80);
-  background: var(--reader-bg, #0d0e0c);
-}
-
-.pip-continuous-end {
-  display: grid;
-  justify-items: center;
-  gap: var(--space-2, 0.5rem);
-  padding: var(--space-5, 1.25rem) var(--space-3, 0.75rem);
-  text-align: center;
-}
-
-.pip-continuous-end-title {
-  margin: 0;
-  font-size: var(--text-xs, 0.75rem);
-  color: var(--reader-ink, #eee7da);
-  max-width: 100%;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
 .pip-tap-zone {
   position: absolute;
   inset: 0 auto 0 0;
@@ -1216,172 +825,6 @@ useEventListener(pipKeyTarget, 'keydown', (event: KeyboardEvent) => {
   justify-content: center;
   gap: var(--space-2, 0.5rem);
   flex-wrap: wrap;
-}
-
-.pip-switcher-panel {
-  width: 100%;
-  height: 100%;
-  min-height: 0;
-  display: grid;
-  grid-template-rows: auto minmax(0, 1fr);
-  gap: var(--space-2, 0.5rem);
-  padding: var(--space-2, 0.5rem);
-  box-sizing: border-box;
-}
-
-.pip-switcher-tabs {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-2, 0.5rem);
-}
-
-.pip-switcher-tab-group {
-  display: flex;
-  gap: var(--space-1, 0.25rem);
-}
-
-.pip-tab-btn {
-  padding: var(--space-1, 0.25rem) var(--space-2-5, 0.625rem);
-  border-radius: var(--radius-pill, 9999px);
-  border: 1px solid var(--reader-line, rgb(238 231 218 / 14%));
-  background: transparent;
-  color: var(--reader-muted, #938d80);
-  font-size: var(--text-xs, 0.75rem);
-  cursor: pointer;
-}
-
-.pip-tab-btn.is-active {
-  background: var(--reader-surface-strong, rgb(238 231 218 / 8%));
-  color: var(--reader-ink, #eee7da);
-  border-color: var(--reader-accent, #e87a58);
-}
-
-.pip-books-body {
-  min-height: 0;
-  display: grid;
-  grid-template-rows: auto minmax(0, 1fr);
-  gap: var(--space-2, 0.5rem);
-}
-
-.pip-search-box {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2, 0.5rem);
-  padding: var(--space-1-5, 0.375rem) var(--space-2-5, 0.625rem);
-  border-radius: var(--radius-2, 0.625rem);
-  background: var(--reader-surface, rgb(238 231 218 / 4%));
-  border: 1px solid var(--reader-line, rgb(238 231 218 / 14%));
-  color: var(--reader-muted, #938d80);
-}
-
-.pip-search-input {
-  width: 100%;
-  min-width: 0;
-  border: 0;
-  outline: none;
-  background: transparent;
-  color: var(--reader-ink, #eee7da);
-  font-size: var(--text-xs, 0.75rem);
-}
-
-.pip-switcher-list {
-  min-height: 0;
-  overflow-y: auto;
-  display: grid;
-  align-content: start;
-  gap: var(--space-1-5, 0.375rem);
-  scrollbar-width: thin;
-}
-
-.pip-chapter-item,
-.pip-book-item {
-  width: 100%;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-2-5, 0.625rem);
-  padding: var(--space-2, 0.5rem);
-  border-radius: var(--radius-2, 0.625rem);
-  border: 1px solid var(--reader-line-soft, rgb(238 231 218 / 10%));
-  background: var(--reader-surface, rgb(238 231 218 / 4%));
-  color: var(--reader-ink, #eee7da);
-  text-align: left;
-  cursor: pointer;
-}
-
-.pip-chapter-item:hover,
-.pip-book-item:hover {
-  background: var(--reader-surface-hover, rgb(238 231 218 / 14%));
-}
-
-.pip-chapter-item.is-current {
-  border-color: var(--reader-accent, #e87a58);
-}
-
-.pip-chapter-name {
-  min-width: 0;
-  font-size: var(--text-xs, 0.75rem);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.pip-chapter-meta {
-  flex-shrink: 0;
-  font-family: var(--font-mono, monospace);
-  font-size: var(--text-caption, 0.6875rem);
-  color: var(--reader-muted, #938d80);
-}
-
-.pip-book-item {
-  justify-content: flex-start;
-}
-
-.pip-book-cover {
-  width: 2.25rem;
-  height: 3rem;
-  object-fit: cover;
-  border-radius: var(--radius-1, 0.375rem);
-  flex-shrink: 0;
-  background: var(--reader-bg, #0d0e0c);
-}
-
-.pip-book-cover.is-empty {
-  display: grid;
-  place-items: center;
-  font-family: var(--font-mono, monospace);
-  font-size: var(--text-caption, 0.6875rem);
-  color: var(--reader-muted, #938d80);
-}
-
-.pip-book-info {
-  min-width: 0;
-  display: grid;
-  gap: var(--space-0-5, 0.125rem);
-}
-
-.pip-book-title {
-  font-size: var(--text-xs, 0.75rem);
-  font-weight: 600;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.pip-book-meta,
-.pip-empty-hint {
-  font-family: var(--font-mono, monospace);
-  font-size: var(--text-caption, 0.6875rem);
-  color: var(--reader-muted, #938d80);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.pip-empty-hint {
-  margin: var(--space-4, 1rem) 0;
-  text-align: center;
 }
 
 @media (display-mode: picture-in-picture) {

@@ -145,6 +145,7 @@ export function useAutoTurn(options: UseAutoTurnOptions) {
       !currentSettings.value.autoTurn ||
       currentSettings.value.mode === 'vertical-continuous' ||
       settingsOpen.value ||
+      filmstripOpen?.value ||
       (pipOpen?.value && pipBlocked?.value) ||
       !hasRemainingAdvance()
     ) {
@@ -175,7 +176,9 @@ export function useAutoTurn(options: UseAutoTurnOptions) {
     if (open) {
       pauseAutoTurnTick()
     } else {
-      onScheduleChromeHide?.()
+      if (!pipOpen?.value) {
+        onScheduleChromeHide?.()
+      }
       resetAutoTurnCountdown()
     }
   })
@@ -186,7 +189,9 @@ export function useAutoTurn(options: UseAutoTurnOptions) {
       if (open) {
         pauseAutoTurnTick()
       } else {
-        onScheduleChromeHide?.()
+        if (!pipOpen?.value) {
+          onScheduleChromeHide?.()
+        }
         resetAutoTurnCountdown()
       }
     })

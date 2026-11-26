@@ -265,4 +265,48 @@ describe('useAutoTurn Composable - Discrete Paged AutoTurn State Machine', () =>
     settings.mode = 'vertical-continuous'
     expect(auto.canAutoTurnRun()).toBe(false)
   })
+
+  it('ignores toggleAutoTurnPause while filmstrip is open and avoids main chrome hide when pipBlocked clears', async () => {
+    const { useAutoTurn } = await import('@/composables/useAutoTurn')
+    const { ref, reactive, computed, nextTick } = await import('vue')
+    const { vi } = await import('vite-plus/test')
+
+    const settings = reactive<ReaderSettings>({
+      ...DEFAULT_SETTINGS,
+      mode: 'horizontal',
+      autoTurn: true,
+      autoTurnInterval: 10,
+    })
+
+    const filmstripOpen = ref(true)
+    const pipOpen = ref(true)
+    const pipBlocked = ref(true)
+    const onScheduleChromeHide = vi.fn<() => void>()
+
+    const auto = useAutoTurn({
+      settings,
+      currentGroupIndex: ref(0),
+      lastGroupIndex: computed(() => 3),
+      settingsOpen: ref(false),
+      filmstripOpen,
+      pipOpen,
+      pipBlocked,
+      canAdvanceInPip: computed(() => true),
+      onAdvance: () => {},
+      onScheduleChromeHide,
+    })
+
+    auto.toggleAutoTurnPause()
+    expect(auto.autoTurnPaused.value).toBe(false)
+
+    // Unblocking PiP drawer while PiP remains open does not schedule main window chrome hide
+    pipBlocked.value = false
+    await nextTick()
+    expect(onScheduleChromeHide).not.toHaveBeenCalled()
+
+    // Closing PiP schedules main window chrome hide
+    pipOpen.value = false
+    await nextTick()
+    expect(onScheduleChromeHide).toHaveBeenCalledTimes(1)
+  })
 })
