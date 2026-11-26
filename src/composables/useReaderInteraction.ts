@@ -32,6 +32,7 @@ export interface UseReaderInteractionOptions {
   filmstripOpen?: Ref<boolean>
   toggleFilmstrip?: () => void
   pipOpen?: Ref<boolean>
+  pipBlocked?: Ref<boolean>
   reducedMotion: Ref<boolean>
   route: RouteLocationNormalizedLoaded
   router?: Router
@@ -57,7 +58,15 @@ export function useReaderInteraction(options: UseReaderInteractionOptions) {
     settings: { settings, clearActiveComic, applyComicPreferences },
     bubble: { targetBubble, targetPage, dismissBubble },
     data: { detail, loading, source, sourceId, scopeId, backToDetail, lastRead },
-    paging: { scopedPages, total, clampToScope, groupIndexForPage, prevChapter, nextChapter },
+    paging: {
+      scopedPages,
+      total,
+      clampToScope,
+      groupIndexForPage,
+      prevChapter,
+      nextChapter,
+      atFinalPage,
+    },
     chrome: { toggleChrome, showChromeTemporarily, scheduleChromeHide },
     navigation: {
       scrollToGroup,
@@ -103,6 +112,17 @@ export function useReaderInteraction(options: UseReaderInteractionOptions) {
   } = pageZoom
 
   const pipEndOpen = ref(false)
+  const pipDrawerOpen = ref(false)
+
+  if (options.pipBlocked) {
+    watch(
+      [pipDrawerOpen, pipEndOpen],
+      ([drawer, end]) => {
+        options.pipBlocked!.value = drawer || end
+      },
+      { immediate: true },
+    )
+  }
 
   const {
     isPipSupported,
@@ -122,6 +142,7 @@ export function useReaderInteraction(options: UseReaderInteractionOptions) {
     },
     onClose: () => {
       pipEndOpen.value = false
+      pipDrawerOpen.value = false
       void nextTick().then(() => {
         scrollToGroup(currentGroupIndex.value, 'instant')
       })
@@ -132,10 +153,27 @@ export function useReaderInteraction(options: UseReaderInteractionOptions) {
     void rawTogglePip(detail.value?.meta.title)
   }
 
+  function onPipDrawerChange(open: boolean) {
+    pipDrawerOpen.value = open
+  }
+
+  function syncPipPage(page: number) {
+    const clamped = clampToScope(page)
+    if (clamped === currentPage.value) return
+    currentPage.value = clamped
+    currentGroupIndex.value = groupIndexForPage(clamped)
+    onUserInteract()
+  }
+
+  function openPipEnd() {
+    pipEndOpen.value = true
+  }
+
   watch(
     () => `${source.value}/${sourceId.value}`,
     () => {
       pipEndOpen.value = false
+      pipDrawerOpen.value = false
     },
   )
 
@@ -148,12 +186,6 @@ export function useReaderInteraction(options: UseReaderInteractionOptions) {
   const canPipNext = computed(() => {
     if (pipEndOpen.value) return false
     return scopedPages.value.length > 0
-  })
-
-  const isPipAtFinalPage = computed(() => {
-    const pages = scopedPages.value
-    if (pages.length === 0) return false
-    return currentPage.value >= pages[pages.length - 1]! && !nextChapter.value
   })
 
   function pipPrevPage() {
@@ -234,6 +266,12 @@ export function useReaderInteraction(options: UseReaderInteractionOptions) {
   function advanceAutoTurn() {
     if (isZoomed.value) {
       resetAutoTurnCountdown()
+      return
+    }
+    if (isPipOpen.value) {
+      if (!atFinalPage.value) {
+        pipNextPage()
+      }
       return
     }
     navAdvanceAutoTurn(reducedMotion.value)
@@ -500,7 +538,6 @@ export function useReaderInteraction(options: UseReaderInteractionOptions) {
     isPipOpen,
     pipMountTarget,
     pipEndOpen,
-    isPipAtFinalPage,
     togglePip,
     closePip,
     canPipPrev,
@@ -508,5 +545,8 @@ export function useReaderInteraction(options: UseReaderInteractionOptions) {
     pipPrevPage,
     pipNextPage,
     pipRestartComic,
+    onPipDrawerChange,
+    syncPipPage,
+    openPipEnd,
   }
 }

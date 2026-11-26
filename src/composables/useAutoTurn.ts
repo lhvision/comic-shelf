@@ -7,7 +7,8 @@
  * 2. 竖向连续长卷（条漫）：天生由读者指尖/滚轮 1:1 掌控阅读节奏，设计上彻底豁免自动化以杜绝动晕症与失控感；
  * 3. 100% 画面静止保障：倒计时期间视口绝对静止，仅在切页瞬间推进；
  * 4. 交互自愈重置：读者手动操作（触控/滚轮/按键）时无感重置倒计时，重续阅读心流；
- * 5. 页面可见性与设置面板联动：退火切后台或打开设置面板时即刻挂起。
+ * 5. 页面可见性与设置面板联动：退火切后台、打开设置面板/胶片轨或悬浮窗抽屉时即刻挂起；
+ * 6. 桌面悬浮阅览窗续播：在离散翻页模式下延续主窗自动切换节奏，按单页粒度推进直至全书最终页。
  */
 
 import {
@@ -39,6 +40,10 @@ export interface UseAutoTurnOptions {
   filmstripOpen?: Ref<boolean>
   /** 桌面悬浮阅览窗是否处于打开态 Ref */
   pipOpen?: Ref<boolean>
+  /** 桌面悬浮阅览窗内部阻塞态 Ref（打开选话/换书面板或停留在完读页时暂停倒计时） */
+  pipBlocked?: Ref<boolean>
+  /** 桌面悬浮阅览窗是否仍有下一页/下一话可推进（单页粒度，覆盖主窗多页分组边界） */
+  canAdvanceInPip?: ComputedRef<boolean>
   /** 顶栏与悬浮控制栏是否处于展开可见态 Ref */
   chromeVisible?: Ref<boolean>
   /** 自动翻页推进回调 */
@@ -60,6 +65,8 @@ export function useAutoTurn(options: UseAutoTurnOptions) {
     settingsOpen,
     filmstripOpen,
     pipOpen,
+    pipBlocked,
+    canAdvanceInPip,
     onAdvance,
     onScheduleChromeHide,
   } = options
@@ -73,6 +80,13 @@ export function useAutoTurn(options: UseAutoTurnOptions) {
     () => currentSettings.value.autoTurn && currentSettings.value.mode !== 'vertical-continuous',
   )
 
+  function hasRemainingAdvance() {
+    if (pipOpen?.value && canAdvanceInPip) {
+      return canAdvanceInPip.value
+    }
+    return currentGroupIndex.value < lastGroupIndex.value || Boolean(hasNextChapter?.value)
+  }
+
   function canAutoTurnRun() {
     return (
       currentSettings.value.autoTurn &&
@@ -80,9 +94,9 @@ export function useAutoTurn(options: UseAutoTurnOptions) {
       !autoTurnPaused.value &&
       !settingsOpen.value &&
       !filmstripOpen?.value &&
-      !pipOpen?.value &&
-      documentVisibility.value === 'visible' &&
-      (currentGroupIndex.value < lastGroupIndex.value || Boolean(hasNextChapter?.value))
+      !(pipOpen?.value && pipBlocked?.value) &&
+      (documentVisibility.value === 'visible' || Boolean(pipOpen?.value)) &&
+      hasRemainingAdvance()
     )
   }
 
@@ -131,7 +145,8 @@ export function useAutoTurn(options: UseAutoTurnOptions) {
       !currentSettings.value.autoTurn ||
       currentSettings.value.mode === 'vertical-continuous' ||
       settingsOpen.value ||
-      (currentGroupIndex.value >= lastGroupIndex.value && !hasNextChapter?.value)
+      (pipOpen?.value && pipBlocked?.value) ||
+      !hasRemainingAdvance()
     ) {
       return
     }
@@ -165,7 +180,7 @@ export function useAutoTurn(options: UseAutoTurnOptions) {
     }
   })
 
-  for (const overlayOpen of [filmstripOpen, pipOpen]) {
+  for (const overlayOpen of [filmstripOpen, pipBlocked]) {
     if (!overlayOpen) continue
     watch(overlayOpen, (open) => {
       if (open) {
@@ -177,10 +192,19 @@ export function useAutoTurn(options: UseAutoTurnOptions) {
     })
   }
 
+  if (pipOpen) {
+    watch(pipOpen, (open) => {
+      if (!open) {
+        onScheduleChromeHide?.()
+      }
+      resetAutoTurnCountdown()
+    })
+  }
+
   watch(documentVisibility, (state) => {
-    if (state === 'hidden') {
+    if (state === 'hidden' && !pipOpen?.value) {
       pauseAutoTurnTick()
-    } else {
+    } else if (state === 'visible') {
       resetAutoTurnCountdown()
     }
   })

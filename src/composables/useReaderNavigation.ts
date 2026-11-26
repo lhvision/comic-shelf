@@ -23,7 +23,7 @@ import {
 import type { Router } from 'vue-router'
 import { useDebounceFn, useTimeoutFn } from '@vueuse/core'
 import { pageFileUrl } from '@/api/client'
-import { clamp } from '@/utils/math'
+import { binarySearchNearestIndex, clamp } from '@/utils/math'
 import {
   isAtScrollBottom,
   isAtScrollTop,
@@ -156,38 +156,16 @@ function resolveNearestGroupIndex(
     }
 
     // 3. 二分查找终极收敛（千页规模下最多仅探测 log2(N) ≈ 10 次，绝无全量 O(N) 重排）
-    let low = 0
-    let high = lastIdx
-    let bestIdx = currentIdx
-    let bestDist = Number.POSITIVE_INFINITY
-
-    while (low <= high) {
-      const mid = Math.floor((low + high) / 2)
+    return binarySearchNearestIndex(lastIdx + 1, currentIdx, (mid) => {
       const spread = el.querySelector<HTMLElement>(`[data-group-index="${mid}"]`)
-      if (!spread) {
-        break
-      }
+      if (!spread) return null
       const { intersects, readLine, top, height } = isSpreadIntersecting(
         spread,
         position,
         el.clientHeight,
       )
-      if (intersects) {
-        return mid
-      }
-      const midCenter = top + height / 2
-      const dist = Math.abs(midCenter - readLine)
-      if (dist < bestDist) {
-        bestDist = dist
-        bestIdx = mid
-      }
-      if (readLine < top) {
-        high = mid - 1
-      } else {
-        low = mid + 1
-      }
-    }
-    return bestIdx
+      return { intersects, start: top, size: height, target: readLine }
+    })
   }
 
   // 翻页模式（竖向翻页 / 横向翻页）：最临近单屏吸附

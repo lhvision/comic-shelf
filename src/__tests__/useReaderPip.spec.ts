@@ -420,4 +420,89 @@ describe('ReaderPipWindow', () => {
 
     wrapper.unmount()
   })
+
+  it('shows auto-turn countdown pill in footer, emits drawerChange, and renders continuous webtoon strip mode', async () => {
+    const targetDoc = document.implementation.createHTMLDocument('pip-host-3')
+    const mountTarget = targetDoc.createElement('div')
+    targetDoc.body.appendChild(mountTarget)
+
+    const wrapper = mount(ReaderPipWindow, {
+      props: {
+        open: true,
+        mountTarget,
+        title: '长条与自动切换测试',
+        chapterLabel: '第 1 話',
+        chapters: [
+          { id: 'c1', index: 1, title: '第一话', start: 1, page_count: 3 },
+          { id: 'c2', index: 2, title: '第二话', start: 4, page_count: 2 },
+        ],
+        currentChapterId: 'c1',
+        currentSource: 'jm',
+        currentSourceId: 'comic-99',
+        pageSrc: '/api/library/jm/comic-99/pages/1/file',
+        currentPage: 1,
+        currentLocalPage: 1,
+        total: 3,
+        scopedPages: [1, 2, 3],
+        canPrev: false,
+        canNext: true,
+        rtlHorizontal: false,
+        readerMode: 'horizontal',
+        fit: 'height',
+        seamless: false,
+        autoTurnActive: true,
+        autoTurnPaused: false,
+        autoTurnRemaining: 8,
+        nextChapter: { id: 'c2', index: 2, title: '第二话', start: 4, page_count: 2 },
+      },
+    })
+
+    const autoTurnPill = mountTarget.querySelector(
+      '.pip-auto-turn-pill',
+    ) as HTMLButtonElement | null
+    expect(autoTurnPill).toBeTruthy()
+    expect(autoTurnPill?.textContent?.trim()).toBe('8s')
+    autoTurnPill?.click()
+    expect(wrapper.emitted('toggleAutoTurnPause')?.length).toBe(1)
+
+    // Opening chapter drawer emits drawerChange(true) and marks pill paused
+    const chapterBtn = mountTarget.querySelector(
+      'button[title="选择本话章节"]',
+    ) as HTMLButtonElement
+    chapterBtn.click()
+    await wrapper.vm.$nextTick()
+    expect(wrapper.emitted('drawerChange')?.at(-1)).toEqual([true])
+    expect(mountTarget.querySelector('.pip-auto-turn-pill')?.getAttribute('data-paused')).toBe(
+      'true',
+    )
+
+    // Closing drawer emits drawerChange(false)
+    targetDoc.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))
+    await wrapper.vm.$nextTick()
+    expect(wrapper.emitted('drawerChange')?.at(-1)).toEqual([false])
+
+    // Switching to vertical-continuous + seamless switches to continuous strip mode without tap zones or auto-turn pill
+    await wrapper.setProps({
+      readerMode: 'vertical-continuous',
+      fit: 'width',
+      seamless: true,
+      autoTurnActive: false,
+    } as Record<string, unknown>)
+
+    const continuous = mountTarget.querySelector('.pip-continuous-scroll')
+    expect(continuous).toBeTruthy()
+    expect(continuous?.getAttribute('data-seamless')).toBe('true')
+    expect(mountTarget.querySelectorAll('.pip-continuous-page').length).toBe(3)
+    expect(mountTarget.querySelector('.pip-tap-zone')).toBeNull()
+    expect(mountTarget.querySelector('.pip-auto-turn-pill')).toBeNull()
+
+    const nextChapterBtn = Array.from(
+      mountTarget.querySelectorAll('.pip-continuous-end button'),
+    ).find((btn) => btn.textContent?.includes('进入下一话')) as HTMLButtonElement | undefined
+    expect(nextChapterBtn).toBeTruthy()
+    nextChapterBtn?.click()
+    expect(wrapper.emitted('selectChapter')?.at(-1)).toEqual(['c2'])
+
+    wrapper.unmount()
+  })
 })

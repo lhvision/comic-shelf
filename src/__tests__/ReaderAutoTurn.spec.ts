@@ -194,4 +194,75 @@ describe('useAutoTurn Composable - Discrete Paged AutoTurn State Machine', () =>
     auto.resetAutoTurnCountdown()
     expect(auto.autoTurnRemaining.value).toBe(15)
   })
+
+  it('continues running during PiP in paged modes, pauses on pipBlocked, and stops on final PiP page', async () => {
+    const { useAutoTurn } = await import('@/composables/useAutoTurn')
+    const { ref, reactive, computed, nextTick } = await import('vue')
+
+    const settings = reactive<ReaderSettings>({
+      ...DEFAULT_SETTINGS,
+      mode: 'horizontal',
+      pagesPerView: 2,
+      autoTurn: true,
+      autoTurnInterval: 10,
+    })
+
+    const pipOpen = ref(true)
+    const pipBlocked = ref(false)
+    const atFinalPage = ref(false)
+
+    const auto = useAutoTurn({
+      settings,
+      currentGroupIndex: ref(4),
+      lastGroupIndex: computed(() => 4),
+      settingsOpen: ref(false),
+      pipOpen,
+      pipBlocked,
+      canAdvanceInPip: computed(() => !atFinalPage.value),
+      onAdvance: () => {},
+    })
+
+    // Even when main window is already at lastGroupIndex (2-page spread), PiP still has a single page to advance
+    expect(auto.canAutoTurnRun()).toBe(true)
+
+    // Opening drawer or end view inside PiP pauses auto-turn
+    pipBlocked.value = true
+    await nextTick()
+    expect(auto.canAutoTurnRun()).toBe(false)
+
+    pipBlocked.value = false
+    await nextTick()
+    expect(auto.canAutoTurnRun()).toBe(true)
+
+    // Reaching final page in PiP stops auto-turn
+    atFinalPage.value = true
+    expect(auto.canAutoTurnRun()).toBe(false)
+
+    // Switching main browser tab to hidden keeps PiP auto-turn alive while pipOpen is true,
+    // and pauses auto-turn once PiP closes
+    atFinalPage.value = false
+    const originalVisibility = Object.getOwnPropertyDescriptor(document, 'visibilityState')
+    Object.defineProperty(document, 'visibilityState', {
+      configurable: true,
+      get: () => 'hidden',
+    })
+    document.dispatchEvent(new Event('visibilitychange'))
+    await nextTick()
+    expect(auto.canAutoTurnRun()).toBe(true)
+
+    pipOpen.value = false
+    await nextTick()
+    expect(auto.canAutoTurnRun()).toBe(false)
+
+    if (originalVisibility) {
+      Object.defineProperty(document, 'visibilityState', originalVisibility)
+    } else {
+      delete (document as { visibilityState?: DocumentVisibilityState }).visibilityState
+    }
+
+    // Continuous mode remains exempt even while PiP is open
+    pipOpen.value = true
+    settings.mode = 'vertical-continuous'
+    expect(auto.canAutoTurnRun()).toBe(false)
+  })
 })

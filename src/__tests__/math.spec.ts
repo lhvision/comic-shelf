@@ -1,5 +1,12 @@
 import { afterEach, describe, it, expect, vi } from 'vite-plus/test'
-import { sumPrecise, sumBy, clamp, round, toFiniteNumber } from '@/utils/math'
+import {
+  sumPrecise,
+  sumBy,
+  clamp,
+  round,
+  toFiniteNumber,
+  binarySearchNearestIndex,
+} from '@/utils/math'
 
 describe('math utility module', () => {
   describe('sumPrecise', () => {
@@ -124,6 +131,35 @@ describe('math utility module', () => {
       expect(toFiniteNumber(Number.POSITIVE_INFINITY, 0)).toBe(0)
       expect(toFiniteNumber(undefined, 0)).toBe(0)
       expect(toFiniteNumber(null, 100)).toBe(100)
+    })
+  })
+
+  describe('binarySearchNearestIndex', () => {
+    it('finds intersecting range in O(log N) and falls back to nearest center', () => {
+      const ranges = [
+        { start: 0, size: 100 },
+        { start: 120, size: 100 },
+        { start: 240, size: 100 },
+        { start: 360, size: 100 },
+        { start: 480, size: 100 },
+      ]
+      const probe = (target: number) =>
+        binarySearchNearestIndex(ranges.length, 0, (idx) => {
+          const r = ranges[idx]!
+          return {
+            intersects: target >= r.start && target <= r.start + r.size,
+            start: r.start,
+            size: r.size,
+            target,
+          }
+        })
+
+      expect(probe(280)).toBe(2)
+      expect(probe(500)).toBe(4)
+      // Gap between index 0 (0..100, center 50) and index 1 (120..220, center 170): 112 is closer to index 1
+      expect(probe(112)).toBe(1)
+      // Early abort returns fallbackIndex when no element has been scored yet
+      expect(binarySearchNearestIndex(0, 3, () => null)).toBe(3)
     })
   })
 })

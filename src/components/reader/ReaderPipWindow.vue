@@ -1,16 +1,21 @@
 <script setup lang="ts">
 /**
  * ReaderPipWindow.vue — 桌面悬浮阅览窗（Document Picture-in-Picture）内容组件。
- * 通过 Vue `<Teleport>` 挂载到独立置顶 PiP 窗口，支持单页同步翻页、
+ * 通过 Vue `<Teleport>` 挂载到独立置顶 PiP 窗口，支持单页同步翻页与模式一致切换动画、
+ * 条漫/宽适配连续滚动长卷、离散模式自动切换倒计时与暂停控制、
  * 多章节直选跳话、末页完读接卷推荐与顶栏快捷换书闭环。
  */
-import { computed, nextTick, ref, useTemplateRef, watch } from 'vue'
-import { useEventListener } from '@vueuse/core'
-import { coverSrcset } from '@/api/client'
+import { computed, nextTick, onScopeDispose, ref, useTemplateRef, watch } from 'vue'
+import { useEventListener, useTimeoutFn } from '@vueuse/core'
+import { coverSrcset, pageFileUrl } from '@/api/client'
 import AppButton from '@/components/AppButton.vue'
 import AppIcon from '@/components/AppIcon.vue'
+import ComicPageImage from '@/components/ComicPageImage.vue'
+import { useReaderHydration, type OrderedGroup } from '@/composables/useReaderHydration'
+import type { FitMode, ReaderMode } from '@/composables/useReaderSettings'
 import type { Chapter, LibrarySummary } from '@/types'
 import { isCompletedComic, isInProgressComic } from '@/utils/is'
+import { binarySearchNearestIndex } from '@/utils/math'
 
 const MAX_SWITCHER_ITEMS = 30
 
@@ -28,11 +33,24 @@ const props = withDefaults(
     currentSource?: string
     currentSourceId?: string
     pageSrc: string
+    currentPage?: number
     currentLocalPage: number
     total: number
+    scopedPages?: number[]
+    toLocalPage?: (page: number) => number
     canPrev: boolean
     canNext: boolean
     rtlHorizontal: boolean
+    readerMode?: ReaderMode
+    fit?: FitMode
+    seamless?: boolean
+    reducedMotion?: boolean
+    nextChapter?: Chapter | null
+    loadingVariant?: string | number
+    autoTurnActive?: boolean
+    autoTurnPaused?: boolean
+    autoTurnRemaining?: number
+    settingsOpen?: boolean
     recommendations?: LibrarySummary[]
     libraryItems?: LibrarySummary[]
     isDirectPass?: boolean
@@ -46,6 +64,19 @@ const props = withDefaults(
     currentChapterId: null,
     currentSource: '',
     currentSourceId: '',
+    currentPage: 0,
+    scopedPages: () => [],
+    toLocalPage: undefined,
+    readerMode: 'vertical-paged',
+    fit: 'height',
+    seamless: false,
+    reducedMotion: false,
+    nextChapter: null,
+    loadingVariant: undefined,
+    autoTurnActive: false,
+    autoTurnPaused: false,
+    autoTurnRemaining: 0,
+    settingsOpen: false,
     recommendations: () => [],
     libraryItems: () => [],
     isDirectPass: false,
@@ -60,6 +91,10 @@ const emit = defineEmits<{
   restart: []
   selectComic: [source: string, sourceId: string]
   selectChapter: [chapterId: string]
+  toggleAutoTurnPause: []
+  drawerChange: [open: boolean]
+  syncPage: [page: number]
+  openEnd: []
 }>()
 
 const pipKeyTarget = computed(
@@ -74,6 +109,203 @@ const canSwitchBooks = computed(() => !props.isDirectPass && props.libraryItems.
 const visibleRecommendations = computed(() =>
   props.isDirectPass ? [] : props.recommendations.slice(0, 3),
 )
+const isContinuousStrip = computed(
+  () =>
+    props.readerMode === 'vertical-continuous' &&
+    (props.seamless || props.fit === 'width') &&
+    props.scopedPages.length > 0 &&
+    Boolean(props.currentSource && props.currentSourceId),
+)
+const showAutoTurnControl = computed(
+  () => props.autoTurnActive && !props.atFinalPage && !props.endOpen && !isContinuousStrip.value,
+)
+const autoTurnBlocked = computed(
+  () => props.autoTurnPaused || props.settingsOpen || Boolean(drawerMode.value),
+)
+const autoTurnAriaLabel = computed(() => {
+  if (props.settingsOpen || drawerMode.value) return '自动切换倒计时，面板展开中已暂停'
+  if (props.autoTurnPaused) return '自动切换已暂停，点击继续'
+  if (props.autoTurnRemaining <= 1) return '即将切换，点击暂停'
+  return `${props.autoTurnRemaining} 秒后切换，点击暂停`
+})
+
+const continuousScrollEl = useTemplateRef<HTMLElement>('continuousScrollEl')
+const continuousGroups = computed<OrderedGroup[]>(() =>
+  props.scopedPages.map((page, index) => ({ pages: [page], index })),
+)
+const continuousActiveIndex = computed(() => {
+  const idx = props.scopedPages.indexOf(props.currentPage)
+  return idx >= 0 ? idx : Math.max(0, props.currentLocalPage - 1)
+})
+const { isGroupHydrated, getPageStyle, onPageImageReady } = useReaderHydration({
+  orderedGroups: continuousGroups,
+  currentGroupIndex: continuousActiveIndex,
+  comicKey: computed(() => `${props.currentSource}/${props.currentSourceId}`),
+})
+
+function formatLocalPage(page: number): number {
+  return props.toLocalPage ? props.toLocalPage(page) : page
+}
+
+let continuousRafId: number | null = null
+let isInternalScrollSync = false
+let isProgrammaticContinuousScroll = false
+
+const { start: startContinuousScrollUnlock, stop: stopContinuousScrollUnlock } = useTimeoutFn(
+  () => {
+    isProgrammaticContinuousScroll = false
+  },
+  380,
+  { immediate: false },
+)
+
+function unlockContinuousScroll() {
+  isProgrammaticContinuousScroll = false
+  stopContinuousScrollUnlock()
+}
+
+function scrollContinuousToPage(page: number, behavior: ScrollBehavior = 'instant') {
+  const el = continuousScrollEl.value
+  if (!el) return
+  const target = el.querySelector<HTMLElement>(`[data-pip-page="${page}"]`)
+  if (!target) return
+  if (behavior === 'smooth') {
+    isProgrammaticContinuousScroll = true
+    stopContinuousScrollUnlock()
+    startContinuousScrollUnlock()
+    if ('onscrollend' in window) {
+      el.addEventListener('scrollend', unlockContinuousScroll, { once: true })
+    }
+  }
+  el.scrollTo({ top: target.offsetTop, left: 0, behavior })
+}
+
+function onContinuousScroll() {
+  if (isProgrammaticContinuousScroll || continuousRafId !== null) return
+  continuousRafId = requestAnimationFrame(() => {
+    continuousRafId = null
+    if (isProgrammaticContinuousScroll) return
+    const el = continuousScrollEl.value
+    if (!el || !isContinuousStrip.value || props.scopedPages.length === 0) return
+
+    const pos = el.scrollTop
+    const max = el.scrollHeight - el.clientHeight
+    let matched = props.scopedPages[0]!
+
+    if (max > 0 && pos >= max - 16) {
+      matched = props.scopedPages[props.scopedPages.length - 1]!
+    } else if (pos <= 16) {
+      matched = props.scopedPages[0]!
+    } else {
+      const matchedIdx = binarySearchNearestIndex(
+        props.scopedPages.length,
+        Math.max(0, props.scopedPages.indexOf(props.currentPage)),
+        (mid) => {
+          const pageNum = props.scopedPages[mid]!
+          const node = el.querySelector<HTMLElement>(`[data-pip-page="${pageNum}"]`)
+          if (!node) return null
+          const top = node.offsetTop
+          const height = node.offsetHeight
+          const readLine = pos + Math.min(el.clientHeight * 0.4, height * 0.5)
+          return {
+            intersects: readLine >= top && readLine <= top + height,
+            start: top,
+            size: height,
+            target: readLine,
+          }
+        },
+      )
+      matched = props.scopedPages[matchedIdx] ?? matched
+    }
+
+    if (matched !== props.currentPage) {
+      isInternalScrollSync = true
+      emit('syncPage', matched)
+      void nextTick(() => {
+        isInternalScrollSync = false
+      })
+    }
+  })
+}
+
+watch(
+  [
+    isContinuousStrip,
+    () => props.open,
+    () => props.endOpen,
+    () => Boolean(drawerMode.value),
+    () => props.currentChapterId,
+    () => props.currentPage,
+  ],
+  ([continuous, isOpen, isEnd, hasDrawer, chap, page], prevValues) => {
+    if (!continuous || !isOpen || isEnd || hasDrawer || page <= 0) return
+    if (isInternalScrollSync) return
+    const [prevContinuous, prevOpen, prevEnd, prevHasDrawer, prevChap] = prevValues ?? []
+    const shouldInstant =
+      !prevContinuous || !prevOpen || prevEnd || prevHasDrawer || chap !== prevChap
+    void nextTick(() => {
+      scrollContinuousToPage(page, shouldInstant || props.reducedMotion ? 'instant' : 'smooth')
+    })
+  },
+  { flush: 'post', immediate: true },
+)
+
+onScopeDispose(() => {
+  if (continuousRafId !== null) {
+    cancelAnimationFrame(continuousRafId)
+    continuousRafId = null
+  }
+  emit('drawerChange', false)
+})
+
+const transitionDir = ref<'forward' | 'backward' | 'none'>('none')
+
+watch(
+  () =>
+    [
+      props.currentLocalPage,
+      props.currentChapterId,
+      `${props.currentSource}/${props.currentSourceId}`,
+      props.endOpen,
+    ] as const,
+  ([page, chap, comic, end], [prevPage, prevChap, prevComic, prevEnd]) => {
+    if (
+      props.reducedMotion ||
+      isContinuousStrip.value ||
+      comic !== prevComic ||
+      chap !== prevChap ||
+      end !== prevEnd ||
+      end ||
+      prevEnd
+    ) {
+      transitionDir.value = 'none'
+      return
+    }
+    if (page > prevPage) {
+      transitionDir.value = 'forward'
+    } else if (page < prevPage) {
+      transitionDir.value = 'backward'
+    } else {
+      transitionDir.value = 'none'
+    }
+  },
+  { flush: 'sync' },
+)
+
+const transitionName = computed(() => {
+  if (props.reducedMotion || transitionDir.value === 'none') return 'pip-slide-none'
+  if (props.readerMode === 'horizontal') {
+    const moveLeft = props.rtlHorizontal
+      ? transitionDir.value === 'backward'
+      : transitionDir.value === 'forward'
+    return moveLeft ? 'pip-slide-left' : 'pip-slide-right'
+  }
+  return transitionDir.value === 'forward' ? 'pip-slide-up' : 'pip-slide-down'
+})
+
+watch(drawerMode, (mode) => {
+  emit('drawerChange', Boolean(mode))
+})
 
 const quickSwitchBooks = computed<LibrarySummary[]>(() => {
   if (!canSwitchBooks.value) return []
@@ -157,6 +389,15 @@ watch(
   () => {
     drawerMode.value = null
     searchQuery.value = ''
+  },
+)
+
+watch(
+  () => props.isDirectPass,
+  (direct) => {
+    if (direct && drawerMode.value === 'books') {
+      drawerMode.value = null
+    }
   },
 )
 
@@ -457,13 +698,83 @@ useEventListener(pipKeyTarget, 'keydown', (event: KeyboardEvent) => {
           </div>
         </section>
 
-        <template v-else>
-          <img
-            :src="pageSrc"
-            :alt="`第 ${currentLocalPage} 页`"
-            class="pip-reader-img"
-            draggable="false"
-          />
+        <div
+          v-else-if="isContinuousStrip"
+          ref="continuousScrollEl"
+          class="pip-continuous-scroll"
+          :data-seamless="seamless ? 'true' : undefined"
+          @scroll.passive="onContinuousScroll"
+          @wheel.passive="unlockContinuousScroll"
+          @touchstart.passive="unlockContinuousScroll"
+          @pointerdown.passive="unlockContinuousScroll"
+        >
+          <div
+            v-for="(group, idx) in continuousGroups"
+            :key="`${currentSource}/${currentSourceId}/${group.pages[0]}`"
+            class="pip-continuous-page"
+            :data-pip-page="group.pages[0]"
+            :style="getPageStyle(group.pages[0]!)"
+          >
+            <ComicPageImage
+              v-if="isGroupHydrated(idx)"
+              :src="pageFileUrl(currentSource, currentSourceId, group.pages[0]!)"
+              :alt="`第 ${formatLocalPage(group.pages[0]!)} 页`"
+              :eager="idx <= 2"
+              :loading-variant="loadingVariant"
+              @ready="onPageImageReady(group.pages[0]!, $event)"
+            />
+            <div v-else class="pip-continuous-placeholder" aria-hidden="true">
+              <span>{{ String(formatLocalPage(group.pages[0]!)).padStart(3, '0') }}</span>
+            </div>
+          </div>
+
+          <div class="pip-continuous-end">
+            <template v-if="nextChapter">
+              <span class="pip-end-seal">〔 本话完 〕</span>
+              <p class="pip-continuous-end-title">
+                下一话：{{ nextChapter.title || `第 ${nextChapter.index} 話` }}
+              </p>
+              <AppButton
+                theme="reader"
+                variant="primary"
+                size="xs"
+                icon="arrow-right"
+                icon-position="right"
+                @click="pickChapter(nextChapter.id)"
+              >
+                <span>进入下一话</span>
+              </AppButton>
+            </template>
+            <template v-else>
+              <span class="pip-end-seal">〔 全卷完 · 归阁 〕</span>
+              <p class="pip-continuous-end-title">已翻至本卷末页</p>
+              <AppButton
+                theme="reader"
+                variant="soft"
+                size="xs"
+                icon="book-open"
+                @click="$emit('openEnd')"
+              >
+                <span>查看接卷推荐</span>
+              </AppButton>
+            </template>
+          </div>
+        </div>
+
+        <div v-else class="pip-page-stage">
+          <Transition :name="transitionName">
+            <div
+              :key="`${currentSource}/${currentSourceId}/${currentChapterId ?? 'all'}/${currentLocalPage}`"
+              class="pip-page-slide"
+            >
+              <ComicPageImage
+                :src="pageSrc"
+                :alt="`第 ${currentLocalPage} 页`"
+                eager
+                :loading-variant="loadingVariant"
+              />
+            </div>
+          </Transition>
           <button
             type="button"
             class="pip-tap-zone is-left"
@@ -478,7 +789,7 @@ useEventListener(pipKeyTarget, 'keydown', (event: KeyboardEvent) => {
             :disabled="rtlHorizontal ? !canPrev : !canNext"
             @click="handleRightTap"
           />
-        </template>
+        </div>
       </main>
 
       <footer class="pip-reader-footer">
@@ -497,9 +808,23 @@ useEventListener(pipKeyTarget, 'keydown', (event: KeyboardEvent) => {
             rtlHorizontal ? (atFinalPage ? '完读' : '下一页') : endOpen ? '末页' : '上一页'
           }}</span>
         </AppButton>
-        <span class="pip-reader-counter">
-          {{ endOpen ? '全卷完' : `${currentLocalPage} / ${total}` }}
-        </span>
+        <div class="pip-footer-center">
+          <span class="pip-reader-counter">
+            {{ endOpen ? '全卷完' : `${currentLocalPage} / ${total}` }}
+          </span>
+          <button
+            v-if="showAutoTurnControl"
+            type="button"
+            class="pip-auto-turn-pill"
+            :data-paused="autoTurnBlocked"
+            :aria-label="autoTurnAriaLabel"
+            :title="autoTurnAriaLabel"
+            @click="$emit('toggleAutoTurnPause')"
+          >
+            <AppIcon v-if="autoTurnBlocked" :name="autoTurnPaused ? 'play' : 'pause'" size="xs" />
+            <span v-else class="pip-auto-turn-sec">{{ autoTurnRemaining }}s</span>
+          </button>
+        </div>
         <AppButton
           theme="reader"
           variant="ghost"
@@ -598,15 +923,63 @@ useEventListener(pipKeyTarget, 'keydown', (event: KeyboardEvent) => {
 
 .pip-reader-stage {
   position: relative;
+  min-width: 0;
   min-height: 0;
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
   place-items: center;
   padding: var(--space-1, 0.25rem);
   background: var(--reader-page-bg, #11120f);
-  overflow: hidden;
+  overflow: clip;
 }
 
-.pip-reader-img {
+.pip-page-stage {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  overflow: clip;
+}
+
+.pip-page-slide {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
+  place-items: center;
+}
+
+.pip-page-slide :deep(.comic-page-image) {
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+}
+
+.pip-page-slide :deep(.comic-page-image[data-state='loading']) {
+  min-height: 0;
+  aspect-ratio: auto;
+}
+
+.pip-page-slide :deep(.comic-page-img-frame) {
+  width: 100%;
+  height: 100%;
+  max-width: 100%;
+  max-height: 100%;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.pip-page-slide :deep(.comic-page-img) {
   max-width: 100%;
   max-height: 100%;
   width: 100%;
@@ -615,10 +988,136 @@ useEventListener(pipKeyTarget, 'keydown', (event: KeyboardEvent) => {
   display: block;
 }
 
+@media (prefers-reduced-motion: no-preference) {
+  .pip-slide-left-enter-active,
+  .pip-slide-left-leave-active,
+  .pip-slide-right-enter-active,
+  .pip-slide-right-leave-active,
+  .pip-slide-up-enter-active,
+  .pip-slide-up-leave-active,
+  .pip-slide-down-enter-active,
+  .pip-slide-down-leave-active {
+    position: absolute;
+    inset: 0;
+    transition:
+      transform var(--duration-2, 200ms) var(--ease-out, cubic-bezier(0.22, 1, 0.36, 1)),
+      opacity var(--duration-2, 200ms) var(--ease-out, cubic-bezier(0.22, 1, 0.36, 1));
+  }
+
+  .pip-slide-left-enter-from {
+    opacity: 0.4;
+    transform: translate3d(100%, 0, 0);
+  }
+  .pip-slide-left-leave-to {
+    opacity: 0.4;
+    transform: translate3d(-100%, 0, 0);
+  }
+
+  .pip-slide-right-enter-from {
+    opacity: 0.4;
+    transform: translate3d(-100%, 0, 0);
+  }
+  .pip-slide-right-leave-to {
+    opacity: 0.4;
+    transform: translate3d(100%, 0, 0);
+  }
+
+  .pip-slide-up-enter-from {
+    opacity: 0.4;
+    transform: translate3d(0, 100%, 0);
+  }
+  .pip-slide-up-leave-to {
+    opacity: 0.4;
+    transform: translate3d(0, -100%, 0);
+  }
+
+  .pip-slide-down-enter-from {
+    opacity: 0.4;
+    transform: translate3d(0, -100%, 0);
+  }
+  .pip-slide-down-leave-to {
+    opacity: 0.4;
+    transform: translate3d(0, 100%, 0);
+  }
+}
+
+.pip-continuous-scroll {
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  scrollbar-width: thin;
+  scrollbar-gutter: stable;
+  overscroll-behavior: contain;
+}
+
+.pip-continuous-page {
+  width: 100%;
+}
+
+.pip-continuous-scroll:not([data-seamless='true']) .pip-continuous-page + .pip-continuous-page {
+  margin-top: var(--space-2, 0.5rem);
+}
+
+.pip-continuous-scroll[data-seamless='true'] .pip-continuous-page + .pip-continuous-page {
+  margin-top: -1px;
+}
+
+.pip-continuous-page :deep(.comic-page-image),
+.pip-continuous-page :deep(.comic-page-img-frame) {
+  width: 100%;
+  height: auto;
+  display: block;
+}
+
+.pip-continuous-page :deep(.comic-page-img) {
+  width: 100%;
+  height: auto;
+  max-width: 100%;
+  max-height: none;
+  object-fit: contain;
+  display: block;
+}
+
+.pip-continuous-scroll[data-seamless='true'] .pip-continuous-page :deep(.comic-page-img) {
+  vertical-align: bottom;
+}
+
+.pip-continuous-placeholder {
+  width: 100%;
+  aspect-ratio: 0.72;
+  display: grid;
+  place-items: center;
+  font-family: var(--font-mono, monospace);
+  font-size: var(--text-xs, 0.75rem);
+  color: var(--reader-muted, #938d80);
+  background: var(--reader-bg, #0d0e0c);
+}
+
+.pip-continuous-end {
+  display: grid;
+  justify-items: center;
+  gap: var(--space-2, 0.5rem);
+  padding: var(--space-5, 1.25rem) var(--space-3, 0.75rem);
+  text-align: center;
+}
+
+.pip-continuous-end-title {
+  margin: 0;
+  font-size: var(--text-xs, 0.75rem);
+  color: var(--reader-ink, #eee7da);
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .pip-tap-zone {
   position: absolute;
   inset: 0 auto 0 0;
   width: 34%;
+  z-index: 2;
   border: 0;
   padding: 0;
   background: transparent;
@@ -633,11 +1132,41 @@ useEventListener(pipKeyTarget, 'keydown', (event: KeyboardEvent) => {
   cursor: default;
 }
 
+.pip-footer-center {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1-5, 0.375rem);
+}
+
 .pip-reader-counter {
   font-family: var(--font-mono, monospace);
   font-size: var(--text-xs, 0.75rem);
   color: var(--reader-muted, #938d80);
   letter-spacing: 0.04em;
+}
+
+.pip-auto-turn-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 2rem;
+  height: 1.375rem;
+  padding: 0 var(--space-1-5, 0.375rem);
+  border-radius: var(--radius-pill, 9999px);
+  border: 1px solid var(--reader-line, rgb(238 231 218 / 14%));
+  background: var(--reader-surface-strong, rgb(238 231 218 / 8%));
+  color: var(--reader-accent, #e87a58);
+  font-family: var(--font-mono, monospace);
+  font-size: var(--text-caption, 0.6875rem);
+  cursor: pointer;
+}
+
+.pip-auto-turn-pill[data-paused='true'] {
+  color: var(--reader-muted, #938d80);
+}
+
+.pip-auto-turn-pill:hover {
+  border-color: var(--reader-accent, #e87a58);
 }
 
 .pip-status-card,

@@ -151,6 +151,10 @@ export function useReaderPaging(options: UseReaderPagingOptions) {
     return showEndCard.value ? count : count - 1
   })
   const atLastGroup = computed(() => currentGroupIndex.value >= lastGroupIndex.value)
+  const atFinalPage = computed(() => {
+    const pages = scopedPages.value
+    return pages.length > 0 && currentPage.value >= pages[pages.length - 1]! && !nextChapter.value
+  })
 
   function groupIndexForPage(page: number): number {
     const pages = scopedPages.value
@@ -204,6 +208,7 @@ export function useReaderPaging(options: UseReaderPagingOptions) {
     currentGroupLabel,
     lastGroupIndex,
     atLastGroup,
+    atFinalPage,
     groupIndexForPage,
     groupFirstPage,
   }

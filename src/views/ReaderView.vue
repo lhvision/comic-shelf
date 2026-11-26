@@ -45,6 +45,7 @@ const userInteracted = ref(false)
 const [settingsOpen] = useToggle(false)
 const [filmstripOpen, toggleFilmstrip] = useToggle(false)
 const pipOpen = ref(false)
+const pipBlocked = ref(false)
 const reducedMotion = useMediaQuery(REDUCED_MOTION_QUERY)
 const viewportRef = useTemplateRef<{ scrollEl: HTMLElement | null }>('viewportRef')
 const scrollEl = computed(() => viewportRef.value?.scrollEl ?? null)
@@ -60,10 +61,10 @@ const { detail, loading, loadingVariant, source, sourceId, scopeId, backToDetail
 const readerPaging = useReaderPaging({ detail, scopeId, settings, currentPage, currentGroupIndex })
 // prettier-ignore
 const {
-  total, chapterLabel, chapterShortLabel, nextChapter, prevChapter,
+  scopedPages, total, chapterLabel, chapterShortLabel, nextChapter, prevChapter,
   atChapterEnd, atChapterStart, showEndCard, orderedGroups, isVertical,
   rtlHorizontal, prevIcon, nextIcon, toLocalPage, currentGroupLabel,
-  lastGroupIndex, atLastGroup,
+  lastGroupIndex, atLastGroup, atFinalPage,
 } = readerPaging
 
 const readerChrome = useReaderChrome({ settingsOpen, filmstripOpen, pipOpen })
@@ -84,7 +85,8 @@ const { progressValue, pillActive, isSwitchingChapter } = readerNavigation
 const readerAutoTurn = useAutoTurn({
   settings, currentGroupIndex, lastGroupIndex: readerPaging.lastGroupIndex,
   hasNextChapter: computed(() => Boolean(nextChapter.value)),
-  settingsOpen, filmstripOpen, pipOpen, chromeVisible,
+  settingsOpen, filmstripOpen, pipOpen, pipBlocked,
+  canAdvanceInPip: computed(() => total.value > 0 && !atFinalPage.value), chromeVisible,
   onAdvance: () => advanceAutoTurn(), onScheduleChromeHide: readerChrome.scheduleChromeHide,
 })
 const { isAutoTurnActive, autoTurnRemaining, autoTurnPaused, toggleAutoTurnPause } = readerAutoTurn
@@ -97,11 +99,12 @@ const {
   prevGroup, nextGroup, goToPage, goNextChapter, goPrevChapter,
   isZoomed, zoomedPage, resetZoom, getPageZoomStyle, onPageDblClick,
   onPagePointerDown, onPagePointerMove, onPagePointerUp, onPagePointerCancel,
-  onPageLostPointerCapture, isPipSupported, pipMountTarget, pipEndOpen, isPipAtFinalPage,
+  onPageLostPointerCapture, isPipSupported, pipMountTarget, pipEndOpen,
   togglePip, closePip, canPipPrev, canPipNext, pipPrevPage, pipNextPage, pipRestartComic,
+  onPipDrawerChange, syncPipPage, openPipEnd,
 } = useReaderInteraction({
   userInteracted, currentPage, currentGroupIndex, settingsOpen, filmstripOpen, toggleFilmstrip,
-  pipOpen, reducedMotion,
+  pipOpen, pipBlocked, reducedMotion,
   route, router, settings: readerSettings, bubble: readerBubble, data: readerData,
   paging: readerPaging, chrome: readerChrome, navigation: readerNavigation, autoTurn: readerAutoTurn,
 })
@@ -292,7 +295,7 @@ onUnmounted(() => {
       :mount-target="pipMountTarget"
       :loading="loading"
       :end-open="pipEndOpen"
-      :at-final-page="isPipAtFinalPage"
+      :at-final-page="atFinalPage"
       :title="detail?.meta.title ?? ''"
       :chapter-label="chapterLabel"
       :chapters="detail?.meta.chapters"
@@ -300,11 +303,24 @@ onUnmounted(() => {
       :current-source="source"
       :current-source-id="sourceId"
       :page-src="pageFileUrl(source, sourceId, currentPage)"
+      :current-page="currentPage"
       :current-local-page="toLocalPage(currentPage)"
       :total="total"
+      :scoped-pages="scopedPages"
+      :to-local-page="toLocalPage"
       :can-prev="canPipPrev"
       :can-next="canPipNext"
       :rtl-horizontal="rtlHorizontal"
+      :reader-mode="settings.mode"
+      :fit="settings.fit"
+      :seamless="settings.seamless"
+      :reduced-motion="reducedMotion"
+      :next-chapter="nextChapter"
+      :loading-variant="loadingVariant"
+      :auto-turn-active="isAutoTurnActive"
+      :auto-turn-paused="autoTurnPaused"
+      :auto-turn-remaining="autoTurnRemaining"
+      :settings-open="settingsOpen"
       :recommendations="recommendations"
       :library-items="libraryItems"
       :is-direct-pass="isDirectPass"
@@ -315,6 +331,10 @@ onUnmounted(() => {
       @restart="pipRestartComic"
       @select-comic="onSelectComic"
       @select-chapter="onSelectChapter"
+      @toggle-auto-turn-pause="toggleAutoTurnPause"
+      @drawer-change="onPipDrawerChange"
+      @sync-page="syncPipPage"
+      @open-end="openPipEnd"
     />
 
     <!-- 放大态悬浮还原胶囊 -->

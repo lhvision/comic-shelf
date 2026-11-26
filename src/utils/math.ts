@@ -100,3 +100,49 @@ export function toFiniteNumber(value: unknown, fallback = 0): number {
   }
   return fallback
 }
+
+export interface RangeMatchEvaluation {
+  intersects: boolean
+  start: number
+  size: number
+  target: number
+}
+
+/**
+ * 在有序区间序列中通过二分查找定位与目标线相交或最接近中心点的索引（O(log N)）。
+ *
+ * @param count 区间总数
+ * @param fallbackIndex 探测提前中断时的兜底索引
+ * @param evaluate 按索引懒求值区间与目标线的相对位置（返回 null 时中止查找）
+ * @returns 命中或最邻近的索引
+ */
+export function binarySearchNearestIndex(
+  count: number,
+  fallbackIndex: number,
+  evaluate: (index: number) => RangeMatchEvaluation | null,
+): number {
+  let low = 0
+  let high = count - 1
+  let bestIdx = fallbackIndex
+  let bestDist = Number.POSITIVE_INFINITY
+
+  while (low <= high) {
+    const mid = Math.floor((low + high) / 2)
+    const item = evaluate(mid)
+    if (!item) break
+    if (item.intersects) return mid
+
+    const midCenter = item.start + item.size / 2
+    const dist = Math.abs(midCenter - item.target)
+    if (dist < bestDist) {
+      bestDist = dist
+      bestIdx = mid
+    }
+    if (item.target < item.start) {
+      high = mid - 1
+    } else {
+      low = mid + 1
+    }
+  }
+  return bestIdx
+}
